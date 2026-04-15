@@ -10,7 +10,6 @@ import {
 } from "lucide-react";
 import {
   collectPresentMetricKeys,
-  getAvailableMetricKeysForTaskTypes,
   getBestCvEntry,
   getBestFinalEntry,
   getDefaultSelectedMetricsForTaskTypes,
@@ -114,10 +113,7 @@ export default function Results() {
     return {
       taskType: taskTypes.size === 1 ? [...taskTypes][0] : null,
       taskTypes: [...taskTypes],
-      availableMetricKeys: orderMetricKeys([
-        ...availableMetricKeys,
-        ...getAvailableMetricKeysForTaskTypes(taskTypes),
-      ]),
+      availableMetricKeys: orderMetricKeys([...availableMetricKeys]),
     };
   }, [metricSourceDatasets]);
 
@@ -169,6 +165,7 @@ export default function Results() {
         <div className="flex items-center gap-2 flex-wrap">
           <MetricSelector
             taskType={metricContext.taskType}
+            taskTypes={metricContext.taskTypes}
             selectedMetrics={selectedMetrics}
             onSelectedMetricsChange={setSelectedMetrics}
             availableMetricKeys={metricContext.availableMetricKeys}

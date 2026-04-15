@@ -1,15 +1,11 @@
 # Backlog
 
 > full zip version
-> Presets + page presets
+> Presets
 
-> Review delete predictions
+> Le detailed view open in playground n'ouvre pas le dataset
 
-> Verifier suppression qui laisse des traces
-> Fix Edit pipeline, from prediction. Operators are deserialized incorrectly.
-
-
-
+- REVOIR TOUT l'inspector
 - ajouter Y et Y bins dans les groups potentiels
 - limiter les datasets au tasktype du pipeline dans le wizard
 - Code signing for app stores

@@ -676,6 +676,168 @@ class TestStoreAdapter:
         assert result["deleted_rows"] == 5
         mock_store.delete_run.assert_called_once_with("run-001", delete_artifacts=True)
 
+    def test_delete_chain_predictions_removes_matching_cv_refit_siblings(self, mock_polars_df):
+        mock_store = MagicMock()
+        selected_row = {
+            "chain_id": "chain-cv",
+            "run_id": "run-001",
+            "pipeline_id": "pipe-cv",
+            "dataset_name": "dataset_a",
+            "model_class": "PLSRegression",
+            "model_name": "PLSRegression",
+            "preprocessings": "SNV",
+            "best_params": {"n_components": 10},
+            "model_step_idx": 1,
+            "cv_val_score": 0.12,
+            "cv_test_score": 0.15,
+            "cv_train_score": 0.10,
+            "cv_fold_count": 5,
+            "cv_scores": {},
+            "final_test_score": None,
+            "final_train_score": None,
+            "final_scores": {},
+        }
+        sibling_refit = {
+            **selected_row,
+            "chain_id": "chain-refit",
+            "pipeline_id": "pipe-refit",
+            "cv_val_score": None,
+            "cv_test_score": None,
+            "cv_train_score": None,
+            "cv_fold_count": 0,
+            "final_test_score": 0.09,
+            "final_train_score": 0.07,
+        }
+        other_variant = {
+            **selected_row,
+            "chain_id": "chain-other",
+            "pipeline_id": "pipe-other",
+            "best_params": {"n_components": 5},
+            "cv_val_score": 0.18,
+        }
+
+        mock_store.query_chain_summaries.side_effect = [
+            mock_polars_df([selected_row]),
+            mock_polars_df([selected_row, sibling_refit, other_variant]),
+        ]
+        mock_store._fetch_pl.return_value = mock_polars_df([
+            {
+                "pipeline_id": "pipe-cv",
+                "name": "CV",
+                "expanded_config": [{"model": {"params": {"n_components": 10}}}],
+                "generator_choices": None,
+            },
+            {
+                "pipeline_id": "pipe-refit",
+                "name": "Refit",
+                "expanded_config": [{"model": {"params": {"n_components": 10}}}],
+                "generator_choices": None,
+            },
+            {
+                "pipeline_id": "pipe-other",
+                "name": "Other",
+                "expanded_config": [{"model": {"params": {"n_components": 5}}}],
+                "generator_choices": None,
+            },
+        ])
+        mock_store.delete_predictions_matching.side_effect = [
+            {
+                "success": True,
+                "deleted_predictions": 3,
+                "deleted_arrays": 3,
+                "deleted_chains": 1,
+                "deleted_pipelines": 0,
+                "deleted_artifacts": 0,
+                "updated_chains": 0,
+            },
+            {
+                "success": True,
+                "deleted_predictions": 1,
+                "deleted_arrays": 1,
+                "deleted_chains": 1,
+                "deleted_pipelines": 1,
+                "deleted_artifacts": 1,
+                "updated_chains": 0,
+            },
+        ]
+
+        adapter = self._make_adapter(mock_store)
+        result = adapter.delete_chain_predictions("chain-cv")
+
+        assert result["success"] is True
+        assert result["deleted_predictions"] == 4
+        assert result["deleted_arrays"] == 4
+        assert result["deleted_chains"] == 2
+        assert result["deleted_pipelines"] == 1
+        assert result["deleted_artifacts"] == 1
+        assert mock_store.delete_predictions_matching.call_count == 2
+        mock_store.delete_predictions_matching.assert_any_call(chain_id="chain-cv")
+        mock_store.delete_predictions_matching.assert_any_call(chain_id="chain-refit")
+
+    def test_delete_chain_predictions_does_not_cross_variant_boundaries(self, mock_polars_df):
+        mock_store = MagicMock()
+        selected_row = {
+            "chain_id": "chain-cv",
+            "run_id": "run-001",
+            "pipeline_id": "pipe-cv",
+            "dataset_name": "dataset_a",
+            "model_class": "PLSRegression",
+            "model_name": "PLSRegression",
+            "preprocessings": "SNV",
+            "best_params": {"n_components": 10},
+            "model_step_idx": 1,
+            "cv_val_score": 0.12,
+            "cv_test_score": 0.15,
+            "cv_train_score": 0.10,
+            "cv_fold_count": 5,
+            "cv_scores": {},
+            "final_test_score": None,
+            "final_train_score": None,
+            "final_scores": {},
+        }
+        other_model = {
+            **selected_row,
+            "chain_id": "chain-rf",
+            "pipeline_id": "pipe-rf",
+            "model_class": "RandomForestRegressor",
+            "model_name": "RandomForestRegressor",
+            "best_params": {"n_estimators": 200},
+        }
+
+        mock_store.query_chain_summaries.side_effect = [
+            mock_polars_df([selected_row]),
+            mock_polars_df([selected_row, other_model]),
+        ]
+        mock_store._fetch_pl.return_value = mock_polars_df([
+            {
+                "pipeline_id": "pipe-cv",
+                "name": "CV",
+                "expanded_config": [{"model": {"params": {"n_components": 10}}}],
+                "generator_choices": None,
+            },
+            {
+                "pipeline_id": "pipe-rf",
+                "name": "RF",
+                "expanded_config": [{"model": {"params": {"n_estimators": 200}}}],
+                "generator_choices": None,
+            },
+        ])
+        mock_store.delete_predictions_matching.return_value = {
+            "success": True,
+            "deleted_predictions": 3,
+            "deleted_arrays": 3,
+            "deleted_chains": 1,
+            "deleted_pipelines": 1,
+            "deleted_artifacts": 0,
+            "updated_chains": 0,
+        }
+
+        adapter = self._make_adapter(mock_store)
+        result = adapter.delete_chain_predictions("chain-cv")
+
+        assert result["deleted_predictions"] == 3
+        mock_store.delete_predictions_matching.assert_called_once_with(chain_id="chain-cv")
+
     def test_context_manager_calls_close(self):
         mock_store = MagicMock()
         adapter = self._make_adapter(mock_store)

@@ -3453,6 +3453,14 @@ async def get_workspace_predictions_data(
                 for record in records:
                     record["source_dataset"] = dataset_name
                     record["source_file"] = source_file_str
+                    record["predict_chain_id"] = (
+                        record.get("predict_chain_id")
+                        or (
+                            (record.get("trace_id") or record.get("pipeline_uid"))
+                            if record.get("model_artifact_id")
+                            else None
+                        )
+                    )
 
                     for json_field in ["best_params", "scores"]:
                         val = record.get(json_field)
@@ -3549,7 +3557,7 @@ async def delete_workspace_dataset_predictions(workspace_id: str, dataset_name: 
 
 @router.delete("/workspaces/{workspace_id}/predictions/chains/{chain_id}")
 async def delete_workspace_chain_predictions(workspace_id: str, chain_id: str):
-    """Delete all predictions for one chain in a linked workspace."""
+    """Delete all predictions for one displayed model variant in a workspace."""
     try:
         if _has_active_non_maintenance_jobs():
             raise HTTPException(

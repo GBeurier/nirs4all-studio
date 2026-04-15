@@ -62,11 +62,24 @@ interface DatasetCardProps {
 }
 
 /**
- * Format number with commas
+ * Format number with commas. Arrays (multi-source counts) are summed.
  */
-function formatNumber(num: number | undefined | null): string {
+function formatNumber(num: number | number[] | undefined | null): string {
   if (num == null) return "--";
+  if (Array.isArray(num)) {
+    const total = num.reduce((acc, v) => acc + (typeof v === "number" ? v : 0), 0);
+    return total.toLocaleString();
+  }
   return num.toLocaleString();
+}
+
+/**
+ * Build a compact per-source breakdown string (e.g. "450+650+200").
+ * Returns null when the input is not a multi-value array.
+ */
+function formatPerSource(num: number | number[] | undefined | null): string | null {
+  if (!Array.isArray(num) || num.length < 2) return null;
+  return num.map((v) => (typeof v === "number" ? v.toLocaleString() : "?")).join("+");
 }
 
 export function DatasetCard({
@@ -97,23 +110,40 @@ export function DatasetCard({
   const showRefreshAction = versionStatus === "modified";
   const showRelinkAction = versionStatus === "missing" || dataset.status === "missing";
 
+  const taskLabel = getDatasetTaskLabel(dataset.task_type, {
+    short: true,
+    numClasses: dataset.num_classes,
+  });
+
   return (
     <motion.div
       className={`
-        flex items-center gap-4 p-4 rounded-lg border bg-card cursor-pointer transition-colors
-        ${selected ? "border-primary/50 bg-primary/5" : "border-border hover:border-primary/30"}
+        group relative flex items-stretch gap-4 pl-4 pr-3 py-3 rounded-xl border bg-card cursor-pointer
+        transition-all duration-200 ease-out
+        ${selected
+          ? "border-primary/60 bg-primary/[0.04] shadow-sm shadow-primary/10"
+          : "border-border/70 hover:border-primary/40 hover:shadow-sm hover:bg-accent/20"}
       `}
       onClick={() => onSelect?.(dataset)}
     >
+      {/* Left accent bar — lights up on select/hover */}
+      <span
+        aria-hidden
+        className={`
+          absolute left-0 top-3 bottom-3 w-[3px] rounded-r-full transition-all duration-200
+          ${selected ? "bg-primary opacity-100" : "bg-primary opacity-0 group-hover:opacity-40"}
+        `}
+      />
+
       {/* Icon */}
-      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 flex-shrink-0">
-        <FileSpreadsheet className="h-6 w-6 text-primary" />
+      <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/10 flex-shrink-0 self-center">
+        <FileSpreadsheet className="h-5 w-5 text-primary" />
       </div>
 
-      {/* Main Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-foreground truncate">{dataset.name}</h3>
+      {/* Identity (name + path) */}
+      <div className="flex-1 min-w-0 self-center">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h3 className="font-semibold text-foreground truncate tracking-tight">{dataset.name}</h3>
           <DatasetStatusBadge
             status={versionStatus}
             lastVerified={dataset.last_verified}
@@ -128,7 +158,6 @@ export function DatasetCard({
               {repetitionColumn}
             </Badge>
           )}
-          {/* Group badges */}
           {assignedGroups.map((g) => (
             <Badge
               key={g.id}
@@ -139,72 +168,140 @@ export function DatasetCard({
             </Badge>
           ))}
         </div>
-        <p className="text-sm text-muted-foreground font-mono truncate">{dataset.path}</p>
+        <p className="text-xs text-muted-foreground/80 font-mono truncate mt-0.5">{dataset.path}</p>
       </div>
 
-      {/* Best Score Display */}
-      {bestScore && (
-        <div className="hidden lg:flex flex-col items-end gap-0.5 flex-shrink-0 min-w-[140px]">
-          <div className="flex items-baseline gap-1.5">
-            <span className={`text-lg font-bold font-mono tabular-nums ${
-              bestScore.isFinal ? "text-emerald-500" : "text-chart-1"
-            }`}>
-              {formatScore(bestScore.score)}
-            </span>
-            <span className="text-[10px] font-medium text-muted-foreground uppercase">
-              {bestScore.metric}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <span className={`font-medium uppercase ${
-              bestScore.isFinal ? "text-emerald-500/70" : "text-chart-1/70"
-            }`}>
-              {bestScore.isFinal ? "Final" : "CV"}
-            </span>
-            {bestScore.model && (
-              <>
-                <span className="text-muted-foreground/40">&middot;</span>
-                <span className="font-mono truncate max-w-[90px]" title={bestScore.model}>{bestScore.model}</span>
-              </>
-            )}
-            {bestScore.isFinal && bestScore.cvScore != null && (
-              <>
-                <span className="text-muted-foreground/40">&middot;</span>
-                <span className="font-mono">CV {formatScore(bestScore.cvScore)}</span>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Vertical divider before the metrics grid */}
+      <div aria-hidden className="hidden md:block w-px self-stretch bg-border/60" />
 
-      {/* Stats - visible on larger screens */}
-      <div className="hidden md:flex items-center gap-8 text-sm flex-shrink-0">
-        <div className="text-center min-w-[70px]">
-          <p className="text-muted-foreground text-xs">Samples</p>
-          <p className="font-medium text-foreground">{formatNumber(dataset.num_samples)}</p>
-          {dataset.test_samples != null && dataset.test_samples > 0 && (
-            <p className="text-[10px] text-muted-foreground tabular-nums">
-              {formatNumber(dataset.train_samples)} train · {formatNumber(dataset.test_samples)} test
-            </p>
+      {/*
+        Metrics grid — fixed column widths so numbers align across cards.
+        Columns (lg+):  score (160) | samples (96) | features (80) | task (96)
+        Columns (md):                samples (96) | features (80) | task (96)
+      */}
+      <div
+        className="
+          hidden md:grid items-center flex-shrink-0 gap-x-6
+          md:grid-cols-[96px_80px_96px]
+          lg:grid-cols-[160px_96px_80px_96px]
+        "
+      >
+        {/* Best Score (lg+ only) — always reserved, shows placeholder when absent */}
+        <div className="hidden lg:flex flex-col items-end justify-center leading-tight">
+          {bestScore ? (
+            <>
+              <div className="flex items-baseline gap-1.5">
+                <span
+                  className={`text-lg font-bold font-mono tabular-nums ${
+                    bestScore.isFinal ? "text-emerald-500" : "text-chart-1"
+                  }`}
+                >
+                  {formatScore(bestScore.score)}
+                </span>
+                <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+                  {bestScore.metric === "balanced_accuracy" ? "B_Acc" : bestScore.metric}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
+                <span
+                  className={`font-semibold tracking-wider uppercase ${
+                    bestScore.isFinal ? "text-emerald-500/80" : "text-chart-1/80"
+                  }`}
+                >
+                  {bestScore.isFinal ? "Final" : "CV"}
+                </span>
+                {bestScore.model && (
+                  <>
+                    <span className="text-muted-foreground/40">·</span>
+                    <span
+                      className="font-mono truncate max-w-[90px]"
+                      title={bestScore.model}
+                    >
+                      {bestScore.model}
+                    </span>
+                  </>
+                )}
+                {bestScore.isFinal && bestScore.cvScore != null && (
+                  <>
+                    <span className="text-muted-foreground/40">·</span>
+                    <span className="font-mono tabular-nums">CV {formatScore(bestScore.cvScore)}</span>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-end leading-tight">
+              <span className="text-lg font-mono tabular-nums text-muted-foreground/30">—</span>
+              <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground/50 mt-0.5">
+                No score
+              </span>
+            </div>
           )}
         </div>
-        <div className="text-center min-w-[70px]">
-          <p className="text-muted-foreground text-xs">Features</p>
-          <p className="font-medium text-foreground">{formatNumber(dataset.num_features)}</p>
+
+        {/* Samples */}
+        <div className="flex flex-col items-end leading-tight">
+          <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
+            Samples
+          </span>
+          <span className="font-semibold text-foreground font-mono tabular-nums text-sm mt-0.5">
+            {formatNumber(dataset.num_samples)}
+          </span>
+          {dataset.test_samples != null && dataset.test_samples > 0 ? (
+            <span className="text-[10px] text-muted-foreground tabular-nums font-mono">
+              {formatNumber(dataset.train_samples)} / {formatNumber(dataset.test_samples)}
+            </span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">
+              unsplit
+            </span>
+          )}
         </div>
-        <div className="text-center min-w-[80px]">
-          <p className="text-muted-foreground text-xs">Task</p>
-          <p className="font-medium text-foreground truncate max-w-[80px]">
-            {getDatasetTaskLabel(dataset.task_type, {
-              short: true,
-              numClasses: dataset.num_classes,
-            })}
-          </p>
+
+        {/* Features */}
+        <div className="flex flex-col items-end leading-tight min-w-0">
+          <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
+            Features
+          </span>
+          <span className="font-semibold text-foreground font-mono tabular-nums text-sm mt-0.5">
+            {formatNumber(dataset.num_features)}
+          </span>
+          {(() => {
+            const perSource = formatPerSource(dataset.num_features);
+            if (perSource) {
+              return (
+                <span
+                  className="text-[10px] text-muted-foreground tabular-nums font-mono truncate max-w-[80px]"
+                  title={perSource}
+                >
+                  {perSource}
+                </span>
+              );
+            }
+            return <span className="text-[10px] text-transparent select-none">·</span>;
+          })()}
+        </div>
+
+        {/* Task */}
+        <div className="flex flex-col items-end leading-tight">
+          <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
+            Task
+          </span>
+          <span
+            className="font-semibold text-foreground text-sm mt-0.5 truncate max-w-[96px]"
+            title={taskLabel}
+          >
+            {taskLabel}
+          </span>
+          <span className="text-[10px] text-transparent select-none">·</span>
         </div>
       </div>
 
+      {/* Divider before actions */}
+      <div aria-hidden className="hidden md:block w-px self-stretch bg-border/60" />
+
       {/* Direct Action Buttons */}
-      <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center gap-0.5 flex-shrink-0 self-center" onClick={(e) => e.stopPropagation()}>
         {/* Quick View */}
         {onPreview && (
           <TooltipProvider>

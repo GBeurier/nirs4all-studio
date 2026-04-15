@@ -98,6 +98,9 @@ def list_presets() -> list[dict[str, Any]]:
                 "description": data["description"],
                 "task_type": data["task_type"],
                 "steps_count": len(data["pipeline"]),
+                # Include the canonical pipeline so the frontend can render
+                "pipeline": data["pipeline"],
+                # the same stats and tree preview it shows for saved pipelines.
             }
         )
 

@@ -21,10 +21,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  canonicalMetricKey,
   filterMetricsForTaskType,
   formatMetricValue,
   getDefaultSelectedMetrics,
   getMetricAbbreviation,
+  getScoreMapValue,
   isClassificationTaskType,
   orderMetricKeys,
 } from "@/lib/scores";
@@ -77,20 +79,20 @@ function ScorePair({ label, value, metric, colorClass }: {
 
 // Score extraction helpers
 function getTestScore(row: ScoreCardRow, key: string): number | null {
-  return safeNumber(row.testScores[key]);
+  return getScoreMapValue(row.testScores, key);
 }
 function getValScore(row: ScoreCardRow, key: string): number | null {
-  return safeNumber(row.valScores[key]);
+  return getScoreMapValue(row.valScores, key);
 }
 function getTrainScore(row: ScoreCardRow, key: string): number | null {
-  return safeNumber(row.trainScores[key]);
+  return getScoreMapValue(row.trainScores, key);
 }
 function getAnyScore(row: ScoreCardRow, key: string): number | null {
-  return safeNumber(row.testScores[key]) ?? safeNumber(row.valScores[key]) ?? safeNumber(row.trainScores[key]);
+  return getScoreMapValue(row.testScores, key) ?? getScoreMapValue(row.valScores, key) ?? getScoreMapValue(row.trainScores, key);
 }
 
 function getPrimaryMetric(row: ScoreCardRow): string {
-  return (row.metric || (isClassificationTaskType(row.taskType) ? "accuracy" : "rmse")).toLowerCase();
+  return canonicalMetricKey(row.metric || (isClassificationTaskType(row.taskType) ? "accuracy" : "rmse"));
 }
 
 function getRelevantMetricKeys(row: ScoreCardRow, selectedMetrics: string[]): string[] {
@@ -174,23 +176,23 @@ function CrossvalScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedM
       <div className="flex min-w-0 items-center justify-start gap-1.5 flex-wrap lg:justify-end">
         <ScorePair
           label={`${primaryLabel} CV`}
-          value={row.primaryValScore ?? safeNumber(row.avgValScores?.[primaryMetric])}
+          value={row.primaryValScore ?? getScoreMapValue(row.avgValScores, primaryMetric)}
           metric={primaryMetric}
           colorClass="text-chart-1 font-semibold"
         />
-        <ScorePair label="Mean Val" value={safeNumber(row.meanValScores?.[primaryMetric])} metric={primaryMetric} colorClass="text-blue-400" />
-        <ScorePair label="Min Val" value={safeNumber(row.minValScores?.[primaryMetric])} metric={primaryMetric} colorClass="text-blue-400" />
-        <ScorePair label="Max Val" value={safeNumber(row.maxValScores?.[primaryMetric])} metric={primaryMetric} colorClass="text-blue-400" />
+        <ScorePair label="Mean Val" value={getScoreMapValue(row.meanValScores, primaryMetric)} metric={primaryMetric} colorClass="text-blue-400" />
+        <ScorePair label="Min Val" value={getScoreMapValue(row.minValScores, primaryMetric)} metric={primaryMetric} colorClass="text-blue-400" />
+        <ScorePair label="Max Val" value={getScoreMapValue(row.maxValScores, primaryMetric)} metric={primaryMetric} colorClass="text-blue-400" />
         <ScorePair
           label={`${primaryLabel} Test`}
-          value={row.primaryTestScore ?? safeNumber(row.avgTestScores?.[primaryMetric])}
+          value={row.primaryTestScore ?? getScoreMapValue(row.avgTestScores, primaryMetric)}
           metric={primaryMetric}
         />
         {secondaryMetrics.map(metric => (
           <ScorePair
             key={metric.key}
             label={metric.label}
-            value={safeNumber(row.avgValScores?.[metric.key]) ?? safeNumber(row.avgTestScores?.[metric.key])}
+            value={getScoreMapValue(row.avgValScores, metric.key) ?? getScoreMapValue(row.avgTestScores, metric.key)}
             metric={metric.key}
             colorClass="text-green-400"
           />
@@ -199,20 +201,20 @@ function CrossvalScores({ row, selectedMetrics }: { row: ScoreCardRow; selectedM
     );
   }
 
-  const rmseLike = primaryMetric === "rmse" || primaryMetric === "rmsecv" || primaryMetric === "rmsep";
-  const primaryKey = row.metric || "rmse";
-  const meanVal = safeNumber(row.meanValScores?.[primaryMetric]) ?? safeNumber(row.meanValScores?.rmse);
-  const minVal = safeNumber(row.minValScores?.[primaryMetric]) ?? safeNumber(row.minValScores?.rmse);
-  const maxVal = safeNumber(row.maxValScores?.[primaryMetric]) ?? safeNumber(row.maxValScores?.rmse);
-  const meanTest = safeNumber(row.meanTestScores?.[primaryMetric]) ?? safeNumber(row.meanTestScores?.rmse);
-  const minTest = safeNumber(row.minTestScores?.[primaryMetric]) ?? safeNumber(row.minTestScores?.rmse);
-  const maxTest = safeNumber(row.maxTestScores?.[primaryMetric]) ?? safeNumber(row.maxTestScores?.rmse);
-  const weightedTest = safeNumber(row.wAvgTestScores?.[primaryMetric]) ?? safeNumber(row.wAvgTestScores?.rmse);
-  const avgTest = row.primaryTestScore ?? safeNumber(row.avgTestScores?.[primaryMetric]) ?? safeNumber(row.avgTestScores?.rmse);
+  const rmseLike = primaryMetric === "rmse";
+  const primaryKey = primaryMetric || "rmse";
+  const meanVal = getScoreMapValue(row.meanValScores, primaryMetric) ?? getScoreMapValue(row.meanValScores, "rmse");
+  const minVal = getScoreMapValue(row.minValScores, primaryMetric) ?? getScoreMapValue(row.minValScores, "rmse");
+  const maxVal = getScoreMapValue(row.maxValScores, primaryMetric) ?? getScoreMapValue(row.maxValScores, "rmse");
+  const meanTest = getScoreMapValue(row.meanTestScores, primaryMetric) ?? getScoreMapValue(row.meanTestScores, "rmse");
+  const minTest = getScoreMapValue(row.minTestScores, primaryMetric) ?? getScoreMapValue(row.minTestScores, "rmse");
+  const maxTest = getScoreMapValue(row.maxTestScores, primaryMetric) ?? getScoreMapValue(row.maxTestScores, "rmse");
+  const weightedTest = getScoreMapValue(row.wAvgTestScores, primaryMetric) ?? getScoreMapValue(row.wAvgTestScores, "rmse");
+  const avgTest = row.primaryTestScore ?? getScoreMapValue(row.avgTestScores, primaryMetric) ?? getScoreMapValue(row.avgTestScores, "rmse");
 
   return (
     <div className="flex min-w-0 items-center justify-start gap-1.5 flex-wrap lg:justify-end">
-      <ScorePair label={rmseLike ? "RMSECV" : "CV"} value={row.primaryValScore ?? safeNumber(row.avgValScores?.[primaryMetric]) ?? safeNumber(row.avgValScores?.rmse)} metric={primaryKey} colorClass="text-chart-1 font-semibold" />
+      <ScorePair label={rmseLike ? "RMSECV" : "CV"} value={row.primaryValScore ?? getScoreMapValue(row.avgValScores, primaryMetric) ?? getScoreMapValue(row.avgValScores, "rmse")} metric={primaryKey} colorClass="text-chart-1 font-semibold" />
       <ScorePair label="Mean Val" value={meanVal} metric={primaryKey} colorClass="text-blue-400" />
       <ScorePair label="Min Val" value={minVal} metric={primaryKey} colorClass="text-blue-400" />
       <ScorePair label="Max Val" value={maxVal} metric={primaryKey} colorClass="text-blue-400" />
@@ -423,13 +425,14 @@ function InlineRow({
           )}
           {row.hasRefitArtifact && (
             <Button variant="ghost" size="sm" className="h-5 w-5 p-0" asChild title="Predict">
-              <Link to={`/predict?model_id=${encodeURIComponent(row.chainId)}&source=chain`}><Zap className="h-3 w-3 text-emerald-500" /></Link>
+              <Link to={`/predict?model_id=${encodeURIComponent(row.predictChainId || row.chainId)}&source=chain`}><Zap className="h-3 w-3 text-emerald-500" /></Link>
             </Button>
           )}
           {isRefit && !row.hasRefitArtifact && <span className="block h-5 w-5 shrink-0" aria-hidden="true" />}
           {!isTrain && (
             <ModelActionMenu
               chainId={row.chainId}
+              predictChainId={row.predictChainId}
               modelName={row.modelName}
               datasetName={row.datasetName}
               runId={row.runId}
@@ -453,11 +456,12 @@ function InlineRow({
 
 function TableRowVariant({
   row, selectedMetrics, workspaceId, rank, expanded, onToggleExpand,
-  onViewDetails, onViewPrediction, onOpenChart,
+  onViewDetails, onViewPrediction, onOpenChart, maxTableMetrics,
 }: ScoreCardRowViewProps) {
   const isRefit = row.cardType === "refit";
-  const metric = row.metric || "rmse";
+  const metric = canonicalMetricKey(row.metric || "rmse") || "rmse";
   const foldDisplay = row.foldId ? foldLabelShort(row.foldId) : (row.foldCount ?? "\u2014");
+  const tableMetricKeys = maxTableMetrics == null ? selectedMetrics : selectedMetrics.slice(0, maxTableMetrics);
 
   return (
     <TableRow className={cn("text-xs", isRefit && "bg-emerald-500/5", expanded && "bg-primary/5")} onClick={onToggleExpand}>
@@ -484,17 +488,18 @@ function TableRowVariant({
       </TableCell>
       <TableCell className="text-right font-mono text-chart-1">{row.primaryValScore != null ? formatMetricValue(row.primaryValScore, metric) : "\u2014"}</TableCell>
       <TableCell className="text-right text-muted-foreground">{foldDisplay}</TableCell>
-      {selectedMetrics.slice(0, 4).map(k => {
+      {tableMetricKeys.map(k => {
         const val = getAnyScore(row, k);
         return <TableCell key={k} className="text-right font-mono text-[11px] text-muted-foreground">{val != null ? formatMetricValue(val, k) : "\u2014"}</TableCell>;
       })}
       <TableCell onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-0.5">
-          {onViewPrediction && row.cardType === "train" && (
+          {onViewPrediction && (
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onViewPrediction(row.id)}><Eye className="h-3.5 w-3.5" /></Button>
           )}
           <ModelActionMenu
             chainId={row.chainId}
+            predictChainId={row.predictChainId}
             modelName={row.modelName}
             datasetName={row.datasetName}
             runId={row.runId}

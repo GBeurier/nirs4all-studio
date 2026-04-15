@@ -191,7 +191,7 @@ def test_canonical_to_editor_resolves_saved_chain_short_class_names():
     assert editor_steps[0]["name"] == "SNV"
     assert (
         editor_steps[0]["classPath"]
-        == "nirs4all.operators.transforms.scalers.StandardNormalVariate"
+        == "nirs4all.operators.transforms.StandardNormalVariate"
     )
     assert editor_steps[1]["name"] == "KennardStone"
     assert (

@@ -278,15 +278,26 @@ export default function Playground() {
     }
   }, [clearPipeline, addOperatorByName]);
 
-  // Check for import data on mount
+  // Check for import data or incoming dataset selection on mount
   useEffect(() => {
     const source = searchParams.get('source');
+    const incomingDatasetId = searchParams.get('datasetId');
+    const incomingDatasetName = searchParams.get('datasetName');
+
+    if (incomingDatasetId && incomingDatasetName) {
+      // URL-provided dataset wins over any persisted session state.
+      sessionRestoredRef.current = true;
+      loadFromWorkspace(incomingDatasetId, incomingDatasetName);
+      navigate('/playground', { replace: true });
+      return;
+    }
+
     if (source === 'pipeline-editor') {
       handleImportFromPipelineEditor();
       // Clean up URL
       navigate('/playground', { replace: true });
     }
-  }, [searchParams, handleImportFromPipelineEditor, navigate]);
+  }, [searchParams, handleImportFromPipelineEditor, navigate, loadFromWorkspace]);
 
   // ============= Keyboard Shortcuts (Phase 6) =============
 

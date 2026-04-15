@@ -15,7 +15,6 @@ import { NoWorkspaceState, EmptyState, CardSkeleton } from "@/components/ui/stat
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
 import {
   collectPresentMetricKeys,
-  getAvailableMetricKeysForTaskTypes,
   getDefaultSelectedMetricsForTaskTypes,
   getDefaultSelectionUpgradeCandidatesForTaskTypes,
   getLegacySelectedMetricsForTaskTypes,
@@ -80,6 +79,17 @@ export default function Runs() {
     return [...activeOnlyRuns, ...merged];
   }, [enrichedData, activeRunsData]);
 
+  const runPageIdLookup = useMemo(() => {
+    const lookup = new Map<string, string>();
+    for (const run of activeRunsData?.runs || []) {
+      lookup.set(run.id, run.id);
+      if (run.store_run_id) {
+        lookup.set(run.store_run_id, run.id);
+      }
+    }
+    return lookup;
+  }, [activeRunsData]);
+
   const isLoading = isLoadingEnriched;
   const hasActiveWorkspace = !!activeWorkspaceId;
 
@@ -132,10 +142,7 @@ export default function Runs() {
     return {
       taskType: taskTypes.size === 1 ? [...taskTypes][0] : null,
       taskTypes: [...taskTypes],
-      availableMetricKeys: orderMetricKeys([
-        ...availableMetricKeys,
-        ...getAvailableMetricKeysForTaskTypes(taskTypes),
-      ]),
+      availableMetricKeys: orderMetricKeys([...availableMetricKeys]),
     };
   }, [runs]);
 
@@ -171,6 +178,7 @@ export default function Runs() {
         <div className="flex items-center gap-2 flex-wrap">
           <MetricSelector
             taskType={metricContext.taskType}
+            taskTypes={metricContext.taskTypes}
             selectedMetrics={selectedMetrics}
             onSelectedMetricsChange={setSelectedMetrics}
             availableMetricKeys={metricContext.availableMetricKeys}
@@ -249,6 +257,7 @@ export default function Runs() {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         workspaceId={activeWorkspaceId!}
+        runPageId={detailRun ? runPageIdLookup.get(detailRun.run_id) ?? null : null}
         selectedMetrics={selectedMetrics}
       />
     </div>

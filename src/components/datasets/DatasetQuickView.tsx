@@ -229,57 +229,80 @@ export function DatasetQuickView({
 
               {!loading && !error && (
                     <>
-                      <div className="grid grid-cols-2 gap-3">
-                        <Card className="border-0 shadow-none bg-muted/20">
-                          <CardHeader className="pb-2 pt-3 px-3">
-                            <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
-                              <Target className="h-3.5 w-3.5" /> Targets & Types
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="px-3 pb-3">
-                            <p className="font-semibold text-sm mb-1">
-                              {getDatasetTaskLabel(dataset.task_type, {
-                                numClasses: dataset.num_classes,
-                                fallback: "Auto",
-                              })}
-                            </p>
-                            <div className="flex flex-wrap gap-1 mt-1.5">
-                              {dataset.targets && dataset.targets.length > 0 ? (
-                                dataset.targets.map((target) => (
-                                  <Badge key={target.column} variant={target.column === dataset.default_target ? 'default' : 'outline'} className="text-[10px]">
-                                    {target.column}{target.unit && ` (${target.unit})`}
-                                  </Badge>
-                                ))
-                              ) : (
-                                <span className="text-xs text-muted-foreground">No targets</span>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
+                      <Card className="border-0 shadow-none bg-muted/20">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
+                            <Target className="h-3.5 w-3.5" /> Targets & Types
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <p className="font-semibold text-sm mb-1">
+                            {getDatasetTaskLabel(dataset.task_type, {
+                              numClasses: dataset.num_classes,
+                              fallback: "Auto",
+                            })}
+                          </p>
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {dataset.targets && dataset.targets.length > 0 ? (
+                              dataset.targets.map((target) => (
+                                <Badge key={target.column} variant={target.column === dataset.default_target ? 'default' : 'outline'} className="text-[10px]">
+                                  {target.column}{target.unit && ` (${target.unit})`}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-muted-foreground">No targets</span>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
 
-                        <Card className="border-0 shadow-none bg-muted/20">
-                          <CardHeader className="pb-2 pt-3 px-3">
-                            <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
-                              <Hash className="h-3.5 w-3.5" /> Metadata Fields
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="px-3 pb-3">
-                            <p className="font-semibold text-sm mb-1">{preview?.summary.n_metadata || 0} fields</p>
-                            <div className="flex flex-wrap gap-1 mt-1.5">
-                              {preview?.summary.metadata_cols?.length > 0 ? (
-                                preview.summary.metadata_cols.slice(0, 5).map((col) => (
-                                  <Badge key={col} variant="secondary" className="text-[10px] bg-background/50">{col}</Badge>
-                                ))
-                              ) : (
-                                <span className="text-xs text-muted-foreground">None</span>
-                              )}
-                              {preview?.summary.metadata_cols?.length > 5 && (
-                                <span className="text-[10px] text-muted-foreground ml-1">+{preview.summary.metadata_cols.length - 5} more</span>
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </div>
+                      {/* Metadata cloud — full width, shows ALL columns in an irregular wrapping layout */}
+                      <Card className="border-0 shadow-none bg-muted/20">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <CardTitle className="text-xs flex items-center gap-1.5 text-muted-foreground">
+                            <Hash className="h-3.5 w-3.5" /> Metadata Fields
+                            {(() => {
+                              const count = preview?.summary?.metadata_columns?.length ?? 0;
+                              return count > 0 ? (
+                                <span className="ml-auto text-[10px] font-mono tabular-nums text-muted-foreground/80">
+                                  {count}
+                                </span>
+                              ) : null;
+                            })()}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          {(() => {
+                            const metadataCols = preview?.summary?.metadata_columns ?? [];
+                            if (metadataCols.length === 0) {
+                              return <span className="text-xs text-muted-foreground italic">No metadata columns</span>;
+                            }
+                            return (
+                              <div className="flex flex-wrap gap-1.5 items-center">
+                                {metadataCols.map((col: string, idx: number) => {
+                                  // Vary visual weight for an organic cloud feel.
+                                  // Rotate through 3 styles based on index + name length.
+                                  const variant = (idx + col.length) % 3;
+                                  const styles = [
+                                    "text-[11px] px-2 py-0.5 bg-background/70 border-border text-foreground",
+                                    "text-[10px] px-1.5 py-0.5 bg-primary/10 border-primary/20 text-primary",
+                                    "text-[10px] px-2 py-[1px] bg-background border-border/60 text-muted-foreground",
+                                  ][variant];
+                                  return (
+                                    <span
+                                      key={col}
+                                      className={`inline-flex items-center rounded-md border font-mono leading-none whitespace-nowrap ${styles}`}
+                                      title={col}
+                                    >
+                                      {col}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+                        </CardContent>
+                      </Card>
 
                       <Card className="border-0 shadow-none bg-muted/20">
                         <CardHeader className="pb-2 pt-3 px-3">

@@ -105,6 +105,7 @@ def _normalize_prediction_record(raw: dict[str, Any]) -> dict[str, Any]:
     record.setdefault("step_idx", None)
     record.setdefault("op_counter", None)
     record.setdefault("model_artifact_id", None)
+    record.setdefault("predict_chain_id", None)
 
     return record
 
@@ -517,6 +518,101 @@ class StoreAdapter:
         total = self._store.delete_run(run_id, delete_artifacts=True)
         return {"success": True, "deleted_rows": total, "run_id": run_id}
 
+    def _merge_prediction_deletion_summaries(self, summaries: list[dict[str, Any]]) -> dict[str, Any]:
+        """Accumulate multiple store deletion reports into one payload."""
+        merged = {
+            "success": False,
+            "deleted_predictions": 0,
+            "deleted_arrays": 0,
+            "deleted_chains": 0,
+            "deleted_pipelines": 0,
+            "deleted_artifacts": 0,
+            "updated_chains": 0,
+        }
+        for summary in summaries:
+            merged["success"] = merged["success"] or bool(summary.get("success"))
+            for key in (
+                "deleted_predictions",
+                "deleted_arrays",
+                "deleted_chains",
+                "deleted_pipelines",
+                "deleted_artifacts",
+                "updated_chains",
+            ):
+                merged[key] += int(summary.get(key, 0) or 0)
+        return merged
+
+    def _resolve_display_variant_chain_ids(self, chain_id: str) -> list[str]:
+        """Return all sibling chains that back the same displayed model row.
+
+        The results UI collapses matching CV / refit siblings, and may also
+        dedupe identical variants produced by separate pipelines in the same
+        run+dataset. Deleting only the clicked ``chain_id`` can therefore leave
+        hidden siblings behind, which makes scores appear to "come back" on the
+        next refresh. This resolver scopes deletion to the exact displayed
+        variant signature without crossing dataset or run boundaries.
+        """
+        try:
+            selected_df = self._store.query_chain_summaries(chain_id=chain_id)
+        except Exception:
+            return [chain_id]
+
+        if len(selected_df) == 0:
+            return [chain_id]
+
+        selected_rows = [dict(row) for row in selected_df.iter_rows(named=True)]
+        if not selected_rows:
+            return [chain_id]
+
+        selected = selected_rows[0]
+        run_id = selected.get("run_id")
+        dataset_name = selected.get("dataset_name")
+        if not run_id or not dataset_name or not selected.get("model_class"):
+            return [chain_id]
+
+        try:
+            peer_df = self._store.query_chain_summaries(run_id=run_id, dataset_name=dataset_name)
+        except Exception:
+            return [chain_id]
+
+        peer_rows = [dict(row) for row in peer_df.iter_rows(named=True)]
+        if not peer_rows:
+            return [chain_id]
+
+        pipeline_ids = [pid for pid in {row.get("pipeline_id") for row in peer_rows} if pid]
+        pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
+        _attach_variant_params_inplace(peer_rows, pipeline_map)
+
+        selected_peer = next((row for row in peer_rows if row.get("chain_id") == chain_id), None)
+        if selected_peer is None:
+            _attach_variant_params_inplace(selected_rows, pipeline_map)
+            selected_peer = selected_rows[0]
+
+        selected_signature = (
+            selected_peer.get("run_id") or "",
+            selected_peer.get("dataset_name") or "",
+            *_chain_match_signature(selected_peer),
+        )
+        if selected_signature[2:] == ("", "", "", ""):
+            return [chain_id]
+
+        matched_chain_ids = sorted({
+            str(row.get("chain_id"))
+            for row in peer_rows
+            if row.get("chain_id")
+            and (
+                row.get("run_id") or "",
+                row.get("dataset_name") or "",
+                *_chain_match_signature(row),
+            ) == selected_signature
+        })
+
+        if not matched_chain_ids:
+            return [chain_id]
+        if chain_id not in matched_chain_ids:
+            matched_chain_ids.append(chain_id)
+        return matched_chain_ids
+
     def delete_prediction(self, prediction_id: str) -> dict[str, Any]:
         """Delete one stored prediction row and clean up empty parents."""
         summary = self._store.delete_predictions_matching(prediction_ids=[prediction_id])
@@ -539,8 +635,18 @@ class StoreAdapter:
         }
 
     def delete_chain_predictions(self, chain_id: str) -> dict[str, Any]:
-        """Delete all predictions for one chain."""
-        summary = self._store.delete_predictions_matching(chain_id=chain_id)
+        """Delete all predictions for one displayed model variant.
+
+        A single visible model row can be backed by multiple sibling chains
+        (for example, separate CV and refit chains with the same variant
+        signature). We therefore resolve and delete the whole sibling group so
+        stale scores do not survive behind the UI row.
+        """
+        chain_ids = self._resolve_display_variant_chain_ids(chain_id)
+        summary = self._merge_prediction_deletion_summaries([
+            self._store.delete_predictions_matching(chain_id=resolved_chain_id)
+            for resolved_chain_id in chain_ids
+        ])
         return {
             "success": bool(summary.get("deleted_predictions")),
             "scope": "chain",
@@ -679,6 +785,17 @@ class StoreAdapter:
             except Exception:
                 pass
 
+        predict_chain_targets = self._get_predict_chain_target_map([
+            str(r.get("chain_id") or r.get("trace_id") or "")
+            for r in records
+        ])
+        for rec in records:
+            chain_id = str(rec.get("chain_id") or rec.get("trace_id") or "")
+            predict_chain_id = predict_chain_targets.get(chain_id)
+            if predict_chain_id:
+                rec["predict_chain_id"] = predict_chain_id
+                rec["model_artifact_id"] = rec.get("model_artifact_id") or f"chain:{predict_chain_id}"
+
         return {
             "records": records,
             "total": total,
@@ -686,6 +803,98 @@ class StoreAdapter:
             "offset": offset,
             "has_more": offset + limit < total,
         }
+
+    def _get_predict_chain_target_map(self, chain_ids: list[str]) -> dict[str, str]:
+        """Resolve the runnable predict target for displayed prediction chains."""
+        unique_chain_ids = sorted({str(chain_id) for chain_id in chain_ids if chain_id})
+        if not unique_chain_ids:
+            return {}
+
+        try:
+            placeholders = ", ".join(f"${i + 1}" for i in range(len(unique_chain_ids)))
+            selected_df = self._store._fetch_pl(
+                "SELECT chain_id, pipeline_id, model_class, model_step_idx, model_name, preprocessings, "
+                "metric, task_type, best_params, dataset_name, cv_val_score, cv_test_score, cv_train_score, "
+                "cv_fold_count, cv_scores, final_test_score, final_train_score, final_scores, run_id "
+                f"FROM v_chain_summary WHERE chain_id IN ({placeholders})",
+                unique_chain_ids,
+            )
+        except Exception:
+            return {}
+
+        selected_rows = [dict(row) for row in selected_df.iter_rows(named=True)]
+        if not selected_rows:
+            return {}
+
+        peer_rows_by_chain: dict[str, dict[str, Any]] = {
+            str(row.get("chain_id", "")): row
+            for row in selected_rows
+            if row.get("chain_id")
+        }
+
+        for run_id, dataset_name in sorted({
+            (str(row.get("run_id") or ""), str(row.get("dataset_name") or ""))
+            for row in selected_rows
+            if row.get("run_id") and row.get("dataset_name")
+        }):
+            try:
+                peer_df = self._store.query_chain_summaries(run_id=run_id, dataset_name=dataset_name)
+            except Exception:
+                continue
+            for row in peer_df.iter_rows(named=True):
+                row_dict = dict(row)
+                chain_id = str(row_dict.get("chain_id") or "")
+                if chain_id:
+                    peer_rows_by_chain[chain_id] = row_dict
+
+        all_rows = list(peer_rows_by_chain.values())
+        pipeline_ids = [
+            pipeline_id
+            for pipeline_id in {str(row.get("pipeline_id") or "") for row in all_rows}
+            if pipeline_id
+        ]
+        pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
+        _attach_variant_params_inplace(all_rows, pipeline_map)
+        for row in all_rows:
+            _apply_synthetic_refit_fallback_inplace(row)
+
+        predict_by_signature: dict[tuple[str, str, str, str, str, str], str] = {}
+        for row in all_rows:
+            if row.get("synthetic_refit"):
+                continue
+            if not _has_meaningful_final_payload(row):
+                continue
+            chain_id = str(row.get("chain_id") or "")
+            if not chain_id:
+                continue
+            signature = (
+                str(row.get("run_id") or ""),
+                str(row.get("dataset_name") or ""),
+                *_chain_match_signature(row),
+            )
+            predict_by_signature.setdefault(signature, chain_id)
+
+        enriched_by_chain = {
+            str(row.get("chain_id") or ""): row
+            for row in all_rows
+            if row.get("chain_id")
+        }
+
+        result: dict[str, str] = {}
+        for selected_row in selected_rows:
+            chain_id = str(selected_row.get("chain_id") or "")
+            if not chain_id:
+                continue
+            row = enriched_by_chain.get(chain_id, selected_row)
+            signature = (
+                str(row.get("run_id") or ""),
+                str(row.get("dataset_name") or ""),
+                *_chain_match_signature(row),
+            )
+            predict_chain_id = predict_by_signature.get(signature)
+            if predict_chain_id:
+                result[chain_id] = predict_chain_id
+        return result
 
     def _get_predictions_page_fallback(
         self,

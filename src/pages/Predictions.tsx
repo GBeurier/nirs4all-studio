@@ -33,12 +33,13 @@ import { predictionRecordBestParams, predictionRecordToRow } from "@/lib/score-a
 import { FOLD_ORDER, foldIdBase } from "@/lib/fold-utils";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
+  canonicalMetricKey,
   collectPresentMetricKeys,
-  getAvailableMetricKeysForTaskTypes,
   getDefaultSelectedMetricsForTaskTypes,
   getDefaultSelectionUpgradeCandidatesForTaskTypes,
   getMetricAbbreviation,
   getMetricDefinitions,
+  getScoreMapValue,
   getLegacySelectedMetricsForTaskTypes,
   isClassificationTaskType,
   isLowerBetter,
@@ -125,14 +126,60 @@ function rowDataVisibility(row: ScoreCardRow): DataVisibility {
   return foldId === foldIdBase(foldId) ? "raw" : "aggregated";
 }
 
+function collectSortedUniqueStrings(values: Array<string | null | undefined>): string[] {
+  return [...new Set(
+    values.filter((value): value is string => typeof value === "string" && value.trim().length > 0),
+  )].sort((a, b) => a.localeCompare(b));
+}
+
+function rowMatchesMetricContext(row: ScoreCardRow, metricTaskFilter: MetricTaskFilter): boolean {
+  const isClass = isClassificationTaskType(row.taskType);
+  return metricTaskFilter === "classification" ? isClass : !isClass;
+}
+
+function rowMatchesFacetScope(
+  row: ScoreCardRow,
+  {
+    dataset,
+    model,
+    taskType,
+    visibleFoldTypes,
+    visibleDataKinds,
+  }: {
+    dataset?: string;
+    model?: string;
+    taskType?: string;
+    visibleFoldTypes?: readonly FoldVisibility[];
+    visibleDataKinds?: readonly DataVisibility[];
+  },
+): boolean {
+  if (dataset && row.datasetName !== dataset) return false;
+  if (model && row.modelName !== model && row.modelClass !== model) return false;
+  if (taskType && row.taskType !== taskType) return false;
+  if (visibleFoldTypes && !visibleFoldTypes.includes(rowFoldVisibility(row))) return false;
+  if (visibleDataKinds && !visibleDataKinds.includes(rowDataVisibility(row))) return false;
+  return true;
+}
+
+function predictionChainId(pred: PredictionRecord): string {
+  return pred.trace_id || pred.pipeline_uid || pred.id;
+}
+
 function buildPredictionModelRows(predictions: PredictionRecord[]): ScoreCardRow[] {
   const groups = new Map<string, PredictionRecord[]>();
+  const predictChainIdByChain = new Map<string, string>();
 
   for (const pred of predictions) {
     const key = predictionGroupKey(pred);
     const group = groups.get(key) ?? [];
     group.push(pred);
     groups.set(key, group);
+
+    const chainId = predictionChainId(pred);
+    const predictChainId = pred.predict_chain_id || (pred.model_artifact_id ? chainId : null);
+    if (predictChainId) {
+      predictChainIdByChain.set(chainId, predictChainId);
+    }
   }
 
   return [...groups.values()].map(group => {
@@ -161,6 +208,7 @@ function buildPredictionModelRows(predictions: PredictionRecord[]): ScoreCardRow
 
     row.id = primary.id;
     row.chainId = primary.trace_id || row.chainId;
+    row.predictChainId = predictChainIdByChain.get(predictionChainId(primary));
     row.datasetName = primary.source_dataset || primary.dataset_name || row.datasetName;
     row.modelName = primary.model_name || row.modelName;
     row.modelClass = primary.model_classname || row.modelClass;
@@ -174,7 +222,7 @@ function buildPredictionModelRows(predictions: PredictionRecord[]): ScoreCardRow
     row.partition = undefined;
     row.nSamplesEval = testPred?.n_samples ?? valPred?.n_samples ?? primary.n_samples ?? row.nSamplesEval;
     row.nSamplesTrain = trainPred?.n_samples ?? null;
-    row.hasRefitArtifact = primary.fold_id === "final" && group.some(pred => !!pred.model_artifact_id);
+    row.hasRefitArtifact = !!row.predictChainId;
 
     return row;
   });
@@ -223,35 +271,72 @@ export default function Predictions() {
 
   const allRows = useMemo<ScoreCardRow[]>(() => buildPredictionModelRows(rawPredictions), [rawPredictions]);
 
-  const datasets = useMemo(
-    () => [...new Set(allRows.map(row => row.datasetName).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)),
-    [allRows],
+  const contextRows = useMemo(
+    () => allRows.filter(row => rowMatchesMetricContext(row, metricTaskFilter)),
+    [allRows, metricTaskFilter],
   );
 
-  const models = useMemo(
-    () => [...new Set(allRows.map(row => row.modelName).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
-    [allRows],
+  const contextDatasets = useMemo(
+    () => collectSortedUniqueStrings(contextRows.map(row => row.datasetName)),
+    [contextRows],
   );
 
-  const taskTypes = useMemo(
-    () => [...new Set(allRows.map(row => row.taskType).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)),
-    [allRows],
+  const datasetOptions = useMemo(
+    () => collectSortedUniqueStrings(
+      contextRows
+        .filter(row => rowMatchesFacetScope(row, {
+          model: filterModel !== "all" ? filterModel : undefined,
+          taskType: filterTaskType !== "all" ? filterTaskType : undefined,
+          visibleFoldTypes,
+          visibleDataKinds,
+        }))
+        .map(row => row.datasetName),
+    ),
+    [contextRows, filterModel, filterTaskType, visibleDataKinds, visibleFoldTypes],
+  );
+
+  const modelOptions = useMemo(
+    () => collectSortedUniqueStrings(
+      contextRows
+        .filter(row => rowMatchesFacetScope(row, {
+          dataset: filterDataset !== "all" ? filterDataset : undefined,
+          taskType: filterTaskType !== "all" ? filterTaskType : undefined,
+          visibleFoldTypes,
+          visibleDataKinds,
+        }))
+        .map(row => row.modelName),
+    ),
+    [contextRows, filterDataset, filterTaskType, visibleDataKinds, visibleFoldTypes],
+  );
+
+  const taskTypeOptions = useMemo(
+    () => collectSortedUniqueStrings(
+      contextRows
+        .filter(row => rowMatchesFacetScope(row, {
+          dataset: filterDataset !== "all" ? filterDataset : undefined,
+          model: filterModel !== "all" ? filterModel : undefined,
+          visibleFoldTypes,
+          visibleDataKinds,
+        }))
+        .map(row => row.taskType),
+    ),
+    [contextRows, filterDataset, filterModel, visibleDataKinds, visibleFoldTypes],
   );
 
   const pipelinesCount = useMemo(
-    () => new Set(rawPredictions.map(pred => pred.trace_id || pred.pipeline_uid || pred.id).filter(Boolean)).size,
-    [rawPredictions],
+    () => new Set(contextRows.map(row => row.chainId).filter(Boolean)).size,
+    [contextRows],
   );
 
   const stats = useMemo(() => ({
-    total: allRows.length,
-    datasets: new Set(allRows.map(row => row.datasetName).filter(Boolean)).size,
-    models: new Set(allRows.map(row => row.modelName).filter(Boolean)).size,
+    total: contextRows.length,
+    datasets: new Set(contextRows.map(row => row.datasetName).filter(Boolean)).size,
+    models: new Set(contextRows.map(row => row.modelName).filter(Boolean)).size,
     pipelines: pipelinesCount,
-  }), [allRows, pipelinesCount]);
+  }), [contextRows, pipelinesCount]);
 
   const filteredRows = useMemo(() => {
-    let rows = allRows;
+    let rows = contextRows;
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -266,11 +351,6 @@ export default function Predictions() {
     if (filterModel !== "all") rows = rows.filter(row => row.modelName === filterModel || row.modelClass === filterModel);
     if (filterTaskType !== "all") rows = rows.filter(row => row.taskType === filterTaskType);
 
-    rows = rows.filter(row => {
-      const isClass = isClassificationTaskType(row.taskType);
-      return metricTaskFilter === "classification" ? isClass : !isClass;
-    });
-
     rows = rows.filter(row =>
       visibleFoldTypes.includes(rowFoldVisibility(row))
       && visibleDataKinds.includes(rowDataVisibility(row)),
@@ -282,7 +362,7 @@ export default function Predictions() {
         ? [row.testScores, row.aggregatedTestScores, row.avgTestScores, row.wAvgTestScores, row.meanTestScores]
         : [row.valScores, row.avgValScores, row.meanValScores];
       for (const map of maps) {
-        const value = map?.[key];
+        const value = getScoreMapValue(map as Record<string, unknown> | undefined, key);
         if (value != null && Number.isFinite(value)) return value;
       }
       return Number.POSITIVE_INFINITY;
@@ -324,7 +404,7 @@ export default function Predictions() {
 
       return sortOrder === "asc" ? cmp : -cmp;
     });
-  }, [allRows, filterDataset, filterModel, filterTaskType, metricTaskFilter, visibleDataKinds, visibleFoldTypes, searchQuery, sortField, sortOrder]);
+  }, [contextRows, filterDataset, filterModel, filterTaskType, visibleDataKinds, visibleFoldTypes, searchQuery, sortField, sortOrder]);
 
   const didInitMetricFilter = useRef(false);
   useEffect(() => {
@@ -336,10 +416,28 @@ export default function Predictions() {
     didInitMetricFilter.current = true;
   }, [allRows]);
 
+  useEffect(() => {
+    if (filterDataset !== "all" && !datasetOptions.includes(filterDataset)) {
+      setFilterDataset("all");
+    }
+  }, [datasetOptions, filterDataset]);
+
+  useEffect(() => {
+    if (filterModel !== "all" && !modelOptions.includes(filterModel)) {
+      setFilterModel("all");
+    }
+  }, [filterModel, modelOptions]);
+
+  useEffect(() => {
+    if (filterTaskType !== "all" && !taskTypeOptions.includes(filterTaskType)) {
+      setFilterTaskType("all");
+    }
+  }, [filterTaskType, taskTypeOptions]);
+
   const metricContext = useMemo(() => {
     const taskTypes = new Set<string>();
     const availableMetricKeys = new Set<string>();
-    const sourceRows = filteredRows.length > 0 ? filteredRows : allRows;
+    const sourceRows = filteredRows.length > 0 ? filteredRows : contextRows;
 
     for (const row of sourceRows) {
       if (isClassificationTaskType(row.taskType)) {
@@ -382,19 +480,18 @@ export default function Predictions() {
     return {
       taskType: taskTypes.size === 1 ? [...taskTypes][0] : null,
       taskTypes: [...taskTypes],
-      availableMetricKeys: orderMetricKeys([
-        ...availableMetricKeys,
-        ...getAvailableMetricKeysForTaskTypes(taskTypes),
-      ]),
+      availableMetricKeys: orderMetricKeys([...availableMetricKeys]),
     };
-  }, [allRows, filteredRows]);
+  }, [contextRows, filteredRows]);
 
   const effectiveMetricContext = useMemo(() => {
     const filteredKeys = orderMetricKeys(
       metricContext.availableMetricKeys.filter(key => {
         const def = getMetricDefinitions([key])[0];
         if (!def) return true;
-        return def.group === "general" || def.group === metricTaskFilter;
+        if (def.group === "general") return true;
+        if (metricTaskFilter === "regression") return def.group === "regression";
+        return def.group === "multiclass" || def.group === "binary";
       }),
     );
     return {
@@ -483,7 +580,7 @@ export default function Predictions() {
   );
 
   const openExportDialog = (names?: string[]) => {
-    setExportSelection(new Set(names && names.length > 0 ? names : datasets));
+    setExportSelection(new Set(names && names.length > 0 ? names : contextDatasets));
     setExportDialogOpen(true);
   };
 
@@ -613,7 +710,7 @@ export default function Predictions() {
     );
   }
 
-  const primaryMetricKey = filteredRows.find(row => row.metric)?.metric
+  const primaryMetricKey = canonicalMetricKey(filteredRows.find(row => row.metric)?.metric)
     || selectedMetrics[0]
     || (isClassificationTaskType(effectiveMetricContext.taskType) ? "accuracy" : "rmse");
   const primaryMetricLabel = getMetricAbbreviation(primaryMetricKey);
@@ -659,7 +756,7 @@ export default function Predictions() {
           <Button variant="outline" onClick={handleRefresh} size="sm">
             <RefreshCw className="h-4 w-4 mr-1" /> Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={() => openExportDialog()} disabled={datasets.length === 0}>
+          <Button variant="outline" size="sm" onClick={() => openExportDialog()} disabled={contextDatasets.length === 0}>
             <Download className="h-4 w-4 mr-1" /> Export
           </Button>
         </div>
@@ -709,7 +806,7 @@ export default function Predictions() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Datasets</SelectItem>
-            {datasets.map(datasetName => <SelectItem key={datasetName} value={datasetName}>{datasetName}</SelectItem>)}
+            {datasetOptions.map(datasetName => <SelectItem key={datasetName} value={datasetName}>{datasetName}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterModel} onValueChange={setFilterModel}>
@@ -719,7 +816,7 @@ export default function Predictions() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Models</SelectItem>
-            {models.map(modelName => <SelectItem key={modelName} value={modelName}>{modelName}</SelectItem>)}
+            {modelOptions.map(modelName => <SelectItem key={modelName} value={modelName}>{modelName}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterTaskType} onValueChange={setFilterTaskType}>
@@ -728,7 +825,7 @@ export default function Predictions() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Tasks</SelectItem>
-            {taskTypes.map(taskType => <SelectItem key={taskType} value={taskType}>{taskType}</SelectItem>)}
+            {taskTypeOptions.map(taskType => <SelectItem key={taskType} value={taskType}>{taskType}</SelectItem>)}
           </SelectContent>
         </Select>
         <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/20 px-1 py-1">
@@ -780,7 +877,7 @@ export default function Predictions() {
                   <SortableHeader field="test_score" align="right" className="text-right">{primaryMetricLabel}</SortableHeader>
                   <SortableHeader field="val_score" align="right" className="text-right">Val</SortableHeader>
                   <SortableHeader field="fold" align="right" className="text-right">Fold</SortableHeader>
-                  {selectedMetrics.slice(0, 4).map(metric => (
+                  {selectedMetrics.map(metric => (
                     <SortableHeader
                       key={metric}
                       field={`metric:${metric}` as SortField}
@@ -857,7 +954,7 @@ export default function Predictions() {
               <DialogDescription>Select datasets to export (.parquet or .zip).</DialogDescription>
             </DialogHeader>
             <div className="space-y-2 max-h-60 overflow-auto">
-              {datasets.map(datasetName => (
+              {contextDatasets.map(datasetName => (
                 <label key={datasetName} className="flex items-center gap-2 text-sm">
                   <Checkbox checked={exportSelection.has(datasetName)} onCheckedChange={() => toggleExportDataset(datasetName)} />
                   <span>{datasetName}</span>
@@ -865,7 +962,7 @@ export default function Predictions() {
               ))}
             </div>
             <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set(datasets))} disabled={isExporting}>All</Button>
+              <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set(contextDatasets))} disabled={isExporting}>All</Button>
               <Button variant="outline" size="sm" onClick={() => setExportSelection(new Set())} disabled={isExporting}>None</Button>
               <Button onClick={handleExportPredictions} disabled={isExporting}>
                 {isExporting ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Exporting...</> : "Download"}

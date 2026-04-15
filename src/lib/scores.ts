@@ -69,7 +69,7 @@ export interface MetricDefinition {
   label: string;
   abbreviation: string;
   direction: "higher" | "lower" | "zero";
-  group: "general" | "regression" | "classification";
+  group: "general" | "regression" | "multiclass" | "binary";
 }
 
 export type MetricGroup = MetricDefinition["group"];
@@ -79,6 +79,53 @@ const CLASSIFICATION_TASK_TYPES = new Set([
   "binary_classification",
   "multiclass_classification",
 ]);
+
+const METRIC_KEY_ALIASES: Record<string, string> = {
+  mean_squared_error: "mse",
+  root_mean_squared_error: "rmse",
+  mean_absolute_error: "mae",
+  mean_absolute_percentage_error: "mape",
+  r2_score: "r2",
+  explained_variance_score: "explained_variance",
+  median_absolute_error: "median_ae",
+  f1_score: "f1",
+  auc: "roc_auc",
+  mcc: "matthews_corrcoef",
+  kappa: "cohen_kappa",
+  jaccard_score: "jaccard",
+  rmsep: "rmse",
+  rmsecv: "rmse",
+};
+
+const METRIC_ALIAS_KEYS_BY_CANONICAL = new Map<string, string[]>();
+for (const [aliasKey, canonicalKey] of Object.entries(METRIC_KEY_ALIASES)) {
+  const aliases = METRIC_ALIAS_KEYS_BY_CANONICAL.get(canonicalKey) ?? [];
+  aliases.push(aliasKey);
+  METRIC_ALIAS_KEYS_BY_CANONICAL.set(canonicalKey, aliases);
+}
+
+function normalizeMetricLookupKey(key: string | null | undefined): string {
+  return (key ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+}
+
+export function canonicalMetricKey(key: string | null | undefined): string {
+  const normalized = normalizeMetricLookupKey(key);
+  if (!normalized) return "";
+  return METRIC_KEY_ALIASES[normalized] ?? normalized;
+}
+
+export function metricKeyCandidates(key: string | null | undefined): string[] {
+  const normalized = normalizeMetricLookupKey(key);
+  const canonical = canonicalMetricKey(key);
+  if (!canonical) return [];
+
+  const candidates = new Set<string>([canonical]);
+  if (normalized) candidates.add(normalized);
+  for (const aliasKey of METRIC_ALIAS_KEYS_BY_CANONICAL.get(canonical) ?? []) {
+    candidates.add(aliasKey);
+  }
+  return [...candidates];
+}
 
 export const ALL_GENERAL_METRICS: MetricDefinition[] = [];
 
@@ -103,18 +150,18 @@ export const ALL_REGRESSION_METRICS: MetricDefinition[] = [
 ];
 
 export const ALL_CLASSIFICATION_METRICS: MetricDefinition[] = [
-  { key: "accuracy", label: "Accuracy", abbreviation: "Acc", direction: "higher", group: "classification" },
-  { key: "balanced_accuracy", label: "Balanced Accuracy", abbreviation: "BalAcc", direction: "higher", group: "classification" },
-  { key: "precision", label: "Precision", abbreviation: "Prec", direction: "higher", group: "classification" },
-  { key: "balanced_precision", label: "Balanced Precision", abbreviation: "BalPrec", direction: "higher", group: "classification" },
-  { key: "recall", label: "Recall", abbreviation: "Rec", direction: "higher", group: "classification" },
-  { key: "balanced_recall", label: "Balanced Recall", abbreviation: "BalRec", direction: "higher", group: "classification" },
-  { key: "f1", label: "F1", abbreviation: "F1", direction: "higher", group: "classification" },
-  { key: "specificity", label: "Specificity", abbreviation: "Spec", direction: "higher", group: "classification" },
-  { key: "roc_auc", label: "ROC AUC", abbreviation: "AUC", direction: "higher", group: "classification" },
-  { key: "matthews_corrcoef", label: "MCC", abbreviation: "MCC", direction: "higher", group: "classification" },
-  { key: "cohen_kappa", label: "Cohen Kappa", abbreviation: "Kappa", direction: "higher", group: "classification" },
-  { key: "jaccard", label: "Jaccard", abbreviation: "Jaccard", direction: "higher", group: "classification" },
+  { key: "accuracy", label: "Accuracy", abbreviation: "Acc", direction: "higher", group: "multiclass" },
+  { key: "balanced_accuracy", label: "Balanced Accuracy", abbreviation: "BalAcc", direction: "higher", group: "multiclass" },
+  { key: "precision", label: "Precision", abbreviation: "Prec", direction: "higher", group: "multiclass" },
+  { key: "balanced_precision", label: "Balanced Precision", abbreviation: "BalPrec", direction: "higher", group: "multiclass" },
+  { key: "recall", label: "Recall", abbreviation: "Rec", direction: "higher", group: "multiclass" },
+  { key: "balanced_recall", label: "Balanced Recall", abbreviation: "BalRec", direction: "higher", group: "multiclass" },
+  { key: "f1", label: "F1", abbreviation: "F1", direction: "higher", group: "multiclass" },
+  { key: "specificity", label: "Specificity", abbreviation: "Spec", direction: "higher", group: "multiclass" },
+  { key: "roc_auc", label: "ROC AUC", abbreviation: "AUC", direction: "higher", group: "binary" },
+  { key: "matthews_corrcoef", label: "MCC", abbreviation: "MCC", direction: "higher", group: "binary" },
+  { key: "cohen_kappa", label: "Cohen Kappa", abbreviation: "Kappa", direction: "higher", group: "binary" },
+  { key: "jaccard", label: "Jaccard", abbreviation: "Jaccard", direction: "higher", group: "binary" },
 ];
 
 export const ALL_SCORE_METRICS: MetricDefinition[] = [
@@ -136,7 +183,11 @@ function hasRegressionTaskType(taskType: string | null | undefined): boolean {
 }
 
 export function orderMetricKeys(metricKeys: readonly string[]): string[] {
-  const requested = new Set(metricKeys);
+  const requested = new Set(
+    metricKeys
+      .map(key => canonicalMetricKey(key))
+      .filter(key => key && METRIC_DEFINITIONS_BY_KEY.has(key)),
+  );
   return ALL_SCORE_METRICS
     .map(metric => metric.key)
     .filter(key => requested.has(key));
@@ -156,12 +207,13 @@ export function groupMetricDefinitions(metricKeys: readonly string[]): Array<{
   const labels: Record<MetricGroup, string> = {
     general: "General",
     regression: "Regression",
-    classification: "Classification",
+    multiclass: "Multiclass",
+    binary: "Binary",
   };
 
   const definitions = getMetricDefinitions(metricKeys);
 
-  return (["general", "regression", "classification"] as const)
+  return (["regression", "multiclass", "binary", "general"] as const)
     .map(group => ({
       group,
       label: labels[group],
@@ -308,8 +360,9 @@ export function collectPresentMetricKeys(
           ? Number.parseFloat(value)
           : Number.NaN;
 
-      if (Number.isFinite(num) && METRIC_DEFINITIONS_BY_KEY.has(key)) {
-        keys.add(key);
+      const canonical = canonicalMetricKey(key);
+      if (Number.isFinite(num) && METRIC_DEFINITIONS_BY_KEY.has(canonical)) {
+        keys.add(canonical);
       }
     }
   };
@@ -353,6 +406,60 @@ export function getPresetsForTaskType(taskType: string | null): MetricPreset[] {
   return REGRESSION_PRESETS;
 }
 
+export function getPresetsForTaskTypes(
+  taskTypes: Iterable<string | null | undefined>,
+): MetricPreset[] {
+  let hasClassification = false;
+  let hasRegression = false;
+
+  for (const taskType of taskTypes) {
+    if (isClassificationTaskType(taskType)) hasClassification = true;
+    else if (hasRegressionTaskType(taskType)) hasRegression = true;
+  }
+
+  if (!(hasClassification && hasRegression)) {
+    return getPresetsForTaskType(hasClassification ? "classification" : "regression");
+  }
+
+  const classificationEssential = CLASSIFICATION_PRESETS.find(preset => preset.id === "essential")?.keys ?? [];
+  const classificationFull = CLASSIFICATION_PRESETS.find(preset => preset.id === "full")?.keys ?? [];
+
+  return [
+    {
+      id: "essential",
+      label: "Essential",
+      keys: combineMetricSelections(
+        REGRESSION_PRESETS.find(preset => preset.id === "essential")?.keys,
+        classificationEssential,
+      ),
+    },
+    {
+      id: "nirs",
+      label: "NIRS",
+      keys: combineMetricSelections(
+        REGRESSION_PRESETS.find(preset => preset.id === "nirs")?.keys,
+        classificationEssential,
+      ),
+    },
+    {
+      id: "ml",
+      label: "ML",
+      keys: combineMetricSelections(
+        REGRESSION_PRESETS.find(preset => preset.id === "ml")?.keys,
+        classificationEssential,
+      ),
+    },
+    {
+      id: "full",
+      label: "Full",
+      keys: combineMetricSelections(
+        REGRESSION_PRESETS.find(preset => preset.id === "full")?.keys,
+        classificationFull,
+      ),
+    },
+  ];
+}
+
 /** Get the default selected metrics for a task type. */
 export function getDefaultSelectedMetrics(taskType: string | null): string[] {
   if (isClassificationTaskType(taskType)) {
@@ -369,7 +476,8 @@ export function getDefaultSelectedMetrics(taskType: string | null): string[] {
 
 /** Get the abbreviation for a metric key. */
 export function getMetricAbbreviation(key: string): string {
-  return METRIC_DEFINITIONS_BY_KEY.get(key)?.abbreviation ?? key.toUpperCase();
+  const canonical = canonicalMetricKey(key);
+  return METRIC_DEFINITIONS_BY_KEY.get(canonical)?.abbreviation ?? normalizeMetricLookupKey(key).toUpperCase();
 }
 
 /**
@@ -384,14 +492,14 @@ export function getPrimaryContextMetricLabel(
   cardType: "refit" | "crossval",
   taskType?: string | null,
 ): string {
-  const normalized = (metric || "").toLowerCase();
+  const normalized = canonicalMetricKey(metric);
 
   if (!normalized) {
     return cardType === "refit" ? "Final" : "CV";
   }
 
   if (cardType === "refit") {
-    if (normalized === "rmse" || normalized === "rmsep") {
+    if (normalized === "rmse") {
       return "RMSEP";
     }
 
@@ -403,11 +511,50 @@ export function getPrimaryContextMetricLabel(
     }
   }
 
-  if (cardType === "crossval" && (normalized === "rmse" || normalized === "rmsecv" || normalized === "rmsep")) {
+  if (cardType === "crossval" && normalized === "rmse") {
     return "RMSECV";
   }
 
   return getMetricAbbreviation(normalized);
+}
+
+function parseScoreNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function findMetricValueInMap(
+  scores: Record<string, unknown> | null | undefined,
+  key: string | null | undefined,
+): number | null {
+  if (!scores) return null;
+
+  for (const candidate of metricKeyCandidates(key)) {
+    const direct = parseScoreNumber(scores[candidate]);
+    if (direct != null) return direct;
+  }
+
+  const canonical = canonicalMetricKey(key);
+  if (!canonical) return null;
+
+  for (const [mapKey, value] of Object.entries(scores)) {
+    if (canonicalMetricKey(mapKey) !== canonical) continue;
+    const parsed = parseScoreNumber(value);
+    if (parsed != null) return parsed;
+  }
+
+  return null;
+}
+
+export function getScoreMapValue(
+  scores: Record<string, unknown> | null | undefined,
+  key: string | null | undefined,
+): number | null {
+  return findMetricValueInMap(scores, key);
 }
 
 /**
@@ -425,26 +572,19 @@ export function extractScoreValue(
   partition: "test" | "train" | "val" = "test",
 ): number | null {
   if (!scores) return null;
-  // Try flat first: {rmse: 0.3}
-  const flat = scores[key];
-  if (flat != null) {
-    const n = typeof flat === "number" ? flat : typeof flat === "string" ? parseFloat(flat) : NaN;
-    if (Number.isFinite(n)) return n;
-  }
+  const flat = findMetricValueInMap(scores, key);
+  if (flat != null) return flat;
   // Try nested: {test: {rmse: 0.3}}
   const inner = scores[partition];
   if (inner && typeof inner === "object") {
-    const nested = (inner as Record<string, unknown>)[key];
-    if (nested != null) {
-      const n = typeof nested === "number" ? nested : typeof nested === "string" ? parseFloat(nested as string) : NaN;
-      if (Number.isFinite(n)) return n;
-    }
+    const nested = findMetricValueInMap(inner as Record<string, unknown>, key);
+    if (nested != null) return nested;
   }
   return null;
 }
 
 export function isLowerBetter(metric: string | null | undefined): boolean {
-  return LOWER_IS_BETTER.has((metric || "").toLowerCase());
+  return LOWER_IS_BETTER.has(canonicalMetricKey(metric));
 }
 
 /**
@@ -519,7 +659,7 @@ export function formatMetricValue(value: number | string | undefined | null, met
   if (value == null) return "-";
   const num = typeof value === "string" ? parseFloat(value) : value;
   if (!Number.isFinite(num)) return "-";
-  if (metric && LOWER_IS_BETTER.has(metric.toLowerCase())) return num.toFixed(3);
+  if (metric && isLowerBetter(metric)) return num.toFixed(3);
   return num.toFixed(4);
 }
 
@@ -528,7 +668,7 @@ export function formatMetricValue(value: number | string | undefined | null, met
  */
 export function formatMetricName(metric: string | null | undefined): string {
   if (!metric) return "";
-  return metric.toUpperCase();
+  return (canonicalMetricKey(metric) || normalizeMetricLookupKey(metric)).toUpperCase();
 }
 
 /** A single metric entry for TabReport-style display. */
@@ -600,11 +740,11 @@ export function extractFinalMetrics(chain: ChainScores, taskType: string | null)
 
 /** Determine a display label for the fallback when final_scores is empty. */
 function _finalFallbackLabel(metric: string | null | undefined, taskType: string | null): string {
-  if (!metric) return isClassificationTaskType(taskType) ? "Score" : "Final";
-  const m = metric.toLowerCase();
+  const m = canonicalMetricKey(metric);
+  if (!m) return isClassificationTaskType(taskType) ? "Score" : "Final";
   if (m === "rmse") return "RMSEP";
   if (m === "r2") return "R²";
-  return metric.toUpperCase();
+  return getMetricAbbreviation(m);
 }
 
 /**
@@ -612,33 +752,33 @@ function _finalFallbackLabel(metric: string | null | undefined, taskType: string
  * Uses NIRS naming: RMSECV for CV validation RMSE.
  */
 export function extractCVMetrics(chain: ChainScores, taskType: string | null): MetricEntry[] {
-  const val = chain.scores?.val || {};
+  const _v = (key: string) => getScoreMapValue(chain.scores?.val, key);
 
   if (isClassificationTaskType(taskType)) {
     const metrics = [
-      { label: "Acc (CV)", value: val.accuracy, key: "accuracy" },
-      { label: "F1 (CV)", value: val.f1, key: "f1" },
-      { label: "AUC (CV)", value: val.roc_auc, key: "roc_auc" },
-      { label: "BalAcc (CV)", value: val.balanced_accuracy, key: "balanced_accuracy" },
+      { label: "Acc (CV)", value: _v("accuracy"), key: "accuracy" },
+      { label: "F1 (CV)", value: _v("f1"), key: "f1" },
+      { label: "AUC (CV)", value: _v("roc_auc"), key: "roc_auc" },
+      { label: "BalAcc (CV)", value: _v("balanced_accuracy"), key: "balanced_accuracy" },
     ].filter(m => m.value != null);
     if (metrics.length > 0) return metrics;
     if (chain.avg_val_score != null) {
-      return [{ label: "CV Val", value: chain.avg_val_score, key: chain.metric || "score" }];
+      return [{ label: "CV Val", value: chain.avg_val_score, key: canonicalMetricKey(chain.metric) || chain.metric || "score" }];
     }
     return [];
   }
 
   const metrics = [
-    { label: "RMSECV", value: val.rmse, key: "rmse" },
-    { label: "R² (CV)", value: val.r2, key: "r2" },
-    { label: "RPD (CV)", value: val.rpd, key: "rpd" },
-    { label: "nRMSE (CV)", value: val.nrmse, key: "nrmse" },
-    { label: "Bias (CV)", value: val.bias, key: "bias" },
-    { label: "MAE (CV)", value: val.mae, key: "mae" },
+    { label: "RMSECV", value: _v("rmse"), key: "rmse" },
+    { label: "R² (CV)", value: _v("r2"), key: "r2" },
+    { label: "RPD (CV)", value: _v("rpd"), key: "rpd" },
+    { label: "nRMSE (CV)", value: _v("nrmse"), key: "nrmse" },
+    { label: "Bias (CV)", value: _v("bias"), key: "bias" },
+    { label: "MAE (CV)", value: _v("mae"), key: "mae" },
   ].filter(m => m.value != null);
   if (metrics.length > 0) return metrics;
   if (chain.avg_val_score != null) {
-    return [{ label: "CV Val", value: chain.avg_val_score, key: chain.metric || "score" }];
+    return [{ label: "CV Val", value: chain.avg_val_score, key: canonicalMetricKey(chain.metric) || chain.metric || "score" }];
   }
   return [];
 }
@@ -648,41 +788,43 @@ export function extractCVMetrics(chain: ChainScores, taskType: string | null): M
  * Shows CV val and test scores side by side.
  */
 export function extractCVOnlyMetrics(chain: ChainScores, taskType: string | null): MetricEntry[] {
-  const valScores = chain.scores?.val || {};
-  const testScores = chain.scores?.test || {};
+  const _val = (key: string) => getScoreMapValue(chain.scores?.val, key);
+  const _test = (key: string) => getScoreMapValue(chain.scores?.test, key);
 
   if (isClassificationTaskType(taskType)) {
     const metrics = [
-      { label: "Acc (CV)", value: valScores.accuracy, key: "accuracy", highlight: true },
-      { label: "Acc (Test)", value: testScores.accuracy, key: "accuracy" },
-      { label: "F1", value: (valScores.f1 ?? testScores.f1), key: "f1" },
-      { label: "AUC", value: (valScores.roc_auc ?? testScores.roc_auc), key: "roc_auc" },
-      { label: "BalAcc", value: (valScores.balanced_accuracy ?? testScores.balanced_accuracy), key: "balanced_accuracy" },
-      { label: "Prec", value: (valScores.precision ?? testScores.precision), key: "precision" },
-      { label: "Recall", value: (valScores.recall ?? testScores.recall), key: "recall" },
+      { label: "Acc (CV)", value: _val("accuracy"), key: "accuracy", highlight: true },
+      { label: "Acc (Test)", value: _test("accuracy"), key: "accuracy" },
+      { label: "F1", value: (_val("f1") ?? _test("f1")), key: "f1" },
+      { label: "AUC", value: (_val("roc_auc") ?? _test("roc_auc")), key: "roc_auc" },
+      { label: "BalAcc", value: (_val("balanced_accuracy") ?? _test("balanced_accuracy")), key: "balanced_accuracy" },
+      { label: "Prec", value: (_val("precision") ?? _test("precision")), key: "precision" },
+      { label: "Recall", value: (_val("recall") ?? _test("recall")), key: "recall" },
     ].filter(m => m.value != null);
     if (metrics.length > 0) return metrics;
     // Fallback to scalar scores
     const entries: MetricEntry[] = [];
-    if (chain.avg_val_score != null) entries.push({ label: "CV Val", value: chain.avg_val_score, key: chain.metric || "score", highlight: true });
-    if (chain.avg_test_score != null) entries.push({ label: "CV Test", value: chain.avg_test_score, key: chain.metric || "score" });
+    const metricKey = canonicalMetricKey(chain.metric) || chain.metric || "score";
+    if (chain.avg_val_score != null) entries.push({ label: "CV Val", value: chain.avg_val_score, key: metricKey, highlight: true });
+    if (chain.avg_test_score != null) entries.push({ label: "CV Test", value: chain.avg_test_score, key: metricKey });
     return entries;
   }
 
   const metrics = [
-    { label: "RMSECV", value: valScores.rmse, key: "rmse", highlight: true },
-    { label: "R² (CV)", value: valScores.r2, key: "r2", highlight: true },
-    { label: "RMSE (Test)", value: testScores.rmse, key: "rmse" },
-    { label: "R² (Test)", value: testScores.r2, key: "r2" },
-    { label: "RPD", value: (valScores.rpd ?? testScores.rpd), key: "rpd" },
-    { label: "nRMSE", value: (valScores.nrmse ?? testScores.nrmse), key: "nrmse" },
-    { label: "Bias", value: (valScores.bias ?? testScores.bias), key: "bias" },
-    { label: "MAE", value: (valScores.mae ?? testScores.mae), key: "mae" },
+    { label: "RMSECV", value: _val("rmse"), key: "rmse", highlight: true },
+    { label: "R² (CV)", value: _val("r2"), key: "r2", highlight: true },
+    { label: "RMSE (Test)", value: _test("rmse"), key: "rmse" },
+    { label: "R² (Test)", value: _test("r2"), key: "r2" },
+    { label: "RPD", value: (_val("rpd") ?? _test("rpd")), key: "rpd" },
+    { label: "nRMSE", value: (_val("nrmse") ?? _test("nrmse")), key: "nrmse" },
+    { label: "Bias", value: (_val("bias") ?? _test("bias")), key: "bias" },
+    { label: "MAE", value: (_val("mae") ?? _test("mae")), key: "mae" },
   ].filter(m => m.value != null);
   if (metrics.length > 0) return metrics;
   // Fallback to scalar scores
   const entries: MetricEntry[] = [];
-  if (chain.avg_val_score != null) entries.push({ label: "CV Val", value: chain.avg_val_score, key: chain.metric || "score", highlight: true });
-  if (chain.avg_test_score != null) entries.push({ label: "CV Test", value: chain.avg_test_score, key: chain.metric || "score" });
+  const metricKey = canonicalMetricKey(chain.metric) || chain.metric || "score";
+  if (chain.avg_val_score != null) entries.push({ label: "CV Val", value: chain.avg_val_score, key: metricKey, highlight: true });
+  if (chain.avg_test_score != null) entries.push({ label: "CV Test", value: chain.avg_test_score, key: metricKey });
   return entries;
 }

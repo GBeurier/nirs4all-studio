@@ -116,6 +116,7 @@ export interface PredictionRecord {
   exclusion_count?: number | null;
   exclusion_rate?: number | null;
   model_artifact_id?: string | null;
+  predict_chain_id?: string | null;
   trace_id?: string | null;
 }
 

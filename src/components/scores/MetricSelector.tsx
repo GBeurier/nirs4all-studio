@@ -6,6 +6,7 @@ import { Plus, SlidersHorizontal } from "lucide-react";
 import {
   getMetricDefinitions,
   getAvailableMetrics,
+  getPresetsForTaskTypes,
   getPresetsForTaskType,
   getDefaultSelectedMetrics,
   groupMetricDefinitions,
@@ -14,6 +15,7 @@ import {
 
 interface MetricSelectorProps {
   taskType: string | null;
+  taskTypes?: readonly string[];
   selectedMetrics: string[];
   onSelectedMetricsChange: (metrics: string[]) => void;
   availableMetricKeys?: readonly string[];
@@ -24,17 +26,13 @@ function normalizeMetricSelection(
   availableMetricKeys?: readonly string[],
 ): string[] {
   if (!metrics) return [];
-  if (!availableMetricKeys || availableMetricKeys.length === 0) return orderMetricKeys(metrics);
+  const normalized = orderMetricKeys(metrics);
+  if (!availableMetricKeys || availableMetricKeys.length === 0) return normalized;
 
   const available = new Set(orderMetricKeys(availableMetricKeys));
-  const seen = new Set<string>();
-  const filtered = metrics.filter((metric) => {
-    if (!available.has(metric) || seen.has(metric)) return false;
-    seen.add(metric);
-    return true;
-  });
+  const filtered = normalized.filter(metric => available.has(metric));
 
-  return orderMetricKeys(filtered);
+  return filtered;
 }
 
 function resolveDefaultMetricSelection(
@@ -57,6 +55,7 @@ function resolveDefaultMetricSelection(
 
 export function MetricSelector({
   taskType,
+  taskTypes,
   selectedMetrics,
   onSelectedMetricsChange,
   availableMetricKeys,
@@ -67,14 +66,15 @@ export function MetricSelector({
     : getAvailableMetrics(taskType);
   const availableSections = groupMetricDefinitions(available.map(metric => metric.key));
   const availableSet = new Set(available.map(metric => metric.key));
-  const presets = taskType == null && availableMetricKeys
-    ? []
-    : getPresetsForTaskType(taskType)
-      .map(preset => ({
-        ...preset,
-        keys: preset.keys.filter(key => availableSet.has(key)),
-      }))
-      .filter(preset => preset.keys.length > 0);
+  const presetSource = taskTypes && taskTypes.length > 0
+    ? getPresetsForTaskTypes(taskTypes)
+    : getPresetsForTaskType(taskType);
+  const presets = presetSource
+    .map(preset => ({
+      ...preset,
+      keys: preset.keys.filter(key => availableSet.has(key)),
+    }))
+    .filter(preset => preset.keys.length > 0);
 
   const toggleMetric = useCallback((key: string) => {
     if (selectedMetrics.includes(key)) {

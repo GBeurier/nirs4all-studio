@@ -102,6 +102,8 @@ export interface PipelinePreset {
   description: string;
   task_type: "regression" | "classification";
   steps_count: number;
+  /** Canonical nirs4all pipeline (passed through from the backend so the UI can compute stats). */
+  pipeline?: unknown[];
 }
 
 export interface PipelineOperator {

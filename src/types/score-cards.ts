@@ -14,6 +14,7 @@ export interface ScoreCardRow {
   // Identity
   id: string;
   chainId: string;
+  predictChainId?: string;
   runId?: string;
   pipelineId?: string;
   datasetName?: string;

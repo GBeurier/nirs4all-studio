@@ -252,7 +252,9 @@ export default function DatasetDetail() {
                   Refresh Preview
                 </Button>
                 <Button variant="outline" asChild>
-                  <Link to="/playground">
+                  <Link
+                    to={`/playground?datasetId=${encodeURIComponent(dataset.id)}&datasetName=${encodeURIComponent(dataset.name)}`}
+                  >
                     <Play className="mr-2 h-4 w-4" />
                     Open Playground
                   </Link>

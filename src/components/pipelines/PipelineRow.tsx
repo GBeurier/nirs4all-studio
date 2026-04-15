@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { Pipeline } from "@/types/pipelines";
+import { computePipelineStats } from "@/lib/pipelineStats";
 
 interface PipelineRowProps {
   pipeline: Pipeline;
@@ -57,6 +58,8 @@ export function PipelineRow({
   onDelete,
   onExport,
 }: PipelineRowProps) {
+  const stats = computePipelineStats(pipeline.steps);
+  const isPreset = pipeline.category === "preset";
   // Format relative date
   const formatRelativeDate = (dateStr: string): string => {
     const date = new Date(dateStr);
@@ -109,17 +112,23 @@ export function PipelineRow({
             {categoryConfig[pipeline.category].label}
           </span>
         </div>
-        <p className="text-sm text-muted-foreground truncate">
-          {pipeline.description || "No description"}
-        </p>
+        {isPreset && pipeline.description ? (
+          <p className="text-sm text-muted-foreground truncate">{pipeline.description}</p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {stats.operators} ops · {stats.models} model{stats.models === 1 ? "" : "s"} · {stats.branches} branch
+            {stats.branches === 1 ? "" : "es"}
+            {stats.hasGenerators ? ` · ${stats.variants} variants` : ""}
+          </p>
+        )}
       </div>
 
       {/* Stats */}
       <div className="hidden md:flex items-center gap-6 text-sm text-muted-foreground shrink-0">
         <span className="flex items-center gap-1">
-          <Layers className="h-4 w-4" /> {pipeline.steps.length} steps
+          <Layers className="h-4 w-4" /> {stats.operators} ops
         </span>
-        {pipeline.runCount !== undefined && (
+        {pipeline.runCount !== undefined && pipeline.runCount > 0 && (
           <span className="flex items-center gap-1 w-20">
             <Play className="h-4 w-4" /> {pipeline.runCount} runs
           </span>

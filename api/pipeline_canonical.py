@@ -59,6 +59,24 @@ MODEL_CLASS_PATH_ALIASES = {
     "lightgbm.sklearn.lgbmregressor": "lightgbm.LGBMRegressor",
     "lightgbm.sklearn.lgbmclassifier": "lightgbm.LGBMClassifier",
 }
+MODEL_DISPLAY_NAME_ALIASES = {
+    "xgboost": "XGBoost",
+    "xgbregressor": "XGBoost",
+    "xgboost.xgbregressor": "XGBoost",
+    "xgboost.sklearn.xgbregressor": "XGBoost",
+    "xgboostclassifier": "XGBoostClassifier",
+    "xgbclassifier": "XGBoostClassifier",
+    "xgboost.xgbclassifier": "XGBoostClassifier",
+    "xgboost.sklearn.xgbclassifier": "XGBoostClassifier",
+    "lightgbm": "LightGBM",
+    "lgbmregressor": "LightGBM",
+    "lightgbm.lgbmregressor": "LightGBM",
+    "lightgbm.sklearn.lgbmregressor": "LightGBM",
+    "lightgbmclassifier": "LightGBMClassifier",
+    "lgbmclassifier": "LightGBMClassifier",
+    "lightgbm.lgbmclassifier": "LightGBMClassifier",
+    "lightgbm.sklearn.lgbmclassifier": "LightGBMClassifier",
+}
 KNOWN_FINETUNE_KEYS = {
     "n_trials",
     "approach",
@@ -319,6 +337,11 @@ def resolve_class_reference(
     candidates = _reference_lookup().get(ref.strip().lower(), [])
     node = _select_registry_node(candidates, forced_type=forced_type)
     class_name = _class_name_from_path(ref)
+    display_name = (
+        MODEL_DISPLAY_NAME_ALIASES.get(raw_ref.lower())
+        or MODEL_DISPLAY_NAME_ALIASES.get(ref.lower())
+        or MODEL_DISPLAY_NAME_ALIASES.get(class_name.lower())
+    )
 
     if node:
         return {
@@ -341,7 +364,7 @@ def resolve_class_reference(
             }
 
     return {
-        "name": class_name or ref or "Unknown",
+        "name": display_name or class_name or ref or "Unknown",
         "type": _infer_type_from_path(ref, forced_type=forced_type),
         "classPath": ref if "." in ref else None,
     }

@@ -10,8 +10,14 @@ export async function invalidatePredictionRelatedQueries(queryClient: QueryClien
         head === "runs" ||
         head === "enriched-runs" ||
         head === "results-summary" ||
+        head === "workspaces" ||
         head === "workspace-prediction-records" ||
         head === "dataset-all-chains" ||
+        head === "all-chains" ||
+        head === "chain-partition-detail" ||
+        head === "chain-fold-scores" ||
+        head === "score-distribution" ||
+        head === "available-models" ||
         head === "aggregated-predictions" ||
         head === "aggregated-predictions-leaderboard"
       );

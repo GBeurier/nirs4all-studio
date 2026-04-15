@@ -7,13 +7,14 @@
 
 import { cn } from "@/lib/utils";
 import {
+  canonicalMetricKey,
   formatMetricValue,
   getMetricAbbreviation,
   getPrimaryContextMetricLabel,
+  getScoreMapValue,
   isClassificationTaskType,
   isLowerBetter,
 } from "@/lib/scores";
-import { safeNumber } from "@/lib/fold-utils";
 import { TableCell } from "@/components/ui/table";
 import type { ScoreCardRow, ScoreCardType } from "@/types/score-cards";
 
@@ -28,19 +29,19 @@ export function getScoreContextLabel(
   primaryMetric: string | null,
   taskType?: string | null,
 ): string {
-  const k = key.toLowerCase();
-  const pm = (primaryMetric || "").toLowerCase();
-  const isPrimaryMetric = k === pm || ((k === "rmse" || k === "rmsep" || k === "rmsecv") && pm === "rmse");
+  const k = canonicalMetricKey(key);
+  const pm = canonicalMetricKey(primaryMetric);
+  const isPrimaryMetric = !!k && k === pm;
 
   if ((cardType === "refit" || cardType === "crossval") && isPrimaryMetric) {
     return getPrimaryContextMetricLabel(primaryMetric || key, cardType, taskType);
   }
 
-  if ((k === "rmse" || k === pm) && isLowerBetter(key)) {
+  if ((k === "rmse" || k === pm) && isLowerBetter(k || key)) {
     if (cardType === "refit") return "RMSEP";
     if (cardType === "crossval") return "RMSECV";
   }
-  return getMetricAbbreviation(key);
+  return getMetricAbbreviation(k || key);
 }
 
 // ============================================================================
@@ -60,32 +61,32 @@ export function extractDisplayScores(
   selectedMetrics: string[],
 ): Record<string, number | null> {
   const result: Record<string, number | null> = {};
-  const pm = (row.metric || "rmse").toLowerCase();
+  const pm = canonicalMetricKey(row.metric || "rmse");
 
-  for (const k of selectedMetrics) {
-    const kl = k.toLowerCase();
+  for (const requestedMetric of selectedMetrics) {
+    const metricKey = canonicalMetricKey(requestedMetric) || requestedMetric;
     let val: number | null = null;
 
     if (row.cardType === "refit") {
-      val = safeNumber(row.testScores[k]);
-      if (val == null && (kl === pm || kl === "rmse")) {
+      val = getScoreMapValue(row.testScores, metricKey);
+      if (val == null && metricKey === pm) {
         val = row.primaryTestScore;
       }
     } else if (row.cardType === "crossval") {
-      val = safeNumber(row.valScores[k]) ?? safeNumber(row.avgValScores?.[k]);
-      if (val == null) val = safeNumber(row.testScores[k]) ?? safeNumber(row.avgTestScores?.[k]);
-      if (val == null && (kl === pm || kl === "rmse")) {
+      val = getScoreMapValue(row.valScores, metricKey) ?? getScoreMapValue(row.avgValScores, metricKey);
+      if (val == null) val = getScoreMapValue(row.testScores, metricKey) ?? getScoreMapValue(row.avgTestScores, metricKey);
+      if (val == null && metricKey === pm) {
         val = row.primaryValScore ?? row.primaryTestScore;
       }
     } else {
       // train card: show the partition's score
-      val = safeNumber(row.testScores[k]) ?? safeNumber(row.valScores[k]) ?? safeNumber(row.trainScores[k]);
-      if (val == null && (kl === pm || kl === "rmse")) {
+      val = getScoreMapValue(row.testScores, metricKey) ?? getScoreMapValue(row.valScores, metricKey) ?? getScoreMapValue(row.trainScores, metricKey);
+      if (val == null && metricKey === pm) {
         val = row.primaryTestScore ?? row.primaryValScore ?? row.primaryTrainScore;
       }
     }
 
-    result[k] = val;
+    result[requestedMetric] = val;
   }
   return result;
 }
@@ -102,10 +103,9 @@ interface InlineScoreDisplayProps {
 
 export function InlineScoreDisplay({ row, selectedMetrics, colorClass }: InlineScoreDisplayProps) {
   const isClassification = isClassificationTaskType(row.taskType);
-  const pm = (row.metric || "").toLowerCase();
+  const pm = canonicalMetricKey(row.metric);
   const filteredMetrics = selectedMetrics.filter(metric => {
-    const kl = metric.toLowerCase();
-    if (isClassification && (kl === "rmse" || kl === "rmsep" || kl === "rmsecv")) return false;
+    if (isClassification && canonicalMetricKey(metric) === "rmse") return false;
     return true;
   });
   const scores = extractDisplayScores(row, filteredMetrics);
@@ -120,9 +120,8 @@ export function InlineScoreDisplay({ row, selectedMetrics, colorClass }: InlineS
       {visibleMetrics.map(k => {
         const val = scores[k];
         const safeVal = val != null && Number.isFinite(val) ? val : null;
-        const kl = k.toLowerCase();
-        const isPrimary = kl === pm
-          || ((kl === "rmse" || kl === "rmsep" || kl === "rmsecv") && (pm === "rmse" || pm === "rmsep" || pm === "rmsecv"));
+        const normalized = canonicalMetricKey(k);
+        const isPrimary = !!normalized && normalized === pm;
         return (
           <span key={k} className="inline-flex w-[4.5rem] shrink-0 flex-col items-center justify-center text-center">
             <span
@@ -131,14 +130,14 @@ export function InlineScoreDisplay({ row, selectedMetrics, colorClass }: InlineS
                 isPrimary ? "font-bold text-foreground" : "text-muted-foreground font-medium",
               )}
             >
-              {getScoreContextLabel(k, row.cardType, row.metric, row.taskType)}
+              {getScoreContextLabel(normalized || k, row.cardType, row.metric, row.taskType)}
             </span>
             <span className={cn(
               "font-mono tabular-nums text-[11px] leading-tight",
               isPrimary ? "font-bold" : "font-semibold",
               colorClass || "text-foreground/80",
             )}>
-              {safeVal != null ? formatMetricValue(safeVal, k) : "\u2014"}
+              {safeVal != null ? formatMetricValue(safeVal, normalized || k) : "\u2014"}
             </span>
           </span>
         );

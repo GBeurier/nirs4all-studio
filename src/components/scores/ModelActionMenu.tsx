@@ -40,6 +40,7 @@ export type ModelActionChartView = "scatter" | "residuals" | "confusion";
 
 interface ModelActionMenuProps {
   chainId: string;
+  predictChainId?: string;
   modelName: string;
   datasetName?: string;
   runId?: string;
@@ -76,7 +77,7 @@ function sanitizeFilename(value: string | null | undefined): string {
 }
 
 export function ModelActionMenu({
-  chainId, modelName, datasetName, runId,
+  chainId, predictChainId, modelName, datasetName, runId,
   taskType, hasRefit, workspaceId, deleteScope, foldId, onViewDetails, onOpenChart, onExport, onDeleted,
 }: ModelActionMenuProps) {
   const queryClient = useQueryClient();
@@ -99,10 +100,11 @@ export function ModelActionMenu({
   const deleteTitle = deleteScope === "group" ? "Delete prediction group?" : "Delete model predictions?";
   const deleteDescription = deleteScope === "group"
     ? `This removes the ${foldId || "selected"} prediction group for ${modelName}, including linked arrays. Empty chains and orphaned artifacts will be cleaned automatically.`
-    : `This removes all predictions for ${modelName}. Empty chains, pipelines, arrays, and orphaned artifacts will be cleaned automatically.`;
+    : `This removes all stored predictions for the displayed ${modelName} variant, including matched CV/refit siblings. Shared artifacts still used by other models are preserved automatically.`;
   const deleteLabel = deleteScope === "group" ? "Delete prediction" : "Delete model";
   const canOpenChartsInline = typeof onOpenChart === "function";
   const scatterActionLabel = isClassification ? "Confusion matrix" : "Scatter plot";
+  const effectivePredictChainId = predictChainId || chainId;
 
   const handleCsvExport = async () => {
     if (!chainId) {
@@ -211,7 +213,7 @@ export function ModelActionMenu({
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link to={`/predict?model_id=${encodeURIComponent(chainId)}&source=chain`}>
+                <Link to={`/predict?model_id=${encodeURIComponent(effectivePredictChainId)}&source=chain`}>
                   <Zap className="h-4 w-4 mr-2" /> Predict (new data)
                 </Link>
               </DropdownMenuItem>

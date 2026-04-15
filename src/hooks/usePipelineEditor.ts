@@ -17,7 +17,7 @@ import {
 } from "../utils/pipelineConverter";
 
 // Storage key for persisting pipeline editor state
-const STORAGE_KEY_PREFIX = "nirs4all_pipeline_editor_";
+export const STORAGE_KEY_PREFIX = "nirs4all_pipeline_editor_";
 
 // Pipeline-level configuration
 export interface PipelineConfig {
@@ -29,7 +29,7 @@ export interface PipelineConfig {
   exportModel?: boolean;
 }
 
-interface PersistedPipelineState {
+export interface PersistedPipelineState {
   steps: PipelineStep[];
   pipelineName: string;
   isFavorite: boolean;
@@ -83,7 +83,7 @@ function savePersistedState(pipelineId: string, state: PersistedPipelineState): 
   }
 }
 
-function clearPersistedState(pipelineId: string): void {
+export function clearPersistedState(pipelineId: string): void {
   try {
     const key = getPersistenceKey(pipelineId);
     localStorage.removeItem(key);
@@ -94,6 +94,19 @@ function clearPersistedState(pipelineId: string): void {
 
 export function hasPersistedPipelineState(pipelineId: string): boolean {
   return loadPersistedState(pipelineId)?.isDirty === true;
+}
+
+export function migrateDraftKey(oldId: string, newId: string): void {
+  if (oldId === newId) return;
+  try {
+    const state = loadPersistedState(oldId);
+    clearPersistedState(oldId);
+    if (state) {
+      savePersistedState(newId, state);
+    }
+  } catch (e) {
+    console.warn("Failed to migrate draft key:", e);
+  }
 }
 
 interface UsePipelineEditorOptions {

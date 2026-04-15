@@ -2,16 +2,15 @@ import { useState, useCallback, useDeferredValue, useMemo, startTransition } fro
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "@/lib/motion";
 import { Link, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowUpDown,
+  ChevronDown,
   Clock3,
-  FolderKanban,
+  FileEdit,
   LayoutGrid,
-  Library,
   List,
-  LucideIcon,
   Plus,
-  RefreshCw,
   Search,
   Sparkles,
   Star,
@@ -21,7 +20,6 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -33,6 +31,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { usePipelines } from "@/hooks/usePipelines";
+import { useDraftPipelines } from "@/hooks/useDraftPipelines";
+import { getAggregatedPredictions, listRuns } from "@/api/client";
+import type { ChainSummary } from "@/types/aggregated-predictions";
 import {
   EmptyState,
   InlineError,
@@ -40,6 +41,7 @@ import {
   SearchEmptyState,
 } from "@/components/ui/state-display";
 import {
+  DraftCard,
   PipelineCard,
   PipelineRow,
   PresetSelector,
@@ -48,8 +50,11 @@ import {
   ExportPipelineDialog,
 } from "@/components/pipelines";
 import type { Pipeline, PipelinePreset, SortBy, ViewMode } from "@/types/pipelines";
+import type { Run } from "@/types/runs";
 
-type PageView = "overview" | "library" | "favorites" | "templates" | "history";
+type PageView = "my-pipelines" | "favorites" | "templates" | "recent";
+
+const RECENT_RUNS_LIMIT = 10;
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -112,8 +117,68 @@ function sortPresetItems(presets: PipelinePreset[], sortBy: SortBy) {
   });
 }
 
+interface RecentRunEntry {
+  pipelineId: string;
+  pipelineName: string;
+  runId: string;
+  storeRunId?: string | null;
+  runName: string;
+  datasetName: string;
+  status: string;
+  createdAt: string;
+  score?: number | null;
+  scoreMetric?: string | null;
+}
 
+const LOWER_IS_BETTER = /rmse|mae|mse|loss|error/i;
 
+function scoreOf(chain: ChainSummary): number | null {
+  return (
+    chain.final_test_score ??
+    chain.final_agg_test_score ??
+    chain.cv_val_score ??
+    chain.cv_test_score ??
+    null
+  );
+}
+
+function pickBestChain(chains: ChainSummary[]): ChainSummary | null {
+  if (!chains.length) return null;
+  const scored = chains
+    .map((c) => ({ chain: c, score: scoreOf(c) }))
+    .filter((s): s is { chain: ChainSummary; score: number } => typeof s.score === "number");
+  if (!scored.length) return chains[0];
+  const metric = scored[0].chain.metric ?? "";
+  const lowerIsBetter = LOWER_IS_BETTER.test(metric);
+  scored.sort((a, b) => (lowerIsBetter ? a.score - b.score : b.score - a.score));
+  return scored[0].chain;
+}
+
+function extractRecentRuns(runs: Run[] | undefined, limit: number): RecentRunEntry[] {
+  if (!runs?.length) return [];
+  const flat: RecentRunEntry[] = [];
+  for (const run of runs) {
+    const datasets = run.datasets ?? [];
+    for (const ds of datasets) {
+      for (const p of ds.pipelines ?? []) {
+        flat.push({
+          pipelineId: p.pipeline_id,
+          pipelineName: p.pipeline_name || "Unknown pipeline",
+          runId: run.id,
+          storeRunId: run.store_run_id ?? null,
+          runName: run.name,
+          datasetName: ds.dataset_name,
+          status: p.status,
+          createdAt: run.started_at || run.created_at,
+          score: p.score ?? null,
+          scoreMetric: p.score_metric ?? null,
+        });
+      }
+    }
+  }
+  flat.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return flat.slice(0, limit);
+}
 
 interface PipelineCollectionProps {
   collectionKey: string;
@@ -175,55 +240,6 @@ function PipelineCollection({
   );
 }
 
-interface PipelineSectionProps {
-  collectionKey: string;
-  description: string;
-  onDelete: (pipeline: Pipeline) => void;
-  onDuplicate: (pipeline: Pipeline) => void;
-  onExport: (pipeline: Pipeline) => void;
-  onToggleFavorite: (pipelineId: string) => void;
-  pipelines: Pipeline[];
-  title: string;
-  viewMode: ViewMode;
-}
-
-function PipelineSection({
-  collectionKey,
-  description,
-  onDelete,
-  onDuplicate,
-  onExport,
-  onToggleFavorite,
-  pipelines,
-  title,
-  viewMode,
-}: PipelineSectionProps) {
-  if (pipelines.length === 0) return null;
-
-  return (
-    <motion.section variants={itemVariants} initial="hidden" animate="visible" className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-            <Badge variant="secondary">{pipelines.length}</Badge>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      <PipelineCollection
-        collectionKey={collectionKey}
-        pipelines={pipelines}
-        viewMode={viewMode}
-        onToggleFavorite={onToggleFavorite}
-        onDuplicate={onDuplicate}
-        onDelete={onDelete}
-        onExport={onExport}
-      />
-    </motion.section>
-  );
-}
-
 export default function Pipelines() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -249,12 +265,27 @@ export default function Pipelines() {
     importPipeline,
   } = usePipelines();
 
-  const [pageView, setPageView] = useState<PageView>("overview");
+  const { drafts, discard: discardDraft } = useDraftPipelines();
+
+  const { data: runsData } = useQuery({
+    queryKey: ["runs", "recent"],
+    queryFn: listRuns,
+    refetchOnWindowFocus: false,
+    staleTime: 30_000,
+  });
+
+  const recentRuns = useMemo(
+    () => extractRecentRuns(runsData?.runs, RECENT_RUNS_LIMIT),
+    [runsData]
+  );
+
+  const [pageView, setPageView] = useState<PageView>("my-pipelines");
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [selectedPipeline, setSelectedPipeline] = useState<Pipeline | null>(null);
   const [exportJson, setExportJson] = useState<string | null>(null);
+  const [templatesExpanded, setTemplatesExpanded] = useState<boolean | null>(null);
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
@@ -266,44 +297,18 @@ export default function Pipelines() {
 
   const savedCount = managedPipelines.length;
   const favoritesCount = managedPipelines.filter((pipeline) => pipeline.isFavorite).length;
-  const historyCount = managedPipelines.filter((pipeline) => (pipeline.runCount ?? 0) > 0).length;
-  const sharedCount = managedPipelines.filter((pipeline) => pipeline.category === "shared").length;
 
-  const libraryPipelines = useMemo(
-    () => sortPipelineItems(managedPipelines.filter((pipeline) => matchesPipelineSearch(pipeline, normalizedQuery)), sortBy),
+  const myPipelinesList = useMemo(
+    () => sortPipelineItems(
+      managedPipelines.filter((pipeline) => matchesPipelineSearch(pipeline, normalizedQuery)),
+      sortBy
+    ),
     [managedPipelines, normalizedQuery, sortBy]
   );
   const favoritePipelines = useMemo(
     () => sortPipelineItems(
       managedPipelines.filter(
         (pipeline) => pipeline.isFavorite && matchesPipelineSearch(pipeline, normalizedQuery)
-      ),
-      sortBy
-    ),
-    [managedPipelines, normalizedQuery, sortBy]
-  );
-  const myPipelines = useMemo(
-    () => sortPipelineItems(
-      managedPipelines.filter(
-        (pipeline) => pipeline.category === "user" && matchesPipelineSearch(pipeline, normalizedQuery)
-      ),
-      sortBy
-    ),
-    [managedPipelines, normalizedQuery, sortBy]
-  );
-  const sharedPipelines = useMemo(
-    () => sortPipelineItems(
-      managedPipelines.filter(
-        (pipeline) => pipeline.category === "shared" && matchesPipelineSearch(pipeline, normalizedQuery)
-      ),
-      sortBy
-    ),
-    [managedPipelines, normalizedQuery, sortBy]
-  );
-  const historyPipelines = useMemo(
-    () => sortPipelineItems(
-      managedPipelines.filter(
-        (pipeline) => (pipeline.runCount ?? 0) > 0 && matchesPipelineSearch(pipeline, normalizedQuery)
       ),
       sortBy
     ),
@@ -317,52 +322,53 @@ export default function Pipelines() {
     [presets, normalizedQuery, sortBy]
   );
 
-  const overviewTemplates = normalizedQuery ? templatePipelines : templatePipelines.slice(0, 3);
-  const overviewHasResults =
-    overviewTemplates.length > 0 ||
-    favoritePipelines.length > 0 ||
-    myPipelines.length > 0 ||
-    sharedPipelines.length > 0;
+  const filteredRecentRuns = useMemo(() => {
+    if (!normalizedQuery) return recentRuns;
+    return recentRuns.filter(
+      (r) =>
+        r.pipelineName.toLowerCase().includes(normalizedQuery) ||
+        r.datasetName.toLowerCase().includes(normalizedQuery) ||
+        r.runName.toLowerCase().includes(normalizedQuery)
+    );
+  }, [recentRuns, normalizedQuery]);
+
+  const visibleDrafts = useMemo(() => {
+    if (!normalizedQuery) return drafts;
+    return drafts.filter((d) =>
+      d.state.pipelineName.toLowerCase().includes(normalizedQuery)
+    );
+  }, [drafts, normalizedQuery]);
+
+  // Templates strip: default collapsed when user already has pipelines, expanded otherwise.
+  const templatesDefaultOpen = savedCount === 0 && drafts.length === 0;
+  const templatesOpen = templatesExpanded ?? templatesDefaultOpen;
 
   const collectionViews = [
     {
-      id: "overview" as const,
-      icon: FolderKanban,
-      label: "Overview",
+      id: "my-pipelines" as const,
+      icon: Workflow,
+      label: "My Pipelines",
       count: savedCount,
-      description: "Templates up front, saved pipelines below, favorites pinned.",
-    },
-    {
-      id: "library" as const,
-      icon: Library,
-      label: "Library",
-      count: savedCount,
-      description: "Your saved pipelines and anything shared with the workspace.",
     },
     {
       id: "favorites" as const,
       icon: Star,
       label: "Favorites",
       count: favoritesCount,
-      description: "Pinned pipelines you revisit often.",
     },
     {
       id: "templates" as const,
       icon: Sparkles,
       label: "Templates",
       count: presets.length,
-      description: "Starter workflows. Use Template creates an editable copy.",
     },
     {
-      id: "history" as const,
+      id: "recent" as const,
       icon: Clock3,
-      label: "History",
-      count: historyCount,
-      description: "Pipelines that already have run history.",
+      label: "Recently Run",
+      count: recentRuns.length,
     },
   ];
-
-  const activeViewMeta = collectionViews.find((view) => view.id === pageView) ?? collectionViews[0];
 
   const handleToggleFavorite = useCallback(async (id: string) => {
     await toggleFavorite(id);
@@ -396,7 +402,7 @@ export default function Pipelines() {
       toast.error("Failed to create pipeline from template");
       return;
     }
-    toast.success("Template added to your library", {
+    toast.success("Template added to your workspace", {
       description: `"${created.name}" is ready to edit.`,
     });
     navigate(`/pipelines/${created.id}`);
@@ -415,6 +421,45 @@ export default function Pipelines() {
       setPageView(nextView);
     });
   }, []);
+
+  const openBestChain = useCallback(
+    async (entry: RecentRunEntry) => {
+      const candidateRunIds = [...new Set([entry.storeRunId, entry.runId].filter(Boolean))];
+      const filterVariants = [
+        { pipeline_id: entry.pipelineId, dataset_name: entry.datasetName },
+        {},
+      ];
+
+      let lastError: unknown = null;
+
+      for (const runId of candidateRunIds) {
+        for (const filters of filterVariants) {
+          try {
+            const response = await getAggregatedPredictions({
+              run_id: runId,
+              ...filters,
+            });
+            const best = pickBestChain(response.predictions);
+            if (best?.chain_id) {
+              navigate(`/pipelines/new?chainId=${encodeURIComponent(best.chain_id)}`);
+              return;
+            }
+          } catch (err) {
+            lastError = err;
+          }
+        }
+      }
+
+      if (lastError) {
+        console.error("Failed to resolve best chain:", lastError);
+        toast.error("Could not open the best chain for this run.");
+        return;
+      }
+
+      toast.info("No chain artifacts found for this run.");
+    },
+    [navigate]
+  );
 
   const renderLoadingState = () => (
     <motion.div
@@ -449,120 +494,76 @@ export default function Pipelines() {
     </motion.div>
   );
 
-  const renderLibrarySections = () => {
-    if (!libraryPipelines.length) {
+  const renderDraftsSection = () => {
+    if (visibleDrafts.length === 0) return null;
+    return (
+      <motion.section
+        variants={itemVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-3"
+      >
+        <div className="flex items-center gap-2">
+          <FileEdit className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground">
+            Drafts
+          </h2>
+          <Badge variant="secondary" className="text-xs">
+            {visibleDrafts.length}
+          </Badge>
+          <span className="ml-2 text-xs text-muted-foreground">
+            Unsaved pipelines in this browser — save or discard to keep your workspace tidy.
+          </span>
+        </div>
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {visibleDrafts.map((draft) => (
+            <DraftCard key={draft.id} draft={draft} onDiscard={discardDraft} />
+          ))}
+        </div>
+      </motion.section>
+    );
+  };
+
+  const renderMyPipelines = () => {
+    const hasDrafts = visibleDrafts.length > 0;
+    const hasSaved = myPipelinesList.length > 0;
+
+    if (!hasDrafts && !hasSaved) {
       return normalizedQuery ? (
         <SearchEmptyState query={searchQuery} onClear={() => setSearchQuery("")} />
       ) : (
         <NoPipelinesState
-          title="No saved pipelines yet"
-          description="Start from a blank pipeline or use a template to create your first working workflow."
+          title="No pipelines yet"
+          description="Pick a template above or create a blank pipeline to build your first workflow."
         />
       );
     }
 
     return (
       <div className="space-y-8">
-        <PipelineSection
-          collectionKey="library-user"
-          title="My Pipelines"
-          description="Editable pipelines you own and maintain."
-          pipelines={myPipelines}
-          viewMode={viewMode}
-          onToggleFavorite={handleToggleFavorite}
-          onDuplicate={handleDuplicate}
-          onDelete={handleDelete}
-          onExport={handleExport}
-        />
-        <PipelineSection
-          collectionKey="library-shared"
-          title="Shared"
-          description="Workspace pipelines shared across collaborators."
-          pipelines={sharedPipelines}
-          viewMode={viewMode}
-          onToggleFavorite={handleToggleFavorite}
-          onDuplicate={handleDuplicate}
-          onDelete={handleDelete}
-          onExport={handleExport}
-        />
-      </div>
-    );
-  };
-
-  const renderOverview = () => {
-    if (normalizedQuery && !overviewHasResults) {
-      return <SearchEmptyState query={searchQuery} onClear={() => setSearchQuery("")} />;
-    }
-
-    return (
-      <div className="space-y-8">
-        <motion.section variants={itemVariants} initial="hidden" animate="visible" className="space-y-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-foreground">
-                  {normalizedQuery ? "Matching templates" : "Start from a template"}
-                </h2>
-                {!presetsLoading && <Badge variant="secondary">{templatePipelines.length}</Badge>}
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Templates stay separate from your library. Click Use Template to create a copy and open it in the editor.
-              </p>
+        {renderDraftsSection()}
+        {hasSaved && (
+          <motion.section variants={itemVariants} initial="hidden" animate="visible" className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Workflow className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-foreground">
+                Saved pipelines
+              </h2>
+              <Badge variant="secondary" className="text-xs">
+                {myPipelinesList.length}
+              </Badge>
             </div>
-            <Button variant="ghost" onClick={() => setCollectionView("templates")}>
-              Browse all templates
-            </Button>
-          </div>
-          <PresetSelector
-            presets={overviewTemplates}
-            onSelect={handlePresetSelect}
-            loading={presetsLoading}
-          />
-        </motion.section>
-
-        {!normalizedQuery && savedCount === 0 && (
-          <EmptyState
-            icon={Workflow}
-            title="Your working library is empty"
-            description="Use a template to create a pipeline, or start with a blank one if you want full control."
-            action={{ label: t("pipelines.newPipeline"), href: "/pipelines/new" }}
-            secondaryAction={{ label: "Open templates", onClick: () => setCollectionView("templates") }}
-          />
+            <PipelineCollection
+              collectionKey="my-pipelines-saved"
+              pipelines={myPipelinesList}
+              viewMode={viewMode}
+              onToggleFavorite={handleToggleFavorite}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDelete}
+              onExport={handleExport}
+            />
+          </motion.section>
         )}
-
-        <PipelineSection
-          collectionKey="overview-favorites"
-          title="Favorites"
-          description="Pinned pipelines for the work you return to most often."
-          pipelines={favoritePipelines}
-          viewMode={viewMode}
-          onToggleFavorite={handleToggleFavorite}
-          onDuplicate={handleDuplicate}
-          onDelete={handleDelete}
-          onExport={handleExport}
-        />
-        <PipelineSection
-          collectionKey="overview-user"
-          title="My Pipelines"
-          description="Editable pipelines you own and can revise freely."
-          pipelines={myPipelines}
-          viewMode={viewMode}
-          onToggleFavorite={handleToggleFavorite}
-          onDuplicate={handleDuplicate}
-          onDelete={handleDelete}
-          onExport={handleExport}
-        />
-        <PipelineSection
-          collectionKey="overview-shared"
-          title="Shared"
-          description="Workspace-level pipelines available to the team."
-          pipelines={sharedPipelines}
-          viewMode={viewMode}
-          onToggleFavorite={handleToggleFavorite}
-          onDuplicate={handleDuplicate}
-          onDelete={handleDelete}
-          onExport={handleExport}
-        />
       </div>
     );
   };
@@ -581,29 +582,11 @@ export default function Pipelines() {
     }
 
     return (
-      <div className="space-y-4">
-        <Card className="border-primary/15 bg-primary/5">
-          <CardContent className="flex flex-col gap-3 p-5 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-foreground">Templates</h2>
-                {!presetsLoading && <Badge variant="secondary">{templatePipelines.length}</Badge>}
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Templates are starter workflows only. Use Template creates a new editable pipeline and opens it immediately.
-              </p>
-            </div>
-            <Badge variant="outline" className="w-fit">
-              Presets no longer mix into the library view
-            </Badge>
-          </CardContent>
-        </Card>
-        <PresetSelector
-          presets={templatePipelines}
-          onSelect={handlePresetSelect}
-          loading={presetsLoading}
-        />
-      </div>
+      <PresetSelector
+        presets={templatePipelines}
+        onSelect={handlePresetSelect}
+        loading={presetsLoading}
+      />
     );
   };
 
@@ -616,16 +599,14 @@ export default function Pipelines() {
           icon={Star}
           title="No favorites yet"
           description="Star the pipelines you revisit often and they will stay pinned here."
-          action={{ label: "Browse library", onClick: () => setCollectionView("library") }}
+          action={{ label: "Open My Pipelines", onClick: () => setCollectionView("my-pipelines") }}
         />
       );
     }
 
     return (
-      <PipelineSection
+      <PipelineCollection
         collectionKey="favorites"
-        title="Favorites"
-        description="Pinned pipelines from your saved and shared library."
         pipelines={favoritePipelines}
         viewMode={viewMode}
         onToggleFavorite={handleToggleFavorite}
@@ -636,32 +617,76 @@ export default function Pipelines() {
     );
   };
 
-  const renderHistory = () => {
-    if (!historyPipelines.length) {
+  const renderRecentRuns = () => {
+    if (!filteredRecentRuns.length) {
       return normalizedQuery ? (
         <SearchEmptyState query={searchQuery} onClear={() => setSearchQuery("")} />
       ) : (
         <EmptyState
           icon={Clock3}
-          title="No pipeline history yet"
-          description="Pipelines appear here once they have at least one run attached."
-          action={{ label: "Open library", onClick: () => setCollectionView("library") }}
+          title="No recent runs"
+          description="Launch a run from a pipeline to see its history here."
+          action={{ label: "Open My Pipelines", onClick: () => setCollectionView("my-pipelines") }}
         />
       );
     }
 
     return (
-      <PipelineSection
-        collectionKey="history"
-        title="Run History"
-        description="Pipelines with at least one execution in the workspace."
-        pipelines={historyPipelines}
-        viewMode={viewMode}
-        onToggleFavorite={handleToggleFavorite}
-        onDuplicate={handleDuplicate}
-        onDelete={handleDelete}
-        onExport={handleExport}
-      />
+      <motion.ul
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-2"
+      >
+        {filteredRecentRuns.map((entry) => (
+          <motion.li
+            key={`${entry.runId}:${entry.pipelineId}`}
+            variants={itemVariants}
+            className="step-card flex flex-wrap items-center justify-between gap-3"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void openBestChain(entry)}
+                  className="truncate text-sm font-semibold text-foreground hover:text-primary"
+                >
+                  {entry.pipelineName}
+                </button>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "text-[10px] uppercase",
+                    entry.status === "completed" && "border-green-500/40 text-green-600 dark:text-green-400",
+                    entry.status === "failed" && "border-destructive/40 text-destructive",
+                    entry.status === "running" && "border-amber-500/40 text-amber-600 dark:text-amber-400"
+                  )}
+                >
+                  {entry.status}
+                </Badge>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {entry.datasetName} · run {entry.runName} ·{" "}
+                {new Date(entry.createdAt).toLocaleString()}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              {typeof entry.score === "number" && (
+                <span className="tabular-nums text-foreground">
+                  {entry.scoreMetric ?? "score"}: {entry.score.toFixed(3)}
+                </span>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void openBestChain(entry)}
+              >
+                Open best chain
+              </Button>
+            </div>
+          </motion.li>
+        ))}
+      </motion.ul>
     );
   };
 
@@ -669,19 +694,19 @@ export default function Pipelines() {
     if (loading) return renderLoadingState();
 
     switch (pageView) {
-      case "library":
-        return renderLibrarySections();
       case "favorites":
         return renderFavorites();
       case "templates":
         return renderTemplates();
-      case "history":
-        return renderHistory();
-      case "overview":
+      case "recent":
+        return renderRecentRuns();
+      case "my-pipelines":
       default:
-        return renderOverview();
+        return renderMyPipelines();
     }
   };
+
+  const showTemplatesStrip = pageView === "my-pipelines";
 
   return (
     <div className="space-y-6 pb-8 text-foreground container mx-auto">
@@ -691,7 +716,13 @@ export default function Pipelines() {
           <div className="relative w-full sm:w-[240px] ml-4">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder={pageView === "templates" ? "Search templates..." : "Search pipelines..."}
+              placeholder={
+                pageView === "templates"
+                  ? "Search templates..."
+                  : pageView === "recent"
+                  ? "Search runs..."
+                  : "Search pipelines..."
+              }
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               className="h-9 pl-9 bg-background/50 border-border/40"
@@ -700,7 +731,7 @@ export default function Pipelines() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {pageView !== "templates" && (
+          {pageView !== "templates" && pageView !== "recent" && (
             <div className="flex h-9 items-center rounded-md border border-border bg-background/50">
               <button
                 type="button"
@@ -734,11 +765,51 @@ export default function Pipelines() {
           <Button size="sm" asChild>
             <Link to="/pipelines/new">
               <Plus className="mr-2 h-4 w-4" />
-              New Pipeline
+              {t("pipelines.newPipeline")}
             </Link>
           </Button>
         </div>
       </div>
+
+      {showTemplatesStrip && (templatePipelines.length > 0 || presetsLoading) && (
+        <section className="rounded-xl border border-border/40 bg-background/40">
+          <button
+            type="button"
+            onClick={() => setTemplatesExpanded(!templatesOpen)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30"
+            aria-expanded={templatesOpen}
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">
+                Start from a template
+              </span>
+              {!presetsLoading && (
+                <Badge variant="secondary" className="text-xs">
+                  {templatePipelines.length}
+                </Badge>
+              )}
+            </div>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform",
+                templatesOpen && "rotate-180"
+              )}
+            />
+          </button>
+          {templatesOpen && (
+            <div className="border-t border-border/40 px-4 py-3">
+              <PresetSelector
+                variant="strip"
+                presets={templatePipelines.slice(0, 8)}
+                onSelect={handlePresetSelect}
+                loading={presetsLoading}
+                onSeeAll={() => setCollectionView("templates")}
+              />
+            </div>
+          )}
+        </section>
+      )}
 
       <Tabs value={pageView} onValueChange={(v) => setCollectionView(v as PageView)} className="space-y-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -758,18 +829,20 @@ export default function Pipelines() {
             </TabsList>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 lg:justify-end">
-            <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortBy)}>
-              <SelectTrigger className="h-9 w-[140px] bg-background/50">
-                <ArrowUpDown className="mr-2 h-4 w-4" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="lastModified">Last modified</SelectItem>
-                <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="runCount">Most runs</SelectItem>
-                <SelectItem value="steps">Most steps</SelectItem>
-              </SelectContent>
-            </Select>
+            {pageView !== "recent" && (
+              <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortBy)}>
+                <SelectTrigger className="h-9 w-[140px] bg-background/50">
+                  <ArrowUpDown className="mr-2 h-4 w-4" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lastModified">Last modified</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="runCount">Most runs</SelectItem>
+                  <SelectItem value="steps">Most steps</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
 

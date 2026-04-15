@@ -33,7 +33,6 @@ import {
   Download,
   FileCode,
   Terminal,
-  Target,
   TrendingUp,
   WifiOff,
 } from "lucide-react";
@@ -1233,20 +1232,6 @@ export default function RunProgress() {
               )}
               Stop Run
             </Button>
-          )}
-          {run.status === "completed" && (
-            <>
-              <Button variant="outline" asChild>
-                <Link to={`/predictions?run=${run.id}`}>
-                  <Target className="h-4 w-4 mr-2" />
-                  Predict
-                </Link>
-              </Button>
-              <Button variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Export
-              </Button>
-            </>
           )}
         </div>
       </div>

@@ -836,6 +836,92 @@ class TestGetChainPartitionDetail:
 
 
 # ---------------------------------------------------------------------------
+# Endpoint tests: GET /api/aggregated-predictions/chain/{chain_id}/pipeline-steps
+# ---------------------------------------------------------------------------
+
+
+class TestGetChainPipelineSteps:
+    """Tests for GET /api/aggregated-predictions/chain/{chain_id}/pipeline-steps."""
+
+    def test_rebuilds_canonical_steps_from_stored_chain_payloads(
+        self,
+        client,
+        patched_endpoints,
+        mock_polars_df,
+    ):
+        patched_endpoints.get_chain.return_value = {
+            "chain_id": "chain-001",
+            "pipeline_id": "pipe-001",
+            "model_step_idx": 7,
+            "preprocessings": "SNV",
+            "model_name": "XGBoostClassifier",
+            "model_class": "XGBClassifier",
+            "steps": [
+                {
+                    "step_idx": 1,
+                    "operator_class": "StandardNormalVariate",
+                    "params": {},
+                },
+                {
+                    "step_idx": 2,
+                    "operator_class": "ShuffleSplit",
+                    "params": {
+                        "class": "sklearn.model_selection._split.ShuffleSplit",
+                        "params": {"n_splits": 4, "test_size": 0.2},
+                    },
+                },
+                {
+                    "step_idx": 6,
+                    "operator_class": "PLSRegression",
+                    "params": {
+                        "model": {
+                            "class": "sklearn.cross_decomposition._pls.PLSRegression",
+                            "params": {"n_components": 3},
+                        }
+                    },
+                },
+                {
+                    "step_idx": 7,
+                    "operator_class": "XGBClassifier",
+                    "params": {
+                        "model": {
+                            "class": "xgboost.sklearn.XGBClassifier",
+                            "params": {"n_estimators": 25},
+                        },
+                        "name": "xgb_classifier",
+                    },
+                },
+            ],
+        }
+        patched_endpoints.get_chains_for_pipeline.return_value = mock_polars_df(
+            [
+                {"model_step_idx": 6},
+                {"model_step_idx": 7},
+            ]
+        )
+
+        resp = client.get("/api/aggregated-predictions/chain/chain-001/pipeline-steps")
+        assert resp.status_code == 200
+
+        data = resp.json()
+        assert data["name"] == "SNV → XGBoostClassifier"
+        assert data["pipeline"] == [
+            "StandardNormalVariate",
+            {
+                "class": "sklearn.model_selection._split.ShuffleSplit",
+                "params": {"n_splits": 4, "test_size": 0.2},
+            },
+            {
+                "model": {
+                    "class": "xgboost.XGBClassifier",
+                    "params": {"n_estimators": 25},
+                },
+                "name": "xgb_classifier",
+            },
+        ]
+
+
+# ---------------------------------------------------------------------------
 # Endpoint tests: GET /api/aggregated-predictions/{prediction_id}/arrays
 # ---------------------------------------------------------------------------
 

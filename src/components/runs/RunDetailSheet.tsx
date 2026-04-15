@@ -77,6 +77,7 @@ interface RunDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId: string;
+  runPageId?: string | null;
   selectedMetrics?: string[];
 }
 
@@ -130,6 +131,7 @@ export function RunDetailSheet({
   open,
   onOpenChange,
   workspaceId,
+  runPageId = null,
   selectedMetrics = [...DEFAULT_DATASET_ITEM_REGRESSION_METRICS],
 }: RunDetailSheetProps) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -149,7 +151,7 @@ export function RunDetailSheet({
       <SheetContent className="w-full sm:max-w-4xl overflow-hidden flex flex-col">
         {/* ---- Header ---- */}
         <SheetHeader className="flex-shrink-0">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-center gap-3">
               <div className={cn("p-2 rounded-lg", config.bg)}>
                 <StatusIcon status={status} />
@@ -173,9 +175,19 @@ export function RunDetailSheet({
                 </SheetDescription>
               </div>
             </div>
-            <Badge variant={status === "completed" ? "default" : "secondary"}>
-              {config.label}
-            </Badge>
+            <div className="flex items-center gap-2 self-start sm:justify-end">
+              {runPageId && (
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={`/runs/${encodeURIComponent(runPageId)}`}>
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open Run Page
+                  </Link>
+                </Button>
+              )}
+              <Badge variant={status === "completed" ? "default" : "secondary"}>
+                {config.label}
+              </Badge>
+            </div>
           </div>
 
           {/* Summary stat cards */}

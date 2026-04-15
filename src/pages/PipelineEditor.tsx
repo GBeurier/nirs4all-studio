@@ -6,6 +6,7 @@ import {
   Save,
   Star,
   Play,
+  Plus,
   Undo2,
   Redo2,
   Keyboard,
@@ -69,7 +70,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { toast } from "sonner";
-import { hasPersistedPipelineState, usePipelineEditor } from "@/hooks/usePipelineEditor";
+import { clearPersistedState, hasPersistedPipelineState, migrateDraftKey, usePipelineEditor } from "@/hooks/usePipelineEditor";
 import { useDatasetBinding } from "@/hooks/useDatasetBinding";
 import { listPipelineSamples, getPipelineSample } from "@/api/client";
 import type { PipelineSampleInfo } from "@/api/client";
@@ -102,9 +103,13 @@ export default function PipelineEditor() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isNew = !id || id === "new";
+  const draftId = searchParams.get("draft");
 
-  // Use a stable ID for persistence: either the route param or "new" for new pipelines
-  const pipelineId = id || "new";
+  // Use a stable ID for persistence. Precedence:
+  //   1. explicit ?draft=<draft-uuid> on a /pipelines/new URL (resuming a stashed draft)
+  //   2. route param (existing pipeline)
+  //   3. "new" for a fresh blank editor
+  const pipelineId = isNew && draftId ? draftId : id || "new";
   const hasPersistedDraft = !isNew && hasPersistedPipelineState(pipelineId);
 
   const [showClearDialog, setShowClearDialog] = useState(false);
@@ -425,11 +430,12 @@ export default function PipelineEditor() {
       });
     },
     onSuccess: (result) => {
-      toast.success(`"${pipelineName}" saved to library`);
+      toast.success(`"${pipelineName}" saved`);
       // Invalidate pipelines cache
       queryClient.invalidateQueries({ queryKey: ["pipelines"] });
-      // If it was a new pipeline, navigate to the saved pipeline's ID
+      // If it was a new pipeline (blank or resumed draft), drop the draft entry and navigate to the real id.
       if (isNew && result?.pipeline?.id) {
+        clearPersistedState(pipelineId);
         navigate(`/pipelines/${result.pipeline.id}`, { replace: true });
       }
     },
@@ -442,6 +448,19 @@ export default function PipelineEditor() {
   const handleSave = () => {
     savePipelineMutation.mutate();
   };
+
+  // New-in-editor: auto-stash current /pipelines/new work as an addressable draft
+  // so opening another blank editor doesn't collide or lose the WIP.
+  const handleNewPipeline = useCallback(() => {
+    if (isNew && isDirty) {
+      const stashId = `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      migrateDraftKey(pipelineId, stashId);
+      toast.success("Current draft stashed", {
+        description: "Find it under Drafts on the Pipelines page.",
+      });
+    }
+    navigate("/pipelines/new");
+  }, [isDirty, isNew, navigate, pipelineId]);
 
   const handleToggleFavorite = () => {
     setIsFavorite(!isFavorite);
@@ -574,6 +593,25 @@ export default function PipelineEditor() {
                   <TooltipContent>Back to Pipelines</TooltipContent>
                 </Tooltip>
 
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleNewPipeline}
+                      className="border-primary/30 text-primary hover:bg-primary/10 hover:text-primary"
+                    >
+                      <Plus className="mr-1.5 h-4 w-4" />
+                      New
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isNew && isDirty
+                      ? "Stash as draft & start a new pipeline"
+                      : "Start a new pipeline"}
+                  </TooltipContent>
+                </Tooltip>
+
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2">
                     <Workflow className="h-5 w-5 text-muted-foreground" />
@@ -583,6 +621,15 @@ export default function PipelineEditor() {
                       className="text-lg font-semibold bg-transparent px-2 py-1 h-auto border border-transparent hover:border-border/50 focus:border-primary/50 focus-visible:ring-1 focus-visible:ring-primary/30 focus-visible:ring-offset-0 rounded-md transition-colors w-auto"
                       style={{ minWidth: "200px" }}
                     />
+                    {isDirty && (
+                      <span
+                        className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
+                        title="Unsaved changes"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        Unsaved
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     {/* Aggregated step summary */}
@@ -749,21 +796,23 @@ export default function PipelineEditor() {
                         variantCount={variantCount}
                       />
                     )}
-                    {/* Dataset Binding for shape-aware validation (Phase 4) */}
-                    <DatasetBinding
-                      boundDataset={boundDataset}
-                      datasets={datasets}
-                      isLoading={isDatasetsLoading}
-                      onBind={bindDataset}
-                      onClear={clearBinding}
-                      onSelectTarget={selectTarget}
-                      onRefresh={refreshDatasets}
-                      hasWarnings={dimensionWarnings.length > 0}
-                      warningMessage={dimensionWarnings.length > 0
-                        ? `${dimensionWarnings.length} step${dimensionWarnings.length > 1 ? 's' : ''} may exceed dataset dimensions`
-                        : undefined
-                      }
-                    />
+                    {/* Dataset Binding for shape-aware validation (Phase 4) — hidden */}
+                    {false && (
+                      <DatasetBinding
+                        boundDataset={boundDataset}
+                        datasets={datasets}
+                        isLoading={isDatasetsLoading}
+                        onBind={bindDataset}
+                        onClear={clearBinding}
+                        onSelectTarget={selectTarget}
+                        onRefresh={refreshDatasets}
+                        hasWarnings={dimensionWarnings.length > 0}
+                        warningMessage={dimensionWarnings.length > 0
+                          ? `${dimensionWarnings.length} step${dimensionWarnings.length > 1 ? 's' : ''} may exceed dataset dimensions`
+                          : undefined
+                        }
+                      />
+                    )}
                     {isDirty && (
                       <Badge variant="secondary" className="text-xs">
                         Unsaved
