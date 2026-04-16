@@ -1,0 +1,14 @@
+Ce depot (projet **nirs4all-webapp**) est distribue sous **CeCILL-2.1**.
+
+- Voir le texte integral dans `LICENSES/CECILL-2.1.txt`.
+- Identifiant SPDX : **CECILL-2.1**.
+- Mentions des composants tiers : `THIRD_PARTY_NOTICES.md` et `THIRD_PARTY_NOTICES_FR.md`.
+- Les textes des licences tierces sont regroupes dans `LICENSES/`.
+
+Sauf mention explicite contraire pour un composant tiers embarque, ce code est regi par **CeCILL-2.1**.
+
+En-tete SPDX recommande dans les fichiers TypeScript / JavaScript :
+    // SPDX-License-Identifier: CECILL-2.1
+
+En-tete SPDX recommande dans les fichiers Python :
+    # SPDX-License-Identifier: CECILL-2.1

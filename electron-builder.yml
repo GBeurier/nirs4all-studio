@@ -17,6 +17,22 @@ files:
 # Compatibility default: installer packaging remains the implicit electron-builder config.
 # New standalone archive builds must use electron-builder.archive.yml explicitly.
 extraResources:
+  - from: LICENSE
+    to: LICENSE
+  - from: LICENSE_FR
+    to: LICENSE_FR
+  - from: README_LICENSE.md
+    to: README_LICENSE.md
+  - from: README_LICENSE_FR.md
+    to: README_LICENSE_FR.md
+  - from: THIRD_PARTY_NOTICES.md
+    to: THIRD_PARTY_NOTICES.md
+  - from: THIRD_PARTY_NOTICES_FR.md
+    to: THIRD_PARTY_NOTICES_FR.md
+  - from: LICENSES/
+    to: LICENSES/
+    filter:
+      - "**/*"
   - from: backend-dist/
     to: backend/
     filter:

@@ -1,13 +1,14 @@
-This repository (project **nirs4all-webapp**) is distributed under a **DUAL LICENSE**.
+This repository (project **nirs4all-webapp**) is distributed under **CeCILL-2.1**.
 
-1) **Open-source (default)**: **AGPL-3.0-or-later**
-   - See the full text in `../nirs4all/LICENSES/AGPL-3.0-or-later.txt`.
-   - Default SPDX: **AGPL-3.0-or-later** (add it to file headers).
-   - Optional variants: **GPL-3.0-or-later** or **CeCILL-2.1**.
+- See the full license text in `LICENSES/CECILL-2.1.txt`.
+- SPDX identifier: **CECILL-2.1**.
+- Third-party notices: `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_NOTICES_FR.md`.
+- Third-party license texts are bundled under `LICENSES/`.
 
-2) **Commercial**:
-   - A proprietary license allowing closed-source use, including SaaS, without the obligation to publish your code.
-   - See `../nirs4all/LICENSES/COMMERCIAL-LICENSE.md` for terms and how to obtain it.
-   - Contact: <denis.cornet@cirad.fr>.
+Unless explicitly stated otherwise for a bundled third-party component, this code is governed by **CeCILL-2.1**.
 
-Unless a commercial agreement is explicitly in place, this code is governed by **AGPL-3.0-or-later**.
+Recommended SPDX header for TypeScript / JavaScript files:
+    // SPDX-License-Identifier: CECILL-2.1
+
+Recommended SPDX header for Python files:
+    # SPDX-License-Identifier: CECILL-2.1

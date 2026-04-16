@@ -9,7 +9,7 @@
 
 A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis, combining the power of the [nirs4all](https://github.com/GBeurier/nirs4all) Python library with a sleek React-based user interface.
 
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![License: CeCILL-2.1](https://img.shields.io/badge/license-CeCILL--2.1-blue.svg)](LICENSE)
 [![Node 20+](https://img.shields.io/badge/node-20+-green.svg)](https://nodejs.org/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
@@ -488,8 +488,8 @@ When `SENTRY_DSN` is not set, crash reporting is completely disabled with zero o
 
 ## License
 
-This project is licensed under **AGPL-3.0-or-later** with an optional commercial license.
-See [LICENSE](LICENSE) for details.
+This project is licensed under the [CeCILL-2.1 License](LICENSE).
+Third-party notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and the corresponding license texts are bundled in [LICENSES/](LICENSES).
 
 ---
 

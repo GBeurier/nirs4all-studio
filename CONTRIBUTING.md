@@ -47,7 +47,7 @@ The backend should only handle HTTP routing, job queuing, WebSocket notification
 
 ## Contribution Licensing (inbound = outbound)
 
-By submitting a contribution, you agree it is provided under the **same dual license**
-as the project (open-source AGPL/GPL/CeCILL + commercial option), with no extra restrictions.
+By submitting a contribution, you agree it is provided under the **same license**
+as the project (**CeCILL-2.1**), with no extra restrictions.
 
-If your organization requires a **CLA**, please see `../nirs4all/CLA.md` and sign as needed.
+If your organization requires separate contributor paperwork, please contact <denis.cornet@cirad.fr>.
