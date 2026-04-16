@@ -10,9 +10,14 @@
  *   node scripts/setup-python-env.cjs [options]
  *
  * Options:
- *   --flavor cpu|gpu|gpu-metal   Build flavor (default: cpu)
+ *   --profile <id>               Product profile (cpu, gpu-cuda-torch, gpu-mps)
+ *   --flavor cpu|gpu|gpu-metal   Legacy alias mapped to a product profile (default: cpu)
  *   --clean                      Remove previous backend-dist before building
  *   --cache-dir <path>           Cache dir for downloaded Python (default: build/.python-cache)
+ *   --constraints <path>         Optional pip constraints file applied to dependency installs
+ *   --output-dir <path>          Output directory (default: backend-dist/)
+ *   --runtime-only               Build only python/ + venv/ + build_info.json
+ *   --build-mode <id>            build_info.json mode value (default: installer)
  *   --local-nirs4all             Install nirs4all from local ../nirs4all instead of PyPI
  */
 
@@ -21,19 +26,17 @@ const fs = require("fs");
 const path = require("path");
 const https = require("https");
 const http = require("http");
-
-// --- Constants ---
-const PYTHON_VERSION = "3.11.13";
-const PBS_TAG = "20250828";
-const PBS_BASE_URL = `https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_TAG}`;
-
-// Platform mapping: `${process.platform}-${process.arch}` -> download filename
-const PLATFORM_MAP = {
-  "win32-x64": `cpython-${PYTHON_VERSION}+${PBS_TAG}-x86_64-pc-windows-msvc-install_only.tar.gz`,
-  "linux-x64": `cpython-${PYTHON_VERSION}+${PBS_TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz`,
-  "darwin-x64": `cpython-${PYTHON_VERSION}+${PBS_TAG}-x86_64-apple-darwin-install_only.tar.gz`,
-  "darwin-arm64": `cpython-${PYTHON_VERSION}+${PBS_TAG}-aarch64-apple-darwin-install_only.tar.gz`,
-};
+const {
+  assertProfileSupportedOnPlatform,
+  BACKEND_COMMON_PACKAGES,
+  PYTHON_VERSION,
+  PBS_TAG,
+  getArchiveFilename,
+  getDownloadUrl,
+  getProfilePackageInstallSpecs,
+  listSupportedPlatformArchKeys,
+  resolveProfileForFlavor,
+} = require("./python-runtime-config.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 process.chdir(projectRoot);
@@ -43,33 +46,62 @@ const isWindows = process.platform === "win32";
 // --- Argument parsing ---
 const args = process.argv.slice(2);
 let flavor = "cpu";
+let explicitProfile = "";
 let clean = false;
 let cacheDir = path.join(projectRoot, "build", ".python-cache");
+let constraintsFile = "";
 let localNirs4all = false;
+let outputDir = path.join(projectRoot, "backend-dist");
+let runtimeOnly = false;
+let buildMode = "installer";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--flavor" && args[i + 1]) {
     flavor = args[++i];
+  } else if (args[i] === "--profile" && args[i + 1]) {
+    explicitProfile = args[++i];
   } else if (args[i] === "--clean") {
     clean = true;
   } else if (args[i] === "--cache-dir" && args[i + 1]) {
     cacheDir = path.resolve(args[++i]);
+  } else if (args[i] === "--constraints" && args[i + 1]) {
+    constraintsFile = path.resolve(args[++i]);
+  } else if (args[i] === "--output-dir" && args[i + 1]) {
+    outputDir = path.resolve(args[++i]);
+  } else if (args[i] === "--runtime-only") {
+    runtimeOnly = true;
+  } else if (args[i] === "--build-mode" && args[i + 1]) {
+    buildMode = String(args[++i]).trim() || "installer";
   } else if (args[i] === "--local-nirs4all") {
     localNirs4all = true;
   }
 }
 
-// Validate flavor
-const validFlavors = ["cpu", "gpu", "gpu-metal"];
-if (!validFlavors.includes(flavor)) {
-  console.error(`Error: Invalid flavor '${flavor}'. Must be one of: ${validFlavors.join(", ")}`);
-  process.exit(1);
+let profile = explicitProfile;
+if (!profile) {
+  try {
+    profile = resolveProfileForFlavor(flavor, process.platform);
+    if (process.platform === "darwin" && flavor === "gpu") {
+      console.log("Note: macOS detected, using 'gpu-mps' product profile for the legacy 'gpu' flavor");
+    }
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+    process.exit(1);
+  }
 }
 
-// Auto-detect: on macOS, 'gpu' should use 'gpu-metal'
-if (process.platform === "darwin" && flavor === "gpu") {
-  console.log("Note: macOS detected, using 'gpu-metal' (Metal) instead of 'gpu' (CUDA)");
-  flavor = "gpu-metal";
+try {
+  assertProfileSupportedOnPlatform(profile, process.platform);
+  getProfilePackageInstallSpecs(profile, {
+    includeExtraPackages: false,
+    packageNames: ["nirs4all"],
+  });
+  if (constraintsFile && !fs.existsSync(constraintsFile)) {
+    throw new Error(`Constraints file not found: ${constraintsFile}`);
+  }
+} catch (error) {
+  console.error(`Error: ${error.message}`);
+  process.exit(1);
 }
 
 // --- Helpers ---
@@ -137,6 +169,42 @@ function runCommand(command, args, options = {}) {
   });
 }
 
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function runCommandWithRetries(command, args, options = {}, retryOptions = {}) {
+  const retries = retryOptions.retries ?? 1;
+  const delayMs = retryOptions.delayMs ?? 1500;
+  const label = retryOptions.label ?? `${command} ${args.join(" ")}`;
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      await runCommand(command, args, options);
+      return;
+    } catch (error) {
+      if (attempt === retries) {
+        throw error;
+      }
+      console.warn(`  Retry ${attempt}/${retries - 1} after failure: ${label}`);
+      await delay(delayMs * attempt);
+    }
+  }
+}
+
+function buildPipInstallArgs(packageSpecs, options = {}) {
+  return [
+    "-m",
+    "pip",
+    "install",
+    ...(options.upgrade ? ["--upgrade"] : []),
+    ...(options.constraintsFile ? ["-c", options.constraintsFile] : []),
+    ...packageSpecs,
+  ];
+}
+
 /**
  * Download a file from a URL, following redirects.
  * Shows progress during download.
@@ -202,23 +270,30 @@ async function main() {
   console.log("");
   console.log("Configuration:");
   console.log(`  Flavor:         ${flavor.toUpperCase()}`);
+  console.log(`  Profile:        ${profile}`);
   console.log(`  Python:         ${PYTHON_VERSION}`);
   console.log(`  PBS release:    ${PBS_TAG}`);
   console.log(`  Cache dir:      ${cacheDir}`);
+  console.log(`  Constraints:    ${constraintsFile || "(none)"}`);
+  console.log(`  Output dir:     ${outputDir}`);
+  console.log(`  Runtime only:   ${runtimeOnly}`);
+  console.log(`  Build mode:     ${buildMode}`);
   console.log(`  Local nirs4all: ${localNirs4all}`);
   console.log("");
 
   // 1. Resolve platform
   const platformKey = `${process.platform}-${process.arch}`;
-  const tarballName = PLATFORM_MAP[platformKey];
-  if (!tarballName) {
-    console.error(`Error: Unsupported platform '${platformKey}'.`);
-    console.error(`Supported: ${Object.keys(PLATFORM_MAP).join(", ")}`);
+  let tarballName;
+  let downloadUrl;
+  try {
+    tarballName = getArchiveFilename(process.platform, process.arch);
+    downloadUrl = getDownloadUrl(process.platform, process.arch);
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+    console.error(`Supported: ${listSupportedPlatformArchKeys().join(", ")}`);
     process.exit(1);
   }
-
-  const downloadUrl = `${PBS_BASE_URL}/${tarballName}`;
-  const backendDist = path.join(projectRoot, "backend-dist");
+  const backendDist = outputDir;
 
   // 2. Clean if requested
   if (clean && fs.existsSync(backendDist)) {
@@ -313,46 +388,28 @@ async function main() {
 
   // Upgrade pip to latest
   console.log("  Upgrading pip...");
-  await runCommand(venvPython, ["-m", "pip", "install", "--upgrade", "pip"]);
+  await runCommandWithRetries(venvPython, ["-m", "pip", "install", "--upgrade", "pip"], {}, {
+    retries: isWindows ? 3 : 1,
+    label: "pip install --upgrade pip",
+  });
   console.log("");
 
   // 6. Install dependencies
-  console.log(`=== Step 4: Install dependencies (${flavor.toUpperCase()}) ===`);
-
-  // Determine requirements file (same logic as build-backend.cjs)
-  let requirementsFile;
-  if (flavor === "gpu-metal") {
-    requirementsFile = "requirements-gpu-macos.txt";
-  } else {
-    requirementsFile = `requirements-${flavor}.txt`;
-  }
-
-  const requirementsPath = path.join(projectRoot, requirementsFile);
-  if (!fs.existsSync(requirementsPath)) {
-    const fallback = path.join(projectRoot, "requirements.txt");
-    if (fs.existsSync(fallback)) {
-      console.log(`  Warning: ${requirementsFile} not found, using requirements.txt`);
-      requirementsFile = "requirements.txt";
-    } else {
-      console.error(`Error: Neither ${requirementsFile} nor requirements.txt found`);
-      process.exit(1);
-    }
-  }
-
-  // Create a filtered requirements file that excludes pyinstaller
-  const reqContent = fs.readFileSync(path.join(projectRoot, requirementsFile), "utf-8");
-  const filteredReqs = reqContent
-    .split("\n")
-    .filter((line) => !line.trim().toLowerCase().startsWith("pyinstaller"))
-    .join("\n");
-  const filteredReqsPath = path.join(backendDist, "requirements-filtered.txt");
-  fs.writeFileSync(filteredReqsPath, filteredReqs);
-
-  console.log(`  Installing from ${requirementsFile} (excluding pyinstaller)...`);
-  await runCommand(venvPython, ["-m", "pip", "install", "-r", filteredReqsPath]);
-
-  // Clean up filtered requirements
-  fs.unlinkSync(filteredReqsPath);
+  console.log(`=== Step 4: Install dependencies (${profile}) ===`);
+  const dependencySpecs = [
+    ...BACKEND_COMMON_PACKAGES,
+    ...getProfilePackageInstallSpecs(profile, {
+      omitPackages: ["nirs4all"],
+    }),
+  ];
+  console.log(`  Installing ${dependencySpecs.length} backend packages from shared runtime config...`);
+  // Large wheel installs on Windows can hit transient RECORD/file-lock races.
+  await runCommandWithRetries(venvPython, buildPipInstallArgs(dependencySpecs, {
+    constraintsFile,
+  }), {}, {
+    retries: isWindows ? 3 : 1,
+    label: "pip install backend dependencies",
+  });
 
   // 7. Install nirs4all
   console.log("");
@@ -361,56 +418,91 @@ async function main() {
   const localNirs4allPath = path.join(projectRoot, "..", "nirs4all");
   if (localNirs4all && fs.existsSync(localNirs4allPath)) {
     console.log("  Installing nirs4all from local source (editable)...");
-    await runCommand(venvPython, ["-m", "pip", "install", "-e", localNirs4allPath]);
+    await runCommandWithRetries(venvPython, [
+      "-m",
+      "pip",
+      "install",
+      ...(constraintsFile ? ["-c", constraintsFile] : []),
+      "-e",
+      localNirs4allPath,
+    ], {}, {
+      retries: isWindows ? 3 : 1,
+      label: "pip install -e ../nirs4all",
+    });
   } else if (localNirs4all) {
     console.log("  Warning: --local-nirs4all specified but ../nirs4all not found");
-    console.log("  Installing nirs4all from PyPI...");
-    await runCommand(venvPython, ["-m", "pip", "install", "nirs4all"]);
+    const [nirs4allSpec] = getProfilePackageInstallSpecs(profile, {
+      includeExtraPackages: false,
+      packageNames: ["nirs4all"],
+    });
+    console.log(`  Installing ${nirs4allSpec} from PyPI...`);
+    await runCommandWithRetries(venvPython, buildPipInstallArgs([nirs4allSpec], {
+      constraintsFile,
+    }), {}, {
+      retries: isWindows ? 3 : 1,
+      label: `pip install ${nirs4allSpec}`,
+    });
   } else {
-    console.log("  Installing nirs4all from PyPI...");
-    await runCommand(venvPython, ["-m", "pip", "install", "nirs4all"]);
+    const [nirs4allSpec] = getProfilePackageInstallSpecs(profile, {
+      includeExtraPackages: false,
+      packageNames: ["nirs4all"],
+    });
+    console.log(`  Installing ${nirs4allSpec} from PyPI...`);
+    await runCommandWithRetries(venvPython, buildPipInstallArgs([nirs4allSpec], {
+      constraintsFile,
+    }), {}, {
+      retries: isWindows ? 3 : 1,
+      label: `pip install ${nirs4allSpec}`,
+    });
   }
   console.log("");
 
-  // 8. Copy backend source
-  console.log("=== Step 6: Copy backend source files ===");
+  if (!runtimeOnly) {
+    // 8. Copy backend source
+    console.log("=== Step 6: Copy backend source files ===");
 
-  const filesToCopy = [
-    { src: "api", type: "dir" },
-    { src: "websocket", type: "dir" },
-    { src: "main.py", type: "file" },
-    { src: "public", type: "dir" },
-  ];
+    const filesToCopy = [
+      { src: "api", type: "dir" },
+      { src: "websocket", type: "dir" },
+      { src: "main.py", type: "file" },
+      { src: "public", type: "dir" },
+    ];
 
-  for (const item of filesToCopy) {
-    const srcPath = path.join(projectRoot, item.src);
-    const destPath = path.join(backendDist, item.src);
+    for (const item of filesToCopy) {
+      const srcPath = path.join(projectRoot, item.src);
+      const destPath = path.join(backendDist, item.src);
 
-    if (!fs.existsSync(srcPath)) {
-      console.log(`  Warning: ${item.src} not found, skipping`);
-      continue;
-    }
-
-    if (item.type === "dir") {
-      if (fs.existsSync(destPath)) {
-        fs.rmSync(destPath, { recursive: true, force: true });
+      if (!fs.existsSync(srcPath)) {
+        console.log(`  Warning: ${item.src} not found, skipping`);
+        continue;
       }
-      copyDirSync(srcPath, destPath);
-      console.log(`  Copied: ${item.src}/ (${formatSize(getDirSize(destPath))})`);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-      console.log(`  Copied: ${item.src} (${formatSize(fs.statSync(destPath).size)})`);
+
+      if (item.type === "dir") {
+        if (fs.existsSync(destPath)) {
+          fs.rmSync(destPath, { recursive: true, force: true });
+        }
+        copyDirSync(srcPath, destPath);
+        console.log(`  Copied: ${item.src}/ (${formatSize(getDirSize(destPath))})`);
+      } else {
+        fs.copyFileSync(srcPath, destPath);
+        console.log(`  Copied: ${item.src} (${formatSize(fs.statSync(destPath).size)})`);
+      }
     }
+    console.log("");
+  } else {
+    console.log("=== Step 6: Skip backend source copy (--runtime-only) ===");
+    console.log("");
   }
-  console.log("");
 
   // 9. Pre-compile .pyc bytecode (speeds up first launch significantly)
   console.log("=== Step 7: Pre-compile Python bytecode ===");
   const compileTargets = [
     path.join(venvDir, isWindows ? "Lib" : "lib"),
-    path.join(backendDist, "api"),
-    path.join(backendDist, "websocket"),
-    path.join(backendDist, "main.py"),
+    ...(!runtimeOnly ? [
+      path.join(backendDist, "api"),
+      path.join(backendDist, "websocket"),
+      path.join(backendDist, "main.py"),
+    ] : []),
   ].filter((p) => fs.existsSync(p));
 
   console.log("  Compiling .py -> .pyc for all packages and backend source...");
@@ -421,7 +513,8 @@ async function main() {
   // 10. Write build metadata
   console.log("=== Step 8: Write build metadata ===");
   const buildInfo = {
-    mode: "installer",
+    mode: buildMode,
+    profile: profile,
     flavor: flavor,
     python_version: PYTHON_VERSION,
     pbs_tag: PBS_TAG,
@@ -437,10 +530,12 @@ async function main() {
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   const pythonSize = getDirSize(pythonDir);
   const venvSize = getDirSize(venvDir);
-  const sourceSize = getDirSize(path.join(backendDist, "api")) +
-    getDirSize(path.join(backendDist, "websocket")) +
-    (fs.existsSync(path.join(backendDist, "main.py")) ? fs.statSync(path.join(backendDist, "main.py")).size : 0) +
-    getDirSize(path.join(backendDist, "public"));
+  const sourceSize = runtimeOnly
+    ? 0
+    : getDirSize(path.join(backendDist, "api")) +
+      getDirSize(path.join(backendDist, "websocket")) +
+      (fs.existsSync(path.join(backendDist, "main.py")) ? fs.statSync(path.join(backendDist, "main.py")).size : 0) +
+      getDirSize(path.join(backendDist, "public"));
   const totalSize = getDirSize(backendDist);
 
   console.log("========================================");
@@ -448,18 +543,23 @@ async function main() {
   console.log("========================================");
   console.log("");
   console.log(`  Flavor:       ${flavor.toUpperCase()}`);
+  console.log(`  Profile:      ${profile}`);
   console.log(`  Python:       ${formatSize(pythonSize)}`);
   console.log(`  Venv:         ${formatSize(venvSize)}`);
-  console.log(`  Source:       ${formatSize(sourceSize)}`);
+  if (!runtimeOnly) {
+    console.log(`  Source:       ${formatSize(sourceSize)}`);
+  }
   console.log(`  Total:        ${formatSize(totalSize)}`);
   console.log(`  Time:         ${elapsed}s`);
   console.log("");
-  console.log("  Output: backend-dist/");
+  console.log(`  Output: ${path.relative(projectRoot, backendDist) || "."}/`);
   console.log("    python/    — Embedded CPython runtime");
   console.log("    venv/      — Managed virtual environment");
-  console.log("    api/       — FastAPI routers");
-  console.log("    websocket/ — WebSocket manager");
-  console.log("    main.py    — Backend entry point");
+  if (!runtimeOnly) {
+    console.log("    api/       — FastAPI routers");
+    console.log("    websocket/ — WebSocket manager");
+    console.log("    main.py    — Backend entry point");
+  }
   console.log("");
 }
 

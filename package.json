@@ -45,7 +45,9 @@
     "ci:docker:shell": "bash scripts/ci-test.sh shell",
     "ci:docker:rebuild": "bash scripts/ci-test.sh --rebuild",
     "release": "node scripts/build-release.cjs",
-    "release:clean": "node scripts/build-release.cjs --clean"
+    "release:clean": "node scripts/build-release.cjs --clean",
+    "release:all-in-one": "node scripts/build-archive-standalone.cjs",
+    "release:all-in-one:clean": "node scripts/build-archive-standalone.cjs --clean"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

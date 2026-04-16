@@ -11,8 +11,8 @@ files:
   - dist-electron/**/*
   - "!**/*.map"
 
-# Compatibility default: installer packaging remains the implicit electron-builder config.
-# New standalone archive builds must use electron-builder.archive.yml explicitly.
+# Installer builds ship backend source only.
+# Python is downloaded / managed at runtime in user data.
 extraResources:
   - from: backend-dist/
     to: backend/

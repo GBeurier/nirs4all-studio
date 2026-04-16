@@ -294,7 +294,7 @@ export function UpdatesSection() {
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription>
               {runtimeMode === "bundled"
-                ? "This standalone archive runs from a bundled Python runtime. Environment creation, nirs4all installs, and snapshot restores are disabled in this read-only mode."
+                ? "This all-in-one bundle runs from an embedded Python runtime. Environment creation, nirs4all installs, and snapshot restores are disabled in this read-only mode."
                 : "This packaged backend runtime is read-only. Environment creation and package mutations are disabled in this mode."}
             </AlertDescription>
           </Alert>

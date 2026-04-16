@@ -5,9 +5,9 @@ and related system endpoints.
 Verifies that:
 - Coherence endpoint correctly detects matching and mismatched environments
 - Path normalization handles trailing slashes, mixed separators, case (cross-platform)
-- Standalone/frozen mode detection works correctly
+- Read-only packaged runtime detection works correctly
 - Web-only mode (no Electron) coherence works without NIRS4ALL_EXPECTED_PYTHON
-- Standalone mode gates package mutation endpoints
+- Read-only packaged runtime gates package mutation endpoints
 
 Manual test matrix (not all automatable in CI):
 - [ ] Windows: path with spaces, case differences, mixed slashes
@@ -137,6 +137,7 @@ class TestStandaloneModeDetection:
         assert response.status_code == 200
         data = response.json()
         assert data["is_frozen"] is False
+        assert data["runtime_mode"] == "development"
 
     @patch.object(sys, "_MEIPASS", "/fake/meipass", create=True)
     def test_frozen_when_meipass_set(self):
@@ -145,6 +146,18 @@ class TestStandaloneModeDetection:
         assert response.status_code == 200
         data = response.json()
         assert data["is_frozen"] is True
+        assert data["runtime_mode"] == "pyinstaller"
+
+    @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
+    def test_runtime_mode_reports_bundled_when_electron_sets_it(self):
+        """Bundled runtime mode should come from Electron's explicit env flag."""
+        response = client.get("/api/system/build")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["runtime_mode"] == "bundled"
+        assert data["summary"]["runtime_mode"] == "bundled"
+        assert data["is_frozen"] is False
 
 
 # ============= Web-Only Mode Coherence Tests =============
@@ -214,17 +227,64 @@ class TestStandaloneGating:
             json={"package": "numpy"},
         )
         assert response.status_code == 400
-        assert "standalone" in response.json()["detail"].lower()
+        assert "all-in-one bundle" in response.json()["detail"].lower()
+
+    @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
+    def test_install_blocked_in_bundled_runtime_mode(self):
+        """Package install should also be blocked in bundled runtime mode."""
+        response = client.post(
+            "/api/updates/dependencies/install",
+            json={"package": "numpy"},
+        )
+        assert response.status_code == 400
+        assert "all-in-one bundle" in response.json()["detail"].lower()
+
+    @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
+    def test_nirs4all_install_blocked_in_bundled_runtime_mode(self):
+        """Base library installation should also be blocked in bundled runtime mode."""
+        response = client.post(
+            "/api/updates/nirs4all/install",
+            json={},
+        )
+        assert response.status_code == 400
+        assert "all-in-one bundle" in response.json()["detail"].lower()
+
+    @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
+    def test_create_venv_blocked_in_bundled_runtime_mode(self):
+        """Managed venv creation should not be offered in bundled runtime mode."""
+        response = client.post(
+            "/api/updates/venv/create",
+            json={"force": False, "install_nirs4all": True},
+        )
+        assert response.status_code == 400
+        assert "all-in-one bundle" in response.json()["detail"].lower()
+
+    @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
+    def test_restore_snapshot_blocked_in_bundled_runtime_mode(self):
+        """Snapshot restore must not mutate the read-only bundled runtime."""
+        response = client.post("/api/updates/venv/snapshots/example/restore")
+        assert response.status_code == 400
+        assert "all-in-one bundle" in response.json()["detail"].lower()
+
+    @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
+    def test_config_align_blocked_in_bundled_runtime_mode(self):
+        """Recommended-config alignment must not mutate a bundled runtime."""
+        response = client.post(
+            "/api/config/align",
+            json={"profile": "cpu", "optional_packages": [], "dry_run": False},
+        )
+        assert response.status_code == 400
+        assert "all-in-one bundle" in response.json()["detail"].lower()
 
     def test_install_allowed_in_normal_mode(self):
         """Package install should not be blocked by _check_not_standalone in normal mode."""
         # This test just verifies the guard doesn't fire in normal mode.
         # The actual install will fail for other reasons (no valid package spec, etc.)
-        # but should NOT return 400 with "standalone" message.
+        # but should NOT return 400 with the all-in-one bundle message.
         response = client.post(
             "/api/updates/dependencies/install",
             json={"package": "this-package-does-not-exist-12345"},
         )
-        # Should not be 400 with standalone message
+        # Should not be 400 with the all-in-one bundle message
         if response.status_code == 400:
-            assert "standalone" not in response.json().get("detail", "").lower()
+            assert "all-in-one bundle" not in response.json().get("detail", "").lower()

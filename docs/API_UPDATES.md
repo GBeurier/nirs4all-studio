@@ -131,27 +131,62 @@ Get information needed to download a webapp update.
 ```json
 {
   "update_available": true,
-  "current_version": "1.0.0",
-  "latest_version": "1.2.0",
-  "download_url": "https://github.com/.../nirs4all-webapp-1.2.0-linux.tar.gz",
-  "asset_name": "nirs4all-webapp-1.2.0-linux.tar.gz",
+  "current_version": "0.5.0",
+  "latest_version": "0.5.1",
+  "download_url": "https://github.com/.../nirs4all%20Studio-0.5.1-all-in-one-linux-x64.zip",
+  "asset_name": "nirs4all Studio-0.5.1-all-in-one-linux-x64.zip",
   "download_size_bytes": 85000000,
   "release_notes": "### What's New...",
-  "release_url": "https://github.com/.../releases/v1.2.0"
+  "release_url": "https://github.com/.../releases/tag/0.5.1"
 }
 ```
 
-#### POST /webapp/download
-Initiate webapp update download (returns download URL for now).
+#### POST /webapp/download-start
+Start a background download job for the selected webapp update.
 
 **Response**:
 ```json
 {
-  "status": "ready",
-  "download_url": "https://github.com/...",
-  "asset_name": "nirs4all-webapp-1.2.0-linux.tar.gz",
-  "version": "1.2.0",
-  "message": "Download URL ready."
+  "job_id": "job_123",
+  "status": "started",
+  "asset_name": "nirs4all Studio-0.5.1-all-in-one-linux-x64.zip",
+  "version": "0.5.1",
+  "message": "Downloading nirs4all Studio-0.5.1-all-in-one-linux-x64.zip..."
+}
+```
+
+#### GET /webapp/download-status/{job_id}
+Poll the progress of a background download job.
+
+#### POST /webapp/download-cancel/{job_id}
+Request cancellation of an in-progress download.
+
+#### GET /webapp/staged-update
+Get information about the currently staged update, if any.
+
+**Response**:
+```json
+{
+  "has_staged_update": true,
+  "staging_path": "/path/to/update_staging",
+  "version": "0.5.1",
+  "asset_name": "nirs4all Studio-0.5.1-all-in-one-linux-x64.zip",
+  "update_mode": "directory"
+}
+```
+
+#### DELETE /webapp/staged-update
+Remove the staged update without applying it.
+
+#### POST /webapp/apply
+Create and launch the platform-specific updater script for the staged update.
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "Update will be applied after app restart (directory mode). Please close the application.",
+  "restart_required": true
 }
 ```
 
@@ -166,6 +201,9 @@ Request application restart.
   "restart_required": true
 }
 ```
+
+#### POST /webapp/download
+Legacy endpoint that only returns the resolved download URL.
 
 ---
 
@@ -302,7 +340,7 @@ only takes effect after a backend restart.
 
 Pass `"path": null` to reset to the default venv path (immediate, no restart needed).
 
-Blocked in standalone mode (returns 400).
+Blocked in read-only bundled modes (`bundled`, legacy `pyinstaller`) and returns `400`.
 
 #### POST /venv/reset
 Reset VenvManager to target the runtime environment (`sys.prefix`).
@@ -317,7 +355,7 @@ Clears any custom venv path immediately.
 }
 ```
 
-Blocked in standalone mode (returns 400).
+Blocked in read-only bundled modes (`bundled`, legacy `pyinstaller`) and returns `400`.
 
 ---
 
@@ -355,17 +393,24 @@ Optional fields (present only when `NIRS4ALL_EXPECTED_PYTHON` env var is set):
 - `electron_match` (boolean)
 
 #### GET /api/system/build
-Get build information including standalone mode detection.
+Get build information including `runtime_mode`.
 
 **Response**:
 ```json
 {
+  "build": {
+    "flavor": "cpu",
+    "gpu_enabled": false
+  },
+  "runtime_mode": "managed",
   "is_frozen": false,
-  "build_flavor": "cpu"
+  "summary": {
+    "runtime_mode": "managed"
+  }
 }
 ```
 
-`is_frozen: true` when running under PyInstaller — package management is disabled.
+Use `runtime_mode` as the primary contract for UI/runtime behavior. `is_frozen` is kept for compatibility with the legacy PyInstaller path.
 
 ---
 

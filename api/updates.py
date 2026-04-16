@@ -869,6 +869,8 @@ class UpdateManager:
         elif machine in ("aarch64", "arm64"):
             arch_keywords = ["arm64", "aarch64"]
 
+        preferred_markers = ["all-in-one", "all_in_one", "allinone"]
+
         def _matches_asset(asset: dict[str, Any], extension: str, require_arch: bool) -> bool:
             name = asset.get("name", "").lower()
             if not name.endswith(extension):
@@ -885,15 +887,20 @@ class UpdateManager:
                     return False
             return True
 
+        def _rank_asset(asset: dict[str, Any]) -> tuple[int, str]:
+            name = asset.get("name", "").lower()
+            preferred = any(marker in name for marker in preferred_markers)
+            return (0 if preferred else 1, name)
+
         # First pass: match platform + architecture
         for ext in extensions:
-            for asset in assets:
+            for asset in sorted(assets, key=_rank_asset):
                 if _matches_asset(asset, ext, require_arch=True):
                     return asset
 
         # Second pass: match platform without arch constraint
         for ext in extensions:
-            for asset in assets:
+            for asset in sorted(assets, key=_rank_asset):
                 if _matches_asset(asset, ext, require_arch=False):
                     return asset
 
@@ -1166,6 +1173,8 @@ async def create_venv(
 
     This is an async operation. Poll /venv/status to check progress.
     """
+    _check_not_standalone()
+
     # Check if already exists and valid
     if not request.force and venv_manager.get_venv_info().is_valid:
         return {
@@ -1209,6 +1218,8 @@ async def install_nirs4all(request: InstallRequest) -> dict[str, Any]:
     Returns:
         Installation result with status and output
     """
+    _check_not_standalone()
+
     # Ensure venv exists
     if not venv_manager.get_venv_info().is_valid:
         # Try to create it
@@ -1776,11 +1787,12 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
 
 
 def _check_not_standalone() -> None:
-    """Raise if running in PyInstaller standalone mode (frozen environment)."""
-    if getattr(sys, "_MEIPASS", None):
+    """Raise if running in a read-only bundled runtime."""
+    runtime_mode = str(os.environ.get("NIRS4ALL_RUNTIME_MODE", "")).strip().lower()
+    if getattr(sys, "_MEIPASS", None) or runtime_mode == "bundled":
         raise HTTPException(
             status_code=400,
-            detail="Package management is not available in standalone mode.",
+            detail="Package management is not available in the all-in-one bundle.",
         )
 
 
@@ -2117,6 +2129,8 @@ async def restore_snapshot(name: str) -> dict[str, Any]:
 
     This will install all packages at the exact versions captured in the snapshot.
     """
+    _check_not_standalone()
+
     if not venv_manager.get_venv_info().is_valid:
         raise HTTPException(status_code=400, detail="Virtual environment is not valid")
 

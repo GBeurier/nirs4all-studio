@@ -14,8 +14,18 @@ import https from "node:https";
 import http from "node:http";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
+interface PythonRuntimeConfigModule {
+  MANAGED_RUNTIME_PACKAGES: readonly string[];
+  PBS_TAG: string;
+  PYTHON_VERSION: string;
+  PYTHON_VERSION_MM: string;
+  getArchiveFilename(platform: string, arch: string): string;
+  getDownloadUrl(platform: string, arch: string): string;
+}
+
 type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
 const electronModule = require("electron") as typeof import("electron") | string;
+const pythonRuntimeConfig = require("../scripts/python-runtime-config.cjs") as PythonRuntimeConfigModule;
 const testApp = (globalThis as { __NIRS4ALL_TEST_APP__?: AppLike }).__NIRS4ALL_TEST_APP__;
 const { app } = typeof electronModule === "string"
   ? {
@@ -29,31 +39,7 @@ const { app } = typeof electronModule === "string"
     }
   : electronModule;
 
-// --- Constants (shared with scripts/setup-python-env.cjs) ---
-const PYTHON_VERSION = "3.11.13";
-const PBS_TAG = "20250828";
-const PBS_BASE_URL = `https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_TAG}`;
-
-const PLATFORM_MAP: Record<string, string> = {
-  "win32-x64": `cpython-${PYTHON_VERSION}+${PBS_TAG}-x86_64-pc-windows-msvc-install_only.tar.gz`,
-  "linux-x64": `cpython-${PYTHON_VERSION}+${PBS_TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz`,
-  "darwin-x64": `cpython-${PYTHON_VERSION}+${PBS_TAG}-x86_64-apple-darwin-install_only.tar.gz`,
-  "darwin-arm64": `cpython-${PYTHON_VERSION}+${PBS_TAG}-aarch64-apple-darwin-install_only.tar.gz`,
-};
-
-// Core packages to install (minimal set to run the backend)
-const CORE_PACKAGES = [
-  "fastapi>=0.115.0",
-  "uvicorn[standard]>=0.34.0",
-  "pydantic>=2.10.0",
-  "python-multipart>=0.0.20",
-  "httpx>=0.27.0",
-  "pyyaml>=6.0",
-  "packaging>=24.0",
-  "platformdirs>=4.0.0",
-  "sentry-sdk[fastapi]>=2.0.0",
-  "nirs4all>=0.8.9",
-];
+const { MANAGED_RUNTIME_PACKAGES, PBS_TAG, PYTHON_VERSION, PYTHON_VERSION_MM, getArchiveFilename, getDownloadUrl } = pythonRuntimeConfig;
 
 const isWindows = process.platform === "win32";
 const ENSUREPIP_TIMEOUT_MS = 60_000;
@@ -171,6 +157,14 @@ export interface EnvInfo {
   isCustom: boolean;
   error?: string;
 }
+
+interface BundledRuntimeInfo {
+  runtimeDir: string;
+  pythonPath: string;
+  sitePackages: string;
+}
+
+export type EnvRuntimeMode = "bundled" | "managed" | "custom" | "none";
 
 const SETTINGS_FILE = "env-settings.json";
 const VERIFY_CACHE_FILE = "verify-cache.json";
@@ -302,8 +296,53 @@ export class EnvManager {
     return true;
   }
 
+  detectBundledRuntime(): BundledRuntimeInfo | null {
+    const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+    if (!resourcesPath) return null;
+
+    const runtimeDir = path.join(resourcesPath, "backend", "python-runtime");
+    const readyMarker = path.join(runtimeDir, "RUNTIME_READY.json");
+    const venvDir = path.join(runtimeDir, "venv");
+    const pythonPath = isWindows
+      ? path.join(venvDir, "Scripts", "python.exe")
+      : path.join(venvDir, "bin", "python");
+    const sitePackages = this.resolveSitePackages(venvDir, true);
+
+    if (!fs.existsSync(readyMarker) || !fs.existsSync(pythonPath) || !sitePackages || !fs.existsSync(sitePackages)) {
+      return null;
+    }
+
+    return {
+      runtimeDir,
+      pythonPath,
+      sitePackages,
+    };
+  }
+
+  isBundled(): boolean {
+    return this.detectBundledRuntime() !== null;
+  }
+
+  getRuntimeMode(): EnvRuntimeMode {
+    if (this.isBundled()) return "bundled";
+    if (this.pythonPath && fs.existsSync(this.pythonPath)) return "custom";
+
+    const venvDir = path.join(this.envDir, "venv");
+    const managedPython = isWindows
+      ? path.join(venvDir, "Scripts", "python.exe")
+      : path.join(venvDir, "bin", "python");
+
+    if (fs.existsSync(managedPython)) return "managed";
+    return "none";
+  }
+
   /** Get the Python executable path */
   getPythonPath(): string | null {
+    const bundledRuntime = this.detectBundledRuntime();
+    if (bundledRuntime) {
+      return bundledRuntime.pythonPath;
+    }
+
     // Custom python path (user-selected or custom-dir setup)
     if (this.pythonPath) {
       if (fs.existsSync(this.pythonPath)) return this.pythonPath;
@@ -320,40 +359,47 @@ export class EnvManager {
       : path.join(venvDir, "bin", "python");
   }
 
+  private resolveSitePackages(envRoot: string, requireExisting: boolean = false): string | null {
+    const fallback = isWindows
+      ? path.join(envRoot, "Lib", "site-packages")
+      : path.join(envRoot, "lib", `python${PYTHON_VERSION_MM}`, "site-packages");
+
+    if (isWindows) {
+      return !requireExisting || fs.existsSync(fallback) ? fallback : null;
+    }
+
+    const libDir = path.join(envRoot, "lib");
+    if (fs.existsSync(libDir)) {
+      try {
+        const pyDir = fs.readdirSync(libDir).find((e) => e.startsWith("python3."));
+        if (pyDir) {
+          const detected = path.join(libDir, pyDir, "site-packages");
+          if (!requireExisting || fs.existsSync(detected)) return detected;
+        }
+      } catch { /* ignore */ }
+    }
+
+    return !requireExisting || fs.existsSync(fallback) ? fallback : null;
+  }
+
   /** Get the site-packages path */
   getSitePackages(): string | null {
+    const bundledRuntime = this.detectBundledRuntime();
+    if (bundledRuntime) {
+      return bundledRuntime.sitePackages;
+    }
+
     // Custom python path: derive env root from executable location
     if (this.pythonPath) {
       const dir = path.dirname(this.pythonPath);
       const dirName = path.basename(dir).toLowerCase();
       const envRoot = (dirName === "scripts" || dirName === "bin") ? path.dirname(dir) : dir;
-
-      if (isWindows) {
-        const p = path.join(envRoot, "Lib", "site-packages");
-        if (fs.existsSync(p)) return p;
-      } else {
-        const libDir = path.join(envRoot, "lib");
-        if (fs.existsSync(libDir)) {
-          const pyDir = fs.readdirSync(libDir).find((e) => e.startsWith("python3."));
-          if (pyDir) return path.join(libDir, pyDir, "site-packages");
-        }
-      }
-      return null;
+      return this.resolveSitePackages(envRoot, true);
     }
 
     // Managed env
     const venvDir = path.join(this.envDir, "venv");
-    if (isWindows) {
-      return path.join(venvDir, "Lib", "site-packages");
-    }
-    const libDir = path.join(venvDir, "lib");
-    if (fs.existsSync(libDir)) {
-      try {
-        const pyDir = fs.readdirSync(libDir).find((e) => e.startsWith("python3."));
-        if (pyDir) return path.join(libDir, pyDir, "site-packages");
-      } catch { /* ignore */ }
-    }
-    return path.join(venvDir, "lib", `python${PYTHON_VERSION.slice(0, 4)}`, "site-packages");
+    return this.resolveSitePackages(venvDir);
   }
 
   /** Get full environment info */
@@ -370,7 +416,7 @@ export class EnvManager {
       pythonPath,
       sitePackages: this.getSitePackages(),
       pythonVersion,
-      isCustom: !!this.pythonPath,
+      isCustom: this.getRuntimeMode() === "custom",
       error: this.lastError ?? undefined,
     };
   }
@@ -438,6 +484,11 @@ export class EnvManager {
    */
   shouldShowWizard(): boolean {
     this.validateConfiguredState();
+
+    // Standalone archive runtime is pre-baked and immutable. Even if a prior
+    // verify failed, routing to the setup wizard would be misleading because
+    // the bundle cannot be repaired in-place from that flow.
+    if (this.isBundled()) return false;
 
     // Startup validation failed (for example a timed-out repair on a stale env)
     // — route the user back through the setup flow instead of leaving them on
@@ -655,6 +706,8 @@ export class EnvManager {
       throw new Error(this.lastError);
     }
 
+    const isBundledRuntime = this.isBundled();
+
     try {
       let repaired = false;
 
@@ -684,6 +737,11 @@ export class EnvManager {
       // without paying the heavier import if the env is obviously broken.
       const hasRuntime = await this.verifyBackendRuntime();
       if (!hasRuntime) {
+        if (isBundledRuntime) {
+          this.status = "error";
+          this.lastError = "Bundled runtime verification failed. Reinstall the all-in-one bundle.";
+          throw new Error(this.lastError);
+        }
         if (!(await probeNetworkOnline())) {
           // Offline: don't blindly mark ready. Confirm the heavier
           // verifyBackendPackages succeeds before claiming the env works,
@@ -712,6 +770,11 @@ export class EnvManager {
       // trust or persist this environment state.
       let hasBackendPackages = await this.verifyBackendPackages();
       if (!hasBackendPackages) {
+        if (isBundledRuntime) {
+          this.status = "error";
+          this.lastError = "Bundled runtime packages are not importable. Reinstall the all-in-one bundle.";
+          throw new Error(this.lastError);
+        }
         if (!(await probeNetworkOnline())) {
           // Offline and packages don't import. The runtime check passed so
           // the backend may still serve a degraded experience; surface the
@@ -1008,7 +1071,7 @@ export class EnvManager {
     }
 
     // Install all core packages in a single pip call
-    await this.runCommand(pythonPath, ["-m", "pip", "install", "--no-cache-dir", ...CORE_PACKAGES], {
+    await this.runCommand(pythonPath, ["-m", "pip", "install", "--no-cache-dir", ...MANAGED_RUNTIME_PACKAGES], {
       retries: 2,
       timeoutMs,
     });
@@ -1032,12 +1095,8 @@ export class EnvManager {
 
       // 1. Resolve platform
       const platformKey = `${process.platform}-${process.arch}`;
-      const tarballName = PLATFORM_MAP[platformKey];
-      if (!tarballName) {
-        throw new Error(`Unsupported platform: ${platformKey}`);
-      }
-
-      const downloadUrl = `${PBS_BASE_URL}/${tarballName}`;
+      const tarballName = getArchiveFilename(process.platform, process.arch);
+      const downloadUrl = getDownloadUrl(process.platform, process.arch);
       fs.mkdirSync(baseDir, { recursive: true });
 
       // 2. Download Python (if not already cached)
@@ -1113,9 +1172,9 @@ export class EnvManager {
       this.status = "installing";
       report(40, "installing", "Installing core packages...");
 
-      const totalPackages = CORE_PACKAGES.length;
+      const totalPackages = MANAGED_RUNTIME_PACKAGES.length;
       for (let i = 0; i < totalPackages; i++) {
-        const pkg = CORE_PACKAGES[i];
+        const pkg = MANAGED_RUNTIME_PACKAGES[i];
         const pkgName = pkg.split(">=")[0].split("[")[0];
         const progressPercent = 40 + Math.round(((i + 1) / totalPackages) * 50);
         report(progressPercent, "installing", `Installing ${pkgName}...`);

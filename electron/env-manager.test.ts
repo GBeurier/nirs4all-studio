@@ -366,4 +366,78 @@ describe("EnvManager", () => {
     expect(cachedTarballPath).not.toBe("");
     expect(fs.existsSync(cachedTarballPath)).toBe(true);
   });
+
+  it("prefers a bundled runtime over saved custom settings and skips the wizard", async () => {
+    const userDataDir = makeUserDataDir();
+    const settingsPath = path.join(userDataDir, "env-settings.json");
+    const customPython = path.join(userDataDir, "custom-env", "python.exe");
+
+    fs.mkdirSync(path.dirname(customPython), { recursive: true });
+    fs.writeFileSync(customPython, "");
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        pythonPath: customPython,
+        appVersion: "0.3.1",
+      }),
+    );
+
+    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-bundled-"));
+    tempDirs.push(resourcesDir);
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
+
+    const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
+    const bundledPython = process.platform === "win32"
+      ? path.join(runtimeDir, "venv", "Scripts", "python.exe")
+      : path.join(runtimeDir, "venv", "bin", "python");
+    const sitePackages = process.platform === "win32"
+      ? path.join(runtimeDir, "venv", "Lib", "site-packages")
+      : path.join(runtimeDir, "venv", "lib", "python3.11", "site-packages");
+
+    fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
+    fs.mkdirSync(sitePackages, { recursive: true });
+    fs.writeFileSync(path.join(runtimeDir, "RUNTIME_READY.json"), "{}");
+    fs.writeFileSync(bundledPython, "");
+
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+
+    expect(manager.isBundled()).toBe(true);
+    expect(manager.getRuntimeMode()).toBe("bundled");
+    expect(manager.getPythonPath()).toBe(bundledPython);
+    expect(manager.shouldShowWizard()).toBe(false);
+  });
+
+  it("verifies a bundled runtime without attempting any package repair", async () => {
+    makeUserDataDir();
+
+    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-bundled-"));
+    tempDirs.push(resourcesDir);
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
+
+    const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
+    const bundledPython = process.platform === "win32"
+      ? path.join(runtimeDir, "venv", "Scripts", "python.exe")
+      : path.join(runtimeDir, "venv", "bin", "python");
+    const sitePackages = process.platform === "win32"
+      ? path.join(runtimeDir, "venv", "Lib", "site-packages")
+      : path.join(runtimeDir, "venv", "lib", "python3.11", "site-packages");
+
+    fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
+    fs.mkdirSync(sitePackages, { recursive: true });
+    fs.writeFileSync(path.join(runtimeDir, "RUNTIME_READY.json"), "{}");
+    fs.writeFileSync(bundledPython, "");
+
+    childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
+      const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
+      callback(null, "", "");
+    });
+
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+
+    await expect(manager.ensureBackendPackages()).resolves.toBe(false);
+    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+    expect(childProcessMocks.execFile).toHaveBeenCalled();
+  });
 });

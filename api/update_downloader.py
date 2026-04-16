@@ -12,8 +12,10 @@ the update path works in any deployment mode (PyInstaller, Electron, dev).
 """
 
 import asyncio
+import os
 import shutil
 import ssl
+import stat
 import tarfile
 import urllib.error
 import urllib.request
@@ -267,17 +269,29 @@ class UpdateDownloader:
 
         def _extract():
             with zipfile.ZipFile(archive_path, "r") as zf:
-                members = zf.namelist()
+                members = zf.infolist()
                 total = len(members)
                 for i, member in enumerate(members):
                     if self._cancelled:
                         raise asyncio.CancelledError("Extraction cancelled")
-                    zf.extract(member, target_dir)
+                    extracted_path = Path(zf.extract(member, target_dir))
+                    self._restore_zip_permissions(member, extracted_path)
                     if i % 100 == 0:
                         progress = 55 + (i / total) * 40
                         self._report_progress(progress, f"Extracting: {i}/{total} files")
 
         await loop.run_in_executor(None, _extract)
+
+    def _restore_zip_permissions(self, member: zipfile.ZipInfo, extracted_path: Path) -> None:
+        """Restore POSIX permissions recorded in a ZIP entry when available."""
+        if os.name == "nt" or not extracted_path.exists():
+            return
+
+        mode = (member.external_attr >> 16) & 0xFFFF
+        if mode == 0:
+            return
+
+        extracted_path.chmod(stat.S_IMODE(mode))
 
 
 async def download_and_stage_update(

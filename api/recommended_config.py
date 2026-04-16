@@ -52,6 +52,16 @@ DEFAULT_PROFILE = "cpu"
 # ============= Data Models =============
 
 
+def _check_not_standalone() -> None:
+    """Raise if running in a read-only bundled runtime."""
+    runtime_mode = str(os.environ.get("NIRS4ALL_RUNTIME_MODE", "")).strip().lower()
+    if getattr(sys, "_MEIPASS", None) or runtime_mode == "bundled":
+        raise HTTPException(
+            status_code=400,
+            detail="Package management is not available in the all-in-one bundle.",
+        )
+
+
 class ProfilePackageSpec(BaseModel):
     """Version spec for a profile package (schema v1.2)."""
     min: str  # e.g., ">=0.7.1"
@@ -856,6 +866,8 @@ async def align_config(request: AlignConfigRequest):
 
     Optionally also installs selected optional packages.
     """
+    _check_not_standalone()
+
     # Load config
     try:
         raw_config = _load_active_raw_config()

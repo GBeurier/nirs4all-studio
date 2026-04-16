@@ -161,7 +161,7 @@ export function ConfigAlignment() {
               <Alert>
                 <AlertDescription>
                   {runtimeMode === "bundled"
-                    ? "This standalone archive uses a bundled Python runtime. Config alignment is disabled because the embedded environment is read-only."
+                    ? "This all-in-one bundle uses an embedded Python runtime. Config alignment is disabled because the environment is read-only."
                     : "This packaged backend runtime is read-only. Config alignment is disabled in this mode."}
                 </AlertDescription>
               </Alert>

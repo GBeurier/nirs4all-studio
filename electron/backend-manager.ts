@@ -15,6 +15,7 @@ const HEALTH_MONITOR_TIMEOUT = 30000; // 30 seconds for transient import / start
 const HEALTH_MONITOR_FAILURE_THRESHOLD = 3; // Require repeated failures before restart
 const MAX_RESTART_ATTEMPTS = 3;
 const RESTART_DELAY = 2000; // 2 seconds before restart attempt
+const BACKEND_PORT_ENV = "NIRS4ALL_BACKEND_PORT";
 
 export type BackendStatus = "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
 
@@ -24,6 +25,13 @@ export interface BackendInfo {
   url: string;
   error?: string;
   restartCount: number;
+}
+
+interface BackendLaunchConfig {
+  command: string;
+  args: string[];
+  cwd?: string;
+  env?: Record<string, string>;
 }
 
 export class BackendManager {
@@ -107,14 +115,44 @@ export class BackendManager {
   }
 
   /**
+   * Reserve a caller-provided port when CI / smoke tests need a deterministic
+   * backend URL, otherwise fall back to an ephemeral free port.
+   */
+  private async resolveStartupPort(): Promise<number> {
+    const configuredPort = process.env[BACKEND_PORT_ENV]?.trim();
+    if (!configuredPort) {
+      return this.findFreePort();
+    }
+
+    const port = Number.parseInt(configuredPort, 10);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error(`Invalid ${BACKEND_PORT_ENV} value: ${configuredPort}`);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const server = createServer();
+      server.once("error", (error) => reject(new Error(`Port ${port} from ${BACKEND_PORT_ENV} is not available: ${String(error)}`)));
+      server.listen(port, "127.0.0.1", () => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    });
+
+    return port;
+  }
+
+  /**
    * Get the path to the Python backend.
    * Priority order:
    *   1. Dev mode / forced venv: use ../.venv + uvicorn
-   *   2. EnvManager: Python env downloaded/configured at runtime (user data dir)
-   *   3. Standalone mode: PyInstaller executable in resources/backend/
-   *   4. Fallback: dev venv (for local prod testing)
+   *   2. Bundled runtime: resources/backend/python-runtime/venv
+   *   3. EnvManager: Python env downloaded/configured at runtime (user data dir)
+   *   4. Standalone mode: PyInstaller executable in resources/backend/
+   *   5. Fallback: dev venv (for local prod testing)
    */
-  private getBackendPath(): { command: string; args: string[]; cwd?: string; env?: Record<string, string> } {
+  private getBackendPath(): BackendLaunchConfig {
     const isDev = process.env.VITE_DEV_SERVER_URL !== undefined;
     const forceVenv = process.env.NIRS4ALL_USE_VENV === "true";
     const isPackaged = electron.app?.isPackaged ?? !isDev;
@@ -128,7 +166,33 @@ export class BackendManager {
     const resourcesPath = process.resourcesPath;
     const backendDir = path.join(resourcesPath, "backend");
 
-    // 2. EnvManager: Python runtime in user data directory
+    // 2. Bundled runtime: pre-baked venv in the packaged app resources
+    if (this.envManager?.isBundled()) {
+      const pythonPath = this.envManager.getPythonPath();
+
+      if (pythonPath) {
+        console.log("Using bundled Python runtime");
+        console.log(`  Python: ${pythonPath}`);
+        return {
+          command: pythonPath,
+          args: [
+            "-m",
+            "uvicorn",
+            "main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            this.port.toString(),
+          ],
+          cwd: backendDir,
+          env: {
+            NIRS4ALL_RUNTIME_MODE: "bundled",
+          },
+        };
+      }
+    }
+
+    // 3. EnvManager: Python runtime in user data directory
     //    The Python env is downloaded on first launch and stored in AppData.
     //    Uses the venv's Python directly (not base Python + PYTHONPATH) so that
     //    sys.prefix points to the venv and VenvManager's pip/install works correctly.
@@ -150,11 +214,14 @@ export class BackendManager {
             this.port.toString(),
           ],
           cwd: backendDir,
+          env: {
+            NIRS4ALL_RUNTIME_MODE: "managed",
+          },
         };
       }
     }
 
-    // 3. Standalone mode: PyInstaller executable
+    // 4. Standalone mode: PyInstaller executable
     const execName =
       process.platform === "win32"
         ? "nirs4all-backend.exe"
@@ -166,10 +233,13 @@ export class BackendManager {
       return {
         command: bundledBackendPath,
         args: ["--port", this.port.toString()],
+        env: {
+          NIRS4ALL_RUNTIME_MODE: "pyinstaller",
+        },
       };
     }
 
-    // 4. Fallback: dev venv (for local prod testing only)
+    // 5. Fallback: dev venv (for local prod testing only)
     if (isPackaged) {
       throw new Error(
         "No usable backend found: Python environment is missing and no bundled backend is available.",
@@ -184,7 +254,7 @@ export class BackendManager {
    * Get backend path for development mode.
    * Uses the .venv relative to the webapp's parent directory.
    */
-  private getDevBackendPath(): { command: string; args: string[]; cwd?: string; env?: Record<string, string> } {
+  private getDevBackendPath(): BackendLaunchConfig {
     const venvPath = path.join(process.cwd(), "..", ".venv");
     const pythonPath =
       process.platform === "win32"
@@ -203,6 +273,9 @@ export class BackendManager {
         this.port.toString(),
       ],
       cwd: process.cwd(),
+      env: {
+        NIRS4ALL_RUNTIME_MODE: "development",
+      },
     };
   }
 
@@ -328,7 +401,7 @@ export class BackendManager {
     await this.killOrphan();
 
     // Find a free port
-    this.port = await this.findFreePort();
+    this.port = await this.resolveStartupPort();
 
     try {
       await this.startInternal();
@@ -364,7 +437,7 @@ export class BackendManager {
     await this.killOrphan();
 
     // Find a free port (fast, ~10ms)
-    this.port = await this.findFreePort();
+    this.port = await this.resolveStartupPort();
 
     // Spawn the process and run health check in background
     try {

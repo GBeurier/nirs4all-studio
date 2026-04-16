@@ -1,729 +1,389 @@
 # Update System Documentation
 
-This document describes the update system for nirs4all webapp, which provides:
-- Webapp self-update capabilities via GitHub Releases
-- nirs4all library updates via PyPI
-- Managed virtual environment for isolated library updates
+This document describes the current update system used by `nirs4all-webapp`.
 
-## Table of Contents
+The update stack now covers two separate concerns:
 
-1. [Architecture Overview](#architecture-overview)
-2. [Components](#components)
-3. [API Reference](#api-reference)
-4. [Update Flows](#update-flows)
-5. [Configuration](#configuration)
-6. [Frontend Integration](#frontend-integration)
-7. [Security Considerations](#security-considerations)
+- application self-update through GitHub Releases
+- optional Python environment and `nirs4all` management for writable runtimes only
 
----
+For the all-in-one ZIP bundle, the embedded runtime is read-only. The app can still check for and stage application updates, but it must not mutate `resources/backend/python-runtime/`.
+
+## Runtime Modes
+
+`/api/system/build` exposes the runtime contract used by the backend and frontend:
+
+| `runtime_mode` | Meaning | Writable Python runtime |
+|---|---|---|
+| `development` | Local development / ad hoc Python launch | yes |
+| `managed` | Installer-style runtime managed outside the app bundle | yes |
+| `bundled` | All-in-one ZIP with embedded `python-runtime/venv` | no |
+| `pyinstaller` | Legacy frozen backend mode kept for compatibility | no |
+
+`is_frozen` is still returned for compatibility, but new logic should rely on `runtime_mode`.
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    DESKTOP APPLICATION                       │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │  React Frontend                                        │  │
-│  │  - UpdatesSection (Settings page)                      │  │
-│  │  - useUpdates hook (TanStack Query)                    │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                              ↕                               │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │  FastAPI Backend                                       │  │
-│  │  - /api/updates/* endpoints                            │  │
-│  │  - UpdateManager (version checking)                    │  │
-│  │  - VenvManager (virtual environment)                   │  │
-│  └───────────────────────────────────────────────────────┘  │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-        ┌──────────────┴──────────────┐
-        ▼                              ▼
-┌───────────────────┐      ┌────────────────────────┐
-│  MANAGED VENV     │      │  PYINSTALLER BUNDLE    │
-│  (~/.local/share/ │      │  (self-update via      │
-│   nirs4all-webapp/│      │   external updater)    │
-│   managed_venv/)  │      └────────────────────────┘
-│  - nirs4all       │                │
-│  - ML backends    │                ▼
-└───────────────────┘      ┌────────────────────────┐
-        │                  │  GitHub Releases       │
-        ▼                  │  GBeurier/nirs4all-    │
-┌───────────────────┐      │  webapp                │
-│      PyPI         │      └────────────────────────┘
-│  nirs4all package │
-└───────────────────┘
+```text
+React Settings UI
+  ├─ UpdatesSection
+  ├─ DependenciesManager
+  └─ ConfigAlignment
+          |
+          v
+FastAPI backend
+  ├─ api/updates.py
+  ├─ api/update_downloader.py
+  ├─ api/venv_manager.py
+  ├─ api/recommended_config.py
+  └─ api/system.py
+          |
+          +--> GitHub Releases (desktop app updates)
+          +--> PyPI (nirs4all metadata / installs for managed runtimes)
+          +--> updater/__init__.py (stage/apply/restart scripts)
 ```
 
-### Key Design Decisions
+### What changed versus the old model
 
-1. **Hybrid Bundling**: The webapp core is bundled with PyInstaller, while nirs4all and ML dependencies live in a managed virtual environment.
+- Desktop releases are no longer described as a PyInstaller-first product.
+- Installed desktop builds and all-in-one ZIP builds now share the same update channel, but not the same runtime mutability.
+- The frontend uses `runtime_mode`, not only `is_frozen`, to decide when package-management actions must be disabled.
 
-2. **Independent Updates**: nirs4all can be updated without rebuilding the entire app.
+## Main Components
 
-3. **Notify-Only UX**: Updates are not applied automatically; users must explicitly trigger them.
+### `api/updates.py`
 
-4. **Platform Isolation**: The managed venv is isolated from system Python.
+Responsibilities:
 
----
+- check GitHub Releases for desktop updates
+- check PyPI for `nirs4all` updates
+- select the correct release asset for the current platform/runtime
+- expose update, download, staging, and apply endpoints
+- block runtime mutations when the runtime is read-only
 
-## Components
+Important details:
 
-### Backend Components
+- installed Windows builds prefer all-in-one ZIP assets
+- portable Windows builds prefer `-portable.exe`
+- macOS prefers ZIP assets
+- Linux accepts ZIP and legacy tarball formats, though current releases publish ZIP
+- when multiple ZIPs exist, names containing `all-in-one` are preferred
 
-#### 1. VenvManager (`api/venv_manager.py`)
+### `api/update_downloader.py`
 
-Manages a dedicated Python virtual environment for nirs4all and its dependencies.
+Responsibilities:
 
-**Location**: Platform-specific via platformdirs
-- **Windows**: `%LOCALAPPDATA%/nirs4all-webapp/managed_venv/`
-- **macOS**: `~/Library/Application Support/nirs4all-webapp/managed_venv/`
-- **Linux**: `~/.local/share/nirs4all-webapp/managed_venv/`
+- download the selected release asset
+- verify file size and optional SHA256
+- extract ZIP or tarball content into staging
+- restore POSIX executable bits from ZIP metadata on Linux/macOS
 
-**Key Methods**:
+The ZIP permission restoration is required for bundled Electron and bundled Python binaries to remain executable after staging.
 
-```python
-class VenvManager:
-    def get_venv_info() -> VenvInfo
-    def create_venv(progress_callback, force) -> Tuple[bool, str]
-    def install_package(package, version, extras, upgrade) -> Tuple[bool, str, List[str]]
-    def get_installed_packages() -> List[PackageInfo]
-    def get_package_version(package) -> Optional[str]
-    def get_nirs4all_version() -> Optional[str]
-```
+### `updater/__init__.py`
 
-**Data Classes**:
+Responsibilities:
 
-```python
-@dataclass
-class VenvInfo:
-    path: str
-    exists: bool
-    is_valid: bool
-    python_version: Optional[str]
-    pip_version: Optional[str]
-    created_at: Optional[str]
-    last_updated: Optional[str]
-    size_bytes: int
+- determine update mode:
+  - `portable`
+  - `bundle`
+  - `directory`
+- create platform-specific apply scripts
+- back up the current install
+- replace files from staging
+- relaunch the updated app
 
-@dataclass
-class PackageInfo:
-    name: str
-    version: str
-    location: Optional[str]
-```
+On macOS app bundles, the updater relaunches the `.app` itself. On non-bundle platforms it relaunches the executable directly.
 
-#### 2. UpdateManager (`api/updates.py`)
+### `api/venv_manager.py`
 
-Handles version checking against GitHub and PyPI APIs.
+Responsibilities:
 
-**Key Methods**:
+- manage the writable Python environment used by installer-style builds
+- create the managed venv
+- install/uninstall/update Python packages
+- report installed package state
 
-```python
-class UpdateManager:
-    def get_webapp_version() -> str
-    def get_nirs4all_version() -> Optional[str]
-    async def check_github_release(force) -> WebappUpdateInfo
-    async def check_pypi_release(force) -> Nirs4allUpdateInfo
-    async def get_update_status(force) -> UpdateStatus
-```
+This component is not allowed to mutate the runtime in `bundled` or `pyinstaller` modes.
 
-**Version Sources**:
-- **Webapp**: Reads from `version.json` in app directory
-- **nirs4all**: Calls `nirs4all.__version__` in managed venv
+### Frontend settings surfaces
 
-**External APIs**:
-- **GitHub**: `https://api.github.com/repos/{owner}/{repo}/releases/latest`
-- **PyPI**: `https://pypi.org/pypi/{package}/json`
+The following frontend surfaces react to `runtime_mode`:
 
-**Caching**:
-- Results are cached in `~/.local/share/nirs4all-webapp/update_cache.json`
-- Cache expires after `check_interval_hours` (default: 24)
+- `src/components/settings/UpdatesSection.tsx`
+- `src/components/settings/DependenciesManager.tsx`
+- `src/components/settings/ConfigAlignment.tsx`
+- `src/components/settings/SystemInfo.tsx`
 
-#### 3. Updater Module (`updater/__init__.py`)
+In `bundled` mode they show the runtime as read-only and disable incompatible actions.
 
-Handles webapp self-update via external scripts.
+## Asset Selection Rules
 
-**Key Functions**:
+The backend chooses update assets by platform and runtime mode.
 
-```python
-def get_update_cache_dir() -> Path
-def get_staging_dir() -> Path
-def get_backup_dir() -> Path
-def calculate_sha256(file_path) -> str
-def verify_checksum(file_path, expected_sha256) -> bool
-def create_updater_script(staging_dir, app_dir) -> Tuple[Path, str]
-def launch_updater(script_path) -> bool
-def cleanup_old_updates() -> None
-```
+### Installed desktop builds
 
-**Platform Scripts**:
-- **Windows**: Generates `.bat` script
-- **Linux/macOS**: Generates `.sh` script
+Preferred update assets:
 
-**Update Flow**:
-1. Download release to staging directory
-2. Verify SHA256 checksum
-3. Create platform-specific updater script
-4. Launch updater and exit app
-5. Updater waits for app exit, replaces files, relaunches
+- Windows: `nirs4all Studio-{version}-all-in-one-win-x64.zip`
+- macOS: `nirs4all Studio-{version}-all-in-one-mac-{arch}.zip`
+- Linux: `nirs4all Studio-{version}-all-in-one-linux-x64.zip`
 
----
+### Portable Windows builds
+
+Preferred update asset:
+
+- `nirs4all Studio-{version}-win-x64-portable.exe`
+
+### Formats intentionally excluded from in-place update
+
+- Windows installer `.exe`
+- `.dmg`
+- `.deb`
+- `.AppImage`
+
+These are installer/distribution artifacts, not updater payloads.
+
+### Checksums
+
+If a matching `.sha256` sidecar asset exists in the GitHub Release, it is downloaded and used for verification before staging.
 
 ## API Reference
 
-### Endpoints
+Base path:
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/updates/status` | GET | Get current update status (cached) |
-| `/api/updates/check` | POST | Force fresh update check |
-| `/api/updates/settings` | GET | Get update settings |
-| `/api/updates/settings` | PUT | Update settings |
-| `/api/updates/version` | GET | Get version information |
-| `/api/updates/venv/status` | GET | Get managed venv status |
-| `/api/updates/venv/create` | POST | Create managed venv |
-| `/api/updates/nirs4all/install` | POST | Install/upgrade nirs4all |
-| `/api/updates/webapp/download-info` | GET | Get webapp download info |
-| `/api/updates/webapp/download` | POST | Initiate webapp download |
-| `/api/updates/webapp/restart` | POST | Request app restart |
+```text
+/api/updates
+```
 
-### Request/Response Models
+### Status and settings
 
-#### GET /api/updates/status
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/status` | `GET` | Return cached update status |
+| `/check` | `POST` | Force a fresh GitHub/PyPI check |
+| `/settings` | `GET` | Read update settings |
+| `/settings` | `PUT` | Update settings |
+| `/version` | `GET` | Return version and Python runtime info |
 
-**Response**:
+### Managed runtime endpoints
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/venv/status` | `GET` | Inspect the managed venv |
+| `/venv/create` | `POST` | Create the managed venv |
+| `/nirs4all/install` | `POST` | Install or upgrade `nirs4all` |
+| `/dependencies/install` | `POST` | Install an optional package in the managed venv |
+| `/dependencies/uninstall` | `POST` | Remove an optional package |
+| `/dependencies/update` | `POST` | Update one package |
+| `/dependencies/revert` | `POST` | Revert to the recommended package state |
+
+In `bundled` and `pyinstaller` modes, these mutation endpoints return `400` with a read-only message instead of attempting a `pip` operation.
+
+### Webapp update endpoints
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/webapp/download-info` | `GET` | Resolve the current release asset for this platform |
+| `/webapp/download-start` | `POST` | Create a background download job |
+| `/webapp/download-status/{job_id}` | `GET` | Poll job progress |
+| `/webapp/download-cancel/{job_id}` | `POST` | Cancel an active download |
+| `/webapp/staged-update` | `GET` | Inspect the staged update, if any |
+| `/webapp/staged-update` | `DELETE` | Remove the staged update |
+| `/webapp/apply` | `POST` | Launch the updater script and mark restart as required |
+| `/webapp/cleanup` | `POST` | Remove stale update artifacts |
+| `/webapp/restart` | `POST` | Request application restart |
+| `/webapp/download` | `POST` | Legacy endpoint returning only the resolved download URL |
+
+## Key Response Shapes
+
+### `GET /api/system/build`
+
 ```json
 {
-  "webapp": {
-    "current_version": "1.0.0",
-    "latest_version": "1.2.0",
-    "update_available": true,
-    "release_url": "https://github.com/GBeurier/nirs4all-webapp/releases/v1.2.0",
-    "release_notes": "### What's New\n- Feature 1\n- Bug fix 2",
-    "published_at": "2024-01-15T10:30:00Z",
-    "download_size_bytes": 85000000,
-    "download_url": "https://github.com/.../nirs4all-webapp-1.2.0-linux.tar.gz",
-    "asset_name": "nirs4all-webapp-1.2.0-linux.tar.gz",
-    "checksum_sha256": null
+  "build": {
+    "flavor": "cpu",
+    "gpu_enabled": false
   },
-  "nirs4all": {
-    "current_version": "0.6.2",
-    "latest_version": "0.7.0",
-    "update_available": true,
-    "pypi_url": "https://pypi.org/project/nirs4all/0.7.0/",
-    "release_notes": "### Changelog...",
-    "requires_restart": false
-  },
-  "venv": {
-    "path": "/home/user/.local/share/nirs4all-webapp/managed_venv",
-    "exists": true,
-    "is_valid": true,
-    "python_version": "3.11.5",
-    "pip_version": "24.0",
-    "created_at": "2024-01-10T14:00:00Z",
-    "last_updated": "2024-01-15T10:00:00Z",
-    "size_bytes": 2500000000
-  },
-  "last_check": "2024-01-20T08:00:00Z",
-  "check_interval_hours": 24
-}
-```
-
-#### GET /api/updates/settings
-
-**Response**:
-```json
-{
-  "auto_check": true,
-  "check_interval_hours": 24,
-  "prerelease_channel": false,
-  "github_repo": "GBeurier/nirs4all-webapp",
-  "pypi_package": "nirs4all",
-  "dismissed_versions": []
-}
-```
-
-#### PUT /api/updates/settings
-
-**Request**:
-```json
-{
-  "auto_check": true,
-  "check_interval_hours": 12,
-  "prerelease_channel": false
-}
-```
-
-#### POST /api/updates/venv/create
-
-**Request**:
-```json
-{
-  "force": false,
-  "install_nirs4all": true,
-  "extras": ["tensorflow", "torch"]
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Virtual environment created successfully",
-  "already_existed": false,
-  "nirs4all_installed": true,
-  "install_message": "Successfully installed nirs4all[tensorflow,torch]"
-}
-```
-
-#### POST /api/updates/nirs4all/install
-
-**Request**:
-```json
-{
-  "version": "0.7.0",
-  "extras": ["tensorflow"]
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Successfully installed nirs4all==0.7.0",
-  "version": "0.7.0",
-  "output": ["Collecting nirs4all==0.7.0", "Installing...", "Successfully installed"]
-}
-```
-
-#### GET /api/updates/venv/status
-
-**Response**:
-```json
-{
-  "venv": {
-    "path": "/home/user/.local/share/nirs4all-webapp/managed_venv",
-    "exists": true,
-    "is_valid": true,
-    "python_version": "3.11.5",
-    "pip_version": "24.0",
-    "created_at": "2024-01-10T14:00:00Z",
-    "last_updated": "2024-01-15T10:00:00Z",
-    "size_bytes": 2500000000
-  },
-  "packages": [
-    {"name": "nirs4all", "version": "0.6.2", "location": null},
-    {"name": "numpy", "version": "1.24.0", "location": null},
-    {"name": "scikit-learn", "version": "1.3.0", "location": null}
-  ],
-  "nirs4all_version": "0.6.2"
-}
-```
-
-#### GET /api/updates/version
-
-**Response**:
-```json
-{
-  "webapp_version": "1.0.0",
-  "nirs4all_version": "0.6.2",
-  "python_version": "3.11.5 (main, Oct 24 2023, 14:00:00)",
-  "platform": "Linux",
-  "machine": "x86_64"
-}
-```
-
----
-
-## Update Flows
-
-### Flow 1: Startup Update Check
-
-```
-App Startup
-    │
-    ▼
-┌─────────────────────────┐
-│ Load update settings    │
-│ from config.yaml        │
-└───────────┬─────────────┘
-            │
-            ▼
-    ┌───────────────┐
-    │ auto_check    │──── false ────▶ Skip
-    │ enabled?      │
-    └───────┬───────┘
-            │ true
-            ▼
-┌─────────────────────────┐
-│ Background task:        │
-│ check_updates_background│
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Query GitHub API        │
-│ Query PyPI API          │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Log available updates   │
-│ (if any)                │
-└─────────────────────────┘
-```
-
-### Flow 2: Manual Update Check
-
-```
-User clicks "Check Now"
-    │
-    ▼
-┌─────────────────────────┐
-│ Frontend: POST          │
-│ /api/updates/check      │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Backend: Force refresh  │
-│ (bypass cache)          │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Query GitHub/PyPI APIs  │
-│ in parallel             │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Update cache            │
-│ Return UpdateStatus     │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Frontend: Update UI     │
-│ Show available updates  │
-└─────────────────────────┘
-```
-
-### Flow 3: nirs4all Library Update
-
-```
-User clicks "Update nirs4all"
-    │
-    ▼
-┌─────────────────────────┐
-│ Show confirmation       │
-│ dialog with version     │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Frontend: POST          │
-│ /api/updates/nirs4all/  │
-│ install                 │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Ensure venv exists      │
-│ (create if needed)      │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Run pip install         │
-│ --upgrade nirs4all      │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Update venv metadata    │
-│ Invalidate query cache  │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Show success message    │
-│ (No restart required)   │
-└─────────────────────────┘
-```
-
-### Flow 4: Webapp Self-Update (Future)
-
-```
-User clicks "Update Webapp"
-    │
-    ▼
-┌─────────────────────────┐
-│ Download release asset  │
-│ to update_cache/        │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Verify SHA256 checksum  │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Extract to staging dir  │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Create updater script   │
-│ (.bat or .sh)           │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│ Launch updater script   │
-│ Exit current app        │
-└───────────┬─────────────┘
-            │
-            ▼
-    [External Process]
-┌─────────────────────────┐
-│ Wait for app exit       │
-│ Backup current version  │
-│ Copy new files          │
-│ Launch new version      │
-│ Self-delete script      │
-└─────────────────────────┘
-```
-
----
-
-## Configuration
-
-### Settings File
-
-**Location**: `~/.local/share/nirs4all-webapp/update_settings.yaml`
-
-```yaml
-auto_check: true
-check_interval_hours: 24
-prerelease_channel: false
-github_repo: "GBeurier/nirs4all-webapp"
-pypi_package: "nirs4all"
-dismissed_versions: []
-```
-
-### Version File
-
-**Location**: `{app_dir}/version.json`
-
-```json
-{
-  "version": "1.0.0",
-  "build_date": "2025-01-07T00:00:00Z",
-  "commit": "abc1234"
-}
-```
-
-### Cache File
-
-**Location**: `~/.local/share/nirs4all-webapp/update_cache.json`
-
-```json
-{
-  "github_release": {
-    "cached_at": "2024-01-20T08:00:00Z",
-    "latest_version": "1.2.0",
-    "release_url": "https://...",
-    "release_notes": "...",
-    "published_at": "2024-01-15T10:30:00Z",
-    "download_url": "https://...",
-    "asset_name": "nirs4all-webapp-1.2.0-linux.tar.gz",
-    "download_size_bytes": 85000000
-  },
-  "pypi_release": {
-    "cached_at": "2024-01-20T08:00:00Z",
-    "latest_version": "0.7.0",
-    "pypi_url": "https://pypi.org/project/nirs4all/",
-    "release_notes": "..."
+  "runtime_mode": "bundled",
+  "is_frozen": false,
+  "summary": {
+    "runtime_mode": "bundled"
   }
 }
 ```
 
-### Venv Metadata
-
-**Location**: `{venv_path}/venv_metadata.json`
+### `GET /api/updates/webapp/download-info`
 
 ```json
 {
-  "created_at": "2024-01-10T14:00:00Z",
-  "last_updated": "2024-01-15T10:00:00Z",
-  "python_version": "3.11.5"
+  "update_available": true,
+  "current_version": "0.5.0",
+  "latest_version": "0.5.1",
+  "download_url": "https://github.com/.../nirs4all%20Studio-0.5.1-all-in-one-win-x64.zip",
+  "asset_name": "nirs4all Studio-0.5.1-all-in-one-win-x64.zip",
+  "download_size_bytes": 123456789,
+  "release_notes": "...",
+  "release_url": "https://github.com/.../releases/tag/0.5.1"
 }
 ```
 
----
+### `POST /api/updates/webapp/download-start`
 
-## Frontend Integration
-
-### React Hooks
-
-```typescript
-// src/hooks/useUpdates.ts
-
-// Query update status (cached)
-const { data, isLoading, error } = useUpdateStatus();
-
-// Force check for updates
-const { mutate: checkUpdates, isPending } = useCheckForUpdates();
-
-// Get/update settings
-const { data: settings } = useUpdateSettings();
-const { mutate: updateSettings } = useUpdateUpdateSettings();
-
-// Venv management
-const { data: venvStatus } = useVenvStatus();
-const { mutate: createVenv } = useCreateVenv();
-
-// Install/upgrade nirs4all
-const { mutate: installNirs4all } = useInstallNirs4all();
-
-// Quick check for any updates
-const { hasAnyUpdate, updateCount } = useHasUpdates();
+```json
+{
+  "job_id": "job_123",
+  "status": "started",
+  "version": "0.5.1",
+  "asset_name": "nirs4all Studio-0.5.1-all-in-one-win-x64.zip",
+  "message": "Downloading nirs4all Studio-0.5.1-all-in-one-win-x64.zip..."
+}
 ```
 
-### Components
+### `GET /api/updates/webapp/staged-update`
 
-**UpdatesSection** (`src/components/settings/UpdatesSection.tsx`):
-- Displays current versions
-- Shows available updates with "Update" buttons
-- Collapsible managed environment section
-- Collapsible settings section (auto-check, prerelease)
-- Update dialogs with release notes
-
-### Query Keys
-
-```typescript
-const updateKeys = {
-  all: ["updates"],
-  status: () => [...updateKeys.all, "status"],
-  settings: () => [...updateKeys.all, "settings"],
-  venv: () => [...updateKeys.all, "venv"],
-  version: () => [...updateKeys.all, "version"],
-};
+```json
+{
+  "has_staged_update": true,
+  "staging_path": "/path/to/update_staging",
+  "version": "0.5.1",
+  "asset_name": "nirs4all Studio-0.5.1-all-in-one-linux-x64.zip",
+  "update_mode": "directory"
+}
 ```
 
----
+## Update Flows
 
-## Security Considerations
+### 1. Background or manual check
 
-### Network Security
-- All API calls use HTTPS
-- GitHub API respects rate limits (60 req/hour unauthenticated)
-- PyPI API is read-only
+1. frontend calls `/status` or `/check`
+2. backend queries GitHub Releases and PyPI
+3. backend caches the result
+4. frontend refreshes update banners and version panels
 
-### File Security
-- SHA256 checksum verification for downloads (planned)
-- Backup created before webapp update
-- Managed venv isolated from system Python
+### 2. Download and stage application update
 
-### User Security
-- No auto-install without explicit user action
-- Update settings are user-configurable
-- Dismissed versions tracked to avoid repeated prompts
+1. frontend calls `/webapp/download-start`
+2. backend creates an update job
+3. `api/update_downloader.py` downloads and extracts the selected asset
+4. staging metadata records:
+   - target version
+   - asset name
+   - expected update mode
+5. frontend polls `/webapp/download-status/{job_id}`
 
-### Future Enhancements
-- GPG signature verification for releases
-- Code signing for Windows/macOS
-- Delta updates for smaller downloads
+### 3. Apply staged update
 
----
+1. frontend calls `/webapp/apply`
+2. backend validates staged content
+3. `updater/__init__.py` creates the platform-specific apply script
+4. current app exits
+5. updater replaces files, restores from backup on failure, then relaunches
 
-## Directory Structure
+### 4. Managed runtime maintenance
 
+Only in writable modes:
+
+1. create or inspect the managed venv
+2. install or update `nirs4all`
+3. install or remove optional packages
+4. restart backend if required
+
+In `bundled` mode these flows are intentionally blocked.
+
+## Read-Only Guardrails For All-In-One Bundles
+
+When `NIRS4ALL_RUNTIME_MODE=bundled`, the backend refuses runtime mutations instead of trying to repair the embedded venv in place.
+
+Blocked actions include:
+
+- managed venv creation
+- `nirs4all` install/upgrade
+- optional dependency install/uninstall/update/revert
+- config alignment mutations in `api/recommended_config.py`
+- snapshot restore flows that would rewrite the managed environment
+
+Expected error:
+
+```json
+{
+  "detail": "Package management is not available in the all-in-one bundle."
+}
 ```
-~/.local/share/nirs4all-webapp/      # Linux (platformdirs)
-├── update_settings.yaml             # Update preferences
-├── update_cache.json                # Cached API responses
-├── update_cache/                    # Downloaded updates
-│   └── webapp/
-│       ├── nirs4all-webapp-v1.2.0.zip
-│       └── nirs4all-webapp-v1.2.0.sha256
-├── update_staging/                  # Extracted updates
-├── update_backup/                   # Pre-update backup
-└── managed_venv/                    # Virtual environment
-    ├── venv_metadata.json
-    ├── bin/ (or Scripts/ on Windows)
-    │   ├── python
-    │   └── pip
-    └── lib/python3.11/site-packages/
-        ├── nirs4all/
-        ├── numpy/
-        └── ...
 
-{app_dir}/                           # Application directory
-├── version.json                     # Current version info
-└── ...
+This is intentional and not a bug.
+
+## Storage Layout
+
+### Writable state
+
+Update settings, cache, staging, backup, and logs live under the app data directory:
+
+- installed builds: standard platformdirs locations
+- portable Windows builds: `.nirs4all/` next to the portable executable
+
+Typical directories:
+
+```text
+<userData>/
+├── update_settings.yaml
+├── update_cache.json
+├── update_cache/
+├── update_staging/
+├── update_backup/
+└── managed_venv/
 ```
 
----
+### Embedded runtime
+
+The all-in-one runtime lives inside the packaged app:
+
+```text
+resources/backend/python-runtime/
+```
+
+That path is part of the distributed artifact and must remain read-only at runtime.
+
+## Security And Reliability Notes
+
+- update checks use HTTPS GitHub and PyPI endpoints
+- application updates are explicit, not silent
+- `.sha256` sidecars are used when available
+- staged updates are applied from a backup-aware external script
+- ZIP extraction restores recorded POSIX permissions on Linux/macOS
+- all-in-one runtime mutation is blocked by design
 
 ## Troubleshooting
 
-### Common Issues
+### "No download URL available for this platform"
 
-**1. Update check fails**
-- Check internet connectivity
-- Verify GitHub/PyPI URLs are accessible
-- Check rate limit status
+The latest GitHub Release does not contain a compatible update asset for the current platform/runtime. Check asset naming first.
 
-**2. Managed venv creation fails**
-- Ensure Python is available (bundled or system)
-- Check disk space
-- Verify write permissions to data directory
+### Portable Windows app downloads a ZIP
 
-**3. nirs4all install fails**
-- Check pip output for dependency conflicts
-- Try with `--no-cache-dir`
-- Verify PyPI is accessible
+That is a release naming or asset selection regression. Portable mode should prefer `-portable.exe`, not the all-in-one ZIP.
 
-**4. Webapp update fails**
-- Check disk space for download
-- Verify write permissions to app directory
-- Check Windows antivirus isn't blocking
+### Bundled app says package management is unavailable
 
-### Logs
+Expected behavior. The embedded runtime in the all-in-one bundle is read-only.
 
-**Backend startup log**:
-```
-nirs4all webapp starting...
-Webapp version: 1.0.0
+### Linux or macOS staged ZIP loses executable bits
+
+Run the dedicated smoke:
+
+```bash
+python3 scripts/smoke-update-zip-permissions.py --archive path/to/archive.zip --platform linux
 ```
 
-**Update check log** (when updates available):
-```
-Webapp update available: 1.2.0
-nirs4all update available: 0.7.0
-```
+### Update is downloaded but not applied
 
-**External updater log**:
-- **Windows**: `%LOCALAPPDATA%/nirs4all-webapp/logs/update.log`
-- **Linux/macOS**: `~/.local/state/nirs4all-webapp/logs/update.log`
+Inspect:
 
----
-
-## Future Roadmap
-
-1. **Automatic Download**: Background download of webapp updates
-2. **Progress Streaming**: WebSocket-based progress for long operations
-3. **Delta Updates**: Incremental updates for smaller downloads
-4. **Code Signing**: Windows Authenticode, macOS notarization
-5. **Rollback UI**: User-triggered rollback to previous version
-6. **ML Backend Selection**: First-launch wizard for TensorFlow/PyTorch/JAX
-
----
+- `/api/updates/webapp/staged-update`
+- backend logs
+- updater log under the app log directory
 
 ## See Also
 
-- [PACKAGING.md](PACKAGING.md) - How the webapp is built, packaged, and released
-- [GitHub Actions Workflows](../.github/workflows/) - CI/CD pipeline configuration
+- [PACKAGING.md](PACKAGING.md)
+- [API_UPDATES.md](API_UPDATES.md)

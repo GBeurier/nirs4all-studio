@@ -19,6 +19,8 @@ const fakeBrowserWindow = {
   getAllWindows: vi.fn(() => []),
 };
 
+const originalResourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+
 vi.mock("node:child_process", () => ({
   spawn: childProcessMocks.spawn,
 }));
@@ -79,14 +81,17 @@ function makeTrackedProcess() {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  delete process.env.NIRS4ALL_BACKEND_PORT;
   vi.resetModules();
 
   childProcessMocks.spawn.mockReset();
   fakeApp.getPath.mockReset();
   fakeApp.getVersion.mockReset();
   fakeApp.getVersion.mockReturnValue("0.3.3");
+  fakeApp.isPackaged = false;
   fakeBrowserWindow.getAllWindows.mockReset();
   fakeBrowserWindow.getAllWindows.mockReturnValue([]);
+  (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = originalResourcesPath;
 
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
@@ -202,5 +207,62 @@ describe("BackendManager", () => {
     ).toBe(0);
 
     (manager as unknown as { stopHealthMonitor: () => void }).stopHealthMonitor();
+  });
+
+  it("prefers the bundled runtime and tags the backend process accordingly", async () => {
+    makeUserDataDir();
+
+    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-backend-resources-"));
+    tempDirs.push(resourcesDir);
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
+
+    const backendDir = path.join(resourcesDir, "backend");
+    const pythonPath = process.platform === "win32"
+      ? path.join(backendDir, "python-runtime", "venv", "Scripts", "python.exe")
+      : path.join(backendDir, "python-runtime", "venv", "bin", "python");
+    const pyinstallerBackend = process.platform === "win32"
+      ? path.join(backendDir, "nirs4all-backend.exe")
+      : path.join(backendDir, "nirs4all-backend");
+
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.writeFileSync(pyinstallerBackend, "");
+
+    const { BackendManager } = await import("./backend-manager");
+    const manager = new BackendManager();
+    manager.setEnvManager({
+      isBundled: () => true,
+      isReady: () => true,
+      getPythonPath: () => pythonPath,
+    } as unknown as Parameters<typeof manager.setEnvManager>[0]);
+
+    const launch = (manager as unknown as { getBackendPath: () => { command: string; cwd?: string; env?: Record<string, string> } }).getBackendPath();
+
+    expect(launch.command).toBe(pythonPath);
+    expect(launch.cwd).toBe(backendDir);
+    expect(launch.env?.NIRS4ALL_RUNTIME_MODE).toBe("bundled");
+  });
+
+  it("reuses an explicit backend port when smoke tests force one", async () => {
+    makeUserDataDir();
+    process.env.NIRS4ALL_BACKEND_PORT = "43123";
+
+    const { BackendManager } = await import("./backend-manager");
+    const manager = new BackendManager();
+
+    await expect(
+      (manager as unknown as { resolveStartupPort: () => Promise<number> }).resolveStartupPort(),
+    ).resolves.toBe(43123);
+  });
+
+  it("rejects an invalid forced backend port", async () => {
+    makeUserDataDir();
+    process.env.NIRS4ALL_BACKEND_PORT = "70000";
+
+    const { BackendManager } = await import("./backend-manager");
+    const manager = new BackendManager();
+
+    await expect(
+      (manager as unknown as { resolveStartupPort: () => Promise<number> }).resolveStartupPort(),
+    ).rejects.toThrow("Invalid NIRS4ALL_BACKEND_PORT value: 70000");
   });
 });

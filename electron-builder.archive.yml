@@ -1,0 +1,57 @@
+appId: com.nirs4all.webapp
+productName: nirs4all Studio
+copyright: Copyright 2025-2026
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - "!**/*.map"
+
+# Standalone archives embed the fully baked backend-dist/, including python-runtime/.
+extraResources:
+  - from: backend-dist/
+    to: backend/
+    filter:
+      - "**/*"
+
+asar: true
+
+win:
+  target:
+    - target: zip
+      arch:
+        - x64
+  icon: public/nirs4all.ico
+  artifactName: "${productName}-${version}-all-in-one-win-${arch}.${ext}"
+
+mac:
+  target:
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: public/nirs4all_logo.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  artifactName: "${productName}-${version}-all-in-one-mac-${arch}.${ext}"
+
+linux:
+  target:
+    - target: zip
+      arch:
+        - x64
+  icon: public/nirs4all_logo.png
+  category: Science
+  maintainer: nirs4all
+  artifactName: "${productName}-${version}-all-in-one-linux-${arch}.${ext}"
+
+publish:
+  provider: github
+  owner: GBeurier
+  repo: nirs4all-webapp

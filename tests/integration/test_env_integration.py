@@ -63,6 +63,7 @@ class TestCoherenceIntegration:
         data = response.json()
 
         assert data["is_frozen"] is False
+        assert data["runtime_mode"] == "development"
 
 
 # ============= Preflight + Coherence Integration =============

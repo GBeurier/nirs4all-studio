@@ -1,6 +1,6 @@
 /**
  * Cross-platform build script for complete nirs4all release.
- * Builds frontend + backend + Electron packaging.
+ * Builds frontend + backend + Electron installer packaging.
  *
  * Usage:
  *   node scripts/build-release.cjs [options]
@@ -200,8 +200,8 @@ async function main() {
       console.log("");
     }
 
-    // Step 3: Package with electron-builder
-    console.log("=== Step 3: Packaging with electron-builder ===");
+    // Step 3: Package installer targets with electron-builder
+    console.log("=== Step 3: Packaging installer targets with electron-builder ===");
 
     const builderArgs = [];
     switch (platform) {
@@ -222,7 +222,7 @@ async function main() {
         break;
     }
 
-    await runCommand("npx", ["electron-builder", ...builderArgs]);
+    await runCommand("npx", ["electron-builder", "--config", "electron-builder.installer.yml", ...builderArgs]);
 
     console.log("");
     console.log("========================================");

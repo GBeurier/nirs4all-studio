@@ -232,6 +232,16 @@ def _get_build_info() -> dict[str, Any]:
     return build_info
 
 
+def _get_runtime_mode() -> str:
+    """Return the runtime mode reported by Electron/backend startup."""
+    runtime_mode = os.environ.get("NIRS4ALL_RUNTIME_MODE")
+    if runtime_mode:
+        return runtime_mode
+    if hasattr(sys, "_MEIPASS"):
+        return "pyinstaller"
+    return "development"
+
+
 def _get_gpu_info() -> dict[str, Any]:
     """Get detailed GPU information."""
     detected = detect_gpu_hardware()
@@ -274,6 +284,7 @@ async def system_build():
     """Get build information including flavor (CPU/GPU) and GPU availability."""
     build_info = _get_build_info()
     gpu_info = _get_gpu_info()
+    runtime_mode = _get_runtime_mode()
 
     gpu_available = (
         gpu_info["cuda_available"] or
@@ -284,6 +295,7 @@ async def system_build():
     return {
         "build": build_info,
         "gpu": gpu_info,
+        "runtime_mode": runtime_mode,
         "is_frozen": hasattr(sys, "_MEIPASS"),
         "summary": {
             "flavor": build_info.get("flavor", "unknown"),
@@ -291,6 +303,7 @@ async def system_build():
             "gpu_available": gpu_available,
             "gpu_type": "metal" if gpu_info["metal_available"] else ("cuda" if gpu_info["cuda_available"] else None),
             "gpu_device": gpu_info.get("device_name"),
+            "runtime_mode": runtime_mode,
         },
     }
 
