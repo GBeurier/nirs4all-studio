@@ -1,5 +1,5 @@
 # Backlog
-
+- CLEAN E2E tests, lot of useless
 - limiter les datasets au tasktype du pipeline dans le wizard
 - REVOIR TOUT l'inspector
 - ajouter Y et Y bins dans les groups potentiels

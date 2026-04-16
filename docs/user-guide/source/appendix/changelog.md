@@ -8,10 +8,107 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ## 0.6.0 — 2026-04-16
 
+### Added
+
+- **All-in-one standalone bundle**: Added bundled standalone release packaging with dedicated build scripts, embedded runtime support, and smoke tests for archive extraction and executable permissions.
+- **Unified prediction detail viewer**: Added richer prediction detail panels with `ChartTile`, `HeroMetrics`, configurable prediction charts, export support, and improved cross-page viewer integration.
+- **Operator availability awareness**: Added node-registry loading and operator-availability invalidation so the Pipeline Editor and Settings react when installed capabilities change.
+
 ### Changed
 
+- **Pipeline presets**: Refreshed preset loading, variant handling, and preset catalog complexity tiers for experiments and template selection.
+- **Runtime modes**: Refined runtime mode detection and surfaced clearer writable vs. read-only UI feedback across environment, dependency, and update flows.
+- **Predictions and results UX**: Improved dataset filtering, responsive result cards, and shared detail-sheet behavior across Results, Aggregated Results, and Predictions.
 - **nirs4all dependency**: Raised the minimum supported nirs4all version to 0.9.0 across all managed compute profiles and runtime setup flows.
 - **Release metadata**: Bumped nirs4all Studio to version 0.6.0 for the next published release.
+
+---
+
+## 0.5.1 — 2026-04-15
+
+### Added
+
+- **Confusion matrix export**: Classification prediction views can now export confusion matrix data directly from the prediction viewer.
+
+### Improved
+
+- **Prediction detail views**: Refined tab handling, model detail displays, and dataset result cards for prediction-focused workflows.
+- **Validation and error messaging**: Improved API client and dataset validation feedback, with clearer localized workspace loading messages.
+- **Runs redesign coverage**: Expanded visibility checks in end-to-end coverage for the redesigned runs experience.
+
+---
+
+## 0.5.0 — 2026-04-15
+
+### Added
+
+- **Runtime grouping and repetitions**: Added repetition-aware Playground and API support, grouping metadata in spectral/run responses, and new repetition-focused charts and validation.
+- **Refit-aware metrics and scores**: Added refit chain lineage handling plus richer metric selection across Runs, Results, Aggregated Results, and Predictions.
+- **Function model support**: Extended canonical pipeline import/export and model handling to cover function models and richer pipeline metadata.
+- **Webapp node metadata**: Added `_webapp_meta` and `_webapp_split` fields so node definitions can express webapp-only curation and runtime grouping behavior.
+
+### Changed
+
+- **Managed dependencies**: `torch` is now handled through compute profiles rather than exposed as a normal optional dependency.
+- **Aggregated views**: Aggregated results and prediction summaries now preserve repetition-aware and refit-aware metadata more consistently.
+
+### Improved
+
+- **Coverage**: Added backend and frontend coverage for runtime grouping, recommended config profile management, score adapters, node registry metadata, and Playground pipeline flows.
+
+---
+
+## 0.4.2 — 2026-04-14
+
+### Added
+
+- **Prediction deletion actions**: Model action menus can now delete predictions at chain or group scope with confirmation dialogs and cache invalidation.
+- **Estimation fallback coverage**: Added tests for pipeline variant estimation fallback and enriched run/store adapter responses.
+
+### Improved
+
+- **Pipeline variant estimation**: Improved error handling and fallback behavior when estimating run variants.
+- **Inspector and importance visuals**: Refined spectral importance charts, variable-importance controls, histograms, and related score card interactions.
+
+---
+
+## 0.4.1 — 2026-04-13
+
+### Added
+
+- **Canonical pipeline round-tripping**: Added broader canonical pipeline conversion and round-trip handling for presets, imports, and editor execution previews.
+- **Preset authoring and editor flows**: Expanded preset loading/generation, pipeline conversion utilities, branch/generator renderers, and execution preview support in the Pipeline Editor.
+- **Run progress and readiness feedback**: Added stronger run progress presentation and ML readiness state handling across the app.
+
+### Changed
+
+- **nirs4all dependency**: Updated managed configuration and tests to nirs4all 0.8.9.
+
+### Improved
+
+- **Runs and prediction detail panels**: Refined Run Detail and Model Detail flows, with additional integration coverage for dataset group memberships and presets.
+
+---
+
+## 0.4.0 — 2026-04-08
+
+### Added
+
+- **Shared Query Hooks**: New `useDatasetsQuery` and `useLinkedWorkspacesQuery` hooks centralize dataset and workspace fetching with shared TanStack Query cache, eliminating duplicate API calls across `NewExperiment`, `Predictions`, `Results`, `Runs`, and `Settings` pages.
+- **Backend Startup Banner**: New `BackendStartupBanner` component surfaces backend readiness state during app launch.
+- **Selected-Only Visualizations**: `SpectraChartV2` and histogram components now support a selected-only view with tooltip toggles. `HistogramClassification` renders stacked bar segments for selection, partition, and metadata modes.
+- **Test Coverage**: Added test suites for dataset queries, playground partition selector, color configuration, target histograms, and store integration. New `conftest.py` fixtures isolate user settings during tests.
+
+### Improved
+
+- **Dataset & Workspace Types**: Extended dataset types with groups and score entry structures for richer API responses.
+- **Playground**: Enhanced color legend, partition selector, reference mode controls, and histogram data filtering based on sample selection.
+- **Settings Page**: Workspace list now uses the shared query hook with a change callback for live updates.
+- **Auto Display Mode**: `SpectraChartV2` automatically switches display mode when no samples are selected.
+
+### Fixed
+
+- Dataset top chains deduplication and metadata loading behavior.
 
 ---
 

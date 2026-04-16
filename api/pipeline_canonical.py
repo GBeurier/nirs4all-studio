@@ -1445,15 +1445,38 @@ def _apply_param_sweeps(payload: Any, step: dict[str, Any]) -> Any:
         payload = {"class": payload}
     result = clone_value(payload)
 
-    # Find the params dict where sweep specs should be injected.
-    # Generator keywords (_or_, _range_, etc.) must be placed inside the
-    # params dict so they are recognised as pure generator nodes during
-    # pipeline expansion.  Placing them at the step level (next to "class"
-    # or "model") made them part of a mixed dict that the generator system
-    # silently ignored — producing 1 variant instead of N.
+    # Model steps with a single range/log_range sweep use the step-level
+    # ``_range_`` + ``param`` format (canonical nirs4all syntax).  For
+    # component steps or multi-param sweeps, generator keywords go inside
+    # the ``params`` dict so the generator system recognises them.
+    sweeps = _ensure_mapping_payload(param_sweeps)
+    is_model_step = "model" in result
+    single_sweep_items = list(sweeps.items())
+
+    if is_model_step and len(single_sweep_items) == 1:
+        param_name, sweep = single_sweep_items[0]
+        if isinstance(sweep, dict):
+            sweep_type = sweep.get("type")
+            if sweep_type == "range":
+                result["_range_"] = [
+                    sweep.get("from", 0),
+                    sweep.get("to", 10),
+                    sweep.get("step", 1),
+                ]
+                result["param"] = param_name
+                return result
+            if sweep_type == "log_range":
+                result["_log_range_"] = [
+                    sweep.get("from", 0.001),
+                    sweep.get("to", 100),
+                    sweep.get("count", 10),
+                ]
+                result["param"] = param_name
+                return result
+
     params_dict = _find_sweep_params_dict(result)
 
-    for param_name, sweep in _ensure_mapping_payload(param_sweeps).items():
+    for param_name, sweep in sweeps.items():
         if not isinstance(sweep, dict):
             continue
         sweep_type = sweep.get("type")
