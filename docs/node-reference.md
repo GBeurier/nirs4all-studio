@@ -1,20 +1,20 @@
 # Node Reference
 
-> Auto-generated from curated node definitions. 348 nodes total.
+> Auto-generated from curated node definitions. 338 nodes total.
 
 ## Summary
 
 | Type | Count | With Finetuning | With Sweep Presets |
 |------|-------|-----------------|---------|
-| Preprocessing | 124 | 59 | 18 |
-| Models | 130 | 87 | 24 |
+| Preprocessing | 103 | 49 | 16 |
+| Models | 137 | 91 | 26 |
 | Splitting | 24 | 0 | 0 |
 | Augmentation | 39 | 24 | 0 |
 | Y-Processing | 12 | 2 | 0 |
 | Filters | 5 | 0 | 0 |
-| Flow Control | 8 | 0 | 0 |
-| Utilities | 6 | 0 | 0 |
-| **Total** | **348** | **172** | **42** |
+| Flow Control | 16 | 0 | 0 |
+| Utilities | 2 | 0 | 0 |
+| **Total** | **338** | **166** | **42** |
 
 ---
 
@@ -24,21 +24,15 @@
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
-| **Detrend** | nirs4all | core | `order`=2 | `order` [0-5] | - |
-| **BaselineCorrection** | nirs4all | standard | `order`=2 | `order` [0-5] | - |
+| **Detrend** | nirs4all | core | `bp`=0 | `bp` [0-5] | - |
+| **BaselineCorrection** | nirs4all | standard | - | - | - |
 | **ASLSBaseline** | nirs4all | standard | `lam`=1000000, `p`=0.01 | `lam` [1000-100000000], `p` [0.001-0.1] | `lam`, `p` |
-| **AirPLS** | nirs4all | standard | `lam`=100000 | `lam` [1000-10000000] | `lam` |
-| **ArPLS** | nirs4all | standard | `lam`=100000 | `lam` [1000-10000000] | `lam` |
+| **AirPLS** | nirs4all | standard | `lam`=1000000 | `lam` [1000-10000000] | `lam` |
+| **ArPLS** | nirs4all | standard | `lam`=1000000 | `lam` [1000-10000000] | `lam` |
 | **SNIP** | nirs4all | standard | `max_half_window`=40 | `max_half_window` [10-100] | `max_half_window` |
-| **RollingBall** | nirs4all | standard | `half_window`=25 | `half_window` [10-100] | `half_window` |
-| **ModPoly** | nirs4all | standard | `poly_order`=2 | `poly_order` [1-6] | `poly_order` |
-| **IModPoly** | nirs4all | standard | `poly_order`=2 | `poly_order` [1-6] | `poly_order` |
-
-### baseline
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **Baseline** | nirs4all | standard | - | - | - |
+| **RollingBall** | nirs4all | standard | `half_window`=50 | `half_window` [10-100] | `half_window` |
+| **ModPoly** | nirs4all | standard | `poly_order`=5 | `poly_order` [1-6] | `poly_order` |
+| **IModPoly** | nirs4all | standard | `poly_order`=5 | `poly_order` [1-6] | `poly_order` |
 | **BEADS** | nirs4all | standard | - | - | - |
 | **IASLS** | nirs4all | standard | - | - | - |
 
@@ -51,11 +45,6 @@
 | **ToAbsorbance** | nirs4all | standard | `source_type` (reflectance/transmittance) | - | - |
 | **FromAbsorbance** | nirs4all | standard | `target_type` (reflectance/transmittance) | - | - |
 | **KubelkaMunk** | nirs4all | standard | `source_type` (reflectance/transmittance) | - | - |
-
-### signal-conversion
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
 | **FractionToPercent** | nirs4all | standard | - | - | - |
 | **PercentToFraction** | nirs4all | standard | - | - | - |
 | **SignalTypeConverter** | nirs4all | standard | - | - | - |
@@ -67,11 +56,6 @@
 | **SavitzkyGolay** | nirs4all | core | `window_length`=11, `polyorder`=2, `deriv` (0/1/2) | `window_length` [5-51], `polyorder` [1-5] | `window_length`, `polyorder` |
 | **FirstDerivative** | nirs4all | core | - | - | - |
 | **SecondDerivative** | nirs4all | core | - | - | - |
-
-### derivatives
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
 | **Derivate** | nirs4all | standard | - | - | - |
 
 ### Dimensionality Reduction
@@ -80,25 +64,43 @@
 |------|--------|------|---------------|------------|--------|
 | **PCA** | sklearn | standard | `n_components`=10 | `n_components` [1-50] | `n_components` |
 | **TruncatedSVD** | sklearn | standard | `n_components`=10 | `n_components` [1-50] | `n_components` |
+| **DictionaryLearning** | sklearn | advanced | `n_components` | `n_components` [1-30] | - |
+| **FactorAnalysis** | sklearn | standard | `n_components` | `n_components` [1-30] | - |
+| **FastICA** | sklearn | standard | `n_components`, `whiten`=unit-variance | `n_components` [1-30] | - |
+| **IncrementalPCA** | sklearn | standard | `n_components`, `whiten`=false | `n_components` [1-30] | - |
+| **Isomap** | sklearn | standard | `n_neighbors`=5, `n_components`=2 | `n_neighbors` [1-30], `n_components` [1-30] | - |
+| **KernelPCA** | sklearn | standard | `n_components`, `degree`=3 | `n_components` [1-30], `degree` [2-5] | - |
+| **LocallyLinearEmbedding** | sklearn | advanced | `n_neighbors`=5, `n_components`=2, `method` (barnes_hut/exact) | `n_neighbors` [1-30], `n_components` [1-30] | - |
+| **MiniBatchDictionaryLearning** | sklearn | advanced | `n_components` | `n_components` [1-30] | - |
+| **MiniBatchSparsePCA** | sklearn | advanced | `n_components`, `method` (barnes_hut/exact) | `n_components` [1-30] | - |
+| **PLSSVD** | sklearn | advanced | - | - | - |
+| **SparsePCA** | sklearn | standard | `n_components`, `method` (barnes_hut/exact) | `n_components` [1-30] | - |
+| **TSNE** | sklearn | standard | `n_components`=2, `perplexity`=30, `method` (barnes_hut/exact) | `n_components` [1-30], `perplexity` [5-50] | - |
 
-### Feature Ops
+### Feature Engineering
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
 | **CropTransformer** | nirs4all | standard | `start`=0, `end`=-1 | - | - |
 | **Resampler** | nirs4all | standard | `n_points`=512 | - | - |
+| **FlattenPreprocessing** | nirs4all | advanced | - | - | - |
 
-### Normalization
+### Scaling
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
 | **Normalize** | sklearn | standard | `norm` (l1/l2/max) | - | - |
-
-### feature-engineering
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **FlattenPreprocessing** | nirs4all | advanced | - | - | - |
+| **StandardScaler** | sklearn | core | `with_mean`=true, `with_std`=true | - | - |
+| **MinMaxScaler** | sklearn | core | `feature_range_min`=0, `feature_range_max`=1 | - | - |
+| **RobustScaler** | sklearn | standard | `with_centering`=true, `with_scaling`=true | - | - |
+| **MaxAbsScaler** | sklearn | standard | - | - | - |
+| **AreaNormalization** | nirs4all | standard | `method` (sum/abs_sum/trapz) | - | - |
+| **SimpleScale** | nirs4all | standard | - | - | - |
+| **Binarizer** | sklearn | standard | `threshold`=0 | - | - |
+| **FunctionTransformer** | sklearn | standard | - | - | - |
+| **Normalizer** | sklearn | core | `norm` (l1/l2/max) | - | - |
+| **PolynomialFeatures** | sklearn | standard | `degree`=2 | `degree` [2-5] | - |
+| **SplineTransformer** | sklearn | standard | `n_knots`=5, `degree`=3 | `n_knots` [3-20], `degree` [2-5] | - |
 
 ### Feature Selection
 
@@ -106,104 +108,8 @@
 |------|--------|------|---------------|------------|--------|
 | **CARS** | nirs4all | advanced | `n_pls_components`=10, `n_sampling_runs`=50 | `n_pls_components` [5-30] | `n_pls_components` |
 | **MCUVE** | nirs4all | advanced | `n_components`=10, `n_iterations`=100 | `n_components` [5-30] | `n_components` |
-| **VIP** | nirs4all | standard | `n_components`=10, `threshold`=1 | `n_components` [5-30], `threshold` [0.5-2] | `threshold` |
-
-### feature-selection
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
 | **FlexiblePCA** | nirs4all | standard | `n_components`=0.95, `whiten`=false | `n_components` [1-30] | - |
 | **FlexibleSVD** | nirs4all | standard | `n_components`=0.95 | `n_components` [1-30] | - |
-
-### NIRS Core
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **SNV** | nirs4all | core | - | - | - |
-| **RobustSNV** | nirs4all | standard | - | - | - |
-| **LocalSNV** | nirs4all | standard | `window`=11 | `window` [5-51] | `window` |
-| **MSC** | nirs4all | core | - | - | - |
-| **EMSC** | nirs4all | standard | `degree`=2 | `degree` [0-4] | - |
-| **EPO** | nirs4all | standard | - | - | - |
-| **OSC** | nirs4all | standard | `n_components`=2 | `n_components` [1-10] | - |
-| **NorrisWilliams** | nirs4all | standard | `gap`=1, `segment`=1, `deriv`=1 | `gap` [1-20], `segment` [1-20] | - |
-
-### Scaling
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **StandardScaler** | sklearn | core | `with_mean`=true, `with_std`=true | - | - |
-| **MinMaxScaler** | sklearn | core | `feature_range_min`=0, `feature_range_max`=1 | - | - |
-| **RobustScaler** | sklearn | standard | `with_centering`=true, `with_scaling`=true | - | - |
-| **MaxAbsScaler** | sklearn | standard | - | - | - |
-
-### scaling
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **AreaNormalization** | nirs4all | standard | `method` (barnes_hut/exact) | - | - |
-| **SimpleScale** | nirs4all | standard | - | - | - |
-
-### scikit-cluster-neighbors
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **Birch** | sklearn | advanced | `threshold`=0.5, `n_clusters`=3 | `n_clusters` [2-20] | - |
-| **BisectingKMeans** | sklearn | advanced | `n_clusters`=8 | `n_clusters` [2-20] | - |
-| **FeatureAgglomeration** | sklearn | standard | `n_clusters`=2 | `n_clusters` [2-20] | - |
-| **KMeans** | sklearn | standard | `n_clusters`=8 | `n_clusters` [2-20] | - |
-| **KNeighborsTransformer** | sklearn | advanced | `n_neighbors`=5 | `n_neighbors` [1-30] | - |
-| **MiniBatchKMeans** | sklearn | advanced | `n_clusters`=8 | `n_clusters` [2-20] | - |
-| **NeighborhoodComponentsAnalysis** | sklearn | advanced | `n_components` | `n_components` [1-30] | - |
-| **RadiusNeighborsTransformer** | sklearn | advanced | - | - | - |
-
-### scikit-dimensionality
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **DictionaryLearning** | sklearn | advanced | `n_components` | `n_components` [1-30] | - |
-| **FactorAnalysis** | sklearn | standard | `n_components` | `n_components` [1-30] | - |
-| **FastICA** | sklearn | standard | `n_components`, `whiten`=unit-variance | `n_components` [1-30] | - |
-| **IncrementalPCA** | sklearn | standard | `n_components`, `whiten`=false | `n_components` [1-30] | - |
-| **Isomap** | sklearn | standard | `n_neighbors`=5, `n_components`=2 | `n_neighbors` [1-30], `n_components` [1-30] | - |
-| **KernelPCA** | sklearn | standard | `n_components`, `degree`=3 | `n_components` [1-30], `degree` [2-5] | - |
-| **LatentDirichletAllocation** | sklearn | advanced | `n_components`=10 | `n_components` [1-30] | - |
-| **LocallyLinearEmbedding** | sklearn | advanced | `n_neighbors`=5, `n_components`=2, `method` (barnes_hut/exact) | `n_neighbors` [1-30], `n_components` [1-30] | - |
-| **MiniBatchDictionaryLearning** | sklearn | advanced | `n_components` | `n_components` [1-30] | - |
-| **MiniBatchNMF** | sklearn | advanced | `n_components`=auto | `n_components` [1-30] | - |
-| **MiniBatchSparsePCA** | sklearn | advanced | `n_components`, `method` (barnes_hut/exact) | `n_components` [1-30] | - |
-| **NMF** | sklearn | standard | `n_components`=auto | `n_components` [1-30] | - |
-| **PLSSVD** | sklearn | advanced | `n_components`=2 | `n_components` [1-30] | - |
-| **SparseCoder** | sklearn | advanced | - | - | - |
-| **SparsePCA** | sklearn | standard | `n_components`, `method` (barnes_hut/exact) | `n_components` [1-30] | - |
-| **TSNE** | sklearn | standard | `n_components`=2, `perplexity`=30, `method` (barnes_hut/exact) | `n_components` [1-30], `perplexity` [5-50] | - |
-
-### scikit-encoding
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **KBinsDiscretizer** | sklearn | standard | `n_bins`=5, `encode` (onehot/onehot-dense/ordinal), `strategy` (mean/median/most_frequent/constant/uniform/quantile/kmeans) | `n_bins` [2-20] | - |
-| **LabelBinarizer** | sklearn | advanced | - | - | - |
-| **LabelEncoder** | sklearn | advanced | - | - | - |
-| **MultiLabelBinarizer** | sklearn | advanced | - | - | - |
-| **OneHotEncoder** | sklearn | advanced | - | - | - |
-| **OrdinalEncoder** | sklearn | advanced | - | - | - |
-| **TargetEncoder** | sklearn | advanced | - | - | - |
-
-### scikit-feature-extraction
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **DictVectorizer** | sklearn | advanced | - | - | - |
-| **FeatureHasher** | sklearn | advanced | - | - | - |
-| **HashingVectorizer** | sklearn | advanced | `norm` (l1/l2/max) | - | - |
-| **PatchExtractor** | sklearn | advanced | - | - | - |
-| **TfidfTransformer** | sklearn | advanced | `norm` (l1/l2/max) | - | - |
-
-### scikit-feature-selection
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
 | **GenericUnivariateSelect** | sklearn | advanced | - | - | - |
 | **RFE** | sklearn | standard | - | - | - |
 | **RFECV** | sklearn | standard | - | - | - |
@@ -216,7 +122,40 @@
 | **SequentialFeatureSelector** | sklearn | standard | - | - | - |
 | **VarianceThreshold** | sklearn | core | `threshold`=0 | - | - |
 
-### scikit-imputation
+### NIRS Core
+
+| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
+|------|--------|------|---------------|------------|--------|
+| **SNV** | nirs4all | core | - | - | - |
+| **RobustSNV** | nirs4all | standard | - | - | - |
+| **LocalSNV** | nirs4all | standard | `window`=11 | `window` [5-51] | `window` |
+| **MSC** | nirs4all | core | - | - | - |
+| **EMSC** | nirs4all | standard | `degree`=2 | `degree` [0-4] | - |
+| **OSC** | nirs4all | standard | `n_components`=2 | `n_components` [1-10] | - |
+| **NorrisWilliams** | nirs4all | standard | `gap`=1, `segment`=1, `deriv`=1 | `gap` [1-20], `segment` [1-20] | - |
+
+### Clustering & Neighbors
+
+| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
+|------|--------|------|---------------|------------|--------|
+| **Birch** | sklearn | advanced | `threshold`=0.5, `n_clusters`=3 | `n_clusters` [2-20] | - |
+| **BisectingKMeans** | sklearn | advanced | `n_clusters`=8 | `n_clusters` [2-20] | - |
+| **FeatureAgglomeration** | sklearn | standard | `n_clusters`=2 | `n_clusters` [2-20] | - |
+| **KMeans** | sklearn | standard | `n_clusters`=8 | `n_clusters` [2-20] | - |
+| **KNeighborsTransformer** | sklearn | advanced | `n_neighbors`=5 | `n_neighbors` [1-30] | - |
+| **MiniBatchKMeans** | sklearn | advanced | `n_clusters`=8 | `n_clusters` [2-20] | - |
+| **RadiusNeighborsTransformer** | sklearn | advanced | - | - | - |
+
+### Encoding
+
+| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
+|------|--------|------|---------------|------------|--------|
+| **KBinsDiscretizer** | sklearn | standard | `n_bins`=5, `encode` (onehot/onehot-dense/ordinal), `strategy` (mean/median/most_frequent/constant/uniform/quantile/kmeans) | `n_bins` [2-20] | - |
+| **OneHotEncoder** | sklearn | advanced | - | - | - |
+| **OrdinalEncoder** | sklearn | advanced | - | - | - |
+| **TargetEncoder** | sklearn | advanced | - | - | - |
+
+### Imputation
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
@@ -224,65 +163,40 @@
 | **MissingIndicator** | sklearn | advanced | - | - | - |
 | **SimpleImputer** | sklearn | core | `strategy` (mean/median/most_frequent/constant/uniform/quantile/kmeans) | - | - |
 
-### scikit-kernel-projection
+### Kernel Projection
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
 | **AdditiveChi2Sampler** | sklearn | advanced | - | - | - |
-| **GaussianRandomProjection** | sklearn | advanced | `n_components`=auto | `n_components` [1-30] | - |
 | **Nystroem** | sklearn | standard | `degree`, `n_components`=100 | `degree` [2-5], `n_components` [1-30] | - |
 | **PolynomialCountSketch** | sklearn | advanced | `degree`=2, `n_components`=100 | `degree` [2-5], `n_components` [1-30] | - |
 | **RBFSampler** | sklearn | standard | `n_components`=100 | `n_components` [1-30] | - |
 | **SkewedChi2Sampler** | sklearn | advanced | `n_components`=100 | `n_components` [1-30] | - |
-| **SparseRandomProjection** | sklearn | advanced | `n_components`=auto | `n_components` [1-30] | - |
 
-### scikit-misc-transformers
+### Other
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
 | **BernoulliRBM** | sklearn | advanced | `n_components`=256 | `n_components` [1-30] | - |
 | **RandomTreesEmbedding** | sklearn | advanced | - | - | - |
 
-### scikit-meta-transformers
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **ColumnTransformer** | sklearn | advanced | - | - | - |
-| **FeatureUnion** | sklearn | advanced | - | - | - |
-
-### scikit-scalers
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **Binarizer** | sklearn | standard | `threshold`=0 | - | - |
-| **FunctionTransformer** | sklearn | standard | - | - | - |
-| **KernelCenterer** | sklearn | advanced | - | - | - |
-| **Normalizer** | sklearn | core | `norm` (l1/l2/max) | - | - |
-| **PolynomialFeatures** | sklearn | standard | `degree`=2 | `degree` [2-5] | - |
-| **SplineTransformer** | sklearn | standard | `n_knots`=5, `degree`=3 | `n_knots` [3-20], `degree` [2-5] | - |
-
 ### Smoothing
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
-| **Gaussian** | nirs4all | standard | `sigma`=2 | `sigma` [0.5-10] | `sigma` |
-| **MovingAverage** | nirs4all | standard | `window_size`=5 | `window_size` [3-31] | `window_size` |
+| **Gaussian** | nirs4all | standard | `sigma`=1 | `sigma` [0.5-10] | `sigma` |
+| **MovingAverage** | nirs4all | standard | `window_length`=5 | `window_length` [3-31] | `window_length` |
 
 ### Wavelet
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
 | **Haar** | nirs4all | standard | - | - | - |
-| **Wavelet** | nirs4all | standard | `wavelet` (haar/db4/db6/db8/sym4/sym6/coif1/coif3), `level`=3 | `level` [1-7] | `level` |
-| **WaveletPCA** | nirs4all | advanced | `n_components`=10, `wavelet` (haar/db4/db6/db8/sym4/sym6/coif1/coif3) | `n_components` [5-50] | `n_components` |
-| **WaveletDenoise** | nirs4all | standard | `wavelet` (haar/db4/db6/db8/sym4/sym6/coif1), `level`=3 | `level` [1-7] | - |
-
-### spectral-transforms
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
+| **Wavelet** | nirs4all | standard | `wavelet` (haar/db4/db6/db8/sym4/sym6/coif1/coif3) | - | - |
+| **WaveletPCA** | nirs4all | advanced | `n_components_per_level`=3, `wavelet` (haar/db4/db6/db8/sym4/sym6/coif1/coif3) | `n_components_per_level` [5-50] | `n_components_per_level` |
 | **WaveletFeatures** | nirs4all | standard | - | - | - |
 | **WaveletSVD** | nirs4all | standard | - | - | - |
+| **WaveletDenoise** | nirs4all | standard | `wavelet` (haar/db4/db6/db8/sym4/sym6/coif1), `level`=3 | `level` [1-7] | - |
 
 ---
 
@@ -312,11 +226,16 @@
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
 | **NICoN** | nirs4all | advanced | `epochs`=100, `learning_rate`=0.001, `batch_size`=32 | `epochs` [50-500], `learning_rate` [0.0001-0.01] | - |
+| **NICoNClassifier** | nirs4all | advanced | `epochs`=100, `learning_rate`=0.001, `batch_size`=32 | `epochs` [50-500], `learning_rate` [0.0001-0.01] | - |
 | **CNN1D** | nirs4all | advanced | `epochs`=100, `learning_rate`=0.001, `n_filters`=32, `kernel_size`=7 | `epochs` [50-500], `learning_rate` [0.0001-0.01] | - |
+| **CNN1DClassifier** | nirs4all | advanced | `epochs`=100, `learning_rate`=0.001, `n_filters`=32, `kernel_size`=7 | `epochs` [50-500], `learning_rate` [0.0001-0.01] | - |
 | **MLPRegressor** | sklearn | advanced | `hidden_layer_sizes`=(100, 50), `max_iter`=200, `learning_rate_init`=0.001 | `learning_rate_init` [0.0001-0.01] | - |
-| **LSTM** | nirs4all | advanced | `epochs`=100, `hidden_size`=64, `num_layers`=2, `learning_rate`=0.001 | `epochs` [50-500], `learning_rate` [0.0001-0.01] | - |
 | **Transformer** | nirs4all | advanced | `epochs`=100, `d_model`=64, `nhead`=4, `num_layers`=2, `learning_rate`=0.001 | `epochs` [50-500], `learning_rate` [0.0001-0.01] | - |
+| **TransformerClassifier** | nirs4all | advanced | `epochs`=100, `d_model`=64, `nhead`=4, `num_layers`=2, `learning_rate`=0.001 | `epochs` [50-500], `learning_rate` [0.0001-0.01] | - |
 | **TabPFN** | nirs4all | advanced | - | - | - |
+| **TabPFNClassifier** | nirs4all | advanced | - | - | - |
+| **TabICLRegressor** | nirs4all | advanced | - | - | - |
+| **TabICLClassifier** | nirs4all | advanced | - | - | - |
 
 ### Ensemble
 
@@ -325,7 +244,9 @@
 | **RandomForestRegressor** | sklearn | core | `n_estimators`=100, `max_depth`=10 | `n_estimators` [50-500], `max_depth` [3-30] | `n_estimators`, `max_depth` |
 | **RandomForestClassifier** | sklearn | standard | `n_estimators`=100, `max_depth`=10 | `n_estimators` [50-500], `max_depth` [3-30] | `n_estimators`, `max_depth` |
 | **XGBoost** | sklearn | standard | `n_estimators`=100, `learning_rate`=0.1, `max_depth`=6 | `n_estimators` [50-500], `learning_rate` [0.01-0.5], `max_depth` [3-15] | `n_estimators`, `learning_rate`, `max_depth` |
+| **XGBoostClassifier** | sklearn | standard | `n_estimators`=100, `learning_rate`=0.1, `max_depth`=6 | `n_estimators` [50-500], `learning_rate` [0.01-0.5], `max_depth` [3-15] | `n_estimators`, `learning_rate`, `max_depth` |
 | **LightGBM** | sklearn | standard | `n_estimators`=100, `learning_rate`=0.1, `num_leaves`=31 | `n_estimators` [50-500], `learning_rate` [0.01-0.5], `num_leaves` [10-100] | `n_estimators`, `learning_rate`, `num_leaves` |
+| **LightGBMClassifier** | sklearn | standard | `n_estimators`=100, `learning_rate`=0.1, `num_leaves`=31 | `n_estimators` [50-500], `learning_rate` [0.01-0.5], `num_leaves` [10-100] | `n_estimators`, `learning_rate`, `num_leaves` |
 
 ### Kernel PLS
 
@@ -357,11 +278,6 @@
 |------|--------|------|---------------|------------|--------|
 | **PLSRegression** | sklearn | core | `n_components`=10 | `n_components` [1-30] | `n_components` |
 | **PLSDA** | nirs4all | standard | `n_components`=10 | `n_components` [1-30] | `n_components` |
-
-### pls
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
 | **KPLS** | nirs4all | advanced | `n_components`=10, `kernel` (rbf/linear/poly/sigmoid), `gamma`, `degree`=3 | `n_components` [1-30], `gamma` [0.001-10], `degree` [2-5] | - |
 | **MBPLS** | nirs4all | advanced | `n_components`=5 | `n_components` [1-30] | - |
 | **OKLMPLS** | nirs4all | advanced | `n_components`=5 | `n_components` [1-30] | - |
@@ -561,7 +477,7 @@
 | **SystematicCircularSplitter** | nirs4all | standard | `test_size`=0.2 | - | - |
 | **SPXYFold** | nirs4all | standard | `n_splits`=5 | - | - |
 
-### sklearn
+### Scikit-learn
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
@@ -572,14 +488,9 @@
 | **LeaveOneOut** | sklearn | standard | - | - | - |
 | **GroupKFold** | sklearn | standard | `n_splits`=5 | - | - |
 | **GroupShuffleSplit** | sklearn | standard | `n_splits`=5, `test_size`=0.2 | - | - |
-
-### sklearn-splitters
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
 | **LeaveOneGroupOut** | sklearn | standard | - | - | - |
-| **LeavePGroupsOut** | sklearn | advanced | `n_groups` | - | - |
-| **LeavePOut** | sklearn | advanced | `p` | - | - |
+| **LeavePGroupsOut** | sklearn | advanced | `n_groups`=2 | - | - |
+| **LeavePOut** | sklearn | advanced | `p`=1 | - | - |
 | **PredefinedSplit** | sklearn | advanced | - | - | - |
 | **RepeatedStratifiedKFold** | sklearn | standard | `n_splits`=5, `n_repeats`=10 | - | - |
 | **StratifiedGroupKFold** | sklearn | standard | `n_splits`=5, `shuffle`=false | - | - |
@@ -695,6 +606,8 @@
 | **StandardScaler** | sklearn | core | `with_mean`=true, `with_std`=true | - | - |
 | **MinMaxScaler** | sklearn | core | `feature_range`=(0, 1) | - | - |
 | **RobustScaler** | sklearn | standard | `with_centering`=true, `with_scaling`=true | - | - |
+| **IntegerKBinsDiscretizer** | nirs4all | standard | `n_bins`=5, `strategy` (mean/median/most_frequent/constant/uniform/quantile/kmeans) | `n_bins` [2-20] | - |
+| **RangeDiscretizer** | nirs4all | standard | - | - | - |
 | **MaxAbsScaler** | sklearn | standard | - | - | - |
 | **Normalizer** | sklearn | advanced | `norm` (l1/l2/max) | - | - |
 | **LogTransform** | nirs4all | standard | - | - | - |
@@ -708,13 +621,6 @@
 | **PowerTransformer** | sklearn | standard | `method` (yeo-johnson/box-cox) | - | - |
 | **QuantileTransformer** | sklearn | standard | `output_distribution` (uniform/normal), `n_quantiles`=1000 | - | - |
 
-### scaling
-
-| Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
-|------|--------|------|---------------|------------|--------|
-| **IntegerKBinsDiscretizer** | nirs4all | standard | `n_bins`=5, `strategy` (mean/median/most_frequent/constant/uniform/quantile/kmeans) | `n_bins` [2-20] | - |
-| **RangeDiscretizer** | nirs4all | standard | - | - | - |
-
 ---
 
 ## Filters
@@ -723,21 +629,21 @@
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
-| **YOutlierFilter** | nirs4all | core | `method` (iqr/zscore/percentile/mad), `threshold`=1.5, `lower_percentile`=1, `upper_percentile`=99 | - | - |
-| **XOutlierFilter** | nirs4all | core | `method` (mahalanobis/robust_mahalanobis/pca_residual/pca_leverage/isolation_forest/lof), `contamination`=0.1 | - | - |
-| **HighLeverageFilter** | nirs4all | standard | `method` (hat/pca), `threshold_multiplier`=2 | - | - |
+| **YOutlierFilter** | nirs4all | core | `filter_mode` (remove/tag), `method` (iqr/zscore/percentile/mad), `threshold`=1.5, `lower_percentile`=1, `upper_percentile`=99 | - | - |
+| **XOutlierFilter** | nirs4all | core | `filter_mode` (remove/tag), `method` (mahalanobis/robust_mahalanobis/pca_residual/pca_leverage/isolation_forest/lof), `contamination`=0.1 | - | - |
+| **HighLeverageFilter** | nirs4all | standard | `filter_mode` (remove/tag), `method` (hat/pca), `threshold_multiplier`=2 | - | - |
 
 ### Quality
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
-| **SpectralQualityFilter** | nirs4all | standard | `max_nan_ratio`=0.1, `max_zero_ratio`=0.5, `min_variance`=1e-8, `check_inf`=true | - | - |
+| **SpectralQualityFilter** | nirs4all | standard | `filter_mode` (remove/tag), `max_nan_ratio`=0.1, `max_zero_ratio`=0.5, `min_variance`=1e-8, `check_inf`=true | - | - |
 
 ### Selection
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
-| **MetadataFilter** | nirs4all | standard | `column`=, `values_to_exclude`, `values_to_keep`, `exclude_missing`=true | - | - |
+| **MetadataFilter** | nirs4all | standard | `filter_mode` (remove/tag), `column`=, `values_to_exclude`, `values_to_keep`, `exclude_missing`=true | - | - |
 
 ---
 
@@ -771,28 +677,32 @@
 | **SampleFilterContainer** | nirs4all | core | - | - | - |
 | **ConcatTransform** | nirs4all | standard | `keep_original`=true | - | - |
 
----
-
-## Utilities
-
 ### Selection
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
-| **ChooseOne** | nirs4all | core | `items`= | - | - |
-| **ChooseN** | nirs4all | standard | `items`=, `n`=2 | - | - |
+| **Or** | nirs4all | core | `pick`, `arrange`, `count` | - | - |
+| **Chain** | nirs4all | standard | `count` | - | - |
 
 ### Combination
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
-| **Cartesian** | nirs4all | core | - | - | - |
+| **Cartesian** | nirs4all | core | `pick`, `arrange`, `count` | - | - |
 
 ### Parameters
 
 | Node | Source | Tier | Key Parameters | Finetuning | Sweeps |
 |------|--------|------|---------------|------------|--------|
-| **Range** | nirs4all | core | `from`=1, `to`=10, `step`=1, `param`=n_components | - | - |
+| **Grid** | nirs4all | standard | `count` | - | - |
+| **Zip** | nirs4all | standard | `count` | - | - |
+| **Sample** | nirs4all | standard | `distribution` (uniform/log_uniform/normal/choice), `from`=0, `to`=1, `mean`=0, `std`=1, `num`=10, `count` | - | - |
+| **Range** | nirs4all | core | `from`=1, `to`=10, `step`=1, `count` | - | - |
+| **LogRange** | nirs4all | core | `from`=0.001, `to`=1, `num`=10, `count` | - | - |
+
+---
+
+## Utilities
 
 ### Visualization
 
@@ -808,4 +718,4 @@
 
 ---
 
-*Generated on 2026-02-27*
+*Generated on 2026-04-16*

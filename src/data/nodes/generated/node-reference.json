@@ -1,7 +1,7 @@
 {
   "version": "2.0.0",
-  "generatedAt": "2026-02-27",
-  "totalNodes": 348,
+  "generatedAt": "2026-04-16",
+  "totalNodes": 338,
   "stats": {
     "augmentation": {
       "count": 39,
@@ -9,7 +9,7 @@
       "withSweepPresets": 0
     },
     "flow": {
-      "count": 8,
+      "count": 16,
       "withFinetuning": 0,
       "withSweepPresets": 0
     },
@@ -19,19 +19,19 @@
       "withSweepPresets": 0
     },
     "utility": {
-      "count": 6,
+      "count": 2,
       "withFinetuning": 0,
       "withSweepPresets": 0
     },
     "model": {
-      "count": 130,
-      "withFinetuning": 87,
-      "withSweepPresets": 24
+      "count": 137,
+      "withFinetuning": 91,
+      "withSweepPresets": 26
     },
     "preprocessing": {
-      "count": 124,
-      "withFinetuning": 59,
-      "withSweepPresets": 18
+      "count": 103,
+      "withFinetuning": 49,
+      "withSweepPresets": 16
     },
     "splitting": {
       "count": 24,
@@ -2708,6 +2708,16 @@
       "supportsParameterSweeps": false,
       "parameters": [
         {
+          "name": "filter_mode",
+          "type": "select",
+          "default": "remove",
+          "description": "Remove: excludes filtered samples from data. Tag: keeps all samples but marks outliers for visualization.",
+          "options": [
+            "remove",
+            "tag"
+          ]
+        },
+        {
           "name": "method",
           "type": "select",
           "default": "iqr",
@@ -2758,6 +2768,16 @@
       "supportsParameterSweeps": false,
       "parameters": [
         {
+          "name": "filter_mode",
+          "type": "select",
+          "default": "remove",
+          "description": "Remove: excludes filtered samples from data. Tag: keeps all samples but marks outliers for visualization.",
+          "options": [
+            "remove",
+            "tag"
+          ]
+        },
+        {
           "name": "method",
           "type": "select",
           "default": "mahalanobis",
@@ -2803,6 +2823,15 @@
           "default": null,
           "description": "Random state for reproducibility (used by isolation_forest and robust_mahalanobis)",
           "isAdvanced": true
+        },
+        {
+          "name": "support_fraction",
+          "type": "float",
+          "default": null,
+          "description": "Fraction of data for robust covariance estimation (MinCovDet). Null uses sklearn default.",
+          "min": 0.1,
+          "max": 0.5,
+          "isAdvanced": true
         }
       ]
     },
@@ -2818,6 +2847,16 @@
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
+        {
+          "name": "filter_mode",
+          "type": "select",
+          "default": "remove",
+          "description": "Remove: excludes filtered samples from data. Tag: keeps all samples but marks outliers for visualization.",
+          "options": [
+            "remove",
+            "tag"
+          ]
+        },
         {
           "name": "max_nan_ratio",
           "type": "float",
@@ -2877,6 +2916,16 @@
       "supportsParameterSweeps": false,
       "parameters": [
         {
+          "name": "filter_mode",
+          "type": "select",
+          "default": "remove",
+          "description": "Remove: excludes filtered samples from data. Tag: keeps all samples but marks outliers for visualization.",
+          "options": [
+            "remove",
+            "tag"
+          ]
+        },
+        {
           "name": "method",
           "type": "select",
           "default": "hat",
@@ -2934,8 +2983,18 @@
       "supportsParameterSweeps": false,
       "parameters": [
         {
+          "name": "filter_mode",
+          "type": "select",
+          "default": "remove",
+          "description": "Remove: excludes filtered samples from data. Tag: keeps all samples but marks outliers for visualization.",
+          "options": [
+            "remove",
+            "tag"
+          ]
+        },
+        {
           "name": "column",
-          "type": "string",
+          "type": "metadata_column",
           "default": "",
           "description": "Name of the metadata column to filter on"
         },
@@ -2960,11 +3019,11 @@
       ]
     },
     {
-      "id": "generator.choose_one",
-      "name": "ChooseOne",
-      "type": "utility",
+      "id": "generator.or",
+      "name": "Or",
+      "type": "flow",
       "classPath": "_or_",
-      "description": "Generator: try one item from a list",
+      "description": "Generator: choose from alternatives",
       "source": "nirs4all",
       "tier": "core",
       "category": "Selection",
@@ -2972,19 +3031,141 @@
       "supportsParameterSweeps": false,
       "parameters": [
         {
-          "name": "items",
-          "type": "array",
-          "default": [],
-          "description": "List of items to choose from (preprocessing steps, models, etc.)"
+          "name": "pick",
+          "type": "int",
+          "description": "Unordered selection size (combinations). Single int or [from, to] range.",
+          "min": 1
+        },
+        {
+          "name": "arrange",
+          "type": "int",
+          "description": "Ordered selection size (permutations). Single int or [from, to] range.",
+          "min": 1
+        },
+        {
+          "name": "then_pick",
+          "type": "int",
+          "description": "Second-order combination selection on primary results.",
+          "min": 1,
+          "isAdvanced": true
+        },
+        {
+          "name": "then_arrange",
+          "type": "int",
+          "description": "Second-order permutation selection on primary results.",
+          "min": 1,
+          "isAdvanced": true
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "description": "Maximum number of generated variants (0 = no limit).",
+          "min": 0
+        },
+        {
+          "name": "_seed_",
+          "type": "int",
+          "description": "Seed for deterministic/reproducible generation.",
+          "isAdvanced": true
         }
       ]
     },
     {
-      "id": "generator.choose_n",
-      "name": "ChooseN",
-      "type": "utility",
-      "classPath": "_and_",
-      "description": "Generator: choose N items from a list",
+      "id": "generator.cartesian",
+      "name": "Cartesian",
+      "type": "flow",
+      "classPath": "_cartesian_",
+      "description": "Generator: Cartesian product of stages",
+      "source": "nirs4all",
+      "tier": "core",
+      "category": "Combination",
+      "supportsFinetuning": false,
+      "supportsParameterSweeps": false,
+      "parameters": [
+        {
+          "name": "pick",
+          "type": "int",
+          "description": "Select combinations from the generated complete pipelines.",
+          "min": 1
+        },
+        {
+          "name": "arrange",
+          "type": "int",
+          "description": "Select permutations from the generated complete pipelines.",
+          "min": 1
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "description": "Maximum number of generated variants (0 = no limit).",
+          "min": 0
+        },
+        {
+          "name": "_seed_",
+          "type": "int",
+          "description": "Seed for deterministic/reproducible generation.",
+          "isAdvanced": true
+        }
+      ]
+    },
+    {
+      "id": "generator.grid",
+      "name": "Grid",
+      "type": "flow",
+      "classPath": "_grid_",
+      "description": "Generator: grid search over parameter values",
+      "source": "nirs4all",
+      "tier": "standard",
+      "category": "Parameters",
+      "supportsFinetuning": false,
+      "supportsParameterSweeps": false,
+      "parameters": [
+        {
+          "name": "count",
+          "type": "int",
+          "description": "Maximum number of generated variants (0 = no limit).",
+          "min": 0
+        },
+        {
+          "name": "_seed_",
+          "type": "int",
+          "description": "Seed for deterministic/reproducible sampling when count is set.",
+          "isAdvanced": true
+        }
+      ]
+    },
+    {
+      "id": "generator.zip",
+      "name": "Zip",
+      "type": "flow",
+      "classPath": "_zip_",
+      "description": "Generator: parallel parameter iteration",
+      "source": "nirs4all",
+      "tier": "standard",
+      "category": "Parameters",
+      "supportsFinetuning": false,
+      "supportsParameterSweeps": false,
+      "parameters": [
+        {
+          "name": "count",
+          "type": "int",
+          "description": "Maximum number of generated variants (0 = no limit).",
+          "min": 0
+        },
+        {
+          "name": "_seed_",
+          "type": "int",
+          "description": "Seed for deterministic/reproducible sampling when count is set.",
+          "isAdvanced": true
+        }
+      ]
+    },
+    {
+      "id": "generator.chain",
+      "name": "Chain",
+      "type": "flow",
+      "classPath": "_chain_",
+      "description": "Generator: ordered sequence of configurations",
       "source": "nirs4all",
       "tier": "standard",
       "category": "Selection",
@@ -2992,40 +3173,95 @@
       "supportsParameterSweeps": false,
       "parameters": [
         {
-          "name": "items",
-          "type": "array",
-          "default": [],
-          "description": "List of items to choose from"
+          "name": "count",
+          "type": "int",
+          "description": "Limit to first N items (or random N if seed is set, 0 = no limit).",
+          "min": 0
         },
         {
-          "name": "n",
+          "name": "_seed_",
           "type": "int",
-          "default": 2,
-          "description": "Number of items to select",
-          "min": 1,
-          "max": 10
+          "description": "Seed for random sampling instead of taking first N.",
+          "isAdvanced": true
         }
       ]
     },
     {
-      "id": "generator.cartesian",
-      "name": "Cartesian",
-      "type": "utility",
-      "classPath": "_cartesian_",
-      "description": "Generator: Cartesian product of options",
+      "id": "generator.sample",
+      "name": "Sample",
+      "type": "flow",
+      "classPath": "_sample_",
+      "description": "Generator: statistical sampling from distributions",
       "source": "nirs4all",
-      "tier": "core",
-      "category": "Combination",
+      "tier": "standard",
+      "category": "Parameters",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
-      "parameters": []
+      "parameters": [
+        {
+          "name": "distribution",
+          "type": "select",
+          "default": "uniform",
+          "description": "Statistical distribution to sample from.",
+          "options": [
+            "uniform",
+            "log_uniform",
+            "normal",
+            "choice"
+          ]
+        },
+        {
+          "name": "from",
+          "type": "float",
+          "default": 0,
+          "description": "Lower bound (uniform/log_uniform)."
+        },
+        {
+          "name": "to",
+          "type": "float",
+          "default": 1,
+          "description": "Upper bound (uniform/log_uniform)."
+        },
+        {
+          "name": "mean",
+          "type": "float",
+          "default": 0,
+          "description": "Mean value (normal/gaussian)."
+        },
+        {
+          "name": "std",
+          "type": "float",
+          "default": 1,
+          "description": "Standard deviation (normal/gaussian).",
+          "min": 0
+        },
+        {
+          "name": "num",
+          "type": "int",
+          "default": 10,
+          "description": "Number of samples to generate.",
+          "min": 1
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "description": "Maximum number of results (0 = no limit).",
+          "min": 0
+        },
+        {
+          "name": "_seed_",
+          "type": "int",
+          "description": "Seed for deterministic/reproducible sampling.",
+          "isAdvanced": true
+        }
+      ]
     },
     {
       "id": "generator.range",
       "name": "Range",
-      "type": "utility",
+      "type": "flow",
       "classPath": "_range_",
-      "description": "Generator: parameter range sweep",
+      "description": "Generator: linear parameter sweep",
       "source": "nirs4all",
       "tier": "core",
       "category": "Parameters",
@@ -3036,25 +3272,85 @@
           "name": "from",
           "type": "float",
           "default": 1,
-          "description": "Start value"
+          "description": "Start value (inclusive)."
         },
         {
           "name": "to",
           "type": "float",
           "default": 10,
-          "description": "End value"
+          "description": "End value (inclusive)."
         },
         {
           "name": "step",
           "type": "float",
           "default": 1,
-          "description": "Step size"
+          "description": "Step size between values."
         },
         {
-          "name": "param",
-          "type": "string",
-          "default": "n_components",
-          "description": "Parameter name to sweep"
+          "name": "count",
+          "type": "int",
+          "description": "Limit to N random samples (0 = no limit).",
+          "min": 0
+        },
+        {
+          "name": "_seed_",
+          "type": "int",
+          "description": "Seed for deterministic sampling when count is set.",
+          "isAdvanced": true
+        }
+      ]
+    },
+    {
+      "id": "generator.log_range",
+      "name": "LogRange",
+      "type": "flow",
+      "classPath": "_log_range_",
+      "description": "Generator: logarithmic parameter sweep",
+      "source": "nirs4all",
+      "tier": "core",
+      "category": "Parameters",
+      "supportsFinetuning": false,
+      "supportsParameterSweeps": false,
+      "parameters": [
+        {
+          "name": "from",
+          "type": "float",
+          "default": 0.001,
+          "description": "Start value (positive).",
+          "min": 0
+        },
+        {
+          "name": "to",
+          "type": "float",
+          "default": 1,
+          "description": "End value (positive).",
+          "min": 0
+        },
+        {
+          "name": "num",
+          "type": "int",
+          "default": 10,
+          "description": "Number of log-spaced values to generate.",
+          "min": 1
+        },
+        {
+          "name": "base",
+          "type": "float",
+          "default": 10,
+          "description": "Logarithm base (must be > 0 and != 1).",
+          "isAdvanced": true
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "description": "Limit to N random samples (0 = no limit).",
+          "min": 0
+        },
+        {
+          "name": "_seed_",
+          "type": "int",
+          "description": "Seed for deterministic sampling when count is set.",
+          "isAdvanced": true
         }
       ]
     },
@@ -3937,8 +4233,61 @@
       "id": "model.nicon",
       "name": "NICoN",
       "type": "model",
-      "classPath": "nirs4all.operators.models.nicon",
-      "description": "NICoN (NIRS Convolutional Network)",
+      "classPath": "nirs4all.operators.models.pytorch.nicon.nicon",
+      "description": "NICoN (NIRS Convolutional Network) — PyTorch-based",
+      "source": "nirs4all",
+      "tier": "advanced",
+      "category": "Deep Learning",
+      "supportsFinetuning": true,
+      "supportsParameterSweeps": true,
+      "parameters": [
+        {
+          "name": "epochs",
+          "type": "int",
+          "default": 100,
+          "description": "Number of training epochs",
+          "min": 10,
+          "max": 1000,
+          "sweepable": true,
+          "finetunable": true,
+          "finetuneType": "int",
+          "finetuneRange": [
+            50,
+            500
+          ]
+        },
+        {
+          "name": "learning_rate",
+          "type": "float",
+          "default": 0.001,
+          "description": "Learning rate",
+          "min": 0.00001,
+          "max": 0.1,
+          "sweepable": true,
+          "finetunable": true,
+          "finetuneType": "log_float",
+          "finetuneRange": [
+            0.0001,
+            0.01
+          ]
+        },
+        {
+          "name": "batch_size",
+          "type": "int",
+          "default": 32,
+          "description": "Training batch size",
+          "min": 8,
+          "max": 256,
+          "sweepable": true
+        }
+      ]
+    },
+    {
+      "id": "model.nicon_classifier",
+      "name": "NICoNClassifier",
+      "type": "model",
+      "classPath": "nirs4all.operators.models.pytorch.nicon.nicon_classification",
+      "description": "NICoN Classifier (NIRS Convolutional Network) — PyTorch-based",
       "source": "nirs4all",
       "tier": "advanced",
       "category": "Deep Learning",
@@ -3990,8 +4339,88 @@
       "id": "model.cnn1d",
       "name": "CNN1D",
       "type": "model",
-      "classPath": "nirs4all.operators.models.CNN1D",
-      "description": "1D Convolutional Neural Network",
+      "classPath": "nirs4all.operators.models.pytorch.nicon.customizable_nicon",
+      "description": "1D Convolutional Neural Network — PyTorch-based",
+      "source": "nirs4all",
+      "tier": "advanced",
+      "category": "Deep Learning",
+      "supportsFinetuning": true,
+      "supportsParameterSweeps": true,
+      "parameters": [
+        {
+          "name": "epochs",
+          "type": "int",
+          "default": 100,
+          "description": "Number of training epochs",
+          "min": 10,
+          "max": 1000,
+          "sweepable": true,
+          "finetunable": true,
+          "finetuneType": "int",
+          "finetuneRange": [
+            50,
+            500
+          ]
+        },
+        {
+          "name": "learning_rate",
+          "type": "float",
+          "default": 0.001,
+          "description": "Learning rate",
+          "min": 0.00001,
+          "max": 0.1,
+          "sweepable": true,
+          "finetunable": true,
+          "finetuneType": "log_float",
+          "finetuneRange": [
+            0.0001,
+            0.01
+          ]
+        },
+        {
+          "name": "n_filters",
+          "type": "int",
+          "default": 32,
+          "description": "Number of convolutional filters",
+          "min": 8,
+          "max": 256,
+          "sweepable": true
+        },
+        {
+          "name": "kernel_size",
+          "type": "int",
+          "default": 7,
+          "description": "Convolution kernel size",
+          "min": 3,
+          "max": 31,
+          "sweepable": true
+        },
+        {
+          "name": "batch_size",
+          "type": "int",
+          "default": 32,
+          "description": "Training batch size",
+          "min": 8,
+          "max": 256,
+          "isAdvanced": true
+        },
+        {
+          "name": "dropout",
+          "type": "float",
+          "default": 0.2,
+          "description": "Dropout rate",
+          "min": 0,
+          "max": 0.5,
+          "isAdvanced": true
+        }
+      ]
+    },
+    {
+      "id": "model.cnn1d_classifier",
+      "name": "CNN1DClassifier",
+      "type": "model",
+      "classPath": "nirs4all.operators.models.pytorch.nicon.customizable_nicon_classification",
+      "description": "1D Convolutional Neural Network Classifier — PyTorch-based",
       "source": "nirs4all",
       "tier": "advanced",
       "category": "Deep Learning",
@@ -4136,11 +4565,11 @@
       ]
     },
     {
-      "id": "model.lstm",
-      "name": "LSTM",
+      "id": "model.transformer",
+      "name": "Transformer",
       "type": "model",
-      "classPath": "nirs4all.operators.models.LSTM",
-      "description": "Long Short-Term Memory Network",
+      "classPath": "nirs4all.operators.models.pytorch.spectral_transformer.spectral_transformer",
+      "description": "Spectral Transformer — PyTorch-based",
       "source": "nirs4all",
       "tier": "advanced",
       "category": "Deep Learning",
@@ -4163,19 +4592,28 @@
           ]
         },
         {
-          "name": "hidden_size",
+          "name": "d_model",
           "type": "int",
           "default": 64,
-          "description": "LSTM hidden layer size",
-          "min": 8,
+          "description": "Model dimension",
+          "min": 16,
           "max": 512,
+          "sweepable": true
+        },
+        {
+          "name": "nhead",
+          "type": "int",
+          "default": 4,
+          "description": "Number of attention heads",
+          "min": 1,
+          "max": 16,
           "sweepable": true
         },
         {
           "name": "num_layers",
           "type": "int",
           "default": 2,
-          "description": "Number of LSTM layers",
+          "description": "Number of transformer layers",
           "min": 1,
           "max": 8,
           "sweepable": true
@@ -4203,15 +4641,24 @@
           "min": 8,
           "max": 256,
           "isAdvanced": true
+        },
+        {
+          "name": "dropout",
+          "type": "float",
+          "default": 0.1,
+          "description": "Dropout rate",
+          "min": 0,
+          "max": 0.5,
+          "isAdvanced": true
         }
       ]
     },
     {
-      "id": "model.transformer",
-      "name": "Transformer",
+      "id": "model.transformer_classifier",
+      "name": "TransformerClassifier",
       "type": "model",
-      "classPath": "nirs4all.operators.models.Transformer",
-      "description": "Transformer Model",
+      "classPath": "nirs4all.operators.models.pytorch.spectral_transformer.spectral_transformer_classification",
+      "description": "Spectral Transformer Classifier — PyTorch-based",
       "source": "nirs4all",
       "tier": "advanced",
       "category": "Deep Learning",
@@ -4299,8 +4746,47 @@
       "id": "model.tabpfn",
       "name": "TabPFN",
       "type": "model",
-      "classPath": "nirs4all.operators.models.TabPFN",
+      "classPath": "tabpfn.regressor.TabPFNRegressor",
       "description": "TabPFN (Prior-Data Fitted Network)",
+      "source": "nirs4all",
+      "tier": "advanced",
+      "category": "Deep Learning",
+      "supportsFinetuning": false,
+      "supportsParameterSweeps": false,
+      "parameters": []
+    },
+    {
+      "id": "model.tabpfn_classifier",
+      "name": "TabPFNClassifier",
+      "type": "model",
+      "classPath": "tabpfn.classifier.TabPFNClassifier",
+      "description": "TabPFN Classifier (Prior-Data Fitted Network)",
+      "source": "nirs4all",
+      "tier": "advanced",
+      "category": "Deep Learning",
+      "supportsFinetuning": false,
+      "supportsParameterSweeps": false,
+      "parameters": []
+    },
+    {
+      "id": "model.tabicl_regressor",
+      "name": "TabICLRegressor",
+      "type": "model",
+      "classPath": "tabicl.TabICLRegressor",
+      "description": "TabICL Regressor",
+      "source": "nirs4all",
+      "tier": "advanced",
+      "category": "Deep Learning",
+      "supportsFinetuning": false,
+      "supportsParameterSweeps": false,
+      "parameters": []
+    },
+    {
+      "id": "model.tabicl_classifier",
+      "name": "TabICLClassifier",
+      "type": "model",
+      "classPath": "tabicl.TabICLClassifier",
+      "description": "TabICL Classifier",
       "source": "nirs4all",
       "tier": "advanced",
       "category": "Deep Learning",
@@ -4655,11 +5141,251 @@
       ]
     },
     {
+      "id": "model.xgboost_classifier",
+      "name": "XGBoostClassifier",
+      "type": "model",
+      "classPath": "xgboost.XGBClassifier",
+      "description": "XGBoost Gradient Boosting Classifier",
+      "source": "sklearn",
+      "tier": "standard",
+      "category": "Ensemble",
+      "supportsFinetuning": true,
+      "supportsParameterSweeps": true,
+      "parameters": [
+        {
+          "name": "n_estimators",
+          "type": "int",
+          "default": 100,
+          "description": "Number of boosting rounds",
+          "min": 10,
+          "max": 1000,
+          "sweepable": true,
+          "finetunable": true,
+          "finetuneType": "int",
+          "finetuneRange": [
+            50,
+            500
+          ],
+          "sweepPresets": [
+            {
+              "label": "Quick (50-200)",
+              "type": "range",
+              "values": {
+                "from": 50,
+                "to": 200,
+                "step": 50
+              }
+            },
+            {
+              "label": "Extended (100-500)",
+              "type": "range",
+              "values": {
+                "from": 100,
+                "to": 500,
+                "step": 100
+              }
+            }
+          ]
+        },
+        {
+          "name": "learning_rate",
+          "type": "float",
+          "default": 0.1,
+          "description": "Boosting learning rate",
+          "min": 0.001,
+          "max": 1,
+          "sweepable": true,
+          "finetunable": true,
+          "finetuneType": "log_float",
+          "finetuneRange": [
+            0.01,
+            0.5
+          ],
+          "sweepPresets": [
+            {
+              "label": "Standard",
+              "type": "choices",
+              "values": [
+                0.01,
+                0.05,
+                0.1,
+                0.3
+              ]
+            }
+          ]
+        },
+        {
+          "name": "max_depth",
+          "type": "int",
+          "default": 6,
+          "description": "Maximum tree depth",
+          "min": 1,
+          "max": 20,
+          "sweepable": true,
+          "finetunable": true,
+          "finetuneType": "int",
+          "finetuneRange": [
+            3,
+            15
+          ],
+          "sweepPresets": [
+            {
+              "label": "Standard (3-15)",
+              "type": "range",
+              "values": {
+                "from": 3,
+                "to": 15,
+                "step": 3
+              }
+            }
+          ]
+        },
+        {
+          "name": "min_child_weight",
+          "type": "int",
+          "default": 1,
+          "description": "Minimum sum of instance weight in a child",
+          "min": 1,
+          "max": 10,
+          "isAdvanced": true
+        },
+        {
+          "name": "subsample",
+          "type": "float",
+          "default": 1,
+          "description": "Subsample ratio of training instances",
+          "min": 0.5,
+          "max": 1,
+          "isAdvanced": true
+        }
+      ]
+    },
+    {
       "id": "model.lightgbm",
       "name": "LightGBM",
       "type": "model",
       "classPath": "lightgbm.LGBMRegressor",
       "description": "LightGBM Gradient Boosting",
+      "source": "sklearn",
+      "tier": "standard",
+      "category": "Ensemble",
+      "supportsFinetuning": true,
+      "supportsParameterSweeps": true,
+      "parameters": [
+        {
+          "name": "n_estimators",
+          "type": "int",
+          "default": 100,
+          "description": "Number of boosting iterations",
+          "min": 10,
+          "max": 1000,
+          "sweepable": true,
+          "finetunable": true,
+          "finetuneType": "int",
+          "finetuneRange": [
+            50,
+            500
+          ],
+          "sweepPresets": [
+            {
+              "label": "Quick (50-200)",
+              "type": "range",
+              "values": {
+                "from": 50,
+                "to": 200,
+                "step": 50
+              }
+            },
+            {
+              "label": "Extended (100-500)",
+              "type": "range",
+              "values": {
+                "from": 100,
+                "to": 500,
+                "step": 100
+              }
+            }
+          ]
+        },
+        {
+          "name": "learning_rate",
+          "type": "float",
+          "default": 0.1,
+          "description": "Boosting learning rate",
+          "min": 0.001,
+          "max": 1,
+          "sweepable": true,
+          "finetunable": true,
+          "finetuneType": "log_float",
+          "finetuneRange": [
+            0.01,
+            0.5
+          ],
+          "sweepPresets": [
+            {
+              "label": "Standard",
+              "type": "choices",
+              "values": [
+                0.01,
+                0.05,
+                0.1,
+                0.3
+              ]
+            }
+          ]
+        },
+        {
+          "name": "num_leaves",
+          "type": "int",
+          "default": 31,
+          "description": "Maximum number of leaves in one tree",
+          "min": 2,
+          "max": 256,
+          "sweepable": true,
+          "finetunable": true,
+          "finetuneType": "int",
+          "finetuneRange": [
+            10,
+            100
+          ],
+          "sweepPresets": [
+            {
+              "label": "Standard (15-63)",
+              "type": "range",
+              "values": {
+                "from": 15,
+                "to": 63,
+                "step": 16
+              }
+            }
+          ]
+        },
+        {
+          "name": "max_depth",
+          "type": "int",
+          "default": -1,
+          "description": "Max tree depth (-1 for no limit)",
+          "min": -1,
+          "max": 20,
+          "isAdvanced": true
+        },
+        {
+          "name": "min_child_samples",
+          "type": "int",
+          "default": 20,
+          "description": "Minimum number of data in one leaf",
+          "min": 5,
+          "max": 100,
+          "isAdvanced": true
+        }
+      ]
+    },
+    {
+      "id": "model.lightgbm_classifier",
+      "name": "LightGBMClassifier",
+      "type": "model",
+      "classPath": "lightgbm.LGBMClassifier",
+      "description": "LightGBM Gradient Boosting Classifier",
       "source": "sklearn",
       "tier": "standard",
       "category": "Ensemble",
@@ -5409,7 +6135,7 @@
       "description": "Nonlinear PLS using Kernel Methods (Kernel PLS / NL-PLS).",
       "source": "nirs4all",
       "tier": "advanced",
-      "category": "pls",
+      "category": "PLS",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -5492,7 +6218,7 @@
       "description": "Multiblock PLS (MB-PLS) regressor.",
       "source": "nirs4all",
       "tier": "advanced",
-      "category": "pls",
+      "category": "PLS",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -5546,7 +6272,7 @@
       "description": "Online Koopman Latent-Mode Partial Least Squares (OKLM-PLS).",
       "source": "nirs4all",
       "tier": "advanced",
-      "category": "pls",
+      "category": "PLS",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -11881,10 +12607,10 @@
       "supportsParameterSweeps": true,
       "parameters": [
         {
-          "name": "order",
+          "name": "bp",
           "type": "int",
-          "default": 2,
-          "description": "Polynomial order for detrending",
+          "default": 0,
+          "description": "Breakpoints for piecewise linear detrending",
           "min": 0,
           "max": 10,
           "sweepable": true,
@@ -11901,30 +12627,14 @@
       "id": "preprocessing.baseline_correction",
       "name": "BaselineCorrection",
       "type": "preprocessing",
-      "classPath": "nirs4all.operators.transforms.BaselineCorrection",
-      "description": "Polynomial baseline correction",
+      "classPath": "nirs4all.operators.transforms.signal.Baseline",
+      "description": "Baseline correction (mean subtraction)",
       "source": "nirs4all",
       "tier": "standard",
       "category": "Baseline",
-      "supportsFinetuning": true,
-      "supportsParameterSweeps": true,
-      "parameters": [
-        {
-          "name": "order",
-          "type": "int",
-          "default": 2,
-          "description": "Polynomial order for baseline fitting",
-          "min": 0,
-          "max": 10,
-          "sweepable": true,
-          "finetunable": true,
-          "finetuneType": "int",
-          "finetuneRange": [
-            0,
-            5
-          ]
-        }
-      ]
+      "supportsFinetuning": false,
+      "supportsParameterSweeps": false,
+      "parameters": []
     },
     {
       "id": "preprocessing.asls_baseline",
@@ -12028,7 +12738,7 @@
         {
           "name": "lam",
           "type": "float",
-          "default": 100000,
+          "default": 1000000,
           "description": "Smoothness parameter",
           "min": 100,
           "max": 10000000000,
@@ -12087,7 +12797,7 @@
         {
           "name": "lam",
           "type": "float",
-          "default": 100000,
+          "default": 1000000,
           "description": "Smoothness parameter",
           "min": 100,
           "max": 10000000000,
@@ -12209,7 +12919,7 @@
         {
           "name": "half_window",
           "type": "int",
-          "default": 25,
+          "default": 50,
           "description": "Half-window size for rolling ball",
           "min": 5,
           "max": 200,
@@ -12256,7 +12966,7 @@
         {
           "name": "poly_order",
           "type": "int",
-          "default": 2,
+          "default": 5,
           "description": "Polynomial order",
           "min": 1,
           "max": 10,
@@ -12321,7 +13031,7 @@
         {
           "name": "poly_order",
           "type": "int",
-          "default": 2,
+          "default": 5,
           "description": "Polynomial order",
           "min": 1,
           "max": 10,
@@ -12372,19 +13082,6 @@
       ]
     },
     {
-      "id": "preprocessing.baseline",
-      "name": "Baseline",
-      "type": "preprocessing",
-      "classPath": "nirs4all.operators.transforms.signal.Baseline",
-      "description": "Removes baseline (mean) from each spectrum.",
-      "source": "nirs4all",
-      "tier": "standard",
-      "category": "baseline",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": []
-    },
-    {
       "id": "preprocessing.beads",
       "name": "BEADS",
       "type": "preprocessing",
@@ -12392,7 +13089,7 @@
       "description": "Baseline Estimation And Denoising with Sparsity.",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "baseline",
+      "category": "Baseline",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -12436,7 +13133,7 @@
       "description": "Improved Asymmetric Least Squares baseline correction.",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "baseline",
+      "category": "Baseline",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -12604,7 +13301,7 @@
       "description": "Convert fractional [0, 1] values to percentage [0, 100] range.",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "signal-conversion",
+      "category": "Conversion",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": []
@@ -12617,7 +13314,7 @@
       "description": "Convert percentage values to fractional [0, 1] range.",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "signal-conversion",
+      "category": "Conversion",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": []
@@ -12630,7 +13327,7 @@
       "description": "General-purpose signal type converter.",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "signal-conversion",
+      "category": "Conversion",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -12831,7 +13528,7 @@
       "description": "nirs4all preprocessing Derivate",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "derivatives",
+      "category": "Derivatives",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -12985,7 +13682,7 @@
       "description": "Trim wavelength range",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "Feature Ops",
+      "category": "Feature Engineering",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -13014,7 +13711,7 @@
       "description": "Wavelength resampling/interpolation",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "Feature Ops",
+      "category": "Feature Engineering",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -13048,7 +13745,7 @@
       "description": "L1/L2/Max normalization",
       "source": "sklearn",
       "tier": "standard",
-      "category": "Normalization",
+      "category": "Scaling",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -13074,7 +13771,7 @@
       "description": "Flatten the preprocessing dimension of a 3D feature array.",
       "source": "nirs4all",
       "tier": "advanced",
-      "category": "feature-engineering",
+      "category": "Feature Engineering",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -13212,61 +13909,6 @@
       ]
     },
     {
-      "id": "preprocessing.vip",
-      "name": "VIP",
-      "type": "preprocessing",
-      "classPath": "nirs4all.operators.transforms.VIP",
-      "description": "Variable Importance in Projection",
-      "source": "nirs4all",
-      "tier": "standard",
-      "category": "Feature Selection",
-      "supportsFinetuning": true,
-      "supportsParameterSweeps": true,
-      "parameters": [
-        {
-          "name": "n_components",
-          "type": "int",
-          "default": 10,
-          "description": "Number of PLS components",
-          "min": 1,
-          "max": 50,
-          "sweepable": true,
-          "finetunable": true,
-          "finetuneType": "int",
-          "finetuneRange": [
-            5,
-            30
-          ]
-        },
-        {
-          "name": "threshold",
-          "type": "float",
-          "default": 1,
-          "description": "VIP score threshold for variable selection",
-          "min": 0.5,
-          "max": 3,
-          "sweepable": true,
-          "finetunable": true,
-          "finetuneType": "float",
-          "finetuneRange": [
-            0.5,
-            2
-          ],
-          "sweepPresets": [
-            {
-              "label": "Strict (0.8-1.5)",
-              "type": "range",
-              "values": {
-                "from": 0.8,
-                "to": 1.5,
-                "step": 0.1
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
       "id": "preprocessing.flexible_pca",
       "name": "FlexiblePCA",
       "type": "preprocessing",
@@ -13274,7 +13916,7 @@
       "description": "PCA with flexible component specification.",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -13322,7 +13964,7 @@
       "description": "Truncated SVD with flexible component specification.",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -13558,27 +14200,6 @@
           "type": "bool",
           "default": true,
           "description": "Scale data before correction",
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
-      "id": "preprocessing.epo",
-      "name": "EPO",
-      "type": "preprocessing",
-      "classPath": "nirs4all.operators.transforms.EPO",
-      "description": "External Parameter Orthogonalization",
-      "source": "nirs4all",
-      "tier": "standard",
-      "category": "NIRS Core",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "scale",
-          "type": "bool",
-          "default": true,
-          "description": "Scale data before orthogonalization",
           "isAdvanced": true
         }
       ]
@@ -13820,7 +14441,7 @@
       "description": "Area normalization of spectra.",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "scaling",
+      "category": "Scaling",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -13828,9 +14449,11 @@
           "name": "method",
           "type": "select",
           "default": "sum",
+          "description": "Method for computing area",
           "options": [
-            "barnes_hut",
-            "exact"
+            "sum",
+            "abs_sum",
+            "trapz"
           ]
         }
       ]
@@ -13843,7 +14466,7 @@
       "description": "nirs4all preprocessing SimpleScale",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "scaling",
+      "category": "Scaling",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": []
@@ -13856,7 +14479,7 @@
       "description": "Implements the BIRCH clustering algorithm.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-cluster-neighbors",
+      "category": "Clustering & Neighbors",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -13900,7 +14523,7 @@
       "description": "Bisecting K-Means clustering.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-cluster-neighbors",
+      "category": "Clustering & Neighbors",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -13973,7 +14596,7 @@
       "description": "Agglomerate features.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-cluster-neighbors",
+      "category": "Clustering & Neighbors",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -14043,7 +14666,7 @@
       "description": "K-Means clustering.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-cluster-neighbors",
+      "category": "Clustering & Neighbors",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -14110,7 +14733,7 @@
       "description": "Transform X into a (weighted) graph of k nearest neighbors.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-cluster-neighbors",
+      "category": "Clustering & Neighbors",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -14171,7 +14794,7 @@
       "description": "Mini-Batch K-Means clustering.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-cluster-neighbors",
+      "category": "Clustering & Neighbors",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -14248,58 +14871,6 @@
       ]
     },
     {
-      "id": "preprocessing.neighborhood_components_analysis",
-      "name": "NeighborhoodComponentsAnalysis",
-      "type": "preprocessing",
-      "classPath": "sklearn.neighbors._nca.NeighborhoodComponentsAnalysis",
-      "description": "Neighborhood Components Analysis.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-cluster-neighbors",
-      "supportsFinetuning": true,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "n_components",
-          "type": "string",
-          "finetunable": true,
-          "finetuneType": "int",
-          "finetuneRange": [
-            1,
-            30
-          ]
-        },
-        {
-          "name": "init",
-          "type": "string",
-          "default": "auto",
-          "isAdvanced": true
-        },
-        {
-          "name": "max_iter",
-          "type": "int",
-          "default": 50,
-          "isAdvanced": true
-        },
-        {
-          "name": "tol",
-          "type": "float",
-          "default": 0.00001,
-          "isAdvanced": true
-        },
-        {
-          "name": "callback",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "random_state",
-          "type": "string",
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
       "id": "preprocessing.radius_neighbors_transformer",
       "name": "RadiusNeighborsTransformer",
       "type": "preprocessing",
@@ -14307,7 +14878,7 @@
       "description": "Transform X into a (weighted) graph of neighbors nearer than a radius.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-cluster-neighbors",
+      "category": "Clustering & Neighbors",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -14362,7 +14933,7 @@
       "description": "Dictionary learning.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -14470,7 +15041,7 @@
       "description": "Factor Analysis (FA).",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -14534,7 +15105,7 @@
       "description": "FastICA: a fast algorithm for Independent Component Analysis.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -14608,7 +15179,7 @@
       "description": "Incremental principal components analysis (IPCA).",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -14642,7 +15213,7 @@
       "description": "Isomap Embedding.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -14731,7 +15302,7 @@
       "description": "Kernel Principal component analysis (KPCA).",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -14834,107 +15405,6 @@
       ]
     },
     {
-      "id": "preprocessing.latent_dirichlet_allocation",
-      "name": "LatentDirichletAllocation",
-      "type": "preprocessing",
-      "classPath": "sklearn.decomposition._lda.LatentDirichletAllocation",
-      "description": "Latent Dirichlet Allocation with online variational Bayes algorithm.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-dimensionality",
-      "supportsFinetuning": true,
-      "supportsParameterSweeps": true,
-      "parameters": [
-        {
-          "name": "n_components",
-          "type": "int",
-          "default": 10,
-          "sweepable": true,
-          "finetunable": true,
-          "finetuneType": "int",
-          "finetuneRange": [
-            1,
-            30
-          ]
-        },
-        {
-          "name": "doc_topic_prior",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "topic_word_prior",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "learning_method",
-          "type": "string",
-          "default": "batch",
-          "isAdvanced": true
-        },
-        {
-          "name": "learning_decay",
-          "type": "float",
-          "default": 0.7,
-          "isAdvanced": true
-        },
-        {
-          "name": "learning_offset",
-          "type": "float",
-          "default": 10,
-          "isAdvanced": true
-        },
-        {
-          "name": "max_iter",
-          "type": "int",
-          "default": 10,
-          "isAdvanced": true
-        },
-        {
-          "name": "batch_size",
-          "type": "int",
-          "default": 128,
-          "isAdvanced": true
-        },
-        {
-          "name": "evaluate_every",
-          "type": "int",
-          "default": -1,
-          "isAdvanced": true
-        },
-        {
-          "name": "total_samples",
-          "type": "float",
-          "default": 1000000,
-          "isAdvanced": true
-        },
-        {
-          "name": "perp_tol",
-          "type": "float",
-          "default": 0.1,
-          "isAdvanced": true
-        },
-        {
-          "name": "mean_change_tol",
-          "type": "float",
-          "default": 0.001,
-          "isAdvanced": true
-        },
-        {
-          "name": "max_doc_update_iter",
-          "type": "int",
-          "default": 100,
-          "isAdvanced": true
-        },
-        {
-          "name": "random_state",
-          "type": "string",
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
       "id": "preprocessing.locally_linear_embedding",
       "name": "LocallyLinearEmbedding",
       "type": "preprocessing",
@@ -14942,7 +15412,7 @@
       "description": "Locally Linear Embedding.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -15036,7 +15506,7 @@
       "description": "Mini-batch dictionary learning.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -15150,112 +15620,6 @@
       ]
     },
     {
-      "id": "preprocessing.mini_batch_nmf",
-      "name": "MiniBatchNMF",
-      "type": "preprocessing",
-      "classPath": "sklearn.decomposition._nmf.MiniBatchNMF",
-      "description": "Mini-Batch Non-Negative Matrix Factorization (NMF).",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-dimensionality",
-      "supportsFinetuning": true,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "n_components",
-          "type": "string",
-          "default": "auto",
-          "finetunable": true,
-          "finetuneType": "int",
-          "finetuneRange": [
-            1,
-            30
-          ]
-        },
-        {
-          "name": "init",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "batch_size",
-          "type": "int",
-          "default": 1024,
-          "isAdvanced": true
-        },
-        {
-          "name": "beta_loss",
-          "type": "string",
-          "default": "frobenius",
-          "isAdvanced": true
-        },
-        {
-          "name": "tol",
-          "type": "float",
-          "default": 0.0001,
-          "isAdvanced": true
-        },
-        {
-          "name": "max_no_improvement",
-          "type": "int",
-          "default": 10,
-          "isAdvanced": true
-        },
-        {
-          "name": "max_iter",
-          "type": "int",
-          "default": 200,
-          "isAdvanced": true
-        },
-        {
-          "name": "alpha_W",
-          "type": "float",
-          "default": 0,
-          "isAdvanced": true
-        },
-        {
-          "name": "alpha_H",
-          "type": "string",
-          "default": "same",
-          "isAdvanced": true
-        },
-        {
-          "name": "l1_ratio",
-          "type": "float",
-          "default": 0,
-          "isAdvanced": true
-        },
-        {
-          "name": "forget_factor",
-          "type": "float",
-          "default": 0.7,
-          "isAdvanced": true
-        },
-        {
-          "name": "fresh_restarts",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        },
-        {
-          "name": "fresh_restarts_max_iter",
-          "type": "int",
-          "default": 30,
-          "isAdvanced": true
-        },
-        {
-          "name": "transform_max_iter",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "random_state",
-          "type": "string",
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
       "id": "preprocessing.mini_batch_sparse_pca",
       "name": "MiniBatchSparsePCA",
       "type": "preprocessing",
@@ -15263,7 +15627,7 @@
       "description": "Mini-batch Sparse Principal Components Analysis.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -15341,98 +15705,6 @@
       ]
     },
     {
-      "id": "preprocessing.nmf",
-      "name": "NMF",
-      "type": "preprocessing",
-      "classPath": "sklearn.decomposition._nmf.NMF",
-      "description": "Non-Negative Matrix Factorization (NMF).",
-      "source": "sklearn",
-      "tier": "standard",
-      "category": "scikit-dimensionality",
-      "supportsFinetuning": true,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "n_components",
-          "type": "string",
-          "default": "auto",
-          "finetunable": true,
-          "finetuneType": "int",
-          "finetuneRange": [
-            1,
-            30
-          ]
-        },
-        {
-          "name": "init",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "solver",
-          "type": "select",
-          "default": "cd",
-          "options": [
-            "auto",
-            "svd",
-            "lsqr",
-            "saga",
-            "lbfgs",
-            "adam",
-            "sgd"
-          ],
-          "isAdvanced": true
-        },
-        {
-          "name": "beta_loss",
-          "type": "string",
-          "default": "frobenius",
-          "isAdvanced": true
-        },
-        {
-          "name": "tol",
-          "type": "float",
-          "default": 0.0001,
-          "isAdvanced": true
-        },
-        {
-          "name": "max_iter",
-          "type": "int",
-          "default": 200,
-          "isAdvanced": true
-        },
-        {
-          "name": "random_state",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "alpha_W",
-          "type": "float",
-          "default": 0,
-          "isAdvanced": true
-        },
-        {
-          "name": "alpha_H",
-          "type": "string",
-          "default": "same",
-          "isAdvanced": true
-        },
-        {
-          "name": "l1_ratio",
-          "type": "float",
-          "default": 0,
-          "isAdvanced": true
-        },
-        {
-          "name": "shuffle",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
       "id": "preprocessing.plssvd",
       "name": "PLSSVD",
       "type": "preprocessing",
@@ -15440,79 +15712,21 @@
       "description": "Partial Least Square SVD.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-dimensionality",
-      "supportsFinetuning": true,
-      "supportsParameterSweeps": true,
+      "category": "Dimensionality Reduction",
+      "supportsFinetuning": false,
+      "supportsParameterSweeps": false,
       "parameters": [
         {
           "name": "n_components",
           "type": "int",
-          "default": 2,
-          "sweepable": true,
-          "finetunable": true,
-          "finetuneType": "int",
-          "finetuneRange": [
-            1,
-            30
-          ]
+          "default": 1,
+          "min": 1,
+          "max": 1
         },
         {
           "name": "scale",
           "type": "bool",
           "default": true,
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
-      "id": "preprocessing.sparse_coder",
-      "name": "SparseCoder",
-      "type": "preprocessing",
-      "classPath": "sklearn.decomposition._dict_learning.SparseCoder",
-      "description": "Sparse coding.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-dimensionality",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "dictionary",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "transform_algorithm",
-          "type": "string",
-          "default": "omp",
-          "isAdvanced": true
-        },
-        {
-          "name": "transform_n_nonzero_coefs",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "transform_alpha",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "split_sign",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        },
-        {
-          "name": "positive_code",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        },
-        {
-          "name": "transform_max_iter",
-          "type": "int",
-          "default": 1000,
           "isAdvanced": true
         }
       ]
@@ -15525,7 +15739,7 @@
       "description": "Sparse Principal Components Analysis (SparsePCA).",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -15597,7 +15811,7 @@
       "description": "T-distributed Stochastic Neighbor Embedding.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-dimensionality",
+      "category": "Dimensionality Reduction",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -15702,7 +15916,7 @@
       "description": "Bin continuous data into intervals.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-encoding",
+      "category": "Encoding",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -15767,76 +15981,6 @@
       ]
     },
     {
-      "id": "preprocessing.label_binarizer",
-      "name": "LabelBinarizer",
-      "type": "preprocessing",
-      "classPath": "sklearn.preprocessing._label.LabelBinarizer",
-      "description": "Binarize labels in a one-vs-all fashion.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-encoding",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "neg_label",
-          "type": "int",
-          "default": 0,
-          "isAdvanced": true
-        },
-        {
-          "name": "pos_label",
-          "type": "int",
-          "default": 1,
-          "isAdvanced": true
-        },
-        {
-          "name": "sparse_output",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
-      "id": "preprocessing.label_encoder",
-      "name": "LabelEncoder",
-      "type": "preprocessing",
-      "classPath": "sklearn.preprocessing._label.LabelEncoder",
-      "description": "Encode target labels with value between 0 and n_classes-1.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-encoding",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": []
-    },
-    {
-      "id": "preprocessing.multi_label_binarizer",
-      "name": "MultiLabelBinarizer",
-      "type": "preprocessing",
-      "classPath": "sklearn.preprocessing._label.MultiLabelBinarizer",
-      "description": "Transform between iterable of iterables and a multilabel format.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-encoding",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "classes",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "sparse_output",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
       "id": "preprocessing.one_hot_encoder",
       "name": "OneHotEncoder",
       "type": "preprocessing",
@@ -15844,7 +15988,7 @@
       "description": "Encode categorical features as a one-hot numeric array.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-encoding",
+      "category": "Encoding",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -15902,7 +16046,7 @@
       "description": "Encode categorical features as an integer array.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-encoding",
+      "category": "Encoding",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -15953,7 +16097,7 @@
       "description": "Target Encoder for regression and classification targets.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-encoding",
+      "category": "Encoding",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -15995,263 +16139,6 @@
       ]
     },
     {
-      "id": "preprocessing.dict_vectorizer",
-      "name": "DictVectorizer",
-      "type": "preprocessing",
-      "classPath": "sklearn.feature_extraction._dict_vectorizer.DictVectorizer",
-      "description": "Transforms lists of feature-value mappings to vectors.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-feature-extraction",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "dtype",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "separator",
-          "type": "string",
-          "default": "=",
-          "isAdvanced": true
-        },
-        {
-          "name": "sparse",
-          "type": "bool",
-          "default": true,
-          "isAdvanced": true
-        },
-        {
-          "name": "sort",
-          "type": "bool",
-          "default": true,
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
-      "id": "preprocessing.feature_hasher",
-      "name": "FeatureHasher",
-      "type": "preprocessing",
-      "classPath": "sklearn.feature_extraction._hash.FeatureHasher",
-      "description": "Implements feature hashing, aka the hashing trick.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-feature-extraction",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "n_features",
-          "type": "int",
-          "default": 1048576,
-          "isAdvanced": true
-        },
-        {
-          "name": "input_type",
-          "type": "string",
-          "default": "dict",
-          "isAdvanced": true
-        },
-        {
-          "name": "dtype",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "alternate_sign",
-          "type": "bool",
-          "default": true,
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
-      "id": "preprocessing.hashing_vectorizer",
-      "name": "HashingVectorizer",
-      "type": "preprocessing",
-      "classPath": "sklearn.feature_extraction.text.HashingVectorizer",
-      "description": "Convert a collection of text documents to a matrix of token occurrences.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-feature-extraction",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "input",
-          "type": "string",
-          "default": "content",
-          "isAdvanced": true
-        },
-        {
-          "name": "encoding",
-          "type": "string",
-          "default": "utf-8",
-          "isAdvanced": true
-        },
-        {
-          "name": "decode_error",
-          "type": "string",
-          "default": "strict",
-          "isAdvanced": true
-        },
-        {
-          "name": "strip_accents",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "lowercase",
-          "type": "bool",
-          "default": true,
-          "isAdvanced": true
-        },
-        {
-          "name": "preprocessor",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "tokenizer",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "stop_words",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "token_pattern",
-          "type": "string",
-          "default": "(?u)\\b\\w\\w+\\b",
-          "isAdvanced": true
-        },
-        {
-          "name": "ngram_range",
-          "type": "array",
-          "default": [
-            1,
-            1
-          ],
-          "isAdvanced": true
-        },
-        {
-          "name": "analyzer",
-          "type": "string",
-          "default": "word",
-          "isAdvanced": true
-        },
-        {
-          "name": "n_features",
-          "type": "int",
-          "default": 1048576,
-          "isAdvanced": true
-        },
-        {
-          "name": "binary",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        },
-        {
-          "name": "norm",
-          "type": "select",
-          "default": "l2",
-          "options": [
-            "l1",
-            "l2",
-            "max"
-          ]
-        },
-        {
-          "name": "alternate_sign",
-          "type": "bool",
-          "default": true,
-          "isAdvanced": true
-        },
-        {
-          "name": "dtype",
-          "type": "string",
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
-      "id": "preprocessing.patch_extractor",
-      "name": "PatchExtractor",
-      "type": "preprocessing",
-      "classPath": "sklearn.feature_extraction.image.PatchExtractor",
-      "description": "Extracts patches from a collection of images.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-feature-extraction",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "patch_size",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "max_patches",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "random_state",
-          "type": "string",
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
-      "id": "preprocessing.tfidf_transformer",
-      "name": "TfidfTransformer",
-      "type": "preprocessing",
-      "classPath": "sklearn.feature_extraction.text.TfidfTransformer",
-      "description": "Transform a count matrix to a normalized tf or tf-idf representation.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-feature-extraction",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "norm",
-          "type": "select",
-          "default": "l2",
-          "options": [
-            "l1",
-            "l2",
-            "max"
-          ]
-        },
-        {
-          "name": "use_idf",
-          "type": "bool",
-          "default": true,
-          "isAdvanced": true
-        },
-        {
-          "name": "smooth_idf",
-          "type": "bool",
-          "default": true,
-          "isAdvanced": true
-        },
-        {
-          "name": "sublinear_tf",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
       "id": "preprocessing.generic_univariate_select",
       "name": "GenericUnivariateSelect",
       "type": "preprocessing",
@@ -16259,7 +16146,7 @@
       "description": "Univariate feature selector with configurable strategy.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16290,7 +16177,7 @@
       "description": "Feature ranking with recursive feature elimination.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16326,7 +16213,7 @@
       "description": "Recursive feature elimination with cross-validation to select features.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16373,7 +16260,7 @@
       "description": "Filter: Select the p-values for an estimated false discovery rate.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16398,7 +16285,7 @@
       "description": "Filter: Select the pvalues below alpha based on a FPR test.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16423,7 +16310,7 @@
       "description": "Meta-transformer for selecting features based on importance weights.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16469,7 +16356,7 @@
       "description": "Filter: Select the p-values corresponding to Family-wise error rate.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16494,7 +16381,7 @@
       "description": "Select features according to the k highest scores.",
       "source": "sklearn",
       "tier": "core",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16519,7 +16406,7 @@
       "description": "Select features according to a percentile of the highest scores.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16544,7 +16431,7 @@
       "description": "Transformer that performs Sequential Feature Selection.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16591,7 +16478,7 @@
       "description": "Feature selector that removes all low-variance features.",
       "source": "sklearn",
       "tier": "core",
-      "category": "scikit-feature-selection",
+      "category": "Feature Selection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -16611,7 +16498,7 @@
       "description": "Imputation for completing missing values using k-Nearest Neighbors.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-imputation",
+      "category": "Imputation",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -16670,7 +16557,7 @@
       "description": "Binary indicators for missing values.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-imputation",
+      "category": "Imputation",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16707,7 +16594,7 @@
       "description": "Univariate imputer for completing missing values with simple strategies.",
       "source": "sklearn",
       "tier": "core",
-      "category": "scikit-imputation",
+      "category": "Imputation",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16757,7 +16644,7 @@
       "description": "Approximate feature map for additive chi2 kernel.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-kernel-projection",
+      "category": "Kernel Projection",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -16775,48 +16662,6 @@
       ]
     },
     {
-      "id": "preprocessing.gaussian_random_projection",
-      "name": "GaussianRandomProjection",
-      "type": "preprocessing",
-      "classPath": "sklearn.random_projection.GaussianRandomProjection",
-      "description": "Reduce dimensionality through Gaussian random projection.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-kernel-projection",
-      "supportsFinetuning": true,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "n_components",
-          "type": "string",
-          "default": "auto",
-          "finetunable": true,
-          "finetuneType": "int",
-          "finetuneRange": [
-            1,
-            30
-          ]
-        },
-        {
-          "name": "eps",
-          "type": "float",
-          "default": 0.1,
-          "isAdvanced": true
-        },
-        {
-          "name": "compute_inverse_components",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        },
-        {
-          "name": "random_state",
-          "type": "string",
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
       "id": "preprocessing.nystroem",
       "name": "Nystroem",
       "type": "preprocessing",
@@ -16824,7 +16669,7 @@
       "description": "Approximate a kernel map using a subset of the training data.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-kernel-projection",
+      "category": "Kernel Projection",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -16892,7 +16737,7 @@
       "description": "Polynomial kernel approximation via Tensor Sketch.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-kernel-projection",
+      "category": "Kernel Projection",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -16947,7 +16792,7 @@
       "description": "Approximate a RBF kernel feature map using random Fourier features.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-kernel-projection",
+      "category": "Kernel Projection",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -16984,7 +16829,7 @@
       "description": "Approximate feature map for \"skewed chi-squared\" kernel.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-kernel-projection",
+      "category": "Kernel Projection",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -17014,60 +16859,6 @@
       ]
     },
     {
-      "id": "preprocessing.sparse_random_projection",
-      "name": "SparseRandomProjection",
-      "type": "preprocessing",
-      "classPath": "sklearn.random_projection.SparseRandomProjection",
-      "description": "Reduce dimensionality through sparse random projection.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-kernel-projection",
-      "supportsFinetuning": true,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "n_components",
-          "type": "string",
-          "default": "auto",
-          "finetunable": true,
-          "finetuneType": "int",
-          "finetuneRange": [
-            1,
-            30
-          ]
-        },
-        {
-          "name": "density",
-          "type": "string",
-          "default": "auto",
-          "isAdvanced": true
-        },
-        {
-          "name": "eps",
-          "type": "float",
-          "default": 0.1,
-          "isAdvanced": true
-        },
-        {
-          "name": "dense_output",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        },
-        {
-          "name": "compute_inverse_components",
-          "type": "bool",
-          "default": false,
-          "isAdvanced": true
-        },
-        {
-          "name": "random_state",
-          "type": "string",
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
       "id": "preprocessing.bernoulli_rbm",
       "name": "BernoulliRBM",
       "type": "preprocessing",
@@ -17075,7 +16866,7 @@
       "description": "Bernoulli Restricted Boltzmann Machine (RBM).",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-misc-transformers",
+      "category": "Other",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -17117,84 +16908,6 @@
       ]
     },
     {
-      "id": "preprocessing.column_transformer",
-      "name": "ColumnTransformer",
-      "type": "preprocessing",
-      "classPath": "sklearn.compose._column_transformer.ColumnTransformer",
-      "description": "Applies transformers to columns of an array or pandas DataFrame.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-meta-transformers",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "transformers",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "remainder",
-          "type": "string",
-          "default": "drop",
-          "isAdvanced": true
-        },
-        {
-          "name": "sparse_threshold",
-          "type": "float",
-          "default": 0.3,
-          "isAdvanced": true
-        },
-        {
-          "name": "transformer_weights",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "verbose_feature_names_out",
-          "type": "bool",
-          "default": true,
-          "isAdvanced": true
-        },
-        {
-          "name": "force_int_remainder_cols",
-          "type": "string",
-          "default": "deprecated",
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
-      "id": "preprocessing.feature_union",
-      "name": "FeatureUnion",
-      "type": "preprocessing",
-      "classPath": "sklearn.pipeline.FeatureUnion",
-      "description": "Concatenates results of multiple transformer objects.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-meta-transformers",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": [
-        {
-          "name": "transformer_list",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "transformer_weights",
-          "type": "string",
-          "isAdvanced": true
-        },
-        {
-          "name": "verbose_feature_names_out",
-          "type": "bool",
-          "default": true,
-          "isAdvanced": true
-        }
-      ]
-    },
-    {
       "id": "preprocessing.random_trees_embedding",
       "name": "RandomTreesEmbedding",
       "type": "preprocessing",
@@ -17202,7 +16915,7 @@
       "description": "An ensemble of totally random trees.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "scikit-misc-transformers",
+      "category": "Other",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -17262,7 +16975,7 @@
       "description": "Binarize data (set feature values to 0 or 1) according to a threshold.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-scalers",
+      "category": "Scaling",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -17282,7 +16995,7 @@
       "description": "Constructs a transformer from an arbitrary callable.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-scalers",
+      "category": "Scaling",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -17332,19 +17045,6 @@
       ]
     },
     {
-      "id": "preprocessing.kernel_centerer",
-      "name": "KernelCenterer",
-      "type": "preprocessing",
-      "classPath": "sklearn.preprocessing._data.KernelCenterer",
-      "description": "Center an arbitrary kernel matrix :math:`K`.",
-      "source": "sklearn",
-      "tier": "advanced",
-      "category": "scikit-scalers",
-      "supportsFinetuning": false,
-      "supportsParameterSweeps": false,
-      "parameters": []
-    },
-    {
       "id": "preprocessing.normalizer",
       "name": "Normalizer",
       "type": "preprocessing",
@@ -17352,7 +17052,7 @@
       "description": "Normalize samples individually to unit norm.",
       "source": "sklearn",
       "tier": "core",
-      "category": "scikit-scalers",
+      "category": "Scaling",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -17376,7 +17076,7 @@
       "description": "Generate polynomial and interaction features.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-scalers",
+      "category": "Scaling",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -17420,7 +17120,7 @@
       "description": "Generate univariate B-spline bases for features.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "scikit-scalers",
+      "category": "Scaling",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -17501,7 +17201,7 @@
         {
           "name": "sigma",
           "type": "float",
-          "default": 2,
+          "default": 1,
           "description": "Standard deviation for Gaussian kernel",
           "min": 0.1,
           "max": 20,
@@ -17548,7 +17248,7 @@
       "id": "preprocessing.moving_average",
       "name": "MovingAverage",
       "type": "preprocessing",
-      "classPath": "nirs4all.operators.transforms.MovingAverage",
+      "classPath": "nirs4all.operators.transforms.SavitzkyGolay",
       "description": "Moving average smoothing",
       "source": "nirs4all",
       "tier": "standard",
@@ -17557,10 +17257,10 @@
       "supportsParameterSweeps": true,
       "parameters": [
         {
-          "name": "window_size",
+          "name": "window_length",
           "type": "int",
           "default": 5,
-          "description": "Size of the moving window (should be odd)",
+          "description": "Size of the moving window (must be odd)",
           "min": 3,
           "max": 51,
           "sweepable": true,
@@ -17590,6 +17290,16 @@
               }
             }
           ]
+        },
+        {
+          "name": "polyorder",
+          "type": "int",
+          "default": 1
+        },
+        {
+          "name": "deriv",
+          "type": "int",
+          "default": 0
         }
       ]
     },
@@ -17615,7 +17325,7 @@
       "source": "nirs4all",
       "tier": "standard",
       "category": "Wavelet",
-      "supportsFinetuning": true,
+      "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
         {
@@ -17634,41 +17344,6 @@
             "coif3"
           ],
           "sweepable": true
-        },
-        {
-          "name": "level",
-          "type": "int",
-          "default": 3,
-          "description": "Decomposition level",
-          "min": 1,
-          "max": 10,
-          "sweepable": true,
-          "finetunable": true,
-          "finetuneType": "int",
-          "finetuneRange": [
-            1,
-            7
-          ],
-          "sweepPresets": [
-            {
-              "label": "Low (1-4)",
-              "type": "range",
-              "values": {
-                "from": 1,
-                "to": 4,
-                "step": 1
-              }
-            },
-            {
-              "label": "Full (1-7)",
-              "type": "range",
-              "values": {
-                "from": 1,
-                "to": 7,
-                "step": 1
-              }
-            }
-          ]
         },
         {
           "name": "mode",
@@ -17697,12 +17372,12 @@
       "supportsParameterSweeps": true,
       "parameters": [
         {
-          "name": "n_components",
+          "name": "n_components_per_level",
           "type": "int",
-          "default": 10,
-          "description": "Number of PCA components to retain",
+          "default": 3,
+          "description": "Number of PCA components per wavelet level",
           "min": 1,
-          "max": 100,
+          "max": 50,
           "sweepable": true,
           "finetunable": true,
           "finetuneType": "int",
@@ -17773,7 +17448,7 @@
       "description": "Discrete Wavelet Transform feature extractor for spectral data.",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "spectral-transforms",
+      "category": "Wavelet",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -17805,7 +17480,7 @@
       "description": "Multi-scale SVD on wavelet coefficients.",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "spectral-transforms",
+      "category": "Wavelet",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -18186,7 +17861,7 @@
       "description": "K-fold cross validation",
       "source": "sklearn",
       "tier": "core",
-      "category": "sklearn",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18223,7 +17898,7 @@
       "description": "Repeated K-fold CV",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18263,7 +17938,7 @@
       "description": "Random repeated train/test splits",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18303,7 +17978,7 @@
       "description": "Stratified K-fold CV (classification)",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18340,7 +18015,7 @@
       "description": "Leave-one-out cross validation",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": []
@@ -18353,7 +18028,7 @@
       "description": "Group-aware K-fold",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18376,7 +18051,7 @@
       "description": "Group-aware shuffle split",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18408,7 +18083,7 @@
       "description": "Leave One Group Out cross-validator.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn-splitters",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": []
@@ -18421,13 +18096,15 @@
       "description": "Leave P Group(s) Out cross-validator.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "sklearn-splitters",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
         {
           "name": "n_groups",
-          "type": "string"
+          "type": "int",
+          "default": 2,
+          "min": 1
         }
       ]
     },
@@ -18439,13 +18116,15 @@
       "description": "Leave-P-Out cross-validator.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "sklearn-splitters",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
         {
           "name": "p",
-          "type": "string"
+          "type": "int",
+          "default": 1,
+          "min": 1
         }
       ]
     },
@@ -18457,7 +18136,7 @@
       "description": "Predefined split cross-validator.",
       "source": "sklearn",
       "tier": "advanced",
-      "category": "sklearn-splitters",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [
@@ -18476,7 +18155,7 @@
       "description": "Repeated class-wise stratified K-Fold cross validator.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn-splitters",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18507,7 +18186,7 @@
       "description": "Class-wise stratified K-Fold iterator variant with non-overlapping groups.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn-splitters",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18537,7 +18216,7 @@
       "description": "Class-wise stratified ShuffleSplit cross-validator.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn-splitters",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18571,7 +18250,7 @@
       "description": "Time Series cross-validator.",
       "source": "sklearn",
       "tier": "standard",
-      "category": "sklearn-splitters",
+      "category": "Scikit-learn",
       "supportsFinetuning": false,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18733,7 +18412,7 @@
       "description": "KBinsDiscretizer qui retourne des entiers au lieu de floats",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "scaling",
+      "category": "Scaling",
       "supportsFinetuning": true,
       "supportsParameterSweeps": true,
       "parameters": [
@@ -18784,7 +18463,7 @@
       "description": "nirs4all y_processing RangeDiscretizer",
       "source": "nirs4all",
       "tier": "standard",
-      "category": "scaling",
+      "category": "Scaling",
       "supportsFinetuning": false,
       "supportsParameterSweeps": false,
       "parameters": [

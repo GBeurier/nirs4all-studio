@@ -630,7 +630,7 @@
     "id": "model.tabpfn",
     "name": "TabPFN",
     "type": "model",
-    "classPath": "tabpfn.TabPFNRegressor",
+    "classPath": "tabpfn.regressor.TabPFNRegressor",
     "description": "TabPFN (Prior-Data Fitted Network)",
     "longDescription": "Pre-trained transformer for tabular data - no hyperparameter tuning needed.",
     "requires": [
@@ -645,7 +645,8 @@
     ],
     "source": "nirs4all",
     "legacyClassPaths": [
-      "nirs4all.operators.models.TabPFN"
+      "nirs4all.operators.models.TabPFN",
+      "tabpfn.TabPFNRegressor"
     ],
     "isDeepLearning": true,
     "parameters": [],
@@ -657,7 +658,7 @@
     "id": "model.tabpfn_classifier",
     "name": "TabPFNClassifier",
     "type": "model",
-    "classPath": "tabpfn.TabPFNClassifier",
+    "classPath": "tabpfn.classifier.TabPFNClassifier",
     "description": "TabPFN Classifier (Prior-Data Fitted Network)",
     "longDescription": "Pre-trained transformer for tabular classification - no hyperparameter tuning needed.",
     "requires": [
@@ -672,6 +673,9 @@
       "classification"
     ],
     "source": "nirs4all",
+    "legacyClassPaths": [
+      "tabpfn.TabPFNClassifier"
+    ],
     "isDeepLearning": true,
     "parameters": [],
     "supportsParameterSweeps": false,

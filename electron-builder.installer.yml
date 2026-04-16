@@ -9,6 +9,9 @@ directories:
 files:
   - dist/**/*
   - dist-electron/**/*
+  # dist-electron/main.cjs loads the shared Python runtime config at startup.
+  - scripts/python-runtime-config.cjs
+  - recommended-config.json
   - "!**/*.map"
 
 # Installer builds ship backend source only.

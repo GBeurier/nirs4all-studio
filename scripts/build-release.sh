@@ -168,7 +168,7 @@ case "$PLATFORM" in
         ;;
 esac
 
-npx electron-builder $PLATFORM_FLAGS
+npx electron-builder --config electron-builder.installer.yml $PLATFORM_FLAGS
 
 echo ""
 echo "========================================"

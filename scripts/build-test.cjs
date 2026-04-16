@@ -39,6 +39,36 @@ if (platformIdx !== -1 && args[platformIdx + 1]) {
 const results = [];
 let hasFailure = false;
 
+function getTopLevelYamlList(filePath, key) {
+  const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+  const values = [];
+  let inList = false;
+
+  for (const line of lines) {
+    if (!inList) {
+      if (line.trim() === `${key}:`) {
+        inList = true;
+      }
+      continue;
+    }
+
+    if (!line.trim() || line.trimStart().startsWith("#")) {
+      continue;
+    }
+
+    if (/^\S/.test(line)) {
+      break;
+    }
+
+    const match = line.match(/^\s*-\s+(.*)$/);
+    if (match) {
+      values.push(match[1].trim().replace(/^"(.*)"$/, "$1"));
+    }
+  }
+
+  return values;
+}
+
 function run(label, command, cmdArgs, options = {}) {
   return new Promise((resolve) => {
     const startTime = Date.now();
@@ -130,6 +160,21 @@ async function main() {
   } else {
     console.log(`WARN (${sizeMB.toFixed(1)} MB — expected <5 MB)`);
     results.push({ label: "Bundle size", ok: sizeMB < 50, elapsed: "0" });
+  }
+
+  const requiredRuntimeFiles = ["scripts/python-runtime-config.cjs", "recommended-config.json"];
+  for (const configName of ["electron-builder.yml", "electron-builder.installer.yml", "electron-builder.archive.yml"]) {
+    process.stdout.write(`  ${configName} packages runtime config... `);
+    const packagedFiles = getTopLevelYamlList(path.join(projectRoot, configName), "files");
+    const missingFiles = requiredRuntimeFiles.filter((item) => !packagedFiles.includes(item));
+    if (missingFiles.length === 0) {
+      console.log("OK");
+      results.push({ label: `${configName} runtime config`, ok: true, elapsed: "0" });
+    } else {
+      console.log(`FAIL (missing ${missingFiles.join(", ")})`);
+      hasFailure = true;
+      results.push({ label: `${configName} runtime config`, ok: false, elapsed: "0" });
+    }
   }
   console.log("");
 
