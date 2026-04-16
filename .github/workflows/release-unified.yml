@@ -594,7 +594,7 @@ jobs:
         run: node scripts/build-archive-standalone.cjs --clean --platform linux --arch x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NIRS4ALL_TAR_GZIP_PROGRAM: pigz -1
+          NIRS4ALL_TAR_GZIP_PROGRAM: pigz -9
 
       - name: Extract archive for smoke test
         id: archive
@@ -617,6 +617,13 @@ jobs:
         run: |
           FILE="${{ steps.archive.outputs.archive_path }}"
           sha256sum "$FILE" > "$FILE.sha256"
+
+      - name: Report archive size
+        run: |
+          FILE="${{ steps.archive.outputs.archive_path }}"
+          SIZE_BYTES="$(stat -c%s "$FILE")"
+          SIZE_MIB="$((SIZE_BYTES / 1024 / 1024))"
+          echo "Archive size: ${SIZE_BYTES} bytes (${SIZE_MIB} MiB)"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
