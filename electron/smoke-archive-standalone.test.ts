@@ -120,12 +120,12 @@ describe("smoke-archive-standalone", () => {
     const extractedRoot = makeTempDir("n4a-smoke-linux-");
     const appRoot = path.join(extractedRoot, "wrapper", "nirs4all Studio");
     fs.mkdirSync(path.join(appRoot, "resources"), { recursive: true });
-    fs.writeFileSync(path.join(appRoot, "nirs4all Studio"), "");
+    fs.writeFileSync(path.join(appRoot, "nirs4all-webapp"), "");
 
     const layout = smokeModule.resolveLaunchLayout(extractedRoot, "linux", "nirs4all Studio");
 
     expect(layout.appRoot).toBe(appRoot);
-    expect(layout.executablePath).toBe(path.join(appRoot, "nirs4all Studio"));
+    expect(layout.executablePath).toBe(path.join(appRoot, "nirs4all-webapp"));
     expect(layout.runtimeReadyPath).toBe(
       path.join(appRoot, "resources", "backend", "python-runtime", "RUNTIME_READY.json"),
     );

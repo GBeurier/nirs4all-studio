@@ -41,7 +41,7 @@ def test_smoke_update_zip_permissions_script_resolves_linux_app_root_without_app
     script_path = repo_root / "scripts" / "smoke-update-zip-permissions.py"
     archive_path = tmp_path / "linux-update.zip"
 
-    executable_info = zipfile.ZipInfo("nirs4all Studio/nirs4all Studio")
+    executable_info = zipfile.ZipInfo("nirs4all Studio/nirs4all-webapp")
     executable_info.create_system = 3
     executable_info.external_attr = (0o755 << 16)
 
@@ -59,13 +59,9 @@ def test_smoke_update_zip_permissions_script_resolves_linux_app_root_without_app
         archive.writestr(python_info, "#!/bin/sh\nexit 0\n")
         archive.writestr("LICENSE.electron.txt", "license\n")
 
-    env = os.environ.copy()
-    env.pop("NIRS4ALL_APP_EXE", None)
-
     result = subprocess.run(
         [sys.executable, str(script_path), "--archive", str(archive_path), "--platform", "linux"],
         cwd=repo_root,
-        env=env,
         capture_output=True,
         text=True,
         check=False,

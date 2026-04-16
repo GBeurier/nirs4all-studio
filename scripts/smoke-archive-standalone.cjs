@@ -16,6 +16,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createServer } = require("net");
+const packageJson = require("../package.json");
 
 const DEFAULT_APP_NAME = "nirs4all Studio";
 const DEFAULT_TIMEOUT_MS = 180000;
@@ -178,7 +179,11 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
     };
   }
 
-  const executableName = platformId === "win32" ? `${appName}.exe` : appName;
+  const executableName = platformId === "win32"
+    ? `${appName}.exe`
+    : platformId === "linux"
+      ? (process.env.NIRS4ALL_APP_EXE || packageJson.name)
+      : appName;
   const appRoot = findDirectoryAppRoot(extractedRoot, executableName);
   const runtimeRoot = path.join(appRoot, "resources", "backend", "python-runtime");
   return {
