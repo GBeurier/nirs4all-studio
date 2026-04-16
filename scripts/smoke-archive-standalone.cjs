@@ -121,6 +121,45 @@ function findMacAppBundle(extractedRoot, appName) {
   throw new Error(`No .app bundle found under ${extractedRoot}`);
 }
 
+function findDirectoryAppRoot(extractedRoot, executableName, maxDepth = 2) {
+  const initialRoot = path.resolve(extractedRoot);
+  let frontier = [initialRoot];
+  const seen = new Set();
+
+  for (let depth = 0; depth <= maxDepth; depth += 1) {
+    const matches = frontier.filter((candidate) => (
+      fs.existsSync(path.join(candidate, executableName))
+      && fs.existsSync(path.join(candidate, "resources"))
+    ));
+
+    if (matches.length === 1) {
+      return matches[0];
+    }
+    if (matches.length > 1) {
+      break;
+    }
+
+    const nextFrontier = [];
+    for (const candidate of frontier) {
+      if (seen.has(candidate)) {
+        continue;
+      }
+      seen.add(candidate);
+      for (const entry of fs.readdirSync(candidate, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          nextFrontier.push(path.join(candidate, entry.name));
+        }
+      }
+    }
+    frontier = nextFrontier;
+    if (frontier.length === 0) {
+      break;
+    }
+  }
+
+  return initialRoot;
+}
+
 function resolveLaunchLayout(extractedRoot, platformId, appName) {
   if (platformId === "darwin") {
     const appBundle = findMacAppBundle(extractedRoot, appName);
@@ -140,10 +179,11 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
   }
 
   const executableName = platformId === "win32" ? `${appName}.exe` : appName;
-  const runtimeRoot = path.join(extractedRoot, "resources", "backend", "python-runtime");
+  const appRoot = findDirectoryAppRoot(extractedRoot, executableName);
+  const runtimeRoot = path.join(appRoot, "resources", "backend", "python-runtime");
   return {
-    appRoot: extractedRoot,
-    executablePath: path.join(extractedRoot, executableName),
+    appRoot,
+    executablePath: path.join(appRoot, executableName),
     runtimeReadyPath: path.join(runtimeRoot, "RUNTIME_READY.json"),
     bundledPythonPath:
       platformId === "win32"

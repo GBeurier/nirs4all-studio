@@ -116,6 +116,21 @@ describe("smoke-archive-standalone", () => {
     );
   });
 
+  it("resolves a wrapped Linux standalone layout", () => {
+    const extractedRoot = makeTempDir("n4a-smoke-linux-");
+    const appRoot = path.join(extractedRoot, "wrapper", "nirs4all Studio");
+    fs.mkdirSync(path.join(appRoot, "resources"), { recursive: true });
+    fs.writeFileSync(path.join(appRoot, "nirs4all Studio"), "");
+
+    const layout = smokeModule.resolveLaunchLayout(extractedRoot, "linux", "nirs4all Studio");
+
+    expect(layout.appRoot).toBe(appRoot);
+    expect(layout.executablePath).toBe(path.join(appRoot, "nirs4all Studio"));
+    expect(layout.runtimeReadyPath).toBe(
+      path.join(appRoot, "resources", "backend", "python-runtime", "RUNTIME_READY.json"),
+    );
+  });
+
   it("resolves the macOS .app layout", () => {
     const extractedRoot = makeTempDir("n4a-smoke-mac-");
     const appBundle = path.join(extractedRoot, "nirs4all Studio.app");

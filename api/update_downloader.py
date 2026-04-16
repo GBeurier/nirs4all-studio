@@ -308,6 +308,38 @@ def _looks_like_directory_app_root(candidate: Path, expected_executable: str) ->
     )
 
 
+def _find_unique_directory_match(
+    roots: list[Path],
+    predicate: Callable[[Path], bool],
+    max_depth: int = 2,
+) -> Path | None:
+    """Search breadth-first for a unique matching directory near the extraction root."""
+    frontier = [root for root in roots if root.is_dir()]
+    seen: set[Path] = set()
+
+    for _depth in range(max_depth + 1):
+        matches = [candidate for candidate in frontier if predicate(candidate)]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            return None
+
+        next_frontier: list[Path] = []
+        for candidate in frontier:
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            try:
+                next_frontier.extend(child for child in candidate.iterdir() if child.is_dir())
+            except OSError:
+                continue
+        frontier = next_frontier
+        if not frontier:
+            break
+
+    return None
+
+
 def resolve_extracted_content_dir(staging_dir: Path, ignored_names: set[str] | None = None) -> Path | None:
     """Resolve the actual app content root from a staging directory."""
     if not staging_dir.exists():
@@ -321,16 +353,16 @@ def resolve_extracted_content_dir(staging_dir: Path, ignored_names: set[str] | N
     expected_executable = os.environ.get("NIRS4ALL_APP_EXE") or get_executable_name()
     top_level_dirs = [entry for entry in entries if entry.is_dir()]
 
-    mac_bundles = [entry for entry in top_level_dirs if _looks_like_macos_bundle_root(entry)]
-    if len(mac_bundles) == 1:
-        return mac_bundles[0]
+    mac_bundle = _find_unique_directory_match(top_level_dirs, _looks_like_macos_bundle_root)
+    if mac_bundle is not None:
+        return mac_bundle
 
-    nested_app_roots = [
-        entry for entry in top_level_dirs
-        if _looks_like_directory_app_root(entry, expected_executable)
-    ]
-    if len(nested_app_roots) == 1:
-        return nested_app_roots[0]
+    nested_app_root = _find_unique_directory_match(
+        top_level_dirs,
+        lambda candidate: _looks_like_directory_app_root(candidate, expected_executable),
+    )
+    if nested_app_root is not None:
+        return nested_app_root
 
     if len(entries) == 1 and entries[0].is_dir():
         return entries[0]
