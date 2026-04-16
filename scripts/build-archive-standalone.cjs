@@ -207,6 +207,7 @@ async function createLinuxTarball(config) {
   }
 
   const tarArgs = [
+    "--dereference",
     "-C",
     releaseDir,
     `--transform=s|^linux-unpacked|${PRODUCT_NAME}|`,
