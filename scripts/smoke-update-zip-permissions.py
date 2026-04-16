@@ -45,13 +45,25 @@ def resolve_paths(content_dir: Path, platform_name: str, app_name: str) -> tuple
             raise FileNotFoundError(f"No .app bundle found in {content_dir}")
         resources_dir = app_bundle / "Contents" / "Resources"
         executable_path = app_bundle / "Contents" / "MacOS" / app_name
-        python_path = resources_dir / "backend" / "python-runtime" / "venv" / "bin" / "python"
-        runtime_ready = resources_dir / "backend" / "python-runtime" / "RUNTIME_READY.json"
+        runtime_root = resources_dir / "backend" / "python-runtime"
+        python_candidates = [
+            runtime_root / "python" / "bin" / "python3",
+            runtime_root / "python" / "bin" / "python",
+            runtime_root / "venv" / "bin" / "python",
+        ]
+        runtime_ready = runtime_root / "RUNTIME_READY.json"
+        python_path = next((candidate for candidate in python_candidates if candidate.exists()), python_candidates[0])
         return executable_path, python_path, runtime_ready
 
     executable_path = content_dir / app_name
-    python_path = content_dir / "resources" / "backend" / "python-runtime" / "venv" / "bin" / "python"
-    runtime_ready = content_dir / "resources" / "backend" / "python-runtime" / "RUNTIME_READY.json"
+    runtime_root = content_dir / "resources" / "backend" / "python-runtime"
+    python_candidates = [
+        runtime_root / "python" / "bin" / "python3",
+        runtime_root / "python" / "bin" / "python",
+        runtime_root / "venv" / "bin" / "python",
+    ]
+    python_path = next((candidate for candidate in python_candidates if candidate.exists()), python_candidates[0])
+    runtime_ready = runtime_root / "RUNTIME_READY.json"
     return executable_path, python_path, runtime_ready
 
 

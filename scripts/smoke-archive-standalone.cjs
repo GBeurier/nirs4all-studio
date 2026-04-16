@@ -125,23 +125,41 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
   if (platformId === "darwin") {
     const appBundle = findMacAppBundle(extractedRoot, appName);
     const resourcesDir = path.join(appBundle, "Contents", "Resources");
+    const runtimeRoot = path.join(resourcesDir, "backend", "python-runtime");
     return {
       appRoot: appBundle,
       executablePath: path.join(appBundle, "Contents", "MacOS", appName),
-      runtimeReadyPath: path.join(resourcesDir, "backend", "python-runtime", "RUNTIME_READY.json"),
-      bundledPythonPath: path.join(resourcesDir, "backend", "python-runtime", "venv", "bin", "python"),
+      runtimeReadyPath: path.join(runtimeRoot, "RUNTIME_READY.json"),
+      bundledPythonPath: path.join(runtimeRoot, "python", "bin", "python3"),
+      bundledPythonCandidates: [
+        path.join(runtimeRoot, "python", "bin", "python3"),
+        path.join(runtimeRoot, "python", "bin", "python"),
+        path.join(runtimeRoot, "venv", "bin", "python"),
+      ],
     };
   }
 
   const executableName = platformId === "win32" ? `${appName}.exe` : appName;
+  const runtimeRoot = path.join(extractedRoot, "resources", "backend", "python-runtime");
   return {
     appRoot: extractedRoot,
     executablePath: path.join(extractedRoot, executableName),
-    runtimeReadyPath: path.join(extractedRoot, "resources", "backend", "python-runtime", "RUNTIME_READY.json"),
+    runtimeReadyPath: path.join(runtimeRoot, "RUNTIME_READY.json"),
     bundledPythonPath:
       platformId === "win32"
-        ? path.join(extractedRoot, "resources", "backend", "python-runtime", "venv", "Scripts", "python.exe")
-        : path.join(extractedRoot, "resources", "backend", "python-runtime", "venv", "bin", "python"),
+        ? path.join(runtimeRoot, "python", "python.exe")
+        : path.join(runtimeRoot, "python", "bin", "python3"),
+    bundledPythonCandidates:
+      platformId === "win32"
+        ? [
+            path.join(runtimeRoot, "python", "python.exe"),
+            path.join(runtimeRoot, "venv", "Scripts", "python.exe"),
+          ]
+        : [
+            path.join(runtimeRoot, "python", "bin", "python3"),
+            path.join(runtimeRoot, "python", "bin", "python"),
+            path.join(runtimeRoot, "venv", "bin", "python"),
+          ],
   };
 }
 
@@ -153,6 +171,72 @@ function ensurePathExists(targetPath, label) {
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function collectRuntimePathLeaks(runtimeRoot, disallowedFragments) {
+  const leaks = [];
+  const queue = [runtimeRoot];
+  const binaryExtensions = new Set([".a", ".dll", ".dylib", ".exe", ".lib", ".pdb", ".pyc", ".pyd", ".so", ".whl", ".zip"]);
+
+  while (queue.length > 0) {
+    const currentDir = queue.pop();
+    if (!currentDir || !fs.existsSync(currentDir)) {
+      continue;
+    }
+
+    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+      const entryPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "__pycache__") {
+          continue;
+        }
+        queue.push(entryPath);
+        continue;
+      }
+
+      try {
+        const stat = fs.lstatSync(entryPath);
+        if (stat.isSymbolicLink()) {
+          const target = fs.readlinkSync(entryPath);
+          const matched = disallowedFragments.filter((fragment) => fragment && target.includes(fragment));
+          if (matched.length > 0) {
+            leaks.push({ path: entryPath, kind: "symlink", matches: matched });
+          }
+          continue;
+        }
+
+        if (!stat.isFile() || stat.size > 1024 * 1024) {
+          continue;
+        }
+
+        const ext = path.extname(entry.name).toLowerCase();
+        const parentName = path.basename(path.dirname(entryPath));
+        const shouldInspect = entry.name === "pyvenv.cfg"
+          || parentName === "Scripts"
+          || parentName === "bin"
+          || [".cfg", ".pth"].includes(ext)
+          || entry.name.startsWith("activate");
+        if (!shouldInspect || binaryExtensions.has(ext)) {
+          continue;
+        }
+
+        const buffer = fs.readFileSync(entryPath);
+        if (buffer.includes(0)) {
+          continue;
+        }
+
+        const text = buffer.toString("utf-8");
+        const matched = disallowedFragments.filter((fragment) => fragment && text.includes(fragment));
+        if (matched.length > 0) {
+          leaks.push({ path: entryPath, kind: "text", matches: matched });
+        }
+      } catch {
+        // Ignore unreadable runtime files during leak scanning.
+      }
+    }
+  }
+
+  return leaks;
 }
 
 function buildSandboxEnv(platformId, sandboxRoot, port) {
@@ -301,7 +385,21 @@ async function smokeArchiveStandalone(rawConfig) {
   const launchLayout = resolveLaunchLayout(config.extractedRoot, config.platform, config.appName);
   ensurePathExists(launchLayout.executablePath, "Packaged executable");
   ensurePathExists(launchLayout.runtimeReadyPath, "Bundled runtime marker");
-  ensurePathExists(launchLayout.bundledPythonPath, "Bundled Python");
+  const bundledPythonPath = launchLayout.bundledPythonCandidates.find((candidate) => fs.existsSync(candidate))
+    ?? launchLayout.bundledPythonPath;
+  ensurePathExists(bundledPythonPath, "Bundled Python");
+
+  const pathLeaks = collectRuntimePathLeaks(
+    path.dirname(launchLayout.runtimeReadyPath),
+    [process.cwd(), path.resolve("backend-dist")],
+  );
+  if (pathLeaks.length > 0) {
+    const sample = pathLeaks
+      .slice(0, 5)
+      .map((leak) => `${leak.kind}:${leak.path} -> ${leak.matches.join(", ")}`)
+      .join("\n");
+    throw new Error(`Bundled runtime still references the build workspace.\n${sample}`);
+  }
 
   const port = await choosePort(config.port);
   const sandboxRoot = config.sandboxRoot || fs.mkdtempSync(path.join(os.tmpdir(), "n4a-archive-smoke-"));
@@ -310,7 +408,7 @@ async function smokeArchiveStandalone(rawConfig) {
 
   console.log(`Smoke root:     ${config.extractedRoot}`);
   console.log(`Executable:     ${launchLayout.executablePath}`);
-  console.log(`Bundled Python: ${launchLayout.bundledPythonPath}`);
+  console.log(`Bundled Python: ${bundledPythonPath}`);
   console.log(`Sandbox:        ${sandboxRoot}`);
   console.log(`Backend port:   ${port}`);
 
@@ -366,6 +464,7 @@ if (require.main === module) {
 module.exports = {
   assertValidConfig,
   buildSandboxEnv,
+  collectRuntimePathLeaks,
   parseArgs,
   resolveLaunchLayout,
   smokeArchiveStandalone,

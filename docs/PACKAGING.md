@@ -21,7 +21,7 @@ The project now publishes three desktop distribution families plus Docker:
 |---|---|---|---|
 | Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + backend source; Python environment is writable and managed outside the app bundle |
 | Portable Windows | Windows x64 | `-portable.exe` | Electron portable layout with state under `.nirs4all/` next to the executable |
-| All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` | Electron + backend source + embedded `python-runtime/venv`; runtime is read-only |
+| All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` | Electron + backend source + embedded `python-runtime/python`; runtime is read-only |
 | Docker | Linux | `ghcr.io/gbeurier/nirs4all-studio:*` | No Electron; FastAPI serves the UI |
 
 For the desktop all-in-one bundle, v1 is deliberately locked to a single product profile:
@@ -79,7 +79,6 @@ resources/
     ├── version.json
     └── python-runtime/
         ├── python/
-        ├── venv/
         └── RUNTIME_READY.json
 ```
 

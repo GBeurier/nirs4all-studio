@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const bakeStandaloneBackendModule = require("../scripts/bake-standalone-backend.cjs") as {
+  getBundledPythonPath(runtimeRoot: string): string;
   getVenvPythonPath(runtimeRoot: string): string;
   moveIfExists(
     srcPath: string,
@@ -121,14 +122,14 @@ describe("bake-standalone-backend", () => {
     ).toThrow("Cross-target bake is not supported on this host.");
   });
 
-  it("returns the bundled venv Python path for the current platform", () => {
+  it("returns the bundled Python path for the current platform", () => {
     const runtimeRoot = path.join("backend-dist", "python-runtime");
-    const pythonPath = bakeStandaloneBackendModule.getVenvPythonPath(runtimeRoot);
+    const pythonPath = bakeStandaloneBackendModule.getBundledPythonPath(runtimeRoot);
 
     expect(pythonPath).toBe(
       process.platform === "win32"
-        ? path.join(runtimeRoot, "venv", "Scripts", "python.exe")
-        : path.join(runtimeRoot, "venv", "bin", "python"),
+        ? path.join(runtimeRoot, "python", "python.exe")
+        : path.join(runtimeRoot, "python", "bin", "python3"),
     );
   });
 

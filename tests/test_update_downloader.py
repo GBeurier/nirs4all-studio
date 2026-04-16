@@ -14,7 +14,7 @@ def test_extract_zip_restores_executable_bits_from_archive(monkeypatch, tmp_path
     staging_dir = tmp_path / "staging"
     archive_path = tmp_path / "app-update.zip"
 
-    script_info = zipfile.ZipInfo("nirs4all Studio/resources/backend/python-runtime/venv/bin/python")
+    script_info = zipfile.ZipInfo("nirs4all Studio/resources/backend/python-runtime/python/bin/python3")
     script_info.create_system = 3
     script_info.external_attr = (0o755 << 16)
 
@@ -30,7 +30,7 @@ def test_extract_zip_restores_executable_bits_from_archive(monkeypatch, tmp_path
 
     success, _message, content_dir = asyncio.run(downloader.extract(archive_path))
 
-    restored = content_dir / "resources" / "backend" / "python-runtime" / "venv" / "bin" / "python"
+    restored = content_dir / "resources" / "backend" / "python-runtime" / "python" / "bin" / "python3"
 
     assert success is True
     assert restored.exists()

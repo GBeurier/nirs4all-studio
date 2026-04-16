@@ -11,7 +11,6 @@
  *     version.json
  *     python-runtime/
  *       python/
- *       venv/
  *       build_info.json
  *       RUNTIME_READY.json
  *
@@ -220,10 +219,10 @@ async function moveIfExists(srcPath, destPath, options = {}) {
   });
 }
 
-function getVenvPythonPath(runtimeRoot) {
+function getBundledPythonPath(runtimeRoot) {
   return isWindows
-    ? path.join(runtimeRoot, "venv", "Scripts", "python.exe")
-    : path.join(runtimeRoot, "venv", "bin", "python");
+    ? path.join(runtimeRoot, "python", "python.exe")
+    : path.join(runtimeRoot, "python", "bin", "python3");
 }
 
 function writeRuntimeReady(runtimeRoot, config) {
@@ -241,7 +240,7 @@ function writeRuntimeReady(runtimeRoot, config) {
 }
 
 async function precompile(runtimeRoot, backendDist) {
-  const venvPython = getVenvPythonPath(runtimeRoot);
+  const bundledPython = getBundledPythonPath(runtimeRoot);
   const compileTargets = [
     path.join(backendDist, "api"),
     path.join(backendDist, "websocket"),
@@ -253,7 +252,7 @@ async function precompile(runtimeRoot, backendDist) {
     return;
   }
 
-  await runCommand(venvPython, ["-m", "compileall", "-q", "-j", "0", ...compileTargets]);
+  await runCommand(bundledPython, ["-m", "compileall", "-q", "-j", "0", ...compileTargets]);
 }
 
 async function bakeStandaloneBackend(config) {
@@ -303,7 +302,7 @@ async function bakeStandaloneBackend(config) {
   console.log(`  Target:       ${config.platform}-${config.arch}`);
   console.log(`  Constraints:  ${config.constraintsFile || "(none)"}`);
   console.log(`  Output:       ${backendDist}`);
-  console.log(`  Smoke test:   ${getVenvPythonPath(runtimeRoot)} -m uvicorn main:app --host 127.0.0.1 --port 8000`);
+  console.log(`  Smoke test:   ${getBundledPythonPath(runtimeRoot)} -m uvicorn main:app --host 127.0.0.1 --port 8000`);
 }
 
 async function main() {
@@ -345,7 +344,8 @@ if (require.main === module) {
 
 module.exports = {
   bakeStandaloneBackend,
-  getVenvPythonPath,
+  getBundledPythonPath,
+  getVenvPythonPath: getBundledPythonPath,
   moveIfExists,
   parseArgs,
   resolveBakeConfig,

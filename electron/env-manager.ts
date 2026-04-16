@@ -302,21 +302,50 @@ export class EnvManager {
 
     const runtimeDir = path.join(resourcesPath, "backend", "python-runtime");
     const readyMarker = path.join(runtimeDir, "RUNTIME_READY.json");
-    const venvDir = path.join(runtimeDir, "venv");
-    const pythonPath = isWindows
-      ? path.join(venvDir, "Scripts", "python.exe")
-      : path.join(venvDir, "bin", "python");
-    const sitePackages = this.resolveSitePackages(venvDir, true);
-
-    if (!fs.existsSync(readyMarker) || !fs.existsSync(pythonPath) || !sitePackages || !fs.existsSync(sitePackages)) {
+    if (!fs.existsSync(readyMarker)) {
       return null;
     }
 
-    return {
-      runtimeDir,
-      pythonPath,
-      sitePackages,
-    };
+    const bundledCandidates: Array<{ envRoot: string; pythonPath: string }> = isWindows
+      ? [
+          {
+            envRoot: path.join(runtimeDir, "python"),
+            pythonPath: path.join(runtimeDir, "python", "python.exe"),
+          },
+          {
+            envRoot: path.join(runtimeDir, "venv"),
+            pythonPath: path.join(runtimeDir, "venv", "Scripts", "python.exe"),
+          },
+        ]
+      : [
+          {
+            envRoot: path.join(runtimeDir, "python"),
+            pythonPath: path.join(runtimeDir, "python", "bin", "python3"),
+          },
+          {
+            envRoot: path.join(runtimeDir, "python"),
+            pythonPath: path.join(runtimeDir, "python", "bin", "python"),
+          },
+          {
+            envRoot: path.join(runtimeDir, "venv"),
+            pythonPath: path.join(runtimeDir, "venv", "bin", "python"),
+          },
+        ];
+
+    for (const candidate of bundledCandidates) {
+      const sitePackages = this.resolveSitePackages(candidate.envRoot, true);
+      if (!fs.existsSync(candidate.pythonPath) || !sitePackages || !fs.existsSync(sitePackages)) {
+        continue;
+      }
+
+      return {
+        runtimeDir,
+        pythonPath: candidate.pythonPath,
+        sitePackages,
+      };
+    }
+
+    return null;
   }
 
   isBundled(): boolean {

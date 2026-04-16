@@ -218,8 +218,8 @@ describe("BackendManager", () => {
 
     const backendDir = path.join(resourcesDir, "backend");
     const pythonPath = process.platform === "win32"
-      ? path.join(backendDir, "python-runtime", "venv", "Scripts", "python.exe")
-      : path.join(backendDir, "python-runtime", "venv", "bin", "python");
+      ? path.join(backendDir, "python-runtime", "python", "python.exe")
+      : path.join(backendDir, "python-runtime", "python", "bin", "python3");
     const pyinstallerBackend = process.platform === "win32"
       ? path.join(backendDir, "nirs4all-backend.exe")
       : path.join(backendDir, "nirs4all-backend");

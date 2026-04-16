@@ -388,11 +388,11 @@ describe("EnvManager", () => {
 
     const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
     const bundledPython = process.platform === "win32"
-      ? path.join(runtimeDir, "venv", "Scripts", "python.exe")
-      : path.join(runtimeDir, "venv", "bin", "python");
+      ? path.join(runtimeDir, "python", "python.exe")
+      : path.join(runtimeDir, "python", "bin", "python3");
     const sitePackages = process.platform === "win32"
-      ? path.join(runtimeDir, "venv", "Lib", "site-packages")
-      : path.join(runtimeDir, "venv", "lib", "python3.11", "site-packages");
+      ? path.join(runtimeDir, "python", "Lib", "site-packages")
+      : path.join(runtimeDir, "python", "lib", "python3.11", "site-packages");
 
     fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
     fs.mkdirSync(sitePackages, { recursive: true });
@@ -417,11 +417,11 @@ describe("EnvManager", () => {
 
     const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
     const bundledPython = process.platform === "win32"
-      ? path.join(runtimeDir, "venv", "Scripts", "python.exe")
-      : path.join(runtimeDir, "venv", "bin", "python");
+      ? path.join(runtimeDir, "python", "python.exe")
+      : path.join(runtimeDir, "python", "bin", "python3");
     const sitePackages = process.platform === "win32"
-      ? path.join(runtimeDir, "venv", "Lib", "site-packages")
-      : path.join(runtimeDir, "venv", "lib", "python3.11", "site-packages");
+      ? path.join(runtimeDir, "python", "Lib", "site-packages")
+      : path.join(runtimeDir, "python", "lib", "python3.11", "site-packages");
 
     fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
     fs.mkdirSync(sitePackages, { recursive: true });
@@ -439,5 +439,32 @@ describe("EnvManager", () => {
     await expect(manager.ensureBackendPackages()).resolves.toBe(false);
     expect(childProcessMocks.spawn).not.toHaveBeenCalled();
     expect(childProcessMocks.execFile).toHaveBeenCalled();
+  });
+
+  it("falls back to the legacy bundled venv layout for previously baked archives", async () => {
+    makeUserDataDir();
+
+    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-bundled-legacy-"));
+    tempDirs.push(resourcesDir);
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
+
+    const runtimeDir = path.join(resourcesDir, "backend", "python-runtime");
+    const bundledPython = process.platform === "win32"
+      ? path.join(runtimeDir, "venv", "Scripts", "python.exe")
+      : path.join(runtimeDir, "venv", "bin", "python");
+    const sitePackages = process.platform === "win32"
+      ? path.join(runtimeDir, "venv", "Lib", "site-packages")
+      : path.join(runtimeDir, "venv", "lib", "python3.11", "site-packages");
+
+    fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
+    fs.mkdirSync(sitePackages, { recursive: true });
+    fs.writeFileSync(path.join(runtimeDir, "RUNTIME_READY.json"), "{}");
+    fs.writeFileSync(bundledPython, "");
+
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
+
+    expect(manager.isBundled()).toBe(true);
+    expect(manager.getPythonPath()).toBe(bundledPython);
   });
 });

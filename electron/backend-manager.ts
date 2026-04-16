@@ -147,7 +147,7 @@ export class BackendManager {
    * Get the path to the Python backend.
    * Priority order:
    *   1. Dev mode / forced venv: use ../.venv + uvicorn
-   *   2. Bundled runtime: resources/backend/python-runtime/venv
+   *   2. Bundled runtime: resources/backend/python-runtime/python (legacy venv fallback supported)
    *   3. EnvManager: Python env downloaded/configured at runtime (user data dir)
    *   4. Standalone mode: PyInstaller executable in resources/backend/
    *   5. Fallback: dev venv (for local prod testing)

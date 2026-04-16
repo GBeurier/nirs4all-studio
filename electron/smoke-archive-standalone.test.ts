@@ -25,6 +25,11 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     keepSandbox: boolean;
   };
   buildSandboxEnv(platformId: string, sandboxRoot: string, port: number): Record<string, string>;
+  collectRuntimePathLeaks(runtimeRoot: string, disallowedFragments: string[]): Array<{
+    path: string;
+    kind: string;
+    matches: string[];
+  }>;
   parseArgs(argv?: string[]): {
     extractedRoot: string;
     platform: string;
@@ -40,6 +45,7 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     executablePath: string;
     runtimeReadyPath: string;
     bundledPythonPath: string;
+    bundledPythonCandidates: string[];
   };
 };
 
@@ -94,6 +100,9 @@ describe("smoke-archive-standalone", () => {
       path.join(extractedRoot, "resources", "backend", "python-runtime", "RUNTIME_READY.json"),
     );
     expect(layout.bundledPythonPath).toBe(
+      path.join(extractedRoot, "resources", "backend", "python-runtime", "python", "python.exe"),
+    );
+    expect(layout.bundledPythonCandidates).toContain(
       path.join(extractedRoot, "resources", "backend", "python-runtime", "venv", "Scripts", "python.exe"),
     );
   });
@@ -113,8 +122,29 @@ describe("smoke-archive-standalone", () => {
       path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "RUNTIME_READY.json"),
     );
     expect(layout.bundledPythonPath).toBe(
+      path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "python", "bin", "python3"),
+    );
+    expect(layout.bundledPythonCandidates).toContain(
       path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "venv", "bin", "python"),
     );
+  });
+
+  it("detects build-path leaks inside runtime launcher files", () => {
+    const runtimeRoot = makeTempDir("n4a-smoke-leaks-");
+    const scriptsDir = path.join(runtimeRoot, "venv", "Scripts");
+    fs.mkdirSync(scriptsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runtimeRoot, "venv", "pyvenv.cfg"),
+      "home = D:\\a\\nirs4all-webapp\\nirs4all-webapp\\backend-dist\\python-runtime\\python\n",
+    );
+
+    const leaks = smokeModule.collectRuntimePathLeaks(runtimeRoot, [
+      "D:\\a\\nirs4all-webapp\\nirs4all-webapp",
+      "D:\\a\\nirs4all-webapp\\nirs4all-webapp\\backend-dist",
+    ]);
+
+    expect(leaks).toHaveLength(1);
+    expect(leaks[0]?.path).toBe(path.join(runtimeRoot, "venv", "pyvenv.cfg"));
   });
 
   it("creates an isolated Linux sandbox env", () => {

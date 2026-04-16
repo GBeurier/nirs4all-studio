@@ -17,7 +17,7 @@ For the all-in-one ZIP bundle, the embedded runtime is read-only. The app can st
 |---|---|---|
 | `development` | Local development / ad hoc Python launch | yes |
 | `managed` | Installer-style runtime managed outside the app bundle | yes |
-| `bundled` | All-in-one ZIP with embedded `python-runtime/venv` | no |
+| `bundled` | All-in-one ZIP with embedded `python-runtime/python` | no |
 | `pyinstaller` | Legacy frozen backend mode kept for compatibility | no |
 
 `is_frozen` is still returned for compatibility, but new logic should rely on `runtime_mode`.

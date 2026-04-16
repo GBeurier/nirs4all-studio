@@ -16,7 +16,7 @@
  *   --cache-dir <path>           Cache dir for downloaded Python (default: build/.python-cache)
  *   --constraints <path>         Optional pip constraints file applied to dependency installs
  *   --output-dir <path>          Output directory (default: backend-dist/)
- *   --runtime-only               Build only python/ + venv/ + build_info.json
+ *   --runtime-only               Build only the embedded python runtime payload + build_info.json
  *   --build-mode <id>            build_info.json mode value (default: installer)
  *   --local-nirs4all             Install nirs4all from local ../nirs4all instead of PyPI
  */
@@ -456,36 +456,47 @@ async function main() {
   console.log(`  Size: ${formatSize(getDirSize(pythonDir))}`);
   console.log("");
 
-  // 5. Create venv
-  console.log("=== Step 3: Create virtual environment ===");
+  // 5. Prepare Python runtime
   const venvDir = path.join(backendDist, "venv");
-  if (fs.existsSync(venvDir)) {
-    console.log("  Venv directory already exists, removing...");
-    fs.rmSync(venvDir, { recursive: true, force: true });
-  }
+  const useBundledBasePython = isStandaloneBundledRuntimeMode(buildMode);
+  let runtimePython = embeddedPython;
 
-  console.log("  Creating venv (without pip)...");
-  await runCommand(embeddedPython, ["-m", "venv", venvDir, "--without-pip"]);
+  if (useBundledBasePython) {
+    console.log("=== Step 3: Prepare bundled Python runtime ===");
+    if (fs.existsSync(venvDir)) {
+      console.log("  Removing stale legacy venv/ from previous builds...");
+      fs.rmSync(venvDir, { recursive: true, force: true });
+    }
+    console.log("  Using embedded Python directly for the relocatable standalone runtime...");
+  } else {
+    console.log("=== Step 3: Create virtual environment ===");
+    if (fs.existsSync(venvDir)) {
+      console.log("  Venv directory already exists, removing...");
+      fs.rmSync(venvDir, { recursive: true, force: true });
+    }
 
-  // Determine venv python path (use python -m pip instead of pip.exe for reliability)
-  const venvPython = isWindows
-    ? path.join(venvDir, "Scripts", "python.exe")
-    : path.join(venvDir, "bin", "python");
+    console.log("  Creating venv (without pip)...");
+    await runCommand(embeddedPython, ["-m", "venv", venvDir, "--without-pip"]);
 
-  if (!fs.existsSync(venvPython)) {
-    console.error(`Error: Venv Python not found at ${venvPython}`);
-    process.exit(1);
+    runtimePython = isWindows
+      ? path.join(venvDir, "Scripts", "python.exe")
+      : path.join(venvDir, "bin", "python");
+
+    if (!fs.existsSync(runtimePython)) {
+      console.error(`Error: Venv Python not found at ${runtimePython}`);
+      process.exit(1);
+    }
   }
 
   console.log("  Bootstrapping pip via ensurepip...");
-  await runCommand(venvPython, ["-m", "ensurepip", "--upgrade"]);
+  await runCommand(runtimePython, ["-m", "ensurepip", "--upgrade"]);
 
   // Verify pip is usable
-  await runCommand(venvPython, ["-m", "pip", "--version"]);
+  await runCommand(runtimePython, ["-m", "pip", "--version"]);
 
   // Upgrade pip to latest
   console.log("  Upgrading pip...");
-  await runCommandWithRetries(venvPython, ["-m", "pip", "install", "--upgrade", "pip"], {}, {
+  await runCommandWithRetries(runtimePython, ["-m", "pip", "install", "--upgrade", "pip"], {}, {
     retries: isWindows ? 3 : 1,
     label: "pip install --upgrade pip",
   });
@@ -501,7 +512,7 @@ async function main() {
   ];
   console.log(`  Installing ${dependencySpecs.length} backend packages from shared runtime config...`);
   // Large wheel installs on Windows can hit transient RECORD/file-lock races.
-  await runCommandWithRetries(venvPython, buildPipInstallArgs(dependencySpecs, {
+  await runCommandWithRetries(runtimePython, buildPipInstallArgs(dependencySpecs, {
     constraintsFile,
   }), {}, {
     retries: isWindows ? 3 : 1,
@@ -515,7 +526,7 @@ async function main() {
   const localNirs4allPath = path.join(projectRoot, "..", "nirs4all");
   if (localNirs4all && fs.existsSync(localNirs4allPath)) {
     console.log("  Installing nirs4all from local source (editable)...");
-    await runCommandWithRetries(venvPython, [
+    await runCommandWithRetries(runtimePython, [
       "-m",
       "pip",
       "install",
@@ -533,7 +544,7 @@ async function main() {
       packageNames: ["nirs4all"],
     });
     console.log(`  Installing ${nirs4allSpec} from PyPI...`);
-    await runCommandWithRetries(venvPython, buildPipInstallArgs([nirs4allSpec], {
+    await runCommandWithRetries(runtimePython, buildPipInstallArgs([nirs4allSpec], {
       constraintsFile,
     }), {}, {
       retries: isWindows ? 3 : 1,
@@ -545,7 +556,7 @@ async function main() {
       packageNames: ["nirs4all"],
     });
     console.log(`  Installing ${nirs4allSpec} from PyPI...`);
-    await runCommandWithRetries(venvPython, buildPipInstallArgs([nirs4allSpec], {
+    await runCommandWithRetries(runtimePython, buildPipInstallArgs([nirs4allSpec], {
       constraintsFile,
     }), {}, {
       retries: isWindows ? 3 : 1,
@@ -617,7 +628,7 @@ async function main() {
     } else {
       console.log("  Compiling .py -> .pyc for all packages and backend source...");
     }
-    await runCommand(venvPython, ["-m", "compileall", "-q", ...compileTargets]);
+    await runCommand(runtimePython, ["-m", "compileall", "-q", ...compileTargets]);
     console.log("  Bytecode pre-compilation complete");
   }
   console.log("");
@@ -641,7 +652,7 @@ async function main() {
   // 11. Print summary
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   const pythonSize = getDirSize(pythonDir);
-  const venvSize = getDirSize(venvDir);
+  const venvSize = useBundledBasePython ? 0 : getDirSize(venvDir);
   const sourceSize = runtimeOnly
     ? 0
     : getDirSize(path.join(backendDist, "api")) +
@@ -657,7 +668,9 @@ async function main() {
   console.log(`  Flavor:       ${flavor.toUpperCase()}`);
   console.log(`  Profile:      ${profile}`);
   console.log(`  Python:       ${formatSize(pythonSize)}`);
-  console.log(`  Venv:         ${formatSize(venvSize)}`);
+  if (!useBundledBasePython) {
+    console.log(`  Venv:         ${formatSize(venvSize)}`);
+  }
   if (!runtimeOnly) {
     console.log(`  Source:       ${formatSize(sourceSize)}`);
   }
@@ -665,8 +678,12 @@ async function main() {
   console.log(`  Time:         ${elapsed}s`);
   console.log("");
   console.log(`  Output: ${path.relative(projectRoot, backendDist) || "."}/`);
-  console.log("    python/    — Embedded CPython runtime");
-  console.log("    venv/      — Managed virtual environment");
+  if (useBundledBasePython) {
+    console.log("    python/    — Embedded CPython runtime with bundled packages");
+  } else {
+    console.log("    python/    — Embedded CPython runtime");
+    console.log("    venv/      — Managed virtual environment");
+  }
   if (!runtimeOnly) {
     console.log("    api/       — FastAPI routers");
     console.log("    websocket/ — WebSocket manager");
