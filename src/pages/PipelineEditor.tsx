@@ -797,6 +797,7 @@ export default function PipelineEditor() {
                       />
                     )}
                     {/* Dataset Binding for shape-aware validation (Phase 4) — hidden */}
+                    {/* eslint-disable-next-line no-constant-binary-expression */}
                     {false && (
                       <DatasetBinding
                         boundDataset={boundDataset}

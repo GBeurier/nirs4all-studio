@@ -11,7 +11,7 @@ backend-side hydration must not rely on them as the primary source of truth.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -182,7 +182,7 @@ def load_editor_registry_reference() -> dict[str, Any]:
     generated_at: str | None = None
     if existing_files:
         latest_mtime = max(path.stat().st_mtime for path in existing_files)
-        generated_at = datetime.fromtimestamp(latest_mtime, tz=timezone.utc).isoformat()
+        generated_at = datetime.fromtimestamp(latest_mtime, tz=UTC).isoformat()
 
     version = "editor-definitions+canonical"
     if not nodes and (_GENERATED_DIR / "node-reference.json").exists():

@@ -13,12 +13,16 @@ from api.pipeline_canonical import canonical_to_editor, editor_to_canonical
 from api.pipelines import _semantic_pipeline_template
 
 LISTED_PRESET_IDS = {
-    "pls_basic",
-    "pls_derivative",
-    "rf_standard",
-    "kennard_stone_pls",
-    "advanced_nirs",
-    "pls_spxy_cartesian_finetune",
+    "simple_pls",
+    "complex_pls",
+    "simple_trees_boosting",
+    "complex_trees",
+    "nonlinear_exploration",
+    "deep_nonlinear_exploration",
+    "ultra_pls",
+    "ultra_trees",
+    "ultra_slow",
+    "fast_result",
 }
 
 
@@ -58,7 +62,7 @@ class TestLoadPreset:
             assert preset["variant"] in preset["available_variants"]
 
     def test_load_specific_variant(self):
-        preset = preset_loader.load_preset("pls_basic", "classification")
+        preset = preset_loader.load_preset("simple_pls", "classification")
         assert preset["variant"] == "classification"
         assert preset["task_type"] == "classification"
         assert "classification" in preset["available_variants"]

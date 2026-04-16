@@ -47,7 +47,7 @@ def _find_nirs4all_root() -> Path | None:
 
 _NIRS4ALL_ROOT = _find_nirs4all_root()
 
-_PRESET_ADVANCED = _WEBAPP_ROOT / "api/presets/pls_finetune_advanced.yaml"
+_PRESET_ADVANCED = _WEBAPP_ROOT / "api/presets/complex_pls.yaml"
 _SAMPLE_08 = (_NIRS4ALL_ROOT / "examples/pipeline_samples/08_complex_finetune.json") if _NIRS4ALL_ROOT else None
 _SAMPLE_09 = (_NIRS4ALL_ROOT / "examples/pipeline_samples/09_filters_splits.yaml") if _NIRS4ALL_ROOT else None
 
@@ -131,8 +131,8 @@ def test_separation_branch_imports_as_editable_branch_and_exports_unchanged():
             "branch": {
                 "by_tag": "y_outlier_iqr",
                 "steps": {
-                    True: ["sklearn.preprocessing._data.StandardScaler"],
-                    False: ["sklearn.preprocessing._data.MinMaxScaler"],
+                    True: ["sklearn.preprocessing.StandardScaler"],
+                    False: ["sklearn.preprocessing.MinMaxScaler"],
                 },
             }
         },
@@ -176,7 +176,7 @@ def test_shared_separation_branch_roundtrips_to_list_steps():
         {
             "branch": {
                 "by_metadata": "instrument",
-                "steps": ["sklearn.preprocessing._data.StandardScaler"],
+                "steps": ["sklearn.preprocessing.StandardScaler"],
             }
         }
     ]
@@ -312,7 +312,7 @@ def test_create_pipeline_from_advanced_preset_preserves_generators_and_search_sp
 ):
     result = asyncio.run(
         create_pipeline_from_preset(
-            "pls_spxy_cartesian_finetune",
+            "complex_pls",
             PipelineFromPresetRequest(variant="regression"),
         )
     )
@@ -321,12 +321,13 @@ def test_create_pipeline_from_advanced_preset_preserves_generators_and_search_sp
 
     assert pipeline["category"] == "preset"
     assert pipeline["task_type"] == "regression"
-    assert steps[1]["generatorKind"] == "cartesian"
-    assert steps[1]["subType"] == "generator"
+    assert steps[0]["generatorKind"] == "cartesian"
+    assert steps[0]["subType"] == "generator"
 
-    search_space = steps[-1]["finetuneConfig"]["model_params"][0]
+    finetuned = [s for s in steps if s.get("finetuneSampler") == "binary"]
+    assert len(finetuned) >= 1
+    search_space = finetuned[0]["finetuneConfig"]["model_params"][0]
     assert search_space["rawValue"] == ["int", 1, 25]
-    assert steps[-1]["finetuneSampler"] == "binary"
 
 
 def test_create_pipeline_from_preset_persists_selected_classification_variant(
@@ -334,20 +335,21 @@ def test_create_pipeline_from_preset_persists_selected_classification_variant(
 ):
     result = asyncio.run(
         create_pipeline_from_preset(
-            "pls_basic",
+            "simple_pls",
             PipelineFromPresetRequest(variant="classification"),
         )
     )
     pipeline = result["pipeline"]
 
     assert pipeline["task_type"] == "classification"
-    assert pipeline["steps"][-1]["name"] in {"PLSDA", "LogisticRegression"}
+    model_names = {s["name"] for s in pipeline["steps"] if s.get("type") == "model"}
+    assert model_names & {"PLSDA", "RidgeClassifier", "AOMPLSClassifier"}
 
 
 def test_export_and_reimport_pipeline_json_uses_canonical_contract(pipelines_workspace):
     created = asyncio.run(
         create_pipeline_from_preset(
-            "pls_spxy_cartesian_finetune",
+            "complex_pls",
             PipelineFromPresetRequest(variant="regression"),
         )
     )
@@ -373,8 +375,10 @@ def test_export_and_reimport_pipeline_json_uses_canonical_contract(pipelines_wor
     )
     imported_steps = imported["pipeline"]["steps"]
 
-    assert imported_steps[1]["generatorKind"] == "cartesian"
-    assert imported_steps[-1]["finetuneConfig"]["model_params"][0]["rawValue"] == [
+    assert imported_steps[0]["generatorKind"] == "cartesian"
+    finetuned = [s for s in imported_steps if s.get("finetuneSampler") == "binary"]
+    assert len(finetuned) >= 1
+    assert finetuned[0]["finetuneConfig"]["model_params"][0]["rawValue"] == [
         "int",
         1,
         25,
@@ -395,8 +399,10 @@ def test_preview_pipeline_import_supports_yaml_content():
     )
 
     assert preview["success"] is True
-    assert preview["steps"][1]["generatorKind"] == "cartesian"
-    assert preview["steps"][-1]["finetuneConfig"]["model_params"][0]["rawValue"] == [
+    assert preview["steps"][0]["generatorKind"] == "cartesian"
+    finetuned = [s for s in preview["steps"] if s.get("finetuneSampler") == "binary"]
+    assert len(finetuned) >= 1
+    assert finetuned[0]["finetuneConfig"]["model_params"][0]["rawValue"] == [
         "int",
         1,
         25,
@@ -406,7 +412,7 @@ def test_preview_pipeline_import_supports_yaml_content():
 def test_render_canonical_pipeline_preview_matches_export_payload(pipelines_workspace):
     created = asyncio.run(
         create_pipeline_from_preset(
-            "pls_spxy_cartesian_finetune",
+            "complex_pls",
             PipelineFromPresetRequest(variant="regression"),
         )
     )
@@ -518,7 +524,7 @@ def test_editor_to_canonical_serializes_function_models_from_classpath():
     canonical = editor_to_canonical(editor_steps)
 
     model_payload = canonical[0]["model"]
-    assert model_payload["function"] == "nirs4all.operators.models.nicon"
+    assert model_payload["function"] == "nirs4all.operators.models.pytorch.nicon.nicon"
     assert model_payload["params"] == {"dropout": 0.2}
 
 
