@@ -15,12 +15,18 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from ..shared.logger import get_logger
 
 logger = get_logger(__name__)
+
+try:
+    from enum import StrEnum
+except ImportError:
+    class StrEnum(str, Enum):
+        """Python 3.10 fallback for enum.StrEnum."""
 
 
 class JobStatus(StrEnum):

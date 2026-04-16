@@ -701,8 +701,13 @@ jobs:
 
       - name: Build all-in-one archive
         run: |
-          ulimit -n 8192 || true
-          echo "Open files limit: $(ulimit -n)"
+          HARD_LIMIT="$(ulimit -Hn 2>/dev/null || echo '')"
+          TARGET_LIMIT=65536
+          if [[ "$HARD_LIMIT" =~ ^[0-9]+$ ]] && (( HARD_LIMIT < TARGET_LIMIT )); then
+            TARGET_LIMIT="$HARD_LIMIT"
+          fi
+          ulimit -n "$TARGET_LIMIT" || true
+          echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
           node scripts/build-archive-standalone.cjs --clean --platform darwin --arch x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -851,8 +856,13 @@ jobs:
 
       - name: Build all-in-one archive
         run: |
-          ulimit -n 8192 || true
-          echo "Open files limit: $(ulimit -n)"
+          HARD_LIMIT="$(ulimit -Hn 2>/dev/null || echo '')"
+          TARGET_LIMIT=65536
+          if [[ "$HARD_LIMIT" =~ ^[0-9]+$ ]] && (( HARD_LIMIT < TARGET_LIMIT )); then
+            TARGET_LIMIT="$HARD_LIMIT"
+          fi
+          ulimit -n "$TARGET_LIMIT" || true
+          echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
           node scripts/build-archive-standalone.cjs --clean --platform darwin --arch arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -943,12 +953,14 @@ jobs:
             dockerfile: Dockerfile
             tag_suffix: ''
             build_args: ''
+            cache_to: type=gha,mode=max,scope=cpu
           - variant: gpu-cuda
             dockerfile: Dockerfile
             tag_suffix: '-gpu-cuda'
             build_args: |-
               BASE_IMAGE=nvidia/cuda:12.4.1-runtime-ubuntu22.04
               INSTALL_GPU=true
+            cache_to: type=gha,mode=min,scope=gpu-cuda,timeout=5m,ignore-error=true
     steps:
       - uses: actions/checkout@v4
 
@@ -973,7 +985,7 @@ jobs:
             ghcr.io/gbeurier/nirs4all-studio:latest${{ matrix.tag_suffix }}
           build-args: ${{ matrix.build_args }}
           cache-from: type=gha,scope=${{ matrix.variant }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+          cache-to: ${{ matrix.cache_to }}
           labels: |
             org.opencontainers.image.title=nirs4all Studio
             org.opencontainers.image.version=${{ needs.prepare.outputs.version }}

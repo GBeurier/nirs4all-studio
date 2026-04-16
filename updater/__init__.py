@@ -21,7 +21,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-import platformdirs
+try:
+    import platformdirs
+except ImportError:
+    platformdirs = None  # type: ignore[assignment]
 
 from api.shared.runtime_paths import (
     get_portable_backend_data_dir,
@@ -32,13 +35,40 @@ APP_NAME = "nirs4all-webapp"
 APP_AUTHOR = "nirs4all"
 
 
+def _fallback_user_data_dir() -> Path:
+    """Return a writable app data directory without depending on platformdirs."""
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))
+    elif sys.platform == "darwin":
+        base = os.path.expanduser("~/Library/Application Support")
+    else:
+        base = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
+    return Path(base) / APP_NAME
+
+
+def _fallback_user_log_dir() -> Path:
+    """Return a writable log directory without depending on platformdirs."""
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local"))
+        return Path(base) / APP_NAME / "logs"
+    if sys.platform == "darwin":
+        return Path(os.path.expanduser("~/Library/Logs")) / APP_NAME
+
+    state_root = os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state"))
+    return Path(state_root) / APP_NAME / "logs"
+
+
 def _get_update_state_dir() -> Path:
     portable_dir = get_portable_backend_data_dir(APP_NAME)
     if portable_dir is not None:
         portable_dir.mkdir(parents=True, exist_ok=True)
         return portable_dir
 
-    app_data = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+    app_data = (
+        Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        if platformdirs is not None
+        else _fallback_user_data_dir()
+    )
     app_data.mkdir(parents=True, exist_ok=True)
     return app_data
 
@@ -49,7 +79,11 @@ def _get_update_log_dir() -> Path:
         portable_dir.mkdir(parents=True, exist_ok=True)
         return portable_dir
 
-    log_dir = Path(platformdirs.user_log_dir(APP_NAME, APP_AUTHOR))
+    log_dir = (
+        Path(platformdirs.user_log_dir(APP_NAME, APP_AUTHOR))
+        if platformdirs is not None
+        else _fallback_user_log_dir()
+    )
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir
 

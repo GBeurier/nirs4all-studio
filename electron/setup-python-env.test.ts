@@ -7,20 +7,31 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
-  getCompileTargets(options: {
-    backendDist: string;
-    buildMode: string;
-    runtimeOnly: boolean;
-    venvDir: string;
-  }): string[];
-  isStandaloneBundledRuntimeMode(mode?: string): boolean;
+  buildPipInstallArgs(
+    packageSpecs: string[],
+    options?: {
+      upgrade?: boolean;
+      constraintsFile?: string;
+      noCompile?: boolean;
+    },
+  ): string[];
   pruneStandaloneRuntimeArtifacts(runtimeRoot: string): {
+    removedBytes: number;
+    removedPaths: number;
+  };
+  pruneStandaloneRuntimeLaunchers(buildRoot: string): {
     removedBytes: number;
     removedPaths: number;
   };
 };
 
 const tempDirs: string[] = [];
+
+function makeTempDir(prefix: string): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
 
 afterEach(() => {
   while (tempDirs.length > 0) {
@@ -32,75 +43,49 @@ afterEach(() => {
 });
 
 describe("setup-python-env", () => {
-  it("detects standalone bundled runtime mode explicitly", () => {
-    expect(setupPythonEnvModule.isStandaloneBundledRuntimeMode("standalone-bundled-runtime")).toBe(true);
-    expect(setupPythonEnvModule.isStandaloneBundledRuntimeMode("installer")).toBe(false);
+  it("adds --no-compile when building bundled standalone pip installs", () => {
+    const args = setupPythonEnvModule.buildPipInstallArgs(["nirs4all==0.1.0"], {
+      constraintsFile: "build/constraints.txt",
+      noCompile: true,
+      upgrade: true,
+    });
+
+    expect(args).toEqual([
+      "-m",
+      "pip",
+      "install",
+      "--no-compile",
+      "--upgrade",
+      "-c",
+      "build/constraints.txt",
+      "nirs4all==0.1.0",
+    ]);
   });
 
-  it("skips venv-wide bytecode compilation for the immutable bundled runtime", () => {
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-setup-compile-"));
-    tempDirs.push(tempRoot);
+  it("prunes package caches and non-runtime launchers from standalone bundles", () => {
+    const buildRoot = makeTempDir("n4a-setup-python-");
+    const scriptsDir = path.join(buildRoot, "python", "Scripts");
+    const binDir = path.join(buildRoot, "python", "bin");
+    const pycacheDir = path.join(buildRoot, "python", "lib", "python3.11", "site-packages", "pandas", "__pycache__");
 
-    const backendDist = path.join(tempRoot, "backend-dist");
-    const venvDir = path.join(backendDist, "venv");
-    const venvLib = path.join(venvDir, process.platform === "win32" ? "Lib" : "lib");
-    const apiDir = path.join(backendDist, "api");
-    const websocketDir = path.join(backendDist, "websocket");
-    const mainPy = path.join(backendDist, "main.py");
+    fs.mkdirSync(scriptsDir, { recursive: true });
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.mkdirSync(pycacheDir, { recursive: true });
 
-    fs.mkdirSync(venvLib, { recursive: true });
-    fs.mkdirSync(apiDir, { recursive: true });
-    fs.mkdirSync(websocketDir, { recursive: true });
-    fs.writeFileSync(mainPy, "print('ok')\n");
+    fs.writeFileSync(path.join(scriptsDir, "numba"), "#!C:/build/python.exe\n");
+    fs.writeFileSync(path.join(binDir, "python"), "");
+    fs.writeFileSync(path.join(binDir, "python3"), "");
+    fs.writeFileSync(path.join(binDir, "pip3"), "#!/tmp/build/python/bin/python3\n");
+    fs.writeFileSync(path.join(pycacheDir, "__init__.cpython-311.pyc"), "pyc");
 
-    const standaloneTargets = setupPythonEnvModule.getCompileTargets({
-      backendDist,
-      buildMode: "standalone-bundled-runtime",
-      runtimeOnly: false,
-      venvDir,
-    });
-    expect(standaloneTargets).toEqual([apiDir, websocketDir, mainPy]);
+    const artifactStats = setupPythonEnvModule.pruneStandaloneRuntimeArtifacts(buildRoot);
+    const launcherStats = setupPythonEnvModule.pruneStandaloneRuntimeLaunchers(buildRoot);
 
-    const installerTargets = setupPythonEnvModule.getCompileTargets({
-      backendDist,
-      buildMode: "installer",
-      runtimeOnly: false,
-      venvDir,
-    });
-    expect(installerTargets).toEqual([venvLib, apiDir, websocketDir, mainPy]);
-  });
-
-  it("prunes development-only include and cmake trees from the bundled runtime", () => {
-    const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-setup-prune-"));
-    tempDirs.push(runtimeRoot);
-
-    const torchIncludeDir = path.join(
-      runtimeRoot,
-      "venv",
-      "lib",
-      "python3.11",
-      "site-packages",
-      "torch",
-      "include",
-      "pybind11",
-    );
-    const cmakeDir = path.join(runtimeRoot, "python", "lib", "cmake", "torch");
-    const runtimeLibDir = path.join(runtimeRoot, "venv", "lib", "python3.11", "site-packages", "torch", "lib");
-    const runtimeLib = path.join(runtimeLibDir, "libtorch_cpu.dylib");
-
-    fs.mkdirSync(torchIncludeDir, { recursive: true });
-    fs.mkdirSync(cmakeDir, { recursive: true });
-    fs.mkdirSync(runtimeLibDir, { recursive: true });
-    fs.writeFileSync(path.join(torchIncludeDir, "type_caster_pyobject_ptr.h"), "// header\n");
-    fs.writeFileSync(path.join(cmakeDir, "TorchConfig.cmake"), "# cmake\n");
-    fs.writeFileSync(runtimeLib, "binary\n");
-
-    const stats = setupPythonEnvModule.pruneStandaloneRuntimeArtifacts(runtimeRoot);
-
-    expect(stats.removedPaths).toBe(2);
-    expect(stats.removedBytes).toBeGreaterThan(0);
-    expect(fs.existsSync(torchIncludeDir)).toBe(false);
-    expect(fs.existsSync(cmakeDir)).toBe(false);
-    expect(fs.existsSync(runtimeLib)).toBe(true);
+    expect(fs.existsSync(scriptsDir)).toBe(false);
+    expect(fs.existsSync(path.join(binDir, "python"))).toBe(true);
+    expect(fs.existsSync(path.join(binDir, "python3"))).toBe(true);
+    expect(fs.existsSync(path.join(binDir, "pip3"))).toBe(false);
+    expect(fs.existsSync(pycacheDir)).toBe(false);
+    expect(artifactStats.removedPaths + launcherStats.removedPaths).toBeGreaterThanOrEqual(3);
   });
 });

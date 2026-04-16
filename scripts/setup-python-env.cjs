@@ -210,6 +210,7 @@ function buildPipInstallArgs(packageSpecs, options = {}) {
     "-m",
     "pip",
     "install",
+    ...(options.noCompile ? ["--no-compile"] : []),
     ...(options.upgrade ? ["--upgrade"] : []),
     ...(options.constraintsFile ? ["-c", options.constraintsFile] : []),
     ...packageSpecs,
@@ -236,7 +237,7 @@ function walkTreeSync(rootPath, visitor) {
 }
 
 function pruneStandaloneRuntimeArtifacts(runtimeRoot) {
-  const pruneDirNames = new Set(["Headers", "cmake", "include", "pkgconfig"]);
+  const pruneDirNames = new Set(["Headers", "cmake", "include", "pkgconfig", "__pycache__"]);
   const pruneShareLeafNames = new Set(["doc", "docs", "gtk-doc", "info", "man"]);
   const targets = new Set();
 
@@ -267,6 +268,45 @@ function pruneStandaloneRuntimeArtifacts(runtimeRoot) {
     if (!fs.existsSync(targetPath)) {
       continue;
     }
+    removedBytes += getPathSize(targetPath);
+    fs.rmSync(targetPath, { recursive: true, force: true });
+    removedPaths += 1;
+  }
+
+  return {
+    removedBytes,
+    removedPaths,
+  };
+}
+
+function pruneStandaloneRuntimeLaunchers(buildRoot) {
+  const targets = [];
+  const windowsScriptsDir = path.join(buildRoot, "python", "Scripts");
+  const posixBinDir = path.join(buildRoot, "python", "bin");
+  const keepPosixLauncherPattern = /^python(?:\d+(?:\.\d+)*)?$/;
+
+  if (fs.existsSync(windowsScriptsDir)) {
+    targets.push(windowsScriptsDir);
+  }
+
+  if (fs.existsSync(posixBinDir)) {
+    const entries = fs.readdirSync(posixBinDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (keepPosixLauncherPattern.test(entry.name)) {
+        continue;
+      }
+      targets.push(path.join(posixBinDir, entry.name));
+    }
+  }
+
+  let removedBytes = 0;
+  let removedPaths = 0;
+
+  for (const targetPath of targets) {
+    if (!fs.existsSync(targetPath)) {
+      continue;
+    }
+
     removedBytes += getPathSize(targetPath);
     fs.rmSync(targetPath, { recursive: true, force: true });
     removedPaths += 1;
@@ -496,7 +536,14 @@ async function main() {
 
   // Upgrade pip to latest
   console.log("  Upgrading pip...");
-  await runCommandWithRetries(runtimePython, ["-m", "pip", "install", "--upgrade", "pip"], {}, {
+  await runCommandWithRetries(runtimePython, [
+    "-m",
+    "pip",
+    "install",
+    ...(useBundledBasePython ? ["--no-compile"] : []),
+    "--upgrade",
+    "pip",
+  ], {}, {
     retries: isWindows ? 3 : 1,
     label: "pip install --upgrade pip",
   });
@@ -514,6 +561,7 @@ async function main() {
   // Large wheel installs on Windows can hit transient RECORD/file-lock races.
   await runCommandWithRetries(runtimePython, buildPipInstallArgs(dependencySpecs, {
     constraintsFile,
+    noCompile: useBundledBasePython,
   }), {}, {
     retries: isWindows ? 3 : 1,
     label: "pip install backend dependencies",
@@ -530,6 +578,7 @@ async function main() {
       "-m",
       "pip",
       "install",
+      ...(useBundledBasePython ? ["--no-compile"] : []),
       ...(constraintsFile ? ["-c", constraintsFile] : []),
       "-e",
       localNirs4allPath,
@@ -546,6 +595,7 @@ async function main() {
     console.log(`  Installing ${nirs4allSpec} from PyPI...`);
     await runCommandWithRetries(runtimePython, buildPipInstallArgs([nirs4allSpec], {
       constraintsFile,
+      noCompile: useBundledBasePython,
     }), {}, {
       retries: isWindows ? 3 : 1,
       label: `pip install ${nirs4allSpec}`,
@@ -558,6 +608,7 @@ async function main() {
     console.log(`  Installing ${nirs4allSpec} from PyPI...`);
     await runCommandWithRetries(runtimePython, buildPipInstallArgs([nirs4allSpec], {
       constraintsFile,
+      noCompile: useBundledBasePython,
     }), {}, {
       retries: isWindows ? 3 : 1,
       label: `pip install ${nirs4allSpec}`,
@@ -605,8 +656,9 @@ async function main() {
   if (isStandaloneBundledRuntimeMode(buildMode)) {
     console.log("=== Step 6b: Prune standalone runtime dev artifacts ===");
     const runtimeStats = pruneStandaloneRuntimeArtifacts(backendDist);
+    const launcherStats = pruneStandaloneRuntimeLaunchers(backendDist);
     console.log(
-      `  Removed ${runtimeStats.removedPaths} development-only directories (${formatSize(runtimeStats.removedBytes)})`,
+      `  Removed ${runtimeStats.removedPaths + launcherStats.removedPaths} development-only paths (${formatSize(runtimeStats.removedBytes + launcherStats.removedBytes)})`,
     );
     console.log("");
   }
@@ -702,5 +754,7 @@ if (require.main === module) {
 module.exports = {
   getCompileTargets,
   isStandaloneBundledRuntimeMode,
+  buildPipInstallArgs,
   pruneStandaloneRuntimeArtifacts,
+  pruneStandaloneRuntimeLaunchers,
 };

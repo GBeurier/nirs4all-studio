@@ -16,8 +16,13 @@ This package provides the REST API endpoints for:
 - Model evaluation and metrics (evaluation.py)
 """
 
-from .jobs import Job, JobStatus, JobType, job_manager
-from .workspace_manager import WorkspaceConfig, workspace_manager
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .jobs import Job, JobStatus, JobType, job_manager
+    from .workspace_manager import WorkspaceConfig, workspace_manager
 
 __all__ = [
     "workspace_manager",
@@ -27,3 +32,28 @@ __all__ = [
     "JobStatus",
     "JobType",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """Resolve public API symbols lazily to avoid import-time side effects."""
+    if name in {"workspace_manager", "WorkspaceConfig"}:
+        from .workspace_manager import WorkspaceConfig, workspace_manager
+
+        values = {
+            "workspace_manager": workspace_manager,
+            "WorkspaceConfig": WorkspaceConfig,
+        }
+        return values[name]
+
+    if name in {"job_manager", "Job", "JobStatus", "JobType"}:
+        from .jobs import Job, JobStatus, JobType, job_manager
+
+        values = {
+            "job_manager": job_manager,
+            "Job": Job,
+            "JobStatus": JobStatus,
+            "JobType": JobType,
+        }
+        return values[name]
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
