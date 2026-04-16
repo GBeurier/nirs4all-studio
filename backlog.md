@@ -1,6 +1,4 @@
 # Backlog
-> full zip version
-
 
 - limiter les datasets au tasktype du pipeline dans le wizard
 - REVOIR TOUT l'inspector

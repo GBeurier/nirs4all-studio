@@ -7,12 +7,12 @@ def test_recommended_config_prefers_cached_data_without_remote(monkeypatch):
     cached = {
         "schema_version": "1.2",
         "app_version": "0.3.0",
-        "nirs4all": "0.8.9",
+        "nirs4all": "0.9.0",
         "profiles": {
             "cpu": {
                 "label": "CPU",
                 "description": "CPU profile",
-                "packages": {"nirs4all": {"min": ">=0.8.9"}},
+                "packages": {"nirs4all": {"min": ">=0.9.0"}},
             }
         },
         "optional": {},
@@ -42,13 +42,13 @@ def test_recommended_config_prefers_bundled_data_when_cache_is_same_version(monk
 
     cached = {
         "schema_version": "1.2",
-        "app_version": "0.5.0",
-        "nirs4all": "0.8.9",
+        "app_version": "0.6.0",
+        "nirs4all": "0.9.0",
         "profiles": {
             "cpu": {
                 "label": "CPU",
                 "description": "CPU profile",
-                "packages": {"nirs4all": {"min": ">=0.8.9"}},
+                "packages": {"nirs4all": {"min": ">=0.9.0"}},
             }
         },
         "optional": {},
@@ -84,12 +84,12 @@ def test_recommended_config_uses_bundled_fallback_without_remote_on_startup(monk
     bundled = {
         "schema_version": "1.2",
         "app_version": "0.3.0",
-        "nirs4all": "0.8.9",
+        "nirs4all": "0.9.0",
         "profiles": {
             "cpu": {
                 "label": "CPU",
                 "description": "CPU profile",
-                "packages": {"nirs4all": {"min": ">=0.8.9"}},
+                "packages": {"nirs4all": {"min": ">=0.9.0"}},
             }
         },
         "optional": {},
@@ -116,12 +116,12 @@ def test_recommended_config_force_refresh_uses_remote_then_falls_back(monkeypatc
     bundled = {
         "schema_version": "1.2",
         "app_version": "0.3.0",
-        "nirs4all": "0.8.9",
+        "nirs4all": "0.9.0",
         "profiles": {
             "cpu": {
                 "label": "CPU",
                 "description": "CPU profile",
-                "packages": {"nirs4all": {"min": ">=0.8.9"}},
+                "packages": {"nirs4all": {"min": ">=0.9.0"}},
             }
         },
         "optional": {},
@@ -176,11 +176,11 @@ def test_get_installed_packages_prefers_runtime_nirs4all_version(monkeypatch):
         "get_installed_packages",
         lambda: [_Pkg("nirs4all", "0.8.2"), _Pkg("torch", "2.10.0+cpu")],
     )
-    monkeypatch.setattr(rc.venv_manager, "get_nirs4all_version", lambda: "0.8.9")
+    monkeypatch.setattr(rc.venv_manager, "get_nirs4all_version", lambda: "0.9.0")
 
     installed = rc._get_installed_packages()
 
-    assert installed["nirs4all"] == "0.8.9"
+    assert installed["nirs4all"] == "0.9.0"
     assert installed["torch"] == "2.10.0+cpu"
 
 
@@ -366,7 +366,7 @@ def test_setup_status_falls_back_to_cpu_when_no_gpu_profile_can_be_established(m
             }
         },
     )
-    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {"nirs4all": "0.8.9"})
+    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {"nirs4all": "0.9.0"})
     monkeypatch.setattr(
         rc,
         "_detect_gpu",
@@ -419,13 +419,13 @@ def test_compare_config_uses_recovered_profile_when_status_file_is_missing(monke
                 "cpu": {
                     "label": "CPU",
                     "platforms": ["win32", "linux", "darwin"],
-                    "packages": {"nirs4all": {"min": ">=0.8.9", "recommended": "0.8.9"}},
+                    "packages": {"nirs4all": {"min": ">=0.9.0", "recommended": "0.9.0"}},
                 },
                 "gpu-cuda-torch": {
                     "label": "GPU",
                     "platforms": ["win32", "linux"],
                     "packages": {
-                        "nirs4all": {"min": ">=0.8.9", "recommended": "0.8.9"},
+                        "nirs4all": {"min": ">=0.9.0", "recommended": "0.9.0"},
                         "torch": {"min": ">=2.1.0", "recommended": "2.6.0"},
                     },
                 },
@@ -433,7 +433,7 @@ def test_compare_config_uses_recovered_profile_when_status_file_is_missing(monke
             "optional": {},
         },
     )
-    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {"nirs4all": "0.8.9", "torch": "2.6.0+cu124"})
+    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {"nirs4all": "0.9.0", "torch": "2.6.0+cu124"})
     monkeypatch.setattr(
         rc,
         "_detect_gpu",
@@ -557,7 +557,7 @@ def test_align_config_ignores_torch_when_passed_as_optional(monkeypatch):
                 "cpu": {
                     "platforms": ["win32", "linux", "darwin"],
                     "packages": {
-                        "nirs4all": {"min": ">=0.8.9", "recommended": "0.8.9"},
+                        "nirs4all": {"min": ">=0.9.0", "recommended": "0.9.0"},
                         "torch": {"min": ">=2.1.0", "recommended": "2.6.0"},
                     },
                 },
@@ -617,7 +617,7 @@ def test_filtered_optional_config_keeps_explicitly_visible_profile_managed_packa
         "profiles": {
             "cpu": {
                 "packages": {
-                    "nirs4all": {"min": ">=0.8.9", "recommended": "0.8.9"},
+                    "nirs4all": {"min": ">=0.9.0", "recommended": "0.9.0"},
                     "torch": {"min": ">=2.1.0", "recommended": "2.6.0"},
                     "tabicl": {"min": ">=2.0.0", "recommended": "2.0.3"},
                 },
@@ -651,7 +651,7 @@ def test_compare_config_does_not_duplicate_visible_profile_managed_optional(monk
                     "label": "CPU",
                     "platforms": ["win32", "linux", "darwin"],
                     "packages": {
-                        "nirs4all": {"min": ">=0.8.9", "recommended": "0.8.9"},
+                        "nirs4all": {"min": ">=0.9.0", "recommended": "0.9.0"},
                         "tabicl": {"min": ">=2.0.0", "recommended": "2.0.3"},
                     },
                 },
@@ -669,7 +669,7 @@ def test_compare_config_does_not_duplicate_visible_profile_managed_optional(monk
         rc,
         "_get_installed_packages",
         lambda: {
-            "nirs4all": "0.8.9",
+            "nirs4all": "0.9.0",
             "tabicl": "2.0.3",
         },
     )

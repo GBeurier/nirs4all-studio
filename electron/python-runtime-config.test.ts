@@ -38,7 +38,7 @@ describe("python-runtime-config", () => {
   it("maps legacy installer flavors onto product profiles while preserving the managed runtime footprint", () => {
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "darwin")).toBe("gpu-mps");
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "win32")).toBe("gpu-cuda-torch");
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all>=0.8.11");
+    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all>=0.9.0");
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES.some((pkg) => pkg.startsWith("torch"))).toBe(false);
   });
 

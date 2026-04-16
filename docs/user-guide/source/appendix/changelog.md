@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## 0.6.0 — 2026-04-16
+
+### Changed
+
+- **nirs4all dependency**: Raised the minimum supported nirs4all version to 0.9.0 across all managed compute profiles and runtime setup flows.
+- **Release metadata**: Bumped nirs4all Studio to version 0.6.0 for the next published release.
+
+---
+
 ## 0.3.2 — 2026-04-03
 
 *(Release notes pending)*

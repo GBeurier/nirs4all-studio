@@ -5,8 +5,8 @@ import type { RecommendedConfigResponse } from "@/api/client";
 
 const config: RecommendedConfigResponse = {
   schema_version: "1.2",
-  app_version: "0.4.0",
-  nirs4all: "0.8.9",
+  app_version: "0.6.0",
+  nirs4all: "0.9.0",
   fetched_from: "bundled",
   fetched_at: "2026-04-14T00:00:00",
   profiles: [
@@ -16,7 +16,7 @@ const config: RecommendedConfigResponse = {
       description: "CPU profile",
       platforms: ["win32", "linux", "darwin"],
       packages: {
-        nirs4all: { min: ">=0.8.9", recommended: "0.8.9" },
+        nirs4all: { min: ">=0.9.0", recommended: "0.9.0" },
         torch: { min: ">=2.1.0", recommended: "2.6.0" },
       },
     },

@@ -12,7 +12,7 @@ def test_get_dependencies_filters_profile_managed_torch_from_cached_payload(monk
         "get_venv_info",
         lambda: updates.VenvInfo(path="C:/env", exists=True, is_valid=True),
     )
-    monkeypatch.setattr(updates.venv_manager, "get_nirs4all_version", lambda: "0.8.9")
+    monkeypatch.setattr(updates.venv_manager, "get_nirs4all_version", lambda: "0.9.0")
     monkeypatch.setattr(
         updates._dependencies_cache,
         "get",
@@ -58,7 +58,7 @@ def test_get_dependencies_filters_profile_managed_torch_from_cached_payload(monk
                     "total_count": 2,
                 }
             ],
-            "nirs4all_version": "0.8.9",
+            "nirs4all_version": "0.9.0",
             "cached_at": "2026-04-14T11:00:00",
         },
     )
