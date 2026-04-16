@@ -1109,13 +1109,13 @@ const fr = {
     },
     extras: {
       title: "Packages optionnels",
-      description: "Sélectionnez des packages supplémentaires à installer. Installables aussi plus tard depuis les Paramètres.",
+      description: "Sélectionnez des packages supplémentaires pour cet environnement. Dans un runtime modifiable, ils pourront aussi être gérés plus tard depuis les Paramètres.",
       install: "Installer et continuer",
       skipInstall: "Passer pour l'instant",
     },
     install: {
       title: "Installation des packages",
-      description: "Configuration de votre environnement. Cela peut prendre quelques minutes.",
+      description: "Configuration de votre environnement. Internet n'est requis que pour les téléchargements et vérifications ; ensuite l'app peut démarrer hors ligne.",
       preparing: "Préparation de l'installation...",
       installingProfile: "Installation des packages pour le profil sélectionné...",
       complete: "Installation terminée !",
@@ -1124,7 +1124,7 @@ const fr = {
     },
     ready: {
       title: "Tout est prêt !",
-      description: "Votre environnement est configuré et prêt à l'emploi.",
+      description: "Votre environnement est configuré et prêt à l'emploi. Après cette étape, l'app peut démarrer hors ligne et les vérifications de mise à jour restent en arrière-plan.",
       profile: "Profil de calcul",
       extras: "Packages optionnels",
       launch: "Commencer",

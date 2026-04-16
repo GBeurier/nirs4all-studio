@@ -37,22 +37,22 @@ export function ChartTile({
   return (
     <section
       className={cn(
-        "group/tile flex min-w-0 flex-col rounded-xl border border-border/70 bg-card/60 shadow-sm",
+        "group/tile flex min-w-0 flex-col rounded-2xl border border-border/70 bg-card/70 shadow-sm",
         "transition-colors hover:border-border",
         className,
       )}
     >
-      <header className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+      <header className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary">
             {icon}
           </span>
           <div className="min-w-0">
-            <div className="truncate text-xs font-semibold tracking-tight text-foreground">
+            <div className="truncate text-sm font-semibold tracking-tight text-foreground">
               {title}
             </div>
             {subtitle && (
-              <div className="truncate text-[10px] text-muted-foreground">{subtitle}</div>
+              <div className="truncate text-[11px] text-muted-foreground">{subtitle}</div>
             )}
           </div>
         </div>
@@ -72,7 +72,7 @@ export function ChartTile({
           </button>
         )}
       </header>
-      <div className={cn("min-h-0 flex-1 p-2", height)}>{children}</div>
+      <div className={cn("min-h-0 flex-1 p-3", height)}>{children}</div>
     </section>
   );
 }

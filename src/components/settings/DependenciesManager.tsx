@@ -7,7 +7,6 @@
  */
 
 import { useState, useEffect } from "react";
-import { useTranslation } from "react-i18next";
 import {
   Package,
   Download,
@@ -444,7 +443,6 @@ interface DependenciesManagerProps {
 }
 
 export function DependenciesManager({ compact = false }: DependenciesManagerProps) {
-  const { t } = useTranslation();
   const [dependencies, setDependencies] = useState<DependenciesResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -457,7 +455,9 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     message: string;
   } | null>(null);
   const [needsRestart, setNeedsRestart] = useState(false);
-  const [isReadOnlyRuntime, setIsReadOnlyRuntime] = useState(false);
+  const [runtimeMode, setRuntimeMode] = useState<"development" | "managed" | "bundled" | "pyinstaller">("development");
+
+  const isReadOnlyRuntime = runtimeMode === "bundled" || runtimeMode === "pyinstaller";
 
   const loadDependencies = async (forceRefresh = false) => {
     try {
@@ -604,7 +604,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
   // Load build info on mount
   useEffect(() => {
     getBuildInfo()
-      .then((info) => setIsReadOnlyRuntime(info.runtime_mode === "bundled" || info.runtime_mode === "pyinstaller"))
+      .then((info) => setRuntimeMode(info.runtime_mode))
       .catch(() => {});
   }, []);
 
@@ -713,8 +713,9 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
           <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription>
-              Package management is not available in standalone mode.
-              The bundled environment is read-only.
+              {runtimeMode === "bundled"
+                ? "This standalone archive uses a bundled Python runtime. Package management is disabled because the embedded environment is read-only."
+                : "This standalone runtime is read-only. Package management is disabled in this packaged backend mode."}
             </AlertDescription>
           </Alert>
         )}
@@ -734,6 +735,9 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
             <span className="text-xs text-muted-foreground">
               Base nirs4all version is managed in the Updates section above.
             </span>
+            <Badge variant="outline" className="text-xs">
+              Runtime: {runtimeMode}
+            </Badge>
           </div>
           <div className="flex items-center gap-2">
             {outdatedCount > 0 && (

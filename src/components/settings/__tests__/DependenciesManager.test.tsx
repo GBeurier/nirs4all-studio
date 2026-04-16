@@ -32,25 +32,31 @@ interface EnvCoherence {
 
 /**
  * Mirrors the DependenciesManager rendering logic:
- * - Show mismatch banner when coherent=false AND not frozen
- * - Show standalone banner when isFrozen=true
- * - Disable mutation buttons when isFrozen=true
+ * - Show mismatch banner when coherent=false AND runtime is writable
+ * - Show standalone banner when runtime is bundled/pyinstaller
+ * - Disable mutation buttons when runtime is bundled/pyinstaller
  */
+type RuntimeMode = "development" | "managed" | "bundled" | "pyinstaller";
+
+function isReadOnlyRuntime(runtimeMode: RuntimeMode): boolean {
+  return runtimeMode === "bundled" || runtimeMode === "pyinstaller";
+}
+
 function shouldShowMismatchBanner(
   coherence: EnvCoherence | null,
-  isFrozen: boolean,
+  runtimeMode: RuntimeMode,
 ): boolean {
-  if (isFrozen) return false;
+  if (isReadOnlyRuntime(runtimeMode)) return false;
   if (!coherence) return false;
   return !coherence.coherent;
 }
 
-function shouldShowStandaloneBanner(isFrozen: boolean): boolean {
-  return isFrozen;
+function shouldShowStandaloneBanner(runtimeMode: RuntimeMode): boolean {
+  return isReadOnlyRuntime(runtimeMode);
 }
 
-function areMutationButtonsDisabled(isFrozen: boolean): boolean {
-  return isFrozen;
+function areMutationButtonsDisabled(runtimeMode: RuntimeMode): boolean {
+  return isReadOnlyRuntime(runtimeMode);
 }
 
 // ============= Tests =============
@@ -72,7 +78,7 @@ describe("DependenciesManager", () => {
         },
       };
 
-      expect(shouldShowMismatchBanner(coherence, false)).toBe(true);
+      expect(shouldShowMismatchBanner(coherence, "managed")).toBe(true);
     });
 
     it("should hide mismatch banner when coherent=true", () => {
@@ -90,11 +96,11 @@ describe("DependenciesManager", () => {
         },
       };
 
-      expect(shouldShowMismatchBanner(coherence, false)).toBe(false);
+      expect(shouldShowMismatchBanner(coherence, "managed")).toBe(false);
     });
 
     it("should hide mismatch banner when coherence data is null", () => {
-      expect(shouldShowMismatchBanner(null, false)).toBe(false);
+      expect(shouldShowMismatchBanner(null, "managed")).toBe(false);
     });
 
     it("should hide mismatch banner in standalone mode even if incoherent", () => {
@@ -114,27 +120,34 @@ describe("DependenciesManager", () => {
 
       // Standalone mode takes priority — no point showing mismatch
       // when the user cannot install packages anyway
-      expect(shouldShowMismatchBanner(coherence, true)).toBe(false);
+      expect(shouldShowMismatchBanner(coherence, "bundled")).toBe(false);
     });
   });
 
   describe("Standalone Mode Banner Logic", () => {
-    it("should show standalone banner when isFrozen=true", () => {
-      expect(shouldShowStandaloneBanner(true)).toBe(true);
+    it("should show standalone banner when runtime_mode is bundled", () => {
+      expect(shouldShowStandaloneBanner("bundled")).toBe(true);
     });
 
-    it("should hide standalone banner when isFrozen=false", () => {
-      expect(shouldShowStandaloneBanner(false)).toBe(false);
+    it("should also show standalone banner for the legacy pyinstaller runtime", () => {
+      expect(shouldShowStandaloneBanner("pyinstaller")).toBe(true);
+    });
+
+    it("should hide standalone banner for writable runtimes", () => {
+      expect(shouldShowStandaloneBanner("development")).toBe(false);
+      expect(shouldShowStandaloneBanner("managed")).toBe(false);
     });
   });
 
   describe("Button States", () => {
-    it("should disable install/uninstall buttons when frozen", () => {
-      expect(areMutationButtonsDisabled(true)).toBe(true);
+    it("should disable install/uninstall buttons when runtime is read-only", () => {
+      expect(areMutationButtonsDisabled("bundled")).toBe(true);
+      expect(areMutationButtonsDisabled("pyinstaller")).toBe(true);
     });
 
-    it("should enable install/uninstall buttons when not frozen", () => {
-      expect(areMutationButtonsDisabled(false)).toBe(false);
+    it("should enable install/uninstall buttons when runtime is writable", () => {
+      expect(areMutationButtonsDisabled("development")).toBe(false);
+      expect(areMutationButtonsDisabled("managed")).toBe(false);
     });
   });
 

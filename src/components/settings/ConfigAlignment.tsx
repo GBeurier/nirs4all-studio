@@ -36,7 +36,8 @@ import {
   useAlignConfig,
   useRecommendedConfig,
 } from "@/hooks/useRecommendedConfig";
-import type { PackageDiff } from "@/api/client";
+import { getBuildInfo } from "@/api/client";
+import type { BuildInfoResponse, PackageDiff } from "@/api/client";
 
 interface ActionResult {
   type: "align";
@@ -48,10 +49,12 @@ export function ConfigAlignment() {
   const { t } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
   const [lastAction, setLastAction] = useState<ActionResult | null>(null);
+  const [runtimeMode, setRuntimeMode] = useState<BuildInfoResponse["runtime_mode"]>("development");
 
   const { data: diff, isLoading: diffLoading, refetch: refetchDiff } = useConfigDiff(undefined, true);
   const { data: config } = useRecommendedConfig();
   const alignMutation = useAlignConfig();
+  const isReadOnlyRuntime = runtimeMode === "bundled" || runtimeMode === "pyinstaller";
 
   // Reload after backend restart (e.g., env change in PythonEnvPicker)
   useEffect(() => {
@@ -61,6 +64,12 @@ export function ConfigAlignment() {
     window.addEventListener("backend-restarted", handler);
     return () => window.removeEventListener("backend-restarted", handler);
   }, [refetchDiff]);
+
+  useEffect(() => {
+    getBuildInfo()
+      .then((info) => setRuntimeMode(info.runtime_mode))
+      .catch(() => {});
+  }, []);
 
   const handleAlign = async () => {
     if (!diff?.profile) return;
@@ -128,6 +137,7 @@ export function ConfigAlignment() {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
+            <Badge variant="outline">Runtime: {runtimeMode}</Badge>
             <Button
               variant="ghost"
               size="sm"
@@ -147,6 +157,16 @@ export function ConfigAlignment() {
           </div>
         ) : diff ? (
           <>
+            {isReadOnlyRuntime && (
+              <Alert>
+                <AlertDescription>
+                  {runtimeMode === "bundled"
+                    ? "This standalone archive uses a bundled Python runtime. Config alignment is disabled because the embedded environment is read-only."
+                    : "This packaged backend runtime is read-only. Config alignment is disabled in this mode."}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Summary bar */}
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
               <div className="flex items-center gap-3">
@@ -172,7 +192,7 @@ export function ConfigAlignment() {
                   )}
                 </div>
               </div>
-              {!diff.is_aligned && (
+              {!diff.is_aligned && !isReadOnlyRuntime && (
                 <Button
                   size="sm"
                   onClick={handleAlign}

@@ -1109,13 +1109,13 @@ const en = {
     },
     extras: {
       title: "Optional Packages",
-      description: "Select additional packages to install. These can also be installed later from Settings.",
+      description: "Select additional packages to install for this environment. In writable runtimes, you can also manage them later from Settings.",
       install: "Install & Continue",
       skipInstall: "Skip for Now",
     },
     install: {
       title: "Installing Packages",
-      description: "Setting up your environment. This may take a few minutes.",
+      description: "Setting up your environment. Internet is only needed for downloads and checks; after setup, the app can launch offline.",
       preparing: "Preparing installation...",
       installingProfile: "Installing packages for selected profile...",
       complete: "Installation complete!",
@@ -1124,7 +1124,7 @@ const en = {
     },
     ready: {
       title: "You're All Set!",
-      description: "Your environment is configured and ready to use.",
+      description: "Your environment is configured and ready to use. After setup, the app can launch offline while update checks stay in the background.",
       profile: "Compute Profile",
       extras: "Optional Packages",
       launch: "Get Started",

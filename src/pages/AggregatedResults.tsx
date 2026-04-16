@@ -794,6 +794,10 @@ export default function AggregatedResults() {
           preprocessings: selectedPrediction.preprocessings,
           pipelineStatus: selectedPrediction.pipeline_status,
         } : undefined}
+        focus={selectedPrediction ? {
+          cardType: selectedPrediction.final_test_score != null ? "refit" : "crossval",
+          foldId: selectedPrediction.final_test_score != null ? "final" : "avg",
+        } : undefined}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         onOpenViewer={(partitions, header, kind) => {

@@ -36,9 +36,14 @@ import {
   cardTypeColorClass,
 } from "./ScoreColumns";
 import { ScoreCardTree } from "./ScoreCardTree";
-import { ModelDetailSheet, type ModelDetailSheetTab } from "@/components/runs/ModelDetailSheet";
+import { ChainDetailSheet } from "@/components/predictions/ChainDetailSheet";
+import type {
+  ChainDetailFocus,
+  ChainDetailMetaHint,
+} from "@/components/predictions/detail/ChainDetailPanel";
 import { PredictionViewer } from "@/components/predictions/viewer/PredictionViewer";
 import type {
+  ChartKind,
   ViewerHeader,
   ViewerPartitionTarget,
 } from "@/components/predictions/viewer/types";
@@ -111,10 +116,14 @@ export function DatasetResultCard({
 }: DatasetResultCardProps) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const [detailChain, setDetailChain] = useState<TopChainResult | null>(null);
+  const [detailChainId, setDetailChainId] = useState<string | null>(null);
+  const [detailMetaHint, setDetailMetaHint] = useState<ChainDetailMetaHint | undefined>(undefined);
+  const [detailFocus, setDetailFocus] = useState<ChainDetailFocus | undefined>(undefined);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailInitialTab, setDetailInitialTab] = useState<ModelDetailSheetTab>("overview");
-  const [detailInitialFoldId, setDetailInitialFoldId] = useState<string | null>(null);
+  const [detailViewerHeader, setDetailViewerHeader] = useState<ViewerHeader | null>(null);
+  const [detailViewerPartitions, setDetailViewerPartitions] = useState<ViewerPartitionTarget[]>([]);
+  const [detailViewerKind, setDetailViewerKind] = useState<ChartKind | undefined>(undefined);
+  const [detailViewerOpen, setDetailViewerOpen] = useState(false);
   const [quickViewPred, setQuickViewPred] = useState<PartitionPrediction | null>(null);
   const [quickViewOpen, setQuickViewOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -153,17 +162,32 @@ export function DatasetResultCard({
   );
   const summaryRows = primaryRows.length > 0 ? primaryRows : scoreRows;
 
+  const openDetail = (chain: TopChainResult, focusRow?: ScoreCardRow) => {
+    setDetailChainId(chain.chain_id);
+    setDetailMetaHint({
+      modelName: chain.model_name,
+      modelClass: chain.model_class,
+      datasetName: dataset.dataset_name,
+      metric: dataset.metric,
+      taskType: dataset.task_type,
+      preprocessings: chain.preprocessings,
+    });
+    setDetailFocus({
+      cardType: focusRow?.cardType ?? (chain.final_test_score != null ? "refit" : "crossval"),
+      foldId: focusRow?.foldId ?? (chain.final_test_score != null ? "final" : "avg"),
+    });
+    setDetailOpen(true);
+  };
+
   const handleViewDetails = (row: ScoreCardRow) => {
     const chain = chains.find(c => c.chain_id === row.chainId);
     if (chain) {
-      setDetailInitialTab("overview");
-      setDetailInitialFoldId(row.foldId ?? null);
-      setDetailChain(
+      openDetail(
         hasBestParams(chain.best_params) || !hasBestParams(row.bestParams)
           ? chain
           : { ...chain, best_params: row.bestParams },
+        row,
       );
-      setDetailOpen(true);
     }
   };
 
@@ -336,10 +360,7 @@ export function DatasetResultCard({
                       className="h-6 text-xs gap-1"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setDetailInitialTab("overview");
-                        setDetailInitialFoldId(bestRow?.foldId ?? null);
-                        setDetailChain(topChain);
-                        setDetailOpen(true);
+                        openDetail(topChain, bestRow);
                       }}
                     >
                       <Eye className="h-3 w-3" /> details
@@ -378,15 +399,31 @@ export function DatasetResultCard({
         </Collapsible>
       </Card>
 
-      <ModelDetailSheet
-        chain={detailChain}
+      <ChainDetailSheet
+        chainId={detailChainId}
+        metric={detailMetaHint?.metric ?? null}
+        metaHint={detailMetaHint}
+        focus={detailFocus}
         open={detailOpen}
         onOpenChange={setDetailOpen}
-        initialTab={detailInitialTab}
-        initialFoldId={detailInitialFoldId}
-        taskType={dataset.task_type}
-        datasetName={dataset.dataset_name}
+        onOpenViewer={(partitions, header, kind) => {
+          setDetailViewerPartitions(partitions);
+          setDetailViewerHeader(header);
+          setDetailViewerKind(kind);
+          setDetailViewerOpen(true);
+        }}
       />
+
+      {detailViewerHeader && (
+        <PredictionViewer
+          open={detailViewerOpen}
+          onOpenChange={setDetailViewerOpen}
+          header={detailViewerHeader}
+          partitions={detailViewerPartitions}
+          workspaceId={workspaceId}
+          initialKind={detailViewerKind}
+        />
+      )}
 
       <PredictionViewer
         open={quickViewOpen}

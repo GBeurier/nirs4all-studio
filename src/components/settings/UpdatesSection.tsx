@@ -74,6 +74,7 @@ import {
   restoreSnapshot,
   deleteSnapshot,
   getWebappChangelog,
+  getBuildInfo,
   requestRestart,
   resetBackendUrl,
   type ConfigSnapshot,
@@ -135,6 +136,8 @@ export function UpdatesSection() {
   const [webappDialogOpen, setWebappDialogOpen] = useState(false);
   const [applyConfirmOpen, setApplyConfirmOpen] = useState(false);
   const [needsRestart, setNeedsRestart] = useState(false);
+  const [runtimeMode, setRuntimeMode] = useState<"development" | "managed" | "bundled" | "pyinstaller">("development");
+  const isReadOnlyRuntime = runtimeMode === "bundled" || runtimeMode === "pyinstaller";
 
   // Reload after backend restart (e.g., env change in PythonEnvPicker)
   useEffect(() => {
@@ -148,6 +151,12 @@ export function UpdatesSection() {
     window.addEventListener("backend-restarted", handler);
     return () => window.removeEventListener("backend-restarted", handler);
   }, [queryClient]);
+
+  useEffect(() => {
+    getBuildInfo()
+      .then((info) => setRuntimeMode(info.runtime_mode))
+      .catch(() => {});
+  }, []);
 
   const isLoading = statusLoading || settingsLoading;
 
@@ -280,6 +289,17 @@ export function UpdatesSection() {
           </Alert>
         )}
 
+        {isReadOnlyRuntime && (
+          <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
+            <AlertCircle className="h-4 w-4 text-blue-600" />
+            <AlertDescription>
+              {runtimeMode === "bundled"
+                ? "This standalone archive runs from a bundled Python runtime. Environment creation, nirs4all installs, and snapshot restores are disabled in this read-only mode."
+                : "This packaged backend runtime is read-only. Environment creation and package mutations are disabled in this mode."}
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Webapp Update */}
         <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
           <div className="space-y-1">
@@ -362,7 +382,7 @@ export function UpdatesSection() {
           </div>
           <div className="flex items-center gap-2">
             {hasNirs4allUpdate ? (
-              <Button size="sm" onClick={() => setNirs4allDialogOpen(true)}>
+              <Button size="sm" onClick={() => setNirs4allDialogOpen(true)} disabled={isReadOnlyRuntime}>
                 <Download className="mr-2 h-4 w-4" />
                 Update
               </Button>
@@ -372,7 +392,7 @@ export function UpdatesSection() {
                 Up to date
               </Badge>
             ) : (
-              <Button size="sm" variant="outline" onClick={() => setNirs4allDialogOpen(true)}>
+              <Button size="sm" variant="outline" onClick={() => setNirs4allDialogOpen(true)} disabled={isReadOnlyRuntime}>
                 Install
               </Button>
             )}
@@ -473,7 +493,7 @@ export function UpdatesSection() {
                     size="sm"
                     className="ml-4"
                     onClick={() => createVenvMutation.mutate({ install_nirs4all: true })}
-                    disabled={createVenvMutation.isPending}
+                    disabled={createVenvMutation.isPending || isReadOnlyRuntime}
                   >
                     {createVenvMutation.isPending ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -540,7 +560,7 @@ export function UpdatesSection() {
                         size="sm"
                         className="h-7 px-2"
                         onClick={() => restoreSnapshotMutation.mutate(snap.name)}
-                        disabled={restoreSnapshotMutation.isPending}
+                        disabled={restoreSnapshotMutation.isPending || isReadOnlyRuntime}
                       >
                         {restoreSnapshotMutation.isPending ? (
                           <Loader2 className="h-3 w-3 animate-spin" />

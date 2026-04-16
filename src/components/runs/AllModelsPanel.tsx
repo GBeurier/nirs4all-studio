@@ -20,7 +20,17 @@ import { formatMetricValue, isLowerBetter } from "@/lib/scores";
 import { getAllChainsForDataset, getChainPartitionDetail } from "@/api/client";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
 import type { AllChainEntry } from "@/types/enriched-runs";
-import { ModelDetailSheet } from "./ModelDetailSheet";
+import { ChainDetailSheet } from "@/components/predictions/ChainDetailSheet";
+import { PredictionViewer } from "@/components/predictions/viewer/PredictionViewer";
+import type {
+  ChainDetailFocus,
+  ChainDetailMetaHint,
+} from "@/components/predictions/detail/ChainDetailPanel";
+import type {
+  ChartKind,
+  ViewerHeader,
+  ViewerPartitionTarget,
+} from "@/components/predictions/viewer/types";
 
 interface AllModelsPanelProps {
   workspaceId: string;
@@ -165,8 +175,14 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
   const [sortCol, setSortCol] = useState<SortColumn>("cv_val_score");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [expandedChainId, setExpandedChainId] = useState<string | null>(null);
-  const [detailChain, setDetailChain] = useState<AllChainEntry | null>(null);
+  const [detailChainId, setDetailChainId] = useState<string | null>(null);
+  const [detailMetaHint, setDetailMetaHint] = useState<ChainDetailMetaHint | undefined>(undefined);
+  const [detailFocus, setDetailFocus] = useState<ChainDetailFocus | undefined>(undefined);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [detailViewerHeader, setDetailViewerHeader] = useState<ViewerHeader | null>(null);
+  const [detailViewerPartitions, setDetailViewerPartitions] = useState<ViewerPartitionTarget[]>([]);
+  const [detailViewerKind, setDetailViewerKind] = useState<ChartKind | undefined>(undefined);
+  const [detailViewerOpen, setDetailViewerOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["all-chains", workspaceId, runId, datasetName],
@@ -211,7 +227,19 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
   };
 
   const openDetail = (chain: AllChainEntry) => {
-    setDetailChain(chain);
+    setDetailChainId(chain.chain_id);
+    setDetailMetaHint({
+      modelName: chain.model_name,
+      modelClass: chain.model_class,
+      datasetName,
+      metric: chain.metric,
+      taskType: taskType ?? chain.task_type,
+      preprocessings: chain.preprocessings,
+    });
+    setDetailFocus({
+      cardType: chain.final_test_score != null ? "refit" : "crossval",
+      foldId: chain.final_test_score != null ? "final" : "avg",
+    });
     setDetailOpen(true);
   };
 
@@ -411,13 +439,30 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
         </CollapsibleContent>
       </Collapsible>
 
-      <ModelDetailSheet
-        chain={detailChain}
+      <ChainDetailSheet
+        chainId={detailChainId}
+        metric={detailMetaHint?.metric ?? null}
+        metaHint={detailMetaHint}
+        focus={detailFocus}
         open={detailOpen}
         onOpenChange={setDetailOpen}
-        taskType={taskType}
-        datasetName={datasetName}
+        onOpenViewer={(partitions, header, kind) => {
+          setDetailViewerPartitions(partitions);
+          setDetailViewerHeader(header);
+          setDetailViewerKind(kind);
+          setDetailViewerOpen(true);
+        }}
       />
+
+      {detailViewerHeader && (
+        <PredictionViewer
+          open={detailViewerOpen}
+          onOpenChange={setDetailViewerOpen}
+          header={detailViewerHeader}
+          partitions={detailViewerPartitions}
+          initialKind={detailViewerKind}
+        />
+      )}
     </>
   );
 }

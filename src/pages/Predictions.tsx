@@ -27,7 +27,10 @@ import {
 import type { LinkedWorkspace, PredictionRecord } from "@/types/linked-workspaces";
 import { PredictionViewer } from "@/components/predictions/viewer/PredictionViewer";
 import { ChainDetailSheet } from "@/components/predictions/ChainDetailSheet";
-import type { ChainDetailMetaHint } from "@/components/predictions/detail/ChainDetailPanel";
+import type {
+  ChainDetailFocus,
+  ChainDetailMetaHint,
+} from "@/components/predictions/detail/ChainDetailPanel";
 import type {
   ChartKind,
   ViewerHeader,
@@ -247,6 +250,7 @@ export default function Predictions() {
   const [quickViewInitialKind, setQuickViewInitialKind] = useState<ChartKind>("scatter");
   const [detailChainId, setDetailChainId] = useState<string | null>(null);
   const [detailMetaHint, setDetailMetaHint] = useState<ChainDetailMetaHint | undefined>(undefined);
+  const [detailFocus, setDetailFocus] = useState<ChainDetailFocus | undefined>(undefined);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailViewerOpen, setDetailViewerOpen] = useState(false);
   const [detailViewerPartitions, setDetailViewerPartitions] = useState<ViewerPartitionTarget[]>([]);
@@ -571,6 +575,11 @@ export default function Predictions() {
       metric: row.metric,
       taskType: row.taskType ?? null,
       preprocessings: row.preprocessings,
+    });
+    setDetailFocus({
+      cardType: row.cardType,
+      foldId: row.foldId ?? null,
+      predictionId: row.cardType === "train" ? row.id : null,
     });
     setDetailOpen(true);
   };
@@ -1032,6 +1041,7 @@ export default function Predictions() {
         <ChainDetailSheet
           chainId={detailChainId}
           metaHint={detailMetaHint}
+          focus={detailFocus}
           metric={detailMetaHint?.metric ?? null}
           open={detailOpen}
           onOpenChange={setDetailOpen}

@@ -38,11 +38,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { getSystemInfo, getSystemCapabilities } from "@/api/client";
+import { getBuildInfo, getSystemInfo, getSystemCapabilities } from "@/api/client";
 import type {
   SystemInfoResponse,
   SystemCapabilities,
 } from "@/types/settings";
+import type { BuildInfoResponse } from "@/api/client";
 
 interface SystemInfoProps {
   /** Whether to show in compact mode */
@@ -71,6 +72,7 @@ function CapabilityItem({ label, available }: CapabilityItemProps) {
 export function SystemInfo({ compact = false }: SystemInfoProps) {
   const [systemInfo, setSystemInfo] = useState<SystemInfoResponse | null>(null);
   const [capabilities, setCapabilities] = useState<SystemCapabilities | null>(null);
+  const [runtimeMode, setRuntimeMode] = useState<BuildInfoResponse["runtime_mode"] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -80,12 +82,14 @@ export function SystemInfo({ compact = false }: SystemInfoProps) {
     try {
       setIsLoading(true);
       setError(null);
-      const [infoResponse, capabilitiesResponse] = await Promise.all([
+      const [infoResponse, capabilitiesResponse, buildInfoResponse] = await Promise.all([
         getSystemInfo(),
         getSystemCapabilities(),
+        getBuildInfo(),
       ]);
       setSystemInfo(infoResponse);
       setCapabilities(capabilitiesResponse.capabilities);
+      setRuntimeMode(buildInfoResponse.runtime_mode);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load system info");
     } finally {
@@ -105,6 +109,7 @@ System Information
 ==================
 Python Version: ${systemInfo.python.version}
 Python Executable: ${systemInfo.python.executable}
+Runtime Mode: ${runtimeMode ?? "unknown"}
 OS: ${systemInfo.system.os} ${systemInfo.system.release}
 Architecture: ${systemInfo.system.machine}
 nirs4all Version: ${systemInfo.nirs4all_version}
@@ -246,6 +251,12 @@ ${Object.entries(systemInfo.packages)
                 <span className="text-muted-foreground">Platform:</span>
                 <span>{systemInfo.python.platform}</span>
               </div>
+              {runtimeMode && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Runtime:</span>
+                  <Badge variant="outline">{runtimeMode}</Badge>
+                </div>
+              )}
               {!compact && (
                 <div className="text-xs text-muted-foreground break-all mt-1">
                   {systemInfo.python.executable}
