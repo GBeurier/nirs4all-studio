@@ -89,7 +89,7 @@ variants:
         n_splits: 3
         random_state: 42
     - model:
-        class: lightgbm.sklearn.LGBMRegressor
+        class: lightgbm.LGBMRegressor
         params:
           random_state: 42
           verbose: -1
@@ -144,7 +144,7 @@ variants:
           - 2
           - 12
     - model:
-        class: xgboost.sklearn.XGBRegressor
+        class: xgboost.XGBRegressor
         params:
           random_state: 42
           verbosity: 0
@@ -304,7 +304,7 @@ variants:
         shuffle: true
         random_state: 42
     - model:
-        class: lightgbm.sklearn.LGBMClassifier
+        class: lightgbm.LGBMClassifier
         params:
           random_state: 42
           verbose: -1
@@ -359,7 +359,7 @@ variants:
           - 2
           - 12
     - model:
-        class: xgboost.sklearn.XGBClassifier
+        class: xgboost.XGBClassifier
         params:
           random_state: 42
           verbosity: 0

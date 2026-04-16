@@ -128,6 +128,17 @@ function getDirSize(dirPath) {
   return totalSize;
 }
 
+function getPathSize(targetPath) {
+  if (!fs.existsSync(targetPath)) {
+    return 0;
+  }
+  const stats = fs.lstatSync(targetPath);
+  if (!stats.isDirectory()) {
+    return stats.size;
+  }
+  return getDirSize(targetPath);
+}
+
 function copyDirSync(src, dest, excludePatterns = ["__pycache__"]) {
   fs.mkdirSync(dest, { recursive: true });
   const entries = fs.readdirSync(src, { withFileTypes: true });
@@ -203,6 +214,92 @@ function buildPipInstallArgs(packageSpecs, options = {}) {
     ...(options.constraintsFile ? ["-c", options.constraintsFile] : []),
     ...packageSpecs,
   ];
+}
+
+function isStandaloneBundledRuntimeMode(mode = buildMode) {
+  return mode === "standalone-bundled-runtime";
+}
+
+function walkTreeSync(rootPath, visitor) {
+  if (!fs.existsSync(rootPath)) {
+    return;
+  }
+
+  const entries = fs.readdirSync(rootPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(rootPath, entry.name);
+    const shouldDescend = visitor(fullPath, entry);
+    if (shouldDescend !== false && entry.isDirectory()) {
+      walkTreeSync(fullPath, visitor);
+    }
+  }
+}
+
+function pruneStandaloneRuntimeArtifacts(runtimeRoot) {
+  const pruneDirNames = new Set(["Headers", "cmake", "include", "pkgconfig"]);
+  const pruneShareLeafNames = new Set(["doc", "docs", "gtk-doc", "info", "man"]);
+  const targets = new Set();
+
+  walkTreeSync(runtimeRoot, (entryPath, entry) => {
+    if (!entry.isDirectory()) {
+      return true;
+    }
+
+    if (pruneDirNames.has(entry.name)) {
+      targets.add(entryPath);
+      return false;
+    }
+
+    const parentName = path.basename(path.dirname(entryPath));
+    if (parentName === "share" && pruneShareLeafNames.has(entry.name)) {
+      targets.add(entryPath);
+      return false;
+    }
+
+    return true;
+  });
+
+  const sortedTargets = [...targets].sort((left, right) => right.length - left.length);
+  let removedBytes = 0;
+  let removedPaths = 0;
+
+  for (const targetPath of sortedTargets) {
+    if (!fs.existsSync(targetPath)) {
+      continue;
+    }
+    removedBytes += getPathSize(targetPath);
+    fs.rmSync(targetPath, { recursive: true, force: true });
+    removedPaths += 1;
+  }
+
+  return {
+    removedBytes,
+    removedPaths,
+  };
+}
+
+function getCompileTargets(options) {
+  const {
+    backendDist,
+    buildMode: activeBuildMode,
+    runtimeOnly: isRuntimeOnly,
+    venvDir,
+  } = options;
+
+  const targets = [];
+  if (!isStandaloneBundledRuntimeMode(activeBuildMode)) {
+    targets.push(path.join(venvDir, isWindows ? "Lib" : "lib"));
+  }
+
+  if (!isRuntimeOnly) {
+    targets.push(
+      path.join(backendDist, "api"),
+      path.join(backendDist, "websocket"),
+      path.join(backendDist, "main.py"),
+    );
+  }
+
+  return targets.filter((targetPath) => fs.existsSync(targetPath));
 }
 
 /**
@@ -494,20 +591,35 @@ async function main() {
     console.log("");
   }
 
+  if (isStandaloneBundledRuntimeMode(buildMode)) {
+    console.log("=== Step 6b: Prune standalone runtime dev artifacts ===");
+    const runtimeStats = pruneStandaloneRuntimeArtifacts(backendDist);
+    console.log(
+      `  Removed ${runtimeStats.removedPaths} development-only directories (${formatSize(runtimeStats.removedBytes)})`,
+    );
+    console.log("");
+  }
+
   // 9. Pre-compile .pyc bytecode (speeds up first launch significantly)
   console.log("=== Step 7: Pre-compile Python bytecode ===");
-  const compileTargets = [
-    path.join(venvDir, isWindows ? "Lib" : "lib"),
-    ...(!runtimeOnly ? [
-      path.join(backendDist, "api"),
-      path.join(backendDist, "websocket"),
-      path.join(backendDist, "main.py"),
-    ] : []),
-  ].filter((p) => fs.existsSync(p));
+  const compileTargets = getCompileTargets({
+    backendDist,
+    buildMode,
+    runtimeOnly,
+    venvDir,
+  });
 
-  console.log("  Compiling .py -> .pyc for all packages and backend source...");
-  await runCommand(venvPython, ["-m", "compileall", "-q", ...compileTargets]);
-  console.log("  Bytecode pre-compilation complete");
+  if (compileTargets.length === 0) {
+    console.log("  No compile targets for this build mode");
+  } else {
+    if (isStandaloneBundledRuntimeMode(buildMode)) {
+      console.log("  Compiling backend source only for the immutable bundled runtime...");
+    } else {
+      console.log("  Compiling .py -> .pyc for all packages and backend source...");
+    }
+    await runCommand(venvPython, ["-m", "compileall", "-q", ...compileTargets]);
+    console.log("  Bytecode pre-compilation complete");
+  }
   console.log("");
 
   // 10. Write build metadata
@@ -563,7 +675,15 @@ async function main() {
   console.log("");
 }
 
-main().catch((error) => {
-  console.error("Setup failed:", error.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error("Setup failed:", error.message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  getCompileTargets,
+  isStandaloneBundledRuntimeMode,
+  pruneStandaloneRuntimeArtifacts,
+};

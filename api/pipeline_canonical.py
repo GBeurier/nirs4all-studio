@@ -60,6 +60,15 @@ MODEL_CLASS_PATH_ALIASES = {
     "lgbmclassifier": "lightgbm.LGBMClassifier",
     "lightgbm.sklearn.lgbmregressor": "lightgbm.LGBMRegressor",
     "lightgbm.sklearn.lgbmclassifier": "lightgbm.LGBMClassifier",
+    "tabpfn": "tabpfn.TabPFNRegressor",
+    "tabpfnregressor": "tabpfn.TabPFNRegressor",
+    "tabpfnclassifier": "tabpfn.TabPFNClassifier",
+    "tabpfn.tabpfnregressor": "tabpfn.TabPFNRegressor",
+    "tabpfn.tabpfnclassifier": "tabpfn.TabPFNClassifier",
+    "tabpfn.regressor.tabpfnregressor": "tabpfn.TabPFNRegressor",
+    "tabpfn.classifier.tabpfnclassifier": "tabpfn.TabPFNClassifier",
+    "nirs4all.operators.models.tabpfn": "tabpfn.TabPFNRegressor",
+    "nirs4all.operators.models.tabpfnclassifier": "tabpfn.TabPFNClassifier",
 }
 MODEL_DISPLAY_NAME_ALIASES = {
     "xgboost": "XGBoost",
@@ -78,6 +87,15 @@ MODEL_DISPLAY_NAME_ALIASES = {
     "lgbmclassifier": "LightGBMClassifier",
     "lightgbm.lgbmclassifier": "LightGBMClassifier",
     "lightgbm.sklearn.lgbmclassifier": "LightGBMClassifier",
+    "tabpfn": "TabPFN",
+    "tabpfnregressor": "TabPFN",
+    "tabpfn.tabpfnregressor": "TabPFN",
+    "tabpfn.regressor.tabpfnregressor": "TabPFN",
+    "nirs4all.operators.models.tabpfn": "TabPFN",
+    "tabpfnclassifier": "TabPFNClassifier",
+    "tabpfn.tabpfnclassifier": "TabPFNClassifier",
+    "tabpfn.classifier.tabpfnclassifier": "TabPFNClassifier",
+    "nirs4all.operators.models.tabpfnclassifier": "TabPFNClassifier",
 }
 KNOWN_FINETUNE_KEYS = {
     "n_trials",

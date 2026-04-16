@@ -15,6 +15,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Allow `python scripts/...py` to resolve repo-local packages in CI and local runs.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import api.update_downloader as update_downloader
 
 APP_NAME = "nirs4all Studio"

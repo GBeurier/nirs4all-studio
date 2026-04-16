@@ -29,6 +29,7 @@ const { resolveSpawnCommand } = require("./spawn-command.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 const isWindows = process.platform === "win32";
+const MAC_PRODUCT_NAME = "nirs4all Studio";
 
 function printHelp() {
   console.log(`Usage:
@@ -127,6 +128,10 @@ function getElectronBuilderArgs(config) {
     args.push("--win");
   } else if (config.platform === "darwin") {
     args.push("--mac");
+    // Build the unpacked .app bundle and zip it with `ditto` ourselves.
+    // This avoids electron-builder's mac ZIP blockmap generation, which is
+    // expensive for the large all-in-one archive and stalls CI on macOS Intel.
+    args.push("--dir");
   } else if (config.platform === "linux") {
     args.push("--linux");
   }
@@ -138,6 +143,38 @@ function getElectronBuilderArgs(config) {
   }
 
   return args;
+}
+
+function getPackageVersion() {
+  const pkgPath = path.join(projectRoot, "package.json");
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+  return pkg.version;
+}
+
+function getMacAppBundlePath(config) {
+  const appDir = config.arch === "arm64" ? "mac-arm64" : "mac";
+  return path.join(projectRoot, "release", appDir, `${MAC_PRODUCT_NAME}.app`);
+}
+
+function getMacZipPath(config) {
+  return path.join(projectRoot, "release", `${MAC_PRODUCT_NAME}-${getPackageVersion()}-all-in-one-mac-${config.arch}.zip`);
+}
+
+async function createMacZip(config) {
+  const appPath = getMacAppBundlePath(config);
+  const zipPath = getMacZipPath(config);
+
+  if (!fs.existsSync(appPath)) {
+    throw new Error(`Expected packaged macOS app bundle was not found: ${appPath}`);
+  }
+
+  if (fs.existsSync(zipPath)) {
+    fs.rmSync(zipPath, { force: true });
+  }
+
+  console.log("=== Step 4: Create macOS ZIP archive ===");
+  await runCommand("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", appPath, zipPath]);
+  console.log("");
 }
 
 function runCommand(command, args, options = {}) {
@@ -211,11 +248,9 @@ function getGitCommitShort() {
 }
 
 function syncVersionJsonFromPackage() {
-  const pkgPath = path.join(projectRoot, "package.json");
   const versionPath = path.join(projectRoot, "version.json");
-  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
   const versionData = {
-    version: pkg.version,
+    version: getPackageVersion(),
     build_date: new Date().toISOString(),
     commit: getGitCommitShort(),
   };
@@ -272,6 +307,10 @@ async function buildArchiveStandalone(config) {
   console.log("=== Step 3: Package standalone archive ===");
   await runCommand(getNodeCommand(), getElectronBuilderArgs(config));
   console.log("");
+
+  if (config.platform === "darwin") {
+    await createMacZip(config);
+  }
 }
 
 async function main() {

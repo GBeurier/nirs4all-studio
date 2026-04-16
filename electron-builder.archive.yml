@@ -34,9 +34,6 @@ win:
 mac:
   target:
     - target: zip
-      arch:
-        - x64
-        - arm64
   icon: public/nirs4all_logo.png
   hardenedRuntime: true
   gatekeeperAssess: false

@@ -37,14 +37,19 @@ FROM ${BASE_IMAGE} AS runtime
 
 ARG INSTALL_GPU=false
 
+# Apt retry config (mitigates transient mirror hash-sum mismatches in CI)
+RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries
+
 # System dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN rm -rf /var/lib/apt/lists/* \
+    && apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Ensure Python is available (the nvidia/cuda base image doesn't include it)
 RUN if ! command -v python3 &> /dev/null; then \
-        apt-get update && apt-get install -y --no-install-recommends \
+        rm -rf /var/lib/apt/lists/* \
+        && apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip python3-venv \
         && rm -rf /var/lib/apt/lists/* \
         && ln -sf /usr/bin/python3 /usr/bin/python; \

@@ -114,4 +114,19 @@ describe("build-archive-standalone", () => {
       "--x64",
     ]);
   });
+
+  it("uses the unpacked dir target for macOS archives to avoid blockmap generation", () => {
+    expect(
+      archiveBuildModule.getElectronBuilderArgs({ platform: "darwin", arch: "arm64" }),
+    ).toEqual([
+      path.join("node_modules", "electron-builder", "cli.js"),
+      "--config",
+      "electron-builder.archive.yml",
+      "--publish",
+      "never",
+      "--mac",
+      "--dir",
+      "--arm64",
+    ]);
+  });
 });

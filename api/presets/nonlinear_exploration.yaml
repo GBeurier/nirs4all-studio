@@ -77,7 +77,7 @@ variants:
         random_state: 42
     - sklearn.preprocessing._data.StandardScaler
     - model:
-        class: lightgbm.sklearn.LGBMRegressor
+        class: lightgbm.LGBMRegressor
         params:
           random_state: 42
           verbose: -1
@@ -100,7 +100,7 @@ variants:
           - 0.03
           - 0.05
     - model:
-        class: xgboost.sklearn.XGBRegressor
+        class: xgboost.XGBRegressor
         params:
           random_state: 42
           verbosity: 0
@@ -136,7 +136,7 @@ variants:
         max_lr: 0.01
         step_size: 120
     - model:
-        class: tabpfn.regressor.TabPFNRegressor
+        class: tabpfn.TabPFNRegressor
         params:
           ignore_pretraining_limits: true
       name: TabPFN
@@ -213,7 +213,7 @@ variants:
         random_state: 42
     - sklearn.preprocessing._data.StandardScaler
     - model:
-        class: lightgbm.sklearn.LGBMClassifier
+        class: lightgbm.LGBMClassifier
         params:
           random_state: 42
           verbose: -1
@@ -236,7 +236,7 @@ variants:
           - 0.03
           - 0.05
     - model:
-        class: xgboost.sklearn.XGBClassifier
+        class: xgboost.XGBClassifier
         params:
           random_state: 42
           verbosity: 0
@@ -272,7 +272,7 @@ variants:
         max_lr: 0.01
         step_size: 120
     - model:
-        class: tabpfn.classifier.TabPFNClassifier
+        class: tabpfn.TabPFNClassifier
         params:
           ignore_pretraining_limits: true
       name: TabPFN

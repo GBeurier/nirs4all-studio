@@ -700,7 +700,10 @@ jobs:
           echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
       - name: Build all-in-one archive
-        run: node scripts/build-archive-standalone.cjs --clean --platform darwin --arch x64
+        run: |
+          ulimit -n 8192 || true
+          echo "Open files limit: $(ulimit -n)"
+          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -847,7 +850,10 @@ jobs:
           echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
       - name: Build all-in-one archive
-        run: node scripts/build-archive-standalone.cjs --clean --platform darwin --arch arm64
+        run: |
+          ulimit -n 8192 || true
+          echo "Open files limit: $(ulimit -n)"
+          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

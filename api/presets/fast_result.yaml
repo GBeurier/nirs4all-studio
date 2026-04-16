@@ -28,7 +28,7 @@ variants:
           scale: false
       name: AOM-PLS
     - model:
-        class: tabpfn.regressor.TabPFNRegressor
+        class: tabpfn.TabPFNRegressor
         params:
           ignore_pretraining_limits: true
       name: TabPFN
@@ -54,7 +54,7 @@ variants:
           n_components: 12
       name: AOM-PLS
     - model:
-        class: tabpfn.classifier.TabPFNClassifier
+        class: tabpfn.TabPFNClassifier
         params:
           ignore_pretraining_limits: true
       name: TabPFN

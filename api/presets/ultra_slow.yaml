@@ -112,7 +112,7 @@ variants:
             - cholesky
             - lsqr
     - model:
-        class: lightgbm.sklearn.LGBMRegressor
+        class: lightgbm.LGBMRegressor
         params:
           random_state: 42
           verbose: -1
@@ -164,7 +164,7 @@ variants:
           - 0
           - 120
     - model:
-        class: tabpfn.regressor.TabPFNRegressor
+        class: tabpfn.TabPFNRegressor
         params:
           ignore_pretraining_limits: true
       name: TabPFN
@@ -267,7 +267,7 @@ variants:
           - - true
             - false
     - model:
-        class: lightgbm.sklearn.LGBMClassifier
+        class: lightgbm.LGBMClassifier
         params:
           random_state: 42
           verbose: -1
@@ -307,7 +307,7 @@ variants:
           - 1
           - 25
     - model:
-        class: tabpfn.classifier.TabPFNClassifier
+        class: tabpfn.TabPFNClassifier
         params:
           ignore_pretraining_limits: true
       name: TabPFN

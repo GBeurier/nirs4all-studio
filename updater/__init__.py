@@ -277,6 +277,7 @@ set "APP_PID={app_pid}"
 set "APP_DIR={app_dir}"
 set "STAGING_DIR={staging_dir}"
 set "BACKUP_DIR={backup_dir}"
+set "BACKEND_PID_FILE={backend_pid_file}"
 set "EXECUTABLE={executable}"
 set "LOG_FILE={log_file}"
 set "PROGRESS_HTA={progress_hta}"
@@ -297,14 +298,29 @@ set "WAIT_COUNT=0"
 :wait_loop
 set /a WAIT_COUNT+=1
 if !WAIT_COUNT! GTR 30 (
-    echo [%DATE% %TIME%] Timed out waiting for PID %APP_PID%, proceeding anyway >> "%LOG_FILE%"
-    goto :done_waiting
+    echo [%DATE% %TIME%] Timed out waiting for PID %APP_PID%, force stopping remaining app processes >> "%LOG_FILE%"
+    goto :force_stop
 )
 tasklist /FI "PID eq %APP_PID%" /FO CSV /NH 2>NUL | findstr /C:"%APP_PID%" >NUL 2>NUL
 if !ERRORLEVEL!==0 (
     timeout /t 1 /nobreak >NUL
     goto wait_loop
 )
+goto :done_waiting
+
+:force_stop
+echo [%DATE% %TIME%] Force stopping remaining app processes >> "%LOG_FILE%"
+if not "%APP_PID%"=="" taskkill /pid %APP_PID% /f >NUL 2>NUL
+
+set "BACKEND_PID="
+if not "%BACKEND_PID_FILE%"=="" if exist "%BACKEND_PID_FILE%" (
+    set /p BACKEND_PID=<"%BACKEND_PID_FILE%"
+    if not "!BACKEND_PID!"=="" (
+        echo [%DATE% %TIME%] Force stopping backend PID !BACKEND_PID! >> "%LOG_FILE%"
+        taskkill /pid !BACKEND_PID! /f >NUL 2>NUL
+    )
+)
+timeout /t 2 /nobreak >NUL
 
 :done_waiting
 echo [%DATE% %TIME%] Application exited, proceeding with update >> "%LOG_FILE%"
@@ -409,6 +425,7 @@ APP_PARENT="{app_parent}"
 APP_BUNDLE_NAME="{app_bundle_name}"
 STAGING_DIR="{staging_dir}"
 BACKUP_DIR="{backup_dir}"
+BACKEND_PID_FILE="{backend_pid_file}"
 EXECUTABLE="{executable}"
 LOG_FILE="{log_file}"
 UPDATE_MODE="{update_mode}"
@@ -425,7 +442,16 @@ WAIT_COUNT=0
 while kill -0 "$APP_PID" 2>/dev/null; do
     WAIT_COUNT=$((WAIT_COUNT + 1))
     if [ "$WAIT_COUNT" -gt 30 ]; then
-        log "Timed out waiting for PID $APP_PID, proceeding anyway"
+        log "Timed out waiting for PID $APP_PID, force stopping remaining app processes"
+        kill -9 "$APP_PID" 2>/dev/null || true
+        if [ -n "$BACKEND_PID_FILE" ] && [ -f "$BACKEND_PID_FILE" ]; then
+            BACKEND_PID="$(cat "$BACKEND_PID_FILE" 2>/dev/null | tr -d '[:space:]')"
+            if [ -n "$BACKEND_PID" ]; then
+                log "Force killing backend PID $BACKEND_PID"
+                kill -9 "$BACKEND_PID" 2>/dev/null || true
+            fi
+        fi
+        sleep 2
         break
     fi
     sleep 1
@@ -509,6 +535,7 @@ def create_updater_script(
     backup_dir = get_backup_dir()
     log_dir = _get_update_log_dir()
     log_file = log_dir / "update.log"
+    backend_pid_file = os.environ.get("NIRS4ALL_PID_FILE", "")
 
     # When running under Electron, wait for the Electron process (our parent)
     # instead of the Python backend. The Electron process holds file locks on
@@ -538,6 +565,7 @@ def create_updater_script(
             app_dir=str(app_dir),
             staging_dir=str(staging_dir),
             backup_dir=str(backup_dir),
+            backend_pid_file=backend_pid_file,
             executable=executable,
             log_file=str(log_file),
             progress_hta=str(hta_path),
@@ -552,6 +580,7 @@ def create_updater_script(
             app_bundle_name=app_dir.name,
             staging_dir=str(staging_dir),
             backup_dir=str(backup_dir),
+            backend_pid_file=backend_pid_file,
             executable=executable,
             log_file=str(log_file),
             update_mode=update_mode,

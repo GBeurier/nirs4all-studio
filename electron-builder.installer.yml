@@ -60,9 +60,6 @@ nsis:
 mac:
   target:
     - target: dmg
-      arch:
-        - x64
-        - arm64
   icon: public/nirs4all_logo.png
   hardenedRuntime: true
   gatekeeperAssess: false
