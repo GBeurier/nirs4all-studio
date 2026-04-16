@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## 0.6.1 — 2026-04-16
+
+### Fixed
+
+- **Linux standalone packaging**: Switched Linux all-in-one release to tarball format with symlink dereferencing, fixed torch packaging, archive resolution, and smoke test executable detection.
+- **macOS build process**: Enhanced notarization checks, spawn command handling, and model class path resolution.
+- **Update extraction**: Improved nested app root resolution and extraction logic for standalone bundles.
+- **Runtime environment**: Updated Python runtime structure, paths in packaging scripts, and build process handling.
+
+### Changed
+
+- **Release workflows**: Removed dedicated Linux release repair workflow in favor of consolidated build fixes. Added archive size reporting for Linux releases.
+
+---
+
 ## 0.6.0 — 2026-04-16
 
 ### Added
