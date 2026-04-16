@@ -13,76 +13,104 @@ A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis
 [![Node 20+](https://img.shields.io/badge/node-20+-green.svg)](https://nodejs.org/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
+[Download](https://github.com/GBeurier/nirs4all-webapp/releases/latest) •
+[User Guide](docs/user-guide/) •
+[nirs4all Library](https://github.com/GBeurier/nirs4all) •
+[Website](https://nirs4all.org)
+
 </div>
 
 ---
 
 <div align="center">
-<img src="docs/user-guide/source/_images/explore/pg-overview.png" width="900" alt="Playground — Interactive spectral exploration">
+<img src="https://nirs4all.org/assets/playground-page.png" width="900" alt="Playground — Interactive spectral exploration">
 <br><em>Playground — Interactive spectral exploration with PCA, distributions, and preprocessing preview</em>
 </div>
 
 ---
 
-## Features
+## Which nirs4all do you need?
 
-- **Spectral Data Visualization** - Interactive charts for exploring NIRS spectra
-- **Pipeline Builder** - Visual drag-and-drop pipeline construction
-- **Prediction Engine** - Run trained models on new samples
-- **Workspace Management** - Organize datasets, pipelines, and results
-- **Native Desktop Experience** - Runs as a standalone desktop app via Electron
-- **GPU Acceleration** - CUDA (Linux/Windows) and Metal (macOS) support
+nirs4all comes in two flavors — pick the one that fits your workflow:
 
-<div align="center">
-<img src="docs/user-guide/source/_images/pipelines/pe-overview.png" width="900" alt="Pipeline Editor">
-<br><em>Pipeline Editor — Drag-and-drop builder with component library, validation, and hyperparameter tuning</em>
-</div>
+| | **nirs4all Studio** (Desktop App) | **nirs4all** (Python Library) |
+|---|---|---|
+| **Best for** | Researchers, technicians, and anyone who prefers a visual interface | Developers, data scientists, and anyone who writes Python scripts |
+| **What it is** | A desktop application with drag-and-drop pipelines, interactive charts, and one-click model training | A `pip install` Python package with a declarative API for building NIRS pipelines in code |
+| **Install** | [Download the installer](https://github.com/GBeurier/nirs4all-webapp/releases/latest) | `pip install nirs4all` |
+| **Repository** | **You are here** | [GBeurier/nirs4all](https://github.com/GBeurier/nirs4all) |
 
-<br>
+> **Not sure?** If you've never written Python code, start here with **nirs4all Studio**. It uses the [nirs4all Python library](https://github.com/GBeurier/nirs4all) under the hood and gives you all the same capabilities through a graphical interface.
 
-<div align="center">
-<img src="docs/user-guide/source/_images/datasets/ds-page-overview.png" width="440" alt="Dataset Management">
-<img src="docs/user-guide/source/_images/results/res-scores-overview.png" width="440" alt="Results & Model Comparison">
-<br><em>Left: Dataset management — Right: Results with model ranking and CV scores</em>
-</div>
+---
 
-<br>
+## Installation
 
-<div align="center">
-<img src="docs/user-guide/source/_images/explore/ins-overview.png" width="440" alt="Inspector">
-<img src="docs/user-guide/source/_images/lab/lab-shap-overview.png" width="440" alt="SHAP Analysis">
-<br><em>Left: Inspector — prediction analysis and model diagnostics — Right: Lab — SHAP variable importance</em>
-</div>
+nirs4all Studio offers three ways to get started, depending on your needs:
 
-<br>
+### Option 1 — Installer (Recommended)
 
-<div align="center">
-<img src="docs/user-guide/source/_images/lab/lab-synthesis-overview.png" width="440" alt="Spectra Synthesis">
-<img src="docs/user-guide/source/_images/experiments/exp-wizard-overview.png" width="440" alt="Experiment Wizard">
-<br><em>Left: Spectra Synthesis — realistic NIR data generation — Right: Experiment wizard</em>
-</div>
+The simplest option. Downloads and installs like any desktop application.
 
-## Tech Stack
+1. Go to the [latest release](https://github.com/GBeurier/nirs4all-webapp/releases/latest)
+2. Download the installer for your platform:
 
-### Frontend
-- **React 19** with TypeScript (strict mode)
-- **Vite** for fast development and optimized builds
-- **Tailwind CSS** with custom scientific design system
-- **shadcn/ui** component library
-- **TanStack Query** for API state management
-- **Framer Motion** for smooth animations
+   | Platform | File |
+   |----------|------|
+   | **Windows** | `.exe` installer |
+   | **macOS** (Intel & Apple Silicon) | `.dmg` disk image |
+   | **Linux** | `.AppImage` or `.deb` package |
 
-### Desktop Shell
-- **Electron 40** for cross-platform desktop experience
-- **Chromium** for consistent WebGL support across all platforms
-- **IPC Bridge** for secure main/renderer communication
+3. Run the installer and launch nirs4all Studio
 
-### Backend
-- **FastAPI** for high-performance REST API
-- **nirs4all** Python library for NIRS analysis
-- **PyInstaller** for standalone backend packaging
+The installer embeds a Python environment and manages dependencies automatically. **You don't need Python installed on your machine.**
+
+> **GPU support**: The default installer is CPU-only. For GPU acceleration (CUDA on Linux/Windows, Metal on macOS), download the GPU edition from the release page (tagged `gpu` in the filename).
+
+### Option 2 — All-in-one Standalone (Portable)
+
+A self-contained archive — just extract and run. No installation, no admin rights needed. Ideal for trying nirs4all Studio without committing to an install, or for machines where you can't install software.
+
+1. Go to the [latest release](https://github.com/GBeurier/nirs4all-webapp/releases/latest)
+2. Download the **all-in-one** archive for your platform:
+
+   | Platform | File |
+   |----------|------|
+   | **Windows** | `nirs4all-Studio-*-all-in-one-win-x64.zip` |
+   | **macOS** | `nirs4all-Studio-*-all-in-one-mac-*.dmg` |
+   | **Linux** | `nirs4all-Studio-*-all-in-one-linux-x64.tar.gz` |
+
+3. Extract the archive and run the executable inside
+
+Everything is bundled — Python runtime, backend, and frontend. Nothing else to install.
+
+### Option 3 — Developer Setup (From Source)
+
+For contributors, or if you want to hack on the code. Requires **Node.js 20+** and **Python 3.11+**.
+
+```bash
+git clone https://github.com/GBeurier/nirs4all-webapp.git
+cd nirs4all-webapp
+npm install
+```
+
+Then set up the Python backend and start the servers — see [Getting Started](#getting-started) below.
+
+### Installation comparison
+
+| | Installer | Standalone | Developer |
+|---|---|---|---|
+| **Install required** | Yes | No (extract & run) | Clone + npm install |
+| **Python required** | No (bundled) | No (bundled) | Yes (3.11+) |
+| **Auto-updates** | Yes | Manual re-download | git pull |
+| **GPU editions** | CPU or GPU | CPU or GPU | Your choice |
+| **Best for** | End users | Portable / trial use | Contributors |
+
+---
 
 ## Getting Started
+
+> This section is for **developers running from source** (Option 3 above). If you installed via the Installer or Standalone, just launch the app — no setup needed.
 
 ### Prerequisites
 
@@ -216,6 +244,81 @@ npm run electron:preview
 
 The Electron main process automatically spawns the Python backend and manages its lifecycle.
 
+> **Note**: The webapp can run **without nirs4all installed** for pure UI development. The backend will report missing capabilities but the frontend is fully functional.
+
+---
+
+## Screenshots
+
+<div align="center">
+<img src="https://nirs4all.org/assets/pipeline-page.png" width="900" alt="Pipeline Editor">
+<br><em>Pipeline Editor — Drag-and-drop builder with component library, validation, and hyperparameter tuning</em>
+</div>
+
+<br>
+
+<div align="center">
+<img src="https://nirs4all.org/assets/results-page.png" width="440" alt="Results & Model Comparison">
+<img src="https://nirs4all.org/assets/runs-page.png" width="440" alt="Runs Overview">
+<br><em>Left: Results with model ranking and CV scores — Right: Runs overview and monitoring</em>
+</div>
+
+<br>
+
+<div align="center">
+<img src="https://nirs4all.org/assets/inspector-after-refresh.jpg" width="440" alt="Inspector">
+<img src="https://nirs4all.org/assets/shap-page.png" width="440" alt="SHAP Analysis">
+<br><em>Left: Inspector — prediction analysis and model diagnostics — Right: SHAP variable importance</em>
+</div>
+
+<br>
+
+<div align="center">
+<img src="https://nirs4all.org/assets/synthesis-page.png" width="440" alt="Spectra Synthesis">
+<img src="https://nirs4all.org/assets/predictions-page.png" width="440" alt="Predictions">
+<br><em>Left: Spectra Synthesis — realistic NIR data generation — Right: Predictions analysis</em>
+</div>
+
+---
+
+## Features
+
+- **Spectral Data Visualization** — Interactive charts for exploring NIRS spectra
+- **Pipeline Builder** — Visual drag-and-drop pipeline construction
+- **Experiment Wizard** — Guided experiment setup with preset templates
+- **Prediction Engine** — Run trained models on new samples
+- **SHAP Explainability** — Variable importance and model interpretation
+- **Spectra Synthesis** — Generate realistic synthetic NIR data
+- **Transfer Analysis** — Instrument transfer and domain adaptation tools
+- **Workspace Management** — Organize datasets, pipelines, and results
+- **Native Desktop Experience** — Runs as a standalone desktop app via Electron
+- **GPU Acceleration** — CUDA (Linux/Windows) and Metal (macOS) support
+
+---
+
+## Tech Stack
+
+### Frontend
+- **React 19** with TypeScript (strict mode)
+- **Vite** for fast development and optimized builds
+- **Tailwind CSS** with custom scientific design system
+- **shadcn/ui** component library
+- **TanStack Query** for API state management
+- **Framer Motion** for smooth animations
+
+### Desktop Shell
+- **Electron 40** for cross-platform desktop experience
+- **Chromium** for consistent WebGL support across all platforms
+- **IPC Bridge** for secure main/renderer communication
+
+### Backend
+- **FastAPI** for high-performance REST API
+- **[nirs4all](https://github.com/GBeurier/nirs4all)** Python library for all NIRS analysis
+- **WebSocket** for real-time training progress updates
+- **PyInstaller** for standalone backend packaging
+
+---
+
 ## Project Structure
 
 ```
@@ -260,132 +363,7 @@ nirs4all_webapp/
 └── package.json            # Node dependencies
 ```
 
-## Pipeline Editor Architecture
-
-The Pipeline Editor is a visual pipeline builder for nirs4all workflows. It follows a modular architecture for maintainability and extensibility.
-
-### Core Components
-
-```
-src/components/pipeline-editor/
-├── config/                     # Configuration panel
-│   └── step-renderers/         # Type-specific renderers
-│       ├── DefaultRenderer.tsx # Standard algorithm + params
-│       ├── ModelRenderer.tsx   # Model-specific UI
-│       ├── MergeRenderer.tsx   # Merge step UI
-│       └── ...
-├── shared/                     # Reusable UI components
-│   ├── ParameterInput.tsx      # Number/text inputs
-│   ├── ParameterSelect.tsx     # Dropdown select
-│   ├── ParameterSwitch.tsx     # Boolean toggle
-│   ├── CollapsibleSection.tsx  # Expandable sections
-│   ├── InfoTooltip.tsx         # Help tooltips
-│   └── ValidationMessage.tsx   # Error/warning display
-├── validation/                 # Validation system
-│   ├── engine.ts               # Core validation engine
-│   ├── parameterValidator.ts   # Parameter validation
-│   ├── stepValidator.ts        # Step validation
-│   ├── pipelineValidator.ts    # Pipeline structure
-│   ├── rules.ts                # Validation rules registry
-│   ├── useValidation.ts        # React hook
-│   ├── ValidationPanel.tsx     # Issues display
-│   └── ValidationContext.tsx   # React context
-└── types.ts                    # Shared TypeScript types
-```
-
-### Node Registry System
-
-```
-src/data/nodes/
-├── definitions/           # Node definitions (JSON)
-│   ├── preprocessing/     # Preprocessing nodes
-│   ├── models/            # Model nodes
-│   ├── splitting/         # CV splitters
-│   └── ...
-├── custom/                # Custom node system
-│   └── CustomNodeStorage.ts  # User-defined nodes
-├── categories/            # Category configuration
-├── NodeRegistry.ts        # Runtime registry
-├── types.ts               # TypeScript types
-└── index.ts               # Public API
-```
-
-### Key Design Patterns
-
-| Pattern | Location | Purpose |
-|---------|----------|---------|
-| Registry | `NodeRegistry.ts` | Central node definition lookup |
-| Validator | `validation/` | Multi-level validation with rules |
-| Context | `ValidationContext.tsx` | Shared validation state |
-| Factory | `step-renderers/` | Type-specific UI rendering |
-| Singleton | `CustomNodeStorage` | Persistent custom nodes |
-
-### Validation System
-
-The validation system provides multi-level validation:
-
-1. **Parameter Level**: Type checking, range validation, required fields
-2. **Step Level**: Step structure, container validation
-3. **Pipeline Level**: Model presence, splitter ordering, structure
-
-```typescript
-import { validate, useValidation } from './validation';
-
-// Direct validation
-const result = validate(steps, { strictMode: true });
-console.log(result.isValid, result.errors);
-
-// React hook (debounced)
-const { isValid, errorCount, getStepIssues } = useValidation(steps);
-```
-
-### Custom Nodes
-
-Users can define custom operators:
-
-```typescript
-import { CustomNodeStorage } from '@/data/nodes/custom';
-
-const storage = CustomNodeStorage.getInstance();
-storage.add({
-  id: 'custom.my_transform',
-  name: 'MyTransform',
-  type: 'preprocessing',
-  classPath: 'mypackage.MyTransform',
-  description: 'Custom transform',
-  source: 'custom',
-  parameters: [/* ... */]
-});
-```
-
-See [developer_guide_custom_nodes.md](docs/_internals/developer_guide_custom_nodes.md) for details.
-
-### Test Coverage
-
-| Area | Tests | Coverage |
-|------|-------|----------|
-| Shared Components | 231 | Unit tests for all props/states |
-| Step Renderers | 87 | Renderer-specific behavior |
-| Validation | 143 | Integration + unit tests |
-| Custom Nodes | 82 | E2E workflow tests |
-
-Run tests:
-```bash
-npm run test               # All tests (single run)
-npm run test:watch         # Watch mode
-npm run e2e                # Playwright end-to-end tests
-```
-
-### Storybook
-
-Component documentation with Storybook:
-
-```bash
-npm run storybook          # Development server (port 6006)
-npm run build-storybook    # Build static docs
-```
-
-Stories are located in `__stories__/` directories next to components.
+---
 
 ## Scripts
 
@@ -432,6 +410,18 @@ Or use `npm run start` / `npm run start:desktop` / `npm run stop` directly.
 | `npm run build:release:clean` | Clean and rebuild release |
 | `npm run build:release:all` | Build for all platforms |
 
+### Build Modes
+
+The release build supports two modes via `--mode`:
+
+- **`installer`** (default) — Embeds a Python environment with a venv. Supports runtime `pip install` for optional dependencies. Produces platform-native installers (`.exe`, `.dmg`, `.deb`).
+- **`standalone`** — Freezes the backend with PyInstaller into a single executable. Produces portable all-in-one archives. No Python needed on the target machine.
+
+```bash
+node scripts/build-release.cjs --mode installer --flavor cpu
+node scripts/build-release.cjs --mode standalone --flavor gpu
+```
+
 ### npm Scripts - Packaging
 
 | Command | Description |
@@ -442,14 +432,7 @@ Or use `npm run start` / `npm run start:desktop` / `npm run stop` directly.
 | `npm run build:release --platform linux` | Package for Linux |
 | `npm run build:release --platform all` | Package for all platforms |
 
-## Design System
-
-The application uses a teal/cyan scientific theme inspired by spectral-explorer, featuring:
-
-- **Glass morphism** cards with backdrop blur
-- **Glow effects** for interactive elements
-- **Dark/Light mode** with smooth transitions
-- **Inter + JetBrains Mono** typography
+---
 
 ## Logging and Crash Reporting
 
@@ -477,6 +460,8 @@ VITE_SENTRY_DSN=https://your-key@o123456.ingest.sentry.io/1234567
 
 When `SENTRY_DSN` is not set, crash reporting is completely disabled with zero overhead. See [docs/ELECTRON.md](docs/ELECTRON.md#crash-reporting-sentry) for details.
 
+---
+
 ## Documentation
 
 | Document | Description |
@@ -485,6 +470,8 @@ When `SENTRY_DSN` is not set, crash reporting is completely disabled with zero o
 | [docs/PACKAGING.md](docs/PACKAGING.md) | Build system, CI/CD, and release process |
 | [docs/UPDATE_SYSTEM.md](docs/UPDATE_SYSTEM.md) | Auto-updater implementation |
 | [docs/sources/custom-nodes-guide.md](docs/sources/custom-nodes-guide.md) | Custom node development |
+
+---
 
 ## License
 
