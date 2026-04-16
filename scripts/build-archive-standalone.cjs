@@ -1,7 +1,7 @@
 /**
  * Build a standalone Electron archive with a fully baked backend runtime.
  *
- * This is the lot 4 packaging entrypoint for the ZIP-based standalone product.
+ * This is the lot 4 packaging entrypoint for the archive-based standalone product.
  * It is intentionally locked to the v1 standalone scope: profile=cpu only.
  *
  * Usage:
@@ -29,7 +29,7 @@ const { resolveSpawnCommand } = require("./spawn-command.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 const isWindows = process.platform === "win32";
-const MAC_PRODUCT_NAME = "nirs4all Studio";
+const PRODUCT_NAME = "nirs4all Studio";
 
 function printHelp() {
   console.log(`Usage:
@@ -134,6 +134,9 @@ function getElectronBuilderArgs(config) {
     args.push("--dir");
   } else if (config.platform === "linux") {
     args.push("--linux");
+    // Build the unpacked directory first, then create the tarball ourselves.
+    // This avoids extremely slow archive generation inside electron-builder.
+    args.push("--dir");
   }
 
   if (config.arch === "x64") {
@@ -153,11 +156,23 @@ function getPackageVersion() {
 
 function getMacAppBundlePath(config) {
   const appDir = config.arch === "arm64" ? "mac-arm64" : "mac";
-  return path.join(projectRoot, "release", appDir, `${MAC_PRODUCT_NAME}.app`);
+  return path.join(projectRoot, "release", appDir, `${PRODUCT_NAME}.app`);
 }
 
 function getMacZipPath(config) {
-  return path.join(projectRoot, "release", `${MAC_PRODUCT_NAME}-${getPackageVersion()}-all-in-one-mac-${config.arch}.zip`);
+  return path.join(projectRoot, "release", `${PRODUCT_NAME}-${getPackageVersion()}-all-in-one-mac-${config.arch}.zip`);
+}
+
+function getLinuxAppDir() {
+  return path.join(projectRoot, "release", "linux-unpacked");
+}
+
+function getLinuxTarPath(config) {
+  return path.join(projectRoot, "release", `${PRODUCT_NAME}-${getPackageVersion()}-all-in-one-linux-${config.arch}.tar.gz`);
+}
+
+function getLinuxCompressProgram() {
+  return (process.env.NIRS4ALL_TAR_GZIP_PROGRAM || "").trim();
 }
 
 async function createMacZip(config) {
@@ -174,6 +189,37 @@ async function createMacZip(config) {
 
   console.log("=== Step 4: Create macOS ZIP archive ===");
   await runCommand("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", appPath, zipPath]);
+  console.log("");
+}
+
+async function createLinuxTarball(config) {
+  const appPath = getLinuxAppDir();
+  const tarPath = getLinuxTarPath(config);
+  const releaseDir = path.join(projectRoot, "release");
+  const compressProgram = getLinuxCompressProgram();
+
+  if (!fs.existsSync(appPath)) {
+    throw new Error(`Expected packaged Linux app directory was not found: ${appPath}`);
+  }
+
+  if (fs.existsSync(tarPath)) {
+    fs.rmSync(tarPath, { force: true });
+  }
+
+  const tarArgs = [
+    "-C",
+    releaseDir,
+    `--transform=s|^linux-unpacked|${PRODUCT_NAME}|`,
+  ];
+
+  if (compressProgram) {
+    tarArgs.push(`--use-compress-program=${compressProgram}`, "-cf", tarPath, "linux-unpacked");
+  } else {
+    tarArgs.push("-czf", tarPath, "linux-unpacked");
+  }
+
+  console.log("=== Step 4: Create Linux tar.gz archive ===");
+  await runCommand("tar", tarArgs);
   console.log("");
 }
 
@@ -310,6 +356,8 @@ async function buildArchiveStandalone(config) {
 
   if (config.platform === "darwin") {
     await createMacZip(config);
+  } else if (config.platform === "linux") {
+    await createLinuxTarball(config);
   }
 }
 

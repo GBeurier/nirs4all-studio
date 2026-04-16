@@ -111,6 +111,7 @@ describe("build-archive-standalone", () => {
       "--publish",
       "never",
       "--linux",
+      "--dir",
       "--x64",
     ]);
   });

@@ -52,6 +52,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             unzip \
+            pigz \
             xvfb \
             libgirepository1.0-dev \
             libcairo2-dev \
@@ -68,6 +69,7 @@ jobs:
         run: node scripts/build-archive-standalone.cjs --clean --platform linux --arch x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NIRS4ALL_TAR_GZIP_PROGRAM: pigz -1
 
       - name: Extract archive for smoke test
         id: archive
