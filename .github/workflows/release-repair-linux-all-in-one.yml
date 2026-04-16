@@ -1,0 +1,102 @@
+name: Repair Linux All-in-one Release Asset
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to repair (for example: 0.6.0)'
+        required: true
+        type: string
+      source_ref:
+        description: 'Branch, tag, or commit to build from'
+        required: true
+        default: 'main'
+        type: string
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  repair-linux-archive:
+    name: Rebuild Linux all-in-one
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve tag metadata
+        id: meta
+        run: |
+          TAG="${{ inputs.tag }}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Cache all-in-one runtime downloads
+        uses: actions/cache@v4
+        with:
+          path: build/.python-cache
+          key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            unzip \
+            xvfb \
+            libgirepository1.0-dev \
+            libcairo2-dev \
+            gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Update package.json version
+        run: npm version ${{ steps.meta.outputs.version }} --no-git-tag-version --allow-same-version
+
+      - name: Build Linux all-in-one archive
+        run: node scripts/build-archive-standalone.cjs --clean --platform linux --arch x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract archive for smoke test
+        id: archive
+        run: |
+          ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ steps.meta.outputs.version }}-all-in-one-linux-x64.zip"
+          EXTRACT_ROOT="$RUNNER_TEMP/archive-smoke"
+          rm -rf "$EXTRACT_ROOT"
+          mkdir -p "$EXTRACT_ROOT"
+          unzip -q "$ZIP_PATH" -d "$EXTRACT_ROOT"
+          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+          echo "extract_root=$EXTRACT_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test update ZIP permissions
+        run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.zip_path }}" --platform linux
+
+      - name: Smoke test offline all-in-one launch
+        run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
+
+      - name: Generate checksum
+        run: |
+          FILE="${{ steps.archive.outputs.zip_path }}"
+          sha256sum "$FILE" > "$FILE.sha256"
+
+      - name: Upload asset to existing release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          ZIP_PATH="${{ steps.archive.outputs.zip_path }}"
+          CHECKSUM_PATH="${ZIP_PATH}.sha256"
+          gh release view "$TAG" >/dev/null
+          gh release upload "$TAG" "$ZIP_PATH" "$CHECKSUM_PATH" --clobber

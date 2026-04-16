@@ -38,6 +38,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def get_expected_executable_name(platform_name: str, app_name: str) -> str:
+    if platform_name == "win32":
+        return f"{app_name}.exe"
+    return app_name
+
+
 def resolve_paths(content_dir: Path, platform_name: str, app_name: str) -> tuple[Path, Path, Path]:
     if platform_name == "darwin":
         app_bundle = content_dir if content_dir.suffix == ".app" else next(content_dir.glob("*.app"), None)
@@ -86,24 +92,33 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="n4a-update-zip-smoke-") as temp_dir:
         staging_dir = Path(temp_dir) / "staging"
         update_downloader.get_staging_dir = lambda: staging_dir  # type: ignore[assignment]
+        previous_app_exe = os.environ.get("NIRS4ALL_APP_EXE")
+        if not previous_app_exe:
+            # Mirror the packaged Electron environment so nested app-root
+            # resolution matches the real update flow in CI smoke checks.
+            os.environ["NIRS4ALL_APP_EXE"] = get_expected_executable_name(args.platform, args.app_name)
 
-        downloader = update_downloader.UpdateDownloader(
-            download_url="https://example.invalid/standalone.zip",
-            expected_size=archive_path.stat().st_size,
-        )
-        success, message, content_dir = asyncio.run(downloader.extract(archive_path))
-        if not success or content_dir is None:
-            raise RuntimeError(f"Archive extraction failed: {message}")
+        try:
+            downloader = update_downloader.UpdateDownloader(
+                download_url="https://example.invalid/standalone.zip",
+                expected_size=archive_path.stat().st_size,
+            )
+            success, message, content_dir = asyncio.run(downloader.extract(archive_path))
+            if not success or content_dir is None:
+                raise RuntimeError(f"Archive extraction failed: {message}")
 
-        executable_path, python_path, runtime_ready = resolve_paths(content_dir, args.platform, args.app_name)
-        if not runtime_ready.exists():
-            raise FileNotFoundError(f"Bundled runtime marker not found: {runtime_ready}")
-        assert_executable(executable_path, "App executable")
-        assert_executable(python_path, "Bundled Python")
+            executable_path, python_path, runtime_ready = resolve_paths(content_dir, args.platform, args.app_name)
+            if not runtime_ready.exists():
+                raise FileNotFoundError(f"Bundled runtime marker not found: {runtime_ready}")
+            assert_executable(executable_path, "App executable")
+            assert_executable(python_path, "Bundled Python")
 
-        print(f"Update ZIP smoke passed for {archive_path.name}")
-        print(f"  executable: {executable_path}")
-        print(f"  python:     {python_path}")
+            print(f"Update ZIP smoke passed for {archive_path.name}")
+            print(f"  executable: {executable_path}")
+            print(f"  python:     {python_path}")
+        finally:
+            if previous_app_exe is None:
+                os.environ.pop("NIRS4ALL_APP_EXE", None)
 
     return 0
 
