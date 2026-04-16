@@ -80,3 +80,35 @@ def test_windows_installed_prefers_all_in_one_zip_when_multiple_zip_assets_exist
 
     assert asset is not None
     assert asset["name"] == "nirs4all Studio-0.3.1-all-in-one-win-x64.zip"
+
+
+def test_linux_prefers_all_in_one_tarball_over_zip(monkeypatch):
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+
+    manager = UpdateManager()
+    asset = manager._find_platform_asset(
+        [
+            _asset("nirs4all Studio-0.3.1-all-in-one-linux-x64.zip"),
+            _asset("nirs4all Studio-0.3.1-all-in-one-linux-x64.tar.gz"),
+        ]
+    )
+
+    assert asset is not None
+    assert asset["name"] == "nirs4all Studio-0.3.1-all-in-one-linux-x64.tar.gz"
+
+
+def test_linux_accepts_all_in_one_zip_when_tarball_is_absent(monkeypatch):
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+
+    manager = UpdateManager()
+    asset = manager._find_platform_asset(
+        [
+            _asset("nirs4all Studio-0.3.1-linux-x64.AppImage"),
+            _asset("nirs4all Studio-0.3.1-all-in-one-linux-x64.zip"),
+        ]
+    )
+
+    assert asset is not None
+    assert asset["name"] == "nirs4all Studio-0.3.1-all-in-one-linux-x64.zip"

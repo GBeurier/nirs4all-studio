@@ -1,4 +1,4 @@
-"""Regression tests for the ZIP permission smoke-test entrypoint."""
+"""Regression tests for the staged-archive smoke-test entrypoint."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def test_smoke_update_zip_permissions_script_bootstraps_repo_root(tmp_path):
     assert "ModuleNotFoundError: No module named 'api'" not in output
 
     if os.name == "nt":
-        assert "This smoke test only applies to POSIX ZIP permission handling" in output
+        assert "This smoke test only applies to POSIX archive extraction" in output
     else:
         assert f"Archive not found: {archive_path.resolve()}" in output
 
@@ -70,4 +70,4 @@ def test_smoke_update_zip_permissions_script_resolves_linux_app_root_without_app
     output = f"{result.stdout}{result.stderr}"
 
     assert result.returncode == 0, output
-    assert f"Update ZIP smoke passed for {archive_path.name}" in output
+    assert f"Update archive smoke passed for {archive_path.name}" in output

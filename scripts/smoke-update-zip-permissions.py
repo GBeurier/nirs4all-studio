@@ -1,6 +1,6 @@
-"""Smoke-test update ZIP extraction on POSIX targets.
+"""Smoke-test staged archive extraction on POSIX targets.
 
-This validates the real updater staging path against a packaged standalone ZIP:
+This validates the real updater staging path against a packaged standalone archive:
 - extract through ``api.update_downloader.UpdateDownloader``
 - locate the staged app executable and bundled Python runtime
 - assert they remain executable after staging
@@ -26,8 +26,8 @@ APP_NAME = "nirs4all Studio"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Smoke-test ZIP update extraction permissions")
-    parser.add_argument("--archive", required=True, help="Path to the packaged ZIP archive")
+    parser = argparse.ArgumentParser(description="Smoke-test staged archive extraction permissions")
+    parser.add_argument("--archive", required=True, help="Path to the packaged update archive")
     parser.add_argument(
         "--platform",
         choices=("linux", "darwin"),
@@ -84,7 +84,7 @@ def assert_executable(target: Path, label: str) -> None:
 
 def main() -> int:
     if os.name == "nt":
-        raise SystemExit("This smoke test only applies to POSIX ZIP permission handling")
+        raise SystemExit("This smoke test only applies to POSIX archive extraction")
 
     args = parse_args()
     archive_path = Path(args.archive).resolve()
@@ -95,7 +95,7 @@ def main() -> int:
         staging_dir = Path(temp_dir) / "staging"
         update_downloader.get_staging_dir = lambda: staging_dir  # type: ignore[assignment]
         downloader = update_downloader.UpdateDownloader(
-            download_url="https://example.invalid/standalone.zip",
+            download_url="https://example.invalid/standalone.tar.gz",
             expected_size=archive_path.stat().st_size,
         )
         success, message, content_dir = asyncio.run(downloader.extract(archive_path))
@@ -108,7 +108,7 @@ def main() -> int:
         assert_executable(executable_path, "App executable")
         assert_executable(python_path, "Bundled Python")
 
-        print(f"Update ZIP smoke passed for {archive_path.name}")
+        print(f"Update archive smoke passed for {archive_path.name}")
         print(f"  executable: {executable_path}")
         print(f"  python:     {python_path}")
 

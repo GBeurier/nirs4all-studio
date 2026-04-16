@@ -1,7 +1,7 @@
 # Unified Release Workflow
 # Produces all distribution formats from a single CI trigger:
 #   - Electron installers (Windows NSIS, macOS DMG, Linux AppImage+DEB)
-#   - All-in-one bundled archives (CPU ZIP on Windows, Linux, macOS)
+#   - All-in-one bundled archives (CPU ZIP on Windows/macOS, tar.gz on Linux)
 #   - Docker images (CPU + GPU-CUDA)
 #
 # Trigger: tag v* or manual dispatch
@@ -550,7 +550,7 @@ jobs:
           retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # All-in-one archive: Linux x64 (Electron ZIP + bundled runtime)
+  # All-in-one archive: Linux x64 (Electron tar.gz + bundled runtime)
   # ═══════════════════════════════════════════════════════════════════════════
   archive-linux:
     name: All-in-one — Linux x64
@@ -597,23 +597,23 @@ jobs:
       - name: Extract archive for smoke test
         id: archive
         run: |
-          ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-linux-x64.zip"
+          ARCHIVE_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-linux-x64.tar.gz"
           EXTRACT_ROOT="$RUNNER_TEMP/archive-smoke"
           rm -rf "$EXTRACT_ROOT"
           mkdir -p "$EXTRACT_ROOT"
-          unzip -q "$ZIP_PATH" -d "$EXTRACT_ROOT"
-          echo "zip_path=$ZIP_PATH" >> $GITHUB_OUTPUT
+          tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_ROOT"
+          echo "archive_path=$ARCHIVE_PATH" >> $GITHUB_OUTPUT
           echo "extract_root=$EXTRACT_ROOT" >> $GITHUB_OUTPUT
 
-      - name: Smoke test update ZIP permissions
-        run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.zip_path }}" --platform linux
+      - name: Smoke test staged archive extraction
+        run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.archive_path }}" --platform linux
 
       - name: Smoke test offline all-in-one launch
         run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
       - name: Generate checksum
         run: |
-          FILE="${{ steps.archive.outputs.zip_path }}"
+          FILE="${{ steps.archive.outputs.archive_path }}"
           sha256sum "$FILE" > "$FILE.sha256"
 
       - name: Upload artifacts
@@ -621,8 +621,8 @@ jobs:
         with:
           name: archive-linux-x64
           path: |
-            ${{ steps.archive.outputs.zip_path }}
-            ${{ steps.archive.outputs.zip_path }}.sha256
+            ${{ steps.archive.outputs.archive_path }}
+            ${{ steps.archive.outputs.archive_path }}.sha256
           retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
@@ -1088,7 +1088,7 @@ jobs:
           | Platform | Architecture | File | Status |
           |----------|-------------|------|--------|
           | **Windows** | x64 | \`nirs4all Studio-${VERSION}-all-in-one-win-x64.zip\` | ${ARCHIVE_WIN} |
-          | **Linux** | x64 | \`nirs4all Studio-${VERSION}-all-in-one-linux-x64.zip\` | ${ARCHIVE_LINUX} |
+          | **Linux** | x64 | \`nirs4all Studio-${VERSION}-all-in-one-linux-x64.tar.gz\` | ${ARCHIVE_LINUX} |
           | **macOS** | Intel (x64) | \`nirs4all Studio-${VERSION}-all-in-one-mac-x64.zip\` | ${ARCHIVE_MACOS_X64} |
           | **macOS** | Apple Silicon (arm64) | \`nirs4all Studio-${VERSION}-all-in-one-mac-arm64.zip\` | ${ARCHIVE_MACOS_ARM64} |
 

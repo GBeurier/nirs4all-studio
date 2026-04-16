@@ -72,23 +72,23 @@ jobs:
       - name: Extract archive for smoke test
         id: archive
         run: |
-          ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ steps.meta.outputs.version }}-all-in-one-linux-x64.zip"
+          ARCHIVE_PATH="$(pwd)/release/nirs4all Studio-${{ steps.meta.outputs.version }}-all-in-one-linux-x64.tar.gz"
           EXTRACT_ROOT="$RUNNER_TEMP/archive-smoke"
           rm -rf "$EXTRACT_ROOT"
           mkdir -p "$EXTRACT_ROOT"
-          unzip -q "$ZIP_PATH" -d "$EXTRACT_ROOT"
-          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+          tar -xzf "$ARCHIVE_PATH" -C "$EXTRACT_ROOT"
+          echo "archive_path=$ARCHIVE_PATH" >> "$GITHUB_OUTPUT"
           echo "extract_root=$EXTRACT_ROOT" >> "$GITHUB_OUTPUT"
 
-      - name: Smoke test update ZIP permissions
-        run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.zip_path }}" --platform linux
+      - name: Smoke test staged archive extraction
+        run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.archive_path }}" --platform linux
 
       - name: Smoke test offline all-in-one launch
         run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
       - name: Generate checksum
         run: |
-          FILE="${{ steps.archive.outputs.zip_path }}"
+          FILE="${{ steps.archive.outputs.archive_path }}"
           sha256sum "$FILE" > "$FILE.sha256"
 
       - name: Upload asset to existing release
@@ -96,7 +96,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
-          ZIP_PATH="${{ steps.archive.outputs.zip_path }}"
-          CHECKSUM_PATH="${ZIP_PATH}.sha256"
+          ARCHIVE_PATH="${{ steps.archive.outputs.archive_path }}"
+          CHECKSUM_PATH="${ARCHIVE_PATH}.sha256"
           gh release view "$TAG" >/dev/null
-          gh release upload "$TAG" "$ZIP_PATH" "$CHECKSUM_PATH" --clobber
+          gh release upload "$TAG" "$ARCHIVE_PATH" "$CHECKSUM_PATH" --clobber

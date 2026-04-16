@@ -43,7 +43,7 @@ mac:
 
 linux:
   target:
-    - target: zip
+    - target: tar.gz
       arch:
         - x64
   icon: public/nirs4all_logo.png

@@ -66,7 +66,7 @@ Important details:
 - installed Windows builds prefer all-in-one ZIP assets
 - portable Windows builds prefer `-portable.exe`
 - macOS prefers ZIP assets
-- Linux accepts ZIP and legacy tarball formats, though current releases publish ZIP
+- Linux prefers `.tar.gz` / `.tgz` all-in-one assets, with ZIP still accepted for backward compatibility
 - when multiple ZIPs exist, names containing `all-in-one` are preferred
 
 ### `api/update_downloader.py`
@@ -127,7 +127,7 @@ Preferred update assets:
 
 - Windows: `nirs4all Studio-{version}-all-in-one-win-x64.zip`
 - macOS: `nirs4all Studio-{version}-all-in-one-mac-{arch}.zip`
-- Linux: `nirs4all Studio-{version}-all-in-one-linux-x64.zip`
+- Linux: `nirs4all Studio-{version}-all-in-one-linux-x64.tar.gz`
 
 ### Portable Windows builds
 

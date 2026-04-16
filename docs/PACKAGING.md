@@ -21,14 +21,14 @@ The project now publishes three desktop distribution families plus Docker:
 |---|---|---|---|
 | Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + backend source; Python environment is writable and managed outside the app bundle |
 | Portable Windows | Windows x64 | `-portable.exe` | Electron portable layout with state under `.nirs4all/` next to the executable |
-| All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` | Electron + backend source + embedded `python-runtime/python`; runtime is read-only |
+| All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` on Windows/macOS, `-all-in-one-*.tar.gz` on Linux | Electron + backend source + embedded `python-runtime/python`; runtime is read-only |
 | Docker | Linux | `ghcr.io/gbeurier/nirs4all-studio:*` | No Electron; FastAPI serves the UI |
 
 For the desktop all-in-one bundle, v1 is deliberately locked to a single product profile:
 
 - `cpu`
 - `torch` included
-- `.zip` only
+- archive format is platform-specific: `.zip` on Windows/macOS, `.tar.gz` on Linux
 - no first-launch Python download
 - no first-launch setup wizard
 
@@ -36,11 +36,11 @@ For the desktop all-in-one bundle, v1 is deliberately locked to a single product
 
 - `Installer`: standard OS install flow (`.exe`, `.dmg`, `.AppImage`, `.deb`).
 - `Portable`: Windows-only `-portable.exe` build with dedicated state next to the executable.
-- `All-in-one`: the final ZIP bundle distributed to users, containing Electron, backend source, embedded Python, and a baked venv.
+- `All-in-one`: the final archive bundle distributed to users, containing Electron, backend source, embedded Python, and a baked venv.
 - `Bundled runtime`: the embedded Python runtime found under `resources/backend/python-runtime/`.
 - `Legacy PyInstaller`: historical frozen-backend packaging path. Not the release path for the desktop product anymore.
 
-An extracted ZIP is not the same thing as portable mode. Portable mode is enabled explicitly by the electron-builder portable executable and its dedicated environment variables.
+An extracted all-in-one archive is not the same thing as portable mode. Portable mode is enabled explicitly by the electron-builder portable executable and its dedicated environment variables.
 
 ## Packaged Layouts
 
@@ -92,7 +92,7 @@ The bundled runtime is immutable in v1. Package installation, environment creati
 |---|---|
 | `development` | Local dev server / ad hoc Python process |
 | `managed` | Writable Python environment managed outside the bundle |
-| `bundled` | All-in-one ZIP with embedded read-only runtime |
+| `bundled` | All-in-one archive with embedded read-only runtime |
 | `pyinstaller` | Legacy frozen backend path kept for compatibility |
 
 `is_frozen` remains in the API for compatibility, but new UI and packaging decisions should use `runtime_mode`.
@@ -119,7 +119,7 @@ Notes:
 
 ### All-in-one local builds
 
-Use `scripts/build-archive-standalone.cjs` for the distributed ZIP bundle:
+Use `scripts/build-archive-standalone.cjs` for the distributed all-in-one archive:
 
 ```bash
 npm run release:all-in-one:clean -- --platform win32 --arch x64
@@ -168,7 +168,7 @@ The release workflow is `.github/workflows/release-unified.yml`.
 | `installer-macos-x64` | macOS Intel DMG, signed/notarized when secrets are available |
 | `installer-macos-arm64` | macOS Apple Silicon DMG, signed/notarized when secrets are available |
 | `archive-windows` | Windows all-in-one ZIP |
-| `archive-linux` | Linux all-in-one ZIP |
+| `archive-linux` | Linux all-in-one tar.gz |
 | `archive-macos-x64` | macOS Intel all-in-one ZIP, rebuilt after notarization/stapling |
 | `archive-macos-arm64` | macOS Apple Silicon all-in-one ZIP, rebuilt after notarization/stapling |
 | `docker` | CPU and GPU-CUDA container images |
@@ -179,7 +179,7 @@ The release workflow is `.github/workflows/release-unified.yml`.
 The split is intentional:
 
 - installer assets must stay lighter and writable at runtime
-- all-in-one ZIPs must embed the heavy baked runtime
+- all-in-one archives must embed the heavy baked runtime
 - macOS archive notarization has different handling than DMG packaging
 - update asset names must stay unambiguous
 
@@ -201,7 +201,7 @@ The split is intentional:
 | Platform | Asset pattern |
 |---|---|
 | Windows x64 | `nirs4all Studio-{version}-all-in-one-win-x64.zip` |
-| Linux x64 | `nirs4all Studio-{version}-all-in-one-linux-x64.zip` |
+| Linux x64 | `nirs4all Studio-{version}-all-in-one-linux-x64.tar.gz` |
 | macOS Intel | `nirs4all Studio-{version}-all-in-one-mac-x64.zip` |
 | macOS Apple Silicon | `nirs4all Studio-{version}-all-in-one-mac-arm64.zip` |
 
@@ -255,7 +255,7 @@ Self-update uses GitHub Releases, but the updater only applies assets it can sta
 - installed Windows builds: all-in-one ZIP
 - portable Windows builds: portable executable
 - macOS builds: all-in-one ZIP
-- Linux builds: all-in-one ZIP in current releases, with `.tar.gz` / `.tgz` still accepted for legacy compatibility
+- Linux builds: all-in-one tar.gz in current releases, with ZIP still accepted for legacy compatibility
 
 ### Rejected as in-place update assets
 
