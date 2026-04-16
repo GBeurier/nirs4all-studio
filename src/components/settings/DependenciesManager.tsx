@@ -457,7 +457,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     message: string;
   } | null>(null);
   const [needsRestart, setNeedsRestart] = useState(false);
-  const [isFrozen, setIsFrozen] = useState(false);
+  const [isReadOnlyRuntime, setIsReadOnlyRuntime] = useState(false);
 
   const loadDependencies = async (forceRefresh = false) => {
     try {
@@ -604,7 +604,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
   // Load build info on mount
   useEffect(() => {
     getBuildInfo()
-      .then((info) => setIsFrozen(info.is_frozen))
+      .then((info) => setIsReadOnlyRuntime(info.runtime_mode === "bundled" || info.runtime_mode === "pyinstaller"))
       .catch(() => {});
   }, []);
 
@@ -709,7 +709,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Standalone Mode Banner */}
-        {isFrozen && (
+        {isReadOnlyRuntime && (
           <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription>
@@ -833,7 +833,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
               onUninstall={handleUninstall}
               onUpdateToLatest={handleUpdateToLatest}
               onRevertToRecommended={handleRevertToRecommended}
-              isProcessing={isFrozen ? "__frozen__" : processingPackage}
+              isProcessing={isReadOnlyRuntime ? "__frozen__" : processingPackage}
               defaultOpen={index === 0}
             />
           ))}

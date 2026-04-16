@@ -783,7 +783,17 @@ export default function AggregatedResults() {
 
       {/* Detail sheet */}
       <ChainDetailSheet
-        prediction={selectedPrediction}
+        chainId={selectedPrediction?.chain_id ?? null}
+        metric={selectedPrediction?.metric ?? null}
+        metaHint={selectedPrediction ? {
+          modelName: selectedPrediction.model_name,
+          modelClass: selectedPrediction.model_class,
+          datasetName: selectedPrediction.dataset_name,
+          metric: selectedPrediction.metric,
+          taskType: selectedPrediction.task_type,
+          preprocessings: selectedPrediction.preprocessings,
+          pipelineStatus: selectedPrediction.pipeline_status,
+        } : undefined}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         onOpenViewer={(partitions, header, kind) => {

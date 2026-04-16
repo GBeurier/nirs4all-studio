@@ -119,7 +119,7 @@ export function PredictionPreview({
         >
           <div className="flex h-[220px] w-full items-center justify-center">
             <div style={{ width: "min(100%, 220px)", height: "100%" }}>
-              <PredictionConfusionChart datasets={datasets} config={previewConfig} compact />
+              <PredictionConfusionChart datasets={datasets} config={previewConfig} variant="thumbnail" />
             </div>
           </div>
           <PartitionLegend datasets={datasets} config={previewConfig} />
@@ -136,7 +136,7 @@ export function PredictionPreview({
               Pred vs Actual
             </div>
             <div style={{ height: 140 }} className="w-full">
-              <PredictionScatterChart datasets={datasets} config={previewConfig} compact />
+              <PredictionScatterChart datasets={datasets} config={previewConfig} variant="thumbnail" />
             </div>
             <PartitionLegend datasets={datasets} config={previewConfig} />
           </button>
@@ -150,7 +150,7 @@ export function PredictionPreview({
               Residuals
             </div>
             <div style={{ height: 140 }} className="w-full">
-              <PredictionResidualsChart datasets={datasets} config={previewConfig} compact />
+              <PredictionResidualsChart datasets={datasets} config={previewConfig} variant="thumbnail" />
             </div>
             <PartitionLegend datasets={datasets} config={previewConfig} />
           </button>

@@ -296,11 +296,11 @@ export function PredictionViewer({
               <span className="text-sm">Select at least one partition to display.</span>
             </div>
           ) : kind === "scatter" ? (
-            <PredictionScatterChart ref={chartRef} datasets={visibleDatasets} config={config} />
+            <PredictionScatterChart ref={chartRef} datasets={visibleDatasets} config={config} variant="full" />
           ) : kind === "residuals" ? (
-            <PredictionResidualsChart ref={chartRef} datasets={visibleDatasets} config={config} />
+            <PredictionResidualsChart ref={chartRef} datasets={visibleDatasets} config={config} variant="full" />
           ) : (
-            <PredictionConfusionChart ref={chartRef} datasets={visibleDatasets} config={config} />
+            <PredictionConfusionChart ref={chartRef} datasets={visibleDatasets} config={config} variant="full" />
           )}
         </div>
 

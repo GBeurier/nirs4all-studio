@@ -1,71 +1,38 @@
 /**
- * ChainDetailSheet — slide-over showing chain-level prediction details.
+ * ChainDetailSheet — slide-over shell around ChainDetailPanel.
  *
- * Displays the chain summary (CV + final scores) for a chain, then lists
- * individual fold/partition rows with drill-down to prediction arrays.
+ * Chain-id driven: caller passes `chainId` (+ optional loading-state
+ * metadata hints); the panel fetches the full ChainSummary internally.
  */
 
-import { useState, useEffect, useMemo, Fragment } from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Layers,
-  BarChart3,
-  Target,
-  GitBranch,
-  Database,
-  Box,
-  ChevronRight,
-  ArrowUpDown,
-  Loader2,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { getChainDetail, getChainPartitionDetail, getPredictionArrays } from "@/api/client";
-import type {
-  ChainSummary,
-  ChainDetailResponse,
-  PartitionPrediction,
-  PredictionArraysResponse,
-} from "@/types/aggregated-predictions";
-import { PredictionPreview } from "@/components/predictions/viewer/PredictionPreview";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import type {
   ChartKind,
   ViewerHeader,
   ViewerPartitionTarget,
 } from "@/components/predictions/viewer/types";
+import {
+  ChainDetailPanel,
+  type ChainDetailMetaHint,
+} from "./detail/ChainDetailPanel";
 
 interface ChainDetailSheetProps {
-  /** Pre-loaded chain summary row (from the list page). */
-  prediction: ChainSummary | null;
+  /** Chain id to display; null closes / renders nothing. */
+  chainId: string | null;
+  /** Optional metric used to resolve primary scores server-side. */
+  metric?: string | null;
+  /**
+   * Lightweight metadata rendered in the header while the ChainSummary
+   * fetch is in flight. All fields optional — the fetched summary takes
+   * over once resolved.
+   */
+  metaHint?: ChainDetailMetaHint;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /**
-   * Invoked when the user clicks a preview thumbnail — should open the
-   * full PredictionViewer at the page level (on top of this sheet).
+   * Invoked when the user clicks "Customize" on a chart tile or the
+   * per-row viewer icon in the folds table — should open the full
+   * PredictionViewer at the page level (on top of this sheet).
    */
   onOpenViewer?: (
     partitions: ViewerPartitionTarget[],
@@ -74,415 +41,29 @@ interface ChainDetailSheetProps {
   ) => void;
 }
 
-function formatScore(value: number | null | undefined): string {
-  if (value == null) return "—";
-  return value.toFixed(4);
-}
-
-function ScoreCell({ value, best }: { value: number | null | undefined; best?: boolean }) {
-  return (
-    <span className={cn("tabular-nums", best && "font-semibold text-primary")}>
-      {formatScore(value)}
-    </span>
-  );
-}
-
-function PartitionBadge({ partition }: { partition: string }) {
-  const colors: Record<string, string> = {
-    val: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-    test: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-    train: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
-  };
-  return (
-    <Badge variant="outline" className={cn("text-xs", colors[partition])}>
-      {partition}
-    </Badge>
-  );
-}
-
-export function ChainDetailSheet({ prediction, open, onOpenChange, onOpenViewer }: ChainDetailSheetProps) {
-  const [detail, setDetail] = useState<ChainDetailResponse | null>(null);
-  const [partitionRows, setPartitionRows] = useState<PartitionPrediction[]>([]);
-  const [partitionFilter, setPartitionFilter] = useState<string>("all");
-  const [loading, setLoading] = useState(false);
-  const [arrayData, setArrayData] = useState<PredictionArraysResponse | null>(null);
-  const [loadingArrays, setLoadingArrays] = useState(false);
-  const [selectedPredictionId, setSelectedPredictionId] = useState<string | null>(null);
-
-  // Load chain detail when opened
-  useEffect(() => {
-    if (!open || !prediction) {
-      setDetail(null);
-      setPartitionRows([]);
-      setArrayData(null);
-      setSelectedPredictionId(null);
-      return;
-    }
-
-    async function load() {
-      if (!prediction) return;
-      setLoading(true);
-      try {
-        const [chainDetail, partitions] = await Promise.all([
-          getChainDetail(prediction.chain_id, { metric: prediction.metric ?? undefined }),
-          getChainPartitionDetail(prediction.chain_id),
-        ]);
-        setDetail(chainDetail);
-        setPartitionRows(partitions.predictions);
-      } catch (err) {
-        console.error("Failed to load chain detail:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [open, prediction]);
-
-  // Load arrays for selected prediction
-  useEffect(() => {
-    if (!selectedPredictionId) {
-      setArrayData(null);
-      return;
-    }
-    async function loadArrays() {
-      if (!selectedPredictionId) return;
-      setLoadingArrays(true);
-      try {
-        const data = await getPredictionArrays(selectedPredictionId);
-        setArrayData(data);
-      } catch {
-        setArrayData(null);
-      } finally {
-        setLoadingArrays(false);
-      }
-    }
-    loadArrays();
-  }, [selectedPredictionId]);
-
-  // Filter partition rows
-  const filteredRows = partitionFilter === "all"
-    ? partitionRows
-    : partitionRows.filter((r) => r.partition === partitionFilter);
-
-  // Compute sibling partitions for the selected prediction (same fold_id)
-  // so the preview renders train/val/test together when present.
-  const selectedPrediction = useMemo(
-    () => partitionRows.find((r) => r.prediction_id === selectedPredictionId) ?? null,
-    [partitionRows, selectedPredictionId],
-  );
-
-  const previewSiblings = useMemo<PartitionPrediction[]>(() => {
-    if (!selectedPrediction) return [];
-    const foldId = selectedPrediction.fold_id;
-    return partitionRows.filter((r) => r.fold_id === foldId);
-  }, [partitionRows, selectedPrediction]);
-
-  const previewTargets = useMemo<ViewerPartitionTarget[]>(
-    () =>
-      previewSiblings.map((p) => ({
-        predictionId: p.prediction_id,
-        partition: (p.partition ?? "").toLowerCase(),
-        label: p.partition ?? "",
-        source: "aggregated" as const,
-      })),
-    [previewSiblings],
-  );
-
-  const previewHeader = useMemo<ViewerHeader | null>(() => {
-    if (!selectedPrediction || !prediction) return null;
-    return {
-      datasetName: selectedPrediction.dataset_name ?? prediction.dataset_name ?? "",
-      modelName: selectedPrediction.model_name ?? prediction.model_name ?? null,
-      preprocessings: selectedPrediction.preprocessings ?? prediction.preprocessings ?? null,
-      foldId: selectedPrediction.fold_id ?? null,
-      taskType: selectedPrediction.task_type ?? prediction.task_type ?? null,
-      valScore: selectedPrediction.val_score ?? null,
-      testScore: selectedPrediction.test_score ?? null,
-      trainScore: selectedPrediction.train_score ?? null,
-      nSamples: selectedPrediction.n_samples ?? null,
-      nFeatures: selectedPrediction.n_features ?? null,
-    };
-  }, [selectedPrediction, prediction]);
-
-  if (!prediction) return null;
-
-  const hasFinal = prediction.final_test_score != null;
-
+export function ChainDetailSheet({
+  chainId,
+  metric,
+  metaHint,
+  open,
+  onOpenChange,
+  onOpenViewer,
+}: ChainDetailSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-xl w-full overflow-y-auto">
-        <SheetHeader className="pb-4">
-          <SheetTitle className="flex items-center gap-2">
-            <Box className="h-5 w-5 text-muted-foreground" />
-            {prediction.model_name ?? prediction.model_class}
-          </SheetTitle>
-          <SheetDescription>
-            Chain detail — {prediction.metric} on {prediction.dataset_name}
-          </SheetDescription>
-        </SheetHeader>
-
-        <Tabs defaultValue="summary" className="mt-2">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-            <TabsTrigger value="folds">Folds</TabsTrigger>
-            <TabsTrigger value="arrays">Arrays</TabsTrigger>
-          </TabsList>
-
-          {/* ===== Summary tab ===== */}
-          <TabsContent value="summary" className="space-y-4 mt-4">
-            {/* Chain identity */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <GitBranch className="h-4 w-4" /> Chain Identity
-              </h4>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-muted-foreground">Model</div>
-                <div className="font-medium">{prediction.model_name ?? "—"}</div>
-                <div className="text-muted-foreground">Class</div>
-                <div>{prediction.model_class}</div>
-                <div className="text-muted-foreground">Preprocessing</div>
-                <div>{prediction.preprocessings || "None"}</div>
-                <div className="text-muted-foreground">Dataset</div>
-                <div className="flex items-center gap-1">
-                  <Database className="h-3 w-3" /> {prediction.dataset_name}
-                </div>
-                <div className="text-muted-foreground">Metric</div>
-                <div>
-                  <Badge variant="secondary">{prediction.metric}</Badge>
-                </div>
-                {prediction.task_type && (
-                  <>
-                    <div className="text-muted-foreground">Task</div>
-                    <div className="capitalize">{prediction.task_type}</div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* CV Scores */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" /> CV Scores
-              </h4>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-muted-foreground">Val (avg)</div>
-                <div><ScoreCell value={prediction.cv_val_score} best /></div>
-                <div className="text-muted-foreground">Test (avg)</div>
-                <div><ScoreCell value={prediction.cv_test_score} /></div>
-                <div className="text-muted-foreground">Train (avg)</div>
-                <div><ScoreCell value={prediction.cv_train_score} /></div>
-                <div className="text-muted-foreground">Folds</div>
-                <div>{prediction.cv_fold_count}</div>
-              </div>
-              {/* Multi-metric CV scores */}
-              {prediction.cv_scores && Object.keys(prediction.cv_scores).length > 0 && (
-                <div className="mt-2 rounded-md border p-2">
-                  <p className="text-xs font-medium text-muted-foreground mb-1">Multi-metric</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                    {Object.entries(prediction.cv_scores).map(([partition, metrics]) => (
-                      <Fragment key={partition}>
-                        <div className="col-span-2 font-medium text-muted-foreground mt-1">
-                          <PartitionBadge partition={partition} />
-                        </div>
-                        {Object.entries(metrics).map(([m, v]) => (
-                          <Fragment key={m}>
-                            <div className="text-muted-foreground pl-2">{m}</div>
-                            <div className="tabular-nums font-mono">{formatScore(v)}</div>
-                          </Fragment>
-                        ))}
-                      </Fragment>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Final/Refit Scores */}
-            {hasFinal && (
-              <>
-                <Separator />
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium flex items-center gap-2">
-                    <Target className="h-4 w-4" /> Final (Refit) Scores
-                  </h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="text-muted-foreground">Test</div>
-                    <div className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      <ScoreCell value={prediction.final_test_score} best />
-                    </div>
-                    <div className="text-muted-foreground">Train</div>
-                    <div><ScoreCell value={prediction.final_train_score} /></div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            <Separator />
-
-            {/* Configuration */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <Layers className="h-4 w-4" /> Configuration
-              </h4>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-muted-foreground">Pipeline Status</div>
-                <div>
-                  <Badge variant={prediction.pipeline_status === "completed" ? "default" : "secondary"}>
-                    {prediction.pipeline_status || "unknown"}
-                  </Badge>
-                </div>
-              </div>
-            </div>
-
-            {/* Pipeline info if available */}
-            {detail?.pipeline && (
-              <>
-                <Separator />
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium flex items-center gap-2">
-                    <Target className="h-4 w-4" /> Pipeline
-                  </h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="text-muted-foreground">Name</div>
-                    <div>{detail.pipeline.name || "—"}</div>
-                    <div className="text-muted-foreground">Status</div>
-                    <div>
-                      <Badge variant={detail.pipeline.status === "completed" ? "default" : "secondary"}>
-                        {detail.pipeline.status || "unknown"}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </TabsContent>
-
-          {/* ===== Folds tab ===== */}
-          <TabsContent value="folds" className="space-y-3 mt-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium flex items-center gap-2">
-                <ArrowUpDown className="h-4 w-4" /> Fold-level predictions
-              </h4>
-              <Select value={partitionFilter} onValueChange={setPartitionFilter}>
-                <SelectTrigger className="w-[120px] h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="val">Val</SelectItem>
-                  <SelectItem value="test">Test</SelectItem>
-                  <SelectItem value="train">Train</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <ScrollArea className="h-[400px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">Fold</TableHead>
-                      <TableHead className="w-16">Part.</TableHead>
-                      <TableHead className="text-right">Val</TableHead>
-                      <TableHead className="text-right">Test</TableHead>
-                      <TableHead className="text-right">Train</TableHead>
-                      <TableHead className="w-8" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredRows.map((row) => (
-                      <TableRow
-                        key={row.prediction_id}
-                        className={cn(
-                          "cursor-pointer",
-                          selectedPredictionId === row.prediction_id && "bg-accent"
-                        )}
-                        onClick={() => setSelectedPredictionId(row.prediction_id)}
-                      >
-                        <TableCell className="text-xs">{row.fold_id}</TableCell>
-                        <TableCell><PartitionBadge partition={row.partition} /></TableCell>
-                        <TableCell className="text-right tabular-nums text-xs">
-                          {formatScore(row.val_score)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-xs">
-                          {formatScore(row.test_score)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums text-xs">
-                          {formatScore(row.train_score)}
-                        </TableCell>
-                        <TableCell>
-                          <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredRows.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                          No predictions found
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </ScrollArea>
-            )}
-          </TabsContent>
-
-          {/* ===== Arrays tab ===== */}
-          <TabsContent value="arrays" className="space-y-3 mt-4">
-            {!selectedPredictionId ? (
-              <div className="text-center text-sm text-muted-foreground py-8">
-                Select a prediction from the Folds tab to view arrays
-              </div>
-            ) : loadingArrays ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : !arrayData ? (
-              <div className="text-center text-sm text-muted-foreground py-8">
-                No array data available for this prediction
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="text-muted-foreground">Prediction ID</div>
-                  <div className="font-mono text-xs truncate">{arrayData.prediction_id}</div>
-                  <div className="text-muted-foreground">Samples</div>
-                  <div>{arrayData.n_samples}</div>
-                  <div className="text-muted-foreground">y_true</div>
-                  <div>{arrayData.y_true ? `${arrayData.y_true.length} values` : "—"}</div>
-                  <div className="text-muted-foreground">y_pred</div>
-                  <div>{arrayData.y_pred ? `${arrayData.y_pred.length} values` : "—"}</div>
-                  {arrayData.y_proba && (
-                    <>
-                      <div className="text-muted-foreground">y_proba</div>
-                      <div>{arrayData.y_proba.length} values</div>
-                    </>
-                  )}
-                </div>
-
-                {previewHeader && previewTargets.length > 0 && (
-                  <>
-                    <Separator />
-                    <PredictionPreview
-                      header={previewHeader}
-                      partitions={previewTargets}
-                      onOpenViewer={(kind) => {
-                        onOpenViewer?.(previewTargets, previewHeader, kind);
-                      }}
-                    />
-                  </>
-                )}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-0 p-0 sm:max-w-[min(960px,78vw)] xl:max-w-[1040px]"
+      >
+        {chainId && (
+          <ChainDetailPanel
+            key={chainId}
+            chainId={chainId}
+            metric={metric ?? null}
+            metaHint={metaHint}
+            onOpenViewer={onOpenViewer}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

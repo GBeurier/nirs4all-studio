@@ -5,8 +5,19 @@
  */
 
 import type { CategoricalPalette } from "@/lib/playground/colorConfig";
+import { PARTITION_COLORS } from "@/lib/partitionColors";
 
 export type ChartKind = "scatter" | "residuals" | "confusion";
+
+/**
+ * Visual density / chrome level for the shared chart components.
+ *   - "thumbnail" → hyper-compact (no axes, no tooltips, tiny margins).
+ *     Used by PredictionPreview's inline mini charts.
+ *   - "panel"     → medium: axes + ticks + tooltips visible, no titles
+ *     or config chrome. Used inside ChainDetailSheet tiles.
+ *   - "full"      → fully chromed (default) for PredictionViewer modal.
+ */
+export type ChartVariant = "thumbnail" | "panel" | "full";
 
 export type TaskKind = "regression" | "classification";
 
@@ -81,11 +92,7 @@ export interface ChartConfig {
 
 export const DEFAULT_CHART_CONFIG: ChartConfig = {
   palette: "default",
-  partitionColors: {
-    train: "#17cfb9",
-    val: "#266bd9",
-    test: "#1cca5b",
-  },
+  partitionColors: { ...PARTITION_COLORS },
   partitionColoring: true,
   exportTheme: "inherit",
   rescaleToVisible: false,

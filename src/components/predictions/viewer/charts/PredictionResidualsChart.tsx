@@ -17,11 +17,14 @@ import {
   YAxis,
 } from "recharts";
 import { getPartitionColor } from "../palettes";
-import type { ChartConfig, PartitionDataset } from "../types";
+import type { ChartConfig, ChartVariant, PartitionDataset } from "../types";
 
 interface PredictionResidualsChartProps {
   datasets: PartitionDataset[];
   config: ChartConfig;
+  /** Density / chrome level. Defaults to "full". */
+  variant?: ChartVariant;
+  /** @deprecated Use `variant="thumbnail"`. Back-compat only. */
   compact?: boolean;
   className?: string;
 }
@@ -39,7 +42,18 @@ function jitterValue(v: number, amount: number): number {
 }
 
 export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionResidualsChartProps>(
-  function PredictionResidualsChart({ datasets, config, compact, className }, ref) {
+  function PredictionResidualsChart({ datasets, config, variant, compact, className }, ref) {
+    const resolved: ChartVariant = variant ?? (compact ? "thumbnail" : "full");
+    const showChrome = resolved !== "thumbnail";
+    const showTooltip = resolved !== "thumbnail";
+    const showAxisLabel = resolved === "full";
+    const tickFontSize = resolved === "panel" ? 10 : 11;
+    const chartMargin =
+      resolved === "full"
+        ? { top: 12, right: 20, bottom: 44, left: 52 }
+        : resolved === "panel"
+        ? { top: 8, right: 12, bottom: 28, left: 40 }
+        : { top: 4, right: 8, bottom: 8, left: 8 };
     const { series, sigma, xMin, xMax } = useMemo(() => {
       const allResiduals: number[] = [];
       let xMin = Number.POSITIVE_INFINITY;
@@ -84,28 +98,20 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
       return { series, sigma, xMin, xMax };
     }, [datasets, config.jitter]);
 
-    const showChrome = !compact;
-
     return (
       <div ref={ref} className={className ?? "h-full w-full"}>
         <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart
-            margin={
-              showChrome
-                ? { top: 12, right: 20, bottom: 44, left: 52 }
-                : { top: 4, right: 8, bottom: 8, left: 8 }
-            }
-          >
+          <ScatterChart margin={chartMargin}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
             <XAxis
               dataKey="predicted"
               type="number"
               domain={["auto", "auto"]}
               hide={!showChrome}
-              tick={showChrome ? { fill: "hsl(var(--muted-foreground))", fontSize: 11 } : false}
+              tick={showChrome ? { fill: "hsl(var(--muted-foreground))", fontSize: tickFontSize } : false}
               tickFormatter={formatTick}
               label={
-                showChrome
+                showAxisLabel
                   ? {
                       value: "Predicted",
                       position: "bottom",
@@ -120,10 +126,10 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
               type="number"
               domain={["auto", "auto"]}
               hide={!showChrome}
-              tick={showChrome ? { fill: "hsl(var(--muted-foreground))", fontSize: 11 } : false}
+              tick={showChrome ? { fill: "hsl(var(--muted-foreground))", fontSize: tickFontSize } : false}
               tickFormatter={formatTick}
               label={
-                showChrome
+                showAxisLabel
                   ? {
                       value: "Residual",
                       angle: -90,
@@ -134,7 +140,7 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
                   : undefined
               }
             />
-            {showChrome && (
+            {showTooltip && (
               <Tooltip
                 contentStyle={{
                   backgroundColor: "hsl(var(--card))",

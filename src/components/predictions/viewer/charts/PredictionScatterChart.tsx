@@ -18,12 +18,14 @@ import {
   YAxis,
 } from "recharts";
 import { getPartitionColor } from "../palettes";
-import type { ChartConfig, PartitionDataset } from "../types";
+import type { ChartConfig, ChartVariant, PartitionDataset } from "../types";
 
 interface PredictionScatterChartProps {
   datasets: PartitionDataset[];
   config: ChartConfig;
-  /** When false, hide labels/tooltips/ticks (used by inline preview). */
+  /** Density / chrome level. Defaults to "full". */
+  variant?: ChartVariant;
+  /** @deprecated Use `variant="thumbnail"`. Back-compat only. */
   compact?: boolean;
   /** Optional className for outer wrapper height control. */
   className?: string;
@@ -63,7 +65,18 @@ function linearRegression(xs: number[], ys: number[]): { slope: number; intercep
 }
 
 export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatterChartProps>(
-  function PredictionScatterChart({ datasets, config, compact, className }, ref) {
+  function PredictionScatterChart({ datasets, config, variant, compact, className }, ref) {
+    const resolved: ChartVariant = variant ?? (compact ? "thumbnail" : "full");
+    const showChrome = resolved !== "thumbnail";
+    const showTooltip = resolved !== "thumbnail";
+    const showAxisLabel = resolved === "full";
+    const tickFontSize = resolved === "panel" ? 10 : 11;
+    const chartMargin =
+      resolved === "full"
+        ? { top: 12, right: 20, bottom: 44, left: 52 }
+        : resolved === "panel"
+        ? { top: 8, right: 12, bottom: 28, left: 40 }
+        : { top: 4, right: 8, bottom: 8, left: 8 };
     const { series, identitySegment, regressionSegment } = useMemo(() => {
       // Per-partition series + pooled ranges for lines.
       let globalMin = Number.POSITIVE_INFINITY;
@@ -122,18 +135,10 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
       return { series, identitySegment, regressionSegment };
     }, [datasets, config.jitter, config.regressionLine]);
 
-    const showChrome = !compact;
-
     return (
       <div ref={ref} className={className ?? "h-full w-full"}>
         <ResponsiveContainer width="100%" height="100%">
-          <ScatterChart
-            margin={
-              showChrome
-                ? { top: 12, right: 20, bottom: 44, left: 52 }
-                : { top: 4, right: 8, bottom: 8, left: 8 }
-            }
-          >
+          <ScatterChart margin={chartMargin}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
             <XAxis
               dataKey="actual"
@@ -141,10 +146,10 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
               name="Actual"
               domain={["auto", "auto"]}
               hide={!showChrome}
-              tick={showChrome ? { fill: "hsl(var(--muted-foreground))", fontSize: 11 } : false}
+              tick={showChrome ? { fill: "hsl(var(--muted-foreground))", fontSize: tickFontSize } : false}
               tickFormatter={formatTick}
               label={
-                showChrome
+                showAxisLabel
                   ? {
                       value: "Actual",
                       position: "bottom",
@@ -160,10 +165,10 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
               name="Predicted"
               domain={["auto", "auto"]}
               hide={!showChrome}
-              tick={showChrome ? { fill: "hsl(var(--muted-foreground))", fontSize: 11 } : false}
+              tick={showChrome ? { fill: "hsl(var(--muted-foreground))", fontSize: tickFontSize } : false}
               tickFormatter={formatTick}
               label={
-                showChrome
+                showAxisLabel
                   ? {
                       value: "Predicted",
                       angle: -90,
@@ -174,7 +179,7 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
                   : undefined
               }
             />
-            {showChrome && (
+            {showTooltip && (
               <Tooltip
                 contentStyle={{
                   backgroundColor: "hsl(var(--card))",

@@ -17,11 +17,14 @@ import {
 } from "@/components/runs/modelDetailClassification";
 import type { ConfusionMatrixCell } from "@/types/inspector";
 import { getConfusionFillColor, getContrastTextColor } from "../palettes";
-import type { ChartConfig, PartitionDataset } from "../types";
+import type { ChartConfig, ChartVariant, PartitionDataset } from "../types";
 
 interface PredictionConfusionChartProps {
   datasets: PartitionDataset[];
   config: ChartConfig;
+  /** Density / chrome level. Defaults to "full". */
+  variant?: ChartVariant;
+  /** @deprecated Use `variant="thumbnail"`. Back-compat only. */
   compact?: boolean;
   className?: string;
 }
@@ -46,7 +49,12 @@ function toMatrixNormalize(n: ChartConfig["confusionNormalize"]): ConfusionMatri
 }
 
 export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionConfusionChartProps>(
-  function PredictionConfusionChart({ datasets, config, compact, className }, ref) {
+  function PredictionConfusionChart({ datasets, config, variant, compact, className }, ref) {
+    const resolved: ChartVariant = variant ?? (compact ? "thumbnail" : "full");
+    const isThumbnail = resolved === "thumbnail";
+    const showAxisTitles = resolved === "full";
+    const showCellLabels = !isThumbnail;
+    const showTooltip = !isThumbnail;
     const viewportRef = useRef<HTMLDivElement>(null);
     const [hovered, setHovered] = useState<HoveredCell | null>(null);
     const [dims, setDims] = useState({ width: 400, height: 400 });
@@ -133,9 +141,9 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
     }
 
     const labels = matrix.labels;
-    const showTotals = config.confusionShowTotals && !compact;
-    const labelReserve = compact ? 8 : (showTotals ? 110 : 70);
-    const topReserve = compact ? 8 : 60;
+    const showTotals = config.confusionShowTotals && !isThumbnail;
+    const labelReserve = isThumbnail ? 8 : showTotals ? 110 : showAxisTitles ? 70 : 50;
+    const topReserve = isThumbnail ? 8 : showAxisTitles ? 60 : 28;
     const squareSide = Math.max(40, Math.min(dims.width, dims.height) - labelReserve);
     const plotSide = squareSide;
     const cellSize = labels.length > 0 ? plotSide / labels.length : 0;
@@ -156,7 +164,7 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
           className="flex h-full w-full items-center justify-center"
         >
           <svg width={svgW} height={svgH} className="select-none">
-            {!compact && (
+            {showAxisTitles && (
               <>
                 <text
                   x={marginLeft + plotSide / 2}
@@ -183,7 +191,7 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
             )}
 
             <g transform={`translate(${marginLeft}, ${marginTop})`}>
-              {!compact &&
+              {showCellLabels &&
                 labels.map((label, i) => (
                   <g key={`col-${label}`}>
                     <text
@@ -210,7 +218,7 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
                   </g>
                 ))}
 
-              {!compact &&
+              {showCellLabels &&
                 labels.map((label, i) => (
                   <g key={`row-${label}`}>
                     <text
@@ -285,17 +293,20 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
                           isHov ? "#0f172a" : isDiagonal ? config.confusionGradient.high : "#e2e8f0"
                         }
                         strokeWidth={isHov ? 2 : isDiagonal ? 1 : 0.7}
-                        onMouseEnter={(e) =>
-                          setHovered({
-                            true_label: trueLabel,
-                            pred_label: predLabel,
-                            count,
-                            normalized,
-                            mouseX: e.clientX,
-                            mouseY: e.clientY,
-                          })
+                        onMouseEnter={
+                          showTooltip
+                            ? (e) =>
+                                setHovered({
+                                  true_label: trueLabel,
+                                  pred_label: predLabel,
+                                  count,
+                                  normalized,
+                                  mouseX: e.clientX,
+                                  mouseY: e.clientY,
+                                })
+                            : undefined
                         }
-                        onMouseLeave={() => setHovered(null)}
+                        onMouseLeave={showTooltip ? () => setHovered(null) : undefined}
                       />
                       {cellText && (
                         <text
@@ -318,7 +329,7 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
             </g>
           </svg>
 
-          {hovered && !compact && (
+          {hovered && showTooltip && (
             <div
               className="fixed z-50 pointer-events-none rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
               style={{ left: hovered.mouseX + 12, top: hovered.mouseY - 52 }}
