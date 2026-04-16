@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 try:
     from enum import StrEnum
 except ImportError:
-    class StrEnum(str, Enum):
+    class StrEnum(str, Enum):  # noqa: UP042
         """Python 3.10 fallback for enum.StrEnum."""
 
 

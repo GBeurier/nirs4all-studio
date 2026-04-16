@@ -42,6 +42,10 @@ const projectRoot = path.join(__dirname, "..");
 process.chdir(projectRoot);
 
 const isWindows = process.platform === "win32";
+const TORCH_CPU_INDEX_URL = "https://download.pytorch.org/whl/cpu";
+const TORCH_CUDA_INDEX_URL = "https://download.pytorch.org/whl/cu124";
+const TORCH_PROFILE_PACKAGE = "torch";
+const CUDA_TORCH_PROFILE = "gpu-cuda-torch";
 
 // --- Argument parsing ---
 const args = process.argv.slice(2);
@@ -212,9 +216,63 @@ function buildPipInstallArgs(packageSpecs, options = {}) {
     "install",
     ...(options.noCompile ? ["--no-compile"] : []),
     ...(options.upgrade ? ["--upgrade"] : []),
+    ...(options.extraPipArgs ?? []),
     ...(options.constraintsFile ? ["-c", options.constraintsFile] : []),
     ...packageSpecs,
   ];
+}
+
+function getStandaloneTorchIndexArgs(profileId, platform = process.platform) {
+  if (profileId === CUDA_TORCH_PROFILE) {
+    return Object.freeze(["--index-url", TORCH_CUDA_INDEX_URL]);
+  }
+  if (profileId === "cpu" && platform !== "darwin") {
+    return Object.freeze(["--index-url", TORCH_CPU_INDEX_URL]);
+  }
+  return Object.freeze([]);
+}
+
+function getDependencyInstallPhases(profileId, platform = process.platform) {
+  const torchExtraPipArgs = getStandaloneTorchIndexArgs(profileId, platform);
+  const torchSpecs = getProfilePackageInstallSpecs(profileId, {
+    includeExtraPackages: false,
+    omitPackages: ["nirs4all"],
+    packageNames: [TORCH_PROFILE_PACKAGE],
+  });
+  const remainingSpecs = Object.freeze([
+    ...BACKEND_COMMON_PACKAGES,
+    ...getProfilePackageInstallSpecs(profileId, {
+      omitPackages: ["nirs4all", TORCH_PROFILE_PACKAGE],
+    }),
+  ]);
+
+  if (torchSpecs.length === 0 || torchExtraPipArgs.length === 0) {
+    return Object.freeze([
+      Object.freeze({
+        label: "backend dependencies",
+        packageSpecs: Object.freeze([
+          ...BACKEND_COMMON_PACKAGES,
+          ...getProfilePackageInstallSpecs(profileId, {
+            omitPackages: ["nirs4all"],
+          }),
+        ]),
+        extraPipArgs: Object.freeze([]),
+      }),
+    ]);
+  }
+
+  return Object.freeze([
+    Object.freeze({
+      label: `${TORCH_PROFILE_PACKAGE} runtime`,
+      packageSpecs: torchSpecs,
+      extraPipArgs: torchExtraPipArgs,
+    }),
+    Object.freeze({
+      label: "backend dependencies",
+      packageSpecs: remainingSpecs,
+      extraPipArgs: Object.freeze([]),
+    }),
+  ]);
 }
 
 function isStandaloneBundledRuntimeMode(mode = buildMode) {
@@ -551,21 +609,23 @@ async function main() {
 
   // 6. Install dependencies
   console.log(`=== Step 4: Install dependencies (${profile}) ===`);
-  const dependencySpecs = [
-    ...BACKEND_COMMON_PACKAGES,
-    ...getProfilePackageInstallSpecs(profile, {
-      omitPackages: ["nirs4all"],
-    }),
-  ];
-  console.log(`  Installing ${dependencySpecs.length} backend packages from shared runtime config...`);
+  const dependencyInstallPhases = getDependencyInstallPhases(profile, process.platform);
+  const dependencyCount = dependencyInstallPhases.reduce((total, phase) => total + phase.packageSpecs.length, 0);
+  console.log(`  Installing ${dependencyCount} backend packages from shared runtime config...`);
   // Large wheel installs on Windows can hit transient RECORD/file-lock races.
-  await runCommandWithRetries(runtimePython, buildPipInstallArgs(dependencySpecs, {
-    constraintsFile,
-    noCompile: useBundledBasePython,
-  }), {}, {
-    retries: isWindows ? 3 : 1,
-    label: "pip install backend dependencies",
-  });
+  for (const phase of dependencyInstallPhases) {
+    const pipArgs = buildPipInstallArgs(phase.packageSpecs, {
+      constraintsFile,
+      extraPipArgs: phase.extraPipArgs,
+      noCompile: useBundledBasePython,
+    });
+    const sourceLabel = phase.extraPipArgs.length > 0 ? ` via ${phase.extraPipArgs.join(" ")}` : "";
+    console.log(`  Installing ${phase.packageSpecs.length} packages for ${phase.label}${sourceLabel}...`);
+    await runCommandWithRetries(runtimePython, pipArgs, {}, {
+      retries: isWindows ? 3 : 1,
+      label: `pip install ${phase.label}`,
+    });
+  }
 
   // 7. Install nirs4all
   console.log("");
@@ -755,6 +815,7 @@ module.exports = {
   getCompileTargets,
   isStandaloneBundledRuntimeMode,
   buildPipInstallArgs,
+  getDependencyInstallPhases,
   pruneStandaloneRuntimeArtifacts,
   pruneStandaloneRuntimeLaunchers,
 };

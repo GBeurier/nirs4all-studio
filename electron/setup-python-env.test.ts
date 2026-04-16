@@ -13,8 +13,17 @@ const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
       upgrade?: boolean;
       constraintsFile?: string;
       noCompile?: boolean;
+      extraPipArgs?: string[];
     },
   ): string[];
+  getDependencyInstallPhases(
+    profileId: string,
+    platform?: string,
+  ): Array<{
+    label: string;
+    packageSpecs: string[];
+    extraPipArgs: string[];
+  }>;
   pruneStandaloneRuntimeArtifacts(runtimeRoot: string): {
     removedBytes: number;
     removedPaths: number;
@@ -46,6 +55,7 @@ describe("setup-python-env", () => {
   it("adds --no-compile when building bundled standalone pip installs", () => {
     const args = setupPythonEnvModule.buildPipInstallArgs(["nirs4all==0.1.0"], {
       constraintsFile: "build/constraints.txt",
+      extraPipArgs: ["--index-url", "https://download.pytorch.org/whl/cpu"],
       noCompile: true,
       upgrade: true,
     });
@@ -56,10 +66,36 @@ describe("setup-python-env", () => {
       "install",
       "--no-compile",
       "--upgrade",
+      "--index-url",
+      "https://download.pytorch.org/whl/cpu",
       "-c",
       "build/constraints.txt",
       "nirs4all==0.1.0",
     ]);
+  });
+
+  it("installs torch separately with the Linux CPU wheel index for standalone bundles", () => {
+    const phases = setupPythonEnvModule.getDependencyInstallPhases("cpu", "linux");
+
+    expect(phases).toHaveLength(2);
+    expect(phases[0]).toEqual({
+      label: "torch runtime",
+      packageSpecs: ["torch>=2.1.0"],
+      extraPipArgs: ["--index-url", "https://download.pytorch.org/whl/cpu"],
+    });
+    expect(phases[1].label).toBe("backend dependencies");
+    expect(phases[1].extraPipArgs).toEqual([]);
+    expect(phases[1].packageSpecs).toContain("tabicl>=2.0.0");
+    expect(phases[1].packageSpecs).not.toContain("torch>=2.1.0");
+  });
+
+  it("keeps macOS CPU standalone installs on the default index", () => {
+    const phases = setupPythonEnvModule.getDependencyInstallPhases("cpu", "darwin");
+
+    expect(phases).toHaveLength(1);
+    expect(phases[0].label).toBe("backend dependencies");
+    expect(phases[0].extraPipArgs).toEqual([]);
+    expect(phases[0].packageSpecs).toContain("torch>=2.1.0");
   });
 
   it("prunes package caches and non-runtime launchers from standalone bundles", () => {
