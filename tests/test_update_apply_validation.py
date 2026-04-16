@@ -50,3 +50,18 @@ def test_apply_update_accepts_portable_stage_for_portable_windows(monkeypatch, t
 
     assert response.status_code == 200
     assert called["content_dir"] == staging_dir
+
+
+def test_resolve_staged_content_dir_prefers_nested_app_root_over_wrapper_dir(monkeypatch, tmp_path):
+    staging_dir = tmp_path / "staging"
+    app_root = staging_dir / "nirs4all Studio"
+    resources_dir = app_root / "resources"
+    resources_dir.mkdir(parents=True)
+    (app_root / "nirs4all Studio").write_bytes(b"stub")
+    (staging_dir / "LICENSE.electron.txt").write_text("license\n", encoding="utf-8")
+
+    monkeypatch.setenv("NIRS4ALL_APP_EXE", "nirs4all Studio")
+
+    resolved = updates_module._resolve_staged_content_dir(staging_dir)
+
+    assert resolved == app_root

@@ -228,15 +228,11 @@ class UpdateDownloader:
                     None,
                 )
 
-            # Find the actual content directory
-            # Archives typically have a root folder like "nirs4all-webapp/"
-            contents = list(staging_dir.iterdir())
-            if len(contents) == 1 and contents[0].is_dir():
-                # Single directory - this is our content
-                content_dir = contents[0]
-                self._report_progress(95, "Finalizing...")
-            else:
-                content_dir = staging_dir
+            content_dir = resolve_extracted_content_dir(staging_dir)
+            if content_dir is None:
+                return False, "Extraction error: staged archive is empty", None
+
+            self._report_progress(95, "Finalizing...")
 
             self._report_progress(98, "Extraction complete")
             return True, "Extraction complete", content_dir
@@ -292,6 +288,54 @@ class UpdateDownloader:
             return
 
         extracted_path.chmod(stat.S_IMODE(mode))
+
+
+def _looks_like_macos_bundle_root(candidate: Path) -> bool:
+    """Return whether a path looks like a staged macOS app bundle."""
+    return (
+        candidate.is_dir()
+        and candidate.suffix == ".app"
+        and (candidate / "Contents" / "MacOS").exists()
+    )
+
+
+def _looks_like_directory_app_root(candidate: Path, expected_executable: str) -> bool:
+    """Return whether a path looks like an unpacked desktop app root."""
+    return (
+        candidate.is_dir()
+        and (candidate / expected_executable).is_file()
+        and (candidate / "resources").is_dir()
+    )
+
+
+def resolve_extracted_content_dir(staging_dir: Path, ignored_names: set[str] | None = None) -> Path | None:
+    """Resolve the actual app content root from a staging directory."""
+    if not staging_dir.exists():
+        return None
+
+    ignored = ignored_names or set()
+    entries = [entry for entry in staging_dir.iterdir() if entry.name not in ignored]
+    if not entries:
+        return None
+
+    expected_executable = os.environ.get("NIRS4ALL_APP_EXE") or get_executable_name()
+    top_level_dirs = [entry for entry in entries if entry.is_dir()]
+
+    mac_bundles = [entry for entry in top_level_dirs if _looks_like_macos_bundle_root(entry)]
+    if len(mac_bundles) == 1:
+        return mac_bundles[0]
+
+    nested_app_roots = [
+        entry for entry in top_level_dirs
+        if _looks_like_directory_app_root(entry, expected_executable)
+    ]
+    if len(nested_app_roots) == 1:
+        return nested_app_roots[0]
+
+    if len(entries) == 1 and entries[0].is_dir():
+        return entries[0]
+
+    return staging_dir
 
 
 async def download_and_stage_update(

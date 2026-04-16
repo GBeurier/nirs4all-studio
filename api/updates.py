@@ -30,6 +30,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
 from .shared.logger import get_logger
+from .update_downloader import resolve_extracted_content_dir
 from .venv_manager import VenvInfo, _user_data_dir, venv_manager
 
 logger = get_logger(__name__)
@@ -301,17 +302,10 @@ def _staging_entries(staging_dir: Path) -> list[Path]:
 
 def _resolve_staged_content_dir(staging_dir: Path) -> Path | None:
     """Resolve the actual staged content root from the staging wrapper dir."""
-    if not staging_dir.exists():
-        return None
-
-    entries = _staging_entries(staging_dir)
-    if not entries:
-        return None
-
-    if len(entries) == 1 and entries[0].is_dir():
-        return entries[0]
-
-    return staging_dir
+    return resolve_extracted_content_dir(
+        staging_dir,
+        ignored_names={STAGED_UPDATE_METADATA_FILE},
+    )
 
 
 def _write_staged_update_metadata(staging_dir: Path, **metadata: Any) -> None:

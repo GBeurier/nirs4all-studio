@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const require = createRequire(import.meta.url);
 const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
@@ -25,11 +25,16 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     keepSandbox: boolean;
   };
   buildSandboxEnv(platformId: string, sandboxRoot: string, port: number): Record<string, string>;
+  cleanupSandboxRoot(
+    sandboxRoot: string,
+    options?: { retryCount?: number; retryDelayMs?: number },
+  ): Promise<boolean>;
   collectRuntimePathLeaks(runtimeRoot: string, disallowedFragments: string[]): Array<{
     path: string;
     kind: string;
     matches: string[];
   }>;
+  isRetryableCleanupError(error: { code?: string } | null | undefined): boolean;
   parseArgs(argv?: string[]): {
     extractedRoot: string;
     platform: string;
@@ -47,6 +52,10 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     bundledPythonPath: string;
     bundledPythonCandidates: string[];
   };
+  removePathWithRetries(
+    targetPath: string,
+    options?: { retryCount?: number; retryDelayMs?: number },
+  ): Promise<void>;
 };
 
 const tempDirs: string[] = [];
@@ -173,5 +182,54 @@ describe("smoke-archive-standalone", () => {
         keepSandbox: false,
       }),
     ).toThrow("Invalid --port value: 70000");
+  });
+
+  it("retries sandbox removal after transient Windows-style EPERM locks", async () => {
+    const sandboxRoot = makeTempDir("n4a-smoke-cleanup-");
+    fs.writeFileSync(path.join(sandboxRoot, "lock.txt"), "locked\n");
+
+    const originalRmSync = fs.rmSync;
+    let attempts = 0;
+    fs.rmSync = (((targetPath, options) => {
+      attempts += 1;
+      if (attempts < 3) {
+        const error = new Error(`locked: ${targetPath}`) as NodeJS.ErrnoException;
+        error.code = "EPERM";
+        throw error;
+      }
+      return originalRmSync(targetPath, options);
+    }) as typeof fs.rmSync);
+
+    try {
+      await smokeModule.removePathWithRetries(sandboxRoot, { retryCount: 3, retryDelayMs: 1 });
+    } finally {
+      fs.rmSync = originalRmSync;
+    }
+
+    expect(attempts).toBe(3);
+    expect(fs.existsSync(sandboxRoot)).toBe(false);
+  });
+
+  it("treats generated sandbox cleanup as best-effort after a passed smoke", async () => {
+    const sandboxRoot = makeTempDir("n4a-smoke-warn-");
+    fs.writeFileSync(path.join(sandboxRoot, "lock.txt"), "locked\n");
+
+    const originalRmSync = fs.rmSync;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    fs.rmSync = (((targetPath) => {
+      const error = new Error(`locked: ${targetPath}`) as NodeJS.ErrnoException;
+      error.code = "EPERM";
+      throw error;
+    }) as typeof fs.rmSync);
+
+    try {
+      await expect(
+        smokeModule.cleanupSandboxRoot(sandboxRoot, { retryCount: 1, retryDelayMs: 1 }),
+      ).resolves.toBe(false);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Warning: unable to remove smoke sandbox"));
+    } finally {
+      fs.rmSync = originalRmSync;
+      warnSpy.mockRestore();
+    }
   });
 });

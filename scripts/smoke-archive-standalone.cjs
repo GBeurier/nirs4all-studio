@@ -173,6 +173,12 @@ function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 function collectRuntimePathLeaks(runtimeRoot, disallowedFragments) {
   const leaks = [];
   const queue = [runtimeRoot];
@@ -300,6 +306,65 @@ async function choosePort(preferredPort) {
   });
 }
 
+async function waitForChildExit(child, timeoutMs = 5000) {
+  if (!child || child.exitCode !== null) {
+    return true;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (didExit) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      child.removeListener("exit", onExit);
+      resolve(didExit);
+    };
+    const onExit = () => finish(true);
+    const timeout = setTimeout(() => finish(false), timeoutMs);
+    child.once("exit", onExit);
+  });
+}
+
+function isRetryableCleanupError(error) {
+  return Boolean(error && ["EACCES", "EBUSY", "ENOTEMPTY", "EPERM"].includes(error.code));
+}
+
+async function removePathWithRetries(targetPath, options = {}) {
+  const retryCount = options.retryCount ?? (process.platform === "win32" ? 6 : 2);
+  const retryDelayMs = options.retryDelayMs ?? 250;
+
+  for (let attempt = 0; attempt < retryCount; attempt += 1) {
+    try {
+      fs.rmSync(targetPath, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!isRetryableCleanupError(error) || attempt === retryCount - 1) {
+        throw error;
+      }
+      await delay(retryDelayMs * Math.pow(2, attempt));
+    }
+  }
+}
+
+async function cleanupSandboxRoot(sandboxRoot, options = {}) {
+  if (!fs.existsSync(sandboxRoot)) {
+    return true;
+  }
+
+  try {
+    await removePathWithRetries(sandboxRoot, options);
+    return true;
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? error.code : "unknown";
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`Warning: unable to remove smoke sandbox ${sandboxRoot} (${code}): ${message}`);
+    return false;
+  }
+}
+
 async function waitForReady(port, timeoutMs, child, outputBuffer) {
   const deadline = Date.now() + timeoutMs;
   const healthUrl = `http://127.0.0.1:${port}/api/health`;
@@ -331,7 +396,7 @@ async function waitForReady(port, timeoutMs, child, outputBuffer) {
       // Ignore transient connection errors during startup.
     }
 
-    await new Promise((resolve) => setTimeout(resolve, DEFAULT_POLL_INTERVAL_MS));
+    await delay(DEFAULT_POLL_INTERVAL_MS);
   }
 
   throw new Error(`Timed out waiting for ${healthUrl}.\n${outputBuffer.join("\n")}`);
@@ -364,19 +429,15 @@ async function terminateApp(child) {
       killer.once("close", () => resolve());
       killer.once("error", () => resolve());
     });
+    await waitForChildExit(child);
     return;
   }
 
   child.kill("SIGTERM");
-  const exited = await new Promise((resolve) => {
-    const timeout = setTimeout(() => resolve(false), 5000);
-    child.once("exit", () => {
-      clearTimeout(timeout);
-      resolve(true);
-    });
-  });
+  const exited = await waitForChildExit(child);
   if (!exited) {
     child.kill("SIGKILL");
+    await waitForChildExit(child, 2000);
   }
 }
 
@@ -439,8 +500,8 @@ async function smokeArchiveStandalone(rawConfig) {
     console.log(`  python:       ${pythonExecutable}`);
   } finally {
     await terminateApp(child);
-    if (!config.keepSandbox && !config.sandboxRoot && fs.existsSync(sandboxRoot)) {
-      fs.rmSync(sandboxRoot, { recursive: true, force: true });
+    if (!config.keepSandbox && !config.sandboxRoot) {
+      await cleanupSandboxRoot(sandboxRoot);
     }
   }
 }
@@ -464,8 +525,12 @@ if (require.main === module) {
 module.exports = {
   assertValidConfig,
   buildSandboxEnv,
+  cleanupSandboxRoot,
   collectRuntimePathLeaks,
+  isRetryableCleanupError,
   parseArgs,
+  removePathWithRetries,
   resolveLaunchLayout,
   smokeArchiveStandalone,
+  waitForChildExit,
 };

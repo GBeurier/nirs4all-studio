@@ -633,6 +633,8 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.skip_all_in_one != 'true'
     runs-on: macos-15-intel
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -771,14 +773,23 @@ jobs:
           FILE="${{ steps.archive.outputs.zip_path }}"
           shasum -a 256 "$FILE" > "$FILE.sha256"
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: archive-macos-x64
-          path: |
-            ${{ steps.archive.outputs.zip_path }}
-            ${{ steps.archive.outputs.zip_path }}.sha256
-          retention-days: 5
+      - name: Publish assets to draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          ZIP_PATH="${{ steps.archive.outputs.zip_path }}"
+          CHECKSUM_PATH="${ZIP_PATH}.sha256"
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --draft \
+              --title "nirs4all Studio ${VERSION}" \
+              --notes "Release assets are being published by CI."
+          fi
+
+          gh release upload "$TAG" "$ZIP_PATH" "$CHECKSUM_PATH" --clobber
 
   # ═══════════════════════════════════════════════════════════════════════════
   # All-in-one archive: macOS arm64 (notarized + stapled when secrets are available)
