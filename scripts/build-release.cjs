@@ -20,11 +20,10 @@
 const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { resolveSpawnCommand } = require("./spawn-command.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 process.chdir(projectRoot);
-
-const isWindows = process.platform === "win32";
 
 // Parse arguments
 const args = process.argv.slice(2);
@@ -125,9 +124,10 @@ console.log("");
 function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     console.log(`Running: ${command} ${args.join(" ")}`);
-    const proc = spawn(command, args, {
+    const spawnSpec = resolveSpawnCommand(command, args);
+    const proc = spawn(spawnSpec.command, spawnSpec.args, {
       stdio: "inherit",
-      shell: true,
+      shell: spawnSpec.shell,
       cwd: projectRoot,
       ...options,
     });

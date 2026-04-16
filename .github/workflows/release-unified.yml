@@ -236,7 +236,7 @@ jobs:
   installer-macos-x64:
     name: Installer — macOS x64
     needs: prepare
-    runs-on: macos-15
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
@@ -626,13 +626,13 @@ jobs:
           retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # All-in-one archive: macOS x64 (signed + notarized + stapled ZIP)
+  # All-in-one archive: macOS x64 (notarized + stapled when secrets are available)
   # ═══════════════════════════════════════════════════════════════════════════
   archive-macos-x64:
     name: All-in-one — macOS x64
     needs: prepare
     if: needs.prepare.outputs.skip_all_in_one != 'true'
-    runs-on: macos-15
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
@@ -654,7 +654,8 @@ jobs:
       - name: Update package.json version
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
 
-      - name: Verify notarization secrets
+      - name: Detect notarization secrets
+        id: notarization
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -662,14 +663,23 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          missing=()
           for secret_name in APPLE_CERT_BASE64 APPLE_CERT_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
             if [ -z "${!secret_name}" ]; then
-              echo "::error::$secret_name is required for the notarized all-in-one macOS archive"
-              exit 1
+              missing+=("$secret_name")
             fi
           done
 
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Using notarized packaging for the macOS all-in-one archive."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Building an unsigned macOS all-in-one archive because these notarization secrets are missing: ${missing[*]}"
+          fi
+
       - name: Import Apple Developer certificate
+        if: steps.notarization.outputs.enabled == 'true'
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -698,7 +708,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Notarize, staple, and rebuild final ZIP
-        id: archive
+        if: steps.notarization.outputs.enabled == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -725,8 +735,16 @@ jobs:
           mkdir -p "$EXTRACT_ROOT"
           ditto -x -k "$ZIP_PATH" "$EXTRACT_ROOT"
 
-          echo "zip_path=$ZIP_PATH" >> $GITHUB_OUTPUT
-          echo "extract_root=$EXTRACT_ROOT" >> $GITHUB_OUTPUT
+      - name: Extract archive for smoke test
+        id: archive
+        run: |
+          ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-mac-x64.zip"
+          EXTRACT_ROOT="${RUNNER_TEMP}/archive-smoke"
+          rm -rf "$EXTRACT_ROOT"
+          mkdir -p "$EXTRACT_ROOT"
+          ditto -x -k "$ZIP_PATH" "$EXTRACT_ROOT"
+          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+          echo "extract_root=$EXTRACT_ROOT" >> "$GITHUB_OUTPUT"
 
       - name: Smoke test update ZIP permissions
         run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.zip_path }}" --platform darwin
@@ -755,7 +773,7 @@ jobs:
           retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # All-in-one archive: macOS arm64 (signed + notarized + stapled ZIP)
+  # All-in-one archive: macOS arm64 (notarized + stapled when secrets are available)
   # ═══════════════════════════════════════════════════════════════════════════
   archive-macos-arm64:
     name: All-in-one — macOS arm64
@@ -783,7 +801,8 @@ jobs:
       - name: Update package.json version
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
 
-      - name: Verify notarization secrets
+      - name: Detect notarization secrets
+        id: notarization
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -791,14 +810,23 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          missing=()
           for secret_name in APPLE_CERT_BASE64 APPLE_CERT_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
             if [ -z "${!secret_name}" ]; then
-              echo "::error::$secret_name is required for the notarized all-in-one macOS archive"
-              exit 1
+              missing+=("$secret_name")
             fi
           done
 
+          if [ ${#missing[@]} -eq 0 ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Using notarized packaging for the macOS all-in-one archive."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Building an unsigned macOS all-in-one archive because these notarization secrets are missing: ${missing[*]}"
+          fi
+
       - name: Import Apple Developer certificate
+        if: steps.notarization.outputs.enabled == 'true'
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -827,7 +855,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Notarize, staple, and rebuild final ZIP
-        id: archive
+        if: steps.notarization.outputs.enabled == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -854,8 +882,16 @@ jobs:
           mkdir -p "$EXTRACT_ROOT"
           ditto -x -k "$ZIP_PATH" "$EXTRACT_ROOT"
 
-          echo "zip_path=$ZIP_PATH" >> $GITHUB_OUTPUT
-          echo "extract_root=$EXTRACT_ROOT" >> $GITHUB_OUTPUT
+      - name: Extract archive for smoke test
+        id: archive
+        run: |
+          ZIP_PATH="$(pwd)/release/nirs4all Studio-${{ needs.prepare.outputs.version }}-all-in-one-mac-arm64.zip"
+          EXTRACT_ROOT="${RUNNER_TEMP}/archive-smoke"
+          rm -rf "$EXTRACT_ROOT"
+          mkdir -p "$EXTRACT_ROOT"
+          ditto -x -k "$ZIP_PATH" "$EXTRACT_ROOT"
+          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+          echo "extract_root=$EXTRACT_ROOT" >> "$GITHUB_OUTPUT"
 
       - name: Smoke test update ZIP permissions
         run: python3 scripts/smoke-update-zip-permissions.py --archive "${{ steps.archive.outputs.zip_path }}" --platform darwin

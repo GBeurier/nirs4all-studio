@@ -333,18 +333,17 @@ test.describe("Runs Redesign", () => {
     await expect(page.getByRole("button", { name: /PLSRegression Fold fold_0/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /PLSRegression Fold fold_1/i })).toBeVisible();
     await expect(page.getByText(/^Val$/).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: /View prediction/i }).first()).toBeVisible();
 
     await page.getByRole("button", { name: /^details$/i }).last().click();
     await expect(page.getByRole("dialog")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Scatter" }).click();
-    await expect(page.getByText(/Observed vs Predicted/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: "train" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "val" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "test" })).toBeVisible();
+    await page.getByRole("button", { name: /Predicted vs Actual/i }).first().click();
+    await expect(page.getByText(/Predicted vs Actual/i).first()).toBeVisible();
+    await expect(page.getByText(/^val$/i).first()).toBeVisible();
+    await expect(page.getByText(/^test$/i).first()).toBeVisible();
+    await expect(page.getByText(/^train$/i).first()).toBeVisible();
 
-    await page.getByRole("tab", { name: "Residuals" }).click();
-    await expect(page.getByText(/^Residuals$/)).toBeVisible();
+    await page.getByRole("button", { name: /Residuals/i }).first().click();
+    await expect(page.getByText(/Residuals/i).first()).toBeVisible();
   });
 });

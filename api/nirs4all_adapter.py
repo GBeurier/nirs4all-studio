@@ -2062,14 +2062,25 @@ def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str | None]
         try:
             _resolve_operator_class(reference, resolve_type)
         except HTTPException as exc:
-            issues.append({
-                "step_id": step_id or None,
-                "step_name": step_name,
-                "step_type": step_type,
-                "class_path": str(step.get("classPath", "") or "") or None,
-                "function_path": str(step.get("functionPath", "") or "") or None,
-                "error": str(exc.detail),
-            })
+            # Don't report known aliases whose packages are simply not
+            # installed — they are valid operators, just optional deps.
+            alias_map = {
+                "model": MODEL_ALIASES,
+                "preprocessing": PREPROCESSING_ALIASES,
+                "splitting": SPLITTER_ALIASES,
+            }
+            known_aliases = alias_map.get(resolve_type, {})
+            if step_name in known_aliases:
+                pass  # known alias, optional dependency not installed
+            else:
+                issues.append({
+                    "step_id": step_id or None,
+                    "step_name": step_name,
+                    "step_type": step_type,
+                    "class_path": str(step.get("classPath", "") or "") or None,
+                    "function_path": str(step.get("functionPath", "") or "") or None,
+                    "error": str(exc.detail),
+                })
 
     # Recurse into children (for containers like sample_augmentation)
     for child in step.get("children", []):

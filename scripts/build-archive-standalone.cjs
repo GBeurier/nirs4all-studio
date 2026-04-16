@@ -25,6 +25,7 @@ const path = require("path");
 const {
   STANDALONE_V1_PROFILE,
 } = require("./python-runtime-config.cjs");
+const { resolveSpawnCommand } = require("./spawn-command.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 const isWindows = process.platform === "win32";
@@ -142,9 +143,10 @@ function getElectronBuilderArgs(config) {
 function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     console.log(`Running: ${command} ${args.join(" ")}`);
-    const proc = spawn(command, args, {
+    const spawnSpec = resolveSpawnCommand(command, args);
+    const proc = spawn(spawnSpec.command, spawnSpec.args, {
       stdio: "inherit",
-      shell: false,
+      shell: spawnSpec.shell,
       cwd: projectRoot,
       windowsHide: isWindows,
       ...options,
@@ -162,7 +164,7 @@ function getNodeCommand() {
 }
 
 function getNpmCommand() {
-  return isWindows ? "npm.cmd" : "npm";
+  return "npm";
 }
 
 function rmrf(relativePath) {
