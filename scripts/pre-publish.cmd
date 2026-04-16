@@ -9,8 +9,10 @@ REM
 REM  Usage:
 REM    scripts\pre-publish.cmd [OPTIONS]
 REM
-REM  Options are forwarded to the underlying script.
-REM  Run with -Help (PowerShell) or --help (bash) for details.
+REM  This wrapper invokes pre-publish.ps1 first, so use PowerShell-style options:
+REM    -Only lint|tests|e2e|build
+REM    -SkipBackend  -SkipE2E  -SkipBuild  -SkipElectron  -Python PATH  -Help
+REM  Run scripts\pre-publish.sh --help only when using the bash variant directly.
 REM
 REM ==========================================================
 

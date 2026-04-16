@@ -70,20 +70,23 @@ function Write-Header  { param([string]$Msg)
 # ──────────────────────────────────────────────────────────────────────────────
 
 if ($Help) {
-    Write-Host @"
-Usage:
-  .\scripts\pre-publish.ps1 [OPTIONS]
-
-Options:
-  -SkipBackend         Skip backend lint + tests
-  -SkipE2E             Skip Playwright E2E tests
-  -SkipBuild           Skip production build validation
-  -SkipElectron        Skip Electron build test
-  -Only STEP           Run only one step: lint | validate-nodes | type-check |
-                       frontend-tests | backend-lint | backend-tests | e2e | build | electron
-  -Python PATH         Python interpreter to use (default: .venv\Scripts\python.exe or python)
-  -Help                Show this help
-"@
+    Write-Host (@(
+        'Usage:'
+        '  .\scripts\pre-publish.ps1 [OPTIONS]'
+        ''
+        'Options:'
+        '  -SkipBackend         Skip backend lint + tests'
+        '  -SkipE2E             Skip Playwright E2E tests'
+        '  -SkipBuild           Skip production build validation'
+        '  -SkipElectron        Skip Electron build test'
+        '  -Only CATEGORY       Run only one category: lint | tests | e2e | build'
+        '                       lint  -> eslint + validate-nodes + tsc (+ ruff + py-syntax unless -SkipBackend)'
+        '                       tests -> vitest (+ pytest unless -SkipBackend)'
+        '                       e2e   -> playwright'
+        '                       build -> web build + electron build (respects -SkipBuild / -SkipElectron)'
+        '  -Python PATH         Python interpreter to use (default: .venv\Scripts\python.exe or python)'
+        '  -Help                Show this help'
+    ) -join [Environment]::NewLine)
     exit 0
 }
 
