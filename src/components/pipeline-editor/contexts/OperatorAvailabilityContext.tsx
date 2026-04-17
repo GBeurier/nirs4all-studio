@@ -58,6 +58,10 @@ export interface OperatorAvailabilityProviderProps {
 
 const OperatorAvailabilityContext = createContext<OperatorAvailabilityContextValue | undefined>(undefined);
 
+const MAX_OPERATOR_AVAILABILITY_RETRIES = 5;
+const OPERATOR_AVAILABILITY_RETRY_BASE_MS = 1000;
+const OPERATOR_AVAILABILITY_RETRY_MAX_MS = 10000;
+
 function operatorTypeAndNameKey(type?: string, name?: string): string | null {
   const normalizedType = type?.trim().toLowerCase();
   const normalizedName = name?.trim().toLowerCase();
@@ -101,19 +105,35 @@ export function OperatorAvailabilityProvider({
   const [isCheckingPipeline, setIsCheckingPipeline] = useState(false);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [pipelineRefreshToken, setPipelineRefreshToken] = useState(0);
+  const [operatorRetryToken, setOperatorRetryToken] = useState(0);
+  const latestOperatorRequest = useRef(0);
+  const operatorRetryAttempts = useRef(0);
   const latestPipelineRequest = useRef(0);
 
   const refreshOperatorAvailability = useCallback(async () => {
+    const requestId = latestOperatorRequest.current + 1;
+    latestOperatorRequest.current = requestId;
     setIsLoadingOperators(true);
+    setOperatorsError(null);
     try {
       const response = await getOperatorAvailability();
+      if (latestOperatorRequest.current !== requestId) {
+        return;
+      }
       setOperatorAvailability(response);
       writeCachedOperatorAvailability(response);
+      operatorRetryAttempts.current = 0;
       setOperatorsError(null);
     } catch (error) {
+      if (latestOperatorRequest.current !== requestId) {
+        return;
+      }
+      operatorRetryAttempts.current += 1;
       setOperatorsError(error instanceof Error ? error.message : "Failed to load operator availability");
     } finally {
-      setIsLoadingOperators(false);
+      if (latestOperatorRequest.current === requestId) {
+        setIsLoadingOperators(false);
+      }
     }
   }, []);
 
@@ -122,21 +142,45 @@ export function OperatorAvailabilityProvider({
       return;
     }
     void refreshOperatorAvailability();
-  }, [operatorAvailability, refreshOperatorAvailability]);
+  }, [operatorAvailability, operatorRetryToken, refreshOperatorAvailability]);
+
+  useEffect(() => {
+    if (!operatorsError) {
+      return;
+    }
+    if (operatorRetryAttempts.current >= MAX_OPERATOR_AVAILABILITY_RETRIES) {
+      return;
+    }
+
+    const delayMs = Math.min(
+      OPERATOR_AVAILABILITY_RETRY_BASE_MS * 2 ** Math.max(0, operatorRetryAttempts.current - 1),
+      OPERATOR_AVAILABILITY_RETRY_MAX_MS,
+    );
+
+    const timeoutId = window.setTimeout(() => {
+      setOperatorRetryToken((current) => current + 1);
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [operatorsError]);
 
   useEffect(() => {
     const handleInvalidated = () => {
       clearCachedOperatorAvailability();
       setOperatorAvailability(null);
+      setOperatorsError(null);
+      operatorRetryAttempts.current = 0;
+      setOperatorRetryToken((current) => current + 1);
       setPipelineRefreshToken((current) => current + 1);
-      void refreshOperatorAvailability();
     };
 
     window.addEventListener(OPERATOR_AVAILABILITY_INVALIDATED_EVENT, handleInvalidated);
     return () => {
       window.removeEventListener(OPERATOR_AVAILABILITY_INVALIDATED_EVENT, handleInvalidated);
     };
-  }, [refreshOperatorAvailability]);
+  }, []);
 
   useEffect(() => {
     if (steps.length === 0) {

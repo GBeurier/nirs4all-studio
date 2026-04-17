@@ -42,4 +42,7 @@ export interface PredictResponse {
   actual_values: number[] | null;
   metrics: Record<string, number> | null;
   sample_ids: (string | number)[] | null;
+  /** When the request was `partition: "all"`, backend returns per-sample
+   *  partition labels ("train"/"val"/"test") so charts can split by partition. */
+  partitions?: (string | null)[] | null;
 }

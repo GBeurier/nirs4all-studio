@@ -3,12 +3,13 @@ import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import { motion } from "@/lib/motion";
-import { Zap } from "lucide-react";
+import { AlertCircle, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { ModelSelector } from "@/components/predict/ModelSelector";
 import { DataInput, type DataSourceConfig } from "@/components/predict/DataInput";
-import { PredictResults } from "@/components/predict/PredictResults";
+import { PredictResults, type PredictionInput } from "@/components/predict/PredictResults";
+import { Button } from "@/components/ui/button";
 import { runPrediction, runPredictionWithFile } from "@/api/predict";
 import type { AvailableModel, PredictResponse } from "@/types/predict";
 
@@ -25,11 +26,26 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 };
 
+function inputFromConfig(config: DataSourceConfig): PredictionInput {
+  if (config.type === "dataset") {
+    return {
+      type: "dataset",
+      datasetId: config.datasetId,
+      partition: config.partition,
+    };
+  }
+  if (config.type === "file") {
+    return { type: "file", fileName: config.file.name };
+  }
+  return { type: "array", rowCount: config.spectra.length };
+}
+
 export default function Predict() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const [selectedModel, setSelectedModel] = useState<AvailableModel | null>(null);
   const [result, setResult] = useState<PredictResponse | null>(null);
+  const [lastInput, setLastInput] = useState<PredictionInput | null>(null);
   const [preselected, setPreselected] = useState(false);
 
   // Deep-link: pre-select model from URL params (e.g., from ModelActionMenu)
@@ -94,19 +110,29 @@ export default function Predict() {
 
   const handleRunPrediction = useCallback(
     (config: DataSourceConfig) => {
+      // Capture the input context alongside the request so the results viewer
+      // can display the real dataset/file/array the user ran against (not just
+      // the model's training dataset name).
+      setLastInput(inputFromConfig(config));
       predictMutation.mutate(config);
     },
-    [predictMutation]
+    [predictMutation],
   );
 
   const handleReset = useCallback(() => {
     setResult(null);
-  }, []);
+    setLastInput(null);
+    predictMutation.reset();
+  }, [predictMutation]);
 
   const handleModelSelect = useCallback((model: AvailableModel) => {
     setSelectedModel(model);
     setResult(null);
-  }, []);
+    setLastInput(null);
+    predictMutation.reset();
+  }, [predictMutation]);
+
+  const predictionError = predictMutation.error as Error | null;
 
   return (
     <MlLoadingOverlay>
@@ -147,8 +173,42 @@ export default function Predict() {
                 onRunPrediction={handleRunPrediction}
               />
 
-              {result && (
-                <PredictResults result={result} onReset={handleReset} />
+              {predictionError && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-destructive/40 bg-destructive/10 p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-destructive/15">
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <p className="text-sm font-semibold text-destructive">
+                        {t("predict.errors.predictionFailed")}
+                      </p>
+                      <p className="break-words text-xs leading-5 text-destructive/90">
+                        {predictionError.message ||
+                          t("predict.errors.predictionFailed")}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => predictMutation.reset()}
+                    >
+                      Dismiss
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {result && !predictionError && (
+                <PredictResults
+                  result={result}
+                  model={selectedModel}
+                  input={lastInput}
+                  onReset={handleReset}
+                />
               )}
             </div>
           </div>

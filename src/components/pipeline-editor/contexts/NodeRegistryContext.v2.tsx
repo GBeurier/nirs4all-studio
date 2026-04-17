@@ -50,6 +50,10 @@ export const USE_NODE_REGISTRY =
   import.meta.env.VITE_USE_NODE_REGISTRY !== 'false' &&
   import.meta.env.VITE_USE_NODE_REGISTRY !== false;
 
+const MAX_EXTENDED_REGISTRY_RETRIES = 5;
+const EXTENDED_REGISTRY_RETRY_BASE_MS = 1000;
+const EXTENDED_REGISTRY_RETRY_MAX_MS = 10000;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -240,9 +244,11 @@ export function NodeRegistryProvider({
   const [extendedNodes, setExtendedNodes] = useState<JsonNodeDefinition[] | null>(null);
   const [isLoadingExtended, setIsLoadingExtended] = useState(false);
   const [extendedError, setExtendedError] = useState<Error | null>(null);
+  const [extendedRetryToken, setExtendedRetryToken] = useState(0);
 
   // Ref to track if a fetch is in progress (avoids stale closure issues)
   const isFetchingExtendedRef = useRef(false);
+  const extendedRetryAttempts = useRef(0);
 
   // If the user disables Extended mode, drop the cached extended registry.
   // This lets users toggle off/on to re-fetch after regenerating extended.json
@@ -252,6 +258,7 @@ export function NodeRegistryProvider({
     if (extendedMode) return;
     setExtendedNodes(null);
     setExtendedError(null);
+    extendedRetryAttempts.current = 0;
   }, [useJsonRegistry, extendedMode]);
 
   // Initialize base registry and subscribe to custom node updates.
@@ -316,10 +323,12 @@ export function NodeRegistryProvider({
           throw new Error("Extended registry JSON must be an array of node definitions");
         }
 
+        extendedRetryAttempts.current = 0;
         setExtendedNodes(data as JsonNodeDefinition[]);
       } catch (e) {
         if (abort.signal.aborted) return;
         const err = e instanceof Error ? e : new Error("Failed to load extended registry");
+        extendedRetryAttempts.current += 1;
         setExtendedError(err);
         console.error("[NodeRegistry] Failed to load extended registry:", err);
       } finally {
@@ -335,7 +344,27 @@ export function NodeRegistryProvider({
       abort.abort();
       isFetchingExtendedRef.current = false;
     };
-  }, [useJsonRegistry, extendedMode, extendedNodes]);
+  }, [useJsonRegistry, extendedMode, extendedNodes, extendedRetryToken]);
+
+  useEffect(() => {
+    if (!useJsonRegistry) return;
+    if (!extendedMode) return;
+    if (extendedNodes !== null) return;
+    if (!extendedError) return;
+    if (extendedRetryAttempts.current >= MAX_EXTENDED_REGISTRY_RETRIES) return;
+
+    const delayMs = Math.min(
+      EXTENDED_REGISTRY_RETRY_BASE_MS * 2 ** Math.max(0, extendedRetryAttempts.current - 1),
+      EXTENDED_REGISTRY_RETRY_MAX_MS,
+    );
+    const timeoutId = window.setTimeout(() => {
+      setExtendedRetryToken((current) => current + 1);
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [useJsonRegistry, extendedMode, extendedNodes, extendedError]);
 
   // Build the merged registry whenever base/custom/extended nodes change.
   useEffect(() => {

@@ -52,6 +52,9 @@ class PredictResponse(BaseModel):
     actual_values: list[float] | None = None
     metrics: dict[str, float] | None = None
     sample_ids: list[str | int] | None = None
+    # Per-sample partition labels ("train"/"val"/"test"/...) when the request
+    # ran across multiple partitions (partition="all"); None otherwise.
+    partitions: list[str] | None = None
 
 
 # ============= Helpers =============
@@ -63,7 +66,13 @@ def _sanitize_float(v: Any) -> float | None:
     return v
 
 
-def _run_prediction(model_id: str, model_source: str, X, y_true=None) -> PredictResponse:
+def _run_prediction(
+    model_id: str,
+    model_source: str,
+    X,
+    y_true=None,
+    partitions: list[str] | None = None,
+) -> PredictResponse:
     """Execute prediction using nirs4all.predict()."""
     import numpy as np
 
@@ -128,6 +137,15 @@ def _run_prediction(model_id: str, model_source: str, X, y_true=None) -> Predict
         except Exception as e:
             logger.warning("Could not compute metrics: %s", e)
 
+    # Align partition labels to the predictions length (nirs4all may drop rows
+    # with non-finite inputs). Fall back to None if lengths don't match.
+    aligned_partitions: list[str] | None = None
+    if partitions is not None:
+        if len(partitions) == len(predictions):
+            aligned_partitions = list(partitions)
+        elif len(partitions) > len(predictions):
+            aligned_partitions = list(partitions[: len(predictions)])
+
     return PredictResponse(
         predictions=predictions,
         num_samples=len(predictions),
@@ -135,6 +153,7 @@ def _run_prediction(model_id: str, model_source: str, X, y_true=None) -> Predict
         preprocessing_steps=preprocessing_steps,
         actual_values=actual_values,
         metrics=metrics,
+        partitions=aligned_partitions,
     )
 
 
@@ -158,6 +177,8 @@ async def predict(request: PredictRequest):
     X = None
     y_true = None
 
+    per_sample_partitions: list[str] | None = None
+
     if request.data_source == "dataset":
         if not request.dataset_id:
             raise HTTPException(status_code=400, detail="dataset_id is required for dataset source")
@@ -168,15 +189,62 @@ async def predict(request: PredictRequest):
         if not dataset:
             raise HTTPException(status_code=404, detail=f"Dataset '{request.dataset_id}' not found")
 
-        selector = {"partition": request.partition} if request.partition != "all" else {}
-        X = dataset.x(selector, layout="2d")
-        if isinstance(X, list):
-            X = X[0]
+        # When "all" is requested, loop over known partitions so the frontend
+        # can split charts by partition (train / val / test). Otherwise fetch
+        # the single requested partition.
+        if (request.partition or "").lower() == "all":
+            partitions_to_try = ["train", "val", "test"]
+            X_blocks: list = []
+            y_blocks: list = []
+            per_sample_partitions = []
+            any_y_missing = False
+            for part in partitions_to_try:
+                try:
+                    X_part = dataset.x({"partition": part}, layout="2d")
+                except Exception:
+                    continue
+                if isinstance(X_part, list):
+                    if not X_part:
+                        continue
+                    X_part = X_part[0]
+                if X_part is None or getattr(X_part, "shape", (0,))[0] == 0:
+                    continue
 
-        try:
-            y_true = dataset.y(selector)
-        except Exception:
-            pass
+                try:
+                    y_part = dataset.y({"partition": part})
+                except Exception:
+                    y_part = None
+
+                X_blocks.append(np.asarray(X_part))
+                if y_part is None:
+                    any_y_missing = True
+                    y_blocks.append(None)
+                else:
+                    y_blocks.append(np.asarray(y_part).flatten())
+                per_sample_partitions.extend([part] * X_part.shape[0])
+
+            if not X_blocks:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No samples found across train/val/test for this dataset.",
+                )
+
+            X = np.concatenate(X_blocks, axis=0)
+            y_true = None if any_y_missing else np.concatenate(y_blocks, axis=0)
+        else:
+            selector = {"partition": request.partition}
+            X = dataset.x(selector, layout="2d")
+            if isinstance(X, list):
+                X = X[0]
+
+            try:
+                y_true = dataset.y(selector)
+            except Exception:
+                pass
+
+            per_sample_partitions = [request.partition] * (
+                int(getattr(X, "shape", (0,))[0]) if X is not None else 0
+            )
 
     elif request.data_source == "array":
         if not request.spectra or len(request.spectra) == 0:
@@ -186,7 +254,13 @@ async def predict(request: PredictRequest):
     else:
         raise HTTPException(status_code=400, detail=f"Unknown data_source: {request.data_source}")
 
-    return _run_prediction(request.model_id, request.model_source, X, y_true)
+    return _run_prediction(
+        request.model_id,
+        request.model_source,
+        X,
+        y_true,
+        partitions=per_sample_partitions,
+    )
 
 
 @router.post("/predict/file", response_model=PredictResponse)

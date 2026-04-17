@@ -79,7 +79,7 @@ export function buildConfusionMatrixFromVectors({
     };
   }
 
-  if (orderedLabels.length > 24) {
+  if (orderedLabels.length > 30) {
     return {
       cells: [],
       labels: [],

@@ -12,10 +12,12 @@ import {
   Filter,
   GitBranch,
   HardDrive,
+  LineChart,
   Package,
   Search,
   Sparkles,
   Star,
+  Tags,
   Trophy,
   X,
 } from "lucide-react";
@@ -45,7 +47,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getPredictionMetricLabel, getPredictionMetricName } from "@/lib/predict-metrics";
-import { formatMetricValue, isLowerBetter } from "@/lib/scores";
+import { formatMetricValue, getMetricDefinitions, isLowerBetter } from "@/lib/scores";
 import { cn } from "@/lib/utils";
 import type { AvailableModel } from "@/types/predict";
 
@@ -55,7 +57,18 @@ interface ModelSelectorProps {
 }
 
 type SortField = "score" | "dataset" | "name" | "newest" | "size";
-type SourceFilter = "all" | "chain" | "bundle";
+type TaskFilter = "all" | "regression" | "classification";
+type TaskKind = "regression" | "classification" | "unknown";
+
+function inferTaskKind(model: AvailableModel): TaskKind {
+  const metric = (model.prediction_metric || model.metric || "").toLowerCase();
+  if (!metric) return "unknown";
+  const def = getMetricDefinitions([metric])[0];
+  if (!def) return "unknown";
+  if (def.group === "regression") return "regression";
+  if (def.group === "multiclass" || def.group === "binary") return "classification";
+  return "unknown";
+}
 
 const SORT_LABELS: Record<SortField, string> = {
   score: "Best score",
@@ -152,7 +165,7 @@ export function ModelSelector({ selectedModel, onSelect }: ModelSelectorProps) {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("score");
   const [sortDesc, setSortDesc] = useState(false);
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
   const [datasetFilter, setDatasetFilter] = useState("all");
   const [classFilter, setClassFilter] = useState("all");
   const [refitOnly, setRefitOnly] = useState(false);
@@ -192,10 +205,26 @@ export function ModelSelector({ selectedModel, onSelect }: ModelSelectorProps) {
     return { min: Math.min(...values), max: Math.max(...values) };
   }, [models]);
 
+  const taskCounts = useMemo(() => {
+    let regression = 0;
+    let classification = 0;
+    let unknown = 0;
+    for (const m of models) {
+      const kind = inferTaskKind(m);
+      if (kind === "regression") regression += 1;
+      else if (kind === "classification") classification += 1;
+      else unknown += 1;
+    }
+    return { regression, classification, unknown };
+  }, [models]);
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return models.filter((model) => {
-      if (sourceFilter !== "all" && model.source !== sourceFilter) return false;
+      if (taskFilter !== "all") {
+        const kind = inferTaskKind(model);
+        if (kind !== taskFilter) return false;
+      }
       if (datasetFilter !== "all" && model.dataset_name !== datasetFilter) return false;
       if (classFilter !== "all" && model.model_class !== classFilter) return false;
       if (refitOnly && !model.has_refit) return false;
@@ -213,7 +242,7 @@ export function ModelSelector({ selectedModel, onSelect }: ModelSelectorProps) {
       }
       return true;
     });
-  }, [models, search, sourceFilter, datasetFilter, classFilter, refitOnly]);
+  }, [models, search, taskFilter, datasetFilter, classFilter, refitOnly]);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -254,7 +283,7 @@ export function ModelSelector({ selectedModel, onSelect }: ModelSelectorProps) {
   }, [filtered, sortField, sortDesc]);
 
   const activeFilterCount =
-    (sourceFilter !== "all" ? 1 : 0) +
+    (taskFilter !== "all" ? 1 : 0) +
     (datasetFilter !== "all" ? 1 : 0) +
     (classFilter !== "all" ? 1 : 0) +
     (refitOnly ? 1 : 0) +
@@ -262,7 +291,7 @@ export function ModelSelector({ selectedModel, onSelect }: ModelSelectorProps) {
 
   const clearFilters = () => {
     setSearch("");
-    setSourceFilter("all");
+    setTaskFilter("all");
     setDatasetFilter("all");
     setClassFilter("all");
     setRefitOnly(false);
@@ -411,18 +440,32 @@ export function ModelSelector({ selectedModel, onSelect }: ModelSelectorProps) {
         <div className="flex flex-wrap items-center gap-1.5">
           <ToggleGroup
             type="single"
-            value={sourceFilter}
-            onValueChange={(value) => value && setSourceFilter(value as SourceFilter)}
+            value={taskFilter}
+            onValueChange={(value) => value && setTaskFilter(value as TaskFilter)}
             variant="outline"
             size="sm"
             className="h-7"
           >
-            <ToggleGroupItem value="all" className="h-7 px-2 text-[11px]">All</ToggleGroupItem>
-            <ToggleGroupItem value="chain" className="h-7 px-2 text-[11px] gap-1">
-              <GitBranch className="h-3 w-3" /> Chain
+            <ToggleGroupItem value="all" className="h-7 px-2 text-[11px]">
+              All <span className="ml-1 text-muted-foreground/70">{models.length}</span>
             </ToggleGroupItem>
-            <ToggleGroupItem value="bundle" className="h-7 px-2 text-[11px] gap-1">
-              <Package className="h-3 w-3" /> Bundle
+            <ToggleGroupItem
+              value="regression"
+              disabled={taskCounts.regression === 0}
+              className="h-7 px-2 text-[11px] gap-1"
+              title="Regression models (continuous targets)"
+            >
+              <LineChart className="h-3 w-3" /> Regression
+              <span className="text-muted-foreground/70">{taskCounts.regression}</span>
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="classification"
+              disabled={taskCounts.classification === 0}
+              className="h-7 px-2 text-[11px] gap-1"
+              title="Classification models (discrete classes)"
+            >
+              <Tags className="h-3 w-3" /> Classification
+              <span className="text-muted-foreground/70">{taskCounts.classification}</span>
             </ToggleGroupItem>
           </ToggleGroup>
 
