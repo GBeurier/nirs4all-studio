@@ -47,13 +47,16 @@ def main():
 
     # Pass the app object directly (not the "main:app" string) because
     # reload is always disabled in production bundles.
-    uvicorn.run(
-        app,
-        host=args.host,
-        port=args.port,
-        reload=False,
-        log_level="info",
-    )
+    try:
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            reload=False,
+            log_level="info",
+        )
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":

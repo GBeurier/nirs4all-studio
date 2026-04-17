@@ -73,9 +73,10 @@ export interface LinkedWorkspaceDiscoveredRuns {
 
 export interface DiscoveredPrediction {
   dataset: string;
-  path: string;
   format: string;
-  size_bytes: number;
+  path?: string;
+  size_bytes?: number;
+  prediction_count?: number;
 }
 
 export interface LinkedWorkspaceDiscoveredPredictions {

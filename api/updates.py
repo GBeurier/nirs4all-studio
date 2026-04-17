@@ -55,6 +55,38 @@ RESTART_REQUIRED_PACKAGES = {
 PROFILE_MANAGED_DEPENDENCIES = {"torch"}
 
 
+def _describe_exception(exc: BaseException) -> str:
+    """Render an exception with a non-empty, type-aware message."""
+    detail = str(exc).strip()
+    name = type(exc).__name__
+    if not detail:
+        return name
+    if detail.startswith(f"{name}:"):
+        return detail
+    return f"{name}: {detail}"
+
+
+def _is_offline_update_error(exc: Exception) -> bool:
+    from .network_state import OfflineError
+
+    return isinstance(exc, OfflineError)
+
+
+def _is_expected_update_transport_error(exc: Exception) -> bool:
+    if _is_offline_update_error(exc):
+        return True
+    if HTTPX_AVAILABLE and isinstance(exc, httpx.HTTPError):
+        return True
+    try:
+        import urllib.error
+
+        if isinstance(exc, urllib.error.URLError):
+            return True
+    except Exception:
+        pass
+    return isinstance(exc, TimeoutError)
+
+
 # ============= nirs4all Optional Dependencies Definition =============
 
 
@@ -650,6 +682,41 @@ class UpdateManager:
         """Get the installed nirs4all version from managed venv."""
         return venv_manager.get_nirs4all_version()
 
+    def _apply_cached_github_release(
+        self,
+        info: WebappUpdateInfo,
+        cached: dict[str, Any],
+    ) -> None:
+        """Populate GitHub release info from cached metadata."""
+        info.latest_version = cached.get("latest_version")
+        info.release_url = cached.get("release_url")
+        info.release_notes = cached.get("release_notes")
+        info.published_at = cached.get("published_at")
+        info.download_url = cached.get("download_url")
+        info.asset_name = cached.get("asset_name")
+        info.download_size_bytes = cached.get("download_size_bytes")
+        info.checksum_sha256 = cached.get("checksum_sha256")
+        info.is_prerelease = cached.get("is_prerelease", False)
+        info.update_available = self._compare_versions(
+            info.current_version,
+            info.latest_version,
+        )
+
+    def _apply_cached_pypi_release(
+        self,
+        info: Nirs4allUpdateInfo,
+        cached: dict[str, Any],
+    ) -> None:
+        """Populate PyPI release info from cached metadata."""
+        info.latest_version = cached.get("latest_version")
+        info.pypi_url = cached.get("pypi_url")
+        info.release_notes = cached.get("release_notes")
+        if info.current_version and info.latest_version:
+            info.update_available = self._compare_versions(
+                info.current_version,
+                info.latest_version,
+            )
+
     async def _fetch_url(self, url: str, headers: dict[str, str] | None = None) -> tuple[int, str]:
         """Fetch a URL and return (status_code, content).
 
@@ -689,23 +756,11 @@ class UpdateManager:
         # Check cache (lazy load on first access)
         cache_key = "github_release"
         cache = self._ensure_cache_loaded()
+        cached = cache.get(cache_key)
         if not force and cache_key in cache:
-            cached = cache[cache_key]
             cached_at = datetime.fromisoformat(cached.get("cached_at", "2000-01-01"))
             if datetime.now() - cached_at < timedelta(hours=self.settings.check_interval_hours):
-                # Use cached data
-                info.latest_version = cached.get("latest_version")
-                info.release_url = cached.get("release_url")
-                info.release_notes = cached.get("release_notes")
-                info.published_at = cached.get("published_at")
-                info.download_url = cached.get("download_url")
-                info.asset_name = cached.get("asset_name")
-                info.download_size_bytes = cached.get("download_size_bytes")
-                info.checksum_sha256 = cached.get("checksum_sha256")
-                info.is_prerelease = cached.get("is_prerelease", False)
-                info.update_available = self._compare_versions(
-                    current_version, info.latest_version
-                )
+                self._apply_cached_github_release(info, cached)
                 return info
 
         # Fetch from GitHub API
@@ -784,7 +839,24 @@ class UpdateManager:
             self._save_cache()
 
         except Exception as e:
-            logger.error("Error checking GitHub releases: %s", e)
+            if _is_offline_update_error(e):
+                logger.debug("Skipping GitHub release check while offline: %s", api_url)
+            elif _is_expected_update_transport_error(e):
+                logger.warning(
+                    "GitHub release check failed for %s: %s",
+                    api_url,
+                    _describe_exception(e),
+                )
+            else:
+                logger.error(
+                    "GitHub release check failed for %s: %s",
+                    api_url,
+                    _describe_exception(e),
+                    exc_info=True,
+                )
+            if cached:
+                self._apply_cached_github_release(info, cached)
+                logger.debug("Using cached GitHub release info after failed refresh: %s", api_url)
 
         return info
 
@@ -916,17 +988,11 @@ class UpdateManager:
         # Check cache (lazy load on first access)
         cache_key = "pypi_release"
         cache = self._ensure_cache_loaded()
+        cached = cache.get(cache_key)
         if not force and cache_key in cache:
-            cached = cache[cache_key]
             cached_at = datetime.fromisoformat(cached.get("cached_at", "2000-01-01"))
             if datetime.now() - cached_at < timedelta(hours=self.settings.check_interval_hours):
-                info.latest_version = cached.get("latest_version")
-                info.pypi_url = cached.get("pypi_url")
-                info.release_notes = cached.get("release_notes")
-                if current_version and info.latest_version:
-                    info.update_available = self._compare_versions(
-                        current_version, info.latest_version
-                    )
+                self._apply_cached_pypi_release(info, cached)
                 return info
 
         # Fetch from PyPI API
@@ -966,7 +1032,24 @@ class UpdateManager:
             self._save_cache()
 
         except Exception as e:
-            logger.error("Error checking PyPI releases: %s", e)
+            if _is_offline_update_error(e):
+                logger.debug("Skipping PyPI release check while offline: %s", api_url)
+            elif _is_expected_update_transport_error(e):
+                logger.warning(
+                    "PyPI release check failed for %s: %s",
+                    api_url,
+                    _describe_exception(e),
+                )
+            else:
+                logger.error(
+                    "PyPI release check failed for %s: %s",
+                    api_url,
+                    _describe_exception(e),
+                    exc_info=True,
+                )
+            if cached:
+                self._apply_cached_pypi_release(info, cached)
+                logger.debug("Using cached PyPI release info after failed refresh: %s", api_url)
 
         return info
 

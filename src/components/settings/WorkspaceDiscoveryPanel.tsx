@@ -272,7 +272,11 @@ export function WorkspaceDiscoveryPanel({
                   </Badge>
                 </div>
                 <span className="text-muted-foreground">
-                  {formatBytes(pred.size_bytes)}
+                  {pred.prediction_count !== undefined
+                    ? `${pred.prediction_count} prediction${pred.prediction_count === 1 ? "" : "s"}`
+                    : pred.size_bytes !== undefined
+                      ? formatBytes(pred.size_bytes)
+                      : ""}
                 </span>
               </div>
             ))}

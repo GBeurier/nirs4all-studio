@@ -69,6 +69,7 @@ import {
   revertDependency,
 } from "@/api/client";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
+import { getDependencyVersionState } from "./dependencyVersionState";
 import type {
   DependenciesResponse,
   DependencyCategory,
@@ -94,20 +95,16 @@ function PackageRow({
 }: PackageRowProps) {
   const isCurrentlyProcessing = isProcessing === pkg.name;
 
-  // Determine version status
-  const isAtRecommended =
-    pkg.is_installed &&
-    pkg.recommended_version &&
-    !pkg.is_below_recommended &&
-    !pkg.is_above_recommended;
-  const isAtLatest =
-    pkg.is_installed &&
-    pkg.installed_version === pkg.latest_version;
-  const hasNewerLatest =
-    pkg.latest_version &&
-    pkg.recommended_version &&
-    pkg.latest_version !== pkg.recommended_version &&
-    pkg.is_outdated;
+  const {
+    isAtRecommended,
+    isAtLatest,
+    showRecommendedVersion,
+    showLatestVersion,
+    showUpdateToRecommended,
+    showRevertToRecommended,
+    showUpdateToLatest,
+    shouldConfirmLatestUpdate,
+  } = getDependencyVersionState(pkg);
 
   // Status icon
   let statusIcon;
@@ -147,7 +144,7 @@ function PackageRow({
   } else if (pkg.is_above_recommended) {
     versionBadge = (
       <Badge className="text-xs font-mono bg-blue-500 hover:bg-blue-500 text-white">
-        v{pkg.installed_version} (custom)
+        v{pkg.installed_version} ({isAtLatest ? "latest" : "custom"})
       </Badge>
     );
   } else {
@@ -184,25 +181,16 @@ function PackageRow({
           </p>
           {/* Version details line */}
           <div className="flex items-center gap-3 mt-0.5">
-            {pkg.is_installed &&
-              pkg.recommended_version &&
-              (pkg.is_below_recommended || pkg.is_above_recommended) && (
+            {showRecommendedVersion && pkg.recommended_version && (
                 <span className="text-xs text-muted-foreground">
                   Recommended: {pkg.recommended_version}
                 </span>
               )}
-            {pkg.is_installed &&
-              pkg.latest_version &&
-              pkg.installed_version !== pkg.latest_version && (
+            {showLatestVersion && pkg.latest_version && (
                 <span className="text-xs text-muted-foreground">
                   Latest: {pkg.latest_version}
                 </span>
               )}
-            {!pkg.is_installed && pkg.recommended_version && (
-              <span className="text-xs text-muted-foreground">
-                Recommended: {pkg.recommended_version}
-              </span>
-            )}
             {!pkg.is_installed && !pkg.recommended_version && (
               <span className="text-xs text-muted-foreground">
                 Min version: {pkg.min_version}
@@ -224,7 +212,7 @@ function PackageRow({
             {pkg.is_installed ? (
               <>
                 {/* Below recommended: Update to Recommended */}
-                {pkg.is_below_recommended && pkg.recommended_version && (
+                {showUpdateToRecommended && pkg.recommended_version && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -238,7 +226,7 @@ function PackageRow({
                 )}
 
                 {/* Above recommended: Revert to Recommended */}
-                {pkg.is_above_recommended && pkg.recommended_version && (
+                {showRevertToRecommended && pkg.recommended_version && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -252,7 +240,7 @@ function PackageRow({
                 )}
 
                 {/* Update to Latest (when latest > installed and latest != recommended) */}
-                {!isAtLatest && hasNewerLatest && (
+                {showUpdateToLatest && shouldConfirmLatestUpdate && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
@@ -290,9 +278,8 @@ function PackageRow({
                 )}
 
                 {/* Update to Latest (simple case: no recommended or latest == recommended) */}
-                {!isAtLatest &&
-                  !hasNewerLatest &&
-                  pkg.is_outdated && (
+                {showUpdateToLatest &&
+                  !shouldConfirmLatestUpdate && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -301,7 +288,7 @@ function PackageRow({
                       className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/50"
                     >
                       <ArrowUpCircle className="h-4 w-4 mr-1" />
-                      Update
+                      Update to Latest
                     </Button>
                   )}
 

@@ -319,3 +319,44 @@ class TestDependencyScanningPackageNormalization:
         assert umap_pkg is not None
         assert umap_pkg["is_installed"] is True
         assert umap_pkg["installed_version"] == "0.5.5"
+
+
+class TestDependencyScanningVersionTargets:
+    """Verify recommended/latest target versions remain distinct in the payload."""
+
+    @patch("api.updates._dependencies_cache")
+    @patch("api.updates.venv_manager")
+    def test_recommended_aligned_package_still_exposes_newer_latest(self, mock_vm, mock_cache):
+        mock_cache.get.return_value = None
+
+        mock_vm.get_venv_info.return_value = FakeVenvInfo(
+            path="/fake/venv", exists=True, is_valid=True,
+        )
+        mock_vm.is_custom_path = False
+        mock_vm.get_installed_packages.return_value = [
+            FakePackageInfo(name="ikpls", version="1.3.0"),
+        ]
+        mock_vm.get_outdated_packages.return_value = [
+            {
+                "name": "ikpls",
+                "current_version": "1.3.0",
+                "latest_version": "1.4.0",
+            }
+        ]
+        mock_vm.get_nirs4all_version.return_value = "0.7.1"
+
+        response = client.get("/api/updates/dependencies?force_refresh=true")
+        assert response.status_code == 200
+        data = response.json()
+
+        pls_cat = next((c for c in data["categories"] if c["id"] == "pls_variants"), None)
+        assert pls_cat is not None
+
+        ikpls_pkg = next((p for p in pls_cat["packages"] if p["name"] == "ikpls"), None)
+        assert ikpls_pkg is not None
+        assert ikpls_pkg["installed_version"] == "1.3.0"
+        assert ikpls_pkg["recommended_version"] == "1.3.0"
+        assert ikpls_pkg["latest_version"] == "1.4.0"
+        assert ikpls_pkg["is_outdated"] is True
+        assert ikpls_pkg["is_below_recommended"] is False
+        assert ikpls_pkg["is_above_recommended"] is False

@@ -9,9 +9,9 @@ Phase 5: WebSocket support for real-time updates.
 Phase 6: Workspace management and AutoML search.
 """
 
+import asyncio
 import os
 import time
-import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -32,6 +32,7 @@ from fastapi.staticfiles import StaticFiles
 _t1 = time.perf_counter()
 
 from api.shared.logger import get_logger, setup_logging
+from api.shared.sentry import backend_before_send
 
 setup_logging()
 logger = get_logger(__name__)
@@ -52,6 +53,8 @@ if _sentry_dsn:
             environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
             traces_sample_rate=0.1,
             send_default_pii=False,
+            ignore_errors=[KeyboardInterrupt],
+            before_send=backend_before_send,
         )
         logger.info("Sentry crash reporting enabled (backend)")
     except ImportError:
@@ -104,6 +107,44 @@ _background_tasks: list = []
 _pid_file: Path | None = None
 
 
+async def _shutdown_cleanup() -> None:
+    """Release background resources during shutdown."""
+    global _pid_file
+
+    logger.info("Shutdown initiated, cleaning up resources...")
+
+    for task in _background_tasks:
+        if not task.done():
+            task.cancel()
+    if _background_tasks:
+        await asyncio.gather(*_background_tasks, return_exceptions=True)
+    _background_tasks.clear()
+
+    try:
+        from api.jobs.manager import job_manager
+
+        job_manager.shutdown(wait=False)
+        logger.info("Job manager shut down")
+    except Exception as e:
+        logger.warning("Error shutting down job manager: %s", e)
+
+    for ws in list(ws_manager._connections):
+        try:
+            await ws.close()
+        except Exception:
+            pass
+    logger.info("WebSocket connections closed")
+
+    if _pid_file and _pid_file.exists():
+        try:
+            _pid_file.unlink()
+            logger.info("Removed PID file: %s", _pid_file)
+        except Exception as e:
+            logger.warning("Failed to remove PID file: %s", e)
+
+    logger.info("Shutdown cleanup complete")
+
+
 # ============= Application Lifespan =============
 
 
@@ -117,7 +158,6 @@ async def lifespan(_app: FastAPI):
     Shutdown:
       Cancel background tasks, stop job executor, close WebSocket connections, remove PID file.
     """
-    import asyncio
     import sys
 
     global startup_complete, _pid_file
@@ -217,45 +257,15 @@ async def lifespan(_app: FastAPI):
         _background_tasks.append(asyncio.create_task(check_updates_background()))
     _background_tasks.append(asyncio.create_task(cache_recommended_config_background()))
 
-    yield  # --- APPLICATION RUNS ---
-
-    # --- SHUTDOWN ---
-    logger.info("Shutdown initiated, cleaning up resources...")
-
-    # 1. Cancel background async tasks
-    for task in _background_tasks:
-        if not task.done():
-            task.cancel()
-    # Brief wait for cancellation to propagate
-    if _background_tasks:
-        await asyncio.gather(*_background_tasks, return_exceptions=True)
-    _background_tasks.clear()
-
-    # 2. Stop the job manager's thread pool (don't wait for running jobs)
     try:
-        from api.jobs.manager import job_manager
-        job_manager.shutdown(wait=False)
-        logger.info("Job manager shut down")
-    except Exception as e:
-        logger.warning("Error shutting down job manager: %s", e)
-
-    # 3. Close all WebSocket connections
-    for ws in list(ws_manager._connections):
+        yield  # --- APPLICATION RUNS ---
+    finally:
+        cleanup_task = asyncio.create_task(_shutdown_cleanup())
         try:
-            await ws.close()
-        except Exception:
-            pass
-    logger.info("WebSocket connections closed")
-
-    # 4. Remove PID file
-    if _pid_file and _pid_file.exists():
-        try:
-            _pid_file.unlink()
-            logger.info("Removed PID file: %s", _pid_file)
-        except Exception as e:
-            logger.warning("Failed to remove PID file: %s", e)
-
-    logger.info("Shutdown cleanup complete")
+            await asyncio.shield(cleanup_task)
+        except asyncio.CancelledError:
+            logger.debug("Shutdown cancellation received while cleanup was running")
+            await cleanup_task
 
 
 # Create FastAPI app
@@ -606,10 +616,13 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    uvicorn.run(
-        "main:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-        log_level="info",
-    )
+    try:
+        uvicorn.run(
+            "main:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+            log_level="info",
+        )
+    except KeyboardInterrupt:
+        logger.info("Server shutdown requested")

@@ -231,6 +231,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
             />
             <YAxis
               yAxisId="importance"
+              width={70}
               label={{ value: 'Importance', angle: -90, position: 'insideLeft', offset: 10, className: 'fill-muted-foreground text-xs' }}
               className="text-xs"
               tickFormatter={(value: number) => value.toFixed(3)}
@@ -239,6 +240,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
               <YAxis
                 yAxisId="absorbance"
                 orientation="right"
+                width={60}
                 label={{ value: 'Absorbance', angle: 90, position: 'insideRight', offset: 10, className: 'fill-muted-foreground text-xs' }}
                 className="text-xs"
                 tickFormatter={(value: number) => value.toFixed(2)}
@@ -302,7 +304,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={binnedBarData}
-            margin={{ top: 5, right: 30, left: 10, bottom: 35 }}
+            margin={{ top: 5, right: hasSpectrum ? 60 : 30, left: 10, bottom: 35 }}
           >
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
             <XAxis
@@ -314,9 +316,22 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
               className="text-xs"
             />
             <YAxis
+              yAxisId="binned"
+              width={70}
               label={{ value: 'Binned', angle: -90, position: 'insideLeft', offset: 10, className: 'fill-muted-foreground text-xs' }}
               className="text-xs"
+              tickFormatter={(value: number) => value.toFixed(3)}
             />
+            {hasSpectrum && (
+              <YAxis
+                yAxisId="binned-right-spacer"
+                orientation="right"
+                width={60}
+                tick={false}
+                axisLine={false}
+                tickLine={false}
+              />
+            )}
             <Tooltip
               content={({ active, payload }) => {
                 if (!active || !payload || !payload.length) return null;
@@ -329,7 +344,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
                 );
               }}
             />
-            <Bar dataKey="importance" fill="hsl(var(--primary))" fillOpacity={0.8} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+            <Bar yAxisId="binned" dataKey="importance" fill="hsl(var(--primary))" fillOpacity={0.8} radius={[2, 2, 0, 0]} isAnimationActive={false} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
