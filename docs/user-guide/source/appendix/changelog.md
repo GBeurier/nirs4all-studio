@@ -6,6 +6,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## 0.6.2 — 2026-04-17
+
+### Added
+
+- **Variable Importance session state**: Selections, job status, and SHAP results persist across navigation via a dedicated session cache.
+- **Prediction coloration**: New color legend and configurable point coloration (by metadata, partition, or residual magnitude) in scatter and residual charts.
+- **Enriched run details**: `RunDetailSheet` split into dedicated Overview, Pipelines, and Logs panels backed by store-adapter enrichment and new backend endpoints.
+- **Renderable step parameters**: `StepConfigPanel` now uses `getRenderableStepParams` for consistent parameter rendering, with unit coverage.
+
+### Changed
+
+- **ModelSelector (Predictions)**: Reworked with advanced filtering, sorting, and a refreshed UI for faster model discovery.
+- **Aggregated predictions API**: Extended response metadata and pipeline canonical handling for richer cross-run views.
+- **Score adapters**: Tightened handling of refit/repetition-aware metrics.
+- **nirs4all dependency**: Raised the minimum supported nirs4all version to 0.9.1 across all managed compute profiles.
+- **README**: Refreshed nirs4all offerings, installation options, and feature descriptions for clarity.
+
+### Licensing
+
+- **CeCILL-2.1**: Added full `LICENSES/` folder with CeCILL-2.1 plus third-party notices (NumPy, Pandas, SciPy, PyTorch, Keras, JAX, SHAP, joblib, PyWavelets, jsonschema) and updated `LICENSE` / `CONTRIBUTING.md`.
+
+---
+
 ## 0.6.1 — 2026-04-16
 
 ### Fixed
