@@ -114,6 +114,7 @@ function sortPresetItems(presets: PipelinePreset[]) {
 }
 
 interface RecentRunEntry {
+  listKey: string;
   pipelineId: string;
   pipelineName: string;
   runId: string;
@@ -153,11 +154,18 @@ function pickBestChain(chains: ChainSummary[]): ChainSummary | null {
 function extractRecentRuns(runs: Run[] | undefined, limit: number): RecentRunEntry[] {
   if (!runs?.length) return [];
   const flat: RecentRunEntry[] = [];
+  const fallbackKeyCounts = new Map<string, number>();
   for (const run of runs) {
     const datasets = run.datasets ?? [];
     for (const ds of datasets) {
       for (const p of ds.pipelines ?? []) {
+        const fallbackKeyBase = `${run.id}:${ds.dataset_name}:${p.pipeline_id}`;
+        const fallbackKeyCount = fallbackKeyCounts.get(fallbackKeyBase) ?? 0;
+        fallbackKeyCounts.set(fallbackKeyBase, fallbackKeyCount + 1);
         flat.push({
+          listKey: p.id
+            ? `${run.id}:${p.id}`
+            : `${fallbackKeyBase}:${fallbackKeyCount}`,
           pipelineId: p.pipeline_id,
           pipelineName: p.pipeline_name || "Unknown pipeline",
           runId: run.id,
@@ -629,7 +637,7 @@ export default function Pipelines() {
       >
         {filteredRecentRuns.map((entry) => (
           <motion.li
-            key={`${entry.runId}:${entry.pipelineId}`}
+            key={entry.listKey}
             variants={itemVariants}
             className="step-card flex flex-wrap items-center justify-between gap-3"
           >

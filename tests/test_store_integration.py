@@ -149,6 +149,63 @@ class TestStoreAdapter:
         assert result["run_id"] == "run-001"
         assert "pipelines" in result
 
+    def test_get_run_detail_ignores_repr_style_refit_splitter(self, mock_polars_df):
+        mock_store = MagicMock()
+        mock_store.get_run.return_value = {
+            "run_id": "run-001",
+            "name": "Test Run",
+            "status": "completed",
+            "created_at": datetime(2025, 1, 15, tzinfo=UTC),
+            "completed_at": datetime(2025, 1, 15, tzinfo=UTC),
+            "config": {},
+            "datasets": [],
+            "summary": {},
+        }
+        mock_store.list_pipelines.return_value = mock_polars_df([
+            {
+                "pipeline_id": "pipe-refit",
+                "name": "Refit pipeline",
+                "expanded_config": [
+                    "<nirs4all.pipeline.execution.refit.executor._FullTrainFoldSplitter object at 0x000001EAEF3C4250>",
+                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 3}}},
+                ],
+                "generator_choices": None,
+                "created_at": datetime(2025, 1, 15, tzinfo=UTC),
+                "completed_at": datetime(2025, 1, 15, tzinfo=UTC),
+            },
+            {
+                "pipeline_id": "pipe-cv",
+                "name": "CV pipeline",
+                "expanded_config": [
+                    {
+                        "class": "sklearn.model_selection._split.KFold",
+                        "params": {"n_splits": 5, "shuffle": True, "random_state": 11},
+                    },
+                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 3}}},
+                ],
+                "generator_choices": None,
+                "created_at": datetime(2025, 1, 15, tzinfo=UTC),
+                "completed_at": datetime(2025, 1, 15, tzinfo=UTC),
+            },
+        ])
+
+        adapter = self._make_adapter(mock_store)
+        result = adapter.get_run_detail("run-001")
+
+        assert result is not None
+        assert result["config"]["cv_strategy"] == "kfold"
+        assert result["config"]["splitter_class"] == "KFold"
+        assert result["config"]["cv_folds"] == 5
+        assert result["config"]["random_state"] == 11
+        assert result["config"]["shuffle"] is True
+        assert result["config"]["has_refit"] is True
+
+        pipelines = {pipeline["pipeline_id"]: pipeline for pipeline in result["pipelines"]}
+        assert pipelines["pipe-refit"]["is_refit_pipeline"] is True
+        assert pipelines["pipe-refit"]["splitter_class"] is None
+        assert pipelines["pipe-cv"]["is_refit_pipeline"] is False
+        assert pipelines["pipe-cv"]["splitter_class"] == "KFold"
+
     def test_get_run_detail_not_found(self):
         mock_store = MagicMock()
         mock_store.get_run.return_value = None
@@ -635,6 +692,62 @@ class TestStoreAdapter:
         assert score_entry["cv_score"] == 0.12
         assert score_entry["model_name"] == "Model A"
 
+    def test_normalize_run_dataset_entries_backfills_name_and_dataset_name(self):
+        from api.workspace import _normalize_run_dataset_entries
+
+        normalized = _normalize_run_dataset_entries([
+            {"name": "regression"},
+            {"dataset_name": "classification"},
+            "synthetic_regression",
+        ])
+
+        assert normalized == [
+            {"name": "regression", "dataset_name": "regression"},
+            {"dataset_name": "classification", "name": "classification"},
+            {"name": "synthetic_regression", "dataset_name": "synthetic_regression"},
+        ]
+
+    def test_resolve_dataset_mapping_matches_name_only_historical_run_entries(self):
+        from api.workspace import _resolve_dataset_mapping
+
+        datasets_result = [{"name": "regression"}]
+
+        _resolve_dataset_mapping(
+            datasets_result,
+            linked_datasets=[{"id": "ds_reg", "name": "regression", "path": "D:/datasets/regression"}],
+        )
+
+        assert datasets_result[0]["linked_dataset_id"] == "ds_reg"
+        assert datasets_result[0]["dataset_name"] == "regression"
+
+    def test_resolve_dataset_mapping_keeps_prefix_matching_when_linked_id_is_null(self):
+        from api.workspace import _resolve_dataset_mapping
+
+        datasets_result = [{
+            "name": "regression_Xcal.csv",
+            "dataset_name": "regression_Xcal.csv",
+            "linked_dataset_id": None,
+        }]
+
+        _resolve_dataset_mapping(
+            datasets_result,
+            linked_datasets=[{"id": "ds_reg", "name": "regression", "path": "D:/datasets/regression"}],
+        )
+
+        assert datasets_result[0]["linked_dataset_id"] == "ds_reg"
+
+    def test_resolve_dataset_mapping_remaps_stale_linked_dataset_id(self):
+        from api.workspace import _resolve_dataset_mapping
+
+        datasets_result = [{"name": "regression", "linked_dataset_id": "old_reg"}]
+
+        _resolve_dataset_mapping(
+            datasets_result,
+            linked_datasets=[{"id": "ds_reg", "name": "regression", "path": "D:/datasets/regression"}],
+        )
+
+        assert datasets_result[0]["linked_dataset_id"] == "ds_reg"
+
     def test_get_prediction_scatter(self):
         import numpy as np
 
@@ -646,6 +759,7 @@ class TestStoreAdapter:
             "partition": "val",
             "model_name": "PLS(10)",
             "dataset_name": "dataset_a",
+            "sample_metadata": {"batch": ["A", "B", "A"]},
         }
 
         adapter = self._make_adapter(mock_store)
@@ -655,6 +769,7 @@ class TestStoreAdapter:
         assert result["n_samples"] == 3
         assert len(result["y_true"]) == 3
         assert len(result["y_pred"]) == 3
+        assert result["sample_metadata"] == {"batch": ["A", "B", "A"]}
 
     def test_get_prediction_scatter_not_found(self):
         mock_store = MagicMock()

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { motion } from '@/lib/motion';
 import { useTranslation } from 'react-i18next';
@@ -9,9 +9,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { VariableImportanceForm } from '@/components/variable-importance/VariableImportanceForm';
 import { ResultsPanel } from '@/components/variable-importance/ResultsPanel';
-import { computeShapExplanation, getShapResults } from '@/api/shap';
+import { computeShapExplanation, getShapResults, getShapStatus } from '@/api/shap';
 import { useJobUpdates } from '@/hooks/useWebSocket';
+import {
+  loadShapSessionState,
+  persistShapSessionState,
+} from '@/lib/shapSessionCache';
 import type {
+  BinnedImportanceData,
   ShapComputeRequest,
   ShapResultsResponse,
   ShapTab,
@@ -34,49 +39,148 @@ const itemVariants = {
 
 export default function VariableImportance() {
   const { t } = useTranslation();
+  const persistedSession = useMemo(() => loadShapSessionState(), []);
 
   // Selection state
-  const [chainId, setChainId] = useState<string | null>(null);
-  const [datasetName, setDatasetName] = useState<string | null>(null);
-  const [partition, setPartition] = useState<Partition>('test');
+  const [chainId, setChainId] = useState<string | null>(() => persistedSession?.chainId ?? null);
+  const [datasetName, setDatasetName] = useState<string | null>(() => persistedSession?.datasetName ?? null);
+  const [partition, setPartition] = useState<Partition>(() => persistedSession?.partition ?? 'test');
 
   // Configuration state
-  const [explainerType, setExplainerType] = useState<ExplainerType>('auto');
+  const [explainerType, setExplainerType] = useState<ExplainerType>(() => persistedSession?.explainerType ?? 'auto');
 
   // Job / results state
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [results, setResults] = useState<ShapResultsResponse | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(() => persistedSession?.jobId ?? null);
+  const [results, setResults] = useState<ShapResultsResponse | null>(() => persistedSession?.results ?? null);
+  const [rebinnedData, setRebinnedData] = useState<BinnedImportanceData | null>(() => persistedSession?.rebinnedData ?? null);
+  const [isSubmitting, setIsSubmitting] = useState(() => persistedSession?.isSubmitting ?? false);
   const [error, setError] = useState<string | null>(null);
 
   // UI state
-  const [activeTab, setActiveTab] = useState<ShapTab>('spectral');
-  const [selectedSamples, setSelectedSamples] = useState<number[]>([]);
+  const [activeTab, setActiveTab] = useState<ShapTab>(() => persistedSession?.activeTab ?? 'spectral');
+  const [selectedSamples, setSelectedSamples] = useState<number[]>(() => persistedSession?.selectedSamples ?? []);
 
   // WebSocket progress tracking
   const { status: jobStatus, progress, progressMessage, error: wsError } = useJobUpdates(jobId);
 
+  // `useJobUpdates` does not reset its internal status when jobId changes, so after a failure
+  // the stale 'failed' value can briefly leak into the next run. This ref tells the effects
+  // below to ignore 'failed' until the new job has reported a fresh (non-failed) status.
+  const awaitingFreshStatusRef = useRef(false);
+
   const isRunning = jobStatus === 'running' || isSubmitting;
+
+  useEffect(() => {
+    persistShapSessionState({
+      chainId,
+      datasetName,
+      partition,
+      explainerType,
+      jobId,
+      results,
+      rebinnedData,
+      isSubmitting,
+      activeTab,
+      selectedSamples,
+    });
+  }, [
+    activeTab,
+    chainId,
+    datasetName,
+    explainerType,
+    isSubmitting,
+    jobId,
+    partition,
+    rebinnedData,
+    results,
+    selectedSamples,
+  ]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    if (results && !isSubmitting) return;
+
+    let cancelled = false;
+
+    const reconcileJob = async () => {
+      try {
+        const job = await getShapStatus(jobId) as Record<string, unknown>;
+        if (cancelled) return;
+
+        const status = typeof job.status === 'string' ? job.status : null;
+        const statusError =
+          typeof job.error === 'string'
+            ? job.error
+            : typeof job.message === 'string'
+              ? job.message
+              : null;
+
+        if (status === 'completed') {
+          const fullResults = await getShapResults(jobId);
+          if (cancelled) return;
+          setResults(fullResults);
+          setRebinnedData(null);
+          setSelectedSamples([]);
+          setIsSubmitting(false);
+          setError(null);
+          return;
+        }
+
+        if (status === 'running' || status === 'pending') {
+          setIsSubmitting(true);
+          return;
+        }
+
+        if (status === 'failed' || status === 'cancelled') {
+          setIsSubmitting(false);
+          setJobId(null);
+          if (!results) {
+            setError(statusError || 'SHAP computation failed');
+          }
+        }
+      } catch (err) {
+        if (cancelled) return;
+
+        setIsSubmitting(false);
+        if (!results) {
+          const message = err instanceof Error ? err.message : 'Failed to restore SHAP analysis';
+          setError(message);
+          setJobId(null);
+        }
+      }
+    };
+
+    void reconcileJob();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isSubmitting, jobId, results]);
 
   // When job completes, fetch full results
   useEffect(() => {
-    if (jobStatus === 'completed' && jobId) {
+    if (jobStatus && jobStatus !== 'failed') {
+      awaitingFreshStatusRef.current = false;
+    }
+    if (jobStatus === 'completed' && jobId && !results) {
       getShapResults(jobId)
         .then((r) => {
           setResults(r);
+          setRebinnedData(null);
           setSelectedSamples([]);
           setIsSubmitting(false);
+          setError(null);
         })
         .catch((err) => {
           setError(err.message || 'Failed to fetch results');
           setIsSubmitting(false);
         });
     }
-    if (jobStatus === 'failed') {
+    if (jobStatus === 'failed' && !awaitingFreshStatusRef.current) {
       setError(wsError || 'SHAP computation failed');
       setIsSubmitting(false);
     }
-  }, [jobStatus, jobId, wsError]);
+  }, [jobStatus, jobId, results, wsError]);
 
   const handleChainSelect = useCallback((newChainId: string | null, newDatasetName: string | null) => {
     setChainId(newChainId);
@@ -89,9 +193,12 @@ export default function VariableImportance() {
       return;
     }
 
+    awaitingFreshStatusRef.current = true;
     setIsSubmitting(true);
     setError(null);
     setResults(null);
+    setRebinnedData(null);
+    setSelectedSamples([]);
     setJobId(null);
 
     try {
@@ -210,10 +317,12 @@ export default function VariableImportance() {
         variants={itemVariants}
         className="flex-1 min-w-0 lg:overflow-y-auto lg:max-h-[calc(100vh-8rem)]"
       >
-        {results ? (
+        {results && jobId ? (
           <ResultsPanel
             results={results}
-            jobId={jobId!}
+            jobId={jobId}
+            binnedData={rebinnedData}
+            onBinnedDataChange={setRebinnedData}
             activeTab={activeTab}
             onTabChange={setActiveTab}
             selectedSamples={selectedSamples}

@@ -21,6 +21,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
@@ -2825,6 +2826,34 @@ async def get_workspace_run_detail(workspace_id: str, run_id: str):
         if scanner._has_store():
             run = scanner.store_adapter.get_run_detail(run_id)
             if run is not None:
+                linked_datasets = app_config.get_datasets()
+                datasets_result = _normalize_run_dataset_entries(run.get("datasets"))
+                _resolve_dataset_mapping(datasets_result, linked_datasets)
+                unresolved_dataset_names = [
+                    str(dataset.get("name") or "")
+                    for dataset in datasets_result
+                    if not dataset.get("linked_dataset_id")
+                ]
+
+                log_summary = scanner.store_adapter.get_run_log(run_id)
+                log_summary_by_pipeline = {
+                    str(entry.get("pipeline_id") or ""): entry
+                    for entry in log_summary
+                    if entry.get("pipeline_id")
+                }
+                pipelines = []
+                for pipeline in run.get("pipelines") or []:
+                    if not isinstance(pipeline, dict):
+                        continue
+                    merged_pipeline = dict(pipeline)
+                    merged_pipeline.update(log_summary_by_pipeline.get(str(pipeline.get("pipeline_id") or ""), {}))
+                    pipelines.append(merged_pipeline)
+
+                run["datasets"] = datasets_result
+                run["pipelines"] = pipelines
+                run["log_summary"] = log_summary
+                run["rerun_ready"] = len(unresolved_dataset_names) == 0 and len(pipelines) > 0
+                run["unresolved_dataset_names"] = unresolved_dataset_names
                 results = scanner.discover_results(run_id)
                 run["results"] = results
                 run["results_count"] = len(results)
@@ -2846,6 +2875,186 @@ async def get_workspace_run_detail(workspace_id: str, run_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get run detail: {str(e)}"
+        )
+
+
+@router.get("/workspaces/{workspace_id}/runs/{run_id}/pipelines/{pipeline_id}/logs")
+async def get_workspace_run_pipeline_logs(workspace_id: str, run_id: str, pipeline_id: str):
+    """Get structured log rows for one stored pipeline within a run."""
+    try:
+        _, _, scanner = _get_store_backed_workspace_scanner(workspace_id)
+        pipeline = scanner.store_adapter.store.get_pipeline(pipeline_id)
+        if not isinstance(pipeline, dict) or pipeline.get("run_id") != run_id:
+            raise HTTPException(status_code=404, detail="Pipeline not found in run")
+
+        return {
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline.get("name"),
+            "logs": scanner.store_adapter.get_pipeline_log(pipeline_id),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get pipeline logs: {str(e)}",
+        )
+
+
+@router.post("/workspaces/{workspace_id}/runs/{run_id}/rerun")
+async def rerun_workspace_run(workspace_id: str, run_id: str):
+    """Clone a stored run's base pipelines, save them, and launch a new run."""
+    try:
+        ws = workspace_manager._find_linked_workspace(workspace_id)
+        if not ws:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        if not ws.is_active:
+            activated = workspace_manager.activate_workspace(workspace_id)
+            if not activated:
+                raise HTTPException(status_code=409, detail="Failed to activate workspace")
+
+        workspace_path = Path(ws.path)
+        scanner = WorkspaceScanner(workspace_path)
+        if not scanner._has_store():
+            raise HTTPException(status_code=501, detail="Run rerun requires a store database")
+
+        run = scanner.store_adapter.get_run_detail(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+
+        datasets_result = _normalize_run_dataset_entries(run.get("datasets"))
+        linked_datasets = app_config.get_datasets()
+        _resolve_dataset_mapping(datasets_result, linked_datasets)
+        unresolved_dataset_names = [
+            str(dataset.get("name") or "")
+            for dataset in datasets_result
+            if not dataset.get("linked_dataset_id")
+        ]
+        if unresolved_dataset_names:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Cannot rerun this history entry because some datasets are no longer linked: "
+                    + ", ".join(unresolved_dataset_names)
+                ),
+            )
+
+        source_pipelines = _rerunnable_pipeline_rows([
+            pipeline
+            for pipeline in (run.get("pipelines") or [])
+            if isinstance(pipeline, dict)
+        ])
+        deduped_source_pipelines: list[dict[str, Any]] = []
+        seen_pipeline_signatures: set[str] = set()
+        for pipeline in source_pipelines:
+            signature = _pipeline_rerun_signature(pipeline)
+            if signature in seen_pipeline_signatures:
+                continue
+            seen_pipeline_signatures.add(signature)
+            deduped_source_pipelines.append(pipeline)
+        source_pipelines = deduped_source_pipelines
+        if not source_pipelines:
+            raise HTTPException(status_code=409, detail="No stored pipelines are available to rerun")
+
+        from .pipeline_canonical import canonical_to_editor
+        from .pipelines import _normalize_and_validate_editor_steps, _save_pipeline
+        from .runs import CreateRunRequest, ExperimentConfig, create_run
+
+        existing_names: set[str] = set()
+        cloned_pipelines: list[dict[str, Any]] = []
+        cloned_pipeline_ids: list[str] = []
+
+        for pipeline in source_pipelines:
+            expanded_config = pipeline.get("expanded_config")
+            if isinstance(expanded_config, dict) and isinstance(expanded_config.get("pipeline"), list):
+                canonical_steps = expanded_config["pipeline"]
+            elif isinstance(expanded_config, list):
+                canonical_steps = expanded_config
+            elif expanded_config is None:
+                canonical_steps = []
+            else:
+                canonical_steps = [expanded_config]
+
+            source_name = str(pipeline.get("name") or pipeline.get("pipeline_id") or "Pipeline").strip() or "Pipeline"
+            if source_name.endswith("_refit"):
+                source_name = source_name[:-len("_refit")]
+            clone_name = _pipeline_clone_name(source_name, "(Rerun)", existing_names)
+            clone_id = f"pipeline_{int(time.time())}_{uuid4().hex[:6]}"
+            clone_description = f"Cloned from run {run_id}"
+            editor_steps = canonical_to_editor(canonical_steps)
+            normalized_steps = _normalize_and_validate_editor_steps(
+                editor_steps,
+                name=clone_name,
+                description=clone_description,
+            )
+
+            saved_pipeline = {
+                "id": clone_id,
+                "name": clone_name,
+                "description": clone_description,
+                "category": "user",
+                "steps": normalized_steps,
+                "is_favorite": False,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+            }
+            _save_pipeline(saved_pipeline)
+            cloned_pipeline_ids.append(clone_id)
+            cloned_pipelines.append({
+                "id": clone_id,
+                "name": clone_name,
+                "source_pipeline_id": pipeline.get("pipeline_id"),
+                "source_pipeline_name": pipeline.get("name"),
+            })
+
+        run_config = run.get("config") if isinstance(run.get("config"), dict) else {}
+        dataset_ids = [str(dataset["linked_dataset_id"]) for dataset in datasets_result if dataset.get("linked_dataset_id")]
+        split_group_by_by_dataset = {
+            str(dataset["linked_dataset_id"]): (
+                dataset.get("repetition")
+                if isinstance(dataset.get("repetition"), str) and dataset.get("repetition")
+                else None
+            )
+            for dataset in datasets_result
+            if dataset.get("linked_dataset_id")
+        }
+
+        requested_cv_folds = run_config.get("cv_folds")
+        cv_folds = int(requested_cv_folds) if isinstance(requested_cv_folds, (int, float)) and int(requested_cv_folds) > 1 else 5
+        requested_random_state = run_config.get("random_state")
+        random_state = int(requested_random_state) if isinstance(requested_random_state, (int, float)) else None
+        requested_test_size = run_config.get("test_size")
+        test_size = float(requested_test_size) if isinstance(requested_test_size, (int, float)) else 0.2
+
+        run_name = str(run.get("name") or "").strip()
+        launch_name = f"{run_name or 'Run'} (rerun)"
+        request = CreateRunRequest(config=ExperimentConfig(
+            name=launch_name,
+            description=f"Rerun of {run_name or run_id}",
+            dataset_ids=dataset_ids,
+            pipeline_ids=cloned_pipeline_ids,
+            cv_folds=cv_folds,
+            cv_strategy=_normalize_rerun_cv_strategy(run_config.get("cv_strategy")),
+            test_size=test_size,
+            random_state=random_state,
+            project_id=run.get("project_id"),
+            split_group_by_by_dataset=split_group_by_by_dataset,
+        ))
+        launched_run = await create_run(request)
+
+        return {
+            "success": True,
+            "source_run_id": run_id,
+            "run": launched_run,
+            "cloned_pipelines": cloned_pipelines,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to rerun run: {str(e)}",
         )
 
 
@@ -2955,11 +3164,18 @@ async def get_score_distribution(workspace_id: str, run_id: str, dataset_name: s
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _dataset_match_key(value: Any) -> str:
+    """Normalize dataset names/paths into a comparable lowercase key."""
+    if not isinstance(value, str):
+        return ""
+    return "".join(c if c.isalnum() else "_" for c in value).lower()
+
+
 def _resolve_dataset_mapping(datasets_result: list[dict], linked_datasets: list) -> None:
     """Resolve store dataset_name → linked dataset ID using smart matching.
 
     Matching strategies (in priority order):
-    1. Exact name match (case-insensitive)
+    1. Exact normalized name match (case-insensitive)
     2. folder_to_name(linked_path) is a prefix of store name (longest wins)
     3. Linked name is a prefix of store name (longest wins)
 
@@ -2968,53 +3184,154 @@ def _resolve_dataset_mapping(datasets_result: list[dict], linked_datasets: list)
     if not linked_datasets:
         return
 
-    # Build list of (id, name_lower, folder_name_lower) tuples
-    linked_info: list[tuple[str, str, str]] = []
+    # Build list of (id, raw_name_lower, normalized_name, normalized_folder_name)
+    linked_info: list[tuple[str, str, str, str]] = []
+    linked_ids: set[str] = set()
     for ld in linked_datasets:
         ld_id = ld.id if hasattr(ld, "id") else ld.get("id", "")
         ld_name = ld.name if hasattr(ld, "name") else ld.get("name", "")
         ld_path = ld.path if hasattr(ld, "path") else ld.get("path", "")
+        ld_id = str(ld_id or "")
         name_lower = ld_name.lower() if ld_name else ""
-        folder_lower = ""
+        name_key = _dataset_match_key(ld_name)
+        folder_key = ""
         if ld_path:
-            folder_lower = "".join(c if c.isalnum() else "_" for c in Path(ld_path).name).lower()
-        linked_info.append((ld_id, name_lower, folder_lower))
+            folder_key = _dataset_match_key(Path(ld_path).name)
+        linked_ids.add(ld_id)
+        linked_info.append((ld_id, name_lower, name_key, folder_key))
 
     for ds_entry in datasets_result:
-        store_name = ds_entry.get("dataset_name", "")
+        store_name = (
+            ds_entry.get("dataset_name")
+            or ds_entry.get("name")
+            or ds_entry.get("dataset")
+            or ""
+        )
         if not store_name:
             continue
 
-        store_lower = store_name.lower()
+        if not ds_entry.get("name"):
+            ds_entry["name"] = store_name
+        if not ds_entry.get("dataset_name"):
+            ds_entry["dataset_name"] = store_name
 
-        # Strategy 1: exact name match (case-insensitive)
-        for ld_id, name_lower, _ in linked_info:
-            if store_lower == name_lower:
-                ds_entry["linked_dataset_id"] = ld_id
+        existing_linked_id = str(ds_entry.get("linked_dataset_id") or "")
+        if existing_linked_id and existing_linked_id in linked_ids:
+            continue
+
+        store_lower = str(store_name).lower()
+        store_key = _dataset_match_key(store_name)
+        matched_id: str | None = None
+
+        # Strategy 1: exact name match (case-insensitive / normalized)
+        for ld_id, name_lower, name_key, _ in linked_info:
+            if store_lower == name_lower or (store_key and store_key == name_key):
+                matched_id = ld_id
                 break
-        if "linked_dataset_id" in ds_entry:
+        if matched_id:
+            ds_entry["linked_dataset_id"] = matched_id
             continue
 
         # Strategy 2: folder_to_name(path) is a prefix of store name (longest wins)
         best_id: str | None = None
         best_len = 0
-        for ld_id, _, folder_lower in linked_info:
-            if folder_lower and store_lower.startswith(folder_lower) and len(folder_lower) > best_len:
+        for ld_id, _, _, folder_key in linked_info:
+            if folder_key and store_key.startswith(folder_key) and len(folder_key) > best_len:
                 best_id = ld_id
-                best_len = len(folder_lower)
+                best_len = len(folder_key)
 
         if best_id:
             ds_entry["linked_dataset_id"] = best_id
             continue
 
         # Strategy 3: linked name prefix (longest wins)
-        for ld_id, name_lower, _ in linked_info:
-            if name_lower and store_lower.startswith(name_lower) and len(name_lower) > best_len:
+        for ld_id, _, name_key, _ in linked_info:
+            if name_key and store_key.startswith(name_key) and len(name_key) > best_len:
                 best_id = ld_id
-                best_len = len(name_lower)
+                best_len = len(name_key)
 
         if best_id:
             ds_entry["linked_dataset_id"] = best_id
+
+
+def _normalize_run_dataset_entries(raw_datasets: Any) -> list[dict[str, Any]]:
+    """Normalize stored run dataset payloads to a list of dictionaries."""
+    if not isinstance(raw_datasets, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for entry in raw_datasets:
+        if isinstance(entry, dict):
+            dataset_entry = dict(entry)
+            dataset_name = (
+                dataset_entry.get("dataset_name")
+                or dataset_entry.get("name")
+                or dataset_entry.get("dataset")
+            )
+            if isinstance(dataset_name, str) and dataset_name.strip():
+                stripped_name = dataset_name.strip()
+                dataset_entry.setdefault("name", stripped_name)
+                dataset_entry.setdefault("dataset_name", stripped_name)
+            normalized.append(dataset_entry)
+        elif isinstance(entry, str) and entry.strip():
+            dataset_name = entry.strip()
+            normalized.append({"name": dataset_name, "dataset_name": dataset_name})
+    return normalized
+
+
+def _rerunnable_pipeline_rows(pipelines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prefer base CV pipelines over generated refit pipelines for reruns."""
+    base_pipelines = [pipeline for pipeline in pipelines if not pipeline.get("is_refit_pipeline")]
+    return base_pipelines or pipelines
+
+
+def _pipeline_clone_name(name: str, suffix: str, existing: set[str]) -> str:
+    """Generate a readable clone name without colliding repeatedly."""
+    candidate = f"{name} {suffix}".strip()
+    if candidate not in existing:
+        existing.add(candidate)
+        return candidate
+
+    index = 2
+    while True:
+        numbered = f"{candidate} {index}"
+        if numbered not in existing:
+            existing.add(numbered)
+            return numbered
+        index += 1
+
+
+def _pipeline_rerun_signature(pipeline: dict[str, Any]) -> str:
+    """Stable signature used to deduplicate stored pipeline rows across datasets."""
+    name = str(pipeline.get("name") or "")
+    expanded_config = pipeline.get("expanded_config")
+    try:
+        payload = json.dumps(expanded_config, sort_keys=True, default=str)
+    except Exception:
+        payload = str(expanded_config)
+    return f"{name}::{payload}"
+
+
+def _normalize_rerun_cv_strategy(value: Any) -> str:
+    """Map inferred splitter names back to ``ExperimentConfig`` values."""
+    if not isinstance(value, str):
+        return "kfold"
+
+    normalized = value.strip().lower()
+    strategy_map = {
+        "kfold": "kfold",
+        "group_kfold": "kfold",
+        "repeated_kfold": "kfold",
+        "stratified_kfold": "stratified",
+        "repeated_stratified_kfold": "stratified",
+        "stratified_group_kfold": "stratified",
+        "loo": "loo",
+        "holdout": "holdout",
+        "shuffle_split": "holdout",
+        "stratified_shuffle_split": "holdout",
+        "group_shuffle_split": "holdout",
+    }
+    return strategy_map.get(normalized, "kfold")
 
 
 @router.get("/workspaces/{workspace_id}/results/summary")
@@ -3693,6 +4010,9 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
                     import numpy as np
                     y_true_list = y_true.tolist() if isinstance(y_true, np.ndarray) else list(y_true) if y_true is not None else []
                     y_pred_list = y_pred.tolist() if isinstance(y_pred, np.ndarray) else list(y_pred) if y_pred is not None else []
+                    sample_metadata = prediction.get('sample_metadata')
+                    if not isinstance(sample_metadata, dict):
+                        sample_metadata = prediction.get('metadata')
 
                     if not y_true_list or not y_pred_list:
                         continue
@@ -3705,6 +4025,7 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
                         "partition": prediction.get('partition', 'unknown'),
                         "model_name": prediction.get('model_name', 'unknown'),
                         "dataset_name": prediction.get('dataset_name', 'unknown'),
+                        "sample_metadata": sample_metadata if isinstance(sample_metadata, dict) else None,
                     }
             except Exception as e:
                 logger.error("Error reading %s: %s", meta_file, e)

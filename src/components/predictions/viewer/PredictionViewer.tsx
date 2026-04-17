@@ -23,6 +23,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -31,10 +32,12 @@ import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { isClassificationTask } from "@/components/runs/modelDetailClassification";
 import { ChartConfigPopover } from "./ChartConfigPopover";
+import { PredictionColorLegend } from "./PredictionColorLegend";
 import { PartitionToggles } from "./PartitionToggles";
 import { MetricsStrip } from "./MetricsStrip";
 import { usePredictionChartConfig } from "./usePredictionChartConfig";
 import { usePartitionsData } from "./fetchPartitionData";
+import { buildPredictionColoration } from "./coloration";
 import {
   exportChartPng,
   exportRowsCsv,
@@ -63,7 +66,11 @@ export function PredictionViewer({
   workspaceId,
   initialKind,
 }: PredictionViewerProps) {
-  const [config, setConfig, resetConfig] = usePredictionChartConfig();
+  const configDatasetKey = useMemo(
+    () => `${workspaceId ?? "__current__"}::${header.datasetName}`,
+    [workspaceId, header.datasetName],
+  );
+  const [config, setConfig, resetConfig] = usePredictionChartConfig({ datasetKey: configDatasetKey });
 
   const taskKind: TaskKind = useMemo(
     () => (isClassificationTask(header.taskType) ? "classification" : "regression"),
@@ -95,8 +102,23 @@ export function PredictionViewer({
     () => allDatasets.filter((d) => visible.has(d.partition)),
     [allDatasets, visible],
   );
+  const coloration = useMemo(
+    () => buildPredictionColoration(allDatasets, config),
+    [allDatasets, config],
+  );
 
   const chartRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open || config.colorMode !== "metadata") return;
+    if (coloration.metadataColumns.length === 0) return;
+    if (config.metadataKey && coloration.metadataColumns.includes(config.metadataKey)) return;
+    setConfig((prev) => ({
+      ...prev,
+      metadataKey: coloration.metadataColumns[0],
+      metadataType: undefined,
+    }));
+  }, [open, config.colorMode, config.metadataKey, coloration.metadataColumns, setConfig]);
 
   const kindLabel: Record<ChartKind, string> = {
     scatter: "scatter",
@@ -168,6 +190,20 @@ export function PredictionViewer({
     return [header.modelName ?? "Model", header.datasetName].filter(Boolean).join(" · ");
   }, [header.modelName, header.datasetName]);
 
+  const headerDescription = useMemo(() => {
+    const details = [
+      header.datasetName ? `dataset ${header.datasetName}` : null,
+      header.modelName ? `model ${header.modelName}` : null,
+      header.taskType ? `${header.taskType} task` : null,
+    ].filter(Boolean);
+
+    if (details.length === 0) {
+      return "Inspect prediction charts and export the current view.";
+    }
+
+    return `Inspect prediction charts for ${details.join(", ")}.`;
+  }, [header.datasetName, header.modelName, header.taskType]);
+
   const availableKinds: ChartKind[] =
     taskKind === "classification" ? ["confusion"] : ["scatter", "residuals"];
 
@@ -179,6 +215,7 @@ export function PredictionViewer({
             <ScatterIcon className="h-4 w-4 text-primary" />
             <span className="truncate">{headerTitle || "Prediction viewer"}</span>
           </DialogTitle>
+          <DialogDescription className="sr-only">{headerDescription}</DialogDescription>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Database className="h-3.5 w-3.5" />
@@ -249,6 +286,8 @@ export function PredictionViewer({
           <ChartConfigPopover
             kind={kind}
             config={config}
+            metadataColumns={coloration.metadataColumns}
+            resolvedMetadataType={coloration.metadataType}
             onChange={setConfig}
             onReset={resetConfig}
           />
@@ -273,6 +312,12 @@ export function PredictionViewer({
             CSV
           </Button>
         </div>
+
+        {kind !== "confusion" && visibleDatasets.length > 0 && (config.colorMode === "partition" || coloration.metadataKey) && (
+          <div className="border-b px-5 py-2">
+            <PredictionColorLegend datasets={visibleDatasets} config={config} />
+          </div>
+        )}
 
         {/* Chart area */}
         <div className="min-h-0 flex-1 px-5 py-3">

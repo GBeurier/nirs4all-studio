@@ -15,17 +15,22 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   Box,
+  Boxes,
   ChevronDown,
+  Cpu,
   Database,
   GitBranch,
   Grid3x3,
   Layers,
   Loader2,
+  Sparkles,
   TrendingUp,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { foldIdBase, foldLabel, foldLabelShort } from "@/lib/fold-utils";
+import { computePipelineStats } from "@/lib/pipelineStats";
+import { importFromNirs4all } from "@/utils/pipelineConverter";
 import {
   PARTITION_COLORS,
   normalizePartition,
@@ -44,6 +49,7 @@ import { isClassificationTask } from "@/components/runs/modelDetailClassificatio
 import {
   getChainDetail,
   getChainPartitionDetail,
+  getChainPipelineSteps,
   getPredictionArrays,
 } from "@/api/client";
 import type {
@@ -406,6 +412,149 @@ function KeyValueRow({ k, children }: { k: string; children: React.ReactNode }) 
   );
 }
 
+interface ChartBodyProps {
+  kind: ChartKind;
+  chartDatasets: ReturnType<typeof usePartitionsData>["data"];
+  chartsLoading: boolean;
+  chartsError: string | null;
+  panelConfig: ChartConfig;
+}
+
+function ChartBody({ kind, chartDatasets, chartsLoading, chartsError, panelConfig }: ChartBodyProps) {
+  if (chartsLoading) {
+    return (
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <span className="text-xs">Loading…</span>
+      </div>
+    );
+  }
+  if (chartsError) {
+    return (
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">{chartsError}</div>
+    );
+  }
+  if (chartDatasets.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+        Select a related prediction to display charts.
+      </div>
+    );
+  }
+  if (kind === "scatter") {
+    return <PredictionScatterChart className="h-full min-h-[320px] w-full" datasets={chartDatasets} config={panelConfig} variant="panel" />;
+  }
+  if (kind === "residuals") {
+    return <PredictionResidualsChart className="h-full min-h-[320px] w-full" datasets={chartDatasets} config={panelConfig} variant="panel" />;
+  }
+  return <PredictionConfusionChart className="h-full min-h-[320px] w-full" datasets={chartDatasets} config={panelConfig} variant="panel" />;
+}
+
+function parseGeneratorChoices(value: unknown): Array<Record<string, unknown>> | null {
+  let parsed: unknown = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(parsed)) return null;
+  const arr = parsed.filter((item): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item));
+  return arr.length > 0 ? arr : null;
+}
+
+function formatParamValue(value: unknown): string {
+  if (value == null) return "—";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return String(value);
+    const abs = Math.abs(value);
+    if (abs !== 0 && (abs >= 10000 || abs < 0.001)) return value.toExponential(2);
+    return Number.isInteger(value) ? String(value) : value.toFixed(4).replace(/\.?0+$/, "");
+  }
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+interface PipelineTreeNode {
+  id: string;
+  label: string;
+  depth: number;
+  kind: "step" | "branch" | "model";
+  params: Array<[string, unknown]>;
+  hasGenerator: boolean;
+}
+
+const MODEL_STEP_TYPES = new Set(["model", "model_pls", "model_ensemble", "model_dl"]);
+
+function buildPipelineTreeWithParams(
+  steps: unknown[] | null | undefined,
+  limit: number,
+): { nodes: PipelineTreeNode[]; total: number } {
+  const nodes: PipelineTreeNode[] = [];
+  let total = 0;
+  function visit(list: unknown[] | undefined, depth: number): void {
+    if (!Array.isArray(list)) return;
+    for (const raw of list) {
+      if (!raw || typeof raw !== "object") continue;
+      const step = raw as {
+        id?: string;
+        type?: string;
+        name?: string;
+        displayName?: string;
+        params?: Record<string, unknown>;
+        generator?: unknown;
+        paramSweeps?: unknown;
+        children?: unknown[];
+        branches?: unknown[][];
+      };
+      total += 1;
+      if (nodes.length < limit) {
+        const type = step.type ?? "step";
+        const label = step.displayName || step.name || type;
+        const kind: PipelineTreeNode["kind"] =
+          type === "branch" || type === "choice"
+            ? "branch"
+            : MODEL_STEP_TYPES.has(type)
+            ? "model"
+            : "step";
+        const paramsObj = step.params && typeof step.params === "object" ? step.params : {};
+        const paramsEntries = Object.entries(paramsObj).filter(([, v]) => v !== undefined && v !== null && v !== "");
+        nodes.push({
+          id: step.id ?? `${depth}-${nodes.length}`,
+          label,
+          depth,
+          kind,
+          params: paramsEntries,
+          hasGenerator: !!step.generator || !!step.paramSweeps,
+        });
+      }
+      if (Array.isArray(step.branches)) {
+        for (const branch of step.branches) visit(branch, depth + 1);
+      }
+      if (Array.isArray(step.children)) visit(step.children, depth + 1);
+    }
+  }
+  visit(steps ?? undefined, 0);
+  return { nodes, total };
+}
+
+function formatBranchPath(value: unknown): string | null {
+  if (value == null) return null;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    return value.map((v) => String(v)).join(" → ");
+  }
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  return null;
+}
+
 export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewer }: ChainDetailPanelProps) {
   const [detail, setDetail] = useState<ChainDetailResponse | null>(null);
   const [partitionRows, setPartitionRows] = useState<PartitionPrediction[]>([]);
@@ -414,6 +563,7 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
   const [arrayData, setArrayData] = useState<PredictionArraysResponse | null>(null);
   const [loadingArrays, setLoadingArrays] = useState(false);
   const [previewKind, setPreviewKind] = useState<ChartKind>("scatter");
+  const [pipelineSteps, setPipelineSteps] = useState<unknown[] | null>(null);
 
   /** Effective chain-summary facts: prefer fetched summary, fall back to the
    *  caller-supplied hints so the header renders immediately on open. */
@@ -448,7 +598,11 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
     return stub;
   }, [detail, chainId, metric, metaHint]);
 
-  const [sharedConfig] = usePredictionChartConfig();
+  const configDatasetKey = useMemo(
+    () => `__current__::${prediction.dataset_name}`,
+    [prediction.dataset_name],
+  );
+  const [sharedConfig] = usePredictionChartConfig({ datasetKey: configDatasetKey });
   const panelConfig = useMemo<ChartConfig>(
     () => ({
       ...sharedConfig,
@@ -496,6 +650,21 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
   }, [chainId, metric, metaHint?.datasetName]);
 
   useEffect(() => {
+    let cancelled = false;
+    setPipelineSteps(null);
+    getChainPipelineSteps(chainId)
+      .then((result) => {
+        if (!cancelled) setPipelineSteps(Array.isArray(result?.pipeline) ? result.pipeline : []);
+      })
+      .catch(() => {
+        if (!cancelled) setPipelineSteps(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chainId]);
+
+  useEffect(() => {
     if (partitionRows.length === 0) return;
     setSelectedFoldId((current) => current && partitionRows.some((row) => row.fold_id === current)
       ? current
@@ -508,7 +677,10 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
     [foldGroups, selectedFoldId],
   );
   const selectedPrediction = selectedGroup?.representative ?? null;
-  const selectedFoldPartitions = selectedGroup?.rows ?? [];
+  const selectedFoldPartitions = useMemo(
+    () => selectedGroup?.rows ?? [],
+    [selectedGroup],
+  );
 
   useEffect(() => {
     if (!selectedPrediction) {
@@ -573,7 +745,44 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
   const chartBodyKey = `${previewKind}:${selectedGroup?.foldId ?? "none"}:${chartTargets.map((target) => target.predictionId).join("|")}`;
 
   const preprocessLabel = prediction.preprocessings || "None";
-  const bestParams = useMemo(() => parseRecord(prediction.best_params), [prediction.best_params]);
+  const variantParams = useMemo(() => {
+    const parsed = parseRecord(prediction.variant_params);
+    return parsed && Object.keys(parsed).length > 0 ? parsed : null;
+  }, [prediction.variant_params]);
+  const bestParams = useMemo(() => {
+    const fromSummary = parseRecord(prediction.best_params);
+    if (fromSummary && Object.keys(fromSummary).length > 0) return fromSummary;
+    const selectedRows = selectedGroup?.rows ?? [];
+    for (const row of [...selectedRows, ...partitionRows]) {
+      const candidate = parseRecord(row.best_params);
+      if (candidate && Object.keys(candidate).length > 0) return candidate;
+    }
+    return null;
+  }, [prediction.best_params, selectedGroup, partitionRows]);
+
+  const editorPipelineSteps = useMemo(() => {
+    if (!pipelineSteps || pipelineSteps.length === 0) return null;
+    try {
+      return importFromNirs4all(pipelineSteps as Parameters<typeof importFromNirs4all>[0]);
+    } catch {
+      return null;
+    }
+  }, [pipelineSteps]);
+  const pipelineStats = useMemo(
+    () => (editorPipelineSteps ? computePipelineStats(editorPipelineSteps) : null),
+    [editorPipelineSteps],
+  );
+  const pipelineTree = useMemo(
+    () => (editorPipelineSteps ? buildPipelineTreeWithParams(editorPipelineSteps as unknown[], 24) : null),
+    [editorPipelineSteps],
+  );
+
+  const generatorChoices = useMemo(
+    () => parseGeneratorChoices(detail?.pipeline?.generator_choices),
+    [detail?.pipeline?.generator_choices],
+  );
+  const branchPathLabel = useMemo(() => formatBranchPath(prediction.branch_path), [prediction.branch_path]);
+
   const vectorSummaries = useMemo(
     () => chartDatasets.map((dataset) => ({
       dataset,
@@ -584,12 +793,6 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
     [chartDatasets],
   );
 
-  const chartsPlaceholder = (message: string) => (
-    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-      {message}
-    </div>
-  );
-
   const cvMetricRows = useMemo(
     () => buildCvMetricRows(prediction.cv_scores, prediction.metric),
     [prediction.cv_scores, prediction.metric],
@@ -598,38 +801,10 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
     () => canonicalMetricKey(prediction.metric) || cvMetricRows[0]?.metric || "score",
     [prediction.metric, cvMetricRows],
   );
-  const primaryCvValues = useMemo(
-    () => ({
-      val: prediction.cv_val_score ?? cvMetricRows.find((row) => row.metric === primaryCvMetric)?.values.val ?? null,
-      test: prediction.cv_test_score ?? cvMetricRows.find((row) => row.metric === primaryCvMetric)?.values.test ?? null,
-      train: prediction.cv_train_score ?? cvMetricRows.find((row) => row.metric === primaryCvMetric)?.values.train ?? null,
-    }),
-    [prediction.cv_val_score, prediction.cv_test_score, prediction.cv_train_score, cvMetricRows, primaryCvMetric],
-  );
   const additionalCvMetricRows = useMemo(
     () => cvMetricRows.filter((row) => row.metric !== primaryCvMetric),
     [cvMetricRows, primaryCvMetric],
   );
-
-  function ChartBody({ kind }: { kind: ChartKind }) {
-    if (chartsLoading) {
-      return (
-        <div className="flex h-full items-center justify-center text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          <span className="text-xs">Loading…</span>
-        </div>
-      );
-    }
-    if (chartsError) return chartsPlaceholder(chartsError);
-    if (chartDatasets.length === 0) return chartsPlaceholder("Select a related prediction to display charts.");
-    if (kind === "scatter") {
-      return <PredictionScatterChart className="h-full min-h-[320px] w-full" datasets={chartDatasets} config={panelConfig} variant="panel" />;
-    }
-    if (kind === "residuals") {
-      return <PredictionResidualsChart className="h-full min-h-[320px] w-full" datasets={chartDatasets} config={panelConfig} variant="panel" />;
-    }
-    return <PredictionConfusionChart className="h-full min-h-[320px] w-full" datasets={chartDatasets} config={panelConfig} variant="panel" />;
-  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.06),transparent_32%)]">
@@ -661,23 +836,12 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
             metric={prediction.metric || "score"}
           />
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
-            <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
-              <div className="text-sm font-semibold tracking-tight">Prediction structure</div>
-              <div className="mt-1 text-[11px] leading-5 text-muted-foreground">One detail surface for refit, CV summaries, and numbered folds.</div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-xl border border-primary/25 bg-primary/[0.06] p-3"><div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Selected</div><div className="mt-1 text-lg font-semibold">{selectedGroup ? foldLabelShort(selectedGroup.foldId) : "Auto"}</div></div>
-                <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] p-3"><div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Refits</div><div className="mt-1 text-lg font-semibold">{foldGroups.filter((group) => group.kind === "refit").length}</div></div>
-                <div className="rounded-xl border border-border/70 bg-background/65 p-3"><div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">CV Views</div><div className="mt-1 text-lg font-semibold">{foldGroups.filter((group) => group.kind === "cv").length}</div></div>
-                <div className="rounded-xl border border-border/70 bg-background/65 p-3"><div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Folds</div><div className="mt-1 text-lg font-semibold">{foldGroups.filter((group) => group.kind === "fold" && !group.isAggregated).length}</div></div>
-              </div>
-              {bestParams && Object.keys(bestParams).length > 0 && <div className="mt-4"><div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Best parameters</div><div className="flex flex-wrap gap-2">{Object.entries(bestParams).map(([key, value]) => <Badge key={key} variant="outline" className="h-6 rounded-full px-2 text-[11px] font-mono">{key}={String(value)}</Badge>)}</div></div>}
-            </div>
-
-            <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
-              <div className="text-sm font-semibold tracking-tight">Selected focus</div>
-              <div className="mt-1 text-[11px] leading-5 text-muted-foreground">The chart preview and detailed metrics below follow this related prediction.</div>
-              {selectedGroup ? <div className="mt-4 grid gap-2 sm:grid-cols-3">{selectedGroup.rows.map((row) => <div key={row.prediction_id} className="rounded-xl border border-border/60 bg-background/65 p-3"><div className="flex items-center gap-2"><Badge variant="outline" className={cn("h-4 px-1 text-[9px]", partitionBadgeClass(row.partition))}>{row.partition}</Badge><span className="text-[10px] text-muted-foreground">{row.n_samples ?? "—"} samples</span></div><div className="mt-2 font-mono text-sm font-semibold">{formatMetricValue(scoreForPartition(row, row.partition), row.metric)}</div><div className="mt-1 text-[10px] uppercase tracking-[0.08em] text-muted-foreground">{getMetricAbbreviation(row.metric || prediction.metric || "score")}</div></div>)}</div> : <div className="mt-4 rounded-xl border border-dashed border-border/70 px-4 py-6 text-sm text-muted-foreground">{loadingSummary ? "Loading prediction relationships…" : "No fold-level predictions found."}</div>}
+          <div className="rounded-2xl border border-border/70 bg-card/60 p-3 shadow-sm">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-primary/25 bg-primary/[0.06] px-3 py-2"><div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Selected</div><div className="mt-1 text-base font-semibold">{selectedGroup ? foldLabelShort(selectedGroup.foldId) : "Auto"}</div></div>
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2"><div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Refits</div><div className="mt-1 text-base font-semibold">{foldGroups.filter((group) => group.kind === "refit").length}</div></div>
+              <div className="rounded-xl border border-border/70 bg-background/65 px-3 py-2"><div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">CV Views</div><div className="mt-1 text-base font-semibold">{foldGroups.filter((group) => group.kind === "cv").length}</div></div>
+              <div className="rounded-xl border border-border/70 bg-background/65 px-3 py-2"><div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">Folds</div><div className="mt-1 text-base font-semibold">{foldGroups.filter((group) => group.kind === "fold" && !group.isAggregated).length}</div></div>
             </div>
           </div>
 
@@ -738,7 +902,14 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
               height="h-[380px] md:h-[420px] xl:h-[440px]"
               className="overflow-hidden"
             >
-              <ChartBody key={chartBodyKey} kind={previewKind} />
+              <ChartBody
+                key={chartBodyKey}
+                kind={previewKind}
+                chartDatasets={chartDatasets}
+                chartsLoading={chartsLoading}
+                chartsError={chartsError}
+                panelConfig={panelConfig}
+              />
             </ChartTile>
           </Section>
 
@@ -751,95 +922,201 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
 
             <div className="rounded-2xl border border-border/70 bg-card/60 p-4 shadow-sm">
               <div className="text-sm font-semibold tracking-tight">Pipeline and identity</div>
-              <div className="mt-1 text-[11px] leading-5 text-muted-foreground">Model metadata, pipeline context, and summary CV metrics.</div>
-              <div className="mt-4 space-y-2 text-sm">
-                <KeyValueRow k="Model"><span className="font-medium">{prediction.model_name ?? "—"}</span></KeyValueRow>
-                <KeyValueRow k="Class">{prediction.model_class || "—"}</KeyValueRow>
-                <KeyValueRow k="Dataset"><span className="inline-flex items-center gap-1"><Database className="h-3 w-3" /> {prediction.dataset_name || "—"}</span></KeyValueRow>
-                <KeyValueRow k="Metric"><Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{formatMetricName(prediction.metric)}</Badge></KeyValueRow>
-                {prediction.task_type && <KeyValueRow k="Task"><span className="capitalize">{prediction.task_type}</span></KeyValueRow>}
-                <KeyValueRow k="Preprocessing">{preprocessLabel}</KeyValueRow>
-                {detail?.pipeline && <><KeyValueRow k="Pipeline">{detail.pipeline.name || "—"}</KeyValueRow><KeyValueRow k="Status"><Badge variant={detail.pipeline.status === "completed" ? "default" : "secondary"} className="h-5 px-1.5 text-[10px]">{detail.pipeline.status || "unknown"}</Badge></KeyValueRow></>}
+              <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                {detail?.pipeline?.name || prediction.model_class || "Pipeline structure and chosen variants for this chain."}
               </div>
-              {cvMetricRows.length > 0 && (
-                <div className="mt-4 rounded-xl border border-border/60 bg-background/65 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      <GitBranch className="h-3.5 w-3.5" />
-                      Cross-validation summary
+
+              {pipelineStats && pipelineTree && (
+                <div className="mt-4 rounded-xl border border-border/60 bg-background/65 p-3">
+                  <div className="grid grid-cols-4 gap-2 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold tabular-nums leading-none text-foreground">{pipelineStats.operators}</span>
+                      <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">ops</span>
                     </div>
-                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                      {prediction.cv_fold_count || 0} fold{prediction.cv_fold_count === 1 ? "" : "s"} averaged
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold tabular-nums leading-none text-foreground">{pipelineStats.models}</span>
+                      <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">models</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-semibold tabular-nums leading-none text-foreground">{pipelineStats.branches}</span>
+                      <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">branches</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className={cn("font-semibold tabular-nums leading-none", pipelineStats.hasGenerators ? "text-base text-primary" : "text-sm text-foreground")}>
+                        {pipelineStats.hasGenerators ? pipelineStats.variants : 1}
+                      </span>
+                      <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">variants</span>
+                    </div>
+                  </div>
+                  {pipelineTree.nodes.length > 0 && (
+                    <ul className="mt-3 space-y-1 text-xs">
+                      {pipelineTree.nodes.map((node) => (
+                        <li
+                          key={node.id}
+                          className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground"
+                          style={{ paddingLeft: `${node.depth * 12}px` }}
+                        >
+                          {node.kind === "branch" ? (
+                            <GitBranch className="h-3 w-3 shrink-0 text-accent" />
+                          ) : node.kind === "model" ? (
+                            <Cpu className="h-3 w-3 shrink-0 text-primary" />
+                          ) : (
+                            <Boxes className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+                          )}
+                          <span className="truncate font-medium text-foreground/85">{node.label}</span>
+                          {node.hasGenerator && (
+                            <span title="Selected from a sweep / generator" className="inline-flex">
+                              <Sparkles className="h-3 w-3 shrink-0 text-amber-500" aria-label="sweep / generator" />
+                            </span>
+                          )}
+                          {node.params.length > 0 && (
+                            <span className="flex flex-wrap items-center gap-1">
+                              {node.params.map(([k, v]) => (
+                                <span
+                                  key={k}
+                                  className="inline-flex items-baseline gap-1 rounded-sm border border-border/40 bg-muted/40 px-1 py-0 font-mono text-[10px]"
+                                  title={`${k}=${formatParamValue(v)}`}
+                                >
+                                  <span className="text-muted-foreground">{k}</span>
+                                  <span className="text-foreground/90">{formatParamValue(v)}</span>
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                      {pipelineTree.total > pipelineTree.nodes.length && (
+                        <li className="pl-0.5 text-[11px] italic text-muted-foreground/70">
+                          + {pipelineTree.total - pipelineTree.nodes.length} more step
+                          {pipelineTree.total - pipelineTree.nodes.length === 1 ? "" : "s"}
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {variantParams && (
+                <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/[0.06] p-4">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Variant — sweep selection
+                    <Badge variant="outline" className="ml-auto h-5 px-1.5 text-[10px]">
+                      {Object.keys(variantParams).length} param{Object.keys(variantParams).length === 1 ? "" : "s"}
                     </Badge>
                   </div>
-
-                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                    {CV_PARTITIONS.map((partition) => (
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    Concrete operator / param values picked from the pipeline's generators (<span className="font-mono">_or_</span>, <span className="font-mono">_range_</span>, <span className="font-mono">_grid_</span>…).
+                  </div>
+                  <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
+                    {Object.entries(variantParams).map(([key, value]) => (
                       <div
-                        key={partition}
-                        className={cn(
-                          "rounded-xl border px-3 py-3",
-                          partition === "val"
-                            ? "border-primary/25 bg-primary/[0.06]"
-                            : "border-border/60 bg-card/70",
-                        )}
+                        key={key}
+                        className="flex items-baseline justify-between gap-2 rounded-md border border-amber-500/30 bg-background/85 px-2.5 py-1.5"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <Badge variant="outline" className={cn("h-5 px-1.5 text-[10px]", partitionBadgeClass(partition))}>
-                            {partition}
-                          </Badge>
-                          <span className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                            {getMetricAbbreviation(primaryCvMetric)}
-                          </span>
-                        </div>
-                        <div className="mt-3 font-mono text-lg font-semibold">
-                          {formatMetricValue(primaryCvValues[partition], primaryCvMetric)}
-                        </div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">
-                          {formatMetricName(primaryCvMetric)}
-                        </div>
+                        <span className="truncate text-[11px] font-medium text-muted-foreground" title={key}>{key}</span>
+                        <span className="truncate font-mono text-xs font-semibold text-foreground" title={formatParamValue(value)}>
+                          {formatParamValue(value)}
+                        </span>
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
 
-                  {additionalCvMetricRows.length > 0 && (
-                    <>
-                      <div className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Additional averaged metrics
+              {bestParams && Object.keys(bestParams).length > 0 && (
+                <div className="mt-4 rounded-xl border border-primary/30 bg-primary/[0.05] p-4">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Finetune — best params
+                    <Badge variant="outline" className="ml-auto h-5 px-1.5 text-[10px]">
+                      {Object.keys(bestParams).length} param{Object.keys(bestParams).length === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    Hyperparameters selected by the finetune / optimizer for this model.
+                  </div>
+                  <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
+                    {Object.entries(bestParams).map(([key, value]) => (
+                      <div
+                        key={key}
+                        className="flex items-baseline justify-between gap-2 rounded-md border border-border/60 bg-background/85 px-2.5 py-1.5"
+                      >
+                        <span className="truncate text-[11px] font-medium text-muted-foreground" title={key}>{key}</span>
+                        <span className="truncate font-mono text-xs font-semibold text-foreground" title={formatParamValue(value)}>
+                          {formatParamValue(value)}
+                        </span>
                       </div>
-                      <div className="mt-2 overflow-x-auto">
-                        <div className="min-w-[520px] overflow-hidden rounded-xl border border-border/60 bg-card/70">
-                          <div className="grid grid-cols-[minmax(150px,1.35fr)_repeat(3,minmax(92px,1fr))] border-b border-border/60 bg-muted/40 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                            <div>Metric</div>
-                            <div className="text-right">Val</div>
-                            <div className="text-right">Test</div>
-                            <div className="text-right">Train</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!variantParams && !(bestParams && Object.keys(bestParams).length > 0) && (
+                <div className="mt-4 rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-3 text-[11px] text-muted-foreground">
+                  No sweep variant or finetune best params recorded for this chain.
+                </div>
+              )}
+
+              {(branchPathLabel || (generatorChoices && generatorChoices.length > 0)) && (
+                <div className="mt-4 space-y-2 text-sm">
+                  {branchPathLabel && (
+                    <KeyValueRow k="Branch path"><span className="font-mono text-xs">{branchPathLabel}</span></KeyValueRow>
+                  )}
+                  {generatorChoices && generatorChoices.length > 0 && (
+                    <KeyValueRow k="Pipeline variants">
+                      <span className="text-xs">{generatorChoices.length} expanded</span>
+                    </KeyValueRow>
+                  )}
+                </div>
+              )}
+
+              {(prediction.model_class || detail?.pipeline?.name) && (
+                <div className="mt-4 space-y-2 text-sm">
+                  {prediction.model_class && <KeyValueRow k="Class"><span className="font-mono text-xs">{prediction.model_class}</span></KeyValueRow>}
+                  {detail?.pipeline?.name && detail.pipeline.name !== prediction.model_class && (
+                    <KeyValueRow k="Pipeline">{detail.pipeline.name}</KeyValueRow>
+                  )}
+                </div>
+              )}
+
+              {additionalCvMetricRows.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <GitBranch className="h-3.5 w-3.5" />
+                    Additional CV metrics
+                    <Badge variant="outline" className="ml-auto h-5 px-1.5 text-[10px]">
+                      {prediction.cv_fold_count || 0} fold{prediction.cv_fold_count === 1 ? "" : "s"} averaged
+                    </Badge>
+                  </div>
+                  <div className="mt-2 overflow-x-auto">
+                    <div className="min-w-[420px] overflow-hidden rounded-xl border border-border/60 bg-card/70">
+                      <div className="grid grid-cols-[minmax(120px,1.35fr)_repeat(3,minmax(72px,1fr))] border-b border-border/60 bg-muted/40 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                        <div>Metric</div>
+                        <div className="text-right">Val</div>
+                        <div className="text-right">Test</div>
+                        <div className="text-right">Train</div>
+                      </div>
+                      {additionalCvMetricRows.map((row, index) => (
+                        <div
+                          key={row.metric}
+                          className={cn(
+                            "grid grid-cols-[minmax(120px,1.35fr)_repeat(3,minmax(72px,1fr))] items-center gap-3 px-3 py-2 text-sm",
+                            index > 0 && "border-t border-border/50",
+                          )}
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{formatMetricName(row.metric)}</div>
                           </div>
-                          {additionalCvMetricRows.map((row, index) => (
-                            <div
-                              key={row.metric}
-                              className={cn(
-                                "grid grid-cols-[minmax(150px,1.35fr)_repeat(3,minmax(92px,1fr))] items-center gap-3 px-3 py-2.5 text-sm",
-                                index > 0 && "border-t border-border/50",
-                              )}
-                            >
-                              <div className="min-w-0">
-                                <div className="truncate font-medium">{formatMetricName(row.metric)}</div>
-                                <div className="text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
-                                  {getMetricAbbreviation(row.metric)}
-                                </div>
-                              </div>
-                              {CV_PARTITIONS.map((partition) => (
-                                <div key={partition} className="text-right font-mono text-sm font-semibold tabular-nums">
-                                  {formatMetricValue(row.values[partition], row.metric)}
-                                </div>
-                              ))}
+                          {CV_PARTITIONS.map((partition) => (
+                            <div key={partition} className="text-right font-mono text-sm font-semibold tabular-nums">
+                              {formatMetricValue(row.values[partition], row.metric)}
                             </div>
                           ))}
                         </div>
-                      </div>
-                    </>
-                  )}
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

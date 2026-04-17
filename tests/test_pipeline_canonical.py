@@ -230,6 +230,93 @@ def test_canonical_to_editor_resolves_saved_chain_short_class_names():
     assert editor_steps[2]["params"] == {"n_components": 8}
 
 
+def test_canonical_to_editor_preserves_root_level_inline_sequences():
+    editor_steps = canonical_to_editor(
+        [
+            [
+                "nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection",
+                {
+                    "class": "nirs4all.operators.transforms.nirs.SavitzkyGolay",
+                    "params": {"window_length": 15, "polyorder": 2, "deriv": 1},
+                },
+                "nirs4all.operators.transforms.signal.Detrend",
+                {
+                    "class": "nirs4all.operators.transforms.orthogonalization.OSC",
+                    "params": {"n_components": 3},
+                },
+            ],
+            {"class": "sklearn.preprocessing.StandardScaler", "params": {"with_std": False}},
+            {
+                "model": {
+                    "class": "sklearn.cross_decomposition.PLSRegression",
+                    "params": {"scale": False, "n_components": 7},
+                },
+                "name": "PLS-Finetuned",
+            },
+        ]
+    )
+
+    assert editor_steps[0]["type"] == "flow"
+    assert editor_steps[0]["subType"] == "sequential"
+    assert [child["name"] for child in editor_steps[0]["children"]] == [
+        "MSC",
+        "SavitzkyGolay",
+        "Detrend",
+        "OSC",
+    ]
+    assert editor_steps[0]["children"][1]["params"] == {
+        "window_length": 15,
+        "polyorder": 2,
+        "deriv": 1,
+    }
+    assert editor_steps[0]["children"][3]["params"] == {"n_components": 3}
+    assert editor_steps[1]["name"] == "StandardScaler"
+    assert editor_steps[2]["name"] == "PLSRegression"
+
+
+def test_canonical_to_editor_imports_split_shorthand_with_inline_params():
+    editor_steps = canonical_to_editor(
+        [
+            {
+                "split": "ShuffleSplit",
+                "n_splits": 5,
+                "test_size": 0.2,
+                "random_state": 42,
+            }
+        ]
+    )
+
+    assert len(editor_steps) == 1
+    assert editor_steps[0]["type"] == "splitting"
+    assert editor_steps[0]["name"] == "ShuffleSplit"
+    assert editor_steps[0]["classPath"] == "sklearn.model_selection.ShuffleSplit"
+    assert editor_steps[0]["params"] == {
+        "n_splits": 5,
+        "test_size": 0.2,
+        "random_state": 42,
+    }
+
+
+def test_canonical_to_editor_imports_preprocessing_shorthand_with_inline_params():
+    editor_steps = canonical_to_editor(
+        [
+            {
+                "preprocessing": "StandardScaler",
+                "with_mean": True,
+                "with_std": False,
+            }
+        ]
+    )
+
+    assert len(editor_steps) == 1
+    assert editor_steps[0]["type"] == "preprocessing"
+    assert editor_steps[0]["name"] == "StandardScaler"
+    assert editor_steps[0]["params"] == {
+        "with_mean": True,
+        "with_std": False,
+    }
+
+
 def test_canonical_to_editor_normalizes_legacy_boosting_model_paths():
     editor_steps = canonical_to_editor(
         [

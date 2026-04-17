@@ -41,6 +41,7 @@ async function fetchOne(
       yTrue: r.y_true ?? [],
       yPred: r.y_pred ?? [],
       nSamples: r.n_samples ?? 0,
+      sampleMetadata: r.sample_metadata ?? null,
     };
   }
   const r = await getPredictionArrays(target.predictionId);
@@ -51,6 +52,7 @@ async function fetchOne(
     yTrue: r.y_true ?? [],
     yPred: r.y_pred ?? [],
     nSamples: r.n_samples ?? (r.y_true?.length ?? 0),
+    sampleMetadata: r.sample_metadata ?? null,
   };
 }
 

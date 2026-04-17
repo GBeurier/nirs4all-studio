@@ -233,7 +233,12 @@ export function RunItem({
                       ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                     }
-                    <h3 className="font-semibold text-foreground truncate">{run.name || run.run_id}</h3>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <h3 className="font-semibold text-foreground truncate">{run.name || run.run_id}</h3>
+                      </TooltipTrigger>
+                      <TooltipContent>{run.name || run.run_id}</TooltipContent>
+                    </Tooltip>
                     {run.project_id && (
                       <Badge variant="outline" className="text-xs shrink-0">
                         <FolderKanban className="h-3 w-3 mr-1" />

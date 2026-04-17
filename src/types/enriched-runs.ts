@@ -25,6 +25,12 @@ export interface EnrichedRun {
     cv_strategy?: string;
     metric?: string;
     random_state?: number;
+    splitter_class?: string;
+    shuffle?: boolean;
+    test_size?: number;
+    group_by?: string;
+    has_refit?: boolean;
+    refit_pipeline_count?: number;
     n_pipelines?: number;
     n_datasets?: number;
   };
@@ -127,4 +133,95 @@ export interface AllChainEntry {
   task_type: string | null;
   is_refit_only?: boolean;
   synthetic_refit?: boolean;
+}
+
+export interface WorkspaceRunDatasetDetail {
+  name: string;
+  aggregate?: string | null;
+  aggregate_method?: string | null;
+  aggregate_exclude_outliers?: boolean;
+  repetition?: string | null;
+  linked_dataset_id?: string | null;
+}
+
+export interface WorkspaceRunPipelineDetail {
+  pipeline_id: string;
+  run_id: string;
+  name: string;
+  dataset_name: string | null;
+  dataset_hash?: string | null;
+  status: string | null;
+  created_at: string;
+  completed_at: string | null;
+  best_val: number | null;
+  best_test: number | null;
+  metric: string | null;
+  duration_ms: number | null;
+  error?: string | null;
+  expanded_config?: unknown;
+  generator_choices?: unknown;
+  is_refit_pipeline?: boolean;
+  splitter_class?: string | null;
+  log_count?: number;
+  total_duration_ms?: number | null;
+  warning_count?: number;
+  error_count?: number;
+}
+
+export interface WorkspaceRunLogSummary {
+  pipeline_id: string;
+  pipeline_name: string | null;
+  pipeline_status: string | null;
+  log_count: number;
+  total_duration_ms: number | null;
+  warning_count: number;
+  error_count: number;
+}
+
+export interface WorkspaceRunPipelineLogEntry {
+  log_id: string;
+  step_idx: number | null;
+  operator_class: string | null;
+  event: string | null;
+  duration_ms: number | null;
+  message: string | null;
+  details?: Record<string, unknown> | string | null;
+  level: string | null;
+  created_at: string | null;
+}
+
+export interface WorkspaceRunDetail {
+  run_id: string;
+  name: string;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+  config?: Record<string, unknown> | null;
+  datasets: WorkspaceRunDatasetDetail[];
+  pipelines: WorkspaceRunPipelineDetail[];
+  summary?: Record<string, unknown> | null;
+  error?: string | null;
+  project_id?: string | null;
+  log_summary?: WorkspaceRunLogSummary[];
+  rerun_ready?: boolean;
+  unresolved_dataset_names?: string[];
+  results_count?: number;
+}
+
+export interface WorkspaceRunPipelineLogsResponse {
+  pipeline_id: string;
+  pipeline_name?: string | null;
+  logs: WorkspaceRunPipelineLogEntry[];
+}
+
+export interface WorkspaceRunRerunResponse {
+  success: boolean;
+  source_run_id: string;
+  run: import("./runs").Run;
+  cloned_pipelines: Array<{
+    id: string;
+    name: string;
+    source_pipeline_id?: string | null;
+    source_pipeline_name?: string | null;
+  }>;
 }

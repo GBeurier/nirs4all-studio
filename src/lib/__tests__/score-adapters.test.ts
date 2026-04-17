@@ -193,7 +193,7 @@ describe("datasetChainsToRows", () => {
     expect(cvRows[0]?.chainId).toBe("cv-msc");
   });
 
-  it("adds an aggregated refit twin next to the raw refit row", () => {
+  it("orders raw and aggregated refit rows by their own displayed score", () => {
     const rows = datasetChainsToRows([
       makeChain({
         chain_id: "refit-snv",
@@ -222,15 +222,15 @@ describe("datasetChainsToRows", () => {
 
     expect(rows).toHaveLength(2);
     expect(rows[0]?.cardType).toBe("refit");
+    expect(rows[0]?.foldId).toBe("final_agg");
     expect(rows[0]?.children?.[0]?.chainId).toBe("cv-snv");
-    expect(rows[0]?.foldId).toBe("final");
+    expect(rows[0]?.primaryTestScore).toBe(0.17);
+    expect(rows[0]?.primaryTrainScore).toBe(0.11);
+    expect(rows[0]?.testScores?.rmse).toBe(0.17);
+    expect(rows[0]?.children?.[0]?.foldId).toBe("avg_agg");
+    expect(rows[0]?.children?.[0]?.chainId).toBe("cv-snv");
     expect(rows[1]?.cardType).toBe("refit");
-    expect(rows[1]?.foldId).toBe("final_agg");
-    expect(rows[1]?.primaryTestScore).toBe(0.17);
-    expect(rows[1]?.primaryTrainScore).toBe(0.11);
-    expect(rows[1]?.testScores?.rmse).toBe(0.17);
-    expect(rows[1]?.children?.[0]?.foldId).toBe("avg_agg");
-    expect(rows[1]?.children?.[0]?.chainId).toBe("cv-snv");
+    expect(rows[1]?.foldId).toBe("final");
   });
 
   it("treats synthetic refits as non-exportable fallback rows", () => {
@@ -311,10 +311,13 @@ describe("datasetChainsToRows", () => {
     ], "rmse", "regression");
 
     expect(rows).toHaveLength(2);
-    expect(rows[0]?.children?.[0]?.chainId).toBe("cv-chain");
-    expect(rows[0]?.children?.[0]?.foldId).toBe("avg");
-    expect(rows[1]?.children?.[0]?.chainId).toBe("cv-chain");
-    expect(rows[1]?.children?.[0]?.foldId).toBe("avg_agg");
+    const rawRefitRow = rows.find(row => row.foldId === "final");
+    const aggregatedRefitRow = rows.find(row => row.foldId === "final_agg");
+
+    expect(rawRefitRow?.children?.[0]?.chainId).toBe("cv-chain");
+    expect(rawRefitRow?.children?.[0]?.foldId).toBe("avg");
+    expect(aggregatedRefitRow?.children?.[0]?.chainId).toBe("cv-chain");
+    expect(aggregatedRefitRow?.children?.[0]?.foldId).toBe("avg_agg");
   });
 });
 
@@ -497,7 +500,7 @@ describe("aggregated crossval drill-down", () => {
         fold_count: 2,
         scores: { val: { rmse: 0.22 }, test: { rmse: 0.23 } },
       }),
-    ], "rmse", "regression")[1]?.children?.[0];
+    ], "rmse", "regression").find(row => row.foldId === "final_agg")?.children?.[0];
 
     expect(aggregatedCvRow?.foldId).toBe("avg_agg");
 

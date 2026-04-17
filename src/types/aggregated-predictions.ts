@@ -21,6 +21,8 @@ export interface ChainSummary {
   task_type: string | null;
   dataset_name: string | null;
   best_params: unknown | null;
+  /** Merged fixed operator params + tuned best_params (richer than best_params alone). */
+  variant_params?: Record<string, unknown> | null;
   // CV scores (averaged across folds)
   cv_val_score: number | null;
   cv_test_score: number | null;
@@ -122,6 +124,7 @@ export interface PredictionArraysResponse {
   y_proba: number[] | number[][] | null;
   sample_indices: number[] | null;
   weights: number[] | null;
+  sample_metadata?: Record<string, unknown[]> | null;
   n_samples: number;
 }
 

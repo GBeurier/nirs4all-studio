@@ -474,7 +474,14 @@ export async function removeDatasetFromGroup(
 }
 
 // Enriched Runs & Projects types
-import type { EnrichedRunsResponse, ScoreDistribution, AllChainsResponse } from "@/types/enriched-runs";
+import type {
+  EnrichedRunsResponse,
+  ScoreDistribution,
+  AllChainsResponse,
+  WorkspaceRunDetail,
+  WorkspaceRunPipelineLogsResponse,
+  WorkspaceRunRerunResponse,
+} from "@/types/enriched-runs";
 import type { ProjectsResponse } from "@/types/projects";
 
 // Dataset API - Extended
@@ -1703,8 +1710,23 @@ export async function getN4AWorkspaceRuns(
 export async function getN4AWorkspaceRunDetail(
   workspaceId: string,
   runId: string
-): Promise<unknown> {
+): Promise<WorkspaceRunDetail> {
   return api.get(`/workspaces/${workspaceId}/runs/${runId}`);
+}
+
+export async function getWorkspaceRunPipelineLogs(
+  workspaceId: string,
+  runId: string,
+  pipelineId: string
+): Promise<WorkspaceRunPipelineLogsResponse> {
+  return api.get(`/workspaces/${workspaceId}/runs/${runId}/pipelines/${pipelineId}/logs`);
+}
+
+export async function rerunWorkspaceRun(
+  workspaceId: string,
+  runId: string
+): Promise<WorkspaceRunRerunResponse> {
+  return api.post(`/workspaces/${workspaceId}/runs/${runId}/rerun`);
 }
 
 export async function deleteN4AWorkspaceRun(
@@ -1902,6 +1924,7 @@ export interface PredictionScatterResponse {
   partition: string;
   model_name: string;
   dataset_name: string;
+  sample_metadata?: Record<string, unknown[]> | null;
 }
 
 /**
@@ -2592,6 +2615,15 @@ export async function getChainPipelineSteps(
   chainId: string
 ): Promise<{ chain_id: string; name: string; pipeline: unknown[] }> {
   return api.get(`/aggregated-predictions/chain/${chainId}/pipeline-steps`);
+}
+
+/**
+ * Get the full stored expanded pipeline steps for a run pipeline.
+ */
+export async function getRunPipelineSteps(
+  pipelineId: string
+): Promise<{ pipeline_id: string; name: string; pipeline: unknown[] }> {
+  return api.get(`/aggregated-predictions/pipeline/${pipelineId}/pipeline-steps`);
 }
 
 /**

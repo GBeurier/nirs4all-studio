@@ -694,6 +694,19 @@ def _apply_attached_comment(
         editor_step["attachedComment"] = clone_value(comment_text)
 
 
+def _extract_inline_component_params(
+    payload: dict[str, Any],
+    *,
+    wrapper_keys: set[str],
+) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in wrapper_keys or key == "_comment" or key in GENERATOR_KEYWORDS or key == "param":
+            continue
+        params[str(key)] = clone_value(value)
+    return params
+
+
 def _component_to_editor(
     reference: str,
     params: dict[str, Any] | None,
@@ -1312,6 +1325,16 @@ def _convert_step_to_editor(step: Any) -> dict[str, Any]:
     if step is None:
         return _create_no_op_editor_step()
 
+    if isinstance(step, list):
+        return {
+            "id": _step_id(),
+            "type": "flow",
+            "subType": "sequential",
+            "name": "Sequential",
+            "params": {},
+            "children": [_convert_step_to_editor(item) for item in step],
+        }
+
     if isinstance(step, str):
         if step in {"chart_2d", "chart_y"}:
             return {
@@ -1355,6 +1378,29 @@ def _convert_step_to_editor(step: Any) -> dict[str, Any]:
         editor_step = _convert_model_step_to_editor(payload)
     elif "y_processing" in payload:
         editor_step = _convert_y_processing_to_editor(payload)
+    elif "split" in payload:
+        value = payload["split"]
+        inline_params = _extract_inline_component_params(payload, wrapper_keys={"split"})
+        if isinstance(value, str):
+            editor_step = _component_to_editor(
+                value,
+                inline_params,
+                forced_type="splitting",
+                source_step=payload,
+                component_style="string",
+            )
+        elif isinstance(value, dict) and "class" in value:
+            merged_params = clone_value(value.get("params") or {})
+            merged_params.update(inline_params)
+            editor_step = _component_to_editor(
+                str(value["class"]),
+                merged_params,
+                forced_type="splitting",
+                source_step=payload,
+                component_style="class_dict",
+            )
+        else:
+            editor_step = _passthrough_editor_step(payload, name="Split", step_type="splitting")
     elif "branch" in payload:
         editor_step = _convert_branch_to_editor(payload)
     elif "merge" in payload:
@@ -1371,18 +1417,21 @@ def _convert_step_to_editor(step: Any) -> dict[str, Any]:
         editor_step = _convert_concat_transform_to_editor(payload)
     elif "preprocessing" in payload:
         value = payload["preprocessing"]
+        inline_params = _extract_inline_component_params(payload, wrapper_keys={"preprocessing"})
         if isinstance(value, str):
             editor_step = _component_to_editor(
                 value,
-                {},
+                inline_params,
                 source_step=payload,
                 component_style="string",
                 wrapper_key="preprocessing",
             )
         elif isinstance(value, dict) and "class" in value:
+            merged_params = clone_value(value.get("params") or {})
+            merged_params.update(inline_params)
             editor_step = _component_to_editor(
                 str(value["class"]),
-                value.get("params") or {},
+                merged_params,
                 source_step=payload,
                 component_style="class_dict",
                 wrapper_key="preprocessing",

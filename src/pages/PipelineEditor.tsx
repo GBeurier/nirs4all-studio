@@ -30,6 +30,7 @@ import {
   savePipeline,
   getPipeline,
   getChainPipelineSteps,
+  getRunPipelineSteps,
   previewPipelineImport,
   renderCanonicalPipeline,
 } from "@/api/client";
@@ -331,6 +332,36 @@ export default function PipelineEditor() {
       }
 
       // Clean up URL params
+      navigate(`/pipelines/${pipelineId}`, { replace: true });
+    })();
+  }, [searchParams, importIntoEditor, navigate, pipelineId]);
+
+  // Handle import from a stored run pipeline (full expanded pipeline variant)
+  useEffect(() => {
+    const runPipelineId = searchParams.get('runPipelineId');
+    if (!runPipelineId) return;
+
+    (async () => {
+      try {
+        const result = await getRunPipelineSteps(runPipelineId);
+        if (result.pipeline && Array.isArray(result.pipeline)) {
+          const imported = await importIntoEditor({
+            payload: {
+              name: result.name,
+              pipeline: result.pipeline,
+            },
+            fallbackName: result.name || 'Run Pipeline',
+          });
+
+          toast.success('Full pipeline loaded from run', {
+            description: `${imported.steps.length} steps loaded`,
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load run pipeline:', e);
+        toast.error('Failed to load full pipeline from run');
+      }
+
       navigate(`/pipelines/${pipelineId}`, { replace: true });
     })();
   }, [searchParams, importIntoEditor, navigate, pipelineId]);

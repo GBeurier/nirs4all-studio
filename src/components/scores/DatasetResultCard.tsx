@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ChevronDown, ChevronRight, Database, Eye, ExternalLink, Loader2, TrendingDown, Trash2,
 } from "lucide-react";
@@ -156,11 +157,7 @@ export function DatasetResultCard({
     return datasetChainsToRows(chains, dataset.metric, dataset.task_type);
   }, [chains, dataset.metric, dataset.task_type]);
 
-  const primaryRows = useMemo(
-    () => scoreRows.filter((row) => row.foldId !== "final_agg"),
-    [scoreRows],
-  );
-  const summaryRows = primaryRows.length > 0 ? primaryRows : scoreRows;
+  const summaryRows = scoreRows;
 
   const openDetail = (chain: TopChainResult, focusRow?: ScoreCardRow) => {
     setDetailChainId(chain.chain_id);
@@ -261,7 +258,7 @@ export function DatasetResultCard({
     : null;
 
   const topChain = bestRow ? chains.find(chain => chain.chain_id === bestRow.chainId) ?? null : null;
-  const refitCount = summaryRows.filter(row => row.cardType === "refit").length;
+  const refitCount = scoreRows.filter(row => row.cardType === "refit").length;
 
   const handleDeleteDataset = async () => {
     if (!workspaceId) {
@@ -300,12 +297,17 @@ export function DatasetResultCard({
                     <Database className="h-4 w-4 text-primary" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-semibold text-sm text-foreground">{dataset.dataset_name}</h3>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <h3 className="font-semibold text-sm text-foreground truncate">{dataset.dataset_name}</h3>
+                      </TooltipTrigger>
+                      <TooltipContent>{dataset.dataset_name}</TooltipContent>
+                    </Tooltip>
                     <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                       {dataset.task_type && <span className="capitalize">{dataset.task_type}</span>}
                       {refitCount > 0 && (
                         <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-emerald-500/10 text-emerald-600">
-                          {refitCount} refit
+                          {refitCount} refit{refitCount !== 1 ? "s" : ""}
                         </Badge>
                       )}
                     </div>

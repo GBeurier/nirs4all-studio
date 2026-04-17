@@ -8,6 +8,14 @@
  */
 
 import { Settings2 } from "lucide-react";
+import {
+  CATEGORICAL_PALETTES,
+  getCategoricalPaletteLabel,
+  getContinuousPaletteGradient,
+  getContinuousPaletteLabel,
+  type CategoricalPalette,
+  type ContinuousPalette,
+} from "@/lib/playground/colorConfig";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -39,12 +47,15 @@ import type {
   ConfusionNormalize,
   ExportTheme,
   ViewerGradientColors,
+  ViewerMetadataType,
   ViewerPartitionColors,
 } from "./types";
 
 interface ChartConfigPopoverProps {
   kind: ChartKind;
   config: ChartConfig;
+  metadataColumns: string[];
+  resolvedMetadataType: ViewerMetadataType | null;
   onChange: (next: ChartConfig | ((prev: ChartConfig) => ChartConfig)) => void;
   onReset: () => void;
 }
@@ -116,12 +127,35 @@ function ColorInputRow({
 export function ChartConfigPopover({
   kind,
   config,
+  metadataColumns,
+  resolvedMetadataType,
   onChange,
   onReset,
 }: ChartConfigPopoverProps) {
   const update = <K extends keyof ChartConfig>(key: K, value: ChartConfig[K]) => {
     onChange((prev) => ({ ...prev, [key]: value }));
   };
+
+  const categoricalPaletteOptions: CategoricalPalette[] = ["default", "tableau10", "set1", "set2", "paired"];
+  const continuousPaletteOptions: ContinuousPalette[] = [
+    "blue_red",
+    "viridis",
+    "plasma",
+    "inferno",
+    "coolwarm",
+    "spectral",
+    "cividis",
+    "winter",
+    "blues",
+    "greens",
+    "turbo",
+  ];
+
+  const hasMetadata = metadataColumns.length > 0;
+  const effectiveMetadataKey = config.metadataKey && metadataColumns.includes(config.metadataKey)
+    ? config.metadataKey
+    : metadataColumns[0];
+  const effectiveMetadataType = resolvedMetadataType ?? "categorical";
 
   const currentPaletteColors = [
     config.partitionColors.train,
@@ -150,6 +184,30 @@ export function ChartConfigPopover({
         ...prev.partitionColors,
         [key]: normalizeColorToHex(value, prev.partitionColors[key]),
       },
+    }));
+  };
+
+  const updateColorMode = (value: string) => {
+    const nextMode = value === "metadata" ? "metadata" : "partition";
+    onChange((prev) => ({
+      ...prev,
+      colorMode: nextMode,
+      metadataKey: nextMode === "metadata"
+        ? (
+            prev.metadataKey && metadataColumns.includes(prev.metadataKey)
+              ? prev.metadataKey
+              : metadataColumns[0]
+          )
+        : prev.metadataKey,
+      metadataType: nextMode === "metadata" ? undefined : prev.metadataType,
+    }));
+  };
+
+  const updateMetadataKey = (value: string) => {
+    onChange((prev) => ({
+      ...prev,
+      metadataKey: value,
+      metadataType: undefined,
     }));
   };
 
@@ -196,67 +254,165 @@ export function ChartConfigPopover({
         <div className="space-y-3">
           <SectionHeader>Global</SectionHeader>
           {kind !== "confusion" && (
-          <div className="space-y-1.5">
-            <Label className="text-xs">Partition palette</Label>
-            <Select
-              value={config.palette}
-              onValueChange={applyPartitionPalette}
-            >
-              <SelectTrigger className="h-9 w-full text-xs">
-                <div className="flex min-w-0 items-center gap-2">
-                  <MiniDiscretePalette colors={currentPaletteColors} />
-                  <span className="truncate">{getPaletteLabel(config.palette)}</span>
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {listPalettes().map((p) => (
-                  <SelectItem key={p.id} value={p.id} className="text-xs">
-                    <div className="flex items-center gap-2">
-                      <MiniDiscretePalette colors={p.colors} />
-                      <span>{p.label}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-                <SelectItem value="custom" className="text-xs">
-                  <div className="flex items-center gap-2">
-                    <MiniDiscretePalette colors={currentPaletteColors} />
-                    <span>Custom</span>
+            <>
+              <Row>
+                <Label className="text-xs">Color by</Label>
+                <Select value={config.colorMode} onValueChange={updateColorMode}>
+                  <SelectTrigger className="h-8 w-40 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="partition" className="text-xs">Partition</SelectItem>
+                    <SelectItem value="metadata" className="text-xs" disabled={!hasMetadata}>
+                      Metadata
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </Row>
+
+              {config.colorMode === "metadata" && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Metadata column</Label>
+                    <Select
+                      value={effectiveMetadataKey}
+                      onValueChange={updateMetadataKey}
+                      disabled={!hasMetadata}
+                    >
+                      <SelectTrigger className="h-9 w-full text-xs">
+                        <SelectValue placeholder="No metadata columns" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {metadataColumns.map((column) => (
+                          <SelectItem key={column} value={column} className="text-xs">
+                            {column}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] leading-4 text-muted-foreground">
+                      Uses the same automatic metadata type detection as Playground. This column is currently treated as {effectiveMetadataType}.
+                    </p>
                   </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-[10px] leading-4 text-muted-foreground">
-              Uses the same discrete palette family as Playground classification targets. Choosing a preset updates the three editable colors below.
-            </p>
-          </div>
-          )}
-          {kind !== "confusion" && (
-          <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-            <ColorInputRow
-              label="Train"
-              value={config.partitionColors.train}
-              onChange={(value) => updatePartitionColor("train", value)}
-            />
-            <ColorInputRow
-              label="Validation"
-              value={config.partitionColors.val}
-              onChange={(value) => updatePartitionColor("val", value)}
-            />
-            <ColorInputRow
-              label="Test"
-              value={config.partitionColors.test}
-              onChange={(value) => updatePartitionColor("test", value)}
-            />
-          </div>
-          )}
-          {kind !== "confusion" && (
-          <Row>
-            <Label className="text-xs">Partition coloring</Label>
-            <Switch
-              checked={config.partitionColoring}
-              onCheckedChange={(v) => update("partitionColoring", v)}
-            />
-          </Row>
+
+                  {effectiveMetadataType === "continuous" ? (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Continuous palette</Label>
+                      <Select
+                        value={config.continuousPalette}
+                        onValueChange={(value) => update("continuousPalette", value as ContinuousPalette)}
+                      >
+                        <SelectTrigger className="h-9 w-full text-xs">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span
+                              aria-hidden
+                              className="h-3 w-16 rounded-sm border border-border/50"
+                              style={{ backgroundImage: getContinuousPaletteGradient(config.continuousPalette) }}
+                            />
+                            <span className="truncate">{getContinuousPaletteLabel(config.continuousPalette)}</span>
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {continuousPaletteOptions.map((palette) => (
+                            <SelectItem key={palette} value={palette} className="text-xs">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  aria-hidden
+                                  className="h-3 w-16 rounded-sm border border-border/50"
+                                  style={{ backgroundImage: getContinuousPaletteGradient(palette) }}
+                                />
+                                <span>{getContinuousPaletteLabel(palette)}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Categorical palette</Label>
+                      <Select
+                        value={config.categoricalPalette}
+                        onValueChange={(value) => update("categoricalPalette", value as CategoricalPalette)}
+                      >
+                        <SelectTrigger className="h-9 w-full text-xs">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <MiniDiscretePalette colors={CATEGORICAL_PALETTES[config.categoricalPalette].slice(0, 5)} />
+                            <span className="truncate">{getCategoricalPaletteLabel(config.categoricalPalette)}</span>
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categoricalPaletteOptions.map((palette) => (
+                            <SelectItem key={palette} value={palette} className="text-xs">
+                              <div className="flex items-center gap-2">
+                                <MiniDiscretePalette colors={CATEGORICAL_PALETTES[palette].slice(0, 5)} />
+                                <span>{getCategoricalPaletteLabel(palette)}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {config.colorMode === "partition" && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Partition palette</Label>
+                    <Select
+                      value={config.palette}
+                      onValueChange={applyPartitionPalette}
+                    >
+                      <SelectTrigger className="h-9 w-full text-xs">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <MiniDiscretePalette colors={currentPaletteColors} />
+                          <span className="truncate">{getPaletteLabel(config.palette)}</span>
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {listPalettes().map((p) => (
+                          <SelectItem key={p.id} value={p.id} className="text-xs">
+                            <div className="flex items-center gap-2">
+                              <MiniDiscretePalette colors={p.colors} />
+                              <span>{p.label}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="custom" className="text-xs">
+                          <div className="flex items-center gap-2">
+                            <MiniDiscretePalette colors={currentPaletteColors} />
+                            <span>Custom</span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] leading-4 text-muted-foreground">
+                      Choosing a preset updates the editable train, validation, and test colors below.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+                    <ColorInputRow
+                      label="Train"
+                      value={config.partitionColors.train}
+                      onChange={(value) => updatePartitionColor("train", value)}
+                    />
+                    <ColorInputRow
+                      label="Validation"
+                      value={config.partitionColors.val}
+                      onChange={(value) => updatePartitionColor("val", value)}
+                    />
+                    <ColorInputRow
+                      label="Test"
+                      value={config.partitionColors.test}
+                      onChange={(value) => updatePartitionColor("test", value)}
+                    />
+                  </div>
+                </>
+              )}
+            </>
           )}
           <Row>
             <Label className="text-xs">PNG export theme</Label>

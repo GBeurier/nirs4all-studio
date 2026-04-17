@@ -18,6 +18,9 @@ from typing import Any
 from .lazy_imports import get_cached, is_ml_ready
 
 STORE_AVAILABLE = True
+_OBJECT_REPR_RE = re.compile(
+    r"^\s*<(?P<path>.+?)\s+object at 0x[0-9A-Fa-f]+>\s*$"
+)
 
 
 def _get_workspace_store_cls() -> Any:
@@ -63,6 +66,63 @@ def _sanitize_dict(d: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _to_json_compatible(value: Any) -> Any:
+    """Recursively convert arrays/scalars into JSON-safe Python values."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return {str(k): _to_json_compatible(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_json_compatible(item) for item in value]
+    if hasattr(value, "tolist") and not isinstance(value, (str, bytes, bytearray)):
+        try:
+            return _to_json_compatible(value.tolist())
+        except Exception:
+            pass
+    if hasattr(value, "item") and not isinstance(value, (str, bytes, bytearray)):
+        try:
+            return _sanitize_float(value.item())
+        except Exception:
+            pass
+    if isinstance(value, (float, int)):
+        return _sanitize_float(value)
+    return value
+
+
+def _extract_sample_metadata(
+    store: Any,
+    prediction_id: str,
+    dataset_name: str | None = None,
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Load per-sample metadata for a prediction when available."""
+    if isinstance(payload, dict):
+        raw = payload.get("sample_metadata")
+        if not isinstance(raw, dict):
+            raw = payload.get("metadata")
+        if isinstance(raw, dict):
+            return _to_json_compatible(raw)
+
+    get_arrays = getattr(store, "get_prediction_arrays", None)
+    if callable(get_arrays):
+        arrays = get_arrays(prediction_id)
+        if isinstance(arrays, dict):
+            raw = arrays.get("sample_metadata")
+            if isinstance(raw, dict):
+                return _to_json_compatible(raw)
+
+    array_store = getattr(store, "array_store", None)
+    load_single = getattr(array_store, "load_single", None)
+    if callable(load_single):
+        arrays = load_single(prediction_id, dataset_name=dataset_name)
+        if isinstance(arrays, dict):
+            raw = arrays.get("sample_metadata")
+            if isinstance(raw, dict):
+                return _to_json_compatible(raw)
+
+    return None
+
+
 def _coerce_metric_name(metric_name: Any, default: str | None = "r2") -> str | None:
     """Normalize nullable metric names read from historical store rows."""
     if isinstance(metric_name, str):
@@ -80,6 +140,176 @@ def _parse_json_maybe(value: Any) -> Any:
         except Exception:
             return value
     return value
+
+
+def _parse_expanded_config_steps(expanded_config: Any) -> list[Any]:
+    """Return a pipeline's expanded canonical step list."""
+    parsed = _parse_json_maybe(expanded_config)
+    if isinstance(parsed, dict) and isinstance(parsed.get("pipeline"), list):
+        return parsed["pipeline"]
+    if isinstance(parsed, list):
+        return parsed
+    if parsed is None:
+        return []
+    return [parsed]
+
+
+def _class_name_from_path(class_path: Any) -> str:
+    """Return the leaf class/function name from a dotted reference."""
+    if not isinstance(class_path, str) or not class_path:
+        return ""
+    normalized = class_path.strip()
+    match = _OBJECT_REPR_RE.match(normalized)
+    if match:
+        normalized = match.group("path").strip()
+    if not normalized:
+        return ""
+    return normalized.rsplit(".", 1)[-1]
+
+
+def _is_internal_refit_splitter_reference(reference: str | None) -> bool:
+    """Return ``True`` for the runtime-only full-train refit splitter."""
+    normalized = _class_name_from_path(reference).lstrip("_").lower()
+    return normalized == "fulltrainfoldsplitter"
+
+
+def _extract_step_reference(step: Any) -> tuple[str | None, dict[str, Any]]:
+    """Return ``(reference, params)`` for a canonical step when possible."""
+    if isinstance(step, str):
+        return step, {}
+
+    if not isinstance(step, dict):
+        return None, {}
+
+    if "class" in step and isinstance(step.get("class"), str):
+        params = step.get("params")
+        return step["class"], params if isinstance(params, dict) else {}
+
+    if "model" in step:
+        return None, {}
+
+    return None, {}
+
+
+def _strategy_key_from_reference(reference: str | None) -> str | None:
+    """Normalize splitter/operator references to UI-friendly strategy keys."""
+    if not isinstance(reference, str):
+        return None
+
+    normalized = _class_name_from_path(reference).lstrip("_").lower()
+    if normalized == "fulltrainfoldsplitter":
+        return "full_train"
+
+    mapping = {
+        "kfold": "kfold",
+        "stratifiedkfold": "stratified_kfold",
+        "groupkfold": "group_kfold",
+        "stratifiedgroupkfold": "stratified_group_kfold",
+        "repeatedkfold": "repeated_kfold",
+        "repeatedstratifiedkfold": "repeated_stratified_kfold",
+        "leaveoneout": "loo",
+        "leavepout": "leave_p_out",
+        "shufflesplit": "shuffle_split",
+        "stratifiedshufflesplit": "stratified_shuffle_split",
+        "groupshufflesplit": "group_shuffle_split",
+        "timeseriessplit": "time_series_split",
+        "holdout": "holdout",
+    }
+    return mapping.get(normalized)
+
+
+def _infer_pipeline_runtime_config(expanded_config: Any) -> dict[str, Any]:
+    """Infer CV/runtime metadata from stored expanded pipeline steps."""
+    info: dict[str, Any] = {
+        "cv_strategy": None,
+        "cv_folds": None,
+        "random_state": None,
+        "shuffle": None,
+        "test_size": None,
+        "group_by": None,
+        "splitter_class": None,
+        "is_refit_pipeline": False,
+    }
+
+    for step in _parse_expanded_config_steps(expanded_config):
+        reference, params = _extract_step_reference(step)
+        if not reference:
+            continue
+
+        strategy_key = _strategy_key_from_reference(reference)
+        if strategy_key == "full_train":
+            info["is_refit_pipeline"] = True
+            continue
+
+        class_name = _class_name_from_path(reference)
+        normalized_reference = _OBJECT_REPR_RE.sub(r"\g<path>", str(reference).strip()).strip()
+        if strategy_key is None and not any(
+            token in normalized_reference.lower()
+            for token in ("split", "fold", "loo", "holdout")
+        ):
+            continue
+
+        if _is_internal_refit_splitter_reference(reference):
+            info["is_refit_pipeline"] = True
+            continue
+
+        info["cv_strategy"] = strategy_key or class_name or normalized_reference
+        info["splitter_class"] = class_name or normalized_reference
+
+        raw_folds = params.get("n_splits", params.get("cv_folds"))
+        if isinstance(raw_folds, (int, float)) and int(raw_folds) > 0:
+            info["cv_folds"] = int(raw_folds)
+
+        raw_random_state = params.get("random_state")
+        if isinstance(raw_random_state, (int, float)):
+            info["random_state"] = int(raw_random_state)
+
+        if isinstance(params.get("shuffle"), bool):
+            info["shuffle"] = params.get("shuffle")
+
+        raw_test_size = params.get("test_size")
+        if isinstance(raw_test_size, (int, float)):
+            info["test_size"] = float(raw_test_size)
+
+        for group_key in ("group_by", "groups", "repetition", "aggregate"):
+            group_value = params.get(group_key)
+            if isinstance(group_value, str) and group_value.strip():
+                info["group_by"] = group_value.strip()
+                break
+
+        break
+
+    return info
+
+
+def _infer_run_config_from_pipelines(pipelines: list[dict[str, Any]]) -> dict[str, Any]:
+    """Infer run-level config hints from stored pipeline rows."""
+    inferred: dict[str, Any] = {}
+    refit_pipeline_count = 0
+    fallback_with_splitter: dict[str, Any] | None = None
+
+    for pipeline in pipelines:
+        pipeline_hint = _infer_pipeline_runtime_config(pipeline.get("expanded_config"))
+        if pipeline_hint.get("is_refit_pipeline"):
+            refit_pipeline_count += 1
+            continue
+
+        if pipeline_hint.get("cv_strategy") or pipeline_hint.get("splitter_class"):
+            fallback_with_splitter = pipeline_hint
+            break
+
+    if fallback_with_splitter:
+        inferred.update({
+            key: value
+            for key, value in fallback_with_splitter.items()
+            if key != "is_refit_pipeline" and value is not None
+        })
+
+    if refit_pipeline_count > 0:
+        inferred["has_refit"] = True
+        inferred["refit_pipeline_count"] = refit_pipeline_count
+
+    return inferred
 
 
 def _normalize_prediction_record(raw: dict[str, Any]) -> dict[str, Any]:
@@ -476,6 +706,8 @@ class StoreAdapter:
         if run is None:
             return None
         run = _sanitize_dict(run)
+        for json_field in ("config", "datasets", "summary"):
+            run[json_field] = _parse_json_maybe(run.get(json_field))
         # Convert datetimes
         for ts_field in ("created_at", "completed_at"):
             val = run.get(ts_field)
@@ -486,11 +718,25 @@ class StoreAdapter:
         pipelines = []
         for row in pipelines_df.iter_rows(named=True):
             p = _sanitize_dict(dict(row))
+            for json_field in ("expanded_config", "generator_choices"):
+                p[json_field] = _parse_json_maybe(p.get(json_field))
             for ts_field in ("created_at", "completed_at"):
                 val = p.get(ts_field)
                 if isinstance(val, datetime):
                     p[ts_field] = val.isoformat()
+            runtime_hint = _infer_pipeline_runtime_config(p.get("expanded_config"))
+            p["is_refit_pipeline"] = bool(runtime_hint.get("is_refit_pipeline"))
+            p["splitter_class"] = runtime_hint.get("splitter_class")
             pipelines.append(p)
+        inferred_config = _infer_run_config_from_pipelines(pipelines)
+        run_config = run.get("config")
+        if not isinstance(run_config, dict):
+            run_config = {}
+        merged_run_config = {
+            **inferred_config,
+            **{k: v for k, v in run_config.items() if v is not None},
+        }
+        run["config"] = _sanitize_dict(merged_run_config)
         run["pipelines"] = pipelines
         return run
 
@@ -505,6 +751,16 @@ class StoreAdapter:
         """
         df = self._store.get_run_log_summary(run_id)
         return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+
+    def get_pipeline_log(self, pipeline_id: str) -> list[dict[str, Any]]:
+        """Get structured log entries for one stored pipeline."""
+        df = self._store.get_pipeline_log(pipeline_id)
+        entries: list[dict[str, Any]] = []
+        for row in df.iter_rows(named=True):
+            entry = _sanitize_dict(dict(row))
+            entry["details"] = _parse_json_maybe(entry.get("details"))
+            entries.append(entry)
+        return entries
 
     def delete_run(self, run_id: str) -> dict[str, Any]:
         """Delete a run with cascade.
@@ -990,7 +1246,6 @@ class StoreAdapter:
             Dict with y_true, y_pred, n_samples, partition, model_name,
             dataset_name; or ``None`` if not found.
         """
-        import numpy as np
         pred = self._store.get_prediction(prediction_id, load_arrays=True)
         if pred is None:
             return None
@@ -1000,11 +1255,18 @@ class StoreAdapter:
         if y_true is None or y_pred is None:
             return None
 
-        y_true_list = y_true.tolist() if isinstance(y_true, np.ndarray) else list(y_true)
-        y_pred_list = y_pred.tolist() if isinstance(y_pred, np.ndarray) else list(y_pred)
+        y_true_list = _to_json_compatible(y_true)
+        y_pred_list = _to_json_compatible(y_pred)
 
         if not y_true_list or not y_pred_list:
             return None
+
+        sample_metadata = _extract_sample_metadata(
+            self._store,
+            prediction_id,
+            dataset_name=pred.get("dataset_name"),
+            payload=pred,
+        )
 
         return {
             "prediction_id": prediction_id,
@@ -1014,6 +1276,7 @@ class StoreAdapter:
             "partition": pred.get("partition", "unknown"),
             "model_name": pred.get("model_name", "unknown"),
             "dataset_name": pred.get("dataset_name", "unknown"),
+            "sample_metadata": sample_metadata,
         }
 
     # ------------------------------------------------------------------
@@ -1119,24 +1382,33 @@ class StoreAdapter:
         Returns:
             Dict with y_true, y_pred, etc. as lists, or ``None``.
         """
-        import numpy as np
-        arrays = self._store.get_prediction_arrays(prediction_id)
+        get_arrays = getattr(self._store, "get_prediction_arrays", None)
+        arrays = get_arrays(prediction_id) if callable(get_arrays) else None
+        prediction_row: dict[str, Any] | None = None
         if arrays is None:
-            return None
+            prediction_row = self._store.get_prediction(prediction_id, load_arrays=True)
+            if not isinstance(prediction_row, dict):
+                return None
+            arrays = {
+                "y_true": prediction_row.get("y_true"),
+                "y_pred": prediction_row.get("y_pred"),
+                "y_proba": prediction_row.get("y_proba"),
+                "weights": prediction_row.get("weights"),
+                "sample_indices": prediction_row.get("sample_indices"),
+                "sample_metadata": prediction_row.get("sample_metadata") or prediction_row.get("metadata"),
+            }
 
         result: dict[str, Any] = {"prediction_id": prediction_id}
         for key in ("y_true", "y_pred", "y_proba", "weights"):
-            val = arrays.get(key)
-            if val is not None and isinstance(val, np.ndarray):
-                result[key] = val.tolist()
-            else:
-                result[key] = None
+            result[key] = _to_json_compatible(arrays.get(key))
 
-        sample_indices = arrays.get("sample_indices")
-        if sample_indices is not None and isinstance(sample_indices, np.ndarray):
-            result["sample_indices"] = sample_indices.tolist()
-        else:
-            result["sample_indices"] = None
+        result["sample_indices"] = _to_json_compatible(arrays.get("sample_indices"))
+        result["sample_metadata"] = _extract_sample_metadata(
+            self._store,
+            prediction_id,
+            dataset_name=(prediction_row or {}).get("dataset_name"),
+            payload=prediction_row or arrays,
+        )
 
         return result
 
@@ -1537,7 +1809,7 @@ class StoreAdapter:
                 pass
 
             # Derive CV config from predictions + stored run config
-            run_cv_config: dict[str, Any] = {}
+            run_cv_config: dict[str, Any] = _infer_run_config_from_pipelines(pipeline_rows)
             try:
                 cv_info_df = store._fetch_pl(
                     "SELECT COUNT(DISTINCT fold_id) as fold_count, "
@@ -1551,7 +1823,9 @@ class StoreAdapter:
                 )
                 if len(cv_info_df) > 0:
                     cv_info = cv_info_df.row(0, named=True)
-                    run_cv_config["cv_folds"] = cv_info.get("fold_count", 0) or 0
+                    inferred_folds = cv_info.get("fold_count", 0) or 0
+                    if inferred_folds:
+                        run_cv_config["cv_folds"] = inferred_folds
                     run_cv_config["metric"] = _coerce_metric_name(cv_info.get("metric"), default=None)
             except Exception:
                 pass

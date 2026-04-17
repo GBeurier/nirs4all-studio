@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { RunItem } from "@/components/runs/RunItem";
 import { RunDetailSheet } from "@/components/runs/RunDetailSheet";
 import { ProjectFilter } from "@/components/runs/ProjectFilter";
-import { NoWorkspaceState, EmptyState, CardSkeleton } from "@/components/ui/state-display";
+import { NoWorkspaceState, EmptyState, CardSkeleton, ErrorState } from "@/components/ui/state-display";
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
 import {
   collectPresentMetricKeys,
@@ -23,6 +23,7 @@ import {
 } from "@/lib/scores";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import {
+  formatApiErrorDetail,
   listRuns,
   getEnrichedRuns,
 } from "@/api/client";
@@ -38,7 +39,12 @@ export default function Runs() {
 
   const activeWorkspaceId = workspacesData?.active_workspace_id;
 
-  const { data: enrichedData, isLoading: isLoadingEnriched } = useQuery({
+  const {
+    data: enrichedData,
+    isLoading: isLoadingEnriched,
+    error: enrichedError,
+    refetch: refetchEnrichedRuns,
+  } = useQuery({
     queryKey: ["enriched-runs", activeWorkspaceId, selectedProjectId],
     queryFn: () => getEnrichedRuns(activeWorkspaceId!, selectedProjectId ?? undefined),
     enabled: !!activeWorkspaceId,
@@ -92,6 +98,13 @@ export default function Runs() {
 
   const isLoading = isLoadingEnriched;
   const hasActiveWorkspace = !!activeWorkspaceId;
+  const enrichedErrorMessage = enrichedError
+    ? formatApiErrorDetail(
+      typeof enrichedError === "object" && enrichedError && "detail" in enrichedError
+        ? enrichedError.detail
+        : enrichedError,
+    )
+    : null;
 
   const metricContext = useMemo(() => {
     const taskTypes = new Set<string>();
@@ -237,6 +250,14 @@ export default function Runs() {
           <CardSkeleton count={3} />
         ) : !hasActiveWorkspace ? (
           <NoWorkspaceState title="No workspace linked" description="Link a nirs4all workspace to see your runs. Go to Settings." />
+        ) : enrichedErrorMessage && runs.length === 0 ? (
+          <ErrorState
+            title="Failed to load run history"
+            message={enrichedErrorMessage}
+            onRetry={() => {
+              void refetchEnrichedRuns();
+            }}
+          />
         ) : runs.length === 0 ? (
           <EmptyState icon={Play} title={t("runs.empty")} description={t("runs.emptyHint")} action={{ label: t("runs.newRun"), href: "/editor" }} />
         ) : (

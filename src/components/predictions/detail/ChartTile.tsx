@@ -72,7 +72,7 @@ export function ChartTile({
           </button>
         )}
       </header>
-      <div className={cn("min-h-0 flex-1 p-3", height)}>{children}</div>
+      <div className={cn("min-h-0 p-3", height)}>{children}</div>
     </section>
   );
 }

@@ -38,9 +38,11 @@ import type { NodeDefinition } from "@/data/nodes/types";
 export type Nirs4allStep =
   | string // Class path only, e.g., "sklearn.preprocessing._data.StandardScaler"
   | null
+  | Nirs4allStep[]
   | Nirs4allClassStep
   | Nirs4allModelStep
   | Nirs4allYProcessingStep
+  | Nirs4allSplitStep
   | Nirs4allBranchStep
   | Nirs4allMergeStep
   | Nirs4allSampleAugmentationStep
@@ -73,6 +75,11 @@ export interface Nirs4allModelStep {
 
 export interface Nirs4allYProcessingStep {
   y_processing: string | Nirs4allClassStep;
+}
+
+export interface Nirs4allSplitStep {
+  split: string | Nirs4allClassStep;
+  [key: string]: unknown;
 }
 
 export interface Nirs4allBranchStep {
@@ -665,6 +672,32 @@ function castParams(params: Record<string, unknown> | undefined): EditorParams {
   return result;
 }
 
+function extractInlineComponentParams(
+  step: Record<string, unknown>,
+  wrapperKeys: string[],
+): EditorParams {
+  const reservedKeys = new Set([
+    ...wrapperKeys,
+    "_comment",
+    "_or_",
+    "_range_",
+    "_log_range_",
+    "_grid_",
+    "_cartesian_",
+    "_zip_",
+    "_chain_",
+    "_sample_",
+    "param",
+  ]);
+
+  const params: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(step)) {
+    if (reservedKeys.has(key)) continue;
+    params[key] = value;
+  }
+  return castParams(params);
+}
+
 function createNoOpEditorStep(): EditorPipelineStep {
   return {
     id: generateStepId(),
@@ -866,6 +899,14 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
     };
   }
 
+  // Expanded canonical pipelines can inline a concrete sequential chain as
+  // a raw array step after generator resolution. Preserve it as a flow group.
+  if (Array.isArray(step)) {
+    return createSequentialEditorStep(
+      step.map(item => item === null ? createNoOpEditorStep() : convertStepToEditor(item))
+    );
+  }
+
   // Handle comment step (skip it / mark as comment type)
   if ("_comment" in step) {
     const text = (step as { _comment: string })._comment;
@@ -886,6 +927,39 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
   // Handle y_processing step
   if ("y_processing" in step) {
     return convertYProcessingToEditor(step as Nirs4allYProcessingStep);
+  }
+
+  // Handle legacy split shorthand
+  if ("split" in step) {
+    const splitStep = step as Nirs4allSplitStep;
+    const inlineParams = extractInlineComponentParams(
+      step as Record<string, unknown>,
+      ["split"],
+    );
+    const splitValue = splitStep.split;
+
+    if (typeof splitValue === "string") {
+      const { name, classPath } = resolveClassPath(splitValue);
+      return {
+        id: generateStepId(),
+        type: "splitting",
+        name,
+        params: inlineParams,
+        classPath: classPath || splitValue,
+      };
+    }
+
+    const { name, classPath } = resolveClassPath(splitValue.class);
+    return {
+      id: generateStepId(),
+      type: "splitting",
+      name,
+      params: {
+        ...castParams(splitValue.params),
+        ...inlineParams,
+      },
+      classPath: classPath || splitValue.class,
+    };
   }
 
   // Handle branch step
@@ -925,16 +999,29 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
   // Handle preprocessing keyword (explicit preprocessing)
   if ("preprocessing" in step) {
     const preprocessingValue = (step as { preprocessing: string | Nirs4allClassStep }).preprocessing;
+    const inlineParams = extractInlineComponentParams(
+      step as Record<string, unknown>,
+      ["preprocessing"],
+    );
     if (typeof preprocessingValue === "string") {
       const { name, type, classPath } = resolveClassPath(preprocessingValue);
-      return { id: generateStepId(), type, name, params: {}, classPath: classPath || preprocessingValue };
+      return {
+        id: generateStepId(),
+        type,
+        name,
+        params: inlineParams,
+        classPath: classPath || preprocessingValue,
+      };
     } else {
       const { name, type, classPath } = resolveClassPath(preprocessingValue.class);
       return {
         id: generateStepId(),
         type,
         name,
-        params: castParams(preprocessingValue.params),
+        params: {
+          ...castParams(preprocessingValue.params),
+          ...inlineParams,
+        },
         classPath: classPath || preprocessingValue.class,
       };
     }

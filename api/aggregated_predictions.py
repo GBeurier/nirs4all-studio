@@ -102,6 +102,7 @@ class ChainSummary(BaseModel):
     task_type: str | None = None
     dataset_name: str | None = None
     best_params: Any | None = None
+    variant_params: Any | None = None
     # CV scores
     cv_val_score: float | None = None
     cv_test_score: float | None = None
@@ -182,6 +183,7 @@ class PredictionArraysResponse(BaseModel):
     y_proba: list[float] | list[list[float]] | None = None
     sample_indices: list[int] | None = None
     weights: list[float | None] | None = None
+    sample_metadata: dict[str, list[Any]] | None = None
     n_samples: int = 0
 
 
@@ -495,6 +497,80 @@ def _looks_like_canonical_chain_payload(value: Any) -> bool:
     return isinstance(value, dict) and any(key in value for key in CHAIN_CANONICAL_STEP_KEYS)
 
 
+_DROP_PIPELINE_STEP = object()
+
+
+def _is_runtime_only_step_repr(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and " object at 0x" in value
+        and value.strip().startswith("<")
+        and value.strip().endswith(">")
+    )
+
+
+def _clean_expanded_pipeline_step(step: Any) -> Any:
+    if step is None:
+        return None
+
+    if isinstance(step, list):
+        cleaned_items: list[Any] = []
+        for item in step:
+            cleaned = _clean_expanded_pipeline_step(item)
+            if cleaned is _DROP_PIPELINE_STEP:
+                continue
+            cleaned_items.append(cleaned)
+        return cleaned_items
+
+    if isinstance(step, dict):
+        if _is_runtime_only_step_repr(step.get("class")):
+            return _DROP_PIPELINE_STEP
+        if _is_runtime_only_step_repr(step.get("function")):
+            return _DROP_PIPELINE_STEP
+
+        model_ref = step.get("model")
+        if isinstance(model_ref, str) and _is_runtime_only_step_repr(model_ref):
+            return _DROP_PIPELINE_STEP
+
+        cleaned_dict: dict[str, Any] = {}
+        for key, value in step.items():
+            cleaned = _clean_expanded_pipeline_step(value)
+            if cleaned is _DROP_PIPELINE_STEP:
+                continue
+            cleaned_dict[key] = cleaned
+        return _normalize_chain_payload(cleaned_dict)
+
+    if _is_runtime_only_step_repr(step):
+        return _DROP_PIPELINE_STEP
+
+    if isinstance(step, str):
+        return _normalize_chain_reference(step)
+
+    return step
+
+
+def _extract_expanded_pipeline_steps(pipeline: dict[str, Any]) -> list[Any]:
+    expanded_config = _parse_json_maybe(pipeline.get("expanded_config"))
+
+    if isinstance(expanded_config, dict) and isinstance(expanded_config.get("pipeline"), list):
+        expanded_steps = expanded_config["pipeline"]
+    elif isinstance(expanded_config, list):
+        expanded_steps = expanded_config
+    elif expanded_config is None:
+        expanded_steps = []
+    else:
+        expanded_steps = [expanded_config]
+
+    cleaned_steps: list[Any] = []
+    for step in expanded_steps:
+        cleaned = _clean_expanded_pipeline_step(step)
+        if cleaned is _DROP_PIPELINE_STEP:
+            continue
+        cleaned_steps.append(cleaned)
+
+    return _sanitize_dict({"pipeline": cleaned_steps})["pipeline"]
+
+
 def _chain_step_to_canonical(step: dict[str, Any], *, is_model: bool) -> Any | None:
     """Rebuild a canonical step payload from a stored chain step.
 
@@ -743,6 +819,16 @@ async def get_chain_detail(
             _enrich_with_fold_artifacts([summary], store)
             _enrich_refit_with_cv([summary], store)
             _apply_synthetic_refit_fallback_inplace(summary)
+            pipeline_ids = [summary.get("pipeline_id")] if summary.get("pipeline_id") else []
+            pipeline_map = _build_pipeline_metadata_map(store, pipeline_ids) if pipeline_ids else {}
+            pipeline_row = pipeline_map.get(summary.get("pipeline_id") or "", {}) if pipeline_map else {}
+            best_params_parsed = _parse_json_maybe(summary.get("best_params"))
+            summary["best_params"] = best_params_parsed if isinstance(best_params_parsed, dict) else None
+            step_params = _extract_model_params_from_expanded_config(
+                pipeline_row.get("expanded_config"),
+                summary.get("model_step_idx"),
+            )
+            summary["variant_params"] = step_params if isinstance(step_params, dict) else None
 
         # Get individual prediction rows
         pred_df = store.get_chain_predictions(chain_id)
@@ -854,6 +940,24 @@ async def get_chain_pipeline_steps(chain_id: str):
         store.close()
 
 
+@router.get("/pipeline/{pipeline_id}/pipeline-steps")
+async def get_run_pipeline_steps(pipeline_id: str):
+    """Return the cleaned stored expanded pipeline steps for a run pipeline."""
+    store = _get_store()
+    try:
+        pipeline = store.get_pipeline(pipeline_id)
+        if pipeline is None:
+            raise HTTPException(status_code=404, detail=f"Pipeline {pipeline_id} not found")
+
+        return {
+            "pipeline_id": pipeline["pipeline_id"],
+            "name": pipeline.get("name") or pipeline["pipeline_id"],
+            "pipeline": _extract_expanded_pipeline_steps(pipeline),
+        }
+    finally:
+        store.close()
+
+
 @router.get("/chain/{chain_id}/detail")
 async def get_chain_partition_detail(
     chain_id: str,
@@ -927,6 +1031,8 @@ async def get_prediction_arrays(prediction_id: str):
         def _to_list(value: Any) -> Any:
             if value is None:
                 return None
+            if isinstance(value, dict):
+                return {str(key): _to_list(item) for key, item in value.items()}
             if isinstance(value, np.ndarray):
                 value = value.tolist()
             if isinstance(value, np.generic):
@@ -948,14 +1054,31 @@ async def get_prediction_arrays(prediction_id: str):
         y_proba = _to_list(arrays.get("y_proba"))
         weights = _to_list(arrays.get("weights"))
         sample_indices = _to_list(arrays.get("sample_indices"))
+        sample_metadata = _to_list(arrays.get("sample_metadata"))
+
+        if sample_metadata is None:
+            fallback_meta = arrays.get("metadata")
+            if isinstance(fallback_meta, dict):
+                sample_metadata = _to_list(fallback_meta)
+
+        if sample_metadata is None:
+            dataset_name = arrays.get("dataset_name")
+            array_store = getattr(store, "array_store", None)
+            load_single = getattr(array_store, "load_single", None)
+            if callable(load_single):
+                loaded = load_single(prediction_id, dataset_name=dataset_name)
+                if isinstance(loaded, dict):
+                    loaded_meta = loaded.get("sample_metadata")
+                    if isinstance(loaded_meta, dict):
+                        sample_metadata = _to_list(loaded_meta)
 
         if isinstance(weights, list) and all(item is None for item in weights):
             weights = None
 
         n_samples = 0
-        for value in (y_true, y_pred, sample_indices, weights, y_proba):
+        for value in (y_true, y_pred, sample_indices, weights, y_proba, sample_metadata):
             if value is not None:
-                n_samples = len(value)
+                n_samples = len(value) if not isinstance(value, dict) else len(next(iter(value.values()), []))
                 break
 
         result: dict[str, Any] = {
@@ -965,6 +1088,7 @@ async def get_prediction_arrays(prediction_id: str):
             "y_proba": y_proba,
             "sample_indices": sample_indices,
             "weights": weights,
+            "sample_metadata": sample_metadata,
             "n_samples": n_samples,
         }
 

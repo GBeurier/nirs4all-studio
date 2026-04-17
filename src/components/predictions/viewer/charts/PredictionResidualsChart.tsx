@@ -1,7 +1,8 @@
 /**
  * Residuals chart: y_pred (predicted) vs (y_true - y_pred).
  *
- * Renders one <Scatter> per partition. Honors zero line and ±1σ band.
+ * Renders one <Scatter> per partition while resolving point colors from the
+ * shared prediction-viewer coloration config. Honors zero line and ±1σ band.
  */
 
 import { forwardRef, useMemo } from "react";
@@ -16,6 +17,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { buildPredictionColoration } from "../coloration";
 import { getPartitionColor } from "../palettes";
 import type { ChartConfig, ChartVariant, PartitionDataset } from "../types";
 
@@ -29,6 +31,16 @@ interface PredictionResidualsChartProps {
   className?: string;
 }
 
+interface ResidualDot {
+  predicted: number;
+  residual: number;
+  fill: string;
+  partitionLabel: string;
+  sampleIndex: number;
+  metadataLabel?: string;
+  metadataValue?: unknown;
+}
+
 function formatTick(value: number): string {
   if (!Number.isFinite(value)) return "";
   const abs = Math.abs(value);
@@ -39,6 +51,16 @@ function formatTick(value: number): string {
 
 function jitterValue(v: number, amount: number): number {
   return v + (Math.random() - 0.5) * amount;
+}
+
+function formatTooltipValue(value: unknown): string {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value.toFixed(3) : String(value);
+  }
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  return String(value);
 }
 
 export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionResidualsChartProps>(
@@ -54,20 +76,33 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
         : resolved === "panel"
         ? { top: 8, right: 12, bottom: 28, left: 40 }
         : { top: 4, right: 8, bottom: 8, left: 8 };
+    const coloration = useMemo(
+      () => buildPredictionColoration(datasets, config),
+      [datasets, config],
+    );
+
     const { series, sigma, xMin, xMax } = useMemo(() => {
       const allResiduals: number[] = [];
       let xMin = Number.POSITIVE_INFINITY;
       let xMax = Number.NEGATIVE_INFINITY;
 
       const series = datasets.map((ds) => {
-        const pts: { predicted: number; residual: number }[] = [];
+        const pts: ResidualDot[] = [];
         const n = Math.min(ds.yTrue.length, ds.yPred.length);
         for (let i = 0; i < n; i++) {
           const t = ds.yTrue[i];
           const p = ds.yPred[i];
           if (!Number.isFinite(t) || !Number.isFinite(p)) continue;
           const r = t - p;
-          pts.push({ predicted: p, residual: r });
+          pts.push({
+            predicted: p,
+            residual: r,
+            fill: coloration.getPointColor(ds, i),
+            partitionLabel: ds.label,
+            sampleIndex: i,
+            metadataLabel: coloration.metadataKey,
+            metadataValue: coloration.getMetadataValue(ds, i),
+          });
           allResiduals.push(r);
           if (p < xMin) xMin = p;
           if (p > xMax) xMax = p;
@@ -81,6 +116,7 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
       if (jitterAmount > 0) {
         for (const s of series) {
           s.points = s.points.map((p) => ({
+            ...p,
             predicted: jitterValue(p.predicted, jitterAmount),
             residual: p.residual,
           }));
@@ -96,7 +132,7 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
       }
 
       return { series, sigma, xMin, xMax };
-    }, [datasets, config.jitter]);
+    }, [datasets, coloration, config.jitter]);
 
     return (
       <div ref={ref} className={className ?? "h-full w-full"}>
@@ -142,13 +178,35 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
             />
             {showTooltip && (
               <Tooltip
+                content={({ active, payload }: { active?: boolean; payload?: Array<{ payload: ResidualDot }> }) => {
+                  if (!active || !payload || payload.length === 0) return null;
+                  const dot = payload[0]?.payload;
+                  if (!dot) return null;
+                  return (
+                    <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
+                      <div className="font-medium text-foreground">{dot.partitionLabel}</div>
+                      <div className="mt-1 text-muted-foreground">Sample {dot.sampleIndex + 1}</div>
+                      <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1">
+                        <span className="text-muted-foreground">Predicted</span>
+                        <span>{formatTooltipValue(dot.predicted)}</span>
+                        <span className="text-muted-foreground">Residual</span>
+                        <span>{formatTooltipValue(dot.residual)}</span>
+                        {dot.metadataLabel && (
+                          <>
+                            <span className="text-muted-foreground">{dot.metadataLabel}</span>
+                            <span>{formatTooltipValue(dot.metadataValue)}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }}
                 contentStyle={{
                   backgroundColor: "hsl(var(--card))",
                   border: "1px solid hsl(var(--border))",
                   borderRadius: "8px",
                   fontSize: "12px",
                 }}
-                formatter={(value: number) => value.toFixed(3)}
               />
             )}
 
@@ -171,9 +229,7 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
             )}
 
             {series.map(({ dataset, points }) => {
-              const color = config.partitionColoring
-                ? getPartitionColor(dataset.partition, config.palette, config.partitionColors)
-                : "hsl(var(--chart-2))";
+              const color = getPartitionColor(dataset.partition, config.palette, config.partitionColors);
               const radius = Math.max(1, config.pointSize / 2);
               return (
                 <Scatter
@@ -182,12 +238,12 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
                   data={points}
                   fill={color}
                   opacity={config.pointOpacity}
-                  shape={(props: { cx?: number; cy?: number; fill?: string }) => (
+                  shape={(props: { cx?: number; cy?: number; payload?: ResidualDot }) => (
                     <circle
                       cx={props.cx}
                       cy={props.cy}
                       r={radius}
-                      fill={color}
+                      fill={props.payload?.fill ?? color}
                       fillOpacity={config.pointOpacity}
                     />
                   )}

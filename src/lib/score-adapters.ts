@@ -167,6 +167,19 @@ function compareCvChains(a: TopChainResult, b: TopChainResult, metric: string | 
   return a.chain_id.localeCompare(b.chain_id);
 }
 
+function compareRefitRows(a: ScoreCardRow, b: ScoreCardRow, metric: string | null): number {
+  const lowerBetter = isLowerBetter(metric);
+  const byTest = compareNullableScores(a.primaryTestScore, b.primaryTestScore, lowerBetter);
+  if (byTest !== 0) return byTest;
+  const byTrain = compareNullableScores(a.primaryTrainScore, b.primaryTrainScore, lowerBetter);
+  if (byTrain !== 0) return byTrain;
+  const byModel = a.modelName.localeCompare(b.modelName);
+  if (byModel !== 0) return byModel;
+  const byChain = a.chainId.localeCompare(b.chainId);
+  if (byChain !== 0) return byChain;
+  return (a.foldId ?? "").localeCompare(b.foldId ?? "");
+}
+
 function stableSerialize(value: unknown): string {
   if (value == null) return "";
   if (Array.isArray(value)) {
@@ -877,21 +890,21 @@ export function datasetChainsToRows(
   );
   const refitDisplayVariants = new Set(refitChains.map(displayVariantKey));
   const usedCvChainIds = new Set<string>();
-  const rows: ScoreCardRow[] = [];
+  const refitRows: ScoreCardRow[] = [];
 
   for (const refitChain of refitChains) {
     const matchedCv = isStandaloneRefitChain(refitChain)
       ? findMatchingCvSourceExact(refitChain, cvOnlyChains, usedCvChainIds, metric)
       : findMatchingCvSource(refitChain, cvOnlyChains, usedCvChainIds, metric);
     if (matchedCv) usedCvChainIds.add(matchedCv.chain_id);
-    rows.push(buildRefitRow(
+    refitRows.push(buildRefitRow(
       refitChain,
       metric,
       taskType,
       isStandaloneRefitChain(refitChain) ? null : matchedCv,
     ));
     if (hasAggregatedRefitData(refitChain)) {
-      rows.push(buildAggregatedRefitRow(
+      refitRows.push(buildAggregatedRefitRow(
         refitChain,
         metric,
         taskType,
@@ -899,6 +912,10 @@ export function datasetChainsToRows(
       ));
     }
   }
+
+  refitRows.sort((a, b) => compareRefitRows(a, b, metric));
+
+  const rows: ScoreCardRow[] = [...refitRows];
 
   for (const cvChain of cvOnlyChains) {
     if (usedCvChainIds.has(cvChain.chain_id)) continue;

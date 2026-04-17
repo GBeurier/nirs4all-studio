@@ -10,7 +10,7 @@ import { useMemo } from "react";
 import { Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isClassificationTask } from "@/components/runs/modelDetailClassification";
-import { getPartitionColor } from "./palettes";
+import { PredictionColorLegend } from "./PredictionColorLegend";
 import {
   type ChartConfig,
   type ChartKind,
@@ -22,43 +22,17 @@ import { PredictionScatterChart } from "./charts/PredictionScatterChart";
 import { PredictionResidualsChart } from "./charts/PredictionResidualsChart";
 import { PredictionConfusionChart } from "./charts/PredictionConfusionChart";
 
-function PartitionLegend({
-  datasets,
-  config,
-}: {
-  datasets: { partition: string; label: string; predictionId: string }[];
-  config: Pick<ChartConfig, "palette" | "partitionColors">;
-}) {
-  if (datasets.length === 0) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2 pt-1">
-      {datasets.map((d) => {
-        const color = getPartitionColor(d.partition, config.palette, config.partitionColors);
-        return (
-          <div
-            key={`${d.predictionId}-${d.partition}`}
-            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
-          >
-            <span
-              aria-hidden
-              className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: color }}
-            />
-            <span>{d.label}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export function PredictionPreview({
   header,
   partitions,
   workspaceId,
   onOpenViewer,
 }: PredictionPreviewProps) {
-  const [sharedConfig] = usePredictionChartConfig();
+  const configDatasetKey = useMemo(
+    () => `${workspaceId ?? "__current__"}::${header.datasetName}`,
+    [workspaceId, header.datasetName],
+  );
+  const [sharedConfig] = usePredictionChartConfig({ datasetKey: configDatasetKey });
   const { data: datasets, isLoading, error } = usePartitionsData({
     partitions,
     workspaceId,
@@ -122,7 +96,6 @@ export function PredictionPreview({
               <PredictionConfusionChart datasets={datasets} config={previewConfig} variant="thumbnail" />
             </div>
           </div>
-          <PartitionLegend datasets={datasets} config={previewConfig} />
         </button>
       ) : (
         <div className="flex flex-col gap-2">
@@ -138,7 +111,7 @@ export function PredictionPreview({
             <div style={{ height: 140 }} className="w-full">
               <PredictionScatterChart datasets={datasets} config={previewConfig} variant="thumbnail" />
             </div>
-            <PartitionLegend datasets={datasets} config={previewConfig} />
+            <PredictionColorLegend datasets={datasets} config={previewConfig} className="pt-1" />
           </button>
           <button
             type="button"
@@ -152,7 +125,7 @@ export function PredictionPreview({
             <div style={{ height: 140 }} className="w-full">
               <PredictionResidualsChart datasets={datasets} config={previewConfig} variant="thumbnail" />
             </div>
-            <PartitionLegend datasets={datasets} config={previewConfig} />
+            <PredictionColorLegend datasets={datasets} config={previewConfig} className="pt-1" />
           </button>
         </div>
       )}

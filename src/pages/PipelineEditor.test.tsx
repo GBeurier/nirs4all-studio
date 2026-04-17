@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   getPipeline: vi.fn(),
   savePipeline: vi.fn(),
   getChainPipelineSteps: vi.fn(),
+  getRunPipelineSteps: vi.fn(),
   previewPipelineImport: vi.fn(),
   renderCanonicalPipeline: vi.fn(),
   listPipelineSamples: vi.fn(),
@@ -32,6 +33,7 @@ vi.mock("@/api/client", () => ({
   getPipeline: mocks.getPipeline,
   savePipeline: mocks.savePipeline,
   getChainPipelineSteps: mocks.getChainPipelineSteps,
+  getRunPipelineSteps: mocks.getRunPipelineSteps,
   previewPipelineImport: mocks.previewPipelineImport,
   renderCanonicalPipeline: mocks.renderCanonicalPipeline,
   listPipelineSamples: mocks.listPipelineSamples,
@@ -262,7 +264,6 @@ function createQueryClient() {
 
 async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise<void> {
   const start = Date.now();
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       assertion();
@@ -369,6 +370,54 @@ describe("PipelineEditor route loading", () => {
 
     expect(mocks.getPipeline).not.toHaveBeenCalled();
     expect(mocks.loadPipeline).not.toHaveBeenCalled();
+
+    await view.unmount();
+  });
+
+  it("loads the full stored run pipeline from the query string", async () => {
+    const importedSteps = [
+      { id: "split", type: "splitting", name: "ShuffleSplit", params: { n_splits: 4 } },
+      { id: "scale", type: "preprocessing", name: "SNV", params: {} },
+      { id: "model-a", type: "model", name: "PLSRegression", params: { n_components: 8 } },
+      { id: "model-b", type: "model", name: "SVR", params: { kernel: "rbf" } },
+    ];
+
+    mocks.getRunPipelineSteps.mockResolvedValue({
+      pipeline_id: "pipe-run-1",
+      name: "Run Variant A",
+      pipeline: [
+        { split: "ShuffleSplit", n_splits: 4 },
+        "SNV",
+        { model: "PLSRegression", n_components: 8 },
+        { model: "SVR", kernel: "rbf" },
+      ],
+    });
+    mocks.previewPipelineImport.mockResolvedValue({
+      success: true,
+      name: "Run Variant A",
+      description: "",
+      steps: importedSteps,
+    });
+
+    const view = await renderPage("/pipelines/new?runPipelineId=pipe-run-1");
+
+    await waitFor(() => {
+      expect(mocks.getRunPipelineSteps).toHaveBeenCalledWith("pipe-run-1");
+      expect(mocks.previewPipelineImport).toHaveBeenCalledWith({
+        content: undefined,
+        payload: {
+          name: "Run Variant A",
+          pipeline: [
+            { split: "ShuffleSplit", n_splits: 4 },
+            "SNV",
+            { model: "PLSRegression", n_components: 8 },
+            { model: "SVR", kernel: "rbf" },
+          ],
+        },
+        format: undefined,
+      });
+      expect(mocks.loadPipeline).toHaveBeenCalledWith(importedSteps, "Run Variant A");
+    });
 
     await view.unmount();
   });

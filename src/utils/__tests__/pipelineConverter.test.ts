@@ -219,6 +219,44 @@ describe("pipelineConverter", () => {
       expect(steps[1].name).toBe("KennardStone");
       expect(steps[1].type).toBe("splitting");
     });
+
+    it("should import legacy split shorthand with inline params", () => {
+      const steps = importFromNirs4all([
+        {
+          split: "ShuffleSplit",
+          n_splits: 5,
+          test_size: 0.2,
+          random_state: 42,
+        },
+      ]);
+
+      expect(steps).toHaveLength(1);
+      expect(steps[0].name).toBe("ShuffleSplit");
+      expect(steps[0].type).toBe("splitting");
+      expect(steps[0].params).toEqual({
+        n_splits: 5,
+        test_size: 0.2,
+        random_state: 42,
+      });
+    });
+
+    it("should import preprocessing shorthand with inline params", () => {
+      const steps = importFromNirs4all([
+        {
+          preprocessing: "StandardScaler",
+          with_mean: true,
+          with_std: false,
+        },
+      ]);
+
+      expect(steps).toHaveLength(1);
+      expect(steps[0].name).toBe("StandardScaler");
+      expect(steps[0].type).toBe("preprocessing");
+      expect(steps[0].params).toEqual({
+        with_mean: true,
+        with_std: false,
+      });
+    });
   });
 
   describe("exportToNirs4all", () => {
@@ -452,6 +490,36 @@ describe("pipelineConverter", () => {
 
       expect(steps[0].type).toBe("y_processing");
       expect(steps[0].name).toBe("StandardScaler");
+    });
+
+    it("should import concrete array chains as sequential flow groups", () => {
+      const original = [
+        [
+          "nirs4all.operators.transforms.nirs.ExtendedMultiplicativeScatterCorrection",
+          {
+            class: "nirs4all.operators.transforms.signal.Gaussian",
+            params: { order: 0, sigma: 2 },
+          },
+          "nirs4all.operators.transforms.nirs.ASLSBaseline",
+          "nirs4all.operators.transforms.orthogonalization.OSC",
+        ],
+      ] as Nirs4allStep[];
+
+      const steps = importFromNirs4all({ pipeline: original });
+
+      expect(steps[0]).toMatchObject({
+        type: "flow",
+        subType: "sequential",
+        name: "Sequential",
+      });
+      expect(steps[0].children?.map((child) => child.name)).toEqual([
+        "EMSC",
+        "Gaussian",
+        "ASLSBaseline",
+        "OSC",
+      ]);
+
+      expect(exportToNirs4all(steps)).toEqual(original);
     });
 
     it("should handle sample_augmentation", () => {

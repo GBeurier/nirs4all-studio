@@ -10,8 +10,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { getAvailableModels } from '@/api/shap';
+import { isLowerBetter } from '@/lib/scores';
 import type { AvailableModelsResponse, AvailableChain, DatasetChains } from '@/types/shap';
 
 interface ModelSelectorProps {
@@ -19,11 +21,15 @@ interface ModelSelectorProps {
   onChainSelect: (chainId: string | null, datasetName: string | null) => void;
 }
 
+const ALL = '__all__';
+
 export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorProps) {
   const { t } = useTranslation();
   const [data, setData] = useState<AvailableModelsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [datasetFilter, setDatasetFilter] = useState<string>(ALL);
+  const [modelFilter, setModelFilter] = useState<string>(ALL);
 
   useEffect(() => {
     setLoading(true);
@@ -45,6 +51,42 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
     const parts = cls.split('.');
     return parts[parts.length - 1];
   };
+
+  // Filter options: datasets that exist + model classes available under the current dataset filter
+  const datasetOptions = useMemo(() => allChains.map((ds) => ds.dataset_name), [allChains]);
+  const modelOptions = useMemo(() => {
+    const scoped = datasetFilter === ALL ? allChains : allChains.filter((ds) => ds.dataset_name === datasetFilter);
+    return Array.from(new Set(scoped.flatMap((ds) => ds.chains.map((c) => shortModelClass(c.model_class))))).sort();
+  }, [allChains, datasetFilter]);
+
+  // Apply filters + sort chains by score (direction depends on metric)
+  const filteredDatasets = useMemo(() => {
+    const chainScore = (c: AvailableChain): number | null =>
+      c.final_test_score ?? c.cv_val_score;
+    return allChains
+      .filter((ds) => datasetFilter === ALL || ds.dataset_name === datasetFilter)
+      .map((ds) => {
+        const chains =
+          modelFilter === ALL ? ds.chains : ds.chains.filter((c) => shortModelClass(c.model_class) === modelFilter);
+        const lowerBetter = isLowerBetter(ds.metric);
+        const sorted = [...chains].sort((a, b) => {
+          const sa = chainScore(a);
+          const sb = chainScore(b);
+          if (sa === null && sb === null) return 0;
+          if (sa === null) return 1; // scoreless entries go last
+          if (sb === null) return -1;
+          return lowerBetter ? sa - sb : sb - sa;
+        });
+        return { ...ds, chains: sorted };
+      })
+      .filter((ds) => ds.chains.length > 0);
+  }, [allChains, datasetFilter, modelFilter]);
+
+  const filteredBundles = useMemo(() => {
+    const bundles = data?.bundles ?? [];
+    if (modelFilter !== ALL) return [];
+    return datasetFilter === ALL ? bundles : bundles.filter((b) => b.dataset_name === datasetFilter);
+  }, [data, datasetFilter, modelFilter]);
 
   if (loading) {
     return (
@@ -129,63 +171,99 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
     formatScore(chain.final_test_score ?? chain.cv_val_score)
   );
 
-  return (
-    <Select value={selectedChainId || ''} onValueChange={handleSelect}>
-      <SelectTrigger>
-        <SelectValue placeholder={t('shap.selectModel', 'Select a trained model...')} />
-      </SelectTrigger>
-      <SelectContent className="max-h-80">
-        {allChains.map((ds: DatasetChains) => (
-          <SelectGroup key={ds.dataset_name}>
-            <SelectLabel className="flex items-center gap-2">
-              <Database className="h-3 w-3" />
-              {ds.dataset_name}
-              {ds.metric && (
-                <span className="text-xs text-muted-foreground">({ds.metric})</span>
-              )}
-            </SelectLabel>
-            {ds.chains.map((chain: AvailableChain) => {
-              const chainLabel = buildChainLabel(chain);
-              const chainTooltip = buildChainTooltip(chain);
-              const visibleScore = getVisibleScore(chain);
+  const hasVisible = filteredDatasets.length > 0 || filteredBundles.length > 0;
 
-              return (
-                <SelectItem key={chain.chain_id} value={chain.chain_id}>
-                  <div className="flex items-center gap-2 min-w-0" title={chainTooltip}>
-                    <span className="truncate max-w-[160px]">{chainLabel}</span>
-                    <Badge variant="default" className="text-[10px] px-1 py-0 shrink-0 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/30">
-                      refit
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Dataset</Label>
+          <Select value={datasetFilter} onValueChange={setDatasetFilter}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All datasets</SelectItem>
+              {datasetOptions.map((name) => (
+                <SelectItem key={name} value={name}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Model</Label>
+          <Select value={modelFilter} onValueChange={setModelFilter}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All models</SelectItem>
+              {modelOptions.map((name) => (
+                <SelectItem key={name} value={name}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <Select value={selectedChainId || ''} onValueChange={handleSelect}>
+        <SelectTrigger>
+          <SelectValue placeholder={t('shap.selectModel', 'Select a trained model...')} />
+        </SelectTrigger>
+        <SelectContent className="max-h-80">
+          {!hasVisible && (
+            <div className="px-2 py-2 text-xs text-muted-foreground text-center">
+              No models match these filters
+            </div>
+          )}
+          {filteredDatasets.map((ds: DatasetChains) => (
+            <SelectGroup key={ds.dataset_name}>
+              <SelectLabel className="flex items-center gap-2">
+                <Database className="h-3 w-3" />
+                {ds.dataset_name}
+                {ds.metric && (
+                  <span className="text-xs text-muted-foreground">({ds.metric})</span>
+                )}
+              </SelectLabel>
+              {ds.chains.map((chain: AvailableChain) => {
+                const chainLabel = buildChainLabel(chain);
+                const chainTooltip = buildChainTooltip(chain);
+                const visibleScore = getVisibleScore(chain);
+
+                return (
+                  <SelectItem key={chain.chain_id} value={chain.chain_id}>
+                    <div className="flex items-center gap-2 min-w-0" title={chainTooltip}>
+                      <span className="truncate max-w-[160px]">{chainLabel}</span>
+                      <Badge variant="default" className="text-[10px] px-1 py-0 shrink-0 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/30">
+                        refit
+                      </Badge>
+                      {visibleScore && (
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {visibleScore}
+                        </span>
+                      )}
+                    </div>
+                  </SelectItem>
+                );
+              })}
+            </SelectGroup>
+          ))}
+          {filteredBundles.length > 0 && (
+            <SelectGroup>
+              <SelectLabel className="flex items-center gap-2">
+                <FlaskConical className="h-3 w-3" />
+                {t('shap.bundles', 'Exported Bundles')}
+              </SelectLabel>
+              {filteredBundles.map((bundle) => (
+                <SelectItem key={bundle.bundle_path} value={bundle.bundle_path}>
+                  <div className="flex items-center gap-2">
+                    <span className="truncate max-w-[180px]">{bundle.display_name}</span>
+                    <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">
+                      .n4a
                     </Badge>
-                    {visibleScore && (
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {visibleScore}
-                      </span>
-                    )}
                   </div>
                 </SelectItem>
-              );
-            })}
-          </SelectGroup>
-        ))}
-        {data?.bundles && data.bundles.length > 0 && (
-          <SelectGroup>
-            <SelectLabel className="flex items-center gap-2">
-              <FlaskConical className="h-3 w-3" />
-              {t('shap.bundles', 'Exported Bundles')}
-            </SelectLabel>
-            {data.bundles.map((bundle) => (
-              <SelectItem key={bundle.bundle_path} value={bundle.bundle_path}>
-                <div className="flex items-center gap-2">
-                  <span className="truncate max-w-[180px]">{bundle.display_name}</span>
-                  <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">
-                    .n4a
-                  </Badge>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        )}
-      </SelectContent>
-    </Select>
+              ))}
+            </SelectGroup>
+          )}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

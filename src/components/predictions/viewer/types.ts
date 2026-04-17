@@ -4,7 +4,10 @@
  * See plan at C:\Users\U108-N257\.claude\plans\glimmering-fluttering-deer.md
  */
 
-import type { CategoricalPalette } from "@/lib/playground/colorConfig";
+import type {
+  CategoricalPalette,
+  ContinuousPalette,
+} from "@/lib/playground/colorConfig";
 import { PARTITION_COLORS } from "@/lib/partitionColors";
 
 export type ChartKind = "scatter" | "residuals" | "confusion";
@@ -23,6 +26,10 @@ export type TaskKind = "regression" | "classification";
 
 export type PaletteId = CategoricalPalette | "custom";
 
+export type ViewerColorMode = "partition" | "metadata";
+
+export type ViewerMetadataType = "categorical" | "continuous";
+
 export type ExportTheme = "inherit" | "light" | "dark";
 
 export type ConfusionNormalize = "none" | "row" | "col";
@@ -39,6 +46,8 @@ export interface ViewerGradientColors {
   low: string;
   high: string;
 }
+
+export type ViewerSampleMetadata = Record<string, unknown[]>;
 
 export interface ViewerPartitionTarget {
   /** Stable id (prediction_id). */
@@ -69,8 +78,15 @@ export interface ViewerHeader {
 }
 
 export interface ChartConfig {
+  colorMode: ViewerColorMode;
+  metadataKey?: string;
+  metadataType?: ViewerMetadataType;
+  continuousPalette: ContinuousPalette;
+  categoricalPalette: CategoricalPalette;
+
   palette: PaletteId;
   partitionColors: ViewerPartitionColors;
+  /** @deprecated Replaced by `colorMode`, kept for stored-config migration. */
   partitionColoring: boolean;
   exportTheme: ExportTheme;
   rescaleToVisible: boolean;
@@ -91,6 +107,9 @@ export interface ChartConfig {
 }
 
 export const DEFAULT_CHART_CONFIG: ChartConfig = {
+  colorMode: "partition",
+  continuousPalette: "blue_red",
+  categoricalPalette: "default",
   palette: "default",
   partitionColors: { ...PARTITION_COLORS },
   partitionColoring: true,
@@ -123,6 +142,7 @@ export interface PartitionDataset {
   yTrue: number[];
   yPred: number[];
   nSamples: number;
+  sampleMetadata?: ViewerSampleMetadata | null;
 }
 
 export interface PredictionViewerProps {

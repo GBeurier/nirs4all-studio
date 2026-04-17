@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Activity, BarChart3, Droplets, List, Clock, Hash, Target } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,8 @@ import type { ShapResultsResponse, ShapTab, BinnedImportanceData } from '@/types
 interface ResultsPanelProps {
   results: ShapResultsResponse;
   jobId: string;
+  binnedData: BinnedImportanceData | null;
+  onBinnedDataChange: (data: BinnedImportanceData) => void;
   activeTab: ShapTab;
   onTabChange: (tab: ShapTab) => void;
   selectedSamples: number[];
@@ -24,19 +26,14 @@ interface ResultsPanelProps {
 export function ResultsPanel({
   results,
   jobId,
+  binnedData,
+  onBinnedDataChange,
   activeTab,
   onTabChange,
   selectedSamples,
   onSamplesChange,
 }: ResultsPanelProps) {
   const { t } = useTranslation();
-
-  // Rebinned data lives here — only updated when "Rebin" is clicked
-  const [rebinnedData, setRebinnedData] = useState<BinnedImportanceData | null>(null);
-
-  const handleBinnedDataUpdate = useCallback((data: BinnedImportanceData) => {
-    setRebinnedData(data);
-  }, []);
 
   // Active sample index for waterfall (first selected sample, or 0)
   const waterfallSampleIdx = selectedSamples.length > 0 ? selectedSamples[0] : 0;
@@ -60,13 +57,13 @@ export function ResultsPanel({
   );
 
   // Memoize initial binning params to avoid re-init on re-render
-  const initialBinParams = useMemo(() => ({
-    binSize: results.binned_importance.bin_size,
-    binStride: results.binned_importance.bin_stride,
-    aggregation: results.binned_importance.aggregation,
-  }), [results.binned_importance.bin_size, results.binned_importance.bin_stride, results.binned_importance.aggregation]);
+  const activeBinnedData = binnedData ?? results.binned_importance;
 
-  const activeBinnedData = rebinnedData ?? undefined;
+  const initialBinParams = useMemo(() => ({
+    binSize: activeBinnedData.bin_size,
+    binStride: activeBinnedData.bin_stride,
+    aggregation: activeBinnedData.aggregation,
+  }), [activeBinnedData]);
 
   return (
     <Card className="h-full">
@@ -99,7 +96,7 @@ export function ResultsPanel({
             initialBinSize={initialBinParams.binSize}
             initialBinStride={initialBinParams.binStride}
             initialAggregation={initialBinParams.aggregation}
-            onBinnedDataUpdate={handleBinnedDataUpdate}
+            onBinnedDataUpdate={onBinnedDataChange}
           />
         </div>
       </CardHeader>
@@ -151,7 +148,7 @@ export function ResultsPanel({
               <SpectralImportanceChart
                 jobId={jobId}
                 results={results}
-                binnedData={activeBinnedData}
+                binnedData={binnedData ?? undefined}
                 selectedSamples={selectedSamples}
               />
             </div>
@@ -182,7 +179,7 @@ export function ResultsPanel({
             <div className="h-[500px]">
               <FeatureImportanceBar
                 results={results}
-                binnedData={activeBinnedData}
+                binnedData={binnedData ?? undefined}
               />
             </div>
           </TabsContent>

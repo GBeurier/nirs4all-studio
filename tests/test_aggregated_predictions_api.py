@@ -922,6 +922,68 @@ class TestGetChainPipelineSteps:
 
 
 # ---------------------------------------------------------------------------
+# Endpoint tests: GET /api/aggregated-predictions/pipeline/{pipeline_id}/pipeline-steps
+# ---------------------------------------------------------------------------
+
+
+class TestGetPipelinePipelineSteps:
+    """Tests for GET /api/aggregated-predictions/pipeline/{pipeline_id}/pipeline-steps."""
+
+    def test_returns_full_expanded_pipeline(self, client, patched_endpoints):
+        patched_endpoints.get_pipeline.return_value = {
+            "pipeline_id": "pipe-001",
+            "name": "Expanded pipeline",
+            "expanded_config": [
+                {"split": "ShuffleSplit", "n_splits": 5},
+                {"branch": [["SNV"], ["MSC"]]},
+                {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 12}}},
+                {"model": {"class": "sklearn.svm._classes.SVR", "params": {"kernel": "rbf"}}},
+            ],
+        }
+
+        resp = client.get("/api/aggregated-predictions/pipeline/pipe-001/pipeline-steps")
+        assert resp.status_code == 200
+
+        data = resp.json()
+        assert data == {
+            "pipeline_id": "pipe-001",
+            "name": "Expanded pipeline",
+            "pipeline": [
+                {"split": "ShuffleSplit", "n_splits": 5},
+                {"branch": [["SNV"], ["MSC"]]},
+                {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 12}}},
+                {"model": {"class": "sklearn.svm._classes.SVR", "params": {"kernel": "rbf"}}},
+            ],
+        }
+
+    def test_strips_runtime_only_refit_steps(self, client, patched_endpoints):
+        patched_endpoints.get_pipeline.return_value = {
+            "pipeline_id": "pipe-refit",
+            "name": "Expanded refit pipeline",
+            "expanded_config": [
+                {"class": "sklearn.preprocessing._data.StandardScaler"},
+                "<nirs4all.pipeline.execution.refit.executor._FullTrainFoldSplitter object at 0x000001ED25C70>",
+                {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 8}}},
+            ],
+        }
+
+        resp = client.get("/api/aggregated-predictions/pipeline/pipe-refit/pipeline-steps")
+        assert resp.status_code == 200
+
+        data = resp.json()
+        assert data["pipeline"] == [
+            {"class": "sklearn.preprocessing._data.StandardScaler"},
+            {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 8}}},
+        ]
+
+    def test_returns_404_when_pipeline_is_missing(self, client, patched_endpoints):
+        patched_endpoints.get_pipeline.return_value = None
+
+        resp = client.get("/api/aggregated-predictions/pipeline/pipe-missing/pipeline-steps")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Endpoint tests: GET /api/aggregated-predictions/{prediction_id}/arrays
 # ---------------------------------------------------------------------------
 
@@ -936,6 +998,10 @@ class TestGetPredictionArrays:
             "y_proba": None,
             "weights": None,
             "sample_indices": np.array([0, 1, 2]),
+            "sample_metadata": {
+                "batch": ["A", "B", "A"],
+                "moisture": [12.0, 13.5, 12.8],
+            },
         }
 
         resp = client.get("/api/aggregated-predictions/pred-001/arrays")
@@ -948,6 +1014,10 @@ class TestGetPredictionArrays:
         assert data["sample_indices"] == [0, 1, 2]
         assert data["y_proba"] is None
         assert data["weights"] is None
+        assert data["sample_metadata"] == {
+            "batch": ["A", "B", "A"],
+            "moisture": [12.0, 13.5, 12.8],
+        }
 
     def test_arrays_not_found(self, client, patched_endpoints):
         patched_endpoints.get_prediction_arrays.return_value = None
@@ -963,6 +1033,7 @@ class TestGetPredictionArrays:
             "y_proba": None,
             "weights": None,
             "sample_indices": None,
+            "sample_metadata": None,
         }
 
         resp = client.get("/api/aggregated-predictions/pred-001/arrays")
@@ -982,6 +1053,7 @@ class TestGetPredictionArrays:
             "y_proba": np.array([[0.8, 0.2], [0.1, 0.9]]),
             "weights": np.array([np.nan]),
             "sample_indices": np.array([10, 11]),
+            "sample_metadata": {"class_name": ["cat", "dog"]},
         }
 
         resp = client.get("/api/aggregated-predictions/pred-001/arrays")
@@ -990,6 +1062,7 @@ class TestGetPredictionArrays:
         assert data["y_proba"] == [[0.8, 0.2], [0.1, 0.9]]
         assert data["weights"] is None
         assert data["sample_indices"] == [10, 11]
+        assert data["sample_metadata"] == {"class_name": ["cat", "dog"]}
 
 
 # ---------------------------------------------------------------------------
