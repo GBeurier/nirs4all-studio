@@ -13,7 +13,7 @@
  * @see docs/_internals/implementation_roadmap.md
  */
 
-import { Suspense, useCallback } from "react";
+import { Suspense, useCallback, useMemo } from "react";
 import {
   Waves,
   Shuffle,
@@ -44,6 +44,7 @@ import {
 import { FinetuningBadge } from "./FinetuneConfig";
 import { useStepRenderer } from "./config/step-renderers";
 import { useParamInput } from "./shared/useParamInput";
+import { getRenderableStepParams } from "./renderableParams";
 
 // Step type icons mapping (8 consolidated types)
 const stepIcons: Record<StepType, typeof Waves> = {
@@ -105,6 +106,11 @@ export function StepConfigPanel({
   const { Renderer, usesParameterProps } = useStepRenderer(step?.type ?? 'preprocessing', step?.subType);
 
   const currentOption = step ? stepOptions[step.type]?.find((o) => o.name === step.name) : undefined;
+  const renderableStep = useMemo(() => {
+    if (!step) return null;
+    const params = getRenderableStepParams(step, currentOption);
+    return params === step.params ? step : { ...step, params };
+  }, [currentOption, step]);
 
   // Handlers for parameter operations
   const handleNameChange = useCallback(
@@ -179,6 +185,7 @@ export function StepConfigPanel({
   }
 
   // Compute icon and color for header (step is guaranteed non-null here)
+  const stepToRender = renderableStep ?? step;
   const colors = getStepColor(step);
   const Icon = (step.subType && stepSubTypeIcons[step.subType as StepSubType]) ?? stepIcons[step.type] ?? Waves;
 
@@ -190,7 +197,7 @@ export function StepConfigPanel({
 
   // Prepare renderer props based on whether it needs parameter props
   const baseProps = {
-    step,
+    step: stepToRender,
     onUpdate,
     onRemove,
     onDuplicate,
@@ -226,7 +233,7 @@ export function StepConfigPanel({
                 {step.type}
               </Badge>
               <span className="text-xs text-muted-foreground">
-                {Object.keys(step.params).length} params
+                {Object.keys(stepToRender.params).length} params
               </span>
               {hasSweeps && (
                 <Badge className="text-xs bg-orange-500 hover:bg-orange-600">
