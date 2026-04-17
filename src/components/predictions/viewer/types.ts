@@ -10,7 +10,11 @@ import type {
 } from "@/lib/playground/colorConfig";
 import { PARTITION_COLORS } from "@/lib/partitionColors";
 
-export type ChartKind = "scatter" | "residuals" | "confusion";
+export type ChartKind = "scatter" | "residuals" | "confusion" | "distribution";
+
+export type HistogramSeries = "predicted" | "actual" | "both" | "residuals";
+export type HistogramLayout = "grouped" | "stacked" | "overlaid";
+export type HistogramYAxis = "count" | "density";
 
 /**
  * Visual density / chrome level for the shared chart components.
@@ -104,6 +108,16 @@ export interface ChartConfig {
   confusionGradient: ViewerGradientColors;
   confusionShowTotals: boolean;   // default true
   confusionShowPercent: boolean;  // default false
+
+  // Distribution / histogram
+  histogramSeries: HistogramSeries;        // default "both"
+  histogramLayout: HistogramLayout;        // default "grouped"
+  histogramBinCount: number;               // 10..60, default 15
+  histogramYAxis: HistogramYAxis;          // default "count"
+  histogramBarOpacity: number;             // 0.3..1, default 0.85
+  histogramShowErrorBars: boolean;         // default false (Poisson √n)
+  histogramShowMean: boolean;              // default false
+  histogramShowMedian: boolean;            // default false
 }
 
 export const DEFAULT_CHART_CONFIG: ChartConfig = {
@@ -132,6 +146,15 @@ export const DEFAULT_CHART_CONFIG: ChartConfig = {
   },
   confusionShowTotals: true,
   confusionShowPercent: false,
+
+  histogramSeries: "both",
+  histogramLayout: "grouped",
+  histogramBinCount: 15,
+  histogramYAxis: "count",
+  histogramBarOpacity: 0.85,
+  histogramShowErrorBars: false,
+  histogramShowMean: false,
+  histogramShowMedian: false,
 };
 
 /** One partition's resolved arrays, ready for rendering. */

@@ -1045,6 +1045,7 @@ export default function Predictions() {
           metric={detailMetaHint?.metric ?? null}
           open={detailOpen}
           onOpenChange={setDetailOpen}
+          isViewerOpen={detailViewerOpen}
           onOpenViewer={(partitions, header, kind) => {
             setDetailViewerPartitions(partitions);
             setDetailViewerHeader(header);

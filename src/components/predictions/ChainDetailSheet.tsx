@@ -46,6 +46,11 @@ interface ChainDetailSheetProps {
     header: ViewerHeader,
     kind: ChartKind,
   ) => void;
+  /**
+   * When true, the inline chart preview hides itself so it doesn't react to
+   * shared-config edits the user is making in the full viewer modal.
+   */
+  isViewerOpen?: boolean;
 }
 
 export function ChainDetailSheet({
@@ -56,6 +61,7 @@ export function ChainDetailSheet({
   onOpenChange,
   focus,
   onOpenViewer,
+  isViewerOpen,
 }: ChainDetailSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -74,6 +80,7 @@ export function ChainDetailSheet({
             metaHint={metaHint}
             focus={focus}
             onOpenViewer={onOpenViewer}
+            isViewerOpen={isViewerOpen}
           />
         )}
       </SheetContent>

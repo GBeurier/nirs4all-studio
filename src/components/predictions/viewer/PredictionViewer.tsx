@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Activity,
   AlertCircle,
   BarChart3,
   Database,
@@ -47,15 +48,19 @@ import {
 import { PredictionScatterChart } from "./charts/PredictionScatterChart";
 import { PredictionResidualsChart } from "./charts/PredictionResidualsChart";
 import { PredictionConfusionChart } from "./charts/PredictionConfusionChart";
+import { PredictionHistogramChart } from "./charts/PredictionHistogramChart";
 import type { ChartKind, PredictionViewerProps, TaskKind } from "./types";
 
 function resolveInitialKind(
   initialKind: ChartKind | undefined,
   taskKind: TaskKind,
 ): ChartKind {
-  if (taskKind === "classification") return "confusion";
-  if (initialKind === "residuals" || initialKind === "scatter") return initialKind;
-  return "scatter";
+  const available: ChartKind[] =
+    taskKind === "classification"
+      ? ["confusion", "distribution"]
+      : ["scatter", "residuals", "distribution"];
+  if (initialKind && available.includes(initialKind)) return initialKind;
+  return taskKind === "classification" ? "confusion" : "scatter";
 }
 
 export function PredictionViewer({
@@ -124,6 +129,7 @@ export function PredictionViewer({
     scatter: "scatter",
     residuals: "residuals",
     confusion: "confusion",
+    distribution: "distribution",
   };
 
   const baseFilename = `${sanitizeFilename(header.datasetName)}_${sanitizeFilename(
@@ -154,6 +160,32 @@ export function PredictionViewer({
         pooled.push({ true_label: t, pred_label: p, count });
       }
       exportRowsCsv(pooled, ["true_label", "pred_label", "count"], `${baseFilename}.csv`);
+      return;
+    }
+
+    if (kind === "distribution") {
+      // Flat long-form rows: one per (partition, series, value).
+      const series =
+        config.histogramSeries === "both"
+          ? (["actual", "predicted"] as const)
+          : config.histogramSeries === "actual"
+          ? (["actual"] as const)
+          : config.histogramSeries === "residuals"
+          ? (["residual"] as const)
+          : (["predicted"] as const);
+      const rows: { partition: string; series: string; value: number; sample_id: number }[] = [];
+      for (const d of visibleDatasets) {
+        const n = Math.min(d.yTrue.length, d.yPred.length);
+        for (let i = 0; i < n; i++) {
+          for (const s of series) {
+            const value =
+              s === "actual" ? d.yTrue[i] : s === "predicted" ? d.yPred[i] : d.yTrue[i] - d.yPred[i];
+            if (!Number.isFinite(value)) continue;
+            rows.push({ partition: d.label, series: s, value, sample_id: i });
+          }
+        }
+      }
+      exportRowsCsv(rows, ["sample_id", "partition", "series", "value"], `${baseFilename}.csv`);
       return;
     }
 
@@ -205,7 +237,14 @@ export function PredictionViewer({
   }, [header.datasetName, header.modelName, header.taskType]);
 
   const availableKinds: ChartKind[] =
-    taskKind === "classification" ? ["confusion"] : ["scatter", "residuals"];
+    taskKind === "classification"
+      ? ["confusion", "distribution"]
+      : ["scatter", "residuals", "distribution"];
+
+  const hasActuals = useMemo(
+    () => allDatasets.some((d) => d.yTrue.some((v) => Number.isFinite(v))),
+    [allDatasets],
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -268,6 +307,12 @@ export function PredictionViewer({
               <ToggleGroupItem value="confusion" className="h-8 gap-1.5 text-xs">
                 <Grid3x3 className="h-3.5 w-3.5" />
                 Confusion
+              </ToggleGroupItem>
+            )}
+            {availableKinds.includes("distribution") && (
+              <ToggleGroupItem value="distribution" className="h-8 gap-1.5 text-xs">
+                <Activity className="h-3.5 w-3.5" />
+                Distribution
               </ToggleGroupItem>
             )}
           </ToggleGroup>
@@ -344,8 +389,17 @@ export function PredictionViewer({
             <PredictionScatterChart ref={chartRef} datasets={visibleDatasets} config={config} variant="full" />
           ) : kind === "residuals" ? (
             <PredictionResidualsChart ref={chartRef} datasets={visibleDatasets} config={config} variant="full" />
-          ) : (
+          ) : kind === "confusion" ? (
             <PredictionConfusionChart ref={chartRef} datasets={visibleDatasets} config={config} variant="full" />
+          ) : (
+            <PredictionHistogramChart
+              ref={chartRef}
+              datasets={visibleDatasets}
+              config={config}
+              taskKind={taskKind}
+              hasActuals={hasActuals}
+              variant="full"
+            />
           )}
         </div>
 

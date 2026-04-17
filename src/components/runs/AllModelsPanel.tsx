@@ -446,6 +446,7 @@ export function AllModelsPanel({ workspaceId, runId, datasetName, taskType, tota
         focus={detailFocus}
         open={detailOpen}
         onOpenChange={setDetailOpen}
+        isViewerOpen={detailViewerOpen}
         onOpenViewer={(partitions, header, kind) => {
           setDetailViewerPartitions(partitions);
           setDetailViewerHeader(header);

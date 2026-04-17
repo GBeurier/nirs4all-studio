@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Activity,
   BarChart3,
   Box,
   Boxes,
@@ -85,6 +86,9 @@ import {
 import {
   PredictionConfusionChart,
 } from "@/components/predictions/viewer/charts/PredictionConfusionChart";
+import {
+  PredictionHistogramChart,
+} from "@/components/predictions/viewer/charts/PredictionHistogramChart";
 import { usePartitionsData } from "@/components/predictions/viewer/fetchPartitionData";
 import { usePredictionChartConfig } from "@/components/predictions/viewer/usePredictionChartConfig";
 import type {
@@ -106,6 +110,9 @@ interface ChainDetailPanelProps {
     header: ViewerHeader,
     kind: ChartKind,
   ) => void;
+  /** When true, hide the inline chart preview — the full viewer is mounted on
+   *  top and the preview would otherwise live-update from shared config edits. */
+  isViewerOpen?: boolean;
 }
 
 type FoldGroup = {
@@ -418,9 +425,10 @@ interface ChartBodyProps {
   chartsLoading: boolean;
   chartsError: string | null;
   panelConfig: ChartConfig;
+  taskKind: "regression" | "classification";
 }
 
-function ChartBody({ kind, chartDatasets, chartsLoading, chartsError, panelConfig }: ChartBodyProps) {
+function ChartBody({ kind, chartDatasets, chartsLoading, chartsError, panelConfig, taskKind }: ChartBodyProps) {
   if (chartsLoading) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -446,6 +454,17 @@ function ChartBody({ kind, chartDatasets, chartsLoading, chartsError, panelConfi
   }
   if (kind === "residuals") {
     return <PredictionResidualsChart className="h-full min-h-[320px] w-full" datasets={chartDatasets} config={panelConfig} variant="panel" />;
+  }
+  if (kind === "distribution") {
+    return (
+      <PredictionHistogramChart
+        className="h-full min-h-[320px] w-full"
+        datasets={chartDatasets}
+        config={panelConfig}
+        taskKind={taskKind}
+        variant="panel"
+      />
+    );
   }
   return <PredictionConfusionChart className="h-full min-h-[320px] w-full" datasets={chartDatasets} config={panelConfig} variant="panel" />;
 }
@@ -555,7 +574,7 @@ function formatBranchPath(value: unknown): string | null {
   return null;
 }
 
-export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewer }: ChainDetailPanelProps) {
+export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewer, isViewerOpen }: ChainDetailPanelProps) {
   const [detail, setDetail] = useState<ChainDetailResponse | null>(null);
   const [partitionRows, setPartitionRows] = useState<PartitionPrediction[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -620,7 +639,9 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
 
   useEffect(() => {
     setPreviewKind((current) => {
-      if (taskKind === "classification") return "confusion";
+      if (taskKind === "classification") {
+        return current === "confusion" || current === "distribution" ? current : "confusion";
+      }
       return current === "confusion" ? "scatter" : current;
     });
   }, [taskKind]);
@@ -807,8 +828,8 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.06),transparent_32%)]">
-      <header className="sticky top-0 z-20 border-b border-border/70 bg-background/95 px-6 py-4 backdrop-blur">
+    <div className="flex min-h-0 flex-1 flex-col bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.06),hsl(var(--primary)/0)_32%)]">
+      <header className="sticky top-0 z-20 border-b border-border/70 bg-background px-6 py-4">
         <div className="flex items-start gap-3">
           <Box className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
           <div className="min-w-0">
@@ -852,12 +873,20 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
           <Section title="Chart preview" description={selectedGroup ? `${foldLabel(selectedGroup.foldId)} · ${selectedFoldPartitions.length} partition${selectedFoldPartitions.length === 1 ? "" : "s"}` : "Select a related prediction to display its chart preview."}>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <PartitionLegend partitions={chartTargets} />
-              {taskKind === "regression" && (
+              {(() => {
+                const options = taskKind === "classification"
+                  ? [
+                      { kind: "confusion" as const, label: "Confusion", icon: <Grid3x3 className="h-3.5 w-3.5" /> },
+                      { kind: "distribution" as const, label: "Distribution", icon: <Activity className="h-3.5 w-3.5" /> },
+                    ]
+                  : [
+                      { kind: "scatter" as const, label: "Predicted vs Actual", icon: <TrendingUp className="h-3.5 w-3.5" /> },
+                      { kind: "residuals" as const, label: "Residuals", icon: <BarChart3 className="h-3.5 w-3.5" /> },
+                      { kind: "distribution" as const, label: "Distribution", icon: <Activity className="h-3.5 w-3.5" /> },
+                    ];
+                return (
                 <div className="inline-flex w-full rounded-xl border border-border/70 bg-card/50 p-1 lg:w-auto">
-                  {[
-                    { kind: "scatter" as const, label: "Predicted vs Actual", icon: <TrendingUp className="h-3.5 w-3.5" /> },
-                    { kind: "residuals" as const, label: "Residuals", icon: <BarChart3 className="h-3.5 w-3.5" /> },
-                  ].map((option) => (
+                  {options.map((option) => (
                     <button
                       key={option.kind}
                       type="button"
@@ -874,7 +903,8 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
                     </button>
                   ))}
                 </div>
-              )}
+                );
+              })()}
             </div>
             <ChartTile
               title={
@@ -882,6 +912,8 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
                   ? "Confusion matrix"
                   : previewKind === "residuals"
                   ? "Residuals"
+                  : previewKind === "distribution"
+                  ? "Distribution"
                   : "Predicted vs Actual"
               }
               icon={
@@ -889,6 +921,8 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
                   ? <Grid3x3 className="h-3.5 w-3.5" />
                   : previewKind === "residuals"
                   ? <BarChart3 className="h-3.5 w-3.5" />
+                  : previewKind === "distribution"
+                  ? <Activity className="h-3.5 w-3.5" />
                   : <TrendingUp className="h-3.5 w-3.5" />
               }
               subtitle={
@@ -896,20 +930,29 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
                   ? "Shared chart-view rendering without the configuration controls"
                   : previewKind === "residuals"
                   ? "Large preview of residual spread for the selected prediction"
+                  : previewKind === "distribution"
+                  ? "Histogram of predicted / actual / residual values for the selected prediction"
                   : "Large preview using the same chart-view styling"
               }
               onCustomize={canCustomize ? () => handleCustomize(previewKind) : undefined}
               height="h-[380px] md:h-[420px] xl:h-[440px]"
               className="overflow-hidden"
             >
-              <ChartBody
-                key={chartBodyKey}
-                kind={previewKind}
-                chartDatasets={chartDatasets}
-                chartsLoading={chartsLoading}
-                chartsError={chartsError}
-                panelConfig={panelConfig}
-              />
+              {isViewerOpen ? (
+                <div className="flex h-full items-center justify-center text-center text-xs text-muted-foreground">
+                  Customizing in the full viewer — preview paused to avoid distracting updates.
+                </div>
+              ) : (
+                <ChartBody
+                  key={chartBodyKey}
+                  kind={previewKind}
+                  chartDatasets={chartDatasets}
+                  chartsLoading={chartsLoading}
+                  chartsError={chartsError}
+                  panelConfig={panelConfig}
+                  taskKind={taskKind}
+                />
+              )}
             </ChartTile>
           </Section>
 

@@ -800,6 +800,7 @@ export default function AggregatedResults() {
         } : undefined}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+        isViewerOpen={viewerOpen}
         onOpenViewer={(partitions, header, kind) => {
           setViewerPartitions(partitions);
           setViewerHeader(header);

@@ -46,6 +46,9 @@ import type {
   ChartKind,
   ConfusionNormalize,
   ExportTheme,
+  HistogramLayout,
+  HistogramSeries,
+  HistogramYAxis,
   ViewerGradientColors,
   ViewerMetadataType,
   ViewerPartitionColors,
@@ -517,6 +520,112 @@ export function ChartConfigPopover({
                 onCheckedChange={(v) => update("sigmaBand", v)}
               />
             </Row>
+          </div>
+        )}
+
+        {kind === "distribution" && (
+          <div className="space-y-3 border-t pt-3">
+            <SectionHeader>Distribution</SectionHeader>
+            <Row>
+              <Label className="text-xs">Series</Label>
+              <Select
+                value={config.histogramSeries}
+                onValueChange={(value) => update("histogramSeries", value as HistogramSeries)}
+              >
+                <SelectTrigger className="h-8 w-40 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="both" className="text-xs">Actual + Predicted</SelectItem>
+                  <SelectItem value="predicted" className="text-xs">Predicted</SelectItem>
+                  <SelectItem value="actual" className="text-xs">Actual</SelectItem>
+                  <SelectItem value="residuals" className="text-xs">Residuals</SelectItem>
+                </SelectContent>
+              </Select>
+            </Row>
+            <Row>
+              <Label className="text-xs">Layout</Label>
+              <Select
+                value={config.histogramLayout}
+                onValueChange={(value) => update("histogramLayout", value as HistogramLayout)}
+              >
+                <SelectTrigger className="h-8 w-40 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="grouped" className="text-xs">Grouped</SelectItem>
+                  <SelectItem value="stacked" className="text-xs">Stacked</SelectItem>
+                  <SelectItem value="overlaid" className="text-xs">Overlaid</SelectItem>
+                </SelectContent>
+              </Select>
+            </Row>
+            <Row>
+              <Label className="text-xs">Y-axis</Label>
+              <Select
+                value={config.histogramYAxis}
+                onValueChange={(value) => update("histogramYAxis", value as HistogramYAxis)}
+              >
+                <SelectTrigger className="h-8 w-40 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="count" className="text-xs">Count</SelectItem>
+                  <SelectItem value="density" className="text-xs">Density</SelectItem>
+                </SelectContent>
+              </Select>
+            </Row>
+            <div className="space-y-1.5">
+              <Row>
+                <Label className="text-xs">Bins</Label>
+                <span className="text-xs text-muted-foreground">{config.histogramBinCount}</span>
+              </Row>
+              <Slider
+                min={10}
+                max={60}
+                step={1}
+                value={[config.histogramBinCount]}
+                onValueChange={(vals) => update("histogramBinCount", vals[0] ?? 15)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Row>
+                <Label className="text-xs">Bar opacity</Label>
+                <span className="text-xs text-muted-foreground">
+                  {config.histogramBarOpacity.toFixed(2)}
+                </span>
+              </Row>
+              <Slider
+                min={0.3}
+                max={1}
+                step={0.05}
+                value={[config.histogramBarOpacity]}
+                onValueChange={(vals) => update("histogramBarOpacity", vals[0] ?? 0.85)}
+              />
+            </div>
+            <Row>
+              <Label className="text-xs">Error bars (±√n)</Label>
+              <Switch
+                checked={config.histogramShowErrorBars}
+                onCheckedChange={(v) => update("histogramShowErrorBars", v)}
+              />
+            </Row>
+            <Row>
+              <Label className="text-xs">Mean reference line</Label>
+              <Switch
+                checked={config.histogramShowMean}
+                onCheckedChange={(v) => update("histogramShowMean", v)}
+              />
+            </Row>
+            <Row>
+              <Label className="text-xs">Median reference line</Label>
+              <Switch
+                checked={config.histogramShowMedian}
+                onCheckedChange={(v) => update("histogramShowMedian", v)}
+              />
+            </Row>
+            <p className="text-[10px] leading-4 text-muted-foreground">
+              Bins, density, and residuals apply to regression distributions. Classification uses discrete class labels.
+            </p>
           </div>
         )}
 
