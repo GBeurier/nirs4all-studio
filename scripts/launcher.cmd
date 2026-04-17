@@ -1,4 +1,6 @@
+:; printf '%s\n' "This Windows batch file must be run with cmd.exe or PowerShell, not bash." >&2; exit 1
 @echo off
+REM The leading ':;' line is a cross-shell guard: cmd treats it as a label, bash exits.
 setlocal enabledelayedexpansion
 REM =============================================================================
 REM nirs4all webapp - Unified Launcher (Windows)
