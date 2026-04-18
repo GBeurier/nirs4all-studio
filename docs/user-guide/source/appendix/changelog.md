@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## 0.6.3 — 2026-04-18
+
+### Added
+
+- **Setup Wizard overhaul**: Reworked `SetupWizard` and `PythonEnvPicker` with optional-package handling, recommended install metadata, and a new `PythonEnvInspectionCard` for inspecting detected interpreters.
+- **Runtime summary API**: Extended `api/system.py` and `api/updates.py` with a detailed runtime summary response and preflight/coherence tests; `recommended_config` now exposes default install metadata for optional packages.
+- **Prediction distribution histogram**: New `PredictionHistogramChart` in the `PredictionViewer` with configurable series, layout, Y-axis type, bin count, bar opacity, and error bars; supports CSV export and is wired into `AllModelsPanel`, `AggregatedResults`, and `Predictions`.
+- **Predict error UX**: The `Predict` page now captures input context and surfaces prediction failure messages inline; `PredictResponse` gained optional partition labels.
+- **Sentry event filter**: New `api/shared/sentry.py` filter for dropping non-actionable events plus logging tests for the updates flow.
+- **Dependency version helper**: New `dependencyVersionState` utility (with tests) to centralize version parsing in `DependenciesManager`.
+
+### Changed
+
+- **Environment manager**: Large refactor of `electron/env-manager.ts` and `backend-manager.ts` for clearer profile handling, with expanded test coverage (`env-manager.test.ts`, `PythonEnvPicker.test.tsx`).
+- **Confusion matrix**: Raised the ordered-label cap from 24 to 30 for richer classification views.
+- **GPU detection**: Tightened caching behavior with new tests in `api/shared/gpu_detection.py`.
+- **Workspace manager startup**: Improved startup diagnostics and test coverage.
+- **Cross-shell scripts**: Added a cross-shell guard to `.cmd`/`.bat` entry points (`launcher.cmd`, `ci-local.cmd`, `pre-publish.cmd`, `docs/user-guide/make.bat`) for better compatibility.
+
+### Docs
+
+- **Python environment architecture**: New `docs/_internals/python-environment-refactor-plan-2026-04-17.md` and `docs/python-environment-review-2026-04-17.md`; updated environment architecture, support runbook, packaging, release checklist, update system, and missing-packages troubleshooting pages.
+
+---
+
 ## 0.6.2 — 2026-04-17
 
 ### Added
