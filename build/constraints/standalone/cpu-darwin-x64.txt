@@ -1,0 +1,9 @@
+# GitHub macOS Intel runners currently resolve newer numba/llvmlite releases
+# from sdists instead of wheels for the standalone CPython 3.11 runtime. That
+# triggers an llvmlite source build, which fails because LLVM dev artifacts are
+# not present on the runner. Keep the explainability / UMAP stack on versions
+# with published macOS x86_64 wheels.
+shap==0.51.0
+umap-learn==0.5.12
+numba==0.60.0
+llvmlite==0.43.0
