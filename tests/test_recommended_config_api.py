@@ -78,6 +78,39 @@ def test_recommended_config_prefers_bundled_data_when_cache_is_same_version(monk
     assert [pkg.name for pkg in result.optional] == ["tabicl"]
 
 
+def test_recommended_config_exposes_default_install_optional_metadata(monkeypatch):
+    from api import recommended_config as rc
+
+    bundled = {
+        "schema_version": "1.2",
+        "app_version": "0.6.0",
+        "nirs4all": "0.9.0",
+        "profiles": {
+            "cpu": {
+                "label": "CPU",
+                "description": "CPU profile",
+                "packages": {"nirs4all": {"min": ">=0.9.0"}},
+            }
+        },
+        "optional": {
+            "torch": {
+                "min": ">=2.1.0",
+                "recommended": "2.6.0",
+                "show_when_profile_managed": True,
+                "default_install": True,
+            }
+        },
+    }
+
+    monkeypatch.setattr(rc._config_cache, "get_cached_config", lambda: None)
+    monkeypatch.setattr(rc, "_load_bundled_config", lambda: bundled)
+
+    result = asyncio.run(rc.get_recommended_config())
+
+    assert result.optional[0].name == "torch"
+    assert result.optional[0].default_install is True
+
+
 def test_recommended_config_uses_bundled_fallback_without_remote_on_startup(monkeypatch):
     from api import recommended_config as rc
 
@@ -449,6 +482,7 @@ def test_compare_config_uses_recovered_profile_when_status_file_is_missing(monke
             recommended_profiles=["gpu-cuda-torch", "cpu"],
         ),
     )
+    monkeypatch.setattr(rc, "_get_outdated_packages", lambda: {})
 
     result = asyncio.run(rc.compare_config())
 
@@ -456,7 +490,13 @@ def test_compare_config_uses_recovered_profile_when_status_file_is_missing(monke
     assert result.profile_label == "GPU"
 
 
-def test_resolve_required_install_spec_uses_cuda_index_and_force_reinstall_for_torch(monkeypatch):
+def test_resolve_required_install_spec_skips_torch_when_version_satisfies_cpu_installed_cuda_profile(monkeypatch):
+    """CPU torch on a CUDA profile must be left alone when min_spec is satisfied.
+
+    Profile changes must never uninstall a working torch just to swap variants
+    — that is how the venv got a partially-uninstalled torch with no
+    ``__init__.py`` (see _resolve_torch_install_spec docstring).
+    """
     from api import recommended_config as rc
 
     gpu_info = rc.GPUDetectionResponse(
@@ -479,15 +519,11 @@ def test_resolve_required_install_spec_uses_cuda_index_and_force_reinstall_for_t
         gpu_info,
     )
 
-    assert install_spec is not None
-    assert install_spec.package == "torch"
-    assert install_spec.version == "2.6.0"
-    assert install_spec.extra_pip_args == ["--index-url", rc.TORCH_CUDA_INDEX_URL]
-    assert install_spec.force_reinstall is True
-    assert install_spec.display_spec == "torch==2.6.0 (cu124)"
+    assert install_spec is None
 
 
-def test_resolve_required_install_spec_uses_cpu_index_for_torch(monkeypatch):
+def test_resolve_required_install_spec_skips_torch_when_version_satisfies_cuda_installed_cpu_profile(monkeypatch):
+    """CUDA torch on a CPU profile must be left alone when min_spec is satisfied."""
     from api import recommended_config as rc
 
     gpu_info = rc.GPUDetectionResponse(
@@ -510,10 +546,7 @@ def test_resolve_required_install_spec_uses_cpu_index_for_torch(monkeypatch):
         gpu_info,
     )
 
-    assert install_spec is not None
-    assert install_spec.extra_pip_args == ["--index-url", rc.TORCH_CPU_INDEX_URL]
-    assert install_spec.force_reinstall is True
-    assert install_spec.display_spec == "torch==2.6.0 (cpu)"
+    assert install_spec is None
 
 
 def test_resolve_required_install_spec_uses_standard_wheel_for_mps_torch(monkeypatch):
@@ -545,7 +578,7 @@ def test_resolve_required_install_spec_uses_standard_wheel_for_mps_torch(monkeyp
     assert install_spec.display_spec == "torch==2.6.0 (mps)"
 
 
-def test_align_config_ignores_torch_when_passed_as_optional(monkeypatch):
+def test_align_config_installs_visible_profile_managed_optional_once_when_selected(monkeypatch):
     from api import recommended_config as rc
 
     install_calls: list[tuple[str, str | None, list[str], bool]] = []
@@ -567,7 +600,11 @@ def test_align_config_ignores_torch_when_passed_as_optional(monkeypatch):
                 },
             },
             "optional": {
-                "torch": {"min": ">=2.1.0", "recommended": "2.6.0"},
+                "torch": {
+                    "min": ">=2.1.0",
+                    "recommended": "2.6.0",
+                    "show_when_profile_managed": True,
+                },
                 "keras": {"min": ">=3.0.0", "recommended": "3.8.0"},
             },
         },
@@ -606,8 +643,65 @@ def test_align_config_ignores_torch_when_passed_as_optional(monkeypatch):
     )
 
     assert result.success is True
+    assert result.requires_restart is True
     assert [call[0] for call in install_calls].count("torch") == 1
     assert [call[0] for call in install_calls].count("keras") == 1
+
+
+def test_align_config_skips_visible_profile_managed_optional_when_not_selected(monkeypatch):
+    from api import recommended_config as rc
+
+    install_calls: list[str] = []
+    monkeypatch.setattr(
+        rc,
+        "_load_active_raw_config",
+        lambda: {
+            "profiles": {
+                "cpu": {
+                    "platforms": ["win32", "linux", "darwin"],
+                    "packages": {
+                        "nirs4all": {"min": ">=0.9.0", "recommended": "0.9.0"},
+                        "torch": {"min": ">=2.1.0", "recommended": "2.6.0"},
+                    },
+                },
+            },
+            "optional": {
+                "torch": {
+                    "min": ">=2.1.0",
+                    "recommended": "2.6.0",
+                    "show_when_profile_managed": True,
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {})
+    monkeypatch.setattr(
+        rc,
+        "_detect_gpu",
+        lambda: rc.GPUDetectionResponse(
+            has_cuda=False,
+            has_metal=False,
+            cuda_version=None,
+            gpu_name=None,
+            driver_version=None,
+            torch_cuda_available=False,
+            torch_version=None,
+            detection_source=None,
+            recommended_profiles=["cpu"],
+        ),
+    )
+    monkeypatch.setattr(rc._config_cache, "set_setup_status", lambda profile: None)
+    monkeypatch.setattr(
+        rc.venv_manager,
+        "install_package",
+        lambda package, **kwargs: (install_calls.append(package) or True, "ok", []),
+    )
+
+    result = asyncio.run(rc.align_config(rc.AlignConfigRequest(profile="cpu")))
+
+    assert result.success is True
+    assert result.requires_restart is True
+    assert install_calls == ["nirs4all"]
 
 
 def test_filtered_optional_config_keeps_explicitly_visible_profile_managed_package():
@@ -624,7 +718,11 @@ def test_filtered_optional_config_keeps_explicitly_visible_profile_managed_packa
             },
         },
         "optional": {
-            "torch": {"min": ">=2.1.0", "recommended": "2.6.0"},
+            "torch": {
+                "min": ">=2.1.0",
+                "recommended": "2.6.0",
+                "show_when_profile_managed": True,
+            },
             "tabicl": {
                 "min": ">=2.0.0",
                 "recommended": "2.0.3",
@@ -636,7 +734,110 @@ def test_filtered_optional_config_keeps_explicitly_visible_profile_managed_packa
 
     filtered = rc._get_filtered_optional_config(raw)
 
-    assert set(filtered) == {"tabicl", "keras"}
+    assert set(filtered) == {"torch", "tabicl", "keras"}
+
+
+def test_compare_config_excludes_visible_profile_managed_optionals_from_required_diff(monkeypatch):
+    from api import recommended_config as rc
+
+    monkeypatch.setattr(
+        rc,
+        "_load_active_raw_config",
+        lambda: {
+            "profiles": {
+                "cpu": {
+                    "label": "CPU",
+                    "platforms": ["win32", "linux", "darwin"],
+                    "packages": {
+                        "nirs4all": {"min": ">=0.9.0", "recommended": "0.9.0"},
+                        "torch": {"min": ">=2.1.0", "recommended": "2.6.0"},
+                        "tabicl": {"min": ">=2.0.0", "recommended": "2.0.3"},
+                    },
+                },
+            },
+            "optional": {
+                "torch": {
+                    "min": ">=2.1.0",
+                    "recommended": "2.6.0",
+                    "show_when_profile_managed": True,
+                },
+                "tabicl": {
+                    "min": ">=2.0.0",
+                    "recommended": "2.0.3",
+                    "show_when_profile_managed": True,
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {"nirs4all": "0.9.0"})
+    monkeypatch.setattr(rc, "_get_outdated_packages", lambda: {"nirs4all": "0.9.1"})
+    monkeypatch.setattr(
+        rc,
+        "_detect_gpu",
+        lambda: rc.GPUDetectionResponse(
+            has_cuda=False,
+            has_metal=False,
+            cuda_version=None,
+            gpu_name=None,
+            driver_version=None,
+            torch_cuda_available=False,
+            torch_version=None,
+            detection_source=None,
+            recommended_profiles=["cpu"],
+        ),
+    )
+
+    result = asyncio.run(rc.compare_config(profile="cpu"))
+
+    assert [pkg.name for pkg in result.packages] == ["nirs4all"]
+    assert result.packages[0].latest_version == "0.9.1"
+
+
+def test_compare_config_can_skip_latest_version_lookup(monkeypatch):
+    from api import recommended_config as rc
+
+    monkeypatch.setattr(
+        rc,
+        "_load_active_raw_config",
+        lambda: {
+            "profiles": {
+                "cpu": {
+                    "label": "CPU",
+                    "platforms": ["win32", "linux", "darwin"],
+                    "packages": {
+                        "nirs4all": {"min": ">=0.9.0", "recommended": "0.9.0"},
+                    },
+                },
+            },
+            "optional": {},
+        },
+    )
+    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {"nirs4all": "0.9.0"})
+    monkeypatch.setattr(
+        rc,
+        "_detect_gpu",
+        lambda: rc.GPUDetectionResponse(
+            has_cuda=False,
+            has_metal=False,
+            cuda_version=None,
+            gpu_name=None,
+            driver_version=None,
+            torch_cuda_available=False,
+            torch_version=None,
+            detection_source=None,
+            recommended_profiles=["cpu"],
+        ),
+    )
+
+    def _unexpected_latest_lookup():
+        raise AssertionError("Latest-version lookup should be skipped when include_latest=False")
+
+    monkeypatch.setattr(rc, "_get_outdated_packages", _unexpected_latest_lookup)
+
+    result = asyncio.run(rc.compare_config(profile="cpu", include_latest=False))
+
+    assert result.packages[0].name == "nirs4all"
+    assert result.packages[0].latest_version is None
 
 
 def test_compare_config_does_not_duplicate_visible_profile_managed_optional(monkeypatch):
@@ -688,6 +889,7 @@ def test_compare_config_does_not_duplicate_visible_profile_managed_optional(monk
             recommended_profiles=["cpu"],
         ),
     )
+    monkeypatch.setattr(rc, "_get_outdated_packages", lambda: {})
 
     result = asyncio.run(rc.compare_config(profile="cpu", include_optional=True))
 

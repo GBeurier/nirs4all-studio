@@ -51,7 +51,7 @@ export function ConfigAlignment() {
   const [lastAction, setLastAction] = useState<ActionResult | null>(null);
   const [runtimeMode, setRuntimeMode] = useState<BuildInfoResponse["runtime_mode"]>("development");
 
-  const { data: diff, isLoading: diffLoading, refetch: refetchDiff } = useConfigDiff(undefined, true);
+  const { data: diff, isLoading: diffLoading, refetch: refetchDiff } = useConfigDiff(undefined, false);
   const { data: config } = useRecommendedConfig();
   const alignMutation = useAlignConfig();
   const isReadOnlyRuntime = runtimeMode === "bundled" || runtimeMode === "pyinstaller";
@@ -231,26 +231,32 @@ export function ConfigAlignment() {
                 {diff.packages.map((pkg: PackageDiff) => (
                   <div
                     key={pkg.name}
-                    className="flex items-center justify-between p-2 rounded-md border text-sm"
+                    className="rounded-md border p-3 text-sm"
                   >
-                    <div className="flex items-center gap-2">
-                      {statusIcon(pkg.status)}
-                      <span className="font-medium">{pkg.name}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {pkg.installed_version && (
-                        <span className="text-muted-foreground">
-                          {pkg.installed_version}
-                        </span>
-                      )}
-                      {pkg.installed_version &&
-                        pkg.status !== "aligned" && (
-                          <span className="text-muted-foreground">&rarr;</span>
-                        )}
-                      <span className={pkg.status === "aligned" ? "text-muted-foreground" : ""}>
-                        {pkg.recommended_version}
-                      </span>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        {statusIcon(pkg.status)}
+                        <span className="font-medium">{pkg.name}</span>
+                      </div>
                       {statusBadge(pkg.status)}
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                      <div>
+                        <p className="uppercase tracking-wide">Installed</p>
+                        <p className="mt-1 font-mono text-foreground">
+                          {pkg.installed_version ?? "Not present"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="uppercase tracking-wide">Recommended</p>
+                        <p className="mt-1 font-mono text-foreground">{pkg.recommended_version}</p>
+                      </div>
+                      <div>
+                        <p className="uppercase tracking-wide">Latest</p>
+                        <p className="mt-1 font-mono text-foreground">
+                          {pkg.latest_version ?? "\u2014"}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 ))}

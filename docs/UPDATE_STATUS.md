@@ -102,13 +102,13 @@ pip install nirs4all==0.6.2
 # Click Update, verify it installs correctly
 ```
 
-**To test managed venv creation**:
+**To test managed runtime creation and switching**:
 
 ```bash
-# In Settings > Advanced > Managed Environment
-# Click "Create Environment"
-# This creates a real venv at the platform-specific location
-# Then install nirs4all into it
+# In Settings > Advanced > Python Runtime
+# Click "Change" and create a managed runtime
+# This creates a real runtime under the app data directory
+# The app then restarts the backend under that runtime
 ```
 
 ### 3.2 Testing Webapp Updates (Requires Setup)

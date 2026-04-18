@@ -303,59 +303,59 @@ interface UpdateSettings {
 
 ### Environment Management
 
+#### GET /runtime/status
+#### GET /venv/status
+
+Inspect the current Python runtime the backend is actually using.
+
+**Response**:
+```json
+{
+  "runtime": {
+    "path": "/path/to/runtime",
+    "exists": true,
+    "is_valid": true,
+    "python_version": "3.11.9",
+    "pip_version": "25.0"
+  },
+  "venv": {
+    "path": "/path/to/runtime",
+    "exists": true,
+    "is_valid": true
+  },
+  "packages": [],
+  "nirs4all_version": "0.9.1"
+}
+```
+
+The `venv` field is a compatibility alias for the same current-runtime payload.
+
+#### POST /runtime/create
+#### POST /venv/create
+
+Legacy compatibility endpoint. The backend no longer creates an independent
+managed environment on its own.
+
+**Response**:
+```json
+{
+  "detail": "Creating a new Python runtime is a desktop-managed action. Use the Python Runtime settings to create a runtime and switch the app to it."
+}
+```
+
+#### GET /runtime/path
 #### GET /venv/path
-Get current venv path configuration.
+
+Return the current runtime root path.
 
 **Response**:
 ```json
 {
-  "current_path": "/path/to/venv",
-  "is_custom": false,
-  "is_valid": true
-}
-```
-
-#### POST /venv/path
-Set a custom venv path. Uses **deferred activation** — the new path is saved but
-only takes effect after a backend restart.
-
-**Request Body**:
-```json
-{
-  "path": "/path/to/custom/venv"
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Custom path saved. Restart backend to apply.",
-  "current_path": "/current/active/path",
-  "is_custom": false,
+  "current_path": "/path/to/runtime",
   "is_valid": true,
-  "requires_restart": true
+  "exists": true
 }
 ```
-
-Pass `"path": null` to reset to the default venv path (immediate, no restart needed).
-
-Blocked in read-only bundled modes (`bundled`, legacy `pyinstaller`) and returns `400`.
-
-#### POST /venv/reset
-Reset VenvManager to target the runtime environment (`sys.prefix`).
-Clears any custom venv path immediately.
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Reset to runtime environment: /path/to/prefix",
-  "current_path": "/path/to/prefix"
-}
-```
-
-Blocked in read-only bundled modes (`bundled`, legacy `pyinstaller`) and returns `400`.
 
 ---
 
@@ -364,33 +364,45 @@ Blocked in read-only bundled modes (`bundled`, legacy `pyinstaller`) and returns
 > **Base URL**: `/api/system` (not `/api/updates`)
 
 #### GET /api/system/env-coherence
-Check if the VenvManager target matches the running Python interpreter.
-Used by the frontend to show environment mismatch warnings.
+Return the configured-vs-running runtime summary used by desktop diagnostics,
+Settings, and preflight checks.
 
 **Response**:
 ```json
 {
   "coherent": true,
+  "configured_python": "/Users/alice/.venvs/nirs4all/bin/python",
+  "running_python": "/Users/alice/.venvs/nirs4all/bin/python",
+  "running_prefix": "/Users/alice/.venvs/nirs4all",
+  "runtime_kind": "managed",
+  "is_bundled_default": false,
+  "bundled_runtime_available": false,
+  "configured_matches_running": true,
+  "core_ready": true,
+  "missing_core_packages": [],
+  "missing_optional_packages": ["shap"],
   "python_match": true,
   "prefix_match": true,
   "runtime": {
-    "python": "/usr/bin/python3",
-    "prefix": "/usr",
+    "python": "/Users/alice/.venvs/nirs4all/bin/python",
+    "prefix": "/Users/alice/.venvs/nirs4all",
     "version": "3.11.9"
   },
   "venv_manager": {
-    "python": "/usr/bin/python3",
-    "prefix": "/usr",
-    "is_custom": false,
-    "custom_path": null,
-    "has_pending_change": false
+    "python": "/Users/alice/.venvs/nirs4all/bin/python",
+    "prefix": "/Users/alice/.venvs/nirs4all"
   }
 }
 ```
 
-Optional fields (present only when `NIRS4ALL_EXPECTED_PYTHON` env var is set):
-- `electron_expected_python` (string)
-- `electron_match` (boolean)
+Optional desktop fields:
+
+- `electron_expected_python`
+- `electron_match`
+
+`coherent` now means the running backend interpreter matches the Python
+configured by Electron. The backend does not support deferred custom-path
+activation anymore.
 
 #### GET /api/system/build
 Get build information including `runtime_mode`.

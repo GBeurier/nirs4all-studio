@@ -38,11 +38,38 @@ const LEGACY_FLAVOR_TO_PROFILE = Object.freeze({
 
 const STANDALONE_V1_PROFILE = "cpu";
 
-const PROFILE_OPTIONAL_PACKAGES = Object.freeze({
-  cpu: Object.freeze(["xgboost", "lightgbm", "trendfitter", "pyopls", "shap", "umap-learn"]),
-  "gpu-cuda-torch": Object.freeze([]),
-  "gpu-mps": Object.freeze([]),
-});
+const VISIBLE_PROFILE_MANAGED_OPTIONAL_NAMES = Object.freeze(
+  Object.entries(recommendedConfig.optional ?? {})
+    .filter(([, spec]) => Boolean(spec?.show_when_profile_managed))
+    .map(([packageName]) => packageName),
+);
+
+const DEFAULT_OPTIONAL_PACKAGE_NAMES = Object.freeze(
+  Object.entries(recommendedConfig.optional ?? {})
+    .filter(([, spec]) => Boolean(spec?.default_install))
+    .map(([packageName]) => packageName),
+);
+
+function getDefaultOptionalPackageNamesForProfile(rawProfile = {}) {
+  const rawPackageNames = new Set(Object.keys(rawProfile.packages ?? {}));
+  return Object.freeze(
+    DEFAULT_OPTIONAL_PACKAGE_NAMES.filter((packageName) => {
+      if (!rawPackageNames.has(packageName)) {
+        return true;
+      }
+      return VISIBLE_PROFILE_MANAGED_OPTIONAL_NAMES.includes(packageName);
+    }),
+  );
+}
+
+const PROFILE_OPTIONAL_PACKAGES = Object.freeze(
+  Object.fromEntries(
+    Object.entries(recommendedConfig.profiles ?? {}).map(([profileId, rawProfile]) => [
+      profileId,
+      getDefaultOptionalPackageNamesForProfile(rawProfile),
+    ]),
+  ),
+);
 
 function clonePackageSpec(spec) {
   if (typeof spec === "string") {
@@ -84,20 +111,36 @@ function getOptionalPackageSpec(packageName) {
 
 function buildProductProfiles() {
   const rawProfiles = recommendedConfig.profiles ?? {};
+  const visibleProfileManagedOptionalNames = new Set(VISIBLE_PROFILE_MANAGED_OPTIONAL_NAMES);
   return Object.freeze(
     Object.fromEntries(
       Object.entries(rawProfiles).map(([profileId, rawProfile]) => {
-        const basePackageSpecs = Object.freeze(
+        const rawPackageSpecs = Object.freeze(
           Object.fromEntries(
             Object.entries(rawProfile.packages ?? {}).map(([packageName, spec]) => [packageName, clonePackageSpec(spec)]),
           ),
         );
+        const requiredPackageSpecs = Object.freeze(
+          Object.fromEntries(
+            Object.entries(rawPackageSpecs).filter(([packageName]) => !visibleProfileManagedOptionalNames.has(packageName)),
+          ),
+        );
+        const managedOptionalPackageSpecs = Object.freeze(
+          Object.fromEntries(
+            Object.entries(rawPackageSpecs).filter(([packageName]) => visibleProfileManagedOptionalNames.has(packageName)),
+          ),
+        );
         const extraPackageNames = Object.freeze([...(PROFILE_OPTIONAL_PACKAGES[profileId] ?? [])]);
         const extraPackageSpecs = Object.freeze(
-          Object.fromEntries(extraPackageNames.map((packageName) => [packageName, getOptionalPackageSpec(packageName)])),
+          Object.fromEntries(
+            extraPackageNames.map((packageName) => {
+              const packageSpec = managedOptionalPackageSpecs[packageName] ?? getOptionalPackageSpec(packageName);
+              return [packageName, packageSpec];
+            }),
+          ),
         );
         const packageSpecs = Object.freeze({
-          ...basePackageSpecs,
+          ...requiredPackageSpecs,
           ...extraPackageSpecs,
         });
 
@@ -106,7 +149,9 @@ function buildProductProfiles() {
           label: rawProfile.label ?? profileId,
           description: rawProfile.description ?? "",
           platforms: Object.freeze([...(rawProfile.platforms ?? [])]),
-          basePackageSpecs,
+          rawPackageSpecs,
+          requiredPackageSpecs,
+          managedOptionalPackageSpecs,
           extraPackageNames,
           extraPackageSpecs,
           packageSpecs,
@@ -166,7 +211,26 @@ function assertProfileSupportedOnPlatform(profileId, platform = process.platform
 
 function getProfilePackageSpecs(profileId, options = {}) {
   const profile = getProductProfile(profileId);
-  return options.includeExtraPackages === false ? profile.basePackageSpecs : profile.packageSpecs;
+  return options.includeExtraPackages === false ? profile.requiredPackageSpecs : profile.packageSpecs;
+}
+
+function getProfileManagedPackageSpecs(profileId) {
+  const profile = getProductProfile(profileId);
+  return profile.managedOptionalPackageSpecs;
+}
+
+function getProfileManagedPackageInstallSpecs(profileId, options = {}) {
+  const packageSpecs = getProfileManagedPackageSpecs(profileId);
+  const allowedPackages = options.packageNames ? new Set(options.packageNames) : null;
+  const omittedPackages = new Set(options.omitPackages ?? []);
+
+  return Object.freeze(
+    Object.entries(packageSpecs)
+      .filter(([packageName]) => (!allowedPackages || allowedPackages.has(packageName)) && !omittedPackages.has(packageName))
+      .map(([packageName, spec]) => stringifyPackageSpec(packageName, spec, {
+        preferRecommended: options.preferRecommended,
+      })),
+  );
 }
 
 function getProfilePackageInstallSpecs(profileId, options = {}) {
@@ -223,7 +287,9 @@ module.exports = {
   getDownloadUrl,
   getProductProfile,
   getProfilePackageInstallSpecs,
+  getProfileManagedPackageInstallSpecs,
   getProfilePackageSpecs,
+  getProfileManagedPackageSpecs,
   isProfileSupportedOnPlatform,
   listSupportedPlatformArchKeys,
   resolveProfileForFlavor,

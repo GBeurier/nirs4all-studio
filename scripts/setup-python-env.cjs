@@ -33,6 +33,7 @@ const {
   PBS_TAG,
   getArchiveFilename,
   getDownloadUrl,
+  getProfileManagedPackageInstallSpecs,
   getProfilePackageInstallSpecs,
   listSupportedPlatformArchKeys,
   resolveProfileForFlavor,
@@ -234,8 +235,7 @@ function getStandaloneTorchIndexArgs(profileId, platform = process.platform) {
 
 function getDependencyInstallPhases(profileId, platform = process.platform) {
   const torchExtraPipArgs = getStandaloneTorchIndexArgs(profileId, platform);
-  const torchSpecs = getProfilePackageInstallSpecs(profileId, {
-    includeExtraPackages: false,
+  const torchSpecs = getProfileManagedPackageInstallSpecs(profileId, {
     omitPackages: ["nirs4all"],
     packageNames: [TORCH_PROFILE_PACKAGE],
   });

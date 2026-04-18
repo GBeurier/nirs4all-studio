@@ -6,7 +6,7 @@ Internal support guide for diagnosing "installed but can't import" issues.
 
 1. **What mode?** Electron installed / portable / web dev / Docker / standalone
 2. **Did they recently change the Python environment?** (wizard, custom path, terminal pip)
-3. **Is there an amber "Environment mismatch detected" banner?** (Settings > Advanced)
+3. **Does Python Runtime show different configured and running paths?** (Settings > Advanced)
 4. **What OS?** Windows / macOS / Linux
 
 ## Diagnostic Steps
@@ -18,61 +18,49 @@ GET /api/system/env-coherence
 ```
 
 Key fields:
-- `coherent: false` → mismatch confirmed
-- `python_match: false` → VenvManager targets a different Python executable
-- `prefix_match: false` → VenvManager targets a different venv/prefix
-- `venv_manager.is_custom: true` → custom path is set
-- `venv_manager.has_pending_change: true` → path change waiting for restart
+- `coherent: false` or `configured_matches_running: false` → mismatch confirmed
+- `configured_python` → interpreter Electron expects on the next launch
+- `running_python` → interpreter the backend is using right now
+- `missing_core_packages` → runtime cannot fully boot the backend
+- `missing_optional_packages` → only some features are unavailable
 
-### Step 2: Check venv_settings.json
-
-Location (varies by platform):
-
-| Platform | Path |
-|----------|------|
-| Windows  | `%LOCALAPPDATA%\nirs4all-webapp\venv_settings.json` |
-| macOS    | `~/Library/Application Support/nirs4all-webapp/venv_settings.json` |
-| Linux    | `~/.local/share/nirs4all-webapp/venv_settings.json` |
-
-Check contents:
-- `custom_venv_path` pointing to a non-existent path → **stale settings**
-- `custom_venv_path: null` → default (using `sys.prefix`), settings are not the problem
-- File doesn't exist → good, no custom override
-
-### Step 3: Check env-settings.json (Electron only)
+### Step 2: Check env-settings.json (Electron only)
 
 Location: `{userData}/env-settings.json` (use `app.getPath("userData")` in Electron)
 
-- `customPythonPath` / `customEnvPath` should point to an existing Python
-- If empty/null: managed env at `{userData}/python-env/venv/`
+- `pythonPath` should point to an existing Python executable if the user has
+  selected an external runtime
+- if `pythonPath` is absent, Electron should fall back to the managed runtime
+  or bundled default runtime, depending on build type
 
-### Step 4: Check build info
+### Step 3: Check build info
 
 ```
 GET /api/system/build
 ```
 
-- `is_frozen: true` → standalone mode, packages can't be modified
-- `build_flavor` → CPU or GPU build
+- `runtime_mode: bundled` with `is_bundled_default: true` in coherence →
+  embedded bundled runtime still active
+- `runtime_mode: pyinstaller` → packaged backend mode, read-only
 
-### Step 5: Resolution
+### Step 4: Resolution
 
 | Action | When to use |
 |--------|------------|
-| `POST /api/updates/venv/reset` | Custom path is set but wrong |
-| Delete `venv_settings.json` | Backend can't be reached, need manual fix |
-| Restart backend | Pending path change needs to activate |
-| Re-run setup wizard | Electron env is misconfigured |
+| Re-run Python Runtime switch flow | Configured path is wrong or stale |
+| Restart backend / relaunch app | Configured path is correct but backend still runs elsewhere |
+| Re-run managed runtime setup | No usable runtime exists |
+| Install package into `running_python` manually | Terminal install landed in the wrong environment |
 
 ## Common Scenarios
 
 | Scenario | Root Cause | Automatic Fix | Manual Fix |
 |----------|-----------|---------------|------------|
-| User set custom venv path, didn't restart | Deferred activation | N/A | Restart backend |
-| App update changed Python path | Stale `venv_settings.json` | `clearBackendVenvSettings()` on startup | Delete `venv_settings.json`, restart |
+| User selected a different Python but has not restarted yet | Configured and running interpreters differ | Restart through the shared switch flow | Restart backend |
+| App update or manual edits left `pythonPath` stale | `env-settings.json` points to a missing executable | `validateConfiguredState()` clears it | Re-run setup or choose a runtime again |
 | Portable .exe relocated | `env-settings.json` has stale absolute paths | `validatePortableState()` clears settings | Re-run wizard |
-| pip install from terminal | Installed in wrong venv | N/A | Use runtime Python path from coherence endpoint |
-| Standalone mode, package needed | Frozen environment | N/A | Use installed (non-standalone) version |
+| pip install from terminal | Installed in wrong Python | N/A | Use `running_python` from coherence endpoint |
+| Bundled embedded runtime needs extra packages | Embedded runtime is read-only | N/A | Switch to an external runtime first |
 
 ## Log Locations
 
@@ -84,5 +72,5 @@ GET /api/system/build
 
 Look for:
 - `[EnvManager] Portable path drift detected` — portable mode relocation
-- `[EnvManager] Cleared stale backend venv settings` — cleanup happened
-- `Environment coherence check` — startup coherence result
+- `Using configured Python runtime` — backend launch used the configured interpreter
+- `Backend runtime packages missing` — startup repair path ran

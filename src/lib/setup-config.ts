@@ -21,6 +21,23 @@ export function getProfileManagedPackageNames(config: RecommendedConfigResponse 
   return collectProfileManagedPackages(config.profiles);
 }
 
+export function getCompatibleProfiles(
+  config: RecommendedConfigResponse | null | undefined,
+  platform?: string | null,
+): ProfileInfo[] {
+  if (!config) {
+    return [];
+  }
+
+  if (!platform) {
+    return config.profiles;
+  }
+
+  return config.profiles.filter(
+    (profile) => profile.platforms.length === 0 || profile.platforms.includes(platform),
+  );
+}
+
 export function getVisibleOptionalPackages(
   config: RecommendedConfigResponse | null | undefined,
 ): OptionalPackageInfo[] {
@@ -32,4 +49,27 @@ export function getVisibleOptionalPackages(
   return config.optional.filter(
     (pkg) => pkg.show_when_profile_managed === true || !managed.has(normalizePackageName(pkg.name)),
   );
+}
+
+export function getDefaultOptionalPackageNames(
+  config: RecommendedConfigResponse | null | undefined,
+): string[] {
+  return getVisibleOptionalPackages(config)
+    .filter((pkg) => pkg.default_install === true)
+    .map((pkg) => pkg.name);
+}
+
+export function getPreselectedOptionalPackageNames(
+  config: RecommendedConfigResponse | null | undefined,
+  installedPackageNames: Iterable<string> = [],
+): string[] {
+  const installed = new Set(
+    Array.from(installedPackageNames, (name) => normalizePackageName(name)),
+  );
+
+  return getVisibleOptionalPackages(config)
+    .filter(
+      (pkg) => pkg.default_install === true || installed.has(normalizePackageName(pkg.name)),
+    )
+    .map((pkg) => pkg.name);
 }

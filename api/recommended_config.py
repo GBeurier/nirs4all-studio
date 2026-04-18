@@ -8,6 +8,7 @@ Provides endpoints for:
 - First-launch detection and compute profile selection
 """
 
+import asyncio
 import json
 import os
 import re
@@ -86,6 +87,7 @@ class OptionalPackageInfo(BaseModel):
     category: str
     note: str | None = None
     show_when_profile_managed: bool = False
+    default_install: bool = False
 
 
 class RecommendedConfigResponse(BaseModel):
@@ -104,6 +106,7 @@ class PackageDiff(BaseModel):
     name: str
     installed_version: str | None = None
     recommended_version: str
+    latest_version: str | None = None
     status: str  # "aligned", "outdated", "missing", "extra"
     action: str | None = None  # "install", "upgrade", "none"
 
@@ -127,6 +130,12 @@ class AlignConfigRequest(BaseModel):
     dry_run: bool = False
 
 
+class PackageFailure(BaseModel):
+    """Per-package failure detail for alignment, including the pip error tail."""
+    package: str
+    error: str
+
+
 class AlignConfigResponse(BaseModel):
     """Result of aligning packages."""
     success: bool
@@ -134,7 +143,9 @@ class AlignConfigResponse(BaseModel):
     installed: list[str] = []
     upgraded: list[str] = []
     failed: list[str] = []
+    failures: list[PackageFailure] = []
     dry_run: bool = False
+    requires_restart: bool = False
 
 
 class SetupStatusResponse(BaseModel):
@@ -368,6 +379,17 @@ def _get_filtered_optional_config(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _get_visible_profile_managed_optional_names(raw: dict[str, Any]) -> set[str]:
+    """Return profile-managed optional packages that should be treated as optional in the UI."""
+    managed = _get_profile_managed_packages(raw)
+    visible_names: set[str] = set()
+    for name, data in raw.get("optional", {}).items():
+        normalized = _normalize_pkg_name(name)
+        if normalized in managed and _show_optional_when_profile_managed(data):
+            visible_names.add(normalized)
+    return visible_names
+
+
 def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse:
     """Parse raw config dict into response model.
 
@@ -408,6 +430,7 @@ def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse
             category=odata.get("category", "other"),
             note=odata.get("note"),
             show_when_profile_managed=odata.get("show_when_profile_managed", False),
+            default_install=odata.get("default_install", False),
         ))
 
     return RecommendedConfigResponse(
@@ -431,6 +454,19 @@ def _get_installed_packages() -> dict[str, str]:
         return packages
     except Exception as e:
         logger.warning("Could not list installed packages: %s", e)
+        return {}
+
+
+def _get_outdated_packages() -> dict[str, str]:
+    """Get dict of installed package names -> latest available versions from pip."""
+    try:
+        return {
+            _normalize_pkg_name(pkg["name"]): str(pkg["latest_version"])
+            for pkg in venv_manager.get_outdated_packages()
+            if pkg.get("name") and pkg.get("latest_version")
+        }
+    except Exception as e:
+        logger.warning("Could not list outdated packages: %s", e)
         return {}
 
 
@@ -462,23 +498,6 @@ def _describe_required_package(profile_id: str, pkg_name: str, pkg_raw: Any) -> 
     if _normalize_pkg_name(pkg_name) != TORCH_PACKAGE:
         return base
     return f"{base} ({_torch_variant_tag(profile_id)})"
-
-
-def _torch_variant_matches(profile_id: str, installed_version: str | None, gpu_info: GPUDetectionResponse) -> bool:
-    """Return whether the installed torch build matches the requested profile."""
-    if installed_version is None:
-        return False
-
-    installed_lower = installed_version.lower()
-    has_cuda_suffix = "+cu" in installed_lower
-
-    if profile_id == TORCH_CUDA_PROFILE:
-        return has_cuda_suffix or gpu_info.torch_cuda_available
-    if profile_id == TORCH_MPS_PROFILE:
-        return sys.platform == "darwin" and gpu_info.has_metal
-    if sys.platform == "darwin":
-        return not gpu_info.torch_cuda_available
-    return not has_cuda_suffix and not gpu_info.torch_cuda_available
 
 
 def _resolve_profile_from_environment(
@@ -543,31 +562,36 @@ def _resolve_torch_install_spec(
     installed_version: str | None,
     gpu_info: GPUDetectionResponse,
 ) -> ResolvedInstallSpec | None:
-    """Build the concrete install plan for torch for a given profile."""
+    """Build the concrete install plan for torch for a given profile.
+
+    Why: a previous variant-gated force-reinstall would uninstall a working
+    torch (e.g. ``2.10.0+cpu``) the moment the user picked a profile whose
+    variant didn't match (e.g. ``gpu-cuda-torch``). If the subsequent pip
+    install was interrupted, the venv was left with an empty ``torch/``
+    directory and no ``__init__.py`` — every import then returned a
+    namespace-package stub with no ``Tensor``. Profile changes must never
+    uninstall a torch that already satisfies ``min_spec``; explicit variant
+    switches are handled by a separate flow.
+    """
     min_spec, recommended_ver = _parse_package_spec(pkg_raw)
     if installed_version is not None and _version_satisfies(installed_version, min_spec):
-        if _torch_variant_matches(profile_id, installed_version, gpu_info):
-            return None
+        return None
 
-    version = recommended_ver
-    if version is None:
+    if recommended_ver is None:
         raise ValueError("Torch profile packages must pin a recommended version")
 
     extra_pip_args: list[str] = []
-    force_reinstall = False
     if profile_id == TORCH_CUDA_PROFILE:
         extra_pip_args = ["--index-url", TORCH_CUDA_INDEX_URL]
-        force_reinstall = installed_version is not None
     elif profile_id == DEFAULT_PROFILE and sys.platform != "darwin":
         extra_pip_args = ["--index-url", TORCH_CPU_INDEX_URL]
-        force_reinstall = installed_version is not None and not _torch_variant_matches(profile_id, installed_version, gpu_info)
 
     return ResolvedInstallSpec(
         package=TORCH_PACKAGE,
-        version=version,
+        version=recommended_ver,
         display_spec=_describe_required_package(profile_id, TORCH_PACKAGE, pkg_raw),
         extra_pip_args=extra_pip_args,
-        force_reinstall=force_reinstall,
+        force_reinstall=False,
     )
 
 
@@ -737,7 +761,11 @@ async def get_recommended_config(force_refresh: bool = False):
 
 
 @router.get("/diff", response_model=ConfigComparisonResponse)
-async def compare_config(profile: str | None = None, include_optional: bool = False):
+async def compare_config(
+    profile: str | None = None,
+    include_optional: bool = False,
+    include_latest: bool = True,
+):
     """Compare installed packages against the recommended config.
 
     If no profile is specified, uses the profile from setup status
@@ -763,9 +791,11 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
     profile_label = profile_data.get("label", profile)
     required_packages = profile_data.get("packages", {})
     optional_config = _get_filtered_optional_config(raw_config)
+    visible_profile_optional_names = _get_visible_profile_managed_optional_names(raw_config)
 
     # Get installed packages
     installed = _get_installed_packages()
+    latest_versions = _get_outdated_packages() if include_latest else {}
     gpu_info = _detect_gpu()
 
     # Build diff
@@ -778,32 +808,33 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
     required_package_names = {
         _normalize_pkg_name(pkg_name)
         for pkg_name in required_packages
+        if _normalize_pkg_name(pkg_name) not in visible_profile_optional_names
     }
     for pkg_name, pkg_raw in required_packages.items():
         min_spec, recommended_ver = _parse_package_spec(pkg_raw)
         version_spec = _describe_required_package(profile, pkg_name, pkg_raw)
         norm_name = _normalize_pkg_name(pkg_name)
+        if norm_name in visible_profile_optional_names:
+            continue
         installed_ver = installed.get(norm_name)
-        is_variant_misaligned = (
-            norm_name == TORCH_PACKAGE
-            and installed_ver is not None
-            and not _torch_variant_matches(profile, installed_ver, gpu_info)
-        )
+        latest_ver = latest_versions.get(norm_name)
 
         if installed_ver is None:
             diffs.append(PackageDiff(
                 name=pkg_name,
                 installed_version=None,
                 recommended_version=version_spec,
+                latest_version=latest_ver,
                 status="missing",
                 action="install",
             ))
             missing_count += 1
-        elif _version_satisfies(installed_ver, min_spec) and not is_variant_misaligned:
+        elif _version_satisfies(installed_ver, min_spec):
             diffs.append(PackageDiff(
                 name=pkg_name,
                 installed_version=installed_ver,
                 recommended_version=version_spec,
+                latest_version=latest_ver,
                 status="aligned",
                 action="none",
             ))
@@ -813,6 +844,7 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
                 name=pkg_name,
                 installed_version=installed_ver,
                 recommended_version=version_spec,
+                latest_version=latest_ver,
                 status="outdated",
                 action="upgrade",
             ))
@@ -825,6 +857,7 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
             if norm_name in required_package_names:
                 continue
             installed_ver = installed.get(norm_name)
+            latest_ver = latest_versions.get(norm_name)
             if installed_ver is None:
                 continue  # Skip uninstalled optional packages
             # v1.2 uses "min", v1.1 uses "version"
@@ -834,6 +867,7 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
                     name=opt_name,
                     installed_version=installed_ver,
                     recommended_version=version_spec,
+                    latest_version=latest_ver,
                     status="outdated",
                     action="upgrade",
                 ))
@@ -843,6 +877,7 @@ async def compare_config(profile: str | None = None, include_optional: bool = Fa
                     name=opt_name,
                     installed_version=installed_ver,
                     recommended_version=version_spec or installed_ver,
+                    latest_version=latest_ver,
                     status="aligned",
                     action="none",
                 ))
@@ -880,6 +915,7 @@ async def align_config(request: AlignConfigRequest):
     profile_data = raw_config.get("profiles", {}).get(request.profile)
     required_packages = profile_data.get("packages", {})
     optional_config = _get_filtered_optional_config(raw_config)
+    visible_profile_optional_names = _get_visible_profile_managed_optional_names(raw_config)
     active_profile_managed_names = {
         _normalize_pkg_name(pkg_name)
         for pkg_name in required_packages
@@ -892,6 +928,8 @@ async def align_config(request: AlignConfigRequest):
 
     for pkg_name, pkg_raw in required_packages.items():
         norm_name = _normalize_pkg_name(pkg_name)
+        if norm_name in visible_profile_optional_names:
+            continue
         installed_ver = installed.get(norm_name)
         install_spec = _resolve_required_install_spec(
             request.profile,
@@ -904,12 +942,39 @@ async def align_config(request: AlignConfigRequest):
             to_install.append(install_spec)
 
     for opt_name in request.optional_packages:
-        if _normalize_pkg_name(opt_name) in active_profile_managed_names:
-            logger.info("Ignoring profile-managed optional package request for %s", opt_name)
+        norm_name = _normalize_pkg_name(opt_name)
+        if norm_name in active_profile_managed_names:
+            opt_data = optional_config.get(opt_name)
+            if not opt_data or not _show_optional_when_profile_managed(opt_data):
+                logger.info("Ignoring profile-managed optional package request for %s", opt_name)
+                continue
+
+            profile_pkg_name, profile_pkg_raw = next(
+                (
+                    (pkg_name, pkg_raw)
+                    for pkg_name, pkg_raw in required_packages.items()
+                    if _normalize_pkg_name(pkg_name) == norm_name
+                ),
+                (opt_name, None),
+            )
+            if profile_pkg_raw is None:
+                logger.warning("Could not resolve profile-managed optional package spec for %s", opt_name)
+                continue
+
+            installed_ver = installed.get(norm_name)
+            install_spec = _resolve_required_install_spec(
+                request.profile,
+                profile_pkg_name,
+                profile_pkg_raw,
+                installed_ver,
+                gpu_info,
+            )
+            if install_spec is not None:
+                to_install.append(install_spec)
             continue
+
         opt_data = optional_config.get(opt_name)
         if opt_data:
-            norm_name = _normalize_pkg_name(opt_name)
             installed_ver = installed.get(norm_name)
             install_spec = _resolve_optional_install_spec(opt_name, opt_data, installed_ver)
             if install_spec is not None:
@@ -927,16 +992,24 @@ async def align_config(request: AlignConfigRequest):
         return AlignConfigResponse(
             success=True,
             message="All packages are already aligned with recommended config",
+            requires_restart=False,
         )
 
     # Actually install
     installed_pkgs = []
     upgraded_pkgs = []
     failed_pkgs = []
+    failure_details: list[PackageFailure] = []
 
     for install_spec in to_install:
         try:
-            success, message, output = venv_manager.install_package(
+            # Offload the blocking pip subprocess to a worker thread so FastAPI's
+            # event loop keeps serving /api/health. Otherwise the Electron backend
+            # health monitor treats the unresponsive event loop as a crash and
+            # kills the backend mid-install, aborting this request with a
+            # "Failed to fetch" error on the client.
+            success, message, output = await asyncio.to_thread(
+                venv_manager.install_package,
                 install_spec.package,
                 version=install_spec.version,
                 upgrade=True,
@@ -946,6 +1019,10 @@ async def align_config(request: AlignConfigRequest):
             if not success:
                 logger.error("Failed to install %s: %s", install_spec.display_spec, message)
                 failed_pkgs.append(install_spec.display_spec)
+                failure_details.append(PackageFailure(
+                    package=install_spec.display_spec,
+                    error=message,
+                ))
                 continue
             # Determine if it was install or upgrade
             norm_name = _normalize_pkg_name(install_spec.package)
@@ -956,6 +1033,10 @@ async def align_config(request: AlignConfigRequest):
         except Exception as e:
             logger.error("Failed to install %s: %s", install_spec.display_spec, e)
             failed_pkgs.append(install_spec.display_spec)
+            failure_details.append(PackageFailure(
+                package=install_spec.display_spec,
+                error=str(e),
+            ))
 
     success = len(failed_pkgs) == 0
     parts = []
@@ -969,12 +1050,16 @@ async def align_config(request: AlignConfigRequest):
     if success:
         _config_cache.set_setup_status(request.profile)
 
+    requires_restart = bool(installed_pkgs or upgraded_pkgs)
+
     return AlignConfigResponse(
         success=success,
         message=". ".join(parts) if parts else "No changes needed",
         installed=installed_pkgs,
         upgraded=upgraded_pkgs,
         failed=failed_pkgs,
+        failures=failure_details,
+        requires_restart=requires_restart,
     )
 
 

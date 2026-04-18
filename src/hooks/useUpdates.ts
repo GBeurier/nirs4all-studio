@@ -4,7 +4,7 @@
  * Provides hooks for:
  * - Checking for webapp and nirs4all updates
  * - Managing update settings
- * - Managing the managed virtual environment
+ * - Inspecting the current Python runtime
  * - Downloading and applying webapp updates
  */
 
@@ -101,7 +101,7 @@ export function useUpdateUpdateSettings() {
 }
 
 /**
- * Hook to fetch managed venv status
+ * Hook to fetch current runtime status
  */
 export function useVenvStatus() {
   return useQuery({
@@ -113,7 +113,7 @@ export function useVenvStatus() {
 }
 
 /**
- * Hook to create the managed venv
+ * Hook to call the legacy desktop-managed runtime creation endpoint
  */
 export function useCreateVenv() {
   const queryClient = useQueryClient();

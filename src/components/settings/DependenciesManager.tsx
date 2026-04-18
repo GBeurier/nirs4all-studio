@@ -65,15 +65,17 @@ import {
   refreshDependencies,
   requestRestart,
   resetBackendUrl,
-  getBuildInfo,
   revertDependency,
+  getRuntimeSummary,
 } from "@/api/client";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
+import { getPythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
 import { getDependencyVersionState } from "./dependencyVersionState";
 import type {
   DependenciesResponse,
   DependencyCategory,
   DependencyInfo,
+  RuntimeSummaryResponse,
 } from "@/api/client";
 
 interface PackageRowProps {
@@ -105,6 +107,7 @@ function PackageRow({
     showUpdateToLatest,
     shouldConfirmLatestUpdate,
   } = getDependencyVersionState(pkg);
+  const supportsLatestTrack = pkg.managed_by_profile !== true;
 
   // Status icon
   let statusIcon;
@@ -175,10 +178,25 @@ function PackageRow({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm">{pkg.name}</span>
             {versionBadge}
+            {pkg.default_install && (
+              <Badge variant="secondary" className="text-xs">
+                Default
+              </Badge>
+            )}
+            {pkg.managed_by_profile && (
+              <Badge variant="outline" className="text-xs">
+                Profile-managed
+              </Badge>
+            )}
           </div>
           <p className="text-xs text-muted-foreground truncate">
             {pkg.description}
           </p>
+          {pkg.managed_by_profile && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Installed and aligned through the active compute profile when needed.
+            </p>
+          )}
           {/* Version details line */}
           <div className="flex items-center gap-3 mt-0.5">
             {showRecommendedVersion && pkg.recommended_version && (
@@ -240,7 +258,7 @@ function PackageRow({
                 )}
 
                 {/* Update to Latest (when latest > installed and latest != recommended) */}
-                {showUpdateToLatest && shouldConfirmLatestUpdate && (
+                {supportsLatestTrack && showUpdateToLatest && shouldConfirmLatestUpdate && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
@@ -278,7 +296,7 @@ function PackageRow({
                 )}
 
                 {/* Update to Latest (simple case: no recommended or latest == recommended) */}
-                {showUpdateToLatest &&
+                {supportsLatestTrack && showUpdateToLatest &&
                   !shouldConfirmLatestUpdate && (
                     <Button
                       variant="outline"
@@ -310,9 +328,9 @@ function PackageRow({
                         Uninstall {pkg.name}?
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will remove {pkg.name} from the managed virtual
-                        environment. Some nirs4all features may not work
-                        without this package.
+                        This will remove {pkg.name} from the current Python
+                        runtime. Some nirs4all features may not work without
+                        this package.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -442,9 +460,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     message: string;
   } | null>(null);
   const [needsRestart, setNeedsRestart] = useState(false);
-  const [runtimeMode, setRuntimeMode] = useState<"development" | "managed" | "bundled" | "pyinstaller">("development");
-
-  const isReadOnlyRuntime = runtimeMode === "bundled" || runtimeMode === "pyinstaller";
+  const [runtimeSummary, setRuntimeSummary] = useState<RuntimeSummaryResponse | null>(null);
 
   const loadDependencies = async (forceRefresh = false) => {
     try {
@@ -452,8 +468,12 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
         setIsLoading(true);
       }
       setError(null);
-      const data = await getDependencies(forceRefresh);
+      const [data, summary] = await Promise.all([
+        getDependencies(forceRefresh),
+        getRuntimeSummary().catch(() => null),
+      ]);
       setDependencies(data);
+      setRuntimeSummary(summary);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dependencies");
     } finally {
@@ -581,18 +601,11 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     const handler = () => {
       // Backend just restarted — delay to let it warm up, then force refresh
       setTimeout(() => {
-        loadDependencies(true);
+        void loadDependencies(true);
       }, 2000);
     };
     window.addEventListener("backend-restarted", handler);
     return () => window.removeEventListener("backend-restarted", handler);
-  }, []);
-
-  // Load build info on mount
-  useEffect(() => {
-    getBuildInfo()
-      .then((info) => setRuntimeMode(info.runtime_mode))
-      .catch(() => {});
   }, []);
 
   if (isLoading) {
@@ -641,6 +654,8 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
     (acc, cat) => acc + cat.packages.filter((p) => p.is_outdated).length,
     0
   );
+  const runtimeDisplay = getPythonRuntimeDisplayState(runtimeSummary);
+  const isReadOnlyRuntime = runtimeDisplay.isReadOnly;
 
   return (
     <Card>
@@ -700,9 +715,18 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
           <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription>
-              {runtimeMode === "bundled"
-                ? "This all-in-one bundle uses an embedded Python runtime. Package management is disabled because the environment is read-only."
-                : "This packaged runtime is read-only. Package management is disabled in this backend mode."}
+              {runtimeDisplay.isBundledEmbedded
+                ? "This bundled build is using its embedded Python runtime. Package management is disabled because the embedded runtime is read-only."
+                : "This packaged backend runtime is read-only. Package management is disabled in this mode."}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {runtimeDisplay.isBundledExternal && (
+          <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertDescription>
+              This bundled build is running on an external Python runtime. Optional package installs and removals now apply to that external environment.
             </AlertDescription>
           </Alert>
         )}
@@ -723,7 +747,7 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
               Base nirs4all version is managed in the Updates section above.
             </span>
             <Badge variant="outline" className="text-xs">
-              Runtime: {runtimeMode}
+              {runtimeDisplay.label}
             </Badge>
           </div>
           <div className="flex items-center gap-2">
@@ -732,18 +756,18 @@ export function DependenciesManager({ compact = false }: DependenciesManagerProp
                 {outdatedCount} optional update{outdatedCount > 1 ? "s" : ""} available
               </Badge>
             )}
-            {!dependencies.venv_valid && (
+            {!dependencies.runtime_valid && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger>
                     <Badge variant="outline" className="text-amber-600">
                       <AlertCircle className="h-3 w-3 mr-1" />
-                      Venv Issue
+                      Runtime Issue
                     </Badge>
                   </TooltipTrigger>
                   <TooltipContent>
-                    The managed virtual environment is not valid. Create one in
-                    the Updates section.
+                    The current Python runtime is not valid. Use the Python
+                    Runtime settings to select or create a usable runtime.
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

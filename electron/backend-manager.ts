@@ -146,82 +146,64 @@ export class BackendManager {
   /**
    * Get the path to the Python backend.
    * Priority order:
-   *   1. Dev mode / forced venv: use ../.venv + uvicorn
-   *   2. Bundled runtime: resources/backend/python-runtime/python (legacy venv fallback supported)
-   *   3. EnvManager: Python env downloaded/configured at runtime (user data dir)
-   *   4. Standalone mode: PyInstaller executable in resources/backend/
-   *   5. Fallback: dev venv (for local prod testing)
+   *   1. Explicitly configured desktop runtime from EnvManager
+   *   2. Forced dev venv override
+   *   3. Standalone mode: PyInstaller executable in resources/backend/
+   *   4. Dev fallback: ../.venv when no desktop runtime is configured
    */
   private getBackendPath(): BackendLaunchConfig {
     const isDev = process.env.VITE_DEV_SERVER_URL !== undefined;
     const forceVenv = process.env.NIRS4ALL_USE_VENV === "true";
     const isPackaged = electron.app?.isPackaged ?? !isDev;
 
-    // 1. Dev mode or forced venv: use the development .venv
-    if (isDev || forceVenv) {
+    const fs = require("fs");
+    const resourcesPath = process.resourcesPath ?? process.cwd();
+    const backendDir = path.join(resourcesPath, "backend");
+    const pythonBackendCwd = isPackaged ? backendDir : process.cwd();
+
+    // 1. Explicitly configured desktop runtime: use the selected interpreter
+    // in both development and packaged desktop modes. The dev .venv is only a
+    // fallback when no desktop runtime has been configured.
+    const configuredRuntimeMode = this.envManager?.getConfiguredRuntimeMode() ?? "none";
+    const configuredPythonPath = this.envManager?.getConfiguredPythonPath();
+    const bundledRuntimeAvailable = this.envManager?.isBundled?.() ? "true" : "false";
+    if (!forceVenv && configuredPythonPath && configuredRuntimeMode !== "none") {
+      console.log("Using configured Python runtime");
+      console.log(`  Python: ${configuredPythonPath}`);
+
+      const runtimeMode = configuredRuntimeMode === "bundled"
+        ? "bundled"
+        : (isPackaged ? "managed" : "development");
+      const runtimeKind = configuredRuntimeMode;
+      const isBundledDefault = configuredRuntimeMode === "bundled" ? "true" : "false";
+
+      return {
+        command: configuredPythonPath,
+        args: [
+          "-m",
+          "uvicorn",
+          "main:app",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          this.port.toString(),
+        ],
+        cwd: configuredRuntimeMode === "bundled" ? backendDir : pythonBackendCwd,
+        env: {
+          NIRS4ALL_RUNTIME_MODE: runtimeMode,
+          NIRS4ALL_RUNTIME_KIND: runtimeKind,
+          NIRS4ALL_IS_BUNDLED_DEFAULT: isBundledDefault,
+          NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE: bundledRuntimeAvailable,
+        },
+      };
+    }
+
+    // 2. Forced dev override
+    if (forceVenv) {
       return this.getDevBackendPath();
     }
 
-    const fs = require("fs");
-    const resourcesPath = process.resourcesPath;
-    const backendDir = path.join(resourcesPath, "backend");
-
-    // 2. Bundled runtime: pre-baked venv in the packaged app resources
-    if (this.envManager?.isBundled()) {
-      const pythonPath = this.envManager.getPythonPath();
-
-      if (pythonPath) {
-        console.log("Using bundled Python runtime");
-        console.log(`  Python: ${pythonPath}`);
-        return {
-          command: pythonPath,
-          args: [
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            this.port.toString(),
-          ],
-          cwd: backendDir,
-          env: {
-            NIRS4ALL_RUNTIME_MODE: "bundled",
-          },
-        };
-      }
-    }
-
-    // 3. EnvManager: Python runtime in user data directory
-    //    The Python env is downloaded on first launch and stored in AppData.
-    //    Uses the venv's Python directly (not base Python + PYTHONPATH) so that
-    //    sys.prefix points to the venv and VenvManager's pip/install works correctly.
-    if (this.envManager && this.envManager.isReady()) {
-      const pythonPath = this.envManager.getPythonPath();
-
-      if (pythonPath) {
-        console.log("Using EnvManager Python backend (venv Python)");
-        console.log(`  Python: ${pythonPath}`);
-        return {
-          command: pythonPath,
-          args: [
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            this.port.toString(),
-          ],
-          cwd: backendDir,
-          env: {
-            NIRS4ALL_RUNTIME_MODE: "managed",
-          },
-        };
-      }
-    }
-
-    // 4. Standalone mode: PyInstaller executable
+    // 3. Standalone mode: PyInstaller executable
     const execName =
       process.platform === "win32"
         ? "nirs4all-backend.exe"
@@ -235,11 +217,21 @@ export class BackendManager {
         args: ["--port", this.port.toString()],
         env: {
           NIRS4ALL_RUNTIME_MODE: "pyinstaller",
+          NIRS4ALL_RUNTIME_KIND: "pyinstaller",
+          NIRS4ALL_IS_BUNDLED_DEFAULT: "false",
+          NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE: bundledRuntimeAvailable,
         },
       };
     }
 
-    // 5. Fallback: dev venv (for local prod testing only)
+    // 4. Development fallback: use the repo-local .venv only when no desktop
+    // runtime has been configured.
+    if (isDev) {
+      console.log("No configured desktop runtime found, falling back to dev venv");
+      return this.getDevBackendPath();
+    }
+
+    // Packaged fallback for local prod testing only
     if (isPackaged) {
       throw new Error(
         "No usable backend found: Python environment is missing and no bundled backend is available.",
@@ -256,6 +248,7 @@ export class BackendManager {
    */
   private getDevBackendPath(): BackendLaunchConfig {
     const venvPath = path.join(process.cwd(), "..", ".venv");
+    const bundledRuntimeAvailable = this.envManager?.isBundled?.() ? "true" : "false";
     const pythonPath =
       process.platform === "win32"
         ? path.join(venvPath, "Scripts", "python.exe")
@@ -275,6 +268,9 @@ export class BackendManager {
       cwd: process.cwd(),
       env: {
         NIRS4ALL_RUNTIME_MODE: "development",
+        NIRS4ALL_RUNTIME_KIND: "development",
+        NIRS4ALL_IS_BUNDLED_DEFAULT: "false",
+        NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE: bundledRuntimeAvailable,
       },
     };
   }
@@ -464,7 +460,8 @@ export class BackendManager {
     console.log(`Executing: ${command} ${args.join(" ")}`);
     if (cwd) console.log(`Working directory: ${cwd}`);
 
-    const pythonPath = this.envManager?.getPythonPath() || "";
+    const configuredPythonPath = this.envManager?.getConfiguredPythonPath() || "";
+    const envSettingsPath = this.envManager?.getSettingsPath() || "";
     const env = {
       ...process.env,
       NIRS4ALL_PORT: this.port.toString(),
@@ -473,7 +470,8 @@ export class BackendManager {
       NIRS4ALL_APP_VERSION: electron.app.getVersion(),
       NIRS4ALL_APP_DIR: path.dirname(process.execPath),
       NIRS4ALL_APP_EXE: path.basename(process.execPath),
-      NIRS4ALL_EXPECTED_PYTHON: pythonPath,
+      NIRS4ALL_EXPECTED_PYTHON: configuredPythonPath,
+      NIRS4ALL_ENV_SETTINGS_PATH: envSettingsPath,
       NIRS4ALL_PID_FILE: this.getPidFilePath(),
       KERAS_BACKEND: "torch",
       // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE
@@ -551,7 +549,8 @@ export class BackendManager {
     if (cwd) console.log(`Working directory: ${cwd}`);
 
     // Set environment variables
-    const pythonPathForEnv = this.envManager?.getPythonPath() || "";
+    const configuredPythonPath = this.envManager?.getConfiguredPythonPath() || "";
+    const envSettingsPath = this.envManager?.getSettingsPath() || "";
     const env = {
       ...process.env,
       NIRS4ALL_PORT: this.port.toString(),
@@ -560,7 +559,8 @@ export class BackendManager {
       NIRS4ALL_APP_VERSION: electron.app.getVersion(),
       NIRS4ALL_APP_DIR: path.dirname(process.execPath),
       NIRS4ALL_APP_EXE: path.basename(process.execPath),
-      NIRS4ALL_EXPECTED_PYTHON: pythonPathForEnv,
+      NIRS4ALL_EXPECTED_PYTHON: configuredPythonPath,
+      NIRS4ALL_ENV_SETTINGS_PATH: envSettingsPath,
       NIRS4ALL_PID_FILE: this.getPidFilePath(),
       KERAS_BACKEND: "torch",
       // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE

@@ -51,10 +51,14 @@ export function useRecommendedConfig() {
 /**
  * Compare installed packages vs. recommended config
  */
-export function useConfigDiff(profile?: string, includeOptional?: boolean) {
+export function useConfigDiff(
+  profile?: string,
+  includeOptional?: boolean,
+  includeLatest: boolean = true,
+) {
   return useQuery({
-    queryKey: [...configKeys.diff(profile), includeOptional],
-    queryFn: () => getConfigDiff(profile, includeOptional),
+    queryKey: [...configKeys.diff(profile), includeOptional, includeLatest],
+    queryFn: () => getConfigDiff(profile, includeOptional, includeLatest),
     staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: false,
     retry: false,

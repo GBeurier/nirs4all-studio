@@ -26,6 +26,7 @@ interface PythonRuntimeConfigModule {
 type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
 const electronModule = require("electron") as typeof import("electron") | string;
 const pythonRuntimeConfig = require("../scripts/python-runtime-config.cjs") as PythonRuntimeConfigModule;
+const recommendedConfig = require("../recommended-config.json") as RecommendedConfigFile;
 const testApp = (globalThis as { __NIRS4ALL_TEST_APP__?: AppLike }).__NIRS4ALL_TEST_APP__;
 const { app } = typeof electronModule === "string"
   ? {
@@ -142,10 +143,51 @@ export type EnvStatus = "none" | "downloading" | "extracting" | "creating_venv" 
 
 export type ProgressCallback = (percent: number, step: string, detail: string) => void;
 
+type EnvKind = "system" | "venv" | "conda" | "managed" | "bundled";
+
+interface RecommendedPackageSpec {
+  min?: string;
+  recommended?: string | null;
+}
+
+interface RecommendedProfileConfig {
+  label?: string;
+  platforms?: string[];
+  packages?: Record<string, RecommendedPackageSpec | string>;
+}
+
+interface RecommendedOptionalConfig {
+  min?: string;
+  recommended?: string | null;
+  description?: string;
+  category?: string;
+}
+
+interface RecommendedConfigFile {
+  profiles?: Record<string, RecommendedProfileConfig>;
+  optional?: Record<string, RecommendedOptionalConfig>;
+}
+
+export interface ProfileAlignmentGuess {
+  id: string;
+  label: string;
+  missingCount: number;
+}
+
 export interface DetectedEnv {
   path: string;
+  pythonPath: string;
   pythonVersion: string;
   hasNirs4all: boolean;
+  hasCorePackages: boolean;
+  envKind: EnvKind;
+  writable: boolean;
+}
+
+export interface InspectedEnv extends DetectedEnv {
+  missingCorePackages: string[];
+  missingOptionalPackages: string[];
+  profileAlignmentGuess: ProfileAlignmentGuess | null;
 }
 
 export interface EnvInfo {
@@ -177,6 +219,18 @@ const VERIFY_CACHE_FILE = "verify-cache.json";
 // co-mingled with this transient cache.
 const DETECT_ENVS_TTL_MS = 30_000;
 let detectEnvsCache: { key: string; expiresAt: number; result: DetectedEnv[] } | null = null;
+const WINDOWS_LAUNCHER_TIMEOUT_MS = 5_000;
+const CONDA_DISCOVERY_TIMEOUT_MS = 12_000;
+const PROJECT_ENV_DIR_NAMES = [".venv", "venv", ".env", "env"];
+const NEARBY_PROJECT_IGNORED_DIRS = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "dist-electron",
+  "build",
+  "coverage",
+  "__pycache__",
+]);
 
 interface VerifyCacheEntry {
   pythonPath: string;
@@ -208,6 +262,31 @@ interface CommandOptions {
   /** Base delay (ms) for exponential backoff between retries. Default 2000. */
   retryBaseMs?: number;
   timeoutMs?: number;
+}
+
+interface ApplyExistingPythonOptions {
+  installCorePackages?: boolean;
+}
+
+interface InspectPythonData {
+  version: string;
+  installedPackages: Map<string, string>;
+}
+
+function normalizePackageName(name: string): string {
+  return name.replace(/[-_.]+/g, "_").toLowerCase();
+}
+
+function getSupportedProfiles(config: RecommendedConfigFile): Array<[string, RecommendedProfileConfig]> {
+  return Object.entries(config.profiles ?? {}).filter(([, profile]) => {
+    const platforms = profile.platforms ?? [];
+    return platforms.length === 0 || platforms.includes(process.platform);
+  });
+}
+
+function normalizeDetectedPath(candidate: string): string {
+  const normalized = path.normalize(candidate);
+  return isWindows ? normalized.toLowerCase() : normalized;
 }
 
 export class EnvManager {
@@ -278,6 +357,11 @@ export class EnvManager {
   /** Get the environment directory */
   getEnvDir(): string {
     return this.envDir;
+  }
+
+  /** Get the persisted Electron env settings file path. */
+  getSettingsPath(): string {
+    return this.settingsPath;
   }
 
   /** Get current setup status */
@@ -352,14 +436,55 @@ export class EnvManager {
     return this.detectBundledRuntime() !== null;
   }
 
+  private getManagedPythonPath(): string {
+    const venvDir = path.join(this.envDir, "venv");
+    return isWindows
+      ? path.join(venvDir, "Scripts", "python.exe")
+      : path.join(venvDir, "bin", "python");
+  }
+
+  /**
+   * Get the Python executable Electron is currently configured to use.
+   *
+   * This differs from getPythonPath(): explicit user selection wins over the
+   * packaged bundled runtime so the UI can show configured-vs-running
+   * mismatches immediately, before the backend is restarted.
+   */
+  getConfiguredPythonPath(): string | null {
+    if (this.pythonPath && fs.existsSync(this.pythonPath)) {
+      return this.pythonPath;
+    }
+
+    const bundledRuntime = this.detectBundledRuntime();
+    if (bundledRuntime) {
+      return bundledRuntime.pythonPath;
+    }
+
+    const managedPython = this.getManagedPythonPath();
+    return fs.existsSync(managedPython) ? managedPython : null;
+  }
+
+  /** Get the configured runtime mode from Electron state. */
+  getConfiguredRuntimeMode(): EnvRuntimeMode {
+    if (this.pythonPath && fs.existsSync(this.pythonPath)) return "custom";
+    if (this.isBundled()) return "bundled";
+    return fs.existsSync(this.getManagedPythonPath()) ? "managed" : "none";
+  }
+
+  /**
+   * Resolve the Python executable Electron intends to target for backend
+   * verification / repair work. Falls back to the runtime launch path when no
+   * configured interpreter has been persisted yet.
+   */
+  private getBackendTargetPythonPath(): string | null {
+    return this.getConfiguredPythonPath() ?? this.getPythonPath();
+  }
+
   getRuntimeMode(): EnvRuntimeMode {
     if (this.isBundled()) return "bundled";
     if (this.pythonPath && fs.existsSync(this.pythonPath)) return "custom";
 
-    const venvDir = path.join(this.envDir, "venv");
-    const managedPython = isWindows
-      ? path.join(venvDir, "Scripts", "python.exe")
-      : path.join(venvDir, "bin", "python");
+    const managedPython = this.getManagedPythonPath();
 
     if (fs.existsSync(managedPython)) return "managed";
     return "none";
@@ -382,10 +507,7 @@ export class EnvManager {
     // Since the venv is created on the user's machine (not bundled from build),
     // pyvenv.cfg has correct paths and sys.prefix resolves to the venv.
     // This ensures VenvManager's pip_executable and package installs work correctly.
-    const venvDir = path.join(this.envDir, "venv");
-    return isWindows
-      ? path.join(venvDir, "Scripts", "python.exe")
-      : path.join(venvDir, "bin", "python");
+    return this.getManagedPythonPath();
   }
 
   private resolveSitePackages(envRoot: string, requireExisting: boolean = false): string | null {
@@ -431,9 +553,530 @@ export class EnvManager {
     return this.resolveSitePackages(venvDir);
   }
 
+  private getSitePackagesForPythonPath(pythonPath: string | null): string | null {
+    if (!pythonPath) return null;
+    const dir = path.dirname(pythonPath);
+    const dirName = path.basename(dir).toLowerCase();
+    const envRoot = (dirName === "scripts" || dirName === "bin") ? path.dirname(dir) : dir;
+    return this.resolveSitePackages(envRoot, true);
+  }
+
+  private getEnvRootForPythonPath(pythonPath: string): string {
+    const dir = path.dirname(pythonPath);
+    const dirName = path.basename(dir).toLowerCase();
+    return (dirName === "scripts" || dirName === "bin") ? path.dirname(dir) : dir;
+  }
+
+  private getPythonExecutableCandidatesForEnvRoot(envRoot: string): string[] {
+    return isWindows
+      ? [path.join(envRoot, "Scripts", "python.exe"), path.join(envRoot, "python.exe")]
+      : [path.join(envRoot, "bin", "python3"), path.join(envRoot, "bin", "python")];
+  }
+
+  private addPythonCandidate(candidateMap: Map<string, string>, pythonPath: string | null | undefined): void {
+    if (!pythonPath || !fs.existsSync(pythonPath)) {
+      return;
+    }
+
+    try {
+      const resolvedPath = fs.realpathSync(pythonPath);
+      const key = normalizeDetectedPath(resolvedPath);
+      if (!candidateMap.has(key)) {
+        candidateMap.set(key, pythonPath);
+      }
+      return;
+    } catch {
+      const key = normalizeDetectedPath(pythonPath);
+      if (!candidateMap.has(key)) {
+        candidateMap.set(key, pythonPath);
+      }
+    }
+  }
+
+  private collectPythonCandidatesFromRoots(candidateMap: Map<string, string>, envRoots: Iterable<string>): void {
+    for (const envRoot of envRoots) {
+      if (!envRoot || !fs.existsSync(envRoot)) {
+        continue;
+      }
+
+      for (const pythonPath of this.getPythonExecutableCandidatesForEnvRoot(envRoot)) {
+        this.addPythonCandidate(candidateMap, pythonPath);
+      }
+    }
+  }
+
+  private listPathPythonCandidates(): string[] {
+    const candidates: string[] = [];
+    const names = isWindows ? ["python.exe"] : ["python3", "python"];
+    const pathDirs = (process.env.PATH || "")
+      .split(path.delimiter)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    for (const dir of pathDirs) {
+      for (const name of names) {
+        const candidate = path.join(dir, name);
+        if (fs.existsSync(candidate)) {
+          candidates.push(candidate);
+        }
+      }
+    }
+
+    return candidates;
+  }
+
+  private listCommonHomePythonCandidates(): string[] {
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    if (!home) {
+      return [];
+    }
+
+    const candidates = new Map<string, string>();
+    const directEnvRoots = [
+      path.join(home, ".venv"),
+      path.join(home, "venv"),
+    ];
+    this.collectPythonCandidatesFromRoots(candidates, directEnvRoots);
+
+    const condaEnvDirs = [
+      path.join(home, ".conda", "envs"),
+      path.join(home, "miniconda3", "envs"),
+      path.join(home, "Miniconda3", "envs"),
+      path.join(home, "anaconda3", "envs"),
+      path.join(home, "Anaconda3", "envs"),
+      path.join(home, "miniforge3", "envs"),
+      path.join(home, "mambaforge", "envs"),
+      path.join(home, "AppData", "Local", "miniconda3", "envs"),
+      path.join(home, "AppData", "Local", "Miniconda3", "envs"),
+      path.join(home, "AppData", "Local", "anaconda3", "envs"),
+      path.join(home, "AppData", "Local", "Anaconda3", "envs"),
+    ];
+
+    for (const envDir of condaEnvDirs) {
+      if (!fs.existsSync(envDir)) {
+        continue;
+      }
+
+      try {
+        const envRoots = fs.readdirSync(envDir)
+          .map((entry) => path.join(envDir, entry))
+          .filter((candidate) => {
+            try {
+              return fs.statSync(candidate).isDirectory();
+            } catch {
+              return false;
+            }
+          });
+        this.collectPythonCandidatesFromRoots(candidates, envRoots);
+      } catch {
+        // Ignore unreadable env directories.
+      }
+    }
+
+    return [...candidates.values()];
+  }
+
+  private getCondaCommandCandidates(): string[] {
+    const candidates: string[] = [];
+    const seen = new Set<string>();
+    const addCandidate = (candidate: string | null | undefined) => {
+      if (!candidate) {
+        return;
+      }
+
+      const isAbsolute = candidate.includes(path.sep) || candidate.includes("/");
+      if (isAbsolute && !fs.existsSync(candidate)) {
+        return;
+      }
+
+      const key = isAbsolute ? normalizeDetectedPath(candidate) : candidate;
+      if (seen.has(key)) {
+        return;
+      }
+
+      seen.add(key);
+      candidates.push(candidate);
+    };
+
+    addCandidate(process.env.CONDA_EXE);
+    addCandidate("conda");
+
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    if (!home) {
+      return candidates;
+    }
+
+    const installRoots = [
+      path.join(home, "Anaconda3"),
+      path.join(home, "anaconda3"),
+      path.join(home, "Miniconda3"),
+      path.join(home, "miniconda3"),
+      path.join(home, "miniforge3"),
+      path.join(home, "mambaforge"),
+      path.join(home, "AppData", "Local", "Anaconda3"),
+      path.join(home, "AppData", "Local", "anaconda3"),
+      path.join(home, "AppData", "Local", "Miniconda3"),
+      path.join(home, "AppData", "Local", "miniconda3"),
+    ];
+
+    for (const installRoot of installRoots) {
+      addCandidate(isWindows
+        ? path.join(installRoot, "Scripts", "conda.exe")
+        : path.join(installRoot, "bin", "conda"));
+    }
+
+    return candidates;
+  }
+
+  private execFileText(
+    command: string,
+    args: string[],
+    timeoutMs: number,
+  ): Promise<{ stdout: string; stderr: string } | null> {
+    return new Promise((resolve) => {
+      execFile(
+        command,
+        args,
+        { timeout: timeoutMs, windowsHide: isWindows },
+        (error, stdout, stderr) => {
+          if (error) {
+            resolve(null);
+            return;
+          }
+
+          resolve({ stdout, stderr });
+        },
+      );
+    });
+  }
+
+  private async listWindowsLauncherPythonCandidates(): Promise<string[]> {
+    if (!isWindows) {
+      return [];
+    }
+
+    const result = await this.execFileText("py", ["-0p"], WINDOWS_LAUNCHER_TIMEOUT_MS);
+    if (!result) {
+      return [];
+    }
+
+    return `${result.stdout}\n${result.stderr}`
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .map((line) => line.match(/^-V:\S+\s+(?:\*\s+)?(.+)$/)?.[1]?.trim() ?? null)
+      .filter((candidate): candidate is string => Boolean(candidate));
+  }
+
+  private async listCondaEnvPythonCandidates(): Promise<string[]> {
+    for (const command of this.getCondaCommandCandidates()) {
+      const result = await this.execFileText(command, ["env", "list", "--json"], CONDA_DISCOVERY_TIMEOUT_MS);
+      if (!result) {
+        continue;
+      }
+
+      try {
+        const payload = JSON.parse(result.stdout.trim()) as { envs?: string[] };
+        if (!Array.isArray(payload.envs)) {
+          continue;
+        }
+
+        const candidates = new Map<string, string>();
+        this.collectPythonCandidatesFromRoots(candidates, payload.envs);
+        return [...candidates.values()];
+      } catch {
+        continue;
+      }
+    }
+
+    return [];
+  }
+
+  private getNearbyProjectSearchRoots(): string[] {
+    const roots = new Set<string>();
+    let currentDir = path.resolve(process.cwd());
+
+    for (let depth = 0; depth < 2; depth += 1) {
+      roots.add(currentDir);
+
+      const parentDir = path.dirname(currentDir);
+      const filesystemRoot = path.parse(currentDir).root;
+      if (parentDir === currentDir || parentDir === filesystemRoot) {
+        break;
+      }
+
+      currentDir = parentDir;
+    }
+
+    return [...roots];
+  }
+
+  private listNearbyProjectPythonCandidates(): string[] {
+    const candidates = new Map<string, string>();
+
+    for (const searchRoot of this.getNearbyProjectSearchRoots()) {
+      this.collectPythonCandidatesFromRoots(
+        candidates,
+        PROJECT_ENV_DIR_NAMES.map((envName) => path.join(searchRoot, envName)),
+      );
+
+      try {
+        const projectDirs = fs.readdirSync(searchRoot, { withFileTypes: true })
+          .filter((entry) => entry.isDirectory() && !NEARBY_PROJECT_IGNORED_DIRS.has(entry.name))
+          .map((entry) => path.join(searchRoot, entry.name));
+
+        for (const projectDir of projectDirs) {
+          this.collectPythonCandidatesFromRoots(
+            candidates,
+            PROJECT_ENV_DIR_NAMES.map((envName) => path.join(projectDir, envName)),
+          );
+        }
+      } catch {
+        // Ignore unreadable project directories.
+      }
+    }
+
+    return [...candidates.values()];
+  }
+
+  private listPyenvPythonCandidates(): string[] {
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const pyenvRoots = [
+      process.env.PYENV_ROOT,
+      home ? path.join(home, ".pyenv") : null,
+      isWindows && home ? path.join(home, ".pyenv", "pyenv-win") : null,
+    ].filter((candidate): candidate is string => Boolean(candidate));
+
+    const candidates = new Map<string, string>();
+    for (const pyenvRoot of pyenvRoots) {
+      const versionsDirCandidates = [
+        path.join(pyenvRoot, "versions"),
+        isWindows ? path.join(pyenvRoot, "pyenv-win", "versions") : null,
+      ].filter((candidate): candidate is string => Boolean(candidate));
+
+      for (const versionsDir of versionsDirCandidates) {
+        if (!fs.existsSync(versionsDir)) {
+          continue;
+        }
+
+        try {
+          const envRoots = fs.readdirSync(versionsDir)
+            .map((entry) => path.join(versionsDir, entry))
+            .filter((candidate) => {
+              try {
+                return fs.statSync(candidate).isDirectory();
+              } catch {
+                return false;
+              }
+            });
+          this.collectPythonCandidatesFromRoots(candidates, envRoots);
+        } catch {
+          // Ignore unreadable pyenv version directories.
+        }
+      }
+    }
+
+    return [...candidates.values()];
+  }
+
+  private compareDetectedEnvs(left: DetectedEnv, right: DetectedEnv): number {
+    const configuredPythonPath = this.getConfiguredPythonPath();
+    const configuredNormalized = configuredPythonPath ? normalizeDetectedPath(configuredPythonPath) : null;
+    const leftIsConfigured = configuredNormalized === normalizeDetectedPath(left.pythonPath);
+    const rightIsConfigured = configuredNormalized === normalizeDetectedPath(right.pythonPath);
+    if (leftIsConfigured !== rightIsConfigured) {
+      return Number(rightIsConfigured) - Number(leftIsConfigured);
+    }
+
+    if (left.hasCorePackages !== right.hasCorePackages) {
+      return Number(right.hasCorePackages) - Number(left.hasCorePackages);
+    }
+
+    if (left.writable !== right.writable) {
+      return Number(right.writable) - Number(left.writable);
+    }
+
+    const envKindPriority: Record<EnvKind, number> = {
+      managed: 0,
+      conda: 1,
+      venv: 2,
+      system: 3,
+      bundled: 4,
+    };
+    const kindDifference = envKindPriority[left.envKind] - envKindPriority[right.envKind];
+    if (kindDifference !== 0) {
+      return kindDifference;
+    }
+
+    const versionDifference = right.pythonVersion.localeCompare(left.pythonVersion, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    if (versionDifference !== 0) {
+      return versionDifference;
+    }
+
+    return left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" });
+  }
+
+  private getEnvKind(envRoot: string, pythonPath: string): EnvKind {
+    const bundledRuntime = this.detectBundledRuntime();
+    if (bundledRuntime && path.normalize(bundledRuntime.pythonPath) === path.normalize(pythonPath)) {
+      return "bundled";
+    }
+
+    const managedPython = this.getManagedPythonPath();
+    if (path.normalize(managedPython) === path.normalize(pythonPath)) {
+      return "managed";
+    }
+
+    if (fs.existsSync(path.join(envRoot, "conda-meta"))) {
+      return "conda";
+    }
+
+    if (fs.existsSync(path.join(envRoot, "pyvenv.cfg"))) {
+      return "venv";
+    }
+
+    return "system";
+  }
+
+  private isLikelyWritable(envRoot: string, pythonPath: string): boolean {
+    const candidates = [
+      this.getSitePackagesForPythonPath(pythonPath),
+      envRoot,
+      path.dirname(pythonPath),
+    ].filter((candidate): candidate is string => Boolean(candidate));
+
+    for (const candidate of candidates) {
+      try {
+        fs.accessSync(candidate, fs.constants.W_OK);
+        return true;
+      } catch {
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  private getMissingOptionalPackages(installedPackages: Set<string>): string[] {
+    return Object.keys(recommendedConfig.optional ?? {}).filter(
+      (packageName) => !installedPackages.has(normalizePackageName(packageName)),
+    );
+  }
+
+  private guessProfileAlignment(installedPackages: Set<string>): ProfileAlignmentGuess | null {
+    const supportedProfiles = getSupportedProfiles(recommendedConfig);
+    if (supportedProfiles.length === 0) {
+      return null;
+    }
+
+    const scoredProfiles = supportedProfiles.map(([id, profile]) => {
+      const packageNames = Object.keys(profile.packages ?? {});
+      const missingCount = packageNames.filter(
+        (packageName) => !installedPackages.has(normalizePackageName(packageName)),
+      ).length;
+      return {
+        id,
+        label: profile.label ?? id,
+        missingCount,
+      };
+    });
+
+    scoredProfiles.sort((left, right) => {
+      if (left.missingCount !== right.missingCount) {
+        return left.missingCount - right.missingCount;
+      }
+      if (left.id === "cpu") return -1;
+      if (right.id === "cpu") return 1;
+      return left.id.localeCompare(right.id);
+    });
+
+    return scoredProfiles[0] ?? null;
+  }
+
+  private async inspectPythonPackages(pythonPath: string): Promise<InspectPythonData | null> {
+    return new Promise((resolve) => {
+      execFile(
+        pythonPath,
+        [
+          "-c",
+          "import json, sys\n"
+          + "from importlib import metadata as importlib_metadata\n"
+          + "installed = {}\n"
+          + "for dist in importlib_metadata.distributions():\n"
+          + "    name = dist.metadata.get('Name')\n"
+          + "    if name:\n"
+          + "        installed[name] = dist.version\n"
+          + "payload = {\n"
+          + "    'version': f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}',\n"
+          + "    'installed': installed,\n"
+          + "}\n"
+          + "print(json.dumps(payload))",
+        ],
+        { timeout: 10_000 },
+        (error, stdout) => {
+          if (error) {
+            resolve(null);
+            return;
+          }
+
+          try {
+            const payload = JSON.parse(stdout.trim()) as {
+              version?: string;
+              installed?: Record<string, string>;
+            };
+            const version = payload.version?.trim();
+            if (!version) {
+              resolve(null);
+              return;
+            }
+
+            const [major, minor] = version.split(".").map(Number);
+            if (major < 3 || (major === 3 && minor < 11)) {
+              resolve(null);
+              return;
+            }
+
+            const installedPackages = new Map<string, string>();
+            for (const [name, packageVersion] of Object.entries(payload.installed ?? {})) {
+              installedPackages.set(normalizePackageName(name), packageVersion);
+            }
+
+            resolve({ version, installedPackages });
+          } catch {
+            resolve(null);
+          }
+        },
+      );
+    });
+  }
+
+  private buildInspectedEnv(pythonPath: string, data: InspectPythonData): InspectedEnv {
+    const envRoot = this.getEnvRootForPythonPath(pythonPath);
+    const installedPackageNames = new Set(data.installedPackages.keys());
+    const missingCorePackages = MANAGED_RUNTIME_PACKAGES
+      .map((packageSpec) => packageSpec.split(">=")[0].split("[")[0])
+      .filter((packageName) => !installedPackageNames.has(normalizePackageName(packageName)));
+    const profileAlignmentGuess = this.guessProfileAlignment(installedPackageNames);
+
+    return {
+      path: envRoot,
+      pythonPath,
+      pythonVersion: data.version,
+      hasNirs4all: installedPackageNames.has("nirs4all"),
+      hasCorePackages: missingCorePackages.length === 0,
+      envKind: this.getEnvKind(envRoot, pythonPath),
+      writable: this.isLikelyWritable(envRoot, pythonPath),
+      missingCorePackages,
+      missingOptionalPackages: this.getMissingOptionalPackages(installedPackageNames),
+      profileAlignmentGuess,
+    };
+  }
+
   /** Get full environment info */
   async getInfo(): Promise<EnvInfo> {
-    const pythonPath = this.getPythonPath();
+    const pythonPath = this.getConfiguredPythonPath();
     let pythonVersion: string | null = null;
     if (pythonPath && fs.existsSync(pythonPath)) {
       const detected = await this.checkPython(pythonPath);
@@ -443,9 +1086,9 @@ export class EnvManager {
       status: this.status,
       envDir: this.envDir,
       pythonPath,
-      sitePackages: this.getSitePackages(),
+      sitePackages: this.getSitePackagesForPythonPath(pythonPath),
       pythonVersion,
-      isCustom: this.getRuntimeMode() === "custom",
+      isCustom: this.getConfiguredRuntimeMode() === "custom",
       error: this.lastError ?? undefined,
     };
   }
@@ -579,7 +1222,7 @@ export class EnvManager {
    * Returns null if no env is configured or the Python executable doesn't exist.
    */
   async getCurrentEnvSummary(): Promise<EnvSummary | null> {
-    const pythonPath = this.getPythonPath();
+    const pythonPath = this.getConfiguredPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return null;
 
     const info = await this.checkPython(pythonPath);
@@ -598,7 +1241,7 @@ export class EnvManager {
    * `nirs4all`, which is heavy and is loaded lazily by the backend itself.
    */
   async verifyBackendRuntime(): Promise<boolean> {
-    const pythonPath = this.getPythonPath();
+    const pythonPath = this.getBackendTargetPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return false;
 
     const start = Date.now();
@@ -619,7 +1262,7 @@ export class EnvManager {
    * flows, never on the startup critical path.
    */
   async verifyBackendPackages(): Promise<boolean> {
-    const pythonPath = this.getPythonPath();
+    const pythonPath = this.getBackendTargetPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return false;
 
     const start = Date.now();
@@ -669,7 +1312,7 @@ export class EnvManager {
     if (pyvenvCfg) parts.push(`pyvenv:${pyvenvCfg}`);
 
     // site-packages directory mtime
-    const sitePackages = this.getSitePackages();
+    const sitePackages = this.getSitePackagesForPythonPath(pythonPath);
     if (sitePackages) {
       const sp = stat(sitePackages);
       if (sp) parts.push(`site:${sp}`);
@@ -728,14 +1371,14 @@ export class EnvManager {
       throw new Error(this.lastError);
     }
 
-    const pythonPath = this.getPythonPath();
+    const pythonPath = this.getBackendTargetPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) {
       this.status = "error";
       this.lastError = "Python executable not found";
       throw new Error(this.lastError);
     }
 
-    const isBundledRuntime = this.isBundled();
+    const isBundledRuntime = this.getConfiguredRuntimeMode() === "bundled";
 
     try {
       let repaired = false;
@@ -853,95 +1496,84 @@ export class EnvManager {
    * Detect existing Python environments on the system.
    *
    * Results are cached in-memory for a short TTL, keyed on a hash of
-   * `process.env.PATH` plus `process.platform`. The cache is intentionally
-   * transient and separate from the persistent verify cache used by
-   * {@link ensureBackendPackages}.
+   * the active discovery inputs (`process.cwd()`, `PATH`, and key Python
+   * manager env vars). The cache is intentionally transient and separate from
+   * the persistent verify cache used by {@link ensureBackendPackages}.
    */
   async detectExistingEnvs(): Promise<DetectedEnv[]> {
     const cacheKey = createHash("sha1")
       .update(process.platform)
       .update("\u0000")
+      .update(process.cwd())
+      .update("\u0000")
       .update(process.env.PATH || "")
+      .update("\u0000")
+      .update(process.env.CONDA_EXE || "")
+      .update("\u0000")
+      .update(process.env.PYENV_ROOT || "")
       .digest("hex");
     const now = Date.now();
     if (detectEnvsCache && detectEnvsCache.key === cacheKey && detectEnvsCache.expiresAt > now) {
       return detectEnvsCache.result.slice();
     }
 
-    const envs: DetectedEnv[] = [];
-    const candidates: string[] = [];
+    const candidates = new Map<string, string>();
+    this.addPythonCandidate(candidates, this.pythonPath);
+    this.addPythonCandidate(candidates, this.getManagedPythonPath());
+    this.addPythonCandidate(candidates, this.detectBundledRuntime()?.pythonPath);
 
-    // Check PATH for python3 / python
-    const pathDirs = (process.env.PATH || "").split(path.delimiter);
-    for (const dir of pathDirs) {
-      const names = isWindows ? ["python.exe"] : ["python3", "python"];
-      for (const name of names) {
-        const p = path.join(dir, name);
-        if (fs.existsSync(p)) {
-          candidates.push(p);
-        }
-      }
+    for (const candidate of this.listPathPythonCandidates()) {
+      this.addPythonCandidate(candidates, candidate);
     }
 
-    // Check common venv/conda locations
-    const home = process.env.HOME || process.env.USERPROFILE || "";
-    if (home) {
-      const commonPaths = [
-        path.join(home, ".venv"),
-        path.join(home, "venv"),
-        path.join(home, ".conda", "envs"),
-        path.join(home, "miniconda3", "envs"),
-        path.join(home, "anaconda3", "envs"),
-      ];
-
-      for (const p of commonPaths) {
-        if (fs.existsSync(p)) {
-          if (p.includes("envs") && fs.statSync(p).isDirectory()) {
-            // Conda envs directory — check each subdirectory
-            try {
-              for (const env of fs.readdirSync(p)) {
-                const envDir = path.join(p, env);
-                const py = isWindows
-                  ? path.join(envDir, "python.exe")
-                  : path.join(envDir, "bin", "python");
-                if (fs.existsSync(py)) candidates.push(py);
-              }
-            } catch { /* ignore */ }
-          } else {
-            const py = isWindows
-              ? path.join(p, "Scripts", "python.exe")
-              : path.join(p, "bin", "python");
-            if (fs.existsSync(py)) candidates.push(py);
-          }
-        }
-      }
+    for (const candidate of this.listCommonHomePythonCandidates()) {
+      this.addPythonCandidate(candidates, candidate);
     }
 
-    // macOS: Check Homebrew Python locations (not always in PATH when
-    // launched from Electron since shell profiles aren't sourced)
+    for (const candidate of this.listNearbyProjectPythonCandidates()) {
+      this.addPythonCandidate(candidates, candidate);
+    }
+
+    for (const candidate of this.listPyenvPythonCandidates()) {
+      this.addPythonCandidate(candidates, candidate);
+    }
+
+    const [windowsLauncherCandidates, condaCandidates] = await Promise.all([
+      this.listWindowsLauncherPythonCandidates(),
+      this.listCondaEnvPythonCandidates(),
+    ]);
+
+    for (const candidate of windowsLauncherCandidates) {
+      this.addPythonCandidate(candidates, candidate);
+    }
+
+    for (const candidate of condaCandidates) {
+      this.addPythonCandidate(candidates, candidate);
+    }
+
     if (process.platform === "darwin") {
-      const brewPaths = [
-        "/opt/homebrew/bin/python3",   // Apple Silicon Homebrew
-        "/usr/local/bin/python3",       // Intel Homebrew
-      ];
-      for (const p of brewPaths) {
-        if (fs.existsSync(p)) candidates.push(p);
+      for (const candidate of [
+        "/opt/homebrew/bin/python3",
+        "/usr/local/bin/python3",
+      ]) {
+        this.addPythonCandidate(candidates, candidate);
       }
     }
 
-    // Deduplicate by resolving paths
-    const seen = new Set<string>();
-    for (const candidate of candidates) {
-      try {
-        const resolved = fs.realpathSync(candidate);
-        if (seen.has(resolved)) continue;
-        seen.add(resolved);
+    const detected = (await Promise.all(
+      [...candidates.values()].map((candidate) => this.checkPython(candidate)),
+    )).filter((env): env is DetectedEnv => Boolean(env));
 
-        const info = await this.checkPython(candidate);
-        if (info) envs.push(info);
-      } catch {
-        // Skip inaccessible paths
+    const envs: DetectedEnv[] = [];
+    const seenEnvRoots = new Set<string>();
+    for (const env of detected.sort((left, right) => this.compareDetectedEnvs(left, right))) {
+      const envKey = normalizeDetectedPath(env.path);
+      if (seenEnvRoots.has(envKey)) {
+        continue;
       }
+
+      seenEnvRoots.add(envKey);
+      envs.push(env);
     }
 
     detectEnvsCache = {
@@ -955,84 +1587,193 @@ export class EnvManager {
 
   /** Check a Python executable and return info if it's 3.11+ */
   private async checkPython(pythonPath: string): Promise<DetectedEnv | null> {
+    const corePackageNames = JSON.stringify(
+      MANAGED_RUNTIME_PACKAGES.map((packageSpec) => packageSpec.split(">=")[0].split("[")[0]),
+    );
     return new Promise((resolve) => {
       execFile(
         pythonPath,
-        ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}'); import importlib; s=importlib.util.find_spec; print(all(s(m) is not None for m in ['nirs4all','uvicorn','fastapi']))"],
-        { timeout: 5000 },
+        [
+          "-c",
+          "import sys\n"
+          + "from importlib import metadata as importlib_metadata\n"
+          + "print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')\n"
+          + "installed = set()\n"
+          + "normalize = lambda name: name.replace('-', '_').replace('.', '_').lower()\n"
+          + "for dist in importlib_metadata.distributions():\n"
+          + "    name = dist.metadata.get('Name')\n"
+          + "    if name:\n"
+          + "        installed.add(normalize(name))\n"
+          + `core = [normalize(name) for name in ${corePackageNames}]\n`
+          + "print('nirs4all' in installed)\n"
+          + "print(all(name in installed for name in core))",
+        ],
+        { timeout: 5000, windowsHide: isWindows },
         (error, stdout) => {
           if (error) { resolve(null); return; }
           const lines = stdout.trim().split("\n");
-          if (lines.length < 2) { resolve(null); return; }
+          if (lines.length < 3) { resolve(null); return; }
           const version = lines[0].trim();
           const [major, minor] = version.split(".").map(Number);
           if (major < 3 || (major === 3 && minor < 11)) { resolve(null); return; }
           const hasNirs4all = lines[1].trim() === "True";
-          // Determine the env root:
-          // - Venvs: python is in Scripts/ (Windows) or bin/ (Unix) → go up 2 levels
-          // - Base Python (Windows/conda): python.exe is in root → go up 1 level
-          const dir = path.dirname(pythonPath);
-          const dirName = path.basename(dir).toLowerCase();
-          const envRoot = (dirName === "scripts" || dirName === "bin")
-            ? path.dirname(dir)
-            : dir;
-          resolve({ path: envRoot, pythonVersion: version, hasNirs4all });
+          const hasCorePackages = lines[2].trim() === "True";
+          const envRoot = this.getEnvRootForPythonPath(pythonPath);
+          resolve({
+            path: envRoot,
+            pythonPath,
+            pythonVersion: version,
+            hasNirs4all,
+            hasCorePackages,
+            envKind: this.getEnvKind(envRoot, pythonPath),
+            writable: this.isLikelyWritable(envRoot, pythonPath),
+          });
         },
       );
     });
   }
 
   /**
-   * Configure an existing Python environment.
-   * Validates it has Python 3.11+ and installs missing core packages.
+   * Inspect an existing Python environment without mutating it.
    */
-  async useExistingEnv(envPath: string): Promise<{ success: boolean; message: string; info?: DetectedEnv }> {
-    // Find python executable
-    const candidates = isWindows
-      ? [path.join(envPath, "Scripts", "python.exe"), path.join(envPath, "python.exe")]
-      : [path.join(envPath, "bin", "python"), path.join(envPath, "bin", "python3")];
+  async inspectExistingEnv(envPath: string): Promise<{ success: boolean; message: string; info?: InspectedEnv }> {
+    const candidates = this.getPythonExecutableCandidatesForEnvRoot(envPath)
+      .filter((candidate) => fs.existsSync(candidate));
 
-    let pythonPath: string | null = null;
-    for (const c of candidates) {
-      if (fs.existsSync(c)) { pythonPath = c; break; }
-    }
-    if (!pythonPath) {
+    if (candidates.length === 0) {
       return { success: false, message: "No Python executable found in the selected directory" };
     }
 
-    const info = await this.checkPython(pythonPath);
-    if (!info) {
-      return { success: false, message: "Python 3.11 or later is required" };
+    let lastFailure: { success: boolean; message: string; info?: InspectedEnv } | null = null;
+    for (const pythonPath of candidates) {
+      const inspection = await this.inspectExistingPython(pythonPath);
+      if (inspection.success) {
+        return inspection;
+      }
+
+      lastFailure = inspection;
     }
 
-    // Save old value for rollback if install fails
-    const prevPythonPath = this.pythonPath;
+    return lastFailure ?? { success: false, message: "No supported Python executable found in the selected directory" };
+  }
 
-    this.pythonPath = pythonPath;
+  /**
+   * Inspect a Python executable without mutating it.
+   */
+  async inspectExistingPython(pythonPath: string): Promise<{ success: boolean; message: string; info?: InspectedEnv }> {
+    if (!fs.existsSync(pythonPath)) {
+      return { success: false, message: "Python executable not found at the selected path" };
+    }
 
-    // Install missing core packages (nirs4all, fastapi, etc.)
-    if (!info.hasNirs4all) {
+    const data = await this.inspectPythonPackages(pythonPath);
+    if (!data) {
+      return { success: false, message: "Python 3.11 or later is required (or the selected file is not a valid Python executable)" };
+    }
+
+    const info = this.buildInspectedEnv(pythonPath, data);
+    const message = info.hasCorePackages
+      ? `Python ${info.pythonVersion} is ready to use`
+      : `Python ${info.pythonVersion} is missing ${info.missingCorePackages.length} core package${info.missingCorePackages.length === 1 ? "" : "s"}`;
+
+    return { success: true, message, info };
+  }
+
+  /**
+   * Persist an inspected Python environment and optionally install its missing
+   * backend-core packages before switching.
+   */
+  async applyExistingEnv(
+    envPath: string,
+    options?: ApplyExistingPythonOptions,
+  ): Promise<{ success: boolean; message: string; info?: InspectedEnv }> {
+    const inspection = await this.inspectExistingEnv(envPath);
+    if (!inspection.success || !inspection.info) {
+      return inspection;
+    }
+    return this.applyExistingPython(inspection.info.pythonPath, options);
+  }
+
+  /**
+   * Persist a Python executable as the configured runtime. Missing core
+   * packages are only installed when explicitly requested.
+   */
+  async applyExistingPython(
+    pythonPath: string,
+    options?: ApplyExistingPythonOptions,
+  ): Promise<{ success: boolean; message: string; info?: InspectedEnv }> {
+    const inspection = await this.inspectExistingPython(pythonPath);
+    if (!inspection.success || !inspection.info) {
+      return inspection;
+    }
+
+    let info = inspection.info;
+    const installCorePackages = options?.installCorePackages === true;
+
+    if (!info.hasCorePackages && !installCorePackages) {
+      return {
+        success: false,
+        message: `Python ${info.pythonVersion} is missing required backend packages (${info.missingCorePackages.join(", ")}). Choose an explicit install action before switching.`,
+        info,
+      };
+    }
+
+    if (!info.hasCorePackages && installCorePackages) {
       if (!(await probeNetworkOnline())) {
-        this.pythonPath = prevPythonPath;
         return {
           success: false,
-          message: `Python ${info.pythonVersion} found but nirs4all is not installed and the app is offline. Connect to the internet once to complete setup, or install nirs4all manually (pip install nirs4all) and retry.`,
+          message: `Python ${info.pythonVersion} is missing required backend packages and the app is offline. Connect to the internet once to install ${info.missingCorePackages.join(", ")} or install them manually and retry.`,
+          info,
         };
       }
+
       try {
         await this.installCorePackages(pythonPath);
-      } catch (e) {
-        // Rollback — don't persist a broken env
-        this.pythonPath = prevPythonPath;
-        const msg = e instanceof Error ? e.message : String(e);
-        return { success: false, message: `Python ${info.pythonVersion} found but failed to install required packages: ${msg}` };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          success: false,
+          message: `Python ${info.pythonVersion} found but failed to install required packages: ${message}`,
+          info,
+        };
+      }
+
+      const refreshedInspection = await this.inspectExistingPython(pythonPath);
+      if (!refreshedInspection.success || !refreshedInspection.info) {
+        return {
+          success: false,
+          message: "Core packages were installed but the environment could not be revalidated.",
+        };
+      }
+
+      info = refreshedInspection.info;
+      if (!info.hasCorePackages) {
+        return {
+          success: false,
+          message: `Core backend packages are still missing after installation: ${info.missingCorePackages.join(", ")}`,
+          info,
+        };
       }
     }
 
-    // Persist only after successful validation/install
+    this.pythonPath = pythonPath;
     this.saveSettings();
     this.status = "ready";
-    return { success: true, message: `Using Python ${info.pythonVersion} from ${envPath}`, info };
+    this.lastError = null;
+
+    const action = installCorePackages ? "Installed core packages and switched" : "Using";
+    return {
+      success: true,
+      message: `${action} Python ${info.pythonVersion} from ${pythonPath}`,
+      info,
+    };
+  }
+
+  /**
+   * Configure an existing Python environment without mutating it.
+   */
+  async useExistingEnv(envPath: string): Promise<{ success: boolean; message: string; info?: DetectedEnv }> {
+    const result = await this.applyExistingEnv(envPath, { installCorePackages: false });
+    return { success: result.success, message: result.message, info: result.info };
   }
 
   /**
@@ -1040,43 +1781,8 @@ export class EnvManager {
    * More reliable than folder-based detection — no guessing about directory structure.
    */
   async useExistingPython(pythonPath: string): Promise<{ success: boolean; message: string; info?: DetectedEnv }> {
-    if (!fs.existsSync(pythonPath)) {
-      return { success: false, message: "Python executable not found at the selected path" };
-    }
-
-    const info = await this.checkPython(pythonPath);
-    if (!info) {
-      return { success: false, message: "Python 3.11 or later is required (or the selected file is not a valid Python executable)" };
-    }
-
-    // Save old value for rollback if install fails
-    const prevPythonPath = this.pythonPath;
-
-    this.pythonPath = pythonPath;
-
-    // Install missing core packages (nirs4all, fastapi, etc.)
-    if (!info.hasNirs4all) {
-      if (!(await probeNetworkOnline())) {
-        this.pythonPath = prevPythonPath;
-        return {
-          success: false,
-          message: `Python ${info.pythonVersion} found but nirs4all is not installed and the app is offline. Connect to the internet once to complete setup, or install nirs4all manually (pip install nirs4all) and retry.`,
-        };
-      }
-      try {
-        await this.installCorePackages(pythonPath);
-      } catch (e) {
-        // Rollback — don't persist a broken env
-        this.pythonPath = prevPythonPath;
-        const msg = e instanceof Error ? e.message : String(e);
-        return { success: false, message: `Python ${info.pythonVersion} found but failed to install required packages: ${msg}` };
-      }
-    }
-
-    // Persist only after successful validation/install
-    this.saveSettings();
-    this.status = "ready";
-    return { success: true, message: `Using Python ${info.pythonVersion} from ${pythonPath}`, info };
+    const result = await this.applyExistingPython(pythonPath, { installCorePackages: false });
+    return { success: result.success, message: result.message, info: result.info };
   }
 
   /**

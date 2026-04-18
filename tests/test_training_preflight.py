@@ -42,22 +42,35 @@ def _coherent_response() -> dict:
     """Return a mock coherent response from check_env_coherence."""
     return {
         "coherent": True,
+        "configured_python": sys.executable,
+        "running_python": sys.executable,
+        "running_prefix": sys.prefix,
+        "runtime_kind": "managed",
+        "is_bundled_default": False,
+        "bundled_runtime_available": False,
+        "configured_matches_running": True,
+        "core_ready": True,
+        "missing_core_packages": [],
+        "missing_optional_packages": [],
         "python_match": True,
         "prefix_match": True,
         "runtime": {"python": sys.executable, "prefix": sys.prefix, "version": "3.11.0"},
         "venv_manager": {
             "python": sys.executable,
             "prefix": sys.prefix,
-            "is_custom": False,
-            "custom_path": None,
-            "has_pending_change": False,
         },
     }
 
 
 def _incoherent_response() -> dict:
     """Return a mock incoherent response."""
-    return {**_coherent_response(), "coherent": False, "prefix_match": False}
+    return {
+        **_coherent_response(),
+        "coherent": False,
+        "configured_matches_running": False,
+        "configured_python": "/configured/python",
+        "prefix_match": False,
+    }
 
 
 def _pipeline_config(name: str = "Test Pipeline", steps: list | None = None) -> dict:
@@ -226,6 +239,28 @@ class TestPreflightMissingModules:
         missing = [i for i in data["issues"] if i["type"] == "missing_module"]
         assert len(missing) == 1
         assert "Pipeline B" in missing[0]["message"]
+
+    @patch(PATCH_CHECK_IMPORTS, return_value=[])
+    @patch(PATCH_LOAD_PIPELINE, return_value=_pipeline_config("Supported Pipeline"))
+    @patch(
+        PATCH_COHERENCE,
+        new_callable=AsyncMock,
+        return_value={**_coherent_response(), "missing_optional_packages": ["shap", "xgboost"]},
+    )
+    def test_supported_pipeline_still_runs_with_unrelated_optional_gaps(
+        self,
+        mock_coherence,
+        mock_load,
+        mock_imports,
+    ):
+        """Optional package gaps should not block supported pipelines."""
+        response = client.post("/api/runs/preflight", json={"pipeline_ids": ["supported_pipeline"]})
+        data = response.json()
+
+        assert data["ready"] is True
+        assert data["issues"] == []
+        mock_coherence.assert_awaited_once()
+        mock_imports.assert_called_once()
 
 
 # ============= Pipeline Not Found =============

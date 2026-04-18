@@ -82,6 +82,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   delete process.env.NIRS4ALL_BACKEND_PORT;
+  delete process.env.VITE_DEV_SERVER_URL;
   vi.resetModules();
 
   childProcessMocks.spawn.mockReset();
@@ -230,9 +231,10 @@ describe("BackendManager", () => {
     const { BackendManager } = await import("./backend-manager");
     const manager = new BackendManager();
     manager.setEnvManager({
+      getConfiguredRuntimeMode: () => "bundled",
+      getConfiguredPythonPath: () => pythonPath,
+      getSettingsPath: () => path.join(resourcesDir, "env-settings.json"),
       isBundled: () => true,
-      isReady: () => true,
-      getPythonPath: () => pythonPath,
     } as unknown as Parameters<typeof manager.setEnvManager>[0]);
 
     const launch = (manager as unknown as { getBackendPath: () => { command: string; cwd?: string; env?: Record<string, string> } }).getBackendPath();
@@ -240,6 +242,88 @@ describe("BackendManager", () => {
     expect(launch.command).toBe(pythonPath);
     expect(launch.cwd).toBe(backendDir);
     expect(launch.env?.NIRS4ALL_RUNTIME_MODE).toBe("bundled");
+    expect(launch.env?.NIRS4ALL_RUNTIME_KIND).toBe("bundled");
+    expect(launch.env?.NIRS4ALL_IS_BUNDLED_DEFAULT).toBe("true");
+    expect(launch.env?.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBe("true");
+  });
+
+  it("uses the configured custom Python in dev mode instead of forcing ../.venv", async () => {
+    makeUserDataDir();
+    process.env.VITE_DEV_SERVER_URL = "http://127.0.0.1:5173";
+
+    const customPython = path.join(os.tmpdir(), "n4a-custom-python", "python.exe");
+
+    const { BackendManager } = await import("./backend-manager");
+    const manager = new BackendManager();
+    manager.setEnvManager({
+      getConfiguredRuntimeMode: () => "custom",
+      getConfiguredPythonPath: () => customPython,
+      getSettingsPath: () => path.join(os.tmpdir(), "env-settings.json"),
+      isBundled: () => false,
+    } as unknown as Parameters<typeof manager.setEnvManager>[0]);
+
+    const launch = (manager as unknown as { getBackendPath: () => { command: string; cwd?: string; env?: Record<string, string> } }).getBackendPath();
+
+    expect(launch.command).toBe(customPython);
+    expect(launch.cwd).toBe(process.cwd());
+    expect(launch.env?.NIRS4ALL_RUNTIME_MODE).toBe("development");
+    expect(launch.env?.NIRS4ALL_RUNTIME_KIND).toBe("custom");
+    expect(launch.env?.NIRS4ALL_IS_BUNDLED_DEFAULT).toBe("false");
+    expect(launch.env?.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBe("false");
+  });
+
+  it("uses an external configured Python when a packaged bundled build has been switched away from its embedded runtime", async () => {
+    makeUserDataDir();
+    fakeApp.isPackaged = true;
+
+    const resourcesDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-backend-bundled-external-"));
+    tempDirs.push(resourcesDir);
+    (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath = resourcesDir;
+
+    const backendDir = path.join(resourcesDir, "backend");
+    const externalPython = path.join(os.tmpdir(), "n4a-external-python", "python.exe");
+
+    const { BackendManager } = await import("./backend-manager");
+    const manager = new BackendManager();
+    manager.setEnvManager({
+      getConfiguredRuntimeMode: () => "custom",
+      getConfiguredPythonPath: () => externalPython,
+      getSettingsPath: () => path.join(resourcesDir, "env-settings.json"),
+      isBundled: () => true,
+    } as unknown as Parameters<typeof manager.setEnvManager>[0]);
+
+    const launch = (manager as unknown as {
+      getBackendPath: () => { command: string; cwd?: string; env?: Record<string, string> };
+    }).getBackendPath();
+
+    expect(launch.command).toBe(externalPython);
+    expect(launch.cwd).toBe(backendDir);
+    expect(launch.env?.NIRS4ALL_RUNTIME_MODE).toBe("managed");
+    expect(launch.env?.NIRS4ALL_RUNTIME_KIND).toBe("custom");
+    expect(launch.env?.NIRS4ALL_IS_BUNDLED_DEFAULT).toBe("false");
+    expect(launch.env?.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBe("true");
+  });
+
+  it("falls back to the dev .venv only when no desktop runtime is configured", async () => {
+    makeUserDataDir();
+    process.env.VITE_DEV_SERVER_URL = "http://127.0.0.1:5173";
+
+    const { BackendManager } = await import("./backend-manager");
+    const manager = new BackendManager();
+    manager.setEnvManager({
+      getConfiguredRuntimeMode: () => "none",
+      getConfiguredPythonPath: () => null,
+      getSettingsPath: () => path.join(os.tmpdir(), "env-settings.json"),
+      isBundled: () => false,
+    } as unknown as Parameters<typeof manager.setEnvManager>[0]);
+
+    const launch = (manager as unknown as { getBackendPath: () => { command: string; cwd?: string; env?: Record<string, string> } }).getBackendPath();
+
+    expect(launch.command).toContain(`${path.sep}.venv${path.sep}`);
+    expect(launch.cwd).toBe(process.cwd());
+    expect(launch.env?.NIRS4ALL_RUNTIME_MODE).toBe("development");
+    expect(launch.env?.NIRS4ALL_RUNTIME_KIND).toBe("development");
+    expect(launch.env?.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBe("false");
   });
 
   it("reuses an explicit backend port when smoke tests force one", async () => {

@@ -1583,15 +1583,15 @@ async def run_preflight(request: PreflightRequest) -> dict[str, Any]:
 
     Verifies that:
     - All pipeline operator classes can be imported (no missing packages)
-    - The environment is coherent (VenvManager matches runtime)
+    - The configured Python matches the running backend interpreter
 
     Returns:
         ``ready: true`` if all checks pass, otherwise ``ready: false`` with a
         list of issues describing what is missing.
 
     Issue types:
-        - ``env_mismatch``: VenvManager targets a different env than the running
-          backend.  User should restart the backend.
+        - ``env_mismatch``: Electron is configured for a different Python than
+          the running backend. User should restart the backend.
         - ``not_found``: A referenced ``pipeline_id`` does not exist in the
           workspace.
         - ``missing_module``: An operator class cannot be imported because a

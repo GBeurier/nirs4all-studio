@@ -360,3 +360,35 @@ class TestDependencyScanningVersionTargets:
         assert ikpls_pkg["is_outdated"] is True
         assert ikpls_pkg["is_below_recommended"] is False
         assert ikpls_pkg["is_above_recommended"] is False
+
+
+class TestDependencyScanningOptionalMetadata:
+    """Verify optional dependency metadata exposed to the frontend."""
+
+    @patch("api.updates._dependencies_cache")
+    @patch("api.updates.venv_manager")
+    def test_visible_profile_managed_default_package_is_exposed(self, mock_vm, mock_cache):
+        mock_cache.get.return_value = None
+
+        mock_vm.get_venv_info.return_value = FakeVenvInfo(
+            path="/fake/venv", exists=True, is_valid=True,
+        )
+        mock_vm.is_custom_path = False
+        mock_vm.get_installed_packages.return_value = [
+            FakePackageInfo(name="torch", version="2.6.0+cpu"),
+        ]
+        mock_vm.get_outdated_packages.return_value = []
+        mock_vm.get_nirs4all_version.return_value = "0.9.1"
+
+        response = client.get("/api/updates/dependencies?force_refresh=true")
+        assert response.status_code == 200
+        data = response.json()
+
+        deep_learning = next((c for c in data["categories"] if c["id"] == "deep_learning"), None)
+        assert deep_learning is not None
+
+        torch_pkg = next((p for p in deep_learning["packages"] if p["name"] == "torch"), None)
+        assert torch_pkg is not None
+        assert torch_pkg["is_installed"] is True
+        assert torch_pkg["managed_by_profile"] is True
+        assert torch_pkg["default_install"] is True

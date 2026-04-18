@@ -1,5 +1,5 @@
 """
-Managed virtual environment manager for nirs4all webapp.
+Current-runtime package manager for nirs4all webapp.
 
 This module provides pip/package operations targeting the running Python
 interpreter (sys.executable / sys.prefix).  No custom-path machinery —
@@ -55,10 +55,11 @@ def _user_data_dir(app_name: str, app_author: str | None = None) -> str:
 
 @dataclass
 class VenvInfo:
-    """Information about the managed virtual environment."""
+    """Information about the current Python runtime."""
     path: str
     exists: bool
     is_valid: bool
+    python_executable: str | None = None
     python_version: str | None = None
     pip_version: str | None = None
     created_at: str | None = None
@@ -148,7 +149,7 @@ class VenvManager:
 
     @property
     def venv_path(self) -> Path:
-        """Get the path to the managed virtual environment."""
+        """Get the root path of the current Python runtime."""
         return self._venv_path
 
     @property
@@ -174,11 +175,12 @@ class VenvManager:
         return python_dir / "pip"
 
     def get_venv_info(self) -> VenvInfo:
-        """Get information about the managed venv."""
+        """Get information about the current Python runtime."""
         info = VenvInfo(
             path=str(self._venv_path),
             exists=self._venv_path.exists(),
             is_valid=self._is_valid_venv(),
+            python_executable=str(self.python_executable),
         )
 
         if info.is_valid:
@@ -274,7 +276,7 @@ class VenvManager:
         force: bool = False,
     ) -> tuple[bool, str]:
         """
-        Create the managed virtual environment.
+        Legacy helper that creates a Python environment in-place.
 
         Args:
             progress_callback: Optional callback for progress updates (percent, message)
@@ -362,7 +364,7 @@ class VenvManager:
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> tuple[bool, str, list[str]]:
         """
-        Install a package in the managed venv.
+        Install a package in the current Python runtime.
 
         Args:
             package: Package name (e.g., "nirs4all")
@@ -546,7 +548,7 @@ class VenvManager:
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> tuple[bool, str]:
         """
-        Uninstall a package from the managed venv.
+        Uninstall a package from the current Python runtime.
 
         Args:
             package: Package name
@@ -611,7 +613,7 @@ class VenvManager:
         timeout: int = 300,
     ) -> tuple[int, str, str]:
         """
-        Run a Python script in the managed venv.
+        Run a Python script in the current Python runtime.
 
         Args:
             script: Python code to execute
@@ -637,7 +639,7 @@ class VenvManager:
             return -1, "", str(e)
 
     def get_nirs4all_version(self) -> str | None:
-        """Get the installed version of nirs4all in the managed venv."""
+        """Get the installed version of nirs4all in the current runtime."""
         if not self._is_valid_venv():
             return None
 

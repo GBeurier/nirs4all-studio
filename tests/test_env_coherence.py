@@ -1,27 +1,9 @@
-"""
-Tests for environment coherence endpoint (GET /api/system/env-coherence)
-and related system endpoints.
+"""Tests for the runtime summary exposed by GET /api/system/env-coherence."""
 
-Verifies that:
-- Coherence endpoint correctly detects matching and mismatched environments
-- Path normalization handles trailing slashes, mixed separators, case (cross-platform)
-- Read-only packaged runtime detection works correctly
-- Web-only mode (no Electron) coherence works without NIRS4ALL_EXPECTED_PYTHON
-- Read-only packaged runtime gates package mutation endpoints
-
-Manual test matrix (not all automatable in CI):
-- [ ] Windows: path with spaces, case differences, mixed slashes
-- [ ] macOS Intel: Homebrew /usr/local/bin Python detected
-- [ ] macOS ARM: Homebrew /opt/homebrew/bin Python detected
-- [ ] macOS: python-build-standalone quarantine removed successfully
-- [ ] Linux: symlinked Python paths resolve correctly
-- [ ] Standalone (PyInstaller): is_frozen=True, package install blocked
-- [ ] Web mode: coherence works without NIRS4ALL_EXPECTED_PYTHON
-- [ ] Portable mode: wizard shows on each launch unless skipped
-"""
-
+import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -44,13 +26,16 @@ class TestCoherenceEndpoint:
     @patch.dict(os.environ, {"NIRS4ALL_EXPECTED_PYTHON": "/expected/python"})
     @patch("api.system.venv_manager")
     def test_electron_expected_python_mismatch(self, mock_vm):
-        """When NIRS4ALL_EXPECTED_PYTHON doesn't match, report it."""
+        """When configured Python doesn't match, report the mismatch."""
         mock_vm.python_executable = Path(sys.executable)
         mock_vm.venv_path = Path(sys.prefix)
 
         response = client.get("/api/system/env-coherence")
         data = response.json()
 
+        assert data["configured_python"] == "/expected/python"
+        assert data["configured_matches_running"] is False
+        assert data["coherent"] is False
         assert "electron_expected_python" in data
         assert data["electron_expected_python"] == "/expected/python"
         assert data["electron_match"] is False
@@ -66,6 +51,67 @@ class TestCoherenceEndpoint:
 
         expected_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
         assert data["runtime"]["version"] == expected_version
+        assert data["running_python"] == sys.executable
+        assert data["running_prefix"] == sys.prefix
+        assert "runtime_kind" in data
+        assert "bundled_runtime_available" in data
+        assert isinstance(data["missing_core_packages"], list)
+        assert isinstance(data["missing_optional_packages"], list)
+
+    @patch("api.system.venv_manager")
+    def test_runtime_summary_reads_live_electron_settings(self, mock_vm):
+        """Configured Python should come from env-settings.json when provided."""
+        mock_vm.python_executable = Path(sys.executable)
+        mock_vm.venv_path = Path(sys.prefix)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_path = Path(tmpdir) / "env-settings.json"
+            settings_path.write_text(json.dumps({"pythonPath": "/configured/from/settings"}), encoding="utf-8")
+
+            with patch.dict(
+                os.environ,
+                {
+                    "NIRS4ALL_ENV_SETTINGS_PATH": str(settings_path),
+                    "NIRS4ALL_EXPECTED_PYTHON": "/stale/from/backend-env",
+                },
+            ):
+                response = client.get("/api/system/env-coherence")
+                data = response.json()
+
+        assert data["configured_python"] == "/configured/from/settings"
+        assert data["electron_expected_python"] == "/configured/from/settings"
+
+
+class TestRuntimeStatusEndpoint:
+    """Tests for GET /api/updates/runtime/status."""
+
+    @patch("api.updates.venv_manager")
+    def test_runtime_status_exposes_python_executable(self, mock_vm):
+        mock_vm.get_venv_info.return_value = type(
+            "FakeInfo",
+            (),
+            {
+                "to_dict": lambda self: {
+                    "path": sys.prefix,
+                    "exists": True,
+                    "is_valid": True,
+                    "python_executable": sys.executable,
+                    "python_version": "3.13.9",
+                    "pip_version": "25.1",
+                    "created_at": None,
+                    "last_updated": None,
+                    "size_bytes": 123,
+                },
+            },
+        )()
+        mock_vm.get_installed_packages.return_value = []
+        mock_vm.get_nirs4all_version.return_value = "0.9.1"
+
+        response = client.get("/api/updates/runtime/status")
+        data = response.json()
+
+        assert response.status_code == 200
+        assert data["runtime"]["python_executable"] == sys.executable
 
 
 # ============= Cross-Platform Path Normalization Tests =============
@@ -85,6 +131,7 @@ class TestCoherencePathNormalization:
         response = client.get("/api/system/env-coherence")
         data = response.json()
         assert data["prefix_match"] is True
+        assert data["configured_matches_running"] is True
         assert data["coherent"] is True
 
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only: mixed separators")
@@ -123,6 +170,7 @@ class TestCoherencePathNormalization:
         response = client.get("/api/system/env-coherence")
         data = response.json()
         assert data["prefix_match"] is True
+        assert data["coherent"] is True
 
 
 # ============= Standalone Mode Detection Tests =============
@@ -159,6 +207,18 @@ class TestStandaloneModeDetection:
         assert data["summary"]["runtime_mode"] == "bundled"
         assert data["is_frozen"] is False
 
+    @patch.dict(os.environ, {"NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE": "true"})
+    @patch("api.system.venv_manager")
+    def test_runtime_summary_reports_bundled_runtime_availability(self, mock_vm):
+        """Runtime summary should expose when a bundled runtime exists."""
+        mock_vm.python_executable = Path(sys.executable)
+        mock_vm.venv_path = Path(sys.prefix)
+
+        response = client.get("/api/system/env-coherence")
+        data = response.json()
+
+        assert data["bundled_runtime_available"] is True
+
 
 # ============= Web-Only Mode Coherence Tests =============
 
@@ -179,6 +239,8 @@ class TestWebModeCoherence:
         data = response.json()
 
         assert data["coherent"] is True
+        assert data["configured_python"] is None
+        assert data["configured_matches_running"] is True
         assert "electron_expected_python" not in data
         assert "electron_match" not in data
 
@@ -193,6 +255,8 @@ class TestWebModeCoherence:
         data = response.json()
 
         # Empty string is falsy, so electron block should not appear
+        assert data["configured_python"] is None
+        assert data["configured_matches_running"] is True
         assert "electron_expected_python" not in data
         assert "electron_match" not in data
 
@@ -210,6 +274,9 @@ class TestWebModeCoherence:
                 data = response.json()
 
         assert "electron_expected_python" in data
+        assert data["configured_python"] == sys.executable
+        assert data["configured_matches_running"] is True
+        assert data["coherent"] is True
         assert data["electron_match"] is True
 
 
@@ -227,7 +294,7 @@ class TestStandaloneGating:
             json={"package": "numpy"},
         )
         assert response.status_code == 400
-        assert "all-in-one bundle" in response.json()["detail"].lower()
+        assert "packaged backend mode" in response.json()["detail"].lower()
 
     @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
     def test_install_blocked_in_bundled_runtime_mode(self):
@@ -237,7 +304,7 @@ class TestStandaloneGating:
             json={"package": "numpy"},
         )
         assert response.status_code == 400
-        assert "all-in-one bundle" in response.json()["detail"].lower()
+        assert "embedded bundled python runtime" in response.json()["detail"].lower()
 
     @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
     def test_nirs4all_install_blocked_in_bundled_runtime_mode(self):
@@ -247,24 +314,33 @@ class TestStandaloneGating:
             json={},
         )
         assert response.status_code == 400
-        assert "all-in-one bundle" in response.json()["detail"].lower()
+        assert "embedded bundled python runtime" in response.json()["detail"].lower()
 
     @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
     def test_create_venv_blocked_in_bundled_runtime_mode(self):
-        """Managed venv creation should not be offered in bundled runtime mode."""
+        """Backend-side runtime creation should be routed back to desktop settings."""
         response = client.post(
             "/api/updates/venv/create",
             json={"force": False, "install_nirs4all": True},
         )
         assert response.status_code == 400
-        assert "all-in-one bundle" in response.json()["detail"].lower()
+        assert "desktop-managed action" in response.json()["detail"].lower()
+
+    def test_create_venv_blocked_in_normal_mode(self):
+        """The backend should no longer create a second runtime on its own."""
+        response = client.post(
+            "/api/updates/runtime/create",
+            json={"force": False, "install_nirs4all": True},
+        )
+        assert response.status_code == 400
+        assert "desktop-managed action" in response.json()["detail"].lower()
 
     @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
     def test_restore_snapshot_blocked_in_bundled_runtime_mode(self):
         """Snapshot restore must not mutate the read-only bundled runtime."""
         response = client.post("/api/updates/venv/snapshots/example/restore")
         assert response.status_code == 400
-        assert "all-in-one bundle" in response.json()["detail"].lower()
+        assert "embedded bundled python runtime" in response.json()["detail"].lower()
 
     @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
     def test_config_align_blocked_in_bundled_runtime_mode(self):

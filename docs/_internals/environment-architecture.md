@@ -1,128 +1,234 @@
-# Environment Architecture — Internal Reference
+# Environment Architecture
 
-How nirs4all-webapp manages Python environments across web, desktop, and Docker modes.
+Internal reference for how `nirs4all-webapp` manages Python runtimes after the
+single-runtime refactor.
 
-## Overview
+## Core Model
 
-Three layers cooperate to provide environment management:
+The desktop app has exactly one active Python runtime at a time.
 
-1. **Electron EnvManager** (`electron/env-manager.ts`) — Downloads Python, creates venvs, selects which interpreter to use. Desktop only.
-2. **Backend VenvManager** (`api/venv_manager.py`) — Manages package operations (pip install/list), custom venv path persistence. Runs in all modes.
-3. **Frontend** (`DependenciesManager.tsx`, `PythonEnvPicker.tsx`) — Displays environment state, coherence warnings, package management UI.
+That runtime is the single source of truth for:
 
-## Components
+- backend startup
+- package scans
+- `nirs4all` importability
+- dependency installation
+- config alignment
+- pipeline execution
+
+Electron persists one setting, `pythonPath`, which is always the Python
+executable the next backend restart should use.
+
+## Main Components
 
 ### Electron EnvManager
 
-**File**: `electron/env-manager.ts`
-**Settings**: `{userData}/env-settings.json`
+**File:** `electron/env-manager.ts`
+
+**Settings file:** `{userData}/env-settings.json`
 
 Responsibilities:
-- Download `python-build-standalone` on first launch
-- Create a managed venv, install `CORE_PACKAGES` (fastapi, uvicorn, nirs4all)
-- Store selected env in `env-settings.json`
-- Pass `NIRS4ALL_EXPECTED_PYTHON` env var to the backend process
-- Clear backend `venv_settings.json` on env changes (`clearBackendVenvSettings()`)
-- Detect portable path drift (`validatePortableState()`)
 
-**Python resolution order** (`getPythonPath()`):
-1. `customPythonPath` (explicit Python executable path)
-2. `customEnvPath` (venv/env folder → derive Python from it)
-3. Managed env (`{envDir}/venv/Scripts/python.exe` or `bin/python`)
+- persist `pythonPath`
+- discover managed, local venv, conda, bundled, and global runtimes
+- inspect a candidate runtime before switching
+- create a managed runtime for convenience
+- install missing backend-core packages only after explicit confirmation
+- expose configured runtime metadata to the backend launcher
 
-**Wizard decision** (`shouldShowWizard()`):
-- Env not ready → show
-- Version changed → show
-- Portable mode + not opted out → show
+Important distinctions:
 
-### Backend VenvManager
+- `getConfiguredPythonPath()` returns the interpreter Electron is configured to
+  launch next
+- the currently running backend may still differ until restart
+- there is no second backend-side custom-path control plane anymore
 
-**File**: `api/venv_manager.py`
-**Settings**: `{platformdirs.user_data_dir("nirs4all-webapp")}/venv_settings.json`
+### Electron BackendManager
 
-| Platform | Settings Location |
-|----------|-------------------|
-| Windows  | `%LOCALAPPDATA%/nirs4all-webapp/venv_settings.json` |
-| macOS    | `~/Library/Application Support/nirs4all-webapp/venv_settings.json` |
-| Linux    | `~/.local/share/nirs4all-webapp/venv_settings.json` |
+**File:** `electron/backend-manager.ts`
 
 Responsibilities:
-- Target a Python environment for package operations (`python_executable`, `pip_executable`)
-- Support custom venv paths with **deferred activation** (saved but not active until restart)
-- `get_installed_packages()` — pip-based scan (no importlib.metadata fallback)
-- `has_pending_path_change` — tells frontend a restart is needed
-- Stale path auto-cleanup on settings load (nonexistent custom paths are cleared)
 
-**Deferred activation lifecycle**:
-1. `set_custom_venv_path(path)` → validates, saves to `venv_settings.json`, returns `requires_restart: true`
-2. Backend restart → `_load_settings()` picks up the saved custom path → active
-3. `reset_to_runtime()` → clears custom path immediately, returns to `sys.prefix`
+- launch the backend under the configured interpreter in both dev and packaged
+  desktop modes
+- pass runtime metadata to the backend:
+  - `NIRS4ALL_EXPECTED_PYTHON`
+  - `NIRS4ALL_ENV_SETTINGS_PATH`
+  - `NIRS4ALL_RUNTIME_MODE`
+  - `NIRS4ALL_RUNTIME_KIND`
+  - `NIRS4ALL_IS_BUNDLED_DEFAULT`
+  - `NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE`
 
-### Coherence Endpoint
+Launch contract:
 
-**File**: `api/system.py` → `check_env_coherence()`
-**URL**: `GET /api/system/env-coherence`
+- if a configured desktop runtime exists, use it
+- in dev, `../.venv` is only a fallback when no desktop runtime is configured
+- in bundled builds, the embedded runtime is the default only until the user
+  switches away from it
 
-Compares VenvManager's target environment vs the running interpreter:
-- `python_match`: `normcase(normpath(venv_manager.python_executable))` == `normcase(normpath(sys.executable))`
-- `prefix_match`: `normcase(normpath(venv_manager.venv_path))` == `normcase(normpath(sys.prefix))`
-- `coherent`: `python_match AND prefix_match`
-- Optional `electron_expected_python` / `electron_match` when `NIRS4ALL_EXPECTED_PYTHON` env var is set
+### Backend Runtime Manager
 
-### Preflight Check
+**File:** `api/venv_manager.py`
 
-**File**: `api/runs.py` → `run_preflight()`
-**URL**: `POST /api/runs/preflight`
+Responsibilities:
 
-Pre-run validation that checks:
-1. Environment coherence (non-fatal on error)
-2. Pipeline operator imports via `check_pipeline_imports()` from `nirs4all_adapter.py`
+- operate on the Python interpreter that is currently running the backend
+- provide package scans, `pip` installs, uninstalls, and snapshot restore
+  against `sys.executable` / `sys.prefix`
 
-Issue types: `env_mismatch`, `not_found`, `missing_module`
+Non-responsibilities:
 
-### Standalone Mode Gating
+- no persisted custom venv path
+- no deferred activation
+- no `venv_settings.json` control plane
 
-**File**: `api/updates.py` → `_check_not_standalone()`
+### Runtime Summary Endpoint
 
-Prevents package mutation (install/uninstall/update/venv-path/venv-reset) in PyInstaller frozen builds. Checks `sys._MEIPASS`.
+**File:** `api/system.py`
+
+**URL:** `GET /api/system/env-coherence`
+
+This is the runtime contract used by the frontend. It reports:
+
+- `configured_python`
+- `running_python`
+- `running_prefix`
+- `runtime_kind`
+- `is_bundled_default`
+- `bundled_runtime_available`
+- `configured_matches_running`
+- `core_ready`
+- `missing_core_packages`
+- `missing_optional_packages`
+
+`coherent` now means:
+
+- the backend is running under the same interpreter Electron is configured to
+  use
+
+It does not mean "some backend helper object agrees with itself."
+
+## Runtime States
+
+### Managed runtime
+
+An app-created runtime under `{userData}/python-env/venv`.
+
+- writable
+- used like any other configured Python
+- created by Electron, then made the active runtime
+
+### Custom runtime
+
+A user-selected interpreter from:
+
+- local venv
+- conda env
+- global/system Python
+- another user-managed environment
+
+### Bundled embedded runtime
+
+The Python embedded in an all-in-one bundle.
+
+- default on first launch of bundled builds
+- read-only
+- safe to inspect and run
+- must not be mutated in place
+
+### Bundled build switched to external runtime
+
+Still the same app build, but no longer using the embedded interpreter.
+
+- allowed
+- backend runs on the selected external interpreter after restart
+- dependency and update actions target that external runtime
+- frontend should warn that the app is no longer using the embedded runtime
+
+## Package Semantics
+
+There is one runtime, but two readiness levels inside it:
+
+### Core readiness
+
+Packages required to boot the backend, including:
+
+- `fastapi`
+- `uvicorn`
+- `nirs4all`
+
+If these are missing, the runtime cannot run the app correctly.
+
+### Optional feature readiness
+
+Packages needed only for specific operators or pages, such as:
+
+- `shap`
+- `xgboost`
+- other optional packages from `recommended-config.json`
+
+If these are missing:
+
+- the runtime may still be valid for supported workflows
+- unsupported operators should fail preflight or show as unavailable
+- the app should not pretend a second environment exists
+
+## Switch Flow
+
+The same runtime switch contract should be used everywhere:
+
+1. inspect the candidate interpreter
+2. classify it
+3. report missing core and optional packages
+4. optionally install missing core packages after explicit confirmation
+5. persist `pythonPath`
+6. restart the backend under that exact interpreter
+7. fetch the runtime summary and post-switch validation data
+
+This applies in:
+
+- first-launch wizard
+- settings runtime picker
+- bundled-to-external switching
+- managed runtime creation
 
 ## Data Flow
 
-```
-Electron startup:
-  EnvManager.validatePortableState()  →  clear stale paths if .exe moved
-  EnvManager.ensureBackendPackages()  →  verify fastapi/uvicorn/nirs4all
-  EnvManager.clearBackendVenvSettings()  →  remove stale venv_settings.json
-  BackendManager.startNonBlocking()  →  spawn Python with NIRS4ALL_EXPECTED_PYTHON
+### Desktop startup
 
-Backend startup:
-  VenvManager._load_settings()  →  load custom path from venv_settings.json
-  check_env_coherence()  →  compare VenvManager target vs sys.executable
+1. `EnvManager.validateConfiguredState()`
+2. `EnvManager.ensureBackendPackages()`
+3. `BackendManager` launches the backend under the configured interpreter
+4. backend reports configured-vs-running state through `/api/system/env-coherence`
 
-Frontend:
-  checkEnvCoherence()  →  GET /api/system/env-coherence
-  DependenciesManager  →  show banner if !coherent, disable buttons if frozen
-  runPreflight()  →  POST /api/runs/preflight before training
-```
+### Runtime switch
+
+1. user selects a runtime in the wizard or settings
+2. Electron inspects it without mutating it
+3. user chooses:
+   - use as-is
+   - install missing core packages and switch
+4. Electron persists `pythonPath`
+5. backend restarts
+6. frontend refreshes runtime summary, GPU/profile hints, and dependency state
 
 ## Mode Matrix
 
-| Mode | EnvManager | VenvManager | Wizard | Package Mgmt | Coherence |
-|------|-----------|-------------|--------|-------------|-----------|
-| Dev (web) | N/A | Default (sys.prefix) | N/A | Yes | Yes |
-| Electron installed | Active | Cleared on startup | On version change | Yes | Yes |
-| Electron portable | Active | Cleared on startup | On each launch* | Yes | Yes |
-| Standalone (PyInstaller) | N/A | Frozen | N/A | No (read-only) | Yes |
-| Docker | N/A | Default | N/A | Yes | Yes |
+| Mode | Default runtime | Mutable runtime? | Can switch to another runtime? |
+|---|---|---|---|
+| Web dev | current Python process | yes | n/a |
+| Electron installer | managed or configured external runtime | yes | yes |
+| Electron portable | managed or configured external runtime | yes | yes |
+| All-in-one bundled build | embedded bundled runtime | only after switching away | yes |
+| Legacy PyInstaller backend | packaged backend runtime | no | no |
+| Docker | container Python runtime | yes | container-managed |
 
-*Unless "don't ask again" is checked.
+## Key Decisions
 
-## Key Design Decisions
-
-1. **No importlib.metadata fallback**: Package detection uses only `pip list` via VenvManager. This prevents "installed but can't import" confusion caused by detecting packages in the wrong environment.
-
-2. **Deferred venv path activation**: Custom paths take effect on restart, not immediately. This prevents the running process from targeting a different environment than it was started with.
-
-3. **Backend venv settings cleanup on startup**: Electron always clears `venv_settings.json` before spawning the backend. This ensures the backend uses the Electron-selected environment, not a stale custom path from a previous session.
-
-4. **Portable path drift detection**: Portable builds validate that stored absolute paths still exist. If the executable has been relocated, settings are cleared and the wizard re-runs.
+1. Only one active runtime exists at a time.
+2. Switching Python must change the real backend interpreter after restart.
+3. Selecting an existing interpreter never mutates it silently.
+4. Optional-package gaps do not create a second environment; they only reduce
+   available features inside the current runtime.
+5. Bundled builds may switch to external runtimes, but the embedded runtime
+   itself stays read-only.

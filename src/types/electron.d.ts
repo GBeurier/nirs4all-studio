@@ -3,6 +3,11 @@
  * These types enable TypeScript support for the Electron desktop integration
  */
 
+import type {
+  DesktopDetectedEnv,
+  DesktopEnvActionResult,
+} from "@/types/pythonRuntime";
+
 /** Backend status types */
 type BackendStatus = "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
 
@@ -18,6 +23,10 @@ interface BackendRestartResult {
   success: boolean;
   port?: number;
   error?: string;
+}
+
+interface BackendRestartOptions {
+  skipEnsure?: boolean;
 }
 
 interface ElectronApi {
@@ -120,7 +129,7 @@ interface ElectronApi {
   /**
    * Restart the backend server
    */
-  restartBackend(): Promise<BackendRestartResult>;
+  restartBackend(options?: BackendRestartOptions): Promise<BackendRestartResult>;
 
   /**
    * Subscribe to backend status changes
@@ -143,16 +152,9 @@ interface ElectronApi {
     isCustom: boolean;
     error?: string;
   }>;
-  detectExistingEnvs(): Promise<Array<{
-    path: string;
-    pythonVersion: string;
-    hasNirs4all: boolean;
-  }>>;
-  useExistingEnv(envPath: string): Promise<{
-    success: boolean;
-    message: string;
-    info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
-  }>;
+  detectExistingEnvs(): Promise<DesktopDetectedEnv[]>;
+  inspectExistingEnv(envPath: string): Promise<DesktopEnvActionResult>;
+  useExistingEnv(envPath: string): Promise<DesktopEnvActionResult>;
   /**
    * Open a file dialog to select a Python executable directly
    */
@@ -160,11 +162,16 @@ interface ElectronApi {
   /**
    * Configure using a direct path to a Python executable
    */
-  useExistingPython(pythonPath: string): Promise<{
-    success: boolean;
-    message: string;
-    info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
-  }>;
+  inspectExistingPython(pythonPath: string): Promise<DesktopEnvActionResult>;
+  useExistingPython(pythonPath: string): Promise<DesktopEnvActionResult>;
+  applyExistingEnv(
+    envPath: string,
+    options?: { installCorePackages?: boolean },
+  ): Promise<DesktopEnvActionResult>;
+  applyExistingPython(
+    pythonPath: string,
+    options?: { installCorePackages?: boolean },
+  ): Promise<DesktopEnvActionResult>;
   startEnvSetup(targetDir?: string): Promise<{ success: boolean; error?: string }>;
   onEnvSetupProgress(callback: (progress: {
     percent: number;

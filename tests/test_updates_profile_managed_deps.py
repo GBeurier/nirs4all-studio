@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 
-def test_get_dependencies_filters_profile_managed_torch_from_cached_payload(monkeypatch):
+def test_get_dependencies_keeps_visible_profile_managed_torch_in_cached_payload(monkeypatch):
     from api import updates
 
     monkeypatch.setattr(
@@ -65,26 +65,76 @@ def test_get_dependencies_filters_profile_managed_torch_from_cached_payload(monk
 
     result = asyncio.run(updates.get_dependencies())
 
-    assert [pkg.name for cat in result.categories for pkg in cat.packages] == ["keras"]
-    assert result.total_installed == 1
-    assert result.total_packages == 1
+    assert [pkg.name for cat in result.categories for pkg in cat.packages] == ["torch", "keras"]
+    assert result.total_installed == 2
+    assert result.total_packages == 2
 
 
-@pytest.mark.parametrize(
-    "endpoint_fn, request_obj",
-    [
-        ("install_dependency", {"package": "torch"}),
-        ("update_dependency", {"package": "torch"}),
-        ("revert_dependency", {"package": "torch"}),
-    ],
-)
-def test_profile_managed_torch_is_rejected_by_generic_dependency_endpoints(endpoint_fn, request_obj):
+def test_profile_managed_torch_install_uses_config_alignment(monkeypatch):
+    from api import recommended_config as rc
     from api import updates
 
-    fn = getattr(updates, endpoint_fn)
+    async def _align_config(request):
+        assert request.profile == "cpu"
+        assert request.optional_packages == ["torch"]
+        return rc.AlignConfigResponse(
+            success=True,
+            message="Installed 1 packages",
+            installed=["torch==2.6.0 (cpu)"],
+            upgraded=[],
+            failed=[],
+            dry_run=False,
+        )
+
+    monkeypatch.setattr(rc, "_load_active_raw_config", lambda: {"optional": {"torch": {}}})
+    monkeypatch.setattr(rc, "_resolve_effective_profile", lambda raw: "cpu")
+    monkeypatch.setattr(rc, "align_config", _align_config)
+    monkeypatch.setattr(updates.venv_manager, "get_venv_info", lambda: updates.VenvInfo(path="C:/env", exists=True, is_valid=True))
+    monkeypatch.setattr(updates.venv_manager, "get_package_version", lambda package: "2.6.0+cpu")
+    monkeypatch.setattr(updates._dependencies_cache, "invalidate", lambda: None)
+
+    result = asyncio.run(updates.install_dependency(updates.PackageInstallRequest(package="torch")))
+
+    assert result["success"] is True
+    assert result["version"] == "2.6.0+cpu"
+    assert result["message"] == "Installed 1 packages"
+
+
+def test_profile_managed_torch_revert_uses_config_alignment(monkeypatch):
+    from api import recommended_config as rc
+    from api import updates
+
+    async def _align_config(request):
+        assert request.profile == "cpu"
+        assert request.optional_packages == ["torch"]
+        return rc.AlignConfigResponse(
+            success=True,
+            message="Upgraded 1 packages",
+            installed=[],
+            upgraded=["torch==2.6.0 (cpu)"],
+            failed=[],
+            dry_run=False,
+        )
+
+    monkeypatch.setattr(rc, "_load_active_raw_config", lambda: {"optional": {"torch": {}}})
+    monkeypatch.setattr(rc, "_resolve_effective_profile", lambda raw: "cpu")
+    monkeypatch.setattr(rc, "align_config", _align_config)
+    monkeypatch.setattr(updates.venv_manager, "get_venv_info", lambda: updates.VenvInfo(path="C:/env", exists=True, is_valid=True))
+    monkeypatch.setattr(updates.venv_manager, "get_package_version", lambda package: "2.6.0+cpu")
+    monkeypatch.setattr(updates._dependencies_cache, "invalidate", lambda: None)
+
+    result = asyncio.run(updates.revert_dependency(updates.PackageUninstallRequest(package="torch")))
+
+    assert result["success"] is True
+    assert result["version"] == "2.6.0+cpu"
+    assert result["message"] == "Upgraded 1 packages"
+
+
+def test_profile_managed_torch_update_to_latest_is_rejected():
+    from api import updates
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(fn(updates.PackageInstallRequest(**request_obj) if endpoint_fn != "revert_dependency" else updates.PackageUninstallRequest(**request_obj)))
+        asyncio.run(updates.update_dependency(updates.PackageInstallRequest(package="torch")))
 
     assert exc_info.value.status_code == 400
     assert "managed by the active compute profile" in exc_info.value.detail

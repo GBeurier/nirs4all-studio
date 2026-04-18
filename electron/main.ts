@@ -345,9 +345,11 @@ ipcMain.handle("backend:getInfo", () => {
   return backendManager.getInfo();
 });
 
-ipcMain.handle("backend:restart", async () => {
+ipcMain.handle("backend:restart", async (_event, options?: { skipEnsure?: boolean }) => {
   try {
-    await envManager.ensureBackendPackages();
+    if (!options?.skipEnsure) {
+      await envManager.ensureBackendPackages();
+    }
     const port = await backendManager.restart();
     return { success: true, port };
   } catch (error) {
@@ -402,6 +404,14 @@ ipcMain.handle("env:detectExisting", async () => {
   return envManager.detectExistingEnvs();
 });
 
+ipcMain.handle("env:inspectExisting", async (_, envPath: string) => {
+  return envManager.inspectExistingEnv(envPath);
+});
+
+ipcMain.handle("env:inspectExistingPython", async (_, pythonPath: string) => {
+  return envManager.inspectExistingPython(pythonPath);
+});
+
 ipcMain.handle("env:useExisting", async (_, envPath: string) => {
   return envManager.useExistingEnv(envPath);
 });
@@ -409,6 +419,20 @@ ipcMain.handle("env:useExisting", async (_, envPath: string) => {
 ipcMain.handle("env:useExistingPython", async (_, pythonPath: string) => {
   return envManager.useExistingPython(pythonPath);
 });
+
+ipcMain.handle(
+  "env:applyExisting",
+  async (_, envPath: string, options?: { installCorePackages?: boolean }) => {
+    return envManager.applyExistingEnv(envPath, options);
+  },
+);
+
+ipcMain.handle(
+  "env:applyExistingPython",
+  async (_, pythonPath: string, options?: { installCorePackages?: boolean }) => {
+    return envManager.applyExistingPython(pythonPath, options);
+  },
+);
 
 ipcMain.handle("dialog:selectPythonExe", async () => {
   if (!mainWindow) return null;

@@ -13,6 +13,20 @@ const DEFAULT_API_BASE_URL = "/api";
 let resolvedBackendUrl: string | null = null;
 let backendUrlPromise: Promise<string> | null = null;
 
+type ElectronBackendStatus = "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
+
+interface ElectronBridgeApi {
+  isElectron?: boolean;
+  getBackendUrl?: () => Promise<string>;
+  getBackendInfo?: () => Promise<{
+    status: ElectronBackendStatus;
+    port: number;
+    url: string;
+    error?: string;
+    restartCount: number;
+  }>;
+}
+
 /**
  * Detect if we're running in Electron.
  * Uses multiple detection methods since electronApi may not be available immediately.
@@ -21,7 +35,7 @@ function isElectronEnvironment(): boolean {
   if (typeof window === "undefined") return false;
 
   // Check if electronApi is exposed (preferred method)
-  if ((window as unknown as { electronApi?: { isElectron?: boolean } }).electronApi?.isElectron) {
+  if ((window as unknown as { electronApi?: ElectronBridgeApi }).electronApi?.isElectron) {
     return true;
   }
 
@@ -39,12 +53,19 @@ function isElectronEnvironment(): boolean {
 async function waitForElectronApi(maxWaitMs: number = 5000): Promise<boolean> {
   const startTime = Date.now();
   while (Date.now() - startTime < maxWaitMs) {
-    if ((window as unknown as { electronApi?: { getBackendUrl?: () => Promise<string> } }).electronApi?.getBackendUrl) {
+    if ((window as unknown as { electronApi?: ElectronBridgeApi }).electronApi?.getBackendUrl) {
       return true;
     }
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   return false;
+}
+
+function getElectronBridge(): ElectronBridgeApi | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return (window as unknown as { electronApi?: ElectronBridgeApi }).electronApi ?? null;
 }
 
 /**
@@ -182,13 +203,106 @@ export function formatApiErrorDetail(detail: unknown, status?: number): string {
   return status ? `HTTP error ${status}` : "Network error";
 }
 
+function isApiError(error: unknown): error is ApiError {
+  return Boolean(
+    error
+    && typeof error === "object"
+    && "status" in error
+    && typeof (error as { status?: unknown }).status === "number",
+  );
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function isRetryableElectronNetworkError(error: unknown): boolean {
+  if (!isElectronEnvironment() || isApiError(error) || isAbortError(error)) {
+    return false;
+  }
+
+  if (error instanceof TypeError) {
+    return true;
+  }
+
+  if (error instanceof Error) {
+    return /failed to fetch|fetch failed|networkerror/i.test(error.message);
+  }
+
+  return false;
+}
+
+async function waitForElectronBackendToBeReachable(maxWaitMs: number = 8000): Promise<void> {
+  const bridge = getElectronBridge();
+  if (!bridge?.getBackendInfo) {
+    return;
+  }
+
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    try {
+      const info = await bridge.getBackendInfo();
+      if (info.status === "running") {
+        return;
+      }
+      if (info.status === "error" || info.status === "setup_required" || info.status === "stopped") {
+        return;
+      }
+    } catch {
+      // Fall through to the next poll interval.
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+}
+
+async function prepareElectronBackendRetry(endpoint: string): Promise<void> {
+  resetBackendUrl();
+
+  const bridge = getElectronBridge();
+  if (!bridge?.getBackendInfo) {
+    return;
+  }
+
+  try {
+    const info = await bridge.getBackendInfo();
+    if (info.status === "starting" || info.status === "restarting") {
+      logger.warn(`[request] waiting for backend ${info.status} before retrying ${endpoint}`);
+      await waitForElectronBackendToBeReachable();
+    }
+  } catch (error) {
+    logger.warn(`[request] failed to inspect backend status before retrying ${endpoint}`, error);
+  }
+}
+
 class ApiClient {
+  private async fetchWithRetry(endpoint: string, config: RequestInit): Promise<Response> {
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const baseUrl = await getApiBaseUrl();
+      const url = `${baseUrl}${endpoint}`;
+
+      try {
+        return await fetch(url, config);
+      } catch (error) {
+        lastError = error;
+        if (attempt === 0 && isRetryableElectronNetworkError(error)) {
+          logger.warn(`[request] transient Electron network error for ${endpoint}; retrying once`, error);
+          await prepareElectronBackendRetry(endpoint);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("Network error");
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestOptions = {}
   ): Promise<T> {
-    const baseUrl = await getApiBaseUrl();
-    const url = `${baseUrl}${endpoint}`;
     const { body, ...restOptions } = options;
 
     const config: RequestInit = {
@@ -201,7 +315,7 @@ class ApiClient {
     };
 
     try {
-      const response = await fetch(url, config);
+      const response = await this.fetchWithRetry(endpoint, config);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -214,11 +328,11 @@ class ApiClient {
 
       return await response.json();
     } catch (error) {
-      if ((error as ApiError).status) {
+      if (isApiError(error)) {
         throw error;
       }
       // Preserve AbortError for proper handling by callers
-      if (error instanceof Error && error.name === "AbortError") {
+      if (isAbortError(error)) {
         throw error;
       }
       throw {
@@ -258,8 +372,6 @@ class ApiClient {
 
   // POST with MessagePack content negotiation (binary response when backend supports it)
   async postMsgpack<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
-    const baseUrl = await getApiBaseUrl();
-    const url = `${baseUrl}${endpoint}`;
     const { body: _ignored, ...restOptions } = options || {};
 
     const config: RequestInit = {
@@ -274,7 +386,7 @@ class ApiClient {
     };
 
     try {
-      const response = await fetch(url, config);
+      const response = await this.fetchWithRetry(endpoint, config);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -295,10 +407,10 @@ class ApiClient {
 
       return await response.json();
     } catch (error) {
-      if ((error as ApiError).status) {
+      if (isApiError(error)) {
         throw error;
       }
-      if (error instanceof Error && error.name === "AbortError") {
+      if (isAbortError(error)) {
         throw error;
       }
       throw {
@@ -1515,6 +1627,7 @@ import type {
   SystemStatusResponse,
   SystemPathsResponse,
   ErrorLogResponse,
+  RuntimeSummaryResponse,
 } from "@/types/settings";
 
 /**
@@ -1522,6 +1635,13 @@ import type {
  */
 export async function getSystemInfo(): Promise<SystemInfoResponse> {
   return api.get("/system/info");
+}
+
+/**
+ * Get the configured-vs-running Python runtime summary.
+ */
+export async function getRuntimeSummary(): Promise<RuntimeSummaryResponse> {
+  return api.get("/system/env-coherence");
 }
 
 /**
@@ -2088,10 +2208,11 @@ export interface Nirs4allUpdateInfo {
   requires_restart: boolean;
 }
 
-export interface VenvInfo {
+export interface RuntimeInfo {
   path: string;
   exists: boolean;
   is_valid: boolean;
+  python_executable: string | null;
   python_version: string | null;
   pip_version: string | null;
   created_at: string | null;
@@ -2108,16 +2229,21 @@ export interface PackageInfo {
 export interface UpdateStatus {
   webapp: WebappUpdateInfo;
   nirs4all: Nirs4allUpdateInfo;
-  venv: VenvInfo;
+  runtime: RuntimeInfo;
+  venv?: RuntimeInfo;
   last_check: string | null;
   check_interval_hours: number;
 }
 
-export interface VenvStatus {
-  venv: VenvInfo;
+export interface RuntimeStatus {
+  runtime: RuntimeInfo;
+  venv?: RuntimeInfo;
   packages: PackageInfo[];
   nirs4all_version: string | null;
 }
+
+export type VenvInfo = RuntimeInfo;
+export type VenvStatus = RuntimeStatus;
 
 export interface VersionInfo {
   webapp_version: string;
@@ -2158,14 +2284,21 @@ export async function updateUpdateSettings(
 }
 
 /**
- * Get managed venv status and installed packages
+ * Get current runtime status and installed packages
  */
-export async function getVenvStatus(): Promise<VenvStatus> {
-  return api.get("/updates/venv/status");
+export async function getRuntimeStatus(): Promise<RuntimeStatus> {
+  return api.get("/updates/runtime/status");
 }
 
 /**
- * Create the managed virtual environment
+ * Backward-compatible alias for the current runtime status request.
+ */
+export async function getVenvStatus(): Promise<VenvStatus> {
+  return getRuntimeStatus();
+}
+
+/**
+ * Legacy desktop-managed runtime creation endpoint.
  */
 export async function createVenv(options?: {
   force?: boolean;
@@ -2178,11 +2311,11 @@ export async function createVenv(options?: {
   nirs4all_installed?: boolean;
   install_message?: string;
 }> {
-  return api.post("/updates/venv/create", options || {});
+  return api.post("/updates/runtime/create", options || {});
 }
 
 /**
- * Install or upgrade nirs4all in the managed venv
+ * Install or upgrade nirs4all in the current Python runtime
  */
 export async function installNirs4all(options?: {
   version?: string;
@@ -2377,6 +2510,8 @@ export interface DependencyInfo {
   is_below_recommended: boolean;
   is_above_recommended: boolean;
   can_update: boolean;
+  default_install?: boolean;
+  managed_by_profile?: boolean;
 }
 
 export interface DependencyCategory {
@@ -2390,6 +2525,8 @@ export interface DependencyCategory {
 
 export interface DependenciesResponse {
   categories: DependencyCategory[];
+  runtime_valid: boolean;
+  runtime_path: string;
   venv_valid: boolean;
   venv_path: string;
   nirs4all_installed: boolean;
@@ -2485,7 +2622,7 @@ export interface ConfigSnapshot {
  * List all saved config snapshots
  */
 export async function listSnapshots(): Promise<{ snapshots: ConfigSnapshot[] }> {
-  return api.get("/updates/venv/snapshots");
+  return api.get("/updates/runtime/snapshots");
 }
 
 /**
@@ -2497,7 +2634,7 @@ export async function createSnapshot(label?: string): Promise<{
   label: string;
   created_at: string;
 }> {
-  return api.post("/updates/venv/snapshots", { label: label || null });
+  return api.post("/updates/runtime/snapshots", { label: label || null });
 }
 
 /**
@@ -2507,7 +2644,7 @@ export async function restoreSnapshot(name: string): Promise<{
   success: boolean;
   message: string;
 }> {
-  return api.post(`/updates/venv/snapshots/${name}/restore`);
+  return api.post(`/updates/runtime/snapshots/${name}/restore`);
 }
 
 /**
@@ -2517,7 +2654,7 @@ export async function deleteSnapshot(name: string): Promise<{
   success: boolean;
   message: string;
 }> {
-  return api.delete(`/updates/venv/snapshots/${name}`);
+  return api.delete(`/updates/runtime/snapshots/${name}`);
 }
 
 // =============================================================================
@@ -2743,6 +2880,7 @@ export interface OptionalPackageInfo {
   category: string;
   note?: string | null;
   show_when_profile_managed?: boolean;
+  default_install?: boolean;
 }
 
 export interface RecommendedConfigResponse {
@@ -2759,6 +2897,7 @@ export interface PackageDiff {
   name: string;
   installed_version: string | null;
   recommended_version: string;
+  latest_version?: string | null;
   status: "aligned" | "outdated" | "missing" | "extra";
   action: string | null;
 }
@@ -2780,13 +2919,20 @@ export interface AlignConfigRequest {
   dry_run?: boolean;
 }
 
+export interface PackageFailure {
+  package: string;
+  error: string;
+}
+
 export interface AlignConfigResponse {
   success: boolean;
   message: string;
   installed: string[];
   upgraded: string[];
   failed: string[];
+  failures?: PackageFailure[];
   dry_run: boolean;
+  requires_restart: boolean;
 }
 
 export interface SetupStatusResponse {
@@ -2818,10 +2964,15 @@ export async function getRecommendedConfig(forceRefresh: boolean = false): Promi
 /**
  * Compare installed packages against recommended config
  */
-export async function getConfigDiff(profile?: string, includeOptional?: boolean): Promise<ConfigComparisonResponse> {
+export async function getConfigDiff(
+  profile?: string,
+  includeOptional?: boolean,
+  includeLatest: boolean = true,
+): Promise<ConfigComparisonResponse> {
   const searchParams = new URLSearchParams();
   if (profile) searchParams.set("profile", profile);
   if (includeOptional) searchParams.set("include_optional", "true");
+  if (!includeLatest) searchParams.set("include_latest", "false");
   const qs = searchParams.toString();
   return api.get(`/config/diff${qs ? `?${qs}` : ""}`);
 }

@@ -10,6 +10,7 @@
  */
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertCircle } from "lucide-react";
 import {
   buildConfusionMatrixFromVectors,
@@ -329,21 +330,23 @@ export const PredictionConfusionChart = forwardRef<HTMLDivElement, PredictionCon
             </g>
           </svg>
 
-          {hovered && showTooltip && (
-            <div
-              className="fixed z-50 pointer-events-none rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
-              style={{ left: hovered.mouseX + 12, top: hovered.mouseY - 52 }}
-            >
-              <div className="font-medium">
-                {hovered.true_label} → {hovered.pred_label}
-              </div>
-              <div>Count: {hovered.count}</div>
-              {hovered.normalized != null && (
-                <div>Normalized: {(hovered.normalized * 100).toFixed(1)}%</div>
-              )}
-              <div className="mt-1 text-muted-foreground">Total samples: {totalSamples}</div>
-            </div>
-          )}
+          {hovered && showTooltip &&
+            createPortal(
+              <div
+                className="fixed z-50 pointer-events-none rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
+                style={{ left: hovered.mouseX + 12, top: hovered.mouseY - 52 }}
+              >
+                <div className="font-medium">
+                  {hovered.true_label} → {hovered.pred_label}
+                </div>
+                <div>Count: {hovered.count}</div>
+                {hovered.normalized != null && (
+                  <div>Normalized: {(hovered.normalized * 100).toFixed(1)}%</div>
+                )}
+                <div className="mt-1 text-muted-foreground">Total samples: {totalSamples}</div>
+              </div>,
+              document.body,
+            )}
         </div>
       </div>
     );

@@ -280,38 +280,48 @@ In `bundled` and `pyinstaller` modes, these mutation endpoints return `400` with
 4. current app exits
 5. updater replaces files, restores from backup on failure, then relaunches
 
-### 4. Managed runtime maintenance
+### 4. Current runtime maintenance
 
-Only in writable modes:
+These actions always target the current Python runtime, not a separate backend
+"managed env" control plane.
 
-1. create or inspect the managed venv
+Writable-runtime flow:
+
+1. inspect the current runtime
 2. install or update `nirs4all`
 3. install or remove optional packages
 4. restart backend if required
 
-In `bundled` mode these flows are intentionally blocked.
+In a bundled build:
+
+- the embedded runtime is read-only while it remains active
+- switching to an external runtime is allowed through Electron
+- once switched, update and dependency actions target that external runtime like
+  any other user-managed Python
 
 ## Read-Only Guardrails For All-In-One Bundles
 
-When `NIRS4ALL_RUNTIME_MODE=bundled`, the backend refuses runtime mutations instead of trying to repair the embedded venv in place.
+When `NIRS4ALL_RUNTIME_MODE=bundled`, the backend refuses mutations that would
+rewrite the embedded bundled Python runtime in place.
 
 Blocked actions include:
 
-- managed venv creation
+- backend-side runtime creation
 - `nirs4all` install/upgrade
 - optional dependency install/uninstall/update/revert
 - config alignment mutations in `api/recommended_config.py`
-- snapshot restore flows that would rewrite the managed environment
+- snapshot restore flows that would rewrite the active embedded runtime
 
 Expected error:
 
 ```json
 {
-  "detail": "Package management is not available in the all-in-one bundle."
+  "detail": "This action would modify the embedded bundled Python runtime. Switch to an external Python runtime in Settings first."
 }
 ```
 
-This is intentional and not a bug.
+This is intentional. The restriction applies to the embedded runtime itself, not
+to the user's ability to leave it.
 
 ## Storage Layout
 
@@ -331,7 +341,7 @@ Typical directories:
 ├── update_cache/
 ├── update_staging/
 ├── update_backup/
-└── managed_venv/
+└── python-env/
 ```
 
 ### Embedded runtime

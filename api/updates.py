@@ -3,9 +3,9 @@ Update management API for nirs4all webapp.
 
 This module provides API endpoints for:
 - Checking for updates (webapp via GitHub, nirs4all via PyPI)
-- Managing the managed virtual environment
+- Inspecting the current Python runtime
 - Downloading and applying webapp updates
-- Installing/upgrading nirs4all in the managed venv
+- Installing/upgrading nirs4all in the current runtime
 """
 
 import asyncio
@@ -161,6 +161,8 @@ def _load_optional_deps_from_config() -> dict[str, Any]:
                 "min_version": min_version,
                 "recommended_version": recommended_version,
                 "description": pkg_data.get("description", ""),
+                "default_install": bool(pkg_data.get("default_install", False)),
+                "managed_by_profile": _normalize_dependency_name(pkg_name) in profile_managed,
             })
 
         return groups
@@ -257,6 +259,8 @@ class DependencyInfo(BaseModel):
     is_below_recommended: bool = False
     is_above_recommended: bool = False
     can_update: bool = False
+    default_install: bool = False
+    managed_by_profile: bool = False
 
 
 class DependencyCategory(BaseModel):
@@ -272,6 +276,8 @@ class DependencyCategory(BaseModel):
 class DependenciesResponse(BaseModel):
     """Response with all dependencies information."""
     categories: list[DependencyCategory]
+    runtime_valid: bool
+    runtime_path: str
     venv_valid: bool
     venv_path: str
     nirs4all_installed: bool
@@ -523,7 +529,8 @@ class UpdateStatus(BaseModel):
     """Combined update status for webapp and nirs4all."""
     webapp: WebappUpdateInfo
     nirs4all: Nirs4allUpdateInfo
-    venv: dict[str, Any]
+    runtime: dict[str, Any]
+    venv: dict[str, Any] | None = None
     last_check: str | None = None
     check_interval_hours: int = DEFAULT_CHECK_INTERVAL_HOURS
 
@@ -535,7 +542,7 @@ class InstallRequest(BaseModel):
 
 
 class VenvCreateRequest(BaseModel):
-    """Request to create managed venv."""
+    """Legacy request shape for desktop-managed runtime creation."""
     force: bool = False
     install_nirs4all: bool = True
     extras: list[str] | None = None
@@ -679,7 +686,7 @@ class UpdateManager:
         return "unknown"
 
     def get_nirs4all_version(self) -> str | None:
-        """Get the installed nirs4all version from managed venv."""
+        """Get the installed nirs4all version from the current runtime."""
         return venv_manager.get_nirs4all_version()
 
     def _apply_cached_github_release(
@@ -1092,6 +1099,7 @@ class UpdateManager:
         return UpdateStatus(
             webapp=webapp_info,
             nirs4all=nirs4all_info,
+            runtime=venv_info.to_dict(),
             venv=venv_info.to_dict(),
             last_check=datetime.now().isoformat(),
             check_interval_hours=self.settings.check_interval_hours,
@@ -1225,69 +1233,48 @@ async def update_settings(settings: dict[str, Any]) -> UpdateSettings:
     return update_manager.settings
 
 
+@router.get("/runtime/status")
 @router.get("/venv/status")
-async def get_venv_status() -> dict[str, Any]:
+async def get_runtime_status() -> dict[str, Any]:
     """
-    Get managed venv status and installed packages.
+    Get the current Python runtime status and installed packages.
     """
-    venv_info = venv_manager.get_venv_info()
+    runtime_info = venv_manager.get_venv_info()
     packages = venv_manager.get_installed_packages()
 
     return {
-        "venv": venv_info.to_dict(),
+        "runtime": runtime_info.to_dict(),
+        "venv": runtime_info.to_dict(),
         "packages": [p.to_dict() for p in packages],
         "nirs4all_version": venv_manager.get_nirs4all_version(),
     }
 
 
+@router.post("/runtime/create")
 @router.post("/venv/create")
 async def create_venv(
     request: VenvCreateRequest,
     background_tasks: BackgroundTasks,
 ) -> dict[str, Any]:
     """
-    Create the managed virtual environment.
+    Legacy endpoint kept for compatibility.
 
-    This is an async operation. Poll /venv/status to check progress.
+    Creating a new runtime must be handled by Electron so it can switch the
+    whole desktop app to that interpreter after creation.
     """
-    _check_not_standalone()
-
-    # Check if already exists and valid
-    if not request.force and venv_manager.get_venv_info().is_valid:
-        return {
-            "success": True,
-            "message": "Virtual environment already exists",
-            "already_existed": True,
-        }
-
-    # Create venv synchronously for now (could be made async with job system)
-    success, message = venv_manager.create_venv(force=request.force)
-
-    if not success:
-        raise HTTPException(status_code=500, detail=message)
-
-    result = {
-        "success": True,
-        "message": message,
-        "already_existed": False,
-    }
-
-    # Install nirs4all if requested
-    if request.install_nirs4all and success:
-        install_success, install_msg, _ = venv_manager.install_package(
-            "nirs4all",
-            extras=request.extras,
-        )
-        result["nirs4all_installed"] = install_success
-        result["install_message"] = install_msg
-
-    return result
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Creating a new Python runtime is a desktop-managed action. "
+            "Use the Python Runtime settings to create a runtime and switch the app to it."
+        ),
+    )
 
 
 @router.post("/nirs4all/install")
 async def install_nirs4all(request: InstallRequest) -> dict[str, Any]:
     """
-    Install or upgrade nirs4all in the managed venv.
+    Install or upgrade nirs4all in the current Python runtime.
 
     Args:
         request: Installation parameters (version, extras)
@@ -1295,17 +1282,8 @@ async def install_nirs4all(request: InstallRequest) -> dict[str, Any]:
     Returns:
         Installation result with status and output
     """
-    _check_not_standalone()
-
-    # Ensure venv exists
-    if not venv_manager.get_venv_info().is_valid:
-        # Try to create it
-        success, message = venv_manager.create_venv()
-        if not success:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create virtual environment: {message}"
-            )
+    _ensure_runtime_mutable()
+    _ensure_runtime_is_valid()
 
     # Install nirs4all
     success, message, output = venv_manager.install_package(
@@ -1707,22 +1685,8 @@ async def _get_pypi_version(package: str) -> str | None:
 
 
 def _filter_profile_managed_categories(categories: list[DependencyCategory]) -> list[DependencyCategory]:
-    """Remove profile-managed packages from dependency category payloads."""
-    filtered_categories: list[DependencyCategory] = []
-    for category in categories:
-        filtered_packages = [
-            pkg for pkg in category.packages
-            if not _is_profile_managed_dependency(pkg.name)
-        ]
-        filtered_categories.append(DependencyCategory(
-            id=category.id,
-            name=category.name,
-            description=category.description,
-            packages=filtered_packages,
-            installed_count=sum(1 for pkg in filtered_packages if pkg.is_installed),
-            total_count=len(filtered_packages),
-        ))
-    return filtered_categories
+    """Keep visible profile-managed optional packages in dependency payloads."""
+    return categories
 
 
 @router.get("/dependencies")
@@ -1732,12 +1696,12 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
 
     Returns cached results if available. Use force_refresh=true to bypass cache.
     """
-    venv_info = venv_manager.get_venv_info()
-    venv_path = str(venv_info.path)
+    runtime_info = venv_manager.get_venv_info()
+    runtime_path = str(runtime_info.path)
 
     # Check cache first (unless force refresh)
     if not force_refresh:
-        cached = _dependencies_cache.get(venv_path)
+        cached = _dependencies_cache.get(runtime_path)
         if cached:
             current_nirs4all_version = venv_manager.get_nirs4all_version()
             if not isinstance(current_nirs4all_version, str):
@@ -1751,8 +1715,10 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
             # Return cached data
             return DependenciesResponse(
                 categories=cached_categories,
-                venv_valid=venv_info.is_valid,
-                venv_path=venv_path,
+                runtime_valid=runtime_info.is_valid,
+                runtime_path=runtime_path,
+                venv_valid=runtime_info.is_valid,
+                venv_path=runtime_path,
                 nirs4all_installed=current_nirs4all_installed,
                 nirs4all_version=current_nirs4all_version,
                 total_installed=total_installed,
@@ -1763,13 +1729,13 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
     installed_packages = {}
 
     # Get installed packages from venv
-    if venv_info.is_valid:
+    if runtime_info.is_valid:
         for pkg in venv_manager.get_installed_packages():
             installed_packages[pkg.name.lower()] = pkg.version
 
     # Get outdated packages for update detection
     outdated_packages = {}
-    if venv_info.is_valid:
+    if runtime_info.is_valid:
         for pkg in venv_manager.get_outdated_packages():
             outdated_packages[pkg["name"].lower()] = pkg["latest_version"]
 
@@ -1819,6 +1785,8 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
                 is_below_recommended=is_below_recommended,
                 is_above_recommended=is_above_recommended,
                 can_update=is_outdated,
+                default_install=bool(pkg_def.get("default_install", False)),
+                managed_by_profile=bool(pkg_def.get("managed_by_profile", False)),
             )
             packages.append(dep_info)
 
@@ -1843,18 +1811,22 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
     # Cache the results
     cache_data = {
         "categories": [cat.model_dump() for cat in categories],
-        "venv_valid": venv_info.is_valid,
+        "runtime_valid": runtime_info.is_valid,
+        "runtime_path": runtime_path,
+        "venv_valid": runtime_info.is_valid,
         "nirs4all_installed": nirs4all_installed,
         "nirs4all_version": nirs4all_version,
         "total_installed": total_installed,
         "total_packages": total_packages,
     }
-    _dependencies_cache.set(venv_path, cache_data)
+    _dependencies_cache.set(runtime_path, cache_data)
 
     return DependenciesResponse(
         categories=categories,
-        venv_valid=venv_info.is_valid,
-        venv_path=venv_path,
+        runtime_valid=runtime_info.is_valid,
+        runtime_path=runtime_path,
+        venv_valid=runtime_info.is_valid,
+        venv_path=runtime_path,
         nirs4all_installed=nirs4all_installed,
         nirs4all_version=nirs4all_version,
         total_installed=total_installed,
@@ -1863,20 +1835,42 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
     )
 
 
-def _check_not_standalone() -> None:
-    """Raise if running in a read-only bundled runtime."""
+def _ensure_runtime_mutable() -> None:
+    """Raise when the current runtime must not be mutated in place."""
     runtime_mode = str(os.environ.get("NIRS4ALL_RUNTIME_MODE", "")).strip().lower()
-    if getattr(sys, "_MEIPASS", None) or runtime_mode == "bundled":
+    if getattr(sys, "_MEIPASS", None):
         raise HTTPException(
             status_code=400,
-            detail="Package management is not available in the all-in-one bundle.",
+            detail="Package management is not available in this packaged backend mode.",
         )
+    if runtime_mode == "bundled":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This action would modify the embedded bundled Python runtime. "
+                "Switch to an external Python runtime in Settings first."
+            ),
+        )
+
+
+def _ensure_runtime_is_valid() -> None:
+    """Raise when the current runtime cannot be managed safely."""
+    if venv_manager.get_venv_info().is_valid:
+        return
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "The current Python runtime is not valid. Use the Python Runtime "
+            "settings to select or create a runtime, then retry."
+        ),
+    )
 
 
 @router.post("/dependencies/install")
 async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     """
-    Install a package in the managed virtual environment.
+    Install a package in the current Python runtime.
 
     Args:
         request: Package name and optional version
@@ -1884,22 +1878,44 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     Returns:
         Installation result with status and output
     """
-    _check_not_standalone()
+    _ensure_runtime_mutable()
+    _ensure_runtime_is_valid()
 
     if _is_profile_managed_dependency(request.package):
-        raise HTTPException(
-            status_code=400,
-            detail="torch is managed by the active compute profile. Use Config Alignment or rerun setup to switch CPU/GPU variants.",
-        )
-
-    # Ensure venv exists
-    if not venv_manager.get_venv_info().is_valid:
-        success, message = venv_manager.create_venv()
-        if not success:
+        if request.target == "latest" or request.upgrade:
             raise HTTPException(
-                status_code=500,
-                detail=f"Failed to create virtual environment: {message}"
+                status_code=400,
+                detail="torch follows the active compute profile. Updating it to the latest PyPI build is not supported here.",
             )
+
+        from . import recommended_config as rc
+
+        raw_config = rc._load_active_raw_config()
+        profile = rc._resolve_effective_profile(raw_config)
+        package_name = next(
+            (
+                name
+                for name in raw_config.get("optional", {})
+                if _normalize_dependency_name(name) == _normalize_dependency_name(request.package)
+            ),
+            request.package,
+        )
+        result = await rc.align_config(
+            rc.AlignConfigRequest(profile=profile, optional_packages=[package_name]),
+        )
+        if not result.success:
+            raise HTTPException(status_code=500, detail=result.message)
+
+        _dependencies_cache.invalidate()
+        installed_version = venv_manager.get_package_version(request.package)
+        return {
+            "success": True,
+            "message": result.message,
+            "package": request.package,
+            "version": installed_version,
+            "output": [*result.installed, *result.upgraded],
+            "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
+        }
 
     # Determine version to install based on target
     install_version = request.version
@@ -1960,7 +1976,7 @@ async def install_dependency(request: PackageInstallRequest) -> dict[str, Any]:
 @router.post("/dependencies/uninstall")
 async def uninstall_dependency(request: PackageUninstallRequest) -> dict[str, Any]:
     """
-    Uninstall a package from the managed virtual environment.
+    Uninstall a package from the current Python runtime.
 
     Args:
         request: Package name
@@ -1968,13 +1984,8 @@ async def uninstall_dependency(request: PackageUninstallRequest) -> dict[str, An
     Returns:
         Uninstallation result
     """
-    _check_not_standalone()
-
-    if not venv_manager.get_venv_info().is_valid:
-        raise HTTPException(
-            status_code=400,
-            detail="Virtual environment is not valid"
-        )
+    _ensure_runtime_mutable()
+    _ensure_runtime_is_valid()
 
     success, message = venv_manager.uninstall_package(request.package)
 
@@ -1995,13 +2006,38 @@ async def uninstall_dependency(request: PackageUninstallRequest) -> dict[str, An
 @router.post("/dependencies/revert")
 async def revert_dependency(request: PackageUninstallRequest) -> dict[str, Any]:
     """Revert a package to its recommended version."""
-    _check_not_standalone()
+    _ensure_runtime_mutable()
+    _ensure_runtime_is_valid()
 
     if _is_profile_managed_dependency(request.package):
-        raise HTTPException(
-            status_code=400,
-            detail="torch is managed by the active compute profile. Use Config Alignment or rerun setup to switch CPU/GPU variants.",
+        from . import recommended_config as rc
+
+        raw_config = rc._load_active_raw_config()
+        profile = rc._resolve_effective_profile(raw_config)
+        package_name = next(
+            (
+                name
+                for name in raw_config.get("optional", {})
+                if _normalize_dependency_name(name) == _normalize_dependency_name(request.package)
+            ),
+            request.package,
         )
+        result = await rc.align_config(
+            rc.AlignConfigRequest(profile=profile, optional_packages=[package_name]),
+        )
+        if not result.success:
+            raise HTTPException(status_code=500, detail=result.message)
+
+        _dependencies_cache.invalidate()
+        new_version = venv_manager.get_package_version(request.package)
+        return {
+            "success": True,
+            "message": result.message,
+            "package": request.package,
+            "version": new_version,
+            "output": [*result.installed, *result.upgraded],
+            "requires_restart": request.package.lower() in RESTART_REQUIRED_PACKAGES,
+        }
 
     pkg_info = None
     for _cat_id, cat_data in NIRS4ALL_OPTIONAL_DEPS.items():
@@ -2046,7 +2082,7 @@ async def update_dependency(request: PackageInstallRequest) -> dict[str, Any]:
     Returns:
         Update result with new version
     """
-    _check_not_standalone()
+    _ensure_runtime_mutable()
 
     if _is_profile_managed_dependency(request.package):
         raise HTTPException(
@@ -2054,12 +2090,7 @@ async def update_dependency(request: PackageInstallRequest) -> dict[str, Any]:
             detail="torch is managed by the active compute profile. Use Config Alignment or rerun setup to switch CPU/GPU variants.",
         )
 
-    # Ensure venv exists
-    if not venv_manager.get_venv_info().is_valid:
-        raise HTTPException(
-            status_code=400,
-            detail="Virtual environment is not valid"
-        )
+    _ensure_runtime_is_valid()
 
     # Update the package
     success, message, output = venv_manager.install_package(
@@ -2106,17 +2137,18 @@ async def refresh_dependencies() -> dict[str, Any]:
 # ============= Venv Path Management =============
 
 
+@router.get("/runtime/path")
 @router.get("/venv/path")
-async def get_venv_path() -> dict[str, Any]:
+async def get_runtime_path() -> dict[str, Any]:
     """
-    Get the current virtual environment path configuration.
+    Get the current runtime root path.
     """
-    venv_info = venv_manager.get_venv_info()
+    runtime_info = venv_manager.get_venv_info()
 
     return {
         "current_path": str(venv_manager.venv_path),
-        "is_valid": venv_info.is_valid,
-        "exists": venv_info.exists,
+        "is_valid": runtime_info.is_valid,
+        "exists": runtime_info.exists,
     }
 
 
@@ -2134,6 +2166,7 @@ def _get_snapshots_dir() -> Path:
     return snapshots_dir
 
 
+@router.get("/runtime/snapshots")
 @router.get("/venv/snapshots")
 async def list_snapshots() -> dict[str, Any]:
     """List all saved config snapshots."""
@@ -2166,15 +2199,15 @@ class SnapshotCreateRequest(BaseModel):
     label: str | None = None
 
 
+@router.post("/runtime/snapshots")
 @router.post("/venv/snapshots")
 async def create_snapshot(request: SnapshotCreateRequest) -> dict[str, Any]:
     """
     Save the current pip freeze output as a config snapshot.
 
-    This captures all installed packages and versions in the managed venv.
+    This captures all installed packages and versions in the current runtime.
     """
-    if not venv_manager.get_venv_info().is_valid:
-        raise HTTPException(status_code=400, detail="Virtual environment is not valid")
+    _ensure_runtime_is_valid()
 
     # Run pip freeze
     freeze_output = venv_manager.run_pip_command(["freeze"])
@@ -2199,6 +2232,7 @@ async def create_snapshot(request: SnapshotCreateRequest) -> dict[str, Any]:
     }
 
 
+@router.post("/runtime/snapshots/{name}/restore")
 @router.post("/venv/snapshots/{name}/restore")
 async def restore_snapshot(name: str) -> dict[str, Any]:
     """
@@ -2206,10 +2240,8 @@ async def restore_snapshot(name: str) -> dict[str, Any]:
 
     This will install all packages at the exact versions captured in the snapshot.
     """
-    _check_not_standalone()
-
-    if not venv_manager.get_venv_info().is_valid:
-        raise HTTPException(status_code=400, detail="Virtual environment is not valid")
+    _ensure_runtime_mutable()
+    _ensure_runtime_is_valid()
 
     snapshots_dir = _get_snapshots_dir()
     snapshot_path = snapshots_dir / f"{name}.txt"
@@ -2243,6 +2275,7 @@ async def restore_snapshot(name: str) -> dict[str, Any]:
     }
 
 
+@router.delete("/runtime/snapshots/{name}")
 @router.delete("/venv/snapshots/{name}")
 async def delete_snapshot(name: str) -> dict[str, Any]:
     """Delete a config snapshot."""

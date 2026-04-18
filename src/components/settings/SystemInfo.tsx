@@ -38,12 +38,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { getBuildInfo, getSystemInfo, getSystemCapabilities } from "@/api/client";
+import { getRuntimeSummary, getSystemInfo, getSystemCapabilities } from "@/api/client";
 import type {
   SystemInfoResponse,
   SystemCapabilities,
+  RuntimeSummaryResponse,
 } from "@/types/settings";
-import type { BuildInfoResponse } from "@/api/client";
 
 interface SystemInfoProps {
   /** Whether to show in compact mode */
@@ -72,7 +72,7 @@ function CapabilityItem({ label, available }: CapabilityItemProps) {
 export function SystemInfo({ compact = false }: SystemInfoProps) {
   const [systemInfo, setSystemInfo] = useState<SystemInfoResponse | null>(null);
   const [capabilities, setCapabilities] = useState<SystemCapabilities | null>(null);
-  const [runtimeMode, setRuntimeMode] = useState<BuildInfoResponse["runtime_mode"] | null>(null);
+  const [runtimeSummary, setRuntimeSummary] = useState<RuntimeSummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -82,14 +82,14 @@ export function SystemInfo({ compact = false }: SystemInfoProps) {
     try {
       setIsLoading(true);
       setError(null);
-      const [infoResponse, capabilitiesResponse, buildInfoResponse] = await Promise.all([
+      const [infoResponse, capabilitiesResponse, runtimeResponse] = await Promise.all([
         getSystemInfo(),
         getSystemCapabilities(),
-        getBuildInfo(),
+        getRuntimeSummary(),
       ]);
       setSystemInfo(infoResponse);
       setCapabilities(capabilitiesResponse.capabilities);
-      setRuntimeMode(buildInfoResponse.runtime_mode);
+      setRuntimeSummary(runtimeResponse);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load system info");
     } finally {
@@ -101,6 +101,14 @@ export function SystemInfo({ compact = false }: SystemInfoProps) {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const handler = () => {
+      void loadData();
+    };
+    window.addEventListener("backend-restarted", handler);
+    return () => window.removeEventListener("backend-restarted", handler);
+  }, []);
+
   const copyToClipboard = async () => {
     if (!systemInfo || !capabilities) return;
 
@@ -108,8 +116,10 @@ export function SystemInfo({ compact = false }: SystemInfoProps) {
 System Information
 ==================
 Python Version: ${systemInfo.python.version}
-Python Executable: ${systemInfo.python.executable}
-Runtime Mode: ${runtimeMode ?? "unknown"}
+Configured Python: ${runtimeSummary?.configured_python ?? "Not reported"}
+Running Python: ${runtimeSummary?.running_python ?? systemInfo.python.executable}
+Runtime Kind: ${runtimeSummary?.runtime_kind ?? "unknown"}
+Configured Matches Running: ${runtimeSummary?.configured_matches_running ? "yes" : "no"}
 OS: ${systemInfo.system.os} ${systemInfo.system.release}
 Architecture: ${systemInfo.system.machine}
 nirs4all Version: ${systemInfo.nirs4all_version}
@@ -189,8 +199,12 @@ ${Object.entries(systemInfo.packages)
   }
 
   // Extract Python version (first part only, e.g., "3.11.5" from full string)
-  const pythonVersionMatch = systemInfo.python.version.match(/^(\d+\.\d+\.\d+)/);
-  const pythonVersion = pythonVersionMatch ? pythonVersionMatch[1] : systemInfo.python.version;
+  const pythonVersionMatch = (runtimeSummary?.runtime.version ?? systemInfo.python.version).match(/^(\d+\.\d+\.\d+)/);
+  const pythonVersion = pythonVersionMatch
+    ? pythonVersionMatch[1]
+    : (runtimeSummary?.runtime.version ?? systemInfo.python.version);
+  const configuredPython = runtimeSummary?.configured_python ?? systemInfo.python.executable;
+  const runningPython = runtimeSummary?.running_python ?? systemInfo.python.executable;
 
   // Key packages to display prominently
   const keyPackages = ["numpy", "pandas", "scikit-learn", "scipy"];
@@ -251,15 +265,42 @@ ${Object.entries(systemInfo.packages)
                 <span className="text-muted-foreground">Platform:</span>
                 <span>{systemInfo.python.platform}</span>
               </div>
-              {runtimeMode && (
+              {runtimeSummary?.runtime_kind && (
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Runtime:</span>
-                  <Badge variant="outline">{runtimeMode}</Badge>
+                  <span className="text-muted-foreground">Runtime Kind:</span>
+                  <Badge variant="outline">{runtimeSummary.runtime_kind}</Badge>
                 </div>
               )}
+              {runtimeSummary && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Match:</span>
+                    <Badge variant={runtimeSummary.configured_matches_running ? "outline" : "destructive"}>
+                      {runtimeSummary.configured_matches_running ? "Configured = Running" : "Mismatch"}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Core Ready:</span>
+                    <Badge variant={runtimeSummary.core_ready ? "default" : "destructive"}>
+                      {runtimeSummary.core_ready ? "Yes" : "No"}
+                    </Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Optional Gaps:</span>
+                    <span>{runtimeSummary.missing_optional_packages.length}</span>
+                  </div>
+                </>
+              )}
               {!compact && (
-                <div className="text-xs text-muted-foreground break-all mt-1">
-                  {systemInfo.python.executable}
+                <div className="space-y-2 text-xs text-muted-foreground break-all mt-2">
+                  <div>
+                    <p className="uppercase tracking-wide">Configured Python</p>
+                    <p>{configuredPython}</p>
+                  </div>
+                  <div>
+                    <p className="uppercase tracking-wide">Running Python</p>
+                    <p>{runningPython}</p>
+                  </div>
                 </div>
               )}
             </div>

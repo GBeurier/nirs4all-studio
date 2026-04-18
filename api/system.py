@@ -4,6 +4,7 @@ System API routes for nirs4all webapp.
 This module provides FastAPI routes for system health and information.
 """
 
+import json
 import os
 import platform
 import sys
@@ -11,6 +12,7 @@ import traceback
 import uuid
 from collections import deque
 from datetime import datetime
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -19,6 +21,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .node_registry_loader import load_editor_registry_reference
+from .recommended_config import (
+    _get_filtered_optional_config,
+    _load_active_raw_config,
+    _normalize_pkg_name,
+)
 from .shared.gpu_detection import detect_gpu_hardware
 from .venv_manager import venv_manager
 from .workspace_manager import workspace_manager
@@ -242,6 +249,100 @@ def _get_runtime_mode() -> str:
     return "development"
 
 
+CORE_RUNTIME_PACKAGES = ("fastapi", "uvicorn", "nirs4all")
+
+
+def _norm_path(path_value: str) -> str:
+    """Normalize a path for reliable cross-platform equality checks."""
+    return os.path.normcase(os.path.normpath(os.path.realpath(path_value)))
+
+
+def _load_desktop_env_settings() -> dict[str, Any] | None:
+    """Load Electron's persisted env-settings.json when available."""
+    settings_path = os.environ.get("NIRS4ALL_ENV_SETTINGS_PATH")
+    if not settings_path:
+        return None
+
+    try:
+        with open(settings_path, encoding="utf-8") as f:
+            loaded = json.load(f)
+    except Exception:
+        return None
+
+    return loaded if isinstance(loaded, dict) else None
+
+
+def _get_configured_python() -> str | None:
+    """Resolve the Python executable Electron is currently configured to use."""
+    settings = _load_desktop_env_settings()
+    configured = settings.get("pythonPath") if settings else None
+    if isinstance(configured, str) and configured.strip():
+        return configured.strip()
+
+    expected = os.environ.get("NIRS4ALL_EXPECTED_PYTHON", "").strip()
+    return expected or None
+
+
+def _get_runtime_kind() -> str:
+    """Return the backend runtime kind reported by Electron startup."""
+    runtime_kind = os.environ.get("NIRS4ALL_RUNTIME_KIND")
+    if runtime_kind:
+        return runtime_kind
+    return _get_runtime_mode()
+
+
+def _is_bundled_default_runtime() -> bool:
+    """Return whether the backend is still using the bundled default runtime."""
+    return os.environ.get("NIRS4ALL_IS_BUNDLED_DEFAULT", "").strip().lower() == "true"
+
+
+def _is_bundled_runtime_available() -> bool:
+    """Return whether Electron reported an embedded bundled runtime."""
+    return os.environ.get("NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE", "").strip().lower() == "true"
+
+
+def _get_installed_distribution_names() -> set[str]:
+    """Return normalized distribution names installed in the running interpreter."""
+    installed: set[str] = set()
+
+    try:
+        for dist in importlib_metadata.distributions():
+            name = dist.metadata.get("Name")
+            if name:
+                installed.add(_normalize_pkg_name(name))
+    except Exception:
+        pass
+
+    if _get_nirs4all_version() not in {"not installed", "unknown"}:
+        installed.add("nirs4all")
+
+    return installed
+
+
+def _get_missing_core_packages(installed_packages: set[str]) -> list[str]:
+    """Return backend-core package names missing from the running interpreter."""
+    return [
+        package_name
+        for package_name in CORE_RUNTIME_PACKAGES
+        if _normalize_pkg_name(package_name) not in installed_packages
+    ]
+
+
+def _get_missing_optional_packages(installed_packages: set[str]) -> list[str]:
+    """Return optional runtime packages missing from the running interpreter."""
+    try:
+        raw_config = _load_active_raw_config()
+        optional_config = _get_filtered_optional_config(raw_config)
+    except Exception:
+        return []
+
+    return [
+        package_name
+        for package_name in optional_config
+        if _normalize_pkg_name(package_name) not in installed_packages
+    ]
+
+
 def _get_gpu_info() -> dict[str, Any]:
     """Get detailed GPU information."""
     detected = detect_gpu_hardware()
@@ -435,36 +536,37 @@ async def system_paths():
 
 @router.get("/system/env-coherence")
 async def check_env_coherence() -> dict[str, Any]:
-    """Check if VenvManager target matches the running Python interpreter.
-
-    Returns coherence status so the frontend can warn about mismatches
-    that would cause "installed but can't import" bugs.
-
-    Returns:
-        Dictionary with keys:
-
-        - ``coherent`` (bool): True if VenvManager matches runtime.
-        - ``python_match`` (bool): Python executable paths match after normalization.
-        - ``prefix_match`` (bool): sys.prefix / venv_path match after normalization.
-        - ``runtime`` (dict): ``{python, prefix, version}`` of the running interpreter.
-        - ``venv_manager`` (dict): ``{python, prefix}``.
-        - ``electron_expected_python`` (str, optional): From ``NIRS4ALL_EXPECTED_PYTHON`` env var.
-        - ``electron_match`` (bool, optional): Whether Electron's expected Python matches runtime.
-    """
+    """Return the runtime summary used by desktop environment diagnostics."""
     vm_python = str(venv_manager.python_executable)
     runtime_python = sys.executable
     vm_prefix = str(venv_manager.venv_path)
     runtime_prefix = sys.prefix
+    configured_python = _get_configured_python()
+    configured_matches_running = (
+        True if not configured_python else _norm_path(configured_python) == _norm_path(runtime_python)
+    )
+    python_match = _norm_path(vm_python) == _norm_path(runtime_python)
+    prefix_match = _norm_path(vm_prefix) == _norm_path(runtime_prefix)
+    installed_packages = _get_installed_distribution_names()
+    missing_core_packages = _get_missing_core_packages(installed_packages)
+    missing_optional_packages = _get_missing_optional_packages(installed_packages)
 
-    def norm(p: str) -> str:
-        return os.path.normcase(os.path.normpath(os.path.realpath(p)))
+    import main as _main_module
 
-    python_match = norm(vm_python) == norm(runtime_python)
-    prefix_match = norm(vm_prefix) == norm(runtime_prefix)
-    coherent = python_match and prefix_match
+    coherent = configured_matches_running
 
     result: dict[str, Any] = {
         "coherent": coherent,
+        "configured_python": configured_python,
+        "running_python": runtime_python,
+        "running_prefix": runtime_prefix,
+        "runtime_kind": _get_runtime_kind(),
+        "is_bundled_default": _is_bundled_default_runtime(),
+        "bundled_runtime_available": _is_bundled_runtime_available(),
+        "configured_matches_running": configured_matches_running,
+        "core_ready": _main_module.startup_complete and not missing_core_packages,
+        "missing_core_packages": missing_core_packages,
+        "missing_optional_packages": missing_optional_packages,
         "python_match": python_match,
         "prefix_match": prefix_match,
         "runtime": {
@@ -478,11 +580,9 @@ async def check_env_coherence() -> dict[str, Any]:
         },
     }
 
-    # Include expected Python from Electron if available
-    expected = os.environ.get("NIRS4ALL_EXPECTED_PYTHON")
-    if expected:
-        result["electron_expected_python"] = expected
-        result["electron_match"] = norm(expected) == norm(runtime_python)
+    if configured_python:
+        result["electron_expected_python"] = configured_python
+        result["electron_match"] = configured_matches_running
 
     return result
 

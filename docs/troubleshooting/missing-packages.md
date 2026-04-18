@@ -6,48 +6,63 @@ A package is shown as installed in **Settings > Advanced > Dependencies** but tr
 
 ## Cause
 
-The package manager may be targeting a different Python environment than the one running the backend. This happens when:
-- A custom venv path was set but the backend wasn't restarted
-- The Electron app switched Python environments but stale settings remain
+The app may be configured for one Python interpreter while the backend is still
+running under another. This happens when:
+
+- the user selected a different Python runtime but the backend has not restarted yet
+- the configured interpreter is stale or no longer valid
 - A package was installed via `pip` in a terminal instead of through the app
 
 ## Diagnosis
 
-1. Go to **Settings > Advanced > Dependencies**
-2. Look for the amber **"Environment mismatch detected"** banner at the top
-3. Check the **Runtime** information shown below the Python Environment path
+1. Go to **Settings > Advanced > Python Runtime**
+2. Compare **Configured Python** and **Running Python**
+3. Check whether the card shows **Configured = Running** or **Mismatch**
+4. If needed, call `GET /api/system/env-coherence`
 
-If the banner is present, the package manager and the running backend are targeting different environments.
+Useful fields:
+
+- `configured_python`
+- `running_python`
+- `configured_matches_running`
+- `missing_core_packages`
+- `missing_optional_packages`
 
 ## Solutions
 
-### Quick Fix: Reset to Current Environment
+### Re-run the Python Switch Flow
 
-Click **"Reset to Current Environment"** in the mismatch banner. This aligns the package manager with the running backend so that packages installed through the UI will be importable.
+Open **Settings > Advanced > Python Runtime**, select the intended runtime
+again, and complete the switch flow. This revalidates the interpreter and
+restarts the backend under it.
 
-### Restart Backend
+### Restart the Backend
 
-Click **"Restart Backend"** (or restart the app). This restarts the backend process using the configured Python environment, ensuring packages and runtime match.
+If the configured runtime is already correct, restart the backend or relaunch
+the app so **Configured Python** and **Running Python** match.
 
 ### Manual Fix
 
 If the above don't resolve the issue:
-1. Note the "Runtime" Python path shown in the coherence information
+1. Note the **Running Python** path shown in Python Runtime or `/api/system/env-coherence`
 2. Open a terminal and run: `<runtime-python-path> -m pip install <package>`
 3. Restart the backend
 
 ### Verify the Fix
 
 After applying any fix:
-1. Check that the mismatch banner is gone
+1. Check that **Configured = Running** is shown
 2. Verify the package shows as installed in Dependencies
 3. Try running your pipeline again
 
 ## Special Modes
 
-### Standalone Mode
+### Bundled Embedded Runtime
 
-In standalone (bundled) mode, packages cannot be installed or removed. The bundled environment is read-only. If you need additional packages, use the installed (non-standalone) version of the application.
+If the bundled build is still using its embedded Python runtime, package
+mutation is blocked because that embedded runtime is read-only. Switch to an
+external Python runtime in **Settings > Advanced > Python Runtime** if you need
+to install packages.
 
 ### Docker Mode
 

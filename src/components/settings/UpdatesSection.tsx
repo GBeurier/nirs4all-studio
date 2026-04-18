@@ -8,7 +8,7 @@
  * - Update settings
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Download,
@@ -20,7 +20,6 @@ import {
   ExternalLink,
   ChevronDown,
   Loader2,
-  FolderOpen,
   HardDrive,
   XCircle,
   RotateCcw,
@@ -62,7 +61,6 @@ import {
   useUpdateUpdateSettings,
   useVenvStatus,
   useInstallNirs4all,
-  useCreateVenv,
   useUpdateDownload,
   useStagedUpdate,
   formatBytes,
@@ -74,13 +72,13 @@ import {
   restoreSnapshot,
   deleteSnapshot,
   getWebappChangelog,
-  getBuildInfo,
+  getRuntimeSummary,
   requestRestart,
   resetBackendUrl,
-  type ConfigSnapshot,
-  type ChangelogEntry,
+  type RuntimeSummaryResponse,
 } from "@/api/client";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
+import { getPythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
 
 export function UpdatesSection() {
   const queryClient = useQueryClient();
@@ -92,7 +90,6 @@ export function UpdatesSection() {
   const checkMutation = useCheckForUpdates();
   const settingsMutation = useUpdateUpdateSettings();
   const installMutation = useInstallNirs4all();
-  const createVenvMutation = useCreateVenv();
 
   // Auto-update download/apply state
   const updateDownload = useUpdateDownload();
@@ -136,8 +133,13 @@ export function UpdatesSection() {
   const [webappDialogOpen, setWebappDialogOpen] = useState(false);
   const [applyConfirmOpen, setApplyConfirmOpen] = useState(false);
   const [needsRestart, setNeedsRestart] = useState(false);
-  const [runtimeMode, setRuntimeMode] = useState<"development" | "managed" | "bundled" | "pyinstaller">("development");
-  const isReadOnlyRuntime = runtimeMode === "bundled" || runtimeMode === "pyinstaller";
+  const [runtimeSummary, setRuntimeSummary] = useState<RuntimeSummaryResponse | null>(null);
+
+  const loadRuntimeSummary = useCallback(() => {
+    void getRuntimeSummary()
+      .then((summary) => setRuntimeSummary(summary))
+      .catch(() => setRuntimeSummary(null));
+  }, []);
 
   // Reload after backend restart (e.g., env change in PythonEnvPicker)
   useEffect(() => {
@@ -146,17 +148,16 @@ export function UpdatesSection() {
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["updates"] });
         queryClient.invalidateQueries({ queryKey: ["snapshots"] });
+        loadRuntimeSummary();
       }, 2000);
     };
     window.addEventListener("backend-restarted", handler);
     return () => window.removeEventListener("backend-restarted", handler);
-  }, [queryClient]);
+  }, [loadRuntimeSummary, queryClient]);
 
   useEffect(() => {
-    getBuildInfo()
-      .then((info) => setRuntimeMode(info.runtime_mode))
-      .catch(() => {});
-  }, []);
+    loadRuntimeSummary();
+  }, [loadRuntimeSummary]);
 
   const isLoading = statusLoading || settingsLoading;
 
@@ -208,6 +209,13 @@ export function UpdatesSection() {
   const hasWebappUpdate = status?.webapp?.update_available ?? false;
   const hasNirs4allUpdate = status?.nirs4all?.update_available ?? false;
   const hasAnyUpdate = hasWebappUpdate || hasNirs4allUpdate;
+  const runtimeDisplay = getPythonRuntimeDisplayState(runtimeSummary);
+  const isReadOnlyRuntime = runtimeDisplay.isReadOnly;
+  const currentRuntime = venvStatus?.runtime ?? venvStatus?.venv;
+  const runtimeExecutablePath =
+    runtimeSummary?.running_python
+    ?? currentRuntime?.python_executable
+    ?? "Unavailable";
 
   const handleAutoCheckToggle = (checked: boolean) => {
     settingsMutation.mutate({ auto_check: checked });
@@ -293,9 +301,18 @@ export function UpdatesSection() {
           <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
             <AlertCircle className="h-4 w-4 text-blue-600" />
             <AlertDescription>
-              {runtimeMode === "bundled"
-                ? "This all-in-one bundle runs from an embedded Python runtime. Environment creation, nirs4all installs, and snapshot restores are disabled in this read-only mode."
-                : "This packaged backend runtime is read-only. Environment creation and package mutations are disabled in this mode."}
+              {runtimeDisplay.isBundledEmbedded
+                ? "This bundled build is still using its embedded Python runtime. nirs4all installs and snapshot restores are disabled because the embedded runtime is read-only."
+                : "This packaged backend runtime is read-only. Package mutations are disabled in this mode."}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {runtimeDisplay.isBundledExternal && (
+          <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertDescription>
+              This bundled build is running on an external Python runtime. Package installs, updates, and snapshot restores now apply to that external environment.
             </AlertDescription>
           </Alert>
         )}
@@ -376,7 +393,7 @@ export function UpdatesSection() {
                   )}
                 </>
               ) : (
-                <span className="text-amber-600">Not installed in managed venv</span>
+                <span className="text-amber-600">Not installed in current runtime</span>
               )}
             </div>
           </div>
@@ -406,20 +423,21 @@ export function UpdatesSection() {
           </p>
         )}
 
-        {/* Managed Venv Section */}
+        {/* Current Runtime Section */}
         <Collapsible open={venvOpen} onOpenChange={setVenvOpen}>
           <CollapsibleTrigger asChild>
             <Button variant="ghost" className="w-full justify-between p-2 h-auto">
               <span className="text-sm font-medium flex items-center gap-2">
                 <HardDrive className="h-4 w-4" />
-                Managed Environment
+                Current Python Runtime
               </span>
               <div className="flex items-center gap-2">
-                {venvStatus?.venv?.is_valid ? (
-                  <Badge variant="outline" className="text-green-600">Active</Badge>
+                {currentRuntime?.is_valid ? (
+                  <Badge variant="outline" className="text-green-600">Ready</Badge>
                 ) : (
-                  <Badge variant="outline" className="text-amber-600">Not configured</Badge>
+                  <Badge variant="outline" className="text-amber-600">Unavailable</Badge>
                 )}
+                <Badge variant="secondary" className="text-xs">{runtimeDisplay.label}</Badge>
                 <ChevronDown className={`h-4 w-4 transition-transform ${venvOpen ? "rotate-180" : ""}`} />
               </div>
             </Button>
@@ -427,11 +445,21 @@ export function UpdatesSection() {
           <CollapsibleContent className="pt-2 space-y-3">
             {venvLoading ? (
               <Skeleton className="h-20 w-full" />
-            ) : venvStatus?.venv?.is_valid ? (
+            ) : currentRuntime?.is_valid ? (
               <div className="space-y-2 p-3 bg-muted/30 rounded-lg text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Python:</span>
-                  <span className="font-mono">{venvStatus.venv.python_version}</span>
+                  <span className="font-mono">{currentRuntime.python_version}</span>
+                </div>
+                <div className="flex justify-between items-start gap-4">
+                  <span className="text-muted-foreground">Runtime:</span>
+                  <span className="text-right max-w-[60%]">{runtimeDisplay.label}</span>
+                </div>
+                <div className="flex justify-between items-start gap-4">
+                  <span className="text-muted-foreground">Python executable:</span>
+                  <span className="font-mono text-xs break-all text-right max-w-[60%]">
+                    {runtimeExecutablePath}
+                  </span>
                 </div>
                 <div className="flex justify-between items-start gap-4">
                   <span className="text-muted-foreground">Detected GPU:</span>
@@ -470,16 +498,16 @@ export function UpdatesSection() {
                 )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Size:</span>
-                  <span>{formatBytes(venvStatus.venv.size_bytes)}</span>
+                  <span>{formatBytes(currentRuntime.size_bytes)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Packages:</span>
                   <span>{venvStatus.packages?.length || 0} installed</span>
                 </div>
                 <div className="flex justify-between items-start">
-                  <span className="text-muted-foreground">Path:</span>
+                  <span className="text-muted-foreground">Environment root:</span>
                   <span className="font-mono text-xs break-all text-right max-w-[60%]">
-                    {venvStatus.venv.path}
+                    {currentRuntime.path}
                   </span>
                 </div>
               </div>
@@ -487,21 +515,7 @@ export function UpdatesSection() {
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  The managed virtual environment is not configured. Create one to enable independent nirs4all updates.
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="ml-4"
-                    onClick={() => createVenvMutation.mutate({ install_nirs4all: true })}
-                    disabled={createVenvMutation.isPending || isReadOnlyRuntime}
-                  >
-                    {createVenvMutation.isPending ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <FolderOpen className="mr-2 h-4 w-4" />
-                    )}
-                    Create Environment
-                  </Button>
+                  The current Python runtime is not valid. Use the Python Runtime section above to select or create a runtime before installing packages or restoring snapshots.
                 </AlertDescription>
               </Alert>
             )}
@@ -533,7 +547,7 @@ export function UpdatesSection() {
                 variant="outline"
                 size="sm"
                 onClick={() => createSnapshotMutation.mutate(undefined)}
-                disabled={createSnapshotMutation.isPending || !venvStatus?.venv?.is_valid}
+                disabled={createSnapshotMutation.isPending || !currentRuntime?.is_valid}
               >
                 {createSnapshotMutation.isPending ? (
                   <Loader2 className="mr-2 h-3 w-3 animate-spin" />
@@ -922,7 +936,7 @@ export function UpdatesSection() {
             <DialogDescription>
               {status?.nirs4all?.current_version
                 ? `Update from ${status.nirs4all.current_version} to ${status.nirs4all.latest_version}`
-                : `Install nirs4all ${status?.nirs4all?.latest_version} in the managed environment`}
+                : `Install nirs4all ${status?.nirs4all?.latest_version} in the current runtime`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -935,7 +949,7 @@ export function UpdatesSection() {
               </div>
             )}
             <p className="text-sm text-muted-foreground">
-              This will install/upgrade nirs4all in the managed virtual environment.
+              This will install or upgrade nirs4all in the current Python runtime.
               A backend restart may be required afterward.
             </p>
           </div>

@@ -13,12 +13,16 @@ Pre-release verification steps for the Python environment management system.
 ## Manual — Environment Coherence
 
 - [ ] **Fresh install**: wizard shows, managed env created, backend starts, dependencies page shows installed packages
-- [ ] **Custom Python path**: select via wizard, backend restarts, coherence reports `coherent: true`
-- [ ] **Custom venv path**: set via Settings > Advanced, `requires_restart: true` reported, restart makes it active
-- [ ] **Reset to default**: POST `/api/updates/venv/reset` clears custom path, coherence reports match
-- [ ] **Mismatch banner**: shows amber "Environment mismatch detected" when VenvManager targets a different env
-- [ ] **Mismatch actions**: "Reset to Current Environment" and "Restart Backend" buttons work
-- [ ] **Standalone mode**: install/uninstall buttons disabled, "Package management not available" banner shown
+- [ ] **Existing local venv**: select it in the wizard or Settings, inspect it first, then restart into it; `/api/system/env-coherence` reports `configured_matches_running: true`
+- [ ] **Conda env**: detected or browsed, inspected before switch, backend restarts into it
+- [ ] **Missing core packages / refuse install**: inspect existing Python, refuse install, runtime does not switch
+- [ ] **Missing core packages / accept install**: inspect existing Python, install core packages explicitly, runtime switches successfully after restart
+- [ ] **Mismatch state**: Python Runtime card shows distinct configured and running paths when Electron is configured for a different interpreter than the running backend
+- [ ] **Preflight mismatch**: `POST /api/runs/preflight` reports `env_mismatch` when configured and running Python differ
+- [ ] **Optional-package gap**: runtime can still run supported pipelines even when unrelated optional packages are missing
+- [ ] **Bundled default runtime**: bundled build starts on embedded runtime and shows the embedded-runtime warning
+- [ ] **Bundled to external switch**: bundled build can switch to external Python; backend restarts under that interpreter and package actions target the external runtime
+- [ ] **Switch back to managed runtime**: create a managed runtime from Settings and confirm it becomes the configured backend runtime again
 
 ## Manual — Portable Mode
 
@@ -29,8 +33,7 @@ Pre-release verification steps for the Python environment management system.
 
 ## Manual — Electron-Specific
 
-- [ ] `clearBackendVenvSettings()` runs on production startup (check console/log output)
-- [ ] Environment change in wizard clears `venv_settings.json`
+- [ ] `env-settings.json` persists only `pythonPath`, wizard metadata, and portable skip state
 - [ ] macOS: quarantine attribute removed from python-build-standalone binary
 
 ## Manual — Cross-Platform
@@ -48,6 +51,5 @@ Pre-release verification steps for the Python environment management system.
 
 ## Release Artifact Checks
 
-- [ ] `venv_settings.json` is NOT included in any release artifact
 - [ ] `env-settings.json` is NOT included in any release artifact
 - [ ] Backend source files are properly copied (verify `backend-dist/main.py` exists)

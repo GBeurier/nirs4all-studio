@@ -17,12 +17,11 @@ describe("python-runtime-config", () => {
   it("keeps the standalone v1 scope pinned to the cpu profile extras", () => {
     expect(runtimeConfig.STANDALONE_V1_PROFILE).toBe("cpu");
     expect(runtimeConfig.PRODUCT_PROFILES.cpu.extraPackageNames).toEqual([
-      "xgboost",
-      "lightgbm",
-      "trendfitter",
       "pyopls",
-      "shap",
+      "trendfitter",
+      "xgboost",
       "umap-learn",
+      "torch",
     ]);
   });
 

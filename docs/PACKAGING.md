@@ -21,7 +21,7 @@ The project now publishes three desktop distribution families plus Docker:
 |---|---|---|---|
 | Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + backend source; Python environment is writable and managed outside the app bundle |
 | Portable Windows | Windows x64 | `-portable.exe` | Electron portable layout with state under `.nirs4all/` next to the executable |
-| All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` on Windows/macOS, `-all-in-one-*.tar.gz` on Linux | Electron + backend source + embedded `python-runtime/python`; runtime is read-only |
+| All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` on Windows/macOS, `-all-in-one-*.tar.gz` on Linux | Electron + backend source + embedded `python-runtime/python`; embedded runtime is the default and is read-only until the user switches away |
 | Docker | Linux | `ghcr.io/gbeurier/nirs4all-studio:*` | No Electron; FastAPI serves the UI |
 
 For the desktop all-in-one bundle, v1 is deliberately locked to a single product profile:
@@ -82,7 +82,10 @@ resources/
         └── RUNTIME_READY.json
 ```
 
-The bundled runtime is immutable in v1. Package installation, environment creation, snapshot restore, and config alignment mutations are disabled for this mode.
+While the app is still running on the embedded bundled runtime, package
+installation, runtime creation, snapshot restore, and config alignment
+mutations are disabled. Users may still switch the bundled app to an external
+Python runtime; after that switch, mutations target the external runtime.
 
 ## Runtime Modes
 

@@ -6,6 +6,7 @@ import json
 import platform
 import shutil
 import subprocess
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ WINDOWS_NVIDIA_SMI_CANDIDATES = (
     Path(r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"),
     Path(r"C:\Windows\System32\nvidia-smi.exe"),
 )
+GPU_DETECTION_CACHE_TTL_SECONDS = 15.0
 
 
 @dataclass
@@ -32,6 +34,17 @@ class GPUHardwareInfo:
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dict."""
         return asdict(self)
+
+
+@dataclass
+class _GPUDetectionCacheEntry:
+    """Cached GPU detection payload with expiration time."""
+
+    info: GPUHardwareInfo
+    expires_at: float
+
+
+_gpu_detection_cache: _GPUDetectionCacheEntry | None = None
 
 
 def _run_command(command: list[str], timeout: int = 5) -> str | None:
@@ -170,6 +183,12 @@ def _detect_with_torch() -> dict[str, Any]:
 
 def detect_gpu_hardware() -> GPUHardwareInfo:
     """Detect physical GPU hardware plus runtime CUDA availability."""
+    global _gpu_detection_cache
+
+    now = time.monotonic()
+    if _gpu_detection_cache and now < _gpu_detection_cache.expires_at:
+        return GPUHardwareInfo(**_gpu_detection_cache.info.to_dict())
+
     info = GPUHardwareInfo()
 
     torch_info = _detect_with_torch()
@@ -196,5 +215,10 @@ def detect_gpu_hardware() -> GPUHardwareInfo:
 
     if info.cuda_version is None and info.torch_cuda_available:
         info.cuda_version = torch_info.get("cuda_version")
+
+    _gpu_detection_cache = _GPUDetectionCacheEntry(
+        info=GPUHardwareInfo(**info.to_dict()),
+        expires_at=now + GPU_DETECTION_CACHE_TTL_SECONDS,
+    )
 
     return info

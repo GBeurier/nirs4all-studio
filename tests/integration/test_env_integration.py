@@ -1,13 +1,6 @@
-"""
-Integration tests for environment coherence — end-to-end without mocking.
+"""Integration tests for the runtime summary and preflight endpoints."""
 
-These tests exercise the real coherence endpoint and verify that the running
-test environment reports consistent state across endpoints.
-
-Requires: fastapi, uvicorn (test dependencies).
-Does NOT require: nirs4all (tests use only system/env endpoints).
-"""
-
+import json
 import os
 import sys
 
@@ -24,6 +17,7 @@ class TestCoherenceIntegration:
         data = response.json()
 
         assert data["coherent"] is True
+        assert data["configured_matches_running"] is True
         assert data["python_match"] is True
         assert data["prefix_match"] is True
 
@@ -56,6 +50,20 @@ class TestCoherenceIntegration:
         assert len(parts) == 3
         assert all(p.isdigit() for p in parts)
 
+    def test_runtime_summary_includes_new_contract_fields(self, client):
+        """Runtime summary should expose configured/running state explicitly."""
+        response = client.get("/api/system/env-coherence")
+        data = response.json()
+
+        assert "configured_python" in data
+        assert "running_python" in data
+        assert "running_prefix" in data
+        assert "runtime_kind" in data
+        assert "is_bundled_default" in data
+        assert "core_ready" in data
+        assert isinstance(data["missing_core_packages"], list)
+        assert isinstance(data["missing_optional_packages"], list)
+
     def test_build_info_not_frozen(self, client):
         """In normal test env, is_frozen should be False."""
         response = client.get("/api/system/build")
@@ -81,6 +89,30 @@ class TestPreflightCoherenceIntegration:
         # Env is coherent in test → should be ready
         assert data["ready"] is True
         assert data["issues"] == []
+
+    def test_preflight_reports_configured_vs_running_mismatch(self, client, tmp_path):
+        """A stale configured Python should surface as env_mismatch in preflight."""
+        settings_path = tmp_path / "env-settings.json"
+        settings_path.write_text(
+            json.dumps({"pythonPath": str(tmp_path / "different-python")}),
+            encoding="utf-8",
+        )
+
+        original_settings_path = os.environ.get("NIRS4ALL_ENV_SETTINGS_PATH")
+        try:
+            os.environ["NIRS4ALL_ENV_SETTINGS_PATH"] = str(settings_path)
+            response = client.post("/api/runs/preflight", json={"pipeline_ids": []})
+        finally:
+            if original_settings_path is None:
+                os.environ.pop("NIRS4ALL_ENV_SETTINGS_PATH", None)
+            else:
+                os.environ["NIRS4ALL_ENV_SETTINGS_PATH"] = original_settings_path
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["ready"] is False
+        assert any(issue["type"] == "env_mismatch" for issue in data["issues"])
 
 
 # ============= Dependencies + Coherence Consistency =============
@@ -109,4 +141,5 @@ class TestDependenciesCoherenceConsistency:
 
         # In the default test env, coherence should pass and venv should be valid
         assert coherence["coherent"] is True
+        assert coherence["configured_matches_running"] is True
         assert deps["venv_valid"] is True

@@ -1,195 +1,123 @@
 /**
- * DependenciesManager Component Tests
- *
- * Logic-level tests for the coherence banner, standalone mode banner,
- * and button state decisions in the DependenciesManager component.
- *
- * These tests verify the conditional rendering logic (which combinations
- * of state produce which UI elements) without full DOM rendering.
- *
  * @vitest-environment jsdom
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
-// ============= EnvCoherence Interface Shape =============
+import { getPythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
+import type { RuntimeSummaryResponse } from "@/types/settings";
 
-interface EnvCoherence {
-  coherent: boolean;
-  python_match: boolean;
-  prefix_match: boolean;
-  runtime: { python: string; prefix: string; version: string };
-  venv_manager: {
-    python: string;
-    prefix: string;
-    is_custom: boolean;
-    custom_path: string | null;
-    has_pending_change: boolean;
+function buildRuntimeSummary(
+  overrides: Partial<RuntimeSummaryResponse> = {},
+): RuntimeSummaryResponse {
+  return {
+    coherent: true,
+    configured_python: "/configured/python",
+    running_python: "/configured/python",
+    running_prefix: "/configured",
+    runtime_kind: "managed",
+    is_bundled_default: false,
+    bundled_runtime_available: false,
+    configured_matches_running: true,
+    core_ready: true,
+    missing_core_packages: [],
+    missing_optional_packages: [],
+    python_match: true,
+    prefix_match: true,
+    runtime: {
+      python: "/configured/python",
+      prefix: "/configured",
+      version: "3.11.9",
+    },
+    venv_manager: {
+      python: "/configured/python",
+      prefix: "/configured",
+    },
+    ...overrides,
   };
 }
 
-// ============= Coherence Banner Logic =============
-
-/**
- * Mirrors the DependenciesManager rendering logic:
- * - Show mismatch banner when coherent=false AND runtime is writable
- * - Show standalone banner when runtime is bundled/pyinstaller
- * - Disable mutation buttons when runtime is bundled/pyinstaller
- */
-type RuntimeMode = "development" | "managed" | "bundled" | "pyinstaller";
-
-function isReadOnlyRuntime(runtimeMode: RuntimeMode): boolean {
-  return runtimeMode === "bundled" || runtimeMode === "pyinstaller";
+function areMutationButtonsDisabled(summary: RuntimeSummaryResponse | null): boolean {
+  return getPythonRuntimeDisplayState(summary).isReadOnly;
 }
 
-function shouldShowMismatchBanner(
-  coherence: EnvCoherence | null,
-  runtimeMode: RuntimeMode,
-): boolean {
-  if (isReadOnlyRuntime(runtimeMode)) return false;
-  if (!coherence) return false;
-  return !coherence.coherent;
-}
-
-function shouldShowStandaloneBanner(runtimeMode: RuntimeMode): boolean {
-  return isReadOnlyRuntime(runtimeMode);
-}
-
-function areMutationButtonsDisabled(runtimeMode: RuntimeMode): boolean {
-  return isReadOnlyRuntime(runtimeMode);
-}
-
-// ============= Tests =============
-
-describe("DependenciesManager", () => {
-  describe("Coherence Banner Logic", () => {
-    it("should show mismatch banner when coherent=false and not frozen", () => {
-      const coherence: EnvCoherence = {
-        coherent: false,
-        python_match: false,
-        prefix_match: false,
-        runtime: { python: "/usr/bin/python3", prefix: "/usr", version: "3.11.0" },
-        venv_manager: {
-          python: "/other/python",
-          prefix: "/other",
-          is_custom: true,
-          custom_path: "/other",
-          has_pending_change: false,
-        },
-      };
-
-      expect(shouldShowMismatchBanner(coherence, "managed")).toBe(true);
+describe("DependenciesManager runtime display rules", () => {
+  it("treats the bundled embedded runtime as read-only", () => {
+    const summary = buildRuntimeSummary({
+      runtime_kind: "bundled",
+      is_bundled_default: true,
+      bundled_runtime_available: true,
     });
 
-    it("should hide mismatch banner when coherent=true", () => {
-      const coherence: EnvCoherence = {
-        coherent: true,
-        python_match: true,
-        prefix_match: true,
-        runtime: { python: "/usr/bin/python3", prefix: "/usr", version: "3.11.0" },
-        venv_manager: {
-          python: "/usr/bin/python3",
-          prefix: "/usr",
-          is_custom: false,
-          custom_path: null,
-          has_pending_change: false,
-        },
-      };
+    const display = getPythonRuntimeDisplayState(summary);
 
-      expect(shouldShowMismatchBanner(coherence, "managed")).toBe(false);
-    });
-
-    it("should hide mismatch banner when coherence data is null", () => {
-      expect(shouldShowMismatchBanner(null, "managed")).toBe(false);
-    });
-
-    it("should hide mismatch banner in standalone mode even if incoherent", () => {
-      const coherence: EnvCoherence = {
-        coherent: false,
-        python_match: false,
-        prefix_match: false,
-        runtime: { python: "/usr/bin/python3", prefix: "/usr", version: "3.11.0" },
-        venv_manager: {
-          python: "/other/python",
-          prefix: "/other",
-          is_custom: true,
-          custom_path: "/other",
-          has_pending_change: false,
-        },
-      };
-
-      // Standalone mode takes priority — no point showing mismatch
-      // when the user cannot install packages anyway
-      expect(shouldShowMismatchBanner(coherence, "bundled")).toBe(false);
-    });
+    expect(display.label).toBe("Bundled embedded runtime");
+    expect(display.isBundledEmbedded).toBe(true);
+    expect(display.isBundledExternal).toBe(false);
+    expect(areMutationButtonsDisabled(summary)).toBe(true);
   });
 
-  describe("Standalone Mode Banner Logic", () => {
-    it("should show standalone banner when runtime_mode is bundled", () => {
-      expect(shouldShowStandaloneBanner("bundled")).toBe(true);
+  it("treats a bundled build running on an external runtime as writable", () => {
+    const summary = buildRuntimeSummary({
+      runtime_kind: "custom",
+      is_bundled_default: false,
+      bundled_runtime_available: true,
+      running_python: "/external/python",
+      running_prefix: "/external",
+      runtime: {
+        python: "/external/python",
+        prefix: "/external",
+        version: "3.11.9",
+      },
+      venv_manager: {
+        python: "/external/python",
+        prefix: "/external",
+      },
     });
 
-    it("should also show standalone banner for the legacy pyinstaller runtime", () => {
-      expect(shouldShowStandaloneBanner("pyinstaller")).toBe(true);
-    });
+    const display = getPythonRuntimeDisplayState(summary);
 
-    it("should hide standalone banner for writable runtimes", () => {
-      expect(shouldShowStandaloneBanner("development")).toBe(false);
-      expect(shouldShowStandaloneBanner("managed")).toBe(false);
-    });
+    expect(display.label).toBe("External user-selected runtime");
+    expect(display.isBundledEmbedded).toBe(false);
+    expect(display.isBundledExternal).toBe(true);
+    expect(areMutationButtonsDisabled(summary)).toBe(false);
   });
 
-  describe("Button States", () => {
-    it("should disable install/uninstall buttons when runtime is read-only", () => {
-      expect(areMutationButtonsDisabled("bundled")).toBe(true);
-      expect(areMutationButtonsDisabled("pyinstaller")).toBe(true);
+  it("keeps a normal custom runtime writable even when configured and running differ", () => {
+    const summary = buildRuntimeSummary({
+      runtime_kind: "custom",
+      configured_matches_running: false,
+      coherent: false,
+      configured_python: "/configured/python",
+      running_python: "/running/python",
+      running_prefix: "/running",
+      runtime: {
+        python: "/running/python",
+        prefix: "/running",
+        version: "3.11.9",
+      },
+      venv_manager: {
+        python: "/running/python",
+        prefix: "/running",
+      },
     });
 
-    it("should enable install/uninstall buttons when runtime is writable", () => {
-      expect(areMutationButtonsDisabled("development")).toBe(false);
-      expect(areMutationButtonsDisabled("managed")).toBe(false);
-    });
+    const display = getPythonRuntimeDisplayState(summary);
+
+    expect(display.label).toBe("User-selected runtime");
+    expect(display.isReadOnly).toBe(false);
+    expect(summary.configured_matches_running).toBe(false);
   });
 
-  describe("EnvCoherence Interface", () => {
-    it("should include all expected fields in coherent response", () => {
-      const coherence: EnvCoherence = {
-        coherent: true,
-        python_match: true,
-        prefix_match: true,
-        runtime: { python: "/usr/bin/python3", prefix: "/usr", version: "3.11.9" },
-        venv_manager: {
-          python: "/usr/bin/python3",
-          prefix: "/usr",
-          is_custom: false,
-          custom_path: null,
-          has_pending_change: false,
-        },
-      };
-
-      expect(coherence.coherent).toBe(true);
-      expect(coherence.runtime.version).toBe("3.11.9");
-      expect(coherence.venv_manager.is_custom).toBe(false);
-      expect(coherence.venv_manager.has_pending_change).toBe(false);
+  it("treats the legacy packaged backend runtime as read-only", () => {
+    const summary = buildRuntimeSummary({
+      runtime_kind: "pyinstaller",
     });
 
-    it("should represent pending path change correctly", () => {
-      const coherence: EnvCoherence = {
-        coherent: true, // Still coherent because change is pending, not active
-        python_match: true,
-        prefix_match: true,
-        runtime: { python: "/usr/bin/python3", prefix: "/usr", version: "3.11.0" },
-        venv_manager: {
-          python: "/usr/bin/python3",
-          prefix: "/usr",
-          is_custom: false,
-          custom_path: null,
-          has_pending_change: true,
-        },
-      };
+    const display = getPythonRuntimeDisplayState(summary);
 
-      expect(coherence.coherent).toBe(true);
-      expect(coherence.venv_manager.has_pending_change).toBe(true);
-    });
+    expect(display.label).toBe("Packaged backend runtime");
+    expect(display.isPyInstaller).toBe(true);
+    expect(areMutationButtonsDisabled(summary)).toBe(true);
   });
 });

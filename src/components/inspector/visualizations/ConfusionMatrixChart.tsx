@@ -8,6 +8,7 @@
  */
 
 import { useMemo, useState, useRef, useEffect, type ComponentType } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import type { ConfusionMatrixResponse, ConfusionMatrixCell } from '@/types/inspector';
 
@@ -348,17 +349,19 @@ export function ConfusionMatrixChart({ data, isLoading }: ConfusionMatrixChartPr
         </svg>
       </div>
 
-      {hovered && (
-        <div
-          className="fixed z-50 pointer-events-none rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
-          style={{ left: hovered.mouseX + 12, top: hovered.mouseY - 52 }}
-        >
-          <div className="font-medium">{hovered.true_label} → {hovered.pred_label}</div>
-          <div>Count: {hovered.count}</div>
-          {hovered.normalized != null && <div>Normalized: {(hovered.normalized * 100).toFixed(1)}%</div>}
-          <div className="mt-1 text-muted-foreground">Total samples: {totalSamples}</div>
-        </div>
-      )}
+      {hovered &&
+        createPortal(
+          <div
+            className="fixed z-50 pointer-events-none rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
+            style={{ left: hovered.mouseX + 12, top: hovered.mouseY - 52 }}
+          >
+            <div className="font-medium">{hovered.true_label} → {hovered.pred_label}</div>
+            <div>Count: {hovered.count}</div>
+            {hovered.normalized != null && <div>Normalized: {(hovered.normalized * 100).toFixed(1)}%</div>}
+            <div className="mt-1 text-muted-foreground">Total samples: {totalSamples}</div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

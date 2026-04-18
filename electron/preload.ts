@@ -58,8 +58,10 @@ const electronApi = {
     restartCount: number;
   }> => ipcRenderer.invoke("backend:getInfo"),
 
-  restartBackend: (): Promise<{ success: boolean; port?: number; error?: string }> =>
-    ipcRenderer.invoke("backend:restart"),
+  restartBackend: (
+    options?: { skipEnsure?: boolean },
+  ): Promise<{ success: boolean; port?: number; error?: string }> =>
+    ipcRenderer.invoke("backend:restart", options),
 
   onBackendStatusChanged: (
     callback: (info: {
@@ -120,14 +122,75 @@ const electronApi = {
 
   detectExistingEnvs: (): Promise<Array<{
     path: string;
+    pythonPath: string;
     pythonVersion: string;
     hasNirs4all: boolean;
+    hasCorePackages: boolean;
+    envKind: "system" | "venv" | "conda" | "managed" | "bundled";
+    writable: boolean;
   }>> => ipcRenderer.invoke("env:detectExisting"),
+
+  inspectExistingEnv: (envPath: string): Promise<{
+    success: boolean;
+    message: string;
+    info?: {
+      path: string;
+      pythonPath: string;
+      pythonVersion: string;
+      hasNirs4all: boolean;
+      hasCorePackages: boolean;
+      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
+      writable: boolean;
+      missingCorePackages: string[];
+      missingOptionalPackages: string[];
+      profileAlignmentGuess: {
+        id: string;
+        label: string;
+        missingCount: number;
+      } | null;
+    };
+  }> => ipcRenderer.invoke("env:inspectExisting", envPath),
+
+  inspectExistingPython: (pythonPath: string): Promise<{
+    success: boolean;
+    message: string;
+    info?: {
+      path: string;
+      pythonPath: string;
+      pythonVersion: string;
+      hasNirs4all: boolean;
+      hasCorePackages: boolean;
+      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
+      writable: boolean;
+      missingCorePackages: string[];
+      missingOptionalPackages: string[];
+      profileAlignmentGuess: {
+        id: string;
+        label: string;
+        missingCount: number;
+      } | null;
+    };
+  }> => ipcRenderer.invoke("env:inspectExistingPython", pythonPath),
 
   useExistingEnv: (envPath: string): Promise<{
     success: boolean;
     message: string;
-    info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
+    info?: {
+      path: string;
+      pythonPath: string;
+      pythonVersion: string;
+      hasNirs4all: boolean;
+      hasCorePackages: boolean;
+      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
+      writable: boolean;
+      missingCorePackages?: string[];
+      missingOptionalPackages?: string[];
+      profileAlignmentGuess?: {
+        id: string;
+        label: string;
+        missingCount: number;
+      } | null;
+    };
   }> => ipcRenderer.invoke("env:useExisting", envPath),
 
   selectPythonExe: (): Promise<string | null> =>
@@ -136,8 +199,71 @@ const electronApi = {
   useExistingPython: (pythonPath: string): Promise<{
     success: boolean;
     message: string;
-    info?: { path: string; pythonVersion: string; hasNirs4all: boolean };
+    info?: {
+      path: string;
+      pythonPath: string;
+      pythonVersion: string;
+      hasNirs4all: boolean;
+      hasCorePackages: boolean;
+      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
+      writable: boolean;
+      missingCorePackages?: string[];
+      missingOptionalPackages?: string[];
+      profileAlignmentGuess?: {
+        id: string;
+        label: string;
+        missingCount: number;
+      } | null;
+    };
   }> => ipcRenderer.invoke("env:useExistingPython", pythonPath),
+
+  applyExistingEnv: (
+    envPath: string,
+    options?: { installCorePackages?: boolean },
+  ): Promise<{
+    success: boolean;
+    message: string;
+    info?: {
+      path: string;
+      pythonPath: string;
+      pythonVersion: string;
+      hasNirs4all: boolean;
+      hasCorePackages: boolean;
+      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
+      writable: boolean;
+      missingCorePackages: string[];
+      missingOptionalPackages: string[];
+      profileAlignmentGuess: {
+        id: string;
+        label: string;
+        missingCount: number;
+      } | null;
+    };
+  }> => ipcRenderer.invoke("env:applyExisting", envPath, options),
+
+  applyExistingPython: (
+    pythonPath: string,
+    options?: { installCorePackages?: boolean },
+  ): Promise<{
+    success: boolean;
+    message: string;
+    info?: {
+      path: string;
+      pythonPath: string;
+      pythonVersion: string;
+      hasNirs4all: boolean;
+      hasCorePackages: boolean;
+      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
+      writable: boolean;
+      missingCorePackages: string[];
+      missingOptionalPackages: string[];
+      profileAlignmentGuess: {
+        id: string;
+        label: string;
+        missingCount: number;
+      } | null;
+    };
+  }> => ipcRenderer.invoke("env:applyExistingPython", pythonPath, options),
 
   startEnvSetup: (targetDir?: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("env:startSetup", targetDir),

@@ -368,6 +368,36 @@ export interface SystemInfoResponse {
 }
 
 /**
+ * Runtime summary response from /system/env-coherence
+ */
+export interface RuntimeSummaryResponse {
+  coherent: boolean;
+  configured_python: string | null;
+  running_python: string;
+  running_prefix: string;
+  runtime_kind: string;
+  is_bundled_default: boolean;
+  bundled_runtime_available: boolean;
+  configured_matches_running: boolean;
+  core_ready: boolean;
+  missing_core_packages: string[];
+  missing_optional_packages: string[];
+  python_match: boolean;
+  prefix_match: boolean;
+  runtime: {
+    python: string;
+    prefix: string;
+    version: string;
+  };
+  venv_manager: {
+    python: string;
+    prefix: string;
+  };
+  electron_expected_python?: string;
+  electron_match?: boolean;
+}
+
+/**
  * Capabilities response from /system/capabilities
  */
 export interface SystemCapabilities {

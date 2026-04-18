@@ -74,7 +74,7 @@ describe("setup-python-env", () => {
     ]);
   });
 
-  it("installs torch separately with the Linux CPU wheel index for standalone bundles", () => {
+  it("installs torch separately with the Linux CPU wheel index for the standalone CPU bundle scope", () => {
     const phases = setupPythonEnvModule.getDependencyInstallPhases("cpu", "linux");
 
     expect(phases).toHaveLength(2);
@@ -85,8 +85,13 @@ describe("setup-python-env", () => {
     });
     expect(phases[1].label).toBe("backend dependencies");
     expect(phases[1].extraPipArgs).toEqual([]);
-    expect(phases[1].packageSpecs).toContain("tabicl>=2.0.0");
+    expect(phases[1].packageSpecs).toContain("pyopls>=20.0");
+    expect(phases[1].packageSpecs).toContain("trendfitter>=0.0.6");
+    expect(phases[1].packageSpecs).toContain("xgboost>=2.0.0");
+    expect(phases[1].packageSpecs).toContain("umap-learn>=0.5.0");
     expect(phases[1].packageSpecs).not.toContain("torch>=2.1.0");
+    expect(phases[1].packageSpecs).not.toContain("tabpfn>=2.0.0");
+    expect(phases[1].packageSpecs).not.toContain("tabicl>=2.0.0");
   });
 
   it("keeps macOS CPU standalone installs on the default index", () => {

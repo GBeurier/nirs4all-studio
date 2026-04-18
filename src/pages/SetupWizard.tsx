@@ -45,7 +45,11 @@ import {
 } from "@/hooks/useRecommendedConfig";
 import { alignConfig, getDependencies } from "@/api/client";
 import type { ProfileInfo, OptionalPackageInfo } from "@/api/client";
-import { getVisibleOptionalPackages } from "@/lib/setup-config";
+import {
+  getCompatibleProfiles,
+  getPreselectedOptionalPackageNames,
+  getVisibleOptionalPackages,
+} from "@/lib/setup-config";
 
 const electronApi = (window as unknown as { electronApi?: { platform: string } }).electronApi;
 
@@ -77,21 +81,29 @@ export default function SetupWizard() {
   // Pre-check optional packages already installed in the environment
   useEffect(() => {
     if (!config || configLoading) return;
-    const visibleOptionalPackages = getVisibleOptionalPackages(config);
+    let cancelled = false;
+    setSelectedExtras(getPreselectedOptionalPackageNames(config));
+
     getDependencies().then((deps) => {
-      const installedNames = new Set(
-        deps.categories
-          .flatMap((cat) => cat.packages)
-          .filter((pkg) => pkg.is_installed)
-          .map((pkg) => pkg.name),
-      );
-      const preSelected = visibleOptionalPackages
-        .filter((pkg) => installedNames.has(pkg.name))
-        .map((pkg) => pkg.name);
-      if (preSelected.length > 0) {
-        setSelectedExtras(preSelected);
+      if (cancelled) {
+        return;
       }
-    }).catch(() => { /* ignore — user can still manually select */ });
+
+      const installedNames = deps.categories
+        .flatMap((cat) => cat.packages)
+        .filter((pkg) => pkg.is_installed)
+        .map((pkg) => pkg.name);
+
+      setSelectedExtras(getPreselectedOptionalPackageNames(config, installedNames));
+    }).catch(() => {
+      if (!cancelled) {
+        setSelectedExtras(getPreselectedOptionalPackageNames(config));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [config, configLoading]);
 
   // Auto-select recommended profile based on GPU detection
@@ -320,12 +332,7 @@ export default function SetupWizard() {
                       <Loader2 className="h-6 w-6 animate-spin" />
                     </div>
                   ) : (
-                    config?.profiles
-                    .filter((profile: ProfileInfo) => {
-                      const platform = electronApi?.platform;
-                      if (!platform) return true;
-                      return profile.platforms.length === 0 || profile.platforms.includes(platform);
-                    })
+                    getCompatibleProfiles(config, electronApi?.platform)
                     .map((profile: ProfileInfo) => {
                       const isRecommended =
                         gpuInfo?.recommended_profiles[0] === profile.id;
@@ -427,6 +434,11 @@ export default function SetupWizard() {
                           className="font-medium cursor-pointer"
                         >
                           {pkg.name}
+                          {pkg.default_install && (
+                            <Badge variant="secondary" className="ml-2 text-xs">
+                              {t("common.default")}
+                            </Badge>
+                          )}
                           <Badge variant="outline" className="ml-2 text-xs">
                             {pkg.recommended || pkg.min}
                           </Badge>

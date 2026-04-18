@@ -123,13 +123,15 @@
       "min": ">=20.0",
       "recommended": "20.0",
       "description": "Orthogonal PLS (OPLS)",
-      "category": "pls_variants"
+      "category": "pls_variants",
+      "default_install": true
     },
     "trendfitter": {
       "min": ">=0.0.6",
       "recommended": "0.0.6",
       "description": "PLS with trend analysis",
-      "category": "pls_variants"
+      "category": "pls_variants",
+      "default_install": true
     },
     "autogluon": {
       "min": ">=1.0.0",
@@ -147,7 +149,8 @@
       "min": ">=2.0.0",
       "recommended": "3.0.0",
       "description": "XGBoost gradient boosting framework",
-      "category": "boosting"
+      "category": "boosting",
+      "default_install": true
     },
     "catboost": {
       "min": ">=1.2.0",
@@ -183,7 +186,16 @@
       "min": ">=0.5.0",
       "recommended": "0.5.7",
       "description": "UMAP dimensionality reduction",
-      "category": "dimensionality"
+      "category": "dimensionality",
+      "default_install": true
+    },
+    "torch": {
+      "min": ">=2.1.0",
+      "recommended": "2.6.0",
+      "description": "PyTorch deep learning framework",
+      "category": "deep_learning",
+      "show_when_profile_managed": true,
+      "default_install": true
     },
     "pypandoc": {
       "min": ">=1.12",

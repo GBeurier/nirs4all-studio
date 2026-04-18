@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { getProfileManagedPackageNames, getVisibleOptionalPackages } from "@/lib/setup-config";
+import {
+  getDefaultOptionalPackageNames,
+  getPreselectedOptionalPackageNames,
+  getProfileManagedPackageNames,
+  getVisibleOptionalPackages,
+} from "@/lib/setup-config";
 import type { RecommendedConfigResponse } from "@/api/client";
 
 const config: RecommendedConfigResponse = {
@@ -29,6 +34,8 @@ const config: RecommendedConfigResponse = {
       description: "PyTorch deep learning framework",
       category: "deep_learning",
       note: null,
+      show_when_profile_managed: true,
+      default_install: true,
     },
     {
       name: "keras",
@@ -61,6 +68,14 @@ describe("setup-config helpers", () => {
   it("keeps explicitly visible profile-managed optional extras", () => {
     const optional = getVisibleOptionalPackages(config);
 
-    expect(optional.map((pkg) => pkg.name)).toEqual(["keras", "tabicl"]);
+    expect(optional.map((pkg) => pkg.name)).toEqual(["torch", "keras", "tabicl"]);
+  });
+
+  it("flags optional packages that should be selected by default", () => {
+    expect(getDefaultOptionalPackageNames(config)).toEqual(["torch"]);
+  });
+
+  it("preselects already-installed optional packages alongside defaults", () => {
+    expect(getPreselectedOptionalPackageNames(config, ["tabicl"])).toEqual(["torch", "tabicl"]);
   });
 });
