@@ -20,7 +20,7 @@ import tempfile
 import zipfile
 from datetime import UTC, datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -172,6 +172,40 @@ class ChainDetailResponse(BaseModel):
     summary: ChainSummary | None = None
     predictions: list[PartitionPrediction]
     pipeline: dict[str, Any] | None = None
+
+
+class ChainPipelineReloadMetadata(BaseModel):
+    """Metadata describing how a chain snapshot was reconstructed for reload."""
+
+    source: Literal["chain_snapshot"]
+    selection_scope: Literal["preprocessing_chain_plus_selected_model"]
+    is_editable_template: bool
+
+
+class ChainPipelineStepsResponse(BaseModel):
+    """Response for reloading a stored chain snapshot into the editor."""
+
+    chain_id: str
+    name: str
+    pipeline: list[Any]
+    reload: ChainPipelineReloadMetadata
+
+
+class RunPipelineReloadMetadata(BaseModel):
+    """Metadata describing how a run pipeline was reconstructed for reload."""
+
+    source: Literal["authoring_template", "expanded_snapshot"]
+    is_editable_template: bool
+    is_legacy_fallback: bool
+
+
+class RunPipelineStepsResponse(BaseModel):
+    """Response for reloading a stored run pipeline into the editor."""
+
+    pipeline_id: str
+    name: str
+    pipeline: list[Any]
+    reload: RunPipelineReloadMetadata
 
 
 class PredictionArraysResponse(BaseModel):
@@ -549,8 +583,8 @@ def _clean_expanded_pipeline_step(step: Any) -> Any:
     return step
 
 
-def _extract_expanded_pipeline_steps(pipeline: dict[str, Any]) -> list[Any]:
-    expanded_config = _parse_json_maybe(pipeline.get("expanded_config"))
+def _extract_stored_pipeline_steps(stored_pipeline: Any) -> list[Any]:
+    expanded_config = _parse_json_maybe(stored_pipeline)
 
     if isinstance(expanded_config, dict) and isinstance(expanded_config.get("pipeline"), list):
         expanded_steps = expanded_config["pipeline"]
@@ -569,6 +603,35 @@ def _extract_expanded_pipeline_steps(pipeline: dict[str, Any]) -> list[Any]:
         cleaned_steps.append(cleaned)
 
     return _sanitize_dict({"pipeline": cleaned_steps})["pipeline"]
+
+
+def _extract_expanded_pipeline_steps(pipeline: dict[str, Any]) -> list[Any]:
+    return _extract_stored_pipeline_steps(pipeline.get("expanded_config"))
+
+
+def _build_run_pipeline_steps_response(pipeline: dict[str, Any]) -> RunPipelineStepsResponse:
+    original_template = pipeline.get("original_template")
+    if original_template is not None:
+        steps = _extract_stored_pipeline_steps(original_template)
+        reload_metadata = RunPipelineReloadMetadata(
+            source="authoring_template",
+            is_editable_template=True,
+            is_legacy_fallback=False,
+        )
+    else:
+        steps = _extract_expanded_pipeline_steps(pipeline)
+        reload_metadata = RunPipelineReloadMetadata(
+            source="expanded_snapshot",
+            is_editable_template=False,
+            is_legacy_fallback=True,
+        )
+
+    return RunPipelineStepsResponse(
+        pipeline_id=pipeline["pipeline_id"],
+        name=pipeline.get("name") or pipeline["pipeline_id"],
+        pipeline=steps,
+        reload=reload_metadata,
+    )
 
 
 def _chain_step_to_canonical(step: dict[str, Any], *, is_model: bool) -> Any | None:
@@ -863,16 +926,18 @@ async def get_chain_detail(
         store.close()
 
 
-@router.get("/chain/{chain_id}/pipeline-steps")
+@router.get("/chain/{chain_id}/pipeline-steps", response_model=ChainPipelineStepsResponse)
 async def get_chain_pipeline_steps(chain_id: str):
-    """Return the nirs4all-canonical pipeline steps for a specific chain.
+    """Return the nirs4all-canonical chain snapshot for a specific chain.
 
     Converts the chain's stored steps (operator_class + params) into the
     nirs4all canonical format (``{"class": ...}`` / ``{"model": ...}``)
     understood by the frontend ``importFromNirs4all`` converter.
 
-    Other model steps from the same pipeline are excluded so the editor
-    shows only the preprocessing chain + this chain's model.
+    The response is intentionally a chain snapshot, not the original
+    authoring template. Other model steps from the same pipeline are
+    excluded so the editor shows only the preprocessing chain plus the
+    selected model for this chain.
     """
     store = _get_store()
     try:
@@ -931,29 +996,37 @@ async def get_chain_pipeline_steps(chain_id: str):
         else:
             name = model_name
 
-        return {
-            "chain_id": chain_id,
-            "name": name,
-            "pipeline": canonical_steps,
-        }
+        reload_metadata = ChainPipelineReloadMetadata(
+            source="chain_snapshot",
+            selection_scope="preprocessing_chain_plus_selected_model",
+            is_editable_template=False,
+        )
+
+        return ChainPipelineStepsResponse(
+            chain_id=chain_id,
+            name=name,
+            pipeline=canonical_steps,
+            reload=reload_metadata,
+        )
     finally:
         store.close()
 
 
-@router.get("/pipeline/{pipeline_id}/pipeline-steps")
+@router.get("/pipeline/{pipeline_id}/pipeline-steps", response_model=RunPipelineStepsResponse)
 async def get_run_pipeline_steps(pipeline_id: str):
-    """Return the cleaned stored expanded pipeline steps for a run pipeline."""
+    """Return the stored run reload payload for a pipeline.
+
+    New rows prefer the persisted ``original_template`` so the editor reopens
+    the original authoring template. Legacy rows fall back to the cleaned
+    executed snapshot and mark that downgrade in the response metadata.
+    """
     store = _get_store()
     try:
         pipeline = store.get_pipeline(pipeline_id)
         if pipeline is None:
             raise HTTPException(status_code=404, detail=f"Pipeline {pipeline_id} not found")
 
-        return {
-            "pipeline_id": pipeline["pipeline_id"],
-            "name": pipeline.get("name") or pipeline["pipeline_id"],
-            "pipeline": _extract_expanded_pipeline_steps(pipeline),
-        }
+        return _build_run_pipeline_steps_response(pipeline)
     finally:
         store.close()
 

@@ -27,6 +27,9 @@ const mocks = vi.hoisted(() => ({
   loadPipeline: vi.fn(),
   setIsFavorite: vi.fn(),
   hasPersistedPipelineState: vi.fn(() => false),
+  toastSuccess: vi.fn(),
+  toastError: vi.fn(),
+  toastInfo: vi.fn(),
 }));
 
 vi.mock("@/api/client", () => ({
@@ -96,7 +99,6 @@ vi.mock("@/hooks/usePipelineEditor", () => ({
     clearPipeline: vi.fn(),
     loadPipeline: mocks.loadPipeline,
     exportPipeline: () => ({ name: "Loading Pipeline...", steps: [], config: {} }),
-    loadFromNirs4all: vi.fn(),
     exportToNirs4all: vi.fn(),
     clearPersistedData: vi.fn(),
   }),
@@ -241,9 +243,9 @@ vi.mock("@/components/ui/popover", () => {
 
 vi.mock("sonner", () => ({
   toast: {
-    success: vi.fn(),
-    error: vi.fn(),
-    info: vi.fn(),
+    success: mocks.toastSuccess,
+    error: mocks.toastError,
+    info: mocks.toastInfo,
   },
 }));
 
@@ -374,7 +376,60 @@ describe("PipelineEditor route loading", () => {
     await view.unmount();
   });
 
-  it("loads the full stored run pipeline from the query string", async () => {
+  it("labels chain reloads as chain snapshots", async () => {
+    const importedSteps = [
+      { id: "split", type: "splitting", name: "ShuffleSplit", params: { n_splits: 4 } },
+      { id: "scale", type: "preprocessing", name: "SNV", params: {} },
+      { id: "model", type: "model", name: "XGBClassifier", params: { n_estimators: 25 } },
+    ];
+
+    mocks.getChainPipelineSteps.mockResolvedValue({
+      chain_id: "chain-001",
+      name: "SNV → XGBClassifier",
+      pipeline: [
+        { split: "ShuffleSplit", n_splits: 4 },
+        "SNV",
+        { model: "XGBClassifier", n_estimators: 25 },
+      ],
+      reload: {
+        source: "chain_snapshot",
+        selection_scope: "preprocessing_chain_plus_selected_model",
+        is_editable_template: false,
+      },
+    });
+    mocks.previewPipelineImport.mockResolvedValue({
+      success: true,
+      name: "SNV → XGBClassifier",
+      description: "",
+      steps: importedSteps,
+    });
+
+    const view = await renderPage("/pipelines/new?chainId=chain-001");
+
+    await waitFor(() => {
+      expect(mocks.getChainPipelineSteps).toHaveBeenCalledWith("chain-001");
+      expect(mocks.previewPipelineImport).toHaveBeenCalledWith({
+        content: undefined,
+        payload: {
+          name: "SNV → XGBClassifier",
+          pipeline: [
+            { split: "ShuffleSplit", n_splits: 4 },
+            "SNV",
+            { model: "XGBClassifier", n_estimators: 25 },
+          ],
+        },
+        format: undefined,
+      });
+      expect(mocks.loadPipeline).toHaveBeenCalledWith(importedSteps, "SNV → XGBClassifier");
+      expect(mocks.toastSuccess).toHaveBeenCalledWith("Chain snapshot loaded", {
+        description: "3 steps loaded from this chain snapshot (preprocessing chain + selected model), not the original template.",
+      });
+    });
+
+    await view.unmount();
+  });
+
+  it("loads the original authoring template from the query string when available", async () => {
     const importedSteps = [
       { id: "split", type: "splitting", name: "ShuffleSplit", params: { n_splits: 4 } },
       { id: "scale", type: "preprocessing", name: "SNV", params: {} },
@@ -391,6 +446,11 @@ describe("PipelineEditor route loading", () => {
         { model: "PLSRegression", n_components: 8 },
         { model: "SVR", kernel: "rbf" },
       ],
+      reload: {
+        source: "authoring_template",
+        is_editable_template: true,
+        is_legacy_fallback: false,
+      },
     });
     mocks.previewPipelineImport.mockResolvedValue({
       success: true,
@@ -417,6 +477,50 @@ describe("PipelineEditor route loading", () => {
         format: undefined,
       });
       expect(mocks.loadPipeline).toHaveBeenCalledWith(importedSteps, "Run Variant A");
+      expect(mocks.toastSuccess).toHaveBeenCalledWith("Original template loaded", {
+        description: "4 steps loaded from the original editable template.",
+      });
+    });
+
+    await view.unmount();
+  });
+
+  it("labels legacy run reloads as expanded snapshots", async () => {
+    const importedSteps = [
+      { id: "split", type: "splitting", name: "ShuffleSplit", params: { n_splits: 4 } },
+      { id: "scale", type: "preprocessing", name: "SNV", params: {} },
+      { id: "model-a", type: "model", name: "PLSRegression", params: { n_components: 8 } },
+    ];
+
+    mocks.getRunPipelineSteps.mockResolvedValue({
+      pipeline_id: "pipe-run-legacy",
+      name: "Legacy Run Variant",
+      pipeline: [
+        { split: "ShuffleSplit", n_splits: 4 },
+        "SNV",
+        { model: "PLSRegression", n_components: 8 },
+      ],
+      reload: {
+        source: "expanded_snapshot",
+        is_editable_template: false,
+        is_legacy_fallback: true,
+      },
+    });
+    mocks.previewPipelineImport.mockResolvedValue({
+      success: true,
+      name: "Legacy Run Variant",
+      description: "",
+      steps: importedSteps,
+    });
+
+    const view = await renderPage("/pipelines/new?runPipelineId=pipe-run-legacy");
+
+    await waitFor(() => {
+      expect(mocks.getRunPipelineSteps).toHaveBeenCalledWith("pipe-run-legacy");
+      expect(mocks.loadPipeline).toHaveBeenCalledWith(importedSteps, "Legacy Run Variant");
+      expect(mocks.toastSuccess).toHaveBeenCalledWith("Legacy run snapshot loaded", {
+        description: "3 steps loaded from an expanded executed snapshot, not the original template.",
+      });
     });
 
     await view.unmount();

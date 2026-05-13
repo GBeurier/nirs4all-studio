@@ -241,7 +241,7 @@ def ridge_regression_finetune_params(*, n_trials: int = 40) -> dict[str, object]
         "n_trials": n_trials,
         "sampler": "tpe",
         "model_params": {
-            "alpha": ("float_log", 1e-5, 1e4),
+            "alpha": ("log_float", 1e-5, 1e4),
             "fit_intercept": ("categorical", [True, False]),
             "solver": ("categorical", ["auto", "svd", "cholesky", "lsqr"]),
         },
@@ -254,7 +254,7 @@ def ridge_classification_finetune_params(*, n_trials: int = 30) -> dict[str, obj
         "n_trials": n_trials,
         "sampler": "tpe",
         "model_params": {
-            "alpha": ("float_log", 1e-5, 1e4),
+            "alpha": ("log_float", 1e-5, 1e4),
             "fit_intercept": ("categorical", [True, False]),
         },
     }
@@ -315,7 +315,7 @@ def lightgbm_finetune_params(*, n_trials: int = 25) -> dict[str, object]:
         "model_params": {
             "n_estimators": ("int", 100, 600),
             "max_depth": ("int", 3, 12),
-            "learning_rate": ("float_log", 0.01, 0.2),
+            "learning_rate": ("log_float", 0.01, 0.2),
             "num_leaves": ("int", 15, 127),
             "subsample": ("float", 0.7, 1.0),
         },
@@ -344,7 +344,7 @@ def xgboost_finetune_params(*, n_trials: int = 25) -> dict[str, object]:
         "model_params": {
             "n_estimators": ("int", 100, 600),
             "max_depth": ("int", 3, 10),
-            "learning_rate": ("float_log", 0.01, 0.2),
+            "learning_rate": ("log_float", 0.01, 0.2),
             "subsample": ("float", 0.7, 1.0),
             "colsample_bytree": ("float", 0.6, 1.0),
         },
@@ -371,7 +371,7 @@ def gradient_boosting_finetune_params(*, n_trials: int = 20) -> dict[str, object
         "sampler": "tpe",
         "model_params": {
             "n_estimators": ("int", 100, 500),
-            "learning_rate": ("float_log", 0.01, 0.2),
+            "learning_rate": ("log_float", 0.01, 0.2),
             "max_depth": ("int", 2, 6),
             "subsample": ("float", 0.7, 1.0),
         },

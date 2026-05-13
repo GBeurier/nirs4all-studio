@@ -25,6 +25,14 @@ interface FinetuneParamListProps {
   availableParams: string[];
 }
 
+const FINETUNE_PARAM_EDIT_KEYS: Array<keyof FinetuneParamConfig> = [
+  "type",
+  "low",
+  "high",
+  "step",
+  "choices",
+];
+
 export function FinetuneParamList({
   params,
   onUpdate,
@@ -72,7 +80,16 @@ export function FinetuneParamList({
     updates: Partial<FinetuneParamConfig>
   ) => {
     const newParams = [...params];
-    newParams[index] = { ...newParams[index], ...updates };
+    const nextParam = { ...newParams[index], ...updates };
+
+    if (
+      updates.rawValue === undefined &&
+      FINETUNE_PARAM_EDIT_KEYS.some((key) => key in updates)
+    ) {
+      delete nextParam.rawValue;
+    }
+
+    newParams[index] = nextParam;
     onUpdate(newParams);
   };
 

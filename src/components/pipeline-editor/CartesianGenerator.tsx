@@ -48,12 +48,12 @@ import type { PipelineStep, StepType, StepOption } from "./types";
 import {
   calculateCartesianStageVariants,
   calculateStepVariants,
-  stepOptions,
   stepColors,
   getStepColor,
   generateStepId,
   createStepFromOption,
 } from "./types";
+import { useStepMetadataCatalog } from "./shared/stepMetadata";
 
 /**
  * CartesianStage - A single stage in the cartesian generator
@@ -100,6 +100,7 @@ export function CartesianStage({
   const [searchQuery, setSearchQuery] = useState("");
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const [localLabel, setLocalLabel] = useState(label || `Stage ${index + 1}`);
+  const { getStepOptions } = useStepMetadataCatalog();
 
   // Filter step options
   const filteredStepOptions = useMemo(() => {
@@ -107,7 +108,7 @@ export function CartesianStage({
     const result: { type: StepType; options: StepOption[] }[] = [];
 
     (["preprocessing", "model"] as StepType[]).forEach((type) => {
-      const typeOptions = stepOptions[type].filter(
+      const typeOptions = getStepOptions(type).filter(
         (opt) =>
           opt.name.toLowerCase().includes(query) ||
           opt.description.toLowerCase().includes(query)
@@ -118,7 +119,7 @@ export function CartesianStage({
     });
 
     return result;
-  }, [searchQuery]);
+  }, [searchQuery, getStepOptions]);
 
   // Save label on blur
   const handleLabelBlur = useCallback(() => {

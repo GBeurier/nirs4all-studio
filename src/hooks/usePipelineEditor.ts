@@ -12,7 +12,6 @@ import { createStepFromOption, cloneStep, migrateStep } from "../components/pipe
 import { getAdjustedInsertIndex } from "../components/pipeline-editor/dnd-utils";
 import {
   hydrateEditorPipelineSteps,
-  importFromNirs4all,
   exportToNirs4all as exportToNirs4allFormat,
 } from "../utils/pipelineConverter";
 
@@ -175,7 +174,6 @@ interface UsePipelineEditorReturn {
   exportPipeline: () => { name: string; steps: PipelineStep[]; config: PipelineConfig };
 
   // nirs4all format
-  loadFromNirs4all: (pipeline: unknown) => void;
   exportToNirs4all: () => unknown[];
 
   // Persistence
@@ -837,34 +835,6 @@ export function usePipelineEditor(
     }),
     [pipelineName, steps, pipelineConfig]
   );
-
-  // Load from nirs4all canonical format
-  const loadFromNirs4all = useCallback(
-    (pipeline: unknown) => {
-      try {
-        // Handle both pipeline object and array
-        const pipelineData = Array.isArray(pipeline)
-          ? { pipeline }
-          : pipeline as { name?: string; description?: string; pipeline: unknown[] };
-
-        const newSteps = importFromNirs4all(pipelineData as Parameters<typeof importFromNirs4all>[0]);
-        setSteps(newSteps);
-        setHistory([newSteps]);
-        setHistoryIndex(0);
-        setSelectedStepId(null);
-        setIsDirty(false);
-
-        if ('name' in pipelineData && pipelineData.name) {
-          setPipelineName(pipelineData.name);
-        }
-      } catch (e) {
-        console.error("Failed to load nirs4all pipeline:", e);
-        throw e;
-      }
-    },
-    [setPipelineName]
-  );
-
   // Export to nirs4all canonical format
   const exportToNirs4all = useCallback(
     () => {
@@ -980,7 +950,6 @@ export function usePipelineEditor(
     exportPipeline,
 
     // nirs4all format
-    loadFromNirs4all,
     exportToNirs4all,
 
     // Persistence

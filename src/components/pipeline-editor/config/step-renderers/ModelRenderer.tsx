@@ -48,7 +48,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { stepOptions, type PipelineStep, type RefitConfig } from "../../types";
+import { type PipelineStep, type RefitConfig } from "../../types";
 import { StepActions } from "./StepActions";
 import type { ParameterRendererProps } from "./types";
 import { useSelectWheel } from "../../shared/useSelectWheel";
@@ -118,8 +118,7 @@ export function ModelRenderer({
   );
 
   // Check if this is a deep learning model (for Training tab)
-  const currentStepOption = stepOptions.model.find((o) => o.name === step.name);
-  const isDeepLearning = currentStepOption?.isDeepLearning ?? false;
+  const isDeepLearning = currentOption?.isDeepLearning ?? false;
 
   return (
     <>

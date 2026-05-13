@@ -28,7 +28,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { stepOptions } from "../../types";
 import { StepActions } from "./StepActions";
 import type { ParameterRendererProps } from "./types";
 

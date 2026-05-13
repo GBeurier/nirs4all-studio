@@ -18,6 +18,8 @@
 
 import type {
   PipelineStep as EditorPipelineStep,
+  FinetuneParamConfig,
+  FinetuneParamType,
   StepType,
 } from "@/components/pipeline-editor/types";
 import { generateStepId } from "@/components/pipeline-editor/types";
@@ -86,6 +88,116 @@ function normalizeParams(
   }
 
   return Object.keys(result).length > 0 ? result : null;
+}
+
+const SEARCH_SPACE_TOKEN_ALIASES = new Map<string, FinetuneParamType>([["float_log", "log_float"]]);
+const SEARCH_SPACE_TOKENS = new Set<FinetuneParamType>(["int", "float", "categorical", "log_float"]);
+
+function cloneNativeValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => cloneNativeValue(item));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+        key,
+        cloneNativeValue(child),
+      ])
+    );
+  }
+  return value;
+}
+
+function normalizeSearchSpaceToken(token: unknown): FinetuneParamType | undefined {
+  if (typeof token !== "string") {
+    return undefined;
+  }
+
+  const normalized = SEARCH_SPACE_TOKEN_ALIASES.get(token) || token;
+  if (!SEARCH_SPACE_TOKENS.has(normalized as FinetuneParamType)) {
+    return undefined;
+  }
+
+  return normalized as FinetuneParamType;
+}
+
+function normalizeSearchSpaceRawValue(value: unknown): unknown {
+  const normalized = cloneNativeValue(value);
+
+  if (
+    Array.isArray(normalized) &&
+    normalized.length > 0 &&
+    typeof normalized[0] === "string"
+  ) {
+    const normalizedToken = normalizeSearchSpaceToken(normalized[0]);
+    if (normalizedToken) {
+      normalized[0] = normalizedToken;
+    }
+    return normalized;
+  }
+
+  if (normalized && typeof normalized === "object") {
+    const record = normalized as Record<string, unknown>;
+    if (record.type === "float_log") {
+      record.type = "log_float";
+    }
+  }
+
+  return normalized;
+}
+
+function parseNativeFinetuneParamConfig(
+  name: string,
+  config: unknown
+): FinetuneParamConfig | null {
+  if (Array.isArray(config)) {
+    const [token, ...rest] = config;
+    const normalizedToken = normalizeSearchSpaceToken(token);
+    if (normalizedToken) {
+      if (normalizedToken === "categorical") {
+        const choices = Array.isArray(rest[0]) ? rest[0] : rest;
+        return {
+          name,
+          type: "categorical",
+          choices: choices as (string | number)[],
+          rawValue: normalizeSearchSpaceRawValue(config),
+        };
+      }
+
+      return {
+        name,
+        type: normalizedToken,
+        low: rest[0] as number | undefined,
+        high: rest[1] as number | undefined,
+        step: rest[2] as number | undefined,
+        rawValue: normalizeSearchSpaceRawValue(config),
+      };
+    }
+
+    return {
+      name,
+      type: "categorical",
+      choices: config as (string | number)[],
+      rawValue: cloneNativeValue(config),
+    };
+  }
+
+  if (typeof config === "object" && config !== null) {
+    const record = config as Record<string, unknown>;
+    return {
+      name,
+      type: (record.log
+        ? "log_float"
+        : normalizeSearchSpaceToken(record.type) || record.type) as FinetuneParamType || "int",
+      low: record.low as number | undefined,
+      high: record.high as number | undefined,
+      step: record.step as number | undefined,
+      choices: record.choices as (string | number)[] | undefined,
+      rawValue: normalizeSearchSpaceRawValue(config),
+    };
+  }
+
+  return null;
 }
 
 /**
@@ -911,17 +1023,9 @@ function convertNativeModelToEditor(step: Record<string, unknown>): EditorPipeli
     };
     if (fp.model_params) {
       for (const [pName, pConfig] of Object.entries(fp.model_params as Record<string, unknown>)) {
-        if (Array.isArray(pConfig)) {
-          editorStep.finetuneConfig.model_params.push({ name: pName, type: "categorical", choices: pConfig as (string | number)[] });
-        } else if (typeof pConfig === "object" && pConfig !== null) {
-          const c = pConfig as Record<string, unknown>;
-          editorStep.finetuneConfig.model_params.push({
-            name: pName,
-            type: (c.log ? "log_float" : (c.type as string) || "int") as "int" | "float" | "categorical" | "log_float",
-            low: c.low as number,
-            high: c.high as number,
-            step: c.step as number,
-          });
+        const parsed = parseNativeFinetuneParamConfig(pName, pConfig);
+        if (parsed) {
+          editorStep.finetuneConfig.model_params.push(parsed);
         }
       }
     }

@@ -201,7 +201,7 @@ export function ModelActionMenu({
           {pipelineEditorUrl && (
             <DropdownMenuItem asChild>
               <Link to={pipelineEditorUrl}>
-                <Pencil className="h-4 w-4 mr-2" /> Edit pipeline
+                <Pencil className="h-4 w-4 mr-2" /> Open chain snapshot
               </Link>
             </DropdownMenuItem>
           )}

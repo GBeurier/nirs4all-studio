@@ -32,17 +32,15 @@ import {
 } from "@/components/ui/tooltip";
 import { usePipelineDnd } from "./PipelineDndContext";
 import {
-  stepOptions,
   stepTypeLabels,
   stepColors,
   type StepType,
   type StepOption,
-  type PipelineStep,
 } from "./types";
-import { useNodeRegistryOptional, type NodeDefinition } from "./contexts/NodeRegistryContext";
+import { useNodeRegistryOptional } from "./contexts/NodeRegistryContext";
 import { usePipelineEditorPreferencesOptional, type TierLevel } from "./contexts/PipelineEditorPreferencesContext";
 import { useOperatorAvailabilityOptional } from "./contexts/OperatorAvailabilityContext";
-import { parametersToDefaultParams } from "@/data/nodes";
+import { useStepMetadataCatalog } from "./shared/stepMetadata";
 
 const stepIcons: Record<StepType, typeof Waves> = {
   preprocessing: Waves,
@@ -54,35 +52,6 @@ const stepIcons: Record<StepType, typeof Waves> = {
   flow: GitBranch,
   utility: Sparkles,
 };
-
-/**
- * Convert a NodeDefinition from the registry to a StepOption for backwards compatibility
- */
-function nodeDefToStepOption(node: NodeDefinition): StepOption {
-  // For container/generator nodes, create initial branches array based on defaultBranches count
-  let defaultBranches: PipelineStep[][] | undefined = undefined;
-  if (node.defaultBranches !== undefined && node.defaultBranches > 0) {
-    // Create empty branches based on the count
-    defaultBranches = Array.from({ length: node.defaultBranches }, () => []);
-  } else if (node.isContainer || node.isGenerator) {
-    // Default to 2 branches for container types if not specified
-    defaultBranches = [[], []];
-  }
-
-  return {
-    name: node.name,
-    description: node.description,
-    defaultParams: parametersToDefaultParams(node.parameters ?? []),
-    classPath: node.classPath,
-    category: node.category,
-    isDeepLearning: node.isDeepLearning,
-    isAdvanced: node.isAdvanced,
-    tags: node.tags,
-    defaultBranches,
-    generatorKind: node.generatorKind,
-    tier: node.tier,
-  };
-}
 
 interface DraggableStepProps {
   stepType: StepType;
@@ -267,17 +236,6 @@ const TIER_TOOLTIPS: Record<TierLevel, string> = {
   all: "All operators including advanced and deep learning",
 };
 
-/** Check if a StepOption passes the tier filter */
-function passesTierFilter(opt: StepOption, tierLevel: TierLevel): boolean {
-  if (tierLevel === "all") return true;
-  const tier = opt.tier ?? (opt.isAdvanced ? "advanced" : "standard");
-  if (tierLevel === "core") return tier === "core";
-  // "standard" — exclude advanced
-  return tier !== "advanced";
-}
-
-
-
 export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
   const [openSections, setOpenSections] = useState<Set<PaletteGroupKey>>(new Set());
@@ -309,25 +267,15 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     [prefs]
   );
 
+  const { getStepOptions } = useStepMetadataCatalog({ tierLevel });
+
   // Try to use the registry if available (Phase 2 feature)
   const registryContext = useNodeRegistryOptional();
-  const useRegistry = registryContext?.isJsonRegistry ?? false;
-
-  // Get step options from registry or legacy stepOptions
-  const getStepOptionsForType = useCallback((type: StepType): StepOption[] => {
-    if (useRegistry && registryContext) {
-      // Use the new JSON-based registry
-      const nodes = registryContext.getNodesByType(type);
-      return nodes.map(nodeDefToStepOption);
-    }
-    // Fallback to legacy stepOptions
-    return stepOptions[type] ?? [];
-  }, [useRegistry, registryContext]);
 
   // Get all options for a palette group (virtual model groups filter by classifier/regressor).
   const getOptionsForGroup = useCallback((key: PaletteGroupKey): { option: StepOption; actualType: StepType }[] => {
     const stepType = resolveStepType(key);
-    const opts = getStepOptionsForType(stepType).map((opt) => ({ option: opt, actualType: stepType }));
+    const opts = getStepOptions(stepType).map((opt) => ({ option: opt, actualType: stepType }));
     if (key === "model_regression") {
       return opts.filter(({ option }) => !isClassifierModel(option));
     }
@@ -335,7 +283,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
       return opts.filter(({ option }) => isClassifierModel(option));
     }
     return opts;
-  }, [getStepOptionsForType]);
+  }, [getStepOptions]);
 
   const hasAvailabilitySnapshot = Boolean(availability?.operatorAvailability);
   const getOptionAvailability = useCallback(
@@ -362,7 +310,6 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
         ({ option: opt, actualType }) => {
           const optionAvailability = getOptionAvailability(actualType, opt);
           return (
-            passesTierFilter(opt, tierLevel) &&
             (showUnavailableOperators || !hasAvailabilitySnapshot || optionAvailability.available) &&
             (
             opt.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -373,7 +320,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
         }
       );
     },
-    [getOptionAvailability, getOptionsForGroup, hasAvailabilitySnapshot, search, showUnavailableOperators, tierLevel]
+    [getOptionAvailability, getOptionsForGroup, hasAvailabilitySnapshot, search, showUnavailableOperators]
   );
 
   // Keep the open sections consistent when toggling extended mode during an active search.
@@ -385,7 +332,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
       if (matches.length > 0) matchingSections.add(key);
     });
     setOpenSections(matchingSections);
-  }, [tierLevel, search, filteredOptions]);
+  }, [search, filteredOptions]);
 
   // When search changes, update search state
   const handleSearchChange = (value: string) => {

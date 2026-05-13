@@ -34,6 +34,7 @@ import {
   previewPipelineImport,
   renderCanonicalPipeline,
 } from "@/api/client";
+import { describeChainPipelineReload, describeRunPipelineReload } from "@/components/runs/runDetailUtils";
 import { motion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -305,7 +306,7 @@ export default function PipelineEditor() {
     })();
   }, [searchParams, importIntoEditor, navigate, pipelineId]);
 
-  // Handle import from chain (edit pipeline from predictions)
+  // Handle import from a chain snapshot (preprocessing chain + selected model).
   useEffect(() => {
     const chainId = searchParams.get('chainId');
     if (!chainId) return;
@@ -319,16 +320,18 @@ export default function PipelineEditor() {
               name: result.name,
               pipeline: result.pipeline,
             },
-            fallbackName: result.name || 'Chain Pipeline',
+            fallbackName: result.name || 'Chain Snapshot',
           });
 
-          toast.success('Pipeline loaded from chain', {
-            description: `${imported.steps.length} steps loaded`,
+          const toastCopy = describeChainPipelineReload(result.reload, imported.steps.length);
+
+          toast.success(toastCopy.title, {
+            description: toastCopy.description,
           });
         }
       } catch (e) {
-        console.error('Failed to load chain pipeline:', e);
-        toast.error('Failed to load pipeline from chain');
+        console.error('Failed to load chain snapshot:', e);
+        toast.error('Failed to load chain snapshot');
       }
 
       // Clean up URL params
@@ -336,7 +339,7 @@ export default function PipelineEditor() {
     })();
   }, [searchParams, importIntoEditor, navigate, pipelineId]);
 
-  // Handle import from a stored run pipeline (full expanded pipeline variant)
+  // Handle import from a stored run pipeline using explicit reload metadata.
   useEffect(() => {
     const runPipelineId = searchParams.get('runPipelineId');
     if (!runPipelineId) return;
@@ -353,13 +356,15 @@ export default function PipelineEditor() {
             fallbackName: result.name || 'Run Pipeline',
           });
 
-          toast.success('Full pipeline loaded from run', {
-            description: `${imported.steps.length} steps loaded`,
+          const toastCopy = describeRunPipelineReload(result.reload, imported.steps.length);
+
+          toast.success(toastCopy.title, {
+            description: toastCopy.description,
           });
         }
       } catch (e) {
         console.error('Failed to load run pipeline:', e);
-        toast.error('Failed to load full pipeline from run');
+        toast.error('Failed to load pipeline from run');
       }
 
       navigate(`/pipelines/${pipelineId}`, { replace: true });

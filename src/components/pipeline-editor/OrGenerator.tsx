@@ -56,7 +56,8 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { PipelineStep, StepType, StepOption } from "./types";
-import { stepOptions, stepColors, getStepColor, createStepFromOption, cloneStep } from "./types";
+import { stepColors, getStepColor, createStepFromOption, cloneStep } from "./types";
+import { useStepMetadataCatalog } from "./shared/stepMetadata";
 
 // Selection modes for OR generator - simplified to none/pick/arrange
 type SelectionMode = "none" | "pick" | "arrange";
@@ -361,6 +362,7 @@ export function OrGeneratorContainer({
   const [expandedIndices, setExpandedIndices] = useState<Set<number>>(new Set());
   const [showAddPopover, setShowAddPopover] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const { getStepOptions } = useStepMetadataCatalog();
 
   // Calculate variant count
   const variantCount = useMemo(
@@ -387,7 +389,7 @@ export function OrGeneratorContainer({
     const result: { type: StepType; options: StepOption[] }[] = [];
 
     (["preprocessing", "model", "splitting"] as StepType[]).forEach((type) => {
-      const typeOptions = stepOptions[type].filter(
+      const typeOptions = getStepOptions(type).filter(
         (opt) =>
           opt.name.toLowerCase().includes(query) ||
           opt.description.toLowerCase().includes(query)
@@ -398,7 +400,7 @@ export function OrGeneratorContainer({
     });
 
     return result;
-  }, [searchQuery]);
+  }, [searchQuery, getStepOptions]);
 
   return (
     <div

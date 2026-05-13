@@ -371,6 +371,8 @@ export interface PipelineStep {
   tags?: string[];
   // Raw nirs4all step for unsupported complex structures
   rawNirs4all?: unknown;
+  // Params injected for editor hydration so missing defaults remain visible.
+  hydratedDefaultParams?: string[];
   // Index signature for API compatibility
   [key: string]: unknown;
 }

@@ -107,7 +107,7 @@ variants:
           - 3
           - 12
           learning_rate:
-          - float_log
+          - log_float
           - 0.01
           - 0.2
           num_leaves:
@@ -162,7 +162,7 @@ variants:
           - 3
           - 10
           learning_rate:
-          - float_log
+          - log_float
           - 0.01
           - 0.2
           subsample:
@@ -208,7 +208,7 @@ variants:
           - 100
           - 500
           learning_rate:
-          - float_log
+          - log_float
           - 0.01
           - 0.2
           max_depth:
@@ -322,7 +322,7 @@ variants:
           - 3
           - 12
           learning_rate:
-          - float_log
+          - log_float
           - 0.01
           - 0.2
           num_leaves:
@@ -377,7 +377,7 @@ variants:
           - 3
           - 10
           learning_rate:
-          - float_log
+          - log_float
           - 0.01
           - 0.2
           subsample:
@@ -423,7 +423,7 @@ variants:
           - 100
           - 500
           learning_rate:
-          - float_log
+          - log_float
           - 0.01
           - 0.2
           max_depth:

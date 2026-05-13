@@ -2746,20 +2746,58 @@ export async function getChainPartitionDetail(
 }
 
 /**
- * Get nirs4all-canonical pipeline steps for a chain (preprocessing + model).
+ * Metadata describing how a chain snapshot was reconstructed for reload.
+ */
+export interface ChainPipelineReloadMetadata {
+  source: "chain_snapshot";
+  selection_scope: "preprocessing_chain_plus_selected_model";
+  is_editable_template: boolean;
+}
+
+/**
+ * Response for reloading a stored chain snapshot into the editor.
+ */
+export interface ChainPipelineStepsResponse {
+  chain_id: string;
+  name: string;
+  pipeline: unknown[];
+  reload: ChainPipelineReloadMetadata;
+}
+
+/**
+ * Get nirs4all-canonical steps for a chain snapshot (preprocessing + selected model).
  */
 export async function getChainPipelineSteps(
   chainId: string
-): Promise<{ chain_id: string; name: string; pipeline: unknown[] }> {
+): Promise<ChainPipelineStepsResponse> {
   return api.get(`/aggregated-predictions/chain/${chainId}/pipeline-steps`);
 }
 
 /**
- * Get the full stored expanded pipeline steps for a run pipeline.
+ * Metadata describing how a run pipeline was reconstructed for reload.
+ */
+export interface RunPipelineReloadMetadata {
+  source: "authoring_template" | "expanded_snapshot";
+  is_editable_template: boolean;
+  is_legacy_fallback: boolean;
+}
+
+/**
+ * Response for reloading a stored run pipeline into the editor.
+ */
+export interface RunPipelineStepsResponse {
+  pipeline_id: string;
+  name: string;
+  pipeline: unknown[];
+  reload: RunPipelineReloadMetadata;
+}
+
+/**
+ * Get the stored run reload payload for a pipeline.
  */
 export async function getRunPipelineSteps(
   pipelineId: string
-): Promise<{ pipeline_id: string; name: string; pipeline: unknown[] }> {
+): Promise<RunPipelineStepsResponse> {
   return api.get(`/aggregated-predictions/pipeline/${pipelineId}/pipeline-steps`);
 }
 

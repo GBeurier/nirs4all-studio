@@ -47,7 +47,8 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import type { PipelineStep, StepType, StepOption } from "./types";
-import { stepOptions, getStepColor, stepColors } from "./types";
+import { getStepColor, stepColors } from "./types";
+import { useStepMetadataCatalog } from "./shared/stepMetadata";
 
 interface StepContextMenuProps {
   /** The step this menu is for */
@@ -110,6 +111,7 @@ export function StepContextMenu({
   const isEnabled = step.enabled !== false;
   const hasParams = Object.keys(step.params).length > 0;
   const hasSweeps = step.paramSweeps && Object.keys(step.paramSweeps).length > 0;
+  const { getStepOptions } = useStepMetadataCatalog();
 
   // Get available parameters for sweep menu
   const sweepableParams = useMemo(() => {
@@ -120,10 +122,10 @@ export function StepContextMenu({
 
   // Get insert options (limited set for quick access)
   const quickInsertOptions = useMemo(() => {
-    const preprocessing = stepOptions.preprocessing.slice(0, 5);
-    const models = stepOptions.model.slice(0, 3);
+    const preprocessing = getStepOptions("preprocessing").slice(0, 5);
+    const models = getStepOptions("model").slice(0, 3);
     return { preprocessing, models };
-  }, []);
+  }, [getStepOptions]);
 
   const colors = getStepColor(step);
 

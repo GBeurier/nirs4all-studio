@@ -38,6 +38,48 @@ function sequentialStep(children: PipelineStep[]): PipelineStep {
   });
 }
 
+describe("fromNativeFormat - finetune search spaces", () => {
+  it("normalizes float_log aliases to log_float for finetune tuples", () => {
+    const native: NativePipelineStep[] = [
+      {
+        model: "Ridge",
+        finetune_params: {
+          model_params: {
+            alpha: ["float_log", 1e-4, 1e2],
+            gamma: {
+              type: "float_log",
+              low: 0.01,
+              high: 1.0,
+            },
+          },
+        },
+      },
+    ];
+
+    const result = fromNativeFormat(native);
+    const paramsByName = Object.fromEntries(
+      (result[0].finetuneConfig?.model_params || []).map(param => [param.name, param])
+    );
+
+    expect(paramsByName.alpha).toMatchObject({
+      type: "log_float",
+      low: 1e-4,
+      high: 1e2,
+      rawValue: ["log_float", 1e-4, 1e2],
+    });
+    expect(paramsByName.gamma).toMatchObject({
+      type: "log_float",
+      low: 0.01,
+      high: 1.0,
+      rawValue: {
+        type: "log_float",
+        low: 0.01,
+        high: 1.0,
+      },
+    });
+  });
+});
+
 // ============================================================================
 // Editor → Native (toNativeFormat)
 // ============================================================================

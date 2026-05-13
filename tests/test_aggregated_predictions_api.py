@@ -919,6 +919,11 @@ class TestGetChainPipelineSteps:
                 "name": "xgb_classifier",
             },
         ]
+        assert data["reload"] == {
+            "source": "chain_snapshot",
+            "selection_scope": "preprocessing_chain_plus_selected_model",
+            "is_editable_template": False,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -929,10 +934,15 @@ class TestGetChainPipelineSteps:
 class TestGetPipelinePipelineSteps:
     """Tests for GET /api/aggregated-predictions/pipeline/{pipeline_id}/pipeline-steps."""
 
-    def test_returns_full_expanded_pipeline(self, client, patched_endpoints):
+    def test_returns_original_authoring_template_when_present(self, client, patched_endpoints):
         patched_endpoints.get_pipeline.return_value = {
             "pipeline_id": "pipe-001",
-            "name": "Expanded pipeline",
+            "name": "Authoring template",
+            "original_template": [
+                {"split": "ShuffleSplit", "n_splits": 5},
+                {"branch": [["SNV"], ["MSC"]]},
+                {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 12}}},
+            ],
             "expanded_config": [
                 {"split": "ShuffleSplit", "n_splits": 5},
                 {"branch": [["SNV"], ["MSC"]]},
@@ -947,8 +957,24 @@ class TestGetPipelinePipelineSteps:
         data = resp.json()
         assert data == {
             "pipeline_id": "pipe-001",
-            "name": "Expanded pipeline",
+            "name": "Authoring template",
             "pipeline": [
+                {"split": "ShuffleSplit", "n_splits": 5},
+                {"branch": [["SNV"], ["MSC"]]},
+                {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 12}}},
+            ],
+            "reload": {
+                "source": "authoring_template",
+                "is_editable_template": True,
+                "is_legacy_fallback": False,
+            },
+        }
+
+    def test_falls_back_to_expanded_snapshot_for_legacy_runs(self, client, patched_endpoints):
+        patched_endpoints.get_pipeline.return_value = {
+            "pipeline_id": "pipe-legacy",
+            "name": "Legacy expanded pipeline",
+            "expanded_config": [
                 {"split": "ShuffleSplit", "n_splits": 5},
                 {"branch": [["SNV"], ["MSC"]]},
                 {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 12}}},
@@ -956,7 +982,27 @@ class TestGetPipelinePipelineSteps:
             ],
         }
 
-    def test_strips_runtime_only_refit_steps(self, client, patched_endpoints):
+        resp = client.get("/api/aggregated-predictions/pipeline/pipe-legacy/pipeline-steps")
+        assert resp.status_code == 200
+
+        data = resp.json()
+        assert data == {
+            "pipeline_id": "pipe-legacy",
+            "name": "Legacy expanded pipeline",
+            "pipeline": [
+                {"split": "ShuffleSplit", "n_splits": 5},
+                {"branch": [["SNV"], ["MSC"]]},
+                {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 12}}},
+                {"model": {"class": "sklearn.svm._classes.SVR", "params": {"kernel": "rbf"}}},
+            ],
+            "reload": {
+                "source": "expanded_snapshot",
+                "is_editable_template": False,
+                "is_legacy_fallback": True,
+            },
+        }
+
+    def test_strips_runtime_only_refit_steps_from_legacy_snapshot_fallback(self, client, patched_endpoints):
         patched_endpoints.get_pipeline.return_value = {
             "pipeline_id": "pipe-refit",
             "name": "Expanded refit pipeline",
@@ -975,6 +1021,11 @@ class TestGetPipelinePipelineSteps:
             {"class": "sklearn.preprocessing._data.StandardScaler"},
             {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 8}}},
         ]
+        assert data["reload"] == {
+            "source": "expanded_snapshot",
+            "is_editable_template": False,
+            "is_legacy_fallback": True,
+        }
 
     def test_returns_404_when_pipeline_is_missing(self, client, patched_endpoints):
         patched_endpoints.get_pipeline.return_value = None

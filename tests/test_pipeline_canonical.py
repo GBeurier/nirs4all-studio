@@ -417,6 +417,22 @@ def test_create_pipeline_from_advanced_preset_preserves_generators_and_search_sp
     assert search_space["rawValue"] == ["int", 1, 25]
 
 
+def test_preset_sources_and_committed_presets_use_log_float_token():
+    preset_paths = sorted((_WEBAPP_ROOT / "api" / "presets").glob("*.yaml"))
+    source_paths = [
+        _WEBAPP_ROOT / "scripts" / "presets_generation" / "presets.py",
+        *preset_paths,
+    ]
+
+    offenders = [
+        str(path.relative_to(_WEBAPP_ROOT))
+        for path in source_paths
+        if "float_log" in path.read_text(encoding="utf-8")
+    ]
+
+    assert offenders == []
+
+
 def test_create_pipeline_from_preset_persists_selected_classification_variant(
     pipelines_workspace,
 ):
@@ -494,6 +510,131 @@ def test_preview_pipeline_import_supports_yaml_content():
         1,
         25,
     ]
+
+
+def test_preview_pipeline_import_normalizes_float_log_aliases():
+    payload = {
+        "pipeline": [
+            {
+                "model": {"class": "sklearn.linear_model.Ridge"},
+                "finetune_params": {
+                    "model_params": {
+                        "alpha": ["float_log", 1e-4, 1e2],
+                        "gamma": {
+                            "type": "float_log",
+                            "low": 0.01,
+                            "high": 1.0,
+                        },
+                    }
+                },
+            }
+        ]
+    }
+
+    preview = asyncio.run(
+        preview_pipeline_import(
+            PipelineCanonicalImportRequest(
+                content=json.dumps(payload),
+                format="json",
+            )
+        )
+    )
+
+    params_by_name = {
+        param["name"]: param
+        for param in preview["steps"][0]["finetuneConfig"]["model_params"]
+    }
+    assert params_by_name["alpha"]["type"] == "log_float"
+    assert params_by_name["alpha"]["rawValue"] == ["log_float", 1e-4, 1e2]
+    assert params_by_name["gamma"]["type"] == "log_float"
+    assert params_by_name["gamma"]["rawValue"]["type"] == "log_float"
+
+    exported = editor_to_canonical(preview["steps"])
+    model_params = exported[0]["finetune_params"]["model_params"]
+    assert model_params["alpha"] == ["log_float", 1e-4, 1e2]
+    assert model_params["gamma"]["type"] == "log_float"
+
+
+def test_editor_to_canonical_exports_edited_finetune_params_from_current_fields():
+    payload = {
+        "pipeline": [
+            {
+                "model": {"class": "sklearn.linear_model.Ridge"},
+                "finetune_params": {
+                    "model_params": {
+                        "alpha": ["float_log", 1e-4, 1e2],
+                        "gamma": {
+                            "type": "log_float",
+                            "low": 0.01,
+                            "high": 1.0,
+                        },
+                    }
+                },
+            }
+        ]
+    }
+
+    preview = asyncio.run(
+        preview_pipeline_import(
+            PipelineCanonicalImportRequest(
+                content=json.dumps(payload),
+                format="json",
+            )
+        )
+    )
+
+    params_by_name = {
+        param["name"]: param
+        for param in preview["steps"][0]["finetuneConfig"]["model_params"]
+    }
+    params_by_name["alpha"]["high"] = 10
+    params_by_name["gamma"]["low"] = 0.02
+
+    exported = editor_to_canonical(preview["steps"])
+    model_params = exported[0]["finetune_params"]["model_params"]
+    assert model_params["alpha"] == {
+        "type": "log_float",
+        "low": 1e-4,
+        "high": 10,
+        "log": True,
+    }
+    assert model_params["gamma"] == {
+        "type": "log_float",
+        "low": 0.02,
+        "high": 1.0,
+        "log": True,
+    }
+
+
+def test_editor_to_canonical_strips_registry_hydrated_defaults_from_params():
+    editor_steps = [
+        {
+            "id": "step-bayes",
+            "type": "model",
+            "name": "BayesianRidge",
+            "params": {
+                "max_iter": 300,
+                "tol": 0.001,
+            },
+            "hydratedDefaultParams": ["max_iter", "tol"],
+        },
+        {
+            "id": "step-elastic",
+            "type": "model",
+            "name": "ElasticNet",
+            "params": {
+                "alpha": 2.5,
+                "l1_ratio": 0.5,
+            },
+            "hydratedDefaultParams": ["l1_ratio"],
+        },
+    ]
+
+    exported = editor_to_canonical(editor_steps)
+
+    assert isinstance(exported[0]["model"], dict)
+    assert "params" not in exported[0]["model"]
+    assert exported[1]["model"]["params"] == {"alpha": 2.5}
 
 
 def test_render_canonical_pipeline_preview_matches_export_payload(pipelines_workspace):

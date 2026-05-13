@@ -33,13 +33,13 @@ import {
 } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  stepOptions,
   type MergeConfig,
   type MergePredictionSource,
 } from "../../types";
 import { defaultStackingConfig } from "../../StackingPanel";
 import { StepActions } from "./StepActions";
 import type { ParameterRendererProps } from "./types";
+import { useStepMetadataCatalog } from "../../shared/stepMetadata";
 
 function safeStringify(value: unknown): string {
   return JSON.stringify(value, null, 2);
@@ -82,6 +82,7 @@ export function MergeRenderer({
   currentOption,
 }: ParameterRendererProps) {
   const [activeTab, setActiveTab] = useState("merge");
+  const { getStepOptions } = useStepMetadataCatalog();
 
   // Initialize stacking config if not present
   const stackingConfig = step.stackingConfig ?? defaultStackingConfig();
@@ -112,6 +113,7 @@ export function MergeRenderer({
     (mergeConfig.predictions && mergeConfig.predictions.length > 0) ||
     (mergeConfig.features && mergeConfig.features.length > 0) ||
     mergeConfig.sources !== undefined;
+  const mergeOptions = getStepOptions("flow").filter((opt) => opt.category === "Merging");
 
   return (
     <>
@@ -188,7 +190,7 @@ export function MergeRenderer({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-popover max-h-[300px]">
-                    {stepOptions.flow.filter(opt => opt.category === 'Merging').map((opt) => (
+                    {mergeOptions.map((opt) => (
                       <SelectItem key={opt.name} value={opt.name}>
                         <div className="flex flex-col">
                           <span className="font-medium">{opt.name}</span>

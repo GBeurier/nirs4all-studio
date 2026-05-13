@@ -11,7 +11,10 @@ from uuid import uuid4
 
 from .node_registry_loader import load_editor_registry_nodes
 
-SEARCH_SPACE_TOKENS = {"int", "float", "categorical", "log_float"}
+SEARCH_SPACE_TOKEN_ALIASES = {"float_log": "log_float"}
+SEARCH_SPACE_TOKENS = {"int", "float", "categorical", "log_float"} | set(
+    SEARCH_SPACE_TOKEN_ALIASES
+)
 SEPARATION_BRANCH_KEYS = ("by_tag", "by_metadata", "by_filter", "by_source")
 GENERATOR_KEYWORDS = {
     "_or_",
@@ -514,6 +517,98 @@ def _clean_params(params: dict[str, Any] | None) -> dict[str, Any]:
     return result
 
 
+def _parameter_defaults_to_params(parameters: Any) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    if not isinstance(parameters, list):
+        return result
+
+    for parameter in parameters:
+        if not isinstance(parameter, dict):
+            continue
+
+        name = parameter.get("name")
+        default_value = parameter.get("default")
+        if isinstance(name, str) and name and isinstance(default_value, (str, int, float, bool)):
+            result[name] = clone_value(default_value)
+
+    return result
+
+
+def _registry_node_matches_reference(
+    node: dict[str, Any], step_type: str, reference: str
+) -> bool:
+    if str(node.get("type") or "") != step_type:
+        return False
+
+    normalized_reference = reference.strip().lower()
+    if not normalized_reference:
+        return False
+
+    candidates: list[Any] = [
+        node.get("name"),
+        node.get("classPath"),
+        node.get("functionPath"),
+    ]
+    aliases = node.get("aliases")
+    if isinstance(aliases, list):
+        candidates.extend(aliases)
+    legacy_paths = node.get("legacyClassPaths")
+    if isinstance(legacy_paths, list):
+        candidates.extend(legacy_paths)
+
+    return any(
+        isinstance(candidate, str) and candidate.lower() == normalized_reference
+        for candidate in candidates
+    )
+
+
+def _get_registry_default_params_for_step(step: dict[str, Any]) -> dict[str, Any]:
+    step_type = str(step.get("type") or "")
+    references = [step.get("name"), step.get("classPath"), step.get("functionPath")]
+
+    for reference in references:
+        if not isinstance(reference, str) or not reference.strip():
+            continue
+
+        for node in _load_registry_nodes():
+            if not isinstance(node, dict) or not _registry_node_matches_reference(
+                node, step_type, reference
+            ):
+                continue
+
+            registry_defaults = _parameter_defaults_to_params(node.get("parameters"))
+            registry_defaults.update(
+                _clean_params(_ensure_mapping_payload(node.get("defaultParams")))
+            )
+            if registry_defaults:
+                return registry_defaults
+
+    return {}
+
+
+def _get_exportable_step_params(step: dict[str, Any]) -> dict[str, Any]:
+    params = _clean_params(_ensure_mapping_payload(step.get("params")))
+    hydrated_default_params = {
+        key
+        for key in (step.get("hydratedDefaultParams") or [])
+        if isinstance(key, str) and key
+    }
+
+    if not hydrated_default_params:
+        return params
+
+    defaults = _get_registry_default_params_for_step(step)
+    if not defaults:
+        return params
+
+    filtered_params: dict[str, Any] = {}
+    for key, value in params.items():
+        if key in hydrated_default_params and key in defaults and defaults[key] == value:
+            continue
+        filtered_params[key] = value
+    return filtered_params
+
+
 def _create_no_op_editor_step() -> dict[str, Any]:
     return {
         "id": _step_id(),
@@ -568,18 +663,34 @@ def _sequence_child_from_steps(steps: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _normalize_search_space_token(token: Any) -> Any:
+    if isinstance(token, str):
+        return SEARCH_SPACE_TOKEN_ALIASES.get(token, token)
+    return token
+
+
+def _normalize_search_space_raw_value(value: Any) -> Any:
+    normalized = clone_value(value)
+    if isinstance(normalized, list) and normalized and isinstance(normalized[0], str):
+        normalized[0] = _normalize_search_space_token(normalized[0])
+    elif isinstance(normalized, dict) and normalized.get("type") == "float_log":
+        normalized["type"] = "log_float"
+    return normalized
+
+
 def _parse_finetune_param_config(name: str, config: Any) -> dict[str, Any]:
     if isinstance(config, list):
         if config and isinstance(config[0], str) and config[0] in SEARCH_SPACE_TOKENS:
-            token = config[0]
+            token = _normalize_search_space_token(config[0])
             rest = config[1:]
+            raw_value = _normalize_search_space_raw_value(config)
             if token == "categorical":
                 choices = rest[0] if rest and isinstance(rest[0], list) else rest
                 return {
                     "name": name,
                     "type": "categorical",
                     "choices": clone_value(choices),
-                    "rawValue": clone_value(config),
+                    "rawValue": raw_value,
                 }
             return {
                 "name": name,
@@ -587,7 +698,7 @@ def _parse_finetune_param_config(name: str, config: Any) -> dict[str, Any]:
                 "low": rest[0] if len(rest) > 0 else None,
                 "high": rest[1] if len(rest) > 1 else None,
                 "step": rest[2] if len(rest) > 2 else None,
-                "rawValue": clone_value(config),
+                "rawValue": raw_value,
             }
         return {
             "name": name,
@@ -597,7 +708,7 @@ def _parse_finetune_param_config(name: str, config: Any) -> dict[str, Any]:
         }
 
     if isinstance(config, dict):
-        param_type = str(config.get("type") or "int")
+        param_type = str(_normalize_search_space_token(config.get("type") or "int"))
         if config.get("log"):
             param_type = "log_float"
         return {
@@ -607,7 +718,7 @@ def _parse_finetune_param_config(name: str, config: Any) -> dict[str, Any]:
             "high": config.get("high"),
             "step": config.get("step"),
             "choices": clone_value(config.get("choices")),
-            "rawValue": clone_value(config),
+            "rawValue": _normalize_search_space_raw_value(config),
         }
 
     return {
@@ -1593,7 +1704,7 @@ def _find_sweep_params_dict(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _component_payload_from_editor(step: dict[str, Any], class_path: str) -> Any:
-    params = _clean_params(_ensure_mapping_payload(step.get("params")))
+    params = _get_exportable_step_params(step)
     style = step.get("componentStyle") or "string"
     needs_dict = bool(params or step.get("attachedComment") is not None or step.get("paramSweeps"))
     if needs_dict or style == "class_dict":
@@ -1632,8 +1743,61 @@ def _serialize_component_list(steps: list[dict[str, Any]]) -> list[Any]:
     return _serialize_editor_steps(steps)
 
 
+def _finetune_param_values_equivalent(left: Any, right: Any) -> bool:
+    if isinstance(left, list) or isinstance(right, list):
+        if not isinstance(left, list) or not isinstance(right, list):
+            return False
+        if len(left) != len(right):
+            return False
+        return all(
+            _finetune_param_values_equivalent(value, right[index])
+            for index, value in enumerate(left)
+        )
+
+    if isinstance(left, dict):
+        if not isinstance(right, dict):
+            return False
+        if set(left.keys()) != set(right.keys()):
+            return False
+        return all(
+            _finetune_param_values_equivalent(value, right[key])
+            for key, value in left.items()
+        )
+
+    return left == right
+
+
+def _comparable_finetune_param_shape(param: dict[str, Any]) -> dict[str, Any]:
+    param_type = param.get("type")
+    if param_type == "categorical":
+        return {
+            "type": "categorical",
+            "choices": clone_value(param.get("choices") or []),
+        }
+
+    return {
+        "type": param_type,
+        "low": param.get("low"),
+        "high": param.get("high"),
+        "step": param.get("step"),
+    }
+
+
+def _should_reuse_raw_finetune_param_value(param: dict[str, Any]) -> bool:
+    if "rawValue" not in param:
+        return False
+
+    parsed_raw_value = _parse_finetune_param_config(
+        str(param.get("name") or ""), param["rawValue"]
+    )
+    return _finetune_param_values_equivalent(
+        _comparable_finetune_param_shape(param),
+        _comparable_finetune_param_shape(parsed_raw_value),
+    )
+
+
 def _serialize_finetune_param_config(param: dict[str, Any]) -> Any:
-    if "rawValue" in param:
+    if _should_reuse_raw_finetune_param_value(param):
         return clone_value(param["rawValue"])
 
     param_type = param.get("type")
@@ -1667,7 +1831,7 @@ def _build_train_params(step: dict[str, Any]) -> dict[str, Any] | None:
 def _build_model_payload(step: dict[str, Any]) -> dict[str, Any]:
     if "functionPath" in step:
         model_payload: dict[str, Any] = {"function": step["functionPath"]}
-        params = _clean_params(_ensure_mapping_payload(step.get("params")))
+        params = _get_exportable_step_params(step)
         if params:
             model_payload["params"] = params
         if step.get("framework"):
@@ -1678,7 +1842,7 @@ def _build_model_payload(step: dict[str, Any]) -> dict[str, Any]:
             str(step.get("name") or "UnknownModel"),
             step.get("classPath"),
         )
-        params = _clean_params(_ensure_mapping_payload(step.get("params")))
+        params = _get_exportable_step_params(step)
         if step.get("modelStyle") == "string" and not params:
             model_payload = class_path
         else:
@@ -1928,7 +2092,7 @@ def _convert_editor_concat_transform_to_canonical(step: dict[str, Any]) -> dict[
 def _convert_editor_chart_to_canonical(step: dict[str, Any]) -> dict[str, Any]:
     chart_config = _ensure_mapping_payload(step.get("chartConfig"))
     chart_type = str(chart_config.get("chartType") or _ensure_mapping_payload(step.get("params")).get("chartType") or "chart_2d")
-    chart_params = clone_value(chart_config) if chart_config else _clean_params(_ensure_mapping_payload(step.get("params")))
+    chart_params = clone_value(chart_config) if chart_config else _get_exportable_step_params(step)
     chart_params.pop("chartType", None)
     if step.get("chartStyle") == "string" and not chart_params and step.get("attachedComment") is None:
         return chart_type

@@ -98,7 +98,7 @@ variants:
         sampler: tpe
         model_params:
           alpha:
-          - float_log
+          - log_float
           - 1.0e-05
           - 10000.0
           fit_intercept:
@@ -130,7 +130,7 @@ variants:
           - 3
           - 12
           learning_rate:
-          - float_log
+          - log_float
           - 0.01
           - 0.2
           num_leaves:
@@ -259,7 +259,7 @@ variants:
         sampler: tpe
         model_params:
           alpha:
-          - float_log
+          - log_float
           - 1.0e-05
           - 10000.0
           fit_intercept:
@@ -285,7 +285,7 @@ variants:
           - 3
           - 12
           learning_rate:
-          - float_log
+          - log_float
           - 0.01
           - 0.2
           num_leaves:

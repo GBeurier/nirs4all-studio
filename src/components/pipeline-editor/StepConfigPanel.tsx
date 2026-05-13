@@ -33,7 +33,6 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
-  stepOptions,
   getStepColor,
   type PipelineStep,
   type StepType,
@@ -43,6 +42,7 @@ import {
 } from "./types";
 import { FinetuningBadge } from "./FinetuneConfig";
 import { useStepRenderer } from "./config/step-renderers";
+import { useStepMetadataCatalog } from "./shared/stepMetadata";
 import { useParamInput } from "./shared/useParamInput";
 import { getRenderableStepParams } from "./renderableParams";
 
@@ -104,8 +104,13 @@ export function StepConfigPanel({
 
   // Get the appropriate renderer for this step type (with subType override)
   const { Renderer, usesParameterProps } = useStepRenderer(step?.type ?? 'preprocessing', step?.subType);
+  const { getStepMetadata } = useStepMetadataCatalog();
 
-  const currentOption = step ? stepOptions[step.type]?.find((o) => o.name === step.name) : undefined;
+  const currentMetadata = useMemo(() => {
+    if (!step) return undefined;
+    return getStepMetadata(step.type, step.name);
+  }, [getStepMetadata, step]);
+  const currentOption = currentMetadata?.option;
   const renderableStep = useMemo(() => {
     if (!step) return null;
     const params = getRenderableStepParams(step, currentOption);
@@ -116,15 +121,15 @@ export function StepConfigPanel({
   const handleNameChange = useCallback(
     (name: string) => {
       if (!step) return;
-      const option = stepOptions[step.type]?.find((o) => o.name === name);
-      if (option) {
+      const nextMetadata = getStepMetadata(step.type, name);
+      if (nextMetadata.option) {
         onUpdate(step.id, {
           name,
-          params: { ...option.defaultParams },
+          params: { ...nextMetadata.defaultParams },
         });
       }
     },
-    [step, onUpdate]
+    [getStepMetadata, step, onUpdate]
   );
 
   const handleParamChange = useCallback(
@@ -138,12 +143,12 @@ export function StepConfigPanel({
   );
 
   const handleResetParams = useCallback(() => {
-    if (!step || !currentOption) return;
+    if (!step || !currentMetadata?.option) return;
     onUpdate(step.id, {
-      params: { ...currentOption.defaultParams },
+      params: { ...currentMetadata.defaultParams },
       paramSweeps: undefined,
     });
-  }, [currentOption, step, onUpdate]);
+  }, [currentMetadata, step, onUpdate]);
 
   const handleSweepChange = useCallback(
     (key: string, sweep: ParameterSweep | undefined) => {

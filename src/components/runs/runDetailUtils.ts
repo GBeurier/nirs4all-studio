@@ -1,5 +1,6 @@
+import type { ChainPipelineReloadMetadata, RunPipelineReloadMetadata } from "@/api/client";
+import { buildCanonicalPreviewSteps } from "@/lib/canonicalPipelinePreview";
 import { buildPipelinePreview } from "@/lib/pipelineStats";
-import { importFromNirs4all } from "@/utils/pipelineConverter";
 import type { WorkspaceRunPipelineLogEntry } from "@/types/enriched-runs";
 
 const DROP_PIPELINE_STEP = Symbol("drop-pipeline-step");
@@ -112,8 +113,8 @@ export function buildStoredPipelinePreview(expandedConfig: unknown) {
   }
 
   try {
-    const editorSteps = importFromNirs4all(canonicalSteps as Parameters<typeof importFromNirs4all>[0]);
-    const preview = buildPipelinePreview(editorSteps, 256);
+    const previewSteps = buildCanonicalPreviewSteps(canonicalSteps);
+    const preview = buildPipelinePreview(previewSteps, 256);
     return { nodes: preview.nodes, totalSteps: preview.totalSteps };
   } catch {
     return {
@@ -127,6 +128,50 @@ export function buildStoredPipelinePreview(expandedConfig: unknown) {
       totalSteps: canonicalSteps.length,
     };
   }
+}
+
+export function describeRunPipelineReload(
+  reload: RunPipelineReloadMetadata | null | undefined,
+  loadedStepCount: number,
+): { title: string; description: string } {
+  const stepCount = Math.max(0, Math.round(loadedStepCount));
+  const stepLabel = `${stepCount} step${stepCount === 1 ? "" : "s"} loaded`;
+
+  if (reload?.source === "authoring_template" && reload.is_editable_template && !reload.is_legacy_fallback) {
+    return {
+      title: "Original template loaded",
+      description: `${stepLabel} from the original editable template.`,
+    };
+  }
+
+  return {
+    title: "Legacy run snapshot loaded",
+    description: `${stepLabel} from an expanded executed snapshot, not the original template.`,
+  };
+}
+
+export function describeChainPipelineReload(
+  reload: ChainPipelineReloadMetadata | null | undefined,
+  loadedStepCount: number,
+): { title: string; description: string } {
+  const stepCount = Math.max(0, Math.round(loadedStepCount));
+  const stepLabel = `${stepCount} step${stepCount === 1 ? "" : "s"} loaded`;
+
+  if (
+    reload?.source === "chain_snapshot"
+    && reload.selection_scope === "preprocessing_chain_plus_selected_model"
+    && !reload.is_editable_template
+  ) {
+    return {
+      title: "Chain snapshot loaded",
+      description: `${stepLabel} from this chain snapshot (preprocessing chain + selected model), not the original template.`,
+    };
+  }
+
+  return {
+    title: "Chain snapshot loaded",
+    description: `${stepLabel} from this chain snapshot, not the original template.`,
+  };
 }
 
 function isRuntimeOnlyStepRepr(value: unknown): value is string {

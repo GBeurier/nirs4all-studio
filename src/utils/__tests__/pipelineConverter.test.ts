@@ -366,6 +366,54 @@ describe("pipelineConverter", () => {
       expect(modelStep.model.params).toEqual({ dropout: 0.2 });
     });
 
+    it("hydrates registry-backed defaults without overwriting explicit params", () => {
+      const editorSteps: EditorPipelineStep[] = [
+        {
+          id: "step-bayes",
+          type: "model",
+          name: "BayesianRidge",
+          params: {},
+        } as EditorPipelineStep,
+        {
+          id: "step-elastic",
+          type: "model",
+          name: "ElasticNet",
+          params: { alpha: 2.5 },
+        } as EditorPipelineStep,
+      ];
+
+      const hydrated = hydrateEditorPipelineSteps(editorSteps);
+
+      expect(hydrated[0].params).toMatchObject({
+        max_iter: 300,
+        tol: 0.001,
+      });
+      expect(hydrated[0].hydratedDefaultParams).toEqual(
+        expect.arrayContaining(["max_iter", "tol"])
+      );
+
+      expect(hydrated[1].params).toMatchObject({
+        alpha: 2.5,
+        l1_ratio: 0.5,
+      });
+      expect(hydrated[1].hydratedDefaultParams).toEqual(
+        expect.arrayContaining(["l1_ratio"])
+      );
+      expect(hydrated[1].hydratedDefaultParams).not.toContain("alpha");
+
+      const exported = exportToNirs4all(hydrated) as Array<{
+        model: {
+          class: string;
+          params?: Record<string, unknown>;
+        };
+      }>;
+
+      expect(exported[0].model).toEqual({
+        class: "sklearn.linear_model._bayes.BayesianRidge",
+      });
+      expect(exported[1].model.params).toEqual({ alpha: 2.5 });
+    });
+
     it("should reject unresolved model definitions during export", () => {
       const editorSteps: EditorPipelineStep[] = [
         {
@@ -697,6 +745,118 @@ describe("pipelineConverter", () => {
 
       const exported = exportToNirs4all(steps) as Nirs4allStep[];
       expect(exported).toEqual(original);
+    });
+
+    it("normalizes float_log finetune aliases to canonical log_float on import", () => {
+      const original = [
+        {
+          model: {
+            class: "sklearn.linear_model.Ridge",
+          },
+          finetune_params: {
+            model_params: {
+              alpha: ["float_log", 1e-4, 1e2],
+              gamma: {
+                type: "float_log",
+                low: 0.01,
+                high: 1.0,
+              },
+            },
+          },
+        },
+      ] as Nirs4allStep[];
+
+      const steps = importFromNirs4all({ pipeline: original });
+      const paramsByName = Object.fromEntries(
+        (steps[0].finetuneConfig?.model_params || []).map(param => [param.name, param])
+      );
+
+      expect(paramsByName.alpha).toMatchObject({
+        type: "log_float",
+        low: 1e-4,
+        high: 1e2,
+        rawValue: ["log_float", 1e-4, 1e2],
+      });
+      expect(paramsByName.gamma).toMatchObject({
+        type: "log_float",
+        low: 0.01,
+        high: 1.0,
+        rawValue: {
+          type: "log_float",
+          low: 0.01,
+          high: 1.0,
+        },
+      });
+
+      const exported = exportToNirs4all(steps) as Array<{
+        finetune_params: {
+          model_params: Record<string, unknown>;
+        };
+      }>;
+
+      expect(exported[0].finetune_params.model_params.alpha).toEqual([
+        "log_float",
+        1e-4,
+        1e2,
+      ]);
+      expect(exported[0].finetune_params.model_params.gamma).toEqual({
+        type: "log_float",
+        low: 0.01,
+        high: 1.0,
+      });
+    });
+
+    it("exports edited imported finetune params from current fields instead of stale rawValue", () => {
+      const original = [
+        {
+          model: {
+            class: "sklearn.linear_model.Ridge",
+          },
+          finetune_params: {
+            model_params: {
+              alpha: ["float_log", 1e-4, 1e2],
+              gamma: {
+                type: "log_float",
+                low: 0.01,
+                high: 1.0,
+              },
+            },
+          },
+        },
+      ] as Nirs4allStep[];
+
+      const steps = importFromNirs4all({ pipeline: original });
+      const finetuneConfig = steps[0].finetuneConfig;
+      expect(finetuneConfig).toBeDefined();
+
+      finetuneConfig!.model_params = finetuneConfig!.model_params.map((param) => {
+        if (param.name === "alpha") {
+          return { ...param, high: 10 };
+        }
+        if (param.name === "gamma") {
+          return { ...param, low: 0.02 };
+        }
+        return param;
+      });
+
+      const exported = exportToNirs4all(steps) as Array<{
+        finetune_params: {
+          model_params: Record<string, unknown>;
+        };
+      }>;
+
+      expect(exported[0].finetune_params.model_params.alpha).toEqual({
+        type: "log_float",
+        low: 1e-4,
+        high: 10,
+        log: true,
+      });
+      expect(exported[0].finetune_params.model_params.gamma).toEqual({
+        type: "log_float",
+        low: 0.02,
+        high: 1.0,
+        log: true,
+      });
     });
 
     it("represents generator no-op alternatives without leaking executable placeholders", () => {

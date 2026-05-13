@@ -56,12 +56,12 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
-  stepOptions,
   type StepType,
   type LegacyStepType,
   type StepOption,
   type PipelineStep,
 } from "./types";
+import { useStepMetadataCatalog } from "./shared/stepMetadata";
 
 // Icon mapping for step types
 const stepTypeIcons: Record<LegacyStepType, LucideIcon> = {
@@ -175,6 +175,7 @@ export function CommandPalette({
   onFocusPanel,
 }: CommandPaletteProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const { getStepOptions } = useStepMetadataCatalog();
 
   // Reset search when closing
   useEffect(() => {
@@ -456,7 +457,7 @@ export function CommandPalette({
     const quickAddTypes: StepType[] = ["preprocessing", "model", "splitting"];
 
     for (const type of quickAddTypes) {
-      const options = stepOptions[type];
+      const options = getStepOptions(type);
       // Show top 3 options per type
       for (const option of options.slice(0, 3)) {
         const Icon = stepTypeIcons[type];
@@ -496,6 +497,7 @@ export function CommandPalette({
     onOpenShortcutsHelp,
     onFocusPanel,
     onOpenChange,
+    getStepOptions,
   ]);
 
   // Filter actions based on search query

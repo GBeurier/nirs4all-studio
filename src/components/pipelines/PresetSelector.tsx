@@ -26,9 +26,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { buildCanonicalPreviewSteps } from "@/lib/canonicalPipelinePreview";
 import type { PipelinePreset, PipelinePresetVariantId } from "@/types/pipelines";
 import { buildPipelinePreview, computePipelineStats } from "@/lib/pipelineStats";
-import { importFromNirs4all } from "@/utils/pipelineConverter";
 
 export type PresetSelectorVariant = "full" | "strip";
 
@@ -225,12 +225,7 @@ function deriveEditorStepsFromPreset(
   variant: PipelinePresetVariantId
 ): unknown[] {
   const pipeline = getPresetPipeline(preset, variant);
-  if (!pipeline) return [];
-  try {
-    return importFromNirs4all(pipeline as Parameters<typeof importFromNirs4all>[0]);
-  } catch {
-    return [];
-  }
+  return buildCanonicalPreviewSteps(pipeline);
 }
 
 function StatCell({

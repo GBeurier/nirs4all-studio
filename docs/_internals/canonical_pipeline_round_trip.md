@@ -340,6 +340,7 @@ Important correction for finetune search spaces:
 
 - tuple-style search spaces emitted by `serialize_component` become JSON lists,
   e.g. `["int", 1, 25]`, `["log_float", 1e-4, 1.0]`, `["categorical", ["a", "b"]]`.
+- legacy external payloads may still use `float_log`; readers must accept it but normalize editor state and canonical export back to `log_float`.
 - These must not be interpreted as generic categorical arrays.
 - The importer must detect the tuple-style sentinel in position `0`.
 - Plain arrays that do not start with a known search-space token remain categorical
@@ -575,6 +576,15 @@ editor steps -> editor_to_canonical -> PipelineConfigs / runtime path
 This removes the need for the legacy downgrade and most of the ad hoc short-name native
 translation.
 
+### 7.5 Run reload
+
+Run reload now has an explicit product contract:
+
+- new executions persist `pipelines.original_template` as the authoring-time canonical template;
+- `/api/aggregated-predictions/pipeline/{pipeline_id}/pipeline-steps` returns that template when available and marks `reload.source = "authoring_template"`;
+- legacy rows without `original_template` fall back to the cleaned `expanded_config` snapshot and must mark `reload.source = "expanded_snapshot"`, `is_legacy_fallback = true`, and `is_editable_template = false`;
+- frontend copy must say that the legacy path is an expanded executed snapshot, not the original editable template.
+
 ---
 
 ## 8. Test Strategy
@@ -617,6 +627,10 @@ Those files are generated from expanded `PipelineConfigs.steps[0]`.
 5. Passthrough preservation
    - separation branches
    - unknown keyword fixtures
+
+6. Run reload contract
+  - new rows reload from `original_template`
+  - legacy rows fall back to `expanded_config` with explicit reload metadata
    - optional-dependency models not installed locally
 
 6. API integration

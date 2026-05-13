@@ -29,9 +29,9 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { buildCanonicalPreviewSteps } from "@/lib/canonicalPipelinePreview";
 import { foldIdBase, foldLabel, foldLabelShort } from "@/lib/fold-utils";
 import { computePipelineStats } from "@/lib/pipelineStats";
-import { importFromNirs4all } from "@/utils/pipelineConverter";
 import {
   PARTITION_COLORS,
   normalizePartition,
@@ -781,21 +781,17 @@ export function ChainDetailPanel({ chainId, metric, metaHint, focus, onOpenViewe
     return null;
   }, [prediction.best_params, selectedGroup, partitionRows]);
 
-  const editorPipelineSteps = useMemo(() => {
+  const previewPipelineSteps = useMemo(() => {
     if (!pipelineSteps || pipelineSteps.length === 0) return null;
-    try {
-      return importFromNirs4all(pipelineSteps as Parameters<typeof importFromNirs4all>[0]);
-    } catch {
-      return null;
-    }
+    return buildCanonicalPreviewSteps(pipelineSteps);
   }, [pipelineSteps]);
   const pipelineStats = useMemo(
-    () => (editorPipelineSteps ? computePipelineStats(editorPipelineSteps) : null),
-    [editorPipelineSteps],
+    () => (previewPipelineSteps ? computePipelineStats(previewPipelineSteps) : null),
+    [previewPipelineSteps],
   );
   const pipelineTree = useMemo(
-    () => (editorPipelineSteps ? buildPipelineTreeWithParams(editorPipelineSteps as unknown[], 24) : null),
-    [editorPipelineSteps],
+    () => (previewPipelineSteps ? buildPipelineTreeWithParams(previewPipelineSteps, 24) : null),
+    [previewPipelineSteps],
   );
 
   const generatorChoices = useMemo(

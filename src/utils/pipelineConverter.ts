@@ -25,7 +25,7 @@ import modelNodes from "@/data/nodes/definitions/models";
 import yProcessingNodes from "@/data/nodes/definitions/y-processing";
 import filterNodes from "@/data/nodes/definitions/filters";
 import augmentationNodes from "@/data/nodes/definitions/augmentation";
-import type { NodeDefinition } from "@/data/nodes/types";
+import { parametersToDefaultParams, type NodeDefinition } from "@/data/nodes/types";
 
 // ============================================================================
 // Type Definitions
@@ -367,6 +367,125 @@ interface ResolvedClassInfo {
 
 const CLASS_REFERENCE_LOOKUP = buildClassReferenceLookup();
 
+function matchesNodeDefinitionReference(
+  node: NodeDefinition,
+  type: StepType,
+  reference: string
+): boolean {
+  if (node.type !== type) {
+    return false;
+  }
+
+  const normalizedReference = reference.trim().toLowerCase();
+  return (
+    node.name.toLowerCase() === normalizedReference ||
+    node.classPath?.toLowerCase() === normalizedReference ||
+    (node.aliases || []).some(alias => alias.toLowerCase() === normalizedReference) ||
+    (node.legacyClassPaths || []).some(path => path.toLowerCase() === normalizedReference)
+  );
+}
+
+function getDefaultParamsForStep(step: EditorPipelineStep): Record<string, unknown> {
+  const references = [step.name, step.classPath, step.functionPath].filter(
+    (reference): reference is string => typeof reference === "string" && reference.trim().length > 0
+  );
+
+  for (const reference of references) {
+    const node = SUPPORTED_OPERATOR_NODES.find(candidate =>
+      matchesNodeDefinitionReference(candidate, step.type, reference)
+    );
+    if (!node) {
+      continue;
+    }
+
+    const registryDefaults = {
+      ...parametersToDefaultParams(node.parameters || []),
+      ...castParams(node.defaultParams as Record<string, unknown> | undefined),
+    };
+    if (Object.keys(registryDefaults).length > 0) {
+      return registryDefaults;
+    }
+  }
+
+  return castParams(
+    stepOptions[step.type]?.find(option => option.name === step.name)?.defaultParams as
+      | Record<string, unknown>
+      | undefined
+  );
+}
+
+function getExportableStepParams(step: EditorPipelineStep): Record<string, unknown> {
+  const params = castParams(step.params);
+  const hydratedDefaultParams = new Set(
+    Array.isArray(step.hydratedDefaultParams)
+      ? step.hydratedDefaultParams.filter(
+          (key): key is string => typeof key === "string" && key.length > 0
+        )
+      : []
+  );
+
+  if (hydratedDefaultParams.size === 0) {
+    return params;
+  }
+
+  const defaults = getDefaultParamsForStep(step);
+  if (Object.keys(defaults).length === 0) {
+    return params;
+  }
+
+  const filteredParams: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (hydratedDefaultParams.has(key) && defaults[key] === value) {
+      continue;
+    }
+    filteredParams[key] = value;
+  }
+  return filteredParams;
+}
+
+function hydrateMissingStepParams(step: EditorPipelineStep): EditorPipelineStep {
+  if (step.type === "flow" || step.type === "utility") {
+    return step;
+  }
+
+  const defaults = getDefaultParamsForStep(step);
+  if (Object.keys(defaults).length === 0) {
+    return step;
+  }
+
+  const currentParams = castParams(step.params);
+  const hydratedKeys = new Set(
+    Array.isArray(step.hydratedDefaultParams)
+      ? step.hydratedDefaultParams.filter(
+          (key): key is string => typeof key === "string" && key.length > 0
+        )
+      : []
+  );
+  const mergedParams: Record<string, unknown> = { ...defaults };
+  let changed = false;
+
+  for (const [key, value] of Object.entries(currentParams)) {
+    mergedParams[key] = value;
+  }
+
+  for (const key of Object.keys(defaults)) {
+    if (!(key in currentParams)) {
+      hydratedKeys.add(key);
+      changed = true;
+    }
+  }
+
+  if (!changed) {
+    return step;
+  }
+
+  return {
+    ...step,
+    params: mergedParams,
+    hydratedDefaultParams: Array.from(hydratedKeys),
+  };
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -560,7 +679,7 @@ function getClassPath(type: StepType, name: string): string {
 }
 
 function hydrateEditorStep(step: EditorPipelineStep): EditorPipelineStep {
-  let hydrated = step;
+  let hydrated = hydrateMissingStepParams(step);
 
   if (
     !hydrated.functionPath &&
@@ -644,7 +763,8 @@ function resolveRequiredClassPath(step: EditorPipelineStep, type: StepType = ste
  * This sanitizes the params object for the editor.
  */
 type EditorParams = Record<string, unknown>;
-const SEARCH_SPACE_TOKENS = new Set(["int", "float", "categorical", "log_float"]);
+const SEARCH_SPACE_TOKEN_ALIASES = new Map<string, FinetuneParamType>([["float_log", "log_float"]]);
+const SEARCH_SPACE_TOKENS = new Set<FinetuneParamType>(["int", "float", "categorical", "log_float"]);
 
 function cloneParamValue(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -659,6 +779,44 @@ function cloneParamValue(value: unknown): unknown {
     );
   }
   return value;
+}
+
+function normalizeSearchSpaceToken(token: unknown): FinetuneParamType | undefined {
+  if (typeof token !== "string") {
+    return undefined;
+  }
+
+  const normalized = SEARCH_SPACE_TOKEN_ALIASES.get(token) || token;
+  if (!SEARCH_SPACE_TOKENS.has(normalized as FinetuneParamType)) {
+    return undefined;
+  }
+
+  return normalized as FinetuneParamType;
+}
+
+function normalizeSearchSpaceRawValue(value: unknown): unknown {
+  const normalized = cloneParamValue(value);
+
+  if (
+    Array.isArray(normalized) &&
+    normalized.length > 0 &&
+    typeof normalized[0] === "string"
+  ) {
+    const normalizedToken = normalizeSearchSpaceToken(normalized[0]);
+    if (normalizedToken) {
+      normalized[0] = normalizedToken;
+    }
+    return normalized;
+  }
+
+  if (normalized && typeof normalized === "object") {
+    const record = normalized as Record<string, unknown>;
+    if (record.type === "float_log") {
+      record.type = "log_float";
+    }
+  }
+
+  return normalized;
 }
 
 function castParams(params: Record<string, unknown> | undefined): EditorParams {
@@ -786,23 +944,24 @@ function parseFinetuneParamConfig(
 ): FinetuneParamConfig {
   if (Array.isArray(config)) {
     const [token, ...rest] = config;
-    if (typeof token === "string" && SEARCH_SPACE_TOKENS.has(token)) {
-      if (token === "categorical") {
+    const normalizedToken = normalizeSearchSpaceToken(token);
+    if (normalizedToken) {
+      if (normalizedToken === "categorical") {
         const choices = Array.isArray(rest[0]) ? rest[0] : rest;
         return {
           name,
           type: "categorical",
           choices: choices as (string | number)[],
-          rawValue: cloneParamValue(config),
+          rawValue: normalizeSearchSpaceRawValue(config),
         };
       }
       return {
         name,
-        type: token as FinetuneParamType,
+        type: normalizedToken,
         low: rest[0] as number | undefined,
         high: rest[1] as number | undefined,
         step: rest[2] as number | undefined,
-        rawValue: cloneParamValue(config),
+        rawValue: normalizeSearchSpaceRawValue(config),
       };
     }
     return {
@@ -823,13 +982,108 @@ function parseFinetuneParamConfig(
   };
   return {
     name,
-    type: (paramConfig.log ? "log_float" : paramConfig.type) as FinetuneParamType || "int",
+    type: (paramConfig.log
+      ? "log_float"
+      : normalizeSearchSpaceToken(paramConfig.type) || paramConfig.type) as FinetuneParamType || "int",
     low: paramConfig.low,
     high: paramConfig.high,
     step: paramConfig.step,
     choices: paramConfig.choices,
-    rawValue: cloneParamValue(config),
+    rawValue: normalizeSearchSpaceRawValue(config),
   };
+}
+
+function areFinetuneParamValuesEquivalent(left: unknown, right: unknown): boolean {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+    return left.every((value, index) =>
+      areFinetuneParamValuesEquivalent(value, right[index])
+    );
+  }
+
+  if (left && typeof left === "object") {
+    if (!right || typeof right !== "object") {
+      return false;
+    }
+
+    const leftRecord = left as Record<string, unknown>;
+    const rightRecord = right as Record<string, unknown>;
+    const leftKeys = Object.keys(leftRecord);
+    const rightKeys = Object.keys(rightRecord);
+
+    if (leftKeys.length !== rightKeys.length) {
+      return false;
+    }
+
+    return leftKeys.every(
+      (key) =>
+        key in rightRecord &&
+        areFinetuneParamValuesEquivalent(leftRecord[key], rightRecord[key])
+    );
+  }
+
+  return left === right;
+}
+
+function getComparableFinetuneParamShape(
+  param: Pick<FinetuneParamConfig, "type" | "low" | "high" | "step" | "choices">
+): Record<string, unknown> {
+  if (param.type === "categorical") {
+    return {
+      type: "categorical",
+      choices: cloneParamValue(param.choices || []),
+    };
+  }
+
+  return {
+    type: param.type,
+    low: param.low,
+    high: param.high,
+    step: param.step,
+  };
+}
+
+function shouldReuseRawFinetuneParamValue(param: FinetuneParamConfig): boolean {
+  if (param.rawValue === undefined) {
+    return false;
+  }
+
+  const parsedRawValue = parseFinetuneParamConfig(param.name, param.rawValue);
+  return areFinetuneParamValuesEquivalent(
+    getComparableFinetuneParamShape(param),
+    getComparableFinetuneParamShape(parsedRawValue)
+  );
+}
+
+function serializeFinetuneParamConfig(param: FinetuneParamConfig): unknown {
+  if (shouldReuseRawFinetuneParamValue(param)) {
+    return cloneParamValue(param.rawValue);
+  }
+
+  if (param.type === "categorical") {
+    return cloneParamValue(param.choices || []);
+  }
+
+  const paramConfig: Record<string, unknown> = { type: param.type };
+  if (param.low !== undefined) paramConfig.low = param.low;
+  if (param.high !== undefined) paramConfig.high = param.high;
+  if (param.step !== undefined) paramConfig.step = param.step;
+  if (param.type === "log_float") paramConfig.log = true;
+  return paramConfig;
+}
+
+function serializeNamedFinetuneParams(
+  params: FinetuneParamConfig[]
+): Record<string, unknown> {
+  const serializedParams: Record<string, unknown> = {};
+
+  for (const param of params) {
+    serializedParams[param.name] = serializeFinetuneParamConfig(param);
+  }
+
+  return serializedParams;
 }
 
 function isSeparationBranch(
@@ -862,7 +1116,7 @@ function isSeparationBranch(
  */
 export function importFromNirs4all(pipeline: Nirs4allPipeline | Nirs4allStep[]): EditorPipelineStep[] {
   const steps = Array.isArray(pipeline) ? pipeline : pipeline.pipeline;
-  return steps.map(step => convertStepToEditor(step));
+  return hydrateEditorPipelineSteps(steps.map(step => convertStepToEditor(step)));
 }
 
 /**
@@ -1813,7 +2067,7 @@ function convertEditorStepToNirs4all(step: EditorPipelineStep): Nirs4allStep {
         if (step.children?.length) {
           return step.children.map(child => convertEditorStepToNirs4all(child)) as unknown as Nirs4allStep;
         }
-        return buildClassStep(classPath, step.params);
+        return buildClassStep(step, classPath);
     }
   }
 
@@ -1843,11 +2097,12 @@ function convertEditorStepToNirs4all(step: EditorPipelineStep): Nirs4allStep {
 
     default:
       // Standard preprocessing/splitting step
-      return buildClassStep(classPath, step.params);
+      return buildClassStep(step, classPath);
   }
 }
 
-function buildClassStep(classPath: string, params: Record<string, unknown>): Nirs4allStep {
+function buildClassStep(step: EditorPipelineStep, classPath: string): Nirs4allStep {
+  const params = getExportableStepParams(step);
   // Filter out internal/meta params that start with _
   const cleanParams: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(params || {})) {
@@ -1864,19 +2119,20 @@ function buildClassStep(classPath: string, params: Record<string, unknown>): Nir
 function convertEditorModelToNirs4all(step: EditorPipelineStep, classPath: string): Nirs4allStep {
   // Handle function-based models (like nicon)
   let modelDef: Nirs4allClassStep | { function: string; params?: Record<string, unknown> };
+  const exportableParams = getExportableStepParams(step);
 
   if (step.functionPath) {
     modelDef = { function: step.functionPath };
-    if (step.params && Object.keys(step.params).length > 0) {
-      (modelDef as { function: string; params?: Record<string, unknown> }).params = step.params;
+    if (Object.keys(exportableParams).length > 0) {
+      (modelDef as { function: string; params?: Record<string, unknown> }).params = exportableParams;
     }
     if (step.framework) {
       (modelDef as { function: string; params?: Record<string, unknown>; framework?: string }).framework = step.framework;
     }
   } else {
     modelDef = { class: classPath };
-    if (step.params && Object.keys(step.params).length > 0) {
-      modelDef.params = step.params;
+    if (Object.keys(exportableParams).length > 0) {
+      modelDef.params = exportableParams;
     }
   }
 
@@ -1891,25 +2147,7 @@ function convertEditorModelToNirs4all(step: EditorPipelineStep, classPath: strin
 
   // Add finetuning
   if (step.finetuneConfig?.enabled) {
-    const modelParams: Record<string, unknown> = {};
-    for (const param of step.finetuneConfig.model_params) {
-      if (param.rawValue !== undefined) {
-        modelParams[param.name] = cloneParamValue(param.rawValue);
-        continue;
-      }
-      if (param.type === "categorical" && param.choices) {
-        // Categorical as array
-        modelParams[param.name] = param.choices;
-      } else {
-        // Object format with type, low, high
-        const paramConfig: Record<string, unknown> = { type: param.type };
-        if (param.low !== undefined) paramConfig.low = param.low;
-        if (param.high !== undefined) paramConfig.high = param.high;
-        if (param.step !== undefined) paramConfig.step = param.step;
-        if (param.type === "log_float") paramConfig.log = true;
-        modelParams[param.name] = paramConfig;
-      }
-    }
+    const modelParams = serializeNamedFinetuneParams(step.finetuneConfig.model_params);
 
     result.finetune_params = {
       n_trials: step.finetuneConfig.n_trials,
@@ -1928,23 +2166,9 @@ function convertEditorModelToNirs4all(step: EditorPipelineStep, classPath: strin
 
     // Add train_params tuning for neural networks
     if (step.finetuneConfig.train_params && step.finetuneConfig.train_params.length > 0) {
-      const trainParamsRecord: Record<string, unknown> = {};
-      for (const param of step.finetuneConfig.train_params) {
-        if (param.rawValue !== undefined) {
-          trainParamsRecord[param.name] = cloneParamValue(param.rawValue);
-          continue;
-        }
-        if (param.type === "categorical" && param.choices) {
-          trainParamsRecord[param.name] = param.choices;
-        } else {
-          const paramConfig: Record<string, unknown> = { type: param.type };
-          if (param.low !== undefined) paramConfig.low = param.low;
-          if (param.high !== undefined) paramConfig.high = param.high;
-          if (param.step !== undefined) paramConfig.step = param.step;
-          if (param.type === "log_float") paramConfig.log = true;
-          trainParamsRecord[param.name] = paramConfig;
-        }
-      }
+      const trainParamsRecord = serializeNamedFinetuneParams(
+        step.finetuneConfig.train_params
+      );
       result.finetune_params.train_params = trainParamsRecord;
     }
   }
@@ -1986,7 +2210,7 @@ function convertEditorModelToNirs4all(step: EditorPipelineStep, classPath: strin
 }
 
 function convertEditorYProcessingToNirs4all(step: EditorPipelineStep, classPath: string): Nirs4allStep {
-  const yProcessingDef = buildClassStep(classPath, step.params);
+  const yProcessingDef = buildClassStep(step, classPath);
 
   return {
     y_processing: yProcessingDef as string | Nirs4allClassStep,
@@ -2081,8 +2305,9 @@ function convertEditorSampleAugmentationToNirs4all(step: EditorPipelineStep): Ni
 
     const transformers = config.transformers.map(t => {
       if (t.classPath) {
-        if (Object.keys(t.params || {}).length > 0) {
-          return { class: t.classPath, params: t.params };
+        const params = getExportableStepParams(t as EditorPipelineStep);
+        if (Object.keys(params).length > 0) {
+          return { class: t.classPath, params };
         }
         return t.classPath;
       }
@@ -2164,8 +2389,9 @@ function convertEditorFeatureAugmentationToNirs4all(step: EditorPipelineStep): N
     if (config.orOptions && config.orOptions.length > 0) {
       const orList = config.orOptions.map(t => {
         if (t.classPath) {
-          if (Object.keys(t.params || {}).length > 0) {
-            return { class: t.classPath, params: t.params };
+          const params = getExportableStepParams(t as EditorPipelineStep);
+          if (Object.keys(params).length > 0) {
+            return { class: t.classPath, params };
           }
           return t.classPath;
         }
@@ -2185,8 +2411,9 @@ function convertEditorFeatureAugmentationToNirs4all(step: EditorPipelineStep): N
       // Direct list mode
       const transformList = config.transforms.map(t => {
         if (t.classPath) {
-          if (Object.keys(t.params || {}).length > 0) {
-            return { class: t.classPath, params: t.params };
+          const params = getExportableStepParams(t as EditorPipelineStep);
+          if (Object.keys(params).length > 0) {
+            return { class: t.classPath, params };
           }
           return t.classPath;
         }
@@ -2274,8 +2501,9 @@ function convertEditorSampleFilterToNirs4all(step: EditorPipelineStep): Nirs4all
 
     const filters = config.filters.map(f => {
       if (f.classPath) {
-        if (Object.keys(f.params || {}).length > 0) {
-          return { class: f.classPath, params: f.params };
+        const params = getExportableStepParams(f as EditorPipelineStep);
+        if (Object.keys(params).length > 0) {
+          return { class: f.classPath, params };
         }
         return f.classPath;
       }
@@ -2328,8 +2556,9 @@ function convertEditorConcatTransformToNirs4all(step: EditorPipelineStep): Nirs4
         // Single transform in branch
         const t = branch[0];
         if (t.classPath) {
-          if (Object.keys(t.params || {}).length > 0) {
-            return { class: t.classPath, params: t.params };
+          const params = getExportableStepParams(t as EditorPipelineStep);
+          if (Object.keys(params).length > 0) {
+            return { class: t.classPath, params };
           }
           return t.classPath;
         }
@@ -2338,8 +2567,9 @@ function convertEditorConcatTransformToNirs4all(step: EditorPipelineStep): Nirs4
       // Multiple transforms in chain
       return branch.map(t => {
         if (t.classPath) {
-          if (Object.keys(t.params || {}).length > 0) {
-            return { class: t.classPath, params: t.params };
+          const params = getExportableStepParams(t as EditorPipelineStep);
+          if (Object.keys(params).length > 0) {
+            return { class: t.classPath, params };
           }
           return t.classPath;
         }
@@ -2516,7 +2746,7 @@ function convertEditorAugmentationToNirs4all(step: EditorPipelineStep): Nirs4all
 
   // Single augmentation transform
   const classPath = resolveRequiredClassPath(step);
-  return buildClassStep(classPath, step.params);
+  return buildClassStep(step, classPath);
 }
 
 function convertEditorFilterToNirs4all(step: EditorPipelineStep): Nirs4allStep {
@@ -2532,7 +2762,7 @@ function convertEditorFilterToNirs4all(step: EditorPipelineStep): Nirs4allStep {
 
   // Single filter
   const classPath = resolveRequiredClassPath(step);
-  return buildClassStep(classPath, step.params);
+  return buildClassStep(step, classPath);
 }
 
 // ============================================================================
