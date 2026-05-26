@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Link all test datasets to the nirs4all webapp.
+Link all test datasets to the nirs4all Studio.
 
 This script reads all YAML configs from sample_configs/datasets/ and
 links each dataset to the current workspace via the webapp API.

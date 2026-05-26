@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 REM =============================================================================
-REM nirs4all webapp - Unified Launcher (Windows)
+REM nirs4all Studio - Unified Launcher (Windows)
 REM =============================================================================
 REM Commands:
 REM   start <mode>  - Start servers (web:dev, web:prod, desktop:dev, desktop:prod)
@@ -61,7 +61,7 @@ REM ============================================================================
 :interactive_menu
 echo.
 echo ========================================
-echo   nirs4all webapp - Launcher
+echo   nirs4all Studio - Launcher
 echo ========================================
 echo.
 echo   1) web:dev        (Vite + FastAPI)
@@ -89,7 +89,7 @@ REM ============================================================================
 :print_usage
 echo.
 echo ========================================
-echo   nirs4all webapp - Launcher
+echo   nirs4all Studio - Launcher
 echo ========================================
 echo.
 echo Usage: %~nx0 ^<command^> [options]

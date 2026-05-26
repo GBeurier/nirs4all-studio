@@ -1,5 +1,5 @@
 """
-Spectra API routes for nirs4all webapp.
+Spectra API routes for nirs4all Studio.
 
 This module provides FastAPI routes for accessing spectral data from datasets,
 including raw spectra, processed spectra, and statistics.

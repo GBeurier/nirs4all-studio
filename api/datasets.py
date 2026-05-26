@@ -1,5 +1,5 @@
 """
-Datasets API routes for nirs4all webapp.
+Datasets API routes for nirs4all Studio.
 
 This module provides FastAPI routes for dataset operations.
 All data loading, validation, splitting, filtering, and merging is delegated to nirs4all.

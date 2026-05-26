@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Playwright E2E Test Configuration for nirs4all_webapp
+ * Playwright E2E Test Configuration for nirs4all-studio
  *
  * Supports both web mode (Vite dev server) and desktop mode (FastAPI serving static files).
  * Run specific mode with: npm run e2e:web or npm run e2e:desktop

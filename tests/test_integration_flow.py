@@ -1,5 +1,5 @@
 """
-Integration Test Suite for nirs4all_webapp - Phase 3 Data Flow Verification.
+Integration Test Suite for nirs4all-studio - Phase 3 Data Flow Verification.
 
 This module tests the complete end-to-end workflow from:
 Dataset → Pipeline → Run → Results → Predictions

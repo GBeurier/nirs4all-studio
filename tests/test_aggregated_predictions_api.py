@@ -167,10 +167,10 @@ def sample_chain_prediction_rows():
 
 @pytest.fixture()
 def mock_workspace(tmp_path):
-    """Create a mock workspace with a fake store.duckdb file."""
+    """Create a mock workspace with a fake store.sqlite file."""
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
-    (workspace_dir / "store.duckdb").touch()
+    (workspace_dir / "store.sqlite").touch()
 
     ws = MagicMock()
     ws.path = str(workspace_dir)
@@ -747,12 +747,12 @@ class TestErrorHandling:
                 assert "No workspace" in resp.json()["detail"]
 
     def test_no_store_file(self, tmp_path, mock_polars_df):
-        """404 when store.duckdb doesn't exist in workspace."""
+        """404 when no store file exists in workspace."""
         import api.aggregated_predictions  # noqa: F401
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        # No store.duckdb file
+        # No store.sqlite or store.duckdb file
 
         ws = MagicMock()
         ws.path = str(workspace_dir)
@@ -769,7 +769,7 @@ class TestErrorHandling:
             with TestClient(app) as c:
                 resp = c.get("/api/aggregated-predictions")
                 assert resp.status_code == 404
-                assert "No DuckDB store" in resp.json()["detail"]
+                assert "No workspace store" in resp.json()["detail"]
 
     def test_store_not_available(self):
         """501 when nirs4all library is not installed."""

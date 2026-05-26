@@ -1,5 +1,5 @@
 """
-Update management API for nirs4all webapp.
+Update management API for nirs4all Studio.
 
 This module provides API endpoints for:
 - Checking for updates (webapp via GitHub, nirs4all via PyPI)
@@ -165,11 +165,11 @@ class SetVenvPathRequest(BaseModel):
 
 
 # App identification
-APP_NAME = "nirs4all-webapp"
+APP_NAME = "nirs4all-studio"
 APP_AUTHOR = "nirs4all"
 
 # Default configuration
-DEFAULT_GITHUB_REPO = "GBeurier/nirs4all-webapp"
+DEFAULT_GITHUB_REPO = "GBeurier/nirs4all-studio"
 DEFAULT_PYPI_PACKAGE = "nirs4all"
 DEFAULT_CHECK_INTERVAL_HOURS = 24
 

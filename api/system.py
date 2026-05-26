@@ -1,5 +1,5 @@
 """
-System API routes for nirs4all webapp.
+System API routes for nirs4all Studio.
 
 This module provides FastAPI routes for system health and information.
 """
@@ -112,7 +112,7 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "message": "nirs4all webapp is running",
+        "message": "nirs4all Studio is running",
     }
 
 

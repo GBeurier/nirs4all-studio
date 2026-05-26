@@ -1,5 +1,5 @@
 """
-Pipelines API routes for nirs4all webapp.
+Pipelines API routes for nirs4all Studio.
 
 This module provides FastAPI routes for pipeline management,
 including CRUD operations and operator listing from nirs4all.
@@ -1703,7 +1703,7 @@ async def import_pipeline(content: str, format: str = "yaml", name: Optional[str
 
 def _get_samples_dir() -> Path:
     """Get the pipeline samples directory from nirs4all."""
-    # Try relative to nirs4all_webapp (sibling directory)
+    # Try relative to nirs4all-studio (sibling directory)
     samples_path = Path(__file__).parent.parent.parent / "nirs4all" / "examples" / "pipeline_samples"
     if samples_path.exists():
         return samples_path

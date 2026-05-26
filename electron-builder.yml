@@ -1,4 +1,4 @@
-appId: com.nirs4all.webapp
+appId: com.nirs4all.studio
 productName: nirs4all Studio
 copyright: Copyright 2024
 
@@ -100,4 +100,4 @@ deb:
 # publish:
 #   provider: github
 #   owner: your-org
-#   repo: nirs4all-webapp
+#   repo: nirs4all-studio

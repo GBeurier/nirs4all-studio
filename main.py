@@ -1,5 +1,5 @@
 """
-FastAPI backend for nirs4all webapp.
+FastAPI backend for nirs4all Studio.
 
 This module provides the web API for the nirs4all desktop application,
 handling workspace management, dataset operations, pipeline execution,
@@ -134,7 +134,7 @@ async def startup_event():
     from api.workspace_manager import workspace_manager
 
     # Log startup
-    print("nirs4all webapp starting...")
+    print("nirs4all Studio starting...")
     print(f"Webapp version: {update_manager.get_webapp_version()}")
 
     # Restore active workspace from persisted settings

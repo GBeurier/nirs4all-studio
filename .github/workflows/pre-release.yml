@@ -192,19 +192,19 @@ jobs:
 
       - name: Run PyInstaller
         run: |
-          pyinstaller nirs4all-webapp.spec --clean --noconfirm
+          pyinstaller nirs4all-studio.spec --clean --noconfirm
 
       - name: Verify build output
         run: |
-          ls -la dist/nirs4all-webapp/
-          test -f dist/nirs4all-webapp/nirs4all-webapp || { echo "::error::Executable not found"; exit 1; }
-          test -d dist/nirs4all-webapp/dist || { echo "::error::Frontend dist not bundled"; exit 1; }
-          test -f dist/nirs4all-webapp/version.json || { echo "::error::version.json not bundled"; exit 1; }
+          ls -la dist/nirs4all-studio/
+          test -f dist/nirs4all-studio/nirs4all-studio || { echo "::error::Executable not found"; exit 1; }
+          test -d dist/nirs4all-studio/dist || { echo "::error::Frontend dist not bundled"; exit 1; }
+          test -f dist/nirs4all-studio/version.json || { echo "::error::version.json not bundled"; exit 1; }
           echo "Build verification passed"
 
       - name: Check bundle size
         run: |
-          SIZE=$(du -sm dist/nirs4all-webapp | cut -f1)
+          SIZE=$(du -sm dist/nirs4all-studio | cut -f1)
           echo "Bundle size: ${SIZE} MB"
           if [ "$SIZE" -gt 500 ]; then
             echo "::warning::Bundle size is large (${SIZE} MB). Consider reviewing excludes."

@@ -2,13 +2,13 @@
 
 **Date**: 2026-01-27
 **Reviewer**: Claude Opus 4.5
-**Scope**: `nirs4all-webapp/electron/` directory and related deployment configuration
+**Scope**: `nirs4all-studio/electron/` directory and related deployment configuration
 
 ---
 
 ## 1. Executive Summary
 
-The Electron layer for nirs4all-webapp is well-structured and follows Electron security best practices. The codebase demonstrates good separation of concerns between main process, preload script, and backend management. However, there are several issues that should be addressed before release:
+The Electron layer for nirs4all-studio is well-structured and follows Electron security best practices. The codebase demonstrates good separation of concerns between main process, preload script, and backend management. However, there are several issues that should be addressed before release:
 
 **Critical Issues**: 0
 **Major Issues**: 4

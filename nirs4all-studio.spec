@@ -1,11 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec file for nirs4all-webapp.
+PyInstaller spec file for nirs4all-studio.
 
 Build commands:
-  Linux:   pyinstaller nirs4all-webapp.spec --clean
-  Windows: pyinstaller nirs4all-webapp.spec --clean
-  macOS:   pyinstaller nirs4all-webapp.spec --clean
+  Linux:   pyinstaller nirs4all-studio.spec --clean
+  Windows: pyinstaller nirs4all-studio.spec --clean
+  macOS:   pyinstaller nirs4all-studio.spec --clean
 
 Requirements:
   - Frontend must be built first: npm run build
@@ -24,7 +24,7 @@ is_linux = sys.platform.startswith('linux')
 spec_dir = Path(SPECPATH)
 
 # Application metadata
-APP_NAME = 'nirs4all-webapp'
+APP_NAME = 'nirs4all-studio'
 
 # ============================================================================
 # Data files to bundle (non-Python files)
@@ -326,12 +326,12 @@ if is_macos:
         coll,
         name=f'{APP_NAME}.app',
         icon=str(spec_dir / 'public' / 'nirs4all_icon.icns') if (spec_dir / 'public' / 'nirs4all_icon.icns').exists() else None,
-        bundle_identifier='com.nirs4all.webapp',
+        bundle_identifier='com.nirs4all.studio',
         info_plist={
             'CFBundleName': 'nirs4all',
             'CFBundleDisplayName': 'nirs4all - NIRS Analysis Workbench',
             'CFBundleGetInfoString': 'nirs4all Desktop Application',
-            'CFBundleIdentifier': 'com.nirs4all.webapp',
+            'CFBundleIdentifier': 'com.nirs4all.studio',
             'CFBundleVersion': '1.0.0',
             'CFBundleShortVersionString': '1.0.0',
             'NSHighResolutionCapable': True,

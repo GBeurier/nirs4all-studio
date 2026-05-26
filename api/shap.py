@@ -1,5 +1,5 @@
 """
-SHAP Analysis API routes for nirs4all webapp.
+SHAP Analysis API routes for nirs4all Studio.
 
 This module provides FastAPI routes for SHAP-based model explanations,
 computing feature importance and generating visualizations for model

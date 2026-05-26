@@ -1,4 +1,4 @@
-# nirs4all webapp Python dependencies
+# nirs4all Studio Python dependencies
 
 # Core backend
 fastapi>=0.115.0

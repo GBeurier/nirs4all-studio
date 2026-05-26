@@ -1,5 +1,5 @@
 /**
- * English translations for nirs4all webapp
+ * English translations for nirs4all Studio
  *
  * This is the base translation file. All other language files should follow this structure.
  * Organized by namespace/section for maintainability.

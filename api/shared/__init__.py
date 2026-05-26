@@ -1,5 +1,5 @@
 """
-Shared utilities for nirs4all webapp API.
+Shared utilities for nirs4all Studio API.
 
 This module contains shared functions and services used across multiple API endpoints.
 """

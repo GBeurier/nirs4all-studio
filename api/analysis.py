@@ -1,5 +1,5 @@
 """
-Analysis API routes for nirs4all webapp.
+Analysis API routes for nirs4all Studio.
 
 This module provides FastAPI routes for dimensionality reduction and feature analysis,
 including PCA, t-SNE, UMAP, feature importance, and correlation analysis.

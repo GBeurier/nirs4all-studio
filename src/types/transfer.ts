@@ -1,5 +1,5 @@
 /**
- * Transfer Analysis types for nirs4all webapp.
+ * Transfer Analysis types for nirs4all Studio.
  *
  * These types match the API response models defined in api/transfer.py
  */

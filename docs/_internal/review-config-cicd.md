@@ -1,4 +1,4 @@
-# Configuration and CI/CD Review - nirs4all_webapp
+# Configuration and CI/CD Review - nirs4all-studio
 
 **Review Date**: 2026-01-27
 **Version Reviewed**: 1.0.0
@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-This document provides a comprehensive review of all configuration files, build scripts, and CI/CD setup for the nirs4all-webapp project. The overall configuration is well-structured and follows modern best practices for a React/Vite/Electron application with a FastAPI Python backend.
+This document provides a comprehensive review of all configuration files, build scripts, and CI/CD setup for the nirs4all-studio project. The overall configuration is well-structured and follows modern best practices for a React/Vite/Electron application with a FastAPI Python backend.
 
 ### Summary Statistics
 
@@ -46,7 +46,7 @@ This document provides a comprehensive review of all configuration files, build 
 
 **Location:** `.github/workflows/release.yml:131, 178, 255, 307`
 
-**Description:** The release workflow references `nirs4all-webapp.spec` PyInstaller spec file, but the actual file in the repository is named `backend.spec`.
+**Description:** The release workflow references `nirs4all-studio.spec` PyInstaller spec file, but the actual file in the repository is named `backend.spec`.
 
 **Impact:** Release builds will fail with "file not found" errors when triggered by version tags.
 
@@ -54,7 +54,7 @@ This document provides a comprehensive review of all configuration files, build 
 ```yaml
 # Change from:
 - name: Build with PyInstaller
-  run: pyinstaller nirs4all-webapp.spec --clean --noconfirm
+  run: pyinstaller nirs4all-studio.spec --clean --noconfirm
 
 # To:
 - name: Build with PyInstaller
@@ -509,7 +509,7 @@ jobs:
 
 **Suggested `.env.example`:**
 ```bash
-# nirs4all webapp environment variables
+# nirs4all Studio environment variables
 
 # Backend
 NIRS4ALL_PORT=8000
@@ -638,10 +638,10 @@ def validate_environment():
 
 | Line | Finding | Severity |
 |------|---------|----------|
-| 131 | References nirs4all-webapp.spec (wrong) | Critical |
-| 178 | References nirs4all-webapp.spec (wrong) | Critical |
-| 255 | References nirs4all-webapp.spec (wrong) | Critical |
-| 307 | References nirs4all-webapp.spec (wrong) | Critical |
+| 131 | References nirs4all-studio.spec (wrong) | Critical |
+| 178 | References nirs4all-studio.spec (wrong) | Critical |
+| 255 | References nirs4all-studio.spec (wrong) | Critical |
+| 307 | References nirs4all-studio.spec (wrong) | Critical |
 
 ### .github/workflows/playwright.yml
 
@@ -678,7 +678,7 @@ def validate_environment():
 
 ### Immediate (Before Release)
 
-1. **Fix release.yml spec file references** - Change `nirs4all-webapp.spec` to `backend.spec`
+1. **Fix release.yml spec file references** - Change `nirs4all-studio.spec` to `backend.spec`
 2. **Update README.md** - Fix script references to match actual files
 3. **Add vitest.config.ts** - Ensure tests run properly
 

@@ -1,5 +1,5 @@
 """
-AutoML API routes for nirs4all webapp.
+AutoML API routes for nirs4all Studio.
 
 This module provides FastAPI routes for automated machine learning search,
 including hyperparameter optimization, model selection, and pipeline optimization.

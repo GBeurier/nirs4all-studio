@@ -1,4 +1,4 @@
-# Integration Tests for nirs4all webapp
+# Integration Tests for nirs4all Studio
 
 Comprehensive integration tests for the pipeline execution flow, covering the complete lifecycle from frontend submission through backend processing and WebSocket updates.
 

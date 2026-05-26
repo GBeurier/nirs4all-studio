@@ -1,5 +1,5 @@
 """
-External updater module for nirs4all webapp self-update.
+External updater module for nirs4all Studio self-update.
 
 This module handles the creation and execution of platform-specific
 updater scripts that can replace the running application.
@@ -26,7 +26,7 @@ from typing import Optional, Tuple
 import platformdirs
 
 
-APP_NAME = "nirs4all-webapp"
+APP_NAME = "nirs4all-studio"
 APP_AUTHOR = "nirs4all"
 
 
@@ -82,18 +82,18 @@ def get_app_directory() -> Path:
 def get_executable_name() -> str:
     """Get the name of the main executable."""
     if sys.platform == "win32":
-        return "nirs4all-webapp.exe"
+        return "nirs4all-studio.exe"
     elif sys.platform == "darwin":
-        return "nirs4all-webapp"
+        return "nirs4all-studio"
     else:
-        return "nirs4all-webapp"
+        return "nirs4all-studio"
 
 
 # Windows updater batch script template
 WINDOWS_UPDATER_TEMPLATE = '''@echo off
 setlocal enabledelayedexpansion
 
-:: nirs4all-webapp updater script
+:: nirs4all-studio updater script
 :: This script is generated automatically - do not edit
 
 set "APP_PID={app_pid}"
@@ -153,7 +153,7 @@ start "" "%APP_DIR%\\%EXECUTABLE%"
 # Unix updater shell script template
 UNIX_UPDATER_TEMPLATE = '''#!/bin/bash
 
-# nirs4all-webapp updater script
+# nirs4all-studio updater script
 # This script is generated automatically - do not edit
 
 APP_PID="{app_pid}"

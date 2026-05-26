@@ -1,5 +1,5 @@
 /**
- * Run types for nirs4all webapp
+ * Run types for nirs4all Studio
  * Phase 8: Runs Management
  * Phase 2-5: Enhanced with templates, results, and robustness features
  */

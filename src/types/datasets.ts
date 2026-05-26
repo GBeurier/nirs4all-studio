@@ -1,5 +1,5 @@
 /**
- * Dataset-related type definitions for nirs4all webapp
+ * Dataset-related type definitions for nirs4all Studio
  */
 
 /**

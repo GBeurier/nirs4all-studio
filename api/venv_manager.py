@@ -1,5 +1,5 @@
 """
-Managed virtual environment manager for nirs4all webapp.
+Managed virtual environment manager for nirs4all Studio.
 
 This module handles creation and management of a dedicated Python virtual environment
 for nirs4all and its ML dependencies. This allows the library to be updated
@@ -20,7 +20,7 @@ import platformdirs
 
 
 # App identification for platformdirs
-APP_NAME = "nirs4all-webapp"
+APP_NAME = "nirs4all-studio"
 APP_AUTHOR = "nirs4all"
 
 

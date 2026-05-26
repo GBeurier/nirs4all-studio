@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build script for nirs4all-webapp.
+Build script for nirs4all-studio.
 
 Usage:
     python scripts/build.py [--version VERSION] [--skip-frontend] [--skip-tests]
@@ -153,7 +153,7 @@ def build_frontend() -> None:
 def run_pyinstaller() -> None:
     """Run PyInstaller to create the executable."""
     project_dir = get_project_dir()
-    spec_file = project_dir / 'nirs4all-webapp.spec'
+    spec_file = project_dir / 'nirs4all-studio.spec'
 
     print("\n" + "=" * 60)
     print("Running PyInstaller")
@@ -164,7 +164,7 @@ def run_pyinstaller() -> None:
 
     # Clean previous build
     build_dir = project_dir / 'build'
-    dist_pyinstaller = project_dir / 'dist' / 'nirs4all-webapp'
+    dist_pyinstaller = project_dir / 'dist' / 'nirs4all-studio'
     if build_dir.exists():
         print(f"Cleaning {build_dir}")
         shutil.rmtree(build_dir)
@@ -215,7 +215,7 @@ def create_archive(version: str) -> Path:
     print("=" * 60)
 
     # Source directory (PyInstaller output)
-    dist_dir = project_dir / 'dist' / 'nirs4all-webapp'
+    dist_dir = project_dir / 'dist' / 'nirs4all-studio'
     if not dist_dir.exists():
         raise RuntimeError(f"Distribution directory not found: {dist_dir}")
 
@@ -224,9 +224,9 @@ def create_archive(version: str) -> Path:
     release_dir.mkdir(exist_ok=True)
 
     # Archive name following the convention expected by updater
-    # Format: nirs4all-webapp-{version}-{platform}-{arch}.{ext}
+    # Format: nirs4all-studio-{version}-{platform}-{arch}.{ext}
     if system == 'windows':
-        archive_name = f'nirs4all-webapp-{version}-windows-{arch}'
+        archive_name = f'nirs4all-studio-{version}-windows-{arch}'
         archive_path = release_dir / f'{archive_name}.zip'
         print(f"Creating ZIP archive: {archive_path.name}")
         shutil.make_archive(
@@ -237,7 +237,7 @@ def create_archive(version: str) -> Path:
         )
     else:
         # Linux and macOS use tar.gz
-        archive_name = f'nirs4all-webapp-{version}-{system}-{arch}'
+        archive_name = f'nirs4all-studio-{version}-{system}-{arch}'
         archive_path = release_dir / f'{archive_name}.tar.gz'
         print(f"Creating tarball: {archive_path.name}")
         shutil.make_archive(
@@ -285,7 +285,7 @@ def generate_checksum(archive_path: Path) -> tuple[str, Path]:
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='Build nirs4all-webapp desktop application',
+        description='Build nirs4all-studio desktop application',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -324,7 +324,7 @@ Examples:
     system, arch = get_platform_info()
 
     print("=" * 60)
-    print(f"nirs4all-webapp Build")
+    print(f"nirs4all-studio Build")
     print("=" * 60)
     print(f"Version: {version}")
     print(f"Platform: {system}")
@@ -371,7 +371,7 @@ Examples:
             print("\n" + "=" * 60)
             print("Build complete!")
             print("=" * 60)
-            print(f"Output: {get_project_dir() / 'dist' / 'nirs4all-webapp'}")
+            print(f"Output: {get_project_dir() / 'dist' / 'nirs4all-studio'}")
 
         return 0
 

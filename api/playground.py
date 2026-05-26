@@ -1,5 +1,5 @@
 """
-Playground API routes for nirs4all webapp.
+Playground API routes for nirs4all Studio.
 
 This module provides FastAPI routes for real-time spectral data exploration,
 enabling users to:

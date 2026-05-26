@@ -1,5 +1,5 @@
 {
-  "name": "nirs4all-webapp",
+  "name": "nirs4all-studio",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -141,7 +141,7 @@
     "@vitest/coverage-v8": "^4.0.16",
     "@vitest/ui": "^4.0.16",
     "autoprefixer": "^10.4.21",
-    "concurrently": "^9.1.0",
+    "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
     "electron": "^40.0.0",
     "electron-builder": "^26.4.0",

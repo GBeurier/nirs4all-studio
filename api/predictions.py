@@ -1,5 +1,5 @@
 """
-Predictions API routes for nirs4all webapp.
+Predictions API routes for nirs4all Studio.
 
 This module provides FastAPI routes for:
 - Managing prediction records (CRUD) [DEPRECATED - use /api/aggregated-predictions]
@@ -11,7 +11,7 @@ Uses nirs4all library for all prediction and explanation operations.
 
 DEPRECATION NOTICE:
     The CRUD endpoints (list, get, create, delete, stats, export) that store
-    prediction records as JSON files are deprecated. Use the DuckDB-backed
+    prediction records as JSON files are deprecated. Use the SQLite-backed
     /api/aggregated-predictions endpoints instead, which provide chain-level
     aggregation with drill-down to individual folds and partitions.
 
@@ -182,7 +182,7 @@ router = APIRouter()
 
 _DEPRECATION_MSG = (
     "This endpoint is deprecated. Use /api/aggregated-predictions endpoints "
-    "backed by the DuckDB store instead."
+    "backed by the workspace store instead."
 )
 
 
@@ -356,7 +356,7 @@ async def create_prediction(prediction_data: PredictionCreate):
 
     .. deprecated::
         Predictions are now created automatically during pipeline execution
-        and stored in the DuckDB store. Use ``GET /api/aggregated-predictions``
+        and stored in the workspace store. Use ``GET /api/aggregated-predictions``
         to query them.
     """
     try:
@@ -391,7 +391,7 @@ async def delete_prediction(prediction_id: str):
 
     .. deprecated::
         Use ``DELETE /api/runs/{run_id}`` to delete runs and their
-        associated predictions from the DuckDB store.
+        associated predictions from the workspace store.
     """
     try:
         predictions_dir = _get_predictions_dir()
@@ -475,7 +475,7 @@ async def export_predictions(prediction_ids: List[str], format: str = "csv"):
 
     .. deprecated::
         Use ``GET /api/aggregated-predictions`` to query results from
-        the DuckDB store.
+        the workspace store.
     """
     try:
         predictions = []

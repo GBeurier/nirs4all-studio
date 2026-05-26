@@ -1,4 +1,4 @@
-# nirs4all Webapp
+# nirs4all Studio
 
 **Unified NIRS Analysis Desktop Application**
 
@@ -170,7 +170,7 @@ The Electron main process automatically spawns the Python backend and manages it
 ## Project Structure
 
 ```
-nirs4all_webapp/
+nirs4all-studio/
 ├── src/                    # React frontend source
 │   ├── components/         # UI components
 │   │   ├── layout/         # App layout (sidebar, header)

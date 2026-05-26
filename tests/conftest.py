@@ -1,5 +1,5 @@
 """
-Root conftest.py for nirs4all webapp tests.
+Root conftest.py for nirs4all Studio tests.
 
 This file contains shared fixtures and pytest configuration
 that applies to all test modules.

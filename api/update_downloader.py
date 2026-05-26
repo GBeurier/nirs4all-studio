@@ -192,7 +192,7 @@ class UpdateDownloader:
                 )
 
             # Find the actual content directory
-            # Archives typically have a root folder like "nirs4all-webapp/"
+            # Archives typically have a root folder like "nirs4all-studio/"
             contents = list(staging_dir.iterdir())
             if len(contents) == 1 and contents[0].is_dir():
                 # Single directory - this is our content

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Cross-platform launcher for nirs4all webapp
+ * Cross-platform launcher for nirs4all Studio
  * Delegates to launcher.sh (Linux/macOS) or launcher.cmd (Windows)
  */
 

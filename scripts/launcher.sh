@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# nirs4all webapp - Unified Launcher (Linux/macOS/WSL)
+# nirs4all Studio - Unified Launcher (Linux/macOS/WSL)
 # =============================================================================
 # Commands:
 #   start <mode>  - Start servers (web:dev, web:prod, desktop:dev, desktop:prod)
@@ -27,7 +27,7 @@ NC='\033[0m'
 # Config
 PORT_FRONTEND=5173
 PORT_BACKEND=8000
-NIRS4ALL_VENV="$PROJECT_ROOT/../.venv"
+NIRS4ALL_VENV="$PROJECT_ROOT/../nirs4all/.venv"
 PID_DIR="/tmp/nirs4all"
 LOG_DIR="/tmp/nirs4all"
 
@@ -41,7 +41,7 @@ mkdir -p "$PID_DIR" "$LOG_DIR"
 print_header() {
     echo ""
     echo -e "${CYAN}========================================${NC}"
-    echo -e "${CYAN}  nirs4all webapp - $1${NC}"
+    echo -e "${CYAN}  nirs4all Studio - $1${NC}"
     echo -e "${CYAN}========================================${NC}"
     echo ""
 }
@@ -354,7 +354,7 @@ start_desktop_prod() {
 interactive_menu() {
     echo ""
     echo -e "${CYAN}========================================${NC}"
-    echo -e "${CYAN}  nirs4all webapp - Launcher${NC}"
+    echo -e "${CYAN}  nirs4all Studio - Launcher${NC}"
     echo -e "${CYAN}========================================${NC}"
     echo ""
     echo -e "  1) ${GREEN}web:dev${NC}        (Vite + FastAPI)"

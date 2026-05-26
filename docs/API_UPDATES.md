@@ -1,6 +1,6 @@
 # Updates API Reference
 
-Quick reference for the nirs4all webapp update system API.
+Quick reference for the nirs4all Studio update system API.
 
 ## Base URL
 
@@ -133,8 +133,8 @@ Get information needed to download a webapp update.
   "update_available": true,
   "current_version": "1.0.0",
   "latest_version": "1.2.0",
-  "download_url": "https://github.com/.../nirs4all-webapp-1.2.0-linux.tar.gz",
-  "asset_name": "nirs4all-webapp-1.2.0-linux.tar.gz",
+  "download_url": "https://github.com/.../nirs4all-studio-1.2.0-linux.tar.gz",
+  "asset_name": "nirs4all-studio-1.2.0-linux.tar.gz",
   "download_size_bytes": 85000000,
   "release_notes": "### What's New...",
   "release_url": "https://github.com/.../releases/v1.2.0"
@@ -149,7 +149,7 @@ Initiate webapp update download (returns download URL for now).
 {
   "status": "ready",
   "download_url": "https://github.com/...",
-  "asset_name": "nirs4all-webapp-1.2.0-linux.tar.gz",
+  "asset_name": "nirs4all-studio-1.2.0-linux.tar.gz",
   "version": "1.2.0",
   "message": "Download URL ready."
 }

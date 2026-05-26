@@ -1,6 +1,6 @@
 # Update System Documentation
 
-This document describes the update system for nirs4all webapp, which provides:
+This document describes the update system for nirs4all Studio, which provides:
 - Webapp self-update capabilities via GitHub Releases
 - nirs4all library updates via PyPI
 - Managed virtual environment for isolated library updates
@@ -41,7 +41,7 @@ This document describes the update system for nirs4all webapp, which provides:
 ┌───────────────────┐      ┌────────────────────────┐
 │  MANAGED VENV     │      │  PYINSTALLER BUNDLE    │
 │  (~/.local/share/ │      │  (self-update via      │
-│   nirs4all-webapp/│      │   external updater)    │
+│   nirs4all-studio/│      │   external updater)    │
 │   managed_venv/)  │      └────────────────────────┘
 │  - nirs4all       │                │
 │  - ML backends    │                ▼
@@ -75,9 +75,9 @@ This document describes the update system for nirs4all webapp, which provides:
 Manages a dedicated Python virtual environment for nirs4all and its dependencies.
 
 **Location**: Platform-specific via platformdirs
-- **Windows**: `%LOCALAPPDATA%/nirs4all-webapp/managed_venv/`
-- **macOS**: `~/Library/Application Support/nirs4all-webapp/managed_venv/`
-- **Linux**: `~/.local/share/nirs4all-webapp/managed_venv/`
+- **Windows**: `%LOCALAPPDATA%/nirs4all-studio/managed_venv/`
+- **macOS**: `~/Library/Application Support/nirs4all-studio/managed_venv/`
+- **Linux**: `~/.local/share/nirs4all-studio/managed_venv/`
 
 **Key Methods**:
 
@@ -136,7 +136,7 @@ class UpdateManager:
 - **PyPI**: `https://pypi.org/pypi/{package}/json`
 
 **Caching**:
-- Results are cached in `~/.local/share/nirs4all-webapp/update_cache.json`
+- Results are cached in `~/.local/share/nirs4all-studio/update_cache.json`
 - Cache expires after `check_interval_hours` (default: 24)
 
 #### 3. Updater Module (`updater/__init__.py`)
@@ -198,12 +198,12 @@ def cleanup_old_updates() -> None
     "current_version": "1.0.0",
     "latest_version": "1.2.0",
     "update_available": true,
-    "release_url": "https://github.com/GBeurier/nirs4all-webapp/releases/v1.2.0",
+    "release_url": "https://github.com/GBeurier/nirs4all-studio/releases/v1.2.0",
     "release_notes": "### What's New\n- Feature 1\n- Bug fix 2",
     "published_at": "2024-01-15T10:30:00Z",
     "download_size_bytes": 85000000,
-    "download_url": "https://github.com/.../nirs4all-webapp-1.2.0-linux.tar.gz",
-    "asset_name": "nirs4all-webapp-1.2.0-linux.tar.gz",
+    "download_url": "https://github.com/.../nirs4all-studio-1.2.0-linux.tar.gz",
+    "asset_name": "nirs4all-studio-1.2.0-linux.tar.gz",
     "checksum_sha256": null
   },
   "nirs4all": {
@@ -215,7 +215,7 @@ def cleanup_old_updates() -> None
     "requires_restart": false
   },
   "venv": {
-    "path": "/home/user/.local/share/nirs4all-webapp/managed_venv",
+    "path": "/home/user/.local/share/nirs4all-studio/managed_venv",
     "exists": true,
     "is_valid": true,
     "python_version": "3.11.5",
@@ -237,7 +237,7 @@ def cleanup_old_updates() -> None
   "auto_check": true,
   "check_interval_hours": 24,
   "prerelease_channel": false,
-  "github_repo": "GBeurier/nirs4all-webapp",
+  "github_repo": "GBeurier/nirs4all-studio",
   "pypi_package": "nirs4all",
   "dismissed_versions": []
 }
@@ -302,7 +302,7 @@ def cleanup_old_updates() -> None
 ```json
 {
   "venv": {
-    "path": "/home/user/.local/share/nirs4all-webapp/managed_venv",
+    "path": "/home/user/.local/share/nirs4all-studio/managed_venv",
     "exists": true,
     "is_valid": true,
     "python_version": "3.11.5",
@@ -502,13 +502,13 @@ User clicks "Update Webapp"
 
 ### Settings File
 
-**Location**: `~/.local/share/nirs4all-webapp/update_settings.yaml`
+**Location**: `~/.local/share/nirs4all-studio/update_settings.yaml`
 
 ```yaml
 auto_check: true
 check_interval_hours: 24
 prerelease_channel: false
-github_repo: "GBeurier/nirs4all-webapp"
+github_repo: "GBeurier/nirs4all-studio"
 pypi_package: "nirs4all"
 dismissed_versions: []
 ```
@@ -527,7 +527,7 @@ dismissed_versions: []
 
 ### Cache File
 
-**Location**: `~/.local/share/nirs4all-webapp/update_cache.json`
+**Location**: `~/.local/share/nirs4all-studio/update_cache.json`
 
 ```json
 {
@@ -538,7 +538,7 @@ dismissed_versions: []
     "release_notes": "...",
     "published_at": "2024-01-15T10:30:00Z",
     "download_url": "https://...",
-    "asset_name": "nirs4all-webapp-1.2.0-linux.tar.gz",
+    "asset_name": "nirs4all-studio-1.2.0-linux.tar.gz",
     "download_size_bytes": 85000000
   },
   "pypi_release": {
@@ -642,13 +642,13 @@ const updateKeys = {
 ## Directory Structure
 
 ```
-~/.local/share/nirs4all-webapp/      # Linux (platformdirs)
+~/.local/share/nirs4all-studio/      # Linux (platformdirs)
 ├── update_settings.yaml             # Update preferences
 ├── update_cache.json                # Cached API responses
 ├── update_cache/                    # Downloaded updates
 │   └── webapp/
-│       ├── nirs4all-webapp-v1.2.0.zip
-│       └── nirs4all-webapp-v1.2.0.sha256
+│       ├── nirs4all-studio-v1.2.0.zip
+│       └── nirs4all-studio-v1.2.0.sha256
 ├── update_staging/                  # Extracted updates
 ├── update_backup/                   # Pre-update backup
 └── managed_venv/                    # Virtual environment
@@ -696,7 +696,7 @@ const updateKeys = {
 
 **Backend startup log**:
 ```
-nirs4all webapp starting...
+nirs4all Studio starting...
 Webapp version: 1.0.0
 ```
 
@@ -707,8 +707,8 @@ nirs4all update available: 0.7.0
 ```
 
 **External updater log**:
-- **Windows**: `%LOCALAPPDATA%/nirs4all-webapp/logs/update.log`
-- **Linux/macOS**: `~/.local/state/nirs4all-webapp/logs/update.log`
+- **Windows**: `%LOCALAPPDATA%/nirs4all-studio/logs/update.log`
+- **Linux/macOS**: `~/.local/state/nirs4all-studio/logs/update.log`
 
 ---
 

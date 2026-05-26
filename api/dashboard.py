@@ -1,5 +1,5 @@
 """
-Dashboard API routes for nirs4all webapp.
+Dashboard API routes for nirs4all Studio.
 
 This module provides FastAPI routes for dashboard statistics and recent activity.
 """

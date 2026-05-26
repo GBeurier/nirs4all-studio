@@ -1,5 +1,5 @@
 """
-Preprocessing API routes for nirs4all webapp.
+Preprocessing API routes for nirs4all Studio.
 
 This module provides FastAPI routes for listing available preprocessing methods,
 getting their parameters, and applying preprocessing to spectral data.

@@ -1,5 +1,5 @@
 """
-Evaluation API routes for nirs4all webapp.
+Evaluation API routes for nirs4all Studio.
 
 This module provides FastAPI routes for model evaluation,
 including confusion matrices, residual analysis, and report generation.

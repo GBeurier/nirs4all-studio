@@ -1,5 +1,5 @@
 """
-Training API routes for nirs4all webapp.
+Training API routes for nirs4all Studio.
 
 This module provides FastAPI routes for training management,
 including starting training jobs, monitoring progress, and retrieving results.

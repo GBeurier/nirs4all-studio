@@ -14,7 +14,7 @@ on:
         type: string
 
 env:
-  APP_NAME: nirs4all-webapp
+  APP_NAME: nirs4all-studio
   NODE_VERSION: '22'
   PYTHON_VERSION: '3.11'
 
@@ -128,12 +128,12 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build with PyInstaller
-        run: pyinstaller nirs4all-webapp.spec --clean --noconfirm
+        run: pyinstaller nirs4all-studio.spec --clean --noconfirm
 
       - name: Create tarball
         run: |
           cd dist
-          tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz nirs4all-webapp/
+          tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-linux-x64.tar.gz nirs4all-studio/
 
       - name: Generate checksum
         run: |
@@ -175,7 +175,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build with PyInstaller
-        run: pyinstaller nirs4all-webapp.spec --clean --noconfirm
+        run: pyinstaller nirs4all-studio.spec --clean --noconfirm
 
       # Optional: Code signing (when certificate is configured)
       - name: Sign executable
@@ -198,7 +198,7 @@ jobs:
           if ($signtool) {
             & $signtool.FullName sign /f cert.pfx /p $env:WINDOWS_CERT_PASSWORD `
               /tr http://timestamp.digicert.com /td sha256 /fd sha256 `
-              dist/nirs4all-webapp/nirs4all-webapp.exe
+              dist/nirs4all-studio/nirs4all-studio.exe
             echo "Executable signed successfully"
           } else {
             echo "::warning::signtool not found, skipping signing"
@@ -209,7 +209,7 @@ jobs:
       - name: Create ZIP archive
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/nirs4all-webapp -DestinationPath "${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip"
+          Compress-Archive -Path dist/nirs4all-studio -DestinationPath "${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-windows-x64.zip"
 
       - name: Generate checksum
         shell: pwsh
@@ -252,16 +252,16 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build with PyInstaller
-        run: pyinstaller nirs4all-webapp.spec --clean --noconfirm
+        run: pyinstaller nirs4all-studio.spec --clean --noconfirm
 
       - name: Create tarball
         run: |
           cd dist
           # Include both the folder and the .app bundle if present
-          if [ -d "nirs4all-webapp.app" ]; then
-            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz nirs4all-webapp.app nirs4all-webapp
+          if [ -d "nirs4all-studio.app" ]; then
+            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz nirs4all-studio.app nirs4all-studio
           else
-            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz nirs4all-webapp
+            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-x64.tar.gz nirs4all-studio
           fi
 
       - name: Generate checksum
@@ -304,16 +304,16 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build with PyInstaller
-        run: pyinstaller nirs4all-webapp.spec --clean --noconfirm
+        run: pyinstaller nirs4all-studio.spec --clean --noconfirm
 
       - name: Create tarball
         run: |
           cd dist
           # Include both the folder and the .app bundle if present
-          if [ -d "nirs4all-webapp.app" ]; then
-            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz nirs4all-webapp.app nirs4all-webapp
+          if [ -d "nirs4all-studio.app" ]; then
+            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz nirs4all-studio.app nirs4all-studio
           else
-            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz nirs4all-webapp
+            tar -czvf ../${{ env.APP_NAME }}-${{ needs.prepare.outputs.version }}-macos-arm64.tar.gz nirs4all-studio
           fi
 
       - name: Generate checksum
@@ -365,7 +365,7 @@ jobs:
         shell: pwsh
         run: |
           $env:PATH = "C:\Program Files (x86)\NSIS;$env:PATH"
-          makensis /DVERSION="${{ needs.prepare.outputs.version }}" installer/nsis/nirs4all-webapp.nsi
+          makensis /DVERSION="${{ needs.prepare.outputs.version }}" installer/nsis/nirs4all-studio.nsi
 
       - name: Generate checksum
         shell: pwsh
@@ -408,7 +408,7 @@ jobs:
       - name: Generate release notes
         run: |
           cat > release_notes.md << 'EOF'
-          ## nirs4all-webapp ${{ needs.prepare.outputs.version }}
+          ## nirs4all-studio ${{ needs.prepare.outputs.version }}
 
           ### Downloads
 
@@ -442,12 +442,12 @@ jobs:
           #### Portable / Manual Installation
           1. Download the appropriate archive for your platform
           2. Extract the archive:
-             - **Linux/macOS**: `tar -xzf nirs4all-webapp-*.tar.gz`
+             - **Linux/macOS**: `tar -xzf nirs4all-studio-*.tar.gz`
              - **Windows**: Extract the ZIP file
           3. Run the application:
-             - **Linux**: `./nirs4all-webapp/nirs4all-webapp`
-             - **macOS**: Open `nirs4all-webapp.app` or run `./nirs4all-webapp/nirs4all-webapp`
-             - **Windows**: Run `nirs4all-webapp\nirs4all-webapp.exe`
+             - **Linux**: `./nirs4all-studio/nirs4all-studio`
+             - **macOS**: Open `nirs4all-studio.app` or run `./nirs4all-studio/nirs4all-studio`
+             - **Windows**: Run `nirs4all-studio\nirs4all-studio.exe`
 
           ### First Run
 
@@ -469,7 +469,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
-          name: nirs4all-webapp ${{ needs.prepare.outputs.version }}
+          name: nirs4all-studio ${{ needs.prepare.outputs.version }}
           body_path: release_notes.md
           draft: false
           prerelease: ${{ needs.prepare.outputs.prerelease }}

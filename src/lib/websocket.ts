@@ -1,5 +1,5 @@
 /**
- * WebSocket client for nirs4all webapp.
+ * WebSocket client for nirs4all Studio.
  *
  * Provides real-time updates for training progress, job status changes,
  * and other long-running operations.

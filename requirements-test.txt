@@ -1,4 +1,4 @@
-# Test dependencies for nirs4all webapp
+# Test dependencies for nirs4all Studio
 
 # Core testing
 pytest>=8.0.0

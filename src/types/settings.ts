@@ -1,5 +1,5 @@
 /**
- * Settings and Workspace Statistics type definitions for nirs4all webapp
+ * Settings and Workspace Statistics type definitions for nirs4all Studio
  * Phase 5 Implementation
  */
 import type { NaPolicy, NaFillConfig } from "./datasets";

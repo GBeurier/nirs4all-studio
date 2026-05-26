@@ -1,5 +1,5 @@
 """
-Job manager for background tasks in nirs4all webapp.
+Job manager for background tasks in nirs4all Studio.
 
 This module provides a JobManager class for managing long-running tasks
 such as training, evaluation, and AutoML searches.
@@ -93,7 +93,7 @@ class Job:
 
 class JobManager:
     """
-    Manages background jobs for the nirs4all webapp.
+    Manages background jobs for the nirs4all Studio.
 
     Provides methods to create, track, update, and cancel jobs.
     Uses a thread pool for executing long-running tasks.

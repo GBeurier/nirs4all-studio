@@ -1,6 +1,6 @@
 /**
  * AggregatedResults page — displays chain-level aggregated predictions
- * from the DuckDB store via the /api/aggregated-predictions endpoint.
+ * from the workspace store via the /api/aggregated-predictions endpoint.
  *
  * Hierarchy: Run → Pipeline → Chain → Partition predictions.
  * The page shows one row per (chain, metric, dataset) combination with

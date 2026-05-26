@@ -1,5 +1,5 @@
 """
-WebSocket module for nirs4all webapp.
+WebSocket module for nirs4all Studio.
 
 Provides real-time updates for training progress, job status changes,
 and other long-running operations via WebSocket connections.

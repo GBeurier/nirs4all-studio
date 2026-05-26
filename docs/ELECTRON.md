@@ -1,6 +1,6 @@
 # Electron Architecture Guide
 
-This document describes the Electron-based desktop architecture for nirs4all-webapp.
+This document describes the Electron-based desktop architecture for nirs4all-studio.
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@ This document describes the Electron-based desktop architecture for nirs4all-web
 
 ## Overview
 
-nirs4all-webapp uses Electron as the desktop shell, replacing the previous PyWebView-based approach. This provides:
+nirs4all-studio uses Electron as the desktop shell, replacing the previous PyWebView-based approach. This provides:
 
 - **Consistent WebGL**: Chromium engine on all platforms
 - **Better DevTools**: Full Chrome DevTools support

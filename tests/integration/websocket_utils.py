@@ -1,5 +1,5 @@
 """
-WebSocket testing utilities for nirs4all webapp integration tests.
+WebSocket testing utilities for nirs4all Studio integration tests.
 
 Provides helpers for:
 - Connecting to WebSocket endpoints

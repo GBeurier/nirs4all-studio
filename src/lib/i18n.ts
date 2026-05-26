@@ -1,7 +1,7 @@
 /**
  * i18n (Internationalization) Configuration
  *
- * This module sets up react-i18next for the nirs4all webapp.
+ * This module sets up react-i18next for the nirs4all Studio.
  * Supports English (en), French (fr), and German (de) languages.
  *
  * Phase 6 Implementation - Settings Roadmap

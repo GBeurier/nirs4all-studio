@@ -1,7 +1,7 @@
 /**
- * French translations for nirs4all webapp
+ * French translations for nirs4all Studio
  *
- * Traductions françaises pour l'application nirs4all webapp
+ * Traductions françaises pour l'application nirs4all Studio
  */
 
 const fr = {

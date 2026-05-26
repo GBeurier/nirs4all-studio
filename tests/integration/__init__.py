@@ -1,5 +1,5 @@
 """
-Integration tests for nirs4all webapp.
+Integration tests for nirs4all Studio.
 
 This package contains comprehensive integration tests that validate
 the complete pipeline execution flow from frontend submission

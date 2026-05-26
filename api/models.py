@@ -1,5 +1,5 @@
 """
-Models API routes for nirs4all webapp.
+Models API routes for nirs4all Studio.
 
 This module provides FastAPI routes for model management,
 including listing available model types and trained model bundles.

@@ -17,7 +17,7 @@ The Answser:
 # Webapp/API/Library Discrepancy Review
 
 Date: 2026-02-08
-Scope: `nirs4all_webapp` pages + FastAPI routes + current `nirs4all` capability surface.
+Scope: `nirs4all-studio` pages + FastAPI routes + current `nirs4all` capability surface.
 Assumption for this review: target `nirs4all` direction is **no legacy format**, **no cache controls**, **no refit phase**.
 
 ## 1) Webapp Pages Map

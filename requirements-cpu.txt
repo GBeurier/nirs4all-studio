@@ -1,4 +1,4 @@
-# nirs4all webapp Python dependencies (CPU-only build)
+# nirs4all Studio Python dependencies (CPU-only build)
 # This is a lightweight build without GPU-accelerated ML libraries
 
 # Core backend

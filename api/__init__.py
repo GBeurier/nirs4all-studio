@@ -1,5 +1,5 @@
 """
-API package for nirs4all webapp FastAPI backend.
+API package for nirs4all Studio FastAPI backend.
 
 This package provides the REST API endpoints for:
 - Workspace management (workspace.py)

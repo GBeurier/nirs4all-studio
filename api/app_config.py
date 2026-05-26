@@ -1,5 +1,5 @@
 """
-Global app configuration manager for nirs4all webapp.
+Global app configuration manager for nirs4all Studio.
 
 This module manages the cross-platform app configuration folder that stores:
 - app_settings.json: UI preferences, linked workspaces list, favorites

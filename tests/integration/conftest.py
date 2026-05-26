@@ -1,5 +1,5 @@
 """
-Integration test fixtures for nirs4all webapp.
+Integration test fixtures for nirs4all Studio.
 
 Provides fixtures for:
 - Temporary workspace with proper directory structure

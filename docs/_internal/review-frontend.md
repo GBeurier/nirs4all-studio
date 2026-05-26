@@ -1,15 +1,15 @@
-# Frontend Code Review - nirs4all-webapp
+# Frontend Code Review - nirs4all-studio
 
 **Review Date:** 2026-01-27
 **Reviewer:** Claude Code
-**Scope:** `nirs4all-webapp/src/` directory
+**Scope:** `nirs4all-studio/src/` directory
 **Files Reviewed:** ~200+ TypeScript/TSX files
 
 ---
 
 ## 1. Executive Summary
 
-The nirs4all-webapp frontend is a well-architected React 19 application with TypeScript. The codebase demonstrates modern React patterns including TanStack Query for server state, React Context for app state, and a comprehensive component library built on shadcn/ui. However, there are several areas requiring attention:
+The nirs4all-studio frontend is a well-architected React 19 application with TypeScript. The codebase demonstrates modern React patterns including TanStack Query for server state, React Context for app state, and a comprehensive component library built on shadcn/ui. However, there are several areas requiring attention:
 
 ### Key Findings
 

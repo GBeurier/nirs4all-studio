@@ -1,5 +1,5 @@
 /**
- * Types for aggregated predictions from DuckDB store.
+ * Types for aggregated predictions from workspace store.
  *
  * These types correspond to the backend endpoints in
  * /api/aggregated-predictions/ which read from the

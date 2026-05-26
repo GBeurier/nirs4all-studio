@@ -1,8 +1,8 @@
 """
-Tests for DuckDB WorkspaceStore integration in webapp endpoints.
+Tests for WorkspaceStore integration in webapp endpoints.
 
 Verifies that the webapp correctly routes through the StoreAdapter
-and WorkspaceScanner when a DuckDB store is available.
+and WorkspaceScanner when a workspace store is available.
 
 Run with: pytest tests/test_store_integration.py -v
 """
@@ -238,7 +238,7 @@ class TestStoreAdapter:
 
 
 # ---------------------------------------------------------------------------
-# WorkspaceScanner DuckDB path tests
+# WorkspaceScanner store path tests
 # ---------------------------------------------------------------------------
 
 
@@ -246,13 +246,13 @@ class TestWorkspaceScannerStore:
     """Tests for WorkspaceScanner store-first discovery paths."""
 
     def test_discover_runs_from_store(self, tmp_path, mock_polars_df, sample_run_rows):
-        """When store.duckdb exists, discover_runs() should use the store."""
+        """When store.sqlite exists, discover_runs() should use the store."""
         from api.workspace_manager import WorkspaceScanner
 
-        # Create workspace structure with a fake store.duckdb
+        # Create workspace structure with a fake store.sqlite
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        (workspace_dir / "store.duckdb").touch()
+        (workspace_dir / "store.sqlite").touch()
 
         mock_adapter = MagicMock()
         mock_adapter.store.list_runs.return_value = mock_polars_df(sample_run_rows)
@@ -266,26 +266,26 @@ class TestWorkspaceScannerStore:
         assert runs[0]["format"] == "store"
 
     def test_discover_runs_fallback_filesystem(self, tmp_path):
-        """When store.duckdb doesn't exist, discover_runs() should use filesystem."""
+        """When no store file exists, discover_runs() should use filesystem."""
         from api.workspace_manager import WorkspaceScanner
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
         runs_dir = workspace_dir / "runs"
         runs_dir.mkdir()
-        # No store.duckdb and no manifest files
+        # No store.sqlite and no manifest files
 
         scanner = WorkspaceScanner(tmp_path)
         runs = scanner.discover_runs()
         assert runs == []
 
     def test_discover_predictions_from_store(self, tmp_path, mock_polars_df, sample_prediction_rows):
-        """When store.duckdb exists, discover_predictions() should use the store."""
+        """When store.sqlite exists, discover_predictions() should use the store."""
         from api.workspace_manager import WorkspaceScanner
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        (workspace_dir / "store.duckdb").touch()
+        (workspace_dir / "store.sqlite").touch()
 
         mock_adapter = MagicMock()
         mock_adapter.store.query_predictions.return_value = mock_polars_df(sample_prediction_rows)
@@ -299,12 +299,12 @@ class TestWorkspaceScannerStore:
         assert datasets == {"dataset_a", "dataset_b"}
 
     def test_discover_results_from_store(self, tmp_path, mock_polars_df):
-        """When store.duckdb exists, discover_results() should use the store."""
+        """When store.sqlite exists, discover_results() should use the store."""
         from api.workspace_manager import WorkspaceScanner
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        (workspace_dir / "store.duckdb").touch()
+        (workspace_dir / "store.sqlite").touch()
 
         pipeline_rows = [
             {
@@ -335,12 +335,12 @@ class TestWorkspaceScannerStore:
         assert results[0]["format"] == "store"
 
     def test_is_valid_workspace_with_store(self, tmp_path):
-        """Workspace is valid if store.duckdb exists."""
+        """Workspace is valid if store.sqlite exists."""
         from api.workspace_manager import WorkspaceScanner
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
-        (workspace_dir / "store.duckdb").touch()
+        (workspace_dir / "store.sqlite").touch()
 
         mock_adapter = MagicMock()
 
@@ -349,7 +349,7 @@ class TestWorkspaceScannerStore:
 
         is_valid, reason = scanner.is_valid_workspace()
         assert is_valid
-        assert "DuckDB" in reason
+        assert "store found" in reason
 
 
 # ---------------------------------------------------------------------------
@@ -417,5 +417,5 @@ class TestTrainingWorkspacePath:
 
         assert found_workspace_path, (
             "nirs4all.run() in training.py must include workspace_path parameter "
-            "to ensure results are written to the DuckDB store"
+            "to ensure results are written to the workspace store"
         )

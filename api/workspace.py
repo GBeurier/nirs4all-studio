@@ -1,5 +1,5 @@
 """
-Workspace API routes for nirs4all webapp.
+Workspace API routes for nirs4all Studio.
 
 This module provides FastAPI routes for workspace management operations.
 
@@ -1599,7 +1599,7 @@ async def scan_workspace(workspace_id: str):
 async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh: bool = False):
     """Get discovered runs from a linked workspace.
 
-    When a DuckDB store is available, runs come directly from the store
+    When a workspace store is available, runs come directly from the store
     (fast, authoritative).  Otherwise falls back to manifest + parquet
     discovery:
 
@@ -1625,7 +1625,7 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
 
         scanner = WorkspaceScanner(workspace_path)
 
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         # When a store exists, scanner.discover_runs() already reads
         # from it and the parquet-derived phase is unnecessary.
         if scanner._has_store():
@@ -1759,7 +1759,7 @@ async def get_workspace_run_detail(workspace_id: str, run_id: str):
         workspace_path = Path(ws.path)
         scanner = WorkspaceScanner(workspace_path)
 
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if scanner._has_store():
             run = scanner.store_adapter.get_run_detail(run_id)
             if run is not None:
@@ -1791,7 +1791,7 @@ async def get_workspace_run_detail(workspace_id: str, run_id: str):
 async def delete_workspace_run(workspace_id: str, run_id: str):
     """Delete a run from a workspace.
 
-    When a DuckDB store is available, deletes the run with cascade
+    When a workspace store is available, deletes the run with cascade
     (pipelines, chains, predictions, arrays, logs).  Returns 404
     if the workspace or store is not found.
     """
@@ -1804,7 +1804,7 @@ async def delete_workspace_run(workspace_id: str, run_id: str):
         scanner = WorkspaceScanner(workspace_path)
 
         if not scanner._has_store():
-            raise HTTPException(status_code=501, detail="Run deletion requires a DuckDB store")
+            raise HTTPException(status_code=501, detail="Run deletion requires a workspace store")
 
         result = scanner.store_adapter.delete_run(run_id)
 
@@ -1937,7 +1937,7 @@ async def get_workspace_predictions_data(
 ):
     """Get prediction records with metadata.
 
-    When a DuckDB store is available, reads directly from the store
+    When a workspace store is available, reads directly from the store
     (fast, paginated at the DB level).  Otherwise falls back to reading
     ``.meta.parquet`` files with pandas.
     """
@@ -1949,7 +1949,7 @@ async def get_workspace_predictions_data(
         workspace_path = Path(ws.path)
         scanner = WorkspaceScanner(workspace_path)
 
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if scanner._has_store():
             page = scanner.store_adapter.get_predictions_page(
                 dataset_name=dataset,
@@ -2090,7 +2090,7 @@ async def get_workspace_predictions_data(
 async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
     """Get scatter plot data (y_true vs y_pred) for a specific prediction.
 
-    When a DuckDB store is available, loads arrays directly from the
+    When a workspace store is available, loads arrays directly from the
     store.  Otherwise falls back to ``.arrays.parquet`` files.
 
     Returns:
@@ -2107,7 +2107,7 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
         workspace_path = Path(ws.path)
         scanner = WorkspaceScanner(workspace_path)
 
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if scanner._has_store():
             scatter = scanner.store_adapter.get_prediction_scatter(prediction_id)
             if scatter is not None:
@@ -2182,7 +2182,7 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
 async def get_workspace_predictions_summary(workspace_id: str):
     """Get aggregated prediction summary.
 
-    When a DuckDB store is available, the summary is computed directly
+    When a workspace store is available, the summary is computed directly
     from the store (fast).  Otherwise falls back to reading parquet
     file footers.
 
@@ -2201,7 +2201,7 @@ async def get_workspace_predictions_summary(workspace_id: str):
         workspace_path = Path(ws.path)
         scanner = WorkspaceScanner(workspace_path)
 
-        # ---- DuckDB store path (primary) ----
+        # ---- Store path (primary) ----
         if scanner._has_store():
             summary = scanner.store_adapter.get_predictions_summary()
             return summary

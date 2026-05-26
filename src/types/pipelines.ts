@@ -1,5 +1,5 @@
 /**
- * Pipeline types for nirs4all webapp
+ * Pipeline types for nirs4all Studio
  * Phase 6: Pipelines Library
  */
 

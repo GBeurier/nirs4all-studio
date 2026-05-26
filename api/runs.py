@@ -1,5 +1,5 @@
 """
-Runs API endpoints for nirs4all webapp.
+Runs API endpoints for nirs4all Studio.
 Phase 8: Runs Management (Run A Implementation)
 
 This module provides endpoints for managing experiment runs:

@@ -168,7 +168,7 @@ def get_filter_methods() -> List[Dict[str, Any]]:
                 },
             },
             "type": "filter",
-            "source": "nirs4all_webapp",
+            "source": "nirs4all-studio",
         })
         return methods
 
@@ -383,7 +383,7 @@ def get_filter_methods() -> List[Dict[str, Any]]:
             },
         },
         "type": "filter",
-        "source": "nirs4all_webapp",
+        "source": "nirs4all-studio",
     })
 
     return methods

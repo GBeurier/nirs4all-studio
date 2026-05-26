@@ -1,5 +1,5 @@
 """
-WebSocket connection manager for nirs4all webapp.
+WebSocket connection manager for nirs4all Studio.
 
 This module provides real-time updates for training progress,
 job status changes, and other long-running operations.

@@ -1,7 +1,7 @@
 /**
- * German translations for nirs4all webapp
+ * German translations for nirs4all Studio
  *
- * Deutsche Übersetzungen für die nirs4all webapp
+ * Deutsche Übersetzungen für die nirs4all Studio
  */
 
 const de = {
@@ -404,7 +404,7 @@ const de = {
 
     // App info footer
     appInfo: {
-      version: "nirs4all webapp v{{version}}",
+      version: "nirs4all Studio v{{version}}",
       copyright: "© {{year}} nirs4all",
     },
   },

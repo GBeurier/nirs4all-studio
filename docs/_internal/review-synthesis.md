@@ -1,4 +1,4 @@
-# Code Review Synthesis - nirs4all-webapp
+# Code Review Synthesis - nirs4all-studio
 
 **Date**: 2026-01-27
 **Synthesized By**: Claude Opus 4.5
@@ -23,7 +23,7 @@
 
 ### 1.2 Overall Health Assessment
 
-The nirs4all-webapp codebase is **production-ready with notable technical debt**. The architecture is sound, following modern React/FastAPI best practices. However, there are critical architectural violations that should be addressed before any major release.
+The nirs4all-studio codebase is **production-ready with notable technical debt**. The architecture is sound, following modern React/FastAPI best practices. However, there are critical architectural violations that should be addressed before any major release.
 
 **Health Score: 7/10**
 
@@ -515,4 +515,4 @@ Fix: Create nirs4all.analysis.quality module
 
 ---
 
-*This synthesis document is the primary reference for the nirs4all-webapp cleanup effort. Update status checkboxes as items are completed.*
+*This synthesis document is the primary reference for the nirs4all-studio cleanup effort. Update status checkboxes as items are completed.*

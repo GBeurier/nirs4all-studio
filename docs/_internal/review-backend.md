@@ -2,13 +2,13 @@
 
 **Date**: 2026-01-27
 **Reviewer**: Claude Opus 4.5
-**Scope**: `nirs4all-webapp/api/` directory
+**Scope**: `nirs4all-studio/api/` directory
 
 ---
 
 ## Executive Summary
 
-This document provides a comprehensive code review of the FastAPI backend in the nirs4all-webapp. The review identifies issues across 12 categories with a critical focus on violations of the nirs4all/webapp separation principle.
+This document provides a comprehensive code review of the FastAPI backend in the nirs4all-studio. The review identifies issues across 12 categories with a critical focus on violations of the nirs4all/webapp separation principle.
 
 ### Key Findings
 
@@ -42,7 +42,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 1.1 Custom Confidence Interval Implementations in predictions.py
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\predictions.py`, lines ~650-750
+**Location**: `d:\nirs4all\nirs4all-studio\api\predictions.py`, lines ~650-750
 
 **Description**: The file implements three custom statistical methods for confidence interval calculation: `_bootstrap_confidence()`, `_jackknife_confidence()`, and `_ensemble_confidence()`. These implement statistical resampling techniques that should be part of the nirs4all library.
 
@@ -57,7 +57,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 1.2 Direct sklearn Usage for Dimensionality Reduction in analysis.py
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\analysis.py`, lines ~200-400
+**Location**: `d:\nirs4all\nirs4all-studio\api\analysis.py`, lines ~200-400
 
 **Description**: The file directly uses sklearn's PCA, t-SNE, and UMAP implementations for dimensionality reduction instead of delegating to nirs4all analysis tools. It contains:
 - `_compute_pca()` - direct sklearn PCA usage
@@ -75,7 +75,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 1.3 Feature Importance Calculation in analysis.py
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\analysis.py`, lines ~450-550
+**Location**: `d:\nirs4all\nirs4all-studio\api\analysis.py`, lines ~450-550
 
 **Description**: The file implements `_compute_feature_importance()` which calculates permutation importance using sklearn's `permutation_importance()` and trains Random Forest models directly.
 
@@ -91,8 +91,8 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 ### 1.4 Metrics Computation in playground.py and shared/metrics_computer.py
 
 **Location**:
-- `d:\nirs4all\nirs4all-webapp\api\playground.py`, lines ~800-900
-- `d:\nirs4all\nirs4all-webapp\api\shared\metrics_computer.py`
+- `d:\nirs4all\nirs4all-studio\api\playground.py`, lines ~800-900
+- `d:\nirs4all\nirs4all-studio\api\shared\metrics_computer.py`
 
 **Description**: The `MetricsComputer` class implements spectral quality metrics (signal-to-noise ratio, peak detection, baseline estimation, spectral smoothness) directly in the webapp.
 
@@ -109,7 +109,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 2.1 Unused Import in workspace_manager.py
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\workspace_manager.py`
+**Location**: `d:\nirs4all\nirs4all-studio\api\workspace_manager.py`
 
 **Description**: Multiple modules import from workspace_manager but the file contains deprecated patterns and unused helper functions that were part of earlier workspace architecture.
 
@@ -119,7 +119,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 2.2 Commented Out Code in pipelines.py
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\pipelines.py`, various lines
+**Location**: `d:\nirs4all\nirs4all-studio\api\pipelines.py`, various lines
 
 **Description**: Contains commented-out code blocks from previous implementations that should be removed.
 
@@ -132,9 +132,9 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 ### 3.1 Duplicate Pipeline Building Logic
 
 **Location**:
-- `d:\nirs4all\nirs4all-webapp\api\nirs4all_adapter.py` - `build_full_pipeline()`
-- `d:\nirs4all\nirs4all-webapp\api\shared\pipeline_service.py` - `PipelineService`
-- `d:\nirs4all\nirs4all-webapp\api\pipelines.py` - `_build_pipeline_from_steps()`
+- `d:\nirs4all\nirs4all-studio\api\nirs4all_adapter.py` - `build_full_pipeline()`
+- `d:\nirs4all\nirs4all-studio\api\shared\pipeline_service.py` - `PipelineService`
+- `d:\nirs4all\nirs4all-studio\api\pipelines.py` - `_build_pipeline_from_steps()`
 
 **Description**: Pipeline construction logic is scattered across multiple files with overlapping functionality.
 
@@ -147,9 +147,9 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 ### 3.2 Duplicate Dataset Loading
 
 **Location**:
-- `d:\nirs4all\nirs4all-webapp\api\spectra.py` - `_load_dataset()`
-- `d:\nirs4all\nirs4all-webapp\api\datasets.py` - dataset loading logic
-- `d:\nirs4all\nirs4all-webapp\api\nirs4all_adapter.py` - `build_dataset_config()`
+- `d:\nirs4all\nirs4all-studio\api\spectra.py` - `_load_dataset()`
+- `d:\nirs4all\nirs4all-studio\api\datasets.py` - dataset loading logic
+- `d:\nirs4all\nirs4all-studio\api\nirs4all_adapter.py` - `build_dataset_config()`
 
 **Description**: Dataset loading is implemented in multiple places with different caching strategies.
 
@@ -160,9 +160,9 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 ### 3.3 Duplicate Preprocessing Application
 
 **Location**:
-- `d:\nirs4all\nirs4all-webapp\api\spectra.py` - `_apply_preprocessing_chain()`
-- `d:\nirs4all\nirs4all-webapp\api\playground.py` - `PlaygroundExecutor._apply_step()`
-- `d:\nirs4all\nirs4all-webapp\api\transfer.py` - `_build_preprocessing_function()`
+- `d:\nirs4all\nirs4all-studio\api\spectra.py` - `_apply_preprocessing_chain()`
+- `d:\nirs4all\nirs4all-studio\api\playground.py` - `PlaygroundExecutor._apply_step()`
+- `d:\nirs4all\nirs4all-studio\api\transfer.py` - `_build_preprocessing_function()`
 
 **Description**: Preprocessing application logic is duplicated across multiple endpoints.
 
@@ -174,7 +174,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 4.1 PlaygroundExecutor Does Too Much
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\playground.py`, lines 100-500
+**Location**: `d:\nirs4all\nirs4all-studio\api\playground.py`, lines 100-500
 
 **Description**: `PlaygroundExecutor` class handles:
 - Data sampling
@@ -196,7 +196,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 4.2 nirs4all_adapter.py Is Too Large
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\nirs4all_adapter.py` (1169 lines)
+**Location**: `d:\nirs4all\nirs4all-studio\api\nirs4all_adapter.py` (1169 lines)
 
 **Description**: This file has grown to contain many different responsibilities:
 - Pipeline building
@@ -215,7 +215,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 4.3 pipelines.py Contains Validation Logic
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\pipelines.py`, lines 800-1200
+**Location**: `d:\nirs4all\nirs4all-studio\api\pipelines.py`, lines 800-1200
 
 **Description**: Contains shape propagation calculations and pipeline validation logic that should be in nirs4all.
 
@@ -227,7 +227,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 4.4 training.py WebSocket Notification in Sync Code
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\training.py`, lines 513-550
+**Location**: `d:\nirs4all\nirs4all-studio\api\training.py`, lines 513-550
 
 **Description**: `_send_training_completion_notification()` mixes sync/async patterns awkwardly with `asyncio.run_coroutine_threadsafe()`.
 
@@ -242,9 +242,9 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 **Location**: Multiple files
 
 **Examples**:
-- `d:\nirs4all\nirs4all-webapp\api\predictions.py`, line ~485: `except Exception: pass`
-- `d:\nirs4all\nirs4all-webapp\api\training.py`, line ~485: `except Exception as e: print(f"Warning: ...")`
-- `d:\nirs4all\nirs4all-webapp\api\analysis.py`, various locations
+- `d:\nirs4all\nirs4all-studio\api\predictions.py`, line ~485: `except Exception: pass`
+- `d:\nirs4all\nirs4all-studio\api\training.py`, line ~485: `except Exception as e: print(f"Warning: ...")`
+- `d:\nirs4all\nirs4all-studio\api\analysis.py`, various locations
 
 **Description**: Many exceptions are caught and either silently ignored or just printed, losing valuable debugging information.
 
@@ -257,7 +257,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 5.2 Missing Validation in transfer.py
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\transfer.py`, lines 200-230
+**Location**: `d:\nirs4all\nirs4all-studio\api\transfer.py`, lines 200-230
 
 **Description**: Dataset loading failures are wrapped in generic exception handlers without proper validation of dataset compatibility (e.g., same wavelength ranges, compatible shapes).
 
@@ -292,7 +292,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 6.2 GET Endpoints with Side Effects
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\playground.py`
+**Location**: `d:\nirs4all\nirs4all-studio\api\playground.py`
 
 **Description**: Some GET endpoints may trigger heavy computations that could be considered side effects.
 
@@ -339,8 +339,8 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 ### 8.1 Path Traversal Risk in File Operations
 
 **Location**:
-- `d:\nirs4all\nirs4all-webapp\api\datasets.py` - dataset linking
-- `d:\nirs4all\nirs4all-webapp\api\synthesis.py` - export paths
+- `d:\nirs4all\nirs4all-studio\api\datasets.py` - dataset linking
+- `d:\nirs4all\nirs4all-studio\api\synthesis.py` - export paths
 
 **Description**: User-provided paths are not fully sanitized for path traversal attacks (../../../etc).
 
@@ -355,7 +355,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 9.1 No Caching for Expensive Computations
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\analysis.py`
+**Location**: `d:\nirs4all\nirs4all-studio\api\analysis.py`
 
 **Description**: PCA, t-SNE, UMAP computations are performed on every request without caching.
 
@@ -381,8 +381,8 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 ### 10.1 Inconsistent WebSocket Notification Patterns
 
 **Location**:
-- `d:\nirs4all\nirs4all-webapp\api\training.py` - `_send_training_completion_notification()`
-- `d:\nirs4all\nirs4all-webapp\api\jobs\manager.py` - `_dispatch_notification()`
+- `d:\nirs4all\nirs4all-studio\api\training.py` - `_send_training_completion_notification()`
+- `d:\nirs4all\nirs4all-studio\api\jobs\manager.py` - `_dispatch_notification()`
 
 **Description**: WebSocket notifications are sent using different patterns (direct vs job manager) creating inconsistency.
 
@@ -394,7 +394,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 11.1 No Job Persistence
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\jobs\manager.py`
+**Location**: `d:\nirs4all\nirs4all-studio\api\jobs\manager.py`
 
 **Description**: Jobs are stored only in memory. Server restart loses all job history.
 
@@ -407,7 +407,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 11.2 No Job Priority Queue
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\jobs\manager.py`
+**Location**: `d:\nirs4all\nirs4all-studio\api\jobs\manager.py`
 
 **Description**: All jobs are submitted to the same ThreadPoolExecutor without priority handling.
 
@@ -438,7 +438,7 @@ The webapp backend is defined as a **thin orchestration layer** that should ONLY
 
 ### 12.2 Hardcoded sys.path Manipulation
 
-**Location**: `d:\nirs4all\nirs4all-webapp\api\transfer.py`, lines 20-23
+**Location**: `d:\nirs4all\nirs4all-studio\api\transfer.py`, lines 20-23
 
 ```python
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"

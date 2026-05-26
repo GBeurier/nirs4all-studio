@@ -1,5 +1,5 @@
 """
-Transfer Analysis API routes for nirs4all webapp.
+Transfer Analysis API routes for nirs4all Studio.
 
 This module provides FastAPI routes for transfer learning analysis,
 evaluating how preprocessing affects inter-dataset distances and

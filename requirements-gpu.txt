@@ -1,4 +1,4 @@
-# nirs4all webapp Python dependencies (GPU build)
+# nirs4all Studio Python dependencies (GPU build)
 # Includes GPU-accelerated ML libraries for CUDA support
 
 # Include all CPU dependencies

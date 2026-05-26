@@ -1,6 +1,6 @@
 # Packaging & Release System
 
-This document describes how nirs4all-webapp is built, packaged, and released.
+This document describes how nirs4all-studio is built, packaged, and released.
 
 ## Table of Contents
 

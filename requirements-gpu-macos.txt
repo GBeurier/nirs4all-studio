@@ -1,4 +1,4 @@
-# nirs4all webapp Python dependencies (macOS GPU build with Metal)
+# nirs4all Studio Python dependencies (macOS GPU build with Metal)
 # For Apple Silicon (M1/M2/M3) GPU acceleration
 
 # Include all CPU dependencies

@@ -1976,7 +1976,7 @@ export async function setVenvPath(path: string | null): Promise<{
 }
 
 // =============================================================================
-// Aggregated Predictions (DuckDB store)
+// Aggregated Predictions (workspace store)
 // =============================================================================
 
 import type {
@@ -1989,7 +1989,7 @@ import type {
 } from "@/types/aggregated-predictions";
 
 /**
- * Query aggregated predictions from the DuckDB store.
+ * Query aggregated predictions from the workspace store.
  * Returns one row per (chain_id, metric, dataset_name).
  */
 export async function getAggregatedPredictions(
