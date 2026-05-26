@@ -2383,14 +2383,52 @@ class WorkspaceManager:
         self.save_custom_nodes(existing_nodes)
         return {"imported": imported, "skipped": skipped, "errors": errors}
 
-    def get_sandbox_settings(self) -> Dict[str, Any]:
-        """Get sandbox settings for code execution."""
-        return {
+    def get_custom_node_settings_path(self) -> Optional[Path]:
+        """Get the path to the custom node settings file for the active workspace."""
+        ws_path = self.get_active_workspace_path()
+        if not ws_path:
+            return None
+        nirs4all_dir = Path(ws_path) / ".nirs4all"
+        nirs4all_dir.mkdir(exist_ok=True)
+        return nirs4all_dir / "custom_node_settings.json"
+
+    def get_custom_node_settings(self) -> Dict[str, Any]:
+        """Get custom node settings (security allowlist) for the active workspace.
+
+        Returns persisted settings merged over the defaults, or the defaults when
+        no workspace is active or no settings have been saved yet.
+        """
+        defaults = {
             "enabled": True,
             "allowedPackages": ["nirs4all", "sklearn", "scipy", "numpy", "pandas"],
             "requireApproval": False,
             "allowUserNodes": True,
         }
+        settings_path = self.get_custom_node_settings_path()
+        if not settings_path or not settings_path.exists():
+            return defaults
+
+        try:
+            with open(settings_path, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            return {**defaults, **saved}
+        except Exception as e:
+            print(f"Failed to load custom node settings: {e}")
+            return defaults
+
+    def save_custom_node_settings(self, settings: Dict[str, Any]) -> bool:
+        """Save custom node settings for the active workspace."""
+        settings_path = self.get_custom_node_settings_path()
+        if not settings_path:
+            return False
+
+        try:
+            with open(settings_path, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Failed to save custom node settings: {e}")
+            return False
 
     # ----------------------- Workspace Settings -----------------------
 

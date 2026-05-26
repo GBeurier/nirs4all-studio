@@ -276,11 +276,12 @@ class TestCustomNodeSettings:
 class TestNoWorkspaceSelected:
     """Tests for operations without workspace."""
 
-    def test_add_node_requires_workspace(self):
-        """Adding node without workspace raises error."""
+    def test_add_node_requires_workspace(self, monkeypatch):
+        """Adding a node without an active workspace raises an error."""
         manager = WorkspaceManager()
-        manager._workspace_config = None
-        manager._current_workspace_path = None
+        # The active workspace comes from the global app config, so force the
+        # "no workspace" condition directly rather than relying on instance state.
+        monkeypatch.setattr(manager, "get_active_workspace_path", lambda: None)
 
         node = {
             "id": "custom.test",
@@ -291,7 +292,7 @@ class TestNoWorkspaceSelected:
             "parameters": [],
         }
 
-        with pytest.raises(RuntimeError, match="No workspace selected"):
+        with pytest.raises(RuntimeError, match="No active workspace"):
             manager.add_custom_node(node)
 
 
