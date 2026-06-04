@@ -252,6 +252,7 @@ export interface UIPreferences {
   theme: "light" | "dark" | "system";
   density: "compact" | "comfortable" | "spacious";
   language: string;
+  debug_data_sharing_enabled?: boolean;
 }
 
 export interface AppSettingsResponse {
@@ -260,6 +261,7 @@ export interface AppSettingsResponse {
   active_workspace_id: string | null;
   favorite_pipelines: string[];
   ui_preferences: UIPreferences;
+  debug_data_sharing_enabled?: boolean;
 }
 
 export interface AppSettingsUpdateRequest {

@@ -2,6 +2,11 @@
  * API client for nirs4all backend communication
  */
 
+import {
+  addDiagnosticsBreadcrumb,
+  captureDiagnosticsError,
+} from "@/lib/diagnostics";
+
 // Default API base URL for web mode (uses Vite proxy)
 const DEFAULT_API_BASE_URL = "/api";
 
@@ -95,6 +100,26 @@ interface ApiError {
   status: number;
 }
 
+export class ApiRequestError extends Error implements ApiError {
+  detail: string;
+  status: number;
+
+  constructor(detail: string, status: number) {
+    super(detail);
+    this.name = "ApiRequestError";
+    this.detail = detail;
+    this.status = status;
+  }
+}
+
+function isApiError(error: unknown): error is ApiError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    typeof (error as { status?: unknown }).status === "number"
+  );
+}
+
 interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
 }
@@ -122,26 +147,53 @@ class ApiClient {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const error: ApiError = {
-          detail: errorData.detail || `HTTP error ${response.status}`,
-          status: response.status,
-        };
+        const error = new ApiRequestError(
+          errorData.detail || `HTTP error ${response.status}`,
+          response.status
+        );
+        if (response.status >= 500) {
+          captureDiagnosticsError(new Error(error.detail), {
+            tags: {
+              surface: "api_client",
+              endpoint,
+              status: response.status,
+              method: config.method || "GET",
+            },
+            extra: { url },
+          });
+        }
         throw error;
       }
 
+      addDiagnosticsBreadcrumb({
+        category: "api",
+        level: "info",
+        message: `${config.method || "GET"} ${endpoint}`,
+        data: { status: response.status },
+      });
+
       return await response.json();
     } catch (error) {
-      if ((error as ApiError).status) {
+      if (isApiError(error)) {
         throw error;
       }
       // Preserve AbortError for proper handling by callers
       if (error instanceof Error && error.name === "AbortError") {
         throw error;
       }
-      throw {
-        detail: error instanceof Error ? error.message : "Network error",
-        status: 0,
-      } as ApiError;
+      captureDiagnosticsError(error, {
+        tags: {
+          surface: "api_client",
+          endpoint,
+          method: config.method || "GET",
+          status: 0,
+        },
+        extra: { url },
+      });
+      throw new ApiRequestError(
+        error instanceof Error ? error.message : "Network error",
+        0
+      );
     }
   }
 

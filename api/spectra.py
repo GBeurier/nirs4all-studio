@@ -234,6 +234,29 @@ def _build_nirs4all_config_from_stored(dataset_config: Dict[str, Any]) -> Dict[s
     return config
 
 
+def _iter_dataset_file_paths(config: Dict[str, Any]) -> List[str]:
+    """Return configured dataset file paths from a nirs4all config."""
+    paths: List[str] = []
+
+    for key in ("train_x", "train_y", "test_x", "test_y", "train_group", "test_group"):
+        value = config.get(key)
+        if isinstance(value, str) and value:
+            paths.append(value)
+        elif isinstance(value, list):
+            paths.extend(path for path in value if isinstance(path, str) and path)
+
+    return paths
+
+
+def _find_missing_dataset_files(config: Dict[str, Any]) -> List[str]:
+    """Return configured dataset files that no longer exist."""
+    return [
+        file_path
+        for file_path in _iter_dataset_file_paths(config)
+        if not Path(file_path).exists()
+    ]
+
+
 def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
     """Load a dataset by ID, with caching."""
     global _dataset_cache
@@ -262,6 +285,18 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
             print(f"No train_x found in config for dataset {dataset_id}")
             return None
 
+        missing_files = _find_missing_dataset_files(config)
+        if missing_files:
+            first_missing = missing_files[0]
+            suffix = f" ({len(missing_files)} missing files)" if len(missing_files) > 1 else ""
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"Dataset source file is missing{suffix}: {first_missing}. "
+                    "Relink or refresh the dataset before viewing spectra."
+                ),
+            )
+
         # Load using DatasetConfigs (same as working preview endpoints)
         from nirs4all.data import DatasetConfigs
 
@@ -279,6 +314,8 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
 
         return dataset
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error loading dataset {dataset_id}: {e}")
         import traceback

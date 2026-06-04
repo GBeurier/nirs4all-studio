@@ -22,6 +22,44 @@ import platformdirs
 # App identification for platformdirs
 APP_NAME = "nirs4all-studio"
 APP_AUTHOR = "nirs4all"
+OUTDATED_PACKAGES_TIMEOUT_SECONDS = 15
+PIP_INSTALL_TIMEOUT_SECONDS = 900
+
+
+def _split_exact_package_spec(package: str, version: Optional[str]) -> Tuple[str, Optional[str]]:
+    """Accept both ("name", "1.2.3") and ("name==1.2.3", None)."""
+    if version or "==" not in package:
+        return package, version
+
+    package_name, pinned_version = package.split("==", 1)
+    return package_name.strip(), pinned_version.strip() or None
+
+
+def _resolve_package_version_for_python(
+    package: str,
+    version: Optional[str],
+    python_version: Tuple[int, int],
+) -> Tuple[Optional[str], Optional[str]]:
+    """Resolve known package pins that are incompatible with target Python."""
+    if not version:
+        return version, None
+
+    package_name = package.split("[", 1)[0].replace("_", "-").lower()
+    requested_version = version.strip().lstrip("=")
+
+    if package_name == "tabpfn" and requested_version in {"2.0.2", "2.0.3"}:
+        if python_version == (3, 12):
+            return (
+                "2.0.4",
+                f"tabpfn {requested_version} requires Python <3.12; using tabpfn 2.0.4",
+            )
+        if python_version >= (3, 13):
+            return (
+                None,
+                f"tabpfn {requested_version} requires Python <3.12; using latest compatible tabpfn",
+            )
+
+    return requested_version, None
 
 
 @dataclass
@@ -273,6 +311,27 @@ class VenvManager:
         except Exception:
             return False
 
+    def _get_target_python_version(self) -> Tuple[int, int]:
+        """Return the managed Python major/minor version."""
+        try:
+            result = subprocess.run(
+                [
+                    str(self.python_executable),
+                    "-c",
+                    "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                major, minor = result.stdout.strip().split(".", 1)
+                return int(major), int(minor)
+        except Exception:
+            pass
+
+        return sys.version_info.major, sys.version_info.minor
+
     def _load_metadata(self) -> Optional[Dict[str, Any]]:
         """Load venv metadata from file."""
         if not self._metadata_path.exists():
@@ -409,6 +468,13 @@ class VenvManager:
         if not self._is_valid_venv():
             return False, "Virtual environment is not valid", []
 
+        package, version = _split_exact_package_spec(package, version)
+        version, compatibility_note = _resolve_package_version_for_python(
+            package,
+            version,
+            self._get_target_python_version(),
+        )
+
         # Build package specifier
         pkg_spec = package
         if extras:
@@ -418,6 +484,8 @@ class VenvManager:
 
         if progress_callback:
             progress_callback(0, f"Installing {pkg_spec}...")
+            if compatibility_note:
+                progress_callback(5, compatibility_note)
 
         # Build pip command
         cmd = [str(self.pip_executable), "install"]
@@ -426,6 +494,25 @@ class VenvManager:
         cmd.append(pkg_spec)
 
         output_lines = []
+
+        def record_output(output: str) -> None:
+            for line in output.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                output_lines.append(line)
+                if not progress_callback:
+                    continue
+                # Estimate progress based on output
+                if "Collecting" in line:
+                    progress_callback(20, line)
+                elif "Downloading" in line:
+                    progress_callback(40, line)
+                elif "Installing" in line:
+                    progress_callback(70, line)
+                elif "Successfully" in line:
+                    progress_callback(95, line)
+
         try:
             # Run pip install
             process = subprocess.Popen(
@@ -433,30 +520,29 @@ class VenvManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1,
             )
 
-            # Stream output
-            for line in iter(process.stdout.readline, ""):
-                line = line.strip()
-                if line:
-                    output_lines.append(line)
-                    if progress_callback:
-                        # Estimate progress based on output
-                        if "Collecting" in line:
-                            progress_callback(20, line)
-                        elif "Downloading" in line:
-                            progress_callback(40, line)
-                        elif "Installing" in line:
-                            progress_callback(70, line)
-                        elif "Successfully" in line:
-                            progress_callback(95, line)
-
-            process.wait()
+            output, _ = process.communicate(timeout=PIP_INSTALL_TIMEOUT_SECONDS)
+            record_output(output or "")
 
             if process.returncode != 0:
                 return False, f"pip install failed with code {process.returncode}", output_lines
 
+        except subprocess.TimeoutExpired:
+            process.kill()
+            try:
+                output, _ = process.communicate(timeout=5)
+            except Exception:
+                output = ""
+            record_output(output or "")
+            return (
+                False,
+                (
+                    f"pip install timed out after {PIP_INSTALL_TIMEOUT_SECONDS}s while "
+                    f"installing {pkg_spec}. Check the internet connection or retry later."
+                ),
+                output_lines,
+            )
         except Exception as e:
             return False, f"Installation failed: {e}", output_lines
 
@@ -468,7 +554,11 @@ class VenvManager:
         if progress_callback:
             progress_callback(100, f"Successfully installed {package}")
 
-        return True, f"Successfully installed {pkg_spec}", output_lines
+        message = f"Successfully installed {pkg_spec}"
+        if compatibility_note:
+            message = f"{message} ({compatibility_note})"
+
+        return True, message, output_lines
 
     def get_installed_packages(self) -> List[PackageInfo]:
         """Get list of installed packages in the venv."""
@@ -556,7 +646,7 @@ class VenvManager:
                 [str(self.pip_executable), "list", "--outdated", "--format=json"],
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=OUTDATED_PACKAGES_TIMEOUT_SECONDS,
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
@@ -566,8 +656,13 @@ class VenvManager:
                         "current_version": pkg.get("version", ""),
                         "latest_version": pkg.get("latest_version", ""),
                     })
+        except subprocess.TimeoutExpired:
+            print(
+                "Skipping outdated package check: "
+                f"pip list --outdated exceeded {OUTDATED_PACKAGES_TIMEOUT_SECONDS}s"
+            )
         except Exception as e:
-            print(f"Error checking outdated packages: {e}")
+            print(f"Skipping outdated package check: {e}")
 
         return outdated
 

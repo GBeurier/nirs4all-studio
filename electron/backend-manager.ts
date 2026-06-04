@@ -1,14 +1,16 @@
 import { spawn, ChildProcess } from "node:child_process";
 import { createServer, AddressInfo } from "node:net";
 import path from "node:path";
+import { captureElectronException } from "./telemetry";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 // Use require for electron to avoid Rollup ESM/CJS interop issues
 const electron = require("electron") as typeof import("electron");
 const { BrowserWindow } = electron;
 
-const HEALTH_CHECK_TIMEOUT = 30000; // 30 seconds
+const HEALTH_CHECK_TIMEOUT = 120000; // First launch can be slow while Python imports warm up
 const HEALTH_CHECK_INTERVAL = 500; // 500ms between retries
+const HEALTH_CHECK_REQUEST_TIMEOUT = 5000; // Per-request timeout
 const HEALTH_MONITOR_INTERVAL = 10000; // 10 seconds between periodic health checks
 const MAX_RESTART_ATTEMPTS = 3;
 const RESTART_DELAY = 2000; // 2 seconds before restart attempt
@@ -117,8 +119,15 @@ export class BackendManager {
     const url = `http://127.0.0.1:${this.port}/api/health`;
 
     while (Date.now() - startTime < HEALTH_CHECK_TIMEOUT) {
+      if (!this.process) {
+        throw new Error("Backend process exited before it became healthy");
+      }
+
       try {
-        const response = await fetch(url, { method: "GET" });
+        const response = await fetch(url, {
+          method: "GET",
+          signal: AbortSignal.timeout(HEALTH_CHECK_REQUEST_TIMEOUT),
+        });
         if (response.ok) {
           console.log("Backend health check passed");
           return;
@@ -212,12 +221,21 @@ export class BackendManager {
       if (wasRunning && !this.isShuttingDown) {
         this.status = "error";
         this.notifyRenderer();
+        captureElectronException(
+          new Error(`Backend exited unexpectedly with code ${code}, signal ${signal}`),
+          {
+            surface: "backend_process_exit",
+            code: code ?? "null",
+            signal: signal ?? "null",
+          }
+        );
         // Crash handling is done via health monitor
       }
     });
 
     this.process.on("error", (error) => {
       console.error("Backend process error:", error);
+      captureElectronException(error, { surface: "backend_process_error" });
       this.lastError = error.message;
       this.process = null;
       this.status = "error";
@@ -339,13 +357,17 @@ export class BackendManager {
       try {
         const response = await fetch(`http://127.0.0.1:${this.port}/api/health`, {
           method: "GET",
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(HEALTH_CHECK_REQUEST_TIMEOUT),
         });
         if (!response.ok) {
           throw new Error(`Health check failed with status ${response.status}`);
         }
       } catch (error) {
         console.error("Health check failed:", error);
+        captureElectronException(error, {
+          surface: "backend_health_check",
+          restart_count: this.restartCount,
+        });
         // Backend might have crashed, attempt restart
         if (!this.isShuttingDown && this.restartCount < MAX_RESTART_ATTEMPTS) {
           await this.handleCrash();
@@ -394,6 +416,10 @@ export class BackendManager {
       this.status = "error";
       this.notifyRenderer();
       console.error("Failed to restart backend:", error);
+      captureElectronException(error, {
+        surface: "backend_restart_after_crash",
+        restart_count: this.restartCount,
+      });
     }
   }
 

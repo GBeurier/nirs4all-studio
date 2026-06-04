@@ -1,11 +1,20 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import electron from "vite-plugin-electron";
 import renderer from "vite-plugin-electron-renderer";
 import path from "path";
 
 const isElectron = process.env.ELECTRON === "true";
 const isElectronBuild = isElectron && process.env.NODE_ENV === "production";
+const sentryRelease =
+  process.env.SENTRY_RELEASE ||
+  `nirs4all-studio@${process.env.npm_package_version || "1.0.0"}`;
+const shouldUploadSentrySourceMaps = Boolean(
+  process.env.SENTRY_AUTH_TOKEN &&
+  process.env.SENTRY_ORG &&
+  process.env.SENTRY_PROJECT
+);
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -84,6 +93,21 @@ export default defineConfig(({ mode }) => ({
           renderer(),
         ]
       : []),
+    ...(shouldUploadSentrySourceMaps
+      ? sentryVitePlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+          release: {
+            name: sentryRelease,
+          },
+          sourcemaps: {
+            assets: ["dist/**", "dist-electron/**"],
+            filesToDeleteAfterUpload: ["dist/**/*.map", "dist-electron/**/*.map"],
+          },
+          telemetry: false,
+        })
+      : []),
   ],
   resolve: {
     alias: {
@@ -92,6 +116,6 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     outDir: "dist",
-    sourcemap: mode === "development",
+    sourcemap: mode === "development" || shouldUploadSentrySourceMaps,
   },
 }));

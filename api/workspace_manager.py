@@ -44,6 +44,30 @@ except ImportError as e:
     NIRS4ALL_AVAILABLE = False
 
 
+def _set_active_workspace_best_effort(path: str) -> bool:
+    """Synchronize the active workspace with nirs4all when it is ready.
+
+    During desktop startup, the workspace registry is initialized before all ML
+    dependencies may be ready. The Studio workspace should still be created and
+    persisted; nirs4all can pick up the path from the environment once ready.
+    """
+    os.environ["NIRS4ALL_WORKSPACE"] = path
+
+    if nirs4all_workspace is None:
+        return False
+
+    try:
+        nirs4all_workspace.set_active_workspace(path)
+        return True
+    except Exception as exc:
+        detail = getattr(exc, "detail", None) or str(exc)
+        print(
+            "Could not sync active workspace with nirs4all yet; "
+            f"using NIRS4ALL_WORKSPACE fallback: {exc.__class__.__name__}: {detail}"
+        )
+        return False
+
+
 # ============================================================================
 # Phase 7: Linked Workspace and Scanner classes
 # ============================================================================
@@ -1971,10 +1995,7 @@ class WorkspaceManager:
 
         # Set nirs4all workspace if this is the active one
         if is_first:
-            if nirs4all_workspace is not None:
-                nirs4all_workspace.set_active_workspace(str(workspace_path))
-            else:
-                os.environ["NIRS4ALL_WORKSPACE"] = str(workspace_path)
+            _set_active_workspace_best_effort(str(workspace_path))
 
         return linked_ws
 
@@ -2651,12 +2672,7 @@ class WorkspaceManager:
             settings["linked_workspaces"] = workspaces
             self.app_config.save_app_settings(settings)
 
-            # Set workspace in nirs4all library (handles environment variable internally)
-            if nirs4all_workspace is not None:
-                nirs4all_workspace.set_active_workspace(found.path)
-            else:
-                # Fallback if nirs4all not available
-                os.environ["NIRS4ALL_WORKSPACE"] = found.path
+            _set_active_workspace_best_effort(found.path)
 
         return found
 

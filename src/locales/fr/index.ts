@@ -361,6 +361,12 @@ const fr = {
           autoRefreshEvery: "Rafraîchissement auto toutes les {{seconds}}s",
         },
       },
+      diagnostics: {
+        title: "Diagnostics",
+        description: "Contrôlez l'envoi optionnel de données de débogage pour analyser les erreurs",
+        enable: "Envoyer les données de débogage",
+        hint: "Envoie à Sentry des rapports d'erreur et du contexte technique nettoyés. Données personnelles, corps de requête, cookies et tokens sont filtrés.",
+      },
       system: {
         title: "Informations système",
         description: "Environnement Python et détails du système",

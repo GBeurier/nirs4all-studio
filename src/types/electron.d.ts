@@ -113,6 +113,11 @@ interface ElectronApi {
   restartBackend(): Promise<BackendRestartResult>;
 
   /**
+   * Update Electron main-process diagnostics consent.
+   */
+  setDebugDataSharingConsent(enabled: boolean): Promise<boolean>;
+
+  /**
    * Subscribe to backend status changes
    * @param callback - Called when backend status changes
    * @returns Cleanup function to unsubscribe

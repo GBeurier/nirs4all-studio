@@ -120,6 +120,7 @@ export function PreviewStep() {
   }, [loadPreview, state.preview, loading]);
 
   const preview = state.preview;
+  const summary = preview?.summary ?? null;
 
   return (
     <div className="flex-1 overflow-auto py-2 space-y-4">
@@ -160,8 +161,25 @@ export function PreviewStep() {
         </div>
       )}
 
+      {/* Incomplete preview state */}
+      {preview && !loading && !error && !summary && (
+        <div className="flex flex-col items-center justify-center py-12">
+          <AlertCircle className="h-8 w-8 text-amber-500 mb-4" />
+          <p className="text-amber-600 font-medium mb-2">
+            Preview is incomplete
+          </p>
+          <p className="text-sm text-muted-foreground mb-4 max-w-md text-center">
+            The dataset preview did not include a summary. Refresh the preview or review the selected files.
+          </p>
+          <Button onClick={loadPreview} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+      )}
+
       {/* Preview content */}
-      {preview && !loading && !error && (
+      {preview && !loading && !error && summary && (
         <div className="grid grid-cols-2 gap-4">
           {/* Dataset Summary */}
           <Card>
@@ -181,7 +199,7 @@ export function PreviewStep() {
                   <Layers className="h-3 w-3" /> Samples
                 </span>
                 <span className="font-medium">
-                  {preview.summary.num_samples.toLocaleString()}
+                  {summary.num_samples.toLocaleString()}
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -189,33 +207,33 @@ export function PreviewStep() {
                   <Hash className="h-3 w-3" /> Features
                 </span>
                 <span className="font-medium">
-                  {preview.summary.num_features.toLocaleString()}
+                  {summary.num_features.toLocaleString()}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Sources</span>
-                <span className="font-medium">{preview.summary.n_sources}</span>
+                <span className="font-medium">{summary.n_sources}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Train/Test</span>
                 <span className="font-medium">
-                  {preview.summary.train_samples} / {preview.summary.test_samples}
+                  {summary.train_samples} / {summary.test_samples}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground flex items-center gap-1">
                   <Target className="h-3 w-3" /> Targets
                 </span>
-                <Badge variant={preview.summary.has_targets ? "default" : "secondary"}>
-                  {preview.summary.has_targets
-                    ? preview.summary.target_columns?.join(", ") || "Yes"
+                <Badge variant={summary.has_targets ? "default" : "secondary"}>
+                  {summary.has_targets
+                    ? summary.target_columns?.join(", ") || "Yes"
                     : "None"}
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Signal Type</span>
                 <Badge variant="outline">
-                  {preview.summary.signal_type || "auto"}
+                  {summary.signal_type || "auto"}
                 </Badge>
               </div>
             </CardContent>
@@ -229,7 +247,7 @@ export function PreviewStep() {
                   <BarChart3 className="h-4 w-4" />
                   Spectra Preview
                 </CardTitle>
-                {preview.summary.n_sources > 1 && preview.spectra_per_source && (
+                {summary.n_sources > 1 && preview.spectra_per_source && (
                   <Select
                     value={String(selectedSource)}
                     onValueChange={(v) => setSelectedSource(Number(v))}
@@ -252,7 +270,7 @@ export function PreviewStep() {
               {(() => {
                 // Use per-source data if available and multi-source, otherwise fall back to global
                 const spectraData =
-                  preview.summary.n_sources > 1 &&
+                  summary.n_sources > 1 &&
                   preview.spectra_per_source &&
                   preview.spectra_per_source[selectedSource]
                     ? preview.spectra_per_source[selectedSource]

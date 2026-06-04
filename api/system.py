@@ -15,6 +15,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
+from api.telemetry import capture_exception
 
 router = APIRouter()
 
@@ -53,6 +54,15 @@ def log_error(
         "traceback": traceback.format_exc() if exc else None,
     }
     _error_log.appendleft(entry)
+    if exc:
+        capture_exception(
+            exc,
+            tags={
+                "endpoint": endpoint,
+                "level": level,
+                "surface": "backend_error_log",
+            },
+        )
 
 
 def get_error_log_entries(limit: int = 50) -> List[dict]:
@@ -324,6 +334,109 @@ async def system_capabilities():
         pass
 
     return {"capabilities": capabilities}
+
+
+def _operator_node_summary(method: Dict[str, Any], operator_type: str) -> Dict[str, Any]:
+    """Build a compact node-like summary from a live operator definition."""
+    name = str(method.get("name") or "")
+    display_name = method.get("display_name") or method.get("displayName") or name
+    node_id = str(method.get("id") or f"{operator_type}:{name}")
+
+    return {
+        "id": node_id,
+        "name": name,
+        "displayName": display_name,
+        "type": method.get("type") or operator_type,
+        "category": method.get("category", "other"),
+        "source": method.get("source", "unknown"),
+        "available": bool(name),
+    }
+
+
+def _build_operator_availability_response(
+    catalog: Dict[str, Any],
+    *,
+    error: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return a backwards-compatible operator availability payload.
+
+    Older desktop builds used a generated node-definition reference for this
+    endpoint and raised a 500 when that reference was empty. The current app
+    uses live backend introspection, so this compatibility shape deliberately
+    degrades to a 200 response even if no operators can be discovered.
+    """
+    operator_types = ("preprocessing", "augmentation", "splitting", "filter")
+    counts: Dict[str, int] = {}
+    nodes: List[Dict[str, Any]] = []
+    operators: Dict[str, List[str]] = {}
+
+    for operator_type in operator_types:
+        methods = catalog.get(operator_type) or []
+        if not isinstance(methods, list):
+            methods = []
+
+        typed_nodes = [
+            _operator_node_summary(method, operator_type)
+            for method in methods
+            if isinstance(method, dict)
+        ]
+        nodes.extend(typed_nodes)
+        counts[operator_type] = len(typed_nodes)
+        operators[operator_type] = [
+            node["name"]
+            for node in typed_nodes
+            if node.get("name")
+        ]
+
+    discovered_total = sum(counts.values())
+    if discovered_total == 0:
+        try:
+            discovered_total = int(catalog.get("total") or 0)
+        except (TypeError, ValueError):
+            discovered_total = 0
+
+    reason = error
+    if reason is None and discovered_total == 0:
+        reason = "No operators discovered from live backend introspection"
+
+    status = "available" if discovered_total > 0 else "degraded"
+
+    return {
+        "available": discovered_total > 0,
+        "status": status,
+        "source": "playground-live-introspection",
+        "reason": reason,
+        "total": discovered_total,
+        "counts": counts,
+        "operators": operators,
+        "reference": {
+            "version": "playground-live-introspection",
+            "generatedAt": datetime.now().isoformat(),
+            "totalNodes": discovered_total,
+            "nodes": nodes,
+        },
+    }
+
+
+@router.get("/system/operator-availability")
+async def system_operator_availability():
+    """Compatibility endpoint for operator availability diagnostics.
+
+    This route intentionally never raises when the operator registry is empty.
+    It replaces the old generated node-definition reference with the live
+    playground operator catalog used by the current UI.
+    """
+    try:
+        from .playground import list_operators
+
+        catalog = await list_operators()
+    except Exception as exc:
+        return _build_operator_availability_response(
+            {},
+            error=f"Operator catalog introspection failed: {exc.__class__.__name__}",
+        )
+
+    return _build_operator_availability_response(catalog)
 
 
 @router.get("/system/paths")

@@ -359,6 +359,12 @@ const en = {
           autoRefreshEvery: "Auto-refresh every {{seconds}}s",
         },
       },
+      diagnostics: {
+        title: "Diagnostics",
+        description: "Control optional debug data sharing for error investigation",
+        enable: "Send debug data",
+        hint: "Sends sanitized crash reports and technical context to Sentry. Personal data, request bodies, cookies, and tokens are filtered.",
+      },
       system: {
         title: "System Information",
         description: "Python environment and system details",

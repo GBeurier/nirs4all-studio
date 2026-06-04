@@ -31,9 +31,11 @@ import {
   FolderPlus,
   FileArchive,
   ZoomIn,
+  ShieldCheck,
 } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { useDeveloperMode } from "@/context/DeveloperModeContext";
+import { useDiagnosticsConsent } from "@/context/DiagnosticsConsentContext";
 import { useUISettings } from "@/context/UISettingsContext";
 import {
   Card,
@@ -109,6 +111,11 @@ export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { theme, setTheme } = useTheme();
   const { isDeveloperMode, setDeveloperMode, isLoading: isLoadingDevMode } = useDeveloperMode();
+  const {
+    debugDataSharingEnabled,
+    setDebugDataSharingEnabled,
+    isLoading: isLoadingDiagnosticsConsent,
+  } = useDiagnosticsConsent();
   const { density, setDensity, reduceAnimations, setReduceAnimations, zoomLevel, setZoomLevel, isLoading: isLoadingUI } = useUISettings();
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
@@ -150,6 +157,14 @@ export default function Settings() {
       await setDeveloperMode(enabled);
     } catch (error) {
       console.error("Failed to update developer mode:", error);
+    }
+  };
+
+  const handleDebugDataSharingChange = async (enabled: boolean) => {
+    try {
+      await setDebugDataSharingEnabled(enabled);
+    } catch (error) {
+      console.error("Failed to update debug data sharing consent:", error);
     }
   };
 
@@ -464,6 +479,36 @@ export default function Settings() {
 
             {/* Backend Status - Always visible */}
             <BackendStatus checkInterval={30} />
+
+            {/* Diagnostics Consent */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5" />
+                  {t("settings.advanced.diagnostics.title")}
+                </CardTitle>
+                <CardDescription>
+                  {t("settings.advanced.diagnostics.description")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between gap-6">
+                  <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">
+                      {t("settings.advanced.diagnostics.enable")}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.advanced.diagnostics.hint")}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={debugDataSharingEnabled}
+                    onCheckedChange={handleDebugDataSharingChange}
+                    disabled={isLoadingDiagnosticsConsent}
+                  />
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Config Path Settings */}
             <ConfigPathSettings />

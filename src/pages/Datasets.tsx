@@ -63,6 +63,21 @@ import {
 } from "@/api/client";
 import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
 
+function getApiStatus(error: unknown): number | undefined {
+  return typeof error === "object" && error !== null
+    ? (error as { status?: number }).status
+    : undefined;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null) {
+    const detail = (error as { detail?: unknown }).detail;
+    if (typeof detail === "string" && detail) return detail;
+  }
+  return fallback;
+}
+
 /** Get filename stem (without extension) */
 function getStem(filename: string): string {
   const lower = filename.toLowerCase();
@@ -388,11 +403,22 @@ export default function Datasets() {
 
   const handleDeleteDataset = async (dataset: Dataset) => {
     if (!confirm(`Remove "${dataset.name}" from workspace?`)) return;
-    await unlinkDataset(dataset.id);
+    try {
+      await unlinkDataset(dataset.id);
+    } catch (error) {
+      if (getApiStatus(error) !== 404) {
+        console.error("Failed to remove dataset:", error);
+        alert(getErrorMessage(error, "Failed to remove dataset"));
+        return;
+      }
+      console.warn("Dataset was already removed:", dataset.id);
+    }
+
     // Clear quick view if deleted dataset was selected
     if (quickViewDataset?.id === dataset.id) {
       setQuickViewDataset(null);
     }
+
     await loadData();
   };
 
@@ -439,7 +465,15 @@ export default function Datasets() {
     groupId: string,
     datasetId: string
   ) => {
-    await removeDatasetFromGroup(groupId, datasetId);
+    try {
+      await removeDatasetFromGroup(groupId, datasetId);
+    } catch (error) {
+      if (getApiStatus(error) !== 404) {
+        console.error("Failed to remove dataset from group:", error);
+        alert(getErrorMessage(error, "Failed to remove dataset from group"));
+        return;
+      }
+    }
     await loadData();
   };
 

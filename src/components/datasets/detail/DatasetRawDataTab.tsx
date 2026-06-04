@@ -96,7 +96,8 @@ export function DatasetRawDataTab({
   }
 
   // Check if we have sample data from preview
-  const hasSampleData = preview?.summary?.num_samples && preview.summary.num_samples > 0;
+  const sampleCount = preview?.summary?.num_samples ?? 0;
+  const hasSampleData = sampleCount > 0;
 
   if (!hasSampleData) {
     return (
@@ -116,8 +117,10 @@ export function DatasetRawDataTab({
 
   // Mock data for demonstration - replace with actual API call
   const mockColumns = ["ID", "Protein", "Moisture", "Batch", "Origin"];
+  const firstSampleIndex = currentPage * pageSize;
+  const visibleSampleCount = Math.min(pageSize, Math.max(0, sampleCount - firstSampleIndex));
   const mockData: Array<{ id: string; values: Record<string, string> }> = Array.from(
-    { length: Math.min(pageSize, preview.summary.num_samples) },
+    { length: visibleSampleCount },
     (_, i) => ({
       id: `SAMPLE_${String(currentPage * pageSize + i + 1).padStart(4, "0")}`,
       values: {
@@ -130,7 +133,7 @@ export function DatasetRawDataTab({
     })
   );
 
-  const totalPages = Math.ceil((preview.summary.num_samples || 0) / pageSize);
+  const totalPages = Math.max(1, Math.ceil(sampleCount / pageSize));
 
   return (
     <div className="space-y-4">
@@ -180,7 +183,7 @@ export function DatasetRawDataTab({
               <TableIcon className="h-4 w-4" />
               Raw Data Preview
               <Badge variant="secondary" className="ml-2">
-                {preview.summary.num_samples.toLocaleString()} samples
+                {sampleCount.toLocaleString()} samples
               </Badge>
             </CardTitle>
           </div>
@@ -215,8 +218,8 @@ export function DatasetRawDataTab({
           <div className="flex items-center justify-between mt-4">
             <p className="text-sm text-muted-foreground">
               Showing {currentPage * pageSize + 1} to{" "}
-              {Math.min((currentPage + 1) * pageSize, preview.summary.num_samples)} of{" "}
-              {preview.summary.num_samples.toLocaleString()} samples
+              {Math.min((currentPage + 1) * pageSize, sampleCount)} of{" "}
+              {sampleCount.toLocaleString()} samples
             </p>
             <div className="flex items-center gap-2">
               <Button

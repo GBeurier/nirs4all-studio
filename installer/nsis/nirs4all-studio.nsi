@@ -16,6 +16,8 @@
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
+!include "LogicLib.nsh"
+!include "nsDialogs.nsh"
 
 ;--------------------------------
 ; General Configuration
@@ -31,6 +33,9 @@ InstallDirRegKey HKLM "Software\nirs4all-studio" "InstallDir"
 
 ; Request admin privileges
 RequestExecutionLevel admin
+
+Var DebugLogsCheckbox
+Var DebugLogsConsent
 
 ; Version info
 VIProductVersion "${VERSION}.0"
@@ -68,6 +73,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "..\..\LICENSE"
+Page custom DiagnosticsConsentPageCreate DiagnosticsConsentPageLeave
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_INSTFILES
@@ -99,6 +105,15 @@ Section "nirs4all Studio (required)" SecMain
     ; Store installation folder
     WriteRegStr HKLM "Software\nirs4all-studio" "InstallDir" "$INSTDIR"
     WriteRegStr HKLM "Software\nirs4all-studio" "Version" "${VERSION}"
+
+    ; Persist install-time consent as a marker. The app promotes it to app_settings.json on first launch.
+    ${If} $DebugLogsConsent == ${BST_CHECKED}
+        SetShellVarContext current
+        CreateDirectory "$APPDATA\nirs4all"
+        FileOpen $0 "$APPDATA\nirs4all\installer_debug_data_sharing_consent" w
+        FileWrite $0 "true"
+        FileClose $0
+    ${EndIf}
 
     ; Create uninstaller
     WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -196,6 +211,26 @@ Function .onInit
         RMDir "$0"
 
     done:
+FunctionEnd
+
+Function DiagnosticsConsentPageCreate
+    nsDialogs::Create 1018
+    Pop $0
+    ${If} $0 == error
+        Abort
+    ${EndIf}
+
+    ${NSD_CreateLabel} 0 0 100% 34u "Help improve nirs4all Studio by sharing aggregated diagnostic logs when the application encounters bugs.$\r$\n$\r$\nNo project data, spectra, file contents, or personal identifiers are intentionally sent. You can change this later in Settings."
+    Pop $0
+    ${NSD_CreateCheckbox} 0 48u 100% 16u "Share aggregated diagnostic logs to improve the software"
+    Pop $DebugLogsCheckbox
+    ${NSD_SetState} $DebugLogsCheckbox ${BST_UNCHECKED}
+
+    nsDialogs::Show
+FunctionEnd
+
+Function DiagnosticsConsentPageLeave
+    ${NSD_GetState} $DebugLogsCheckbox $DebugLogsConsent
 FunctionEnd
 
 Function un.onInit

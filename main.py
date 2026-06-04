@@ -42,7 +42,10 @@ from api.synthesis import router as synthesis_router
 from api.transfer import router as transfer_router
 from api.shap import router as shap_router
 from api.aggregated_predictions import router as aggregated_predictions_router
+from api.telemetry import capture_exception, initialize_sentry
 from websocket import ws_manager
+
+initialize_sentry()
 
 # Create FastAPI app
 app = FastAPI(
@@ -207,6 +210,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str = None):
         await ws_manager.disconnect(websocket)
     except Exception as e:
         print(f"WebSocket error: {e}")
+        capture_exception(e, tags={"endpoint": "/ws", "surface": "websocket"})
         await ws_manager.disconnect(websocket)
 
 
@@ -233,6 +237,7 @@ async def job_websocket_endpoint(websocket: WebSocket, job_id: str):
         await ws_manager.disconnect(websocket)
     except Exception as e:
         print(f"Job WebSocket error: {e}")
+        capture_exception(e, tags={"endpoint": "/ws/job/{job_id}", "surface": "websocket"})
         await ws_manager.disconnect(websocket)
 
 
@@ -258,6 +263,7 @@ async def training_websocket_endpoint(websocket: WebSocket, job_id: str):
         await ws_manager.disconnect(websocket)
     except Exception as e:
         print(f"Training WebSocket error: {e}")
+        capture_exception(e, tags={"endpoint": "/ws/training/{job_id}", "surface": "websocket"})
         await ws_manager.disconnect(websocket)
 
 

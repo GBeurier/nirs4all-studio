@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager, WorkspaceScanner
 from .app_config import app_config
+from .telemetry import apply_consent_from_app_settings
 
 
 # Simple TTL cache for workspace discovery operations
@@ -1467,6 +1468,7 @@ class AppSettingsResponse(BaseModel):
     linked_workspaces_count: int
     favorite_pipelines: List[str]
     ui_preferences: Dict[str, Any]
+    debug_data_sharing_enabled: bool = Field(False, description="Debug data sharing consent")
 
 
 class UpdateAppSettingsRequest(BaseModel):
@@ -2359,6 +2361,9 @@ async def get_app_settings():
             linked_workspaces_count=len(linked_workspaces),
             favorite_pipelines=settings.get("favorite_pipelines", []),
             ui_preferences=settings.get("ui_preferences", {}),
+            debug_data_sharing_enabled=bool(
+                settings.get("ui_preferences", {}).get("debug_data_sharing_enabled", False)
+            ),
         )
     except Exception as e:
         raise HTTPException(
@@ -2377,6 +2382,8 @@ async def update_app_settings(request: UpdateAppSettingsRequest):
         success = workspace_manager.save_app_settings(updates)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save app settings")
+
+        apply_consent_from_app_settings(workspace_manager.get_app_settings())
 
         return {"success": True, "message": "App settings updated"}
     except HTTPException:

@@ -25,6 +25,7 @@ from datetime import datetime
 # Default config directory name
 _CONFIG_DIR_NAME = "nirs4all"
 _REDIRECT_FILE_NAME = "config_redirect.txt"
+_INSTALLER_DEBUG_CONSENT_FILE_NAME = "installer_debug_data_sharing_consent"
 
 
 @dataclass
@@ -267,19 +268,36 @@ class AppConfigManager:
                 "theme": "system",
                 "density": "comfortable",
                 "language": "en",
+                "debug_data_sharing_enabled": False,
             },
             "last_updated": datetime.now().isoformat(),
         }
+
+    def _apply_installer_debug_consent(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Promote installer diagnostics consent marker to persisted settings."""
+        marker_path = self._config_dir / _INSTALLER_DEBUG_CONSENT_FILE_NAME
+        if not marker_path.exists():
+            return settings
+
+        settings.setdefault("ui_preferences", {})[
+            "debug_data_sharing_enabled"
+        ] = True
+        try:
+            marker_path.unlink()
+        except Exception:
+            pass
+        self.save_app_settings(settings)
+        return settings
 
     def get_app_settings(self) -> Dict[str, Any]:
         """Load app settings from disk."""
         if self._app_settings_path.exists():
             try:
                 with open(self._app_settings_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    return self._apply_installer_debug_consent(json.load(f))
             except Exception as e:
                 print(f"Failed to load app settings: {e}")
-        return self._default_app_settings()
+        return self._apply_installer_debug_consent(self._default_app_settings())
 
     def save_app_settings(self, settings: Dict[str, Any]) -> bool:
         """Save app settings to disk."""

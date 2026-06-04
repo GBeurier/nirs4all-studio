@@ -124,6 +124,48 @@ def _sanitize_metrics(metrics: dict) -> dict:
     """Sanitize all float values in a metrics dict for JSON serialization."""
     return {k: _sanitize_float(v) if isinstance(v, (int, float)) else v for k, v in metrics.items()}
 
+
+def _format_pipeline_failure(exc: Exception) -> str:
+    """Return a user-facing pipeline failure message."""
+    message = str(exc)
+
+    nan_match = re.search(r"Transform '([^']+)' received NaN input", message)
+    if nan_match:
+        transform_name = nan_match.group(1)
+        return (
+            f"{transform_name} cannot run because the dataset still contains missing values. "
+            "Edit the dataset parsing settings and change NA Handling from Ignore to Drop rows, "
+            "Remove features, or Replace, then rerun the pipeline."
+        )
+
+    pls_match = re.search(
+        r"PLSRegression.*`n_components` upper bound is (\d+)\. Got (\d+) instead",
+        message,
+    )
+    if pls_match:
+        upper_bound, requested = pls_match.groups()
+        return (
+            "PLSRegression n_components is too high for this dataset. "
+            f"The current dataset allows at most {upper_bound}, but the pipeline asks for {requested}. "
+            f"Edit the PLS step and set n_components to {upper_bound} or lower, "
+            "or use a dataset/split with more usable samples."
+        )
+
+    sample_count_match = re.search(
+        r"Found input variables with inconsistent numbers of samples: \[([0-9,\s]+)\]",
+        message,
+    )
+    if sample_count_match:
+        counts = ", ".join(part.strip() for part in sample_count_match.group(1).split(","))
+        return (
+            "The X and Y files do not contain the same number of samples. "
+            f"Detected sample counts: {counts}. "
+            "Check the dataset file mapping and target file so each spectrum has one matching target row."
+        )
+
+    return message
+
+
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
 if str(nirs4all_path) not in sys.path:
@@ -777,14 +819,15 @@ async def _execute_run(run_id: str):
                     )
 
                 except Exception as e:
+                    error_message = _format_pipeline_failure(e)
                     pipeline.status = "failed"
-                    pipeline.error_message = str(e)
+                    pipeline.error_message = error_message
                     pipeline.logs = pipeline.logs or []
-                    pipeline.logs.append(f"[ERROR] {str(e)}")
+                    pipeline.logs.append(f"[ERROR] {error_message}")
                     print(f"Pipeline execution error: {e}")
                     import traceback
                     traceback.print_exc()
-                    await send_log(f"[ERROR] {pipeline.pipeline_name} failed: {str(e)}", "error")
+                    await send_log(f"[ERROR] {pipeline.pipeline_name} failed: {error_message}", "error")
 
                 _save_run_manifest(run)
                 pipeline_index += 1

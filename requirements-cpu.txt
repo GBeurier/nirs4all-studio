@@ -19,6 +19,9 @@ pyyaml>=6.0
 packaging>=24.0
 platformdirs>=4.0.0
 
+# Optional opt-in diagnostics
+sentry-sdk[fastapi]>=2.61.0
+
 # nirs4all core (CPU-only installation)
 # Install with: pip install nirs4all
 # This installs sklearn-based functionality without GPU dependencies

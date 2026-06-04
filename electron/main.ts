@@ -3,8 +3,15 @@
 const electron = require("electron") as typeof import("electron");
 const { app, BrowserWindow, ipcMain, dialog, shell } = electron;
 
+import { existsSync } from "node:fs";
 import path from "node:path";
+import type { BrowserWindow as BrowserWindowType } from "electron";
 import { BackendManager } from "./backend-manager";
+import {
+  captureElectronException,
+  initElectronDiagnostics,
+  setElectronDebugDataSharingConsent,
+} from "./telemetry";
 
 // WSL2/WSLg fixes - must be set before app is ready
 if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
@@ -13,12 +20,50 @@ if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
 }
 
 const backendManager = new BackendManager();
+initElectronDiagnostics();
 
 let mainWindow: BrowserWindow | null = null;
 
 // VITE_DEV_SERVER_URL is set by vite-plugin-electron in dev mode
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const DIST_PATH = path.join(__dirname, "../dist");
+
+function configureRuntimeCrashGuards(): void {
+  const disabledFeatures = [
+    "HardwareMediaKeyHandling",
+    "MediaFoundationVideoCapture",
+    "MediaFoundationVideoEncodeAccelerator",
+  ];
+  app.commandLine.appendSwitch("disable-features", disabledFeatures.join(","));
+}
+
+function verifyPackagedRuntimeFiles(): void {
+  if (!app.isPackaged || process.platform !== "win32") return;
+
+  const ffmpegPath = path.join(path.dirname(process.execPath), "ffmpeg.dll");
+  if (!existsSync(ffmpegPath)) {
+    throw new Error(
+      `Electron runtime file missing: ${ffmpegPath}. Reinstall nirs4all Studio or re-extract the portable package.`
+    );
+  }
+}
+
+configureRuntimeCrashGuards();
+
+async function loadProductionApp(window: BrowserWindowType): Promise<void> {
+  const indexPath = path.join(DIST_PATH, "index.html");
+  if (!existsSync(indexPath)) {
+    throw new Error(`Frontend bundle not found: ${indexPath}`);
+  }
+
+  try {
+    await window.loadFile(indexPath);
+  } catch (error) {
+    console.warn("Failed to load frontend bundle, retrying once:", error);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await window.loadFile(indexPath);
+  }
+}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -48,7 +93,7 @@ async function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // Production mode: load built files
-    await mainWindow.loadFile(path.join(DIST_PATH, "index.html"));
+    await loadProductionApp(mainWindow);
   }
 
   mainWindow.on("closed", () => {
@@ -188,6 +233,7 @@ ipcMain.handle("backend:restart", async () => {
     const port = await backendManager.restart();
     return { success: true, port };
   } catch (error) {
+    captureElectronException(error, { surface: "backend_restart" });
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
@@ -195,14 +241,38 @@ ipcMain.handle("backend:restart", async () => {
   }
 });
 
+ipcMain.handle(
+  "diagnostics:setDebugDataSharingConsent",
+  (_, enabled: boolean) => {
+    setElectronDebugDataSharingConsent(Boolean(enabled));
+    return true;
+  }
+);
+
 // App lifecycle
 app.whenReady().then(async () => {
+  try {
+    verifyPackagedRuntimeFiles();
+  } catch (error) {
+    console.error("Invalid packaged runtime:", error);
+    captureElectronException(error, { surface: "runtime_files" });
+    await dialog.showMessageBox({
+      type: "error",
+      title: "Application Error",
+      message: "nirs4all Studio installation is incomplete",
+      detail: error instanceof Error ? error.message : String(error),
+    });
+    app.quit();
+    return;
+  }
+
   // Start backend first
   try {
     const port = await backendManager.start();
     console.log(`Backend started on port ${port}`);
   } catch (error) {
     console.error("Failed to start backend:", error);
+    captureElectronException(error, { surface: "backend_start" });
 
     // Show error dialog to user
     const errorMessage =
@@ -225,7 +295,20 @@ app.whenReady().then(async () => {
   }
 
   // Create window regardless of backend status
-  await createWindow();
+  try {
+    await createWindow();
+  } catch (error) {
+    console.error("Failed to create application window:", error);
+    captureElectronException(error, { surface: "window_create" });
+    await dialog.showMessageBox({
+      type: "error",
+      title: "Application Error",
+      message: "Failed to open the application window",
+      detail: error instanceof Error ? error.message : String(error),
+    });
+    app.quit();
+    return;
+  }
 
   app.on("activate", () => {
     // macOS: re-create window when dock icon is clicked
@@ -250,4 +333,10 @@ app.on("before-quit", async () => {
 // Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
   console.error("Uncaught exception:", error);
+  captureElectronException(error, { surface: "uncaught_exception" });
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason);
+  captureElectronException(reason, { surface: "unhandled_rejection" });
 });

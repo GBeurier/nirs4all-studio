@@ -55,6 +55,9 @@ const electronApi = {
   restartBackend: (): Promise<{ success: boolean; port?: number; error?: string }> =>
     ipcRenderer.invoke("backend:restart"),
 
+  setDebugDataSharingConsent: (enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke("diagnostics:setDebugDataSharingConsent", enabled),
+
   onBackendStatusChanged: (
     callback: (info: {
       status: "stopped" | "starting" | "running" | "error" | "restarting";

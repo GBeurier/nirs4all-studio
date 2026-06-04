@@ -357,6 +357,12 @@ const de = {
           autoRefreshEvery: "Auto-Aktualisierung alle {{seconds}}s",
         },
       },
+      diagnostics: {
+        title: "Diagnose",
+        description: "Optionale Debug-Datenfreigabe zur Fehleranalyse steuern",
+        enable: "Debug-Daten senden",
+        hint: "Sendet bereinigte Absturzberichte und technischen Kontext an Sentry. Personenbezogene Daten, Request-Bodies, Cookies und Tokens werden gefiltert.",
+      },
       system: {
         title: "Systeminformationen",
         description: "Python-Umgebung und Systemdetails",
