@@ -14,6 +14,9 @@ from typing import Any
 
 import numpy as np
 
+from .shared.json_sanitize import sanitize_float as _sanitize_float  # noqa: F401  (re-exported for tests)
+from .shared.json_sanitize import sanitize_json as _sanitize_dict
+
 # WorkspaceStore is optional (nirs4all may not be installed)
 try:
     from nirs4all.pipeline.storage import WorkspaceStore
@@ -22,28 +25,6 @@ try:
 except ImportError:
     WorkspaceStore = None  # type: ignore[assignment, misc]
     STORE_AVAILABLE = False
-
-
-def _sanitize_float(value: Any) -> Any:
-    """Convert NaN / Inf to ``None`` for JSON serialization."""
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    return value
-
-
-def _sanitize_dict(d: dict[str, Any]) -> dict[str, Any]:
-    """Recursively sanitize float values in a dictionary."""
-    out: dict[str, Any] = {}
-    for k, v in d.items():
-        if isinstance(v, dict):
-            out[k] = _sanitize_dict(v)
-        elif isinstance(v, list):
-            out[k] = [_sanitize_dict(item) if isinstance(item, dict) else _sanitize_float(item) for item in v]
-        elif isinstance(v, (float, int)):
-            out[k] = _sanitize_float(v)
-        else:
-            out[k] = v
-    return out
 
 
 class StoreAdapter:

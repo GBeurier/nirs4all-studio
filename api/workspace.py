@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from .workspace_manager import workspace_manager, WorkspaceScanner
 from .app_config import app_config
 from .telemetry import apply_consent_from_app_settings
+from .shared.json_sanitize import sanitize_float, sanitize_json
 from .shared.paths import is_within_directory
 
 
@@ -2035,29 +2036,26 @@ async def get_workspace_predictions_data(
 
                     source_file_str = str(parquet_file)
 
-                    def clean_nan(obj):
-                        """Recursively clean NaN/Inf values from an object for JSON serialization."""
-                        import math
+                    def to_jsonable(obj):
+                        """Coerce pandas/numpy scalars to JSON-native types.
+
+                        NaN/Inf sanitization is delegated to the shared
+                        :func:`sanitize_json`; this only handles the numpy/pandas
+                        scalar types that ``json`` cannot serialize on its own.
+                        """
                         import numpy as np
                         if isinstance(obj, dict):
-                            return {k: clean_nan(v) for k, v in obj.items()}
-                        elif isinstance(obj, list):
-                            return [clean_nan(v) for v in obj]
-                        elif isinstance(obj, (float, np.floating)):
-                            try:
-                                if math.isnan(obj) or math.isinf(obj):
-                                    return None
-                            except (TypeError, ValueError):
-                                pass
-                            return float(obj)
-                        elif isinstance(obj, np.integer):
+                            return {k: to_jsonable(v) for k, v in obj.items()}
+                        if isinstance(obj, list):
+                            return [to_jsonable(v) for v in obj]
+                        if isinstance(obj, np.integer):
                             return int(obj)
                         try:
                             if pd.isna(obj):
                                 return None
                         except (TypeError, ValueError):
                             pass
-                        return obj
+                        return sanitize_json(obj)
 
                     for record in records:
                         record["source_dataset"] = dataset_name
@@ -2072,7 +2070,7 @@ async def get_workspace_predictions_data(
                                     pass
 
                         for key in list(record.keys()):
-                            record[key] = clean_nan(record[key])
+                            record[key] = to_jsonable(record[key])
 
                     all_records.extend(records)
                 except Exception as e:
@@ -2086,35 +2084,25 @@ async def get_workspace_predictions_data(
         total = len(all_records)
         paginated = all_records[offset:offset + limit]
 
-        import math
         import numpy as np
 
         class NaNSafeEncoder(json.JSONEncoder):
+            """Serializes numpy scalars/arrays; NaN/Inf handled by sanitize_json."""
+
             def default(self, obj):
-                if isinstance(obj, (np.floating, float)):
-                    if math.isnan(obj) or math.isinf(obj):
-                        return None
-                    return float(obj)
                 if isinstance(obj, np.integer):
                     return int(obj)
+                if isinstance(obj, np.floating):
+                    # NaN/Inf -> null (sanitize_float preserves finite floats).
+                    return sanitize_float(float(obj))
                 if isinstance(obj, np.ndarray):
-                    return obj.tolist()
+                    # tolist() is not re-walked by encode()'s sanitize_json, so
+                    # sanitize NaN/Inf inside the array here.
+                    return sanitize_json(obj.tolist())
                 return super().default(obj)
 
             def encode(self, obj):
-                def sanitize(o):
-                    if isinstance(o, dict):
-                        return {k: sanitize(v) for k, v in o.items()}
-                    elif isinstance(o, list):
-                        return [sanitize(v) for v in o]
-                    elif isinstance(o, (float, np.floating)):
-                        if math.isnan(o) or math.isinf(o):
-                            return None
-                        return float(o)
-                    elif isinstance(o, np.integer):
-                        return int(o)
-                    return o
-                return super().encode(sanitize(obj))
+                return super().encode(sanitize_json(obj))
 
         response_data = {
             "records": paginated,

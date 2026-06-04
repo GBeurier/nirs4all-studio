@@ -22,11 +22,12 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from .shared.json_sanitize import sanitize_float, sanitize_json
 from .workspace_manager import workspace_manager
 
 
@@ -111,18 +112,9 @@ def parse_log_for_progress(log_entry: str) -> Dict[str, Any]:
     return result
 
 
-def _sanitize_float(value: Union[float, int, None]) -> Optional[float]:
-    """Sanitize float values for JSON serialization (NaN/Inf -> None)."""
-    if value is None:
-        return None
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    return float(value)
-
-
 def _sanitize_metrics(metrics: dict) -> dict:
     """Sanitize all float values in a metrics dict for JSON serialization."""
-    return {k: _sanitize_float(v) if isinstance(v, (int, float)) else v for k, v in metrics.items()}
+    return {k: sanitize_float(v) for k, v in metrics.items()}
 
 
 def _format_pipeline_failure(exc: Exception) -> str:
@@ -376,19 +368,10 @@ class _NaNSafeJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
     def encode(self, obj):
-        return super().encode(self._sanitize(obj))
+        return super().encode(sanitize_json(obj))
 
     def iterencode(self, obj, _one_shot=False):
-        return super().iterencode(self._sanitize(obj), _one_shot)
-
-    def _sanitize(self, obj):
-        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
-            return None
-        elif isinstance(obj, dict):
-            return {k: self._sanitize(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._sanitize(v) for v in obj]
-        return obj
+        return super().iterencode(sanitize_json(obj), _one_shot)
 
 
 def _save_run_manifest(run: Run) -> bool:

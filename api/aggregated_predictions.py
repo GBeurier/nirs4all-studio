@@ -13,14 +13,14 @@ All data is read from the workspace's SQLite store via
 from __future__ import annotations
 
 import asyncio
-import math
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
+from .shared.json_sanitize import sanitize_json as _sanitize_dict
 from .workspace_manager import workspace_manager
 
 # WorkspaceStore is optional (nirs4all may not be installed)
@@ -124,31 +124,6 @@ class PredictionArraysResponse(BaseModel):
 # ============================================================================
 # Helpers
 # ============================================================================
-
-
-def _sanitize_float(value: Any) -> Any:
-    """Convert NaN / Inf to None for JSON serialization."""
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    return value
-
-
-def _sanitize_dict(d: dict) -> dict:
-    """Recursively sanitize float values."""
-    out = {}
-    for k, v in d.items():
-        if isinstance(v, dict):
-            out[k] = _sanitize_dict(v)
-        elif isinstance(v, (float, int)):
-            out[k] = _sanitize_float(v)
-        elif isinstance(v, list):
-            out[k] = [
-                _sanitize_dict(item) if isinstance(item, dict) else _sanitize_float(item) if isinstance(item, (float, int)) else item
-                for item in v
-            ]
-        else:
-            out[k] = v
-    return out
 
 
 def _get_store() -> "WorkspaceStore":
