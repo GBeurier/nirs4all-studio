@@ -1,0 +1,41 @@
+# Python tooling config for the nirs4all-studio backend (api/, main.py, tests/).
+# The project ships via requirements*.txt (not as a pip package), so this file
+# only configures dev tooling — there is no [build-system]/[project] table.
+
+[tool.ruff]
+line-length = 220
+target-version = "py311"
+extend-exclude = [
+    ".venv",
+    "backend-dist",
+    "dist",
+    "dist-electron",
+    "node_modules",
+    "release",
+    "site",
+]
+
+[tool.ruff.lint]
+# Moderate rule set: pyflakes (F), pycodestyle errors+warnings (E/W),
+# import sorting (I), a few pyupgrade (UP) and bugbear (B) checks. Deliberately
+# not aggressive — this establishes the gate so it can be ratcheted later.
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",   # line length is governed by line-length above, not hard-failed
+    "B008",   # FastAPI uses function calls (Depends/Query) in argument defaults
+    "UP007",  # keep Optional[X]/Union[X, Y] style already used across the code
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]  # tests often import after sys.path/env setup
+
+[tool.mypy]
+python_version = "3.11"
+# Lenient: surface obvious type errors without blocking on the many untyped
+# third-party libs (nirs4all, sklearn, umap, etc.). Ratchet later.
+ignore_missing_imports = true
+follow_imports = "silent"
+warn_unused_ignores = false
+disallow_untyped_defs = false
+check_untyped_defs = false
+exclude = "(^|/)(\\.venv|node_modules|dist|dist-electron|backend-dist|release|site)/"
