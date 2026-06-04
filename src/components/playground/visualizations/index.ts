@@ -30,8 +30,6 @@ export { ChartErrorBoundary } from './ChartErrorBoundary';
 
 export { SpectraWebGL } from './SpectraWebGL';
 export type { SpectraWebGLProps, QualityMode } from './SpectraWebGL';
-export { ScatterWebGL } from './ScatterWebGL';
-export type { ScatterWebGLProps } from './ScatterWebGL';
 
 // ============= Shared Configuration =============
 

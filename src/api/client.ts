@@ -821,23 +821,6 @@ export async function deletePipeline(
   return api.delete(`/pipelines/${id}`);
 }
 
-// Predictions API
-export interface PredictionRecord {
-  id: string;
-  dataset_name: string;
-  pipeline_name: string;
-  model_name: string;
-  run_id: string;
-  metrics: Record<string, number>;
-  created_at: string;
-}
-
-export async function listPredictions(): Promise<{
-  predictions: PredictionRecord[];
-}> {
-  return api.get("/predictions");
-}
-
 // Runs API
 import type {
   Run,

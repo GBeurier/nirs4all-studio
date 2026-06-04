@@ -5,8 +5,8 @@ imports and forcing nirs4all to be absent) so they neither depend on a working
 nirs4all install nor trigger the unguarded import in ``api/__init__.py``.
 
 They assert the Phase 1a contract:
-  * the dead/unused confidence + explain endpoints and their home-grown helpers
-    are removed,
+  * the dead/unused JSON-file prediction CRUD endpoints (list/get/create/delete/
+    stats/export) and their home-grown helpers/models are removed,
   * the current single/batch/dataset inference endpoints remain,
   * the ``try: import nirs4all`` guard still degrades gracefully,
   * blocking nirs4all/dataset calls are offloaded with ``asyncio.to_thread``.
@@ -67,24 +67,34 @@ def test_inference_endpoints_present(predictions_module):
     assert "/predictions/dataset" in paths
 
 
-def test_dead_confidence_and_explain_endpoints_removed(predictions_module):
+def test_dead_json_file_crud_endpoints_removed(predictions_module):
     paths = _route_paths(predictions_module)
-    assert "/predictions/confidence" not in paths
-    assert "/predictions/explain" not in paths
+    # The deprecated JSON-file CRUD surface backed by _get_predictions_dir /
+    # _load_prediction / _save_prediction was deleted in favour of the
+    # SQLite-backed /api/aggregated-predictions endpoints. The collection and
+    # stats/export routes must be gone entirely; the only remaining
+    # "/predictions/..." routes are the inference handlers asserted below.
+    assert "/predictions" not in paths
+    assert "/predictions/stats" not in paths
+    assert "/predictions/export" not in paths
+    assert "/predictions/{prediction_id}" not in paths
 
 
-def test_homegrown_helpers_removed(predictions_module):
+def test_homegrown_crud_helpers_and_models_removed(predictions_module):
     for name in (
-        "_load_model",
-        "_bootstrap_confidence",
-        "_jackknife_confidence",
-        "_ensemble_confidence",
-        "_permutation_importance_single",
-        "_gradient_importance",
-        "PredictConfidenceRequest",
-        "ExplainPredictionRequest",
-        "ConfidencePredictionResult",
-        "ExplanationResult",
+        "_get_predictions_dir",
+        "_load_prediction",
+        "_save_prediction",
+        "_deprecated_response",
+        "_DEPRECATION_MSG",
+        "list_predictions",
+        "get_prediction",
+        "create_prediction",
+        "delete_prediction",
+        "get_predictions_stats",
+        "export_predictions",
+        "PredictionCreate",
+        "PredictionFilter",
     ):
         assert not hasattr(predictions_module, name), f"{name} should be removed"
 
