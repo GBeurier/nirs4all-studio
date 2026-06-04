@@ -1,0 +1,14 @@
+**Findings**
+1. **High: SHAP run models are still advertised but now always fail.**  
+   [api/shap.py](/home/delete/nirs4all/nirs4all-studio/api/shap.py:259) still returns `runs`, and [_get_models_from_runs](/home/delete/nirs4all/nirs4all-studio/api/shap.py:587) marks them as `source="run"`. The frontend defaults to run mode and sends that through compute: [VariableImportance.tsx](/home/delete/nirs4all/nirs4all-studio/src/pages/VariableImportance.tsx:38), [VariableImportance.tsx](/home/delete/nirs4all/nirs4all-studio/src/pages/VariableImportance.tsx:78). But compute now returns HTTP 501 for every non-bundle source at [api/shap.py](/home/delete/nirs4all/nirs4all-studio/api/shap.py:716). That makes the default UI path selectable but nonfunctional. Also, nirs4all does have run/pipeline-config explanation support: `nirs4all.explain()` accepts prediction dicts and pipeline config paths at [/home/delete/nirs4all/nirs4all/nirs4all/api/explain.py:66](/home/delete/nirs4all/nirs4all/nirs4all/api/explain.py:66), and the resolver supports folder/run sources.
+
+2. **High: two SHAP GET handlers will 500 after a successful compute.**  
+   `_process_shap_results` stores `binned_importance` as a `BinnedImportanceData` Pydantic model at [api/shap.py](/home/delete/nirs4all/nirs4all-studio/api/shap.py:823). The beeswarm and sample endpoints then treat it like a dict at [api/shap.py](/home/delete/nirs4all/nirs4all-studio/api/shap.py:391) and [api/shap.py](/home/delete/nirs4all/nirs4all-studio/api/shap.py:467). `BaseModel` is not subscriptable, so `/analysis/shap/results/{job_id}/beeswarm` and `/sample/{sample_idx}` will crash once compute starts populating the cache.
+
+3. **Medium: `predict_dataset` still does whole-dataset extraction and metrics on the event loop.**  
+   `_load_dataset` and `nirs4all.predict()` are offloaded, but `dataset.x(...)`, `dataset.y(...)`, and sklearn metric computation remain synchronous in the async handler at [api/predictions.py](/home/delete/nirs4all/nirs4all-studio/api/predictions.py:625) and [api/predictions.py](/home/delete/nirs4all/nirs4all-studio/api/predictions.py:650). For large datasets this can still block the FastAPI loop.
+
+**Other Checks**
+No exact live source references to the deleted `/evaluation/*`, `/predictions/confidence`, `/predictions/explain`, or `/playground/metrics/outliers` URLs were found in `api`, `main.py`, `src`, `tests`, `e2e`, `.github`, `scripts`, or `electron`. The remaining `onDetectOutliers` frontend props are optional and not wired from `src/pages/Playground.tsx`.
+
+I could not run the targeted pytest suite because this sandbox has no usable temp directory, so pytest fails before collection.

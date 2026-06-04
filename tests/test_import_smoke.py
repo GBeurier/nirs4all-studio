@@ -143,43 +143,18 @@ def test_every_api_route_endpoint_resolves():
 
 
 # ============================================================================
-# Known dead-at-runtime endpoints (fixed in Phase 1)
-#
-# These reference helpers that were removed but are still called inside handler
-# bodies, so they only fail when the request executes. Module import and route
-# resolution do not catch them. Each assertion below models the exact missing
-# symbol and is xfail-marked; when Phase 1 restores the helper the test flips to
-# XPASS, signalling the placeholder can be promoted to a real assertion.
+# Phase 1a resolved the four previously dead-at-runtime endpoints:
+#   - /evaluation/* and /predictions/{confidence,explain} and
+#     /playground/metrics/outliers were deleted (unused by the UI), and
+#   - /analysis/shap/compute was routed through nirs4all's ShapAnalyzer.
+# The route-resolution test above now covers every remaining endpoint. The one
+# standalone guard kept is that the SHAP analyzer symbol resolves, since its
+# absence (a bare undefined `ShapAnalyzer()`) was the original NameError bug.
 # ============================================================================
 
 
-@pytest.mark.xfail(reason="dead endpoint, fixed in Phase 1")
-def test_evaluation_build_model_helper_resolves():
-    """api/evaluation.py:_build_model_from_pipeline -> `from .training import _get_model_instance`."""
-    import api.training
-
-    assert hasattr(api.training, "_get_model_instance")
-
-
-@pytest.mark.xfail(reason="dead endpoint, fixed in Phase 1")
-def test_predictions_load_model_helper_resolves():
-    """api/predictions.py:_load_model -> `from .models import get_loaded_model`."""
-    import api.models
-
-    assert hasattr(api.models, "get_loaded_model")
-
-
-@pytest.mark.xfail(reason="dead endpoint, fixed in Phase 1")
 def test_shap_analyzer_symbol_resolves():
-    """api/shap.py:compute_shap_explanation -> bare name `ShapAnalyzer()`."""
+    """api/shap.py must expose a ShapAnalyzer symbol (was an undefined name -> NameError)."""
     import api.shap
 
     assert hasattr(api.shap, "ShapAnalyzer")
-
-
-@pytest.mark.xfail(reason="dead endpoint, fixed in Phase 1")
-def test_playground_outlier_mask_helper_resolves():
-    """api/playground.py:detect_outliers -> `MetricsComputer.get_outlier_mask(...)`."""
-    from api.shared.metrics_computer import MetricsComputer
-
-    assert hasattr(MetricsComputer, "get_outlier_mask")

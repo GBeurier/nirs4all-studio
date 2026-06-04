@@ -1,0 +1,4 @@
+**Finding**
+- [api/shap.py](/home/delete/nirs4all/nirs4all-studio/api/shap.py:789): run-source SHAP passes `request.n_samples` to `nirs4all.explain(n_samples=...)`, but the real library uses `n_samples` as the SHAP background count, not the number of rows to explain. Since `_load_dataset_for_shap()` already applies the row limit, this ignores `request.n_background` for runs and makes the sample limit accidentally control the background size. Bundle-source still honors `n_background`, so this is a run-source regression.
+
+No other scoped issues found: absolute run pipeline directories are valid for the resolver, `ExplainResult.values/base_value/explainer_type` exist, binned-importance dict access/serialization is fine, and the `predict_dataset` `to_thread` extraction preserves the prior exception behavior.

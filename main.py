@@ -34,7 +34,6 @@ from api.preprocessing import router as preprocessing_router
 from api.training import router as training_router
 from api.models import router as models_router
 from api.analysis import router as analysis_router
-from api.evaluation import router as evaluation_router
 from api.automl import router as automl_router
 from api.dashboard import router as dashboard_router
 from api.runs import router as runs_router
@@ -144,7 +143,6 @@ app.include_router(preprocessing_router, prefix="/api", tags=["preprocessing"])
 app.include_router(training_router, prefix="/api", tags=["training"])
 app.include_router(models_router, prefix="/api", tags=["models"])
 app.include_router(analysis_router, prefix="/api", tags=["analysis"])
-app.include_router(evaluation_router, prefix="/api", tags=["evaluation"])
 app.include_router(automl_router, prefix="/api", tags=["automl"])
 app.include_router(dashboard_router, prefix="/api", tags=["dashboard"])
 app.include_router(runs_router, prefix="/api", tags=["runs"])

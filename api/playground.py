@@ -13,6 +13,7 @@ Phase 1 Feature: Backend API for Playground V1
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import sys
@@ -1298,7 +1299,8 @@ async def execute_pipeline(request: ExecuteRequest):
     executor = PlaygroundExecutor(verbose=0)
 
     try:
-        result = executor.execute(
+        result = await asyncio.to_thread(
+            executor.execute,
             data=request.data,
             steps=request.steps,
             sampling=request.sampling,
@@ -1556,15 +1558,6 @@ class MetricsRequest(BaseModel):
     pca_result: Optional[Dict[str, Any]] = Field(None, description="Pre-computed PCA result")
 
 
-class OutlierRequest(BaseModel):
-    """Request model for outlier detection."""
-
-    data: PlaygroundData = Field(..., description="Spectral data")
-    method: str = Field("hotelling_t2", description="Detection method: 'hotelling_t2', 'q_residual', 'lof', 'distance'")
-    threshold: float = Field(0.95, ge=0, le=1, description="Threshold for outlier detection (0-1)")
-    pca_result: Optional[Dict[str, Any]] = Field(None, description="Pre-computed PCA result")
-
-
 class SimilarityRequest(BaseModel):
     """Request model for finding similar samples."""
 
@@ -1594,61 +1587,27 @@ async def compute_metrics(request: MetricsRequest):
         lof_n_neighbors=min(20, n_samples - 1),
     )
 
-    # Compute requested metrics
-    try:
+    # Compute requested metrics (heavy numpy/sklearn work — run off the event loop)
+    def _compute() -> Dict[str, Any]:
         computed = computer.compute(
             X=X,
             metrics=request.metrics,
             pca_result=request.pca_result,
             wavelengths=wavelengths,
         )
-
-        # Convert to JSON-serializable format
-        metrics_values = {k: v.tolist() for k, v in computed.items()}
-        metrics_stats = {k: computer.get_metric_stats(v) for k, v in computed.items()}
-
         return {
-            "success": True,
-            "values": metrics_values,
-            "statistics": metrics_stats,
-            "n_samples": n_samples,
+            "values": {k: v.tolist() for k, v in computed.items()},
+            "statistics": {k: computer.get_metric_stats(v) for k, v in computed.items()},
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/metrics/outliers")
-async def detect_outliers(request: OutlierRequest):
-    """Detect outliers in spectral data.
-
-    Phase 5 Implementation: Returns a mask indicating which samples
-    are outliers based on the selected detection method.
-    """
-    # Convert data to numpy
-    X = np.array(request.data.x, dtype=np.float64)
-    n_samples = X.shape[0]
-
-    # Create metrics computer
-    computer = MetricsComputer(
-        n_pca_components=min(5, n_samples - 1, X.shape[1]),
-        lof_n_neighbors=min(20, n_samples - 1),
-    )
 
     try:
-        mask, info = computer.get_outlier_mask(
-            X=X,
-            method=request.method,
-            threshold=request.threshold,
-            pca_result=request.pca_result,
-        )
+        result = await asyncio.to_thread(_compute)
 
         return {
             "success": True,
-            "inlier_mask": mask.tolist(),
-            "outlier_indices": np.where(~mask)[0].tolist(),
-            "n_outliers": int(np.sum(~mask)),
-            "n_inliers": int(np.sum(mask)),
-            **info,
+            "values": result["values"],
+            "statistics": result["statistics"],
+            "n_samples": n_samples,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1672,7 +1631,8 @@ async def find_similar_samples(request: SimilarityRequest):
     computer = MetricsComputer()
 
     try:
-        indices, distances = computer.get_similar_samples(
+        indices, distances = await asyncio.to_thread(
+            computer.get_similar_samples,
             X=X,
             reference_idx=request.reference_idx,
             metric=request.metric,
@@ -1737,7 +1697,9 @@ async def compute_diff(request: DiffComputeRequest):
             )
 
         computer = MetricsComputer()
-        distances = computer.compute_pairwise_distances(X_ref, X_final, request.metric)
+        distances = await asyncio.to_thread(
+            computer.compute_pairwise_distances, X_ref, X_final, request.metric
+        )
 
         if request.scale == "log":
             distances = np.log1p(distances)
@@ -1789,7 +1751,8 @@ async def compute_repetition_variance(request: RepetitionVarianceRequest):
             )
 
         computer = MetricsComputer()
-        result = computer.compute_repetition_variance(
+        result = await asyncio.to_thread(
+            computer.compute_repetition_variance,
             X=X,
             group_ids=group_ids,
             reference=request.reference,

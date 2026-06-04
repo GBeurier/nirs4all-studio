@@ -5,12 +5,15 @@ This module provides FastAPI routes for SHAP-based model explanations,
 computing feature importance and generating visualizations for model
 interpretability.
 
-Uses nirs4all.explain() for SHAP computation and ExplainResult for accessing
-SHAP values and feature importance.
+SHAP computation is delegated to nirs4all: exported bundles go through
+``ShapAnalyzer`` fed a ``BundleLoader`` predictor, while training runs go
+through ``nirs4all.explain()`` (which replays the run's pipeline). The backend
+only loads data, shapes the response, and caches per-job results.
 """
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import time
 import uuid
@@ -22,7 +25,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
-from .shared.paths import is_within_directory, reject_absolute_or_traversal
+from .shared.paths import is_within_directory
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -31,12 +34,13 @@ if str(nirs4all_path) not in sys.path:
 
 try:
     import nirs4all
-    from nirs4all.visualization.analysis.shap import SHAP_AVAILABLE
+    from nirs4all.visualization.analysis.shap import SHAP_AVAILABLE, ShapAnalyzer
     NIRS4ALL_AVAILABLE = True
 except ImportError as e:
     print(f"Note: nirs4all not available for SHAP: {e}")
     NIRS4ALL_AVAILABLE = False
     SHAP_AVAILABLE = False
+    ShapAnalyzer = None  # type: ignore[assignment,misc]
 
 router = APIRouter()
 
@@ -278,8 +282,12 @@ async def compute_shap_explanation(request: ShapComputeRequest):
     """
     Compute SHAP explanations for a model.
 
-    This endpoint computes SHAP values synchronously for now.
-    For large datasets, consider implementing async with job polling.
+    SHAP computation is delegated to nirs4all: exported ``.n4a`` bundles are
+    explained via ``ShapAnalyzer`` fed a ``BundleLoader`` predictor (whose
+    ``predict`` replays the bundle's preprocessing), and training runs are
+    explained via ``nirs4all.explain()`` against the run's pipeline directory.
+    The heavy work runs off the event loop via a worker thread; results are
+    cached for the visualization endpoints below.
     """
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
@@ -294,61 +302,23 @@ async def compute_shap_explanation(request: ShapComputeRequest):
         )
 
     job_id = str(uuid.uuid4())[:8]
-    start_time = time.time()
 
     try:
-        # Load model
-        model, model_info = _load_model(request.model_source, request.model_id)
-
-        # Load dataset
-        X, wavelengths, feature_names, sample_indices = _load_dataset_for_shap(
-            request.dataset_id,
-            request.partition,
-            request.n_samples
-        )
-
-        # Create SHAP analyzer and compute
-        analyzer = ShapAnalyzer()
-
-        results = analyzer.explain_model(
-            model=model,
-            X=X,
-            feature_names=feature_names,
-            explainer_type=request.explainer_type,
-            n_background=request.n_background,
-            bin_size=request.bin_size,
-            bin_stride=request.bin_stride,
-            bin_aggregation=request.bin_aggregation,
-            output_dir=None,  # Don't save files
-            visualizations=None,  # Generate data only
-            plots_visible=False
-        )
-
-        execution_time = (time.time() - start_time) * 1000
-
-        # Process and cache results
-        processed_results = _process_shap_results(
-            results=results,
-            job_id=job_id,
-            model_id=request.model_id,
-            dataset_id=request.dataset_id,
-            wavelengths=wavelengths,
-            sample_indices=sample_indices,
-            X=X,
-            bin_size=request.bin_size,
-            bin_stride=request.bin_stride,
-            bin_aggregation=request.bin_aggregation,
-            execution_time_ms=execution_time
+        processed_results = await asyncio.to_thread(
+            _run_shap_explanation, job_id, request
         )
 
         _shap_results_cache[job_id] = processed_results
 
+        execution_time = processed_results["execution_time_ms"]
         return ShapComputeResponse(
             job_id=job_id,
             status="completed",
             message=f"SHAP analysis completed in {execution_time:.0f}ms"
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -663,79 +633,60 @@ def _get_models_from_bundles() -> List[AvailableModel]:
     return models
 
 
-def _load_model(source: str, model_id: str) -> Tuple[Any, Dict[str, Any]]:
-    """Load model from run or bundle."""
-    if source == "bundle":
-        # Load from .n4a bundle. The bundle path is an absolute path produced
-        # by the bundle scanner under the workspace 'exports/' directory; the
-        # incoming value is untrusted, so confirm it still resolves inside the
-        # workspace exports tree before loading it.
-        workspace = workspace_manager.get_active_workspace()
-        if not workspace:
-            raise ValueError("No active workspace")
+def _load_bundle_predictor(model_id: str) -> Any:
+    """Resolve an exported ``.n4a`` bundle into a preprocessing-aware predictor.
 
-        exports_path = Path(workspace.path) / "workspace" / "exports"
-        bundle_path = Path(model_id)
-        if not is_within_directory(exports_path, bundle_path):
-            raise ValueError(f"Bundle path escapes workspace exports directory: {model_id}")
-        if not bundle_path.exists():
-            raise ValueError(f"Bundle not found: {model_id}")
+    Returns a ``nirs4all`` ``BundleLoader`` whose ``predict`` method replays the
+    bundle's preprocessing chain and model, so SHAP can explain raw spectra
+    exactly as nirs4all would score them. The incoming ``model_id`` is an
+    untrusted absolute path; confirm it still resolves inside the workspace
+    ``exports/`` tree before loading.
+    """
+    workspace = workspace_manager.get_active_workspace()
+    if not workspace:
+        raise ValueError("No active workspace")
 
-        # Use nirs4all to load bundle
-        from nirs4all.pipeline.bundle import NIRSBundle
-        bundle = NIRSBundle.load(str(bundle_path))
-        model = bundle.model
-        model_info = {"type": "bundle", "path": str(bundle_path)}
+    exports_path = Path(workspace.path) / "workspace" / "exports"
+    bundle_path = Path(model_id)
+    if not is_within_directory(exports_path, bundle_path):
+        raise ValueError(f"Bundle path escapes workspace exports directory: {model_id}")
+    if not bundle_path.exists():
+        raise ValueError(f"Bundle not found: {model_id}")
 
-    else:  # source == "run"
-        # Load from training run
-        workspace = workspace_manager.get_active_workspace()
-        if not workspace:
-            raise ValueError("No active workspace")
+    from nirs4all.pipeline.bundle import BundleLoader
 
-        runs_path = Path(workspace.path) / "workspace" / "runs"
+    return BundleLoader(str(bundle_path))
 
-        # The run id is an untrusted identifier joined under runs_path: reject
-        # absolute paths and '..' traversal before using it as a path segment.
-        reject_absolute_or_traversal(model_id)
 
-        # Find the run directory
-        run_dir = None
-        for dataset_dir in runs_path.iterdir():
-            if not dataset_dir.is_dir():
-                continue
-            candidate = dataset_dir / model_id
-            if candidate.exists():
-                run_dir = candidate
-                break
+def _resolve_run_directory(model_id: str) -> Path:
+    """Resolve a run ``model_id`` to its absolute pipeline directory in the workspace.
 
-        if not run_dir:
-            raise ValueError(f"Run not found: {model_id}")
+    ``_get_models_from_runs`` emits ``model_id`` as the run directory *name*
+    (e.g. ``0001_config_d64d53``) living under
+    ``workspace/runs/<dataset>/<run_dir>/manifest.yaml``. nirs4all's
+    ``explain()`` resolves such a directory (containing ``manifest.yaml``) via
+    its ``PredictionResolver`` and replays the full pipeline. The incoming
+    ``model_id`` is untrusted, so the matched directory is confined to the
+    workspace ``runs/`` tree before being returned.
+    """
+    workspace = workspace_manager.get_active_workspace()
+    if not workspace:
+        raise ValueError("No active workspace")
 
-        # Load model from artifacts
-        import yaml
-        manifest_path = run_dir / "manifest.yaml"
-        with open(manifest_path) as f:
-            manifest = yaml.safe_load(f)
+    runs_path = Path(workspace.path) / "workspace" / "runs"
+    if not runs_path.exists():
+        raise ValueError(f"No runs directory in workspace: {runs_path}")
 
-        best_config = manifest.get("best_config", {})
-        model_path = best_config.get("model_path")
+    for dataset_dir in runs_path.iterdir():
+        if not dataset_dir.is_dir():
+            continue
+        run_dir = dataset_dir / model_id
+        if not is_within_directory(runs_path, run_dir):
+            continue
+        if (run_dir / "manifest.yaml").exists():
+            return run_dir
 
-        if not model_path:
-            # Try to find model in binaries
-            binaries_path = Path(workspace.path) / "workspace" / "binaries"
-            model_files = list(binaries_path.rglob("*.joblib"))
-            if model_files:
-                model_path = str(model_files[0])
-
-        if not model_path or not Path(model_path).exists():
-            raise ValueError(f"Model file not found for run: {model_id}")
-
-        import joblib
-        model = joblib.load(model_path)
-        model_info = {"type": "run", "run_id": model_id, "path": model_path}
-
-    return model, model_info
+    raise ValueError(f"Run not found in workspace: {model_id}")
 
 
 def _load_dataset_for_shap(
@@ -743,7 +694,7 @@ def _load_dataset_for_shap(
     partition: str,
     n_samples: Optional[int]
 ) -> Tuple[np.ndarray, List[float], List[str], List[int]]:
-    """Load dataset for SHAP analysis."""
+    """Load raw spectra for SHAP analysis from a nirs4all SpectroDataset."""
     from .spectra import _load_dataset
 
     dataset = _load_dataset(dataset_id)
@@ -788,6 +739,103 @@ def _load_dataset_for_shap(
     return X, wavelengths, feature_names, sample_indices
 
 
+def _run_shap_explanation(job_id: str, request: ShapComputeRequest) -> Dict[str, Any]:
+    """Compute SHAP values via nirs4all (runs in a worker thread).
+
+    Both supported sources delegate the SHAP computation to nirs4all so the
+    webapp never re-implements explainer selection, SHAP, or binning:
+
+    * ``bundle`` — load a preprocessing-aware ``BundleLoader`` predictor and
+      feed it to nirs4all's ``ShapAnalyzer.explain_model``.
+    * ``run`` — resolve the run's pipeline directory in the workspace and let
+      ``nirs4all.explain()`` replay the pipeline (preprocessing + model) and
+      explain it, then adapt its ``ExplainResult`` to the same results shape.
+
+    In both cases the resulting ``results`` dict is handed to
+    ``_process_shap_results`` with identical X / wavelengths / binning inputs so
+    the response cache and the GET visualization handlers behave the same.
+    """
+    start_time = time.time()
+
+    X, wavelengths, feature_names, sample_indices = _load_dataset_for_shap(
+        request.dataset_id,
+        request.partition,
+        request.n_samples,
+    )
+
+    if request.model_source == "bundle":
+        predictor = _load_bundle_predictor(request.model_id)
+
+        analyzer = ShapAnalyzer()
+        results = analyzer.explain_model(
+            model=predictor,
+            X=X,
+            feature_names=feature_names,
+            explainer_type=request.explainer_type,
+            n_background=request.n_background,
+            bin_size=request.bin_size,
+            bin_stride=request.bin_stride,
+            bin_aggregation=request.bin_aggregation,
+            output_dir=None,
+            visualizations=None,
+            plots_visible=False,
+        )
+    else:
+        run_dir = _resolve_run_directory(request.model_id)
+
+        # nirs4all.explain's `n_samples` is the SHAP *background* size (not the
+        # number of rows to explain — X is already row-limited by
+        # _load_dataset_for_shap). Map it from n_background to match the bundle
+        # path's ShapAnalyzer(n_background=...).
+        explain_result = nirs4all.explain(
+            model=str(run_dir),
+            data=X,
+            n_samples=request.n_background,
+            explainer_type=request.explainer_type,
+            verbose=0,
+            plots_visible=False,
+        )
+        results = _explain_result_to_results(explain_result)
+
+    execution_time = (time.time() - start_time) * 1000
+
+    return _process_shap_results(
+        results=results,
+        job_id=job_id,
+        model_id=request.model_id,
+        dataset_id=request.dataset_id,
+        wavelengths=wavelengths,
+        sample_indices=sample_indices,
+        X=X,
+        bin_size=request.bin_size,
+        bin_stride=request.bin_stride,
+        bin_aggregation=request.bin_aggregation,
+        execution_time_ms=execution_time,
+    )
+
+
+def _explain_result_to_results(explain_result: Any) -> Dict[str, Any]:
+    """Adapt a nirs4all ``ExplainResult`` to the ``_process_shap_results`` dict.
+
+    ``ExplainResult.values`` normalizes both a ``shap.Explanation`` and a raw
+    ndarray to a 2D (n_samples, n_features) array; ``base_value`` may be a
+    scalar or per-sample array, so it is reduced to a single float here.
+    """
+    shap_values = np.asarray(explain_result.values)
+
+    base_value = explain_result.base_value
+    if base_value is None:
+        base_value = 0.0
+    else:
+        base_value = float(np.asarray(base_value).mean())
+
+    return {
+        "shap_values": shap_values,
+        "base_value": base_value,
+        "explainer_type": explain_result.explainer_type,
+    }
+
+
 def _process_shap_results(
     results: Dict[str, Any],
     job_id: str,
@@ -801,8 +849,8 @@ def _process_shap_results(
     bin_aggregation: str,
     execution_time_ms: float
 ) -> Dict[str, Any]:
-    """Process raw SHAP results into webapp-friendly format."""
-    shap_values = results["shap_values"]
+    """Shape the nirs4all SHAP results into the webapp response payload."""
+    shap_values = np.asarray(results["shap_values"])
     base_value = results["base_value"]
     n_samples, n_features = shap_values.shape
 
@@ -812,40 +860,8 @@ def _process_shap_results(
     # Mean spectrum
     mean_spectrum = X.mean(axis=0).tolist()
 
-    # Create binned importance data
-    bin_centers = []
-    bin_values = []
-    bin_ranges = []
-
-    start = 0
-    while start < n_features - bin_size + 1:
-        end = start + bin_size
-
-        bin_wavelengths = wavelengths[start:end]
-        bin_shap = np.abs(shap_values[:, start:end]).mean(axis=0)
-
-        bin_centers.append(float(np.mean(bin_wavelengths)))
-        bin_ranges.append((float(bin_wavelengths[0]), float(bin_wavelengths[-1])))
-
-        # Aggregate based on method
-        if bin_aggregation == "sum":
-            bin_values.append(float(bin_shap.sum()))
-        elif bin_aggregation == "sum_abs":
-            bin_values.append(float(np.abs(bin_shap).sum()))
-        elif bin_aggregation == "mean":
-            bin_values.append(float(bin_shap.mean()))
-        elif bin_aggregation == "mean_abs":
-            bin_values.append(float(np.abs(bin_shap).mean()))
-
-        start += bin_stride
-
-    binned_importance = BinnedImportanceData(
-        bin_centers=bin_centers,
-        bin_values=bin_values,
-        bin_ranges=bin_ranges,
-        bin_size=bin_size,
-        bin_stride=bin_stride,
-        aggregation=bin_aggregation
+    binned_importance = _build_binned_importance(
+        shap_values, wavelengths, bin_size, bin_stride, bin_aggregation
     )
 
     # Top feature importance
@@ -878,4 +894,55 @@ def _process_shap_results(
         # Keep raw data for beeswarm/waterfall
         "_raw_shap_values": shap_values,
         "_raw_X": X
+    }
+
+
+def _build_binned_importance(
+    shap_values: np.ndarray,
+    wavelengths: List[float],
+    bin_size: int,
+    bin_stride: int,
+    bin_aggregation: str,
+) -> Dict[str, Any]:
+    """Aggregate per-feature mean |SHAP| into spectral bins for the bar chart.
+
+    Returns a plain dict (not BinnedImportanceData): the compute response_model
+    coerces it, and the beeswarm/sample GET handlers read it by key
+    (``binned_importance["bin_size"]`` / ``["bin_stride"]``) from the results
+    cache, which a Pydantic model would not support.
+    """
+    n_features = shap_values.shape[1]
+    mean_abs = np.abs(shap_values).mean(axis=0)
+
+    bin_centers: List[float] = []
+    bin_values: List[float] = []
+    bin_ranges: List[Tuple[float, float]] = []
+
+    start = 0
+    while start < n_features - bin_size + 1:
+        end = start + bin_size
+        bin_wavelengths = wavelengths[start:end]
+        bin_shap = mean_abs[start:end]
+
+        bin_centers.append(float(np.mean(bin_wavelengths)))
+        bin_ranges.append((float(bin_wavelengths[0]), float(bin_wavelengths[-1])))
+
+        if bin_aggregation == "sum":
+            bin_values.append(float(bin_shap.sum()))
+        elif bin_aggregation == "sum_abs":
+            bin_values.append(float(np.abs(bin_shap).sum()))
+        elif bin_aggregation == "mean":
+            bin_values.append(float(bin_shap.mean()))
+        elif bin_aggregation == "mean_abs":
+            bin_values.append(float(np.abs(bin_shap).mean()))
+
+        start += bin_stride
+
+    return {
+        "bin_centers": bin_centers,
+        "bin_values": bin_values,
+        "bin_ranges": bin_ranges,
+        "bin_size": bin_size,
+        "bin_stride": bin_stride,
+        "aggregation": bin_aggregation,
     }
