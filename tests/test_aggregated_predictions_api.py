@@ -192,16 +192,25 @@ def mock_store(mock_polars_df, sample_aggregated_rows):
 
 @pytest.fixture()
 def patched_endpoints(mock_workspace, mock_store):
-    """Patch workspace_manager and WorkspaceStore for all endpoint tests."""
+    """Patch workspace_manager for all endpoint tests.
+
+    The endpoints now reuse the long-lived ``StoreAdapter`` cached on the
+    workspace manager singleton (``get_active_store_adapter().store``) instead
+    of constructing a fresh ``WorkspaceStore`` per request, so the mock wiring
+    exposes ``mock_store`` through that accessor.
+    """
     # Ensure the module is imported before patching
     import api.aggregated_predictions  # noqa: F401
 
+    mock_adapter = MagicMock()
+    mock_adapter.store = mock_store
+
     with (
         patch.object(api.aggregated_predictions, "workspace_manager") as mock_wm,
-        patch.object(api.aggregated_predictions, "WorkspaceStore", return_value=mock_store),
         patch.object(api.aggregated_predictions, "STORE_AVAILABLE", True),
     ):
         mock_wm.get_current_workspace.return_value = mock_workspace
+        mock_wm.get_active_store_adapter.return_value = mock_adapter
         yield mock_store
 
 
@@ -762,6 +771,8 @@ class TestErrorHandling:
             patch.object(api.aggregated_predictions, "STORE_AVAILABLE", True),
         ):
             mock_wm.get_current_workspace.return_value = ws
+            # No store file -> the cached-adapter accessor returns None.
+            mock_wm.get_active_store_adapter.return_value = None
 
             from fastapi.testclient import TestClient
             from main import app

@@ -13,6 +13,7 @@ Phase 8 Implementation:
 
 from datetime import datetime
 from pathlib import Path
+import asyncio
 import json
 import shutil
 import time
@@ -1658,9 +1659,10 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
 
         # ---- Store path (primary) ----
         # When a store exists, scanner.discover_runs() already reads
-        # from it and the parquet-derived phase is unnecessary.
+        # from it and the parquet-derived phase is unnecessary. The SQLite
+        # read is offloaded so it does not block the event loop.
         if scanner._has_store():
-            all_runs = scanner.discover_runs()
+            all_runs = await asyncio.to_thread(scanner.discover_runs)
             all_runs.sort(key=lambda r: r.get("created_at", "") or "", reverse=True)
             result = {"workspace_id": workspace_id, "runs": all_runs, "total": len(all_runs)}
             _set_cached_runs(workspace_path_str, source, result)
@@ -1689,74 +1691,81 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
 
         # Phase 2: Extract additional runs from parquet files (for legacy/ungrouped data)
         if source in ("unified", "parquet"):
-            parquet_files = list(workspace_path.glob("*.meta.parquet"))
+            def _discover_parquet_runs(known_run_ids: set) -> List[Dict[str, Any]]:
+                """Read legacy ``.meta.parquet`` files and derive run summaries (blocking)."""
+                derived_runs: List[Dict[str, Any]] = []
+                parquet_files = list(workspace_path.glob("*.meta.parquet"))
 
-            for parquet_file in parquet_files:
-                try:
-                    df = pd.read_parquet(parquet_file, columns=[
-                        "dataset_name", "config_name", "pipeline_uid",
-                        "model_name", "preprocessings", "partition",
-                        "val_score", "test_score", "n_samples"
-                    ])
+                for parquet_file in parquet_files:
+                    try:
+                        df = pd.read_parquet(parquet_file, columns=[
+                            "dataset_name", "config_name", "pipeline_uid",
+                            "model_name", "preprocessings", "partition",
+                            "val_score", "test_score", "n_samples"
+                        ])
 
-                    if "config_name" not in df.columns or df.empty:
+                        if "config_name" not in df.columns or df.empty:
+                            continue
+
+                        dataset_name = parquet_file.stem.replace(".meta", "")
+
+                        grouped = df.groupby("config_name", dropna=True)
+
+                        agg_dict = {"config_name": "size"}
+                        if "pipeline_uid" in df.columns:
+                            agg_dict["pipeline_uid"] = "nunique"
+                        if "val_score" in df.columns:
+                            agg_dict["val_score"] = "max"
+                        if "test_score" in df.columns:
+                            agg_dict["test_score"] = "max"
+
+                        agg_df = grouped.agg(agg_dict)
+                        agg_df.columns = ["predictions_count", "pipeline_count", "val_score", "test_score"][:len(agg_df.columns)]
+
+                        if "model_name" in df.columns:
+                            models_per_config = grouped["model_name"].apply(
+                                lambda x: x.dropna().unique().tolist()[:5]
+                            ).to_dict()
+                        else:
+                            models_per_config = {}
+
+                        for config_name in agg_df.index:
+                            config_id = str(config_name)
+                            normalized_id = normalize_run_id(config_id)
+                            if normalized_id in known_run_ids:
+                                continue
+                            known_run_ids.add(normalized_id)
+
+                            row = agg_df.loc[config_name]
+                            val_score = row.get("val_score") if "val_score" in row.index else None
+                            test_score = row.get("test_score") if "test_score" in row.index else None
+
+                            derived_runs.append({
+                                "id": config_id,
+                                "pipeline_id": config_id,
+                                "name": config_id,
+                                "dataset": dataset_name,
+                                "created_at": None,
+                                "schema_version": "derived",
+                                "format": "parquet_derived",
+                                "artifact_count": 0,
+                                "predictions_count": int(row.get("predictions_count", 0)),
+                                "pipeline_count": int(row.get("pipeline_count", 1)) if "pipeline_count" in row.index else 1,
+                                "models": models_per_config.get(config_name, []),
+                                "best_val_score": float(val_score) if pd.notna(val_score) else None,
+                                "best_test_score": float(test_score) if pd.notna(test_score) else None,
+                                "templates": [],
+                                "datasets": [{"name": dataset_name}],
+                                "dataset_info": {},
+                                "manifest_path": "",
+                            })
+                    except Exception as e:
+                        print(f"Failed to read {parquet_file}: {e}")
                         continue
 
-                    dataset_name = parquet_file.stem.replace(".meta", "")
+                return derived_runs
 
-                    grouped = df.groupby("config_name", dropna=True)
-
-                    agg_dict = {"config_name": "size"}
-                    if "pipeline_uid" in df.columns:
-                        agg_dict["pipeline_uid"] = "nunique"
-                    if "val_score" in df.columns:
-                        agg_dict["val_score"] = "max"
-                    if "test_score" in df.columns:
-                        agg_dict["test_score"] = "max"
-
-                    agg_df = grouped.agg(agg_dict)
-                    agg_df.columns = ["predictions_count", "pipeline_count", "val_score", "test_score"][:len(agg_df.columns)]
-
-                    if "model_name" in df.columns:
-                        models_per_config = grouped["model_name"].apply(
-                            lambda x: x.dropna().unique().tolist()[:5]
-                        ).to_dict()
-                    else:
-                        models_per_config = {}
-
-                    for config_name in agg_df.index:
-                        config_id = str(config_name)
-                        normalized_id = normalize_run_id(config_id)
-                        if normalized_id in seen_run_ids:
-                            continue
-                        seen_run_ids.add(normalized_id)
-
-                        row = agg_df.loc[config_name]
-                        val_score = row.get("val_score") if "val_score" in row.index else None
-                        test_score = row.get("test_score") if "test_score" in row.index else None
-
-                        all_runs.append({
-                            "id": config_id,
-                            "pipeline_id": config_id,
-                            "name": config_id,
-                            "dataset": dataset_name,
-                            "created_at": None,
-                            "schema_version": "derived",
-                            "format": "parquet_derived",
-                            "artifact_count": 0,
-                            "predictions_count": int(row.get("predictions_count", 0)),
-                            "pipeline_count": int(row.get("pipeline_count", 1)) if "pipeline_count" in row.index else 1,
-                            "models": models_per_config.get(config_name, []),
-                            "best_val_score": float(val_score) if pd.notna(val_score) else None,
-                            "best_test_score": float(test_score) if pd.notna(test_score) else None,
-                            "templates": [],
-                            "datasets": [{"name": dataset_name}],
-                            "dataset_info": {},
-                            "manifest_path": "",
-                        })
-                except Exception as e:
-                    print(f"Failed to read {parquet_file}: {e}")
-                    continue
+            all_runs.extend(await asyncio.to_thread(_discover_parquet_runs, seen_run_ids))
 
         # Sort by created_at (newest first) for runs that have timestamps
         all_runs.sort(key=lambda r: r.get("created_at", "") or "", reverse=True)
@@ -1981,8 +1990,10 @@ async def get_workspace_predictions_data(
         scanner = WorkspaceScanner(workspace_path)
 
         # ---- Store path (primary) ----
+        # The paginated SQLite read is offloaded off the event loop.
         if scanner._has_store():
-            page = scanner.store_adapter.get_predictions_page(
+            page = await asyncio.to_thread(
+                scanner.store_adapter.get_predictions_page,
                 dataset_name=dataset,
                 model_class=model_class,
                 partition=partition,
@@ -1994,77 +2005,83 @@ async def get_workspace_predictions_data(
         # ---- Legacy filesystem path (parquet files) ----
         import pandas as pd
 
-        all_records = []
+        def _read_legacy_prediction_records() -> List[Dict[str, Any]]:
+            """Read every ``.meta.parquet`` file and build cleaned records (blocking)."""
+            all_records: List[Dict[str, Any]] = []
 
-        parquet_files = list(workspace_path.glob("*.meta.parquet"))
+            parquet_files = list(workspace_path.glob("*.meta.parquet"))
 
-        if dataset:
-            parquet_files = [f for f in parquet_files if f.stem.replace(".meta", "") == dataset]
+            if dataset:
+                parquet_files = [f for f in parquet_files if f.stem.replace(".meta", "") == dataset]
 
-        for parquet_file in parquet_files:
-            try:
-                df = pd.read_parquet(parquet_file)
-                dataset_name = parquet_file.stem.replace(".meta", "")
+            for parquet_file in parquet_files:
+                try:
+                    df = pd.read_parquet(parquet_file)
+                    dataset_name = parquet_file.stem.replace(".meta", "")
 
-                columns_to_include = [
-                    "id", "dataset_name", "config_name", "pipeline_uid",
-                    "step_idx", "op_counter", "model_name", "model_classname",
-                    "fold_id", "partition", "val_score", "test_score", "train_score",
-                    "metric", "task_type", "n_samples", "n_features",
-                    "preprocessings", "best_params", "scores",
-                    "branch_id", "branch_name", "exclusion_count", "exclusion_rate",
-                    "model_artifact_id", "trace_id"
-                ]
+                    columns_to_include = [
+                        "id", "dataset_name", "config_name", "pipeline_uid",
+                        "step_idx", "op_counter", "model_name", "model_classname",
+                        "fold_id", "partition", "val_score", "test_score", "train_score",
+                        "metric", "task_type", "n_samples", "n_features",
+                        "preprocessings", "best_params", "scores",
+                        "branch_id", "branch_name", "exclusion_count", "exclusion_rate",
+                        "model_artifact_id", "trace_id"
+                    ]
 
-                available_columns = [c for c in columns_to_include if c in df.columns]
-                subset = df[available_columns].copy()
-                records = subset.to_dict('records')
+                    available_columns = [c for c in columns_to_include if c in df.columns]
+                    subset = df[available_columns].copy()
+                    records = subset.to_dict('records')
 
-                source_file_str = str(parquet_file)
+                    source_file_str = str(parquet_file)
 
-                def clean_nan(obj):
-                    """Recursively clean NaN/Inf values from an object for JSON serialization."""
-                    import math
-                    import numpy as np
-                    if isinstance(obj, dict):
-                        return {k: clean_nan(v) for k, v in obj.items()}
-                    elif isinstance(obj, list):
-                        return [clean_nan(v) for v in obj]
-                    elif isinstance(obj, (float, np.floating)):
+                    def clean_nan(obj):
+                        """Recursively clean NaN/Inf values from an object for JSON serialization."""
+                        import math
+                        import numpy as np
+                        if isinstance(obj, dict):
+                            return {k: clean_nan(v) for k, v in obj.items()}
+                        elif isinstance(obj, list):
+                            return [clean_nan(v) for v in obj]
+                        elif isinstance(obj, (float, np.floating)):
+                            try:
+                                if math.isnan(obj) or math.isinf(obj):
+                                    return None
+                            except (TypeError, ValueError):
+                                pass
+                            return float(obj)
+                        elif isinstance(obj, np.integer):
+                            return int(obj)
                         try:
-                            if math.isnan(obj) or math.isinf(obj):
+                            if pd.isna(obj):
                                 return None
                         except (TypeError, ValueError):
                             pass
-                        return float(obj)
-                    elif isinstance(obj, np.integer):
-                        return int(obj)
-                    try:
-                        if pd.isna(obj):
-                            return None
-                    except (TypeError, ValueError):
-                        pass
-                    return obj
+                        return obj
 
-                for record in records:
-                    record["source_dataset"] = dataset_name
-                    record["source_file"] = source_file_str
+                    for record in records:
+                        record["source_dataset"] = dataset_name
+                        record["source_file"] = source_file_str
 
-                    for json_field in ["best_params", "scores"]:
-                        val = record.get(json_field)
-                        if val is not None and isinstance(val, str):
-                            try:
-                                record[json_field] = json.loads(val)
-                            except (json.JSONDecodeError, TypeError):
-                                pass
+                        for json_field in ["best_params", "scores"]:
+                            val = record.get(json_field)
+                            if val is not None and isinstance(val, str):
+                                try:
+                                    record[json_field] = json.loads(val)
+                                except (json.JSONDecodeError, TypeError):
+                                    pass
 
-                    for key in list(record.keys()):
-                        record[key] = clean_nan(record[key])
+                        for key in list(record.keys()):
+                            record[key] = clean_nan(record[key])
 
-                all_records.extend(records)
-            except Exception as e:
-                print(f"Error reading {parquet_file}: {e}")
-                continue
+                    all_records.extend(records)
+                except Exception as e:
+                    print(f"Error reading {parquet_file}: {e}")
+                    continue
+
+            return all_records
+
+        all_records = await asyncio.to_thread(_read_legacy_prediction_records)
 
         total = len(all_records)
         paginated = all_records[offset:offset + limit]

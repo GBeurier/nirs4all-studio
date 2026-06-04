@@ -12,9 +12,9 @@ All data is read from the workspace's SQLite store via
 
 from __future__ import annotations
 
+import asyncio
 import math
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -152,7 +152,11 @@ def _sanitize_dict(d: dict) -> dict:
 
 
 def _get_store() -> "WorkspaceStore":
-    """Get a WorkspaceStore for the current workspace (read-only queries).
+    """Get the shared WorkspaceStore for the current workspace (read-only).
+
+    Reuses the long-lived :class:`~api.store_adapter.StoreAdapter` cached on
+    the workspace manager singleton instead of opening a fresh connection per
+    request. The returned store must NOT be closed by the caller.
 
     Raises HTTPException if no workspace is selected or store is unavailable.
     """
@@ -166,20 +170,14 @@ def _get_store() -> "WorkspaceStore":
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    workspace_path = Path(workspace.path)
-    store_file = None
-    for name in ("store.sqlite", "store.duckdb"):
-        candidate = workspace_path / name
-        if candidate.exists():
-            store_file = candidate
-            break
-    if store_file is None:
+    adapter = workspace_manager.get_active_store_adapter()
+    if adapter is None:
         raise HTTPException(
             status_code=404,
             detail="No workspace store found. Run a pipeline first.",
         )
 
-    return WorkspaceStore(workspace_path)
+    return adapter.store
 
 
 # ============================================================================
@@ -202,7 +200,8 @@ async def get_aggregated_predictions(
     All filter parameters are optional and AND-combined.
     """
     store = _get_store()
-    try:
+
+    def _query() -> List[dict]:
         df = store.query_aggregated_predictions(
             run_id=run_id,
             pipeline_id=pipeline_id,
@@ -211,14 +210,14 @@ async def get_aggregated_predictions(
             model_class=model_class,
             metric=metric,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
-        return AggregatedPredictionsResponse(
-            predictions=records,
-            total=len(records),
-            generated_at=datetime.now(timezone.utc).isoformat(),
-        )
-    finally:
-        store.close()
+        return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+
+    records = await asyncio.to_thread(_query)
+    return AggregatedPredictionsResponse(
+        predictions=records,
+        total=len(records),
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
 
 
 @router.get("/top")
@@ -237,7 +236,8 @@ async def get_top_aggregated_predictions(
     error metrics like RMSE, descending for score metrics like R²).
     """
     store = _get_store()
-    try:
+
+    def _query() -> List[dict]:
         df = store.query_top_aggregated_predictions(
             metric=metric,
             n=n,
@@ -247,16 +247,16 @@ async def get_top_aggregated_predictions(
             dataset_name=dataset_name,
             model_class=model_class,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
-        return {
-            "predictions": records,
-            "total": len(records),
-            "metric": metric,
-            "score_column": score_column,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-        }
-    finally:
-        store.close()
+        return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+
+    records = await asyncio.to_thread(_query)
+    return {
+        "predictions": records,
+        "total": len(records),
+        "metric": metric,
+        "score_column": score_column,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.get("/chain/{chain_id}", response_model=ChainDetailResponse)
@@ -272,7 +272,8 @@ async def get_chain_detail(
     when available.
     """
     store = _get_store()
-    try:
+
+    def _query() -> ChainDetailResponse:
         # Get aggregated entry
         agg_df = store.query_aggregated_predictions(
             chain_id=chain_id,
@@ -312,8 +313,8 @@ async def get_chain_detail(
             predictions=predictions,
             pipeline=pipeline_info,
         )
-    finally:
-        store.close()
+
+    return await asyncio.to_thread(_query)
 
 
 @router.get("/chain/{chain_id}/detail")
@@ -327,22 +328,23 @@ async def get_chain_partition_detail(
     This is the drill-down endpoint for viewing fold-level predictions.
     """
     store = _get_store()
-    try:
+
+    def _query() -> List[dict]:
         df = store.get_chain_predictions(
             chain_id=chain_id,
             partition=partition,
             fold_id=fold_id,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
-        return {
-            "chain_id": chain_id,
-            "predictions": records,
-            "total": len(records),
-            "partition": partition,
-            "fold_id": fold_id,
-        }
-    finally:
-        store.close()
+        return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+
+    records = await asyncio.to_thread(_query)
+    return {
+        "chain_id": chain_id,
+        "predictions": records,
+        "total": len(records),
+        "partition": partition,
+        "fold_id": fold_id,
+    }
 
 
 @router.get("/{prediction_id}/arrays", response_model=PredictionArraysResponse)
@@ -352,7 +354,8 @@ async def get_prediction_arrays(prediction_id: str):
     Arrays are loaded on demand and returned as JSON lists.
     """
     store = _get_store()
-    try:
+
+    def _query() -> dict[str, Any]:
         arrays = store.get_prediction_arrays(prediction_id)
         if arrays is None:
             raise HTTPException(
@@ -378,5 +381,5 @@ async def get_prediction_arrays(prediction_id: str):
             result["sample_indices"] = None
 
         return result
-    finally:
-        store.close()
+
+    return await asyncio.to_thread(_query)

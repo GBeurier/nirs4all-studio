@@ -4,6 +4,8 @@ Dashboard API routes for nirs4all Studio.
 This module provides FastAPI routes for dashboard statistics and recent activity.
 """
 
+import asyncio
+
 from fastapi import APIRouter
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
@@ -69,30 +71,34 @@ def _count_pipelines() -> int:
 
 
 def _get_workspace_scanner() -> Optional[WorkspaceScanner]:
-    """Get a WorkspaceScanner for the active workspace."""
+    """Get a WorkspaceScanner for the active workspace.
+
+    Reuses the long-lived ``StoreAdapter`` cached on the workspace manager
+    singleton so discovery does not open a fresh SQLite connection per
+    request.
+    """
     ws_path = workspace_manager.get_active_workspace_path()
     if not ws_path:
         return None
-    return WorkspaceScanner(Path(ws_path))
+    scanner = WorkspaceScanner(Path(ws_path))
+    # Inject the shared, long-lived store adapter so the scanner does not
+    # open its own per-request WorkspaceStore connection.
+    adapter = workspace_manager.get_active_store_adapter()
+    if adapter is not None:
+        scanner._store_adapter = adapter
+    return scanner
 
 
-def _count_runs() -> int:
-    """Count completed runs in the current workspace using WorkspaceScanner."""
+def _discover_runs() -> List[Dict[str, Any]]:
+    """Discover all runs once for the active workspace (blocking IO)."""
     scanner = _get_workspace_scanner()
     if not scanner:
-        return 0
-
-    runs = scanner.discover_runs()
-    return len(runs)
+        return []
+    return scanner.discover_runs()
 
 
-def _get_avg_metric() -> float:
-    """Calculate average R² or other primary metric from recent runs using WorkspaceScanner."""
-    scanner = _get_workspace_scanner()
-    if not scanner:
-        return 0.0
-
-    runs = scanner.discover_runs()
+def _avg_metric_from_runs(runs: List[Dict[str, Any]]) -> float:
+    """Calculate the average primary metric (R²/accuracy) from runs."""
     if not runs:
         return 0.0
 
@@ -127,13 +133,8 @@ def _get_avg_metric() -> float:
     return sum(metrics) / len(metrics)
 
 
-def _get_recent_runs(limit: int = 6) -> List[Dict[str, Any]]:
-    """Get recent runs from the workspace using WorkspaceScanner."""
-    scanner = _get_workspace_scanner()
-    if not scanner:
-        return []
-
-    discovered_runs = scanner.discover_runs()
+def _recent_runs_from_runs(discovered_runs: List[Dict[str, Any]], limit: int = 6) -> List[Dict[str, Any]]:
+    """Format and rank recent runs from an already-discovered runs list."""
     if not discovered_runs:
         return []
 
@@ -232,19 +233,28 @@ async def get_dashboard() -> Dict[str, Any]:
         }
 
     datasets_count = len(workspace.datasets)
-    pipelines_count = _count_pipelines()
-    runs_count = _count_runs()
-    avg_metric = _get_avg_metric()
+
+    def _compute() -> Dict[str, Any]:
+        pipelines_count = _count_pipelines()
+        runs = _discover_runs()
+        return {
+            "pipelines_count": pipelines_count,
+            "runs_count": len(runs),
+            "avg_metric": _avg_metric_from_runs(runs),
+            "recent_runs": _recent_runs_from_runs(runs, limit=6),
+        }
+
+    computed = await asyncio.to_thread(_compute)
 
     return {
         "stats": {
             "datasets": datasets_count,
-            "pipelines": pipelines_count,
-            "runs": runs_count,
-            "avgMetric": round(avg_metric, 2),
+            "pipelines": computed["pipelines_count"],
+            "runs": computed["runs_count"],
+            "avgMetric": round(computed["avg_metric"], 2),
             "trends": _calculate_trends(),
         },
-        "recent_runs": _get_recent_runs(limit=6),
+        "recent_runs": computed["recent_runs"],
     }
 
 
@@ -270,16 +280,24 @@ async def get_dashboard_stats() -> Dict[str, Any]:
         }
 
     datasets_count = len(workspace.datasets)
-    pipelines_count = _count_pipelines()
-    runs_count = _count_runs()
-    avg_metric = _get_avg_metric()
+
+    def _compute() -> Dict[str, Any]:
+        pipelines_count = _count_pipelines()
+        runs = _discover_runs()
+        return {
+            "pipelines_count": pipelines_count,
+            "runs_count": len(runs),
+            "avg_metric": _avg_metric_from_runs(runs),
+        }
+
+    computed = await asyncio.to_thread(_compute)
 
     return {
         "stats": {
             "datasets": datasets_count,
-            "pipelines": pipelines_count,
-            "runs": runs_count,
-            "avgMetric": round(avg_metric, 2),
+            "pipelines": computed["pipelines_count"],
+            "runs": computed["runs_count"],
+            "avgMetric": round(computed["avg_metric"], 2),
             "trends": _calculate_trends(),
         }
     }
@@ -296,6 +314,11 @@ async def get_recent_runs(limit: int = 6) -> Dict[str, Any]:
     Returns:
         List of recent runs with metadata and metrics.
     """
+    def _compute() -> List[Dict[str, Any]]:
+        runs = _discover_runs()
+        return _recent_runs_from_runs(runs, limit=limit)
+
+    recent = await asyncio.to_thread(_compute)
     return {
-        "runs": _get_recent_runs(limit=limit),
+        "runs": recent,
     }

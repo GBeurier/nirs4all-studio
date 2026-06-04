@@ -19,6 +19,7 @@ Note: For NIRS-specific feature selection (CARS, MCUVE), use those operators
 directly via nirs4all pipelines.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -229,32 +230,37 @@ async def compute_pca(request: PCARequest):
         )
 
     # Load dataset
-    dataset, X, wavelengths = _load_analysis_data(
+    dataset, X, wavelengths = await asyncio.to_thread(
+        _load_analysis_data,
         request.dataset_id, request.partition, request.preprocessing_chain
     )
 
     n_samples, n_features = X.shape
     n_components = min(request.n_components, n_samples, n_features)
 
-    # Optionally center and scale
-    X_processed = X.copy()
-    mean = None
+    def _compute() -> tuple:
+        # Optionally center and scale
+        X_processed = X.copy()
+        mean = None
 
-    if request.center:
-        mean = np.mean(X_processed, axis=0)
-        X_processed = X_processed - mean
+        if request.center:
+            mean = np.mean(X_processed, axis=0)
+            X_processed = X_processed - mean
 
-    if request.scale:
-        std = np.std(X_processed, axis=0)
-        std[std == 0] = 1  # Avoid division by zero
-        X_processed = X_processed / std
+        if request.scale:
+            std = np.std(X_processed, axis=0)
+            std[std == 0] = 1  # Avoid division by zero
+            X_processed = X_processed / std
 
-    # Compute PCA
-    pca = PCA(n_components=n_components)
-    scores = pca.fit_transform(X_processed)
+        # Compute PCA
+        pca = PCA(n_components=n_components)
+        scores = pca.fit_transform(X_processed)
 
-    # Compute cumulative variance
-    cumulative = np.cumsum(pca.explained_variance_ratio_)
+        # Compute cumulative variance
+        cumulative = np.cumsum(pca.explained_variance_ratio_)
+        return pca, scores, cumulative, mean
+
+    pca, scores, cumulative, mean = await asyncio.to_thread(_compute)
 
     return PCAResult(
         dataset_id=request.dataset_id,
@@ -289,7 +295,9 @@ async def get_pca_loadings(
         )
 
     # Load dataset
-    dataset, X, wavelengths = _load_analysis_data(dataset_id, partition, [])
+    dataset, X, wavelengths = await asyncio.to_thread(
+        _load_analysis_data, dataset_id, partition, []
+    )
 
     n_samples, n_features = X.shape
     n_components = min(n_components, n_samples, n_features)
@@ -302,7 +310,7 @@ async def get_pca_loadings(
 
     # Compute PCA
     pca = PCA(n_components=n_components)
-    pca.fit(X)
+    await asyncio.to_thread(pca.fit, X)
 
     # Get loadings for requested component
     loadings = pca.components_[component_index]
@@ -334,14 +342,16 @@ async def get_scree_data(
         )
 
     # Load dataset
-    dataset, X, wavelengths = _load_analysis_data(dataset_id, partition, [])
+    dataset, X, wavelengths = await asyncio.to_thread(
+        _load_analysis_data, dataset_id, partition, []
+    )
 
     n_samples, n_features = X.shape
     n_components = min(max_components, n_samples, n_features)
 
     # Compute PCA
     pca = PCA(n_components=n_components)
-    pca.fit(X)
+    await asyncio.to_thread(pca.fit, X)
 
     # Build scree data
     components = list(range(1, n_components + 1))
@@ -372,7 +382,8 @@ async def compute_tsne(request: TSNERequest):
         )
 
     # Load dataset
-    dataset, X, wavelengths = _load_analysis_data(
+    dataset, X, wavelengths = await asyncio.to_thread(
+        _load_analysis_data,
         request.dataset_id, request.partition, request.preprocessing_chain
     )
 
@@ -391,7 +402,7 @@ async def compute_tsne(request: TSNERequest):
         random_state=request.random_state,
     )
 
-    embedding = tsne.fit_transform(X)
+    embedding = await asyncio.to_thread(tsne.fit_transform, X)
 
     return TSNEResult(
         dataset_id=request.dataset_id,
@@ -417,7 +428,8 @@ async def compute_umap_endpoint(request: UMAPRequest):
         )
 
     # Load dataset
-    dataset, X, wavelengths = _load_analysis_data(
+    dataset, X, wavelengths = await asyncio.to_thread(
+        _load_analysis_data,
         request.dataset_id, request.partition, request.preprocessing_chain
     )
 
@@ -435,7 +447,7 @@ async def compute_umap_endpoint(request: UMAPRequest):
             metric=request.metric,
             random_state=request.random_state,
         )
-        embedding = reducer.fit_transform(X)
+        embedding = await asyncio.to_thread(reducer.fit_transform, X)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"UMAP computation failed: {e}")
 
@@ -462,7 +474,8 @@ async def feature_importance(request: ImportanceRequest):
         raise HTTPException(status_code=409, detail="No workspace selected")
 
     # Load dataset
-    dataset, X, wavelengths = _load_analysis_data(
+    dataset, X, wavelengths = await asyncio.to_thread(
+        _load_analysis_data,
         request.dataset_id, request.partition, request.preprocessing_chain
     )
 
@@ -470,11 +483,11 @@ async def feature_importance(request: ImportanceRequest):
     from contextlib import suppress
     from .spectra import _load_dataset
 
-    ds = _load_dataset(request.dataset_id)
+    ds = await asyncio.to_thread(_load_dataset, request.dataset_id)
     selector = {"partition": request.partition}
     y = None
     with suppress(Exception):
-        y = ds.y(selector)
+        y = await asyncio.to_thread(ds.y, selector)
 
     # Compute importance based on method
     if request.method == "shap":
@@ -494,7 +507,8 @@ async def feature_importance(request: ImportanceRequest):
             )
 
         try:
-            explain_result = nirs4all.explain(
+            explain_result = await asyncio.to_thread(
+                nirs4all.explain,
                 model=str(bundle_path),
                 data=X,
                 verbose=0,
@@ -523,7 +537,7 @@ async def feature_importance(request: ImportanceRequest):
         if bundle_path.exists():
             try:
                 from nirs4all.sklearn import NIRSPipeline
-                model = NIRSPipeline.from_bundle(str(bundle_path))
+                model = await asyncio.to_thread(NIRSPipeline.from_bundle, str(bundle_path))
             except Exception:
                 pass
 
@@ -536,7 +550,7 @@ async def feature_importance(request: ImportanceRequest):
                     status_code=404, detail=f"Model '{request.model_id}' not found"
                 )
             try:
-                model = joblib.load(model_path)
+                model = await asyncio.to_thread(joblib.load, model_path)
             except Exception as e:
                 raise HTTPException(
                     status_code=500, detail=f"Error loading model: {str(e)}"
@@ -544,7 +558,8 @@ async def feature_importance(request: ImportanceRequest):
 
         from sklearn.inspection import permutation_importance
 
-        result = permutation_importance(
+        result = await asyncio.to_thread(
+            permutation_importance,
             model, X, y,
             n_repeats=request.n_repeats,
             random_state=42,
@@ -563,7 +578,7 @@ async def feature_importance(request: ImportanceRequest):
         if bundle_path.exists():
             try:
                 from nirs4all.sklearn import NIRSPipeline
-                model = NIRSPipeline.from_bundle(str(bundle_path))
+                model = await asyncio.to_thread(NIRSPipeline.from_bundle, str(bundle_path))
             except Exception:
                 pass
 
@@ -575,7 +590,7 @@ async def feature_importance(request: ImportanceRequest):
                     status_code=404, detail=f"Model '{request.model_id}' not found"
                 )
             try:
-                model = joblib.load(model_path)
+                model = await asyncio.to_thread(joblib.load, model_path)
             except Exception as e:
                 raise HTTPException(
                     status_code=500, detail=f"Error loading model: {str(e)}"
@@ -633,7 +648,8 @@ async def correlation_matrix(request: CorrelationRequest):
     Useful for understanding feature relationships and multicollinearity.
     """
     # Load dataset
-    dataset, X, wavelengths = _load_analysis_data(
+    dataset, X, wavelengths = await asyncio.to_thread(
+        _load_analysis_data,
         request.dataset_id, request.partition, request.preprocessing_chain
     )
 
@@ -651,11 +667,11 @@ async def correlation_matrix(request: CorrelationRequest):
 
     # Compute correlation
     if request.method == "pearson":
-        correlation = np.corrcoef(X.T)
+        correlation = await asyncio.to_thread(lambda: np.corrcoef(X.T))
     elif request.method == "spearman":
         from scipy.stats import spearmanr
 
-        correlation, _ = spearmanr(X)
+        correlation, _ = await asyncio.to_thread(spearmanr, X)
     elif request.method == "kendall":
         from scipy.stats import kendalltau
 
@@ -666,12 +682,17 @@ async def correlation_matrix(request: CorrelationRequest):
                 detail="Kendall correlation is too slow for datasets with >100 features. "
                 "Use 'sample_features' parameter or choose a different method.",
             )
-        correlation = np.zeros((n_features, n_features))
-        for i in range(n_features):
-            for j in range(i, n_features):
-                tau, _ = kendalltau(X[:, i], X[:, j])
-                correlation[i, j] = tau
-                correlation[j, i] = tau
+
+        def _compute_kendall() -> np.ndarray:
+            correlation = np.zeros((n_features, n_features))
+            for i in range(n_features):
+                for j in range(i, n_features):
+                    tau, _ = kendalltau(X[:, i], X[:, j])
+                    correlation[i, j] = tau
+                    correlation[j, i] = tau
+            return correlation
+
+        correlation = await asyncio.to_thread(_compute_kendall)
     else:
         raise HTTPException(
             status_code=400,
@@ -704,7 +725,8 @@ async def select_features(request: FeatureSelectionRequest):
     chemometrics-specific selection based on PLS regression coefficients.
     """
     # Load dataset
-    dataset, X, wavelengths = _load_analysis_data(
+    dataset, X, wavelengths = await asyncio.to_thread(
+        _load_analysis_data,
         request.dataset_id, request.partition, request.preprocessing_chain
     )
 
@@ -713,10 +735,10 @@ async def select_features(request: FeatureSelectionRequest):
     if request.method in ("mutual_info", "f_score"):
         from .spectra import _load_dataset
 
-        ds = _load_dataset(request.dataset_id)
+        ds = await asyncio.to_thread(_load_dataset, request.dataset_id)
         selector = {"partition": request.partition}
         try:
-            y = ds.y(selector)
+            y = await asyncio.to_thread(ds.y, selector)
         except Exception:
             pass
 
@@ -731,22 +753,30 @@ async def select_features(request: FeatureSelectionRequest):
 
     if request.method == "variance":
         # Variance-based selection
-        variances = np.var(X, axis=0)
-        scores = variances
-        top_indices = np.argsort(variances)[-k:][::-1]
+        def _compute_variance() -> tuple:
+            variances = np.var(X, axis=0)
+            return variances, np.argsort(variances)[-k:][::-1]
+
+        scores, top_indices = await asyncio.to_thread(_compute_variance)
 
     elif request.method == "mutual_info":
         from sklearn.feature_selection import mutual_info_regression
 
-        scores = mutual_info_regression(X, y.ravel(), random_state=42)
-        top_indices = np.argsort(scores)[-k:][::-1]
+        def _compute_mutual_info() -> tuple:
+            scores = mutual_info_regression(X, y.ravel(), random_state=42)
+            return scores, np.argsort(scores)[-k:][::-1]
+
+        scores, top_indices = await asyncio.to_thread(_compute_mutual_info)
 
     elif request.method == "f_score":
         from sklearn.feature_selection import f_regression
 
-        scores, _ = f_regression(X, y.ravel())
-        scores = np.nan_to_num(scores, nan=0.0)
-        top_indices = np.argsort(scores)[-k:][::-1]
+        def _compute_f_score() -> tuple:
+            scores, _ = f_regression(X, y.ravel())
+            scores = np.nan_to_num(scores, nan=0.0)
+            return scores, np.argsort(scores)[-k:][::-1]
+
+        scores, top_indices = await asyncio.to_thread(_compute_f_score)
 
     else:
         raise HTTPException(

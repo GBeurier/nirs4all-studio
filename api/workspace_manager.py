@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
@@ -1899,6 +1900,13 @@ class WorkspaceManager:
         # For backward compatibility, keep app_data_dir reference
         self.app_data_dir = self.app_config.config_dir
 
+        # Long-lived StoreAdapter cache (one open WorkspaceStore connection
+        # reused across requests). Keyed by the active workspace path so a
+        # workspace switch transparently rebuilds it.
+        self._store_adapter = None
+        self._store_adapter_path: Optional[str] = None
+        self._store_adapter_lock = threading.Lock()
+
         # Ensure default workspace exists on first launch
         self.ensure_default_workspace()
 
@@ -2149,6 +2157,66 @@ class WorkspaceManager:
         """Get the path to the active workspace for nirs4all runs."""
         active = self.get_active_workspace()
         return active.path if active else None
+
+    def get_active_store_adapter(self):
+        """Return a long-lived ``StoreAdapter`` for the active workspace.
+
+        The adapter wraps a single ``WorkspaceStore`` SQLite connection
+        (opened with ``check_same_thread=False`` and guarded by an internal
+        lock), so it is safe to reuse across requests and worker threads.
+        The adapter is rebuilt when the active workspace path changes and
+        returns ``None`` when no workspace is selected or no store file
+        exists yet.
+
+        Returns:
+            A cached :class:`~api.store_adapter.StoreAdapter`, or ``None``.
+        """
+        ws_path = self.get_active_workspace_path()
+        with self._store_adapter_lock:
+            if ws_path is None:
+                self._drop_store_adapter_locked()
+                return None
+
+            if self._store_adapter is not None and self._store_adapter_path == ws_path:
+                return self._store_adapter
+
+            # Active workspace changed (or first access) -- rebuild. We drop the
+            # reference rather than close(): an in-flight to_thread worker may
+            # still be using the previous connection, and closing it underneath
+            # would raise "WorkspaceStore is closed". The orphaned connection is
+            # released (and closed) once the last in-flight request lets it go.
+            self._drop_store_adapter_locked()
+
+            # Locate the store the same way WorkspaceScanner does -- it supports
+            # both <path>/store.sqlite and <path>/workspace/store.sqlite -- so the
+            # adapter resolves for every linked-workspace layout (otherwise some
+            # layouts would 404 in aggregated_predictions).
+            try:
+                adapter = WorkspaceScanner(Path(ws_path)).store_adapter
+            except Exception as exc:
+                print(f"Note: Could not open WorkspaceStore: {exc}")
+                adapter = None
+            if adapter is None:
+                return None
+            self._store_adapter = adapter
+            self._store_adapter_path = ws_path
+            return self._store_adapter
+
+    def _drop_store_adapter_locked(self) -> None:
+        """Drop the cached store adapter reference (caller holds the lock).
+
+        Deliberately does NOT close the underlying connection: a concurrent
+        to_thread worker may still hold it, and closing underneath would raise
+        "WorkspaceStore is closed". Python closes the SQLite connection when the
+        last reference is released.
+        """
+        self._store_adapter = None
+        self._store_adapter_path = None
+
+    def _invalidate_store_adapter(self) -> None:
+        """Drop the cached store adapter (e.g. on workspace switch/unlink)."""
+        with self._store_adapter_lock:
+            self._drop_store_adapter_locked()
 
     def get_results_path(self) -> Optional[str]:
         """Get the results directory path for the active workspace."""
@@ -2648,6 +2716,8 @@ class WorkspaceManager:
 
         settings["linked_workspaces"] = workspaces
         self.app_config.save_app_settings(settings)
+        if was_active:
+            self._invalidate_store_adapter()
         return True
 
     def activate_workspace(self, workspace_id: str) -> Optional[LinkedWorkspace]:
@@ -2672,6 +2742,7 @@ class WorkspaceManager:
             settings["linked_workspaces"] = workspaces
             self.app_config.save_app_settings(settings)
 
+            self._invalidate_store_adapter()
             _set_active_workspace_best_effort(found.path)
 
         return found

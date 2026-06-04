@@ -7,7 +7,10 @@ including raw spectra, processed spectra, and statistics.
 
 from __future__ import annotations
 
+import asyncio
 import sys
+import threading
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -43,8 +46,14 @@ class SpectraRequest(BaseModel):
     partition: str = "train"
 
 
-# Cache for loaded datasets (use Any type to avoid import issues)
-_dataset_cache: Dict[str, Any] = {}
+# Cache for loaded datasets (use Any type to avoid import issues).
+# Bounded LRU: keyed by dataset_id, capped so a long session cannot grow it
+# without limit. Oldest (least-recently-used) entries are evicted first.
+# Guarded by a lock because _load_dataset now runs inside asyncio.to_thread
+# workers, so multiple threads can touch the OrderedDict concurrently.
+_DATASET_CACHE_MAXSIZE = 8
+_dataset_cache: "OrderedDict[str, Any]" = OrderedDict()
+_dataset_cache_lock = threading.Lock()
 
 
 def _get_dataset_config(dataset_id: str) -> Optional[Dict[str, Any]]:
@@ -261,8 +270,12 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
     """Load a dataset by ID, with caching."""
     global _dataset_cache
 
-    if dataset_id in _dataset_cache:
-        return _dataset_cache[dataset_id]
+    with _dataset_cache_lock:
+        cached = _dataset_cache.get(dataset_id)
+        if cached is not None:
+            # Mark as most-recently-used.
+            _dataset_cache.move_to_end(dataset_id)
+            return cached
 
     if not NIRS4ALL_AVAILABLE:
         return None
@@ -309,8 +322,13 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
 
         dataset = datasets[0]
 
-        # Cache the dataset
-        _dataset_cache[dataset_id] = dataset
+        # Cache the dataset (most-recently-used at the end), evicting the
+        # oldest entry once the cache exceeds its bound.
+        with _dataset_cache_lock:
+            _dataset_cache[dataset_id] = dataset
+            _dataset_cache.move_to_end(dataset_id)
+            while len(_dataset_cache) > _DATASET_CACHE_MAXSIZE:
+                _dataset_cache.popitem(last=False)
 
         return dataset
 
@@ -326,10 +344,11 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
 def _clear_dataset_cache(dataset_id: Optional[str] = None):
     """Clear dataset cache, optionally for specific dataset."""
     global _dataset_cache
-    if dataset_id:
-        _dataset_cache.pop(dataset_id, None)
-    else:
-        _dataset_cache.clear()
+    with _dataset_cache_lock:
+        if dataset_id:
+            _dataset_cache.pop(dataset_id, None)
+        else:
+            _dataset_cache.clear()
 
 
 @router.get("/spectra/{dataset_id}")
@@ -352,13 +371,16 @@ async def get_spectra(
             status_code=501, detail="nirs4all library not available for spectra access"
         )
 
-    dataset = _load_dataset(dataset_id)
+    dataset = await asyncio.to_thread(_load_dataset, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
     try:
         selector = {"partition": partition}
-        X = dataset.x(selector, layout="2d", concat_source=False)
+        # Extract the full partition off the event loop — this can be large.
+        X = await asyncio.to_thread(
+            dataset.x, selector, layout="2d", concat_source=False
+        )
 
         # Handle multi-source
         if isinstance(X, list):
@@ -402,6 +424,10 @@ async def get_spectra(
         except Exception:
             header_unit = "unknown"
 
+        # Serialize the spectra slice off the event loop (.tolist() over a
+        # large array is CPU-bound).
+        spectra = await asyncio.to_thread(X_slice.tolist)
+
         # Build response
         response = {
             "dataset_id": dataset_id,
@@ -411,25 +437,26 @@ async def get_spectra(
             "end": end,
             "total_samples": total_samples,
             "num_features": X.shape[1],
-            "spectra": X_slice.tolist(),
+            "spectra": spectra,
             "wavelengths": headers,
             "wavelength_unit": header_unit,
         }
 
         # Include y values if requested
         if include_y:
-            try:
+            def _extract_y_slice() -> Optional[List[Any]]:
                 y = dataset.y(selector)
                 if y is not None and len(y) > 0:
                     y_slice = y[start:end]
                     # Handle multi-target (2D) vs single-target (1D)
                     if y_slice.ndim == 1:
-                        response["y"] = y_slice.tolist()
-                    else:
-                        # Use first target column for simplicity
-                        response["y"] = y_slice[:, 0].tolist()
-                else:
-                    response["y"] = None
+                        return y_slice.tolist()
+                    # Use first target column for simplicity
+                    return y_slice[:, 0].tolist()
+                return None
+
+            try:
+                response["y"] = await asyncio.to_thread(_extract_y_slice)
             except Exception as e:
                 print(f"Warning: Could not get y values: {e}")
                 response["y"] = None
@@ -459,13 +486,16 @@ async def get_spectrum(
             status_code=501, detail="nirs4all library not available for spectra access"
         )
 
-    dataset = _load_dataset(dataset_id)
+    dataset = await asyncio.to_thread(_load_dataset, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
     try:
         selector = {"partition": partition}
-        X = dataset.x(selector, layout="2d", concat_source=False)
+        # Extract the full partition off the event loop — this can be large.
+        X = await asyncio.to_thread(
+            dataset.x, selector, layout="2d", concat_source=False
+        )
 
         # Handle multi-source
         if isinstance(X, list):
@@ -494,7 +524,7 @@ async def get_spectrum(
         # Get target if available
         target = None
         try:
-            y = dataset.y(selector)
+            y = await asyncio.to_thread(dataset.y, selector)
             if y is not None and len(y) > sample_index:
                 target = float(y[sample_index]) if y.ndim == 1 else y[sample_index].tolist()
         except Exception:
@@ -538,13 +568,14 @@ async def get_processed_spectra(dataset_id: str, request: SpectraRequest):
             status_code=501, detail="nirs4all library not available for spectra access"
         )
 
-    dataset = _load_dataset(dataset_id)
+    dataset = await asyncio.to_thread(_load_dataset, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
     try:
         selector = {"partition": request.partition}
-        X = dataset.x(selector, layout="2d")
+        # Extract the partition off the event loop — this can be large.
+        X = await asyncio.to_thread(dataset.x, selector, layout="2d")
 
         # Handle multi-source (concatenate for simplicity)
         if isinstance(X, list):
@@ -555,16 +586,21 @@ async def get_processed_spectra(dataset_id: str, request: SpectraRequest):
             valid_indices = [i for i in request.indices if 0 <= i < X.shape[0]]
             X = X[valid_indices]
 
-        # Apply preprocessing chain
+        # Apply preprocessing chain (fit_transform) off the event loop.
         if request.preprocessing_chain:
-            X = _apply_preprocessing_chain(X, request.preprocessing_chain)
+            X = await asyncio.to_thread(
+                _apply_preprocessing_chain, X, request.preprocessing_chain
+            )
+
+        # Serialize the result off the event loop (.tolist() is CPU-bound).
+        spectra = await asyncio.to_thread(X.tolist)
 
         return {
             "dataset_id": dataset_id,
             "partition": request.partition,
             "num_samples": X.shape[0],
             "num_features": X.shape[1],
-            "spectra": X.tolist(),
+            "spectra": spectra,
             "preprocessing_applied": [step.get("name", "unknown") for step in request.preprocessing_chain],
         }
 
@@ -592,13 +628,16 @@ async def get_spectra_statistics(
             status_code=501, detail="nirs4all library not available for spectra access"
         )
 
-    dataset = _load_dataset(dataset_id)
+    dataset = await asyncio.to_thread(_load_dataset, dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
     try:
         selector = {"partition": partition}
-        X = dataset.x(selector, layout="2d", concat_source=False)
+        # Extract the full partition off the event loop — this can be large.
+        X = await asyncio.to_thread(
+            dataset.x, selector, layout="2d", concat_source=False
+        )
 
         # Handle multi-source
         if isinstance(X, list):
@@ -609,14 +648,30 @@ async def get_spectra_statistics(
                 )
             X = X[source]
 
-        # Compute statistics
-        mean = np.mean(X, axis=0).tolist()
-        std = np.std(X, axis=0).tolist()
-        min_vals = np.min(X, axis=0).tolist()
-        max_vals = np.max(X, axis=0).tolist()
-        median = np.median(X, axis=0).tolist()
-        q1 = np.percentile(X, 25, axis=0).tolist()
-        q3 = np.percentile(X, 75, axis=0).tolist()
+        # Compute statistics over the full partition off the event loop —
+        # numpy reductions + .tolist() over large arrays are CPU-bound.
+        def _compute_stats() -> Dict[str, Any]:
+            return {
+                "statistics": {
+                    "mean": np.mean(X, axis=0).tolist(),
+                    "std": np.std(X, axis=0).tolist(),
+                    "min": np.min(X, axis=0).tolist(),
+                    "max": np.max(X, axis=0).tolist(),
+                    "median": np.median(X, axis=0).tolist(),
+                    "q1": np.percentile(X, 25, axis=0).tolist(),
+                    "q3": np.percentile(X, 75, axis=0).tolist(),
+                },
+                "global": {
+                    "global_mean": float(np.mean(X)),
+                    "global_std": float(np.std(X)),
+                    "global_min": float(np.min(X)),
+                    "global_max": float(np.max(X)),
+                    "num_samples": X.shape[0],
+                    "num_features": X.shape[1],
+                },
+            }
+
+        stats = await asyncio.to_thread(_compute_stats)
 
         # Get wavelengths
         try:
@@ -624,31 +679,13 @@ async def get_spectra_statistics(
         except Exception:
             wavelengths = [str(i) for i in range(X.shape[1])]
 
-        # Global statistics
-        global_stats = {
-            "global_mean": float(np.mean(X)),
-            "global_std": float(np.std(X)),
-            "global_min": float(np.min(X)),
-            "global_max": float(np.max(X)),
-            "num_samples": X.shape[0],
-            "num_features": X.shape[1],
-        }
-
         return {
             "dataset_id": dataset_id,
             "partition": partition,
             "source": source,
             "wavelengths": wavelengths,
-            "statistics": {
-                "mean": mean,
-                "std": std,
-                "min": min_vals,
-                "max": max_vals,
-                "median": median,
-                "q1": q1,
-                "q3": q3,
-            },
-            "global": global_stats,
+            "statistics": stats["statistics"],
+            "global": stats["global"],
         }
 
     except HTTPException:
