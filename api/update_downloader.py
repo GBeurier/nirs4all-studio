@@ -10,6 +10,7 @@ Provides functionality to:
 
 import asyncio
 import hashlib
+import os
 import shutil
 import tarfile
 import zipfile
@@ -20,6 +21,28 @@ import aiofiles
 import httpx
 
 from updater import get_staging_dir, get_update_cache_dir, calculate_sha256
+
+
+def _is_safe_zip_member(member: str, dest_root: Path) -> bool:
+    """Return True only if a zip member extracts inside ``dest_root``.
+
+    Rejects absolute paths and any member whose resolved path escapes the
+    destination directory (Zip-Slip / path-traversal protection).
+    """
+    if not member:
+        return False
+    # Reject absolute members (POSIX "/..." or Windows "C:\\..." / "\\...").
+    if os.path.isabs(member) or member.startswith(("/", "\\")):
+        return False
+    if ":" in member.split("/", 1)[0]:  # Windows drive letter prefix
+        return False
+
+    resolved = Path(os.path.realpath(dest_root / member))
+    try:
+        resolved.relative_to(dest_root)
+    except ValueError:
+        return False
+    return True
 
 
 class UpdateDownloader:
@@ -142,11 +165,19 @@ class UpdateDownloader:
         """
         Verify the downloaded file's checksum.
 
+        Fails closed: if no expected checksum is available the archive cannot be
+        integrity-checked, so verification is treated as FAILED and the update
+        must not be staged or applied.
+
         Returns:
             Tuple of (success, message)
         """
-        if not self.expected_checksum:
-            return True, "No checksum to verify"
+        if not self.expected_checksum or not self.expected_checksum.strip():
+            return (
+                False,
+                "No checksum available for this update; refusing to apply an "
+                "unverified archive.",
+            )
 
         self._report_progress(52, "Verifying checksum...")
 
@@ -227,16 +258,28 @@ class UpdateDownloader:
         await loop.run_in_executor(None, _extract)
 
     async def _extract_zip(self, archive_path: Path, target_dir: Path) -> None:
-        """Extract a zip archive."""
+        """Extract a zip archive.
+
+        Guards against Zip-Slip: each member's resolved destination must stay
+        inside ``target_dir``. Absolute members or any path whose realpath
+        escapes the destination directory are rejected before extraction.
+        """
         loop = asyncio.get_event_loop()
 
         def _extract():
+            dest_root = Path(os.path.realpath(target_dir))
             with zipfile.ZipFile(archive_path, "r") as zf:
                 members = zf.namelist()
                 total = len(members)
                 for i, member in enumerate(members):
                     if self._cancelled:
                         raise asyncio.CancelledError("Extraction cancelled")
+
+                    if not _is_safe_zip_member(member, dest_root):
+                        raise ValueError(
+                            f"Unsafe path in archive (rejected): {member!r}"
+                        )
+
                     zf.extract(member, target_dir)
                     if i % 100 == 0:
                         progress = 55 + (i / total) * 40
@@ -275,8 +318,8 @@ async def download_and_stage_update(
     if not success:
         return False, message, None
 
-    # Verify checksum
-    if download_path and expected_checksum:
+    # Verify checksum (fail closed: a missing checksum is treated as a failure)
+    if download_path:
         success, message = downloader.verify_checksum(download_path)
         if not success:
             download_path.unlink(missing_ok=True)

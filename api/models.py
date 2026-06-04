@@ -19,6 +19,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .shared.paths import is_within_directory, reject_absolute_or_traversal
 from .workspace_manager import workspace_manager
 
 # Add nirs4all to path if needed
@@ -635,30 +636,43 @@ async def instantiate_model(model_name: str, params: Dict[str, Any] = {}):
 
 
 def _resolve_bundle_path(model_id: str) -> Path:
-    """Resolve a model ID to a bundle path.
+    """Resolve a model ID to a bundle path, confined to the workspace exports dir.
+
+    The model ID is untrusted (it flows in from request path params, including
+    ``DELETE /models/trained/{model_id:path}`` which unlinks the result), so the
+    resolved bundle must live inside ``<workspace>/workspace/exports`` whether it
+    arrives as a bare filename or an absolute path. This prevents reading or
+    deleting arbitrary files outside the workspace.
 
     Args:
-        model_id: Bundle filename or absolute path
+        model_id: Bundle filename or absolute path (must resolve inside exports).
 
     Returns:
-        Path to the bundle file
+        Path to the bundle file.
 
     Raises:
-        HTTPException if workspace not selected or bundle not found
+        HTTPException if workspace not selected, the path escapes the workspace,
+        or the bundle is not found.
     """
-    # Check if it's an absolute path
-    if Path(model_id).is_absolute():
-        bundle_path = Path(model_id)
-        if bundle_path.exists():
-            return bundle_path
-        raise HTTPException(status_code=404, detail=f"Bundle not found: {model_id}")
-
-    # Search in workspace exports
     workspace = workspace_manager.get_current_workspace()
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
     exports_dir = Path(workspace.path) / "workspace" / "exports"
+
+    # Absolute path: permitted only if it resolves inside the exports dir (the
+    # bundle scanner legitimately returns absolute paths there).
+    if Path(model_id).is_absolute():
+        bundle_path = Path(model_id)
+        if is_within_directory(exports_dir, bundle_path) and bundle_path.exists():
+            return bundle_path
+        raise HTTPException(status_code=404, detail=f"Bundle not found: {model_id}")
+
+    # Relative id: reject traversal before searching under exports.
+    try:
+        reject_absolute_or_traversal(model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Try direct match
     if not model_id.endswith(".n4a"):

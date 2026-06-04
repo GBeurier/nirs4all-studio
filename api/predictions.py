@@ -31,6 +31,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
+from .shared.paths import resolve_within
 
 # Optional imports
 try:
@@ -223,26 +224,26 @@ def _resolve_model_path(model_id: str, workspace_path: str) -> str:
         Absolute path to the model file
 
     Raises:
-        HTTPException: If model not found
+        HTTPException: If the model id escapes the workspace or is not found
     """
-    # If it's already an absolute path, use it directly
-    model_path = Path(model_id)
-    if model_path.is_absolute() and model_path.exists():
-        return str(model_path)
-
-    # Check in workspace models directory
+    # Check in workspace models directory. The model id is untrusted, so it
+    # must resolve strictly under the workspace 'models/' subdirectory: reject
+    # absolute paths and '..' traversal before touching the filesystem.
     workspace_models_dir = Path(workspace_path) / "models"
 
-    # Try with .n4a extension
-    if not model_id.endswith(".n4a"):
-        potential_path = workspace_models_dir / f"{model_id}.n4a"
+    try:
+        # Try with .n4a extension
+        if not model_id.endswith(".n4a"):
+            potential_path = resolve_within(workspace_models_dir, f"{model_id}.n4a")
+            if potential_path.exists():
+                return str(potential_path)
+
+        # Try exact filename
+        potential_path = resolve_within(workspace_models_dir, model_id)
         if potential_path.exists():
             return str(potential_path)
-
-    # Try exact filename
-    potential_path = workspace_models_dir / model_id
-    if potential_path.exists():
-        return str(potential_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     # Try finding any model file with matching name pattern
     if workspace_models_dir.exists():
@@ -259,7 +260,10 @@ def _resolve_model_path(model_id: str, workspace_path: str) -> str:
 def _load_prediction(prediction_id: str) -> Dict[str, Any]:
     """Load a prediction from file."""
     predictions_dir = _get_predictions_dir()
-    prediction_file = predictions_dir / f"{prediction_id}.json"
+    try:
+        prediction_file = resolve_within(predictions_dir, f"{prediction_id}.json")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     if not prediction_file.exists():
         raise HTTPException(status_code=404, detail="Prediction not found")
@@ -395,7 +399,10 @@ async def delete_prediction(prediction_id: str):
     """
     try:
         predictions_dir = _get_predictions_dir()
-        prediction_file = predictions_dir / f"{prediction_id}.json"
+        try:
+            prediction_file = resolve_within(predictions_dir, f"{prediction_id}.json")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
         if not prediction_file.exists():
             raise HTTPException(status_code=404, detail="Prediction not found")
@@ -910,8 +917,13 @@ def _load_model(model_id: str, workspace_path: str) -> Any:
     if model is not None:
         return model
 
-    # Load from disk
-    model_path = Path(workspace_path) / "models" / f"{model_id}.joblib"
+    # Load from disk. The model id is untrusted; confine it to the workspace
+    # 'models/' subdirectory (reject absolute paths and '..' traversal).
+    workspace_models_dir = Path(workspace_path) / "models"
+    try:
+        model_path = resolve_within(workspace_models_dir, f"{model_id}.joblib")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if not model_path.exists():
         raise HTTPException(
             status_code=404,

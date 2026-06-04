@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from .workspace_manager import workspace_manager, WorkspaceScanner
 from .app_config import app_config
 from .telemetry import apply_consent_from_app_settings
+from .shared.paths import is_within_directory
 
 
 # Simple TTL cache for workspace discovery operations
@@ -746,10 +747,19 @@ async def import_workspace(request: ImportWorkspaceRequest):
         destination_path = Path(request.destination_path)
         destination_path.mkdir(parents=True, exist_ok=True)
 
-        # Extract archive
+        # Extract archive. The destination is user-chosen and may legitimately
+        # be any absolute path, but each archive member must stay within it
+        # (Zip-Slip protection): a member like '../../etc/cron.d/x' would
+        # otherwise write outside the destination.
         items_imported = 0
         with zipfile.ZipFile(archive_path, "r") as zf:
             for item in zf.namelist():
+                target = destination_path / item
+                if not is_within_directory(destination_path, target):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Archive member escapes destination directory: {item}",
+                    )
                 zf.extract(item, destination_path)
                 items_imported += 1
 
@@ -1345,6 +1355,38 @@ async def update_data_loading_defaults(defaults: DataLoadingDefaults):
 # ----------------------- Workspace by ID routes (must be last due to path parameter) -----------------------
 
 
+def _resolve_workspace_id_path(workspace_id: str) -> Optional[str]:
+    """Resolve a workspace_id to a trusted workspace path.
+
+    The id is either a base64-encoded path or a workspace name. A decoded path
+    is honored only when it matches (or is contained within) a registered
+    linked workspace, so an attacker cannot smuggle an arbitrary filesystem
+    path in through the base64 channel. Names are resolved via the registry.
+
+    Args:
+        workspace_id: The base64-encoded path or workspace name from the URL.
+
+    Returns:
+        The trusted workspace path, or None if it cannot be validated.
+    """
+    import base64
+
+    linked_paths = [ws.path for ws in workspace_manager.get_linked_workspaces()]
+
+    try:
+        decoded = base64.urlsafe_b64decode(workspace_id.encode()).decode()
+    except Exception:
+        decoded = None
+
+    if decoded:
+        for linked in linked_paths:
+            if is_within_directory(linked, decoded):
+                return decoded
+
+    # Fall back to name lookup against the registry.
+    return workspace_manager.find_workspace_by_name(workspace_id)
+
+
 @router.get("/workspace/{workspace_id}", response_model=WorkspaceInfo)
 async def get_workspace_info(workspace_id: str):
     """
@@ -1353,14 +1395,7 @@ async def get_workspace_info(workspace_id: str):
     The workspace_id can be the base64-encoded path or the workspace name.
     """
     try:
-        import base64
-
-        # Try to decode workspace_id as base64 path
-        try:
-            workspace_path = base64.urlsafe_b64decode(workspace_id.encode()).decode()
-        except Exception:
-            # Not base64 - try to find by name
-            workspace_path = workspace_manager.find_workspace_by_name(workspace_id)
+        workspace_path = _resolve_workspace_id_path(workspace_id)
 
         if not workspace_path:
             raise HTTPException(status_code=404, detail="Workspace not found")
@@ -1395,13 +1430,7 @@ async def update_workspace(workspace_id: str, updates: Dict[str, Any]):
     Allows updating the name, description, and other metadata.
     """
     try:
-        import base64
-
-        # Try to decode workspace_id as base64 path
-        try:
-            workspace_path = base64.urlsafe_b64decode(workspace_id.encode()).decode()
-        except Exception:
-            workspace_path = workspace_manager.find_workspace_by_name(workspace_id)
+        workspace_path = _resolve_workspace_id_path(workspace_id)
 
         if not workspace_path:
             raise HTTPException(status_code=404, detail="Workspace not found")

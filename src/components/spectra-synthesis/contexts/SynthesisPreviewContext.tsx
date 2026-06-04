@@ -18,6 +18,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSynthesisBuilder } from "./SynthesisBuilderContext";
+import { authorizedFetch } from "@/api/client";
 
 // ============= Types =============
 
@@ -105,7 +106,7 @@ interface PreviewResponse {
 }
 
 async function fetchPreview(request: PreviewRequest): Promise<PreviewResponse> {
-  const response = await fetch("/api/synthesis/preview", {
+  const response = await authorizedFetch("/synthesis/preview", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -103,6 +103,12 @@ interface ElectronApi {
   getBackendUrl(): Promise<string>;
 
   /**
+   * Get the per-launch API token used to authenticate backend requests.
+   * Attached by the API client as the X-Nirs4all-Token header.
+   */
+  getApiToken(): Promise<string>;
+
+  /**
    * Get full backend information including status
    */
   getBackendInfo(): Promise<BackendInfo>;

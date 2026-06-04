@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { authorizedFetch } from "@/api/client";
 import { useSynthesisBuilder } from "./contexts/SynthesisBuilderContext";
 
 interface ExportDialogProps {
@@ -56,7 +57,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const { data: workspace } = useQuery({
     queryKey: ["workspace"],
     queryFn: async () => {
-      const response = await fetch("/api/workspace");
+      const response = await authorizedFetch("/workspace");
       if (!response.ok) return null;
       const data = await response.json();
       return data.workspace;
@@ -80,7 +81,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         })),
       };
 
-      const response = await fetch("/api/synthesis/generate", {
+      const response = await authorizedFetch("/synthesis/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

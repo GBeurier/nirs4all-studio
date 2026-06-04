@@ -118,4 +118,12 @@ export default defineConfig(({ mode }) => ({
     outDir: "dist",
     sourcemap: mode === "development" || shouldUploadSentrySourceMaps,
   },
+  // Vitest config. Scope unit tests to src/ so Vitest does not collect the
+  // Playwright end-to-end specs under e2e/ (which use @playwright/test and
+  // error under the Vitest runner). Per-file `// @vitest-environment jsdom`
+  // pragmas still select jsdom where DOM APIs are needed.
+  test: {
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    exclude: ["node_modules/**", "dist/**", "dist-electron/**", "e2e/**"],
+  },
 }));

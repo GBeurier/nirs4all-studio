@@ -8,6 +8,7 @@ independently of the bundled webapp.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import venv
@@ -24,6 +25,129 @@ APP_NAME = "nirs4all-studio"
 APP_AUTHOR = "nirs4all"
 OUTDATED_PACKAGES_TIMEOUT_SECONDS = 15
 PIP_INSTALL_TIMEOUT_SECONDS = 900
+
+
+# ============= pip install allowlist + injection guard =============
+#
+# Only distribution names the app legitimately (re)installs are accepted by
+# install_package(). This blocks turning the pip subprocess into an arbitrary
+# code-execution / supply-chain vector (URLs, VCS specs, local paths, extra pip
+# options, shell metacharacters). Extend ALLOWED_PACKAGES when the app gains a
+# new dependency it must install.
+#
+# Names are compared in PEP 503 normalized form (lowercase, runs of
+# [-_.] collapsed to a single "-").
+ALLOWED_PACKAGES = frozenset(
+    {
+        # Main library (with or without extras)
+        "nirs4all",
+        # Deep-learning backends
+        "torch",
+        "torchvision",
+        "torchaudio",
+        "tensorflow",
+        "tensorflow-cpu",
+        "tensorflow-macos",
+        "keras",
+        "jax",
+        "jaxlib",
+        "flax",
+        "tabpfn",
+        # PLS variants (nirs4all optional extras)
+        "ikpls",
+        "pyopls",
+        "trendfitter",
+        # AutoML
+        "autogluon",
+        # Visualization / dimensionality reduction
+        "matplotlib",
+        "seaborn",
+        "plotly",
+        "umap-learn",
+        # Reports / export
+        "pypandoc",
+        "pypdf2",
+        "pdf2image",
+        "openpyxl",
+        # Core scientific deps
+        "numpy",
+        "scipy",
+        "pandas",
+        "scikit-learn",
+        "joblib",
+    }
+)
+
+# A simple PEP 508 requirement: name, optional [extras], optional version spec.
+# Deliberately strict — anything not matching (URLs, git+..., paths, options,
+# whitespace, shell metacharacters) is rejected.
+_PEP503_NAME = r"[A-Za-z0-9][A-Za-z0-9._-]*"
+_EXTRAS = rf"(?:\[\s*{_PEP503_NAME}(?:\s*,\s*{_PEP503_NAME})*\s*\])?"
+_VERSION_SPEC = r"(?:(?:==|>=|<=|~=|!=|>|<)\s*[A-Za-z0-9][A-Za-z0-9._*+!-]*)*"
+_REQUIREMENT_RE = re.compile(rf"^{_PEP503_NAME}{_EXTRAS}\s*{_VERSION_SPEC}$")
+
+
+def _normalize_dist_name(name: str) -> str:
+    """Normalize a distribution name per PEP 503 (lowercase, [-_.] runs -> -)."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def validate_package_spec(package: str, version: Optional[str], extras: Optional[List[str]]) -> Tuple[bool, str]:
+    """Validate a package install request before it reaches pip.
+
+    Rejects URLs, VCS specs (``git+...``), local paths, shell metacharacters,
+    leading option flags (``-``/``--``), whitespace-separated extra arguments,
+    and any distribution name not on :data:`ALLOWED_PACKAGES`.
+
+    Args:
+        package: The package spec or bare name (e.g. ``"nirs4all"`` or ``"torch>=2.0"``).
+        version: Optional version specifier supplied separately (e.g. ``"0.9.0"``).
+        extras: Optional list of extras (e.g. ``["tensorflow", "torch"]``).
+
+    Returns:
+        Tuple of (is_valid, message). ``message`` describes the rejection reason
+        when invalid.
+    """
+    if not package or not package.strip():
+        return False, "Empty package specifier"
+
+    # The reconstructed spec must be a single token. Any whitespace means the
+    # caller smuggled in extra args (e.g. "--upgrade", "foo bar").
+    if package != package.strip() or re.search(r"\s", package):
+        return False, f"Whitespace not allowed in package spec: {package!r}"
+    if package.startswith("-"):
+        return False, f"Option-style argument not allowed as package: {package!r}"
+
+    # Reject obvious non-PEP508 forms: URLs, VCS, local paths, shell metacharacters.
+    forbidden = ("://", "git+", "hg+", "svn+", "bzr+", "/", "\\", "@")
+    if any(token in package for token in forbidden):
+        return False, f"URL/VCS/path-style specifiers are not allowed: {package!r}"
+    # Note: '<' and '>' are valid PEP 508 version operators, so they are not
+    # treated as shell metacharacters here. Redirection-style abuse ("foo > x")
+    # is already rejected by the whitespace check above, and any leftover
+    # malformed form is rejected by the requirement regex below.
+    if re.search(r"[;&|`$(){}!*?'\"]", package):
+        return False, f"Shell metacharacters are not allowed in package spec: {package!r}"
+
+    if version is not None:
+        version = version.strip()
+        if re.search(r"\s", version) or re.search(r"[;&|`$(){}!?'\"/\\@]", version):
+            return False, f"Invalid version specifier: {version!r}"
+
+    if extras:
+        for extra in extras:
+            if not extra or not re.fullmatch(_PEP503_NAME, extra):
+                return False, f"Invalid extra name: {extra!r}"
+
+    if not _REQUIREMENT_RE.match(package):
+        return False, f"Not a valid PEP 508 requirement: {package!r}"
+
+    # Distribution name = everything before the first of '[' or a version operator.
+    dist_name = re.split(r"[\[<>=!~]", package, 1)[0].strip()
+    if _normalize_dist_name(dist_name) not in ALLOWED_PACKAGES:
+        return False, f"Package not in allowlist: {dist_name!r}"
+
+    return True, "ok"
 
 
 def _split_exact_package_spec(package: str, version: Optional[str]) -> Tuple[str, Optional[str]]:
@@ -469,6 +593,12 @@ class VenvManager:
             return False, "Virtual environment is not valid", []
 
         package, version = _split_exact_package_spec(package, version)
+
+        # SECURITY: validate the request before it can reach the pip subprocess.
+        is_valid, validation_message = validate_package_spec(package, version, extras)
+        if not is_valid:
+            return False, f"Rejected package install: {validation_message}", []
+
         version, compatibility_note = _resolve_package_version_for_python(
             package,
             version,

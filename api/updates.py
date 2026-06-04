@@ -380,7 +380,13 @@ class UpdateManager:
         return self._settings
 
     def update_settings(self, new_settings: UpdateSettings) -> None:
-        """Update settings."""
+        """Update settings.
+
+        SECURITY: the update source repo is pinned. Any client-supplied
+        ``github_repo`` is overridden with the hardcoded constant so the update
+        channel cannot be redirected through the settings endpoint.
+        """
+        new_settings.github_repo = DEFAULT_GITHUB_REPO
         self._settings = new_settings
         self._save_settings()
 
@@ -466,9 +472,12 @@ class UpdateManager:
                 )
                 return info
 
-        # Fetch from GitHub API
-        repo = self.settings.github_repo
-        api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+        # Fetch from GitHub API.
+        # SECURITY: the update source is pinned to the hardcoded canonical repo.
+        # A user-supplied settings.github_repo is intentionally IGNORED here so
+        # the update channel cannot be redirected via the unauthenticated
+        # settings endpoint.
+        api_url = f"https://api.github.com/repos/{DEFAULT_GITHUB_REPO}/releases/latest"
 
         headers = {
             "Accept": "application/vnd.github.v3+json",

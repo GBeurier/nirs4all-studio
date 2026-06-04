@@ -44,6 +44,8 @@ const electronApi = {
 
   getBackendUrl: (): Promise<string> => ipcRenderer.invoke("backend:getUrl"),
 
+  getApiToken: (): Promise<string> => ipcRenderer.invoke("backend:getApiToken"),
+
   getBackendInfo: (): Promise<{
     status: "stopped" | "starting" | "running" | "error" | "restarting";
     port: number;

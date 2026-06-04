@@ -224,6 +224,10 @@ ipcMain.handle("backend:getUrl", () => {
   return backendManager.getUrl();
 });
 
+ipcMain.handle("backend:getApiToken", () => {
+  return backendManager.getApiToken();
+});
+
 ipcMain.handle("backend:getInfo", () => {
   return backendManager.getInfo();
 });

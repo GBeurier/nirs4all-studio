@@ -19,6 +19,8 @@ import uvicorn
 from pathlib import Path
 import os
 
+from api import security
+
 # Desktop mode detection - skip unnecessary middleware when running in pywebview
 DESKTOP_MODE = os.environ.get("NIRS4ALL_DESKTOP", "false").lower() == "true"
 
@@ -91,14 +93,41 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Add CORS middleware - always enabled to support:
+# Token-auth middleware - guards state-changing /api requests.
+# Active only when NIRS4ALL_API_TOKEN is set (Electron desktop mode, where the
+# backend listens on a random localhost port). In web/dev mode the env var is
+# unset and this is a no-op, preserving the existing Vite-proxy workflow.
+@app.middleware("http")
+async def api_token_middleware(request: Request, call_next):
+    """Require X-Nirs4all-Token on mutating /api requests when auth is enabled."""
+    token = security.current_token()
+    if (
+        token is not None
+        and request.method not in security.SAFE_METHODS
+        and not security.is_public_path(request.url.path)
+    ):
+        if not security.token_matches(request.headers.get(security.API_TOKEN_HEADER), token):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid or missing API token"},
+            )
+    return await call_next(request)
+
+
+# Add CORS middleware - restricted to local origins to support:
 # - Web dev mode (Vite on localhost:5173 -> backend on localhost:8000)
 # - Desktop dev mode (Vite on localhost:5173 -> backend on random port)
-# In production desktop mode, same-origin requests work regardless of CORS config
+# - Packaged Electron (file:// origin loads the SPA same-origin against backend)
+# allow_origin_regex matches localhost/127.0.0.1 on any port plus the Electron
+# file:// origin; allow_origins covers "null", which Chromium reports as the
+# Origin for packaged file:// renderer pages. Together they let the legitimate
+# dev and desktop clients through without exposing the API to arbitrary web
+# origins. State-changing requests are additionally gated by the token above.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for local development
-    allow_credentials=False,  # Must be False when using allow_origins=["*"]
+    allow_origins=["null"],
+    allow_origin_regex=r"^(https?://(localhost|127\.0\.0\.1)(:\d+)?|file://.*)$",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

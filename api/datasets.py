@@ -23,6 +23,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
+from .shared.paths import is_within_directory
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -1035,6 +1036,15 @@ async def delete_dataset(dataset_id: str, delete_files: bool = False):
 
     if delete_files:
         path = Path(dataset.get("path", ""))
+        # Only delete files that live inside the managed workspace tree. Linked
+        # external datasets (picked from arbitrary user folders) are left
+        # untouched so a stored path can never trigger deletion outside the
+        # workspace root.
+        if not is_within_directory(workspace.path, path):
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot delete dataset files outside the workspace directory",
+            )
         if path.exists():
             import shutil
             if path.is_dir():

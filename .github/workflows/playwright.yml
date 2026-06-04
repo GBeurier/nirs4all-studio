@@ -13,6 +13,23 @@ jobs:
     - uses: actions/setup-node@v4
       with:
         node-version: lts/*
+    # The Playwright webServer launches the backend via `.venv/bin/python main.py`
+    # (see playwright.config.ts). CI must therefore provision Python and a venv
+    # at the repo root with the backend dependencies before Playwright starts.
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    - name: Create backend virtualenv
+      # `main.py` imports the full router graph (numpy + nirs4all at module
+      # scope), so the venv needs the scientific stack. Installing nirs4all
+      # pulls numpy/scipy/scikit-learn in transitively; the `.venv` path matches
+      # the webServer command in playwright.config.ts.
+      run: |
+        python -m venv .venv
+        .venv/bin/python -m pip install --upgrade pip
+        .venv/bin/python -m pip install -r requirements.txt
+        .venv/bin/python -m pip install nirs4all
     - name: Install dependencies
       run: npm ci
     - name: Install Playwright Browsers

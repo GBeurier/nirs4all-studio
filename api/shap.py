@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
+from .shared.paths import is_within_directory, reject_absolute_or_traversal
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
@@ -665,8 +666,18 @@ def _get_models_from_bundles() -> List[AvailableModel]:
 def _load_model(source: str, model_id: str) -> Tuple[Any, Dict[str, Any]]:
     """Load model from run or bundle."""
     if source == "bundle":
-        # Load from .n4a bundle
+        # Load from .n4a bundle. The bundle path is an absolute path produced
+        # by the bundle scanner under the workspace 'exports/' directory; the
+        # incoming value is untrusted, so confirm it still resolves inside the
+        # workspace exports tree before loading it.
+        workspace = workspace_manager.get_active_workspace()
+        if not workspace:
+            raise ValueError("No active workspace")
+
+        exports_path = Path(workspace.path) / "workspace" / "exports"
         bundle_path = Path(model_id)
+        if not is_within_directory(exports_path, bundle_path):
+            raise ValueError(f"Bundle path escapes workspace exports directory: {model_id}")
         if not bundle_path.exists():
             raise ValueError(f"Bundle not found: {model_id}")
 
@@ -683,6 +694,10 @@ def _load_model(source: str, model_id: str) -> Tuple[Any, Dict[str, Any]]:
             raise ValueError("No active workspace")
 
         runs_path = Path(workspace.path) / "workspace" / "runs"
+
+        # The run id is an untrusted identifier joined under runs_path: reject
+        # absolute paths and '..' traversal before using it as a path segment.
+        reject_absolute_or_traversal(model_id)
 
         # Find the run directory
         run_dir = None

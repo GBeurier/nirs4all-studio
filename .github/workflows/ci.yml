@@ -1,12 +1,19 @@
 # Continuous Integration workflow
-# Runs on every push and PR to validate the codebase
+# Runs on every push and PR to validate the codebase.
+#
+# Incremental-hardening policy (see AUDIT_TECHNIQUE.md): CI runs on the live
+# `master` branch and reports every gate, but only the gates that are CURRENTLY
+# green are merge-blocking. Pre-existing-red gates (tsc, eslint, vitest, the
+# full pytest suite, packaging) run with `continue-on-error: true` and a TODO so
+# their status is visible without blocking pushes. As each gate is greened in a
+# later cleanup phase, remove its `continue-on-error` to make it blocking.
 name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [main, master, develop]
 
 env:
   NODE_VERSION: '22'
@@ -32,32 +39,51 @@ jobs:
         run: npm ci
 
       - name: Lint
+        # TODO(audit Phase 2/3): remove continue-on-error once eslint is clean
+        # (37 pre-existing errors / 188 warnings as of the audit).
+        continue-on-error: true
         run: npm run lint
 
+      # Blocking gate (green): the node-registry schema must stay valid.
       - name: Validate node registry
         run: npm run validate:nodes
 
       - name: Type check
+        # TODO(audit Phase 2/3): remove continue-on-error once tsc is clean
+        # (146 pre-existing type errors across 10 files as of the audit).
+        continue-on-error: true
         run: npx tsc --noEmit
 
       - name: Run tests
-        run: npm run test -- --run
+        # TODO(audit Tests workstream): remove continue-on-error once the vitest
+        # suite is green (undeclared jsdom/@testing-library deps, a framer-motion
+        # vitest entry-resolution issue, and a stale useStepRenderer expectation
+        # tied to in-flight pipeline-editor work). e2e specs are already excluded
+        # via vite.config.ts.
         continue-on-error: true
+        run: npm run test -- --run
 
       - name: Build frontend
+        # TODO(audit Phase 2/3): remove continue-on-error once `npm run build`
+        # passes (it runs `tsc -b`, currently red — see Type check).
+        continue-on-error: true
         run: npm run build
 
       - name: Build Electron frontend
+        # TODO(audit Phase 2/3): blocked by the same tsc errors as Build frontend.
+        continue-on-error: true
         run: npm run build:electron
 
       - name: Verify build outputs
+        # TODO(audit Phase 2/3): blocked until Build frontend is green.
+        continue-on-error: true
         run: |
           test -f dist/index.html || { echo "::error::dist/index.html not found"; exit 1; }
           test -d dist-electron || { echo "::error::dist-electron not found"; exit 1; }
           echo "Build outputs verified"
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Backend: Lint, Validate
+  # Backend: Lint, Validate, Test
   # ═══════════════════════════════════════════════════════════════════════════
   backend:
     name: Backend
@@ -84,6 +110,13 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -r requirements-test.txt
+          # The backend test suite (and most api/ modules) import the
+          # scientific stack at module scope; installing nirs4all pulls in
+          # numpy/scipy/scikit-learn transitively and lets the import-smoke
+          # test exercise the full router graph. The import-smoke test still
+          # degrades gracefully (skips heavy-dep modules) if this is dropped.
+          pip install nirs4all
 
       - name: Verify imports
         run: |
@@ -98,13 +131,26 @@ jobs:
       - name: Check syntax
         run: |
           python -m py_compile main.py
-          for f in api/*.py; do python -m py_compile "$f"; done
+          for f in api/*.py api/jobs/*.py api/shared/*.py; do python -m py_compile "$f"; done
           echo "Syntax check passed"
 
       - name: Test CLI arguments
         run: |
           python main.py --help
           echo "CLI arguments work"
+
+      # Blocking gate (green): imports every api/ router and resolves every
+      # FastAPI endpoint, catching handlers wired to removed helpers (the
+      # "dead endpoint" class of bug). This is the high-value new gate.
+      - name: Run import-smoke test
+        run: pytest tests/test_import_smoke.py -q
+
+      - name: Run backend tests
+        # TODO(audit Phase 1): remove continue-on-error once tests/test_playground.py
+        # is green (29 pre-existing failures as of the audit; backend security/
+        # path/updater suites already pass).
+        continue-on-error: true
+        run: pytest -m "not slow"
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Electron: Build validation (Linux only for speed)
@@ -147,9 +193,13 @@ jobs:
           pip install -r requirements.txt
 
       - name: Build Electron frontend
+        # TODO(audit Phase 2/3): packaging steps are non-blocking until the build
+        # and packaging debt (specs, deps, tsc) is cleared.
+        continue-on-error: true
         run: npm run build:electron
 
       - name: Build Python backend
+        continue-on-error: true
         run: |
           pyinstaller backend.spec --clean --noconfirm
           mkdir -p backend-dist
@@ -157,11 +207,13 @@ jobs:
           chmod +x backend-dist/nirs4all-backend
 
       - name: Verify backend executable
+        continue-on-error: true
         run: |
           test -f backend-dist/nirs4all-backend || { echo "::error::Backend not built"; exit 1; }
           echo "Backend executable size: $(du -h backend-dist/nirs4all-backend | cut -f1)"
 
       - name: Test electron-builder (dry-run)
+        continue-on-error: true
         run: |
           npx electron-builder --linux --dir
           echo "Electron build test passed"

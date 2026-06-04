@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from "node:child_process";
 import { createServer, AddressInfo } from "node:net";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { captureElectronException } from "./telemetry";
 
@@ -33,6 +34,9 @@ export class BackendManager {
   private healthMonitorInterval: NodeJS.Timeout | null = null;
   private isShuttingDown: boolean = false;
   private lastError: string | null = null;
+  // Per-launch secret shared with the spawned backend (env NIRS4ALL_API_TOKEN)
+  // and exposed to the renderer so it can authenticate its API requests.
+  private apiToken: string = randomBytes(32).toString("hex");
 
   /**
    * Find an available port dynamically
@@ -191,6 +195,7 @@ export class BackendManager {
       NIRS4ALL_PORT: this.port.toString(),
       NIRS4ALL_DESKTOP: "true",
       NIRS4ALL_ELECTRON: "true",
+      NIRS4ALL_API_TOKEN: this.apiToken,
     };
 
     // Spawn the backend process
@@ -312,6 +317,14 @@ export class BackendManager {
    */
   getPort(): number {
     return this.port;
+  }
+
+  /**
+   * Get the per-launch API token shared with the backend.
+   * The renderer attaches this as the X-Nirs4all-Token header.
+   */
+  getApiToken(): string {
+    return this.apiToken;
   }
 
   /**
