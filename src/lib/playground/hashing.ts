@@ -67,11 +67,17 @@ function stableStringify(obj: unknown): string {
 }
 
 /**
- * Hash an operator for cache key purposes
+ * Hash an operator for cache key purposes.
+ *
+ * NOTE: `operator.id` is intentionally EXCLUDED. It is a transient runtime id
+ * (`${name}-${Date.now()}-${Math.random()}`) that is regenerated whenever a
+ * pipeline is imported or a session is restored, so including it made an
+ * otherwise-identical pipeline hash differently every reload — permanently
+ * missing the React Query / backend transform cache. Cache identity is the
+ * ordered sequence of `{type, name, params, enabled}`.
  */
 function hashOperator(operator: UnifiedOperator): string {
   return stableStringify({
-    id: operator.id,
     type: operator.type,
     name: operator.name,
     params: operator.params,
