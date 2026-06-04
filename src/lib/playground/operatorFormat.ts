@@ -9,6 +9,7 @@ import type {
   PlaygroundStep,
   OperatorDefinition,
 } from '@/types/playground';
+import { logger } from "../logger";
 
 // ============= Unified to API Conversion =============
 
@@ -199,7 +200,7 @@ export function getPlaygroundExportData(): PlaygroundExportData | null {
       return JSON.parse(data);
     }
   } catch (e) {
-    console.warn('Failed to parse playground export data:', e);
+    logger.warn('Failed to parse playground export data:', e);
   }
   return null;
 }

@@ -354,7 +354,7 @@ export default function Playground() {
         }, 100);
       }
     } catch (e) {
-      console.warn('Failed to restore playground session:', e);
+      logger.warn('Failed to restore playground session:', e);
       sessionStorage.removeItem('playground-session-state');
     }
   }, [loadFromWorkspace, loadDemoData, addOperatorByName, setStepComparisonEnabled, setActiveStep]);
@@ -548,6 +548,7 @@ interface PlaygroundContentProps {
 import { usePlaygroundShortcuts } from '@/hooks/usePlaygroundShortcuts';
 import { usePlaygroundReset } from '@/hooks/usePlaygroundReset';
 import { useOutliers } from '@/context/OutliersContext';
+import { logger } from "@/lib/logger";
 
 function PlaygroundContent({
   rawData,

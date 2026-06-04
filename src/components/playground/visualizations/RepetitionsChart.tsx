@@ -96,6 +96,7 @@ import {
   ScatterPureWebGL2D,
   type DataBounds,
 } from './scatter';
+import { logger } from "@/lib/logger";
 
 // ============= Types =============
 
@@ -308,7 +309,7 @@ export function RepetitionsChart({
             });
           } else {
             // If all distances are 0 or invalid, clear computed distances to use fallback
-            console.warn('Metric computation returned invalid distances, using fallback');
+            logger.warn('Metric computation returned invalid distances, using fallback');
             setComputedDistances(null);
           }
         }

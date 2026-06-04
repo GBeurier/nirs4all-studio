@@ -10,6 +10,8 @@
  * - ARIA live region management
  */
 
+import { logger } from "../logger";
+
 // ============= Live Region Announcements =============
 
 /**
@@ -346,9 +348,9 @@ export function runAccessibilityAudit(): AccessibilityIssue[] {
     });
   });
 
-  console.log('[AccessibilityAudit] Issues found:', issues.length);
+  logger.log('[AccessibilityAudit] Issues found:', issues.length);
   issues.forEach(issue => {
-    console.log(`[${issue.severity.toUpperCase()}] ${issue.element}: ${issue.issue}`);
+    logger.log(`[${issue.severity.toUpperCase()}] ${issue.element}: ${issue.issue}`);
   });
 
   return issues;

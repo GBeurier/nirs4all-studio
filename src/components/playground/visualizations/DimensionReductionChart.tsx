@@ -123,6 +123,7 @@ import {
   extractModifiers,
   shouldClearOnBackgroundClick,
 } from '@/lib/playground/selectionUtils';
+import { logger } from "@/lib/logger";
 
 // ============= Types =============
 
@@ -353,7 +354,7 @@ export function DimensionReductionChart({
 
       // Skip points with NaN/Infinity in x or y coordinates (essential for 2D rendering)
       if (!Number.isFinite(rawX) || !Number.isFinite(rawY)) {
-        console.warn(`[DimensionReductionChart] Skipping point ${i} with invalid coordinates: x=${rawX}, y=${rawY}`);
+        logger.warn(`[DimensionReductionChart] Skipping point ${i} with invalid coordinates: x=${rawX}, y=${rawY}`);
         return;
       }
 

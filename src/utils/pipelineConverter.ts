@@ -19,6 +19,7 @@
 import type { PipelineStep as EditorPipelineStep, StepType, FinetuneParamConfig, FinetuneParamType } from "@/components/pipeline-editor/types";
 import type { PipelineStep as ApiPipelineStep } from "@/types/pipelines";
 import { generateStepId } from "@/components/pipeline-editor/types";
+import { logger } from "@/lib/logger";
 
 // ============================================================================
 // Type Definitions
@@ -548,7 +549,7 @@ function convertStepToEditor(step: Nirs4allStep): EditorPipelineStep {
   }
 
   // Unknown step type - best effort, store raw data
-  console.warn("Unknown step type:", step);
+  logger.warn("Unknown step type:", step);
   return {
     id: generateStepId(),
     type: "preprocessing",

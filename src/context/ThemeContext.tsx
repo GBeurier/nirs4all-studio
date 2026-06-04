@@ -19,6 +19,7 @@ import {
 } from "react";
 import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/client";
 import type { ThemeOption } from "@/types/settings";
+import { logger } from "@/lib/logger";
 
 type Theme = ThemeOption;
 
@@ -159,7 +160,7 @@ export function ThemeProvider({
           });
         } catch (error) {
           // Silently fail - localStorage is the fallback
-          console.debug("Failed to sync theme to workspace:", error);
+          logger.debug("Failed to sync theme to workspace:", error);
         }
       }
     },

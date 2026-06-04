@@ -27,6 +27,7 @@ import {
   isSplitter,
   countSplitters,
 } from '@/lib/playground/operatorFormat';
+import { logger } from "@/lib/logger";
 
 const MAX_HISTORY = 50;
 const PIPELINE_STORAGE_KEY = 'playground-pipeline-state';
@@ -44,7 +45,7 @@ function loadPersistedState(): UnifiedOperator[] {
       }
     }
   } catch (e) {
-    console.warn('Failed to load persisted pipeline state:', e);
+    logger.warn('Failed to load persisted pipeline state:', e);
   }
   return [];
 }
@@ -57,7 +58,7 @@ function persistState(operators: UnifiedOperator[]): void {
     sessionStorage.setItem(PIPELINE_STORAGE_KEY, JSON.stringify(operators));
   } catch (e) {
     // sessionStorage might be full or disabled
-    console.warn('Failed to persist pipeline state:', e);
+    logger.warn('Failed to persist pipeline state:', e);
   }
 }
 

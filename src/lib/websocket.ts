@@ -7,6 +7,8 @@
  * Phase 5 Implementation.
  */
 
+import { logger } from "./logger";
+
 export type MessageType =
   | 'job_started'
   | 'job_progress'
@@ -299,7 +301,7 @@ export class WebSocketClient {
     if (!this.socket) return;
 
     this.socket.onopen = () => {
-      console.log('WebSocket connected');
+      logger.log('WebSocket connected');
       this.reconnectAttempts = 0;
       this.startHeartbeat();
 
@@ -315,7 +317,7 @@ export class WebSocketClient {
     };
 
     this.socket.onclose = () => {
-      console.log('WebSocket disconnected');
+      logger.log('WebSocket disconnected');
       this.stopHeartbeat();
 
       // Notify handlers
@@ -387,14 +389,14 @@ export class WebSocketClient {
 
   private handleReconnect(): void {
     if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
-      console.log('Max reconnect attempts reached');
+      logger.log('Max reconnect attempts reached');
       return;
     }
 
     this.stopReconnect();
     this.reconnectAttempts++;
 
-    console.log(
+    logger.log(
       `Reconnecting in ${this.options.reconnectDelay}ms (attempt ${this.reconnectAttempts}/${this.options.maxReconnectAttempts})`
     );
 

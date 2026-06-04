@@ -14,6 +14,7 @@
 
 import type { NodeDefinition, NodeType, ParameterDefinition, ParameterType, CustomNodesFile } from '../types';
 import * as api from '@/api/client';
+import { logger } from "@/lib/logger";
 
 // Re-export CustomNodesFile for consumers
 export type { CustomNodesFile } from '../types';
@@ -948,7 +949,7 @@ export class CustomNodeStorage {
     const storedVersion = localStorage.getItem(STORAGE_KEYS.VERSION);
     if (storedVersion !== CURRENT_VERSION) {
       // Future: Add migration logic here
-      console.log(`Migrating custom nodes from ${storedVersion} to ${CURRENT_VERSION}`);
+      logger.log(`Migrating custom nodes from ${storedVersion} to ${CURRENT_VERSION}`);
     }
   }
 }

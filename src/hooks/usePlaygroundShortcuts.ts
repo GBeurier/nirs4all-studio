@@ -13,6 +13,7 @@
 
 import { useEffect, useCallback, useMemo, useState } from 'react';
 import { useSelection } from '@/context/SelectionContext';
+import { logger } from "@/lib/logger";
 
 // ============= Types =============
 
@@ -531,7 +532,7 @@ export function usePlaygroundShortcuts(
   // Log conflicts in development
   useEffect(() => {
     if (conflicts.length > 0 && process.env.NODE_ENV === 'development') {
-      console.warn('[usePlaygroundShortcuts] Detected shortcut conflicts:', conflicts);
+      logger.warn('[usePlaygroundShortcuts] Detected shortcut conflicts:', conflicts);
     }
   }, [conflicts]);
 

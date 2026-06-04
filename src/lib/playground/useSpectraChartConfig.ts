@@ -37,6 +37,7 @@ import {
   serializeConfig,
   deserializeConfig,
 } from './spectraConfig';
+import { logger } from "../logger";
 
 const STORAGE_KEY = 'playground-spectra-chart-config';
 
@@ -136,7 +137,7 @@ function loadPersistedConfig(): SpectraChartConfig | null {
       return deserializeConfig(stored);
     }
   } catch (e) {
-    console.warn('Failed to load persisted spectra chart config:', e);
+    logger.warn('Failed to load persisted spectra chart config:', e);
   }
   return null;
 }
@@ -148,7 +149,7 @@ function persistConfig(config: SpectraChartConfig): void {
   try {
     sessionStorage.setItem(STORAGE_KEY, serializeConfig(config));
   } catch (e) {
-    console.warn('Failed to persist spectra chart config:', e);
+    logger.warn('Failed to persist spectra chart config:', e);
   }
 }
 

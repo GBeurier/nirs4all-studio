@@ -6,6 +6,7 @@ import {
   addDiagnosticsBreadcrumb,
   captureDiagnosticsError,
 } from "@/lib/diagnostics";
+import { logger } from "@/lib/logger";
 
 // Default API base URL for web mode (uses Vite proxy)
 const DEFAULT_API_BASE_URL = "/api";
@@ -86,7 +87,7 @@ async function getApiBaseUrl(): Promise<string> {
         const electronApi = (window as unknown as { electronApi: { getBackendUrl: () => Promise<string> } }).electronApi;
         const backendUrl = await electronApi.getBackendUrl();
         resolvedBackendUrl = `${backendUrl}/api`;
-        console.log(`[API Client] Using Electron backend URL: ${resolvedBackendUrl}`);
+        logger.log(`[API Client] Using Electron backend URL: ${resolvedBackendUrl}`);
         return resolvedBackendUrl;
       } catch (error) {
         console.error("Failed to get backend URL from Electron:", error);

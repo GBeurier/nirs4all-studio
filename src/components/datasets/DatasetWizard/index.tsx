@@ -37,6 +37,7 @@ import { ParsingStep } from "./ParsingStep";
 import { TargetsStep } from "./TargetsStep";
 import { PreviewStep } from "./PreviewStep";
 import type { WizardStep, DatasetConfig, DatasetFile } from "@/types/datasets";
+import { logger } from "@/lib/logger";
 
 // Step configuration
 const STEP_CONFIG: Record<
@@ -400,7 +401,7 @@ function WizardContent({ onAdd, onClose }: WizardContentProps) {
             },
           });
         } catch (error) {
-          console.warn("Auto-detection failed:", error);
+          logger.warn("Auto-detection failed:", error);
           dispatch({ type: "SET_FILES", payload: [] });
         } finally {
           dispatch({ type: "SET_LOADING", payload: false });

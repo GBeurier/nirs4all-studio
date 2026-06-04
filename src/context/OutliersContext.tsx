@@ -19,6 +19,7 @@ import {
   useEffect,
   type ReactNode,
 } from 'react';
+import { logger } from "../lib/logger";
 
 // ============= Types =============
 
@@ -146,7 +147,7 @@ function persistState(state: OutliersState): void {
     };
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
   } catch (e) {
-    console.warn('Failed to persist outliers state:', e);
+    logger.warn('Failed to persist outliers state:', e);
   }
 }
 
@@ -160,7 +161,7 @@ function loadPersistedState(): Partial<OutliersState> | null {
       };
     }
   } catch (e) {
-    console.warn('Failed to load persisted outliers state:', e);
+    logger.warn('Failed to load persisted outliers state:', e);
   }
   return null;
 }

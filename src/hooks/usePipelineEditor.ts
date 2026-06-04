@@ -9,6 +9,7 @@ import type {
 } from "../components/pipeline-editor/types";
 import { createStepFromOption, cloneStep } from "../components/pipeline-editor/types";
 import { importFromNirs4all, exportToNirs4all as exportToNirs4allFormat } from "../utils/pipelineConverter";
+import { logger } from "../lib/logger";
 
 // Storage key for persisting pipeline editor state
 const STORAGE_KEY_PREFIX = "nirs4all_pipeline_editor_";
@@ -43,7 +44,7 @@ function loadPersistedState(pipelineId: string): PersistedPipelineState | null {
       return JSON.parse(stored);
     }
   } catch (e) {
-    console.warn("Failed to load persisted pipeline state:", e);
+    logger.warn("Failed to load persisted pipeline state:", e);
   }
   return null;
 }
@@ -53,7 +54,7 @@ function savePersistedState(pipelineId: string, state: PersistedPipelineState): 
     const key = getPersistenceKey(pipelineId);
     localStorage.setItem(key, JSON.stringify(state));
   } catch (e) {
-    console.warn("Failed to persist pipeline state:", e);
+    logger.warn("Failed to persist pipeline state:", e);
   }
 }
 
@@ -62,7 +63,7 @@ function clearPersistedState(pipelineId: string): void {
     const key = getPersistenceKey(pipelineId);
     localStorage.removeItem(key);
   } catch (e) {
-    console.warn("Failed to clear persisted pipeline state:", e);
+    logger.warn("Failed to clear persisted pipeline state:", e);
   }
 }
 

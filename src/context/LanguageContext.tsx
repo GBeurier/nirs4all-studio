@@ -24,6 +24,7 @@ import {
   type SupportedLanguage,
 } from "@/lib/i18n";
 import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/client";
+import { logger } from "@/lib/logger";
 
 /**
  * Language context type definition
@@ -115,7 +116,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const changeLanguage = useCallback(
     async (newLang: SupportedLanguage) => {
       if (!supportedLanguages.some((l) => l.code === newLang)) {
-        console.warn(`Unsupported language: ${newLang}`);
+        logger.warn(`Unsupported language: ${newLang}`);
         return;
       }
 

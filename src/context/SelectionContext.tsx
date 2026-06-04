@@ -24,6 +24,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import { logger } from "../lib/logger";
 
 // ============= Types =============
 
@@ -802,7 +803,7 @@ function persistState(state: SelectionState): void {
     };
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
   } catch (e) {
-    console.warn('Failed to persist selection state:', e);
+    logger.warn('Failed to persist selection state:', e);
   }
 }
 
@@ -821,7 +822,7 @@ function loadPersistedState(): Partial<SelectionState> | null {
       };
     }
   } catch (e) {
-    console.warn('Failed to load persisted selection state:', e);
+    logger.warn('Failed to load persisted selection state:', e);
   }
   return null;
 }

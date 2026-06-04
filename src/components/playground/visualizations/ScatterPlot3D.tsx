@@ -25,6 +25,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { logger } from "@/lib/logger";
 
 // ============= Types =============
 
@@ -121,7 +122,7 @@ function normalizeData(data: DataPoint[]): { normalized: NormalizedDataPoint[]; 
   if (!Number.isFinite(minX) || !Number.isFinite(maxX) ||
       !Number.isFinite(minY) || !Number.isFinite(maxY) ||
       !Number.isFinite(minZ) || !Number.isFinite(maxZ)) {
-    console.warn('[ScatterPlot3D] Invalid bounds detected, using defaults');
+    logger.warn('[ScatterPlot3D] Invalid bounds detected, using defaults');
     return { normalized: [], bounds: defaultBounds };
   }
 

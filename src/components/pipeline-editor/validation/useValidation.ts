@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import { createEmptyValidationResult, getStepIssues, getParameterIssues } from "./types";
 import { validate } from "./engine";
+import { logger } from "../../../lib/logger";
 
 // ============================================================================
 // Hook Configuration
@@ -275,7 +276,7 @@ export function useValidation(
     if (onNavigateToIssue) {
       onNavigateToIssue(issue);
     } else {
-      console.log("Navigate to issue:", issue.location);
+      logger.log("Navigate to issue:", issue.location);
     }
   }, [onNavigateToIssue]);
 

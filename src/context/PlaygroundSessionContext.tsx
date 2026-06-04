@@ -19,6 +19,7 @@ import {
 } from 'react';
 import type { UnifiedOperator } from '@/types/playground';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
+import { logger } from "@/lib/logger";
 
 // ============= Types =============
 
@@ -109,7 +110,7 @@ function loadSession(): PlaygroundSessionState | null {
 
     return parsed;
   } catch (e) {
-    console.warn('Failed to load playground session:', e);
+    logger.warn('Failed to load playground session:', e);
     return null;
   }
 }
@@ -118,7 +119,7 @@ function persistSession(state: PlaygroundSessionState): void {
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
-    console.warn('Failed to persist playground session:', e);
+    logger.warn('Failed to persist playground session:', e);
   }
 }
 

@@ -5,6 +5,7 @@
 
 import type { PickingBuffer } from '../types';
 import { pickColorToIndex } from './colorEncoding';
+import { logger } from "../../../../../lib/logger";
 
 /**
  * Create an offscreen framebuffer for picking
@@ -64,7 +65,7 @@ export function createPickingBuffer(
   // Check completeness
   const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
   if (status !== gl.FRAMEBUFFER_COMPLETE) {
-    console.warn('Picking framebuffer not complete:', status);
+    logger.warn('Picking framebuffer not complete:', status);
   }
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);

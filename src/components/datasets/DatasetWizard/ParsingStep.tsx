@@ -44,6 +44,7 @@ import { useWizard, DEFAULT_PARSING } from "./WizardContext";
 import { detectFormat, autoDetectFile } from "@/api/client";
 import type { ParsingOptions, HeaderUnit, SignalType, NaPolicy, NaFillConfig, DetectionConfidence } from "@/types/datasets";
 import { useTranslation } from "react-i18next";
+import { logger } from "@/lib/logger";
 
 // Confidence indicator component
 function ConfidenceIndicator({ value, field }: { value?: number; field: string }) {
@@ -533,7 +534,7 @@ export function ParsingStep() {
               },
             });
           } catch (e) {
-            console.warn("Client-side detection failed:", e);
+            logger.warn("Client-side detection failed:", e);
           }
         }
         setAutoDetecting(false);
@@ -625,7 +626,7 @@ export function ParsingStep() {
               },
             });
           } catch (e) {
-            console.warn("Client-side per-file detection failed:", e);
+            logger.warn("Client-side per-file detection failed:", e);
           }
         }
         return;

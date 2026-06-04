@@ -13,6 +13,7 @@ import { useWizard } from "./WizardContext";
 import { selectFolder, selectFile, isDesktop } from "@/utils/fileDialogs";
 import { detectUnified } from "@/api/client";
 import type { WizardSourceType, DetectedFile } from "@/types/datasets";
+import { logger } from "@/lib/logger";
 
 interface SourceOptionProps {
   type: WizardSourceType;
@@ -149,7 +150,7 @@ export function SourceStep() {
           });
         } catch (e) {
           // If detection fails, continue with empty files (manual mapping)
-          console.warn("Auto-detection failed, manual mapping required:", e);
+          logger.warn("Auto-detection failed, manual mapping required:", e);
           dispatch({ type: "SET_FILES", payload: [] });
         }
 

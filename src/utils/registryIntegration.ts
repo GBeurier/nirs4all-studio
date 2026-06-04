@@ -12,6 +12,7 @@
 import type { NodeRegistry } from '@/data/nodes/NodeRegistry';
 import type { StepType } from '@/components/pipeline-editor/types';
 import type { NodeType } from '@/data/nodes/types';
+import { logger } from "@/lib/logger";
 
 /**
  * Options for creating a registry-based class path resolver
@@ -45,7 +46,7 @@ export function createClassPathResolver(
     // Try fallback mappings
     if (fallbackMappings[classPath]) {
       if (warnOnFallback) {
-        console.warn(`[RegistryResolver] Using fallback for classPath: ${classPath}`);
+        logger.warn(`[RegistryResolver] Using fallback for classPath: ${classPath}`);
       }
       return fallbackMappings[classPath];
     }

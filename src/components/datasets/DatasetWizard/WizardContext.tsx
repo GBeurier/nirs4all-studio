@@ -21,6 +21,7 @@ import type {
 } from "@/types/datasets";
 import { getDataLoadingDefaults } from "@/api/client";
 import type { DataLoadingDefaults } from "@/types/settings";
+import { logger } from "@/lib/logger";
 
 // System default parsing options (fallback)
 const SYSTEM_DEFAULT_PARSING: ParsingOptions = {
@@ -362,7 +363,7 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
       dispatch({ type: "APPLY_DEFAULTS", payload: parsingDefaults });
     } catch (error) {
       // Workspace may not be selected, use system defaults
-      console.log("Using system defaults for parsing options");
+      logger.log("Using system defaults for parsing options");
       setWorkspaceDefaults(SYSTEM_DEFAULT_PARSING);
     } finally {
       setIsLoadingDefaults(false);

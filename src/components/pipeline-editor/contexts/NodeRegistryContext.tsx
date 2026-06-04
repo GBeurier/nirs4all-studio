@@ -34,6 +34,7 @@ import {
   type NodeType,
   type CategoryConfig,
 } from "@/data/nodes";
+import { logger } from "@/lib/logger";
 
 // ============================================================================
 // Feature Flag
@@ -348,7 +349,7 @@ export function NodeRegistryProvider({
     setRegistry(mergedRegistry);
 
     if (import.meta.env.DEV) {
-      console.log(
+      logger.log(
         "[NodeRegistry] Built (merged)",
         { extendedMode, extendedCount: extendedNodes?.length ?? 0, customCount: customNodes.length },
         mergedRegistry.getStats()

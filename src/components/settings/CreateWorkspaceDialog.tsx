@@ -37,6 +37,7 @@ import {
 import { selectFolder } from "@/utils/fileDialogs";
 import { createWorkspace, selectWorkspace, getLinkedWorkspaces, activateN4AWorkspace } from "@/api/client";
 import type { WorkspaceInfo } from "@/types/settings";
+import { logger } from "@/lib/logger";
 
 export interface CreateWorkspaceDialogProps {
   /** Callback when workspace is created successfully */
@@ -141,7 +142,7 @@ export function CreateWorkspaceDialog({
           }
         } catch {
           // Workspace was created successfully, activation is best-effort
-          console.warn("Workspace created but activation failed");
+          logger.warn("Workspace created but activation failed");
         }
       }
 

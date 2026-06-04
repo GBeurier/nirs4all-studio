@@ -62,6 +62,7 @@ import {
   detectUnified,
 } from "@/api/client";
 import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
+import { logger } from "@/lib/logger";
 
 function getApiStatus(error: unknown): number | undefined {
   return typeof error === "object" && error !== null
@@ -160,7 +161,7 @@ export default function Datasets() {
         initialState.foldFilePath = result.fold_file_path;
         initialState.metadataColumns = result.metadata_columns;
       } catch (e) {
-        console.warn("Unified detection failed, wizard will handle manually:", e);
+        logger.warn("Unified detection failed, wizard will handle manually:", e);
       }
     } else if (content.type === "folder" && content.folderName && content.items.length > 0) {
       // Web mode: folder dropped with file contents but no filesystem path
@@ -411,7 +412,7 @@ export default function Datasets() {
         alert(getErrorMessage(error, "Failed to remove dataset"));
         return;
       }
-      console.warn("Dataset was already removed:", dataset.id);
+      logger.warn("Dataset was already removed:", dataset.id);
     }
 
     // Clear quick view if deleted dataset was selected

@@ -8,6 +8,7 @@
  */
 
 import { PERFORMANCE_BUDGETS, createPerformanceMonitor, detectDeviceCapabilities } from './renderOptimizer';
+import { logger } from "../logger";
 
 // ============= Types =============
 
@@ -225,10 +226,10 @@ export async function runBaselines(): Promise<BaselineReport> {
   const capabilities = detectDeviceCapabilities();
   const results: BaselineResult[] = [];
 
-  console.log('[PerformanceBaselines] Starting baseline measurements...');
+  logger.log('[PerformanceBaselines] Starting baseline measurements...');
 
   // 1. Initial render (500 samples)
-  console.log('[PerformanceBaselines] Testing initial render (500 samples)...');
+  logger.log('[PerformanceBaselines] Testing initial render (500 samples)...');
   await whenIdle();
   const render500 = await measureSyntheticRender(500);
   results.push({
@@ -240,7 +241,7 @@ export async function runBaselines(): Promise<BaselineReport> {
   });
 
   // 2. Initial render (5000 samples)
-  console.log('[PerformanceBaselines] Testing initial render (5000 samples)...');
+  logger.log('[PerformanceBaselines] Testing initial render (5000 samples)...');
   await whenIdle();
   const render5000 = await measureSyntheticRender(5000);
   results.push({
@@ -252,7 +253,7 @@ export async function runBaselines(): Promise<BaselineReport> {
   });
 
   // 3. Selection response
-  console.log('[PerformanceBaselines] Testing selection response...');
+  logger.log('[PerformanceBaselines] Testing selection response...');
   await whenIdle();
   const selectionTime = await measureSelectionResponse();
   results.push({
@@ -264,7 +265,7 @@ export async function runBaselines(): Promise<BaselineReport> {
   });
 
   // 4. Frame rate
-  console.log('[PerformanceBaselines] Measuring frame rate...');
+  logger.log('[PerformanceBaselines] Measuring frame rate...');
   await whenIdle();
   const fps = await measureFrameRate(2000);
   results.push({
@@ -315,8 +316,8 @@ export async function runBaselines(): Promise<BaselineReport> {
     summary: { passed, warnings, failed, score },
   };
 
-  console.log('[PerformanceBaselines] Baseline report:', report);
-  console.log(`[PerformanceBaselines] Score: ${score}% (${passed} passed, ${warnings} warnings, ${failed} failed)`);
+  logger.log('[PerformanceBaselines] Baseline report:', report);
+  logger.log(`[PerformanceBaselines] Score: ${score}% (${passed} passed, ${warnings} warnings, ${failed} failed)`);
 
   return report;
 }

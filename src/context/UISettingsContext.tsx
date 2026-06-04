@@ -20,6 +20,7 @@ import {
 import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/client";
 import type { UIDensity, UIZoomLevel, GeneralSettings } from "@/types/settings";
 import { DEFAULT_GENERAL_SETTINGS } from "@/types/settings";
+import { logger } from "@/lib/logger";
 
 interface UISettingsContextType {
   /** Current UI density */
@@ -183,7 +184,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
           general: { ...currentGeneral, ui_density: newDensity },
         });
       } catch (error) {
-        console.debug("Failed to sync density to workspace:", error);
+        logger.debug("Failed to sync density to workspace:", error);
       }
     }
   }, [hasWorkspace, getCurrentGeneral]);
@@ -200,7 +201,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
           general: { ...currentGeneral, reduce_animations: reduce },
         });
       } catch (error) {
-        console.debug("Failed to sync animations setting to workspace:", error);
+        logger.debug("Failed to sync animations setting to workspace:", error);
       }
     }
   }, [hasWorkspace, getCurrentGeneral]);
@@ -217,7 +218,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
           general: { ...currentGeneral, zoom_level: level },
         });
       } catch (error) {
-        console.debug("Failed to sync zoom level to workspace:", error);
+        logger.debug("Failed to sync zoom level to workspace:", error);
       }
     }
   }, [hasWorkspace, getCurrentGeneral]);

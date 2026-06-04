@@ -3,6 +3,8 @@
  * Supports Electron environment
  */
 
+import { logger } from "../lib/logger";
+
 /**
  * Check if running in Electron environment
  */
@@ -79,7 +81,7 @@ export async function revealInExplorer(filePath: string): Promise<void> {
     return await window.electronApi.revealInExplorer(filePath);
   }
   // No browser fallback
-  console.warn("revealInExplorer is not available in browser mode");
+  logger.warn("revealInExplorer is not available in browser mode");
 }
 
 /**
