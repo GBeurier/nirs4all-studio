@@ -26,6 +26,7 @@ coverage
 
 *storybook.log
 storybook-static
+site/
 package-lock.json
 
 # PyInstaller

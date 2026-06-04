@@ -1,0 +1,105 @@
+site_name: nirs4all Studio
+site_description: Desktop and web application for NIRS analysis workflows.
+site_url: !ENV READTHEDOCS_CANONICAL_URL
+repo_url: https://github.com/GBeurier/nirs4all-studio
+repo_name: GBeurier/nirs4all-studio
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  logo: null
+  favicon: null
+  language: en
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - toc.follow
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Install and Run: getting-started/installation.md
+      - Development Setup: getting-started/development.md
+  - User Guide:
+      - Workspaces: user-guide/workspaces.md
+      - Datasets: user-guide/datasets.md
+      - Pipelines: user-guide/pipelines.md
+      - Runs and Results: user-guide/runs-results.md
+      - Analysis Tools: user-guide/analysis.md
+  - Reference:
+      - API Overview: reference/api.md
+      - Configuration: reference/configuration.md
+  - Developer:
+      - Overview: development/index.md
+      - Architecture: development/architecture.md
+      - Repository Map: development/repository-map.md
+      - Backend: development/backend.md
+      - Frontend: development/frontend.md
+      - Pipeline Editor: development/pipeline-editor.md
+      - Jobs and WebSockets: development/jobs-websockets.md
+      - Electron Desktop: development/electron.md
+      - Diagnostics: development/diagnostics.md
+      - Custom Nodes: development/custom-nodes.md
+      - Testing: development/testing.md
+      - Packaging and Releases: development/releasing.md
+      - Docs Site: development/docs-site.md
+  - Troubleshooting: troubleshooting.md
+  - Contributing:
+      - Documentation: contributing/documentation.md
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+exclude_docs: |
+  _internal/**
+  _internals/**
+  API_UPDATES.md
+  ELECTRON.md
+  PACKAGING.md
+  UPDATE_SYSTEM.md
+  webapp_api_library_discrepancy_review.md
+  requirements.txt
+  sources/**
+
+validation:
+  nav:
+    omitted_files: ignore
+  links:
+    not_found: warn
+    absolute_links: ignore
+    unrecognized_links: warn
