@@ -168,8 +168,8 @@ class TestDatasetsEndpoints:
         tmp_path,
     ):
         """Legacy linked datasets without stored metadata columns should be enriched on read."""
-        import api.workspace as workspace_api
         from api.app_config import app_config
+        from api.workspace import router_datasets as workspace_api
 
         dataset_dir = tmp_path / "legacy_grouping_dataset"
         dataset_dir.mkdir()

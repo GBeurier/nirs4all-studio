@@ -454,7 +454,7 @@ class TestStoreAdapter:
 
         adapter = self._make_adapter(mock_store)
 
-        from api.workspace import _build_dataset_scores_payload
+        from api.workspace.services import _build_dataset_scores_payload
 
         payload = _build_dataset_scores_payload(
             adapter,
@@ -472,7 +472,7 @@ class TestStoreAdapter:
         assert score_entry["model_name"] == "Model A"
 
     def test_normalize_run_dataset_entries_backfills_name_and_dataset_name(self):
-        from api.workspace import _normalize_run_dataset_entries
+        from api.workspace.services import _normalize_run_dataset_entries
 
         normalized = _normalize_run_dataset_entries([
             {"name": "regression"},
@@ -487,7 +487,7 @@ class TestStoreAdapter:
         ]
 
     def test_resolve_dataset_mapping_matches_name_only_historical_run_entries(self):
-        from api.workspace import _resolve_dataset_mapping
+        from api.workspace.services import _resolve_dataset_mapping
 
         datasets_result = [{"name": "regression"}]
 
@@ -500,7 +500,7 @@ class TestStoreAdapter:
         assert datasets_result[0]["dataset_name"] == "regression"
 
     def test_resolve_dataset_mapping_keeps_prefix_matching_when_linked_id_is_null(self):
-        from api.workspace import _resolve_dataset_mapping
+        from api.workspace.services import _resolve_dataset_mapping
 
         datasets_result = [{
             "name": "regression_Xcal.csv",
@@ -516,7 +516,7 @@ class TestStoreAdapter:
         assert datasets_result[0]["linked_dataset_id"] == "ds_reg"
 
     def test_resolve_dataset_mapping_remaps_stale_linked_dataset_id(self):
-        from api.workspace import _resolve_dataset_mapping
+        from api.workspace.services import _resolve_dataset_mapping
 
         datasets_result = [{"name": "regression", "linked_dataset_id": "old_reg"}]
 
@@ -744,7 +744,7 @@ class TestStoreAdapter:
 
 class TestWorkspaceResultsCaches:
     def test_invalidate_results_caches_accepts_workspace_path(self, tmp_path):
-        from api import workspace as workspace_module
+        from api.workspace import _shared as workspace_module
 
         workspace_dir = tmp_path / "workspace"
         workspace_dir.mkdir()
