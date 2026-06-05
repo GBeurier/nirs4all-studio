@@ -475,6 +475,8 @@ def test_get_enriched_runs_ignores_repr_style_refit_splitter_when_inferring_cv_c
                 "preprocessings": "SNV",
                 "cv_fold_count": 5,
                 "best_params": None,
+                "final_test_score": 0.13,
+                "final_train_score": 0.09,
             }
         ]
     )

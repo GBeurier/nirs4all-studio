@@ -30,8 +30,7 @@ export interface EnrichedRun {
     test_size?: number;
     group_by?: string;
     has_refit?: boolean;
-    refit_pipeline_count?: number;
-    n_pipelines?: number;
+      n_pipelines?: number;
     n_datasets?: number;
   };
   model_classes?: Array<{ name: string; count: number }>;
@@ -160,7 +159,6 @@ export interface WorkspaceRunPipelineDetail {
   error?: string | null;
   expanded_config?: unknown;
   generator_choices?: unknown;
-  is_refit_pipeline?: boolean;
   splitter_class?: string | null;
   log_count?: number;
   total_duration_ms?: number | null;

@@ -175,10 +175,20 @@ class TestStoreAdapter:
             },
         ])
 
+        # has_refit derives from chain summaries carrying native final scores
+        mock_store.query_chain_summaries.return_value = mock_polars_df([
+            {
+                "chain_id": "chain-001",
+                "final_test_score": 0.12,
+                "final_train_score": 0.10,
+            },
+        ])
+
         adapter = self._make_adapter(mock_store)
         result = adapter.get_run_detail("run-001")
 
         assert result is not None
+        # The repr-style internal splitter string must not pollute CV inference
         assert result["config"]["cv_strategy"] == "kfold"
         assert result["config"]["splitter_class"] == "KFold"
         assert result["config"]["cv_folds"] == 5
@@ -187,9 +197,7 @@ class TestStoreAdapter:
         assert result["config"]["has_refit"] is True
 
         pipelines = {pipeline["pipeline_id"]: pipeline for pipeline in result["pipelines"]}
-        assert pipelines["pipe-refit"]["is_refit_pipeline"] is True
         assert pipelines["pipe-refit"]["splitter_class"] is None
-        assert pipelines["pipe-cv"]["is_refit_pipeline"] is False
         assert pipelines["pipe-cv"]["splitter_class"] == "KFold"
 
     def test_get_run_detail_not_found(self):
@@ -352,221 +360,6 @@ class TestStoreAdapter:
         assert refit_chain.get("is_refit_only") is True
         cv_chain = next(c for c in top_chains if c["chain_id"] == "chain-cv-final-winner")
         assert cv_chain.get("is_refit_only") is not True
-
-    def test_get_dataset_top_chains_matches_refit_to_cv_by_variant_params(self, mock_polars_df):
-        """Matched refit chains must inherit CV scores from the matching fixed-parameter variant."""
-        mock_store = MagicMock()
-        mock_store.query_chain_summaries.return_value = mock_polars_df([
-            {
-                "chain_id": "chain-pls-2",
-                "run_id": "run-001",
-                "pipeline_id": "pipe-pls-2",
-                "dataset_name": "dataset_a",
-                "metric": "rmse",
-                "task_type": "regression",
-                "model_name": "PLS",
-                "model_class": "PLSRegression",
-                "preprocessings": "SNV",
-                "cv_val_score": 23.314,
-                "cv_test_score": 22.0,
-                "cv_train_score": 21.0,
-                "cv_fold_count": 3,
-                "cv_scores": {},
-                "final_test_score": None,
-                "final_train_score": None,
-                "final_scores": {},
-                "best_params": None,
-                "model_step_idx": 3,
-            },
-            {
-                "chain_id": "chain-pls-6",
-                "run_id": "run-001",
-                "pipeline_id": "pipe-pls-6",
-                "dataset_name": "dataset_a",
-                "metric": "rmse",
-                "task_type": "regression",
-                "model_name": "PLS",
-                "model_class": "PLSRegression",
-                "preprocessings": "SNV",
-                "cv_val_score": 12.811,
-                "cv_test_score": 10.615,
-                "cv_train_score": 11.432,
-                "cv_fold_count": 3,
-                "cv_scores": {},
-                "final_test_score": None,
-                "final_train_score": None,
-                "final_scores": {},
-                "best_params": None,
-                "model_step_idx": 3,
-            },
-            {
-                "chain_id": "chain-pls-refit",
-                "run_id": "run-001",
-                "pipeline_id": "pipe-pls-refit",
-                "dataset_name": "dataset_a",
-                "metric": "rmse",
-                "task_type": "regression",
-                "model_name": "PLS",
-                "model_class": "PLSRegression",
-                "preprocessings": "SNV",
-                "cv_val_score": None,
-                "cv_test_score": None,
-                "cv_train_score": None,
-                "cv_fold_count": 0,
-                "cv_scores": None,
-                "final_test_score": 23.672,
-                "final_train_score": 22.654,
-                "final_scores": {},
-                "best_params": None,
-                "model_step_idx": 3,
-            },
-        ])
-
-        adapter = self._make_adapter(mock_store)
-        adapter._get_pipeline_metadata_map = MagicMock(return_value={
-            "pipe-pls-2": {
-                "pipeline_id": "pipe-pls-2",
-                "expanded_config": [
-                    {"class": "sklearn.model_selection._split.KFold", "params": {"n_splits": 3}},
-                    None,
-                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 2}}, "name": "PLS"},
-                ],
-            },
-            "pipe-pls-6": {
-                "pipeline_id": "pipe-pls-6",
-                "expanded_config": [
-                    {"class": "sklearn.model_selection._split.KFold", "params": {"n_splits": 3}},
-                    None,
-                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 6}}, "name": "PLS"},
-                ],
-            },
-            "pipe-pls-refit": {
-                "pipeline_id": "pipe-pls-refit",
-                "expanded_config": [
-                    {"class": "nirs4all.pipeline.execution.refit.executor._FullTrainFoldSplitter", "params": {}},
-                    None,
-                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 6}}, "name": "PLS"},
-                ],
-            },
-        })
-
-        result = adapter.get_dataset_top_chains(n=5)
-
-        top_chains = result["datasets"][0]["top_chains"]
-        refit_chain = next(chain for chain in top_chains if chain["chain_id"] == "chain-pls-refit")
-        assert refit_chain["avg_val_score"] == pytest.approx(12.811)
-        assert refit_chain["avg_test_score"] == pytest.approx(10.615)
-        assert refit_chain["fold_count"] == 3
-        assert refit_chain["cv_source_chain_id"] == "chain-pls-6"
-        assert refit_chain.get("is_refit_only") is not True
-        assert refit_chain["variant_params"] == {"n_components": 6}
-
-    def test_get_all_chains_for_dataset_pairs_refit_with_matching_cv_chain(self, mock_polars_df):
-        """Full dataset chain history must expose CV data for matched refit chains."""
-        mock_store = MagicMock()
-        mock_store.query_chain_summaries.return_value = mock_polars_df([
-            {
-                "chain_id": "chain-pls-2",
-                "run_id": "run-001",
-                "pipeline_id": "pipe-pls-2",
-                "dataset_name": "dataset_a",
-                "metric": "rmse",
-                "task_type": "regression",
-                "model_name": "PLS",
-                "model_class": "PLSRegression",
-                "preprocessings": "SNV",
-                "cv_val_score": 23.314,
-                "cv_test_score": 22.0,
-                "cv_train_score": 21.0,
-                "cv_fold_count": 3,
-                "cv_scores": {},
-                "final_test_score": None,
-                "final_train_score": None,
-                "final_scores": {},
-                "best_params": None,
-                "model_step_idx": 3,
-            },
-            {
-                "chain_id": "chain-pls-6",
-                "run_id": "run-001",
-                "pipeline_id": "pipe-pls-6",
-                "dataset_name": "dataset_a",
-                "metric": "rmse",
-                "task_type": "regression",
-                "model_name": "PLS",
-                "model_class": "PLSRegression",
-                "preprocessings": "SNV",
-                "cv_val_score": 12.811,
-                "cv_test_score": 10.615,
-                "cv_train_score": 11.432,
-                "cv_fold_count": 3,
-                "cv_scores": {},
-                "final_test_score": None,
-                "final_train_score": None,
-                "final_scores": {},
-                "best_params": None,
-                "model_step_idx": 3,
-            },
-            {
-                "chain_id": "chain-pls-refit",
-                "run_id": "run-001",
-                "pipeline_id": "pipe-pls-refit",
-                "dataset_name": "dataset_a",
-                "metric": "rmse",
-                "task_type": "regression",
-                "model_name": "PLS",
-                "model_class": "PLSRegression",
-                "preprocessings": "SNV",
-                "cv_val_score": None,
-                "cv_test_score": None,
-                "cv_train_score": None,
-                "cv_fold_count": 0,
-                "cv_scores": None,
-                "final_test_score": 23.672,
-                "final_train_score": 22.654,
-                "final_scores": {},
-                "best_params": None,
-                "model_step_idx": 3,
-            },
-        ])
-
-        adapter = self._make_adapter(mock_store)
-        adapter._get_pipeline_metadata_map = MagicMock(return_value={
-            "pipe-pls-2": {
-                "pipeline_id": "pipe-pls-2",
-                "expanded_config": [
-                    {"class": "sklearn.model_selection._split.KFold", "params": {"n_splits": 3}},
-                    None,
-                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 2}}, "name": "PLS"},
-                ],
-            },
-            "pipe-pls-6": {
-                "pipeline_id": "pipe-pls-6",
-                "expanded_config": [
-                    {"class": "sklearn.model_selection._split.KFold", "params": {"n_splits": 3}},
-                    None,
-                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 6}}, "name": "PLS"},
-                ],
-            },
-            "pipe-pls-refit": {
-                "pipeline_id": "pipe-pls-refit",
-                "expanded_config": [
-                    {"class": "nirs4all.pipeline.execution.refit.executor._FullTrainFoldSplitter", "params": {}},
-                    None,
-                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 6}}, "name": "PLS"},
-                ],
-            },
-        })
-
-        result = adapter.get_all_chains_for_dataset("run-001", "dataset_a")
-
-        refit_chain = next(chain for chain in result["chains"] if chain["chain_id"] == "chain-pls-refit")
-        assert refit_chain["cv_val_score"] == pytest.approx(12.811)
-        assert refit_chain["cv_test_score"] == pytest.approx(10.615)
-        assert refit_chain["cv_fold_count"] == 3
-        assert refit_chain["cv_source_chain_id"] == "chain-pls-6"
-        assert refit_chain["is_refit_only"] is not True
-        assert refit_chain["variant_params"] == {"n_components": 6}
 
     def test_get_dataset_top_chains_only_loads_metadata_for_selected(self, mock_polars_df):
         """``_get_pipeline_metadata_map`` must be called only with the

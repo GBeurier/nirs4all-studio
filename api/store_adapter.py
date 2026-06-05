@@ -146,12 +146,6 @@ def _class_name_from_path(class_path: Any) -> str:
     return normalized.rsplit(".", 1)[-1]
 
 
-def _is_internal_refit_splitter_reference(reference: str | None) -> bool:
-    """Return ``True`` for the runtime-only full-train refit splitter."""
-    normalized = _class_name_from_path(reference).lstrip("_").lower()
-    return normalized == "fulltrainfoldsplitter"
-
-
 def _extract_step_reference(step: Any) -> tuple[str | None, dict[str, Any]]:
     """Return ``(reference, params)`` for a canonical step when possible."""
     if isinstance(step, str):
@@ -171,14 +165,16 @@ def _extract_step_reference(step: Any) -> tuple[str | None, dict[str, Any]]:
 
 
 def _strategy_key_from_reference(reference: str | None) -> str | None:
-    """Normalize splitter/operator references to UI-friendly strategy keys."""
+    """Normalize splitter references to UI-friendly strategy keys.
+
+    The keys are PUBLIC sklearn/nirs4all splitter class names mapped onto the
+    studio's stable UI vocabulary — this is presentation naming, not library
+    internals. Unknown splitters fall back to their class name at the caller.
+    """
     if not isinstance(reference, str):
         return None
 
     normalized = _class_name_from_path(reference).lstrip("_").lower()
-    if normalized == "fulltrainfoldsplitter":
-        return "full_train"
-
     mapping = {
         "kfold": "kfold",
         "stratifiedkfold": "stratified_kfold",
@@ -207,7 +203,6 @@ def _infer_pipeline_runtime_config(expanded_config: Any) -> dict[str, Any]:
         "test_size": None,
         "group_by": None,
         "splitter_class": None,
-        "is_refit_pipeline": False,
     }
 
     for step in _parse_expanded_config_steps(expanded_config):
@@ -215,21 +210,19 @@ def _infer_pipeline_runtime_config(expanded_config: Any) -> dict[str, Any]:
         if not reference:
             continue
 
-        strategy_key = _strategy_key_from_reference(reference)
-        if strategy_key == "full_train":
-            info["is_refit_pipeline"] = True
+        # Skip non-reconstructable Python repr strings (the library's step
+        # parser applies the same rule) — e.g. internal runtime objects
+        # serialized via json.dumps(default=str).
+        if reference.strip().startswith("<"):
             continue
 
+        strategy_key = _strategy_key_from_reference(reference)
         class_name = _class_name_from_path(reference)
         normalized_reference = _OBJECT_REPR_RE.sub(r"\g<path>", str(reference).strip()).strip()
         if strategy_key is None and not any(
             token in normalized_reference.lower()
             for token in ("split", "fold", "loo", "holdout")
         ):
-            continue
-
-        if _is_internal_refit_splitter_reference(reference):
-            info["is_refit_pipeline"] = True
             continue
 
         info["cv_strategy"] = strategy_key or class_name or normalized_reference
@@ -264,15 +257,10 @@ def _infer_pipeline_runtime_config(expanded_config: Any) -> dict[str, Any]:
 def _infer_run_config_from_pipelines(pipelines: list[dict[str, Any]]) -> dict[str, Any]:
     """Infer run-level config hints from stored pipeline rows."""
     inferred: dict[str, Any] = {}
-    refit_pipeline_count = 0
     fallback_with_splitter: dict[str, Any] | None = None
 
     for pipeline in pipelines:
         pipeline_hint = _infer_pipeline_runtime_config(pipeline.get("expanded_config"))
-        if pipeline_hint.get("is_refit_pipeline"):
-            refit_pipeline_count += 1
-            continue
-
         if pipeline_hint.get("cv_strategy") or pipeline_hint.get("splitter_class"):
             fallback_with_splitter = pipeline_hint
             break
@@ -281,12 +269,8 @@ def _infer_run_config_from_pipelines(pipelines: list[dict[str, Any]]) -> dict[st
         inferred.update({
             key: value
             for key, value in fallback_with_splitter.items()
-            if key != "is_refit_pipeline" and value is not None
+            if value is not None
         })
-
-    if refit_pipeline_count > 0:
-        inferred["has_refit"] = True
-        inferred["refit_pipeline_count"] = refit_pipeline_count
 
     return inferred
 
@@ -390,8 +374,10 @@ def _signature_params(record: dict[str, Any]) -> Any:
 
 
 def _chain_match_signature(record: dict[str, Any]) -> tuple[str, str, str, str]:
-    """Build a stable signature for pairing refit-only rows with CV rows.
+    """Build a stable identity signature for a chain's stored configuration.
 
+    Used to find chains sharing the same (model, preprocessing, params)
+    configuration — e.g. related-chain deletion and top-chain dedup.
     ``variant_params`` takes precedence because fixed operator parameters
     are not always present in ``best_params``.
     """
@@ -493,62 +479,6 @@ def _attach_variant_params_inplace(
             ),
             best_params,
         )
-
-
-def _enrich_refit_with_cv_inplace(rows: list[dict[str, Any]]) -> None:
-    """Copy CV scores from sibling CV chains onto refit chains in-place.
-
-    A row is treated as a "refit-only" entry when ``final_test_score``
-    is set but ``cv_val_score`` is missing. The matching CV row is found
-    within the same run+dataset by comparing
-    ``(model_class, model_name, preprocessings, variant_params)``.
-    """
-    refits = [
-        r for r in rows
-        if (
-            r.get("final_test_score") is not None
-            and r.get("cv_val_score") is None
-        )
-    ]
-    if not refits:
-        return
-
-    cv_by_signature: dict[tuple[str, str, str, str, str, str], dict[str, Any]] = {}
-    for row in rows:
-        if row.get("cv_val_score") is None:
-            continue
-        sig = (
-            row.get("run_id") or "",
-            row.get("dataset_name") or "",
-            *_chain_match_signature(row),
-        )
-        cv_by_signature.setdefault(sig, row)
-
-    if not cv_by_signature:
-        return
-
-    for refit in refits:
-        match = cv_by_signature.get((
-            refit.get("run_id") or "",
-            refit.get("dataset_name") or "",
-            *_chain_match_signature(refit),
-        ))
-        if match is None:
-            continue
-        for field in _CV_FALLBACK_FIELDS:
-            current = refit.get(field)
-            if field == "cv_fold_count":
-                missing = not current
-            elif field == "cv_scores":
-                missing = not _parse_json_maybe(current)
-            else:
-                missing = current is None
-            if missing:
-                refit[field] = match.get(field)
-        if match.get("chain_id"):
-            refit["cv_source_chain_id"] = match.get("chain_id")
-        if _has_cv_summary_payload(refit):
-            refit["is_refit_only"] = False
 
 
 class StoreAdapter:
@@ -674,10 +604,19 @@ class StoreAdapter:
                 if isinstance(val, datetime):
                     p[ts_field] = val.isoformat()
             runtime_hint = _infer_pipeline_runtime_config(p.get("expanded_config"))
-            p["is_refit_pipeline"] = bool(runtime_hint.get("is_refit_pipeline"))
             p["splitter_class"] = runtime_hint.get("splitter_class")
             pipelines.append(p)
         inferred_config = _infer_run_config_from_pipelines(pipelines)
+        # Refit lives on the chain rows (final_* scores), not on separate
+        # pipelines — derive has_refit from the run's chain summaries.
+        try:
+            chains_df = self._store.query_chain_summaries(run_id=run_id)
+            inferred_config["has_refit"] = any(
+                row.get("final_test_score") is not None or row.get("final_train_score") is not None
+                for row in chains_df.iter_rows(named=True)
+            )
+        except Exception:
+            pass
         run_config = run.get("config")
         if not isinstance(run_config, dict):
             run_config = {}
@@ -1363,6 +1302,13 @@ class StoreAdapter:
             if agg_rows:
                 _attach_variant_params_inplace(agg_rows, pipeline_map)
 
+            # Genuine refit = chains carrying native final/refit scores
+            # (checked BEFORE the synthetic webapp-only fallback is applied).
+            run_has_refit = any(
+                agg.get("final_test_score") is not None or agg.get("final_train_score") is not None
+                for agg in agg_rows
+            )
+
             # Group by dataset_name, filtering out parasitic calibration/validation subsets
             _PARASITIC_DS_RE = re.compile(r"_X_?(?:cal|val)$", re.IGNORECASE)
             datasets_map: dict[str, list] = {}
@@ -1704,6 +1650,7 @@ class StoreAdapter:
 
             # Derive CV config from predictions + stored run config
             run_cv_config: dict[str, Any] = _infer_run_config_from_pipelines(pipeline_rows)
+            run_cv_config["has_refit"] = run_has_refit
             try:
                 cv_info_df = store._fetch_pl(
                     "SELECT COUNT(DISTINCT fold_id) as fold_count, "
@@ -1953,7 +1900,6 @@ class StoreAdapter:
         pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
         _attach_variant_params_inplace(rows, pipeline_map)
         _mark_refit_only_entries_inplace(rows)
-        _enrich_refit_with_cv_inplace(rows)
         for row in rows:
             _apply_synthetic_refit_fallback_inplace(row)
         metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
@@ -1989,7 +1935,6 @@ class StoreAdapter:
         pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
         _attach_variant_params_inplace(rows, pipeline_map)
         _mark_refit_only_entries_inplace(rows)
-        _enrich_refit_with_cv_inplace(rows)
         for row in rows:
             _apply_synthetic_refit_fallback_inplace(row)
         metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
@@ -2078,18 +2023,8 @@ class StoreAdapter:
                 continue
             datasets.setdefault(ds, []).append(row)
 
-        # Inherit CV scores from sibling CV chains for refit-only entries.
         for ds_chains in datasets.values():
             _mark_refit_only_entries_inplace(ds_chains)
-            has_refit_only = any(
-                chain.get("final_test_score") is not None and chain.get("cv_val_score") is None
-                for chain in ds_chains
-            )
-            if has_refit_only:
-                ds_pipeline_ids = [pid for pid in {r.get("pipeline_id") for r in ds_chains} if pid]
-                ds_pipeline_map = self._get_pipeline_metadata_map(ds_pipeline_ids)
-                _attach_variant_params_inplace(ds_chains, ds_pipeline_map)
-            _enrich_refit_with_cv_inplace(ds_chains)
             for chain in ds_chains:
                 _apply_synthetic_refit_fallback_inplace(chain)
 

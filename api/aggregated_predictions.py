@@ -12,6 +12,7 @@ All data is read from the workspace's SQLite store via
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import math
 import re
@@ -31,7 +32,7 @@ from .store_adapter import (
     _apply_synthetic_refit_fallback_inplace,
     _extract_model_params_from_expanded_config,
     _get_workspace_store_cls,
-    _merge_variant_params,
+    _mark_refit_only_entries_inplace,
     _parse_json_maybe,
 )
 from .workspace_manager import workspace_manager
@@ -129,9 +130,6 @@ class ChainSummary(BaseModel):
     fold_artifacts: dict[str, str] | None = None
 
 
-# Deprecated alias
-AggregatedPrediction = ChainSummary
-
 
 class ChainSummariesResponse(BaseModel):
     """Response for chain summaries query."""
@@ -140,9 +138,6 @@ class ChainSummariesResponse(BaseModel):
     total: int
     generated_at: str
 
-
-# Deprecated alias
-AggregatedPredictionsResponse = ChainSummariesResponse
 
 
 class PartitionPrediction(BaseModel):
@@ -349,47 +344,6 @@ def _enrich_with_fold_artifacts(records: list[dict], store: Any) -> list[dict]:
     return records
 
 
-def _mark_refit_only_records(records: list[dict]) -> list[dict]:
-    """Mark standalone refit rows before any synthetic CV enrichment happens."""
-    for record in records:
-        has_final = (
-            record.get("final_test_score") is not None
-            or record.get("final_train_score") is not None
-            or bool(_parse_json_maybe(record.get("final_scores")))
-        )
-        has_native_cv = _has_cv_summary_payload(record)
-        record["is_refit_only"] = bool(record.get("is_refit_only")) or (has_final and not has_native_cv)
-    return records
-
-
-def _has_cv_summary_payload(record: dict[str, Any]) -> bool:
-    """Return ``True`` when a summary row already has usable CV data."""
-    return (
-        record.get("cv_val_score") is not None
-        or record.get("cv_test_score") is not None
-        or record.get("cv_train_score") is not None
-        or bool(record.get("cv_fold_count"))
-        or bool(_parse_json_maybe(record.get("cv_scores")))
-    )
-
-
-def _stable_serialize(value: Any) -> str:
-    """Stable serialization for params signature comparison."""
-    import json as _json
-
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        try:
-            value = _json.loads(value)
-        except Exception:
-            return value
-    try:
-        return _json.dumps(value, sort_keys=True, default=str)
-    except Exception:
-        return str(value)
-
-
 def _build_pipeline_metadata_map(store: Any, pipeline_ids: list[str]) -> dict[str, dict[str, Any]]:
     """Load pipeline metadata needed to reconstruct fixed variant params."""
     if not pipeline_ids:
@@ -408,49 +362,6 @@ def _build_pipeline_metadata_map(store: Any, pipeline_ids: list[str]) -> dict[st
         }
     except Exception:
         return {}
-
-
-def _attach_variant_params_inplace(
-    records: list[dict[str, Any]],
-    pipeline_map: dict[str, dict[str, Any]],
-) -> None:
-    """Attach merged fixed + tuned params to raw chain-summary records."""
-    for record in records:
-        pipeline_row = pipeline_map.get(record.get("pipeline_id", ""), {})
-        best_params = _parse_json_maybe(record.get("best_params"))
-        if not isinstance(best_params, dict):
-            best_params = None
-        record["best_params"] = best_params
-        record["variant_params"] = _merge_variant_params(
-            _extract_model_params_from_expanded_config(
-                pipeline_row.get("expanded_config"),
-                record.get("model_step_idx"),
-            ),
-            best_params,
-        )
-
-
-def _signature_params(record: dict[str, Any]) -> Any:
-    """Return the richest available parameter payload for chain matching."""
-    variant_params = _parse_json_maybe(record.get("variant_params"))
-    if variant_params not in (None, "", {}):
-        return variant_params
-    return _parse_json_maybe(record.get("best_params"))
-
-
-def _chain_signature(record: dict) -> tuple[str, str, str, str]:
-    """Build a signature for matching CV ↔ refit chain pairs.
-
-    The signature is ``(model_class, model_name, preprocessings, params)``.
-    ``variant_params`` takes precedence because fixed operator parameters
-    are not always present in ``best_params``.
-    """
-    return (
-        record.get("model_class") or "",
-        record.get("model_name") or "",
-        record.get("preprocessings") or "",
-        _stable_serialize(_signature_params(record)),
-    )
 
 
 def _resolve_chain_id(store: Any, chain_id: str) -> str | None:
@@ -645,94 +556,6 @@ def _chain_step_to_canonical(step: dict[str, Any], *, is_model: bool) -> Any | N
     return _normalize_chain_payload(payload)
 
 
-def _enrich_refit_with_cv(records: list[dict], store: Any) -> list[dict]:
-    """For refit chains missing CV scores, copy them from a matching CV sibling.
-
-    A "refit chain" is one with a non-null ``final_test_score`` but null
-    ``cv_val_score``. Looks up sibling chains in the same run+dataset whose
-    ``(model_class, model_name, preprocessings, variant_params)`` signature
-    matches and copies their CV fields onto the refit record.
-    """
-    refit_records = [
-        r for r in records
-        if (
-            r.get("final_test_score") is not None
-            and r.get("cv_val_score") is None
-        )
-    ]
-    if not refit_records:
-        return records
-
-    # Group refit records by dataset to limit lookup scope.
-    datasets = {r.get("dataset_name") for r in refit_records if r.get("dataset_name")}
-    if not datasets:
-        return records
-
-    # Fetch all chains for each affected dataset.
-    cv_pool: list[dict] = []
-    seen_chain_ids: set[str] = set()
-    for dataset_name in datasets:
-        try:
-            df = store.query_chain_summaries(dataset_name=dataset_name)
-        except Exception:
-            continue
-        for row in df.iter_rows(named=True):
-            row_dict = dict(row)
-            cid = row_dict.get("chain_id")
-            if cid and cid not in seen_chain_ids and row_dict.get("cv_val_score") is not None:
-                cv_pool.append(row_dict)
-                seen_chain_ids.add(cid)
-
-    if not cv_pool:
-        return records
-
-    pipeline_ids = [
-        pid
-        for pid in {r.get("pipeline_id") for r in [*records, *cv_pool]}
-        if pid
-    ]
-    pipeline_map = _build_pipeline_metadata_map(store, pipeline_ids)
-    _attach_variant_params_inplace(records, pipeline_map)
-    _attach_variant_params_inplace(cv_pool, pipeline_map)
-
-    # Build signature → CV chain map.
-    cv_by_signature: dict[tuple[str, str, str, str, str, str], dict] = {}
-    for cv in cv_pool:
-        sig = (
-            cv.get("run_id") or "",
-            cv.get("dataset_name") or "",
-            *_chain_signature(cv),
-        )
-        if sig not in cv_by_signature:
-            cv_by_signature[sig] = cv
-
-    cv_fields = ("cv_val_score", "cv_test_score", "cv_train_score", "cv_fold_count", "cv_scores")
-    for refit in refit_records:
-        match = cv_by_signature.get((
-            refit.get("run_id") or "",
-            refit.get("dataset_name") or "",
-            *_chain_signature(refit),
-        ))
-        if match is None:
-            continue
-        for field in cv_fields:
-            current = refit.get(field)
-            if field == "cv_fold_count":
-                missing = not current
-            elif field == "cv_scores":
-                missing = not _parse_json_maybe(current)
-            else:
-                missing = current is None
-            if missing:
-                refit[field] = match.get(field)
-        if match.get("chain_id"):
-            refit["cv_source_chain_id"] = match.get("chain_id")
-        if _has_cv_summary_payload(refit):
-            refit["is_refit_only"] = False
-
-    return records
-
-
 def _list_array_datasets(workspace_path: Path) -> dict[str, Path]:
     """Map dataset name -> parquet file path under arrays/."""
     arrays_dir = workspace_path / "arrays"
@@ -763,29 +586,33 @@ async def get_aggregated_predictions(
     Returns one row per chain with CV averages, final/refit scores, and
     chain metadata.  All filter parameters are optional and AND-combined.
     """
-    store = _get_store()
-    try:
-        df = store.query_chain_summaries(
-            run_id=run_id,
-            pipeline_id=pipeline_id,
-            chain_id=chain_id,
-            dataset_name=dataset_name,
-            model_class=model_class,
-            metric=metric,
-        )
-        records = [sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
-        _mark_refit_only_records(records)
-        _enrich_with_fold_artifacts(records, store)
-        _enrich_refit_with_cv(records, store)
-        for record in records:
-            _apply_synthetic_refit_fallback_inplace(record)
-        return ChainSummariesResponse(
-            predictions=records,
-            total=len(records),
-            generated_at=datetime.now(UTC).isoformat(),
-        )
-    finally:
-        store.close()
+
+    def _load() -> ChainSummariesResponse:
+        store = _get_store()
+        try:
+            df = store.query_chain_summaries(
+                run_id=run_id,
+                pipeline_id=pipeline_id,
+                chain_id=chain_id,
+                dataset_name=dataset_name,
+                model_class=model_class,
+                metric=metric,
+            )
+            records = [sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+            _mark_refit_only_entries_inplace(records)
+            _enrich_with_fold_artifacts(records, store)
+            for record in records:
+                _apply_synthetic_refit_fallback_inplace(record)
+            return ChainSummariesResponse(
+                predictions=records,
+                total=len(records),
+                generated_at=datetime.now(UTC).isoformat(),
+            )
+        finally:
+            store.close()
+
+    # SQLite + polars work happens off the event loop (PERF-06)
+    return await asyncio.to_thread(_load)
 
 
 @router.get("/top")
@@ -803,32 +630,35 @@ async def get_top_aggregated_predictions(
     Sort direction is auto-detected from the metric name (ascending for
     error metrics like RMSE, descending for score metrics like R²).
     """
-    store = _get_store()
-    try:
-        df = store.query_top_chains(
-            metric=metric,
-            n=n,
-            score_column=score_column,
-            run_id=run_id,
-            pipeline_id=pipeline_id,
-            dataset_name=dataset_name,
-            model_class=model_class,
-        )
-        records = [sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
-        _mark_refit_only_records(records)
-        _enrich_with_fold_artifacts(records, store)
-        _enrich_refit_with_cv(records, store)
-        for record in records:
-            _apply_synthetic_refit_fallback_inplace(record)
-        return {
-            "predictions": records,
-            "total": len(records),
-            "metric": metric,
-            "score_column": score_column,
-            "generated_at": datetime.now(UTC).isoformat(),
-        }
-    finally:
-        store.close()
+    def _load() -> dict[str, Any]:
+        store = _get_store()
+        try:
+            df = store.query_top_chains(
+                metric=metric,
+                n=n,
+                score_column=score_column,
+                run_id=run_id,
+                pipeline_id=pipeline_id,
+                dataset_name=dataset_name,
+                model_class=model_class,
+            )
+            records = [sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+            _mark_refit_only_entries_inplace(records)
+            _enrich_with_fold_artifacts(records, store)
+            for record in records:
+                _apply_synthetic_refit_fallback_inplace(record)
+            return {
+                "predictions": records,
+                "total": len(records),
+                "metric": metric,
+                "score_column": score_column,
+                "generated_at": datetime.now(UTC).isoformat(),
+            }
+        finally:
+            store.close()
+
+    # SQLite + polars work happens off the event loop (PERF-06)
+    return await asyncio.to_thread(_load)
 
 
 @router.get("/chain/{chain_id}", response_model=ChainDetailResponse)
@@ -843,63 +673,66 @@ async def get_chain_detail(
     drill-down. Pipeline metadata (generator_choices) is included
     when available.
     """
-    store = _get_store()
-    try:
-        # Get chain summary
-        agg_df = store.query_chain_summaries(
-            chain_id=chain_id,
-            metric=metric,
-            dataset_name=dataset_name,
-        )
-        summary = None
-        if len(agg_df) > 0:
-            summary = sanitize_dict(dict(agg_df.row(0, named=True)))
-            _mark_refit_only_records([summary])
-            _enrich_with_fold_artifacts([summary], store)
-            _enrich_refit_with_cv([summary], store)
-            _apply_synthetic_refit_fallback_inplace(summary)
-            pipeline_ids = [summary.get("pipeline_id")] if summary.get("pipeline_id") else []
-            pipeline_map = _build_pipeline_metadata_map(store, pipeline_ids) if pipeline_ids else {}
-            pipeline_row = pipeline_map.get(summary.get("pipeline_id") or "", {}) if pipeline_map else {}
-            best_params_parsed = _parse_json_maybe(summary.get("best_params"))
-            summary["best_params"] = best_params_parsed if isinstance(best_params_parsed, dict) else None
-            step_params = _extract_model_params_from_expanded_config(
-                pipeline_row.get("expanded_config"),
-                summary.get("model_step_idx"),
+    def _load() -> ChainDetailResponse:
+        store = _get_store()
+        try:
+            # Get chain summary
+            agg_df = store.query_chain_summaries(
+                chain_id=chain_id,
+                metric=metric,
+                dataset_name=dataset_name,
             )
-            summary["variant_params"] = step_params if isinstance(step_params, dict) else None
+            summary = None
+            if len(agg_df) > 0:
+                summary = sanitize_dict(dict(agg_df.row(0, named=True)))
+                _mark_refit_only_entries_inplace([summary])
+                _enrich_with_fold_artifacts([summary], store)
+                _apply_synthetic_refit_fallback_inplace(summary)
+                pipeline_ids = [summary.get("pipeline_id")] if summary.get("pipeline_id") else []
+                pipeline_map = _build_pipeline_metadata_map(store, pipeline_ids) if pipeline_ids else {}
+                pipeline_row = pipeline_map.get(summary.get("pipeline_id") or "", {}) if pipeline_map else {}
+                best_params_parsed = _parse_json_maybe(summary.get("best_params"))
+                summary["best_params"] = best_params_parsed if isinstance(best_params_parsed, dict) else None
+                step_params = _extract_model_params_from_expanded_config(
+                    pipeline_row.get("expanded_config"),
+                    summary.get("model_step_idx"),
+                )
+                summary["variant_params"] = step_params if isinstance(step_params, dict) else None
 
-        # Get individual prediction rows
-        pred_df = store.get_chain_predictions(chain_id)
-        predictions = [sanitize_dict(dict(row)) for row in pred_df.iter_rows(named=True)]
+            # Get individual prediction rows
+            pred_df = store.get_chain_predictions(chain_id)
+            predictions = [sanitize_dict(dict(row)) for row in pred_df.iter_rows(named=True)]
 
-        if not predictions and summary is None:
-            raise HTTPException(status_code=404, detail=f"Chain {chain_id} not found or has no predictions")
+            if not predictions and summary is None:
+                raise HTTPException(status_code=404, detail=f"Chain {chain_id} not found or has no predictions")
 
-        # Get pipeline metadata (generator_choices)
-        pipeline_info = None
-        if summary and summary.get("pipeline_id"):
-            pipeline = store.get_pipeline(summary["pipeline_id"])
-            if pipeline:
-                pipeline_info = sanitize_dict({
-                    "pipeline_id": pipeline["pipeline_id"],
-                    "name": pipeline.get("name"),
-                    "dataset_name": pipeline.get("dataset_name"),
-                    "generator_choices": pipeline.get("generator_choices"),
-                    "status": pipeline.get("status"),
-                    "metric": pipeline.get("metric"),
-                    "best_val": pipeline.get("best_val"),
-                    "best_test": pipeline.get("best_test"),
-                })
+            # Get pipeline metadata (generator_choices)
+            pipeline_info = None
+            if summary and summary.get("pipeline_id"):
+                pipeline = store.get_pipeline(summary["pipeline_id"])
+                if pipeline:
+                    pipeline_info = sanitize_dict({
+                        "pipeline_id": pipeline["pipeline_id"],
+                        "name": pipeline.get("name"),
+                        "dataset_name": pipeline.get("dataset_name"),
+                        "generator_choices": pipeline.get("generator_choices"),
+                        "status": pipeline.get("status"),
+                        "metric": pipeline.get("metric"),
+                        "best_val": pipeline.get("best_val"),
+                        "best_test": pipeline.get("best_test"),
+                    })
 
-        return ChainDetailResponse(
-            chain_id=chain_id,
-            summary=summary,
-            predictions=predictions,
-            pipeline=pipeline_info,
-        )
-    finally:
-        store.close()
+            return ChainDetailResponse(
+                chain_id=chain_id,
+                summary=summary,
+                predictions=predictions,
+                pipeline=pipeline_info,
+            )
+        finally:
+            store.close()
+
+    # SQLite + polars work happens off the event loop (PERF-06)
+    return await asyncio.to_thread(_load)
 
 
 @router.get("/chain/{chain_id}/pipeline-steps", response_model=ChainPipelineStepsResponse)

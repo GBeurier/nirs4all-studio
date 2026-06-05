@@ -446,19 +446,19 @@ async def link_dataset(request: LinkDatasetRequest):
                         if ds.signal_types:
                             dataset_info["signal_types"] = [st.value for st in ds.signal_types]
 
-                        dataset_info["metadata_columns"] = (
-                            [
-                                column
-                                for column in (ds.metadata_columns or [])
-                                if isinstance(column, str) and column
-                            ]
-                            if ds._metadata
-                            else []
-                        )
+                        # ds.metadata_columns is the public accessor (empty when
+                        # the dataset has no metadata table).
+                        dataset_info["metadata_columns"] = [
+                            column
+                            for column in (ds.metadata_columns or [])
+                            if isinstance(column, str) and column
+                        ]
 
-                        # Detect/set targets if not already configured
+                        # Detect/set targets if not already configured. A detected
+                        # task type implies the dataset carries targets (the
+                        # library derives task_type from them).
                         config = dataset_info.get("config", {})
-                        if "targets" not in config and ds._targets is not None:
+                        if "targets" not in config and task_type_str is not None:
                             target_columns = ds.target_columns if hasattr(ds, 'target_columns') else None
                             if target_columns:
                                 detected_targets = [{"column": col, "type": task_type_str or "regression"} for col in target_columns]
