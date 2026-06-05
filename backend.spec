@@ -59,6 +59,12 @@ datas = [
     (str(project_root / 'dist'), 'dist'),
     # Include public assets
     (str(project_root / 'public'), 'public'),
+    # Editor node-registry JSON read at runtime by api/node_registry_loader.py
+    # (/api/system/operator-availability). These live under src/ which is NOT
+    # otherwise shipped, so without them the packaged backend loads 0 nodes and
+    # returns 500 "Operator registry reference could not be loaded".
+    (str(project_root / 'src' / 'data' / 'nodes' / 'definitions'), 'src/data/nodes/definitions'),
+    (str(project_root / 'src' / 'data' / 'nodes' / 'generated'), 'src/data/nodes/generated'),
     # Include build info
     (str(build_info_path), '.'),
     # Version information (for update detection)
