@@ -68,7 +68,8 @@ import {
   ExecutionResult,
   ExportResult,
 } from "@/hooks/usePipelineExecution";
-import { getPipeline, quickRun, runPreflight } from "@/api/client";
+import { getPipeline } from "@/api/pipelines";
+import { quickRun, runPreflight } from "@/api/runs";
 import type { PipelineStep as EditorPipelineStep } from "./types";
 import {
   analyzeSelectedPipelinesRuntimeGrouping,

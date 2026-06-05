@@ -45,7 +45,7 @@ import {
 } from "@/components/ui/tooltip";
 import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
 import { useWizard } from "./WizardContext";
-import { detectFormat } from "@/api/client";
+import { detectFormat } from "@/api/datasets";
 import type { TaskType, TargetConfig, FoldSource } from "@/types/datasets";
 
 const TASK_TYPE_LABELS: Record<TaskType, string> = {

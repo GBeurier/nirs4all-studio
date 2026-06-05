@@ -1,4 +1,4 @@
-import type { DependencyInfo } from "@/api/client";
+import type { DependencyInfo } from "@/api/dependencies";
 
 export interface DependencyVersionState {
   isAtRecommended: boolean;

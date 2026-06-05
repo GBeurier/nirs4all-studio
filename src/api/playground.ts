@@ -5,7 +5,7 @@
  * Uses fetch with AbortController for request cancellation.
  */
 
-import { api } from './client';
+import { api } from './transport';
 import type {
   ExecuteRequest,
   ExecuteResponse,

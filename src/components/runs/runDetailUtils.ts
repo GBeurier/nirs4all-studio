@@ -1,4 +1,4 @@
-import type { ChainPipelineReloadMetadata, RunPipelineReloadMetadata } from "@/api/client";
+import type { ChainPipelineReloadMetadata, RunPipelineReloadMetadata } from "@/api/aggregatedPredictions";
 import { buildCanonicalPreviewSteps } from "@/lib/canonicalPipelinePreview";
 import { buildPipelinePreview } from "@/lib/pipelineStats";
 import type { WorkspaceRunPipelineLogEntry } from "@/types/enriched-runs";

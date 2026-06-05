@@ -2,7 +2,7 @@
  * SHAP Analysis API client functions.
  */
 
-import { api } from './client';
+import { api } from './transport';
 import type {
   ShapComputeRequest,
   ShapComputeResponse,

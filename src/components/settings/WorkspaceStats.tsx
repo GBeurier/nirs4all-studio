@@ -54,8 +54,7 @@ import {
 import {
   getWorkspaceStats,
   cleanWorkspaceCache,
-
-} from "@/api/client";
+} from "@/api/workspace";
 import { formatBytes } from "@/utils/formatters";
 import type {
   WorkspaceStatsResponse,

@@ -32,7 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { performHealthCheck } from "@/api/client";
+import { performHealthCheck } from "@/api/system";
 import type { HealthCheckWithLatency } from "@/types/settings";
 import { formatRelativeTime } from "@/utils/formatters";
 

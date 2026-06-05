@@ -54,7 +54,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { getErrorLogs, clearErrorLogs } from "@/api/client";
+import { getErrorLogs, clearErrorLogs } from "@/api/system";
 import type { ErrorLogEntry, ErrorLogResponse } from "@/types/settings";
 import { formatRelativeTime } from "@/utils/formatters";
 

@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
-import { getChainPartitionDetail } from "@/api/client";
+import { getChainPartitionDetail } from "@/api/aggregatedPredictions";
 import { buildFoldTree, type FoldTreeNode } from "@/lib/fold-utils";
 import { partitionPredToTrainCard } from "@/lib/score-adapters";
 import { ScoreCardRowView } from "./ScoreCardRowView";

@@ -31,7 +31,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { usePipelines } from "@/hooks/usePipelines";
 import { useDraftPipelines } from "@/hooks/useDraftPipelines";
-import { getAggregatedPredictions, listRuns } from "@/api/client";
+import { getAggregatedPredictions } from "@/api/aggregatedPredictions";
+import { listRuns } from "@/api/runs";
 import type { ChainSummary } from "@/types/aggregated-predictions";
 import {
   EmptyState,

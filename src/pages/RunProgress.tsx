@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { getRun, stopRun, getPipelineLogs } from "@/api/client";
+import { getRun, stopRun, getPipelineLogs } from "@/api/runs";
 import { ReconnectingIndicator, ErrorState, LoadingState } from "@/components/ui/state-display";
 import type { Run, RunStatus, PipelineRun, RunMetrics } from "@/types/runs";
 import { runStatusConfig } from "@/types/runs";

@@ -2,7 +2,7 @@
  * Predict API client functions.
  */
 
-import { api, getApiBaseUrl } from "./client";
+import { api, getApiBaseUrl } from "./transport";
 import type {
   AvailableModelsResponse,
   PredictRequest,

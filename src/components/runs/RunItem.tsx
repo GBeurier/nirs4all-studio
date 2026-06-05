@@ -22,7 +22,7 @@ import {
   Target, FolderKanban, Loader2, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { deleteN4AWorkspaceRun } from "@/api/client";
+import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
 import { invalidatePredictionRelatedQueries } from "@/lib/prediction-deletion";
 import {
   formatMetricValue,

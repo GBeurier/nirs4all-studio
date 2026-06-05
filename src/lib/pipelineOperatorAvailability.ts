@@ -1,8 +1,5 @@
-import type {
-  InlinePipelinePayload,
-  OperatorAvailabilityResponse,
-  PreflightIssue,
-} from "@/api/client";
+import type { InlinePipelinePayload, PreflightIssue } from "@/api/runs";
+import type { OperatorAvailabilityResponse } from "@/api/system";
 import type { PipelineStep } from "@/components/pipeline-editor/types";
 
 export const OPERATOR_AVAILABILITY_CACHE_KEY = "pipelineEditor.operatorAvailability.v2";

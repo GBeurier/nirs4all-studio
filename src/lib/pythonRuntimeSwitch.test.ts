@@ -13,11 +13,17 @@ const mocks = vi.hoisted(() => ({
   dispatchOperatorAvailabilityInvalidated: vi.fn(),
 }));
 
-vi.mock("@/api/client", () => ({
+vi.mock("@/api/config", () => ({
   alignConfig: mocks.alignConfig,
   detectGPU: mocks.detectGPU,
   getRecommendedConfig: mocks.getRecommendedConfig,
+}));
+
+vi.mock("@/api/system", () => ({
   getRuntimeSummary: mocks.getRuntimeSummary,
+}));
+
+vi.mock("@/api/transport", () => ({
   resetBackendUrl: mocks.resetBackendUrl,
 }));
 

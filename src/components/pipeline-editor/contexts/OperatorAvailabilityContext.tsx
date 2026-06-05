@@ -10,10 +10,10 @@ import {
 } from "react";
 import {
   getOperatorAvailability,
-  runPreflight,
   type OperatorAvailabilityEntry,
   type OperatorAvailabilityResponse,
-} from "@/api/client";
+} from "@/api/system";
+import { runPreflight } from "@/api/runs";
 import type { PipelineStep } from "../types";
 import {
   OPERATOR_AVAILABILITY_INVALIDATED_EVENT,

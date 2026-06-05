@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from "react";
-import type { UpdateDatasetRequest } from "@/api/client";
+import type { UpdateDatasetRequest } from "@/api/datasets";
 import { DatasetWizard } from "./DatasetWizard";
 import { buildInitialState } from "./editDatasetPanelState";
 import type {

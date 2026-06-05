@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FolderKanban, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { listProjects } from "@/api/client";
+import { listProjects } from "@/api/projects";
 
 interface ProjectFilterProps {
   selectedProjectId: string | null;

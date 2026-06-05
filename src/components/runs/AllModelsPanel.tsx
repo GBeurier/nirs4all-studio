@@ -17,7 +17,8 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { formatMetricValue, isLowerBetter } from "@/lib/scores";
-import { getAllChainsForDataset, getChainPartitionDetail } from "@/api/client";
+import { getAllChainsForDataset } from "@/api/enrichedRuns";
+import { getChainPartitionDetail } from "@/api/aggregatedPredictions";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
 import type { AllChainEntry } from "@/types/enriched-runs";
 import { ChainDetailSheet } from "@/components/predictions/ChainDetailSheet";

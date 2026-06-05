@@ -14,7 +14,8 @@ import { AlertCircle, ArrowLeft, ArrowRight, Check, Database, Filter, GitBranch,
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { createRun, listPipelines, runPreflight } from "@/api/client";
+import { createRun, runPreflight } from "@/api/runs";
+import { listPipelines } from "@/api/pipelines";
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
 import { useDatasetsQuery } from "@/hooks/useDatasetQueries";
 import {
@@ -30,7 +31,7 @@ import {
   pruneUnavailableSteps,
   type MissingOperatorIssue,
 } from "@/lib/pipelineOperatorAvailability";
-import type { PipelineInfo } from "@/api/client";
+import type { PipelineInfo } from "@/api/pipelines";
 import type { Dataset } from "@/types/datasets";
 import type { ExperimentConfig } from "@/types/runs";
 

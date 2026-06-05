@@ -42,7 +42,7 @@ import {
   unlinkN4AWorkspace,
   activateN4AWorkspace,
   scanN4AWorkspace,
-} from "@/api/client";
+} from "@/api/linkedWorkspaces";
 import { formatRelativeTime } from "@/utils/formatters";
 import type { LinkedWorkspace } from "@/types/linked-workspaces";
 import {

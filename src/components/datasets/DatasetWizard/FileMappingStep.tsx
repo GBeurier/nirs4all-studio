@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useWizard } from "./WizardContext";
 import { selectFile } from "@/utils/fileDialogs";
-import { detectFilesList } from "@/api/client";
+import { detectFilesList } from "@/api/datasets";
 import type { DetectedFile } from "@/types/datasets";
 
 // Format file size

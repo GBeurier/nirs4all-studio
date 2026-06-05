@@ -19,7 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { selectFolder } from "@/utils/fileDialogs";
-import { linkN4AWorkspace } from "@/api/client";
+import { linkN4AWorkspace } from "@/api/linkedWorkspaces";
 import { useInvalidateDatasets } from "@/hooks/useDatasetQueries";
 
 export interface N4AWorkspaceSelectorProps {

@@ -45,9 +45,9 @@ import {
   listDatasets,
   getDataset,
   previewDatasetById,
-  getLinkedWorkspaces,
   getDatasetScores,
-} from "@/api/client";
+} from "@/api/datasets";
+import { getLinkedWorkspaces } from "@/api/linkedWorkspaces";
 import { useMlReadiness } from "@/context/MlReadinessContext";
 import type {
   Dataset,

@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { PipelineStep } from "@/components/pipeline-editor/types";
-import { api } from "@/api/client";
+import { api } from "@/api/transport";
 
 export interface VariantCountResult {
   /** Total number of pipeline variants */

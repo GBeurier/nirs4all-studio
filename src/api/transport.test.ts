@@ -4,12 +4,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  formatApiErrorDetail,
-  getConfigDiff,
-  getRecommendedConfig,
-  resetBackendUrl,
-} from "./client";
+import { formatApiErrorDetail, resetBackendUrl } from "./transport";
+import { getConfigDiff, getRecommendedConfig } from "./config";
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {

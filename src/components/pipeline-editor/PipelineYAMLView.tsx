@@ -24,7 +24,7 @@ import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-e
 import {
   renderCanonicalPipeline,
   type CanonicalPipelineRenderResponse,
-} from "@/api/client";
+} from "@/api/pipelines";
 
 // ============================================================================
 // Props

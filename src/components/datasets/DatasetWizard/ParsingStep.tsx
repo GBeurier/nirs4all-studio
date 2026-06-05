@@ -41,7 +41,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useWizard, DEFAULT_PARSING } from "./WizardContext";
-import { detectFormat, autoDetectFile } from "@/api/client";
+import { detectFormat, autoDetectFile } from "@/api/datasets";
 import type { ParsingOptions, HeaderUnit, SignalType, NaPolicy, NaFillConfig, DetectionConfidence } from "@/types/datasets";
 import { useTranslation } from "react-i18next";
 

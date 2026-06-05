@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { DependencyInfo } from "@/api/client";
+import type { DependencyInfo } from "@/api/dependencies";
 
 import { getDependencyVersionState } from "../dependencyVersionState";
 

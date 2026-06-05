@@ -20,10 +20,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { EmptyState, ErrorState, LoadingState, NoWorkspaceState } from "@/components/ui/state-display";
-import {
-  exportAggregatedPredictions,
-  getN4AWorkspacePredictionsData,
-} from "@/api/client";
+import { exportAggregatedPredictions } from "@/api/aggregatedPredictions";
+import { getN4AWorkspacePredictionsData } from "@/api/linkedWorkspaces";
 import type { LinkedWorkspace, PredictionRecord } from "@/types/linked-workspaces";
 import { PredictionViewer } from "@/components/predictions/viewer/PredictionViewer";
 import { ChainDetailSheet } from "@/components/predictions/ChainDetailSheet";

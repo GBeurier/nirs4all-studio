@@ -35,7 +35,7 @@ import {
   getN4AWorkspaceRunDetail,
   getWorkspaceRunPipelineLogs,
   rerunWorkspaceRun,
-} from "@/api/client";
+} from "@/api/linkedWorkspaces";
 import { runStatusConfig } from "@/types/runs";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import type { RunStatus } from "@/types/runs";

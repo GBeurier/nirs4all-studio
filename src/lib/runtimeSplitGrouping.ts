@@ -1,5 +1,5 @@
 import { getNodeByClassPath, getNodeByName } from "@/data/nodes";
-import type { PipelineStep } from "@/api/client";
+import type { PipelineStep } from "@/api/pipelines";
 
 type StepLike = PipelineStep & {
   classPath?: string;

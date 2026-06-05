@@ -38,7 +38,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { getRuntimeSummary, getSystemInfo, getSystemCapabilities } from "@/api/client";
+import { getRuntimeSummary, getSystemInfo, getSystemCapabilities } from "@/api/system";
 import type {
   SystemInfoResponse,
   SystemCapabilities,

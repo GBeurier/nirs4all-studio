@@ -6,7 +6,7 @@ import {
   getProfileManagedPackageNames,
   getVisibleOptionalPackages,
 } from "@/lib/setup-config";
-import type { RecommendedConfigResponse } from "@/api/client";
+import type { RecommendedConfigResponse } from "@/api/config";
 
 const config: RecommendedConfigResponse = {
   schema_version: "1.2",

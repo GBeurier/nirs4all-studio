@@ -53,7 +53,7 @@ import {
   downloadAggregatedDatasetParquet,
   runAggregatedPredictionsQuery,
   getChainPartitionDetail,
-} from "@/api/client";
+} from "@/api/aggregatedPredictions";
 import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
 import { useMlReadiness } from "@/context/MlReadinessContext";
 import type { ChainSummary, PartitionPrediction } from "@/types/aggregated-predictions";

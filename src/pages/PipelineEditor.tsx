@@ -29,11 +29,13 @@ import {
 import {
   savePipeline,
   getPipeline,
-  getChainPipelineSteps,
-  getRunPipelineSteps,
   previewPipelineImport,
   renderCanonicalPipeline,
-} from "@/api/client";
+} from "@/api/pipelines";
+import {
+  getChainPipelineSteps,
+  getRunPipelineSteps,
+} from "@/api/aggregatedPredictions";
 import { describeChainPipelineReload, describeRunPipelineReload } from "@/components/runs/runDetailUtils";
 import { motion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
@@ -74,8 +76,8 @@ import {
 import { toast } from "sonner";
 import { clearPersistedState, hasPersistedPipelineState, migrateDraftKey, usePipelineEditor } from "@/hooks/usePipelineEditor";
 import { useDatasetBinding } from "@/hooks/useDatasetBinding";
-import { listPipelineSamples, getPipelineSample } from "@/api/client";
-import type { PipelineSampleInfo } from "@/api/client";
+import { listPipelineSamples, getPipelineSample } from "@/api/pipelines";
+import type { PipelineSampleInfo } from "@/api/pipelines";
 import {
   useVariantCount,
   formatVariantCount,

@@ -72,11 +72,11 @@ import {
   restoreSnapshot,
   deleteSnapshot,
   getWebappChangelog,
-  getRuntimeSummary,
   requestRestart,
-  resetBackendUrl,
-  type RuntimeSummaryResponse,
-} from "@/api/client";
+} from "@/api/updates";
+import { getRuntimeSummary } from "@/api/system";
+import { resetBackendUrl } from "@/api/transport";
+import type { RuntimeSummaryResponse } from "@/types/settings";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import { getPythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
 

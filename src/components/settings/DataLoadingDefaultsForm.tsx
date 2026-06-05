@@ -46,7 +46,7 @@ import {
 import {
   getDataLoadingDefaults,
   updateDataLoadingDefaults,
-} from "@/api/client";
+} from "@/api/workspace";
 import type { DataLoadingDefaults } from "@/types/settings";
 import type { NaFillConfig } from "@/types/datasets";
 import { DEFAULT_DATA_LOADING_DEFAULTS } from "@/types/settings";

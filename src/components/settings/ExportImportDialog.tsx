@@ -49,7 +49,7 @@ import {
   exportWorkspace,
   importWorkspace,
   selectWorkspace,
-} from "@/api/client";
+} from "@/api/workspace";
 import type {
   ExportWorkspaceResponse,
   ImportWorkspaceResponse,

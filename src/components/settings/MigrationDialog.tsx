@@ -18,7 +18,7 @@ import { formatBytes } from "@/utils/formatters";
 import {
   getMigrationStatus,
   startMigration,
-} from "@/api/client";
+} from "@/api/workspace";
 import { useJobUpdates } from "@/hooks/useWebSocket";
 import type { MigrationReport, MigrationStatusResponse } from "@/types/storage";
 

@@ -11,7 +11,7 @@ import { useRef } from "react";
 import { Folder, File, FolderSearch, Info } from "lucide-react";
 import { useWizard } from "./WizardContext";
 import { selectFolder, selectFile, isDesktop } from "@/utils/fileDialogs";
-import { detectUnified, detectFilesList } from "@/api/client";
+import { detectUnified, detectFilesList } from "@/api/datasets";
 import type { WizardSourceType, DetectedFile } from "@/types/datasets";
 
 interface SourceOptionProps {

@@ -32,15 +32,18 @@ const mocks = vi.hoisted(() => ({
   toastInfo: vi.fn(),
 }));
 
-vi.mock("@/api/client", () => ({
+vi.mock("@/api/pipelines", () => ({
   getPipeline: mocks.getPipeline,
   savePipeline: mocks.savePipeline,
-  getChainPipelineSteps: mocks.getChainPipelineSteps,
-  getRunPipelineSteps: mocks.getRunPipelineSteps,
   previewPipelineImport: mocks.previewPipelineImport,
   renderCanonicalPipeline: mocks.renderCanonicalPipeline,
   listPipelineSamples: mocks.listPipelineSamples,
   getPipelineSample: mocks.getPipelineSample,
+}));
+
+vi.mock("@/api/aggregatedPredictions", () => ({
+  getChainPipelineSteps: mocks.getChainPipelineSteps,
+  getRunPipelineSteps: mocks.getRunPipelineSteps,
 }));
 
 vi.mock("@/hooks/usePipelineEditor", () => ({

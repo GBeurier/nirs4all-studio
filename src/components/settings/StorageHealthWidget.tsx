@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { formatBytes } from "@/utils/formatters";
-import { getStorageHealth } from "@/api/client";
+import { getStorageHealth } from "@/api/workspace";
 import type { StorageHealthResponse } from "@/types/storage";
 import { MigrationDialog } from "./MigrationDialog";
 import { MaintenanceActions } from "./MaintenanceActions";

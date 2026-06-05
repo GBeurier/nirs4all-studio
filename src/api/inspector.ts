@@ -2,7 +2,7 @@
  * Inspector API client functions.
  */
 
-import { api } from './client';
+import { api } from './transport';
 import type {
   InspectorDataResponse,
   InspectorDataFilters,
