@@ -934,7 +934,7 @@ export default function RunProgress() {
         if (pipeline.fold_metrics) {
           const folds = Object.values(pipeline.fold_metrics);
           if (folds.length > 0) {
-            const avg = folds.reduce(
+            const avg = folds.reduce<{ r2: number; rmse: number; mae: number; rpd: number }>(
               (acc, metric) => {
                 return {
                   r2: acc.r2 + (metric.r2 ?? 0),

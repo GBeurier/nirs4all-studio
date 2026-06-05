@@ -360,7 +360,7 @@ export default function AggregatedResults() {
       {/* Empty */}
       {!loading && predictions.length === 0 && !error && (
         <EmptyState
-          icon={<BarChart3 className="h-12 w-12" />}
+          icon={BarChart3}
           title={t("aggregatedResults.empty", "No aggregated results yet")}
           description={t(
             "aggregatedResults.emptyHint",
@@ -494,7 +494,7 @@ export default function AggregatedResults() {
       {!loading && predictions.length > 0 && filtered.length === 0 && (
         <motion.div variants={itemVariants}>
           <EmptyState
-            icon={<Search className="h-10 w-10" />}
+            icon={Search}
             title="No matching results"
             description="Try adjusting your filters or search terms."
           />
