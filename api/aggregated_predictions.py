@@ -520,7 +520,7 @@ def _normalize_chain_payload(payload: Any) -> Any:
 
     normalized: dict[str, Any] = {}
     for key, value in payload.items():
-        if key in {"class", "function"} or key in {"model", "y_processing"} and isinstance(value, str):
+        if (key in {"class", "function"} or key in {"model", "y_processing"}) and isinstance(value, str):
             normalized[key] = _normalize_chain_reference(value)
         else:
             normalized[key] = _normalize_chain_payload(value)

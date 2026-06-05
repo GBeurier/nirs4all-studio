@@ -873,49 +873,10 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     return () => clearTimeout(timeout);
   }, [state.selectedSamples, state.pinnedSamples, state.savedSelections]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle shortcuts when typing in input fields
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        (e.target instanceof HTMLElement && e.target.isContentEditable)
-      ) {
-        return;
-      }
-
-      // Ctrl+Z or Cmd+Z - Undo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        dispatch({ type: 'UNDO' });
-        return;
-      }
-
-      // Ctrl+Shift+Z or Cmd+Shift+Z - Redo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
-        e.preventDefault();
-        dispatch({ type: 'REDO' });
-        return;
-      }
-
-      // Ctrl+Y or Cmd+Y - Redo (alternative)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        e.preventDefault();
-        dispatch({ type: 'REDO' });
-        return;
-      }
-
-      // Escape - Clear selection
-      if (e.key === 'Escape') {
-        dispatch({ type: 'CLEAR' });
-        return;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  // Keyboard shortcuts (undo/redo/clear) are owned exclusively by
+  // usePlaygroundShortcuts — the only consumer of SelectionProvider — so they are
+  // not bound here. A second window 'keydown' listener double-dispatched UNDO/CLEAR
+  // and clobbered selection on Ctrl+Z/Escape (FE-01-state).
 
   // Memoized action creators
   const select = useCallback((indices: number[], mode?: SelectionMode) => {
