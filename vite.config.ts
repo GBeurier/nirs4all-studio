@@ -147,6 +147,16 @@ export default defineConfig(({ mode }) => ({
   // pragmas still select jsdom where DOM APIs are needed.
   test: {
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
-    exclude: ["node_modules/**", "dist/**", "dist-electron/**", "e2e/**"],
+    // Exclude the Playwright e2e specs (run by Playwright, not Vitest) and the
+    // wall-clock performance benchmarks (timing-based -> flaky on shared CI
+    // runners). The benchmark file can still be run manually with
+    // `npx vitest run **/benchmark.test.ts`.
+    exclude: [
+      "node_modules/**",
+      "dist/**",
+      "dist-electron/**",
+      "e2e/**",
+      "**/*benchmark.test.{ts,tsx}",
+    ],
   },
 }));
