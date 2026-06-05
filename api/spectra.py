@@ -7,6 +7,8 @@ including raw spectra, processed spectra, and statistics.
 
 from __future__ import annotations
 
+import asyncio
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -34,8 +36,42 @@ class SpectraRequest(BaseModel):
     partition: str = "train"
 
 
-# Cache for loaded datasets (use Any type to avoid import issues)
-_dataset_cache: dict[str, Any] = {}
+# Cache for loaded datasets, bounded by a small LRU so a user browsing many
+# datasets cannot pin every materialized SpectroDataset in RAM for the process
+# lifetime. Each entry holds a full spectral matrix, so the cap is deliberately
+# low; the least-recently-used dataset is evicted on insert.
+_DATASET_CACHE_MAX_ENTRIES = 4
+
+
+class _DatasetLRUCache:
+    """Minimal LRU cache supporting the dict operations spectra.py relies on."""
+
+    def __init__(self, max_entries: int):
+        self._entries: OrderedDict[str, Any] = OrderedDict()
+        self._max_entries = max_entries
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._entries
+
+    def __getitem__(self, key: str) -> Any:
+        self._entries.move_to_end(key)
+        return self._entries[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key in self._entries:
+            self._entries.move_to_end(key)
+        self._entries[key] = value
+        while len(self._entries) > self._max_entries:
+            self._entries.popitem(last=False)
+
+    def pop(self, key: str, default: Any = None) -> Any:
+        return self._entries.pop(key, default)
+
+    def clear(self) -> None:
+        self._entries.clear()
+
+
+_dataset_cache = _DatasetLRUCache(_DATASET_CACHE_MAX_ENTRIES)
 
 
 def _get_dataset_config(dataset_id: str) -> dict[str, Any] | None:
@@ -259,6 +295,126 @@ def _get_partition_arrays(dataset, partition: str, *, source: int = 0, want_y: b
     return X, y_out, meta_out
 
 
+def _build_spectra_response(
+    dataset_id: str,
+    start: int,
+    end: int | None,
+    partition: str,
+    source: int,
+    include_y: bool,
+    include_metadata: bool,
+    max_wavelengths_returned: int | None,
+) -> dict[str, Any]:
+    """Blocking build of the raw-spectra response payload.
+
+    Runs the parquet load, matrix materialization, pagination, optional
+    wavelength decimation, and the numpy -> list JSON conversion. Intended to
+    be dispatched via ``asyncio.to_thread`` so none of this blocks the event
+    loop. Raises HTTPException for not-found / empty cases.
+    """
+    import numpy as np
+
+    dataset = _load_dataset(dataset_id)
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
+
+    X, y_full, meta_full = _get_partition_arrays(
+        dataset, partition, source=source, want_y=include_y, want_metadata=include_metadata,
+    )
+    if X is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No samples found for partition '{partition}' (source={source})",
+        )
+
+    # Apply pagination
+    total_samples = X.shape[0]
+    if end is None:
+        end = total_samples
+    end = min(end, total_samples)
+    start = min(start, total_samples)
+
+    X_slice = X[start:end]
+
+    # Get headers (wavelengths) - robust handling like preview endpoint
+    try:
+        headers = dataset.headers(source)
+        if headers is None or len(headers) == 0:
+            headers = list(range(X.shape[1]))
+        else:
+            # Handle nested list case (e.g., [[h1, h2, ...]] instead of [h1, h2, ...])
+            if len(headers) == 1 and isinstance(headers[0], (list, tuple, np.ndarray)):
+                headers = list(headers[0])
+            # Try to convert to float for numeric wavelengths
+            try:
+                headers = [float(h) for h in headers]
+            except (ValueError, TypeError):
+                # Keep as strings if conversion fails
+                pass
+    except Exception:
+        headers = list(range(X.shape[1]))
+
+    # Optionally decimate the wavelength axis (LTTB, feature-preserving) so wide
+    # NIRS spectra don't ship every wavelength to the client. Default-off: only
+    # applied when the caller passes max_wavelengths_returned, preserving the
+    # current full-width behavior for existing callers.
+    if (
+        isinstance(max_wavelengths_returned, int)
+        and max_wavelengths_returned > 0
+        and len(headers) > max_wavelengths_returned
+        and X_slice.shape[0] > 0
+    ):
+        from .shared.decimation import decimate_wavelengths
+
+        wl_array = np.asarray(headers, dtype=np.float64)
+        indices = decimate_wavelengths(wl_array, X_slice, max_wavelengths_returned)
+        headers = [headers[i] for i in indices]
+        X_slice = X_slice[:, indices]
+
+    # Get header unit
+    try:
+        header_unit = dataset.header_unit(source)
+    except Exception:
+        header_unit = "unknown"
+
+    # Build response
+    response: dict[str, Any] = {
+        "dataset_id": dataset_id,
+        "partition": partition,
+        "source": source,
+        "start": start,
+        "end": end,
+        "total_samples": total_samples,
+        "num_features": X.shape[1],
+        "spectra": X_slice.tolist(),
+        "wavelengths": headers,
+        "wavelength_unit": header_unit,
+        "repetition_column": getattr(dataset, "repetition", None),
+    }
+
+    # Include y values if requested
+    if include_y:
+        if y_full is not None:
+            y_slice = y_full[start:end]
+            response["y"] = y_slice.tolist()
+        else:
+            response["y"] = None
+
+    # Include metadata if requested
+    if include_metadata:
+        if meta_full is not None:
+            metadata_dict = {
+                col: list(values[start:end]) for col, values in meta_full.items()
+            }
+            response["metadata"] = metadata_dict
+            response["metadata_columns"] = list(meta_full.keys())
+        else:
+            response["metadata"] = None
+            response["metadata_columns"] = []
+
+    return response
+
+
 @router.get("/spectra/{dataset_id}")
 async def get_spectra(
     dataset_id: str,
@@ -268,6 +424,14 @@ async def get_spectra(
     source: int = Query(0, ge=0, description="Source index for multi-source datasets"),
     include_y: bool = Query(False, description="Whether to include target (y) values"),
     include_metadata: bool = Query(False, description="Whether to include sample metadata"),
+    max_wavelengths_returned: int | None = Query(
+        None,
+        gt=0,
+        description=(
+            "Optional cap on returned wavelengths; LTTB-decimates the spectra to at "
+            "most this many points. Omit for the full wavelength axis (default)."
+        ),
+    ),
 ):
     """
     Get raw spectra data from a dataset.
@@ -278,96 +442,23 @@ async def get_spectra(
 
     The 'partition' query supports 'train', 'test', or 'all' (concatenated train+test).
     """
-    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
             status_code=501, detail="nirs4all library not available for spectra access"
         )
 
-    dataset = _load_dataset(dataset_id)
-    if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
-
     try:
-        X, y_full, meta_full = _get_partition_arrays(
-            dataset, partition, source=source, want_y=include_y, want_metadata=include_metadata,
+        return await asyncio.to_thread(
+            _build_spectra_response,
+            dataset_id,
+            start,
+            end,
+            partition,
+            source,
+            include_y,
+            include_metadata,
+            max_wavelengths_returned,
         )
-        if X is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No samples found for partition '{partition}' (source={source})",
-            )
-
-        # Apply pagination
-        total_samples = X.shape[0]
-        if end is None:
-            end = total_samples
-        end = min(end, total_samples)
-        start = min(start, total_samples)
-
-        X_slice = X[start:end]
-
-        # Get headers (wavelengths) - robust handling like preview endpoint
-        try:
-            headers = dataset.headers(source)
-            if headers is None or len(headers) == 0:
-                headers = list(range(X.shape[1]))
-            else:
-                # Handle nested list case (e.g., [[h1, h2, ...]] instead of [h1, h2, ...])
-                if len(headers) == 1 and isinstance(headers[0], (list, tuple, np.ndarray)):
-                    headers = list(headers[0])
-                # Try to convert to float for numeric wavelengths
-                try:
-                    headers = [float(h) for h in headers]
-                except (ValueError, TypeError):
-                    # Keep as strings if conversion fails
-                    pass
-        except Exception:
-            headers = list(range(X.shape[1]))
-
-        # Get header unit
-        try:
-            header_unit = dataset.header_unit(source)
-        except Exception:
-            header_unit = "unknown"
-
-        # Build response
-        response = {
-            "dataset_id": dataset_id,
-            "partition": partition,
-            "source": source,
-            "start": start,
-            "end": end,
-            "total_samples": total_samples,
-            "num_features": X.shape[1],
-            "spectra": X_slice.tolist(),
-            "wavelengths": headers,
-            "wavelength_unit": header_unit,
-            "repetition_column": getattr(dataset, "repetition", None),
-        }
-
-        # Include y values if requested
-        if include_y:
-            if y_full is not None:
-                y_slice = y_full[start:end]
-                response["y"] = y_slice.tolist()
-            else:
-                response["y"] = None
-
-        # Include metadata if requested
-        if include_metadata:
-            if meta_full is not None:
-                metadata_dict = {
-                    col: list(values[start:end]) for col, values in meta_full.items()
-                }
-                response["metadata"] = metadata_dict
-                response["metadata_columns"] = list(meta_full.keys())
-            else:
-                response["metadata"] = None
-                response["metadata_columns"] = []
-
-        return response
-
     except HTTPException:
         raise
     except Exception as e:
@@ -391,11 +482,11 @@ async def get_spectrum(
             status_code=501, detail="nirs4all library not available for spectra access"
         )
 
-    dataset = _load_dataset(dataset_id)
-    if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
+    def _build() -> dict[str, Any]:
+        dataset = _load_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
-    try:
         X, y_full, meta_full = _get_partition_arrays(
             dataset, partition, source=source, want_y=True, want_metadata=True,
         )
@@ -440,6 +531,8 @@ async def get_spectrum(
             "metadata": metadata,
         }
 
+    try:
+        return await asyncio.to_thread(_build)
     except HTTPException:
         raise
     except Exception as e:
@@ -458,11 +551,11 @@ async def get_processed_spectra(dataset_id: str, request: SpectraRequest):
             status_code=501, detail="nirs4all library not available for spectra access"
         )
 
-    dataset = _load_dataset(dataset_id)
-    if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
+    def _build() -> dict[str, Any]:
+        dataset = _load_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
-    try:
         X, _, _ = _get_partition_arrays(dataset, request.partition, source=0)
         if X is None:
             raise HTTPException(
@@ -488,6 +581,8 @@ async def get_processed_spectra(dataset_id: str, request: SpectraRequest):
             "preprocessing_applied": [step.get("name", "unknown") for step in request.preprocessing_chain],
         }
 
+    try:
+        return await asyncio.to_thread(_build)
     except HTTPException:
         raise
     except Exception as e:
@@ -507,17 +602,18 @@ async def get_spectra_statistics(
 
     Returns mean, std, min, max, and percentiles for the spectral data.
     """
-    import numpy as np
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(
             status_code=501, detail="nirs4all library not available for spectra access"
         )
 
-    dataset = _load_dataset(dataset_id)
-    if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
+    def _build() -> dict[str, Any]:
+        import numpy as np
 
-    try:
+        dataset = _load_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
+
         X, _, _ = _get_partition_arrays(dataset, partition, source=source)
         if X is None:
             raise HTTPException(
@@ -567,6 +663,8 @@ async def get_spectra_statistics(
             "global": global_stats,
         }
 
+    try:
+        return await asyncio.to_thread(_build)
     except HTTPException:
         raise
     except Exception as e:

@@ -5,11 +5,6 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
-from nirs4all.controllers.splitters.split import (
-    get_split_grouping_capability,
-    resolve_split_groups,
-)
-
 from .pipeline_service import instantiate_operator
 
 CONFLICT_MESSAGE_SUFFIX = (
@@ -67,6 +62,14 @@ def prepare_pipeline_steps_with_runtime_grouping(
     runtime_group_by: str | None,
 ) -> RuntimeGroupingPreparation:
     """Validate runtime grouping for split steps and inject runtime-only group_by."""
+    # Deferred import: keep nirs4all (and its sklearn/scipy stack) off the router
+    # import path so cold start stays light and the background ML loader is the
+    # only place the heavy stack is pulled in.
+    from nirs4all.controllers.splitters.split import (
+        get_split_grouping_capability,
+        resolve_split_groups,
+    )
+
     prepared_steps = deepcopy(steps)
     warning_messages: list[str] = []
     seen_warnings: set[str] = set()
