@@ -30,7 +30,6 @@ from api.pipelines import router as pipelines_router
 from api.predictions import router as predictions_router
 from api.system import router as system_router, log_error
 from api.spectra import router as spectra_router
-from api.preprocessing import router as preprocessing_router
 from api.training import router as training_router
 from api.models import router as models_router
 from api.analysis import router as analysis_router
@@ -139,7 +138,6 @@ app.include_router(aggregated_predictions_router, prefix="/api", tags=["aggregat
 app.include_router(predictions_router, prefix="/api", tags=["predictions"])
 app.include_router(system_router, prefix="/api", tags=["system"])
 app.include_router(spectra_router, prefix="/api", tags=["spectra"])
-app.include_router(preprocessing_router, prefix="/api", tags=["preprocessing"])
 app.include_router(training_router, prefix="/api", tags=["training"])
 app.include_router(models_router, prefix="/api", tags=["models"])
 app.include_router(analysis_router, prefix="/api", tags=["analysis"])
