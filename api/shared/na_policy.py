@@ -28,12 +28,22 @@ def normalize_na_policy(na_policy: Any) -> Any:
 def normalize_na_policy_in_config(config: dict) -> None:
     """Normalize any na_policy in a nirs4all dataset-config dict, in place.
 
-    Covers ``global_params`` and every per-file ``*_params`` block, so a legacy
-    na_policy from any source (global default or per-file override) is translated
-    before the dict is handed to nirs4all's ``DatasetConfigs``.
+    Covers every shape nirs4all treats as loader params: a root-level
+    ``na_policy``, ``global_params``, and each per-file ``*_params`` block —
+    where a block may be a single dict or a list of dicts (multi-source). So a
+    legacy na_policy from any source (global default, per-file or per-source
+    override) is translated before the dict is handed to ``DatasetConfigs``.
     """
     if not isinstance(config, dict):
         return
+    # Root-level na_policy (some merged dataset_config.json shapes).
+    if "na_policy" in config:
+        config["na_policy"] = normalize_na_policy(config["na_policy"])
     for key, value in config.items():
-        if (key == "global_params" or key.endswith("_params")) and isinstance(value, dict) and "na_policy" in value:
-            value["na_policy"] = normalize_na_policy(value["na_policy"])
+        if key != "global_params" and not key.endswith("_params"):
+            continue
+        # A params block can be a single dict or a list of dicts (multi-source).
+        blocks = value if isinstance(value, list) else [value]
+        for block in blocks:
+            if isinstance(block, dict) and "na_policy" in block:
+                block["na_policy"] = normalize_na_policy(block["na_policy"])

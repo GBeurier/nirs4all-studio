@@ -58,6 +58,19 @@ class TestNormalizeNaPolicyInConfig:
         assert config["global_params"]["delimiter"] == ";"
         assert config["train_x_params"]["header_unit"] == "nm"
 
+    def test_normalizes_root_level_and_list_valued_params(self):
+        config = {
+            "na_policy": "Drop",  # root-level (merged dataset_config.json shape)
+            "train_x_params": [  # multi-source: list of per-source param dicts
+                {"na_policy": "keep"},
+                {"header_unit": "nm"},
+            ],
+        }
+        normalize_na_policy_in_config(config)
+        assert config["na_policy"] == "remove_sample"
+        assert config["train_x_params"][0]["na_policy"] == "ignore"
+        assert config["train_x_params"][1] == {"header_unit": "nm"}
+
     def test_no_na_policy_keys_is_a_noop(self):
         config = {"global_params": {"delimiter": ","}, "train_x": "a.csv"}
         normalize_na_policy_in_config(config)
