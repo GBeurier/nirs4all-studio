@@ -169,6 +169,9 @@
     "name": "CropTransformer",
     "type": "preprocessing",
     "classPath": "nirs4all.operators.transforms.CropTransformer",
+    "aliases": [
+      "Trim"
+    ],
     "description": "Trim wavelength range",
     "longDescription": "Crops spectra to a specific wavelength range by index.",
     "category": "Feature Engineering",

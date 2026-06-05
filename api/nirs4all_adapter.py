@@ -9,9 +9,6 @@ export, and preflight import checking that the canonical path relies on.
 
 from __future__ import annotations
 
-import importlib
-import inspect
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,79 +17,17 @@ from fastapi import HTTPException
 
 from .lazy_imports import require_ml_ready
 from .pipeline_canonical import (
+    OperatorResolutionError,
     contains_generators,
     count_runtime_variants,
     editor_steps_to_runtime_canonical,
+    import_operator_class,
     resolve_editor_class_path,
 )
+from .shared.pipeline_service import normalize_params as _normalize_params
 from .workspace_manager import workspace_manager
 
 NIRS4ALL_AVAILABLE = True
-
-
-PREPROCESSING_ALIASES = {
-    "SNV": "StandardNormalVariate",
-    "RobustSNV": "RobustStandardNormalVariate",
-    "LocalSNV": "LocalStandardNormalVariate",
-    "MSC": "MultiplicativeScatterCorrection",
-    "EMSC": "ExtendedMultiplicativeScatterCorrection",
-    "MovingAverage": "SavitzkyGolay",
-    "BaselineCorrection": "Baseline",
-    "Trim": "CropTransformer",
-}
-
-SPLITTER_ALIASES = {
-    "KennardStone": "KennardStoneSplitter",
-    "SPXY": "SPXYSplitter",
-}
-
-MODEL_ALIASES = {
-    "RandomForest": "RandomForestRegressor",
-    "LightGBM": "LGBMRegressor",
-    "LightGBMClassifier": "LGBMClassifier",
-    "XGBoost": "XGBRegressor",
-    "XGBoostClassifier": "XGBClassifier",
-    "nicon": "nicon",
-    "cnn1d": "customizable_nicon",
-}
-
-SKLEARN_PREPROCESSING_MODULES = [
-    "sklearn.preprocessing",
-]
-
-SKLEARN_SPLITTER_MODULES = [
-    "sklearn.model_selection",
-]
-
-SKLEARN_MODEL_MODULES = [
-    "sklearn.cross_decomposition",
-    "sklearn.ensemble",
-    "sklearn.linear_model",
-    "sklearn.neighbors",
-    "sklearn.svm",
-]
-
-THIRDPARTY_MODEL_MODULES = [
-    "xgboost",
-    "lightgbm.sklearn",
-    "catboost",
-    "tabpfn",
-    "tabicl",
-]
-
-NIRS4ALL_PREPROCESSING_MODULES = [
-    "nirs4all.operators.transforms",
-    "nirs4all.operators.filters",
-]
-
-NIRS4ALL_SPLITTER_MODULES = [
-    "nirs4all.operators.splitters",
-]
-
-NIRS4ALL_MODEL_MODULES = [
-    "nirs4all.operators.models",
-    "nirs4all.operators.models.pytorch.nicon",
-]
 
 
 def require_nirs4all() -> None:
@@ -182,90 +117,6 @@ def build_dataset_config(dataset_id: str) -> dict[str, Any]:
     )
 
 
-def _normalize_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
-    normalized = dict(params or {})
-
-    # Generic: reconstruct tuple parameters from _min/_max suffix pairs.
-    # For any pair of keys like "shift_range_min" and "shift_range_max",
-    # combine them into "shift_range": (min_val, max_val) and remove the
-    # suffixed keys.  This handles augmentation operators whose Python
-    # constructors accept tuple parameters (e.g. shift_range, offset_range).
-    min_keys = [k for k in list(normalized) if k.endswith("_min")]
-    for min_key in min_keys:
-        base = min_key[:-4]  # strip "_min"
-        max_key = base + "_max"
-        if max_key in normalized:
-            min_val = normalized.pop(min_key)
-            max_val = normalized.pop(max_key)
-            if min_val is not None and max_val is not None:
-                normalized[base] = (min_val, max_val)
-            elif min_val is not None:
-                normalized[base] = (min_val, min_val)
-            elif max_val is not None:
-                normalized[base] = (max_val, max_val)
-            # If both are None, don't set the tuple param (let the
-            # operator use its own default).
-
-    if name == "SavitzkyGolay":
-        if "window" in normalized and "window_length" not in normalized:
-            normalized["window_length"] = normalized.pop("window")
-
-    if name == "MovingAverage":
-        window = normalized.get("window") or normalized.get("window_length") or 5
-        normalized = {
-            "window_length": window,
-            "polyorder": 1,
-            "deriv": 0,
-        }
-
-    if name == "CropTransformer":
-        if normalized.get("end") == -1:
-            normalized["end"] = None
-
-    return normalized
-
-
-def _resolve_alias(aliases: dict[str, str], name: str) -> str:
-    if name in aliases:
-        return aliases[name]
-
-    lowered = name.lower()
-    for alias, target in aliases.items():
-        if alias.lower() == lowered:
-            return target
-
-    return name
-
-
-def _is_supported_operator_candidate(
-    obj: Any,
-    *,
-    allow_callables: bool = False,
-) -> bool:
-    return inspect.isclass(obj) or (allow_callables and callable(obj))
-
-
-def _lookup_operator_member(
-    module: Any,
-    name: str,
-    *,
-    allow_callables: bool = False,
-) -> Any | None:
-    obj = getattr(module, name, None)
-    if _is_supported_operator_candidate(obj, allow_callables=allow_callables):
-        return obj
-
-    lowered = name.lower()
-    for attr_name in dir(module):
-        if attr_name.lower() != lowered:
-            continue
-        candidate = getattr(module, attr_name, None)
-        if _is_supported_operator_candidate(candidate, allow_callables=allow_callables):
-            return candidate
-
-    return None
-
-
 def _looks_like_function_model_path(reference: Any) -> bool:
     if not isinstance(reference, str) or "." not in reference:
         return False
@@ -310,115 +161,33 @@ def _operator_reference_from_step(step: dict[str, Any], step_type: str) -> str:
     return step_name
 
 
-def _import_operator_reference(reference: str, step_type: str) -> Any:
-    module_path, _, attr_name = reference.rpartition(".")
-    if not module_path:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported {step_type} operator '{reference}'",
-        )
-
-    try:
-        module = importlib.import_module(module_path)
-    except ImportError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    obj = _lookup_operator_member(
-        module,
-        attr_name,
-        allow_callables=step_type == "model",
-    )
-    if obj is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported {step_type} operator '{reference}'",
-        )
-
-    return obj
-
-
-def _resolve_class(
-    name: str,
-    module_candidates: Iterable[str],
-    *,
-    allow_callables: bool = False,
-) -> Any | None:
-    for module_path in module_candidates:
-        try:
-            module = importlib.import_module(module_path)
-        except ImportError:
-            continue
-        obj = _lookup_operator_member(
-            module,
-            name,
-            allow_callables=allow_callables,
-        )
-        if obj is not None:
-            return obj
-    return None
-
-
-NIRS4ALL_FILTER_MODULES = [
-    "nirs4all.operators.filters",
-]
-
-NIRS4ALL_AUGMENTATION_MODULES = [
-    "nirs4all.operators.augmentation",
-]
-
-
 def _resolve_operator_class(name: str, step_type: str) -> Any:
-    if "." in name and step_type in {"model", "preprocessing", "splitting", "filter", "augmentation"}:
-        return _import_operator_reference(name, step_type)
+    """Resolve an operator name (or dotted path) to its class/callable.
 
-    lookup_name = name
-
-    if step_type == "preprocessing":
-        lookup_name = _resolve_alias(PREPROCESSING_ALIASES, name)
-        cls = _resolve_class(lookup_name, NIRS4ALL_PREPROCESSING_MODULES)
-        if cls is None:
-            cls = _resolve_class(lookup_name, SKLEARN_PREPROCESSING_MODULES)
-    elif step_type == "splitting":
-        lookup_name = _resolve_alias(SPLITTER_ALIASES, name)
-        cls = _resolve_class(lookup_name, NIRS4ALL_SPLITTER_MODULES)
-        if cls is None:
-            cls = _resolve_class(lookup_name, SKLEARN_SPLITTER_MODULES)
-    elif step_type == "model":
-        lookup_name = _resolve_alias(MODEL_ALIASES, name)
-        cls = _resolve_class(
-            lookup_name,
-            NIRS4ALL_MODEL_MODULES,
-            allow_callables=True,
-        )
-        if cls is None:
-            cls = _resolve_class(
-                lookup_name,
-                SKLEARN_MODEL_MODULES,
-                allow_callables=True,
-            )
-        if cls is None:
-            cls = _resolve_class(
-                lookup_name,
-                THIRDPARTY_MODEL_MODULES,
-                allow_callables=True,
-            )
-    elif step_type == "filter":
-        cls = _resolve_class(lookup_name, NIRS4ALL_FILTER_MODULES)
-        if cls is None:
-            # Filters may also live in preprocessing modules
-            cls = _resolve_class(lookup_name, NIRS4ALL_PREPROCESSING_MODULES)
-    elif step_type == "augmentation":
-        cls = _resolve_class(lookup_name, NIRS4ALL_AUGMENTATION_MODULES)
-    else:
-        cls = None
-
-    if cls is None:
+    Single registry-driven path: ``name -> classPath`` via the shared
+    :func:`resolve_editor_class_path` resolver, then a thin import through
+    :func:`import_operator_class`.  Models additionally accept callables
+    (function-style models such as ``nicon``).  Raises ``HTTPException(400)``
+    when the operator cannot be resolved or imported, matching the contract
+    relied on by ``check_pipeline_imports`` and the model instantiate route.
+    """
+    explicit = name if "." in name else None
+    class_path = resolve_editor_class_path(step_type, name, explicit)
+    if "." not in class_path:
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported {step_type} operator '{name}'",
         )
 
-    return cls
+    try:
+        return import_operator_class(class_path, allow_callable=step_type == "model")
+    except OperatorResolutionError as exc:
+        http_exc = HTTPException(status_code=400, detail=str(exc))
+        # Surface whether the failure is a missing optional dependency so the
+        # preflight checker can keep valid-but-uninstalled operators out of the
+        # blocking issue list.
+        http_exc.operator_missing_dependency = exc.missing_dependency
+        raise http_exc from exc
 
 
 def build_dataset_spec(dataset_id: str) -> str:
@@ -693,8 +462,14 @@ def export_pipeline_to_python(
     pipeline_name: str = "my_pipeline",
     dataset_path: str = "path/to/dataset",
 ) -> str:
-    """
-    Export pipeline definition to executable Python code.
+    """Export a pipeline definition to executable Python code.
+
+    The pipeline is emitted as its canonical nirs4all representation (the same
+    payload produced by :func:`editor_steps_to_runtime_canonical` and accepted
+    directly by ``nirs4all.run``).  Operators are referenced by their canonical
+    dotted class paths — resolved through the single registry-driven resolver —
+    so the generated code never re-encodes operator aliases or generator syntax
+    and cannot drift from runtime behaviour.
 
     Args:
         steps: Frontend pipeline steps
@@ -704,6 +479,11 @@ def export_pipeline_to_python(
     Returns:
         Python code string
     """
+    import pprint
+
+    canonical_steps = editor_steps_to_runtime_canonical(steps)
+    pipeline_literal = pprint.pformat(canonical_steps, indent=4, sort_dicts=False, width=88)
+
     lines = [
         '"""',
         f'Pipeline: {pipeline_name}',
@@ -711,40 +491,12 @@ def export_pipeline_to_python(
         '"""',
         '',
         'import nirs4all',
-        'from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler',
-        'from sklearn.cross_decomposition import PLSRegression',
-        'from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor',
-        'from sklearn.model_selection import KFold, ShuffleSplit',
         '',
-        '# Import nirs4all operators',
-        'from nirs4all.operators.transforms import (',
-        '    StandardNormalVariate, MultiplicativeScatterCorrection,',
-        '    SavitzkyGolay, FirstDerivative, SecondDerivative,',
-        '    Detrend, Baseline, Gaussian,',
-        ')',
-        'from nirs4all.operators.splitters import (',
-        '    KennardStoneSplitter, SPXYSplitter, SPXYGFold,',
-        ')',
+        '# Pipeline steps in canonical nirs4all format.',
+        '# Operators are referenced by their dotted class paths; nirs4all',
+        '# instantiates them at run time.',
+        f'{pipeline_name} = {pipeline_literal}',
         '',
-    ]
-
-    # Build pipeline steps as code
-    step_codes = []
-    for step in steps:
-        code = _step_to_python_code(step)
-        if code:
-            step_codes.append(code)
-
-    lines.append('# Define pipeline')
-    lines.append(f'{pipeline_name} = [')
-    for i, code in enumerate(step_codes):
-        comma = ',' if i < len(step_codes) - 1 else ''
-        lines.append(f'    {code}{comma}')
-    lines.append(']')
-    lines.append('')
-
-    # Add execution code
-    lines.extend([
         '# Run the pipeline',
         'result = nirs4all.run(',
         f'    pipeline={pipeline_name},',
@@ -758,95 +510,9 @@ def export_pipeline_to_python(
         '',
         '# Export trained model',
         '# result.export("model.n4a")',
-    ])
+    ]
 
     return '\n'.join(lines)
-
-
-def _step_to_python_code(step: dict[str, Any]) -> str | None:
-    """Convert a single step to Python code representation."""
-    step_type = step.get("type", "")
-    step_name = step.get("name", "")
-    params = step.get("params", {})
-    finetune = step.get("finetuneConfig")
-    sweeps = step.get("paramSweeps", {})
-
-    if step_type == "metrics":
-        return None
-
-    # Get the actual class name
-    if step_type == "preprocessing":
-        class_name = PREPROCESSING_ALIASES.get(step_name, step_name)
-    elif step_type == "splitting":
-        class_name = SPLITTER_ALIASES.get(step_name, step_name)
-    elif step_type == "model":
-        class_name = MODEL_ALIASES.get(step_name, step_name)
-    else:
-        class_name = step_name
-
-    # Build parameter string
-    normalized = _normalize_params(class_name, params)
-    param_strs = []
-    for k, v in normalized.items():
-        if k in sweeps and sweeps[k].get("enabled"):
-            # Skip swept params, they're handled separately
-            continue
-        if isinstance(v, str):
-            param_strs.append(f'{k}="{v}"')
-        else:
-            param_strs.append(f'{k}={v}')
-
-    param_str = ', '.join(param_strs)
-    base_code = f'{class_name}({param_str})'
-
-    # Handle sweeps
-    has_sweeps = any(s.get("enabled") for s in sweeps.values())
-    if has_sweeps:
-        sweep_parts = []
-        for param_name, sweep in sweeps.items():
-            if sweep.get("enabled"):
-                sweep_type = sweep.get("type", "range")
-                if sweep_type == "range":
-                    sweep_parts.append(
-                        f'{{"_range_": [{sweep.get("start", 1)}, {sweep.get("end", 10)}, {sweep.get("step", 1)}], "param": "{param_name}"}}'
-                    )
-                elif sweep_type == "log_range":
-                    sweep_parts.append(
-                        f'{{"_log_range_": [{sweep.get("start", 0.001)}, {sweep.get("end", 100)}, {sweep.get("count", 10)}], "param": "{param_name}"}}'
-                    )
-
-        if sweep_parts:
-            sweep_code = ', '.join(sweep_parts)
-            base_code = f'{{{base_code}, {sweep_code}}}'
-
-    # Wrap model with keyword
-    if step_type == "model":
-        if finetune and finetune.get("enabled"):
-            finetune_str = _finetune_to_python_code(finetune)
-            base_code = f'{{"model": {class_name}({param_str}), "finetune_params": {finetune_str}}}'
-        else:
-            base_code = f'{{"model": {class_name}({param_str})}}'
-
-    return base_code
-
-
-def _finetune_to_python_code(finetune: dict[str, Any]) -> str:
-    """Convert finetuning config to Python dict string."""
-    params = finetune.get("params", [])
-    model_params = {}
-
-    for p in params:
-        name = p.get("name")
-        ptype = p.get("type", "int")
-        if ptype in ("int", "float", "log_float"):
-            model_params[name] = f'("{ptype}", {p.get("low")}, {p.get("high")})'
-        elif ptype == "categorical":
-            choices = p.get("choices", [])
-            model_params[name] = f'("categorical", {choices})'
-
-    mp_str = ', '.join(f'"{k}": {v}' for k, v in model_params.items())
-
-    return f'{{"n_trials": {finetune.get("n_trials", 50)}, "model_params": {{{mp_str}}}}}'
 
 
 # ============================================================================
@@ -925,16 +591,10 @@ def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str | None]
         try:
             _resolve_operator_class(reference, resolve_type)
         except HTTPException as exc:
-            # Don't report known aliases whose packages are simply not
-            # installed — they are valid operators, just optional deps.
-            alias_map = {
-                "model": MODEL_ALIASES,
-                "preprocessing": PREPROCESSING_ALIASES,
-                "splitting": SPLITTER_ALIASES,
-            }
-            known_aliases = alias_map.get(resolve_type, {})
-            if step_name in known_aliases:
-                pass  # known alias, optional dependency not installed
+            # Don't report registry-known operators whose optional package is
+            # simply not installed — they are valid, just optional deps.
+            if getattr(exc, "operator_missing_dependency", False):
+                pass
             else:
                 issues.append({
                     "step_id": step_id or None,

@@ -717,6 +717,17 @@ def _discover_transform_operators() -> list[dict[str, Any]]:
 
     Returns a list of operator info dictionaries.
     """
+    # PIPE-02 (partial): this and the five sibling ``_discover_*_operators``
+    # helpers carry a hand-maintained allow-list of class names. The generated
+    # node registry already enumerates every operator with its canonical
+    # classPath, and the unified resolver (``import_operator_class`` /
+    # ``resolve_editor_class_path``) resolves all of them, so this list can be
+    # driven from the registry instead. That flip is deferred because these
+    # functions back the ``/pipelines/operators`` endpoint consumed by the
+    # frontend palette (``usePipelines``): switching to the full registry would
+    # grow the palette ~3x (e.g. 18 -> 123 models) and must be coordinated with
+    # the frontend, which already sources its own palette from the same registry
+    # JSON. Land it as its own task, not as part of resolver unification.
     operators = []
 
     if not NIRS4ALL_AVAILABLE:
@@ -1837,31 +1848,6 @@ def _load_sample_file(filepath: Path) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to load sample: {e}")
 
 
-def _filter_comments(payload: Any) -> Any:
-    """Remove explicit ``_comment`` metadata recursively from a pipeline payload."""
-    if isinstance(payload, list):
-        filtered: list[Any] = []
-        for item in payload:
-            cleaned = _filter_comments(item)
-            if cleaned is not None:
-                filtered.append(cleaned)
-        return filtered
-
-    if isinstance(payload, dict):
-        if set(payload.keys()) == {"_comment"}:
-            return None
-        filtered_dict: dict[str, Any] = {}
-        for key, value in payload.items():
-            if key == "_comment":
-                continue
-            cleaned = _filter_comments(value)
-            if cleaned is not None:
-                filtered_dict[key] = cleaned
-        return filtered_dict
-
-    return payload
-
-
 def _stable_sort_template(value: Any) -> Any:
     """Return a deterministically key-sorted copy of a JSON-like structure."""
     if isinstance(value, dict):
@@ -1883,7 +1869,7 @@ def _semantic_pipeline_template(
     """Build the library-semantic template used for canonical round-trip checks."""
     from nirs4all.pipeline.config.pipeline_config import PipelineConfigs
 
-    filtered_steps = _filter_comments(steps)
+    filtered_steps = filter_canonical_comments(steps)
     config = PipelineConfigs(filtered_steps, name=name, description=description)
     return _stable_sort_template(config.original_template)
 
@@ -1901,7 +1887,7 @@ def _get_canonical_pipeline(filepath: Path) -> dict[str, Any]:
         return {
             "name": data.get("name", filepath.stem) if isinstance(data, dict) else filepath.stem,
             "description": data.get("description", "") if isinstance(data, dict) else "",
-            "pipeline": _filter_comments(steps) if isinstance(steps, list) else steps,
+            "pipeline": filter_canonical_comments(steps) if isinstance(steps, list) else steps,
             "has_generators": False,
             "num_configurations": 1,
         }
@@ -1922,7 +1908,7 @@ def _get_canonical_pipeline(filepath: Path) -> dict[str, Any]:
         else:
             raise ValueError("Pipeline must be list or dict with 'pipeline' key")
 
-        steps = _filter_comments(steps)
+        steps = filter_canonical_comments(steps)
 
         # Create PipelineConfigs to get canonical form while preserving the
         # original generator template instead of only the first expansion.
@@ -1943,7 +1929,7 @@ def _get_canonical_pipeline(filepath: Path) -> dict[str, Any]:
         return {
             "name": data.get("name", filepath.stem) if isinstance(data, dict) else filepath.stem,
             "description": data.get("description", "") if isinstance(data, dict) else "",
-            "pipeline": _filter_comments(steps) if isinstance(steps, list) else steps,
+            "pipeline": filter_canonical_comments(steps) if isinstance(steps, list) else steps,
             "has_generators": False,
             "num_configurations": 1,
             "error": str(e),
@@ -2018,9 +2004,9 @@ async def get_pipeline_sample(sample_id: str, canonical: bool = True):
     else:
         result = _load_sample_file(filepath)
         if isinstance(result, dict) and "pipeline" in result:
-            result["pipeline"] = _filter_comments(result["pipeline"])
+            result["pipeline"] = filter_canonical_comments(result["pipeline"])
         elif isinstance(result, list):
-            result = {"pipeline": _filter_comments(result), "name": filepath.stem}
+            result = {"pipeline": filter_canonical_comments(result), "name": filepath.stem}
 
     result["source_file"] = filepath.name
     return result
@@ -2070,8 +2056,8 @@ async def validate_sample_roundtrip(sample_id: str, editor_steps: list[dict[str,
             description=canonical.get("description", ""),
         )
     except Exception:
-        original_normalized = _stable_sort_template(_filter_comments(original_steps))
-        editor_normalized = _stable_sort_template(_filter_comments(editor_steps))
+        original_normalized = _stable_sort_template(filter_canonical_comments(original_steps))
+        editor_normalized = _stable_sort_template(filter_canonical_comments(editor_steps))
 
     original_json = json.dumps(original_normalized, sort_keys=True)
     editor_json = json.dumps(editor_normalized, sort_keys=True)
@@ -2084,8 +2070,8 @@ async def validate_sample_roundtrip(sample_id: str, editor_steps: list[dict[str,
             differences.append(f"Step count differs: {len(original_steps)} vs {len(editor_steps)}")
 
         for i, (orig, edit) in enumerate(zip(original_steps, editor_steps)):
-            orig_json = json.dumps(_stable_sort_template(_filter_comments(orig)), sort_keys=True)
-            edit_json = json.dumps(_stable_sort_template(_filter_comments(edit)), sort_keys=True)
+            orig_json = json.dumps(_stable_sort_template(filter_canonical_comments(orig)), sort_keys=True)
+            edit_json = json.dumps(_stable_sort_template(filter_canonical_comments(edit)), sort_keys=True)
             if orig_json != edit_json:
                 differences.append(f"Step {i} differs")
 
@@ -2126,7 +2112,19 @@ class ShapePropagationResponse(BaseModel):
     is_valid: bool
 
 
-# Operator shape effects mapping
+# Operator shape effects mapping.
+#
+# BOUNDARY FLAG (PIPE-01 -> T2.1): this dict and ``_propagate_shape`` below
+# hand-encode nirs4all operator output-shape semantics (PLS ``n_components``,
+# wavelet ``level``, crop/resample feature math) in the backend, which violates
+# the "backend never reimplements nirs4all logic" rule. nirs4all currently only
+# exposes ``n_features_out_`` as a *fitted* attribute (set during ``fit``), so
+# there is no public pre-fit "given operator + params + input shape -> output
+# shape" inference to call from this editor-time endpoint. Until T2.1 adds a
+# queryable static shape-inference surface to nirs4all, this hand-math is kept
+# in place deliberately (it is necessarily incomplete: unknown operators fall
+# back to shape-preserving + a warning). Do not extend it operator-by-operator;
+# route the fix through T2.1.
 SHAPE_TRANSFORMS = {
     # Preprocessing that preserves shape
     "StandardNormalVariate": lambda inp, params: inp,
