@@ -117,6 +117,29 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: "dist",
     sourcemap: mode === "development" || shouldUploadSentrySourceMaps,
+    rollupOptions: {
+      output: {
+        // Split the heavy vendor libraries out of the single ~3.9 MB main chunk
+        // into separately-cacheable vendor chunks (react / charts / 3D / radix),
+        // so the initial load is smaller and unchanged libs stay cached.
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return undefined;
+          if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/.test(id)) {
+            return "vendor-react";
+          }
+          if (/[\\/]node_modules[\\/](recharts|d3-[^\\/]+|victory[^\\/]*)[\\/]/.test(id)) {
+            return "vendor-charts";
+          }
+          if (/[\\/]node_modules[\\/](three|@react-three[\\/][^\\/]+|regl)[\\/]/.test(id)) {
+            return "vendor-3d";
+          }
+          if (id.includes("/node_modules/@radix-ui/")) {
+            return "vendor-radix";
+          }
+          return "vendor";
+        },
+      },
+    },
   },
   // Vitest config. Scope unit tests to src/ so Vitest does not collect the
   // Playwright end-to-end specs under e2e/ (which use @playwright/test and
