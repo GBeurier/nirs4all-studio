@@ -28,6 +28,11 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
       retry: 1,
+      // Avoid refetch storms (the audit's "reduce ping to backend"): data is
+      // still fetched on mount and after staleTime, just not on every window
+      // focus / network reconnect.
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
     },
   },
 });
