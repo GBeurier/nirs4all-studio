@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SpectralData, SampleMetadata } from '@/types/spectral';
 import { loadWorkspaceDataset } from '@/api/playground';
 
@@ -7,13 +8,60 @@ export interface WorkspaceDatasetInfo {
   datasetName: string;
 }
 
+type DataSelection =
+  | { kind: 'workspace'; datasetId: string; datasetName: string }
+  | { kind: 'demo' }
+  | null;
+
+/**
+ * Build the TanStack Query cache key for a workspace dataset load.
+ *
+ * The key includes every parameter that identifies the fetched matrix
+ * (datasetId + datasetName, which both drive `loadWorkspaceDataset`), so two
+ * different datasets can never share a cache entry.
+ */
+function workspaceDatasetQueryKey(datasetId: string, datasetName: string) {
+  return ['workspaceDataset', datasetId, datasetName] as const;
+}
+
+/**
+ * Prefix key matching every cached load for a given dataset id, regardless of
+ * the dataset name suffix. The fetched matrix is cached aggressively (30 min)
+ * keyed by identity only, so when a dataset is edited/refreshed/reconfigured
+ * under the same id the edit site must invalidate this prefix to bust the stale
+ * matrix — otherwise Playground keeps serving the pre-edit data.
+ */
+export function workspaceDatasetQueryKeyPrefix(datasetId: string) {
+  return ['workspaceDataset', datasetId] as const;
+}
+
 export function useSpectralData() {
-  const [rawData, setRawData] = useState<SpectralData | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Track the source of the current data
-  const [dataSource, setDataSource] = useState<'workspace' | 'demo' | null>(null);
-  const [currentDatasetInfo, setCurrentDatasetInfo] = useState<WorkspaceDatasetInfo | null>(null);
+  const queryClient = useQueryClient();
+
+  // Which dataset is currently selected. Demo data is generated client-side and
+  // kept in local state; workspace data is fetched (and cached) via useQuery.
+  const [selection, setSelection] = useState<DataSelection>(null);
+  const [demoData, setDemoData] = useState<SpectralData | null>(null);
+
+  const isWorkspace = selection?.kind === 'workspace';
+
+  // Workspace dataset load, cached by dataset identity so navigating away and
+  // back reuses the cached matrix instead of re-downloading it.
+  const workspaceQuery = useQuery({
+    queryKey: isWorkspace
+      ? workspaceDatasetQueryKey(selection.datasetId, selection.datasetName)
+      : ['workspaceDataset', 'none'],
+    queryFn: () => {
+      // `enabled` guarantees `selection` is a workspace selection here.
+      const sel = selection as Extract<DataSelection, { kind: 'workspace' }>;
+      return loadWorkspaceDataset(sel.datasetId, sel.datasetName);
+    },
+    enabled: isWorkspace,
+    // Generous caching: the underlying NIRS matrix is immutable for a given
+    // datasetId, so keep it fresh and retained across unmounts/navigation.
+    staleTime: 1000 * 60 * 30, // 30 minutes
+    gcTime: 1000 * 60 * 60, // 1 hour
+  });
 
   const loadDemoData = useCallback(() => {
     // Generate synthetic NIR spectra with consistent repetitions for testing all charts
@@ -82,37 +130,59 @@ export function useSpectralData() {
       }
     }
 
-    setRawData({ wavelengths, spectra, y, sampleIds, metadata });
-    setDataSource('demo');
-    setCurrentDatasetInfo(null);
-    setError(null);
+    setDemoData({ wavelengths, spectra, y, sampleIds, metadata });
+    setSelection({ kind: 'demo' });
   }, []);
 
   const loadFromWorkspace = useCallback(async (datasetId: string, datasetName: string) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const data = await loadWorkspaceDataset(datasetId, datasetName);
-      setRawData(data);
-      setDataSource('workspace');
-      setCurrentDatasetInfo({ datasetId, datasetName });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load workspace dataset');
-      setRawData(null);
-      setDataSource(null);
-      setCurrentDatasetInfo(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    // Switch to the workspace selection; the matrix is fetched (or served from
+    // cache) by the useQuery above. Prefetch so a warm cache resolves
+    // immediately and a cold cache starts loading without waiting for re-render.
+    setSelection({ kind: 'workspace', datasetId, datasetName });
+    await queryClient.prefetchQuery({
+      queryKey: workspaceDatasetQueryKey(datasetId, datasetName),
+      queryFn: () => loadWorkspaceDataset(datasetId, datasetName),
+      staleTime: 1000 * 60 * 30,
+    });
+  }, [queryClient]);
 
   const clearData = useCallback(() => {
-    setRawData(null);
-    setError(null);
-    setDataSource(null);
-    setCurrentDatasetInfo(null);
+    setSelection(null);
+    setDemoData(null);
   }, []);
+
+  const isLoading = isWorkspace && workspaceQuery.isLoading;
+
+  const hasWorkspaceError = isWorkspace && !!workspaceQuery.error;
+
+  const error = hasWorkspaceError
+    ? workspaceQuery.error instanceof Error
+      ? workspaceQuery.error.message
+      : 'Failed to load workspace dataset'
+    : null;
+
+  // A failed workspace load must not surface as a selected dataset: report no
+  // dataSource / datasetInfo so consumers (e.g. Playground session persistence)
+  // don't store a phantom selection that can never be reloaded.
+  const dataSource: 'workspace' | 'demo' | null = hasWorkspaceError
+    ? null
+    : selection?.kind ?? null;
+
+  const currentDatasetInfo = useMemo<WorkspaceDatasetInfo | null>(
+    () =>
+      isWorkspace && !hasWorkspaceError
+        ? { datasetId: selection.datasetId, datasetName: selection.datasetName }
+        : null,
+    [isWorkspace, hasWorkspaceError, selection]
+  );
+
+  // Derive the public state from the active selection. Workspace data comes from
+  // the cached query; demo data from local state.
+  const rawData: SpectralData | null = isWorkspace
+    ? workspaceQuery.data ?? null
+    : selection?.kind === 'demo'
+      ? demoData
+      : null;
 
   return {
     rawData,

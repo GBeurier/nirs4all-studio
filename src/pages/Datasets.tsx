@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import { motion } from "@/lib/motion";
 import {
   Database,
@@ -62,6 +63,7 @@ import {
   detectUnified,
 } from "@/api/client";
 import type { Dataset, DatasetGroup, DatasetConfig } from "@/types/datasets";
+import { workspaceDatasetQueryKeyPrefix } from "@/hooks/useSpectralData";
 import { logger } from "@/lib/logger";
 
 function getApiStatus(error: unknown): number | undefined {
@@ -107,9 +109,22 @@ type FilterGroup = "all" | string;
 export default function Datasets() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Developer mode
   const isDeveloperMode = useIsDeveloperMode();
+
+  // A dataset can be edited/refreshed under the same id, which leaves Playground's
+  // aggressively-cached spectral matrix (keyed only by dataset identity) stale.
+  // Bust that cache whenever a dataset is mutated so the next load re-fetches.
+  const invalidateWorkspaceDataset = useCallback(
+    (datasetId: string) => {
+      void queryClient.invalidateQueries({
+        queryKey: workspaceDatasetQueryKeyPrefix(datasetId),
+      });
+    },
+    [queryClient]
+  );
 
   // Data state
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -399,6 +414,7 @@ export default function Datasets() {
     updates: UpdateDatasetRequest
   ) => {
     await updateDatasetConfig(datasetId, updates);
+    invalidateWorkspaceDataset(datasetId);
     await loadData();
   };
 
@@ -425,6 +441,7 @@ export default function Datasets() {
 
   const handleRefreshDataset = async (dataset: Dataset) => {
     await refreshDataset(dataset.id);
+    invalidateWorkspaceDataset(dataset.id);
     await loadData();
   };
 
@@ -795,6 +812,7 @@ export default function Datasets() {
         onSave={handleSaveDatasetConfig}
         onRefresh={async (datasetId) => {
           await refreshDataset(datasetId);
+          invalidateWorkspaceDataset(datasetId);
           await loadData();
         }}
       />

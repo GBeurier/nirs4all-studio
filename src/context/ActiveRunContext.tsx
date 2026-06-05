@@ -80,17 +80,58 @@ interface ActiveRunContextValue {
 
 const ActiveRunContext = createContext<ActiveRunContextValue | undefined>(undefined);
 
+// Derive the same overall progress + step message the WebSocket feeds into the
+// progress map, but from a polled Run object. This is the fallback path used
+// while a run's WebSocket is down (3s poll): the poll must advance the same
+// progress/message fields the WS writes, not just status, or the widget freezes.
+function deriveRunProgress(run: Run): { progress: number; message: string } {
+  const pipelines = run.datasets.flatMap((d) => d.pipelines);
+  const total = run.total_pipelines ?? pipelines.length;
+  const completed = pipelines.filter((p) => p.status === "completed").length;
+  const running = pipelines.find((p) => p.status === "running");
+
+  const baseProgress = total > 0 ? (completed / total) * 100 : 0;
+  const runningProgress = running?.progress ?? 0;
+  const runningContribution = total > 0 ? (runningProgress / 100) * (100 / total) : 0;
+  const progress = Math.min(100, Math.round(baseProgress + runningContribution));
+
+  const message = running
+    ? running.current_branch
+      ? `${running.pipeline_name} — ${running.current_branch}`
+      : running.pipeline_name
+    : run.status === "queued"
+      ? "Queued..."
+      : "Working...";
+
+  return { progress, message };
+}
+
 export function ActiveRunProvider({ children }: { children: ReactNode }) {
   const [runProgressMap, setRunProgressMap] = useState<Map<string, RunProgressState>>(new Map());
   const [isMinimized, setIsMinimized] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [wsConnections, setWsConnections] = useState<Map<string, WebSocket>>(new Map());
+  const [liveWsRunIds, setLiveWsRunIds] = useState<Set<string>>(new Set());
 
-  // Fetch active runs periodically
+  // Whether every active run currently has a live WebSocket feeding it updates.
+  // When this is true, the WebSocket is the real-time driver and polling is only a
+  // slow heartbeat; when false (WS dropped or not yet connected) we fall back to a
+  // faster poll so progress still advances.
+  const [allRunsHaveLiveWs, setAllRunsHaveLiveWs] = useState(true);
+
+  // Fetch active runs as a fallback heartbeat. WebSocket messages are the primary
+  // driver of progress/logs/status (see connectToRun below); polling only discovers
+  // newly-started runs and cleans up finished ones. While every active run has a
+  // live WS we poll slowly (20s); if a WS has dropped we poll faster (3s) as a
+  // backstop so progress still advances. With no active run we keep a slow 20s
+  // discovery heartbeat so a run started elsewhere still surfaces the widget.
   const { data: activeRunsData, refetch: refreshActiveRuns } = useQuery({
     queryKey: ["activeRuns"],
     queryFn: getActiveRuns,
-    refetchInterval: 3000, // Poll every 3 seconds
+    refetchInterval: () => {
+      if (runProgressMap.size > 0 && !allRunsHaveLiveWs) return 3000;
+      return 20000;
+    },
     staleTime: 1000,
   });
 
@@ -109,6 +150,12 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       const ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
+        setLiveWsRunIds((prev) => {
+          if (prev.has(runId)) return prev;
+          const updated = new Set(prev);
+          updated.add(runId);
+          return updated;
+        });
         ws.send(JSON.stringify({
           type: "subscribe",
           channel: `job:${runId}`,
@@ -162,6 +209,12 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       };
 
       ws.onclose = () => {
+        setLiveWsRunIds((prev) => {
+          if (!prev.has(runId)) return prev;
+          const updated = new Set(prev);
+          updated.delete(runId);
+          return updated;
+        });
         setWsConnections((prev) => {
           const updated = new Map(prev);
           updated.delete(runId);
@@ -211,22 +264,46 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       for (const run of activeRuns) {
         const existing = prev.get(run.id);
         if (existing) {
-          // Update status if changed
-          if (existing.status !== run.status) {
-            updated.set(run.id, {
-              ...existing,
-              status: run.status,
-              updatedAt: Date.now(),
-            });
+          // The WebSocket is the primary driver of progress/message; while its
+          // socket is live, leave those fields to the WS path and only reconcile
+          // status here. But when this run has no live WS the poll is the only
+          // source of fresh data — then advance progress/message too, otherwise
+          // the widget freezes at the last WS value (the 3s fallback poll exists
+          // precisely to keep progress moving during a WS outage).
+          const hasLiveWs = liveWsRunIds.has(run.id);
+          if (hasLiveWs) {
+            if (existing.status !== run.status) {
+              updated.set(run.id, {
+                ...existing,
+                status: run.status,
+                updatedAt: Date.now(),
+              });
+            }
+          } else {
+            const { progress, message } = deriveRunProgress(run);
+            if (
+              existing.status !== run.status ||
+              existing.progress !== progress ||
+              existing.message !== message
+            ) {
+              updated.set(run.id, {
+                ...existing,
+                status: run.status,
+                progress,
+                message,
+                updatedAt: Date.now(),
+              });
+            }
           }
         } else {
           // Add new run
+          const { progress, message } = deriveRunProgress(run);
           updated.set(run.id, {
             runId: run.id,
             runName: run.name,
             status: run.status,
-            progress: 0,
-            message: "Starting...",
+            progress,
+            message: message || "Starting...",
             logs: [],
             startedAt: run.started_at,
             updatedAt: Date.now(),
@@ -262,7 +339,7 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
 
       return updated;
     });
-  }, [activeRunsData, connectToRun, disconnectFromRun]);
+  }, [activeRunsData, connectToRun, disconnectFromRun, liveWsRunIds]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -275,6 +352,14 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
   const activeRuns = Array.from(runProgressMap.values())
     .filter((r) => r.status === "running" || r.status === "queued")
     .sort((a, b) => b.updatedAt - a.updatedAt);
+
+  // Track whether every active run has a live WebSocket. This gates the polling
+  // heartbeat (slow when all live, fast fallback when any WS has dropped) so we
+  // never lose progress updates if a socket disconnects.
+  useEffect(() => {
+    const allLive = activeRuns.every((run) => liveWsRunIds.has(run.runId));
+    setAllRunsHaveLiveWs((prev) => (prev === allLive ? prev : allLive));
+  }, [activeRuns, liveWsRunIds]);
 
   // Auto-select first run if none selected
   useEffect(() => {

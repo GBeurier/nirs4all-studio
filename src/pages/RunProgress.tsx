@@ -127,7 +127,7 @@ function useRunWebSocket(
   onLog: (log: string) => void,
   onProgress: (state: ProgressState) => void,
   onReconnecting: (attempt: number, maxAttempts: number) => void,
-  onConnected: () => void
+  onConnected: (runId: string) => void
 ) {
   useEffect(() => {
     if (!runId) return;
@@ -136,16 +136,24 @@ function useRunWebSocket(
     let reconnectTimer: ReturnType<typeof setTimeout>;
     let reconnectAttempts = 0;
     const maxReconnectAttempts = 10;
+    // Guards every async/deferred callback so a socket belonging to a previous
+    // runId (in-flight connect awaiting the base URL, or a reconnect scheduled
+    // during teardown) can never report state for the run that replaced it.
+    let cancelled = false;
 
     const connect = async () => {
       try {
         const baseUrl = await getWebSocketBaseUrl();
+        if (cancelled) return;
         const wsUrl = `${baseUrl}/ws`;
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
+          if (cancelled) return;
           reconnectAttempts = 0;
-          onConnected();
+          // Tag the connection with the runId it was opened for so the consumer
+          // can reject a stale socket that connects after the route changed.
+          onConnected(runId);
           // Subscribe to job channel
           ws?.send(JSON.stringify({
             type: "subscribe",
@@ -155,6 +163,7 @@ function useRunWebSocket(
         };
 
         ws.onmessage = (event) => {
+          if (cancelled) return;
           try {
             const message: WsMessage = JSON.parse(event.data);
             if (message.channel === `job:${runId}` || message.channel === "system") {
@@ -190,6 +199,7 @@ function useRunWebSocket(
         };
 
         ws.onclose = () => {
+          if (cancelled) return;
           // Attempt reconnection with exponential backoff
           if (reconnectAttempts < maxReconnectAttempts) {
             const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
@@ -212,6 +222,7 @@ function useRunWebSocket(
     void connect();
 
     return () => {
+      cancelled = true;
       clearTimeout(reconnectTimer);
       if (ws) {
         ws.close();
@@ -672,6 +683,7 @@ export default function RunProgress() {
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [logsError, setLogsError] = useState<string | null>(null);
   const [wsReconnecting, setWsReconnecting] = useState<{ attempt: number; max: number } | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
   const [currentProgress, setCurrentProgress] = useState<ProgressState | null>(null);
   const [granularProgress, setGranularProgress] = useState<GranularProgress>({
     currentFold: null,
@@ -694,16 +706,19 @@ export default function RunProgress() {
     error: null,
   });
 
-  // Fetch run data with polling for active runs
+  // Fetch run data. The WebSocket is the primary real-time driver: each WS message
+  // invalidates this query (see handleWsUpdate), so progress refreshes live without
+  // polling. Polling is only a fallback heartbeat for active runs — a slow 20s tick
+  // while the WS is connected, and a faster 3s tick while it is down (so progress
+  // still advances if the socket drops).
   const { data: run, isLoading, error, refetch } = useQuery({
     queryKey: ["run", runId],
     queryFn: () => getRun(runId!),
     enabled: !!runId,
     refetchInterval: (query) => {
       const data = query.state.data as Run | undefined;
-      // Poll every 1 second for active runs (faster updates)
       if (data?.status === "running" || data?.status === "queued") {
-        return 1000;
+        return wsConnected ? 20000 : 3000;
       }
       return false;
     },
@@ -833,13 +848,23 @@ export default function RunProgress() {
 
   // Handle WebSocket reconnecting
   const handleReconnecting = useCallback((attempt: number, maxAttempts: number) => {
+    setWsConnected(false);
     setWsReconnecting({ attempt, max: maxAttempts });
   }, []);
 
-  // Handle WebSocket connected
-  const handleConnected = useCallback(() => {
-    setWsReconnecting(null);
-  }, []);
+  // Handle WebSocket connected. Only accept connections for the CURRENT run:
+  // useRunWebSocket can have a stale socket (from a previous runId) finish
+  // connecting after the route changed, and that socket must not flip
+  // wsConnected true for the run now on screen — otherwise the current run polls
+  // at the slow (WS-connected) cadence even though its own socket is still down.
+  const handleConnected = useCallback(
+    (connectedRunId: string) => {
+      if (connectedRunId !== runId) return;
+      setWsConnected(true);
+      setWsReconnecting(null);
+    },
+    [runId]
+  );
 
   useRunWebSocket(runId || "", handleWsUpdate, handleStreamingLog, handleProgress, handleReconnecting, handleConnected);
 
@@ -849,6 +874,8 @@ export default function RunProgress() {
     setPersistedLogs([]);
     setLogsError(null);
     setCurrentProgress(null);
+    setWsConnected(false);
+    setWsReconnecting(null);
     setGranularProgress({
       currentFold: null,
       totalFolds: null,
