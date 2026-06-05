@@ -30,7 +30,6 @@ from .jobs import Job, JobStatus, JobType, job_manager
 from .nirs4all_adapter import (
     build_dataset_spec,
     ensure_models_dir,
-    extract_metrics_from_prediction,
     require_nirs4all,
 )
 from .shared.logger import get_logger
