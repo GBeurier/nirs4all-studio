@@ -260,12 +260,15 @@ class WebSocketManager:
         async with self._lock:
             subscribers = list(self._channels.get(channel, set()))
 
+        # Serialize once and reuse for every subscriber instead of
+        # re-encoding the identical payload per connection.
+        payload = message.to_json()
         sent_count = 0
         disconnected = []
 
         for websocket in subscribers:
             try:
-                await websocket.send_text(message.to_json())
+                await websocket.send_text(payload)
                 sent_count += 1
             except Exception:
                 disconnected.append(websocket)

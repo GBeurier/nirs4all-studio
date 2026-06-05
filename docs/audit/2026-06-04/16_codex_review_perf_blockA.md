@@ -1,0 +1,5 @@
+**Finding**
+
+- [api/updates.py:1506](/home/delete/nirs4all/nirs4all-studio/api/updates.py:1506): `set_custom_venv_path` now runs in the default thread pool concurrently with other newly offloaded singleton `venv_manager` calls, like `create_venv` and `install_package`. `VenvManager` has no lock and repeatedly reads mutable `_custom_venv_path`/derived executables during those methods, so a concurrent `/venv/path` change can retarget an in-flight install/create/status/dependency scan midway or cache results under the wrong venv path. Previously these route calls were effectively serialized by the event loop. Use one shared async lock around all `venv_manager` offloads, or make `VenvManager` internally synchronized.
+
+No other real issues found in the reviewed diff. The changed args/tuple unpacking look preserved, no missed direct blocking `venv_manager` subprocess call in async routes, websocket payload reuse is per-message identical, and job worker env parsing/clamping keeps the unset default at 4. Tests not run; review only.

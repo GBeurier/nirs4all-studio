@@ -8,6 +8,7 @@ Phase 5: WebSocket integration for real-time updates.
 """
 
 import asyncio
+import os
 import threading
 import traceback
 import uuid
@@ -16,6 +17,27 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
+
+_DEFAULT_JOB_WORKERS = 4
+_MIN_JOB_WORKERS = 1
+_MAX_JOB_WORKERS = 64
+
+
+def _resolve_max_workers() -> int:
+    """Resolve the worker pool size from ``NIRS4ALL_JOB_WORKERS``.
+
+    Falls back to the default when unset or unparseable, and clamps the value
+    to a sane floor/ceiling so a misconfigured deployment cannot starve or
+    overload the host.
+
+    Returns:
+        The number of worker threads for the job pool.
+    """
+    try:
+        value = int(os.environ.get("NIRS4ALL_JOB_WORKERS", _DEFAULT_JOB_WORKERS))
+    except (TypeError, ValueError):
+        return _DEFAULT_JOB_WORKERS
+    return max(_MIN_JOB_WORKERS, min(value, _MAX_JOB_WORKERS))
 
 
 class JobStatus(str, Enum):
@@ -99,12 +121,16 @@ class JobManager:
     Uses a thread pool for executing long-running tasks.
     """
 
-    def __init__(self, max_workers: int = 4):
+    def __init__(self, max_workers: Optional[int] = None):
         """Initialize the job manager.
 
         Args:
-            max_workers: Maximum number of concurrent jobs
+            max_workers: Maximum number of concurrent jobs. When ``None``, the
+                value is read from the ``NIRS4ALL_JOB_WORKERS`` environment
+                variable (default 4), clamped to a sane range.
         """
+        if max_workers is None:
+            max_workers = _resolve_max_workers()
         self._jobs: Dict[str, Job] = {}
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._lock = threading.Lock()

@@ -6,11 +6,13 @@ for nirs4all and its ML dependencies. This allows the library to be updated
 independently of the bundled webapp.
 """
 
+import functools
 import json
 import os
 import re
 import subprocess
 import sys
+import threading
 import venv
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -25,6 +27,26 @@ APP_NAME = "nirs4all-studio"
 APP_AUTHOR = "nirs4all"
 OUTDATED_PACKAGES_TIMEOUT_SECONDS = 15
 PIP_INSTALL_TIMEOUT_SECONDS = 900
+
+
+def _synchronized(method):
+    """Serialize a mutating VenvManager method on the instance lock.
+
+    Mutating venv operations (create/install/uninstall/path-change) now run in
+    ``asyncio.to_thread`` worker threads (so they no longer freeze the event
+    loop), which means they can run concurrently. Serializing them prevents a
+    venv-path change or a second install from retargeting an in-flight one.
+    Read-only methods are intentionally left lock-free so a long install does
+    not block status/list queries. The lock is re-entrant in case a guarded
+    method calls another.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 # ============= pip install allowlist + injection guard =============
@@ -231,6 +253,8 @@ class VenvManager:
 
     def __init__(self):
         """Initialize the venv manager."""
+        # Re-entrant lock serializing mutating operations across to_thread workers.
+        self._lock = threading.RLock()
         self._app_data_dir = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
         self._settings_path = self._app_data_dir / self.SETTINGS_FILE
         # Default: use the current Python environment
@@ -293,6 +317,7 @@ class VenvManager:
         """Get the custom venv path if configured."""
         return str(self._custom_venv_path) if self._custom_venv_path else None
 
+    @_synchronized
     def set_custom_venv_path(self, path: Optional[str]) -> Tuple[bool, str]:
         """
         Set a custom virtual environment path.
@@ -485,6 +510,7 @@ class VenvManager:
             pass
         return total
 
+    @_synchronized
     def create_venv(
         self,
         progress_callback: Optional[Callable[[float, str], None]] = None,
@@ -568,6 +594,7 @@ class VenvManager:
 
         return True, "Virtual environment created successfully"
 
+    @_synchronized
     def install_package(
         self,
         package: str,
@@ -727,6 +754,7 @@ class VenvManager:
         """Check if a package is installed in the venv."""
         return self.get_package_version(package) is not None
 
+    @_synchronized
     def uninstall_package(
         self,
         package: str,

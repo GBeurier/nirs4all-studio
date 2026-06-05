@@ -584,7 +584,7 @@ class UpdateManager:
         Returns:
             Nirs4allUpdateInfo with latest release details
         """
-        current_version = self.get_nirs4all_version()
+        current_version = await asyncio.to_thread(self.get_nirs4all_version)
         info = Nirs4allUpdateInfo(current_version=current_version)
 
         # Check cache (lazy load on first access)
@@ -678,7 +678,7 @@ class UpdateManager:
         nirs4all_info = await nirs4all_task
 
         # Get venv info
-        venv_info = venv_manager.get_venv_info()
+        venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
 
         return UpdateStatus(
             webapp=webapp_info,
@@ -753,13 +753,14 @@ async def get_venv_status() -> Dict[str, Any]:
     """
     Get managed venv status and installed packages.
     """
-    venv_info = venv_manager.get_venv_info()
-    packages = venv_manager.get_installed_packages()
+    venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
+    packages = await asyncio.to_thread(venv_manager.get_installed_packages)
+    nirs4all_version = await asyncio.to_thread(venv_manager.get_nirs4all_version)
 
     return {
         "venv": venv_info.to_dict(),
         "packages": [p.to_dict() for p in packages],
-        "nirs4all_version": venv_manager.get_nirs4all_version(),
+        "nirs4all_version": nirs4all_version,
     }
 
 
@@ -774,15 +775,16 @@ async def create_venv(
     This is an async operation. Poll /venv/status to check progress.
     """
     # Check if already exists and valid
-    if not request.force and venv_manager.get_venv_info().is_valid:
+    venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
+    if not request.force and venv_info.is_valid:
         return {
             "success": True,
             "message": "Virtual environment already exists",
             "already_existed": True,
         }
 
-    # Create venv synchronously for now (could be made async with job system)
-    success, message = venv_manager.create_venv(force=request.force)
+    # Create venv off the event loop (subprocess-backed, can take minutes)
+    success, message = await asyncio.to_thread(venv_manager.create_venv, force=request.force)
 
     if not success:
         raise HTTPException(status_code=500, detail=message)
@@ -795,7 +797,8 @@ async def create_venv(
 
     # Install nirs4all if requested
     if request.install_nirs4all and success:
-        install_success, install_msg, _ = venv_manager.install_package(
+        install_success, install_msg, _ = await asyncio.to_thread(
+            venv_manager.install_package,
             "nirs4all",
             extras=request.extras,
         )
@@ -817,9 +820,10 @@ async def install_nirs4all(request: InstallRequest) -> Dict[str, Any]:
         Installation result with status and output
     """
     # Ensure venv exists
-    if not venv_manager.get_venv_info().is_valid:
+    venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
+    if not venv_info.is_valid:
         # Try to create it
-        success, message = venv_manager.create_venv()
+        success, message = await asyncio.to_thread(venv_manager.create_venv)
         if not success:
             raise HTTPException(
                 status_code=500,
@@ -827,7 +831,8 @@ async def install_nirs4all(request: InstallRequest) -> Dict[str, Any]:
             )
 
     # Install nirs4all
-    success, message, output = venv_manager.install_package(
+    success, message, output = await asyncio.to_thread(
+        venv_manager.install_package,
         "nirs4all",
         version=request.version,
         extras=request.extras,
@@ -837,10 +842,12 @@ async def install_nirs4all(request: InstallRequest) -> Dict[str, Any]:
     if not success:
         raise HTTPException(status_code=500, detail=message)
 
+    nirs4all_version = await asyncio.to_thread(venv_manager.get_nirs4all_version)
+
     return {
         "success": True,
         "message": message,
-        "version": venv_manager.get_nirs4all_version(),
+        "version": nirs4all_version,
         "output": output[-50:],  # Last 50 lines
     }
 
@@ -1159,9 +1166,10 @@ async def get_versions() -> Dict[str, Any]:
     """
     Get current version information.
     """
+    nirs4all_version = await asyncio.to_thread(update_manager.get_nirs4all_version)
     return {
         "webapp_version": update_manager.get_webapp_version(),
-        "nirs4all_version": update_manager.get_nirs4all_version(),
+        "nirs4all_version": nirs4all_version,
         "python_version": sys.version,
         "platform": platform.system(),
         "machine": platform.machine(),
@@ -1201,7 +1209,7 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
 
     Returns cached results if available. Use force_refresh=true to bypass cache.
     """
-    venv_info = venv_manager.get_venv_info()
+    venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
     venv_path = str(venv_info.path)
 
     # Check cache first (unless force refresh)
@@ -1225,7 +1233,7 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
 
     # Get installed packages from venv
     if venv_info.is_valid:
-        for pkg in venv_manager.get_installed_packages():
+        for pkg in await asyncio.to_thread(venv_manager.get_installed_packages):
             installed_packages[pkg.name.lower()] = pkg.version
 
     # Also check current Python environment as fallback
@@ -1241,7 +1249,7 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
     # Get outdated packages for update detection
     outdated_packages = {}
     if venv_info.is_valid:
-        for pkg in venv_manager.get_outdated_packages():
+        for pkg in await asyncio.to_thread(venv_manager.get_outdated_packages):
             outdated_packages[pkg["name"].lower()] = pkg["latest_version"]
 
     categories = []
@@ -1292,7 +1300,7 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
         ))
 
     # Check nirs4all installation
-    nirs4all_version = venv_manager.get_nirs4all_version()
+    nirs4all_version = await asyncio.to_thread(venv_manager.get_nirs4all_version)
     nirs4all_installed = nirs4all_version is not None
 
     # Also check in current environment
@@ -1340,8 +1348,9 @@ async def install_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
         Installation result with status and output
     """
     # Ensure venv exists
-    if not venv_manager.get_venv_info().is_valid:
-        success, message = venv_manager.create_venv()
+    venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
+    if not venv_info.is_valid:
+        success, message = await asyncio.to_thread(venv_manager.create_venv)
         if not success:
             raise HTTPException(
                 status_code=500,
@@ -1349,7 +1358,8 @@ async def install_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
             )
 
     # Install the package
-    success, message, output = venv_manager.install_package(
+    success, message, output = await asyncio.to_thread(
+        venv_manager.install_package,
         request.package,
         version=request.version,
         upgrade=request.upgrade,
@@ -1362,7 +1372,7 @@ async def install_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
     _dependencies_cache.invalidate()
 
     # Get the installed version
-    installed_version = venv_manager.get_package_version(request.package)
+    installed_version = await asyncio.to_thread(venv_manager.get_package_version, request.package)
 
     return {
         "success": True,
@@ -1384,13 +1394,14 @@ async def uninstall_dependency(request: PackageUninstallRequest) -> Dict[str, An
     Returns:
         Uninstallation result
     """
-    if not venv_manager.get_venv_info().is_valid:
+    venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
+    if not venv_info.is_valid:
         raise HTTPException(
             status_code=400,
             detail="Virtual environment is not valid"
         )
 
-    success, message = venv_manager.uninstall_package(request.package)
+    success, message = await asyncio.to_thread(venv_manager.uninstall_package, request.package)
 
     if not success:
         raise HTTPException(status_code=500, detail=message)
@@ -1417,14 +1428,16 @@ async def update_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
         Update result with new version
     """
     # Ensure venv exists
-    if not venv_manager.get_venv_info().is_valid:
+    venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
+    if not venv_info.is_valid:
         raise HTTPException(
             status_code=400,
             detail="Virtual environment is not valid"
         )
 
     # Update the package
-    success, message, output = venv_manager.install_package(
+    success, message, output = await asyncio.to_thread(
+        venv_manager.install_package,
         request.package,
         upgrade=True,
     )
@@ -1436,7 +1449,7 @@ async def update_dependency(request: PackageInstallRequest) -> Dict[str, Any]:
     _dependencies_cache.invalidate()
 
     # Get the new version
-    installed_version = venv_manager.get_package_version(request.package)
+    installed_version = await asyncio.to_thread(venv_manager.get_package_version, request.package)
 
     return {
         "success": True,
@@ -1472,7 +1485,7 @@ async def get_venv_path() -> Dict[str, Any]:
     """
     Get the current virtual environment path configuration.
     """
-    venv_info = venv_manager.get_venv_info()
+    venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
 
     return {
         "current_path": str(venv_manager.venv_path),
@@ -1490,7 +1503,7 @@ async def set_venv_path(request: SetVenvPathRequest) -> Dict[str, Any]:
 
     Pass path=null to reset to default.
     """
-    success, message = venv_manager.set_custom_venv_path(request.path)
+    success, message = await asyncio.to_thread(venv_manager.set_custom_venv_path, request.path)
 
     if not success:
         raise HTTPException(status_code=400, detail=message)
@@ -1498,7 +1511,7 @@ async def set_venv_path(request: SetVenvPathRequest) -> Dict[str, Any]:
     # Invalidate dependencies cache when venv path changes
     _dependencies_cache.invalidate()
 
-    venv_info = venv_manager.get_venv_info()
+    venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
 
     return {
         "success": True,
