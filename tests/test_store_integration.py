@@ -117,20 +117,6 @@ class TestStoreAdapter:
             adapter._store = mock_store
             return adapter
 
-    def test_get_runs_summary(self, mock_polars_df, sample_run_rows):
-        mock_store = MagicMock()
-        mock_store.list_runs.return_value = mock_polars_df(sample_run_rows)
-
-        adapter = self._make_adapter(mock_store)
-        result = adapter.get_runs_summary(limit=50, offset=0)
-
-        assert "runs" in result
-        assert result["count"] == 2
-        assert result["has_more"] is False
-        assert result["runs"][0]["run_id"] == "run-001"
-        # Datetimes should be converted to ISO strings
-        assert isinstance(result["runs"][0]["created_at"], str)
-
     def test_get_run_detail_found(self, mock_polars_df):
         mock_store = MagicMock()
         mock_store.get_run.return_value = {

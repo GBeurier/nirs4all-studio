@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -44,33 +44,6 @@ router = APIRouter(prefix="/inspector", tags=["inspector"])
 # ============================================================================
 # Pydantic models
 # ============================================================================
-
-
-class InspectorChainSummary(BaseModel):
-    """Chain summary row for Inspector."""
-
-    chain_id: str
-    run_id: str
-    pipeline_id: str
-    pipeline_name: str | None = None
-    model_class: str
-    model_name: str | None = None
-    preprocessings: str | None = None
-    preprocessing_steps: list[str] = []
-    branch_path: Any | None = None
-    source_index: int | None = None
-    metric: str | None = None
-    task_type: str | None = None
-    dataset_name: str | None = None
-    best_params: Any | None = None
-    variant_params: Any | None = None
-    cv_val_score: float | None = None
-    cv_test_score: float | None = None
-    cv_train_score: float | None = None
-    cv_fold_count: int = 0
-    final_test_score: float | None = None
-    final_train_score: float | None = None
-    pipeline_status: str | None = None
 
 
 class InspectorDataResponse(BaseModel):
@@ -133,24 +106,6 @@ class HistogramResponse(BaseModel):
     min_score: float | None = None
     max_score: float | None = None
     mean_score: float | None = None
-
-
-class RankingRow(BaseModel):
-    """A single ranking row."""
-
-    rank: int
-    chain_id: str
-    model_class: str
-    model_name: str | None = None
-    preprocessings: str | None = None
-    cv_val_score: float | None = None
-    cv_test_score: float | None = None
-    cv_train_score: float | None = None
-    final_test_score: float | None = None
-    final_train_score: float | None = None
-    cv_fold_count: int = 0
-    dataset_name: str | None = None
-    best_params: Any | None = None
 
 
 class RankingsResponse(BaseModel):
@@ -388,19 +343,6 @@ def _normalize_chain_record(
     record["pipeline_name"] = pipeline.get("name")
     record["preprocessing_steps"] = _split_preprocessing_steps(record.get("preprocessings"))
     return record
-
-
-def _normalize_chain_rows(df: Any) -> list[dict[str, Any]]:
-    """Normalize all rows from a chain-summary style dataframe."""
-    rows = [dict(row) for row in df.iter_rows(named=True)]
-    pipeline_map = _load_pipeline_metadata_map(
-        getattr(df, "_store", None),
-        [],
-    )
-    # WorkspaceStore dataframes do not carry a back-reference to the store.
-    # Callers that need pipeline enrichment should pass rows through
-    # ``_normalize_chain_records`` instead.
-    return [_normalize_chain_record(row, pipeline_map) for row in rows]
 
 
 def _normalize_chain_records(store: Any, df: Any) -> list[dict[str, Any]]:

@@ -510,16 +510,3 @@ def _translate_legacy_params(name: str, params: dict[str, Any]) -> dict[str, Any
             del translated["reference"]
 
     return translated
-
-
-# Backward compatibility exports (deprecated)
-# These are kept only for imports that might reference them directly
-# The actual implementations are in nirs4all.operators.filters
-BaseFilter = None  # Removed - use SampleFilter from nirs4all
-OutlierFilter = None  # Removed - use XOutlierFilter from nirs4all
-RangeFilter = None  # Removed - use YOutlierFilter from nirs4all
-QCFilter = None  # Removed - use SpectralQualityFilter from nirs4all
-DistanceFilter = None  # Removed - use XOutlierFilter from nirs4all
-
-# Registry for backward compatibility - maps to instantiate_filter
-FILTER_REGISTRY: dict[str, type] = {}  # Empty - use instantiate_filter instead

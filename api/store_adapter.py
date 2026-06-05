@@ -663,36 +663,6 @@ class StoreAdapter:
     # Runs
     # ------------------------------------------------------------------
 
-    def get_runs_summary(self, limit: int = 50, offset: int = 0, status: str | None = None, dataset: str | None = None) -> dict[str, Any]:
-        """Get runs with summary info for the webapp dashboard.
-
-        Args:
-            limit: Maximum number of runs to return.
-            offset: Pagination offset.
-            status: Optional status filter.
-            dataset: Optional dataset name filter.
-
-        Returns:
-            Dict with ``runs`` list, ``count`` (page size), ``has_more``,
-            ``limit``, and ``offset``.
-        """
-        # Request one extra row to detect whether more pages exist.
-        df = self._store.list_runs(status=status, dataset=dataset, limit=limit + 1, offset=offset)
-        rows = list(df.iter_rows(named=True))
-        has_more = len(rows) > limit
-        rows = rows[:limit]
-
-        runs = []
-        for row in rows:
-            run = _sanitize_dict(dict(row))
-            # Convert datetime objects to ISO strings
-            for ts_field in ("created_at", "completed_at"):
-                val = run.get(ts_field)
-                if isinstance(val, datetime):
-                    run[ts_field] = val.isoformat()
-            runs.append(run)
-        return {"runs": runs, "count": len(runs), "has_more": has_more, "limit": limit, "offset": offset}
-
     def get_run_detail(self, run_id: str) -> dict[str, Any] | None:
         """Get full run detail including pipelines and chains.
 
@@ -1315,61 +1285,6 @@ class StoreAdapter:
             dataset_name=dataset_name,
             model_class=model_class,
             metric=metric,
-        )
-        return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
-
-    # Deprecated alias
-    get_aggregated_predictions = get_chain_summaries
-
-    def get_top_chain_summaries(
-        self,
-        metric: str | None = None,
-        n: int = 10,
-        score_column: str = "cv_val_score",
-        **filters: Any,
-    ) -> list[dict[str, Any]]:
-        """Get top-N chain summaries ranked by score.
-
-        Args:
-            metric: Optional metric name filter.
-            n: Number of top results.
-            score_column: Column to sort by.
-            **filters: Additional filters (run_id, pipeline_id, etc.).
-
-        Returns:
-            List of sanitized top chain summary dicts.
-        """
-        df = self._store.query_top_chains(
-            metric=metric,
-            n=n,
-            score_column=score_column,
-            **filters,
-        )
-        return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
-
-    # Deprecated alias
-    get_top_aggregated_predictions = get_top_chain_summaries
-
-    def get_chain_predictions(
-        self,
-        chain_id: str,
-        partition: str | None = None,
-        fold_id: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """Get individual prediction rows for a chain (drill-down).
-
-        Args:
-            chain_id: Chain identifier.
-            partition: Optional partition filter.
-            fold_id: Optional fold filter.
-
-        Returns:
-            List of sanitized prediction dicts.
-        """
-        df = self._store.get_chain_predictions(
-            chain_id=chain_id,
-            partition=partition,
-            fold_id=fold_id,
         )
         return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
 

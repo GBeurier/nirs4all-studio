@@ -1591,30 +1591,6 @@ async def cleanup_updates() -> dict[str, Any]:
     return {"success": True, "message": "Cleanup complete"}
 
 
-@router.post("/webapp/download")
-async def download_webapp_update(background_tasks: BackgroundTasks) -> dict[str, Any]:
-    """
-    Download the latest webapp update (legacy endpoint).
-
-    Use /webapp/download-start for the new job-based download.
-    """
-    webapp_info = await update_manager.check_github_release()
-
-    if not webapp_info.update_available:
-        raise HTTPException(status_code=400, detail="No update available")
-
-    if not webapp_info.download_url:
-        raise HTTPException(status_code=400, detail="No download URL available for this platform")
-
-    return {
-        "status": "ready",
-        "download_url": webapp_info.download_url,
-        "asset_name": webapp_info.asset_name,
-        "version": webapp_info.latest_version,
-        "message": "Use /webapp/download-start for automatic download.",
-    }
-
-
 @router.post("/webapp/restart")
 async def restart_webapp() -> dict[str, Any]:
     """
@@ -1684,11 +1660,6 @@ async def _get_pypi_version(package: str) -> str | None:
     return None
 
 
-def _filter_profile_managed_categories(categories: list[DependencyCategory]) -> list[DependencyCategory]:
-    """Keep visible profile-managed optional packages in dependency payloads."""
-    return categories
-
-
 @router.get("/dependencies")
 async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
     """
@@ -1707,9 +1678,7 @@ async def get_dependencies(force_refresh: bool = False) -> DependenciesResponse:
             if not isinstance(current_nirs4all_version, str):
                 current_nirs4all_version = cached.get("nirs4all_version")
             current_nirs4all_installed = current_nirs4all_version is not None
-            cached_categories = _filter_profile_managed_categories(
-                [DependencyCategory(**cat) for cat in cached.get("categories", [])]
-            )
+            cached_categories = [DependencyCategory(**cat) for cat in cached.get("categories", [])]
             total_installed = sum(cat.installed_count for cat in cached_categories)
             total_packages = sum(cat.total_count for cat in cached_categories)
             # Return cached data

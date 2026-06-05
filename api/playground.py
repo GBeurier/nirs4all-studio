@@ -19,17 +19,14 @@ import json
 import sys
 import time
 import warnings
-from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 UMAP_AVAILABLE = importlib.util.find_spec("umap") is not None
-
-from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
 
 NIRS4ALL_AVAILABLE = True
 
@@ -45,14 +42,12 @@ from .shared.filter_operators import (
     instantiate_filter,
 )
 from .shared.metrics_computer import (
-    ALL_METRICS,
     CHEMOMETRIC_METRICS,
     FAST_METRICS,
     MetricsComputer,
     get_available_metrics,
 )
 from .shared.pipeline_service import (
-    convert_frontend_step,
     get_augmentation_methods,
     get_preprocessing_methods,
     get_splitter_methods,
@@ -2859,178 +2854,6 @@ async def get_capabilities():
             "metrics": True,  # Phase 5: Spectral metrics
         }
     }
-
-
-@router.get("/metrics")
-async def get_metrics_info():
-    """Get information about available spectral metrics.
-
-    Phase 5 Implementation: Returns all available metrics organized by category,
-    with descriptions and requirements (e.g., which metrics require PCA).
-    """
-    categories = get_available_metrics()
-
-    # Flatten for quick lookup
-    all_metrics = []
-    for category, metrics in categories.items():
-        for metric in metrics:
-            metric["category"] = category
-            all_metrics.append(metric)
-
-    return {
-        "categories": categories,
-        "all_metrics": all_metrics,
-        "fast_metrics": FAST_METRICS,
-        "chemometric_metrics": CHEMOMETRIC_METRICS,
-        "total": len(all_metrics),
-    }
-
-
-class MetricsRequest(BaseModel):
-    """Request model for computing specific metrics."""
-
-    data: PlaygroundData = Field(..., description="Spectral data")
-    metrics: list[str] = Field(..., description="List of metric names to compute")
-    pca_result: dict[str, Any] | None = Field(None, description="Pre-computed PCA result")
-
-
-class OutlierRequest(BaseModel):
-    """Request model for outlier detection."""
-
-    data: PlaygroundData = Field(..., description="Spectral data")
-    method: str = Field("hotelling_t2", description="Detection method: 'hotelling_t2', 'q_residual', 'lof', 'distance'")
-    threshold: float = Field(0.95, ge=0, le=1, description="Threshold for outlier detection (0-1)")
-    pca_result: dict[str, Any] | None = Field(None, description="Pre-computed PCA result")
-
-
-class SimilarityRequest(BaseModel):
-    """Request model for finding similar samples."""
-
-    data: PlaygroundData = Field(..., description="Spectral data")
-    reference_idx: int = Field(..., description="Index of reference sample")
-    metric: str = Field("euclidean", description="Distance metric: 'euclidean', 'cosine', 'correlation'")
-    threshold: float | None = Field(None, description="Distance threshold")
-    top_k: int | None = Field(None, description="Return top K similar samples")
-
-
-@router.post("/metrics/compute")
-async def compute_metrics(request: MetricsRequest):
-    """Compute specific spectral metrics on-demand.
-
-    Phase 5 Implementation: Allows computing any subset of metrics
-    without re-running the full pipeline.
-    """
-    import numpy as np
-    # Convert data to numpy
-    X = np.array(request.data.x, dtype=np.float64)
-    wavelengths = np.array(request.data.wavelengths) if request.data.wavelengths else None
-
-    n_samples = X.shape[0]
-
-    # Create metrics computer
-    computer = MetricsComputer(
-        n_pca_components=min(5, n_samples - 1, X.shape[1]),
-        lof_n_neighbors=min(20, n_samples - 1),
-    )
-
-    # Compute requested metrics
-    try:
-        computed = computer.compute(
-            X=X,
-            metrics=request.metrics,
-            pca_result=request.pca_result,
-            wavelengths=wavelengths,
-        )
-
-        # Convert to JSON-serializable format
-        metrics_values = {k: v.tolist() for k, v in computed.items()}
-        metrics_stats = {k: computer.get_metric_stats(v) for k, v in computed.items()}
-
-        return {
-            "success": True,
-            "values": metrics_values,
-            "statistics": metrics_stats,
-            "n_samples": n_samples,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/metrics/outliers")
-async def detect_outliers(request: OutlierRequest):
-    """Detect outliers in spectral data.
-
-    Phase 5 Implementation: Returns a mask indicating which samples
-    are outliers based on the selected detection method.
-    """
-    import numpy as np
-    # Convert data to numpy
-    X = np.array(request.data.x, dtype=np.float64)
-    n_samples = X.shape[0]
-
-    # Create metrics computer
-    computer = MetricsComputer(
-        n_pca_components=min(5, n_samples - 1, X.shape[1]),
-        lof_n_neighbors=min(20, n_samples - 1),
-    )
-
-    try:
-        mask, info = computer.get_outlier_mask(
-            X=X,
-            method=request.method,
-            threshold=request.threshold,
-            pca_result=request.pca_result,
-        )
-
-        return {
-            "success": True,
-            "inlier_mask": mask.tolist(),
-            "outlier_indices": np.where(~mask)[0].tolist(),
-            "n_outliers": int(np.sum(~mask)),
-            "n_inliers": int(np.sum(mask)),
-            **info,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/metrics/similar")
-async def find_similar_samples(request: SimilarityRequest):
-    """Find samples similar to a reference sample.
-
-    Phase 5 Implementation: Returns indices and distances of samples
-    similar to the reference based on the specified metric.
-    """
-    import numpy as np
-    # Convert data to numpy
-    X = np.array(request.data.x, dtype=np.float64)
-    n_samples = X.shape[0]
-
-    if request.reference_idx < 0 or request.reference_idx >= n_samples:
-        raise HTTPException(status_code=400, detail=f"Invalid reference_idx: {request.reference_idx}")
-
-    # Create metrics computer
-    computer = MetricsComputer()
-
-    try:
-        indices, distances = computer.get_similar_samples(
-            X=X,
-            reference_idx=request.reference_idx,
-            metric=request.metric,
-            threshold=request.threshold,
-            top_k=request.top_k,
-        )
-
-        return {
-            "success": True,
-            "reference_idx": request.reference_idx,
-            "metric": request.metric,
-            "similar_indices": indices.tolist(),
-            "distances": distances.tolist(),
-            "n_similar": len(indices),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============= Difference Computation Endpoints =============

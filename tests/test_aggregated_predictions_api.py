@@ -230,24 +230,24 @@ class TestStoreAdapterAggregated:
             adapter._store = mock_store
             return adapter
 
-    def test_get_aggregated_predictions(self, mock_polars_df, sample_aggregated_rows):
+    def test_get_chain_summaries(self, mock_polars_df, sample_aggregated_rows):
         mock_store = MagicMock()
         mock_store.query_chain_summaries.return_value = mock_polars_df(sample_aggregated_rows)
 
         adapter = self._make_adapter(mock_store)
-        result = adapter.get_aggregated_predictions()
+        result = adapter.get_chain_summaries()
 
         assert len(result) == 2
         assert result[0]["chain_id"] == "chain-001"
         assert result[1]["chain_id"] == "chain-002"
         mock_store.query_chain_summaries.assert_called_once()
 
-    def test_get_aggregated_predictions_with_filters(self, mock_polars_df, sample_aggregated_rows):
+    def test_get_chain_summaries_with_filters(self, mock_polars_df, sample_aggregated_rows):
         mock_store = MagicMock()
         mock_store.query_chain_summaries.return_value = mock_polars_df(sample_aggregated_rows[:1])
 
         adapter = self._make_adapter(mock_store)
-        result = adapter.get_aggregated_predictions(
+        result = adapter.get_chain_summaries(
             run_id="run-001",
             model_class="PLSRegression",
             metric="rmse",
@@ -262,47 +262,6 @@ class TestStoreAdapterAggregated:
             model_class="PLSRegression",
             metric="rmse",
         )
-
-    def test_get_top_aggregated_predictions(self, mock_polars_df, sample_aggregated_rows):
-        mock_store = MagicMock()
-        mock_store.query_top_chains.return_value = mock_polars_df(sample_aggregated_rows[:1])
-
-        adapter = self._make_adapter(mock_store)
-        result = adapter.get_top_aggregated_predictions(metric="rmse", n=5)
-
-        assert len(result) == 1
-        assert result[0]["metric"] == "rmse"
-        mock_store.query_top_chains.assert_called_once_with(
-            metric="rmse",
-            n=5,
-            score_column="cv_val_score",
-        )
-
-    def test_get_chain_predictions(self, mock_polars_df, sample_chain_prediction_rows):
-        mock_store = MagicMock()
-        mock_store.get_chain_predictions.return_value = mock_polars_df(sample_chain_prediction_rows)
-
-        adapter = self._make_adapter(mock_store)
-        result = adapter.get_chain_predictions("chain-001")
-
-        assert len(result) == 3
-        assert all(r["chain_id"] == "chain-001" for r in result)
-        mock_store.get_chain_predictions.assert_called_once_with(
-            chain_id="chain-001",
-            partition=None,
-            fold_id=None,
-        )
-
-    def test_get_chain_predictions_with_partition(self, mock_polars_df, sample_chain_prediction_rows):
-        val_rows = [r for r in sample_chain_prediction_rows if r["partition"] == "val"]
-        mock_store = MagicMock()
-        mock_store.get_chain_predictions.return_value = mock_polars_df(val_rows)
-
-        adapter = self._make_adapter(mock_store)
-        result = adapter.get_chain_predictions("chain-001", partition="val")
-
-        assert len(result) == 2
-        assert all(r["partition"] == "val" for r in result)
 
     def test_get_prediction_arrays(self):
         mock_store = MagicMock()
@@ -365,7 +324,7 @@ class TestStoreAdapterAggregated:
         mock_store.query_chain_summaries.return_value = mock_polars_df(rows)
 
         adapter = self._make_adapter(mock_store)
-        result = adapter.get_aggregated_predictions()
+        result = adapter.get_chain_summaries()
 
         assert result[0]["cv_val_score"] is None
         assert result[0]["cv_test_score"] is None
