@@ -998,6 +998,11 @@ export default function RunProgress() {
     }
   }, [runId, run]);
 
+  // Keep a ref to the latest loader so the polling interval always reads fresh
+  // run data without re-subscribing (and recreating the interval) every poll.
+  const loadPersistedLogsRef = useRef(loadPersistedLogs);
+  loadPersistedLogsRef.current = loadPersistedLogs;
+
   // Stop run handler
   const handleStop = async () => {
     if (!runId) return;
@@ -1074,19 +1079,24 @@ export default function RunProgress() {
     return logs;
   }, [run]);
 
+  // Poll persisted logs on a stable 5s cadence. Depend on run.status (a string)
+  // rather than the whole `run` object — react-query returns a fresh `run`
+  // reference every 1s poll, which previously re-ran this effect every second,
+  // clearing/recreating the interval and re-fetching far more often than 5s.
+  const runStatus = run?.status;
   useEffect(() => {
-    if (!run || !runId) return;
-    void loadPersistedLogs();
+    if (!runStatus || !runId) return;
+    void loadPersistedLogsRef.current();
 
-    if (run.status === "running" || run.status === "queued") {
+    if (runStatus === "running" || runStatus === "queued") {
       const intervalId = setInterval(() => {
-        void loadPersistedLogs();
+        void loadPersistedLogsRef.current();
       }, 5000);
       return () => clearInterval(intervalId);
     }
 
     return undefined;
-  }, [run, runId, loadPersistedLogs]);
+  }, [runStatus, runId]);
 
   if (isLoading) {
     return (

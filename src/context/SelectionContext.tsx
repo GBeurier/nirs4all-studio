@@ -155,6 +155,28 @@ const createInitialState = (): SelectionState => ({
   selectionToolMode: 'click',
 });
 
+// ============= Helpers =============
+
+/**
+ * Append a new selection snapshot to the bounded undo history.
+ * Mirrors the helper in InspectorSelectionContext; replaces the inline
+ * slice/push/shift block that was duplicated across every history-mutating case.
+ */
+function pushHistory(
+  state: SelectionState,
+  newSelection: Set<number>
+): Pick<SelectionState, 'selectionHistory' | 'historyIndex'> {
+  const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
+  newHistory.push(newSelection);
+  if (newHistory.length > MAX_HISTORY) {
+    newHistory.shift();
+  }
+  return {
+    selectionHistory: newHistory,
+    historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+  };
+}
+
 // ============= Reducer =============
 
 function selectionReducer(state: SelectionState, action: SelectionAction): SelectionState {
@@ -188,21 +210,13 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
           newSelection = new Set(action.indices);
       }
 
-      // Update history
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       // Track last selected index for range selection (use the last index in the array)
       const lastIdx = action.indices.length > 0 ? action.indices[action.indices.length - 1] : state.lastSelectedIndex;
 
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
         lastSelectedIndex: lastIdx,
       };
     }
@@ -211,17 +225,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       const newSelection = new Set(state.selectedSamples);
       action.indices.forEach(i => newSelection.delete(i));
 
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
@@ -235,17 +242,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
         }
       });
 
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
@@ -254,17 +254,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
         Array.from({ length: action.totalSamples }, (_, i) => i)
       );
 
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
@@ -273,16 +266,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       if (state.lastSelectedIndex === null) {
         // No previous selection, just select the target index
         const newSelection = new Set([action.toIndex]);
-        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-        newHistory.push(newSelection);
-        if (newHistory.length > MAX_HISTORY) {
-          newHistory.shift();
-        }
         return {
           ...state,
           selectedSamples: newSelection,
-          selectionHistory: newHistory,
-          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+          ...pushHistory(state, newSelection),
           lastSelectedIndex: action.toIndex,
         };
       }
@@ -322,17 +309,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
           newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
       }
 
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
         lastSelectedIndex: action.toIndex,
       };
     }
@@ -348,16 +328,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       if (state.lastSelectedIndex === null) {
         // No previous selection, just select the target index
         const newSelection = new Set([action.toIndex]);
-        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-        newHistory.push(newSelection);
-        if (newHistory.length > MAX_HISTORY) {
-          newHistory.shift();
-        }
         return {
           ...state,
           selectedSamples: newSelection,
-          selectionHistory: newHistory,
-          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+          ...pushHistory(state, newSelection),
           lastSelectedIndex: action.toIndex,
         };
       }
@@ -369,16 +343,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       // If either index is not in the order array, fall back to single selection
       if (fromPos === -1 || toPos === -1) {
         const newSelection = new Set([action.toIndex]);
-        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-        newHistory.push(newSelection);
-        if (newHistory.length > MAX_HISTORY) {
-          newHistory.shift();
-        }
         return {
           ...state,
           selectedSamples: newSelection,
-          selectionHistory: newHistory,
-          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+          ...pushHistory(state, newSelection),
           lastSelectedIndex: action.toIndex,
         };
       }
@@ -416,17 +384,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
           newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
       }
 
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
         lastSelectedIndex: action.toIndex,
       };
     }
@@ -448,26 +409,15 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       if (selectionsMatch) {
         // Clear selection (same as clicking sole selected item)
         const newSelection = new Set<number>();
-        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-        newHistory.push(newSelection);
-        if (newHistory.length > MAX_HISTORY) {
-          newHistory.shift();
-        }
         return {
           ...state,
           selectedSamples: newSelection,
-          selectionHistory: newHistory,
-          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+          ...pushHistory(state, newSelection),
         };
       }
 
       // Replace selection with target
       const newSelection = new Set(action.indices);
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
 
       // Track last selected index for range selection
       const lastIdx = action.indices.length > 0 ? action.indices[action.indices.length - 1] : state.lastSelectedIndex;
@@ -475,8 +425,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
         lastSelectedIndex: lastIdx,
       };
     }
@@ -487,17 +436,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       }
 
       const newSelection = new Set<number>();
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
@@ -507,17 +449,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
           .filter(i => !state.selectedSamples.has(i))
       );
 
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
@@ -567,17 +502,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       }
 
       const newSelection = new Set(saved.indices);
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
@@ -680,18 +608,11 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
         };
       }
 
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
         pinnedSamples: newPinned,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 

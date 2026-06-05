@@ -706,59 +706,6 @@ export function calculatePipelineVariants(steps: PipelineStep[]): number {
   return totalVariants;
 }
 
-// Get detailed variant breakdown for display
-/**
- * @deprecated Use the `useVariantCount` hook's `breakdown` property instead,
- * which calls the nirs4all backend API for accurate variant counting.
- * @see useVariantCount from '@/hooks/useVariantCount'
- */
-export interface VariantBreakdown {
-  stepId: string;
-  stepName: string;
-  stepType: StepType;
-  variants: number;
-  sweeps: { param: string; count: number; display: string }[];
-  children?: VariantBreakdown[];
-}
-
-export function getVariantBreakdown(steps: PipelineStep[]): VariantBreakdown[] {
-  return steps
-    .filter(step => step.enabled !== false)
-    .map(step => {
-      const sweeps = step.paramSweeps
-        ? Object.entries(step.paramSweeps).map(([param, sweep]) => ({
-            param,
-            count: calculateSweepVariants(sweep),
-            display: formatSweepDisplay(sweep),
-          }))
-        : [];
-
-      const breakdown: VariantBreakdown = {
-        stepId: step.id,
-        stepName: step.name,
-        stepType: step.type,
-        variants: calculateStepVariants(step),
-        sweeps,
-      };
-
-      // Add children for branches
-      if (step.branches) {
-        breakdown.children = step.branches.flatMap((branch, idx) =>
-          getVariantBreakdown(branch).map(b => ({
-            ...b,
-            stepName: `${step.generatorKind === "cartesian" ? "Stage"
-              : step.generatorKind === "grid" || step.generatorKind === "zip" ? "Param"
-              : step.generatorKind === "chain" ? "Config"
-              : step.subType === "generator" ? "Option"
-              : "Branch"} ${idx + 1}: ${b.stepName}`
-          }))
-        );
-      }
-
-      return breakdown;
-    });
-}
-
 // Step options configuration (for component library)
 // Organized by category with subcategories for better UX
 export const stepOptions: Record<StepType, StepOption[]> = {
