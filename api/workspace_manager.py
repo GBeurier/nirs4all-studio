@@ -1845,7 +1845,7 @@ class WorkspaceManager:
                 "has_header": True,
                 "header_unit": "nm",
                 "signal_type": "auto",
-                "na_policy": "drop",
+                "na_policy": "auto",
                 "auto_detect": True,
             },
             "developer_mode": False,

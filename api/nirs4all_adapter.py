@@ -32,6 +32,25 @@ except ImportError as exc:
     _NIRS4ALL_IMPORT_ERROR = exc
 
 
+# nirs4all's na_policy vocabulary is {auto, abort, remove_sample, remove_feature,
+# replace, ignore} (case-sensitive). Older webapp settings stored "drop"/"keep"
+# (sometimes capitalized), which nirs4all rejects with "Invalid na_policy". Map
+# those legacy values — and any casing — to the library vocabulary at this
+# boundary so already-saved workspaces/datasets keep working.
+_LEGACY_NA_POLICY_ALIASES = {
+    "drop": "remove_sample",
+    "keep": "ignore",
+}
+
+
+def _normalize_na_policy(na_policy: Any) -> Any:
+    """Translate legacy/cased na_policy values to nirs4all's vocabulary."""
+    if not isinstance(na_policy, str):
+        return na_policy
+    normalized = na_policy.strip().lower()
+    return _LEGACY_NA_POLICY_ALIASES.get(normalized, normalized)
+
+
 PREPROCESSING_ALIASES = {
     "SNV": "StandardNormalVariate",
     "MSC": "MultiplicativeScatterCorrection",
@@ -211,8 +230,8 @@ def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
         if value is not None:
             x_params[key] = value
 
-    # Pass na_policy directly (webapp and library share the same vocabulary)
-    na_policy = config.get("na_policy") or stored_global_params.get("na_policy")
+    # Normalize na_policy to nirs4all's vocabulary (legacy "drop"/"keep" + casing).
+    na_policy = _normalize_na_policy(config.get("na_policy") or stored_global_params.get("na_policy"))
     if na_policy:
         global_params["na_policy"] = na_policy
         na_fill_config = config.get("na_fill_config")
