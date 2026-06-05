@@ -6,6 +6,13 @@
         "-lc",
         "test -f ~/.config/sentry-mcp/env && source ~/.config/sentry-mcp/env; source ~/.nvm/nvm.sh && nvm use --silent 22 && export SENTRY_ACCESS_TOKEN=\"${SENTRY_ACCESS_TOKEN:-${SENTRY_AUTH_TOKEN:-}}\" && npx -y @sentry/mcp-server@latest"
       ]
+    },
+    "playwright": {
+      "command": "bash",
+      "args": [
+        "-lc",
+        "source ~/.nvm/nvm.sh && nvm use --silent 22 && npx -y @playwright/mcp@latest --browser chromium --headless --viewport-size 1440,900"
+      ]
     }
   }
 }
