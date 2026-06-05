@@ -145,12 +145,26 @@ jobs:
       - name: Run import-smoke test
         run: pytest tests/test_import_smoke.py -q
 
+      # Blocking gate (green): the fast backend suite passes once requirements
+      # (incl. orjson) + nirs4all are installed. The earlier "29 failures" were a
+      # local env gap (missing orjson), not code.
       - name: Run backend tests
-        # TODO(audit Phase 1): remove continue-on-error once tests/test_playground.py
-        # is green (29 pre-existing failures as of the audit; backend security/
-        # path/updater suites already pass).
-        continue-on-error: true
         run: pytest -m "not slow"
+
+      - name: Lint (ruff)
+        # TODO(audit): remove continue-on-error once ruff is clean across api/
+        # (config in pyproject.toml; pre-existing findings outside the cleaned files).
+        continue-on-error: true
+        run: |
+          pip install ruff
+          ruff check .
+
+      - name: Type check (mypy)
+        # TODO(audit): non-blocking until types are ratcheted (config in pyproject.toml).
+        continue-on-error: true
+        run: |
+          pip install mypy
+          mypy api main.py
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Electron: Build validation (Linux only for speed)
