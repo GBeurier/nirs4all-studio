@@ -1,0 +1,28 @@
+# Normalize line endings. The tree had mixed CRLF/LF (no .gitattributes), which
+# produced giant line-ending diffs whenever a CRLF file was edited. Store all
+# text as LF in the repo; git picks native endings on checkout.
+* text=auto
+
+# Windows-only scripts must stay CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary assets — never normalize.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.icns binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+*.parquet binary
+*.joblib  binary
+*.sqlite  binary
+*.pdf binary
+*.zip binary
+*.gz  binary
+*.node binary
