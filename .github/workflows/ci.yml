@@ -39,8 +39,8 @@ jobs:
         run: npm ci
 
       - name: Lint
-        # TODO(audit Phase 2/3): remove continue-on-error once eslint is clean
-        # (37 pre-existing errors / 188 warnings as of the audit).
+        # TODO: remove continue-on-error once eslint is clean (37 pre-existing
+        # errors as of the audit; the rest of the suite is green and blocking).
         continue-on-error: true
         run: npm run lint
 
@@ -48,35 +48,22 @@ jobs:
       - name: Validate node registry
         run: npm run validate:nodes
 
+      # Blocking gate (green): 0 type errors.
       - name: Type check
-        # TODO(audit Phase 2/3): remove continue-on-error once tsc is clean
-        # (146 pre-existing type errors across 10 files as of the audit).
-        continue-on-error: true
         run: npx tsc --noEmit
 
+      # Blocking gate (green): 717 passing vitest tests, e2e excluded via vite.config.ts.
       - name: Run tests
-        # TODO(audit Tests workstream): remove continue-on-error once the vitest
-        # suite is green (undeclared jsdom/@testing-library deps, a framer-motion
-        # vitest entry-resolution issue, and a stale useStepRenderer expectation
-        # tied to in-flight pipeline-editor work). e2e specs are already excluded
-        # via vite.config.ts.
-        continue-on-error: true
         run: npm run test -- --run
 
+      # Blocking gate (green): full production build (validate:nodes + tsc -b + vite build).
       - name: Build frontend
-        # TODO(audit Phase 2/3): remove continue-on-error once `npm run build`
-        # passes (it runs `tsc -b`, currently red — see Type check).
-        continue-on-error: true
         run: npm run build
 
       - name: Build Electron frontend
-        # TODO(audit Phase 2/3): blocked by the same tsc errors as Build frontend.
-        continue-on-error: true
         run: npm run build:electron
 
       - name: Verify build outputs
-        # TODO(audit Phase 2/3): blocked until Build frontend is green.
-        continue-on-error: true
         run: |
           test -f dist/index.html || { echo "::error::dist/index.html not found"; exit 1; }
           test -d dist-electron || { echo "::error::dist-electron not found"; exit 1; }
