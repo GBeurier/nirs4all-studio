@@ -13,6 +13,7 @@ Phase 8 Implementation:
 
 from datetime import datetime
 from pathlib import Path
+import logging
 import asyncio
 import json
 import shutil
@@ -20,13 +21,14 @@ import time
 import zipfile
 from typing import Dict, List, Any, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager, WorkspaceScanner
 from .app_config import app_config
 from .telemetry import apply_consent_from_app_settings
+from .shared.dependencies import require_workspace
 from .shared.json_sanitize import sanitize_float, sanitize_json
 from .shared.paths import is_within_directory
 
@@ -120,6 +122,7 @@ class WorkspaceListResponse(BaseModel):
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/workspace", response_model=WorkspaceResponse)
@@ -134,8 +137,9 @@ async def get_workspace():
         return WorkspaceResponse(
             workspace=workspace_config.to_dict(), datasets=workspace_config.datasets
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get workspace: {str(e)}")
+    except Exception:
+        logger.exception("Failed to get workspace")
+        raise HTTPException(status_code=500, detail="Failed to get workspace")
 
 
 @router.post("/workspace/select")
@@ -150,9 +154,10 @@ async def select_workspace(request: SetWorkspaceRequest):
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to set workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to set workspace: {str(e)}"
+            status_code=500, detail="Failed to set workspace"
         )
 
 
@@ -178,9 +183,10 @@ async def reload_workspace():
             "message": "Workspace configuration reloaded from disk",
             "workspace": workspace_config.to_dict(),
         }
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to reload workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to reload workspace: {str(e)}"
+            status_code=500, detail="Failed to reload workspace"
         )
 
 
@@ -201,9 +207,10 @@ async def list_datasets():
             "groups": [g.to_dict() for g in groups],
             "total": len(datasets),
         }
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to list datasets")
         raise HTTPException(
-            status_code=500, detail=f"Failed to list datasets: {str(e)}"
+            status_code=500, detail="Failed to list datasets"
         )
 
 
@@ -292,9 +299,10 @@ async def link_dataset(request: LinkDatasetRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to link dataset")
         raise HTTPException(
-            status_code=500, detail=f"Failed to link dataset: {str(e)}"
+            status_code=500, detail="Failed to link dataset"
         )
 
 
@@ -311,9 +319,10 @@ async def unlink_dataset(dataset_id: str):
         raise
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to unlink dataset")
         raise HTTPException(
-            status_code=500, detail=f"Failed to unlink dataset: {str(e)}"
+            status_code=500, detail="Failed to unlink dataset"
         )
 
 
@@ -336,9 +345,10 @@ async def refresh_dataset(dataset_id: str):
         raise
     except RuntimeError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to refresh dataset")
         raise HTTPException(
-            status_code=500, detail=f"Failed to refresh dataset: {str(e)}"
+            status_code=500, detail="Failed to refresh dataset"
         )
 
 
@@ -350,8 +360,9 @@ async def get_workspace_paths():
         pipelines_path = workspace_manager.get_pipelines_path()
 
         return {"results_path": results_path, "pipelines_path": pipelines_path}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get paths: {str(e)}")
+    except Exception:
+        logger.exception("Failed to get paths")
+        raise HTTPException(status_code=500, detail="Failed to get paths")
 
 
 # ----------------------- Groups management -----------------------
@@ -366,8 +377,9 @@ async def get_groups():
     try:
         groups = workspace_manager.get_groups()
         return {"groups": groups}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list groups: {str(e)}")
+    except Exception:
+        logger.exception("Failed to list groups")
+        raise HTTPException(status_code=500, detail="Failed to list groups")
 
 
 @router.post("/workspace/groups")
@@ -375,9 +387,10 @@ async def create_group(req: CreateGroupRequest):
     try:
         grp = workspace_manager.create_group(req.name)
         return {"success": True, "group": grp}
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to create group")
         raise HTTPException(
-            status_code=500, detail=f"Failed to create group: {str(e)}"
+            status_code=500, detail="Failed to create group"
         )
 
 
@@ -390,9 +403,10 @@ async def rename_group(group_id: str, req: CreateGroupRequest):
         return {"success": True}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to rename group")
         raise HTTPException(
-            status_code=500, detail=f"Failed to rename group: {str(e)}"
+            status_code=500, detail="Failed to rename group"
         )
 
 
@@ -405,9 +419,10 @@ async def delete_group(group_id: str):
         return {"success": True}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to delete group")
         raise HTTPException(
-            status_code=500, detail=f"Failed to delete group: {str(e)}"
+            status_code=500, detail="Failed to delete group"
         )
 
 
@@ -423,9 +438,10 @@ async def add_dataset_to_group(group_id: str, body: Dict[str, Any]):
         return {"success": True}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to add dataset to group")
         raise HTTPException(
-            status_code=500, detail=f"Failed to add dataset to group: {str(e)}"
+            status_code=500, detail="Failed to add dataset to group"
         )
 
 
@@ -438,9 +454,10 @@ async def remove_dataset_from_group(group_id: str, dataset_id: str):
         return {"success": True}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to remove dataset from group")
         raise HTTPException(
-            status_code=500, detail=f"Failed to remove dataset from group: {str(e)}"
+            status_code=500, detail="Failed to remove dataset from group"
         )
 
 
@@ -528,9 +545,10 @@ async def create_workspace(request: CreateWorkspaceRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to create workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to create workspace: {str(e)}"
+            status_code=500, detail="Failed to create workspace"
         )
 
 
@@ -561,9 +579,10 @@ async def list_workspaces():
             total=len(workspaces),
         )
 
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to list workspaces")
         raise HTTPException(
-            status_code=500, detail=f"Failed to list workspaces: {str(e)}"
+            status_code=500, detail="Failed to list workspaces"
         )
 
 
@@ -593,14 +612,15 @@ async def get_recent_workspaces(limit: int = 10):
             total=len(recent),
         )
 
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get recent workspaces")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get recent workspaces: {str(e)}"
+            status_code=500, detail="Failed to get recent workspaces"
         )
 
 
 @router.post("/workspace/export")
-async def export_workspace(request: ExportWorkspaceRequest):
+async def export_workspace(request: ExportWorkspaceRequest, workspace=Depends(require_workspace)):
     """
     Export the current workspace to a zip archive.
 
@@ -608,10 +628,6 @@ async def export_workspace(request: ExportWorkspaceRequest):
     pipelines, and optionally models and datasets.
     """
     try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
         workspace_path = Path(workspace.path)
         output_path = Path(request.output_path)
 
@@ -688,9 +704,10 @@ async def export_workspace(request: ExportWorkspaceRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to export workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to export workspace: {str(e)}"
+            status_code=500, detail="Failed to export workspace"
         )
 
 
@@ -708,9 +725,10 @@ async def remove_workspace_from_list(path: str):
             "message": "Workspace removed from list" if success else "Workspace not found in list",
         }
 
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to remove workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to remove workspace: {str(e)}"
+            status_code=500, detail="Failed to remove workspace"
         )
 
 
@@ -806,9 +824,10 @@ async def import_workspace(request: ImportWorkspaceRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to import workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to import workspace: {str(e)}"
+            status_code=500, detail="Failed to import workspace"
         )
 
 
@@ -858,9 +877,10 @@ async def get_custom_nodes():
         }
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get custom nodes")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get custom nodes: {str(e)}"
+            status_code=500, detail="Failed to get custom nodes"
         )
 
 
@@ -878,9 +898,10 @@ async def add_custom_node(node: CustomNodeDefinition):
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to add custom node")
         raise HTTPException(
-            status_code=500, detail=f"Failed to add custom node: {str(e)}"
+            status_code=500, detail="Failed to add custom node"
         )
 
 
@@ -900,9 +921,10 @@ async def update_custom_node(node_id: str, node: CustomNodeDefinition):
         raise
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to update custom node")
         raise HTTPException(
-            status_code=500, detail=f"Failed to update custom node: {str(e)}"
+            status_code=500, detail="Failed to update custom node"
         )
 
 
@@ -921,9 +943,10 @@ async def delete_custom_node(node_id: str):
         raise
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to delete custom node")
         raise HTTPException(
-            status_code=500, detail=f"Failed to delete custom node: {str(e)}"
+            status_code=500, detail="Failed to delete custom node"
         )
 
 
@@ -942,9 +965,10 @@ async def import_custom_nodes(request: ImportCustomNodesRequest):
         }
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to import custom nodes")
         raise HTTPException(
-            status_code=500, detail=f"Failed to import custom nodes: {str(e)}"
+            status_code=500, detail="Failed to import custom nodes"
         )
 
 
@@ -963,9 +987,10 @@ async def export_custom_nodes():
         }
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to export custom nodes")
         raise HTTPException(
-            status_code=500, detail=f"Failed to export custom nodes: {str(e)}"
+            status_code=500, detail="Failed to export custom nodes"
         )
 
 
@@ -978,9 +1003,10 @@ async def get_custom_node_settings():
             "success": True,
             "settings": settings,
         }
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get custom node settings")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get custom node settings: {str(e)}"
+            status_code=500, detail="Failed to get custom node settings"
         )
 
 
@@ -998,9 +1024,10 @@ async def update_custom_node_settings(request: CustomNodeSettingsRequest):
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to update custom node settings")
         raise HTTPException(
-            status_code=500, detail=f"Failed to update custom node settings: {str(e)}"
+            status_code=500, detail="Failed to update custom node settings"
         )
 
 
@@ -1087,7 +1114,7 @@ def _compute_directory_size(directory: Path) -> tuple[int, int]:
 
 
 @router.get("/workspace/stats", response_model=WorkspaceStatsResponse)
-async def get_workspace_stats():
+async def get_workspace_stats(workspace=Depends(require_workspace)):
     """
     Get workspace statistics including space usage breakdown.
 
@@ -1095,10 +1122,6 @@ async def get_workspace_stats():
     broken down by category (results, models, predictions, pipelines).
     """
     try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
         workspace_path = Path(workspace.path)
 
         # Define categories and their directories
@@ -1159,14 +1182,15 @@ async def get_workspace_stats():
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get workspace stats")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get workspace stats: {str(e)}"
+            status_code=500, detail="Failed to get workspace stats"
         )
 
 
 @router.post("/workspace/clean-cache", response_model=CleanCacheResponse)
-async def clean_cache(request: CleanCacheRequest):
+async def clean_cache(request: CleanCacheRequest, workspace=Depends(require_workspace)):
     """
     Clean workspace cache and temporary files.
 
@@ -1176,10 +1200,6 @@ async def clean_cache(request: CleanCacheRequest):
     - clean_old_predictions: Remove predictions older than threshold
     """
     try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
         workspace_path = Path(workspace.path)
         files_removed = 0
         bytes_freed = 0
@@ -1256,39 +1276,33 @@ async def clean_cache(request: CleanCacheRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to clean cache")
         raise HTTPException(
-            status_code=500, detail=f"Failed to clean cache: {str(e)}"
+            status_code=500, detail="Failed to clean cache"
         )
 
 
 @router.get("/workspace/settings", response_model=WorkspaceSettingsResponse)
-async def get_workspace_settings():
+async def get_workspace_settings(workspace=Depends(require_workspace)):
     """Get workspace settings including data loading defaults."""
     try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
         settings = workspace_manager.get_workspace_settings()
         return WorkspaceSettingsResponse(**settings)
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get workspace settings")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get workspace settings: {str(e)}"
+            status_code=500, detail="Failed to get workspace settings"
         )
 
 
 @router.put("/workspace/settings")
-async def update_workspace_settings(settings: Dict[str, Any]):
+async def update_workspace_settings(settings: Dict[str, Any], workspace=Depends(require_workspace)):
     """Update workspace settings."""
     try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
         success = workspace_manager.save_workspace_settings(settings)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to save settings")
@@ -1300,9 +1314,10 @@ async def update_workspace_settings(settings: Dict[str, Any]):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to update workspace settings")
         raise HTTPException(
-            status_code=500, detail=f"Failed to update workspace settings: {str(e)}"
+            status_code=500, detail="Failed to update workspace settings"
         )
 
 
@@ -1319,20 +1334,17 @@ async def get_data_loading_defaults():
         defaults = settings.get("data_loading_defaults", {})
         return DataLoadingDefaults(**defaults) if defaults else DataLoadingDefaults()
 
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get data loading defaults")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get data loading defaults: {str(e)}"
+            status_code=500, detail="Failed to get data loading defaults"
         )
 
 
 @router.put("/workspace/data-defaults")
-async def update_data_loading_defaults(defaults: DataLoadingDefaults):
+async def update_data_loading_defaults(defaults: DataLoadingDefaults, workspace=Depends(require_workspace)):
     """Update default settings for data loading."""
     try:
-        workspace = workspace_manager.get_current_workspace()
-        if not workspace:
-            raise HTTPException(status_code=409, detail="No workspace selected")
-
         settings = workspace_manager.get_workspace_settings()
         settings["data_loading_defaults"] = defaults.model_dump()
         success = workspace_manager.save_workspace_settings(settings)
@@ -1348,9 +1360,10 @@ async def update_data_loading_defaults(defaults: DataLoadingDefaults):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to update data loading defaults")
         raise HTTPException(
-            status_code=500, detail=f"Failed to update data loading defaults: {str(e)}"
+            status_code=500, detail="Failed to update data loading defaults"
         )
 
 
@@ -1418,9 +1431,10 @@ async def get_workspace_info(workspace_id: str):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get workspace info")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get workspace info: {str(e)}"
+            status_code=500, detail="Failed to get workspace info"
         )
 
 
@@ -1445,9 +1459,10 @@ async def update_workspace(workspace_id: str, updates: Dict[str, Any]):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to update workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to update workspace: {str(e)}"
+            status_code=500, detail="Failed to update workspace"
         )
 
 
@@ -1538,9 +1553,10 @@ async def list_linked_workspaces():
             active_workspace_id=active.id if active else None,
             total=len(workspaces),
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to list workspaces")
         raise HTTPException(
-            status_code=500, detail=f"Failed to list workspaces: {str(e)}"
+            status_code=500, detail="Failed to list workspaces"
         )
 
 
@@ -1560,9 +1576,10 @@ async def link_workspace(request: LinkWorkspaceRequest):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to link workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to link workspace: {str(e)}"
+            status_code=500, detail="Failed to link workspace"
         )
 
 
@@ -1576,9 +1593,10 @@ async def unlink_workspace(workspace_id: str):
         return {"success": True, "message": "Workspace unlinked"}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to unlink workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to unlink workspace: {str(e)}"
+            status_code=500, detail="Failed to unlink workspace"
         )
 
 
@@ -1600,9 +1618,10 @@ async def activate_workspace(workspace_id: str):
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to activate workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to activate workspace: {str(e)}"
+            status_code=500, detail="Failed to activate workspace"
         )
 
 
@@ -1622,9 +1641,10 @@ async def scan_workspace(workspace_id: str):
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to scan workspace")
         raise HTTPException(
-            status_code=500, detail=f"Failed to scan workspace: {str(e)}"
+            status_code=500, detail="Failed to scan workspace"
         )
 
 
@@ -1779,9 +1799,10 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
         return result
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get runs")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get runs: {str(e)}"
+            status_code=500, detail="Failed to get runs"
         )
 
 
@@ -1822,9 +1843,10 @@ async def get_workspace_run_detail(workspace_id: str, run_id: str):
         raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get run detail")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get run detail: {str(e)}"
+            status_code=500, detail="Failed to get run detail"
         )
 
 
@@ -1855,9 +1877,10 @@ async def delete_workspace_run(workspace_id: str, run_id: str):
         return result
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to delete run")
         raise HTTPException(
-            status_code=500, detail=f"Failed to delete run: {str(e)}"
+            status_code=500, detail="Failed to delete run"
         )
 
 
@@ -1917,9 +1940,10 @@ async def get_workspace_results(
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get results")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get results: {str(e)}"
+            status_code=500, detail="Failed to get results"
         )
 
 
@@ -1949,9 +1973,10 @@ async def get_workspace_discovered_datasets(workspace_id: str):
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get discovered datasets")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get discovered datasets: {str(e)}"
+            status_code=500, detail="Failed to get discovered datasets"
         )
 
 
@@ -1961,9 +1986,10 @@ async def get_workspace_predictions(workspace_id: str):
     try:
         predictions = workspace_manager.get_workspace_predictions(workspace_id)
         return {"predictions": predictions, "count": len(predictions)}
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get predictions")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get predictions: {str(e)}"
+            status_code=500, detail="Failed to get predictions"
         )
 
 
@@ -2116,9 +2142,10 @@ async def get_workspace_predictions_data(
         return Response(content=json_str, media_type="application/json")
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to read predictions data")
         raise HTTPException(
-            status_code=500, detail=f"Failed to read predictions data: {str(e)}"
+            status_code=500, detail="Failed to read predictions data"
         )
 
 
@@ -2208,9 +2235,10 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get scatter data")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get scatter data: {str(e)}"
+            status_code=500, detail="Failed to get scatter data"
         )
 
 
@@ -2351,9 +2379,10 @@ async def get_workspace_predictions_summary(workspace_id: str):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to read predictions summary")
         raise HTTPException(
-            status_code=500, detail=f"Failed to read predictions summary: {str(e)}"
+            status_code=500, detail="Failed to read predictions summary"
         )
 
 
@@ -2363,9 +2392,10 @@ async def get_workspace_exports(workspace_id: str):
     try:
         exports = workspace_manager.get_workspace_exports(workspace_id)
         return {"exports": exports, "count": len(exports)}
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get exports")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get exports: {str(e)}"
+            status_code=500, detail="Failed to get exports"
         )
 
 
@@ -2375,9 +2405,10 @@ async def get_workspace_templates(workspace_id: str):
     try:
         templates = workspace_manager.get_workspace_templates(workspace_id)
         return {"templates": templates, "count": len(templates)}
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get templates")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get templates: {str(e)}"
+            status_code=500, detail="Failed to get templates"
         )
 
 
@@ -2399,9 +2430,10 @@ async def get_app_settings():
                 settings.get("ui_preferences", {}).get("debug_data_sharing_enabled", False)
             ),
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get app settings")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get app settings: {str(e)}"
+            status_code=500, detail="Failed to get app settings"
         )
 
 
@@ -2422,9 +2454,10 @@ async def update_app_settings(request: UpdateAppSettingsRequest):
         return {"success": True, "message": "App settings updated"}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to update app settings")
         raise HTTPException(
-            status_code=500, detail=f"Failed to update app settings: {str(e)}"
+            status_code=500, detail="Failed to update app settings"
         )
 
 
@@ -2434,9 +2467,10 @@ async def get_favorite_pipelines():
     try:
         favorites = workspace_manager.get_favorite_pipelines()
         return {"favorites": favorites, "count": len(favorites)}
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get favorites")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get favorites: {str(e)}"
+            status_code=500, detail="Failed to get favorites"
         )
 
 
@@ -2450,9 +2484,10 @@ async def add_favorite_pipeline(request: FavoritePipelineRequest):
             "added": added,
             "message": "Added to favorites" if added else "Already in favorites",
         }
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to add favorite")
         raise HTTPException(
-            status_code=500, detail=f"Failed to add favorite: {str(e)}"
+            status_code=500, detail="Failed to add favorite"
         )
 
 
@@ -2466,9 +2501,10 @@ async def remove_favorite_pipeline(pipeline_id: str):
             "removed": removed,
             "message": "Removed from favorites" if removed else "Not in favorites",
         }
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to remove favorite")
         raise HTTPException(
-            status_code=500, detail=f"Failed to remove favorite: {str(e)}"
+            status_code=500, detail="Failed to remove favorite"
         )
 
 
@@ -2498,9 +2534,10 @@ async def get_config_path():
             "default_path": app_config.get_default_config_path(),
             "is_custom": app_config.is_using_custom_path(),
         }
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get config path")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get config path: {str(e)}"
+            status_code=500, detail="Failed to get config path"
         )
 
 
@@ -2529,9 +2566,10 @@ async def set_config_path(request: SetConfigPathRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to set config path")
         raise HTTPException(
-            status_code=500, detail=f"Failed to set config path: {str(e)}"
+            status_code=500, detail="Failed to set config path"
         )
 
 
@@ -2557,7 +2595,8 @@ async def reset_config_path():
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to reset config path")
         raise HTTPException(
-            status_code=500, detail=f"Failed to reset config path: {str(e)}"
+            status_code=500, detail="Failed to reset config path"
         )

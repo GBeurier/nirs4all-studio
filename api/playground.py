@@ -13,6 +13,7 @@ Phase 1 Feature: Backend API for Playground V1
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import hashlib
 import json
@@ -62,6 +63,7 @@ from .shared.metrics_computer import (
 )
 
 router = APIRouter(prefix="/playground", tags=["playground"])
+logger = logging.getLogger(__name__)
 
 
 # ============= Pydantic Models =============
@@ -241,7 +243,6 @@ class PlaygroundExecutor:
         step_errors: List[Dict[str, Any]] = []
         fold_info = None
         filter_info = None
-        splitter_applied = False
         total_filtered = 0
         filter_mask = np.ones(X_sampled.shape[0], dtype=bool)
 
@@ -256,7 +257,6 @@ class PlaygroundExecutor:
                     fold_info = self._execute_splitter(
                         step, X_processed, y_sampled, options
                     )
-                    splitter_applied = True
                     trace = StepTrace(
                         step_id=step.id,
                         name=step.name,
@@ -913,7 +913,6 @@ class PlaygroundExecutor:
                 r"^(.+?)\s*\(\d+\)$",         # sample (1), sample (2)
             ]
 
-            best_pattern = None
             best_groups = {}
             best_rep_count = 0
 
@@ -934,7 +933,6 @@ class PlaygroundExecutor:
                     rep_count = sum(1 for indices in groups.values() if len(indices) >= 2)
                     if rep_count > best_rep_count:
                         best_rep_count = rep_count
-                        best_pattern = pattern
                         best_groups = dict(groups)
 
                 except re.error:
@@ -1306,10 +1304,11 @@ async def execute_pipeline(request: ExecuteRequest):
             sampling=request.sampling,
             options=request.options
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("Pipeline execution failed")
         raise HTTPException(
             status_code=500,
-            detail=f"Pipeline execution failed: {str(e)}"
+            detail="Pipeline execution failed"
         )
 
     # Cache result
@@ -1609,8 +1608,9 @@ async def compute_metrics(request: MetricsRequest):
             "statistics": result["statistics"],
             "n_samples": n_samples,
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Unhandled error in playground endpoint")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/metrics/similar")
@@ -1648,8 +1648,9 @@ async def find_similar_samples(request: SimilarityRequest):
             "distances": distances.tolist(),
             "n_similar": len(indices),
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Unhandled error in playground endpoint")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ============= Difference Computation Endpoints =============
@@ -1728,8 +1729,9 @@ async def compute_diff(request: DiffComputeRequest):
         raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Unhandled error in playground endpoint")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/diff/repetition-variance")
@@ -1774,5 +1776,6 @@ async def compute_repetition_variance(request: RepetitionVarianceRequest):
         raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Unhandled error in playground endpoint")
+        raise HTTPException(status_code=500, detail="Internal server error")

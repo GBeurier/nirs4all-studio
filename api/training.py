@@ -22,10 +22,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager
+from .shared.dependencies import require_workspace
 from .jobs import job_manager, Job, JobStatus, JobType
 from .nirs4all_adapter import (
     require_nirs4all,
@@ -109,7 +109,7 @@ class TrainingResultResponse(BaseModel):
 
 
 @router.post("/training/start", response_model=TrainingJobResponse)
-async def start_training(request: TrainingRequest):
+async def start_training(request: TrainingRequest, workspace=Depends(require_workspace)):
     """
     Start a new training job.
 
@@ -117,10 +117,6 @@ async def start_training(request: TrainingRequest):
     pipeline and dataset configuration via nirs4all.run().
     """
     require_nirs4all()
-
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     # Validate pipeline exists
     from .pipelines import _load_pipeline
@@ -439,7 +435,7 @@ def _run_training_task(
     # Get dataset configuration
     try:
         dataset_config = build_dataset_config(config["dataset_id"])
-    except Exception as e:
+    except Exception:
         # Fall back to path-based loading
         dataset_config = build_dataset_spec(config["dataset_id"])
 

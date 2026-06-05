@@ -19,15 +19,16 @@ Note: For NIRS-specific feature selection (CARS, MCUVE), use those operators
 directly via nirs4all pipelines.
 """
 
+import logging
 import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager
+from .shared.dependencies import require_workspace
 
 try:
     from sklearn.decomposition import PCA
@@ -45,6 +46,7 @@ except ImportError:
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ============= Request/Response Models =============
@@ -448,8 +450,9 @@ async def compute_umap_endpoint(request: UMAPRequest):
             random_state=request.random_state,
         )
         embedding = await asyncio.to_thread(reducer.fit_transform, X)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"UMAP computation failed: {e}")
+    except Exception:
+        logger.exception("UMAP computation failed")
+        raise HTTPException(status_code=500, detail="UMAP computation failed")
 
     return UMAPResult(
         dataset_id=request.dataset_id,
@@ -460,7 +463,7 @@ async def compute_umap_endpoint(request: UMAPRequest):
 
 
 @router.post("/analysis/importance", response_model=ImportanceResult)
-async def feature_importance(request: ImportanceRequest):
+async def feature_importance(request: ImportanceRequest, workspace=Depends(require_workspace)):
     """
     Compute feature importance for a trained model.
 
@@ -469,10 +472,6 @@ async def feature_importance(request: ImportanceRequest):
     - 'permutation': sklearn permutation importance (works with any model)
     - 'model': Model's built-in feature importance (if available)
     """
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
-
     # Load dataset
     dataset, X, wavelengths = await asyncio.to_thread(
         _load_analysis_data,
@@ -517,9 +516,10 @@ async def feature_importance(request: ImportanceRequest):
             importance = explain_result.mean_abs_shap
             importance_std = None  # SHAP doesn't provide std in the same way
 
-        except Exception as e:
+        except Exception:
+            logger.exception("Error computing SHAP importance")
             raise HTTPException(
-                status_code=500, detail=f"Error computing SHAP importance: {str(e)}"
+                status_code=500, detail="Error computing SHAP importance"
             ) from None
 
     elif request.method == "permutation":
@@ -551,9 +551,10 @@ async def feature_importance(request: ImportanceRequest):
                 )
             try:
                 model = await asyncio.to_thread(joblib.load, model_path)
-            except Exception as e:
+            except Exception:
+                logger.exception("Error loading model")
                 raise HTTPException(
-                    status_code=500, detail=f"Error loading model: {str(e)}"
+                    status_code=500, detail="Error loading model"
                 ) from None
 
         from sklearn.inspection import permutation_importance
@@ -591,9 +592,10 @@ async def feature_importance(request: ImportanceRequest):
                 )
             try:
                 model = await asyncio.to_thread(joblib.load, model_path)
-            except Exception as e:
+            except Exception:
+                logger.exception("Error loading model")
                 raise HTTPException(
-                    status_code=500, detail=f"Error loading model: {str(e)}"
+                    status_code=500, detail="Error loading model"
                 ) from None
 
         # Use model's built-in feature importance if available

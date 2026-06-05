@@ -23,10 +23,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager
+from .shared.dependencies import require_workspace
 from .jobs import job_manager, Job, JobStatus, JobType
 
 # Add nirs4all to path if needed
@@ -256,7 +256,7 @@ def get_default_classification_models() -> List[Dict[str, Any]]:
 
 
 @router.post("/automl/start", response_model=AutoMLStatus)
-async def start_automl(request: AutoMLRequest):
+async def start_automl(request: AutoMLRequest, workspace=Depends(require_workspace)):
     """
     Start an AutoML search job.
 
@@ -268,10 +268,6 @@ async def start_automl(request: AutoMLRequest):
             status_code=501,
             detail="nirs4all library not available for AutoML",
         )
-
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     # Validate dataset exists
     from .spectra import _load_dataset
@@ -745,7 +741,7 @@ def _run_automl_task(
         params = pred.get("model_params", {})
         test_score = pred.get("test_score", 0.0)
         scores = pred.get("scores", {})
-        test_scores = scores.get("test", {}) if isinstance(scores, dict) else {}
+        scores.get("test", {}) if isinstance(scores, dict) else {}
 
         trials.append({
             "trial_id": idx,

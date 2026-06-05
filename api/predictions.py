@@ -12,10 +12,10 @@ from pathlib import Path
 from typing import Dict, List, Any
 
 import numpy as np
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from .workspace_manager import workspace_manager
+from .shared.dependencies import require_workspace
 from .shared.paths import resolve_within
 
 # Optional imports
@@ -132,7 +132,7 @@ def _resolve_model_path(model_id: str, workspace_path: str) -> str:
 
 
 @router.post("/predictions/single", response_model=PredictionResult)
-async def predict_single(request: PredictSingleRequest):
+async def predict_single(request: PredictSingleRequest, workspace=Depends(require_workspace)):
     """
     Make a prediction on a single spectrum.
 
@@ -145,10 +145,6 @@ async def predict_single(request: PredictSingleRequest):
             status_code=501,
             detail="nirs4all library not available. Install it in Settings > Dependencies.",
         )
-
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     # Resolve model path (supports .n4a bundles)
     model_path = _resolve_model_path(request.model_id, workspace.path)
@@ -195,7 +191,7 @@ async def predict_single(request: PredictSingleRequest):
 
 
 @router.post("/predictions/batch", response_model=BatchPredictionResult)
-async def predict_batch(request: PredictBatchRequest):
+async def predict_batch(request: PredictBatchRequest, workspace=Depends(require_workspace)):
     """
     Make predictions on a batch of spectra.
 
@@ -208,10 +204,6 @@ async def predict_batch(request: PredictBatchRequest):
             status_code=501,
             detail="nirs4all library not available. Install it in Settings > Dependencies.",
         )
-
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     # Resolve model path (supports .n4a bundles)
     model_path = _resolve_model_path(request.model_id, workspace.path)
@@ -251,7 +243,7 @@ async def predict_batch(request: PredictBatchRequest):
 
 
 @router.post("/predictions/dataset")
-async def predict_dataset(request: PredictDatasetRequest):
+async def predict_dataset(request: PredictDatasetRequest, workspace=Depends(require_workspace)):
     """
     Make predictions on an entire dataset partition.
 
@@ -265,10 +257,6 @@ async def predict_dataset(request: PredictDatasetRequest):
             status_code=501,
             detail="nirs4all library not available. Install it in Settings > Dependencies.",
         )
-
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     # Resolve model path (supports .n4a bundles)
     model_path = _resolve_model_path(request.model_id, workspace.path)

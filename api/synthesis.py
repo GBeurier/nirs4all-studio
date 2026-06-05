@@ -376,7 +376,7 @@ async def generate_dataset(request: GenerateRequest):
                 )
                 linked = True
                 dataset_id = dataset_info.get("id")
-            except Exception as e:
+            except Exception:
                 # Linking failed but dataset was still created
                 pass
 

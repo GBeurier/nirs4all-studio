@@ -12,6 +12,7 @@ The webapp is responsible only for:
 
 from __future__ import annotations
 
+import logging
 import hashlib
 import sys
 from datetime import datetime
@@ -19,10 +20,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
+from .shared.dependencies import require_workspace
 from .shared.paths import is_within_directory
 
 # Add nirs4all to path if needed
@@ -46,6 +48,7 @@ except ImportError as e:
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # Debug endpoint to verify module loading
@@ -471,8 +474,9 @@ async def auto_detect_file(request: AutoDetectRequest):
             "num_columns": detection_result.n_columns,
             "warnings": detection_result.warnings,
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Auto-detection failed: {e}")
+    except Exception:
+        logger.exception("Auto-detection failed")
+        raise HTTPException(status_code=500, detail="Auto-detection failed")
 
 
 @router.post("/datasets/detect-format")
@@ -566,8 +570,9 @@ async def detect_format(request: DetectFormatRequest):
                 pass
 
         return response
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Format detection failed: {e}")
+    except Exception:
+        logger.exception("Format detection failed")
+        raise HTTPException(status_code=500, detail="Format detection failed")
 
 
 # ============= Validation Endpoints =============
@@ -846,14 +851,10 @@ async def get_synthetic_presets() -> Dict[str, List[SyntheticPresetInfo]]:
 
 
 @router.post("/datasets/generate-synthetic", response_model=GenerateSyntheticResponse)
-async def generate_synthetic_dataset(request: GenerateSyntheticRequest):
+async def generate_synthetic_dataset(request: GenerateSyntheticRequest, workspace=Depends(require_workspace)):
     """Generate a synthetic NIRS dataset using nirs4all.generate."""
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(status_code=501, detail="nirs4all library not available")
-
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     try:
         from nirs4all.synthesis import SyntheticDatasetBuilder
@@ -937,20 +938,17 @@ async def generate_synthetic_dataset(request: GenerateSyntheticRequest):
             message=f"Synthetic dataset '{dataset_name}' generated successfully" + (" and linked" if linked else ""),
         )
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate synthetic dataset: {e}")
+    except Exception:
+        logger.exception("Failed to generate synthetic dataset")
+        raise HTTPException(status_code=500, detail="Failed to generate synthetic dataset")
 
 
 # ============= Dataset CRUD =============
 
 
 @router.get("/datasets/{dataset_id}")
-async def get_dataset(dataset_id: str):
+async def get_dataset(dataset_id: str, workspace=Depends(require_workspace)):
     """Get detailed information about a specific dataset."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
-
     dataset = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
@@ -991,11 +989,8 @@ class UpdateDatasetRequest(BaseModel):
 
 
 @router.put("/datasets/{dataset_id}")
-async def update_dataset(dataset_id: str, request: UpdateDatasetRequest):
+async def update_dataset(dataset_id: str, request: UpdateDatasetRequest, workspace=Depends(require_workspace)):
     """Update a dataset's configuration."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     updates = {}
     if request.name is not None:
@@ -1018,11 +1013,8 @@ async def update_dataset(dataset_id: str, request: UpdateDatasetRequest):
 
 
 @router.delete("/datasets/{dataset_id}")
-async def delete_dataset(dataset_id: str, delete_files: bool = False):
+async def delete_dataset(dataset_id: str, delete_files: bool = False, workspace=Depends(require_workspace)):
     """Remove a dataset from the workspace."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     dataset = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
     if not dataset:
@@ -1060,14 +1052,10 @@ async def delete_dataset(dataset_id: str, delete_files: bool = False):
 
 
 @router.post("/datasets/{dataset_id}/load")
-async def load_dataset(dataset_id: str):
+async def load_dataset(dataset_id: str, workspace=Depends(require_workspace)):
     """Load a dataset into memory. Returns dataset summary."""
     if not NIRS4ALL_AVAILABLE:
         raise HTTPException(status_code=501, detail="nirs4all library not available")
-
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     dataset_info = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
     if not dataset_info:
@@ -1093,8 +1081,9 @@ async def load_dataset(dataset_id: str):
         }
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load dataset: {e}")
+    except Exception:
+        logger.exception("Failed to load dataset")
+        raise HTTPException(status_code=500, detail="Failed to load dataset")
 
 
 @router.get("/datasets/{dataset_id}/stats")
@@ -1138,19 +1127,17 @@ async def get_dataset_stats(dataset_id: str, partition: str = "train"):
         }
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to compute statistics: {e}")
+    except Exception:
+        logger.exception("Failed to compute statistics")
+        raise HTTPException(status_code=500, detail="Failed to compute statistics")
 
 
 # ============= Version/Hash Support =============
 
 
 @router.post("/datasets/{dataset_id}/verify")
-async def verify_dataset(dataset_id: str):
+async def verify_dataset(dataset_id: str, workspace=Depends(require_workspace)):
     """Verify dataset integrity."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     dataset_info = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
     if not dataset_info:
@@ -1205,11 +1192,8 @@ async def verify_dataset(dataset_id: str):
 
 
 @router.post("/datasets/{dataset_id}/refresh")
-async def refresh_dataset_version(dataset_id: str):
+async def refresh_dataset_version(dataset_id: str, workspace=Depends(require_workspace)):
     """Accept dataset changes and update stored hash."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     dataset_info = next((d for d in workspace.datasets if d.get("id") == dataset_id), None)
     if not dataset_info:

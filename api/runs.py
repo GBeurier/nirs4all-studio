@@ -24,9 +24,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from .shared.dependencies import require_workspace
 from .shared.json_sanitize import sanitize_float, sanitize_json
 from .workspace_manager import workspace_manager
 
@@ -1374,14 +1375,10 @@ async def get_run(run_id: str):
 
 
 @router.post("", response_model=Run)
-async def create_run(request: CreateRunRequest):
+async def create_run(request: CreateRunRequest, workspace=Depends(require_workspace)):
     """Create and start a new run (experiment)."""
     _ensure_runs_loaded()
     config = request.config
-
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     # Validate that at least one pipeline is specified (either saved or inline)
     if not config.pipeline_ids and not config.inline_pipeline:
@@ -1612,7 +1609,7 @@ def _estimate_pipeline_variants(pipeline_config: dict, cv_folds: Optional[int] =
 
 
 @router.post("/quick", response_model=Run)
-async def quick_run(request: QuickRunRequest):
+async def quick_run(request: QuickRunRequest, workspace=Depends(require_workspace)):
     """
     Quick Run (Run A): Execute a single pipeline on a single dataset.
 
@@ -1621,10 +1618,6 @@ async def quick_run(request: QuickRunRequest):
     - Navigates to /runs/{id} for progress tracking
     - Auto-saves model and exports to workspace
     """
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
-
     # Load pipeline configuration
     from .pipelines import _load_pipeline
     try:

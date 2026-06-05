@@ -7,6 +7,7 @@ including raw spectra, processed spectra, and statistics.
 
 from __future__ import annotations
 
+import logging
 import asyncio
 import sys
 import threading
@@ -36,6 +37,7 @@ except ImportError as e:
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class SpectraRequest(BaseModel):
@@ -465,8 +467,9 @@ async def get_spectra(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get spectra: {str(e)}")
+    except Exception:
+        logger.exception("Failed to get spectra")
+        raise HTTPException(status_code=500, detail="Failed to get spectra")
 
 
 @router.get("/spectra/{dataset_id}/{sample_index}")
@@ -552,8 +555,9 @@ async def get_spectrum(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get spectrum: {str(e)}")
+    except Exception:
+        logger.exception("Failed to get spectrum")
+        raise HTTPException(status_code=500, detail="Failed to get spectrum")
 
 
 @router.post("/spectra/{dataset_id}/processed")
@@ -606,9 +610,10 @@ async def get_processed_spectra(dataset_id: str, request: SpectraRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to get processed spectra")
         raise HTTPException(
-            status_code=500, detail=f"Failed to get processed spectra: {str(e)}"
+            status_code=500, detail="Failed to get processed spectra"
         )
 
 
@@ -690,9 +695,10 @@ async def get_spectra_statistics(
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to compute statistics")
         raise HTTPException(
-            status_code=500, detail=f"Failed to compute statistics: {str(e)}"
+            status_code=500, detail="Failed to compute statistics"
         )
 
 

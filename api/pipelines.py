@@ -13,16 +13,18 @@ Phase 2 Implementation:
 
 from __future__ import annotations
 
+import logging
 import inspect
 import json
 import sys
 from pathlib import Path
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional, Type, get_type_hints
 from enum import Enum
 
+from .shared.dependencies import require_workspace
 from .workspace_manager import workspace_manager
 
 # Add nirs4all to path if needed
@@ -99,6 +101,7 @@ class PipelineExecuteRequest(BaseModel):
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _get_pipelines_dir() -> Path:
@@ -122,9 +125,10 @@ def _load_pipeline(pipeline_id: str) -> Dict[str, Any]:
     try:
         with open(pipeline_file, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to load pipeline")
         raise HTTPException(
-            status_code=500, detail=f"Failed to load pipeline: {str(e)}"
+            status_code=500, detail="Failed to load pipeline"
         )
 
 
@@ -136,9 +140,10 @@ def _save_pipeline(pipeline: Dict[str, Any]) -> None:
     try:
         with open(pipeline_file, "w", encoding="utf-8") as f:
             json.dump(pipeline, f, indent=2)
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to save pipeline")
         raise HTTPException(
-            status_code=500, detail=f"Failed to save pipeline: {str(e)}"
+            status_code=500, detail="Failed to save pipeline"
         )
 
 
@@ -163,9 +168,10 @@ async def list_pipelines():
         return {"pipelines": pipelines}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to list pipelines")
         raise HTTPException(
-            status_code=500, detail=f"Failed to list pipelines: {str(e)}"
+            status_code=500, detail="Failed to list pipelines"
         )
 
 
@@ -301,9 +307,10 @@ async def create_pipeline(pipeline_data: PipelineCreate):
         return {"success": True, "pipeline": pipeline}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to create pipeline")
         raise HTTPException(
-            status_code=500, detail=f"Failed to create pipeline: {str(e)}"
+            status_code=500, detail="Failed to create pipeline"
         )
 
 
@@ -329,9 +336,10 @@ async def update_pipeline(pipeline_id: str, update_data: PipelineUpdate):
         return {"success": True, "pipeline": pipeline}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to update pipeline")
         raise HTTPException(
-            status_code=500, detail=f"Failed to update pipeline: {str(e)}"
+            status_code=500, detail="Failed to update pipeline"
         )
 
 
@@ -350,9 +358,10 @@ async def delete_pipeline(pipeline_id: str):
         return {"success": True, "message": "Pipeline deleted"}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to delete pipeline")
         raise HTTPException(
-            status_code=500, detail=f"Failed to delete pipeline: {str(e)}"
+            status_code=500, detail="Failed to delete pipeline"
         )
 
 
@@ -379,9 +388,10 @@ async def clone_pipeline(pipeline_id: str, new_name: Optional[str] = None):
         return {"success": True, "pipeline": cloned}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to clone pipeline")
         raise HTTPException(
-            status_code=500, detail=f"Failed to clone pipeline: {str(e)}"
+            status_code=500, detail="Failed to clone pipeline"
         )
 
 
@@ -1248,7 +1258,7 @@ class PipelineExportRequest(BaseModel):
 
 
 @router.post("/pipelines/{pipeline_id}/execute")
-async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
+async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest, workspace=Depends(require_workspace)):
     """
     Execute a pipeline using nirs4all.run().
 
@@ -1261,12 +1271,7 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
             detail="nirs4all library not available for pipeline execution",
         )
 
-    from .workspace_manager import workspace_manager
     from .jobs import job_manager, JobType
-
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
 
     # Load pipeline
     pipeline = _load_pipeline(pipeline_id)
@@ -1531,8 +1536,9 @@ def _load_sample_file(filepath: Path) -> Dict[str, Any]:
                 return yaml.safe_load(f)
             else:
                 raise HTTPException(status_code=400, detail=f"Unsupported format: {suffix}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to load sample: {e}")
+    except Exception:
+        logger.exception("Failed to load sample")
+        raise HTTPException(status_code=500, detail="Failed to load sample")
 
 
 def _filter_comments(steps: List[Any]) -> List[Any]:
@@ -1960,4 +1966,3 @@ async def propagate_shape(request: ShapePropagationRequest):
         output_shape=current_shape,
         is_valid=is_valid,
     )
-

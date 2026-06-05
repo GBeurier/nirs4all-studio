@@ -9,6 +9,7 @@ Uses nirs4all BundleLoader for .n4a bundle operations.
 
 from __future__ import annotations
 
+import logging
 import inspect
 import sys
 from datetime import datetime
@@ -16,9 +17,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, get_type_hints
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .shared.dependencies import require_workspace
 from .shared.paths import is_within_directory, reject_absolute_or_traversal
 from .workspace_manager import workspace_manager
 
@@ -41,6 +43,7 @@ except ImportError as e:
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ============= Request/Response Models =============
@@ -400,16 +403,12 @@ async def get_model_params(model_name: str):
 
 
 @router.get("/models/trained")
-async def list_trained_models():
+async def list_trained_models(workspace=Depends(require_workspace)):
     """
     List all trained model bundles (.n4a) in the current workspace.
 
     Scans workspace/exports for .n4a bundles and returns their metadata.
     """
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
-
     # Scan exports directory for .n4a bundles
     exports_dir = Path(workspace.path) / "workspace" / "exports"
     if not exports_dir.exists():
@@ -493,8 +492,9 @@ async def get_bundle_summary(model_id: str):
 
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Bundle not found: {model_id}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading bundle: {str(e)}")
+    except Exception:
+        logger.exception("Error loading bundle")
+        raise HTTPException(status_code=500, detail="Error loading bundle")
 
 
 @router.delete("/models/trained/{model_id:path}")
@@ -514,8 +514,9 @@ async def delete_trained_model(model_id: str):
 
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Bundle not found: {model_id}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting bundle: {str(e)}")
+    except Exception:
+        logger.exception("Error deleting bundle")
+        raise HTTPException(status_code=500, detail="Error deleting bundle")
 
 
 @router.post("/models/compare", response_model=ModelComparisonResult)

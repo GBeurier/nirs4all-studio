@@ -7,6 +7,7 @@ getting their parameters, and applying preprocessing to spectral data.
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
@@ -30,6 +31,7 @@ except ImportError as e:
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class PreprocessingStep(BaseModel):
@@ -189,9 +191,10 @@ async def apply_preprocessing(request: ApplyPreprocessingRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to apply preprocessing")
         raise HTTPException(
-            status_code=500, detail=f"Failed to apply preprocessing: {str(e)}"
+            status_code=500, detail="Failed to apply preprocessing"
         )
 
 
@@ -263,9 +266,10 @@ async def preview_preprocessing(request: PreviewPreprocessingRequest):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to preview preprocessing")
         raise HTTPException(
-            status_code=500, detail=f"Failed to preview preprocessing: {str(e)}"
+            status_code=500, detail="Failed to preview preprocessing"
         )
 
 
@@ -720,10 +724,11 @@ async def get_method_schema(name: str):
 
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Error introspecting method '%s'", name)
         raise HTTPException(
             status_code=500,
-            detail=f"Error introspecting method '{name}': {str(e)}",
+            detail="Failed to introspect preprocessing method",
         )
 
 
@@ -818,7 +823,8 @@ async def suggest_preprocessing_chain(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Error analyzing dataset")
         raise HTTPException(
             status_code=500,
-            detail=f"Error analyzing dataset: {str(e)}",
+            detail="Error analyzing dataset",
         ) from e
