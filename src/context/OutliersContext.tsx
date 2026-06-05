@@ -198,6 +198,14 @@ export function OutliersProvider({
     return () => clearTimeout(timeout);
   }, [state.manualOutliers]);
 
+  // The prop is not initialize-once: keep detectedOutliers in sync when the
+  // parent passes a new detection result after mount (FE-09-state).
+  useEffect(() => {
+    if (initialDetectedOutliers) {
+      dispatch({ type: 'SET_DETECTED', indices: initialDetectedOutliers });
+    }
+  }, [initialDetectedOutliers]);
+
   // ============= Actions =============
 
   const markAsOutliers = useCallback((indices: number[]) => {
