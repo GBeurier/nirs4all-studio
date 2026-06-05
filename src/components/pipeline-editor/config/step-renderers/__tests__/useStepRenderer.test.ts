@@ -59,7 +59,6 @@ describe("renderer configuration", () => {
       "augmentation",
       "model",
       "merge",
-      "generator",
       "branch",
     ];
 
@@ -71,6 +70,8 @@ describe("renderer configuration", () => {
       "feature_augmentation",
       "sample_filter",
       "concat_transform",
+      // generator uses the specialized GeneratorRenderer, not parameter props.
+      "generator",
     ];
 
     typesWithParameterProps.forEach((type) => {
