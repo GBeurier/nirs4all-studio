@@ -292,12 +292,14 @@ class WebSocketManager:
         async with self._lock:
             connections = list(self._connections)
 
+        # Serialize once, not once per connection.
+        payload = message.to_json()
         sent_count = 0
         disconnected = []
 
         for websocket in connections:
             try:
-                await websocket.send_text(message.to_json())
+                await websocket.send_text(payload)
                 sent_count += 1
             except Exception:
                 disconnected.append(websocket)
