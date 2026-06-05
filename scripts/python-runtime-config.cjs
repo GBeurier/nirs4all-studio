@@ -18,6 +18,10 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
   }),
 });
 
+// Canonical backend runtime dependency set. This is the single source of truth:
+// requirements.txt, requirements-cpu.txt and backend.spec are validated against it
+// by scripts/check-dep-sync.cjs (run in the green gate). Build-only tools
+// (pyinstaller) and the nirs4all library are NOT part of this set.
 const BACKEND_COMMON_PACKAGES = Object.freeze([
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.34.0",
@@ -28,6 +32,8 @@ const BACKEND_COMMON_PACKAGES = Object.freeze([
   "packaging>=24.0",
   "platformdirs>=4.0.0",
   "sentry-sdk[fastapi]>=2.0.0",
+  "orjson>=3.10.0",
+  "msgpack>=1.0.0",
 ]);
 
 const LEGACY_FLAVOR_TO_PROFILE = Object.freeze({

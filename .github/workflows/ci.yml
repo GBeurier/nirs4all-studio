@@ -34,6 +34,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check backend dependency sync
+        run: npm run lint:deps
+
       - name: Validate node registry
         run: npm run validate:nodes
 
