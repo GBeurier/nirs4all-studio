@@ -860,6 +860,33 @@ class StoreAdapter:
             "generated_at": datetime.now(UTC).isoformat(),
         }
 
+    def _count_predictions(
+        self,
+        dataset_name: str | None = None,
+        model_class: str | None = None,
+        partition: str | None = None,
+    ) -> int:
+        """Count predictions matching the page filters with a single COUNT(*)."""
+        conditions: list[str] = []
+        params: list[Any] = []
+        for col, val in (
+            ("dataset_name", dataset_name),
+            ("model_class", model_class),
+            ("partition", partition),
+        ):
+            if val is None:
+                continue
+            if isinstance(val, str) and "%" in val:
+                conditions.append(f"{col} LIKE ${len(params) + 1}")
+            else:
+                conditions.append(f"{col} = ${len(params) + 1}")
+            params.append(val)
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        df = self._store._fetch_pl(f"SELECT COUNT(*) AS cnt FROM predictions{where}", params)
+        if len(df) == 0:
+            return 0
+        return int(df.row(0, named=True).get("cnt", 0) or 0)
+
     def get_predictions_page(
         self,
         dataset_name: str | None = None,
@@ -890,11 +917,12 @@ class StoreAdapter:
             for row in df.iter_rows(named=True):
                 records.append(_normalize_prediction_record(dict(row)))
 
-            # Total count (without limit) for the frontend pagination display.
-            total_df = self._store.query_predictions(
+            # Total count for the frontend pagination display. A COUNT(*) keeps
+            # pagination O(page) instead of materializing every row just to
+            # call len() on a hot paginated endpoint.
+            total = self._count_predictions(
                 dataset_name=dataset_name, model_class=model_class, partition=partition,
             )
-            total = len(total_df)
         except Exception:
             records, total = self._get_predictions_page_fallback(
                 dataset_name=dataset_name,
@@ -1250,487 +1278,21 @@ class StoreAdapter:
     # ------------------------------------------------------------------
 
     def get_enriched_runs(self, limit: int = 50, offset: int = 0, project_id: str | None = None) -> dict[str, Any]:
-        """Get runs enriched with per-dataset scores, top chains, and stats."""
-        store = self._store
+        """Get runs enriched with per-dataset scores, top chains, and stats.
 
-        # Get runs list -- list_runs doesn't support project_id, so filter manually
-        runs_df = store.list_runs(limit=limit + offset, offset=0)
-        enriched_runs = []
+        The payload is assembled by :class:`EnrichedRunsBuilder`, which fetches
+        the page's runs with set-based queries keyed by ``run_id`` (one
+        chain-summary query, one pipelines fetch, one batched query per
+        aggregate) instead of the old per-run / per-dataset fan-out.
+        """
+        from .store_enriched_runs import EnrichedRunsBuilder
 
-        all_rows = list(runs_df.iter_rows(named=True))
-
-        # Filter by project_id if specified
-        if project_id is not None:
-            all_rows = [r for r in all_rows if r.get("project_id") == project_id]
-
-        # Apply pagination after filtering
-        all_rows = all_rows[offset:offset + limit]
-
-        for row in all_rows:
-            run_id = row.get("run_id", "")
-
-            # Convert datetimes
-            created_at = row.get("created_at")
-            if isinstance(created_at, datetime):
-                created_at = created_at.isoformat()
-            completed_at = row.get("completed_at")
-            if isinstance(completed_at, datetime):
-                completed_at = completed_at.isoformat()
-
-            # Compute duration
-            duration_seconds = None
-            if row.get("created_at") and row.get("completed_at"):
-                try:
-                    ca = row["created_at"] if isinstance(row["created_at"], datetime) else datetime.fromisoformat(str(row["created_at"]))
-                    co = row["completed_at"] if isinstance(row["completed_at"], datetime) else datetime.fromisoformat(str(row["completed_at"]))
-                    duration_seconds = int((co - ca).total_seconds())
-                except Exception:
-                    pass
-
-            # Get pipeline stats for this run
-            pipeline_rows = list(store.list_pipelines(run_id=run_id).iter_rows(named=True))
-            pipeline_count = len(pipeline_rows)
-            pipeline_map = {
-                prow.get("pipeline_id", ""): dict(prow)
-                for prow in pipeline_rows
-                if prow.get("pipeline_id")
-            }
-
-            # Get chain summaries for this run (uses v_chain_summary view)
-            agg_df = store.query_aggregated_predictions(run_id=run_id)
-            agg_rows = list(agg_df.iter_rows(named=True)) if len(agg_df) > 0 else []
-            if agg_rows:
-                _attach_variant_params_inplace(agg_rows, pipeline_map)
-
-            # Genuine refit = chains carrying native final/refit scores
-            # (checked BEFORE the synthetic webapp-only fallback is applied).
-            run_has_refit = any(
-                agg.get("final_test_score") is not None or agg.get("final_train_score") is not None
-                for agg in agg_rows
-            )
-
-            # Group by dataset_name, filtering out parasitic calibration/validation subsets
-            _PARASITIC_DS_RE = re.compile(r"_X_?(?:cal|val)$", re.IGNORECASE)
-            datasets_map: dict[str, list] = {}
-            for agg in agg_rows:
-                ds = agg.get("dataset_name", "unknown")
-                if _PARASITIC_DS_RE.search(ds):
-                    continue
-                if ds not in datasets_map:
-                    datasets_map[ds] = []
-                datasets_map[ds].append(agg)
-
-            # Also get dataset names from runs.datasets JSON
-            datasets_raw = row.get("datasets")
-            if isinstance(datasets_raw, str):
-                try:
-                    datasets_meta = json.loads(datasets_raw)
-                except Exception:
-                    datasets_meta = []
-            elif isinstance(datasets_raw, list):
-                datasets_meta = datasets_raw
-            else:
-                datasets_meta = []
-
-            # Extract run config from runs.config JSON
-            config_raw = row.get("config")
-            if isinstance(config_raw, str):
-                try:
-                    run_config_data = json.loads(config_raw)
-                except Exception:
-                    run_config_data = {}
-            elif isinstance(config_raw, dict):
-                run_config_data = config_raw
-            else:
-                run_config_data = {}
-
-            # Build dataset metadata lookup from runs.datasets JSON
-            datasets_meta_map: dict[str, dict] = {}
-            for dm in datasets_meta:
-                if isinstance(dm, dict):
-                    datasets_meta_map[dm.get("name", "")] = dm
-
-            # Ensure we have all datasets even if no predictions yet (skip parasitic subsets)
-            for dm in datasets_meta:
-                ds_name = dm.get("name", "") if isinstance(dm, dict) else str(dm)
-                if ds_name and ds_name not in datasets_map and not _PARASITIC_DS_RE.search(ds_name):
-                    datasets_map[ds_name] = []
-
-            # Build per-dataset enriched data
-            enriched_datasets = []
-            for ds_name, agg_list in datasets_map.items():
-                for agg in agg_list:
-                    _apply_synthetic_refit_fallback_inplace(agg)
-                ds_meta = datasets_meta_map.get(ds_name, {})
-                pred_row: dict[str, Any] | None = None
-                task_type = None
-                try:
-                    pred_df = store.query_predictions(run_id=run_id, dataset_name=ds_name, limit=1)
-                    if len(pred_df) > 0:
-                        pred_row = pred_df.row(0, named=True)
-                        task_type = pred_row.get("task_type")
-                except Exception:
-                    pred_row = None
-
-                if not agg_list:
-                    enriched_datasets.append({
-                        "dataset_name": ds_name,
-                        "best_avg_val_score": None,
-                        "best_avg_test_score": None,
-                        "metric": None,
-                        "task_type": None,
-                        "gain_from_previous_best": None,
-                        "pipeline_count": 0,
-                        "top_5": [],
-                        "n_samples": ds_meta.get("n_samples"),
-                        "n_features": ds_meta.get("n_features"),
-                    })
-                    continue
-
-                # Prefer a non-empty aggregated metric, then persisted run config,
-                # then the raw prediction row used for task-type fallback.
-                metric = next(
-                    (
-                        metric_name
-                        for metric_name in (
-                            _coerce_metric_name(agg.get("metric"), default=None)
-                            for agg in agg_list
-                        )
-                        if metric_name is not None
-                    ),
-                    None,
-                )
-                metric = (
-                    metric
-                    or _coerce_metric_name(run_config_data.get("metric"), default=None)
-                    or _coerce_metric_name(pred_row.get("metric") if pred_row else None, default="r2")
-                )
-
-                # Determine sort direction
-                from nirs4all.pipeline.run import get_metric_info
-                metric_info = get_metric_info(metric)
-                higher_is_better = metric_info.get("higher_is_better", True)
-
-                # Sort aggregated entries by cv_val_score
-                sorted_agg = sorted(
-                    [a for a in agg_list if a.get("cv_val_score") is not None],
-                    key=lambda x: x.get("cv_val_score", 0),
-                    reverse=higher_is_better,
-                )
-
-                best = sorted_agg[0] if sorted_agg else {}
-                best_avg_val = sanitize_float(best.get("cv_val_score"))
-                best_avg_test = sanitize_float(best.get("cv_test_score"))
-
-                # Historical best for gain calculation
-                gain = None
-                try:
-                    hist_best = self._get_dataset_historical_best(ds_name, metric, exclude_run_id=run_id)
-                    if hist_best is not None and best_avg_val is not None:
-                        gain = round(best_avg_val - hist_best, 6)
-                except Exception:
-                    pass
-
-                # Top 5 chains with final (refit) scores
-                top_5_entries = sorted_agg[:5]
-                top_5_chain_ids = {e.get("chain_id", "") for e in top_5_entries}
-                agg_entry_by_chain_id = {
-                    agg.get("chain_id", ""): agg
-                    for agg in agg_list
-                    if agg.get("chain_id")
-                }
-
-                # Find ALL refit predictions for this run+dataset (used as fallback
-                # when v_chain_summary hasn't been backfilled yet, and to detect
-                # refit-only chains not in the top 5).
-                refit_predictions_map: dict[str, dict[str, Any]] = {}
-                try:
-                    refit_df = store._fetch_pl(
-                        "SELECT p.chain_id, p.model_name, p.model_class, p.test_score, p.train_score, "
-                        "p.scores, p.preprocessings "
-                        "FROM predictions p "
-                        "JOIN chains c ON p.chain_id = c.chain_id "
-                        "JOIN pipelines pl ON c.pipeline_id = pl.pipeline_id "
-                        "WHERE pl.run_id = $1 AND p.dataset_name = $2 "
-                        "AND p.refit_context IS NOT NULL AND p.fold_id = 'final' AND p.partition = 'test'",
-                        [run_id, ds_name],
-                    )
-                    for rrow in refit_df.iter_rows(named=True):
-                        refit_predictions_map[rrow.get("chain_id", "")] = dict(rrow)
-                except Exception:
-                    pass
-
-                refit_only_chain_ids = {cid for cid in refit_predictions_map if cid not in top_5_chain_ids}
-
-                top_5 = []
-                best_final_score = None
-                for entry in top_5_entries:
-                    chain_id = entry.get("chain_id", "")
-                    agg_entry = agg_entry_by_chain_id.get(chain_id, entry)
-                    cv_scores_raw = agg_entry.get("cv_scores")
-                    scores_detail = json.loads(cv_scores_raw) if isinstance(cv_scores_raw, str) else (cv_scores_raw or {})
-                    final_ts = sanitize_float(agg_entry.get("final_test_score"))
-                    final_trs = sanitize_float(agg_entry.get("final_train_score"))
-                    final_scores_raw = agg_entry.get("final_scores")
-                    final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
-                    final_agg_ts = sanitize_float(agg_entry.get("final_agg_test_score"))
-                    final_agg_trs = sanitize_float(agg_entry.get("final_agg_train_score"))
-                    final_agg_scores_raw = agg_entry.get("final_agg_scores")
-                    final_agg_scores = (
-                        json.loads(final_agg_scores_raw)
-                        if isinstance(final_agg_scores_raw, str)
-                        else (final_agg_scores_raw or {})
-                    )
-
-                    # Fallback: if chain_summary not backfilled, use refit prediction directly
-                    refit_pred = refit_predictions_map.get(chain_id)
-                    if final_ts is None and refit_pred:
-                        final_ts = sanitize_float(refit_pred.get("test_score"))
-                        final_trs = sanitize_float(refit_pred.get("train_score"))
-                        rp_scores_raw = refit_pred.get("scores")
-                        final_scores = json.loads(rp_scores_raw) if isinstance(rp_scores_raw, str) else (rp_scores_raw or {})
-
-                    if final_ts is not None:
-                        if best_final_score is None or higher_is_better and final_ts > best_final_score or not higher_is_better and final_ts < best_final_score:
-                            best_final_score = final_ts
-
-                    # Parse best_params from chain summary or aggregated entry
-                    bp_raw = agg_entry.get("best_params") or entry.get("best_params")
-                    best_params = json.loads(bp_raw) if isinstance(bp_raw, str) else (bp_raw or None)
-
-                    top_5.append(sanitize_dict({
-                        "chain_id": chain_id,
-                        "model_name": agg_entry.get("model_name", entry.get("model_name", "")),
-                        "model_class": agg_entry.get("model_class", entry.get("model_class", "")),
-                        "preprocessings": agg_entry.get("preprocessings", entry.get("preprocessings", "")),
-                        "avg_val_score": agg_entry.get("cv_val_score", entry.get("cv_val_score")),
-                        "avg_test_score": agg_entry.get("cv_test_score", entry.get("cv_test_score")),
-                        "avg_train_score": agg_entry.get("cv_train_score", entry.get("cv_train_score")),
-                        "fold_count": agg_entry.get("cv_fold_count", entry.get("cv_fold_count", 0)),
-                        "scores": scores_detail,
-                        "final_test_score": final_ts,
-                        "final_train_score": final_trs,
-                        "final_scores": final_scores,
-                        "best_params": best_params,
-                        "variant_params": agg_entry.get("variant_params"),
-                        "final_agg_test_score": final_agg_ts,
-                        "final_agg_train_score": final_agg_trs,
-                        "final_agg_scores": final_agg_scores,
-                        "synthetic_refit": bool(agg_entry.get("synthetic_refit")),
-                    }))
-
-                # Add refit-only chains not in top_5
-                for rchain_id in refit_only_chain_ids:
-                    rchain = refit_predictions_map[rchain_id]
-                    agg_entry = agg_entry_by_chain_id.get(rchain_id, {})
-                    rts = sanitize_float(agg_entry.get("final_test_score") or rchain.get("test_score"))
-                    rtrs = sanitize_float(agg_entry.get("final_train_score") or rchain.get("train_score"))
-                    rfinal_scores_raw = agg_entry.get("final_scores") or rchain.get("scores")
-                    rfinal_scores = json.loads(rfinal_scores_raw) if isinstance(rfinal_scores_raw, str) else (rfinal_scores_raw or {})
-                    rfinal_agg_ts = sanitize_float(agg_entry.get("final_agg_test_score"))
-                    rfinal_agg_trs = sanitize_float(agg_entry.get("final_agg_train_score"))
-                    rfinal_agg_scores_raw = agg_entry.get("final_agg_scores")
-                    rfinal_agg_scores = (
-                        json.loads(rfinal_agg_scores_raw)
-                        if isinstance(rfinal_agg_scores_raw, str)
-                        else (rfinal_agg_scores_raw or {})
-                    )
-                    rbp_raw = agg_entry.get("best_params")
-                    rbest_params = json.loads(rbp_raw) if isinstance(rbp_raw, str) else (rbp_raw or None)
-
-                    if rts is not None:
-                        if best_final_score is None or higher_is_better and rts > best_final_score or not higher_is_better and rts < best_final_score:
-                            best_final_score = rts
-
-                    top_5.append(sanitize_dict({
-                        "chain_id": rchain_id,
-                        "model_name": agg_entry.get("model_name", rchain.get("model_name", "")),
-                        "model_class": agg_entry.get("model_class", rchain.get("model_class", "")),
-                        "preprocessings": agg_entry.get("preprocessings", rchain.get("preprocessings", "")),
-                        "avg_val_score": None,
-                        "avg_test_score": None,
-                        "avg_train_score": None,
-                        "fold_count": 0,
-                        "scores": {},
-                        "final_test_score": rts,
-                        "final_train_score": rtrs,
-                        "final_scores": rfinal_scores,
-                        "best_params": rbest_params,
-                        "variant_params": agg_entry.get("variant_params"),
-                        "final_agg_test_score": rfinal_agg_ts,
-                        "final_agg_train_score": rfinal_agg_trs,
-                        "final_agg_scores": rfinal_agg_scores,
-                        "is_refit_only": True,
-                        "synthetic_refit": bool(agg_entry.get("synthetic_refit")),
-                    }))
-
-                # Dataset sample/feature counts from metadata, fallback to prediction data
-                n_samples = ds_meta.get("n_samples")
-                n_features = ds_meta.get("n_features")
-                if (n_samples is None or n_features is None) and pred_row is not None:
-                    n_samples = n_samples or pred_row.get("n_samples")
-                    n_features = n_features or pred_row.get("n_features")
-
-                enriched_datasets.append(sanitize_dict({
-                    "dataset_name": ds_name,
-                    "best_avg_val_score": best_avg_val,
-                    "best_avg_test_score": best_avg_test,
-                    "best_final_score": sanitize_float(best_final_score),
-                    "metric": metric,
-                    "task_type": task_type,
-                    "gain_from_previous_best": gain,
-                    "pipeline_count": len({a.get("pipeline_id") for a in agg_list}),
-                    "top_5": top_5,
-                    "n_samples": n_samples,
-                    "n_features": n_features,
-                }))
-
-            # Compute total stats
-            final_models = 0
-            total_folds = 0
-            total_models_trained = 0
-            try:
-                # Count final models (predictions with refit_context)
-                final_df = store._fetch_pl(
-                    "SELECT COUNT(DISTINCT chain_id) as cnt FROM predictions "
-                    "WHERE pipeline_id IN (SELECT pipeline_id FROM pipelines WHERE run_id = $1) "
-                    "AND refit_context IS NOT NULL",
-                    [run_id]
-                )
-                if len(final_df) > 0:
-                    final_models = final_df.row(0, named=True).get("cnt", 0) or 0
-
-                # Count distinct folds
-                folds_df = store._fetch_pl(
-                    "SELECT COUNT(DISTINCT fold_id) as cnt FROM predictions "
-                    "WHERE pipeline_id IN (SELECT pipeline_id FROM pipelines WHERE run_id = $1) "
-                    "AND refit_context IS NULL "
-                    "AND fold_id NOT IN ('avg', 'w_avg') "
-                    "AND fold_id NOT LIKE '%_agg'",
-                    [run_id]
-                )
-                if len(folds_df) > 0:
-                    total_folds = folds_df.row(0, named=True).get("cnt", 0) or 0
-
-                # Total models trained (total predictions with partition='val' and refit_context IS NULL)
-                models_df = store._fetch_pl(
-                    "SELECT COUNT(*) as cnt FROM predictions "
-                    "WHERE pipeline_id IN (SELECT pipeline_id FROM pipelines WHERE run_id = $1) "
-                    "AND partition = 'val' AND refit_context IS NULL "
-                    "AND fold_id NOT IN ('avg', 'w_avg') "
-                    "AND fold_id NOT LIKE '%_agg'",
-                    [run_id]
-                )
-                if len(models_df) > 0:
-                    total_models_trained = models_df.row(0, named=True).get("cnt", 0) or 0
-            except Exception:
-                pass
-
-            # Artifact size
-            artifact_size = self._get_run_artifact_size(run_id)
-
-            # Model class distribution from chains
-            model_classes: list[dict[str, Any]] = []
-            try:
-                mc_df = store._fetch_pl(
-                    "SELECT c.model_class, COUNT(*) as count "
-                    "FROM chains c "
-                    "JOIN pipelines pl ON c.pipeline_id = pl.pipeline_id "
-                    "WHERE pl.run_id = $1 "
-                    "GROUP BY c.model_class ORDER BY count DESC",
-                    [run_id]
-                )
-                for mc_row in mc_df.iter_rows(named=True):
-                    model_classes.append({
-                        "name": mc_row.get("model_class", ""),
-                        "count": mc_row.get("count", 0),
-                    })
-            except Exception:
-                pass
-
-            # Derive CV config from predictions + stored run config
-            run_cv_config: dict[str, Any] = _infer_run_config_from_pipelines(pipeline_rows)
-            run_cv_config["has_refit"] = run_has_refit
-            try:
-                cv_info_df = store._fetch_pl(
-                    "SELECT COUNT(DISTINCT fold_id) as fold_count, "
-                    "FIRST(metric) as metric "
-                    "FROM predictions "
-                    "WHERE pipeline_id IN (SELECT pipeline_id FROM pipelines WHERE run_id = $1) "
-                    "AND refit_context IS NULL "
-                    "AND fold_id NOT IN ('avg', 'w_avg') "
-                    "AND fold_id NOT LIKE '%_agg'",
-                    [run_id]
-                )
-                if len(cv_info_df) > 0:
-                    cv_info = cv_info_df.row(0, named=True)
-                    inferred_folds = cv_info.get("fold_count", 0) or 0
-                    if inferred_folds:
-                        run_cv_config["cv_folds"] = inferred_folds
-                    run_cv_config["metric"] = _coerce_metric_name(cv_info.get("metric"), default=None)
-            except Exception:
-                pass
-            # Stored config takes priority
-            run_cv_config.update({k: v for k, v in run_config_data.items() if v is not None})
-            run_cv_config["metric"] = (
-                _coerce_metric_name(run_cv_config.get("metric"), default=None)
-                or next(
-                    (
-                        metric_name
-                        for metric_name in (
-                            _coerce_metric_name(dataset.get("metric"), default=None)
-                            for dataset in enriched_datasets
-                        )
-                        if metric_name is not None
-                    ),
-                    None,
-                )
-                or "r2"
-            )
-
-            run_name = row.get("name", "")
-            if not isinstance(run_name, str):
-                run_name = ""
-            run_name = run_name.strip()
-            if run_name.lower() in {"", "run"}:
-                base_pipeline_names: list[str] = []
-                seen_pipeline_names: set[str] = set()
-                for pipeline_row in pipeline_rows:
-                    pipeline_name = str(pipeline_row.get("name") or "").strip()
-                    if not pipeline_name:
-                        continue
-                    if pipeline_name.endswith("_refit"):
-                        pipeline_name = pipeline_name[:-len("_refit")]
-                    if pipeline_name in seen_pipeline_names:
-                        continue
-                    seen_pipeline_names.add(pipeline_name)
-                    base_pipeline_names.append(pipeline_name)
-                if len(base_pipeline_names) == 1:
-                    run_name = base_pipeline_names[0]
-                elif len(base_pipeline_names) > 1:
-                    run_name = f"{base_pipeline_names[0]} (+{len(base_pipeline_names) - 1})"
-
-            enriched_runs.append(sanitize_dict({
-                "run_id": run_id,
-                "name": run_name,
-                "status": row.get("status", "unknown"),
-                "project_id": row.get("project_id"),
-                "created_at": created_at or "",
-                "completed_at": completed_at or "",
-                "duration_seconds": duration_seconds,
-                "artifact_size_bytes": artifact_size,
-                "datasets_count": len(enriched_datasets),
-                "pipeline_runs_count": pipeline_count,
-                "final_models_count": final_models,
-                "total_models_trained": total_models_trained,
-                "total_folds": total_folds,
-                "datasets": enriched_datasets,
-                "error": row.get("error"),
-                "config": sanitize_dict(run_cv_config),
-                "model_classes": model_classes,
-            }))
-
-        return {"runs": enriched_runs, "total": len(enriched_runs)}
+        builder = EnrichedRunsBuilder(
+            self._store,
+            artifact_size_lookup=self._get_run_artifact_size,
+            historical_best_lookup=self._get_dataset_historical_best,
+        )
+        return builder.build(limit=limit, offset=offset, project_id=project_id)
 
     def _get_run_artifact_size(self, run_id: str) -> int:
         """Sum of artifact sizes for all chains in a run's pipelines."""
@@ -1880,18 +1442,14 @@ class StoreAdapter:
         _apply_synthetic_refit_fallback_inplace(payload)
         return sanitize_dict(payload)
 
-    def get_all_chains_for_dataset(self, run_id: str, dataset_name: str) -> dict[str, Any]:
-        """Get ALL chain summaries for a run+dataset, sorted by primary metric.
+    def _chains_payload(self, df: Any) -> dict[str, Any]:
+        """Shape a v_chain_summary frame into the frontend chains payload.
 
-        Returns:
-            ``{"chains": [...], "total": N, "metric": "rmse"}``
+        Shared by the run-scoped and results (all-runs) chain views; they
+        differ only in the ``query_chain_summaries`` filter, so the row
+        enrichment, metric pick, scored/unscored sort, and serialization live
+        here.
         """
-        store = self._store
-        try:
-            df = store.query_chain_summaries(run_id=run_id, dataset_name=dataset_name)
-        except Exception:
-            return {"chains": [], "total": 0, "metric": None}
-
         if len(df) == 0:
             return {"chains": [], "total": 0, "metric": None}
 
@@ -1908,47 +1466,33 @@ class StoreAdapter:
         metric_info = get_metric_info(metric)
         higher_is_better = metric_info.get("higher_is_better", True)
 
-        # Sort by cv_val_score
-        scored = [r for r in rows if r.get("cv_val_score") is not None]
-        unscored = [r for r in rows if r.get("cv_val_score") is None]
-        scored.sort(key=lambda x: x.get("cv_val_score", 0), reverse=higher_is_better)
-
-        chains = []
-        for entry in scored + unscored:
-            chains.append(self._serialize_chain_summary_row(entry, pipeline_map))
-
-        return {"chains": chains, "total": len(chains), "metric": metric}
-
-    def get_all_chains_for_results_dataset(self, dataset_name: str) -> dict[str, Any]:
-        """Get ALL chain summaries for one dataset across all runs."""
-        store = self._store
-        try:
-            df = store.query_chain_summaries(dataset_name=dataset_name)
-        except Exception:
-            return {"chains": [], "total": 0, "metric": None}
-
-        if len(df) == 0:
-            return {"chains": [], "total": 0, "metric": None}
-
-        rows = [dict(row) for row in df.iter_rows(named=True)]
-        pipeline_ids = list({r.get("pipeline_id") for r in rows if r.get("pipeline_id")})
-        pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
-        _attach_variant_params_inplace(rows, pipeline_map)
-        _mark_refit_only_entries_inplace(rows)
-        for row in rows:
-            _apply_synthetic_refit_fallback_inplace(row)
-        metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
-
-        from nirs4all.pipeline.run import get_metric_info
-        metric_info = get_metric_info(metric)
-        higher_is_better = metric_info.get("higher_is_better", True)
-
+        # Sort by cv_val_score; rows without a CV score keep their tail order.
         scored = [r for r in rows if r.get("cv_val_score") is not None]
         unscored = [r for r in rows if r.get("cv_val_score") is None]
         scored.sort(key=lambda x: x.get("cv_val_score", 0), reverse=higher_is_better)
 
         chains = [self._serialize_chain_summary_row(entry, pipeline_map) for entry in scored + unscored]
         return {"chains": chains, "total": len(chains), "metric": metric}
+
+    def get_all_chains_for_dataset(self, run_id: str, dataset_name: str) -> dict[str, Any]:
+        """Get ALL chain summaries for a run+dataset, sorted by primary metric.
+
+        Returns:
+            ``{"chains": [...], "total": N, "metric": "rmse"}``
+        """
+        try:
+            df = self._store.query_chain_summaries(run_id=run_id, dataset_name=dataset_name)
+        except Exception:
+            return {"chains": [], "total": 0, "metric": None}
+        return self._chains_payload(df)
+
+    def get_all_chains_for_results_dataset(self, dataset_name: str) -> dict[str, Any]:
+        """Get ALL chain summaries for one dataset across all runs."""
+        try:
+            df = self._store.query_chain_summaries(dataset_name=dataset_name)
+        except Exception:
+            return {"chains": [], "total": 0, "metric": None}
+        return self._chains_payload(df)
 
     # ------------------------------------------------------------------
     # Results Summary (top models per dataset)

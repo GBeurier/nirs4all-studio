@@ -223,11 +223,14 @@ class TestStoreAdapter:
 
     def test_get_predictions_page(self, mock_polars_df, sample_prediction_rows):
         mock_store = MagicMock()
-        # First call: paginated page (limit=2), second call: full count
-        mock_store.query_predictions.side_effect = [
-            mock_polars_df(sample_prediction_rows[:2]),
-            mock_polars_df(sample_prediction_rows),
-        ]
+        # Page query returns the limited slice; the total now comes from a
+        # single COUNT(*) via _fetch_pl, not a full-table query_predictions().
+        mock_store.query_predictions.return_value = mock_polars_df(sample_prediction_rows[:2])
+
+        count_df = MagicMock()
+        count_df.__len__ = lambda self: 1
+        count_df.row = MagicMock(return_value={"cnt": 3})
+        mock_store._fetch_pl.return_value = count_df
 
         adapter = self._make_adapter(mock_store)
         result = adapter.get_predictions_page(limit=2, offset=0)
@@ -235,6 +238,10 @@ class TestStoreAdapter:
         assert len(result["records"]) == 2
         assert result["total"] == 3
         assert result["has_more"] is True
+        # Pagination must not re-query the full predictions table for the count.
+        assert mock_store.query_predictions.call_count == 1
+        count_query = mock_store._fetch_pl.call_args.args[0]
+        assert "COUNT(*)" in count_query
 
     def test_get_dataset_top_chains_keeps_best_final_outside_top_cv(self, mock_polars_df):
         mock_store = MagicMock()
