@@ -2,9 +2,7 @@
  * WorkspaceStats Component
  *
  * Displays workspace statistics including space usage breakdown with
- * progress bars and actions for cache cleaning and backup.
- *
- * Phase 5 Implementation
+ * progress bars and a cache-cleaning action.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -229,7 +227,7 @@ function CleanCacheDialog({ onClean, isLoading }: CleanCacheDialogProps) {
 export interface WorkspaceStatsProps {
   /** Optional class name */
   className?: string;
-  /** Callback when stats change (after clean/backup) */
+  /** Callback when stats change (after cleaning the cache) */
   onStatsChange?: () => void;
 }
 
@@ -239,7 +237,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<{
-    type: "clean" | "backup";
+    type: "clean";
     message: string;
   } | null>(null);
 
@@ -279,14 +277,6 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
     } finally {
       setIsActionLoading(false);
     }
-  };
-
-  const handleBackup = async () => {
-    // TODO: Implement backup functionality when backend API is available
-    setLastAction({
-      type: "backup",
-      message: "Backup feature coming soon",
-    });
   };
 
   if (isLoading) {
@@ -412,19 +402,6 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
             onClean={handleCleanCache}
             isLoading={isActionLoading}
           />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleBackup}
-            disabled={isActionLoading}
-          >
-            {isActionLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Archive className="mr-2 h-4 w-4" />
-            )}
-            Backup Now
-          </Button>
         </div>
       </CardContent>
     </Card>

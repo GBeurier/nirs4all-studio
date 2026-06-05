@@ -4,7 +4,6 @@ import { motion } from "@/lib/motion";
 import { Link } from "react-router-dom";
 import {
   Target,
-  Trash2,
   Download,
   Search,
   Database,
@@ -46,17 +45,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -319,11 +307,6 @@ export default function Predictions() {
       newSet.add(id);
     }
     setSelectedIds(newSet);
-  };
-
-  const handleDeleteSelected = () => {
-    // TODO: Implement delete
-    toast.error("Deleting predictions is not yet supported.");
   };
 
   const handleExportSelected = () => {
@@ -678,37 +661,6 @@ export default function Predictions() {
           >
             <Download className="h-4 w-4" /> Export
           </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 text-destructive hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" /> Delete
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  Delete {selectedIds.size} predictions?
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  This action cannot be undone. The selected predictions will be
-                  permanently removed.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDeleteSelected}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </div>
       )}
 

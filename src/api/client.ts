@@ -303,31 +303,6 @@ class ApiClient {
 
 export const api = new ApiClient();
 
-// Axios-like wrapper for backward compatibility with hooks expecting response.data pattern
-class AxiosLikeClient {
-  async get<T>(endpoint: string, options?: RequestOptions): Promise<{ data: T }> {
-    const data = await api.get<T>(endpoint, options);
-    return { data };
-  }
-
-  async post<T>(endpoint: string, body?: unknown, options?: RequestOptions): Promise<{ data: T }> {
-    const data = await api.post<T>(endpoint, body, options);
-    return { data };
-  }
-
-  async put<T>(endpoint: string, body?: unknown, options?: RequestOptions): Promise<{ data: T }> {
-    const data = await api.put<T>(endpoint, body, options);
-    return { data };
-  }
-
-  async delete<T>(endpoint: string, options?: RequestOptions): Promise<{ data: T }> {
-    const data = await api.delete<T>(endpoint, options);
-    return { data };
-  }
-}
-
-export const apiClient = new AxiosLikeClient();
-
 // Health check
 export async function checkHealth(): Promise<{ status: string }> {
   return api.get("/health");

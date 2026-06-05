@@ -322,6 +322,8 @@ const de = {
         },
       },
       autoDetect: "Format automatisch erkennen",
+      autoDetectDescription:
+        "Trennzeichen, Dezimaltrennzeichen und Kopfzeile automatisch aus dem Dateiinhalt erkennen",
       save: "Standards speichern",
       reset: "Auf Standards zurücksetzen",
     },
@@ -827,6 +829,10 @@ const de = {
       title: "Refit-Bewertung",
       description: "Vergleichen Sie CV-Scores mit endgültigen Modellscores. Zeigen Sie deployment-bereite Modelle, die auf allen Daten neu trainiert wurden.",
     },
+    transfer: {
+      title: "Transferanalyse",
+      description: "Bewerten Sie den Einfluss der Vorverarbeitung auf datensatzübergreifende Distanzen für den Kalibrierungstransfer",
+    },
     gettingStarted: {
       title: "Erste Schritte mit der Analyse",
       description: "Analysetools helfen Ihnen, Ihre Spektraldaten besser zu verstehen. Beginnen Sie mit PCA, um Muster zu erkunden, und nutzen Sie dann die Variablenwichtigkeit, um Schlüsselwellenlängen zu identifizieren. Vergleichen Sie Modelle, um den besten Ansatz zu finden.",
@@ -837,6 +843,64 @@ const de = {
     empty: {
       description: "Führen Sie zuerst Experimente durch, um Analysedaten zu generieren. Ihre Ergebnisse werden hier angezeigt, sobald Ausführungen abgeschlossen sind.",
       viewRuns: "Ausführungen anzeigen",
+    },
+  },
+
+  // ============= SHAP Variable Importance =============
+  shap: {
+    title: "Variablenwichtigkeit",
+    computing: "Wird berechnet...",
+    compute: "Erklärungen berechnen",
+    selectModel: "Wählen Sie ein Modell zur Erklärung aus",
+    loadingModels: "Modelle werden geladen...",
+    noRuns: "Keine abgeschlossenen Ausführungen mit Modellen gefunden",
+    noBundles: "Keine exportierten Bundles gefunden",
+    noResults: "Noch keine Ergebnisse",
+    instructions: "Wählen Sie ein trainiertes Modell und einen Datensatz aus und klicken Sie dann auf „Erklärungen berechnen“, um zu analysieren, welche Wellenlängen für Vorhersagen am wichtigsten sind.",
+    features: {
+      spectral: "Spektrale Wichtigkeit",
+      beeswarm: "SHAP-Verteilung",
+      waterfall: "Aufschlüsselung pro Probe",
+    },
+    form: {
+      modelSource: "Modellquelle",
+      fromRun: "Aus Trainingsausführung",
+      fromBundle: "Aus exportiertem Bundle",
+      model: "Modell",
+      dataset: "Zu erklärender Datensatz",
+      selectDataset: "Datensatz auswählen...",
+      partition: "Partition",
+      partitionHelp: "Verwenden Sie die Testpartition für unverzerrte Wichtigkeitsschätzungen",
+      explainerType: "Erklärertyp",
+      explainerHelp: "Auto wählt den besten Erklärer basierend auf Ihrem Modelltyp",
+      advancedOptions: "Erweiterte Optionen",
+      sampleLimit: "Probenlimit",
+      sampleLimitHelp: "0 = alle Proben verwenden (langsamer)",
+      binSize: "Intervallgröße",
+      binStride: "Intervallschritt",
+      aggregation: "Aggregation",
+    },
+    results: {
+      title: "SHAP-Analyseergebnisse",
+      samples: "Proben",
+    },
+    tabs: {
+      spectral: "Spektral",
+      beeswarm: "Beeswarm",
+      waterfall: "Waterfall",
+      ranking: "Rangfolge",
+    },
+    spectral: {
+      description: "Wichtige Wellenlängenbereiche werden im mittleren Spektrum hervorgehoben. Dunklere Farben zeigen eine höhere Wichtigkeit an.",
+    },
+    beeswarm: {
+      description: "Verteilung der SHAP-Werte über die Proben. Jeder Punkt ist eine Probe, eingefärbt nach Merkmalswert.",
+    },
+    waterfall: {
+      description: "Wie Merkmale zur Vorhersage für eine einzelne Probe beitragen.",
+    },
+    ranking: {
+      description: "Top-Wellenlängenbereiche, sortiert nach mittlerem absolutem SHAP-Wert.",
     },
   },
 

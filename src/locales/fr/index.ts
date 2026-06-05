@@ -255,8 +255,6 @@ const fr = {
       selectWorkspace:
         "Sélectionnez un espace de travail pour configurer les paramètres de chargement par défaut",
       savedSuccess: "Valeurs par défaut enregistrées avec succès",
-      autoDetectDescription:
-        "Détecter automatiquement le délimiteur, le séparateur décimal et l'en-tête à partir du contenu du fichier",
       parsing: {
         title: "Options d'analyse",
         tooltip:
@@ -326,6 +324,8 @@ const fr = {
         },
       },
       autoDetect: "Détecter automatiquement le format",
+      autoDetectDescription:
+        "Détecter automatiquement le délimiteur, le séparateur décimal et l'en-tête à partir du contenu du fichier",
       save: "Enregistrer les paramètres par défaut",
       reset: "Réinitialiser aux valeurs par défaut",
     },
@@ -831,6 +831,10 @@ const fr = {
       title: "Scores de Refit",
       description: "Comparez les scores CV et les scores du modèle final. Visualisez les modèles prêts au déploiement réentraînés sur toutes les données.",
     },
+    transfer: {
+      title: "Analyse de transfert",
+      description: "Évaluez l'impact du prétraitement sur les distances inter-jeux de données pour le transfert de calibration",
+    },
     gettingStarted: {
       title: "Premiers pas avec l'analyse",
       description: "Les outils d'analyse vous aident à mieux comprendre vos données spectrales. Commencez par la PCA pour explorer les tendances, puis utilisez l'importance des variables pour identifier les longueurs d'onde clés. Comparez les modèles pour trouver la meilleure approche.",
@@ -841,6 +845,64 @@ const fr = {
     empty: {
       description: "Exécutez d'abord des expériences pour générer des données d'analyse. Vos résultats apparaîtront ici une fois les exécutions terminées.",
       viewRuns: "Voir les exécutions",
+    },
+  },
+
+  // ============= SHAP Variable Importance =============
+  shap: {
+    title: "Importance des variables",
+    computing: "Calcul en cours...",
+    compute: "Calculer les explications",
+    selectModel: "Sélectionnez un modèle à expliquer",
+    loadingModels: "Chargement des modèles...",
+    noRuns: "Aucune exécution terminée avec des modèles trouvée",
+    noBundles: "Aucun bundle exporté trouvé",
+    noResults: "Aucun résultat pour le moment",
+    instructions: "Sélectionnez un modèle entraîné et un jeu de données, puis cliquez sur « Calculer les explications » pour analyser quelles longueurs d'onde sont les plus importantes pour les prédictions.",
+    features: {
+      spectral: "Importance spectrale",
+      beeswarm: "Distribution SHAP",
+      waterfall: "Décomposition par échantillon",
+    },
+    form: {
+      modelSource: "Source du modèle",
+      fromRun: "Depuis une exécution d'entraînement",
+      fromBundle: "Depuis un bundle exporté",
+      model: "Modèle",
+      dataset: "Jeu de données à expliquer",
+      selectDataset: "Sélectionner un jeu de données...",
+      partition: "Partition",
+      partitionHelp: "Utilisez la partition de test pour des estimations d'importance non biaisées",
+      explainerType: "Type d'explicateur",
+      explainerHelp: "Auto sélectionnera le meilleur explicateur selon le type de votre modèle",
+      advancedOptions: "Options avancées",
+      sampleLimit: "Limite d'échantillons",
+      sampleLimitHelp: "0 = utiliser tous les échantillons (plus lent)",
+      binSize: "Taille des intervalles",
+      binStride: "Pas des intervalles",
+      aggregation: "Agrégation",
+    },
+    results: {
+      title: "Résultats de l'analyse SHAP",
+      samples: "échantillons",
+    },
+    tabs: {
+      spectral: "Spectral",
+      beeswarm: "Beeswarm",
+      waterfall: "Waterfall",
+      ranking: "Classement",
+    },
+    spectral: {
+      description: "Régions de longueurs d'onde importantes mises en évidence sur le spectre moyen. Les couleurs plus foncées indiquent une importance plus élevée.",
+    },
+    beeswarm: {
+      description: "Distribution des valeurs SHAP entre les échantillons. Chaque point est un échantillon, coloré selon la valeur de la variable.",
+    },
+    waterfall: {
+      description: "Comment les variables contribuent à la prédiction pour un seul échantillon.",
+    },
+    ranking: {
+      description: "Principales régions de longueurs d'onde classées par valeur SHAP absolue moyenne.",
     },
   },
 

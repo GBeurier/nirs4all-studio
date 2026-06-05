@@ -1,0 +1,4 @@
+**Findings**
+- [src/locales/fr/index.ts:257](/home/delete/nirs4all/nirs4all-studio/src/locales/fr/index.ts:257) removes `settings.dataDefaults.autoDetectDescription`, but [DataLoadingDefaultsForm.tsx:177](/home/delete/nirs4all/nirs4all-studio/src/components/settings/DataLoadingDefaultsForm.tsx:177) still renders that key. English fallback also lacks it, so French users will see the raw translation key for the auto-detect description.
+
+Rest checked: the five `usePipelineExecution` API calls read direct typed-api responses correctly, no `apiClient` or deleted selection selector references remain under `src`, and the removed controls leave no undefined imports/vars. I couldn’t run typecheck because Linux `node` is unavailable in this shell.

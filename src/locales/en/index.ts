@@ -324,6 +324,8 @@ const en = {
         },
       },
       autoDetect: "Auto-detect format",
+      autoDetectDescription:
+        "Automatically detect the delimiter, decimal separator and header from the file content",
       save: "Save defaults",
       reset: "Reset to defaults",
     },

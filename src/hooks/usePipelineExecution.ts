@@ -10,7 +10,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useJobUpdates } from "./useWebSocket";
-import { apiClient } from "@/api/client";
+import { api } from "@/api/client";
 
 // ============================================================================
 // Types
@@ -113,7 +113,7 @@ export function usePipelineExecution() {
       setResult(null);
 
       try {
-        const response = await apiClient.post<{
+        const response = await api.post<{
           success: boolean;
           job_id: string;
           message: string;
@@ -124,12 +124,12 @@ export function usePipelineExecution() {
           model_name: config.modelName,
         });
 
-        if (response.data.success) {
-          setJobId(response.data.job_id);
+        if (response.success) {
+          setJobId(response.job_id);
           setStatus("running");
-          return response.data.job_id;
+          return response.job_id;
         } else {
-          throw new Error(response.data.message || "Execution failed to start");
+          throw new Error(response.message || "Execution failed to start");
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
@@ -148,7 +148,7 @@ export function usePipelineExecution() {
     if (!jobId) return;
 
     try {
-      await apiClient.post(`/training/${jobId}/stop`);
+      await api.post(`/training/${jobId}/stop`);
       setStatus("cancelled");
     } catch (err) {
       console.error("Failed to cancel execution:", err);
@@ -200,7 +200,7 @@ export function usePipelineExport() {
       setError(null);
 
       try {
-        const response = await apiClient.post<ExportResult>(
+        const response = await api.post<ExportResult>(
           `/pipelines/${pipelineId}/export`,
           {
             format: options.format,
@@ -208,8 +208,8 @@ export function usePipelineExport() {
           }
         );
 
-        if (response.data.success) {
-          return response.data;
+        if (response.success) {
+          return response;
         } else {
           throw new Error("Export failed");
         }
@@ -293,10 +293,10 @@ export function useDatasetSelection() {
     setError(null);
 
     try {
-      const response = await apiClient.get<{ datasets: Dataset[] }>(
+      const response = await api.get<{ datasets: Dataset[] }>(
         "/datasets"
       );
-      setDatasets(response.data.datasets || []);
+      setDatasets(response.datasets || []);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load datasets";
       setError(message);
@@ -347,12 +347,12 @@ export function usePipelineValidation() {
       setIsValidating(true);
 
       try {
-        const response = await apiClient.post<ValidationResult>(
+        const response = await api.post<ValidationResult>(
           "/pipelines/validate",
           { steps }
         );
-        setValidation(response.data);
-        return response.data;
+        setValidation(response);
+        return response;
       } catch (err) {
         console.error("Validation error:", err);
         return null;
