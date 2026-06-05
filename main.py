@@ -63,7 +63,8 @@ if _sentry_dsn:
 _t3 = time.perf_counter()
 logger.info("STARTUP TIMING: Sentry init: %.2fs", _t3 - _t2)
 
-# Desktop mode detection - skip unnecessary middleware when running in pywebview
+# Desktop mode detection - set by the Electron shell (backend-manager) to skip
+# browser-only middleware when running embedded.
 DESKTOP_MODE = os.environ.get("NIRS4ALL_DESKTOP", "false").lower() == "true"
 
 from api.aggregated_predictions import router as aggregated_predictions_router

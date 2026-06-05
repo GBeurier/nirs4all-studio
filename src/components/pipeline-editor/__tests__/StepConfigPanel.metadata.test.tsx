@@ -20,7 +20,11 @@ vi.mock("../contexts/NodeRegistryContext", () => ({
 
 vi.mock("../config/step-renderers", () => ({
   useStepRenderer: () => ({
-    Renderer: ({ step, currentOption, handleResetParams }: Record<string, any>) => (
+    Renderer: ({ step, currentOption, handleResetParams }: Record<string, unknown> & {
+      step: { params: Record<string, unknown> };
+      currentOption?: { description?: string };
+      handleResetParams: () => void;
+    }) => (
       <div>
         <div data-testid="description">{currentOption?.description ?? "missing"}</div>
         <div data-testid="params">

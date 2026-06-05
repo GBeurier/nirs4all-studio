@@ -294,6 +294,8 @@ describe("EnvManager", () => {
               packaging: "24.2",
               platformdirs: "4.3.6",
               "sentry-sdk": "2.25.1",
+              orjson: "3.10.15",
+              msgpack: "1.1.0",
             },
       }));
     });
@@ -370,6 +372,8 @@ describe("EnvManager", () => {
             packaging: "24.2",
             platformdirs: "4.3.6",
             "sentry-sdk": "2.25.1",
+            orjson: "3.10.15",
+            msgpack: "1.1.0",
           },
         }));
         return;
@@ -430,6 +434,8 @@ describe("EnvManager", () => {
             packaging: "24.2",
             platformdirs: "4.3.6",
             "sentry-sdk": "2.25.1",
+            orjson: "3.10.15",
+            msgpack: "1.1.0",
           },
         }));
         return;

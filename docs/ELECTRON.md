@@ -429,10 +429,10 @@ npm run dist:mac       # macOS (DMG)
 
 ```bash
 # CPU edition
-./scripts/build-release.sh --flavor cpu
+npm run release -- --flavor cpu
 
 # GPU edition
-./scripts/build-release.sh --flavor gpu
+npm run release -- --flavor gpu
 ```
 
 This runs:
