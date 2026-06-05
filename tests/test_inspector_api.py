@@ -41,24 +41,55 @@ class StoreWithoutArrayGetter:
         self._chain_rows = chain_rows
         self._prediction_rows_by_chain = prediction_rows_by_chain
         self._predictions_by_id = predictions_by_id
+        # Per-method call counters for query-budget assertions.
+        self.calls: dict[str, int] = {}
 
-    def query_chain_summaries(self, **_kwargs):
-        return MockDataFrame(self._chain_rows)
+    def _bump(self, name: str) -> None:
+        self.calls[name] = self.calls.get(name, 0) + 1
+
+    @staticmethod
+    def _matches(value, expected) -> bool:
+        if expected is None:
+            return True
+        if isinstance(expected, (list, tuple)):
+            return value in expected
+        if isinstance(expected, str) and "%" in expected:
+            return str(value).startswith(expected.replace("%", ""))
+        return value == expected
+
+    def query_chain_summaries(self, **kwargs):
+        self._bump("query_chain_summaries")
+        rows = self._chain_rows
+        for key in ("run_id", "dataset_name", "model_class", "metric", "chain_id", "pipeline_id", "task_type"):
+            expected = kwargs.get(key)
+            if expected is not None:
+                rows = [row for row in rows if self._matches(row.get(key), expected)]
+        return MockDataFrame(rows)
 
     def get_chain_predictions(self, chain_id: str, partition: str | None = None, **_kwargs):
+        self._bump("get_chain_predictions")
         rows = self._prediction_rows_by_chain.get(chain_id, [])
         if partition is not None:
             rows = [row for row in rows if row.get("partition") == partition]
         return MockDataFrame(rows)
 
     def get_prediction(self, prediction_id: str, load_arrays: bool = False):
+        self._bump("get_prediction")
         prediction = dict(self._predictions_by_id[prediction_id])
         prediction["prediction_id"] = prediction_id
         if not load_arrays:
             prediction = {key: value for key, value in prediction.items() if key not in {"y_true", "y_pred", "sample_indices"}}
         return prediction
 
+    def list_pipelines(self, **_kwargs):
+        self._bump("list_pipelines")
+        pipeline_ids = {str(row.get("pipeline_id") or "") for row in self._chain_rows if row.get("pipeline_id")}
+        return MockDataFrame(
+            [{"pipeline_id": pid, "name": pid, "expanded_config": None} for pid in sorted(pipeline_ids)]
+        )
+
     def get_pipeline(self, pipeline_id: str):
+        self._bump("get_pipeline")
         return {"pipeline_id": pipeline_id, "name": pipeline_id, "expanded_config": []}
 
     def close(self):
@@ -294,3 +325,111 @@ def test_bias_variance_separates_same_sample_index_across_datasets(mock_workspac
     assert entry["group_label"] == "PLSRegression"
     assert entry["n_samples"] == 2
     assert entry["variance"] == pytest.approx(0.025, abs=1e-6)
+
+
+def _chain_row(chain_id: str, pipeline_id: str, **overrides) -> dict:
+    """Build a v_chain_summary-shaped row with sensible defaults."""
+    row = {
+        "chain_id": chain_id,
+        "run_id": "run-1",
+        "pipeline_id": pipeline_id,
+        "model_class": "PLSRegression",
+        "model_name": "PLS",
+        "preprocessings": "SNV",
+        "metric": "rmse",
+        "task_type": "regression",
+        "dataset_name": "diesel",
+        "cv_val_score": 0.2,
+        "cv_test_score": 0.2,
+        "cv_train_score": 0.1,
+        "cv_fold_count": 2,
+        "final_test_score": None,
+        "final_train_score": None,
+        "pipeline_status": "completed",
+        "model_step_idx": 1,
+        "branch_path": None,
+        "best_params": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_data_endpoint_query_budget_is_constant_in_pipeline_count(mock_workspace):
+    """/data must not re-scan the table nor issue one get_pipeline per pipeline.
+
+    Budget: 2 chain-summary scans (filtered + facet pool) + 1 list_pipelines,
+    and zero per-pipeline get_pipeline round-trips, regardless of pipeline count.
+    """
+    chain_rows = [_chain_row(f"chain-{i}", f"pipe-{i}") for i in range(8)]
+    store = StoreWithoutArrayGetter(chain_rows, {}, {})
+
+    with make_client(store, mock_workspace) as client:
+        response = client.get("/api/inspector/data")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 8
+    # Exactly two summary scans (facet pool + filtered) and one batched pipeline fetch.
+    assert store.calls.get("query_chain_summaries") == 2
+    assert store.calls.get("list_pipelines") == 1
+    # The former N+1: must be gone entirely.
+    assert store.calls.get("get_pipeline", 0) == 0
+
+
+def test_data_endpoint_filters_and_facets_use_unfiltered_pool(mock_workspace):
+    """Filtered records honor the SQL filter; facet dropdowns stay full (unfiltered)."""
+    chain_rows = [
+        _chain_row("chain-a", "pipe-1", model_class="PLSRegression"),
+        _chain_row("chain-b", "pipe-2", model_class="RandomForestRegressor"),
+    ]
+    store = StoreWithoutArrayGetter(chain_rows, {}, {})
+
+    with make_client(store, mock_workspace) as client:
+        response = client.get("/api/inspector/data", params={"model_class": "PLSRegression"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    # Only the filtered chain is returned ...
+    assert payload["total"] == 1
+    assert payload["chains"][0]["chain_id"] == "chain-a"
+    # ... but the model-class facet still lists every model in the workspace.
+    assert payload["available_models"] == ["PLSRegression", "RandomForestRegressor"]
+    # Pipeline metadata enrichment still happens (single batched fetch).
+    assert payload["chains"][0]["pipeline_name"] == "pipe-1"
+    assert store.calls.get("get_pipeline", 0) == 0
+
+
+def test_rankings_direction_uses_library_metric_table(mock_workspace):
+    """rmse is lower-better (library table) -> ascending; best rmse ranks first."""
+    chain_rows = [
+        _chain_row("hi", "pipe-1", metric="rmse", cv_val_score=0.9),
+        _chain_row("lo", "pipe-2", metric="rmse", cv_val_score=0.1),
+    ]
+    store = StoreWithoutArrayGetter(chain_rows, {}, {})
+
+    with make_client(store, mock_workspace) as client:
+        response = client.get("/api/inspector/rankings", params={"score_column": "cv_val_score"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sort_ascending"] is True
+    assert [r["chain_id"] for r in payload["rankings"]] == ["lo", "hi"]
+    # No per-pipeline metadata round-trips.
+    assert store.calls.get("get_pipeline", 0) == 0
+
+
+def test_rankings_unknown_metric_defaults_to_higher_is_better(mock_workspace):
+    """Unknown metrics inherit the library default (higher-is-better => descending)."""
+    chain_rows = [
+        _chain_row("hi", "pipe-1", metric="custom_gain", cv_val_score=0.9),
+        _chain_row("lo", "pipe-2", metric="custom_gain", cv_val_score=0.1),
+    ]
+    store = StoreWithoutArrayGetter(chain_rows, {}, {})
+
+    with make_client(store, mock_workspace) as client:
+        response = client.get("/api/inspector/rankings", params={"score_column": "cv_val_score"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sort_ascending"] is False
+    assert [r["chain_id"] for r in payload["rankings"]] == ["hi", "lo"]

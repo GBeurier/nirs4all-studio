@@ -276,19 +276,26 @@ def _merge_variant_params(
 
 
 def _load_pipeline_metadata_map(store: Any, pipeline_ids: list[str]) -> dict[str, dict[str, Any]]:
-    """Load pipeline metadata needed to enrich chain summaries."""
-    pipeline_map: dict[str, dict[str, Any]] = {}
-    get_pipeline = getattr(store, "get_pipeline", None)
-    if not callable(get_pipeline):
-        return pipeline_map
+    """Load pipeline metadata needed to enrich chain summaries.
 
-    for pipeline_id in {pid for pid in pipeline_ids if pid}:
-        try:
-            pipeline = get_pipeline(pipeline_id)
-        except Exception:
-            pipeline = None
-        if isinstance(pipeline, dict):
-            pipeline_map[pipeline_id] = pipeline
+    Issues a single ``list_pipelines`` query for the whole workspace and
+    keeps only the rows whose ``pipeline_id`` is in *pipeline_ids* — avoiding
+    one DB round-trip per distinct pipeline (the former N+1).
+    """
+    wanted = {pid for pid in pipeline_ids if pid}
+    if not wanted:
+        return {}
+
+    list_pipelines = getattr(store, "list_pipelines", None)
+    if not callable(list_pipelines):
+        return {}
+
+    pipeline_map: dict[str, dict[str, Any]] = {}
+    df = list_pipelines()
+    for row in df.iter_rows(named=True):
+        pipeline_id = str(row.get("pipeline_id") or "")
+        if pipeline_id in wanted:
+            pipeline_map[pipeline_id] = dict(row)
 
     return pipeline_map
 
@@ -447,14 +454,16 @@ def _coerce_index_vector(values: Any) -> list[int] | None:
     return indices
 
 
-_LOWER_BETTER_METRICS = {"rmse", "mse", "mae", "rmsecv", "rmsep", "secv", "sep", "bias"}
-
-
 def _is_lower_better(metric: str | None) -> bool:
-    """Auto-detect if lower score is better for this metric."""
-    if not metric:
-        return True
-    return metric.lower().replace("_", "").replace("-", "") in _LOWER_BETTER_METRICS
+    """Return True when a lower score is better for *metric*.
+
+    Single source of truth: ``nirs4all.pipeline.run.get_metric_info`` — the
+    same metric-direction table the store uses to rank chains. Unknown
+    metrics inherit the library default (higher-is-better).
+    """
+    from nirs4all.pipeline.run import get_metric_info
+
+    return not bool(get_metric_info(metric).get("higher_is_better", True))
 
 
 # ============================================================================
@@ -484,13 +493,24 @@ async def get_inspector_data(
         _dataset_name = dataset_name if dataset_name and len(dataset_name) > 1 else (dataset_name[0] if dataset_name else None)
         _model_class = model_class if model_class and len(model_class) > 1 else (model_class[0] if model_class else None)
 
-        df = store.query_chain_summaries(
+        # Facet lists for filter bar dropdowns must reflect the *unfiltered* chain pool,
+        # otherwise selecting one value collapses the dropdown to just that value and the
+        # user cannot add a second selection.  We normalize this superset *once* and reuse
+        # it for both the facets and (by chain_id) the filtered record set, instead of
+        # scanning + normalizing the table twice per request.
+        facet_records = _normalize_chain_records(store, store.query_chain_summaries())
+        facet_by_id = {r.get("chain_id"): r for r in facet_records}
+
+        # Apply the SQL filters (run_id/dataset_name/model_class/metric, incl. LIKE) in the
+        # store, then map the matching chain_ids back onto the already-normalized records.
+        filtered_df = store.query_chain_summaries(
             run_id=_run_id,
             dataset_name=_dataset_name,
             model_class=_model_class,
             metric=metric,
         )
-        records = _normalize_chain_records(store, df)
+        filtered_ids = [str(row.get("chain_id") or "") for row in filtered_df.iter_rows(named=True)]
+        records = [facet_by_id[cid] for cid in filtered_ids if cid in facet_by_id]
 
         if task_type:
             records = [
@@ -508,11 +528,6 @@ async def get_inspector_data(
                     filtered.append(r)
             records = filtered
 
-        # Facet lists for filter bar dropdowns must reflect the *unfiltered* chain pool,
-        # otherwise selecting one value collapses the dropdown to just that value and the
-        # user cannot add a second selection.
-        facet_df = store.query_chain_summaries()
-        facet_records = _normalize_chain_records(store, facet_df)
         metrics_set = sorted({r.get("metric") for r in facet_records if r.get("metric")})
         models = sorted({r.get("model_class") for r in facet_records if r.get("model_class")})
         datasets = sorted({r.get("dataset_name") for r in facet_records if r.get("dataset_name")})
@@ -1537,6 +1552,11 @@ async def get_robustness_data(request: RobustnessRequest):
 
     Each axis is normalized 0–1 across all requested chains (higher = more robust).
     """
+    # BOUNDARY-FLAG (INS-04): the robustness math below (CV-stability,
+    # train-test gap, score normalization, fold-count ratio) is ML analysis that
+    # belongs in nirs4all, not in this HTTP layer. The library does not yet expose
+    # an equivalent; once it does, this endpoint should shrink to request-shaping +
+    # a single library call (see BACKEND_RULES.md).
     import numpy as np
     if not request.chain_ids:
         return RobustnessResponse(
@@ -2078,6 +2098,11 @@ async def get_bias_variance(request: BiasVarianceRequest):
       variance = Var(y_pred across folds)
     Aggregated per group: mean_bias², mean_variance, total_error.
     """
+    # BOUNDARY-FLAG (INS-04): the bias²/variance decomposition over repeated
+    # cross-validation predictions is ML analysis that belongs in nirs4all, not in
+    # this HTTP layer. The library does not yet expose an equivalent; once it does,
+    # this endpoint should shrink to request-shaping + a single library call
+    # (see BACKEND_RULES.md).
     import numpy as np
     if not request.chain_ids:
         return BiasVarianceResponse(
@@ -2203,6 +2228,11 @@ async def get_learning_curve(request: LearningCurveRequest):
     Groups chains by the number of training samples (inferred from
     prediction array lengths), computing mean/std of train and val scores.
     """
+    # BOUNDARY-FLAG (INS-04): the learning-curve construction below — including the
+    # training-size inference/approximation from prediction-array lengths — is ML
+    # analysis that belongs in nirs4all (which can report the exact training size
+    # the library does not yet expose this; once it does, this endpoint should
+    # shrink to request-shaping + a single library call (see BACKEND_RULES.md).
     import numpy as np
     store = _get_store()
     try:
