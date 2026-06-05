@@ -4,29 +4,53 @@
  * Downloads python-build-standalone and creates a venv on first launch,
  * so the installer stays lightweight (~15MB instead of 350MB).
  * The Python env is stored in the user's app data directory.
+ *
+ * This module is the coordinator: it owns settings, the verify cache, runtime
+ * mode resolution, and the setup/verify/detect/apply flows. The lower-level
+ * mechanics are split into focused modules under `electron/env/`:
+ *   - network-probe         — outbound reachability probe
+ *   - process-utils         — runCommand / rmWithRetry / execFileText
+ *   - python-discovery      — interpreter discovery across ecosystems
+ *   - python-runtime-installer — download / extract / quarantine primitives
+ *   - env-inspection        — package scoring and pure interpreter inspection
  */
 
-import { spawn, execFile } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import https from "node:https";
-import http from "node:http";
+
+import { probeNetworkOnline } from "./env/network-probe";
+import {
+  gatherPythonCandidates,
+  getEnvRootForPythonPath,
+  getPythonExecutableCandidatesForEnvRoot,
+  normalizeDetectedPath,
+} from "./env/python-discovery";
+import {
+  getManagedCorePackageNames,
+  getMissingCorePackages,
+  getMissingOptionalPackages,
+  guessProfileAlignment,
+  inspectPythonPackages,
+} from "./env/env-inspection";
+import type {
+  DetectedEnv,
+  EnvKind,
+  InspectedEnv,
+  InspectPythonData,
+} from "./env/env-inspection";
+import { installCorePackages, provisionManagedRuntime } from "./env/provisioning";
+import type { ProvisioningContext } from "./env/provisioning";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 interface PythonRuntimeConfigModule {
-  MANAGED_RUNTIME_PACKAGES: readonly string[];
-  PBS_TAG: string;
-  PYTHON_VERSION: string;
   PYTHON_VERSION_MM: string;
-  getArchiveFilename(platform: string, arch: string): string;
-  getDownloadUrl(platform: string, arch: string): string;
 }
 
 type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
 const electronModule = require("electron") as typeof import("electron") | string;
 const pythonRuntimeConfig = require("../scripts/python-runtime-config.cjs") as PythonRuntimeConfigModule;
-const recommendedConfig = require("../recommended-config.json") as RecommendedConfigFile;
 const testApp = (globalThis as { __NIRS4ALL_TEST_APP__?: AppLike }).__NIRS4ALL_TEST_APP__;
 const { app } = typeof electronModule === "string"
   ? {
@@ -40,155 +64,13 @@ const { app } = typeof electronModule === "string"
     }
   : electronModule;
 
-const { MANAGED_RUNTIME_PACKAGES, PBS_TAG, PYTHON_VERSION, PYTHON_VERSION_MM, getArchiveFilename, getDownloadUrl } = pythonRuntimeConfig;
+const { PYTHON_VERSION_MM } = pythonRuntimeConfig;
 
 const isWindows = process.platform === "win32";
-const ENSUREPIP_TIMEOUT_MS = 60_000;
-const PIP_INSTALL_TIMEOUT_MS = 180_000;
-const COMPILEALL_TIMEOUT_MS = 180_000;
-
-// --- Network probe (shared with backend network_state.py) ---
-// Multiple URLs raced in parallel — first response wins. Diversified providers
-// so a single blocked host (corporate proxy, GeoDNS) does not flip offline.
-const NETWORK_PROBE_URLS = [
-  "https://www.cloudflare.com",
-  "https://pypi.org",
-  "https://api.github.com",
-  "https://www.google.com",
-];
-const NETWORK_PROBE_TIMEOUT_MS = 4_000;
-const NETWORK_PROBE_TTL_MS = 60_000;
-
-let networkProbeCache: { at: number; online: boolean } | null = null;
-let networkProbeInFlight: Promise<boolean> | null = null;
-
-function isOfflineForced(): boolean {
-  const v = (process.env.NIRS4ALL_OFFLINE || "").trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "on";
-}
-
-function probeOne(url: string, timeoutMs: number): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    let settled = false;
-    const done = (result: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(t);
-      resolve(result);
-    };
-    const t = setTimeout(() => done(false), timeoutMs + 250);
-    try {
-      const req = https.request(
-        url,
-        { method: "HEAD", timeout: timeoutMs },
-        (res) => {
-          // Any HTTP response (incl. 4xx redirect) means we reached the server.
-          done((res.statusCode ?? 0) < 600);
-          res.resume();
-        },
-      );
-      req.on("error", () => done(false));
-      req.on("timeout", () => { req.destroy(); done(false); });
-      req.end();
-    } catch {
-      done(false);
-    }
-  });
-}
-
-/**
- * Probe network reachability. Races multiple URLs and caches the result
- * for 60 s. Returns `false` whenever `NIRS4ALL_OFFLINE` is set, without
- * attempting any outbound connection. Never throws. Concurrent callers
- * share the same in-flight probe.
- */
-export async function probeNetworkOnline(): Promise<boolean> {
-  if (isOfflineForced()) return false;
-  const now = Date.now();
-  if (networkProbeCache && now - networkProbeCache.at < NETWORK_PROBE_TTL_MS) {
-    return networkProbeCache.online;
-  }
-  if (networkProbeInFlight) return networkProbeInFlight;
-
-  networkProbeInFlight = (async () => {
-    try {
-      const online = await new Promise<boolean>((resolve) => {
-        let resolved = false;
-        const finish = (v: boolean) => {
-          if (resolved) return;
-          resolved = true;
-          resolve(v);
-        };
-        let pending = NETWORK_PROBE_URLS.length;
-        for (const url of NETWORK_PROBE_URLS) {
-          probeOne(url, NETWORK_PROBE_TIMEOUT_MS).then((ok) => {
-            if (ok) finish(true);
-            pending -= 1;
-            if (pending === 0) finish(false);
-          });
-        }
-      });
-      networkProbeCache = { at: Date.now(), online };
-      console.log(`[EnvManager] Network probe: ${online ? "ONLINE" : "OFFLINE"}`);
-      return online;
-    } finally {
-      networkProbeInFlight = null;
-    }
-  })();
-
-  return networkProbeInFlight;
-}
 
 export type EnvStatus = "none" | "downloading" | "extracting" | "creating_venv" | "installing" | "ready" | "error";
 
 export type ProgressCallback = (percent: number, step: string, detail: string) => void;
-
-type EnvKind = "system" | "venv" | "conda" | "managed" | "bundled";
-
-interface RecommendedPackageSpec {
-  min?: string;
-  recommended?: string | null;
-}
-
-interface RecommendedProfileConfig {
-  label?: string;
-  platforms?: string[];
-  packages?: Record<string, RecommendedPackageSpec | string>;
-}
-
-interface RecommendedOptionalConfig {
-  min?: string;
-  recommended?: string | null;
-  description?: string;
-  category?: string;
-}
-
-interface RecommendedConfigFile {
-  profiles?: Record<string, RecommendedProfileConfig>;
-  optional?: Record<string, RecommendedOptionalConfig>;
-}
-
-export interface ProfileAlignmentGuess {
-  id: string;
-  label: string;
-  missingCount: number;
-}
-
-export interface DetectedEnv {
-  path: string;
-  pythonPath: string;
-  pythonVersion: string;
-  hasNirs4all: boolean;
-  hasCorePackages: boolean;
-  envKind: EnvKind;
-  writable: boolean;
-}
-
-export interface InspectedEnv extends DetectedEnv {
-  missingCorePackages: string[];
-  missingOptionalPackages: string[];
-  profileAlignmentGuess: ProfileAlignmentGuess | null;
-}
 
 export interface EnvInfo {
   status: EnvStatus;
@@ -219,18 +101,6 @@ const VERIFY_CACHE_FILE = "verify-cache.json";
 // co-mingled with this transient cache.
 const DETECT_ENVS_TTL_MS = 30_000;
 let detectEnvsCache: { key: string; expiresAt: number; result: DetectedEnv[] } | null = null;
-const WINDOWS_LAUNCHER_TIMEOUT_MS = 5_000;
-const CONDA_DISCOVERY_TIMEOUT_MS = 12_000;
-const PROJECT_ENV_DIR_NAMES = [".venv", "venv", ".env", "env"];
-const NEARBY_PROJECT_IGNORED_DIRS = new Set([
-  ".git",
-  "node_modules",
-  "dist",
-  "dist-electron",
-  "build",
-  "coverage",
-  "__pycache__",
-]);
 
 interface VerifyCacheEntry {
   pythonPath: string;
@@ -257,36 +127,8 @@ interface EnsureBackendPackagesOptions {
   timeoutMs?: number;
 }
 
-interface CommandOptions {
-  retries?: number;
-  /** Base delay (ms) for exponential backoff between retries. Default 2000. */
-  retryBaseMs?: number;
-  timeoutMs?: number;
-}
-
 interface ApplyExistingPythonOptions {
   installCorePackages?: boolean;
-}
-
-interface InspectPythonData {
-  version: string;
-  installedPackages: Map<string, string>;
-}
-
-function normalizePackageName(name: string): string {
-  return name.replace(/[-_.]+/g, "_").toLowerCase();
-}
-
-function getSupportedProfiles(config: RecommendedConfigFile): Array<[string, RecommendedProfileConfig]> {
-  return Object.entries(config.profiles ?? {}).filter(([, profile]) => {
-    const platforms = profile.platforms ?? [];
-    return platforms.length === 0 || platforms.includes(process.platform);
-  });
-}
-
-function normalizeDetectedPath(candidate: string): string {
-  const normalized = path.normalize(candidate);
-  return isWindows ? normalized.toLowerCase() : normalized;
 }
 
 export class EnvManager {
@@ -519,7 +361,7 @@ export class EnvManager {
 
     // Custom python path: derive env root from executable location
     if (this.pythonPath) {
-      return this.resolveSitePackages(this.getEnvRootForPythonPath(this.pythonPath), true);
+      return this.resolveSitePackages(getEnvRootForPythonPath(this.pythonPath), true);
     }
 
     // Managed env
@@ -529,324 +371,7 @@ export class EnvManager {
 
   private getSitePackagesForPythonPath(pythonPath: string | null): string | null {
     if (!pythonPath) return null;
-    return this.resolveSitePackages(this.getEnvRootForPythonPath(pythonPath), true);
-  }
-
-  private getEnvRootForPythonPath(pythonPath: string): string {
-    const dir = path.dirname(pythonPath);
-    const dirName = path.basename(dir).toLowerCase();
-    return (dirName === "scripts" || dirName === "bin") ? path.dirname(dir) : dir;
-  }
-
-  private getPythonExecutableCandidatesForEnvRoot(envRoot: string): string[] {
-    return isWindows
-      ? [path.join(envRoot, "Scripts", "python.exe"), path.join(envRoot, "python.exe")]
-      : [path.join(envRoot, "bin", "python3"), path.join(envRoot, "bin", "python")];
-  }
-
-  private addPythonCandidate(candidateMap: Map<string, string>, pythonPath: string | null | undefined): void {
-    if (!pythonPath || !fs.existsSync(pythonPath)) {
-      return;
-    }
-
-    try {
-      const resolvedPath = fs.realpathSync(pythonPath);
-      const key = normalizeDetectedPath(resolvedPath);
-      if (!candidateMap.has(key)) {
-        candidateMap.set(key, pythonPath);
-      }
-      return;
-    } catch {
-      const key = normalizeDetectedPath(pythonPath);
-      if (!candidateMap.has(key)) {
-        candidateMap.set(key, pythonPath);
-      }
-    }
-  }
-
-  private collectPythonCandidatesFromRoots(candidateMap: Map<string, string>, envRoots: Iterable<string>): void {
-    for (const envRoot of envRoots) {
-      if (!envRoot || !fs.existsSync(envRoot)) {
-        continue;
-      }
-
-      for (const pythonPath of this.getPythonExecutableCandidatesForEnvRoot(envRoot)) {
-        this.addPythonCandidate(candidateMap, pythonPath);
-      }
-    }
-  }
-
-  private listPathPythonCandidates(): string[] {
-    const candidates: string[] = [];
-    const names = isWindows ? ["python.exe"] : ["python3", "python"];
-    const pathDirs = (process.env.PATH || "")
-      .split(path.delimiter)
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-
-    for (const dir of pathDirs) {
-      for (const name of names) {
-        const candidate = path.join(dir, name);
-        if (fs.existsSync(candidate)) {
-          candidates.push(candidate);
-        }
-      }
-    }
-
-    return candidates;
-  }
-
-  private listCommonHomePythonCandidates(): string[] {
-    const home = process.env.HOME || process.env.USERPROFILE || "";
-    if (!home) {
-      return [];
-    }
-
-    const candidates = new Map<string, string>();
-    const directEnvRoots = [
-      path.join(home, ".venv"),
-      path.join(home, "venv"),
-    ];
-    this.collectPythonCandidatesFromRoots(candidates, directEnvRoots);
-
-    const condaEnvDirs = [
-      path.join(home, ".conda", "envs"),
-      path.join(home, "miniconda3", "envs"),
-      path.join(home, "Miniconda3", "envs"),
-      path.join(home, "anaconda3", "envs"),
-      path.join(home, "Anaconda3", "envs"),
-      path.join(home, "miniforge3", "envs"),
-      path.join(home, "mambaforge", "envs"),
-      path.join(home, "AppData", "Local", "miniconda3", "envs"),
-      path.join(home, "AppData", "Local", "Miniconda3", "envs"),
-      path.join(home, "AppData", "Local", "anaconda3", "envs"),
-      path.join(home, "AppData", "Local", "Anaconda3", "envs"),
-    ];
-
-    for (const envDir of condaEnvDirs) {
-      if (!fs.existsSync(envDir)) {
-        continue;
-      }
-
-      try {
-        const envRoots = fs.readdirSync(envDir)
-          .map((entry) => path.join(envDir, entry))
-          .filter((candidate) => {
-            try {
-              return fs.statSync(candidate).isDirectory();
-            } catch {
-              return false;
-            }
-          });
-        this.collectPythonCandidatesFromRoots(candidates, envRoots);
-      } catch {
-        // Ignore unreadable env directories.
-      }
-    }
-
-    return [...candidates.values()];
-  }
-
-  private getCondaCommandCandidates(): string[] {
-    const candidates: string[] = [];
-    const seen = new Set<string>();
-    const addCandidate = (candidate: string | null | undefined) => {
-      if (!candidate) {
-        return;
-      }
-
-      const isAbsolute = candidate.includes(path.sep) || candidate.includes("/");
-      if (isAbsolute && !fs.existsSync(candidate)) {
-        return;
-      }
-
-      const key = isAbsolute ? normalizeDetectedPath(candidate) : candidate;
-      if (seen.has(key)) {
-        return;
-      }
-
-      seen.add(key);
-      candidates.push(candidate);
-    };
-
-    addCandidate(process.env.CONDA_EXE);
-    addCandidate("conda");
-
-    const home = process.env.HOME || process.env.USERPROFILE || "";
-    if (!home) {
-      return candidates;
-    }
-
-    const installRoots = [
-      path.join(home, "Anaconda3"),
-      path.join(home, "anaconda3"),
-      path.join(home, "Miniconda3"),
-      path.join(home, "miniconda3"),
-      path.join(home, "miniforge3"),
-      path.join(home, "mambaforge"),
-      path.join(home, "AppData", "Local", "Anaconda3"),
-      path.join(home, "AppData", "Local", "anaconda3"),
-      path.join(home, "AppData", "Local", "Miniconda3"),
-      path.join(home, "AppData", "Local", "miniconda3"),
-    ];
-
-    for (const installRoot of installRoots) {
-      addCandidate(isWindows
-        ? path.join(installRoot, "Scripts", "conda.exe")
-        : path.join(installRoot, "bin", "conda"));
-    }
-
-    return candidates;
-  }
-
-  private execFileText(
-    command: string,
-    args: string[],
-    timeoutMs: number,
-  ): Promise<{ stdout: string; stderr: string } | null> {
-    return new Promise((resolve) => {
-      execFile(
-        command,
-        args,
-        { timeout: timeoutMs, windowsHide: isWindows },
-        (error, stdout, stderr) => {
-          if (error) {
-            resolve(null);
-            return;
-          }
-
-          resolve({ stdout, stderr });
-        },
-      );
-    });
-  }
-
-  private async listWindowsLauncherPythonCandidates(): Promise<string[]> {
-    if (!isWindows) {
-      return [];
-    }
-
-    const result = await this.execFileText("py", ["-0p"], WINDOWS_LAUNCHER_TIMEOUT_MS);
-    if (!result) {
-      return [];
-    }
-
-    return `${result.stdout}\n${result.stderr}`
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .map((line) => line.match(/^-V:\S+\s+(?:\*\s+)?(.+)$/)?.[1]?.trim() ?? null)
-      .filter((candidate): candidate is string => Boolean(candidate));
-  }
-
-  private async listCondaEnvPythonCandidates(): Promise<string[]> {
-    for (const command of this.getCondaCommandCandidates()) {
-      const result = await this.execFileText(command, ["env", "list", "--json"], CONDA_DISCOVERY_TIMEOUT_MS);
-      if (!result) {
-        continue;
-      }
-
-      try {
-        const payload = JSON.parse(result.stdout.trim()) as { envs?: string[] };
-        if (!Array.isArray(payload.envs)) {
-          continue;
-        }
-
-        const candidates = new Map<string, string>();
-        this.collectPythonCandidatesFromRoots(candidates, payload.envs);
-        return [...candidates.values()];
-      } catch {
-        continue;
-      }
-    }
-
-    return [];
-  }
-
-  private getNearbyProjectSearchRoots(): string[] {
-    const roots = new Set<string>();
-    let currentDir = path.resolve(process.cwd());
-
-    for (let depth = 0; depth < 2; depth += 1) {
-      roots.add(currentDir);
-
-      const parentDir = path.dirname(currentDir);
-      const filesystemRoot = path.parse(currentDir).root;
-      if (parentDir === currentDir || parentDir === filesystemRoot) {
-        break;
-      }
-
-      currentDir = parentDir;
-    }
-
-    return [...roots];
-  }
-
-  private listNearbyProjectPythonCandidates(): string[] {
-    const candidates = new Map<string, string>();
-
-    for (const searchRoot of this.getNearbyProjectSearchRoots()) {
-      this.collectPythonCandidatesFromRoots(
-        candidates,
-        PROJECT_ENV_DIR_NAMES.map((envName) => path.join(searchRoot, envName)),
-      );
-
-      try {
-        const projectDirs = fs.readdirSync(searchRoot, { withFileTypes: true })
-          .filter((entry) => entry.isDirectory() && !NEARBY_PROJECT_IGNORED_DIRS.has(entry.name))
-          .map((entry) => path.join(searchRoot, entry.name));
-
-        for (const projectDir of projectDirs) {
-          this.collectPythonCandidatesFromRoots(
-            candidates,
-            PROJECT_ENV_DIR_NAMES.map((envName) => path.join(projectDir, envName)),
-          );
-        }
-      } catch {
-        // Ignore unreadable project directories.
-      }
-    }
-
-    return [...candidates.values()];
-  }
-
-  private listPyenvPythonCandidates(): string[] {
-    const home = process.env.HOME || process.env.USERPROFILE || "";
-    const pyenvRoots = [
-      process.env.PYENV_ROOT,
-      home ? path.join(home, ".pyenv") : null,
-      isWindows && home ? path.join(home, ".pyenv", "pyenv-win") : null,
-    ].filter((candidate): candidate is string => Boolean(candidate));
-
-    const candidates = new Map<string, string>();
-    for (const pyenvRoot of pyenvRoots) {
-      const versionsDirCandidates = [
-        path.join(pyenvRoot, "versions"),
-        isWindows ? path.join(pyenvRoot, "pyenv-win", "versions") : null,
-      ].filter((candidate): candidate is string => Boolean(candidate));
-
-      for (const versionsDir of versionsDirCandidates) {
-        if (!fs.existsSync(versionsDir)) {
-          continue;
-        }
-
-        try {
-          const envRoots = fs.readdirSync(versionsDir)
-            .map((entry) => path.join(versionsDir, entry))
-            .filter((candidate) => {
-              try {
-                return fs.statSync(candidate).isDirectory();
-              } catch {
-                return false;
-              }
-            });
-          this.collectPythonCandidatesFromRoots(candidates, envRoots);
-        } catch {
-          // Ignore unreadable pyenv version directories.
-        }
-      }
-    }
-
-    return [...candidates.values()];
+    return this.resolveSitePackages(getEnvRootForPythonPath(pythonPath), true);
   }
 
   private compareDetectedEnvs(left: DetectedEnv, right: DetectedEnv): number {
@@ -930,106 +455,11 @@ export class EnvManager {
     return false;
   }
 
-  private getMissingOptionalPackages(installedPackages: Set<string>): string[] {
-    return Object.keys(recommendedConfig.optional ?? {}).filter(
-      (packageName) => !installedPackages.has(normalizePackageName(packageName)),
-    );
-  }
-
-  private guessProfileAlignment(installedPackages: Set<string>): ProfileAlignmentGuess | null {
-    const supportedProfiles = getSupportedProfiles(recommendedConfig);
-    if (supportedProfiles.length === 0) {
-      return null;
-    }
-
-    const scoredProfiles = supportedProfiles.map(([id, profile]) => {
-      const packageNames = Object.keys(profile.packages ?? {});
-      const missingCount = packageNames.filter(
-        (packageName) => !installedPackages.has(normalizePackageName(packageName)),
-      ).length;
-      return {
-        id,
-        label: profile.label ?? id,
-        missingCount,
-      };
-    });
-
-    scoredProfiles.sort((left, right) => {
-      if (left.missingCount !== right.missingCount) {
-        return left.missingCount - right.missingCount;
-      }
-      if (left.id === "cpu") return -1;
-      if (right.id === "cpu") return 1;
-      return left.id.localeCompare(right.id);
-    });
-
-    return scoredProfiles[0] ?? null;
-  }
-
-  private async inspectPythonPackages(pythonPath: string): Promise<InspectPythonData | null> {
-    return new Promise((resolve) => {
-      execFile(
-        pythonPath,
-        [
-          "-c",
-          "import json, sys\n"
-          + "from importlib import metadata as importlib_metadata\n"
-          + "installed = {}\n"
-          + "for dist in importlib_metadata.distributions():\n"
-          + "    name = dist.metadata.get('Name')\n"
-          + "    if name:\n"
-          + "        installed[name] = dist.version\n"
-          + "payload = {\n"
-          + "    'version': f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}',\n"
-          + "    'installed': installed,\n"
-          + "}\n"
-          + "print(json.dumps(payload))",
-        ],
-        { timeout: 10_000 },
-        (error, stdout) => {
-          if (error) {
-            resolve(null);
-            return;
-          }
-
-          try {
-            const payload = JSON.parse(stdout.trim()) as {
-              version?: string;
-              installed?: Record<string, string>;
-            };
-            const version = payload.version?.trim();
-            if (!version) {
-              resolve(null);
-              return;
-            }
-
-            const [major, minor] = version.split(".").map(Number);
-            if (major < 3 || (major === 3 && minor < 11)) {
-              resolve(null);
-              return;
-            }
-
-            const installedPackages = new Map<string, string>();
-            for (const [name, packageVersion] of Object.entries(payload.installed ?? {})) {
-              installedPackages.set(normalizePackageName(name), packageVersion);
-            }
-
-            resolve({ version, installedPackages });
-          } catch {
-            resolve(null);
-          }
-        },
-      );
-    });
-  }
-
   private buildInspectedEnv(pythonPath: string, data: InspectPythonData): InspectedEnv {
-    const envRoot = this.getEnvRootForPythonPath(pythonPath);
+    const envRoot = getEnvRootForPythonPath(pythonPath);
     const installedPackageNames = new Set(data.installedPackages.keys());
-    const missingCorePackages = MANAGED_RUNTIME_PACKAGES
-      .map((packageSpec) => packageSpec.split(">=")[0].split("[")[0])
-      .filter((packageName) => !installedPackageNames.has(normalizePackageName(packageName)));
-    const profileAlignmentGuess = this.guessProfileAlignment(installedPackageNames);
+    const missingCorePackages = getMissingCorePackages(installedPackageNames);
+    const profileAlignmentGuess = guessProfileAlignment(installedPackageNames);
 
     return {
       path: envRoot,
@@ -1040,7 +470,7 @@ export class EnvManager {
       envKind: this.getEnvKind(envRoot, pythonPath),
       writable: this.isLikelyWritable(envRoot, pythonPath),
       missingCorePackages,
-      missingOptionalPackages: this.getMissingOptionalPackages(installedPackageNames),
+      missingOptionalPackages: getMissingOptionalPackages(installedPackageNames),
       profileAlignmentGuess,
     };
   }
@@ -1242,7 +672,7 @@ export class EnvManager {
     const parts: string[] = [];
 
     // Derive env root from python executable location.
-    const envRoot = this.getEnvRootForPythonPath(pythonPath);
+    const envRoot = getEnvRootForPythonPath(pythonPath);
 
     const stat = (p: string): string | null => {
       try {
@@ -1380,8 +810,8 @@ export class EnvManager {
           throw new Error(this.lastError);
         }
         console.log("Backend runtime packages missing, installing core packages...");
-        await this.installCorePackages(pythonPath, {
-          timeoutMs: options?.timeoutMs ?? PIP_INSTALL_TIMEOUT_MS,
+        await installCorePackages(pythonPath, {
+          timeoutMs: options?.timeoutMs,
         });
         console.log("Core packages installed successfully");
         repaired = true;
@@ -1407,8 +837,8 @@ export class EnvManager {
         }
         if (!repaired) {
           console.log("Backend packages incomplete, reinstalling core packages...");
-          await this.installCorePackages(pythonPath, {
-            timeoutMs: options?.timeoutMs ?? PIP_INSTALL_TIMEOUT_MS,
+          await installCorePackages(pythonPath, {
+            timeoutMs: options?.timeoutMs,
           });
           console.log("Core packages reinstalled successfully");
           repaired = true;
@@ -1467,51 +897,14 @@ export class EnvManager {
       return detectEnvsCache.result.slice();
     }
 
-    const candidates = new Map<string, string>();
-    this.addPythonCandidate(candidates, this.pythonPath);
-    this.addPythonCandidate(candidates, this.getManagedPythonPath());
-    this.addPythonCandidate(candidates, this.detectBundledRuntime()?.pythonPath);
-
-    for (const candidate of this.listPathPythonCandidates()) {
-      this.addPythonCandidate(candidates, candidate);
-    }
-
-    for (const candidate of this.listCommonHomePythonCandidates()) {
-      this.addPythonCandidate(candidates, candidate);
-    }
-
-    for (const candidate of this.listNearbyProjectPythonCandidates()) {
-      this.addPythonCandidate(candidates, candidate);
-    }
-
-    for (const candidate of this.listPyenvPythonCandidates()) {
-      this.addPythonCandidate(candidates, candidate);
-    }
-
-    const [windowsLauncherCandidates, condaCandidates] = await Promise.all([
-      this.listWindowsLauncherPythonCandidates(),
-      this.listCondaEnvPythonCandidates(),
+    const candidatePaths = await gatherPythonCandidates([
+      this.pythonPath,
+      this.getManagedPythonPath(),
+      this.detectBundledRuntime()?.pythonPath,
     ]);
 
-    for (const candidate of windowsLauncherCandidates) {
-      this.addPythonCandidate(candidates, candidate);
-    }
-
-    for (const candidate of condaCandidates) {
-      this.addPythonCandidate(candidates, candidate);
-    }
-
-    if (process.platform === "darwin") {
-      for (const candidate of [
-        "/opt/homebrew/bin/python3",
-        "/usr/local/bin/python3",
-      ]) {
-        this.addPythonCandidate(candidates, candidate);
-      }
-    }
-
     const detected = (await Promise.all(
-      [...candidates.values()].map((candidate) => this.checkPython(candidate)),
+      candidatePaths.map((candidate) => this.checkPython(candidate)),
     )).filter((env): env is DetectedEnv => Boolean(env));
 
     const envs: DetectedEnv[] = [];
@@ -1537,9 +930,7 @@ export class EnvManager {
 
   /** Check a Python executable and return info if it's 3.11+ */
   private async checkPython(pythonPath: string): Promise<DetectedEnv | null> {
-    const corePackageNames = JSON.stringify(
-      MANAGED_RUNTIME_PACKAGES.map((packageSpec) => packageSpec.split(">=")[0].split("[")[0]),
-    );
+    const corePackageNames = JSON.stringify(getManagedCorePackageNames());
     return new Promise((resolve) => {
       execFile(
         pythonPath,
@@ -1568,7 +959,7 @@ export class EnvManager {
           if (major < 3 || (major === 3 && minor < 11)) { resolve(null); return; }
           const hasNirs4all = lines[1].trim() === "True";
           const hasCorePackages = lines[2].trim() === "True";
-          const envRoot = this.getEnvRootForPythonPath(pythonPath);
+          const envRoot = getEnvRootForPythonPath(pythonPath);
           resolve({
             path: envRoot,
             pythonPath,
@@ -1587,7 +978,7 @@ export class EnvManager {
    * Inspect an existing Python environment without mutating it.
    */
   async inspectExistingEnv(envPath: string): Promise<{ success: boolean; message: string; info?: InspectedEnv }> {
-    const candidates = this.getPythonExecutableCandidatesForEnvRoot(envPath)
+    const candidates = getPythonExecutableCandidatesForEnvRoot(envPath)
       .filter((candidate) => fs.existsSync(candidate));
 
     if (candidates.length === 0) {
@@ -1615,7 +1006,7 @@ export class EnvManager {
       return { success: false, message: "Python executable not found at the selected path" };
     }
 
-    const data = await this.inspectPythonPackages(pythonPath);
+    const data = await inspectPythonPackages(pythonPath);
     if (!data) {
       return { success: false, message: "Python 3.11 or later is required (or the selected file is not a valid Python executable)" };
     }
@@ -1657,9 +1048,9 @@ export class EnvManager {
     }
 
     let info = inspection.info;
-    const installCorePackages = options?.installCorePackages === true;
+    const shouldInstallCorePackages = options?.installCorePackages === true;
 
-    if (!info.hasCorePackages && !installCorePackages) {
+    if (!info.hasCorePackages && !shouldInstallCorePackages) {
       return {
         success: false,
         message: `Python ${info.pythonVersion} is missing required backend packages (${info.missingCorePackages.join(", ")}). Choose an explicit install action before switching.`,
@@ -1667,7 +1058,7 @@ export class EnvManager {
       };
     }
 
-    if (!info.hasCorePackages && installCorePackages) {
+    if (!info.hasCorePackages && shouldInstallCorePackages) {
       if (!(await probeNetworkOnline())) {
         return {
           success: false,
@@ -1677,7 +1068,7 @@ export class EnvManager {
       }
 
       try {
-        await this.installCorePackages(pythonPath);
+        await installCorePackages(pythonPath);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return {
@@ -1710,7 +1101,7 @@ export class EnvManager {
     this.status = "ready";
     this.lastError = null;
 
-    const action = installCorePackages ? "Installed core packages and switched" : "Using";
+    const action = shouldInstallCorePackages ? "Installed core packages and switched" : "Using";
     return {
       success: true,
       message: `${action} Python ${info.pythonVersion} from ${pythonPath}`,
@@ -1736,30 +1127,18 @@ export class EnvManager {
   }
 
   /**
-   * Install core packages into a Python environment using `python -m pip`.
-   * Used when user selects an existing Python that's missing nirs4all.
+   * Narrow EnvManager state view passed to the provisioning flow so it can
+   * drive status transitions and persist the resolved interpreter without
+   * owning the rest of the coordinator's state.
    */
-  private async installCorePackages(
-    pythonPath: string,
-    options?: EnsureBackendPackagesOptions,
-  ): Promise<void> {
-    const timeoutMs = options?.timeoutMs ?? PIP_INSTALL_TIMEOUT_MS;
-
-    // Ensure pip is available
-    try {
-      await this.runCommand(pythonPath, ["-m", "ensurepip", "--upgrade"], {
-        retries: 1,
-        timeoutMs: Math.min(timeoutMs, ENSUREPIP_TIMEOUT_MS),
-      });
-    } catch {
-      // ensurepip may fail if pip is already installed — non-fatal
-    }
-
-    // Install all core packages in a single pip call
-    await this.runCommand(pythonPath, ["-m", "pip", "install", "--no-cache-dir", ...MANAGED_RUNTIME_PACKAGES], {
-      retries: 2,
-      timeoutMs,
-    });
+  private provisioningContext(): ProvisioningContext {
+    return {
+      envDir: this.envDir,
+      setStatus: (status) => { this.status = status; },
+      setLastError: (error) => { this.lastError = error; },
+      setPythonPath: (pythonPath) => { this.pythonPath = pythonPath; },
+      saveSettings: () => this.saveSettings(),
+    };
   }
 
   /**
@@ -1771,378 +1150,6 @@ export class EnvManager {
    *   pythonPath so getPythonPath() finds it.
    */
   async setup(progress?: ProgressCallback, targetDir?: string): Promise<void> {
-    const report = progress ?? (() => {});
-    const baseDir = targetDir || this.envDir;
-
-    try {
-      this.status = "downloading";
-      this.lastError = null;
-
-      // 1. Resolve platform
-      const platformKey = `${process.platform}-${process.arch}`;
-      const tarballName = getArchiveFilename(process.platform, process.arch);
-      const downloadUrl = getDownloadUrl(process.platform, process.arch);
-      fs.mkdirSync(baseDir, { recursive: true });
-
-      // 2. Download Python (if not already cached)
-      const cachedTarball = path.join(baseDir, tarballName);
-      if (fs.existsSync(cachedTarball) && fs.statSync(cachedTarball).size > 10 * 1024 * 1024) {
-        report(15, "downloading", "Using cached Python runtime");
-      } else {
-        report(0, "downloading", "Downloading Python runtime...");
-        await this.downloadFile(downloadUrl, cachedTarball, (percent) => {
-          report(Math.round(percent * 0.15), "downloading", `Downloading Python runtime... ${percent}%`);
-        });
-      }
-
-      // 3. Extract
-      this.status = "extracting";
-      report(15, "extracting", "Extracting Python runtime...");
-      const pythonDir = path.join(baseDir, "python");
-      if (fs.existsSync(pythonDir)) {
-        await this.rmWithRetry(pythonDir);
-      }
-
-      await this.extractTarball(cachedTarball, baseDir);
-
-      // Verify extraction — the tarball extracts a top-level `python/` directory
-      const embeddedPython = isWindows
-        ? path.join(pythonDir, "python.exe")
-        : path.join(pythonDir, "bin", "python3");
-      if (!fs.existsSync(embeddedPython)) {
-        throw new Error(`Python executable not found after extraction at ${embeddedPython}`);
-      }
-      report(25, "extracting", "Python runtime extracted");
-
-      // Remove macOS Gatekeeper quarantine attribute from downloaded Python
-      await this.removeQuarantine(pythonDir);
-
-      // 4. Create venv
-      this.status = "creating_venv";
-      report(25, "creating_venv", "Creating virtual environment...");
-      const venvDir = path.join(baseDir, "venv");
-      if (fs.existsSync(venvDir)) {
-        await this.rmWithRetry(venvDir);
-      }
-
-      await this.runCommand(embeddedPython, ["-m", "venv", venvDir, "--without-pip"], {
-        // The freshly extracted runtime can still be scanned or briefly locked
-        // by the OS/AV layer right after extraction.
-        retries: 3,
-        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
-      });
-
-      const venvPython = isWindows
-        ? path.join(venvDir, "Scripts", "python.exe")
-        : path.join(venvDir, "bin", "python");
-
-      if (!fs.existsSync(venvPython)) {
-        throw new Error("Venv creation failed: python executable not found");
-      }
-
-      report(35, "creating_venv", "Bootstrapping pip...");
-      await this.runCommand(venvPython, ["-m", "ensurepip", "--upgrade"], {
-        retries: 2,
-        timeoutMs: ENSUREPIP_TIMEOUT_MS,
-      });
-      await this.runCommand(venvPython, ["-m", "pip", "install", "--no-cache-dir", "--upgrade", "pip"], {
-        retries: 2,
-        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
-      });
-      report(40, "creating_venv", "Virtual environment ready");
-
-      // 5. Install core packages
-      // On Windows, antivirus (Defender) may still be scanning venv files. Retries
-      // with exponential backoff give it time to release file locks.
-      this.status = "installing";
-      report(40, "installing", "Installing core packages...");
-
-      const totalPackages = MANAGED_RUNTIME_PACKAGES.length;
-      for (let i = 0; i < totalPackages; i++) {
-        const pkg = MANAGED_RUNTIME_PACKAGES[i];
-        const pkgName = pkg.split(">=")[0].split("[")[0];
-        const progressPercent = 40 + Math.round(((i + 1) / totalPackages) * 50);
-        report(progressPercent, "installing", `Installing ${pkgName}...`);
-        await this.runCommand(venvPython, ["-m", "pip", "install", "--no-cache-dir", pkg], {
-          retries: 2,
-          timeoutMs: PIP_INSTALL_TIMEOUT_MS,
-        });
-      }
-
-      report(90, "installing", "All packages installed");
-
-      // 6. Pre-compile bytecode
-      report(92, "installing", "Optimizing startup time...");
-      const compileTargets = [
-        isWindows ? path.join(venvDir, "Lib") : path.join(venvDir, "lib"),
-      ].filter((p) => fs.existsSync(p));
-
-      // Also compile nirs4all source directory (dev/portable builds)
-      const backendDir = path.join(process.resourcesPath, "backend");
-      const nirs4allSrcDir = path.join(backendDir, "..", "..", "nirs4all", "nirs4all");
-      if (fs.existsSync(nirs4allSrcDir)) {
-        compileTargets.push(nirs4allSrcDir);
-      }
-      // Compile backend API source
-      if (fs.existsSync(path.join(backendDir, "api"))) {
-        compileTargets.push(backendDir);
-      }
-
-      if (compileTargets.length > 0) {
-        try {
-          await this.runCommand(venvPython, ["-m", "compileall", "-q", "-j", "0", ...compileTargets], {
-            timeoutMs: COMPILEALL_TIMEOUT_MS,
-          });
-        } catch {
-          // Non-fatal: bytecode compilation failure doesn't prevent running
-        }
-      }
-
-      // 7. Write build metadata
-      const buildInfo = {
-        mode: "runtime-setup",
-        python_version: PYTHON_VERSION,
-        pbs_tag: PBS_TAG,
-        platform: `${process.platform}-${process.arch}`,
-        created_at: new Date().toISOString(),
-      };
-      fs.writeFileSync(path.join(baseDir, "build_info.json"), JSON.stringify(buildInfo, null, 2));
-
-      // Clean up the downloaded archive only after the bootstrap has completed.
-      // If setup fails earlier, keeping the tarball avoids forcing another full
-      // download on the next retry.
-      try { fs.unlinkSync(cachedTarball); } catch { /* ignore */ }
-
-      // 8. If custom directory, save it so getPythonPath() finds the new env.
-      //    Otherwise clear custom paths so getPythonPath() falls through to the managed env.
-      if (targetDir) {
-        this.pythonPath = venvPython;
-      } else {
-        this.pythonPath = null;
-      }
-      this.saveSettings();
-
-      this.status = "ready";
-      report(100, "ready", "Python environment is ready");
-    } catch (error) {
-      this.status = "error";
-      this.lastError = error instanceof Error ? error.message : String(error);
-      throw error;
-    }
-  }
-
-  /**
-   * Remove macOS Gatekeeper quarantine attribute from downloaded Python.
-   * python-build-standalone binaries downloaded from GitHub are marked with
-   * com.apple.quarantine which can block execution. Non-fatal if removal fails.
-   */
-  private removeQuarantine(dirPath: string): Promise<void> {
-    if (process.platform !== "darwin") return Promise.resolve();
-    return new Promise((resolve) => {
-      execFile("xattr", ["-dr", "com.apple.quarantine", dirPath], (error) => {
-        if (error) {
-          console.warn(`[EnvManager] Could not remove quarantine attribute: ${error.message}`);
-        } else {
-          console.log(`[EnvManager] Removed quarantine attribute from ${dirPath}`);
-        }
-        resolve();
-      });
-    });
-  }
-
-  /** Download a file with redirect support and progress reporting */
-  private downloadFile(url: string, destPath: string, onProgress?: (percent: number) => void): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const makeRequest = (requestUrl: string) => {
-        const protocol = requestUrl.startsWith("https") ? https : http;
-        protocol.get(requestUrl, (response) => {
-          // Follow redirects (GitHub returns 302)
-          if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-            return makeRequest(response.headers.location);
-          }
-
-          if (response.statusCode !== 200) {
-            reject(new Error(`Download failed with status ${response.statusCode}`));
-            return;
-          }
-
-          const totalBytes = parseInt(response.headers["content-length"] || "0", 10);
-          let receivedBytes = 0;
-          let lastReportedPercent = -1;
-
-          const file = fs.createWriteStream(destPath);
-          response.pipe(file);
-
-          response.on("data", (chunk: Buffer) => {
-            receivedBytes += chunk.length;
-            if (totalBytes > 0 && onProgress) {
-              const percent = Math.floor((receivedBytes / totalBytes) * 100);
-              if (percent > lastReportedPercent) {
-                lastReportedPercent = percent;
-                onProgress(percent);
-              }
-            }
-          });
-
-          file.on("finish", () => {
-            file.close();
-            resolve();
-          });
-
-          file.on("error", (err) => {
-            try { fs.unlinkSync(destPath); } catch { /* ignore */ }
-            reject(err);
-          });
-        }).on("error", reject);
-      };
-
-      makeRequest(url);
-    });
-  }
-
-  /** Extract a .tar.gz file */
-  private async extractTarball(tarPath: string, destDir: string): Promise<void> {
-    const archive = isWindows ? tarPath.replace(/\\/g, "/") : tarPath;
-    const dest = isWindows ? destDir.replace(/\\/g, "/") : destDir;
-    const args = ["-xzf", archive, "-C", dest];
-    // GNU tar (from Git) interprets drive letters as remote hosts and needs --force-local.
-    // Windows built-in bsdtar doesn't support --force-local but handles paths natively.
-    if (isWindows && await this.isGnuTar()) args.push("--force-local");
-
-    return this.runCommand("tar", args, {
-      retries: 1,
-    });
-  }
-
-  /** Check if the system tar is GNU tar (vs Windows built-in bsdtar) */
-  private isGnuTar(): Promise<boolean> {
-    return new Promise((resolve) => {
-      execFile("tar", ["--version"], { windowsHide: isWindows }, (err, stdout) => {
-        resolve(!err && stdout.includes("GNU tar"));
-      });
-    });
-  }
-
-  /** Run a command and wait for it to complete */
-  private runCommand(command: string, args: string[], options?: CommandOptions): Promise<void> {
-    const maxRetries = options?.retries ?? 0;
-    const timeoutMs = options?.timeoutMs ?? 0;
-    const commandLabel = `${command} ${args.join(" ")}`.trim();
-
-    const exec = (): Promise<void> => new Promise((resolve, reject) => {
-      const proc = spawn(command, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-        shell: false,
-        windowsHide: isWindows,
-      });
-
-      let stderr = "";
-      let finished = false;
-      let timeoutHandle: NodeJS.Timeout | null = null;
-
-      const complete = (error?: Error) => {
-        if (finished) return;
-        finished = true;
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-        if (error) reject(error);
-        else resolve();
-      };
-
-      proc.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
-
-      if (timeoutMs > 0) {
-        timeoutHandle = setTimeout(() => {
-          const timeoutError = new Error(
-            `Command "${commandLabel}" timed out after ${Math.round(timeoutMs / 1000)}s`,
-          );
-          if (isWindows && proc.pid) {
-            spawn("taskkill", ["/pid", proc.pid.toString(), "/t", "/f"]);
-          } else {
-            proc.kill("SIGKILL");
-          }
-          complete(timeoutError);
-        }, timeoutMs);
-      }
-
-      proc.on("close", (code) => {
-        if (finished) return;
-        if (code === 0) complete();
-        else complete(new Error(`Command "${commandLabel}" failed (code ${code}): ${stderr.slice(0, 500)}`));
-      });
-
-      proc.on("error", (error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        const wrapped = new Error(`Failed to start command "${commandLabel}": ${message}`);
-        if (error && typeof error === "object" && "code" in error) {
-          Object.assign(wrapped, { code: (error as NodeJS.ErrnoException).code });
-        }
-        complete(wrapped);
-      });
-    });
-
-    if (maxRetries <= 0) return exec();
-
-    return (async () => {
-      let lastError: Error | undefined;
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-          if (attempt > 0) {
-            // Exponential backoff — gives antivirus time to release file locks.
-            // Default base 2 s (2, 4, 8 s).  Callers can raise the base for
-            // operations where AV scanning is expected to take longer.
-            const baseMs = options?.retryBaseMs ?? 2000;
-            await new Promise((r) => setTimeout(r, baseMs * Math.pow(2, attempt - 1)));
-          }
-          await exec();
-          return;
-        } catch (e) {
-          lastError = e instanceof Error ? e : new Error(String(e));
-          if (attempt < maxRetries) {
-            console.warn(`[EnvManager] Command "${commandLabel}" failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying: ${lastError.message}`);
-          }
-        }
-      }
-      // Annotate EPERM errors with a likely cause on Windows
-      if (isWindows && lastError && "code" in lastError && (lastError as NodeJS.ErrnoException).code === "EPERM") {
-        lastError.message += " — this is usually caused by antivirus software blocking newly extracted files. "
-          + "Try temporarily adding the install directory to your antivirus exclusions and retrying.";
-      }
-      throw lastError;
-    })();
-  }
-
-  /**
-   * Remove a directory with retry + exponential backoff.
-   *
-   * On Windows, antivirus (Defender) can temporarily lock freshly extracted
-   * files for 10–30 s.  A bare `fs.rmSync` fails instantly with EPERM/EBUSY.
-   * This wrapper retries with increasing delays so the AV scan has time to
-   * finish before we give up.
-   */
-  private async rmWithRetry(dirPath: string, retries = 5, baseDelayMs = 2000): Promise<void> {
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        fs.rmSync(dirPath, { recursive: true, force: true });
-        return;
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        const retryable = code === "EPERM" || code === "EBUSY" || code === "EACCES";
-
-        if (!retryable || attempt === retries) {
-          // Annotate the final error with a likely cause on Windows
-          if (isWindows && err instanceof Error && retryable) {
-            err.message += " — this is usually caused by antivirus software locking newly extracted files. "
-              + "Try temporarily adding the install directory to your antivirus exclusions and retrying.";
-          }
-          throw err;
-        }
-
-        const delayMs = baseDelayMs * Math.pow(2, attempt);
-        console.warn(
-          `[EnvManager] rmSync "${dirPath}" failed (attempt ${attempt + 1}/${retries + 1}, ${code}), retrying in ${delayMs / 1000}s...`,
-        );
-        await new Promise((r) => setTimeout(r, delayMs));
-      }
-    }
+    return provisionManagedRuntime(this.provisioningContext(), progress, targetDir);
   }
 }

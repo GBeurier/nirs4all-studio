@@ -230,13 +230,10 @@ describe("EnvManager", () => {
       return proc;
     });
 
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
+    const { runCommand } = await import("./env/process-utils");
 
     await expect(
-      (manager as unknown as {
-        runCommand(command: string, args: string[], options?: { retries?: number }): Promise<void>;
-      }).runCommand("python.exe", ["-m", "venv", "C:\\temp\\venv"]),
+      runCommand("python.exe", ["-m", "venv", "C:\\temp\\venv"]),
     ).rejects.toThrow('Failed to start command "python.exe -m venv C:\\temp\\venv": spawn EPERM');
   });
 
@@ -313,9 +310,10 @@ describe("EnvManager", () => {
       return proc;
     });
 
-    const envManagerModule = await import("./env-manager");
-    vi.spyOn(envManagerModule, "probeNetworkOnline").mockResolvedValue(true);
-    const manager = new envManagerModule.EnvManager();
+    const networkProbeModule = await import("./env/network-probe");
+    vi.spyOn(networkProbeModule, "probeNetworkOnline").mockResolvedValue(true);
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
 
     await expect(
       manager.applyExistingPython(pythonPath, { installCorePackages: true }),
@@ -501,24 +499,20 @@ describe("EnvManager", () => {
       return proc;
     });
 
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    (manager as unknown as {
-      downloadFile(url: string, destPath: string): Promise<void>;
-      extractTarball(tarPath: string, destDir: string): Promise<void>;
-    }).downloadFile = vi.fn(async (_url: string, destPath: string) => {
+    const installer = await import("./env/python-runtime-installer");
+    vi.spyOn(installer, "downloadFile").mockImplementation(async (_url: string, destPath: string) => {
       cachedTarballPath = destPath;
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       fs.writeFileSync(destPath, Buffer.alloc(11 * 1024 * 1024, 1));
     });
-    (manager as unknown as {
-      extractTarball(tarPath: string, destDir: string): Promise<void>;
-    }).extractTarball = vi.fn(async (_tarPath: string, destDir: string) => {
+    vi.spyOn(installer, "extractTarball").mockImplementation(async (_tarPath: string, destDir: string) => {
       fs.mkdirSync(path.dirname(embeddedPython), { recursive: true });
       fs.writeFileSync(embeddedPython, "");
       expect(destDir).toBe(baseDir);
     });
+
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
 
     const setupPromise = manager.setup();
     const setupExpectation = expect(setupPromise).resolves.toBeUndefined();
@@ -558,23 +552,19 @@ describe("EnvManager", () => {
       return proc;
     });
 
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-
-    (manager as unknown as {
-      downloadFile(url: string, destPath: string): Promise<void>;
-      extractTarball(tarPath: string, destDir: string): Promise<void>;
-    }).downloadFile = vi.fn(async (_url: string, destPath: string) => {
+    const installer = await import("./env/python-runtime-installer");
+    vi.spyOn(installer, "downloadFile").mockImplementation(async (_url: string, destPath: string) => {
       cachedTarballPath = destPath;
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       fs.writeFileSync(destPath, Buffer.alloc(11 * 1024 * 1024, 1));
     });
-    (manager as unknown as {
-      extractTarball(tarPath: string, destDir: string): Promise<void>;
-    }).extractTarball = vi.fn(async () => {
+    vi.spyOn(installer, "extractTarball").mockImplementation(async () => {
       fs.mkdirSync(path.dirname(embeddedPython), { recursive: true });
       fs.writeFileSync(embeddedPython, "");
     });
+
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
 
     const setupPromise = manager.setup();
     const setupExpectation = expect(setupPromise).rejects.toThrow(
@@ -635,21 +625,18 @@ describe("EnvManager", () => {
       return proc;
     });
 
-    const { EnvManager } = await import("./env-manager");
-    const manager = new EnvManager();
-    (manager as unknown as {
-      downloadFile(url: string, destPath: string): Promise<void>;
-      extractTarball(tarPath: string, destDir: string): Promise<void>;
-    }).downloadFile = vi.fn(async (_url: string, destPath: string) => {
+    const installer = await import("./env/python-runtime-installer");
+    vi.spyOn(installer, "downloadFile").mockImplementation(async (_url: string, destPath: string) => {
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       fs.writeFileSync(destPath, Buffer.alloc(11 * 1024 * 1024, 1));
     });
-    (manager as unknown as {
-      extractTarball(tarPath: string, destDir: string): Promise<void>;
-    }).extractTarball = vi.fn(async (_tarPath: string, destDir: string) => {
+    vi.spyOn(installer, "extractTarball").mockImplementation(async (_tarPath: string, _destDir: string) => {
       fs.mkdirSync(path.dirname(embeddedPython), { recursive: true });
       fs.writeFileSync(embeddedPython, "");
     });
+
+    const { EnvManager } = await import("./env-manager");
+    const manager = new EnvManager();
 
     await expect(manager.setup()).resolves.toBeUndefined();
 
