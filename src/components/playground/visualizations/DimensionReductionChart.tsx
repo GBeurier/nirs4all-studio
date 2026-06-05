@@ -93,11 +93,8 @@ import type { PCAResult, FoldsInfo } from '@/types/playground';
 import { useSelection } from '@/context/SelectionContext';
 import {
   SelectionContainer,
-  isPointInPolygon,
-  isPointInBox,
   type SelectionToolType,
   type SelectionResult,
-  type Point,
 } from '../SelectionTools';
 
 // Import ScatterPlot3D directly - it's a placeholder when Three.js isn't installed
@@ -118,6 +115,8 @@ import {
   computeSelectionAction,
   computeAreaSelectionAction,
   executeSelectionAction,
+  selectRechartsPointsInArea,
+  selectPointsInDataSpace,
 } from '@/lib/playground/selectionHandlers';
 import {
   extractModifiers,
@@ -674,36 +673,11 @@ export function DimensionReductionChart({
     const containerWidth = containerRect.width;
     const containerHeight = containerRect.height;
 
-    const selectedIndices: number[] = [];
-
-    if ('path' in result) {
-      // Lasso selection - convert screen path to data coordinates and check points
-      const dataPath = result.path.map(p => screenToData(p.x, p.y, containerWidth, containerHeight));
-
-      for (const point of filteredChartData) {
-        if (isPointInPolygon({ x: point.x, y: point.y }, dataPath)) {
-          selectedIndices.push(point.index);
-        }
-      }
-    } else {
-      // Box selection
-      const startData = screenToData(result.start.x, result.start.y, containerWidth, containerHeight);
-      const endData = screenToData(result.end.x, result.end.y, containerWidth, containerHeight);
-
-      const dataBounds = {
-        minX: Math.min(startData.x, endData.x),
-        maxX: Math.max(startData.x, endData.x),
-        minY: Math.min(startData.y, endData.y),
-        maxY: Math.max(startData.y, endData.y),
-      };
-
-      for (const point of filteredChartData) {
-        if (isPointInBox({ x: point.x, y: point.y }, dataBounds)) {
-          selectedIndices.push(point.index);
-        }
-      }
-    }
-
+    const selectedIndices = selectPointsInDataSpace(
+      filteredChartData,
+      result,
+      (screenX, screenY) => screenToData(screenX, screenY, containerWidth, containerHeight)
+    );
     if (selectedIndices.length === 0) return;
 
     // Use area selection handler (doesn't clear when re-selecting same points)
@@ -759,87 +733,12 @@ export function DimensionReductionChart({
       return;
     }
 
-    const container = chartContainerRef.current;
-    const containerRect = container.getBoundingClientRect();
-
-    // Find all scatter symbols - try multiple selectors
-    // Recharts renders symbols inside layer groups
-    const selectors = [
-      '.recharts-scatter-symbol',
-      '.recharts-symbols',
-      '.recharts-layer.recharts-scatter .recharts-symbols',
-      '.recharts-scatter path',
-      '.recharts-layer path[fill]',
-    ];
-
-    let scatterSymbols: NodeListOf<Element> | null = null;
-
-    for (const selector of selectors) {
-      const elements = container.querySelectorAll(selector);
-      if (elements.length > 0) {
-        scatterSymbols = elements;
-        break;
-      }
-    }
-
-    if (!scatterSymbols || scatterSymbols.length === 0) {
-      return;
-    }
-
-    // Build a map of screen positions to data indices using getBoundingClientRect
-    // This is more reliable than parsing SVG attributes
-    const pointScreenPositions: Array<{ screenX: number; screenY: number; dataIndex: number }> = [];
-
-    scatterSymbols.forEach((symbol, idx) => {
-      // Only process symbols that correspond to our data (skip reference dataset symbols)
-      if (idx < chartData.length) {
-        const rect = symbol.getBoundingClientRect();
-        // Get the center of the symbol
-        const centerX = rect.left + rect.width / 2 - containerRect.left;
-        const centerY = rect.top + rect.height / 2 - containerRect.top;
-
-        if (Number.isFinite(centerX) && Number.isFinite(centerY) && rect.width > 0) {
-          pointScreenPositions.push({
-            screenX: centerX,
-            screenY: centerY,
-            dataIndex: chartData[idx].index,
-          });
-        }
-      }
-    });
-
-    // Find points inside the selection using their screen coordinates
-    const selectedIndices: number[] = [];
-
-    if ('path' in result) {
-      // Lasso selection - check if each point's screen position is inside the lasso path
-      const screenPath = result.path;
-
-      if (screenPath.length < 3) {
-        return;
-      }
-
-      pointScreenPositions.forEach(point => {
-        if (isPointInPolygon({ x: point.screenX, y: point.screenY }, screenPath)) {
-          selectedIndices.push(point.dataIndex);
-        }
-      });
-    } else {
-      // Box selection - check if each point's screen position is inside the box
-      const bounds = {
-        minX: Math.min(result.start.x, result.end.x),
-        maxX: Math.max(result.start.x, result.end.x),
-        minY: Math.min(result.start.y, result.end.y),
-        maxY: Math.max(result.start.y, result.end.y),
-      };
-
-      pointScreenPositions.forEach(point => {
-        if (isPointInBox({ x: point.screenX, y: point.screenY }, bounds)) {
-          selectedIndices.push(point.dataIndex);
-        }
-      });
-    }
-
+    const selectedIndices = selectRechartsPointsInArea(
+      chartContainerRef.current,
+      chartData.length,
+      result,
+      idx => chartData[idx].index
+    );
     if (selectedIndices.length === 0) {
       return;
     }

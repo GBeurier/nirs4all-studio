@@ -10,6 +10,12 @@
  */
 
 import type { SelectionContextValue, SelectionMode } from '@/context/SelectionContext';
+import {
+  isPointInBox,
+  isPointInPolygon,
+  type Point,
+  type SelectionResult,
+} from '@/components/playground/SelectionTools';
 
 // ============= Type Definitions =============
 
@@ -363,4 +369,143 @@ export function createSimpleClickHandler(
       ctx.replaceIfNotSole(indices);
     }
   };
+}
+
+// ============= Area-Selection Geometry Helpers =============
+
+/**
+ * Recharts renders scatter symbols inside nested layer groups whose class names
+ * have shifted between versions. This fallback list is tried in order; the first
+ * selector that matches any element wins. Shared by every Recharts-backed chart so
+ * a DOM-class change only has to be fixed in one place.
+ */
+const RECHARTS_SCATTER_SELECTORS = [
+  '.recharts-scatter-symbol',
+  '.recharts-symbols',
+  '.recharts-layer.recharts-scatter .recharts-symbols',
+  '.recharts-scatter path',
+  '.recharts-layer path[fill]',
+] as const;
+
+/**
+ * Resolve the sample indices covered by a box/lasso selection over a Recharts
+ * scatter chart, using the rendered SVG symbols' on-screen positions.
+ *
+ * Each chart maps the Nth rendered symbol to its own data index (e.g. PCA points
+ * use `chartData[n].index`, repetition points use `plotData[n].sampleIndex`), so
+ * the per-chart mapping is supplied via `getDataIndex`. Only the first
+ * `pointCount` symbols are considered, skipping trailing reference-dataset symbols.
+ *
+ * @param container - The chart's container element (queried for `.recharts-*` symbols)
+ * @param pointCount - Number of leading symbols that belong to the chart's own data
+ * @param result - The box/lasso selection in container-local screen coordinates
+ * @param getDataIndex - Maps a 0-based symbol index to the sample's data index
+ * @returns Data indices whose symbol centers fall inside the selection (empty if none)
+ */
+export function selectRechartsPointsInArea(
+  container: HTMLElement,
+  pointCount: number,
+  result: SelectionResult,
+  getDataIndex: (domIndex: number) => number
+): number[] {
+  const containerRect = container.getBoundingClientRect();
+
+  let scatterSymbols: NodeListOf<Element> | null = null;
+  for (const selector of RECHARTS_SCATTER_SELECTORS) {
+    const elements = container.querySelectorAll(selector);
+    if (elements.length > 0) {
+      scatterSymbols = elements;
+      break;
+    }
+  }
+
+  if (!scatterSymbols || scatterSymbols.length === 0) {
+    return [];
+  }
+
+  // Build screen positions for each point from getBoundingClientRect (more robust
+  // than parsing SVG attributes).
+  const pointScreenPositions: Array<{ screenX: number; screenY: number; dataIndex: number }> = [];
+  scatterSymbols.forEach((symbol, idx) => {
+    if (idx < pointCount) {
+      const rect = symbol.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2 - containerRect.left;
+      const centerY = rect.top + rect.height / 2 - containerRect.top;
+      if (Number.isFinite(centerX) && Number.isFinite(centerY) && rect.width > 0) {
+        pointScreenPositions.push({ screenX: centerX, screenY: centerY, dataIndex: getDataIndex(idx) });
+      }
+    }
+  });
+
+  const selectedIndices: number[] = [];
+  if ('path' in result) {
+    const screenPath = result.path;
+    if (screenPath.length < 3) return [];
+    pointScreenPositions.forEach(point => {
+      if (isPointInPolygon({ x: point.screenX, y: point.screenY }, screenPath)) {
+        selectedIndices.push(point.dataIndex);
+      }
+    });
+  } else {
+    const bounds = {
+      minX: Math.min(result.start.x, result.end.x),
+      maxX: Math.max(result.start.x, result.end.x),
+      minY: Math.min(result.start.y, result.end.y),
+      maxY: Math.max(result.start.y, result.end.y),
+    };
+    pointScreenPositions.forEach(point => {
+      if (isPointInBox({ x: point.screenX, y: point.screenY }, bounds)) {
+        selectedIndices.push(point.dataIndex);
+      }
+    });
+  }
+
+  return selectedIndices;
+}
+
+/**
+ * Resolve the sample indices covered by a box/lasso selection in data space.
+ *
+ * Used by WebGL/Regl renderers, where points are already known in data
+ * coordinates. The selection geometry is converted from screen to data space via
+ * the caller-supplied `screenToData` (each chart binds its own axis offsets /
+ * view bounds), then each point is tested against the resulting polygon/box.
+ *
+ * @param points - The chart's data points (data-space x/y plus the sample index)
+ * @param result - The box/lasso selection in screen coordinates
+ * @param screenToData - Converts a screen point to data coordinates
+ * @returns Data indices of points inside the selection (empty if none)
+ */
+export function selectPointsInDataSpace(
+  points: ReadonlyArray<{ x: number; y: number; index: number }>,
+  result: SelectionResult,
+  screenToData: (screenX: number, screenY: number) => Point
+): number[] {
+  const selectedIndices: number[] = [];
+
+  if ('path' in result) {
+    const dataPath = result.path.map(p => screenToData(p.x, p.y));
+    if (dataPath.length < 3) return [];
+    for (const point of points) {
+      if (isPointInPolygon({ x: point.x, y: point.y }, dataPath)) {
+        selectedIndices.push(point.index);
+      }
+    }
+  } else {
+    const startData = screenToData(result.start.x, result.start.y);
+    const endData = screenToData(result.end.x, result.end.y);
+    const dataBounds = {
+      minX: Math.min(startData.x, endData.x),
+      maxX: Math.max(startData.x, endData.x),
+      minY: Math.min(startData.y, endData.y),
+      maxY: Math.max(startData.y, endData.y),
+    };
+    for (const point of points) {
+      if (isPointInBox({ x: point.x, y: point.y }, dataBounds)) {
+        selectedIndices.push(point.index);
+      }
+    }
+  }
+
+  return selectedIndices;
 }

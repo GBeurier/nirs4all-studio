@@ -622,6 +622,18 @@ export function SpectraChart({
     return colors;
   }, [isWebGLMode, displayIndices, globalColorConfig, computedColorContext, getBaseColor]);
 
+  // Stable sampleColors reference for the WebGL renderer. Grouped mode needs a
+  // per-group categorical palette; building it inline in JSX produced a fresh
+  // array every render, which defeated SpectraWebGL's React.memo. Memoize it so
+  // the prop identity only changes when its inputs do.
+  const webglSampleColors = useMemo<string[] | undefined>(() => {
+    if (config.displayMode === 'grouped' && groupedStats) {
+      const palette = globalColorConfig?.categoricalPalette ?? 'default';
+      return Array.from(groupedStats.keys()).map((_, idx) => getCategoricalColor(idx, palette));
+    }
+    return sampleColors;
+  }, [config.displayMode, groupedStats, globalColorConfig?.categoricalPalette, sampleColors]);
+
   // Handle background click to clear selection (Phase 4: Unified Selection Model)
   // SpectraChart does not support line click-to-select, only box/lasso selection
   // Background clicks in 'click' mode should clear the selection
@@ -1330,11 +1342,7 @@ export function SpectraChart({
                 sampleIds={sampleIds}
                 folds={folds ?? undefined}
                 visibleIndices={config.displayMode === 'aggregated' || config.displayMode === 'grouped' ? undefined : displayIndices}
-                sampleColors={
-                  config.displayMode === 'grouped' && groupedStats
-                    ? Array.from(groupedStats.keys()).map((_, idx) => getCategoricalColor(idx, globalColorConfig?.categoricalPalette ?? 'default'))
-                    : sampleColors
-                }
+                sampleColors={webglSampleColors}
                 aggregatedStats={config.displayMode === 'aggregated' && aggregatedStats ? aggregatedStats : undefined}
                 groupedStats={config.displayMode === 'grouped' && groupedStats ? groupedStats : undefined}
                 useSelectionContext={config.displayMode !== 'aggregated' && config.displayMode !== 'grouped' && useSelectionContext}

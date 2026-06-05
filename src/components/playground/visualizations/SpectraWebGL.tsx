@@ -12,7 +12,7 @@
  * Phase 6: Performance & Polish - Optimized
  */
 
-import { useRef, useMemo, useCallback, useEffect, useState, useLayoutEffect } from 'react';
+import { useRef, useMemo, useCallback, useEffect, useState, useLayoutEffect, memo } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -480,34 +480,53 @@ interface HighlightedLinesProps {
   zOrder?: number;
 }
 
+/**
+ * Single highlighted line. Memoizes its position buffer on the source line +
+ * zOrder so hover/selection re-renders (which fire continuously on mousemove)
+ * don't reallocate a Float32Array and re-upload geometry to the GPU every frame.
+ */
+const HighlightedLine = memo(function HighlightedLine({
+  line,
+  lineWidth,
+  zOrder,
+}: {
+  line: LineData;
+  lineWidth: number;
+  zOrder: number;
+}) {
+  const positions = useMemo(() => {
+    const buf = new Float32Array(line.pointCount * 3);
+    for (let i = 0; i < line.pointCount; i++) {
+      buf[i * 3] = line.points[i * 2];
+      buf[i * 3 + 1] = line.points[i * 2 + 1];
+      buf[i * 3 + 2] = zOrder;
+    }
+    return buf;
+  }, [line, zOrder]);
+
+  return (
+    <line>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      <lineBasicMaterial color={line.color} linewidth={lineWidth} />
+    </line>
+  );
+});
+
 function HighlightedLines({ lines, lineWidth, zOrder = 0.01 }: HighlightedLinesProps) {
   if (lines.length === 0) return null;
 
   return (
     <group>
-      {lines.map((line) => {
-        const positions = new Float32Array(line.pointCount * 3);
-        for (let i = 0; i < line.pointCount; i++) {
-          positions[i * 3] = line.points[i * 2];
-          positions[i * 3 + 1] = line.points[i * 2 + 1];
-          positions[i * 3 + 2] = zOrder;
-        }
-
-        return (
-          <line key={`${line.isOriginal ? 'orig' : 'proc'}-${line.index}`}>
-            <bufferGeometry>
-              <bufferAttribute
-                attach="attributes-position"
-                args={[positions, 3]}
-              />
-            </bufferGeometry>
-            <lineBasicMaterial
-              color={line.color}
-              linewidth={lineWidth}
-            />
-          </line>
-        );
-      })}
+      {lines.map((line) => (
+        <HighlightedLine
+          key={`${line.isOriginal ? 'orig' : 'proc'}-${line.index}`}
+          line={line}
+          lineWidth={lineWidth}
+          zOrder={zOrder}
+        />
+      ))}
     </group>
   );
 }
@@ -522,21 +541,29 @@ interface HoveredLineProps {
   lineWidth: number;
 }
 
+// Bright orange hover color for high visibility (stable instance — never changes)
+const HOVER_LINE_COLOR = new THREE.Color(SELECTION_COLORS.hovered);
+
 function HoveredLine({ lines, hoveredIdx, lineWidth }: HoveredLineProps) {
-  if (hoveredIdx === null) return null;
+  const hoveredLine = useMemo(
+    () => (hoveredIdx === null ? null : lines.find(l => l.index === hoveredIdx && !l.isOriginal) ?? null),
+    [lines, hoveredIdx]
+  );
 
-  const hoveredLine = lines.find(l => l.index === hoveredIdx && !l.isOriginal);
-  if (!hoveredLine) return null;
+  // Memoize the position buffer so it only rebuilds when the hovered line changes,
+  // not on every parent re-render while the same line stays hovered.
+  const positions = useMemo(() => {
+    if (!hoveredLine) return null;
+    const buf = new Float32Array(hoveredLine.pointCount * 3);
+    for (let i = 0; i < hoveredLine.pointCount; i++) {
+      buf[i * 3] = hoveredLine.points[i * 2];
+      buf[i * 3 + 1] = hoveredLine.points[i * 2 + 1];
+      buf[i * 3 + 2] = 0.03; // z-order above pinned
+    }
+    return buf;
+  }, [hoveredLine]);
 
-  const positions = new Float32Array(hoveredLine.pointCount * 3);
-  for (let i = 0; i < hoveredLine.pointCount; i++) {
-    positions[i * 3] = hoveredLine.points[i * 2];
-    positions[i * 3 + 1] = hoveredLine.points[i * 2 + 1];
-    positions[i * 3 + 2] = 0.03; // z-order above pinned
-  }
-
-  // Use bright orange hover color for high visibility
-  const hoverColor = new THREE.Color(SELECTION_COLORS.hovered);
+  if (!positions) return null;
 
   return (
     <line>
@@ -547,7 +574,7 @@ function HoveredLine({ lines, hoveredIdx, lineWidth }: HoveredLineProps) {
         />
       </bufferGeometry>
       <lineBasicMaterial
-        color={hoverColor}
+        color={HOVER_LINE_COLOR}
         linewidth={lineWidth + 1}
       />
     </line>
@@ -1404,7 +1431,7 @@ function WebGLNotSupported() {
 
 // ============= Main Component =============
 
-export function SpectraWebGL({
+function SpectraWebGLInner({
   spectra,
   wavelengths,
   originalSpectra,
@@ -1945,5 +1972,13 @@ export function SpectraWebGL({
     </div>
   );
 }
+
+/**
+ * Memoized export. SpectraWebGL's heavy LTTB decimation + LineData build run in
+ * useMemo, but without React.memo every parent re-render (hover/selection/config
+ * change in SpectraChart) reconciles the whole WebGL subtree. memo() skips that
+ * work when the (mostly stable/memoized) props passed by SpectraChart are unchanged.
+ */
+export const SpectraWebGL = memo(SpectraWebGLInner);
 
 export default SpectraWebGL;
