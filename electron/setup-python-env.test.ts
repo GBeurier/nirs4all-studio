@@ -64,6 +64,7 @@ describe("setup-python-env", () => {
       "-m",
       "pip",
       "install",
+      "--prefer-binary",
       "--no-compile",
       "--upgrade",
       "--index-url",
