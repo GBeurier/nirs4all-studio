@@ -260,6 +260,17 @@ export class OrbitControls {
   }
 
   /**
+   * Whether the controls are currently producing motion that requires
+   * continuous rendering: either an active drag, or residual damping velocity
+   * that update() will keep applying frame-by-frame.
+   */
+  isAnimating(): boolean {
+    if (this.isDragging) return true;
+    if (!this.options.enableDamping) return false;
+    return Math.abs(this.velocityTheta) > 0.0001 || Math.abs(this.velocityPhi) > 0.0001;
+  }
+
+  /**
    * Get the current view matrix
    */
   getViewMatrix(): Float32Array {

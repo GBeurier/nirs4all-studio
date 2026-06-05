@@ -204,6 +204,9 @@ export function ScatterRegl2D({
   const pickFboSizeRef = useRef<{ width: number; height: number }>({ width: 1, height: 1 });
   const animationFrameRef = useRef<number>(0);
   const gridDataRef = useRef<{ positions: Float32Array; colors: Float32Array; count: number } | null>(null);
+  // On-demand render flag: render() runs only when something visual changed
+  // (data, colors, selection/hover, grid, bounds) or the container resized.
+  const needsRenderRef = useRef(true);
 
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
@@ -522,7 +525,6 @@ export function ScatterRegl2D({
     const pickFbo = pickFboRef.current;
 
     if (!canvas || !regl || !drawPoints || !drawPicking || !drawLines || !pickFbo) return;
-    if (bufferData.count === 0) return;
 
     // Resize canvas if needed
     const rect = canvas.getBoundingClientRect();
@@ -535,6 +537,16 @@ export function ScatterRegl2D({
       canvas.height = height;
       pickFbo.resize(width, height);
       pickFboSizeRef.current = { width, height };
+    }
+
+    // No points: clear both the visible buffer and the picking framebuffer so
+    // stale points are neither shown nor pickable (a (0,0,0) pick decodes to null).
+    if (bufferData.count === 0) {
+      regl({ framebuffer: pickFbo })(() => {
+        regl.clear({ color: [0, 0, 0, 1] });
+      });
+      regl.clear({ color: [0, 0, 0, 0] });
+      return;
     }
 
     // Calculate transform matrix
@@ -604,13 +616,52 @@ export function ScatterRegl2D({
     });
   }, [bufferData, selectionData, bounds, gridData, preserveAspectRatio]);
 
-  // Animation loop
+  // Mark dirty whenever the render closure changes (buffer data, selection/hover,
+  // grid, bounds, aspect), so the next animation-frame tick repaints.
+  useEffect(() => {
+    needsRenderRef.current = true;
+  }, [render]);
+
+  // Repaint on container resize
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(() => {
+      needsRenderRef.current = true;
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
+  // Repaint when devicePixelRatio changes (e.g. dragging the window to a
+  // monitor with a different DPR) — this fires no ResizeObserver, but render()
+  // resizes the backing store and picking buffer because rect*dpr changed.
+  // The media-query string is DPR-specific, so re-register on every change.
+  useEffect(() => {
+    let mql: MediaQueryList | null = null;
+    const onChange = () => {
+      needsRenderRef.current = true;
+      register();
+    };
+    const register = () => {
+      mql?.removeEventListener('change', onChange);
+      mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      mql.addEventListener('change', onChange);
+    };
+    register();
+    return () => mql?.removeEventListener('change', onChange);
+  }, []);
+
+  // On-demand render loop: only repaints when something visual changed.
   useEffect(() => {
     let running = true;
 
     const loop = () => {
       if (!running) return;
-      render();
+      if (needsRenderRef.current) {
+        needsRenderRef.current = false;
+        render();
+      }
       animationFrameRef.current = requestAnimationFrame(loop);
     };
 

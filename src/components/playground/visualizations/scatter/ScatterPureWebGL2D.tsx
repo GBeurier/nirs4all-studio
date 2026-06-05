@@ -362,6 +362,9 @@ export function ScatterPureWebGL2D({
   } | null>(null);
   const animationFrameRef = useRef<number>(0);
   const gridDataRef = useRef<{ positions: Float32Array; colors: Float32Array; count: number } | null>(null);
+  // On-demand render flag: render() runs only when something visual changed
+  // (data, colors, selection/hover, grid, bounds) or the container resized.
+  const needsRenderRef = useRef(true);
 
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
@@ -638,6 +641,8 @@ export function ScatterPureWebGL2D({
 
     gl.bindBuffer(gl.ARRAY_BUFFER, buffers.pickColor);
     gl.bufferData(gl.ARRAY_BUFFER, pickColors, gl.STATIC_DRAW);
+
+    needsRenderRef.current = true;
   }, [points, pointColors, pointSize, indexMap]);
 
   // Update grid data when bounds change
@@ -654,6 +659,8 @@ export function ScatterPureWebGL2D({
 
     gl.bindBuffer(gl.ARRAY_BUFFER, buffers.lineColor);
     gl.bufferData(gl.ARRAY_BUFFER, gridData.colors, gl.STATIC_DRAW);
+
+    needsRenderRef.current = true;
   }, [bounds, showGrid, showAxes]);
 
   // Update selection/hover state
@@ -678,6 +685,8 @@ export function ScatterPureWebGL2D({
 
     gl.bindBuffer(gl.ARRAY_BUFFER, buffers.hovered);
     gl.bufferData(gl.ARRAY_BUFFER, hoveredData, gl.DYNAMIC_DRAW);
+
+    needsRenderRef.current = true;
   }, [points, indexMap, selectedSamples, pinnedSamples, effectiveHovered]);
 
   // Render function
@@ -696,7 +705,6 @@ export function ScatterPureWebGL2D({
 
     const pts = points as [number, number][];
     const n = pts.length;
-    if (n === 0) return;
 
     // Resize canvas if needed
     const rect = canvas.getBoundingClientRect();
@@ -708,6 +716,21 @@ export function ScatterPureWebGL2D({
       canvas.width = width;
       canvas.height = height;
       resizePickingBuffer(gl, pickBuffer, width, height);
+    }
+
+    // No points: clear both the visible buffer and the picking framebuffer so
+    // stale points are neither shown nor pickable (a (0,0,0) pick decodes to null).
+    if (n === 0) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, pickBuffer.framebuffer);
+      gl.viewport(0, 0, width, height);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, width, height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      return;
     }
 
     // Calculate transform matrix
@@ -782,13 +805,52 @@ export function ScatterPureWebGL2D({
     gl.disable(gl.BLEND);
   }, [points, bounds, showGrid, showAxes, preserveAspectRatio]);
 
-  // Animation loop
+  // Mark dirty whenever the render closure changes (bounds, grid flags, aspect),
+  // so the next animation-frame tick repaints with the new parameters.
+  useEffect(() => {
+    needsRenderRef.current = true;
+  }, [render]);
+
+  // Repaint on container resize
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(() => {
+      needsRenderRef.current = true;
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
+  // Repaint when devicePixelRatio changes (e.g. dragging the window to a
+  // monitor with a different DPR) — this fires no ResizeObserver, but render()
+  // resizes the backing store and picking buffer because rect*dpr changed.
+  // The media-query string is DPR-specific, so re-register on every change.
+  useEffect(() => {
+    let mql: MediaQueryList | null = null;
+    const onChange = () => {
+      needsRenderRef.current = true;
+      register();
+    };
+    const register = () => {
+      mql?.removeEventListener('change', onChange);
+      mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      mql.addEventListener('change', onChange);
+    };
+    register();
+    return () => mql?.removeEventListener('change', onChange);
+  }, []);
+
+  // On-demand render loop: only repaints when something visual changed.
   useEffect(() => {
     let running = true;
 
     const loop = () => {
       if (!running) return;
-      render();
+      if (needsRenderRef.current) {
+        needsRenderRef.current = false;
+        render();
+      }
       animationFrameRef.current = requestAnimationFrame(loop);
     };
 

@@ -12,8 +12,8 @@
  * Phase 6: Performance & Polish - Optimized
  */
 
-import { useRef, useMemo, useCallback, useEffect, useState, useLayoutEffect } from 'react';
-import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import { useRef, useMemo, useCallback, useEffect, useState, useLayoutEffect, memo } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { cn } from '@/lib/utils';
@@ -902,7 +902,7 @@ interface XZoomControllerProps {
 }
 
 function XZoomController({ xRange, onXViewRangeChange }: XZoomControllerProps) {
-  const { gl } = useThree();
+  const { gl, invalidate } = useThree();
   const isDragging = useRef(false);
   const lastX = useRef(0);
   const viewRange = useRef<[number, number]>([...xRange]);
@@ -968,6 +968,7 @@ function XZoomController({ xRange, onXViewRangeChange }: XZoomControllerProps) {
 
       viewRange.current = [newMin, newMax];
       onXViewRangeChange([newMin, newMax]);
+      invalidate();
     };
 
     const handleMouseDown = (e: MouseEvent) => {
@@ -1006,6 +1007,7 @@ function XZoomController({ xRange, onXViewRangeChange }: XZoomControllerProps) {
       viewRange.current = [newMin, newMax];
       onXViewRangeChange([newMin, newMax]);
       lastX.current = e.clientX;
+      invalidate();
     };
 
     const handleMouseUp = () => {
@@ -1018,6 +1020,7 @@ function XZoomController({ xRange, onXViewRangeChange }: XZoomControllerProps) {
       const [xMin, xMax] = xRangeRef.current;
       viewRange.current = [xMin, xMax];
       onXViewRangeChange([xMin, xMax]);
+      invalidate();
     };
 
     domElement.addEventListener('wheel', handleWheel, { passive: false });
@@ -1033,7 +1036,7 @@ function XZoomController({ xRange, onXViewRangeChange }: XZoomControllerProps) {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [gl, onXViewRangeChange]);
+  }, [gl, onXViewRangeChange, invalidate]);
 
   return null;
 }
@@ -1051,7 +1054,7 @@ interface SpectraInteractionControllerProps {
  * Uses proximity-based detection in screen space
  */
 function SpectraInteractionController({ lines, onHover, onClick }: SpectraInteractionControllerProps) {
-  const { gl } = useThree();
+  const { gl, invalidate } = useThree();
   const hoveredRef = useRef<number | null>(null);
   const linesRef = useRef(lines);
 
@@ -1119,6 +1122,7 @@ function SpectraInteractionController({ lines, onHover, onClick }: SpectraIntera
       if (closest !== hoveredRef.current) {
         hoveredRef.current = closest;
         onHover(closest, e);
+        invalidate();
       }
     };
 
@@ -1136,6 +1140,7 @@ function SpectraInteractionController({ lines, onHover, onClick }: SpectraIntera
       if (hoveredRef.current !== null) {
         hoveredRef.current = null;
         onHover(null);
+        invalidate();
       }
     };
 
@@ -1148,7 +1153,7 @@ function SpectraInteractionController({ lines, onHover, onClick }: SpectraIntera
       domElement.removeEventListener('click', handleMouseClick);
       domElement.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [gl, onHover, onClick]);
+  }, [gl, onHover, onClick, invalidate]);
 
   return null;
 }
@@ -1194,11 +1199,14 @@ interface SpectraSceneProps {
 /**
  * Responsive camera that adapts to container size
  * Fills the container width and adjusts height proportionally
+ *
+ * Recomputes the orthographic projection only when the container size changes
+ * (not every frame), then requests a single on-demand render via invalidate().
  */
 function ResponsiveCamera() {
-  const { camera, size } = useThree();
+  const { camera, size, invalidate } = useThree();
 
-  useFrame(() => {
+  useLayoutEffect(() => {
     if (camera instanceof THREE.OrthographicCamera) {
       // Calculate aspect ratio of container
       const aspect = size.width / size.height;
@@ -1236,9 +1244,35 @@ function ResponsiveCamera() {
       }
 
       camera.updateProjectionMatrix();
+      invalidate();
     }
-  });
+  }, [camera, size.width, size.height, invalidate]);
 
+  return null;
+}
+
+/**
+ * Requests an on-demand render whenever data or derived visual state changes.
+ *
+ * In r3f demand mode pointer events and drei controls auto-invalidate, so camera
+ * interaction (zoom/pan via XZoomController, hover) still renders. This hook covers
+ * the remaining cases: data/geometry, selection, hover, color/quality and grid changes.
+ */
+interface SceneInvalidatorProps {
+  lines: LineData[];
+  yRange: [number, number];
+  xViewRange: [number, number];
+  hoveredIdx?: number | null;
+  showGrid: boolean;
+  aggregatedStats?: unknown;
+  groupedStats?: unknown;
+}
+
+function SceneInvalidator({ lines, yRange, xViewRange, hoveredIdx, showGrid, aggregatedStats, groupedStats }: SceneInvalidatorProps) {
+  const invalidate = useThree(s => s.invalidate);
+  useEffect(() => {
+    invalidate();
+  }, [invalidate, lines, yRange, xViewRange, hoveredIdx, showGrid, aggregatedStats, groupedStats]);
   return null;
 }
 
@@ -1258,6 +1292,15 @@ function SpectraScene({ lines, xRange, yRange, xViewRange, onXViewRangeChange, q
   return (
     <>
       <ResponsiveCamera />
+      <SceneInvalidator
+        lines={lines}
+        yRange={yRange}
+        xViewRange={xViewRange}
+        hoveredIdx={hoveredIdx}
+        showGrid={showGrid}
+        aggregatedStats={aggregatedStats}
+        groupedStats={groupedStats}
+      />
       <XZoomController xRange={xRange} onXViewRangeChange={onXViewRangeChange} />
       {!aggregatedStats && !groupedStats && (
         <SpectraInteractionController lines={lines} onHover={onHover} onClick={onClick} />
@@ -1313,7 +1356,7 @@ function WebGLNotSupported() {
 
 // ============= Main Component =============
 
-export function SpectraWebGL({
+function SpectraWebGLImpl({
   spectra,
   wavelengths,
   originalSpectra,
@@ -1779,6 +1822,7 @@ export function SpectraWebGL({
 
       <Canvas
         orthographic
+        frameloop="demand"
         camera={{
           position: [0.5, 0.5, 5],
           near: 0.1,
@@ -1915,5 +1959,7 @@ export function SpectraWebGL({
     </div>
   );
 }
+
+export const SpectraWebGL = memo(SpectraWebGLImpl);
 
 export default SpectraWebGL;

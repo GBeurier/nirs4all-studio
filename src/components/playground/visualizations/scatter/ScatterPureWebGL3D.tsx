@@ -357,9 +357,13 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
   const orbitControlsRef = useRef<OrbitControls | null>(null);
   const animationFrameRef = useRef<number>(0);
   const lineCountRef = useRef<number>(0);
+  // On-demand render flag: render() runs only when something visual changed
+  // (data, colors, selection/hover) or the container resized. While the orbit
+  // controls are actively dragging or damping, the loop renders continuously
+  // (see orbitControls.isAnimating()).
+  const needsRenderRef = useRef(true);
 
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [, forceUpdate] = useState({});
 
   // Selection context
   const selectionCtx = useSelection();
@@ -604,7 +608,7 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
       initialDistance: 5,
       initialTheta: Math.PI / 4,
       initialPhi: Math.PI / 3,
-      onChange: () => forceUpdate({}),
+      onChange: () => { needsRenderRef.current = true; },
     });
 
     // Cleanup
@@ -683,6 +687,8 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
 
     gl.bindBuffer(gl.ARRAY_BUFFER, buffers.pickColor);
     gl.bufferData(gl.ARRAY_BUFFER, pickColors, gl.STATIC_DRAW);
+
+    needsRenderRef.current = true;
   }, [points, pointColors, pointSize, indexMap, bounds]);
 
   // Update selection/hover state
@@ -707,6 +713,8 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
 
     gl.bindBuffer(gl.ARRAY_BUFFER, buffers.hovered);
     gl.bufferData(gl.ARRAY_BUFFER, hoveredData, gl.DYNAMIC_DRAW);
+
+    needsRenderRef.current = true;
   }, [points, indexMap, selectedSamples, pinnedSamples, effectiveHovered]);
 
   // Render function
@@ -802,13 +810,55 @@ export const ScatterPureWebGL3D = forwardRef<Scatter3DHandle, ScatterRendererPro
     gl.disable(gl.DEPTH_TEST);
   }, [points, showGrid, showAxes]);
 
-  // Animation loop
+  // Mark dirty whenever the render closure changes (data, grid/axes flags),
+  // so the next animation-frame tick repaints.
+  useEffect(() => {
+    needsRenderRef.current = true;
+  }, [render]);
+
+  // Repaint on container resize
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const observer = new ResizeObserver(() => {
+      needsRenderRef.current = true;
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, []);
+
+  // Repaint when devicePixelRatio changes (e.g. dragging the window to a
+  // monitor with a different DPR) — this fires no ResizeObserver, but render()
+  // resizes the backing store and picking buffer because rect*dpr changed.
+  // The media-query string is DPR-specific, so re-register on every change.
+  useEffect(() => {
+    let mql: MediaQueryList | null = null;
+    const onChange = () => {
+      needsRenderRef.current = true;
+      register();
+    };
+    const register = () => {
+      mql?.removeEventListener('change', onChange);
+      mql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      mql.addEventListener('change', onChange);
+    };
+    register();
+    return () => mql?.removeEventListener('change', onChange);
+  }, []);
+
+  // On-demand render loop: repaints when something visual changed, and runs
+  // continuously while the orbit controls are dragging or damping so camera
+  // motion (and the picking buffer) stays in sync.
   useEffect(() => {
     let running = true;
 
     const loop = () => {
       if (!running) return;
-      render();
+      const orbiting = orbitControlsRef.current?.isAnimating() ?? false;
+      if (needsRenderRef.current || orbiting) {
+        needsRenderRef.current = false;
+        render();
+      }
       animationFrameRef.current = requestAnimationFrame(loop);
     };
 
