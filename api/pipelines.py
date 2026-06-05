@@ -1612,7 +1612,7 @@ def _run_pipeline_task(job, progress_callback):
     Returns:
         Execution result dictionary
     """
-    from .nirs4all_adapter import ensure_models_dir
+    from .nirs4all_adapter import ensure_models_dir, extract_best_metrics
 
     config = job.config
     steps = config.get("pipeline_steps", [])
@@ -1666,14 +1666,8 @@ def _run_pipeline_task(job, progress_callback):
 
         progress_callback(80, "Extracting results...")
 
-        # Extract metrics from result
-        metrics = {}
-        if hasattr(result, 'best_rmse'):
-            metrics['rmse'] = float(result.best_rmse)
-        if hasattr(result, 'best_r2'):
-            metrics['r2'] = float(result.best_r2)
-        if hasattr(result, 'best_score'):
-            metrics['score'] = float(result.best_score)
+        # NaN-safe shared extraction (single source of truth, RUN-02)
+        metrics = extract_best_metrics(result)
 
         # Get top results if available
         top_results = []

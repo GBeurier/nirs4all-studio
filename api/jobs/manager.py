@@ -118,25 +118,33 @@ class JobManager:
             max_workers: Maximum number of concurrent jobs (defaults to CPU count)
         """
         self._jobs: dict[str, Job] = {}
+        self._max_workers = max_workers
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._lock = threading.Lock()
         self._callbacks: dict[str, list[Callable[[Job], None]]] = {}
+        # The app event loop, captured at submit time. Jobs run on worker
+        # threads (no running loop), so WebSocket notifications must be
+        # scheduled onto this loop with run_coroutine_threadsafe.
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def create_job(
         self,
         job_type: JobType,
         config: dict[str, Any],
+        job_id: str | None = None,
     ) -> Job:
         """Create a new job.
 
         Args:
             job_type: Type of job (training, evaluation, etc.)
             config: Job configuration
+            job_id: Optional explicit job id. Used when an external identifier
+                (e.g. a run id) is the WebSocket channel clients subscribe to.
 
         Returns:
             The created Job instance
         """
-        job_id = f"{job_type.value}_{uuid.uuid4().hex[:8]}"
+        job_id = job_id or f"{job_type.value}_{uuid.uuid4().hex[:8]}"
 
         job = Job(
             id=job_id,
@@ -169,7 +177,22 @@ class JobManager:
         def run_task():
             self._execute_job(job, task_fn)
 
-        self._executor.submit(run_task)
+        # Capture the app loop for thread-side WebSocket dispatch (submit_job
+        # is called from async endpoint handlers).
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+
+        try:
+            self._executor.submit(run_task)
+        except RuntimeError:
+            # The pool was shut down (app shutdown ran — e.g. a previous
+            # TestClient lifecycle in the same process). Recreate it; the
+            # singleton must stay usable for the next app lifecycle.
+            with self._lock:
+                self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
+            self._executor.submit(run_task)
         return job
 
     def _execute_job(
@@ -407,16 +430,23 @@ class JobManager:
                 elif job.status == JobStatus.CANCELLED:
                     await notify_job_failed(job.id, "Job was cancelled")
 
-            # Try to get running event loop
-            try:
-                loop = asyncio.get_running_loop()
+            # Jobs execute on worker threads, so schedule the notification on
+            # the app event loop captured at submit time — running it on a
+            # private per-thread loop would send on connections owned by a
+            # foreign loop and silently drop messages.
+            loop = self._loop
+            if loop is not None and not loop.is_closed():
                 asyncio.run_coroutine_threadsafe(send_notification(), loop)
-            except RuntimeError:
-                # No running loop - create one for this thread
+            else:
                 try:
-                    asyncio.run(send_notification())
-                except Exception as e:
-                    logger.error("Error running WebSocket notification: %s", e)
+                    loop = asyncio.get_running_loop()
+                    asyncio.run_coroutine_threadsafe(send_notification(), loop)
+                except RuntimeError:
+                    # No app loop available (e.g. teardown) — best effort.
+                    try:
+                        asyncio.run(send_notification())
+                    except Exception as e:
+                        logger.error("Error running WebSocket notification: %s", e)
 
         except ImportError:
             # WebSocket module not available, skip notification

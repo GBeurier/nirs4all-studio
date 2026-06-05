@@ -235,7 +235,6 @@ const statusIcons = {
   running: RefreshCw,
   completed: CheckCircle2,
   failed: AlertCircle,
-  paused: Clock,
   partial: AlertCircle,
 };
 

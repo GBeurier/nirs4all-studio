@@ -1097,14 +1097,6 @@ export async function stopRun(runId: string): Promise<RunActionResponse> {
   return api.post(`/runs/${runId}/stop`);
 }
 
-export async function pauseRun(runId: string): Promise<RunActionResponse> {
-  return api.post(`/runs/${runId}/pause`);
-}
-
-export async function resumeRun(runId: string): Promise<RunActionResponse> {
-  return api.post(`/runs/${runId}/resume`);
-}
-
 export async function retryRun(runId: string): Promise<Run> {
   return api.post(`/runs/${runId}/retry`);
 }

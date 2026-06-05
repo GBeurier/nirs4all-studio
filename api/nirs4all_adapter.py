@@ -948,3 +948,94 @@ def _check_step_imports(step: dict[str, Any], issues: list[dict[str, str | None]
     # Recurse into children (for containers like sample_augmentation)
     for child in step.get("children", []):
         _check_step_imports(child, issues)
+
+
+# ============================================================================
+# Run-result metric extraction (single source of truth for all run wrappers)
+# ============================================================================
+
+def extract_best_metrics(result: Any) -> dict[str, Any]:
+    """NaN-safe extraction of the best metrics from a nirs4all RunResult.
+
+    The single implementation behind every ``nirs4all.run()`` wrapper
+    (api/runs.py, api/pipelines.py, api/training.py). Missing metrics stay
+    absent — callers must tolerate ``None``/absent keys (never fabricate
+    sentinel values like ``rmse=999``).
+
+    Returns keys (all optional): ``rmse``, ``r2``, ``score``, ``accuracy``,
+    ``score_metric``, ``task_type``, ``rpd``.
+    """
+    import math
+
+    metrics: dict[str, Any] = {}
+
+    primary_metric: str | None = None
+    task_type: str | None = None
+    best_entry_score: float | None = None
+    try:
+        predictions = getattr(result, "predictions", None)
+        if predictions:
+            best_entries = predictions.top(n=1)
+            if best_entries and isinstance(best_entries[0], dict):
+                entry = best_entries[0]
+                raw_metric = entry.get("metric")
+                raw_task_type = entry.get("task_type")
+                raw_score = entry.get("test_score")
+                if raw_score is None:
+                    raw_score = entry.get("val_score")
+                primary_metric = str(raw_metric) if raw_metric is not None else None
+                task_type = str(raw_task_type) if raw_task_type is not None else None
+                if isinstance(raw_score, (int, float)) and not math.isnan(raw_score):
+                    best_entry_score = float(raw_score)
+    except Exception:
+        pass
+
+    # RunResult best_* properties return float('nan') when unavailable, not None.
+    for attr, key in (
+        ("best_rmse", "rmse"),
+        ("best_r2", "r2"),
+        ("best_score", "score"),
+        ("best_accuracy", "accuracy"),
+    ):
+        if not hasattr(result, attr):
+            continue
+        try:
+            value = getattr(result, attr)
+        except Exception:
+            continue
+        if isinstance(value, (int, float)) and not (
+            isinstance(value, float) and (math.isnan(value) or math.isinf(value))
+        ):
+            metrics[key] = float(value)
+
+    if "score" not in metrics and best_entry_score is not None:
+        metrics["score"] = best_entry_score
+    if primary_metric:
+        metrics["score_metric"] = primary_metric
+    if task_type:
+        metrics["task_type"] = task_type
+
+    # The primary score IS a named metric (e.g. rmse) — surface it under its
+    # own key as well so consumers keyed on rmse/r2/mae/accuracy see the real
+    # value even when the RunResult best_* properties return NaN.
+    metric_key = (primary_metric or "").lower()
+    if metric_key in ("rmse", "r2", "mae", "accuracy") and metric_key not in metrics and "score" in metrics:
+        metrics[metric_key] = metrics["score"]
+
+    # RPD only makes sense for regression with a usable RMSE.
+    is_classification = "classification" in (task_type or "").lower()
+    if not is_classification and metrics.get("rmse"):
+        try:
+            predictions = getattr(result, "predictions", None)
+            if predictions:
+                best_pred = predictions.best()
+                if best_pred is not None and hasattr(best_pred, "y_true"):
+                    import numpy as np
+
+                    std_dev = float(np.std(best_pred.y_true))
+                    if metrics["rmse"] > 0:
+                        metrics["rpd"] = std_dev / metrics["rmse"]
+        except Exception:
+            pass
+
+    return metrics

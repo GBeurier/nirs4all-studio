@@ -618,7 +618,7 @@ class TestDataSchemas:
 
     def test_run_status_values(self, client):
         """Verify run status values are valid."""
-        valid_statuses = ["queued", "running", "completed", "failed", "paused"]
+        valid_statuses = ["queued", "running", "completed", "failed"]
 
         response = client.get("/api/runs")
         if response.status_code == 200:

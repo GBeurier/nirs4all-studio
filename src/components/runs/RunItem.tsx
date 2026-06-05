@@ -19,7 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   ChevronDown, ChevronRight, Database, Layers, Box, Clock,
   CheckCircle2, AlertCircle, Eye, HardDrive, Timer, RefreshCw,
-  Pause, Target, FolderKanban, Loader2, Trash2,
+  Target, FolderKanban, Loader2, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { deleteN4AWorkspaceRun } from "@/api/client";
@@ -82,7 +82,6 @@ const statusIcons: Record<string, typeof Clock> = {
   running: RefreshCw,
   completed: CheckCircle2,
   failed: AlertCircle,
-  paused: Pause,
 };
 
 function primaryRefitLabel(metric: string | null, taskType: string | null | undefined): string {

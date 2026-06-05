@@ -237,13 +237,18 @@ class TestQuickRunPollingCompletion:
 
         assert status == "completed", f"Run did not complete: {status}"
 
-        # Verify metrics
+        # Verify metrics. Missing metrics stay None (no fabricated sentinels,
+        # RUN-06) — the contract is that the primary score and its metric name
+        # are present; rmse/r2 are populated when that is what the score is.
         final_run = tracker.final_result
         pipeline = final_run["datasets"][0]["pipelines"][0]
         metrics = pipeline.get("metrics", {})
 
-        assert metrics.get("r2") is not None, "R² metric missing"
-        assert metrics.get("rmse") is not None, "RMSE metric missing"
+        assert metrics.get("score") is not None, f"Primary score missing: {metrics}"
+        assert metrics.get("score_metric"), f"score_metric missing: {metrics}"
+        assert metrics.get("rmse") is not None or metrics.get("r2") is not None, (
+            f"Neither RMSE nor R² present: {metrics}"
+        )
 
 
 class TestQuickRunWithWebSocket:

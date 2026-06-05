@@ -477,34 +477,6 @@ class TestRunStateErrors:
         assert stop_response.status_code == 400
 
     @pytest.mark.timeout(60)
-    def test_cannot_pause_completed_run(
-        self,
-        workspace_client: TestClient,
-        mock_nirs4all,
-    ):
-        """Cannot pause a run that has already completed."""
-        response = workspace_client.post("/api/runs/quick", json={
-            "pipeline_id": "test_pls",
-            "dataset_id": "test_dataset",
-            "cv_folds": 3,
-        })
-
-        if response.status_code not in (200, 201):
-            pytest.skip(f"Quick run creation failed: {response.json()}")
-
-        run_id = response.json()["id"]
-
-        tracker = RunProgressTracker(workspace_client, run_id)
-        status = tracker.poll_until_complete(timeout=30.0)
-
-        if status != "completed":
-            pytest.skip("Run did not complete")
-
-        # Try to pause completed run
-        pause_response = workspace_client.post(f"/api/runs/{run_id}/pause")
-        assert pause_response.status_code == 400
-
-    @pytest.mark.timeout(60)
     def test_cannot_retry_completed_run(
         self,
         workspace_client: TestClient,

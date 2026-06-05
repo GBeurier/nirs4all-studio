@@ -13,7 +13,6 @@ import {
   HardDrive,
   Layers,
   ListTree,
-  Pause,
   Play,
   RefreshCw,
   Terminal,
@@ -62,7 +61,6 @@ const statusIcons = {
   running: RefreshCw,
   completed: CheckCircle2,
   failed: AlertCircle,
-  paused: Pause,
   partial: CircleDashed,
 };
 

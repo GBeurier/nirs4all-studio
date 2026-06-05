@@ -18,7 +18,6 @@ import {
   Clock,
   RefreshCw,
   AlertCircle,
-  Pause,
   CircleDashed,
   Database,
   BarChart3,
@@ -49,7 +48,6 @@ const statusIcons = {
   running: RefreshCw,
   completed: CheckCircle2,
   failed: AlertCircle,
-  paused: Pause,
   partial: CircleDashed,
 };
 

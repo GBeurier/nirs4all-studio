@@ -4,7 +4,7 @@
  * Phase 2-5: Enhanced with templates, results, and robustness features
  */
 
-export type RunStatus = "queued" | "running" | "completed" | "failed" | "paused" | "partial";
+export type RunStatus = "queued" | "running" | "completed" | "failed" | "partial";
 
 export type RunFormat = "v1" | "v2" | "parquet_derived";
 
@@ -206,12 +206,6 @@ export const runStatusConfig = {
     bg: "bg-destructive/10",
     iconClass: "",
   },
-  paused: {
-    label: "Paused",
-    color: "text-warning",
-    bg: "bg-warning/10",
-    iconClass: "",
-  },
   partial: {
     label: "Partial",
     color: "text-amber-500",
@@ -370,8 +364,7 @@ export interface DiscoveredDatasetsResponse {
  */
 export const VALID_RUN_TRANSITIONS: Record<RunStatus, RunStatus[]> = {
   queued: ["running", "failed"],
-  running: ["completed", "failed", "paused", "partial"],
-  paused: ["running", "failed"],
+  running: ["completed", "failed", "partial"],
   failed: ["queued"], // retry
   completed: [], // terminal
   partial: ["running", "failed"], // resume or fail
