@@ -155,6 +155,29 @@ def _get_store() -> "WorkspaceStore":
     return adapter.store
 
 
+def _get_store_optional() -> Optional["WorkspaceStore"]:
+    """Like :func:`_get_store`, but returns ``None`` when the workspace simply
+    has no store yet (fresh workspace, no pipeline ever run).
+
+    List endpoints use this to return an empty result set instead of a 404 —
+    an empty-but-healthy workspace is not an error. Detail endpoints keep the
+    strict :func:`_get_store` (a missing store means the requested resource
+    cannot exist).
+    """
+    if not STORE_AVAILABLE:
+        raise HTTPException(
+            status_code=501,
+            detail="nirs4all library is required for workspace store access",
+        )
+
+    workspace = workspace_manager.get_current_workspace()
+    if not workspace:
+        raise HTTPException(status_code=409, detail="No workspace selected")
+
+    adapter = workspace_manager.get_active_store_adapter()
+    return adapter.store if adapter is not None else None
+
+
 # ============================================================================
 # Endpoints
 # ============================================================================
@@ -174,7 +197,14 @@ async def get_aggregated_predictions(
     Returns one row per (chain_id, metric, dataset_name) combination.
     All filter parameters are optional and AND-combined.
     """
-    store = _get_store()
+    store = _get_store_optional()
+    if store is None:
+        # Fresh workspace with no runs yet: empty list, not an error.
+        return AggregatedPredictionsResponse(
+            predictions=[],
+            total=0,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
 
     def _query() -> List[dict]:
         df = store.query_aggregated_predictions(
@@ -210,7 +240,16 @@ async def get_top_aggregated_predictions(
     Sort direction is auto-detected from the metric name (ascending for
     error metrics like RMSE, descending for score metrics like R²).
     """
-    store = _get_store()
+    store = _get_store_optional()
+    if store is None:
+        # Fresh workspace with no runs yet: empty list, not an error.
+        return {
+            "predictions": [],
+            "total": 0,
+            "metric": metric,
+            "score_column": score_column,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
 
     def _query() -> List[dict]:
         df = store.query_top_aggregated_predictions(

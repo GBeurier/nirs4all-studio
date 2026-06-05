@@ -51,8 +51,9 @@ interface DatasetCardProps {
 /**
  * Format number with commas
  */
-function formatNumber(num: number | undefined): string {
-  if (num === undefined) return "--";
+function formatNumber(num: number | null | undefined): string {
+  // The backend sends null for never-probed datasets; guard both null and undefined.
+  if (num == null) return "--";
   return num.toLocaleString();
 }
 

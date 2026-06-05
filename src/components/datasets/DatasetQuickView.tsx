@@ -37,7 +37,7 @@ interface DatasetQuickViewProps {
 /**
  * Format number with locale-aware separators
  */
-function formatNumber(num: number | undefined): string {
+function formatNumber(num: number | null | undefined): string {
   if (num === undefined || num === null) return "--";
   return num.toLocaleString();
 }
