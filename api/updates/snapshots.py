@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from api import updates as _u
 
-from .manager import APP_AUTHOR, APP_NAME, _user_data_dir
+from .manager import APP_AUTHOR, APP_NAME
 
 router = APIRouter()
 
@@ -43,7 +43,9 @@ SNAPSHOTS_DIR_NAME = "config_snapshots"
 
 def _get_snapshots_dir() -> Path:
     """Get the directory for storing config snapshots."""
-    app_data = Path(_user_data_dir(APP_NAME, APP_AUTHOR))
+    from api import updates as _updates_pkg
+
+    app_data = Path(_updates_pkg._user_data_dir(APP_NAME, APP_AUTHOR))
     snapshots_dir = app_data / SNAPSHOTS_DIR_NAME
     snapshots_dir.mkdir(parents=True, exist_ok=True)
     return snapshots_dir

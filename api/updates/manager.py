@@ -18,7 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from ..venv_manager import _user_data_dir, venv_manager
+from ..venv_manager import venv_manager
 from .catalog import (
     APP_AUTHOR,
     APP_NAME,

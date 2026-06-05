@@ -24,7 +24,6 @@ from .pipeline_canonical import (
     import_operator_class,
     resolve_editor_class_path,
 )
-from .shared.pipeline_service import normalize_params as _normalize_params
 from .workspace_manager import workspace_manager
 
 NIRS4ALL_AVAILABLE = True
