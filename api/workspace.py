@@ -20,7 +20,7 @@ import zipfile
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
@@ -51,7 +51,7 @@ except Exception:
     notify_maintenance_failed = None  # type: ignore[assignment]
     WS_AVAILABLE = False
 
-from .lazy_imports import get_cached, is_ml_ready
+from .lazy_imports import get_cached
 
 STORE_AVAILABLE = True
 PREDICTIONS_AVAILABLE = True
@@ -4056,7 +4056,6 @@ async def get_workspace_predictions_summary(workspace_id: str):
     - Model breakdown with average scores
     - Top predictions by validation score
     """
-    from datetime import timezone as _tz
 
     try:
         ws = workspace_manager._find_linked_workspace(workspace_id)

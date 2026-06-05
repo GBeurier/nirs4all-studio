@@ -18,14 +18,15 @@ import re
 import shutil
 import tempfile
 import zipfile
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from .shared.json_safe import sanitize_dict, sanitize_float
 from .store_adapter import (
     _apply_synthetic_refit_fallback_inplace,
     _extract_model_params_from_expanded_config,
@@ -248,31 +249,6 @@ class SQLQueryResponse(BaseModel):
 # ============================================================================
 # Helpers
 # ============================================================================
-
-
-def _sanitize_float(value: Any) -> Any:
-    """Convert NaN / Inf to None for JSON serialization."""
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    return value
-
-
-def _sanitize_dict(d: dict) -> dict:
-    """Recursively sanitize float values."""
-    out = {}
-    for k, v in d.items():
-        if isinstance(v, dict):
-            out[k] = _sanitize_dict(v)
-        elif isinstance(v, (float, int)):
-            out[k] = _sanitize_float(v)
-        elif isinstance(v, list):
-            out[k] = [
-                _sanitize_dict(item) if isinstance(item, dict) else _sanitize_float(item) if isinstance(item, (float, int)) else item
-                for item in v
-            ]
-        else:
-            out[k] = v
-    return out
 
 
 def _get_store() -> Any:
@@ -602,7 +578,7 @@ def _extract_stored_pipeline_steps(stored_pipeline: Any) -> list[Any]:
             continue
         cleaned_steps.append(cleaned)
 
-    return _sanitize_dict({"pipeline": cleaned_steps})["pipeline"]
+    return sanitize_dict({"pipeline": cleaned_steps})["pipeline"]
 
 
 def _extract_expanded_pipeline_steps(pipeline: dict[str, Any]) -> list[Any]:
@@ -797,7 +773,7 @@ async def get_aggregated_predictions(
             model_class=model_class,
             metric=metric,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = [sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
         _mark_refit_only_records(records)
         _enrich_with_fold_artifacts(records, store)
         _enrich_refit_with_cv(records, store)
@@ -838,7 +814,7 @@ async def get_top_aggregated_predictions(
             dataset_name=dataset_name,
             model_class=model_class,
         )
-        records = [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        records = [sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
         _mark_refit_only_records(records)
         _enrich_with_fold_artifacts(records, store)
         _enrich_refit_with_cv(records, store)
@@ -877,7 +853,7 @@ async def get_chain_detail(
         )
         summary = None
         if len(agg_df) > 0:
-            summary = _sanitize_dict(dict(agg_df.row(0, named=True)))
+            summary = sanitize_dict(dict(agg_df.row(0, named=True)))
             _mark_refit_only_records([summary])
             _enrich_with_fold_artifacts([summary], store)
             _enrich_refit_with_cv([summary], store)
@@ -895,7 +871,7 @@ async def get_chain_detail(
 
         # Get individual prediction rows
         pred_df = store.get_chain_predictions(chain_id)
-        predictions = [_sanitize_dict(dict(row)) for row in pred_df.iter_rows(named=True)]
+        predictions = [sanitize_dict(dict(row)) for row in pred_df.iter_rows(named=True)]
 
         if not predictions and summary is None:
             raise HTTPException(status_code=404, detail=f"Chain {chain_id} not found or has no predictions")
@@ -905,7 +881,7 @@ async def get_chain_detail(
         if summary and summary.get("pipeline_id"):
             pipeline = store.get_pipeline(summary["pipeline_id"])
             if pipeline:
-                pipeline_info = _sanitize_dict({
+                pipeline_info = sanitize_dict({
                     "pipeline_id": pipeline["pipeline_id"],
                     "name": pipeline.get("name"),
                     "dataset_name": pipeline.get("dataset_name"),
@@ -1063,7 +1039,7 @@ async def get_chain_partition_detail(
                     d["best_params"] = json.loads(d["best_params"])
                 except Exception:
                     pass
-            records.append(_sanitize_dict(d))
+            records.append(sanitize_dict(d))
         return {
             "chain_id": chain_id,
             "predictions": records,
@@ -1115,11 +1091,11 @@ async def get_prediction_arrays(prediction_id: str):
                 for item in value:
                     converted = _to_list(item)
                     if isinstance(converted, float):
-                        converted = _sanitize_float(converted)
+                        converted = sanitize_float(converted)
                     sanitized.append(converted)
                 return sanitized
             if isinstance(value, float):
-                return _sanitize_float(value)
+                return sanitize_float(value)
             return value
 
         y_true = _to_list(arrays.get("y_true"))

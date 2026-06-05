@@ -11,13 +11,13 @@ import importlib
 import inspect
 import math
 import re
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any
 
 from .logger import get_logger
 
 logger = get_logger(__name__)
 
-from ..lazy_imports import get_cached, is_ml_ready
+from ..lazy_imports import get_cached
 
 NIRS4ALL_AVAILABLE = True
 

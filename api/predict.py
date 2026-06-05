@@ -11,15 +11,14 @@ Delegates all prediction logic to nirs4all.predict().
 from __future__ import annotations
 
 import io
-import math
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from .lazy_imports import get_cached
 from .models import _resolve_bundle_path
+from .shared.json_safe import sanitize_float
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -58,12 +57,6 @@ class PredictResponse(BaseModel):
 
 
 # ============= Helpers =============
-
-
-def _sanitize_float(v: Any) -> float | None:
-    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-        return None
-    return v
 
 
 def _run_prediction(
@@ -128,12 +121,12 @@ def _run_prediction(
                 std_y = float(np.std(y_true_arr))
                 rpd = std_y / rmse if rmse > 0 else None
                 metrics = {
-                    "rmse": _sanitize_float(rmse),
-                    "r2": _sanitize_float(r2),
-                    "mae": _sanitize_float(mae),
+                    "rmse": sanitize_float(rmse),
+                    "r2": sanitize_float(r2),
+                    "mae": sanitize_float(mae),
                 }
                 if rpd is not None:
-                    metrics["rpd"] = _sanitize_float(rpd)
+                    metrics["rpd"] = sanitize_float(rpd)
         except Exception as e:
             logger.warning("Could not compute metrics: %s", e)
 

@@ -10,7 +10,7 @@ Run with: pytest tests/test_store_integration.py -v
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -1097,29 +1097,29 @@ class TestWorkspaceScannerStore:
 
 
 class TestSanitization:
-    """Tests for NaN/Inf sanitization helpers in store_adapter."""
+    """Tests for the shared NaN/Inf sanitization helpers (api.shared.json_safe)."""
 
     def test_sanitize_float_nan(self):
-        from api.store_adapter import _sanitize_float
-        assert _sanitize_float(float("nan")) is None
+        from api.shared.json_safe import sanitize_float
+        assert sanitize_float(float("nan")) is None
 
     def test_sanitize_float_inf(self):
-        from api.store_adapter import _sanitize_float
-        assert _sanitize_float(float("inf")) is None
-        assert _sanitize_float(float("-inf")) is None
+        from api.shared.json_safe import sanitize_float
+        assert sanitize_float(float("inf")) is None
+        assert sanitize_float(float("-inf")) is None
 
     def test_sanitize_float_normal(self):
-        from api.store_adapter import _sanitize_float
-        assert _sanitize_float(3.14) == 3.14
+        from api.shared.json_safe import sanitize_float
+        assert sanitize_float(3.14) == 3.14
 
     def test_sanitize_dict_nested(self):
-        from api.store_adapter import _sanitize_dict
+        from api.shared.json_safe import sanitize_dict
         data = {
             "score": float("nan"),
             "nested": {"val": float("inf"), "ok": 1.0},
             "list_field": [1.0, float("nan"), 3.0],
         }
-        result = _sanitize_dict(data)
+        result = sanitize_dict(data)
         assert result["score"] is None
         assert result["nested"]["val"] is None
         assert result["nested"]["ok"] == 1.0

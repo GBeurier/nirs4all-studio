@@ -21,12 +21,12 @@ directly via nirs4all pipelines.
 
 import importlib.util
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .lazy_imports import get_cached, is_ml_ready
+from .lazy_imports import get_cached
 from .workspace_manager import workspace_manager
 
 SKLEARN_AVAILABLE = True
@@ -420,7 +420,6 @@ async def compute_umap_endpoint(request: UMAPRequest):
             detail="UMAP not available. Install umap-learn in Settings > Dependencies.",
         )
 
-    import numpy as np
 
     # Load dataset
     dataset, X, wavelengths = _load_analysis_data(

@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -21,7 +21,7 @@ from .workspace_manager import workspace_manager
 
 logger = logging.getLogger(__name__)
 
-from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+from .lazy_imports import get_cached
 
 NIRS4ALL_AVAILABLE = True
 SKLEARN_AVAILABLE = True

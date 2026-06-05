@@ -21,16 +21,12 @@ Run mocked only (fast, CI-friendly):
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient
 
 from .websocket_utils import (
     RunProgressTracker,
-    assert_message_sequence,
-    assert_metrics_present,
-    assert_progress_increases,
 )
 
 
@@ -489,7 +485,7 @@ class TestQuickRunPersistence:
         tracker.poll_until_complete(timeout=60.0)
 
         # Simulate restart by clearing in-memory runs
-        from api.runs import _runs, _runs_loaded
+        from api.runs import _runs
         _runs.clear()
 
         # Access private module variable to reset loaded flag

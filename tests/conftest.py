@@ -155,7 +155,7 @@ def pytest_collection_modifyitems(config, items):
 def nirs4all_available():
     """Check if nirs4all library is available."""
     try:
-        import nirs4all
+        import nirs4all  # noqa: F401 (availability probe)
         return True
     except ImportError:
         return False

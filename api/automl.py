@@ -21,7 +21,7 @@ import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -32,7 +32,7 @@ from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
-from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+from .lazy_imports import get_cached
 
 NIRS4ALL_AVAILABLE = True
 

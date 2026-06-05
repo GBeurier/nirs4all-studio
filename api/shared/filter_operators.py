@@ -11,9 +11,9 @@ the "Filter to Selection" feature in the UI.
 Phase 1 Implementation - Foundation & Selection System
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
-from ..lazy_imports import get_cached, is_ml_ready
+from ..lazy_imports import get_cached
 
 NIRS4ALL_FILTERS_AVAILABLE = True
 

@@ -12,10 +12,9 @@ for chain-based model retrieval.
 from __future__ import annotations
 
 import time
-import uuid
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -25,7 +24,7 @@ from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
-from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+from .lazy_imports import get_cached
 
 NIRS4ALL_AVAILABLE = True
 

@@ -16,9 +16,9 @@ from __future__ import annotations
 import inspect
 import json
 from datetime import datetime
-from enum import Enum, StrEnum
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, get_type_hints
+from typing import Any, get_type_hints
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -45,7 +45,7 @@ from .workspace_manager import workspace_manager
 logger = get_logger(__name__)
 
 # nirs4all imports are lazy-loaded via api/lazy_imports.py to speed up backend startup.
-from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+from .lazy_imports import get_cached, is_ml_ready
 
 NIRS4ALL_AVAILABLE = True  # Assume available, endpoints guard via require_ml_ready()
 

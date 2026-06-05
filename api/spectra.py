@@ -8,7 +8,7 @@ including raw spectra, processed spectra, and statistics.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -19,7 +19,6 @@ from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
-from .lazy_imports import get_cached, require_ml_ready
 
 NIRS4ALL_AVAILABLE = True
 

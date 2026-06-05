@@ -11,7 +11,7 @@ backend-side hydration must not rely on them as the primary source of truth.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any

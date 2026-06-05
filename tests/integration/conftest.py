@@ -13,16 +13,13 @@ Provides fixtures for:
 import asyncio
 import json
 import os
-import shutil
 import sys
 import threading
 import time
-import uuid
 from collections.abc import Generator
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, patch
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -50,7 +47,7 @@ def client(tmp_path: Path) -> Generator[TestClient, None, None]:
     os.environ["NIRS4ALL_CONFIG"] = str(config_dir)
     try:
         # Re-initialize singletons with temporary config dir
-        from api.app_config import AppConfigManager, app_config
+        from api.app_config import app_config
         app_config.__init__()
         from api.workspace_manager import workspace_manager
         workspace_manager.app_config = app_config

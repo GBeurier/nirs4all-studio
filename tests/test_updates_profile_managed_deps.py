@@ -3,6 +3,8 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
+from api.venv_manager import VenvInfo
+
 
 def test_get_dependencies_keeps_visible_profile_managed_torch_in_cached_payload(monkeypatch):
     from api import updates
@@ -10,7 +12,7 @@ def test_get_dependencies_keeps_visible_profile_managed_torch_in_cached_payload(
     monkeypatch.setattr(
         updates.venv_manager,
         "get_venv_info",
-        lambda: updates.VenvInfo(path="C:/env", exists=True, is_valid=True),
+        lambda: VenvInfo(path="C:/env", exists=True, is_valid=True),
     )
     monkeypatch.setattr(updates.venv_manager, "get_nirs4all_version", lambda: "0.9.0")
     monkeypatch.setattr(
@@ -89,7 +91,7 @@ def test_profile_managed_torch_install_uses_config_alignment(monkeypatch):
     monkeypatch.setattr(rc, "_load_active_raw_config", lambda: {"optional": {"torch": {}}})
     monkeypatch.setattr(rc, "_resolve_effective_profile", lambda raw: "cpu")
     monkeypatch.setattr(rc, "align_config", _align_config)
-    monkeypatch.setattr(updates.venv_manager, "get_venv_info", lambda: updates.VenvInfo(path="C:/env", exists=True, is_valid=True))
+    monkeypatch.setattr(updates.venv_manager, "get_venv_info", lambda: VenvInfo(path="C:/env", exists=True, is_valid=True))
     monkeypatch.setattr(updates.venv_manager, "get_package_version", lambda package: "2.6.0+cpu")
     monkeypatch.setattr(updates._dependencies_cache, "invalidate", lambda: None)
 
@@ -119,7 +121,7 @@ def test_profile_managed_torch_revert_uses_config_alignment(monkeypatch):
     monkeypatch.setattr(rc, "_load_active_raw_config", lambda: {"optional": {"torch": {}}})
     monkeypatch.setattr(rc, "_resolve_effective_profile", lambda raw: "cpu")
     monkeypatch.setattr(rc, "align_config", _align_config)
-    monkeypatch.setattr(updates.venv_manager, "get_venv_info", lambda: updates.VenvInfo(path="C:/env", exists=True, is_valid=True))
+    monkeypatch.setattr(updates.venv_manager, "get_venv_info", lambda: VenvInfo(path="C:/env", exists=True, is_valid=True))
     monkeypatch.setattr(updates.venv_manager, "get_package_version", lambda package: "2.6.0+cpu")
     monkeypatch.setattr(updates._dependencies_cache, "invalidate", lambda: None)
 

@@ -14,11 +14,11 @@ import inspect
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import HTTPException
 
-from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+from .lazy_imports import require_ml_ready
 from .pipeline_canonical import (
     contains_generators,
     count_runtime_variants,

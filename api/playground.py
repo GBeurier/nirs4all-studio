@@ -19,7 +19,6 @@ import json
 import sys
 import time
 import warnings
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -42,7 +41,6 @@ from .shared.filter_operators import (
     instantiate_filter,
 )
 from .shared.metrics_computer import (
-    CHEMOMETRIC_METRICS,
     FAST_METRICS,
     MetricsComputer,
     get_available_metrics,

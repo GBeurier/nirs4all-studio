@@ -13,10 +13,8 @@ Run tests:
     pytest tests/integration/test_run_lifecycle.py -v
 """
 
-import json
 import time
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient

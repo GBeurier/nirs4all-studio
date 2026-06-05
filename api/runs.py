@@ -27,7 +27,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -38,6 +38,7 @@ from .pipeline_canonical import (
     count_runtime_variants,
     editor_steps_to_runtime_canonical,
 )
+from .shared.json_safe import sanitize_float
 from .shared.logger import get_logger
 from .shared.runtime_grouping import (
     normalize_split_group_by_mapping,
@@ -48,18 +49,9 @@ from .workspace_manager import workspace_manager
 logger = get_logger(__name__)
 
 
-def _sanitize_float(value: float | int | None) -> float | None:
-    """Sanitize float values for JSON serialization (NaN/Inf -> None)."""
-    if value is None:
-        return None
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    return float(value)
-
-
 def _sanitize_metrics(metrics: dict) -> dict:
     """Sanitize all float values in a metrics dict for JSON serialization."""
-    return {k: _sanitize_float(v) if isinstance(v, (int, float)) else v for k, v in metrics.items()}
+    return {k: sanitize_float(v) if isinstance(v, (int, float)) else v for k, v in metrics.items()}
 
 
 def _count_tested_pipeline_variants(result: Any, fallback: int = 1) -> int:

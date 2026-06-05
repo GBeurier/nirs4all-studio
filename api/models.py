@@ -12,7 +12,7 @@ from __future__ import annotations
 import inspect
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, get_type_hints
+from typing import Any, get_type_hints
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -22,7 +22,7 @@ from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
 
-from .lazy_imports import get_cached, require_ml_ready
+from .lazy_imports import get_cached
 
 NIRS4ALL_AVAILABLE = True
 

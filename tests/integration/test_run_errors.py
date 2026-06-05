@@ -14,7 +14,6 @@ Run tests:
 
 import json
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient

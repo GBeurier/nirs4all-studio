@@ -27,12 +27,13 @@ import json
 import math
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from .lazy_imports import get_cached, is_ml_ready
+from .lazy_imports import get_cached
+from .shared.json_safe import sanitize_dict, sanitize_float
 from .workspace_manager import workspace_manager
 
 STORE_AVAILABLE = True
@@ -198,35 +199,6 @@ class CandlestickResponse(BaseModel):
 # ============================================================================
 
 
-def _sanitize_float(value: Any) -> Any:
-    """Convert NaN / Inf to None for JSON serialization."""
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    return value
-
-
-def _sanitize_dict(d: dict) -> dict:
-    """Recursively sanitize float values."""
-    out = {}
-    for k, v in d.items():
-        if isinstance(v, dict):
-            out[k] = _sanitize_dict(v)
-        elif isinstance(v, (float, int)):
-            out[k] = _sanitize_float(v)
-        elif isinstance(v, list):
-            out[k] = [
-                _sanitize_dict(item)
-                if isinstance(item, dict)
-                else _sanitize_float(item)
-                if isinstance(item, (float, int))
-                else item
-                for item in v
-            ]
-        else:
-            out[k] = v
-    return out
-
-
 def _parse_json_like(value: Any) -> Any:
     """Parse JSON-encoded strings commonly returned by chain summary views."""
     if not isinstance(value, str):
@@ -327,7 +299,7 @@ def _normalize_chain_record(
 ) -> dict[str, Any]:
     """Normalize a chain-summary row for frontend consumption."""
     pipeline_map = pipeline_map or {}
-    record = _sanitize_dict(dict(raw))
+    record = sanitize_dict(dict(raw))
     for json_field in ("best_params", "branch_path"):
         record[json_field] = _parse_json_like(record.get(json_field))
     pipeline_id = str(record.get("pipeline_id") or "")
@@ -600,7 +572,7 @@ async def get_scatter_data(request: ScatterRequest):
             all_y_true: list[float] = []
             all_y_pred: list[float] = []
             all_indices: list[int] = []
-            score = _sanitize_float(first_row.get(score_field))
+            score = sanitize_float(first_row.get(score_field))
 
             for row in pred_df.iter_rows(named=True):
                 row_dict = dict(row)
@@ -1249,7 +1221,6 @@ async def get_fold_stability(request: FoldStabilityRequest):
     For each chain, retrieves fold-level predictions and extracts
     the score for the requested partition.
     """
-    import numpy as np
     if not request.chain_ids:
         return FoldStabilityResponse(
             entries=[], fold_ids=[], score_column=request.score_column, total_chains=0
@@ -1288,7 +1259,7 @@ async def get_fold_stability(request: FoldStabilityRequest):
                 if score is None:
                     continue
 
-                score = _sanitize_float(float(score))
+                score = sanitize_float(float(score))
                 if score is None:
                     continue
 
@@ -1606,7 +1577,7 @@ async def get_robustness_data(request: RobustnessRequest):
                     row_dict = dict(row)
                     score = row_dict.get(score_field)
                     if score is not None:
-                        s = _sanitize_float(float(score))
+                        s = sanitize_float(float(score))
                         if s is not None:
                             fold_scores.append(s)
 
@@ -1795,7 +1766,7 @@ async def get_metric_correlation(request: MetricCorrelationRequest):
                 else:
                     coef, _ = scipy_stats.pearsonr(arr_x, arr_y)
 
-                coef_val = _sanitize_float(round(float(coef), 4)) if not (math.isnan(coef) or math.isinf(coef)) else None
+                coef_val = sanitize_float(round(float(coef), 4)) if not (math.isnan(coef) or math.isinf(coef)) else None
 
                 cells.append(CorrelationCell(
                     metric_x=mx,
@@ -1998,9 +1969,9 @@ async def get_preprocessing_impact(request: PreprocessingImpactRequest):
 
             entries.append(PreprocessingImpactEntry(
                 step_name=step_name,
-                impact=_sanitize_float(round(impact, 6)),
-                mean_with=_sanitize_float(round(mean_w, 6)),
-                mean_without=_sanitize_float(round(mean_wo, 6)),
+                impact=sanitize_float(round(impact, 6)),
+                mean_with=sanitize_float(round(mean_w, 6)),
+                mean_without=sanitize_float(round(mean_wo, 6)),
                 count_with=len(scores_with),
                 count_without=len(scores_without),
             ).model_dump())
@@ -2199,9 +2170,9 @@ async def get_bias_variance(request: BiasVarianceRequest):
                 mean_var = float(np.mean(variances))
                 entries.append(BiasVarianceEntry(
                     group_label=label,
-                    bias_squared=_sanitize_float(round(mean_bias_sq, 6)),
-                    variance=_sanitize_float(round(mean_var, 6)),
-                    total_error=_sanitize_float(round(mean_bias_sq + mean_var, 6)),
+                    bias_squared=sanitize_float(round(mean_bias_sq, 6)),
+                    variance=sanitize_float(round(mean_var, 6)),
+                    total_error=sanitize_float(round(mean_bias_sq + mean_var, 6)),
                     n_chains=len(chain_ids),
                     n_folds=total_folds,
                     n_samples=len(biases_sq),
@@ -2311,10 +2282,10 @@ async def get_learning_curve(request: LearningCurveRequest):
 
             points.append(LearningCurvePoint(
                 train_size=size,
-                train_mean=_sanitize_float(round(float(np.mean(train_vals)), 6)) if train_vals else None,
-                train_std=_sanitize_float(round(float(np.std(train_vals)), 6)) if len(train_vals) > 1 else None,
-                val_mean=_sanitize_float(round(float(np.mean(val_vals)), 6)) if val_vals else None,
-                val_std=_sanitize_float(round(float(np.std(val_vals)), 6)) if len(val_vals) > 1 else None,
+                train_mean=sanitize_float(round(float(np.mean(train_vals)), 6)) if train_vals else None,
+                train_std=sanitize_float(round(float(np.std(train_vals)), 6)) if len(train_vals) > 1 else None,
+                val_mean=sanitize_float(round(float(np.mean(val_vals)), 6)) if val_vals else None,
+                val_std=sanitize_float(round(float(np.std(val_vals)), 6)) if len(val_vals) > 1 else None,
                 count=len(entries),
             ).model_dump())
 

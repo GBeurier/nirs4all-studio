@@ -9,19 +9,15 @@ This module provides API endpoints for:
 """
 
 import asyncio
-import hashlib
 import json
 import os
 import platform
 import shutil
-import subprocess
 import sys
-import tempfile
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .jobs.manager import Job
@@ -31,7 +27,7 @@ from pydantic import BaseModel
 
 from .shared.logger import get_logger
 from .update_downloader import resolve_extracted_content_dir
-from .venv_manager import VenvInfo, _user_data_dir, venv_manager
+from .venv_manager import _user_data_dir, venv_manager
 
 logger = get_logger(__name__)
 

@@ -17,13 +17,13 @@ Metric Categories:
 Note: Chemometric metrics are delegated to nirs4all.operators.filters for computation.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from .logger import get_logger
 
 logger = get_logger(__name__)
 
-from ..lazy_imports import get_cached, is_ml_ready
+from ..lazy_imports import get_cached
 
 SCIPY_AVAILABLE = True
 NIRS4ALL_FILTERS_AVAILABLE = True

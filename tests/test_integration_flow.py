@@ -12,16 +12,10 @@ Requirements:
 - Sample dataset available
 """
 
-import asyncio
-import json
 
 # Import the FastAPI app
 import sys
-import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient

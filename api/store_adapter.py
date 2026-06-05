@@ -11,11 +11,12 @@ import copy
 import json
 import math
 import re
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from .lazy_imports import get_cached, is_ml_ready
+from .shared.json_safe import sanitize_dict, sanitize_float
 
 STORE_AVAILABLE = True
 _OBJECT_REPR_RE = re.compile(
@@ -44,28 +45,6 @@ def _get_workspace_store_cls() -> Any:
     return WorkspaceStore
 
 
-def _sanitize_float(value: Any) -> Any:
-    """Convert NaN / Inf to ``None`` for JSON serialization."""
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    return value
-
-
-def _sanitize_dict(d: dict[str, Any]) -> dict[str, Any]:
-    """Recursively sanitize float values in a dictionary."""
-    out: dict[str, Any] = {}
-    for k, v in d.items():
-        if isinstance(v, dict):
-            out[k] = _sanitize_dict(v)
-        elif isinstance(v, list):
-            out[k] = [_sanitize_dict(item) if isinstance(item, dict) else _sanitize_float(item) for item in v]
-        elif isinstance(v, (float, int)):
-            out[k] = _sanitize_float(v)
-        else:
-            out[k] = v
-    return out
-
-
 def _to_json_compatible(value: Any) -> Any:
     """Recursively convert arrays/scalars into JSON-safe Python values."""
     if value is None:
@@ -81,11 +60,11 @@ def _to_json_compatible(value: Any) -> Any:
             pass
     if hasattr(value, "item") and not isinstance(value, (str, bytes, bytearray)):
         try:
-            return _sanitize_float(value.item())
+            return sanitize_float(value.item())
         except Exception:
             pass
     if isinstance(value, (float, int)):
-        return _sanitize_float(value)
+        return sanitize_float(value)
     return value
 
 
@@ -319,7 +298,7 @@ def _normalize_prediction_record(raw: dict[str, Any]) -> dict[str, Any]:
     for json_field in ("best_params", "scores"):
         record[json_field] = _parse_json_maybe(record.get(json_field))
 
-    record = _sanitize_dict(record)
+    record = sanitize_dict(record)
 
     if "prediction_id" in record and "id" not in record:
         record["id"] = record.pop("prediction_id")
@@ -471,7 +450,7 @@ def _build_synthetic_final_scores(row: dict[str, Any]) -> dict[str, Any]:
         ("test", row.get("cv_test_score")),
         ("train", row.get("cv_train_score")),
     ):
-        score = _sanitize_float(value)
+        score = sanitize_float(value)
         if score is None:
             continue
         scores.setdefault(partition, {})[metric] = float(score)
@@ -489,8 +468,8 @@ def _apply_synthetic_refit_fallback_inplace(row: dict[str, Any]) -> None:
         row["synthetic_refit"] = bool(row.get("synthetic_refit"))
         return
 
-    row["final_test_score"] = _sanitize_float(row.get("cv_test_score"))
-    row["final_train_score"] = _sanitize_float(row.get("cv_train_score"))
+    row["final_test_score"] = sanitize_float(row.get("cv_test_score"))
+    row["final_train_score"] = sanitize_float(row.get("cv_train_score"))
     row["final_scores"] = _build_synthetic_final_scores(row)
     row["synthetic_refit"] = True
 
@@ -675,7 +654,7 @@ class StoreAdapter:
         run = self._store.get_run(run_id)
         if run is None:
             return None
-        run = _sanitize_dict(run)
+        run = sanitize_dict(run)
         for json_field in ("config", "datasets", "summary"):
             run[json_field] = _parse_json_maybe(run.get(json_field))
         # Convert datetimes
@@ -687,7 +666,7 @@ class StoreAdapter:
         pipelines_df = self._store.list_pipelines(run_id=run_id)
         pipelines = []
         for row in pipelines_df.iter_rows(named=True):
-            p = _sanitize_dict(dict(row))
+            p = sanitize_dict(dict(row))
             for json_field in ("expanded_config", "generator_choices"):
                 p[json_field] = _parse_json_maybe(p.get(json_field))
             for ts_field in ("created_at", "completed_at"):
@@ -706,7 +685,7 @@ class StoreAdapter:
             **inferred_config,
             **{k: v for k, v in run_config.items() if v is not None},
         }
-        run["config"] = _sanitize_dict(merged_run_config)
+        run["config"] = sanitize_dict(merged_run_config)
         run["pipelines"] = pipelines
         return run
 
@@ -720,14 +699,14 @@ class StoreAdapter:
             List of log summary dicts (one per pipeline).
         """
         df = self._store.get_run_log_summary(run_id)
-        return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        return [sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
 
     def get_pipeline_log(self, pipeline_id: str) -> list[dict[str, Any]]:
         """Get structured log entries for one stored pipeline."""
         df = self._store.get_pipeline_log(pipeline_id)
         entries: list[dict[str, Any]] = []
         for row in df.iter_rows(named=True):
-            entry = _sanitize_dict(dict(row))
+            entry = sanitize_dict(dict(row))
             entry["details"] = _parse_json_maybe(entry.get("details"))
             entries.append(entry)
         return entries
@@ -911,7 +890,7 @@ class StoreAdapter:
         top_df = self._store.top_predictions(n=10, dataset_name=dataset_name)
         top_predictions = []
         for row in top_df.iter_rows(named=True):
-            d = _sanitize_dict(dict(row))
+            d = sanitize_dict(dict(row))
             if "prediction_id" in d and "id" not in d:
                 d["id"] = d.pop("prediction_id")
             top_predictions.append(d)
@@ -1286,7 +1265,7 @@ class StoreAdapter:
             model_class=model_class,
             metric=metric,
         )
-        return [_sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
+        return [sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
 
     def get_prediction_arrays(self, prediction_id: str) -> dict[str, Any] | None:
         """Get arrays for a single prediction.
@@ -1494,8 +1473,8 @@ class StoreAdapter:
                 )
 
                 best = sorted_agg[0] if sorted_agg else {}
-                best_avg_val = _sanitize_float(best.get("cv_val_score"))
-                best_avg_test = _sanitize_float(best.get("cv_test_score"))
+                best_avg_val = sanitize_float(best.get("cv_val_score"))
+                best_avg_test = sanitize_float(best.get("cv_test_score"))
 
                 # Historical best for gain calculation
                 gain = None
@@ -1544,12 +1523,12 @@ class StoreAdapter:
                     agg_entry = agg_entry_by_chain_id.get(chain_id, entry)
                     cv_scores_raw = agg_entry.get("cv_scores")
                     scores_detail = json.loads(cv_scores_raw) if isinstance(cv_scores_raw, str) else (cv_scores_raw or {})
-                    final_ts = _sanitize_float(agg_entry.get("final_test_score"))
-                    final_trs = _sanitize_float(agg_entry.get("final_train_score"))
+                    final_ts = sanitize_float(agg_entry.get("final_test_score"))
+                    final_trs = sanitize_float(agg_entry.get("final_train_score"))
                     final_scores_raw = agg_entry.get("final_scores")
                     final_scores = json.loads(final_scores_raw) if isinstance(final_scores_raw, str) else (final_scores_raw or {})
-                    final_agg_ts = _sanitize_float(agg_entry.get("final_agg_test_score"))
-                    final_agg_trs = _sanitize_float(agg_entry.get("final_agg_train_score"))
+                    final_agg_ts = sanitize_float(agg_entry.get("final_agg_test_score"))
+                    final_agg_trs = sanitize_float(agg_entry.get("final_agg_train_score"))
                     final_agg_scores_raw = agg_entry.get("final_agg_scores")
                     final_agg_scores = (
                         json.loads(final_agg_scores_raw)
@@ -1560,8 +1539,8 @@ class StoreAdapter:
                     # Fallback: if chain_summary not backfilled, use refit prediction directly
                     refit_pred = refit_predictions_map.get(chain_id)
                     if final_ts is None and refit_pred:
-                        final_ts = _sanitize_float(refit_pred.get("test_score"))
-                        final_trs = _sanitize_float(refit_pred.get("train_score"))
+                        final_ts = sanitize_float(refit_pred.get("test_score"))
+                        final_trs = sanitize_float(refit_pred.get("train_score"))
                         rp_scores_raw = refit_pred.get("scores")
                         final_scores = json.loads(rp_scores_raw) if isinstance(rp_scores_raw, str) else (rp_scores_raw or {})
 
@@ -1573,7 +1552,7 @@ class StoreAdapter:
                     bp_raw = agg_entry.get("best_params") or entry.get("best_params")
                     best_params = json.loads(bp_raw) if isinstance(bp_raw, str) else (bp_raw or None)
 
-                    top_5.append(_sanitize_dict({
+                    top_5.append(sanitize_dict({
                         "chain_id": chain_id,
                         "model_name": agg_entry.get("model_name", entry.get("model_name", "")),
                         "model_class": agg_entry.get("model_class", entry.get("model_class", "")),
@@ -1598,12 +1577,12 @@ class StoreAdapter:
                 for rchain_id in refit_only_chain_ids:
                     rchain = refit_predictions_map[rchain_id]
                     agg_entry = agg_entry_by_chain_id.get(rchain_id, {})
-                    rts = _sanitize_float(agg_entry.get("final_test_score") or rchain.get("test_score"))
-                    rtrs = _sanitize_float(agg_entry.get("final_train_score") or rchain.get("train_score"))
+                    rts = sanitize_float(agg_entry.get("final_test_score") or rchain.get("test_score"))
+                    rtrs = sanitize_float(agg_entry.get("final_train_score") or rchain.get("train_score"))
                     rfinal_scores_raw = agg_entry.get("final_scores") or rchain.get("scores")
                     rfinal_scores = json.loads(rfinal_scores_raw) if isinstance(rfinal_scores_raw, str) else (rfinal_scores_raw or {})
-                    rfinal_agg_ts = _sanitize_float(agg_entry.get("final_agg_test_score"))
-                    rfinal_agg_trs = _sanitize_float(agg_entry.get("final_agg_train_score"))
+                    rfinal_agg_ts = sanitize_float(agg_entry.get("final_agg_test_score"))
+                    rfinal_agg_trs = sanitize_float(agg_entry.get("final_agg_train_score"))
                     rfinal_agg_scores_raw = agg_entry.get("final_agg_scores")
                     rfinal_agg_scores = (
                         json.loads(rfinal_agg_scores_raw)
@@ -1617,7 +1596,7 @@ class StoreAdapter:
                         if best_final_score is None or higher_is_better and rts > best_final_score or not higher_is_better and rts < best_final_score:
                             best_final_score = rts
 
-                    top_5.append(_sanitize_dict({
+                    top_5.append(sanitize_dict({
                         "chain_id": rchain_id,
                         "model_name": agg_entry.get("model_name", rchain.get("model_name", "")),
                         "model_class": agg_entry.get("model_class", rchain.get("model_class", "")),
@@ -1646,11 +1625,11 @@ class StoreAdapter:
                     n_samples = n_samples or pred_row.get("n_samples")
                     n_features = n_features or pred_row.get("n_features")
 
-                enriched_datasets.append(_sanitize_dict({
+                enriched_datasets.append(sanitize_dict({
                     "dataset_name": ds_name,
                     "best_avg_val_score": best_avg_val,
                     "best_avg_test_score": best_avg_test,
-                    "best_final_score": _sanitize_float(best_final_score),
+                    "best_final_score": sanitize_float(best_final_score),
                     "metric": metric,
                     "task_type": task_type,
                     "gain_from_previous_best": gain,
@@ -1784,7 +1763,7 @@ class StoreAdapter:
                 elif len(base_pipeline_names) > 1:
                     run_name = f"{base_pipeline_names[0]} (+{len(base_pipeline_names) - 1})"
 
-            enriched_runs.append(_sanitize_dict({
+            enriched_runs.append(sanitize_dict({
                 "run_id": run_id,
                 "name": run_name,
                 "status": row.get("status", "unknown"),
@@ -1800,7 +1779,7 @@ class StoreAdapter:
                 "total_folds": total_folds,
                 "datasets": enriched_datasets,
                 "error": row.get("error"),
-                "config": _sanitize_dict(run_cv_config),
+                "config": sanitize_dict(run_cv_config),
                 "model_classes": model_classes,
             }))
 
@@ -1934,17 +1913,17 @@ class StoreAdapter:
             "preprocessings": entry.get("preprocessings", ""),
             "best_params": best_params,
             "variant_params": variant_params,
-            "cv_val_score": _sanitize_float(entry.get("cv_val_score")),
-            "cv_test_score": _sanitize_float(entry.get("cv_test_score")),
-            "cv_train_score": _sanitize_float(entry.get("cv_train_score")),
+            "cv_val_score": sanitize_float(entry.get("cv_val_score")),
+            "cv_test_score": sanitize_float(entry.get("cv_test_score")),
+            "cv_train_score": sanitize_float(entry.get("cv_train_score")),
             "cv_fold_count": entry.get("cv_fold_count", 0),
             "cv_scores": cv_scores,
             "cv_source_chain_id": entry.get("cv_source_chain_id"),
-            "final_test_score": _sanitize_float(entry.get("final_test_score")),
-            "final_train_score": _sanitize_float(entry.get("final_train_score")),
+            "final_test_score": sanitize_float(entry.get("final_test_score")),
+            "final_train_score": sanitize_float(entry.get("final_train_score")),
             "final_scores": final_scores,
-            "final_agg_test_score": _sanitize_float(entry.get("final_agg_test_score")),
-            "final_agg_train_score": _sanitize_float(entry.get("final_agg_train_score")),
+            "final_agg_test_score": sanitize_float(entry.get("final_agg_test_score")),
+            "final_agg_train_score": sanitize_float(entry.get("final_agg_train_score")),
             "final_agg_scores": final_agg_scores,
             "metric": entry.get("metric"),
             "task_type": entry.get("task_type"),
@@ -1952,7 +1931,7 @@ class StoreAdapter:
             "is_refit_only": bool(entry.get("is_refit_only")),
         }
         _apply_synthetic_refit_fallback_inplace(payload)
-        return _sanitize_dict(payload)
+        return sanitize_dict(payload)
 
     def get_all_chains_for_dataset(self, run_id: str, dataset_name: str) -> dict[str, Any]:
         """Get ALL chain summaries for a run+dataset, sorted by primary metric.
@@ -2069,7 +2048,7 @@ class StoreAdapter:
         from nirs4all.pipeline.run import get_metric_info
 
         def _coerce_score(value: Any) -> float | None:
-            value = _sanitize_float(value)
+            value = sanitize_float(value)
             if value is None:
                 return None
             try:
@@ -2237,9 +2216,9 @@ class StoreAdapter:
                 }
                 if is_refit_only:
                     payload["is_refit_only"] = True
-                top_chains.append(_sanitize_dict(payload))
+                top_chains.append(sanitize_dict(payload))
 
-            datasets_result.append(_sanitize_dict({
+            datasets_result.append(sanitize_dict({
                 "dataset_name": ds_name,
                 "metric": metric,
                 "task_type": task_type,
