@@ -1484,6 +1484,12 @@ function convertModelStepToEditor(step: Nirs4allModelStep): EditorPipelineStep {
 
 function convertYProcessingToEditor(step: Nirs4allYProcessingStep): EditorPipelineStep {
   const yProc = step.y_processing;
+  // Symmetric with the split/preprocessing importers: capture params authored as
+  // sibling keys next to the `y_processing` wrapper.
+  const inlineParams = extractInlineComponentParams(
+    step as Record<string, unknown>,
+    ["y_processing"],
+  );
 
   if (typeof yProc === "string") {
     const { name, classPath } = resolveClassPath(yProc);
@@ -1491,7 +1497,7 @@ function convertYProcessingToEditor(step: Nirs4allYProcessingStep): EditorPipeli
       id: generateStepId(),
       type: "y_processing",
       name,
-      params: {},
+      params: inlineParams,
       classPath: classPath || yProc,
     };
   }
@@ -1501,7 +1507,10 @@ function convertYProcessingToEditor(step: Nirs4allYProcessingStep): EditorPipeli
     id: generateStepId(),
     type: "y_processing",
     name,
-    params: castParams(yProc.params),
+    params: {
+      ...castParams(yProc.params),
+      ...inlineParams,
+    },
     classPath: classPath || yProc.class,
   };
 }
@@ -1924,13 +1933,14 @@ function convertRangeGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipel
 }
 
 function convertGridGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipelineStep {
-  const branches: EditorPipelineStep[][] = [];
-  const branchMetadata: Array<{ name?: string; isCollapsed?: boolean }> = [];
-
-  for (const [paramName, values] of Object.entries(step._grid_ || {})) {
-    branches.push((values as Nirs4allStep[]).map(value => convertStepToEditor(value)));
-    branchMetadata.push({ name: paramName });
-  }
+  // nirs4all `_grid_` maps a param name to its list of scalar values; the editor
+  // models this as scalarGeneratorConfig.entries (the single source of truth read
+  // by the renderer and calculateGeneratorExpansionCount).
+  const entries = Object.entries(step._grid_ || {}).map(([key, values]) => ({
+    id: generateStepId(),
+    key,
+    values: (values ?? []) as unknown[],
+  }));
 
   return {
     id: generateStepId(),
@@ -1938,9 +1948,8 @@ function convertGridGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipeli
     subType: "generator",
     name: "Grid",
     params: getGeneratorParams(step),
-    branches,
-    branchMetadata,
     generatorKind: "grid",
+    scalarGeneratorConfig: { entries },
     generatorOptions: {
       count: step.count,
     },
@@ -1948,13 +1957,11 @@ function convertGridGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipeli
 }
 
 function convertZipGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipelineStep {
-  const branches: EditorPipelineStep[][] = [];
-  const branchMetadata: Array<{ name?: string; isCollapsed?: boolean }> = [];
-
-  for (const [paramName, values] of Object.entries(step._zip_ || {})) {
-    branches.push((values as Nirs4allStep[]).map(value => convertStepToEditor(value)));
-    branchMetadata.push({ name: paramName });
-  }
+  const entries = Object.entries(step._zip_ || {}).map(([key, values]) => ({
+    id: generateStepId(),
+    key,
+    values: (values ?? []) as unknown[],
+  }));
 
   return {
     id: generateStepId(),
@@ -1962,9 +1969,8 @@ function convertZipGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipelin
     subType: "generator",
     name: "Zip",
     params: getGeneratorParams(step),
-    branches,
-    branchMetadata,
     generatorKind: "zip",
+    scalarGeneratorConfig: { entries },
     generatorOptions: {
       count: step.count,
     },
@@ -1991,16 +1997,23 @@ function convertChainGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipel
 }
 
 function convertSampleGeneratorToEditor(step: Nirs4allGeneratorStep): EditorPipelineStep {
+  // The `_sample_` distribution config is the source of truth the renderer reads
+  // from scalarGeneratorConfig.sample. nirs4all spells the choice list `values`;
+  // the editor spells it `choices`.
+  const sample = castParams(step._sample_);
+  if ("values" in sample) {
+    sample.choices = sample.values;
+    delete sample.values;
+  }
+
   return {
     id: generateStepId(),
     type: "flow",
     subType: "generator",
     name: "Sample",
-    params: {
-      ...castParams(step._sample_),
-      ...getGeneratorParams(step),
-    },
+    params: getGeneratorParams(step),
     generatorKind: "sample",
+    scalarGeneratorConfig: { sample },
     generatorOptions: {
       count: step.count,
     },
@@ -2278,10 +2291,15 @@ function convertEditorMergeToNirs4all(step: EditorPipelineStep): Nirs4allStep {
     return { merge: params.merge_type as string };
   }
 
-  // Complex merge with predictions selection
-  return {
-    merge: params as Nirs4allMergeStep["merge"],
-  };
+  // Complex merge with predictions selection — emit only canonical merge keys so
+  // editor-internal keys (e.g. merge_type or UI-only fields) never leak into the payload.
+  const mergeConfig: Record<string, unknown> = {};
+  for (const key of ["predictions", "features", "output_as", "on_missing"] as const) {
+    if (params[key] !== undefined) {
+      mergeConfig[key] = params[key];
+    }
+  }
+  return { merge: mergeConfig as Nirs4allMergeStep["merge"] };
 }
 
 function convertEditorSampleAugmentationToNirs4all(step: EditorPipelineStep): Nirs4allStep {
@@ -2678,10 +2696,17 @@ function convertEditorGeneratorToNirs4all(step: EditorPipelineStep): Nirs4allSte
   // _grid_
   if (step.generatorKind === "grid") {
     const grid: Record<string, unknown[]> = {};
-    branches.forEach((branch, idx) => {
-      const paramName = step.branchMetadata?.[idx]?.name || `param_${idx}`;
-      grid[paramName] = branch.map(s => convertEditorStepToNirs4all(s));
-    });
+    const entries = step.scalarGeneratorConfig?.entries;
+    if (entries && entries.length > 0) {
+      entries.forEach((entry, idx) => {
+        grid[entry.key || `param_${idx}`] = entry.values ?? [];
+      });
+    } else {
+      branches.forEach((branch, idx) => {
+        const paramName = step.branchMetadata?.[idx]?.name || `param_${idx}`;
+        grid[paramName] = branch.map(s => convertEditorStepToNirs4all(s));
+      });
+    }
     const result: Record<string, unknown> = { _grid_: grid };
     addModifiers(result);
     return result as unknown as Nirs4allStep;
@@ -2690,11 +2715,31 @@ function convertEditorGeneratorToNirs4all(step: EditorPipelineStep): Nirs4allSte
   // _zip_
   if (step.generatorKind === "zip") {
     const zipData: Record<string, unknown[]> = {};
-    branches.forEach((branch, idx) => {
-      const paramName = step.branchMetadata?.[idx]?.name || `param_${idx}`;
-      zipData[paramName] = branch.map(s => convertEditorStepToNirs4all(s));
-    });
+    const entries = step.scalarGeneratorConfig?.entries;
+    if (entries && entries.length > 0) {
+      entries.forEach((entry, idx) => {
+        zipData[entry.key || `param_${idx}`] = entry.values ?? [];
+      });
+    } else {
+      branches.forEach((branch, idx) => {
+        const paramName = step.branchMetadata?.[idx]?.name || `param_${idx}`;
+        zipData[paramName] = branch.map(s => convertEditorStepToNirs4all(s));
+      });
+    }
     const result: Record<string, unknown> = { _zip_: zipData };
+    addModifiers(result);
+    return result as unknown as Nirs4allStep;
+  }
+
+  // _sample_
+  if (step.generatorKind === "sample") {
+    const sample: Record<string, unknown> = { ...(step.scalarGeneratorConfig?.sample ?? {}) };
+    // The editor stores the choice list under `choices`; nirs4all expects `values`.
+    if ("choices" in sample) {
+      sample.values = sample.choices;
+      delete sample.choices;
+    }
+    const result: Record<string, unknown> = { _sample_: sample };
     addModifiers(result);
     return result as unknown as Nirs4allStep;
   }

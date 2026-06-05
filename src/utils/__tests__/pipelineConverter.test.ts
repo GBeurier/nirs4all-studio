@@ -999,4 +999,177 @@ describe("pipelineConverter", () => {
       ]);
     });
   });
+
+  describe("scalar generator round-trip (PCV-03)", () => {
+    it("round-trips a _grid_ scalar generator through editor and back", () => {
+      const original = [
+        { _grid_: { n_components: [5, 10, 15], scale: [true, false] } },
+      ] as Nirs4allStep[];
+
+      const editorSteps = importFromNirs4all({ pipeline: original });
+      const gridStep = editorSteps[0];
+
+      // Import must populate scalarGeneratorConfig.entries (the renderer's source of
+      // truth), not branches (which the renderer ignores for grid/zip).
+      expect(gridStep.generatorKind).toBe("grid");
+      expect(gridStep.scalarGeneratorConfig?.entries).toHaveLength(2);
+      expect(gridStep.scalarGeneratorConfig?.entries?.[0]).toMatchObject({
+        key: "n_components",
+        values: [5, 10, 15],
+      });
+
+      const exported = exportToNirs4all(editorSteps) as Nirs4allStep[];
+      expect(exported[0]).toEqual({
+        _grid_: { n_components: [5, 10, 15], scale: [true, false] },
+      });
+    });
+
+    it("round-trips a _zip_ scalar generator", () => {
+      const original = [{ _zip_: { a: [1, 2], b: ["x", "y"] } }] as Nirs4allStep[];
+
+      const editorSteps = importFromNirs4all({ pipeline: original });
+      expect(editorSteps[0].scalarGeneratorConfig?.entries).toHaveLength(2);
+
+      const exported = exportToNirs4all(editorSteps) as Nirs4allStep[];
+      expect(exported[0]).toEqual({ _zip_: { a: [1, 2], b: ["x", "y"] } });
+    });
+
+    it("round-trips a numeric _sample_ generator", () => {
+      const original = [
+        { _sample_: { distribution: "uniform", from: 0, to: 1, num: 10 } },
+      ] as Nirs4allStep[];
+
+      const editorSteps = importFromNirs4all({ pipeline: original });
+      expect(editorSteps[0].generatorKind).toBe("sample");
+      expect(editorSteps[0].scalarGeneratorConfig?.sample).toMatchObject({
+        distribution: "uniform",
+        num: 10,
+      });
+
+      const exported = exportToNirs4all(editorSteps) as Nirs4allStep[];
+      expect(exported[0]).toEqual({
+        _sample_: { distribution: "uniform", from: 0, to: 1, num: 10 },
+      });
+    });
+
+    it("maps the choice distribution between nirs4all `values` and editor `choices`", () => {
+      const original = [
+        { _sample_: { distribution: "choice", values: ["snv", "msc"], num: 5 } },
+      ] as Nirs4allStep[];
+
+      const editorSteps = importFromNirs4all({ pipeline: original });
+      // Editor stores the choice list under `choices` (what the renderer reads).
+      expect(editorSteps[0].scalarGeneratorConfig?.sample).toMatchObject({
+        distribution: "choice",
+        choices: ["snv", "msc"],
+        num: 5,
+      });
+      expect(editorSteps[0].scalarGeneratorConfig?.sample).not.toHaveProperty("values");
+
+      const exported = exportToNirs4all(editorSteps) as Nirs4allStep[];
+      // Export restores nirs4all's `values` key.
+      expect(exported[0]).toEqual({
+        _sample_: { distribution: "choice", values: ["snv", "msc"], num: 5 },
+      });
+    });
+
+    it("exports a UI-built scalar grid from scalarGeneratorConfig (not as empty _grid_)", () => {
+      const step: EditorPipelineStep = {
+        id: "g1",
+        type: "flow",
+        subType: "generator",
+        name: "Grid",
+        params: {},
+        generatorKind: "grid",
+        scalarGeneratorConfig: {
+          entries: [
+            { id: "e1", key: "n_components", values: [3, 6] },
+            { id: "e2", key: "alpha", values: [0.1, 0.5] },
+          ],
+        },
+      };
+
+      const exported = exportToNirs4all([step]) as Nirs4allStep[];
+      expect(exported[0]).toEqual({ _grid_: { n_components: [3, 6], alpha: [0.1, 0.5] } });
+    });
+
+    it("exports a UI-built sample generator as _sample_ (not as {_or_: []})", () => {
+      const step: EditorPipelineStep = {
+        id: "s1",
+        type: "flow",
+        subType: "generator",
+        name: "Sample",
+        params: {},
+        generatorKind: "sample",
+        scalarGeneratorConfig: {
+          sample: { distribution: "log_uniform", from: 0.001, to: 1, num: 8 },
+        },
+      };
+
+      const exported = exportToNirs4all([step]) as Nirs4allStep[];
+      expect(exported[0]).toEqual({
+        _sample_: { distribution: "log_uniform", from: 0.001, to: 1, num: 8 },
+      });
+    });
+  });
+
+  describe("merge export hygiene (PCV-04)", () => {
+    it("does not leak editor-internal merge_type / UI keys into the canonical payload", () => {
+      const step: EditorPipelineStep = {
+        id: "m1",
+        type: "flow",
+        subType: "merge",
+        name: "Merge",
+        params: { merge_type: "predictions", predictions: ["model_a"], _uiOnly: true },
+      };
+
+      const exported = exportToNirs4all([step]) as Nirs4allStep[];
+      const merge = (exported[0] as { merge: Record<string, unknown> }).merge;
+      expect(merge).toEqual({ predictions: ["model_a"] });
+      expect(merge).not.toHaveProperty("merge_type");
+      expect(merge).not.toHaveProperty("_uiOnly");
+    });
+
+    it("keeps emitting a simple string merge for merge_type-only steps", () => {
+      const step: EditorPipelineStep = {
+        id: "m2",
+        type: "flow",
+        subType: "merge",
+        name: "Merge",
+        params: { merge_type: "concat" },
+      };
+
+      const exported = exportToNirs4all([step]) as Nirs4allStep[];
+      expect((exported[0] as { merge: unknown }).merge).toBe("concat");
+    });
+  });
+
+  describe("y_processing inline params import (PCV-05)", () => {
+    it("captures params authored as siblings of the y_processing wrapper (string form)", () => {
+      const steps = importFromNirs4all({
+        pipeline: [
+          { y_processing: "sklearn.preprocessing._data.StandardScaler", with_mean: false },
+        ] as Nirs4allStep[],
+      });
+
+      expect(steps[0].type).toBe("y_processing");
+      expect(steps[0].params).toMatchObject({ with_mean: false });
+    });
+
+    it("merges inline sibling params with nested params (object form)", () => {
+      const steps = importFromNirs4all({
+        pipeline: [
+          {
+            y_processing: {
+              class: "sklearn.preprocessing._data.MinMaxScaler",
+              params: { feature_range: [0, 1] },
+            },
+            clip: true,
+          },
+        ] as Nirs4allStep[],
+      });
+
+      expect(steps[0].params).toMatchObject({ feature_range: [0, 1], clip: true });
+    });
+  });
 });
