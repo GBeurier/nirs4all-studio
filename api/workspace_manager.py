@@ -1130,8 +1130,6 @@ class WorkspaceManager:
         # Use the global app config manager
         self.app_config = app_config
 
-        # For backward compatibility, keep app_data_dir reference
-        self.app_data_dir = self.app_config.config_dir
 
         # Keep a process-local active workspace so requests/tests do not depend
         # entirely on the shared app_settings.json state.
@@ -1302,7 +1300,7 @@ class WorkspaceManager:
         return linked_ws
 
     def set_workspace(self, path: str) -> WorkspaceConfig:
-        """Legacy: Set current workspace - now links and activates the workspace.
+        """Set current workspace by path: links it if needed, then activates it.
 
         For backward compatibility, this method links the workspace if not
         already linked, then activates it.
@@ -1333,7 +1331,7 @@ class WorkspaceManager:
         return self._create_workspace_config_from_linked(linked_ws)
 
     def get_current_workspace(self) -> WorkspaceConfig | None:
-        """Legacy: Get current workspace config.
+        """Get the active workspace as a WorkspaceConfig.
 
         Returns a WorkspaceConfig for the active linked workspace.
         Datasets are now global (via app_config), not per-workspace.
@@ -1371,7 +1369,7 @@ class WorkspaceManager:
         )
 
     def reload_workspace(self) -> WorkspaceConfig | None:
-        """Legacy: Reload workspace config."""
+        """Reload the active workspace config."""
         return self.get_current_workspace()
 
     # ----------------------- Dataset Management (Now Global) -----------------------
@@ -1409,15 +1407,7 @@ class WorkspaceManager:
 
     def rename_group(self, group_id: str, new_name: str) -> bool:
         """Rename a dataset group."""
-        # Update via the full group structure
-        data = self.app_config._load_dataset_links()
-        groups = data.get("groups", [])
-        for g in groups:
-            if g.get("id") == group_id:
-                g["name"] = new_name
-                data["groups"] = groups
-                return self.app_config._save_dataset_links(data)
-        return False
+        return self.app_config.rename_dataset_group(group_id, new_name)
 
     def delete_group(self, group_id: str) -> bool:
         """Delete a dataset group."""
@@ -1466,7 +1456,7 @@ class WorkspaceManager:
     # ----------------------- Recent Workspaces (Legacy -> Linked) -----------------------
 
     def add_to_recent(self, workspace_path: str, name: str | None = None) -> None:
-        """Legacy: Add to recent workspaces - now links workspace instead."""
+        """Back the /workspace/recent REST contract: linking IS the recents list."""
         # For backward compatibility, link the workspace if not already linked
         workspace_path = str(Path(workspace_path).resolve())
         for ws in self.get_linked_workspaces():
@@ -1482,7 +1472,7 @@ class WorkspaceManager:
                 pass  # Truly cannot link
 
     def remove_from_recent(self, workspace_path: str) -> bool:
-        """Legacy: Remove from recent - unlinks the workspace."""
+        """Back the /workspace/recent REST contract: unlink the workspace."""
         workspace_path = str(Path(workspace_path).resolve())
         for ws in self.get_linked_workspaces():
             if ws.path == workspace_path:
@@ -1490,7 +1480,7 @@ class WorkspaceManager:
         return False
 
     def get_recent_workspaces(self, limit: int = 10) -> list[dict[str, Any]]:
-        """Legacy: Get recent workspaces - returns linked workspaces instead."""
+        """Back the /workspace/recent REST contract: list linked workspaces."""
         workspaces = []
         for ws in self.get_linked_workspaces()[:limit]:
             workspaces.append({

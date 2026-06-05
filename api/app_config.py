@@ -734,6 +734,25 @@ class AppConfigManager:
 
         return group
 
+    def rename_dataset_group(self, group_id: str, new_name: str) -> bool:
+        """Rename a dataset group.
+
+        Args:
+            group_id: ID of the group to rename
+            new_name: New group name
+
+        Returns:
+            True if the group was found and renamed
+        """
+        data = self._load_dataset_links()
+        groups = data.get("groups", [])
+        for group in groups:
+            if group.get("id") == group_id:
+                group["name"] = new_name
+                data["groups"] = groups
+                return self._save_dataset_links(data)
+        return False
+
     def delete_dataset_group(self, group_id: str) -> bool:
         """Delete a dataset group.
 

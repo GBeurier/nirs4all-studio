@@ -42,7 +42,6 @@ def client(tmp_path):
         app_config.__init__()
         from api.workspace_manager import workspace_manager
         workspace_manager.app_config = app_config
-        workspace_manager.app_data_dir = app_config.config_dir
         with TestClient(app) as c:
             yield c
     finally:
