@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from .workspace_manager import workspace_manager
 from .shared.dependencies import require_workspace
+from .shared.na_policy import normalize_na_policy_in_config
 from .shared.paths import is_within_directory
 
 # Add nirs4all to path if needed
@@ -692,6 +693,7 @@ async def preview_dataset(request: PreviewDataRequest):
         config = _build_nirs4all_config(request.files, request.parsing, base_path)
 
         try:
+            normalize_na_policy_in_config(config)
             dataset_configs = DatasetConfigs(config)
             datasets = dataset_configs.get_datasets()
 

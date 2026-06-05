@@ -30,6 +30,7 @@ from .app_config import app_config
 from .telemetry import apply_consent_from_app_settings
 from .shared.dependencies import require_workspace
 from .shared.json_sanitize import sanitize_float, sanitize_json
+from .shared.na_policy import normalize_na_policy_in_config
 from .shared.paths import is_within_directory
 
 
@@ -228,6 +229,7 @@ async def link_dataset(request: LinkDatasetRequest):
             if "train_x" in nirs4all_config:
                 from nirs4all.data import DatasetConfigs
 
+                normalize_na_policy_in_config(nirs4all_config)
                 dataset_configs = DatasetConfigs(nirs4all_config)
                 datasets = dataset_configs.get_datasets()
 

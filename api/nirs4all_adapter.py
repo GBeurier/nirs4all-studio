@@ -18,6 +18,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from fastapi import HTTPException
 
+from .shared.na_policy import normalize_na_policy, normalize_na_policy_in_config
 from .workspace_manager import workspace_manager
 
 # Try direct import
@@ -30,25 +31,6 @@ except ImportError as exc:
     DatasetConfigs = None
     NIRS4ALL_AVAILABLE = False
     _NIRS4ALL_IMPORT_ERROR = exc
-
-
-# nirs4all's na_policy vocabulary is {auto, abort, remove_sample, remove_feature,
-# replace, ignore} (case-sensitive). Older webapp settings stored "drop"/"keep"
-# (sometimes capitalized), which nirs4all rejects with "Invalid na_policy". Map
-# those legacy values — and any casing — to the library vocabulary at this
-# boundary so already-saved workspaces/datasets keep working.
-_LEGACY_NA_POLICY_ALIASES = {
-    "drop": "remove_sample",
-    "keep": "ignore",
-}
-
-
-def _normalize_na_policy(na_policy: Any) -> Any:
-    """Translate legacy/cased na_policy values to nirs4all's vocabulary."""
-    if not isinstance(na_policy, str):
-        return na_policy
-    normalized = na_policy.strip().lower()
-    return _LEGACY_NA_POLICY_ALIASES.get(normalized, normalized)
 
 
 PREPROCESSING_ALIASES = {
@@ -231,7 +213,7 @@ def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
             x_params[key] = value
 
     # Normalize na_policy to nirs4all's vocabulary (legacy "drop"/"keep" + casing).
-    na_policy = _normalize_na_policy(config.get("na_policy") or stored_global_params.get("na_policy"))
+    na_policy = normalize_na_policy(config.get("na_policy") or stored_global_params.get("na_policy"))
     if na_policy:
         global_params["na_policy"] = na_policy
         na_fill_config = config.get("na_fill_config")
@@ -255,6 +237,9 @@ def build_dataset_config(dataset_id: str) -> Dict[str, Any]:
 
     # Clean up None values
     nirs4all_config = {k: v for k, v in nirs4all_config.items() if v is not None}
+
+    # Normalize any na_policy carried by per-file *_params overrides too.
+    normalize_na_policy_in_config(nirs4all_config)
 
     return nirs4all_config
 

@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .workspace_manager import workspace_manager
+from .shared.na_policy import normalize_na_policy, normalize_na_policy_in_config
 from .shared.pipeline_service import instantiate_operator
 
 # Add nirs4all to path if needed
@@ -92,6 +93,15 @@ def _build_nirs4all_config_from_stored(dataset_config: Dict[str, Any]) -> Dict[s
         "decimal_separator": decimal_separator,
         "has_header": has_header,
     }
+
+    # Apply the dataset's NA handling policy (normalized to nirs4all's vocabulary).
+    # Without this the run-creation path ignored na_policy and aborted on NaN.
+    na_policy = normalize_na_policy(stored_config.get("na_policy"))
+    if na_policy:
+        global_params["na_policy"] = na_policy
+        na_fill_config = stored_config.get("na_fill_config")
+        if na_fill_config:
+            global_params["na_fill_config"] = na_fill_config
 
     # X-specific params
     x_specific_params = {}
@@ -315,6 +325,7 @@ def _load_dataset(dataset_id: str) -> Optional[SpectroDataset]:
         # Load using DatasetConfigs (same as working preview endpoints)
         from nirs4all.data import DatasetConfigs
 
+        normalize_na_policy_in_config(config)
         dataset_configs = DatasetConfigs(config)
         datasets = dataset_configs.get_datasets()
 
