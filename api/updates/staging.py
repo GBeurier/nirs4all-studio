@@ -1,0 +1,120 @@
+"""
+Webapp staged-update helpers.
+
+Runtime-mode detection plus staging-directory layout/metadata helpers used by
+the download/apply lifecycle. Independent of the update-check polling.
+"""
+
+import json
+import os
+import platform
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from fastapi import HTTPException
+
+from ..update_downloader import resolve_extracted_content_dir
+
+STAGED_UPDATE_METADATA_FILE = ".nirs4all-staged-update.json"
+
+
+def _is_portable_runtime() -> bool:
+    """Return True when running from the portable desktop build."""
+    return bool(
+        os.environ.get("NIRS4ALL_PORTABLE_EXE")
+        or os.environ.get("NIRS4ALL_PORTABLE_ROOT")
+    )
+
+
+def _expected_update_mode() -> str:
+    """Return the updater mode that matches the current runtime layout."""
+    if _is_portable_runtime():
+        return "portable"
+    if platform.system().lower() == "darwin":
+        return "bundle"
+    return "directory"
+
+
+def _staging_entries(staging_dir: Path) -> list[Path]:
+    """List staged entries, excluding the internal metadata file."""
+    return [
+        entry
+        for entry in staging_dir.iterdir()
+        if entry.name != STAGED_UPDATE_METADATA_FILE
+    ]
+
+
+def _resolve_staged_content_dir(staging_dir: Path) -> Path | None:
+    """Resolve the actual staged content root from the staging wrapper dir."""
+    return resolve_extracted_content_dir(
+        staging_dir,
+        ignored_names={STAGED_UPDATE_METADATA_FILE},
+    )
+
+
+def _write_staged_update_metadata(staging_dir: Path, **metadata: Any) -> None:
+    """Persist lightweight metadata for a staged update."""
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        **metadata,
+        "staged_at": datetime.now().isoformat(),
+    }
+    with open(staging_dir / STAGED_UPDATE_METADATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _read_staged_update_metadata(staging_dir: Path) -> dict[str, Any] | None:
+    """Read staged update metadata if available."""
+    metadata_path = staging_dir / STAGED_UPDATE_METADATA_FILE
+    if not metadata_path.exists():
+        return None
+
+    try:
+        with open(metadata_path, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    return None
+
+
+def _validate_staged_update_layout(staging_dir: Path) -> tuple[Path, str]:
+    """Validate the staged update layout for the current runtime mode."""
+    from updater import get_executable_name
+
+    content_dir = _resolve_staged_content_dir(staging_dir)
+    if content_dir is None:
+        raise HTTPException(status_code=400, detail="No staged update found. Download an update first.")
+
+    update_mode = _expected_update_mode()
+    expected_executable = os.environ.get("NIRS4ALL_APP_EXE") or get_executable_name()
+
+    if update_mode == "portable":
+        executable_path = content_dir / expected_executable
+        if not executable_path.is_file():
+            raise HTTPException(
+                status_code=400,
+                detail="The staged update is not a portable executable for this installation.",
+            )
+        return content_dir, update_mode
+
+    if update_mode == "bundle":
+        if content_dir.suffix != ".app" or not (content_dir / "Contents" / "MacOS").exists():
+            raise HTTPException(
+                status_code=400,
+                detail="The staged update is not a valid macOS app bundle.",
+            )
+        return content_dir, update_mode
+
+    executable_path = content_dir / expected_executable
+    resources_dir = content_dir / "resources"
+    if not executable_path.is_file() or not resources_dir.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail="The staged update does not match the installed desktop app layout.",
+        )
+
+    return content_dir, update_mode

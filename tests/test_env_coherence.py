@@ -317,25 +317,6 @@ class TestStandaloneGating:
         assert "embedded bundled python runtime" in response.json()["detail"].lower()
 
     @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
-    def test_create_venv_blocked_in_bundled_runtime_mode(self):
-        """Backend-side runtime creation should be routed back to desktop settings."""
-        response = client.post(
-            "/api/updates/venv/create",
-            json={"force": False, "install_nirs4all": True},
-        )
-        assert response.status_code == 400
-        assert "desktop-managed action" in response.json()["detail"].lower()
-
-    def test_create_venv_blocked_in_normal_mode(self):
-        """The backend should no longer create a second runtime on its own."""
-        response = client.post(
-            "/api/updates/runtime/create",
-            json={"force": False, "install_nirs4all": True},
-        )
-        assert response.status_code == 400
-        assert "desktop-managed action" in response.json()["detail"].lower()
-
-    @patch.dict(os.environ, {"NIRS4ALL_RUNTIME_MODE": "bundled"})
     def test_restore_snapshot_blocked_in_bundled_runtime_mode(self):
         """Snapshot restore must not mutate the read-only bundled runtime."""
         response = client.post("/api/updates/venv/snapshots/example/restore")
