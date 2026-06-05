@@ -2,7 +2,7 @@
  * Transfer Analysis API client functions.
  */
 
-import { api } from './client';
+import { api } from './http';
 import type {
   TransferAnalysisRequest,
   TransferAnalysisResponse,
