@@ -728,7 +728,7 @@ def get_update_manager() -> UpdateManager:
     return _update_manager
 
 
-# For backward compatibility - will be lazily initialized on first access
+# Lazy proxy: defers heavy UpdateManager construction until first access
 class _LazyUpdateManager:
     """Proxy class for lazy access to update_manager."""
 

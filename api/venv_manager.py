@@ -603,7 +603,7 @@ def get_venv_manager() -> VenvManager:
     return _venv_manager
 
 
-# For backward compatibility - will be lazily initialized on first access
+# Lazy proxy: defers heavy VenvManager construction until first access
 class _LazyVenvManager:
     """Proxy class for lazy access to venv_manager."""
 

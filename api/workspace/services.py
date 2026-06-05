@@ -406,7 +406,7 @@ def _call_migrate_arrays_to_parquet(
     dry_run: bool,
     batch_size: int | None = None,
 ) -> dict[str, Any]:
-    """Call migration function with backward-compatible signature handling."""
+    """Call the library migration function, tolerant of nirs4all signature versions."""
     migrate_arrays_to_parquet = get_cached("migrate_arrays_to_parquet", optional=True)
     if not MIGRATION_AVAILABLE or migrate_arrays_to_parquet is None:
         raise HTTPException(status_code=501, detail="Migration API is not available in current nirs4all version")
