@@ -401,6 +401,48 @@ function BatchedLines({ lines, lineWidth, opacity }: BatchedLinesProps) {
 }
 
 /**
+ * A single highlighted (selected/pinned) line that owns a persistent position
+ * buffer attribute. The Float32Array is allocated once and rewritten in place
+ * when the line's geometry inputs change, avoiding a fresh allocation (and the
+ * resulting GC churn) on every selection/hover re-render.
+ */
+interface HighlightedLineProps {
+  line: LineData;
+  lineWidth: number;
+}
+
+function HighlightedLine({ line, lineWidth }: HighlightedLineProps) {
+  // Build the position buffer only when the line's geometry inputs change, not
+  // on every selection/hover re-render. z-order depends on isPinned; x/y depend
+  // on points + pointCount. Identical visual output, no per-render reallocation.
+  const positions = useMemo(() => {
+    const arr = new Float32Array(line.pointCount * 3);
+    const z = line.isPinned ? 0.02 : 0.01; // z-order
+    for (let i = 0; i < line.pointCount; i++) {
+      arr[i * 3] = line.points[i * 2];
+      arr[i * 3 + 1] = line.points[i * 2 + 1];
+      arr[i * 3 + 2] = z;
+    }
+    return arr;
+  }, [line.points, line.pointCount, line.isPinned]);
+
+  return (
+    <line>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          args={[positions, 3]}
+        />
+      </bufferGeometry>
+      <lineBasicMaterial
+        color={line.color}
+        linewidth={lineWidth}
+      />
+    </line>
+  );
+}
+
+/**
  * Highlighted lines (selected/pinned) rendered separately for clarity
  */
 interface HighlightedLinesProps {
@@ -413,29 +455,13 @@ function HighlightedLines({ lines, lineWidth }: HighlightedLinesProps) {
 
   return (
     <group>
-      {lines.map((line) => {
-        const positions = new Float32Array(line.pointCount * 3);
-        for (let i = 0; i < line.pointCount; i++) {
-          positions[i * 3] = line.points[i * 2];
-          positions[i * 3 + 1] = line.points[i * 2 + 1];
-          positions[i * 3 + 2] = line.isPinned ? 0.02 : 0.01; // z-order
-        }
-
-        return (
-          <line key={`${line.isOriginal ? 'orig' : 'proc'}-${line.index}`}>
-            <bufferGeometry>
-              <bufferAttribute
-                attach="attributes-position"
-                args={[positions, 3]}
-              />
-            </bufferGeometry>
-            <lineBasicMaterial
-              color={line.color}
-              linewidth={lineWidth}
-            />
-          </line>
-        );
-      })}
+      {lines.map((line) => (
+        <HighlightedLine
+          key={`${line.isOriginal ? 'orig' : 'proc'}-${line.index}`}
+          line={line}
+          lineWidth={lineWidth}
+        />
+      ))}
     </group>
   );
 }
@@ -451,20 +477,29 @@ interface HoveredLineProps {
 }
 
 function HoveredLine({ lines, hoveredIdx, lineWidth }: HoveredLineProps) {
-  if (hoveredIdx === null) return null;
+  // Use bright orange hover color for high visibility (constant — built once).
+  const hoverColor = useMemo(() => new THREE.Color(SELECTION_COLORS.hovered), []);
 
-  const hoveredLine = lines.find(l => l.index === hoveredIdx && !l.isOriginal);
-  if (!hoveredLine) return null;
+  const hoveredLine = useMemo(
+    () => (hoveredIdx === null ? null : lines.find(l => l.index === hoveredIdx && !l.isOriginal) ?? null),
+    [lines, hoveredIdx]
+  );
 
-  const positions = new Float32Array(hoveredLine.pointCount * 3);
-  for (let i = 0; i < hoveredLine.pointCount; i++) {
-    positions[i * 3] = hoveredLine.points[i * 2];
-    positions[i * 3 + 1] = hoveredLine.points[i * 2 + 1];
-    positions[i * 3 + 2] = 0.03; // z-order above pinned
-  }
+  // Build the position buffer only when the hovered line's geometry inputs change,
+  // not on every parent re-render. Rebuilt when the hovered line (points/pointCount)
+  // changes; identical visual output, just no per-render reallocation.
+  const positions = useMemo(() => {
+    if (!hoveredLine) return null;
+    const arr = new Float32Array(hoveredLine.pointCount * 3);
+    for (let i = 0; i < hoveredLine.pointCount; i++) {
+      arr[i * 3] = hoveredLine.points[i * 2];
+      arr[i * 3 + 1] = hoveredLine.points[i * 2 + 1];
+      arr[i * 3 + 2] = 0.03; // z-order above pinned
+    }
+    return arr;
+  }, [hoveredLine]);
 
-  // Use bright orange hover color for high visibility
-  const hoverColor = new THREE.Color(SELECTION_COLORS.hovered);
+  if (!positions) return null;
 
   return (
     <line>
@@ -1050,6 +1085,14 @@ interface SpectraInteractionControllerProps {
 }
 
 /**
+ * Maximum number of point checks (lines × points) the hover hit-test will run.
+ * Above this, hover hit-testing is short-circuited so dense spectra do not run
+ * millions of distance checks per pointer event. At normal sizes the cap is
+ * never reached, so hover behavior is unchanged.
+ */
+const HOVER_HITTEST_CHECK_CAP = 400_000;
+
+/**
  * Handles mouse hover and click detection for spectrum lines
  * Uses proximity-based detection in screen space
  */
@@ -1066,6 +1109,11 @@ function SpectraInteractionController({ lines, onHover, onClick }: SpectraIntera
   useEffect(() => {
     const domElement = gl.domElement;
 
+    // rAF coalescing state for hover hit-testing: at most one hit-test per frame,
+    // using the most recent pointer position seen since the last frame.
+    let rafId: number | null = null;
+    let pendingEvent: MouseEvent | null = null;
+
     // Camera margins (must match Canvas camera prop)
     const camLeft = -0.06;
     const camRight = 1.02;
@@ -1075,7 +1123,7 @@ function SpectraInteractionController({ lines, onHover, onClick }: SpectraIntera
     const camHeight = camTop - camBottom;
 
     // Find the closest spectrum line to the mouse position
-    const findClosestSpectrum = (mouseX: number, mouseY: number): number | null => {
+    const findClosestSpectrum = (mouseX: number, mouseY: number, respectCap = true): number | null => {
       const rect = domElement.getBoundingClientRect();
       // Convert mouse to normalized screen coordinates [0,1]
       const screenX = (mouseX - rect.left) / rect.width;
@@ -1090,6 +1138,23 @@ function SpectraInteractionController({ lines, onHover, onClick }: SpectraIntera
       let closestIndex: number | null = null;
       let closestDistance = Infinity;
       const threshold = 0.08; // 8% of data height for detection
+
+      // Short-circuit on very dense spectra ONLY for hover (respectCap): hover
+      // runs per pointer-move, so skip hit-testing once it would exceed the cap
+      // and avoid millions of distance checks per event. A single deliberate
+      // click (respectCap=false) always runs the full hit-test so selection
+      // still works on dense charts. At normal sizes the total stays well under
+      // the cap and hover behavior is unchanged.
+      if (respectCap) {
+        let totalChecks = 0;
+        for (const line of linesRef.current) {
+          if (line.isOriginal) continue;
+          totalChecks += line.pointCount;
+        }
+        if (totalChecks > HOVER_HITTEST_CHECK_CAP) {
+          return null;
+        }
+      }
 
       // Only check non-original lines (processed spectra)
       for (const line of linesRef.current) {
@@ -1117,7 +1182,12 @@ function SpectraInteractionController({ lines, onHover, onClick }: SpectraIntera
       return closestIndex;
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
+    // Run the actual hit-test for the most recent pointer position (one per frame).
+    const runHitTest = () => {
+      rafId = null;
+      const e = pendingEvent;
+      pendingEvent = null;
+      if (!e) return;
       const closest = findClosestSpectrum(e.clientX, e.clientY);
       if (closest !== hoveredRef.current) {
         hoveredRef.current = closest;
@@ -1126,17 +1196,33 @@ function SpectraInteractionController({ lines, onHover, onClick }: SpectraIntera
       }
     };
 
+    const handleMouseMove = (e: MouseEvent) => {
+      // Coalesce: keep only the latest event and hit-test at most once per frame.
+      pendingEvent = e;
+      if (rafId === null) {
+        rafId = requestAnimationFrame(runHitTest);
+      }
+    };
+
     const handleMouseClick = (e: MouseEvent) => {
       // Don't handle clicks during drag operations
       if (e.detail === 0) return; // Ignore synthetic clicks
 
-      const closest = findClosestSpectrum(e.clientX, e.clientY);
+      // Clicks are deliberate one-offs: run the full hit-test (no hover cap) so
+      // selection still works on very dense spectra.
+      const closest = findClosestSpectrum(e.clientX, e.clientY, false);
       if (closest !== null) {
         onClick(closest, e);
       }
     };
 
     const handleMouseLeave = () => {
+      // Drop any pending coalesced hit-test so it cannot re-set hover after leave.
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      pendingEvent = null;
       if (hoveredRef.current !== null) {
         hoveredRef.current = null;
         onHover(null);
@@ -1149,6 +1235,11 @@ function SpectraInteractionController({ lines, onHover, onClick }: SpectraIntera
     domElement.addEventListener('mouseleave', handleMouseLeave);
 
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      pendingEvent = null;
       domElement.removeEventListener('mousemove', handleMouseMove);
       domElement.removeEventListener('click', handleMouseClick);
       domElement.removeEventListener('mouseleave', handleMouseLeave);

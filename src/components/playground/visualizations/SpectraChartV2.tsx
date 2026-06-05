@@ -1213,7 +1213,7 @@ export function SpectraChartV2({
       items.push({ label: referenceLabel, color: CHART_THEME.referenceLineColor, dashed: true });
     }
     return items;
-  }, [config.aggregation.mode, config.viewMode, showProcessed, showOriginal, showGroupedAggregation, groupKeys, referenceDataset, referenceLabel]);
+  }, [config.aggregation.mode, config.viewMode, showProcessed, showOriginal, showGroupedAggregation, groupKeys, referenceDataset, referenceLabel, globalColorConfig?.categoricalPalette]);
 
   return (
     <div className="h-full flex flex-col relative" ref={chartRef}>

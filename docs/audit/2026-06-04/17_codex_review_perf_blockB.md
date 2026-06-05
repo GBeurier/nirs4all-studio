@@ -1,0 +1,4 @@
+**Finding**
+- [src/components/playground/visualizations/SpectraWebGL.tsx:1151](/home/delete/nirs4all/nirs4all-studio/src/components/playground/visualizations/SpectraWebGL.tsx:1151): the hit-test cap returns `null` from `findClosestSpectrum`, but that helper is also used by the click handler at [line 1207](/home/delete/nirs4all/nirs4all-studio/src/components/playground/visualizations/SpectraWebGL.tsx:1207). So above `HOVER_HITTEST_CHECK_CAP`, dense charts lose click selection too, not just hover. That is a behavior change beyond render perf.
+
+No missing deps found in the new/changed `useMemo` / `useCallback` sites. YHistogram selection/filter/mode/bin inputs are covered, `legendItems` now includes the palette dep, and the WebGL memoized buffers update on geometry/pin/hover-line changes. Mouseleave/unmount cancel pending rAF frames. `git diff --check` was clean.

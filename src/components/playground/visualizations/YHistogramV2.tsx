@@ -176,6 +176,26 @@ interface RechartsMouseEvent {
   activeTooltipIndex?: number;
 }
 
+// ============= Array min/max (loop-based) =============
+// Loop-based min/max to avoid `Math.min(...arr)` / `Math.max(...arr)`, which spread
+// every element onto the call stack and overflow/allocate on large arrays.
+
+function arrayMin(values: number[]): number {
+  let min = Infinity;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] < min) min = values[i];
+  }
+  return min;
+}
+
+function arrayMax(values: number[]): number {
+  let max = -Infinity;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] > max) max = values[i];
+  }
+  return max;
+}
+
 // ============= KDE Calculation =============
 
 /**
@@ -188,8 +208,8 @@ function computeKDE(
 ): { x: number; density: number }[] {
   if (values.length === 0) return [];
 
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const min = arrayMin(values);
+  const max = arrayMax(values);
   const range = max - min;
 
   if (range === 0) {
@@ -349,8 +369,8 @@ export function YHistogramV2({
     const displayFilter = colorContext?.displayFilteredIndices;
 
     const values = displayY;
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const min = arrayMin(values);
+    const max = arrayMax(values);
     const range = max - min;
     const binWidth = range / effectiveBinCount || 1;
 
@@ -536,8 +556,8 @@ export function YHistogramV2({
     if (!config.showKDE || !displayY || displayY.length === 0) return [];
     const kde = computeKDE(displayY);
     // Scale KDE to match histogram height
-    const maxCount = Math.max(...histogramData.map(d => d.count));
-    const maxDensity = Math.max(...kde.map(d => d.density));
+    const maxCount = arrayMax(histogramData.map(d => d.count));
+    const maxDensity = arrayMax(kde.map(d => d.density));
     return kde.map(d => ({
       x: d.x,
       density: (d.density / maxDensity) * maxCount,
@@ -829,8 +849,8 @@ export function YHistogramV2({
                 return acc + (typeof val === 'number' ? val : 0);
               }, 0);
               const avgValue = sum / entry.samples.length;
-              const min = Math.min(...numericValues);
-              const max = Math.max(...numericValues);
+              const min = arrayMin(numericValues);
+              const max = arrayMax(numericValues);
               const t = normalizeValue(avgValue, min, max);
               return getContinuousColor(t, globalColorConfig?.continuousPalette ?? 'blue_red');
             }
@@ -878,6 +898,159 @@ export function YHistogramV2({
 
   // Check if we should show fold-based display modes
   const hasFolds = uniqueFolds.length > 0;
+
+  // Calculate Y values based on yAxisType.
+  // Reads config.yAxisType, stats (n) and histogramData (first bin width for density),
+  // so all three are listed as deps to keep memoized transforms below in sync.
+  const getYValue = useCallback((count: number) => {
+    switch (config.yAxisType) {
+      case 'frequency':
+        return (count / (stats?.n ?? 1)) * 100;
+      case 'density': {
+        const binWidth = histogramData.length > 0
+          ? histogramData[0].binEnd - histogramData[0].binStart
+          : 1;
+        return count / ((stats?.n ?? 1) * binWidth);
+      }
+      default:
+        return count;
+    }
+  }, [config.yAxisType, stats, histogramData]);
+
+  // ============= Memoized per-mode chart datasets =============
+  // These transforms were previously rebuilt inside the render helpers on every
+  // render (selection/hover/resize). Each is now memoized and computed ONLY for the
+  // active histogram mode, keyed on every input that affects its output.
+
+  // Partition (train/test) stacked dataset — active only in partition mode.
+  // Inputs: histogramData (bins+samples), train/test index sets, getYValue.
+  const partitionStackedData = useMemo(() => {
+    if (!shouldStackByPartition) return [];
+    return histogramData.map(bin => {
+      const trainSamples = bin.samples.filter(s => colorContext?.trainIndices?.has(s));
+      const testSamples = bin.samples.filter(s => colorContext?.testIndices?.has(s));
+      return {
+        binCenter: bin.binCenter,
+        binStart: bin.binStart,
+        binEnd: bin.binEnd,
+        samples: bin.samples,
+        label: bin.label,
+        train: getYValue(trainSamples.length),
+        test: getYValue(testSamples.length),
+        trainCount: trainSamples.length,
+        testCount: testSamples.length,
+        trainSamples,
+        testSamples,
+      };
+    });
+  }, [shouldStackByPartition, histogramData, colorContext?.trainIndices, colorContext?.testIndices, getYValue]);
+
+  // Fold stacked dataset — active only in fold mode with folds present.
+  // Inputs: histogramData (bins+foldCounts/foldSamples), uniqueFolds, getYValue.
+  const foldStackedData = useMemo(() => {
+    if (!shouldStackByFold || uniqueFolds.length === 0) return [];
+    return histogramData.map(bin => {
+      const row: Record<string, unknown> = {
+        binCenter: bin.binCenter,
+        binStart: bin.binStart,
+        binEnd: bin.binEnd,
+        samples: bin.samples,
+        label: bin.label,
+      };
+      uniqueFolds.forEach(foldIdx => {
+        row[`fold${foldIdx}`] = getYValue(bin.foldCounts?.[foldIdx] || 0);
+        row[`fold${foldIdx}Samples`] = bin.foldSamples?.[foldIdx] || [];
+      });
+      return row;
+    });
+  }, [shouldStackByFold, histogramData, uniqueFolds, getYValue]);
+
+  // Metadata-category stacked dataset — active only in categorical metadata mode.
+  // Inputs: histogramData, metadataCategories, the metadata value array for the key, getYValue.
+  const metadataStackedData = useMemo(() => {
+    const metadataKey = globalColorConfig?.metadataKey;
+    const metadataValues = metadataKey ? metadata?.[metadataKey] : undefined;
+    if (!shouldStackByMetadata || metadataCategories.length === 0 || !metadataValues) return [];
+    return histogramData.map(bin => {
+      const row: Record<string, unknown> = {
+        binCenter: bin.binCenter,
+        binStart: bin.binStart,
+        binEnd: bin.binEnd,
+        samples: bin.samples,
+        label: bin.label,
+      };
+      metadataCategories.forEach((category, catIdx) => {
+        const categorySamples = bin.samples.filter(sampleIdx => String(metadataValues[sampleIdx]) === category);
+        row[`cat${catIdx}`] = getYValue(categorySamples.length);
+        row[`cat${catIdx}Count`] = categorySamples.length;
+        row[`cat${catIdx}Label`] = category;
+        row[`cat${catIdx}Samples`] = categorySamples;
+      });
+      return row;
+    });
+  }, [shouldStackByMetadata, histogramData, metadataCategories, globalColorConfig?.metadataKey, metadata, getYValue]);
+
+  // Selection stacked dataset — active only in selection mode.
+  // Inputs: histogramData, selectedSamples (membership decides the split), getYValue.
+  const selectionStackedData = useMemo(() => {
+    if (!shouldStackBySelection) return [];
+    return histogramData.map(bin => {
+      const selectedSamplesInBin = bin.samples.filter(s => selectedSamples.has(s));
+      const unselectedSamplesInBin = bin.samples.filter(s => !selectedSamples.has(s));
+      return {
+        binCenter: bin.binCenter,
+        binStart: bin.binStart,
+        binEnd: bin.binEnd,
+        samples: bin.samples,
+        label: bin.label,
+        selected: getYValue(selectedSamplesInBin.length),
+        unselected: getYValue(unselectedSamplesInBin.length),
+        selectedCount: selectedSamplesInBin.length,
+        unselectedCount: unselectedSamplesInBin.length,
+        selectedSamples: selectedSamplesInBin,
+        unselectedSamples: unselectedSamplesInBin,
+      };
+    });
+  }, [shouldStackBySelection, histogramData, selectedSamples, getYValue]);
+
+  // Simple chart dataset (bars + nearest-KDE merge) — used by the default/fallback renderer.
+  // Inputs: histogramData (counts), kdeData (overlay points), getYValue (scales both bar and KDE).
+  const simpleMergedData = useMemo(() => {
+    const chartData = histogramData.map(bin => ({
+      ...bin,
+      displayCount: getYValue(bin.count),
+    }));
+    // Merge KDE data - find nearest KDE point for each bin center.
+    return chartData.map((bin) => {
+      let nearestKde: { x: number; density: number } | undefined;
+      let minDist = Infinity;
+      for (const kp of kdeData) {
+        const dist = Math.abs(kp.x - bin.binCenter);
+        if (dist < minDist) {
+          minDist = dist;
+          nearestKde = kp;
+        }
+      }
+      const kdeValue = nearestKde ? getYValue(nearestKde.density) : undefined;
+      return {
+        ...bin,
+        kde: kdeValue,
+      };
+    });
+  }, [histogramData, kdeData, getYValue]);
+
+  // Classification chart dataset + total — active only in classification mode.
+  // Inputs: classBarData (counts/samples), config.yAxisType (frequency vs count).
+  const { classChartData, classTotalCount } = useMemo(() => {
+    const totalCount = classBarData.reduce((sum, d) => sum + d.count, 0);
+    const data = classBarData.map(bar => ({
+      ...bar,
+      displayCount: config.yAxisType === 'frequency'
+        ? (bar.count / totalCount) * 100
+        : bar.count,
+    }));
+    return { classChartData: data, classTotalCount: totalCount };
+  }, [classBarData, config.yAxisType]);
 
   // Empty state
   if (!displayY || displayY.length === 0 || !stats) {
@@ -959,44 +1132,11 @@ export function YHistogramV2({
     </DropdownMenu>
   );
 
-  // Calculate Y values based on yAxisType
-  const getYValue = (count: number) => {
-    switch (config.yAxisType) {
-      case 'frequency':
-        return (count / stats.n) * 100;
-      case 'density': {
-        const binWidth = histogramData.length > 0
-          ? histogramData[0].binEnd - histogramData[0].binStart
-          : 1;
-        return count / (stats.n * binWidth);
-      }
-      default:
-        return count;
-    }
-  };
-
   const yAxisLabel = config.yAxisType === 'frequency' ? '%' : config.yAxisType === 'density' ? 'Density' : 'Count';
 
   // Render stacked bar chart by partition (train/test)
   const renderStackedByPartition = () => {
-    // Transform data for partition stacking
-    const stackedData = histogramData.map(bin => {
-      const trainSamples = bin.samples.filter(s => colorContext?.trainIndices?.has(s));
-      const testSamples = bin.samples.filter(s => colorContext?.testIndices?.has(s));
-      return {
-        binCenter: bin.binCenter,
-        binStart: bin.binStart,
-        binEnd: bin.binEnd,
-        samples: bin.samples,
-        label: bin.label,
-        train: getYValue(trainSamples.length),
-        test: getYValue(testSamples.length),
-        trainCount: trainSamples.length,
-        testCount: testSamples.length,
-        trainSamples,
-        testSamples,
-      };
-    });
+    const stackedData = partitionStackedData;
 
     // Calculate range selection bounds for ReferenceArea
     const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
@@ -1211,21 +1351,7 @@ export function YHistogramV2({
   const renderStackedByFold = () => {
     if (uniqueFolds.length === 0) return renderSimpleChart();
 
-    // Transform data for fold stacking
-    const stackedData = histogramData.map(bin => {
-      const row: Record<string, unknown> = {
-        binCenter: bin.binCenter,
-        binStart: bin.binStart,
-        binEnd: bin.binEnd,
-        samples: bin.samples,
-        label: bin.label,
-      };
-      uniqueFolds.forEach(foldIdx => {
-        row[`fold${foldIdx}`] = getYValue(bin.foldCounts?.[foldIdx] || 0);
-        row[`fold${foldIdx}Samples`] = bin.foldSamples?.[foldIdx] || [];
-      });
-      return row;
-    });
+    const stackedData = foldStackedData;
 
     // Calculate range selection bounds for ReferenceArea
     const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
@@ -1439,27 +1565,7 @@ export function YHistogramV2({
     const metadataKey = globalColorConfig?.metadataKey;
     if (!metadataKey || !metadata?.[metadataKey]) return renderSimpleChart();
 
-    const metadataValues = metadata[metadataKey];
-
-    // Transform data for metadata category stacking
-    const stackedData = histogramData.map(bin => {
-      const row: Record<string, unknown> = {
-        binCenter: bin.binCenter,
-        binStart: bin.binStart,
-        binEnd: bin.binEnd,
-        samples: bin.samples,
-        label: bin.label,
-      };
-      // Count samples per category in this bin and store sample indices
-      metadataCategories.forEach((category, catIdx) => {
-        const categorySamples = bin.samples.filter(sampleIdx => String(metadataValues[sampleIdx]) === category);
-        row[`cat${catIdx}`] = getYValue(categorySamples.length);
-        row[`cat${catIdx}Count`] = categorySamples.length;
-        row[`cat${catIdx}Label`] = category;
-        row[`cat${catIdx}Samples`] = categorySamples;
-      });
-      return row;
-    });
+    const stackedData = metadataStackedData;
 
     // Calculate range selection bounds for ReferenceArea
     const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
@@ -1667,24 +1773,7 @@ export function YHistogramV2({
 
   // Render stacked bar chart by selection (selected vs unselected)
   const renderStackedBySelection = () => {
-    // Transform data for selection stacking
-    const stackedData = histogramData.map(bin => {
-      const selectedSamplesInBin = bin.samples.filter(s => selectedSamples.has(s));
-      const unselectedSamplesInBin = bin.samples.filter(s => !selectedSamples.has(s));
-      return {
-        binCenter: bin.binCenter,
-        binStart: bin.binStart,
-        binEnd: bin.binEnd,
-        samples: bin.samples,
-        label: bin.label,
-        selected: getYValue(selectedSamplesInBin.length),
-        unselected: getYValue(unselectedSamplesInBin.length),
-        selectedCount: selectedSamplesInBin.length,
-        unselectedCount: unselectedSamplesInBin.length,
-        selectedSamples: selectedSamplesInBin,
-        unselectedSamples: unselectedSamplesInBin,
-      };
-    });
+    const stackedData = selectionStackedData;
 
     // Calculate range selection bounds for ReferenceArea
     const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
@@ -1898,31 +1987,7 @@ export function YHistogramV2({
 
   // Render simple bar chart (with KDE and reference lines)
   const renderSimpleChart = () => {
-    const chartData = histogramData.map(bin => ({
-      ...bin,
-      displayCount: getYValue(bin.count),
-    }));
-
-    // Merge KDE data - find nearest KDE point for each bin center
-    // kdeData is already scaled to match histogram count scale
-    const mergedData = chartData.map((bin) => {
-      // Find nearest KDE point to bin center
-      let nearestKde: { x: number; density: number } | undefined;
-      let minDist = Infinity;
-      for (const kp of kdeData) {
-        const dist = Math.abs(kp.x - bin.binCenter);
-        if (dist < minDist) {
-          minDist = dist;
-          nearestKde = kp;
-        }
-      }
-      // Convert KDE density to the same scale as displayCount
-      const kdeValue = nearestKde ? getYValue(nearestKde.density) : undefined;
-      return {
-        ...bin,
-        kde: kdeValue,
-      };
-    });
+    const mergedData = simpleMergedData;
 
     // Calculate range selection bounds for ReferenceArea
     const rangeSelectionBounds = rangeSelection.start !== null && rangeSelection.end !== null
@@ -2103,7 +2168,8 @@ export function YHistogramV2({
       return renderSimpleChart();
     }
 
-    const totalCount = classBarData.reduce((sum, d) => sum + d.count, 0);
+    const totalCount = classTotalCount;
+    const chartData = classChartData;
 
     // Get class bar color - now just returns the base color (selection handled via stroke)
     const getClassBarColor = (entry: ClassBarData, _index: number) => {
@@ -2113,13 +2179,6 @@ export function YHistogramV2({
       }
       return getCategoricalColor(entry.classIndex, 'default');
     };
-
-    const chartData = classBarData.map(bar => ({
-      ...bar,
-      displayCount: config.yAxisType === 'frequency'
-        ? (bar.count / totalCount) * 100
-        : bar.count,
-    }));
 
     // Handle click for classification chart - uses unified bar selection
     const handleClassChartMouseUp = (state: RechartsMouseEvent) => {
