@@ -433,7 +433,7 @@ export default function Playground() {
   return (
     <MlLoadingOverlay>
     <PipelineEditorPreferencesProvider>
-      <NodeRegistryProvider useJsonRegistry>
+      <NodeRegistryProvider>
         <PlaygroundViewProvider>
           <SelectionProvider>
             <FilterProvider>

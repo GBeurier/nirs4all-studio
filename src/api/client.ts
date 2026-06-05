@@ -469,11 +469,6 @@ async function requestBinary(
   return response.blob();
 }
 
-// Health check
-export async function checkHealth(): Promise<{ status: string }> {
-  return api.get("/health");
-}
-
 // Workspace API
 export interface WorkspaceResponse {
   workspace: {
@@ -599,7 +594,6 @@ import type { ProjectsResponse } from "@/types/projects";
 // Dataset API - Extended
 import type {
   Dataset,
-  DatasetGroup,
   DatasetConfig,
   DatasetStats,
   DatasetListResponse,
@@ -614,8 +608,6 @@ import type {
   PreviewDataRequest,
   PreviewDataResponse,
   VerifyDatasetResponse,
-  RefreshDatasetRequest,
-  RefreshDatasetResponse,
   RelinkDatasetRequest,
   RelinkDatasetResponse,
   ScanFolderResponse,
@@ -658,10 +650,6 @@ export async function exportDataset(
   config: ExportConfig
 ): Promise<{ success: boolean; export_path: string }> {
   return api.post(`/datasets/${datasetId}/export`, config);
-}
-
-export async function listGroups(): Promise<{ groups: DatasetGroup[] }> {
-  return api.get("/workspace/groups");
 }
 
 /**
@@ -852,16 +840,6 @@ export async function getDatasetVersionStatus(
   last_verified: string | null;
 }> {
   return api.get(`/datasets/${datasetId}/version-status`);
-}
-
-/**
- * Refresh dataset by accepting changes and updating stored hash
- */
-export async function refreshDatasetVersion(
-  datasetId: string,
-  request: RefreshDatasetRequest = { accept_changes: true }
-): Promise<RefreshDatasetResponse> {
-  return api.post(`/datasets/${datasetId}/refresh`, request);
 }
 
 /**
@@ -2242,7 +2220,6 @@ export interface RuntimeStatus {
   nirs4all_version: string | null;
 }
 
-export type VenvInfo = RuntimeInfo;
 export type VenvStatus = RuntimeStatus;
 
 export interface VersionInfo {
@@ -2327,35 +2304,6 @@ export async function installNirs4all(options?: {
   output: string[];
 }> {
   return api.post("/updates/nirs4all/install", options || {});
-}
-
-/**
- * Get webapp download information
- */
-export async function getWebappDownloadInfo(): Promise<{
-  update_available: boolean;
-  current_version: string;
-  latest_version: string | null;
-  download_url?: string;
-  asset_name?: string;
-  download_size_bytes?: number;
-  release_notes?: string;
-  release_url?: string;
-}> {
-  return api.get("/updates/webapp/download-info");
-}
-
-/**
- * Download the latest webapp update (legacy)
- */
-export async function downloadWebappUpdate(): Promise<{
-  status: string;
-  download_url: string;
-  asset_name: string;
-  version: string;
-  message: string;
-}> {
-  return api.post("/updates/webapp/download");
 }
 
 // ============= Changelog API =============

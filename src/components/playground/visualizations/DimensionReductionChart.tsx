@@ -128,7 +128,7 @@ import {
 
 export type DimensionReductionMethod = 'pca' | 'umap';
 export type ViewMode = '2d' | '3d';
-export type ColorMode = 'target' | 'fold' | 'metadata' | 'metric';
+export type ColorMode = 'target' | 'fold' | 'metadata';
 
 interface DimensionReductionChartProps {
   /** PCA result from backend */
@@ -147,8 +147,6 @@ interface DimensionReductionChartProps {
   sampleIds?: string[];
   /** Metadata for tooltips and coloring */
   metadata?: Record<string, unknown[]>;
-  /** Spectral metrics for coloring */
-  spectralMetrics?: Record<string, number[]>;
   /** Global color configuration (unified system) */
   globalColorConfig?: GlobalColorConfig;
   /** Color context data for unified color system */
@@ -193,7 +191,6 @@ interface ChartConfig {
   zAxis: string;
   colorMode: ColorMode;
   metadataKey?: string;
-  metricKey?: string;
   showGrid: boolean;
   pointSize: 'small' | 'medium' | 'large';
   showLabels: boolean;
@@ -244,7 +241,6 @@ export function DimensionReductionChart({
   folds,
   sampleIds,
   metadata,
-  spectralMetrics,
   globalColorConfig,
   colorContext: externalColorContext,
   selectedSample: externalSelectedSample,
@@ -508,10 +504,6 @@ export function DimensionReductionChart({
           }, 0);
           return getCategoricalColor(Math.abs(hash), 'default');
         }
-        return 'hsl(239, 84%, 67%)'; // Primary-like indigo
-
-      case 'metric':
-        // TODO: Implement metric-based coloring when spectralMetrics is available
         return 'hsl(239, 84%, 67%)'; // Primary-like indigo
 
       case 'target':

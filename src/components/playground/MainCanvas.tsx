@@ -27,10 +27,10 @@ import { useState, useMemo, useCallback, useRef, useEffect, memo, useDeferredVal
 import { FlaskConical, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
-  SpectraChartV2,
-  YHistogramV2,
+  SpectraChart,
+  YHistogram,
   DimensionReductionChart,
-  FoldDistributionChartV2,
+  FoldDistributionChart,
   RepetitionsChart,
   ChartSkeleton,
 } from './visualizations';
@@ -1000,7 +1000,7 @@ export function MainCanvas({
             {showSkeletons || !isChartMounted('spectra') ? (
               <ChartSkeleton type="spectra" />
             ) : result ? (
-              <SpectraChartV2
+              <SpectraChart
                 original={result.original}
                 processed={result.processed}
                 y={yValues}
@@ -1023,7 +1023,7 @@ export function MainCanvas({
                 showAbsoluteDifference={showAbsoluteDifference}
               />
             ) : rawData ? (
-              <SpectraChartV2
+              <SpectraChart
                 original={{
                   spectra: rawData.spectra,
                   wavelengths: rawData.wavelengths,
@@ -1100,7 +1100,7 @@ export function MainCanvas({
               <ChartSkeleton type="histogram" />
             ) : yValues.length > 0 ? (
               <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
-                <YHistogramV2
+                <YHistogram
                   y={yValues}
                   folds={effectiveFolds}
                   metadata={columnMetadata}
@@ -1135,7 +1135,7 @@ export function MainCanvas({
               <ChartSkeleton type="folds" />
             ) : (
               <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
-                <FoldDistributionChartV2
+                <FoldDistributionChart
                   folds={effectiveFolds}
                   y={yValues}
                   metadata={columnMetadata}

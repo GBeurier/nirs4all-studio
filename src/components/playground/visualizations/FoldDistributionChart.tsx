@@ -1,5 +1,5 @@
 /**
- * FoldDistributionChartV2 - Enhanced fold visualization (Phase 3)
+ * FoldDistributionChart - Enhanced fold visualization (Phase 3)
  *
  * Features:
  * - Color by mean target value per partition
@@ -49,8 +49,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu';
 import {
   Tooltip as TooltipUI,
@@ -77,7 +75,6 @@ import {
   getHeldOutTestColor,
   PARTITION_COLORS,
   HIGHLIGHT_COLORS,
-  normalizeValue,
 } from '@/lib/playground/colorConfig';
 import { isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
 import { useSelection, type SelectionContextValue } from '@/context/SelectionContext';
@@ -92,18 +89,15 @@ import { extractModifiers } from '@/lib/playground/selectionUtils';
 
 // ============= Types =============
 
-export type FoldColorMode = 'partition' | 'target_mean' | 'metadata' | 'metric';
 export type FoldViewMode = 'counts' | 'distribution' | 'both';
 
-interface FoldDistributionChartV2Props {
+interface FoldDistributionChartProps {
   /** Fold information from backend */
   folds: FoldsInfo | null;
   /** Y values for coloring and statistics */
   y?: number[];
   /** Metadata for metadata-based coloring */
   metadata?: Record<string, unknown[]>;
-  /** Spectral metrics for metric-based coloring */
-  spectralMetrics?: Record<string, number[]>;
   /** Currently selected fold (null = all folds) */
   selectedFold?: number | null;
   /** Callback when fold is selected */
@@ -122,9 +116,6 @@ interface FoldDistributionChartV2Props {
 
 interface ChartConfig {
   viewMode: FoldViewMode;
-  colorMode: FoldColorMode;
-  metadataKey?: string;
-  metricKey?: string;
   showMeanLine: boolean;
   showLegend: boolean;
   showYLegend: boolean;
@@ -190,7 +181,6 @@ interface SegmentResult {
 
 const DEFAULT_CONFIG: ChartConfig = {
   viewMode: 'counts',
-  colorMode: 'partition',
   showMeanLine: false,
   showLegend: true,
   showYLegend: false,
@@ -213,34 +203,12 @@ export function getCombinedGroupingNote(
   return `Splits enforce combined constraints (${effectiveLabel}). Samples sharing either the dataset repetition or ${folds.group_by} stay in the same fold.`;
 }
 
-// ============= Color Helpers =============
-
-/**
- * Get color based on Y mean value (blue to red gradient)
- */
-function getYMeanColor(
-  yMean: number,
-  yMin: number,
-  yMax: number,
-  palette?: GlobalColorConfig['continuousPalette']
-): string {
-  if (yMax === yMin) return 'hsl(180, 60%, 50%)';
-  const t = normalizeValue(yMean, yMin, yMax);
-  if (palette) {
-    return getContinuousColor(t, palette);
-  }
-  // Default blue to red
-  const hue = 240 - t * 180;
-  return `hsl(${hue}, 70%, 50%)`;
-}
-
 // ============= Component =============
 
-export function FoldDistributionChartV2({
+export function FoldDistributionChart({
   folds,
   y,
   metadata,
-  spectralMetrics,
   selectedFold: externalSelectedFold,
   onSelectFold,
   isLoading = false,
@@ -248,7 +216,7 @@ export function FoldDistributionChartV2({
   compact = false,
   globalColorConfig,
   colorContext,
-}: FoldDistributionChartV2Props) {
+}: FoldDistributionChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
   const [internalSelectedFold, setInternalSelectedFold] = useState<number | null>(null);
@@ -895,7 +863,7 @@ export function FoldDistributionChartV2({
   /**
    * Handle bar selection using unified selection handlers.
    * Used for drag selection to avoid stale closure issues.
-   * Pattern copied from YHistogramV2.
+   * Pattern copied from YHistogram.
    */
   const handleBarSelection = useCallback((
     samples: number[],
@@ -932,7 +900,7 @@ export function FoldDistributionChartV2({
       samplesInRange.push(...entry.indices);
     });
 
-    // Use unified handler for range selection (same pattern as YHistogramV2)
+    // Use unified handler for range selection (same pattern as YHistogram)
     handleBarSelection(samplesInRange, e, selectionCtx);
     setClickedPartitionId(null);
 
@@ -968,7 +936,7 @@ export function FoldDistributionChartV2({
     }
     setRangeSelection({ start: null, end: null, isSelecting: false });
 
-    // 2. Get clicked bar data from Recharts state FIRST (same as YHistogramV2)
+    // 2. Get clicked bar data from Recharts state FIRST (same as YHistogram)
     // activeTooltipIndex is populated when clicking anywhere in a bar's column zone,
     // even if not clicking directly on the visible bar rect
     const activeIndex = state?.activeTooltipIndex;
@@ -1082,23 +1050,6 @@ export function FoldDistributionChartV2({
           Show Global Mean (Y Dist.)
         </DropdownMenuCheckboxItem>
 
-        {/* Only show internal color selector when no global config provided */}
-        {!globalColorConfig && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Color By</DropdownMenuLabel>
-
-            <DropdownMenuRadioGroup
-              value={config.colorMode}
-              onValueChange={(v) => updateConfig({ colorMode: v as FoldColorMode })}
-            >
-              <DropdownMenuRadioItem value="partition">Partition (Train/Test)</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="target_mean" disabled={!y || y.length === 0}>
-                Target Mean
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1674,4 +1625,4 @@ export function FoldDistributionChartV2({
   );
 }
 
-export default React.memo(FoldDistributionChartV2);
+export default React.memo(FoldDistributionChart);

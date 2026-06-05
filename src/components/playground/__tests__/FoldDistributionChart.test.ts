@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getCombinedGroupingNote } from '../visualizations/FoldDistributionChartV2';
+import { getCombinedGroupingNote } from '../visualizations/FoldDistributionChart';
 import type { FoldsInfo } from '@/types/playground';
 
 describe('getCombinedGroupingNote', () => {

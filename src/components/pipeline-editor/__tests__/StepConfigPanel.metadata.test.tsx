@@ -67,7 +67,6 @@ function createRegistryContext(
   defaultsByName: Record<string, Record<string, unknown>>,
 ): StepMetadataRegistry {
   return {
-    isJsonRegistry: true,
     getNodesByType: (type) => nodes.filter((node) => type === "model") as never,
     getNodeDefinition: (type, name) =>
       nodes.find((node) => type === "model" && node.name === name) as never,

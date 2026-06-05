@@ -183,12 +183,12 @@ export function InspectorColorProvider({ children }: { children: ReactNode }) {
 
   // Core opacity function
   const getChainOpacity = useCallback((chainId: string): number => {
-    if (config.highlightHover && hoveredChain === chainId) return 1;
-    if (hasSelection && config.highlightSelection) {
+    if (hoveredChain === chainId) return 1;
+    if (hasSelection) {
       return selectedChains.has(chainId) ? 1 : config.unselectedOpacity;
     }
     return 0.7;
-  }, [config.highlightHover, config.highlightSelection, config.unselectedOpacity, hoveredChain, hasSelection, selectedChains]);
+  }, [config.unselectedOpacity, hoveredChain, hasSelection, selectedChains]);
 
   const value = useMemo<InspectorColorContextValue>(() => ({
     config,

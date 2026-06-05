@@ -20,8 +20,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  useRef,
-  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 
@@ -706,85 +704,6 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
 
 export const SelectionContext = createContext<SelectionContextValue | undefined>(undefined);
 
-// ============= Hover Context (separated for performance) =============
-
-interface HoverContextValue {
-  hoveredSample: number | null;
-  setHovered: (index: number | null) => void;
-}
-
-const HoverContext = createContext<HoverContextValue | undefined>(undefined);
-
-/**
- * Hook to get only hover state - isolated from selection updates for performance
- */
-export function useHover(): HoverContextValue {
-  const context = useContext(HoverContext);
-  if (context === undefined) {
-    throw new Error('useHover must be used within a SelectionProvider');
-  }
-  return context;
-}
-
-/**
- * Hook to get only hoveredSample - even more granular for performance
- */
-export function useHoveredSample(): number | null {
-  const { hoveredSample } = useHover();
-  return hoveredSample;
-}
-
-// ============= Selection Store for Selector Pattern =============
-
-type SelectionSubscriber = () => void;
-
-interface SelectionStore {
-  getState: () => SelectionState;
-  subscribe: (callback: SelectionSubscriber) => () => void;
-}
-
-const SelectionStoreContext = createContext<SelectionStore | null>(null);
-
-/**
- * Selector hook for fine-grained selection state subscriptions.
- * Only re-renders when the selected slice of state changes.
- *
- * @example
- * const selectedSamples = useSelectionSelector(s => s.selectedSamples);
- * const pinnedCount = useSelectionSelector(s => s.pinnedSamples.size);
- */
-export function useSelectionSelector<T>(selector: (state: SelectionState) => T): T {
-  const store = useContext(SelectionStoreContext);
-  if (!store) {
-    throw new Error('useSelectionSelector must be used within a SelectionProvider');
-  }
-
-  const getSnapshot = useCallback(() => selector(store.getState()), [store, selector]);
-
-  return useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
-}
-
-/**
- * Hook to get only selected samples - common use case
- */
-export function useSelectedSamples(): Set<number> {
-  return useSelectionSelector(s => s.selectedSamples);
-}
-
-/**
- * Hook to get only pinned samples - common use case
- */
-export function usePinnedSamples(): Set<number> {
-  return useSelectionSelector(s => s.pinnedSamples);
-}
-
-/**
- * Hook to check if a specific sample is selected - useful for individual items
- */
-export function useIsSelected(index: number): boolean {
-  return useSelectionSelector(s => s.selectedSamples.has(index));
-}
-
 // ============= Storage Helpers =============
 
 interface SerializedState {
@@ -844,26 +763,6 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
 
   // Separate hover state for performance - hover changes don't trigger selection re-renders
   const [hoveredSample, setHoveredSampleState] = useState<number | null>(null);
-
-  // Create selection store for selector pattern
-  const stateRef = useRef(state);
-  stateRef.current = state;
-  const subscribersRef = useRef<Set<SelectionSubscriber>>(new Set());
-
-  const store = useMemo<SelectionStore>(() => ({
-    getState: () => stateRef.current,
-    subscribe: (callback: SelectionSubscriber) => {
-      subscribersRef.current.add(callback);
-      return () => {
-        subscribersRef.current.delete(callback);
-      };
-    },
-  }), []);
-
-  // Notify subscribers when state changes
-  useEffect(() => {
-    subscribersRef.current.forEach(callback => callback());
-  }, [state]);
 
   // Persist state changes (debounced) - 500ms to reduce GC pressure in Firefox
   useEffect(() => {
@@ -1059,20 +958,10 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     intersectWithAvailable,
   ]);
 
-  // Separate hover context value - only changes when hover state changes
-  const hoverValue = useMemo<HoverContextValue>(() => ({
-    hoveredSample,
-    setHovered,
-  }), [hoveredSample, setHovered]);
-
   return (
-    <SelectionStoreContext.Provider value={store}>
-      <HoverContext.Provider value={hoverValue}>
-        <SelectionContext.Provider value={value}>
-          {children}
-        </SelectionContext.Provider>
-      </HoverContext.Provider>
-    </SelectionStoreContext.Provider>
+    <SelectionContext.Provider value={value}>
+      {children}
+    </SelectionContext.Provider>
   );
 }
 
@@ -1084,14 +973,6 @@ export function useSelection(): SelectionContextValue {
     throw new Error('useSelection must be used within a SelectionProvider');
   }
   return context;
-}
-
-/**
- * Hook to get selection state without actions (for performance-sensitive components)
- */
-export function useSelectionState() {
-  const { selectedSamples, pinnedSamples, hoveredSample, isSelected, isPinned } = useSelection();
-  return { selectedSamples, pinnedSamples, hoveredSample, isSelected, isPinned };
 }
 
 export default SelectionProvider;

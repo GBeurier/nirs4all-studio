@@ -5,7 +5,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NodeRegistryProvider, useNodeRegistry } from "./NodeRegistryContext.v2";
+import { NodeRegistryProvider, useNodeRegistry } from "./NodeRegistryContext";
 
 const mocks = vi.hoisted(() => ({
   usePipelineEditorPreferencesOptional: vi.fn(() => ({ extendedMode: true })),
@@ -127,7 +127,7 @@ async function renderProvider(): Promise<RenderResult> {
 
   await act(async () => {
     root.render(
-      <NodeRegistryProvider useJsonRegistry>
+      <NodeRegistryProvider>
         <Probe />
       </NodeRegistryProvider>,
     );

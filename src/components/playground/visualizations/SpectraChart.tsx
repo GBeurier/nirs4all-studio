@@ -1,5 +1,5 @@
 /**
- * SpectraChartV2 - Enhanced Spectra Chart with Phase 2 features
+ * SpectraChart - Enhanced Spectra Chart with Phase 2 features
  *
  * Phase 2 Implementation: Enhanced Spectra Chart
  *
@@ -78,7 +78,7 @@ import type { DataSection, FoldsInfo, UnifiedOperator } from '@/types/playground
 
 // ============= Types =============
 
-export interface SpectraChartV2Props {
+export interface SpectraChartProps {
   /** Original data section from backend */
   original: DataSection;
   /** Processed data section from backend */
@@ -131,7 +131,7 @@ export interface SpectraChartV2Props {
 
 // ============= Main Component =============
 
-export function SpectraChartV2({
+export function SpectraChart({
   original,
   processed,
   y,
@@ -155,7 +155,7 @@ export function SpectraChartV2({
   referenceDataset,
   referenceLabel = 'Reference',
   showAbsoluteDifference = false,
-}: SpectraChartV2Props) {
+}: SpectraChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartAreaRef = useRef<HTMLDivElement>(null);
 
@@ -1652,4 +1652,4 @@ export function SpectraChartV2({
   );
 }
 
-export default React.memo(SpectraChartV2);
+export default React.memo(SpectraChart);

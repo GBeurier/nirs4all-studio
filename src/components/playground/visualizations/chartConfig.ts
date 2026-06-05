@@ -179,81 +179,6 @@ export type ScatterChartState = ChartState<ScatterChartData>;
 export type FoldDistributionState = ChartState<FoldDistributionData>;
 export type RepetitionsChartState = ChartState<RepetitionsChartData>;
 
-// ============= DEPRECATED Color Palettes =============
-// ⚠️ IMPORTANT: All color constants below are DEPRECATED
-// Use the unified color system from '@/lib/playground/colorConfig' instead:
-// - PARTITION_COLORS for train/test colors
-// - HIGHLIGHT_COLORS for selection/hover/pinned states
-// - getCategoricalColor() for fold/category colors
-// - getContinuousColor() for continuous value colors
-
-/**
- * Fold colors - distinct colors for cross-validation folds
- * @deprecated ⚠️ DO NOT USE - Use getCategoricalColor(index, palette) from '@/lib/playground/colorConfig'
- */
-export const FOLD_COLORS = [
-  'hsl(173, 80%, 45%)', // Teal
-  'hsl(217, 70%, 50%)', // Blue
-  'hsl(142, 76%, 45%)', // Green
-  'hsl(38, 92%, 50%)',  // Orange
-  'hsl(280, 65%, 55%)', // Purple
-  'hsl(350, 70%, 55%)', // Red
-  'hsl(200, 70%, 45%)', // Cyan
-  'hsl(95, 60%, 45%)',  // Lime
-  'hsl(320, 60%, 55%)', // Magenta
-  'hsl(55, 80%, 45%)',  // Yellow
-] as const;
-
-/**
- * Get fold color by index (wraps around if more folds than colors)
- * @deprecated ⚠️ DO NOT USE - Use getCategoricalColor(foldIndex, palette) from '@/lib/playground/colorConfig'
- */
-export function getFoldColor(foldIndex: number): string {
-  return FOLD_COLORS[foldIndex % FOLD_COLORS.length];
-}
-
-/**
- * Train/Test colors for fold visualization
- * @deprecated ⚠️ DO NOT USE - Use PARTITION_COLORS from '@/lib/playground/colorConfig'
- */
-export const TRAIN_TEST_COLORS = {
-  train: 'hsl(217, 70%, 50%)',
-  test: 'hsl(38, 92%, 50%)',
-  trainLight: 'hsl(217, 70%, 75%)',
-  testLight: 'hsl(38, 92%, 75%)',
-} as const;
-
-/**
- * Sample colors by target value (Y)
- * @deprecated ⚠️ DO NOT USE - Use getContinuousColor(t, palette) from '@/lib/playground/colorConfig'
- */
-export function getSampleColorByY(
-  yValue: number,
-  yMin: number,
-  yMax: number
-): string {
-  const t = (yValue - yMin) / (yMax - yMin + 0.001);
-  const hue = 240 - t * 180; // Blue to red gradient
-  return `hsl(${hue}, 70%, 50%)`;
-}
-
-/**
- * Sample colors by fold assignment
- * @deprecated ⚠️ DO NOT USE - Use getCategoricalColor(foldLabel, palette) from '@/lib/playground/colorConfig'
- */
-export function getSampleColorByFold(
-  foldLabel: number | undefined,
-  isSelected: boolean = false
-): string {
-  if (isSelected) {
-    return 'hsl(var(--primary))';
-  }
-  if (foldLabel === undefined || foldLabel < 0) {
-    return 'hsl(var(--muted-foreground))';
-  }
-  return getFoldColor(foldLabel);
-}
-
 // ============= Chart Theme =============
 
 /**
@@ -344,59 +269,6 @@ export const SELECTION_COLORS = {
   rangeOverlay: 'hsl(var(--primary) / 0.15)',
   rangeStroke: 'hsl(var(--primary) / 0.5)',
 } as const;
-
-/**
- * Get selection state color for a sample
- * @deprecated ⚠️ DO NOT USE - Use getUnifiedSampleColor from '@/lib/playground/colorConfig'
- */
-export function getSelectionStateColor(
-  index: number,
-  selectedSamples: Set<number>,
-  pinnedSamples: Set<number>,
-  hoveredSample: number | null,
-  baseColor: string
-): { fill: string; stroke?: string; strokeWidth?: number; opacity?: number } {
-  const isSelected = selectedSamples.has(index);
-  const isPinned = pinnedSamples.has(index);
-  const isHovered = hoveredSample === index;
-  const hasSelection = selectedSamples.size > 0;
-
-  if (isHovered) {
-    return {
-      fill: SELECTION_COLORS.selected,
-      stroke: SELECTION_COLORS.selectedStroke,
-      strokeWidth: CHART_THEME.hoveredStrokeWidth,
-      opacity: 1,
-    };
-  }
-
-  if (isSelected) {
-    return {
-      fill: SELECTION_COLORS.selected,
-      stroke: SELECTION_COLORS.selectedStroke,
-      strokeWidth: CHART_THEME.selectedStrokeWidth,
-      opacity: 1,
-    };
-  }
-
-  if (isPinned) {
-    return {
-      fill: baseColor,
-      stroke: SELECTION_COLORS.pinned,
-      strokeWidth: CHART_THEME.pinnedStrokeWidth,
-      opacity: 1,
-    };
-  }
-
-  if (hasSelection) {
-    return {
-      fill: baseColor,
-      opacity: CHART_THEME.unselectedOpacity,
-    };
-  }
-
-  return { fill: baseColor };
-}
 
 // ============= Statistics Colors =============
 
@@ -505,28 +377,6 @@ export interface LegendItem {
   label: string;
   color: string;
   dashed?: boolean;
-}
-
-/**
- * Generate legend items for fold visualization
- * @deprecated ⚠️ DO NOT USE - Build legend items using getCategoricalColor from '@/lib/playground/colorConfig'
- */
-export function getFoldLegendItems(nFolds: number): LegendItem[] {
-  return Array.from({ length: Math.min(nFolds, FOLD_COLORS.length) }, (_, i) => ({
-    label: formatFoldLabel(i),
-    color: getFoldColor(i),
-  }));
-}
-
-/**
- * Generate legend items for train/test split
- * @deprecated ⚠️ DO NOT USE - Build legend items using PARTITION_COLORS from '@/lib/playground/colorConfig'
- */
-export function getTrainTestLegendItems(): LegendItem[] {
-  return [
-    { label: 'Train', color: TRAIN_TEST_COLORS.train },
-    { label: 'Test', color: TRAIN_TEST_COLORS.test },
-  ];
 }
 
 /**

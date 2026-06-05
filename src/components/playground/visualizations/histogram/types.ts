@@ -1,5 +1,5 @@
 /**
- * Shared types and interfaces for YHistogramV2 sub-components.
+ * Shared types and interfaces for YHistogram sub-components.
  */
 
 import type React from 'react';
@@ -88,7 +88,7 @@ export const RANGE_SELECTION_INITIAL: RangeSelection = {
 
 // ============= Component Props =============
 
-export interface YHistogramV2Props {
+export interface YHistogramProps {
   /** Y values to display */
   y: number[];
   /** Optional processed Y values (when y_processing is applied) */
