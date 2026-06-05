@@ -2100,17 +2100,6 @@ class WorkspaceManager:
 
     # ----------------------- Workspace Discovery -----------------------
 
-    def get_workspace_runs(
-        self, workspace_id: str, source: str = "unified"
-    ) -> list[dict[str, Any]]:
-        """Get discovered runs from a workspace."""
-        ws = self._find_linked_workspace(workspace_id)
-        if not ws:
-            raise ValueError(f"Workspace not found: {workspace_id}")
-
-        scanner = WorkspaceScanner(Path(ws.path))
-        return scanner.discover_runs()
-
     def get_workspace_predictions(self, workspace_id: str) -> list[dict[str, Any]]:
         """Get discovered predictions from a workspace."""
         ws = self._find_linked_workspace(workspace_id)
