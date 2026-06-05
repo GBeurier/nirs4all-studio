@@ -700,7 +700,6 @@ describe("EnvManager", () => {
     expect(manager.isBundled()).toBe(true);
     expect(manager.getConfiguredRuntimeMode()).toBe("custom");
     expect(manager.getConfiguredPythonPath()).toBe(customPython);
-    expect(manager.getRuntimeMode()).toBe("bundled");
     expect(manager.getPythonPath()).toBe(bundledPython);
     expect(manager.shouldShowWizard()).toBe(false);
   });

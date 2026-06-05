@@ -316,21 +316,8 @@ export class EnvManager {
         this.savedAppVersion = (data.appVersion as string) ?? null;
         this.savedSkipWizard = (data.skipWizardOnLaunch as boolean) ?? false;
 
-        // Migration: convert legacy customPythonPath / customEnvPath to pythonPath
         if (data.pythonPath) {
           this.pythonPath = data.pythonPath as string;
-        } else if (data.customPythonPath) {
-          this.pythonPath = data.customPythonPath as string;
-          this.saveSettings();
-        } else if (data.customEnvPath) {
-          const envPath = data.customEnvPath as string;
-          const candidates = isWindows
-            ? [path.join(envPath, "Scripts", "python.exe"), path.join(envPath, "python.exe")]
-            : [path.join(envPath, "bin", "python"), path.join(envPath, "bin", "python3")];
-          for (const c of candidates) {
-            if (fs.existsSync(c)) { this.pythonPath = c; break; }
-          }
-          this.saveSettings();
         }
       }
     } catch (error) {
@@ -480,16 +467,6 @@ export class EnvManager {
     return this.getConfiguredPythonPath() ?? this.getPythonPath();
   }
 
-  getRuntimeMode(): EnvRuntimeMode {
-    if (this.isBundled()) return "bundled";
-    if (this.pythonPath && fs.existsSync(this.pythonPath)) return "custom";
-
-    const managedPython = this.getManagedPythonPath();
-
-    if (fs.existsSync(managedPython)) return "managed";
-    return "none";
-  }
-
   /** Get the Python executable path */
   getPythonPath(): string | null {
     const bundledRuntime = this.detectBundledRuntime();
@@ -542,10 +519,7 @@ export class EnvManager {
 
     // Custom python path: derive env root from executable location
     if (this.pythonPath) {
-      const dir = path.dirname(this.pythonPath);
-      const dirName = path.basename(dir).toLowerCase();
-      const envRoot = (dirName === "scripts" || dirName === "bin") ? path.dirname(dir) : dir;
-      return this.resolveSitePackages(envRoot, true);
+      return this.resolveSitePackages(this.getEnvRootForPythonPath(this.pythonPath), true);
     }
 
     // Managed env
@@ -555,10 +529,7 @@ export class EnvManager {
 
   private getSitePackagesForPythonPath(pythonPath: string | null): string | null {
     if (!pythonPath) return null;
-    const dir = path.dirname(pythonPath);
-    const dirName = path.basename(dir).toLowerCase();
-    const envRoot = (dirName === "scripts" || dirName === "bin") ? path.dirname(dir) : dir;
-    return this.resolveSitePackages(envRoot, true);
+    return this.resolveSitePackages(this.getEnvRootForPythonPath(pythonPath), true);
   }
 
   private getEnvRootForPythonPath(pythonPath: string): string {
@@ -1191,23 +1162,6 @@ export class EnvManager {
   }
 
   /**
-   * Validate that a portable build's environment paths are still reachable.
-   *
-   * Portable builds store absolute paths in env-settings.json.  If the user
-   * moves the .exe to a new folder, those paths break.  This method checks
-   * whether the configured Python executable still exists, and if not, clears
-   * the settings so the setup wizard re-runs.
-   *
-   * Call once at startup, before {@link isReady} / {@link shouldShowWizard}.
-   * Only runs in portable mode ({@link isPortable}).
-   *
-   * @returns `true` if state is valid (or non-portable), `false` if settings were cleared.
-   */
-  validatePortableState(): boolean {
-    return this.validateConfiguredState();
-  }
-
-  /**
    * Mark the setup wizard as completed.
    * Saves the current app version and the "don't ask again" preference.
    */
@@ -1288,11 +1242,7 @@ export class EnvManager {
     const parts: string[] = [];
 
     // Derive env root from python executable location.
-    const dir = path.dirname(pythonPath);
-    const dirName = path.basename(dir).toLowerCase();
-    const envRoot = (dirName === "scripts" || dirName === "bin")
-      ? path.dirname(dir)
-      : dir;
+    const envRoot = this.getEnvRootForPythonPath(pythonPath);
 
     const stat = (p: string): string | null => {
       try {
