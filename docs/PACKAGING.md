@@ -308,29 +308,7 @@ Three GitHub Actions workflows handle the build and release process:
 | `backend` | Python syntax check, import validation | ubuntu-latest |
 | `electron-build` | Test Electron main process compilation | ubuntu-latest |
 
-#### 2. Pre-Release Validation (`pre-release.yml`)
-
-**Purpose**: Validate everything works before creating a release tag.
-
-**Trigger**: Manual (`workflow_dispatch`) with version input.
-
-**Jobs**:
-| Job | Description | Runner |
-|-----|-------------|--------|
-| `validate-version` | Check version format, compare with package.json | ubuntu-latest |
-| `test-frontend` | Lint, test, build frontend | ubuntu-latest |
-| `test-backend` | Verify Python imports, syntax check | ubuntu-latest |
-| `test-build` | Full build test (backend + Electron) | ubuntu-latest |
-| `summary` | Report pass/fail status | ubuntu-latest |
-
-**Usage**:
-1. Go to Actions → "Pre-Release Validation"
-2. Click "Run workflow"
-3. Enter version (e.g., `1.2.0`)
-4. Optionally skip build test for faster validation
-5. Review the summary
-
-#### 3. Electron Release (`electron-release.yml`)
+#### 2. Electron Release (`electron-release.yml`)
 
 **Purpose**: Build for Linux/Windows and create GitHub Release.
 
@@ -648,7 +626,6 @@ npm run electron:preview
 | `requirements-cpu.txt` | Python dependencies (CPU build) |
 | `requirements-gpu.txt` | Python dependencies (GPU/CUDA build) |
 | `.github/workflows/ci.yml` | PR validation workflow |
-| `.github/workflows/pre-release.yml` | Pre-release validation |
 | `.github/workflows/electron-release.yml` | Full release automation (Linux/Windows) |
 | `src/types/electron.d.ts` | TypeScript types for Electron IPC |
 | `docs/UPDATE_SYSTEM.md` | Updater documentation |
