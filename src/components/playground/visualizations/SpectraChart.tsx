@@ -356,53 +356,15 @@ export function SpectraChart({
     return Array.from(groupedStats.keys());
   }, [groupedStats]);
 
-  // Get outlier samples - prefer prop from pipeline operators, fallback to spectral deviation
+  // Get outlier samples from backend-detected indices only. Outlier detection
+  // is nirs4all ML logic (Hotelling T2 / Q-residual / LOF / distance) run via
+  // the OutlierSelector backend path and threaded in through `outlierIndices`.
+  // The chart never recomputes outliers locally: when no detection has run,
+  // outlier color mode renders nothing, which is the boundary-correct behavior.
   const outlierSamples = useMemo((): Set<number> => {
-    // Check if outlier mode is enabled in global color config
     if (globalColorConfig?.mode !== 'outlier') return new Set();
-
-    // Use provided outlier indices from pipeline operators if available
-    if (outlierIndices && outlierIndices.size > 0) {
-      return outlierIndices;
-    }
-
-    // Fallback: compute outliers from spectral deviation
-    const { spectra } = focusedData;
-    if (spectra.length < 10) return new Set(); // Need enough samples for stats
-
-    // Calculate mean spectrum
-    const nWavelengths = spectra[0]?.length ?? 0;
-    const meanSpectrum = new Array(nWavelengths).fill(0);
-    spectra.forEach((spectrum) => {
-      spectrum.forEach((v, i) => {
-        meanSpectrum[i] += v / spectra.length;
-      });
-    });
-
-    // Calculate per-sample deviation from mean (RMS)
-    const deviations = spectra.map((spectrum) => {
-      let sumSq = 0;
-      spectrum.forEach((v, i) => {
-        sumSq += Math.pow(v - meanSpectrum[i], 2);
-      });
-      return Math.sqrt(sumSq / nWavelengths);
-    });
-
-    // Calculate mean and std of deviations
-    const meanDev = deviations.reduce((a, b) => a + b, 0) / deviations.length;
-    const stdDev = Math.sqrt(
-      deviations.reduce((acc, d) => acc + Math.pow(d - meanDev, 2), 0) / deviations.length
-    );
-
-    // Mark samples >2 std as outliers
-    const threshold = meanDev + 2 * stdDev;
-    const outliers = new Set<number>();
-    deviations.forEach((d, idx) => {
-      if (d > threshold) outliers.add(idx);
-    });
-
-    return outliers;
-  }, [globalColorConfig?.mode, outlierIndices, focusedData]);
+    return outlierIndices ?? new Set();
+  }, [globalColorConfig?.mode, outlierIndices]);
 
   // Original stats for 'both' mode
   const originalAggregatedStats: AggregatedStats | null = useMemo(() => {

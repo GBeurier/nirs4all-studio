@@ -287,6 +287,12 @@ export async function getDatasetSpectra(
     source?: number;
     includeY?: boolean;
     includeMetadata?: boolean;
+    /**
+     * Cap the number of wavelengths returned via backend LTTB decimation
+     * (default-off). The response's `num_features` still reports the full
+     * width; only `spectra` columns and `wavelengths` are downsampled.
+     */
+    maxWavelengths?: number;
   }
 ): Promise<SpectraResponse> {
   const params = new URLSearchParams();
@@ -296,6 +302,9 @@ export async function getDatasetSpectra(
   if (options?.source !== undefined) params.set('source', options.source.toString());
   if (options?.includeY) params.set('include_y', 'true');
   if (options?.includeMetadata) params.set('include_metadata', 'true');
+  if (options?.maxWavelengths !== undefined) {
+    params.set('max_wavelengths_returned', options.maxWavelengths.toString());
+  }
 
   const query = params.toString() ? `?${params.toString()}` : '';
   return api.get<SpectraResponse>(`/spectra/${datasetId}${query}`);
