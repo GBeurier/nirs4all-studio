@@ -9,7 +9,10 @@ on:
     branches: [main, develop]
 
 env:
-  NODE_VERSION: '24'
+  # Node 22 = the locally-validated toolchain (engines: >=20). On node 24 the
+  # playwright browser download repeatedly hung right after the chrome zip hit
+  # 100% (3 bounded attempts, identical signature), never reaching the tests.
+  NODE_VERSION: '22'
   PYTHON_VERSION: '3.11'
 
 jobs:
