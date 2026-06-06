@@ -65,13 +65,22 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
       - name: Install Playwright browsers
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
+          # The CDN intermittently stalls mid-asset (observed: chrome zip in
+          # <1s, then the next asset hung for the whole step budget). Bound
+          # each attempt and retry — playwright revalidates partial downloads.
+          install_cmd="npx playwright install --with-deps chromium"
           if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
-            npx playwright install-deps chromium
-          else
-            npx playwright install --with-deps chromium
+            install_cmd="npx playwright install-deps chromium"
           fi
+          for attempt in 1 2 3; do
+            if timeout 240 $install_cmd; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt $attempt stalled or failed; retrying"
+          done
+          exit 1
 
       - name: Verify Playwright setup
         run: npx playwright --version
