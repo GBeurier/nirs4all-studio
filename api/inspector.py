@@ -1560,12 +1560,10 @@ async def get_robustness_data(request: RobustnessRequest):
 
     Each axis is normalized 0–1 across all requested chains (higher = more robust).
     """
-    # BOUNDARY-FLAG (INS-04): the robustness math below (CV-stability,
-    # train-test gap, score normalization, fold-count ratio) is ML analysis that
-    # belongs in nirs4all, not in this HTTP layer. The library does not yet expose
-    # an equivalent; once it does, this endpoint should shrink to request-shaping +
-    # a single library call (see BACKEND_RULES.md).
-    import numpy as np
+    # Robustness math lives in nirs4all (model_diagnostics.robustness_axes);
+    # this endpoint assembles fold scores from the store and shapes the response.
+    from nirs4all.pipeline.analysis.model_diagnostics import robustness_axes
+
     if not request.chain_ids:
         return RobustnessResponse(
             entries=[], axis_names=[], score_column=request.score_column,
@@ -1609,30 +1607,15 @@ async def get_robustness_data(request: RobustnessRequest):
                         if s is not None:
                             fold_scores.append(s)
 
-            val_score = chain.get("cv_val_score")
-            train_score = chain.get("cv_train_score")
-            main_score = chain.get(request.score_column)
-
-            # CV stability: std of fold scores (lower = more stable)
-            cv_std = float(np.std(fold_scores, ddof=1)) if len(fold_scores) > 1 else 0.0
-
-            # Train-test gap
-            gap = abs(train_score - val_score) if train_score is not None and val_score is not None else 0.0
-
-            # Absolute score
-            abs_score = float(main_score) if main_score is not None else 0.0
-
-            # Fold count ratio
-            fold_count = chain.get("cv_fold_count", 0)
-
             raw_data.append({
                 "chain_id": chain_id,
                 "model_class": chain.get("model_class", ""),
                 "preprocessings": chain.get("preprocessings"),
-                "cv_std": cv_std,
-                "gap": gap,
-                "abs_score": abs_score,
-                "fold_count": fold_count,
+                "fold_scores": fold_scores,
+                "train_score": chain.get("cv_train_score"),
+                "val_score": chain.get("cv_val_score"),
+                "score": chain.get(request.score_column),
+                "fold_count": chain.get("cv_fold_count", 0),
             })
 
         if not raw_data:
@@ -1640,66 +1623,31 @@ async def get_robustness_data(request: RobustnessRequest):
                 entries=[], axis_names=[], score_column=request.score_column,
             )
 
-        # Compute normalization ranges
-        all_stds = [d["cv_std"] for d in raw_data]
-        all_gaps = [d["gap"] for d in raw_data]
-        all_scores = [d["abs_score"] for d in raw_data]
-        all_folds = [d["fold_count"] for d in raw_data]
-
-        max_std = max(all_stds) if all_stds else 1.0
-        max_gap = max(all_gaps) if all_gaps else 1.0
-        max_folds = max(all_folds) if all_folds else 1
-
         lower_better = _is_lower_better(
             next((chain_map[d["chain_id"]].get("metric") for d in raw_data if d["chain_id"] in chain_map), None)
         )
-
-        # Score normalization
-        score_min = min(all_scores) if all_scores else 0
-        score_max = max(all_scores) if all_scores else 1
-        score_range = score_max - score_min if score_max != score_min else 1.0
+        profiles = robustness_axes(raw_data, lower_better=lower_better)
 
         axis_names = ["cv_stability", "train_test_gap", "score_absolute", "fold_count_ratio"]
+        axis_meta = {
+            "cv_stability": ("CV Stability", "Cross-validation stability (1 - normalized std)"),
+            "train_test_gap": ("Train-Test Gap", "Small train-val gap (1 - normalized gap)"),
+            "score_absolute": ("Score", "Normalized absolute performance score"),
+            "fold_count_ratio": ("Fold Coverage", "Proportion of folds with results"),
+        }
 
         entries: list[dict] = []
-        for d in raw_data:
-            # cv_stability: 1 - std/max_std (higher = more stable)
-            cv_stability = 1.0 - (d["cv_std"] / max_std if max_std > 0 else 0.0)
-
-            # train_test_gap: 1 - gap/max_gap (higher = smaller gap)
-            train_test_gap = 1.0 - (d["gap"] / max_gap if max_gap > 0 else 0.0)
-
-            # score_absolute: normalize to 0-1, flip if lower-better
-            norm_score = (d["abs_score"] - score_min) / score_range
-            if lower_better:
-                norm_score = 1.0 - norm_score
-
-            # fold_count_ratio
-            fold_ratio = d["fold_count"] / max_folds if max_folds > 0 else 0.0
-
+        for d, profile in zip(raw_data, profiles):
             axes = [
                 RobustnessAxis(
-                    name="cv_stability", label="CV Stability",
-                    value=round(cv_stability, 4), raw_value=round(d["cv_std"], 6),
-                    description="Cross-validation stability (1 - normalized std)",
-                ).model_dump(),
-                RobustnessAxis(
-                    name="train_test_gap", label="Train-Test Gap",
-                    value=round(train_test_gap, 4), raw_value=round(d["gap"], 6),
-                    description="Small train-val gap (1 - normalized gap)",
-                ).model_dump(),
-                RobustnessAxis(
-                    name="score_absolute", label="Score",
-                    value=round(norm_score, 4), raw_value=round(d["abs_score"], 6),
-                    description="Normalized absolute performance score",
-                ).model_dump(),
-                RobustnessAxis(
-                    name="fold_count_ratio", label="Fold Coverage",
-                    value=round(fold_ratio, 4), raw_value=float(d["fold_count"]),
-                    description="Proportion of folds with results",
-                ).model_dump(),
+                    name=name,
+                    label=axis_meta[name][0],
+                    value=round(profile[name]["value"], 4),
+                    raw_value=round(profile[name]["raw"], 6),
+                    description=axis_meta[name][1],
+                ).model_dump()
+                for name in axis_names
             ]
-
             entries.append(RobustnessEntry(
                 chain_id=d["chain_id"],
                 model_class=d["model_class"],
@@ -2106,12 +2054,10 @@ async def get_bias_variance(request: BiasVarianceRequest):
       variance = Var(y_pred across folds)
     Aggregated per group: mean_bias², mean_variance, total_error.
     """
-    # BOUNDARY-FLAG (INS-04): the bias²/variance decomposition over repeated
-    # cross-validation predictions is ML analysis that belongs in nirs4all, not in
-    # this HTTP layer. The library does not yet expose an equivalent; once it does,
-    # this endpoint should shrink to request-shaping + a single library call
-    # (see BACKEND_RULES.md).
-    import numpy as np
+    # Decomposition math lives in nirs4all (model_diagnostics); this endpoint
+    # only assembles per-sample predictions from the store and shapes the response.
+    from nirs4all.pipeline.analysis.model_diagnostics import bias_variance_decomposition
+
     if not request.chain_ids:
         return BiasVarianceResponse(
             entries=[], score_column=request.score_column, group_by=request.group_by,
@@ -2184,31 +2130,16 @@ async def get_bias_variance(request: BiasVarianceRequest):
                         sample_key = (dataset_name, int(sample_idx))
                         sample_preds.setdefault(sample_key, []).append((yt, yp))
 
-            # Compute bias² and variance per sample with 2+ predictions
-            biases_sq: list[float] = []
-            variances: list[float] = []
-            for _sample_key, pairs in sample_preds.items():
-                if len(pairs) < 2:
-                    continue
-                y_true_val = pairs[0][0]  # All should be the same y_true
-                preds = [p[1] for p in pairs]
-                mean_pred = float(np.mean(preds))
-                bias_sq = (mean_pred - y_true_val) ** 2
-                var = float(np.var(preds))
-                biases_sq.append(bias_sq)
-                variances.append(var)
-
-            if biases_sq:
-                mean_bias_sq = float(np.mean(biases_sq))
-                mean_var = float(np.mean(variances))
+            decomposition = bias_variance_decomposition(sample_preds)
+            if decomposition is not None:
                 entries.append(BiasVarianceEntry(
                     group_label=label,
-                    bias_squared=sanitize_float(round(mean_bias_sq, 6)),
-                    variance=sanitize_float(round(mean_var, 6)),
-                    total_error=sanitize_float(round(mean_bias_sq + mean_var, 6)),
+                    bias_squared=sanitize_float(round(decomposition.bias_squared, 6)),
+                    variance=sanitize_float(round(decomposition.variance, 6)),
+                    total_error=sanitize_float(round(decomposition.total_error, 6)),
                     n_chains=len(chain_ids),
                     n_folds=total_folds,
-                    n_samples=len(biases_sq),
+                    n_samples=decomposition.n_samples,
                     chain_ids=chain_ids,
                 ).model_dump())
 
@@ -2236,12 +2167,15 @@ async def get_learning_curve(request: LearningCurveRequest):
     Groups chains by the number of training samples (inferred from
     prediction array lengths), computing mean/std of train and val scores.
     """
-    # BOUNDARY-FLAG (INS-04): the learning-curve construction below — including the
-    # training-size inference/approximation from prediction-array lengths — is ML
-    # analysis that belongs in nirs4all (which can report the exact training size
-    # the library does not yet expose this; once it does, this endpoint should
-    # shrink to request-shaping + a single library call (see BACKEND_RULES.md).
-    import numpy as np
+    # Curve math lives in nirs4all (model_diagnostics): estimate_train_size for
+    # the K-fold approximation and learning_curve_points for the aggregation.
+    # Remaining library gap: the store does not record the EXACT per-fold
+    # training size; once it does, the approximation path disappears.
+    from nirs4all.pipeline.analysis.model_diagnostics import (
+        estimate_train_size,
+        learning_curve_points,
+    )
+
     store = _get_store()
     try:
         df = store.query_chain_summaries(
@@ -2295,11 +2229,9 @@ async def get_learning_curve(request: LearningCurveRequest):
                             arrays = _get_arrays(store, pid)
                             y_true_values = _coerce_vector(arrays.get("y_true")) if arrays else None
                             if y_true_values:
-                                val_size = len(y_true_values)
-                                fold_count = r.get("cv_fold_count", 5) or 5
-                                # Approximate: train_size ≈ total - val_size
-                                total_approx = int(val_size * fold_count / max(1, fold_count - 1))
-                                train_size = total_approx - val_size
+                                train_size = estimate_train_size(
+                                    len(y_true_values), r.get("cv_fold_count", 5) or 5
+                                )
                 except Exception:
                     pass
 
@@ -2311,21 +2243,21 @@ async def get_learning_curve(request: LearningCurveRequest):
                 "val": val_score,
             })
 
-        # Build learning curve points
-        points: list[dict] = []
-        for size in sorted(size_scores.keys()):
-            entries = size_scores[size]
-            train_vals = [e["train"] for e in entries if e["train"] is not None]
-            val_vals = [e["val"] for e in entries if e["val"] is not None]
+        # Aggregation in the library; rounding/sanitizing is response shaping.
+        def _shape(value: float | None) -> float | None:
+            return sanitize_float(round(value, 6)) if value is not None else None
 
-            points.append(LearningCurvePoint(
-                train_size=size,
-                train_mean=sanitize_float(round(float(np.mean(train_vals)), 6)) if train_vals else None,
-                train_std=sanitize_float(round(float(np.std(train_vals)), 6)) if len(train_vals) > 1 else None,
-                val_mean=sanitize_float(round(float(np.mean(val_vals)), 6)) if val_vals else None,
-                val_std=sanitize_float(round(float(np.std(val_vals)), 6)) if len(val_vals) > 1 else None,
-                count=len(entries),
-            ).model_dump())
+        points = [
+            LearningCurvePoint(
+                train_size=p["train_size"],
+                train_mean=_shape(p["train_mean"]),
+                train_std=_shape(p["train_std"]),
+                val_mean=_shape(p["val_mean"]),
+                val_std=_shape(p["val_std"]),
+                count=p["count"],
+            ).model_dump()
+            for p in learning_curve_points(size_scores)
+        ]
 
         has_multiple = len(points) > 1
 
