@@ -55,9 +55,18 @@ Every `partial`/`deferred` carries a precise reason below — the dominant one i
 | `api/nirs4all_adapter.py` | 2,088 | ~950 |
 | `api/workspace_manager.py` | 2,913 | ~2,160 (scanner extraction deferred) |
 
+Residuals still >2k LOC (with their owners): `src/utils/pipelineConverter.ts` 2,868 (single converter by
+design; PCV-06 model collapse deferred), `api/inspector.py` 2,330 (INS-04 analytics awaiting a library home),
+`api/pipelines.py` 2,304 (PIPE-01 shape-math awaiting a library API; PIPE-02 discovery flip is a coordinated
+contract change), `api/pipeline_canonical.py` 2,245 (the unified resolver itself), `api/workspace_manager.py`
+2,153 (WorkspaceScanner extraction is the named follow-up seam). Each is a working single-responsibility-ish
+module whose further shrink is gated on the deferred items above, not on unowned debt.
+
 ## LOC delta
 
-Net across the branch: **≈ −12,800 LOC of production code deleted** (dead converters ~3.4k, pywebview stack ~0.8k, dead builders ~1.5k, dead endpoints/classes ~1.7k, build mirrors ~1.05k, storybook, dead WS channels, F401 sweep ~190, dedup consolidations) offset by package-split scaffolding (+~1.2k of module headers/imports) and **+~1.9k LOC of new tests** (round-trip corpus, resolver corpus, characterization, regression, query-budget).
+Measured across the branch (`git diff --shortstat`, excluding docs and lockfile): 287 files,
+37,147 insertions, 46,791 deletions = **net −9,644 lines** — and that net INCLUDES ~+1.9k of new tests and
+~+1.2k of package-split scaffolding, so **≈ −12,700 LOC of production code was deleted** (dead converters ~3.4k, pywebview stack ~0.8k, dead builders ~1.5k, dead endpoints/classes ~1.7k, build mirrors ~1.05k, storybook, dead WS channels, F401 sweep ~190, dedup consolidations) offset by package-split scaffolding (+~1.2k of module headers/imports) and **+~1.9k LOC of new tests** (round-trip corpus, resolver corpus, characterization, regression, query-budget).
 
 ## Library gaps flagged to nirs4all (the boundary work the studio cannot do alone)
 
