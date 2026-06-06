@@ -22,10 +22,24 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import {
+  applySelectionMode,
+  toggleInSet,
+  addToSet,
+  removeFromSet,
+  pushHistory as pushHistoryCore,
+  undoHistory,
+  redoHistory,
+  rangeIndices,
+  persistSelection,
+  loadPersistedSelection,
+  type SelectionModeBase,
+  type PersistFieldNames,
+} from './selection/createSelectionCore';
 
 // ============= Types =============
 
-export type SelectionMode = 'replace' | 'add' | 'remove' | 'toggle';
+export type SelectionMode = SelectionModeBase;
 
 /** Selection tool type for area selection (click, box, lasso) */
 export type SelectionToolType = 'click' | 'box' | 'lasso';
@@ -136,9 +150,15 @@ export interface SelectionContextValue extends SelectionState {
 
 // ============= Constants =============
 
-// Reduced from 50 to 10 to prevent memory accumulation with large datasets
-const MAX_HISTORY = 10;
+// History depth (MAX_HISTORY=10) and the set/history primitives are shared via
+// ./selection/createSelectionCore so this twin and InspectorSelectionContext
+// cannot drift apart on the common selection logic (FE-05-state).
 const STORAGE_KEY = 'playground-selection-state';
+const PERSIST_FIELDS: PersistFieldNames = {
+  selected: 'selectedSamples',
+  pinned: 'pinnedSamples',
+  savedSelections: 'savedSelections',
+};
 
 // ============= Initial State =============
 
@@ -157,23 +177,26 @@ const createInitialState = (): SelectionState => ({
 
 // ============= Helpers =============
 
-/**
- * Append a new selection snapshot to the bounded undo history.
- * Mirrors the helper in InspectorSelectionContext; replaces the inline
- * slice/push/shift block that was duplicated across every history-mutating case.
- */
+/** Record a new selection snapshot in the shared bounded undo history. */
 function pushHistory(
   state: SelectionState,
   newSelection: Set<number>
 ): Pick<SelectionState, 'selectionHistory' | 'historyIndex'> {
-  const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-  newHistory.push(newSelection);
-  if (newHistory.length > MAX_HISTORY) {
-    newHistory.shift();
-  }
+  return pushHistoryCore(state.selectionHistory, state.historyIndex, newSelection);
+}
+
+/**
+ * Collapse the selection onto a single index and snapshot it — the shared
+ * fallback used by both range actions when there is no anchor or the anchor /
+ * target is outside the supplied order.
+ */
+function selectSingle(state: SelectionState, toIndex: number): SelectionState {
+  const newSelection = new Set([toIndex]);
   return {
-    selectionHistory: newHistory,
-    historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+    ...state,
+    selectedSamples: newSelection,
+    ...pushHistory(state, newSelection),
+    lastSelectedIndex: toIndex,
   };
 }
 
@@ -183,32 +206,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
   switch (action.type) {
     case 'SELECT': {
       const mode = action.mode ?? state.selectionMode;
-      let newSelection: Set<number>;
-
-      switch (mode) {
-        case 'replace':
-          newSelection = new Set(action.indices);
-          break;
-        case 'add':
-          newSelection = new Set([...state.selectedSamples, ...action.indices]);
-          break;
-        case 'remove':
-          newSelection = new Set(state.selectedSamples);
-          action.indices.forEach(i => newSelection.delete(i));
-          break;
-        case 'toggle':
-          newSelection = new Set(state.selectedSamples);
-          action.indices.forEach(i => {
-            if (newSelection.has(i)) {
-              newSelection.delete(i);
-            } else {
-              newSelection.add(i);
-            }
-          });
-          break;
-        default:
-          newSelection = new Set(action.indices);
-      }
+      const newSelection = applySelectionMode(state.selectedSamples, action.indices, mode);
 
       // Track last selected index for range selection (use the last index in the array)
       const lastIdx = action.indices.length > 0 ? action.indices[action.indices.length - 1] : state.lastSelectedIndex;
@@ -222,8 +220,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
     }
 
     case 'DESELECT': {
-      const newSelection = new Set(state.selectedSamples);
-      action.indices.forEach(i => newSelection.delete(i));
+      const newSelection = removeFromSet(state.selectedSamples, action.indices);
 
       return {
         ...state,
@@ -233,13 +230,9 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
     }
 
     case 'TOGGLE': {
-      const newSelection = new Set(state.selectedSamples);
+      let newSelection = state.selectedSamples;
       action.indices.forEach(i => {
-        if (newSelection.has(i)) {
-          newSelection.delete(i);
-        } else {
-          newSelection.add(i);
-        }
+        newSelection = toggleInSet(newSelection, i);
       });
 
       return {
@@ -250,9 +243,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
     }
 
     case 'SELECT_ALL': {
-      const newSelection = new Set(
-        Array.from({ length: action.totalSamples }, (_, i) => i)
-      );
+      const newSelection = new Set(rangeIndices(action.totalSamples));
 
       return {
         ...state,
@@ -265,13 +256,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       // Range selection: select all indices between lastSelectedIndex and toIndex
       if (state.lastSelectedIndex === null) {
         // No previous selection, just select the target index
-        const newSelection = new Set([action.toIndex]);
-        return {
-          ...state,
-          selectedSamples: newSelection,
-          ...pushHistory(state, newSelection),
-          lastSelectedIndex: action.toIndex,
-        };
+        return selectSingle(state, action.toIndex);
       }
 
       // Generate range indices
@@ -279,35 +264,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       const toIdx = action.toIndex;
       const minIdx = Math.min(fromIdx, toIdx);
       const maxIdx = Math.max(fromIdx, toIdx);
-      const rangeIndices = Array.from({ length: maxIdx - minIdx + 1 }, (_, i) => minIdx + i);
+      const range = Array.from({ length: maxIdx - minIdx + 1 }, (_, i) => minIdx + i);
 
       const mode = action.mode ?? 'add'; // Default to 'add' for range selection
-      let newSelection: Set<number>;
-
-      switch (mode) {
-        case 'replace':
-          newSelection = new Set(rangeIndices);
-          break;
-        case 'add':
-          newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
-          break;
-        case 'remove':
-          newSelection = new Set(state.selectedSamples);
-          rangeIndices.forEach(i => newSelection.delete(i));
-          break;
-        case 'toggle':
-          newSelection = new Set(state.selectedSamples);
-          rangeIndices.forEach(i => {
-            if (newSelection.has(i)) {
-              newSelection.delete(i);
-            } else {
-              newSelection.add(i);
-            }
-          });
-          break;
-        default:
-          newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
-      }
+      const newSelection = applySelectionMode(state.selectedSamples, range, mode);
 
       return {
         ...state,
@@ -327,13 +287,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
 
       if (state.lastSelectedIndex === null) {
         // No previous selection, just select the target index
-        const newSelection = new Set([action.toIndex]);
-        return {
-          ...state,
-          selectedSamples: newSelection,
-          ...pushHistory(state, newSelection),
-          lastSelectedIndex: action.toIndex,
-        };
+        return selectSingle(state, action.toIndex);
       }
 
       // Find positions in the order array
@@ -342,47 +296,16 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
 
       // If either index is not in the order array, fall back to single selection
       if (fromPos === -1 || toPos === -1) {
-        const newSelection = new Set([action.toIndex]);
-        return {
-          ...state,
-          selectedSamples: newSelection,
-          ...pushHistory(state, newSelection),
-          lastSelectedIndex: action.toIndex,
-        };
+        return selectSingle(state, action.toIndex);
       }
 
       // Extract indices between the two positions (inclusive)
       const minPos = Math.min(fromPos, toPos);
       const maxPos = Math.max(fromPos, toPos);
-      const rangeIndices = order.slice(minPos, maxPos + 1);
+      const range = order.slice(minPos, maxPos + 1);
 
       const mode = action.mode ?? 'add'; // Default to 'add' for range selection
-      let newSelection: Set<number>;
-
-      switch (mode) {
-        case 'replace':
-          newSelection = new Set(rangeIndices);
-          break;
-        case 'add':
-          newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
-          break;
-        case 'remove':
-          newSelection = new Set(state.selectedSamples);
-          rangeIndices.forEach(i => newSelection.delete(i));
-          break;
-        case 'toggle':
-          newSelection = new Set(state.selectedSamples);
-          rangeIndices.forEach(i => {
-            if (newSelection.has(i)) {
-              newSelection.delete(i);
-            } else {
-              newSelection.add(i);
-            }
-          });
-          break;
-        default:
-          newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
-      }
+      const newSelection = applySelectionMode(state.selectedSamples, range, mode);
 
       return {
         ...state,
@@ -445,8 +368,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
 
     case 'INVERT': {
       const newSelection = new Set(
-        Array.from({ length: action.totalSamples }, (_, i) => i)
-          .filter(i => !state.selectedSamples.has(i))
+        rangeIndices(action.totalSamples).filter(i => !state.selectedSamples.has(i))
       );
 
       return {
@@ -457,19 +379,16 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
     }
 
     case 'PIN': {
-      const newPinned = new Set([...state.pinnedSamples, ...action.indices]);
       return {
         ...state,
-        pinnedSamples: newPinned,
+        pinnedSamples: addToSet(state.pinnedSamples, action.indices),
       };
     }
 
     case 'UNPIN': {
-      const newPinned = new Set(state.pinnedSamples);
-      action.indices.forEach(i => newPinned.delete(i));
       return {
         ...state,
-        pinnedSamples: newPinned,
+        pinnedSamples: removeFromSet(state.pinnedSamples, action.indices),
       };
     }
 
@@ -517,32 +436,28 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
     }
 
     case 'UNDO': {
-      if (state.historyIndex <= 0) {
+      // undoHistory reuses the existing Set from history (no allocation).
+      const result = undoHistory(state.selectionHistory, state.historyIndex);
+      if (!result) {
         return state;
       }
-
-      const newIndex = state.historyIndex - 1;
-      // Reuse existing Set from history instead of creating a new one
-      // This prevents memory allocation on every undo
       return {
         ...state,
-        selectedSamples: state.selectionHistory[newIndex],
-        historyIndex: newIndex,
+        selectedSamples: result.selection,
+        historyIndex: result.historyIndex,
       };
     }
 
     case 'REDO': {
-      if (state.historyIndex >= state.selectionHistory.length - 1) {
+      // redoHistory reuses the existing Set from history (no allocation).
+      const result = redoHistory(state.selectionHistory, state.historyIndex);
+      if (!result) {
         return state;
       }
-
-      const newIndex = state.historyIndex + 1;
-      // Reuse existing Set from history instead of creating a new one
-      // This prevents memory allocation on every redo
       return {
         ...state,
-        selectedSamples: state.selectionHistory[newIndex],
-        historyIndex: newIndex,
+        selectedSamples: result.selection,
+        historyIndex: result.historyIndex,
       };
     }
 
@@ -627,43 +542,24 @@ export const SelectionContext = createContext<SelectionContextValue | undefined>
 
 // ============= Storage Helpers =============
 
-interface SerializedState {
-  selectedSamples: number[];
-  pinnedSamples: number[];
-  savedSelections: SavedSelection[];
-}
-
 function persistState(state: SelectionState): void {
-  try {
-    const serialized: SerializedState = {
-      selectedSamples: Array.from(state.selectedSamples),
-      pinnedSamples: Array.from(state.pinnedSamples),
-      savedSelections: state.savedSelections,
-    };
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
-  } catch (e) {
-    console.warn('Failed to persist selection state:', e);
-  }
+  persistSelection(STORAGE_KEY, PERSIST_FIELDS, state.selectedSamples, state.pinnedSamples, state.savedSelections);
 }
 
 function loadPersistedState(): Partial<SelectionState> | null {
-  try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed: SerializedState = JSON.parse(stored);
-      return {
-        selectedSamples: new Set(parsed.selectedSamples || []),
-        pinnedSamples: new Set(parsed.pinnedSamples || []),
-        savedSelections: (parsed.savedSelections || []).map(s => ({
-          ...s,
-          createdAt: new Date(s.createdAt),
-        })),
-      };
-    }
-  } catch (e) {
-    console.warn('Failed to load persisted selection state:', e);
+  const parsed = loadPersistedSelection<number, SavedSelection>(STORAGE_KEY, PERSIST_FIELDS);
+  if (!parsed) {
+    return null;
   }
-  return null;
+  return {
+    selectedSamples: new Set(parsed.selected || []),
+    pinnedSamples: new Set(parsed.pinned || []),
+    // SavedSelection.createdAt persists as a string; re-hydrate to a Date.
+    savedSelections: (parsed.savedSelections || []).map(s => ({
+      ...s,
+      createdAt: new Date(s.createdAt),
+    })),
+  };
 }
 
 // ============= Provider =============
@@ -699,110 +595,36 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
   // and clobbered selection on Ctrl+Z/Escape (FE-01-state).
 
   // Memoized action creators
-  const select = useCallback((indices: number[], mode?: SelectionMode) => {
-    dispatch({ type: 'SELECT', indices, mode });
-  }, []);
-
-  const deselect = useCallback((indices: number[]) => {
-    dispatch({ type: 'DESELECT', indices });
-  }, []);
-
-  const toggle = useCallback((indices: number[]) => {
-    dispatch({ type: 'TOGGLE', indices });
-  }, []);
-
-  const selectAll = useCallback((totalSamples: number) => {
-    dispatch({ type: 'SELECT_ALL', totalSamples });
-  }, []);
-
-  const selectRange = useCallback((toIndex: number, mode?: SelectionMode) => {
-    dispatch({ type: 'SELECT_RANGE', toIndex, mode });
-  }, []);
-
-  const selectRangeOrdered = useCallback((toIndex: number, order: number[], mode?: SelectionMode) => {
-    dispatch({ type: 'SELECT_RANGE_ORDERED', toIndex, order, mode });
-  }, []);
-
-  const replaceIfNotSole = useCallback((indices: number[]) => {
-    dispatch({ type: 'REPLACE_IF_NOT_SOLE', indices });
-  }, []);
-
-  const clear = useCallback(() => {
-    dispatch({ type: 'CLEAR' });
-  }, []);
-
-  const invert = useCallback((totalSamples: number) => {
-    dispatch({ type: 'INVERT', totalSamples });
-  }, []);
-
-  const pin = useCallback((indices: number[]) => {
-    dispatch({ type: 'PIN', indices });
-  }, []);
-
-  const unpin = useCallback((indices: number[]) => {
-    dispatch({ type: 'UNPIN', indices });
-  }, []);
-
-  const clearPins = useCallback(() => {
-    dispatch({ type: 'CLEAR_PINS' });
-  }, []);
+  const select = useCallback((indices: number[], mode?: SelectionMode) => dispatch({ type: 'SELECT', indices, mode }), []);
+  const deselect = useCallback((indices: number[]) => dispatch({ type: 'DESELECT', indices }), []);
+  const toggle = useCallback((indices: number[]) => dispatch({ type: 'TOGGLE', indices }), []);
+  const selectAll = useCallback((totalSamples: number) => dispatch({ type: 'SELECT_ALL', totalSamples }), []);
+  const selectRange = useCallback((toIndex: number, mode?: SelectionMode) => dispatch({ type: 'SELECT_RANGE', toIndex, mode }), []);
+  const selectRangeOrdered = useCallback((toIndex: number, order: number[], mode?: SelectionMode) => dispatch({ type: 'SELECT_RANGE_ORDERED', toIndex, order, mode }), []);
+  const replaceIfNotSole = useCallback((indices: number[]) => dispatch({ type: 'REPLACE_IF_NOT_SOLE', indices }), []);
+  const clear = useCallback(() => dispatch({ type: 'CLEAR' }), []);
+  const invert = useCallback((totalSamples: number) => dispatch({ type: 'INVERT', totalSamples }), []);
+  const pin = useCallback((indices: number[]) => dispatch({ type: 'PIN', indices }), []);
+  const unpin = useCallback((indices: number[]) => dispatch({ type: 'UNPIN', indices }), []);
+  const clearPins = useCallback(() => dispatch({ type: 'CLEAR_PINS' }), []);
 
   const togglePin = useCallback((index: number) => {
-    if (state.pinnedSamples.has(index)) {
-      dispatch({ type: 'UNPIN', indices: [index] });
-    } else {
-      dispatch({ type: 'PIN', indices: [index] });
-    }
+    dispatch(state.pinnedSamples.has(index) ? { type: 'UNPIN', indices: [index] } : { type: 'PIN', indices: [index] });
   }, [state.pinnedSamples]);
 
-  const saveSelection = useCallback((name: string, color?: string) => {
-    dispatch({ type: 'SAVE_SELECTION', name, color });
-  }, []);
-
-  const loadSelection = useCallback((id: string) => {
-    dispatch({ type: 'LOAD_SELECTION', id });
-  }, []);
-
-  const deleteSavedSelection = useCallback((id: string) => {
-    dispatch({ type: 'DELETE_SAVED_SELECTION', id });
-  }, []);
-
-  const undo = useCallback(() => {
-    dispatch({ type: 'UNDO' });
-  }, []);
-
-  const redo = useCallback(() => {
-    dispatch({ type: 'REDO' });
-  }, []);
-
-  const setSelecting = useCallback((isSelecting: boolean) => {
-    dispatch({ type: 'SET_SELECTING', isSelecting });
-  }, []);
-
-  const setSelectionMode = useCallback((mode: SelectionMode) => {
-    dispatch({ type: 'SET_SELECTION_MODE', mode });
-  }, []);
-
-  const setSelectionToolMode = useCallback((tool: SelectionToolType) => {
-    dispatch({ type: 'SET_SELECTION_TOOL', tool });
-  }, []);
-
-  // setHovered now uses separate state for performance
-  const setHovered = useCallback((index: number | null) => {
-    setHoveredSampleState(index);
-  }, []);
-
-  const intersectWithAvailable = useCallback((availableIndices: number[]) => {
-    dispatch({ type: 'INTERSECT_WITH_AVAILABLE', availableIndices });
-  }, []);
-
-  const isSelected = useCallback((index: number) => {
-    return state.selectedSamples.has(index);
-  }, [state.selectedSamples]);
-
-  const isPinned = useCallback((index: number) => {
-    return state.pinnedSamples.has(index);
-  }, [state.pinnedSamples]);
+  const saveSelection = useCallback((name: string, color?: string) => dispatch({ type: 'SAVE_SELECTION', name, color }), []);
+  const loadSelection = useCallback((id: string) => dispatch({ type: 'LOAD_SELECTION', id }), []);
+  const deleteSavedSelection = useCallback((id: string) => dispatch({ type: 'DELETE_SAVED_SELECTION', id }), []);
+  const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
+  const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
+  const setSelecting = useCallback((isSelecting: boolean) => dispatch({ type: 'SET_SELECTING', isSelecting }), []);
+  const setSelectionMode = useCallback((mode: SelectionMode) => dispatch({ type: 'SET_SELECTION_MODE', mode }), []);
+  const setSelectionToolMode = useCallback((tool: SelectionToolType) => dispatch({ type: 'SET_SELECTION_TOOL', tool }), []);
+  // setHovered uses separate state for performance — hover never re-renders selection consumers.
+  const setHovered = useCallback((index: number | null) => setHoveredSampleState(index), []);
+  const intersectWithAvailable = useCallback((availableIndices: number[]) => dispatch({ type: 'INTERSECT_WITH_AVAILABLE', availableIndices }), []);
+  const isSelected = useCallback((index: number) => state.selectedSamples.has(index), [state.selectedSamples]);
+  const isPinned = useCallback((index: number) => state.pinnedSamples.has(index), [state.pinnedSamples]);
 
   // Derived values
   const canUndo = state.historyIndex > 0;
