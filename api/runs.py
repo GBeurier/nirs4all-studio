@@ -601,9 +601,10 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
     Cancellation is cooperative: stop_run() marks the run terminal and requests
     job cancellation; this task checks the flag between pipelines and never
     overwrites a terminal status set by stop_run — a stopped run must not be
-    resurrected to 'completed' by the still-running worker (RUN-07). nirs4all has
-    no mid-run cancel hook yet, so an in-flight pipeline finishes before the flag
-    takes effect (library-side hook tracked by the T2.1 boundary work).
+    resurrected to 'completed' by the still-running worker (RUN-07). The
+    cancellation flag is also threaded into nirs4all.run() as its should_stop
+    hook, so an in-flight pipeline aborts at the next variant/refit boundary
+    (RunCancelledError) instead of running to completion.
     """
     run = _runs.get(run_id)
     if run is None:
@@ -670,6 +671,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         run_id,
                         dataset.split_group_by,
                         store_run_id=shared_store_run_id,
+                        should_stop=lambda: job.cancellation_requested,
                     )
 
                     if job.cancellation_requested:
@@ -726,11 +728,20 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         )
 
                 except Exception as e:
-                    pipeline.status = "failed"
-                    pipeline.error_message = str(e)
-                    pipeline.logs = pipeline.logs or []
-                    pipeline.logs.append(f"[ERROR] {str(e)}")
-                    logger.error("Pipeline execution error: %s", e, exc_info=True)
+                    from nirs4all.pipeline.execution.orchestrator import RunCancelledError
+
+                    if isinstance(e, RunCancelledError):
+                        cancelled = True
+                        pipeline.status = "failed"
+                        pipeline.error_message = "Cancelled by user"
+                        pipeline.logs = pipeline.logs or []
+                        pipeline.logs.append("[WARN] Pipeline cancelled by user")
+                    else:
+                        pipeline.status = "failed"
+                        pipeline.error_message = str(e)
+                        pipeline.logs = pipeline.logs or []
+                        pipeline.logs.append(f"[ERROR] {str(e)}")
+                        logger.error("Pipeline execution error: %s", e, exc_info=True)
 
                 _save_run_manifest(run)
                 pipeline_index += 1
@@ -810,6 +821,7 @@ def _execute_pipeline_training(
     run_id: str,
     split_group_by: str | None = None,
     store_run_id: str | None = None,
+    should_stop: Any | None = None,
 ) -> dict[str, Any]:
     """Execute one pipeline via nirs4all.run() on the current worker thread.
 
@@ -997,6 +1009,10 @@ def _execute_pipeline_training(
         }
         if store_run_id:
             run_kwargs["store_run_id"] = store_run_id
+        if should_stop is not None:
+            # Cooperative cancellation: nirs4all polls this at dataset/variant/
+            # refit boundaries and aborts with RunCancelledError.
+            run_kwargs["should_stop"] = should_stop
         result = nirs4all.run(**run_kwargs)
     finally:
         root_logger.removeHandler(log_handler)
