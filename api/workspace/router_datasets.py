@@ -136,40 +136,35 @@ def _populate_linked_dataset_stats(dataset_info: dict[str, Any]) -> dict[str, An
 
             if datasets:
                 ds = datasets[0]
-                dataset_info["num_samples"] = ds.num_samples
-                dataset_info["num_features"] = ds.num_features
-                dataset_info["n_sources"] = ds.n_sources
+                # WS-06: structural facts come from the library's one-call
+                # summary (JSON-safe, enums pre-normalized); this function
+                # only maps them onto the studio's stored config shape.
+                summary = ds.describe()
+                dataset_info["num_samples"] = summary["num_samples"]
+                dataset_info["num_features"] = summary["num_features"]
+                dataset_info["n_sources"] = summary["n_sources"]
 
                 # Non-critical metadata — failures here must not prevent saving core stats
                 try:
-                    task_type_str = None
-                    if ds.task_type:
-                        task_type_str = str(ds.task_type)
-                        if "." in task_type_str:
-                            task_type_str = task_type_str.split(".")[-1].lower()
+                    task_type_str = summary["task_type"]
                     dataset_info["task_type"] = task_type_str
 
-                    if ds.signal_types:
-                        dataset_info["signal_types"] = [st.value for st in ds.signal_types]
+                    if summary["signal_types"]:
+                        dataset_info["signal_types"] = summary["signal_types"]
 
-                    # ds.metadata_columns is the public accessor (empty when
-                    # the dataset has no metadata table).
                     dataset_info["metadata_columns"] = [
                         column
-                        for column in (ds.metadata_columns or [])
+                        for column in summary["metadata_columns"]
                         if isinstance(column, str) and column
                     ]
 
                     # Detect/set targets if not already configured. A detected
                     # task type implies the dataset carries targets (the
-                    # library derives task_type from them).
+                    # library derives task_type from them). Column naming is
+                    # the studio's config vocabulary, not library data.
                     config = dataset_info.get("config", {})
                     if "targets" not in config and task_type_str is not None:
-                        target_columns = ds.target_columns if hasattr(ds, 'target_columns') else None
-                        if target_columns:
-                            detected_targets = [{"column": col, "type": task_type_str or "regression"} for col in target_columns]
-                        else:
-                            detected_targets = [{"column": "target", "type": task_type_str or "regression"}]
+                        detected_targets = [{"column": "target", "type": task_type_str or "regression"}]
                         dataset_info["targets"] = detected_targets
                         if "config" not in dataset_info:
                             dataset_info["config"] = {}

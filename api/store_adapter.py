@@ -121,18 +121,6 @@ def _parse_json_maybe(value: Any) -> Any:
     return value
 
 
-def _parse_expanded_config_steps(expanded_config: Any) -> list[Any]:
-    """Return a pipeline's expanded canonical step list."""
-    parsed = _parse_json_maybe(expanded_config)
-    if isinstance(parsed, dict) and isinstance(parsed.get("pipeline"), list):
-        return parsed["pipeline"]
-    if isinstance(parsed, list):
-        return parsed
-    if parsed is None:
-        return []
-    return [parsed]
-
-
 def _class_name_from_path(class_path: Any) -> str:
     """Return the leaf class/function name from a dotted reference."""
     if not isinstance(class_path, str) or not class_path:
@@ -144,24 +132,6 @@ def _class_name_from_path(class_path: Any) -> str:
     if not normalized:
         return ""
     return normalized.rsplit(".", 1)[-1]
-
-
-def _extract_step_reference(step: Any) -> tuple[str | None, dict[str, Any]]:
-    """Return ``(reference, params)`` for a canonical step when possible."""
-    if isinstance(step, str):
-        return step, {}
-
-    if not isinstance(step, dict):
-        return None, {}
-
-    if "class" in step and isinstance(step.get("class"), str):
-        params = step.get("params")
-        return step["class"], params if isinstance(params, dict) else {}
-
-    if "model" in step:
-        return None, {}
-
-    return None, {}
 
 
 def _strategy_key_from_reference(reference: str | None) -> str | None:
@@ -194,7 +164,15 @@ def _strategy_key_from_reference(reference: str | None) -> str | None:
 
 
 def _infer_pipeline_runtime_config(expanded_config: Any) -> dict[str, Any]:
-    """Infer CV/runtime metadata from stored expanded pipeline steps."""
+    """Infer CV/runtime metadata from stored expanded pipeline steps.
+
+    Splitter recognition + parameter extraction are library-owned (BV-07):
+    nirs4all.pipeline.analysis.splitter_config parses the store's own
+    expanded_config format. Only the UI strategy vocabulary
+    (_strategy_key_from_reference) stays here.
+    """
+    from nirs4all.pipeline.analysis.splitter_config import extract_splitter_config
+
     info: dict[str, Any] = {
         "cv_strategy": None,
         "cv_folds": None,
@@ -205,52 +183,18 @@ def _infer_pipeline_runtime_config(expanded_config: Any) -> dict[str, Any]:
         "splitter_class": None,
     }
 
-    for step in _parse_expanded_config_steps(expanded_config):
-        reference, params = _extract_step_reference(step)
-        if not reference:
-            continue
+    config = extract_splitter_config(expanded_config)
+    if config is None:
+        return info
 
-        # Skip non-reconstructable Python repr strings (the library's step
-        # parser applies the same rule) — e.g. internal runtime objects
-        # serialized via json.dumps(default=str).
-        if reference.strip().startswith("<"):
-            continue
-
-        strategy_key = _strategy_key_from_reference(reference)
-        class_name = _class_name_from_path(reference)
-        normalized_reference = _OBJECT_REPR_RE.sub(r"\g<path>", str(reference).strip()).strip()
-        if strategy_key is None and not any(
-            token in normalized_reference.lower()
-            for token in ("split", "fold", "loo", "holdout")
-        ):
-            continue
-
-        info["cv_strategy"] = strategy_key or class_name or normalized_reference
-        info["splitter_class"] = class_name or normalized_reference
-
-        raw_folds = params.get("n_splits", params.get("cv_folds"))
-        if isinstance(raw_folds, (int, float)) and int(raw_folds) > 0:
-            info["cv_folds"] = int(raw_folds)
-
-        raw_random_state = params.get("random_state")
-        if isinstance(raw_random_state, (int, float)):
-            info["random_state"] = int(raw_random_state)
-
-        if isinstance(params.get("shuffle"), bool):
-            info["shuffle"] = params.get("shuffle")
-
-        raw_test_size = params.get("test_size")
-        if isinstance(raw_test_size, (int, float)):
-            info["test_size"] = float(raw_test_size)
-
-        for group_key in ("group_by", "groups", "repetition", "aggregate"):
-            group_value = params.get(group_key)
-            if isinstance(group_value, str) and group_value.strip():
-                info["group_by"] = group_value.strip()
-                break
-
-        break
-
+    strategy_key = _strategy_key_from_reference(config.reference)
+    info["cv_strategy"] = strategy_key or config.splitter_class or config.reference
+    info["splitter_class"] = config.splitter_class or config.reference
+    info["cv_folds"] = config.n_splits
+    info["random_state"] = config.random_state
+    info["shuffle"] = config.shuffle
+    info["test_size"] = config.test_size
+    info["group_by"] = config.group_by
     return info
 
 
