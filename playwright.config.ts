@@ -49,10 +49,14 @@ export default defineConfig({
   // Projects for different browsers and modes
   projects: [
     // Run settings mutations in isolation first to avoid cross-file backend contention.
+    // These tests each do several full navigations + reloads + backend round-trips
+    // serially (workers:1); under WSL2 / a cold OS cache the per-test wall clock can
+    // exceed the 60s default, so give the heavy serial projects more headroom.
     {
       name: 'web-chromium-settings',
       testMatch: ['**/settings.spec.ts'],
       workers: 1,
+      timeout: 120000,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: 'http://localhost:5173',
@@ -64,6 +68,7 @@ export default defineConfig({
       name: 'web-chromium-navigation',
       testMatch: ['**/navigation.spec.ts'],
       workers: 1,
+      timeout: 120000,
       dependencies: ['web-chromium-settings'],
       use: {
         ...devices['Desktop Chrome'],
