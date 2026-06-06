@@ -179,6 +179,11 @@ class UpdateManager:
         self._cache_path = self._app_data_dir / self.CACHE_FILE
         self._settings: UpdateSettings | None = None
         self._cache: dict[str, Any] | None = None
+        # nirs4all version is probed via a subprocess that imports the full ML
+        # stack (~15-20s cold). It is immutable for a process lifetime barring
+        # an in-session upgrade, so memoize it and refresh only on force.
+        self._nirs4all_version_cached: str | None = None
+        self._nirs4all_version_probed = False
         # Defer disk I/O until first access for faster startup
 
     def _load_settings(self) -> None:
@@ -291,9 +296,17 @@ class UpdateManager:
 
         return "unknown"
 
-    def get_nirs4all_version(self) -> str | None:
-        """Get the installed nirs4all version from the current runtime."""
-        return venv_manager.get_nirs4all_version()
+    def get_nirs4all_version(self, force: bool = False) -> str | None:
+        """Get the installed nirs4all version from the current runtime.
+
+        Memoized: the underlying probe spawns a subprocess that imports the
+        full ML stack. Pass ``force=True`` (the explicit "check for updates"
+        path) to re-probe after an in-session upgrade.
+        """
+        if force or not self._nirs4all_version_probed:
+            self._nirs4all_version_cached = venv_manager.get_nirs4all_version()
+            self._nirs4all_version_probed = True
+        return self._nirs4all_version_cached
 
     def _apply_cached_github_release(
         self,
@@ -599,7 +612,10 @@ class UpdateManager:
         Returns:
             Nirs4allUpdateInfo with latest release details
         """
-        current_version = self.get_nirs4all_version()
+        # get_nirs4all_version() spawns a subprocess that imports nirs4all
+        # (the full ML stack — up to ~20s cold). Off-load it so it cannot block
+        # the event loop and stall every other in-flight request.
+        current_version = await asyncio.to_thread(self.get_nirs4all_version, force)
         info = Nirs4allUpdateInfo(current_version=current_version)
 
         # Check cache (lazy load on first access)
@@ -703,8 +719,8 @@ class UpdateManager:
         webapp_info = await webapp_task
         nirs4all_info = await nirs4all_task
 
-        # Get venv info
-        venv_info = venv_manager.get_venv_info()
+        # Get venv info (sync; inspects the venv) — keep it off the loop too.
+        venv_info = await asyncio.to_thread(venv_manager.get_venv_info)
 
         return UpdateStatus(
             webapp=webapp_info,
