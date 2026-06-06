@@ -143,22 +143,12 @@ export function SampleAugmentationRenderer({
   onAddChild,
   onRemoveChild,
 }: StepRendererProps) {
-  const config = step.sampleAugmentationConfig;
   const children = step.children ?? [];
 
   const handleParamChange = (key: string, value: string | number | boolean) => {
     onUpdate(step.id, {
       params: { ...step.params, [key]: value },
     });
-    // Also update the structured config
-    if (config) {
-      const newConfig = { ...config };
-      if (key === "count") newConfig.count = value as number;
-      if (key === "selection")
-        newConfig.selection = value as "random" | "all" | "sequential";
-      if (key === "random_state") newConfig.random_state = value as number;
-      onUpdate(step.id, { sampleAugmentationConfig: newConfig });
-    }
   };
 
   return (
@@ -181,7 +171,7 @@ export function SampleAugmentationRenderer({
               <Label className="text-sm font-medium">Augmentation Count</Label>
               <Input
                 type="number"
-                value={Number(step.params.count) || config?.count || 1}
+                value={Number(step.params.count) || 1}
                 onChange={(e) =>
                   handleParamChange("count", parseInt(e.target.value) || 1)
                 }
@@ -196,9 +186,7 @@ export function SampleAugmentationRenderer({
             <div className="space-y-2">
               <Label className="text-sm font-medium">Selection Strategy</Label>
               <Select
-                value={String(
-                  step.params.selection || config?.selection || "random"
-                )}
+                value={String(step.params.selection || "random")}
                 onValueChange={(v) => handleParamChange("selection", v)}
               >
                 <SelectTrigger>
@@ -216,9 +204,7 @@ export function SampleAugmentationRenderer({
               <Label className="text-sm font-medium">Random State</Label>
               <Input
                 type="number"
-                value={
-                  Number(step.params.random_state) || config?.random_state || 42
-                }
+                value={Number(step.params.random_state) || 42}
                 onChange={(e) =>
                   handleParamChange("random_state", parseInt(e.target.value))
                 }
@@ -266,15 +252,13 @@ export function FeatureAugmentationRenderer({
   onAddChild,
   onRemoveChild,
 }: StepRendererProps) {
-  const config = step.featureAugmentationConfig;
   const children = step.children ?? [];
+  const generatorOptions = step.generatorOptions;
+  const isGeneratorMode = step.generatorKind === "or";
 
   const handleActionChange = (action: string) => {
     onUpdate(step.id, {
       params: { ...step.params, action },
-      featureAugmentationConfig: config
-        ? { ...config, action: action as "extend" | "add" | "replace" }
-        : undefined,
     });
   };
 
@@ -296,7 +280,7 @@ export function FeatureAugmentationRenderer({
           <div className="space-y-2">
             <Label className="text-sm font-medium">Action Mode</Label>
             <Select
-              value={String(step.params.action || config?.action || "extend")}
+              value={String(step.params.action || "extend")}
               onValueChange={handleActionChange}
             >
               <SelectTrigger>
@@ -315,7 +299,7 @@ export function FeatureAugmentationRenderer({
           </div>
 
           {/* Generator Options */}
-          {config?.orOptions && config.orOptions.length > 0 && (
+          {isGeneratorMode && (
             <>
               <Separator />
               <div className="space-y-3">
@@ -326,10 +310,10 @@ export function FeatureAugmentationRenderer({
                     <Input
                       type="text"
                       value={
-                        config.pick !== undefined
-                          ? Array.isArray(config.pick)
-                            ? JSON.stringify(config.pick)
-                            : config.pick
+                        generatorOptions?.pick !== undefined
+                          ? Array.isArray(generatorOptions.pick)
+                            ? JSON.stringify(generatorOptions.pick)
+                            : generatorOptions.pick
                           : ""
                       }
                       onChange={(e) => {
@@ -338,7 +322,7 @@ export function FeatureAugmentationRenderer({
                           ? JSON.parse(v)
                           : parseInt(v) || undefined;
                         onUpdate(step.id, {
-                          featureAugmentationConfig: { ...config, pick: parsed },
+                          generatorOptions: { ...generatorOptions, pick: parsed },
                         });
                       }}
                       className="h-8"
@@ -351,11 +335,11 @@ export function FeatureAugmentationRenderer({
                     </Label>
                     <Input
                       type="number"
-                      value={config.count || ""}
+                      value={generatorOptions?.count || ""}
                       onChange={(e) => {
                         onUpdate(step.id, {
-                          featureAugmentationConfig: {
-                            ...config,
+                          generatorOptions: {
+                            ...generatorOptions,
                             count: parseInt(e.target.value) || undefined,
                           },
                         });
@@ -408,23 +392,18 @@ export function SampleFilterRenderer({
   onAddChild,
   onRemoveChild,
 }: StepRendererProps) {
-  const config = step.sampleFilterConfig;
   const children = step.children ?? [];
   const filterOrigin = step.filterOrigin ?? "sample_filter";
 
   const handleModeChange = (mode: string) => {
     onUpdate(step.id, {
       params: { ...step.params, mode },
-      sampleFilterConfig: config
-        ? { ...config, mode: mode as "any" | "all" | "vote" }
-        : undefined,
     });
   };
 
   const handleReportChange = (report: boolean) => {
     onUpdate(step.id, {
       params: { ...step.params, report },
-      sampleFilterConfig: config ? { ...config, report } : undefined,
     });
   };
 
@@ -469,7 +448,7 @@ export function SampleFilterRenderer({
             <div className="space-y-2">
               <Label className="text-sm font-medium">Filter Mode</Label>
               <Select
-                value={String(step.params.mode || config?.mode || "any")}
+                value={String(step.params.mode || "any")}
                 onValueChange={handleModeChange}
               >
                 <SelectTrigger>
@@ -496,7 +475,7 @@ export function SampleFilterRenderer({
                   <Label className="text-sm">Generate Report</Label>
                 </div>
                 <Switch
-                  checked={Boolean(step.params.report ?? config?.report ?? true)}
+                  checked={Boolean(step.params.report ?? true)}
                   onCheckedChange={handleReportChange}
                 />
               </div>

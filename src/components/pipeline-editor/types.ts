@@ -192,33 +192,6 @@ export const CONTAINER_BRANCH_SUBTYPES: FlowStepSubType[] = [
   "generator",
 ];
 
-// Sample augmentation configuration
-export interface SampleAugmentationConfig {
-  transformers: TransformerConfig[];
-  count?: number;         // Number of augmented samples per original
-  selection?: "random" | "all" | "sequential";
-  random_state?: number;
-  variation_scope?: "sample" | "batch";
-}
-
-// Feature augmentation configuration
-export interface FeatureAugmentationConfig {
-  action?: "extend" | "add" | "replace";
-  // For _or_ generator mode
-  orOptions?: TransformerConfig[];
-  pick?: number | [number, number];
-  count?: number;
-  // For direct list mode
-  transforms?: TransformerConfig[];
-}
-
-// Sample filter configuration
-export interface SampleFilterConfig {
-  filters: TransformerConfig[];
-  mode?: "any" | "all" | "vote";
-  report?: boolean;
-}
-
 // Concat transform configuration
 export interface ConcatTransformConfig {
   branches: TransformerConfig[][];  // Each branch is a chain of transforms
@@ -328,12 +301,6 @@ export interface PipelineStep {
     scaler: string;
     params: PipelineParams;
   };
-  // Feature augmentation configuration (container params, not transforms)
-  featureAugmentationConfig?: FeatureAugmentationConfig;
-  // Sample augmentation configuration (container params, not transformers)
-  sampleAugmentationConfig?: SampleAugmentationConfig;
-  // Sample filter configuration (container params, not filters)
-  sampleFilterConfig?: SampleFilterConfig;
   // Concat transform configuration
   concatTransformConfig?: ConcatTransformConfig;
   // Merge configuration (complex merge with predictions)

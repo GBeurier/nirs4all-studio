@@ -169,187 +169,6 @@ export interface Nirs4allPipeline {
 // Class Path Mappings
 // ============================================================================
 
-/**
- * Map class paths to display names and step types.
- * This handles the internal sklearn paths like sklearn.preprocessing._data.MinMaxScaler
- */
-const CLASS_PATH_MAPPINGS: Record<string, { name: string; type: StepType }> = {
-  // sklearn preprocessing
-  "sklearn.preprocessing._data.MinMaxScaler": { name: "MinMaxScaler", type: "preprocessing" },
-  "sklearn.preprocessing._data.StandardScaler": { name: "StandardScaler", type: "preprocessing" },
-  "sklearn.preprocessing._data.RobustScaler": { name: "RobustScaler", type: "preprocessing" },
-  "sklearn.preprocessing._data.MaxAbsScaler": { name: "MaxAbsScaler", type: "preprocessing" },
-  "sklearn.preprocessing._data.Normalizer": { name: "Normalizer", type: "preprocessing" },
-  "sklearn.preprocessing._polynomial.PolynomialFeatures": { name: "PolynomialFeatures", type: "preprocessing" },
-  "sklearn.preprocessing._data.PowerTransformer": { name: "PowerTransformer", type: "preprocessing" },
-  "sklearn.preprocessing._data.QuantileTransformer": { name: "QuantileTransformer", type: "preprocessing" },
-  "sklearn.preprocessing.MinMaxScaler": { name: "MinMaxScaler", type: "preprocessing" },
-  "sklearn.preprocessing.StandardScaler": { name: "StandardScaler", type: "preprocessing" },
-  "sklearn.preprocessing.RobustScaler": { name: "RobustScaler", type: "preprocessing" },
-
-  // sklearn decomposition
-  "sklearn.decomposition._pca.PCA": { name: "PCA", type: "preprocessing" },
-  "sklearn.decomposition._truncated_svd.TruncatedSVD": { name: "TruncatedSVD", type: "preprocessing" },
-  "sklearn.decomposition.PCA": { name: "PCA", type: "preprocessing" },
-  "sklearn.decomposition.TruncatedSVD": { name: "TruncatedSVD", type: "preprocessing" },
-
-  // sklearn splitters
-  "sklearn.model_selection._split.KFold": { name: "KFold", type: "splitting" },
-  "sklearn.model_selection._split.ShuffleSplit": { name: "ShuffleSplit", type: "splitting" },
-  "sklearn.model_selection._split.StratifiedKFold": { name: "StratifiedKFold", type: "splitting" },
-  "sklearn.model_selection._split.GroupKFold": { name: "GroupKFold", type: "splitting" },
-  "sklearn.model_selection._split.RepeatedKFold": { name: "RepeatedKFold", type: "splitting" },
-  "sklearn.model_selection._split.LeaveOneOut": { name: "LeaveOneOut", type: "splitting" },
-  "sklearn.model_selection.KFold": { name: "KFold", type: "splitting" },
-  "sklearn.model_selection.ShuffleSplit": { name: "ShuffleSplit", type: "splitting" },
-
-  // sklearn models
-  "sklearn.cross_decomposition._pls.PLSRegression": { name: "PLSRegression", type: "model" },
-  "sklearn.cross_decomposition.PLSRegression": { name: "PLSRegression", type: "model" },
-  "sklearn.ensemble._forest.RandomForestRegressor": { name: "RandomForestRegressor", type: "model" },
-  "sklearn.ensemble.RandomForestRegressor": { name: "RandomForestRegressor", type: "model" },
-  "sklearn.ensemble._forest.RandomForestClassifier": { name: "RandomForestClassifier", type: "model" },
-  "sklearn.ensemble._gb.GradientBoostingRegressor": { name: "GradientBoostingRegressor", type: "model" },
-  "sklearn.ensemble.GradientBoostingRegressor": { name: "GradientBoostingRegressor", type: "model" },
-  "sklearn.linear_model._ridge.Ridge": { name: "Ridge", type: "model" },
-  "sklearn.linear_model.Ridge": { name: "Ridge", type: "model" },
-  "sklearn.linear_model._coordinate_descent.Lasso": { name: "Lasso", type: "model" },
-  "sklearn.linear_model.Lasso": { name: "Lasso", type: "model" },
-  "sklearn.linear_model._coordinate_descent.ElasticNet": { name: "ElasticNet", type: "model" },
-  "sklearn.linear_model.ElasticNet": { name: "ElasticNet", type: "model" },
-  "sklearn.svm._classes.SVR": { name: "SVR", type: "model" },
-  "sklearn.svm.SVR": { name: "SVR", type: "model" },
-  "tabicl.TabICLRegressor": { name: "TabICLRegressor", type: "model" },
-  "tabicl.TabICLClassifier": { name: "TabICLClassifier", type: "model" },
-
-  // nirs4all transforms (both internal and public API paths)
-  "nirs4all.operators.transforms.scalers.StandardNormalVariate": { name: "SNV", type: "preprocessing" },
-  "nirs4all.operators.transforms.nirs.StandardNormalVariate": { name: "SNV", type: "preprocessing" },
-  "nirs4all.operators.transforms.StandardNormalVariate": { name: "SNV", type: "preprocessing" },
-  "nirs4all.operators.transforms.nirs.MultiplicativeScatterCorrection": { name: "MSC", type: "preprocessing" },
-  "nirs4all.operators.transforms.MultiplicativeScatterCorrection": { name: "MSC", type: "preprocessing" },
-  "nirs4all.operators.transforms.nirs.FirstDerivative": { name: "FirstDerivative", type: "preprocessing" },
-  "nirs4all.operators.transforms.FirstDerivative": { name: "FirstDerivative", type: "preprocessing" },
-  "nirs4all.operators.transforms.nirs.SecondDerivative": { name: "SecondDerivative", type: "preprocessing" },
-  "nirs4all.operators.transforms.SecondDerivative": { name: "SecondDerivative", type: "preprocessing" },
-  "nirs4all.operators.transforms.nirs.SavitzkyGolay": { name: "SavitzkyGolay", type: "preprocessing" },
-  "nirs4all.operators.transforms.SavitzkyGolay": { name: "SavitzkyGolay", type: "preprocessing" },
-  "nirs4all.operators.transforms.signal.Detrend": { name: "Detrend", type: "preprocessing" },
-  "nirs4all.operators.transforms.Detrend": { name: "Detrend", type: "preprocessing" },
-  "nirs4all.operators.transforms.signal.Gaussian": { name: "Gaussian", type: "preprocessing" },
-  "nirs4all.operators.transforms.Gaussian": { name: "Gaussian", type: "preprocessing" },
-  "nirs4all.operators.transforms.baseline.ASLSBaseline": { name: "ASLSBaseline", type: "preprocessing" },
-  "nirs4all.operators.transforms.baseline.AirPLS": { name: "AirPLS", type: "preprocessing" },
-  "nirs4all.operators.transforms.baseline.ArPLS": { name: "ArPLS", type: "preprocessing" },
-
-  // nirs4all augmentation transforms (both internal paths and public API paths)
-  "nirs4all.operators.augmentation.random.Rotate_Translate": { name: "Rotate_Translate", type: "augmentation" },
-  "nirs4all.operators.transforms.Rotate_Translate": { name: "Rotate_Translate", type: "augmentation" },
-  "nirs4all.operators.augmentation.spectral.GaussianAdditiveNoise": { name: "GaussianNoise", type: "augmentation" },
-  "nirs4all.operators.transforms.GaussianAdditiveNoise": { name: "GaussianNoise", type: "augmentation" },
-  "nirs4all.operators.augmentation.spectral.MultiplicativeNoise": { name: "MultiplicativeNoise", type: "augmentation" },
-  "nirs4all.operators.transforms.MultiplicativeNoise": { name: "MultiplicativeNoise", type: "augmentation" },
-  "nirs4all.operators.augmentation.spectral.LinearBaselineDrift": { name: "LinearBaselineDrift", type: "augmentation" },
-  "nirs4all.operators.transforms.LinearBaselineDrift": { name: "LinearBaselineDrift", type: "augmentation" },
-  "nirs4all.operators.augmentation.spectral.WavelengthShift": { name: "WavelengthShift", type: "augmentation" },
-  "nirs4all.operators.transforms.WavelengthShift": { name: "WavelengthShift", type: "augmentation" },
-
-  // nirs4all filters (both internal paths and public API paths)
-  "nirs4all.operators.filters.y_outlier.YOutlierFilter": { name: "YOutlierFilter", type: "filter" },
-  "nirs4all.operators.filters.YOutlierFilter": { name: "YOutlierFilter", type: "filter" },
-  "nirs4all.operators.filters.spectral_quality.SpectralQualityFilter": { name: "SpectralQualityFilter", type: "filter" },
-  "nirs4all.operators.filters.SpectralQualityFilter": { name: "SpectralQualityFilter", type: "filter" },
-
-  // nirs4all splitters (both internal paths and public API paths)
-  "nirs4all.operators.splitters.splitters.SPXYGFold": { name: "SPXYGFold", type: "splitting" },
-  "nirs4all.operators.splitters.SPXYGFold": { name: "SPXYGFold", type: "splitting" },
-  "nirs4all.operators.splitters.splitters.KennardStoneSplitter": { name: "KennardStone", type: "splitting" },
-  "nirs4all.operators.splitters.KennardStoneSplitter": { name: "KennardStone", type: "splitting" },
-
-  // nirs4all models (both internal paths and public API paths)
-  "nirs4all.operators.models.meta.MetaModel": { name: "MetaModel", type: "model" },
-  "nirs4all.operators.models.MetaModel": { name: "MetaModel", type: "model" },
-  "nirs4all.operators.models.pls.OPLS": { name: "OPLS", type: "model" },
-  "nirs4all.operators.models.OPLS": { name: "OPLS", type: "model" },
-  "nirs4all.operators.models.pls.IKPLS": { name: "IKPLS", type: "model" },
-  "nirs4all.operators.models.IKPLS": { name: "IKPLS", type: "model" },
-  "nirs4all.operators.models.pls.LWPLS": { name: "LWPLS", type: "model" },
-  "nirs4all.operators.models.LWPLS": { name: "LWPLS", type: "model" },
-  "nirs4all.operators.models.pytorch.nicon.nicon": { name: "NICoN", type: "model" },
-  "nirs4all.operators.models.pytorch.nicon.customizable_nicon": { name: "CNN1D", type: "model" },
-  "nirs4all.operators.models.tensorflow.nicon.customizable_nicon": { name: "nicon", type: "model" },
-};
-
-/**
- * Reverse mapping: display name + type → class path
- */
-const NAME_TO_CLASS_PATH: Record<string, string> = {
-  // sklearn preprocessing
-  "preprocessing:MinMaxScaler": "sklearn.preprocessing.MinMaxScaler",
-  "preprocessing:StandardScaler": "sklearn.preprocessing.StandardScaler",
-  "preprocessing:RobustScaler": "sklearn.preprocessing.RobustScaler",
-  "preprocessing:PCA": "sklearn.decomposition.PCA",
-  "preprocessing:TruncatedSVD": "sklearn.decomposition.TruncatedSVD",
-
-  // y_processing (same scalers but used for target)
-  "y_processing:MinMaxScaler": "sklearn.preprocessing.MinMaxScaler",
-  "y_processing:StandardScaler": "sklearn.preprocessing.StandardScaler",
-  "y_processing:RobustScaler": "sklearn.preprocessing.RobustScaler",
-
-  // sklearn splitters
-  "splitting:KFold": "sklearn.model_selection.KFold",
-  "splitting:ShuffleSplit": "sklearn.model_selection.ShuffleSplit",
-  "splitting:StratifiedKFold": "sklearn.model_selection.StratifiedKFold",
-  "splitting:GroupKFold": "sklearn.model_selection.GroupKFold",
-  "splitting:LeaveOneOut": "sklearn.model_selection.LeaveOneOut",
-
-  // sklearn models
-  "model:PLSRegression": "sklearn.cross_decomposition.PLSRegression",
-  "model:RandomForestRegressor": "sklearn.ensemble.RandomForestRegressor",
-  "model:RandomForestClassifier": "sklearn.ensemble.RandomForestClassifier",
-  "model:GradientBoostingRegressor": "sklearn.ensemble.GradientBoostingRegressor",
-  "model:Ridge": "sklearn.linear_model.Ridge",
-  "model:Lasso": "sklearn.linear_model.Lasso",
-  "model:ElasticNet": "sklearn.linear_model.ElasticNet",
-  "model:SVR": "sklearn.svm.SVR",
-
-  // nirs4all transforms
-  "preprocessing:SNV": "nirs4all.operators.transforms.StandardNormalVariate",
-  "preprocessing:MSC": "nirs4all.operators.transforms.MultiplicativeScatterCorrection",
-  "preprocessing:FirstDerivative": "nirs4all.operators.transforms.FirstDerivative",
-  "preprocessing:SecondDerivative": "nirs4all.operators.transforms.SecondDerivative",
-  "preprocessing:SavitzkyGolay": "nirs4all.operators.transforms.SavitzkyGolay",
-  "preprocessing:Detrend": "nirs4all.operators.transforms.Detrend",
-  "preprocessing:Gaussian": "nirs4all.operators.transforms.Gaussian",
-  "preprocessing:ASLSBaseline": "nirs4all.operators.transforms.ASLSBaseline",
-
-  // nirs4all splitters
-  "splitting:SPXYGFold": "nirs4all.operators.splitters.SPXYGFold",
-  "splitting:KennardStone": "nirs4all.operators.splitters.KennardStoneSplitter",
-  "splitting:SPXY": "nirs4all.operators.splitters.SPXYSplitter",
-
-  // nirs4all models
-  "model:MetaModel": "nirs4all.operators.models.MetaModel",
-  "model:OPLS": "nirs4all.operators.models.OPLS",
-  "model:IKPLS": "nirs4all.operators.models.IKPLS",
-  "model:LWPLS": "nirs4all.operators.models.LWPLS",
-  "model:nicon": "nirs4all.operators.models.pytorch.nicon.nicon",
-  "model:NICoN": "nirs4all.operators.models.pytorch.nicon.nicon",
-  "model:CNN1D": "nirs4all.operators.models.pytorch.nicon.customizable_nicon",
-  "model:TabICLRegressor": "tabicl.TabICLRegressor",
-  "model:TabICLClassifier": "tabicl.TabICLClassifier",
-
-  // Augmentation
-  "augmentation:GaussianNoise": "nirs4all.operators.transforms.GaussianAdditiveNoise",
-  "augmentation:MultiplicativeNoise": "nirs4all.operators.transforms.MultiplicativeNoise",
-  "augmentation:WavelengthShift": "nirs4all.operators.transforms.WavelengthShift",
-  "augmentation:LinearBaselineDrift": "nirs4all.operators.transforms.LinearBaselineDrift",
-
-  // Filters
-  "filter:YOutlierFilter": "nirs4all.operators.filters.YOutlierFilter",
-  "filter:SpectralQualityFilter": "nirs4all.operators.filters.SpectralQualityFilter",
-};
-
 const SUPPORTED_OPERATOR_NODES: NodeDefinition[] = [
   ...preprocessingNodes,
   ...splittingNodes,
@@ -358,6 +177,80 @@ const SUPPORTED_OPERATOR_NODES: NodeDefinition[] = [
   ...filterNodes,
   ...augmentationNodes,
 ];
+
+/**
+ * Curated `${type}:${displayName} → class path` overrides for the few nirs4all
+ * operators whose editor display name (or preferred public export path) is not
+ * encoded by the registry definition's `name`/`aliases`/`classPath`. Everything
+ * else — including all sklearn paths and their private-module legacy aliases —
+ * is derived from the registry JSONs below.
+ */
+const CURATED_NAME_TO_CLASS_PATH: Record<string, string> = {
+  "augmentation:GaussianNoise": "nirs4all.operators.transforms.GaussianAdditiveNoise",
+  "augmentation:MultiplicativeNoise": "nirs4all.operators.transforms.MultiplicativeNoise",
+  "augmentation:WavelengthShift": "nirs4all.operators.transforms.WavelengthShift",
+  "augmentation:LinearBaselineDrift": "nirs4all.operators.transforms.LinearBaselineDrift",
+  "model:nicon": "nirs4all.operators.models.pytorch.nicon.nicon",
+};
+
+/**
+ * Build the class-path → `{ name, type }` import map from the registry.
+ *
+ * Each node contributes its primary `classPath` plus every `legacyClassPaths`
+ * entry (which is where the sklearn private-module paths like
+ * `sklearn.ensemble._gb.GradientBoostingRegressor` now live after the registry
+ * hygiene pass). First registration wins, matching the registry import order, so
+ * curated definitions take precedence over auto-curated duplicates.
+ */
+function buildClassPathMappings(): Record<string, { name: string; type: StepType }> {
+  const mappings: Record<string, { name: string; type: StepType }> = {};
+  for (const node of SUPPORTED_OPERATOR_NODES) {
+    const value = { name: node.name, type: node.type as StepType };
+    const paths = [node.classPath, ...(node.legacyClassPaths || [])];
+    for (const path of paths) {
+      if (path && !(path in mappings)) {
+        mappings[path] = value;
+      }
+    }
+  }
+  return mappings;
+}
+
+/**
+ * Build the `${type}:${name} → class path` export map from the registry.
+ *
+ * Maps each node's display name and aliases to its primary (public) classPath,
+ * then layers the curated overrides for nirs4all display-name aliases the
+ * registry does not encode.
+ */
+function buildNameToClassPath(): Record<string, string> {
+  const mapping: Record<string, string> = {};
+  for (const node of SUPPORTED_OPERATOR_NODES) {
+    if (!node.classPath) {
+      continue;
+    }
+    for (const name of [node.name, ...(node.aliases || [])]) {
+      const key = `${node.type}:${name}`;
+      if (!(key in mapping)) {
+        mapping[key] = node.classPath;
+      }
+    }
+  }
+  return { ...mapping, ...CURATED_NAME_TO_CLASS_PATH };
+}
+
+/**
+ * Map class paths to display names and step types, derived from the registry
+ * definitions. This handles both the public class paths and the internal sklearn
+ * paths (e.g. `sklearn.preprocessing._data.MinMaxScaler`) carried as
+ * `legacyClassPaths`.
+ */
+const CLASS_PATH_MAPPINGS: Record<string, { name: string; type: StepType }> = buildClassPathMappings();
+
+/**
+ * Reverse mapping: display name + type → class path, derived from the registry.
+ */
+const NAME_TO_CLASS_PATH: Record<string, string> = buildNameToClassPath();
 
 interface ResolvedClassInfo {
   name: string;
@@ -1618,33 +1511,8 @@ function convertMergeToEditor(step: Nirs4allMergeStep): EditorPipelineStep {
 function convertSampleAugmentationToEditor(step: Nirs4allSampleAugmentationStep): EditorPipelineStep {
   const aug = step.sample_augmentation;
 
-  // Convert nested transformers to editor format
-  const transformerConfigs = aug.transformers.map(t => {
-    if (typeof t === "string") {
-      const { name } = resolveClassPath(t);
-      return {
-        id: generateStepId(),
-        name,
-        classPath: t,
-        params: {},
-        enabled: true,
-      };
-    }
-    const { name } = resolveClassPath(t.class);
-    return {
-      id: generateStepId(),
-      name,
-      classPath: t.class,
-      params: t.params || {},
-      enabled: true,
-    };
-  });
-
-  // Convert transformers to children (editable PipelineSteps)
-  const childSteps = aug.transformers.map(t => {
-    const converted = convertStepToEditor(t as Nirs4allStep);
-    return converted;
-  });
+  // Canonical representation: transformers live in children, scalars in params.
+  const childSteps = aug.transformers.map(t => convertStepToEditor(t as Nirs4allStep));
 
   return {
     id: generateStepId(),
@@ -1657,18 +1525,7 @@ function convertSampleAugmentationToEditor(step: Nirs4allSampleAugmentationStep)
       random_state: aug.random_state ?? 42,
       variation_scope: aug.variation_scope || "sample",
     },
-    // Children for editable transformers list
     children: childSteps,
-    // Legacy: Store transformers as nested branches for visualization
-    branches: [aug.transformers.map(t => convertStepToEditor(t as Nirs4allStep))],
-    // Structured config for UI editing (legacy, prefer children)
-    sampleAugmentationConfig: {
-      transformers: transformerConfigs,
-      count: aug.count,
-      selection: aug.selection as "random" | "all" | "sequential" | undefined,
-      random_state: aug.random_state,
-      variation_scope: aug.variation_scope as "sample" | "batch" | undefined,
-    },
   };
 }
 
@@ -1676,18 +1533,7 @@ function convertFeatureAugmentationToEditor(step: Nirs4allFeatureAugmentationSte
   const aug = step.feature_augmentation;
 
   if (Array.isArray(aug)) {
-    // Direct list of transforms
-    const transformerConfigs = aug.map(t => {
-      if (typeof t === "string") {
-        const { name } = resolveClassPath(t as string);
-        return { id: generateStepId(), name, classPath: t as string, params: {}, enabled: true };
-      }
-      const classStep = t as Nirs4allClassStep;
-      const { name } = resolveClassPath(classStep.class);
-      return { id: generateStepId(), name, classPath: classStep.class, params: classStep.params || {}, enabled: true };
-    });
-
-    // Convert transforms to children
+    // Direct list of transforms — canonical state is children + params.action.
     const childSteps = aug.map(t => convertStepToEditor(t));
 
     return {
@@ -1697,28 +1543,12 @@ function convertFeatureAugmentationToEditor(step: Nirs4allFeatureAugmentationSte
       name: "FeatureAugmentation",
       params: { action: step.action || "extend" },
       children: childSteps,
-      branches: [aug.map(t => convertStepToEditor(t))],
-      featureAugmentationConfig: {
-        action: step.action as "extend" | "add" | "replace" | undefined,
-        transforms: transformerConfigs,
-      },
     };
   }
 
-  // Generator syntax with _or_, pick, count
-  const orOptions = aug._or_?.flatMap((t: string | Nirs4allClassStep | null) => {
-    if (t === null) {
-      return [];
-    }
-    if (typeof t === "string") {
-      const { name } = resolveClassPath(t);
-      return [{ id: generateStepId(), name, classPath: t, params: {}, enabled: true }];
-    }
-    const { name } = resolveClassPath(t.class);
-    return [{ id: generateStepId(), name, classPath: t.class, params: t.params || {}, enabled: true }];
-  }) || [];
-
-  // Convert _or_ options to children
+  // Generator syntax with _or_, pick, count. Canonical state is children +
+  // generatorKind/generatorOptions + params.action; branches mirror the _or_
+  // alternatives for the local generator variant estimator.
   const childSteps = aug._or_?.map((t: string | Nirs4allClassStep | null) =>
     t === null ? createNoOpEditorStep() : convertStepToEditor(t as Nirs4allStep)
   ) || [];
@@ -1740,29 +1570,13 @@ function convertFeatureAugmentationToEditor(step: Nirs4allFeatureAugmentationSte
       pick: aug.pick,
       count: aug.count,
     },
-    featureAugmentationConfig: {
-      action: step.action as "extend" | "add" | "replace" | undefined,
-      orOptions,
-      pick: aug.pick,
-      count: aug.count,
-    },
   };
 }
 
 function convertSampleFilterToEditor(step: Nirs4allSampleFilterStep): EditorPipelineStep {
   const filter = step.sample_filter;
 
-  // Convert nested filters to editor format
-  const filterConfigs = filter.filters.map(f => {
-    if (typeof f === "string") {
-      const { name } = resolveClassPath(f);
-      return { id: generateStepId(), name, classPath: f, params: {}, enabled: true };
-    }
-    const { name } = resolveClassPath(f.class);
-    return { id: generateStepId(), name, classPath: f.class, params: f.params || {}, enabled: true };
-  });
-
-  // Convert filters to children
+  // Canonical representation: filters live in children, mode/report in params.
   const childSteps = filter.filters.map(f => convertStepToEditor(f as Nirs4allStep));
 
   return {
@@ -1775,12 +1589,6 @@ function convertSampleFilterToEditor(step: Nirs4allSampleFilterStep): EditorPipe
       report: filter.report ?? true,
     },
     children: childSteps,
-    branches: [filter.filters.map(f => convertStepToEditor(f as Nirs4allStep))],
-    sampleFilterConfig: {
-      filters: filterConfigs,
-      mode: filter.mode as "any" | "all" | "vote" | undefined,
-      report: filter.report,
-    },
     filterOrigin: "sample_filter",
   };
 }
@@ -1794,15 +1602,7 @@ function convertFilterWrapperToEditor(step: Nirs4allFilterWrapperStep): EditorPi
       ? [rawFilters]
       : [];
 
-  const filterConfigs = filters.map(f => {
-    if (typeof f === "string") {
-      const { name } = resolveClassPath(f);
-      return { id: generateStepId(), name, classPath: f, params: {}, enabled: true };
-    }
-    const { name } = resolveClassPath(f.class);
-    return { id: generateStepId(), name, classPath: f.class, params: f.params || {}, enabled: true };
-  });
-
+  // Canonical representation: filters live in children, mode in params.
   const childSteps = filters.map(f => convertStepToEditor(f as Nirs4allStep));
 
   return {
@@ -1812,11 +1612,6 @@ function convertFilterWrapperToEditor(step: Nirs4allFilterWrapperStep): EditorPi
     name: origin === "tag" ? "TagFilter" : "SampleFilter",
     params: origin === "exclude" && step.mode ? { mode: step.mode } : {},
     children: childSteps,
-    branches: [childSteps],
-    sampleFilterConfig: {
-      filters: filterConfigs,
-      mode: step.mode as "any" | "all" | "vote" | undefined,
-    },
     filterOrigin: origin,
   };
 }
@@ -2303,52 +2098,13 @@ function convertEditorMergeToNirs4all(step: EditorPipelineStep): Nirs4allStep {
 }
 
 function convertEditorSampleAugmentationToNirs4all(step: EditorPipelineStep): Nirs4allStep {
-  // Prefer children if available (new editable format)
+  // Canonical representation: scalar settings live in step.params, transformers
+  // live in step.children (populated on import for every container).
   if (step.children && step.children.length > 0) {
     const transformers = step.children.map(child => convertEditorStepToNirs4all(child)) as Array<string | Nirs4allClassStep>;
     return {
       sample_augmentation: {
         transformers,
-        count: (step.params.count as number) || step.sampleAugmentationConfig?.count || 1,
-        selection: (step.params.selection as string) || step.sampleAugmentationConfig?.selection || "random",
-        random_state: (step.params.random_state as number) ?? step.sampleAugmentationConfig?.random_state ?? 42,
-        variation_scope: (step.params.variation_scope as string) || step.sampleAugmentationConfig?.variation_scope || "sample",
-      },
-    };
-  }
-
-  // Use structured config if available (legacy)
-  if (step.sampleAugmentationConfig) {
-    const config = step.sampleAugmentationConfig;
-
-    const transformers = config.transformers.map(t => {
-      if (t.classPath) {
-        const params = getExportableStepParams(t as EditorPipelineStep);
-        if (Object.keys(params).length > 0) {
-          return { class: t.classPath, params };
-        }
-        return t.classPath;
-      }
-      // Fallback to name-based path
-      return t.name;
-    });
-
-    return {
-      sample_augmentation: {
-        transformers,
-        count: config.count || 1,
-        selection: config.selection || "random",
-        random_state: config.random_state ?? 42,
-        variation_scope: config.variation_scope || "sample",
-      },
-    };
-  }
-
-  // Fallback: reconstruct from branches
-  if (step.branches?.length) {
-    return {
-      sample_augmentation: {
-        transformers: step.branches[0].map(s => convertEditorStepToNirs4all(s)) as Array<string | Nirs4allClassStep>,
         count: (step.params.count as number) || 1,
         selection: (step.params.selection as string) || "random",
         random_state: (step.params.random_state as number) ?? 42,
@@ -2368,10 +2124,10 @@ function convertEditorSampleAugmentationToNirs4all(step: EditorPipelineStep): Ni
 }
 
 function convertEditorFeatureAugmentationToNirs4all(step: EditorPipelineStep): Nirs4allStep {
-  // Prefer children if available (new editable format)
+  // Canonical representation: transforms/options live in step.children, generator
+  // mode in step.generatorKind/generatorOptions, action in step.params.
   if (step.children && step.children.length > 0) {
-    // Check if this is generator mode (with _or_) or direct list mode
-    const isGeneratorMode = step.generatorKind === "or" || step.featureAugmentationConfig?.orOptions?.length;
+    const isGeneratorMode = step.generatorKind === "or";
 
     if (isGeneratorMode) {
       const orList = step.children.map(child => convertEditorStepToNirs4all(child));
@@ -2387,91 +2143,10 @@ function convertEditorFeatureAugmentationToNirs4all(step: EditorPipelineStep): N
         result.action = step.params.action;
       }
       return result as Nirs4allStep;
-    } else {
-      // Direct list mode
-      const transformList = step.children.map(child => convertEditorStepToNirs4all(child));
-      const result: Record<string, unknown> = { feature_augmentation: transformList };
-      if (step.params.action) {
-        result.action = step.params.action;
-      }
-      return result as Nirs4allStep;
-    }
-  }
-
-  // Use structured config if available (legacy)
-  if (step.featureAugmentationConfig) {
-    const config = step.featureAugmentationConfig;
-    const result: Record<string, unknown> = {};
-
-    // Generator mode with _or_
-    if (config.orOptions && config.orOptions.length > 0) {
-      const orList = config.orOptions.map(t => {
-        if (t.classPath) {
-          const params = getExportableStepParams(t as EditorPipelineStep);
-          if (Object.keys(params).length > 0) {
-            return { class: t.classPath, params };
-          }
-          return t.classPath;
-        }
-        return t.name;
-      });
-
-      const augConfig: Record<string, unknown> = { _or_: orList };
-      if (config.pick !== undefined) {
-        augConfig.pick = config.pick;
-      }
-      if (config.count !== undefined) {
-        augConfig.count = config.count;
-      }
-
-      result.feature_augmentation = augConfig;
-    } else if (config.transforms && config.transforms.length > 0) {
-      // Direct list mode
-      const transformList = config.transforms.map(t => {
-        if (t.classPath) {
-          const params = getExportableStepParams(t as EditorPipelineStep);
-          if (Object.keys(params).length > 0) {
-            return { class: t.classPath, params };
-          }
-          return t.classPath;
-        }
-        return t.name;
-      });
-      result.feature_augmentation = transformList;
-    } else {
-      result.feature_augmentation = [];
     }
 
-    if (config.action) {
-      result.action = config.action;
-    }
-
-    return result as Nirs4allStep;
-  }
-
-  // Fallback: reconstruct from branches/generator
-  if (step.generatorKind === "or" && step.branches?.length) {
-    const orList = step.branches.map(branch =>
-      branch.length === 1 ? convertEditorStepToNirs4all(branch[0]) : branch.map(s => convertEditorStepToNirs4all(s))
-    );
-
-    const augConfig: Record<string, unknown> = { _or_: orList };
-    if (step.generatorOptions?.pick !== undefined) {
-      augConfig.pick = step.generatorOptions.pick;
-    }
-    if (step.generatorOptions?.count !== undefined) {
-      augConfig.count = step.generatorOptions.count;
-    }
-
-    const result: Record<string, unknown> = { feature_augmentation: augConfig };
-    if (step.params.action) {
-      result.action = step.params.action;
-    }
-    return result as Nirs4allStep;
-  }
-
-  if (step.branches?.length) {
-    const transformList = step.branches[0].map(s => convertEditorStepToNirs4all(s));
+    // Direct list mode
+    const transformList = step.children.map(child => convertEditorStepToNirs4all(child));
     const result: Record<string, unknown> = { feature_augmentation: transformList };
     if (step.params.action) {
       result.action = step.params.action;
@@ -2492,8 +2167,8 @@ function convertEditorSampleFilterToNirs4all(step: EditorPipelineStep): Nirs4all
       return {
         sample_filter: {
           filters,
-          mode: (step.params.mode as string) || step.sampleFilterConfig?.mode || "any",
-          report: (step.params.report as boolean) ?? step.sampleFilterConfig?.report ?? true,
+          mode: (step.params.mode as string) || "any",
+          report: (step.params.report as boolean) ?? true,
         },
       };
     }
@@ -2501,60 +2176,16 @@ function convertEditorSampleFilterToNirs4all(step: EditorPipelineStep): Nirs4all
     const wrapper: Record<string, unknown> = {
       [origin]: filters.length === 1 ? filters[0] : filters,
     };
-    if (origin === "exclude" && ((step.params.mode as string) || step.sampleFilterConfig?.mode)) {
-      wrapper.mode = (step.params.mode as string) || step.sampleFilterConfig?.mode;
+    if (origin === "exclude" && (step.params.mode as string)) {
+      wrapper.mode = step.params.mode as string;
     }
     return wrapper as Nirs4allStep;
   };
 
-  // Prefer children if available (new editable format)
-  if (step.children && step.children.length > 0) {
-    const filters = step.children.map(child => convertEditorStepToNirs4all(child)) as Array<string | Nirs4allClassStep>;
-    return buildFilterPayload(filters);
-  }
-
-  // Use structured config if available (legacy)
-  if (step.sampleFilterConfig) {
-    const config = step.sampleFilterConfig;
-
-    const filters = config.filters.map(f => {
-      if (f.classPath) {
-        const params = getExportableStepParams(f as EditorPipelineStep);
-        if (Object.keys(params).length > 0) {
-          return { class: f.classPath, params };
-        }
-        return f.classPath;
-      }
-      return f.name;
-    }) as Array<string | Nirs4allClassStep>;
-
-    if (origin === "sample_filter") {
-      return {
-        sample_filter: {
-          filters,
-          mode: config.mode,
-          report: config.report,
-        },
-      };
-    }
-
-    const wrapper: Record<string, unknown> = {
-      [origin]: filters.length === 1 ? filters[0] : filters,
-    };
-    if (origin === "exclude" && config.mode) {
-      wrapper.mode = config.mode;
-    }
-    return wrapper as Nirs4allStep;
-  }
-
-  // Fallback: reconstruct from branches
-  if (step.branches?.length) {
-    return buildFilterPayload(
-      step.branches[0].map(s => convertEditorStepToNirs4all(s)) as Array<string | Nirs4allClassStep>
-    );
-  }
-
-  return buildFilterPayload([]);
+  // Canonical representation: filters live in step.children, mode/report in
+  // step.params, wrapper keyword in step.filterOrigin.
+  const filters = (step.children ?? []).map(child => convertEditorStepToNirs4all(child)) as Array<string | Nirs4allClassStep>;
+  return buildFilterPayload(filters);
 }
 
 function convertEditorConcatTransformToNirs4all(step: EditorPipelineStep): Nirs4allStep {
