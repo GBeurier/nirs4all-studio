@@ -10,25 +10,22 @@
  */
 
 import { useMemo } from "react";
-import {
-  ComposedChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  type TooltipProps,
-} from "recharts";
+import { Line, Tooltip, type TooltipProps } from "recharts";
 import type { PreviewData } from "../contexts";
 import { cn } from "@/lib/utils";
+import {
+  formatWavelengthUnit,
+  getWavelengthAxisLabel,
+} from "@/components/playground/visualizations/chartConfig";
+import { BaseSpectraChart, SPECTRA_CHART_THEME } from "@/components/charts/BaseSpectraChart";
 
 // Custom tooltip that shows only aggregate stats (not individual spectra)
 function CustomTooltip({
   active,
   payload,
   label,
-}: TooltipProps<number, string>) {
+  unitSymbol,
+}: TooltipProps<number, string> & { unitSymbol: string }) {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
@@ -45,7 +42,8 @@ function CustomTooltip({
   return (
     <div className="bg-popover border border-border rounded-md px-3 py-2 shadow-md">
       <div className="text-xs font-medium text-foreground mb-1">
-        {Math.round(label as number)} nm
+        {Math.round(label as number)}
+        {unitSymbol ? ` ${unitSymbol}` : ""}
       </div>
       <div className="space-y-0.5 text-xs">
         {mean !== undefined && (
@@ -73,9 +71,15 @@ interface SpectraChartProps {
   showStdBand?: boolean;
   maxSpectraLines?: number;
   className?: string;
+  /**
+   * Wavelength axis unit (e.g. "nm", "cm-1"). Drives the X-axis label and
+   * tooltip suffix via the shared chartConfig helpers. Synthetic spectra are
+   * generated in nm, so this defaults to "nm".
+   */
+  unit?: string;
 }
 
-function getColorForTarget(
+export function getColorForTarget(
   target: number,
   targetType: "regression" | "classification",
   minTarget: number,
@@ -109,80 +113,96 @@ function getColorForTarget(
   return `rgb(${r}, ${g}, ${b})`;
 }
 
+/**
+ * Compute the merged Recharts rows for the synthesis chart from RAW spectra.
+ *
+ * Calculates the per-wavelength mean and ±1σ band, samples up to
+ * `maxSpectraLines` individual spectra (evenly spaced when over the cap), and
+ * returns the merged rows plus the per-sampled-line colours (ordered).
+ */
+export function buildSynthesisChartData(
+  data: PreviewData,
+  maxSpectraLines: number,
+): { mergedData: Array<Record<string, number>>; lineColors: string[] } {
+  const { spectra, wavelengths, targets, target_type } = data;
+
+  if (spectra.length === 0 || wavelengths.length === 0) {
+    return { mergedData: [], lineColors: [] };
+  }
+
+  const numWavelengths = wavelengths.length;
+  const numSpectra = spectra.length;
+
+  const minTarget = Math.min(...targets);
+  const maxTarget = Math.max(...targets);
+
+  // Calculate mean and std at each wavelength
+  const means: number[] = [];
+  const stds: number[] = [];
+
+  for (let w = 0; w < numWavelengths; w++) {
+    let sum = 0;
+    for (let s = 0; s < numSpectra; s++) {
+      sum += spectra[s][w];
+    }
+    const mean = sum / numSpectra;
+    means.push(mean);
+
+    let variance = 0;
+    for (let s = 0; s < numSpectra; s++) {
+      variance += Math.pow(spectra[s][w] - mean, 2);
+    }
+    const std = Math.sqrt(variance / numSpectra);
+    stds.push(std);
+  }
+
+  // Sample spectra for individual lines
+  const sampleIndices: number[] = [];
+  if (numSpectra <= maxSpectraLines) {
+    for (let i = 0; i < numSpectra; i++) {
+      sampleIndices.push(i);
+    }
+  } else {
+    const step = numSpectra / maxSpectraLines;
+    for (let i = 0; i < maxSpectraLines; i++) {
+      sampleIndices.push(Math.floor(i * step));
+    }
+  }
+
+  const lineColors = sampleIndices.map((idx) =>
+    getColorForTarget(targets[idx], target_type, minTarget, maxTarget),
+  );
+
+  const mergedData = wavelengths.map((wl, i) => {
+    const entry: Record<string, number> = {
+      wavelength: wl,
+      mean: means[i],
+      upper: means[i] + stds[i],
+      lower: means[i] - stds[i],
+    };
+    sampleIndices.forEach((sampleIdx, sIdx) => {
+      entry[`spectrum_${sIdx}`] = spectra[sampleIdx][i];
+    });
+    return entry;
+  });
+
+  return { mergedData, lineColors };
+}
+
 export function SpectraChart({
   data,
   showMean = true,
   showStdBand = true,
   maxSpectraLines = 50,
   className,
+  unit = "nm",
 }: SpectraChartProps) {
-  const chartData = useMemo(() => {
-    const { spectra, wavelengths, targets, target_type } = data;
+  const { mergedData, lineColors } = useMemo(
+    () => buildSynthesisChartData(data, maxSpectraLines),
+    [data, maxSpectraLines],
+  );
 
-    if (spectra.length === 0 || wavelengths.length === 0) {
-      return { points: [], spectraLines: [] };
-    }
-
-    const numWavelengths = wavelengths.length;
-    const numSpectra = spectra.length;
-
-    const minTarget = Math.min(...targets);
-    const maxTarget = Math.max(...targets);
-
-    // Calculate mean and std at each wavelength
-    const means: number[] = [];
-    const stds: number[] = [];
-
-    for (let w = 0; w < numWavelengths; w++) {
-      let sum = 0;
-      for (let s = 0; s < numSpectra; s++) {
-        sum += spectra[s][w];
-      }
-      const mean = sum / numSpectra;
-      means.push(mean);
-
-      let variance = 0;
-      for (let s = 0; s < numSpectra; s++) {
-        variance += Math.pow(spectra[s][w] - mean, 2);
-      }
-      const std = Math.sqrt(variance / numSpectra);
-      stds.push(std);
-    }
-
-    const points = wavelengths.map((wl, i) => ({
-      wavelength: wl,
-      mean: means[i],
-      upper: means[i] + stds[i],
-      lower: means[i] - stds[i],
-    }));
-
-    // Sample spectra for individual lines
-    const sampleIndices: number[] = [];
-    if (numSpectra <= maxSpectraLines) {
-      for (let i = 0; i < numSpectra; i++) {
-        sampleIndices.push(i);
-      }
-    } else {
-      const step = numSpectra / maxSpectraLines;
-      for (let i = 0; i < maxSpectraLines; i++) {
-        sampleIndices.push(Math.floor(i * step));
-      }
-    }
-
-    const spectraLines = sampleIndices.map((idx) => ({
-      index: idx,
-      target: targets[idx],
-      color: getColorForTarget(targets[idx], target_type, minTarget, maxTarget),
-      data: wavelengths.map((wl, w) => ({
-        wavelength: wl,
-        value: spectra[idx][w],
-      })),
-    }));
-
-    return { points, spectraLines };
-  }, [data, maxSpectraLines]);
-
-  if (chartData.points.length === 0) {
+  if (mergedData.length === 0) {
     return (
       <div className={cn("flex items-center justify-center h-full", className)}>
         <p className="text-muted-foreground">No data to display</p>
@@ -190,116 +210,75 @@ export function SpectraChart({
     );
   }
 
-  // Prepare merged data for Recharts
-  const mergedData = chartData.points.map((point, idx) => {
-    const entry: Record<string, number> = {
-      wavelength: point.wavelength,
-      mean: point.mean,
-      upper: point.upper,
-      lower: point.lower,
-    };
-
-    chartData.spectraLines.forEach((spectrum, sIdx) => {
-      entry[`spectrum_${sIdx}`] = spectrum.data[idx].value;
-    });
-
-    return entry;
-  });
+  const unitSymbol = formatWavelengthUnit(unit);
 
   return (
     <div className={cn("w-full h-full", className)}>
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={mergedData}
-          margin={{ top: 10, right: 20, left: 0, bottom: 30 }}
-        >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="hsl(var(--border))"
-            opacity={0.5}
+      <BaseSpectraChart
+        data={mergedData}
+        margin={{ top: 10, right: 20, left: 0, bottom: 30 }}
+        unit={unit}
+        gridOpacity={0.5}
+        xLabel={{ value: getWavelengthAxisLabel(unit), offset: -20, fontSize: 11 }}
+        yLabel={{ value: "Absorbance", fontSize: 11 }}
+        xAxisProps={{ stroke: SPECTRA_CHART_THEME.axisText, fontSize: 11 }}
+        yAxisProps={{ stroke: SPECTRA_CHART_THEME.axisText, fontSize: 11 }}
+        xTickFormatter={(v) => `${Math.round(v)}`}
+        yTickFormatter={(v) => v.toFixed(2)}
+        tooltip={<Tooltip content={<CustomTooltip unitSymbol={unitSymbol} />} />}
+      >
+        {/* Individual spectra lines */}
+        {lineColors.map((color, idx) => (
+          <Line
+            key={`spectrum_${idx}`}
+            dataKey={`spectrum_${idx}`}
+            type="monotone"
+            stroke={color}
+            strokeWidth={1}
+            strokeOpacity={0.3}
+            dot={false}
+            isAnimationActive={false}
           />
-          <XAxis
-            dataKey="wavelength"
-            type="number"
-            domain={["dataMin", "dataMax"]}
-            tickFormatter={(v) => `${Math.round(v)}`}
-            stroke="hsl(var(--muted-foreground))"
-            fontSize={11}
-            label={{
-              value: "Wavelength (nm)",
-              position: "insideBottom",
-              offset: -20,
-              fontSize: 11,
-              fill: "hsl(var(--muted-foreground))",
-            }}
+        ))}
+
+        {/* Standard deviation lines */}
+        {showStdBand && (
+          <Line
+            dataKey="upper"
+            type="monotone"
+            stroke={SPECTRA_CHART_THEME.line}
+            strokeWidth={1}
+            strokeDasharray="4 3"
+            strokeOpacity={0.5}
+            dot={false}
+            isAnimationActive={false}
           />
-          <YAxis
-            stroke="hsl(var(--muted-foreground))"
-            fontSize={11}
-            tickFormatter={(v) => v.toFixed(2)}
-            label={{
-              value: "Absorbance",
-              angle: -90,
-              position: "insideLeft",
-              fontSize: 11,
-              fill: "hsl(var(--muted-foreground))",
-            }}
+        )}
+        {showStdBand && (
+          <Line
+            dataKey="lower"
+            type="monotone"
+            stroke={SPECTRA_CHART_THEME.line}
+            strokeWidth={1}
+            strokeDasharray="4 3"
+            strokeOpacity={0.5}
+            dot={false}
+            isAnimationActive={false}
           />
-          <Tooltip content={<CustomTooltip />} />
+        )}
 
-          {/* Individual spectra lines */}
-          {chartData.spectraLines.map((spectrum, idx) => (
-            <Line
-              key={`spectrum_${idx}`}
-              dataKey={`spectrum_${idx}`}
-              type="monotone"
-              stroke={spectrum.color}
-              strokeWidth={1}
-              strokeOpacity={0.3}
-              dot={false}
-              isAnimationActive={false}
-            />
-          ))}
-
-          {/* Standard deviation lines */}
-          {showStdBand && (
-            <Line
-              dataKey="upper"
-              type="monotone"
-              stroke="hsl(var(--primary))"
-              strokeWidth={1}
-              strokeDasharray="4 3"
-              strokeOpacity={0.5}
-              dot={false}
-              isAnimationActive={false}
-            />
-          )}
-          {showStdBand && (
-            <Line
-              dataKey="lower"
-              type="monotone"
-              stroke="hsl(var(--primary))"
-              strokeWidth={1}
-              strokeDasharray="4 3"
-              strokeOpacity={0.5}
-              dot={false}
-              isAnimationActive={false}
-            />
-          )}
-
-          {/* Mean line */}
-          {showMean && (
-            <Line
-              dataKey="mean"
-              type="monotone"
-              stroke="hsl(var(--primary))"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
-          )}
-        </ComposedChart>
-      </ResponsiveContainer>
+        {/* Mean line */}
+        {showMean && (
+          <Line
+            dataKey="mean"
+            type="monotone"
+            stroke={SPECTRA_CHART_THEME.line}
+            strokeWidth={2}
+            dot={false}
+            isAnimationActive={false}
+          />
+        )}
+      </BaseSpectraChart>
     </div>
   );
 }

@@ -5,21 +5,13 @@
  * Used in dataset previews and quick views.
  */
 import { useMemo } from "react";
-import {
-  Area,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Area, Line, Tooltip } from "recharts";
 import {
   formatWavelengthUnit,
   getWavelengthAxisLabel,
   getWavelengthAxisName,
 } from "@/components/playground/visualizations/chartConfig";
+import { BaseSpectraChart, SPECTRA_CHART_THEME } from "@/components/charts/BaseSpectraChart";
 
 export interface SpectraChartProps {
   /** Array of wavelength values for the x-axis */
@@ -58,10 +50,30 @@ export interface SpectraChartProps {
   rangeFillColor?: string;
 }
 
+/**
+ * Build the merged Recharts rows for the aggregated dataset spectra chart.
+ * Each row carries the `wavelength`, the `mean` value, and (when min/max are
+ * supplied) a `range` tuple for the shaded band.
+ */
+export function buildSpectraChartData(
+  wavelengths: number[],
+  meanSpectrum: number[],
+  minSpectrum?: number[],
+  maxSpectrum?: number[],
+): Array<Record<string, number | number[]>> {
+  if (!wavelengths?.length || !meanSpectrum?.length) return [];
+  return wavelengths.map((w, i) => {
+    const point: Record<string, number | number[]> = { wavelength: w, mean: meanSpectrum[i] };
+    if (minSpectrum && maxSpectrum) {
+      point.range = [minSpectrum[i], maxSpectrum[i]];
+    }
+    return point;
+  });
+}
+
 export function SpectraChart({
   wavelengths,
   meanSpectrum,
-  stdSpectrum,
   minSpectrum,
   maxSpectrum,
   width = "100%",
@@ -77,17 +89,10 @@ export function SpectraChart({
   const axisName = getWavelengthAxisName(unit);
   const unitSymbol = formatWavelengthUnit(unit);
   const tooltipUnitSuffix = unitSymbol ? ` ${unitSymbol}` : "";
-  // Transform data for Recharts
-  const data = useMemo(() => {
-    if (!wavelengths?.length || !meanSpectrum?.length) return [];
-    return wavelengths.map((w, i) => {
-      const point: Record<string, number | number[]> = { wavelength: w, mean: meanSpectrum[i] };
-      if (minSpectrum && maxSpectrum) {
-        point.range = [minSpectrum[i], maxSpectrum[i]];
-      }
-      return point;
-    });
-  }, [wavelengths, meanSpectrum, minSpectrum, maxSpectrum]);
+  const data = useMemo(
+    () => buildSpectraChartData(wavelengths, meanSpectrum, minSpectrum, maxSpectrum),
+    [wavelengths, meanSpectrum, minSpectrum, maxSpectrum],
+  );
 
   // Handle empty data
   if (!wavelengths?.length || !meanSpectrum?.length) {
@@ -101,74 +106,46 @@ export function SpectraChart({
     );
   }
 
-  const defaultColor = "hsl(var(--primary))";
+  const defaultColor = SPECTRA_CHART_THEME.line;
   const strokeColor = lineColor ?? defaultColor;
   const fillColor = rangeFillColor ?? defaultColor;
   const fillOpacity = rangeFillColor ? 1 : 0.15;
 
   return (
     <div style={{ width, height }} className="min-w-0">
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={data}
-          margin={{
-            top: 20,
-            right: 20,
-            left: -15, // Compress padding
-            bottom: showLabels ? 20 : 5,
-          }}
-        >
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-          <XAxis
-            dataKey="wavelength"
-            type="number"
-            domain={["dataMin", "dataMax"]}
-            minTickGap={30}
-            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-            tickLine={false}
-            axisLine={{ stroke: "hsl(var(--border))" }}
-            tickFormatter={(value) => Number(value).toFixed(0)}
-            label={
-              showLabels && resolvedXLabel
-                ? {
-                    value: resolvedXLabel,
-                    position: "insideBottom",
-                    offset: -15,
-                    fill: "hsl(var(--muted-foreground))",
-                    fontSize: 12,
-                  }
-                : undefined
-            }
-          />
-          <YAxis
-            type="number"
-            domain={["auto", "auto"]}
-            tickFormatter={(value) => {
-               // Handle large or very small numbers
-               if (value === 0) return "0";
-               if (Math.abs(value) >= 1000 || Math.abs(value) < 0.01) {
-                  return value.toExponential(1);
-               }
-               return value.toFixed(1);
-            }}
-            tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-            tickLine={false}
-            axisLine={false}
-            width={45}
-            allowDecimals={true}
-            label={
-               showLabels && yLabel
-                 ? {
-                     value: yLabel,
-                     angle: -90,
-                     position: "insideLeft",
-                     fill: "hsl(var(--muted-foreground))",
-                     fontSize: 12,
-                   }
-                 : undefined
-             }
-          />
-          <Tooltip
+      <BaseSpectraChart
+        data={data}
+        margin={{ top: 20, right: 20, left: -15, bottom: showLabels ? 20 : 5 }}
+        unit={unit}
+        gridVertical={false}
+        xLabel={
+          showLabels && resolvedXLabel ? { value: resolvedXLabel, offset: -15, fontSize: 12 } : null
+        }
+        yLabel={showLabels && yLabel ? { value: yLabel, fontSize: 12 } : undefined}
+        xAxisProps={{
+          minTickGap: 30,
+          tick: { fontSize: 11, fill: SPECTRA_CHART_THEME.axisText },
+          tickLine: false,
+          axisLine: { stroke: SPECTRA_CHART_THEME.axisLine },
+        }}
+        yAxisProps={{
+          domain: ["auto", "auto"],
+          tick: { fontSize: 11, fill: SPECTRA_CHART_THEME.axisText },
+          tickLine: false,
+          axisLine: false,
+          width: 45,
+        }}
+        xTickFormatter={(value) => Number(value).toFixed(0)}
+        yTickFormatter={(value) => {
+          // Handle large or very small numbers
+          if (value === 0) return "0";
+          if (Math.abs(value) >= 1000 || Math.abs(value) < 0.01) {
+            return value.toExponential(1);
+          }
+          return value.toFixed(1);
+        }}
+        tooltip={
+          <Tooltip<number | string | Array<number | string>, string>
             contentStyle={{
               borderRadius: "var(--radius)",
               border: "1px solid hsl(var(--border))",
@@ -179,7 +156,7 @@ export function SpectraChart({
             itemStyle={{ color: "hsl(var(--foreground))" }}
             labelStyle={{ color: "hsl(var(--foreground))", fontWeight: "bold", marginBottom: "4px" }}
             labelFormatter={(label) => `${axisName}: ${label}${tooltipUnitSuffix}`}
-            formatter={(value: unknown, name: string) => {
+            formatter={(value, name) => {
               if (name === "range") {
                 const [lo, hi] = Array.isArray(value) ? value : [value, value];
                 return [`[${Number(lo).toFixed(3)}, ${Number(hi).toFixed(3)}]`, "Min/Max"];
@@ -187,26 +164,27 @@ export function SpectraChart({
               return [typeof value === "number" ? value.toFixed(3) : value, "Mean"];
             }}
           />
-          {minSpectrum && maxSpectrum && (
-            <Area
-              type="monotone"
-              dataKey="range"
-              stroke="none"
-              fill={fillColor}
-              fillOpacity={fillOpacity}
-              activeDot={false}
-            />
-          )}
-          <Line
+        }
+      >
+        {minSpectrum && maxSpectrum && (
+          <Area
             type="monotone"
-            dataKey="mean"
-            stroke={strokeColor}
-            strokeWidth={2}
-            dot={false}
-            activeDot={{ r: 4, strokeWidth: 0, fill: strokeColor }}
+            dataKey="range"
+            stroke="none"
+            fill={fillColor}
+            fillOpacity={fillOpacity}
+            activeDot={false}
           />
-        </ComposedChart>
-      </ResponsiveContainer>
+        )}
+        <Line
+          type="monotone"
+          dataKey="mean"
+          stroke={strokeColor}
+          strokeWidth={2}
+          dot={false}
+          activeDot={{ r: 4, strokeWidth: 0, fill: strokeColor }}
+        />
+      </BaseSpectraChart>
     </div>
   );
 }
