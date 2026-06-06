@@ -95,9 +95,10 @@ test.describe('Complete Workflow', () => {
     const runCount = await runsPage.getRunCount();
 
     if (runCount > 0) {
-      // Click on the first run
-      const firstRun = page.locator('[data-testid="run-card"], [data-testid="run-row"]').first();
-      await firstRun.click();
+      // Clicking the run row expands the accordion; the detail sheet opens via
+      // the explicit Details button.
+      const detailsButton = page.getByRole('button', { name: /details/i }).first();
+      await detailsButton.click();
 
       // Wait for interaction
       await page.waitForTimeout(500);

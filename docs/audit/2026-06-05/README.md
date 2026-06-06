@@ -9,6 +9,8 @@ Audit of `nirs4all-studio` at `main` @ `eba503f` (v0.6.3), treating the codebase
 | [`AUDIT_TECHNIQUE.md`](AUDIT_TECHNIQUE.md) | The full audit — **139 findings** across 15 areas, 8 cross-cutting themes, prioritized order. §0 lists the post-review corrections already folded in. |
 | [`CODEX_REVIEW.md`](CODEX_REVIEW.md) | Independent Codex (gpt-5.5, read-only sandbox) verification of the audit against the real code: confirmed PCV-03 + 12/13 high-severity spot-checks, refuted one critical (PKG-01), found one missed bug (RUN-07). |
 | [`ROADMAP.md`](ROADMAP.md) | The remediation plan, structured for **multiple parallel agents**: 24 tasks in 5 waves, file-collision map, dependency graph, green-gate rules, ≈3-week wall-clock estimate. |
+| [`BASELINE.md`](BASELINE.md) | T0.0 green-gate baseline on `main` @ `eba503f` that every remediation commit was judged against. |
+| [`CLOSEOUT.md`](CLOSEOUT.md) | **T4.1 final accounting**: per-finding status for all 139 IDs (102 fixed / 22 partial / 13 deferred / 1 refuted / 1 wontfix), mechanical checks, perf & god-file scorecards, and the 7 library gaps flagged to nirs4all. |
 
 ## How it was produced
 
@@ -23,6 +25,9 @@ Audit of `nirs4all-studio` at `main` @ `eba503f` (v0.6.3), treating the codebase
 - **4 root causes:** backend reimplements nirs4all (boundary erosion), half-landed V1→V2 migrations leaving a dead twin of everything, router-never-delegated god-classes, and blocking ML/IO on the asyncio event loop.
 - **Expected cleanup:** ≥ −12,000 LOC net, 10 god-files (>2k LOC) → 0.
 
-## Next step
+## Status: EXECUTED
 
-This is the **audit + plan only** — no code has been changed. Start remediation at `ROADMAP.md` Wave 0 (task **T0.0** records the test baseline; **T0.1** fixes the one confirmed critical data-loss bug).
+The roadmap was executed in full on branch `techdebt/roadmap-2026-06-05` (2026-06-05/06): all 24 tasks across
+the 5 waves, ~30 commits, gate kept green throughout (and upgraded: eslint 0 errors, vitest 1,411, pytest 1,936,
+e2e 62/62 — all better than baseline). See [`CLOSEOUT.md`](CLOSEOUT.md) for the per-finding verdicts and the
+remaining library-side work.
