@@ -3,7 +3,7 @@
     "id": "model.ada_boost_classifier",
     "name": "AdaBoostClassifier",
     "type": "model",
-    "classPath": "sklearn.ensemble._weight_boosting.AdaBoostClassifier",
+    "classPath": "sklearn.ensemble.AdaBoostClassifier",
     "description": "An AdaBoost classifier.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -51,13 +51,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.ensemble._weight_boosting.AdaBoostClassifier"
+    ]
   },
   {
     "id": "model.ada_boost_regressor",
     "name": "AdaBoostRegressor",
     "type": "model",
-    "classPath": "sklearn.ensemble._weight_boosting.AdaBoostRegressor",
+    "classPath": "sklearn.ensemble.AdaBoostRegressor",
     "description": "An AdaBoost regressor.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -136,13 +139,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.ensemble._weight_boosting.AdaBoostRegressor"
+    ]
   },
   {
     "id": "model.bagging_classifier",
     "name": "BaggingClassifier",
     "type": "model",
-    "classPath": "sklearn.ensemble._bagging.BaggingClassifier",
+    "classPath": "sklearn.ensemble.BaggingClassifier",
     "description": "A Bagging classifier.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -196,13 +202,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.ensemble._bagging.BaggingClassifier"
+    ]
   },
   {
     "id": "model.bagging_regressor",
     "name": "BaggingRegressor",
     "type": "model",
-    "classPath": "sklearn.ensemble._bagging.BaggingRegressor",
+    "classPath": "sklearn.ensemble.BaggingRegressor",
     "description": "A Bagging regressor.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -256,13 +265,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.ensemble._bagging.BaggingRegressor"
+    ]
   },
   {
     "id": "model.extra_trees_classifier",
     "name": "ExtraTreesClassifier",
     "type": "model",
-    "classPath": "sklearn.ensemble._forest.ExtraTreesClassifier",
+    "classPath": "sklearn.ensemble.ExtraTreesClassifier",
     "description": "An extra-trees classifier.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -390,13 +402,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.ensemble._forest.ExtraTreesClassifier"
+    ]
   },
   {
     "id": "model.extra_trees_regressor",
     "name": "ExtraTreesRegressor",
     "type": "model",
-    "classPath": "sklearn.ensemble._forest.ExtraTreesRegressor",
+    "classPath": "sklearn.ensemble.ExtraTreesRegressor",
     "description": "An extra-trees regressor.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -525,13 +540,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.ensemble._forest.ExtraTreesRegressor"
+    ]
   },
   {
     "id": "model.gradient_boosting_classifier",
     "name": "GradientBoostingClassifier",
     "type": "model",
-    "classPath": "sklearn.ensemble._gb.GradientBoostingClassifier",
+    "classPath": "sklearn.ensemble.GradientBoostingClassifier",
     "description": "Gradient Boosting for classification.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -731,13 +749,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.ensemble._gb.GradientBoostingClassifier"
+    ]
   },
   {
     "id": "model.gradient_boosting_regressor",
     "name": "GradientBoostingRegressor",
     "type": "model",
-    "classPath": "sklearn.ensemble._gb.GradientBoostingRegressor",
+    "classPath": "sklearn.ensemble.GradientBoostingRegressor",
     "description": "Gradient Boosting for regression.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -949,13 +970,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.ensemble._gb.GradientBoostingRegressor"
+    ]
   },
   {
     "id": "model.hist_gradient_boosting_classifier",
     "name": "HistGradientBoostingClassifier",
     "type": "model",
-    "classPath": "sklearn.ensemble._hist_gradient_boosting.gradient_boosting.HistGradientBoostingClassifier",
+    "classPath": "sklearn.ensemble.HistGradientBoostingClassifier",
     "description": "Histogram-based Gradient Boosting Classification Tree.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -1110,13 +1134,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.ensemble._hist_gradient_boosting.gradient_boosting.HistGradientBoostingClassifier"
+    ]
   },
   {
     "id": "model.hist_gradient_boosting_regressor",
     "name": "HistGradientBoostingRegressor",
     "type": "model",
-    "classPath": "sklearn.ensemble._hist_gradient_boosting.gradient_boosting.HistGradientBoostingRegressor",
+    "classPath": "sklearn.ensemble.HistGradientBoostingRegressor",
     "description": "Histogram-based Gradient Boosting Regression Tree.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -1276,13 +1303,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.ensemble._hist_gradient_boosting.gradient_boosting.HistGradientBoostingRegressor"
+    ]
   },
   {
     "id": "model.stacking_classifier",
     "name": "StackingClassifier",
     "type": "model",
-    "classPath": "sklearn.ensemble._stacking.StackingClassifier",
+    "classPath": "sklearn.ensemble.StackingClassifier",
     "description": "Stack of estimators with a final classifier.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -1321,13 +1351,16 @@
         "default": false,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.ensemble._stacking.StackingClassifier"
     ]
   },
   {
     "id": "model.stacking_regressor",
     "name": "StackingRegressor",
     "type": "model",
-    "classPath": "sklearn.ensemble._stacking.StackingRegressor",
+    "classPath": "sklearn.ensemble.StackingRegressor",
     "description": "Stack of estimators with a final regressor.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -1360,13 +1393,16 @@
         "default": false,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.ensemble._stacking.StackingRegressor"
     ]
   },
   {
     "id": "model.voting_classifier",
     "name": "VotingClassifier",
     "type": "model",
-    "classPath": "sklearn.ensemble._voting.VotingClassifier",
+    "classPath": "sklearn.ensemble.VotingClassifier",
     "description": "Soft Voting/Majority Rule classifier for unfitted estimators.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -1410,13 +1446,16 @@
         "default": true,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.ensemble._voting.VotingClassifier"
     ]
   },
   {
     "id": "model.voting_regressor",
     "name": "VotingRegressor",
     "type": "model",
-    "classPath": "sklearn.ensemble._voting.VotingRegressor",
+    "classPath": "sklearn.ensemble.VotingRegressor",
     "description": "Prediction voting regressor for unfitted estimators.",
     "category": "sklearn-ensemble",
     "tags": [
@@ -1448,6 +1487,9 @@
         ],
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.ensemble._voting.VotingRegressor"
     ]
   }
 ]

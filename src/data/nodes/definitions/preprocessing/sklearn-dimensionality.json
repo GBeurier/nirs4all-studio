@@ -3,7 +3,7 @@
     "id": "preprocessing.dictionary_learning",
     "name": "DictionaryLearning",
     "type": "preprocessing",
-    "classPath": "sklearn.decomposition._dict_learning.DictionaryLearning",
+    "classPath": "sklearn.decomposition.DictionaryLearning",
     "description": "Dictionary learning.",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -110,13 +110,16 @@
         "isAdvanced": true
       }
     ],
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "sklearn.decomposition._dict_learning.DictionaryLearning"
+    ]
   },
   {
     "id": "preprocessing.factor_analysis",
     "name": "FactorAnalysis",
     "type": "preprocessing",
-    "classPath": "sklearn.decomposition._factor_analysis.FactorAnalysis",
+    "classPath": "sklearn.decomposition.FactorAnalysis",
     "description": "Factor Analysis (FA).",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -179,13 +182,16 @@
         "isAdvanced": true
       }
     ],
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "sklearn.decomposition._factor_analysis.FactorAnalysis"
+    ]
   },
   {
     "id": "preprocessing.fast_ica",
     "name": "FastICA",
     "type": "preprocessing",
-    "classPath": "sklearn.decomposition._fastica.FastICA",
+    "classPath": "sklearn.decomposition.FastICA",
     "description": "FastICA: a fast algorithm for Independent Component Analysis.",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -258,13 +264,16 @@
         "isAdvanced": true
       }
     ],
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "sklearn.decomposition._fastica.FastICA"
+    ]
   },
   {
     "id": "preprocessing.incremental_pca",
     "name": "IncrementalPCA",
     "type": "preprocessing",
-    "classPath": "sklearn.decomposition._incremental_pca.IncrementalPCA",
+    "classPath": "sklearn.decomposition.IncrementalPCA",
     "description": "Incremental principal components analysis (IPCA).",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -297,13 +306,16 @@
         "isAdvanced": true
       }
     ],
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "sklearn.decomposition._incremental_pca.IncrementalPCA"
+    ]
   },
   {
     "id": "preprocessing.isomap",
     "name": "Isomap",
     "type": "preprocessing",
-    "classPath": "sklearn.manifold._isomap.Isomap",
+    "classPath": "sklearn.manifold.Isomap",
     "description": "Isomap Embedding.",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -392,13 +404,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.manifold._isomap.Isomap"
+    ]
   },
   {
     "id": "preprocessing.kernel_pca",
     "name": "KernelPCA",
     "type": "preprocessing",
-    "classPath": "sklearn.decomposition._kernel_pca.KernelPCA",
+    "classPath": "sklearn.decomposition.KernelPCA",
     "description": "Kernel Principal component analysis (KPCA).",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -520,13 +535,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.decomposition._kernel_pca.KernelPCA"
+    ]
   },
   {
     "id": "preprocessing.locally_linear_embedding",
     "name": "LocallyLinearEmbedding",
     "type": "preprocessing",
-    "classPath": "sklearn.manifold._locally_linear.LocallyLinearEmbedding",
+    "classPath": "sklearn.manifold.LocallyLinearEmbedding",
     "description": "Locally Linear Embedding.",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -626,13 +644,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.manifold._locally_linear.LocallyLinearEmbedding"
+    ]
   },
   {
     "id": "preprocessing.mini_batch_dictionary_learning",
     "name": "MiniBatchDictionaryLearning",
     "type": "preprocessing",
-    "classPath": "sklearn.decomposition._dict_learning.MiniBatchDictionaryLearning",
+    "classPath": "sklearn.decomposition.MiniBatchDictionaryLearning",
     "description": "Mini-batch dictionary learning.",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -752,13 +773,16 @@
         "isAdvanced": true
       }
     ],
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "sklearn.decomposition._dict_learning.MiniBatchDictionaryLearning"
+    ]
   },
   {
     "id": "preprocessing.mini_batch_sparse_pca",
     "name": "MiniBatchSparsePCA",
     "type": "preprocessing",
-    "classPath": "sklearn.decomposition._sparse_pca.MiniBatchSparsePCA",
+    "classPath": "sklearn.decomposition.MiniBatchSparsePCA",
     "description": "Mini-batch Sparse Principal Components Analysis.",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -848,13 +872,16 @@
         "isAdvanced": true
       }
     ],
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "sklearn.decomposition._sparse_pca.MiniBatchSparsePCA"
+    ]
   },
   {
     "id": "preprocessing.plssvd",
     "name": "PLSSVD",
     "type": "preprocessing",
-    "classPath": "sklearn.cross_decomposition._pls.PLSSVD",
+    "classPath": "sklearn.cross_decomposition.PLSSVD",
     "description": "Partial Least Square SVD.",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -884,13 +911,16 @@
     "_webapp_meta": {
       "skipAudit": true,
       "skipReason": "PLSSVD requires y; n_components fixed to 1 for stability."
-    }
+    },
+    "legacyClassPaths": [
+      "sklearn.cross_decomposition._pls.PLSSVD"
+    ]
   },
   {
     "id": "preprocessing.sparse_pca",
     "name": "SparsePCA",
     "type": "preprocessing",
-    "classPath": "sklearn.decomposition._sparse_pca.SparsePCA",
+    "classPath": "sklearn.decomposition.SparsePCA",
     "description": "Sparse Principal Components Analysis (SparsePCA).",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -967,13 +997,16 @@
         "isAdvanced": true
       }
     ],
-    "supportsFinetuning": true
+    "supportsFinetuning": true,
+    "legacyClassPaths": [
+      "sklearn.decomposition._sparse_pca.SparsePCA"
+    ]
   },
   {
     "id": "preprocessing.tsne",
     "name": "TSNE",
     "type": "preprocessing",
-    "classPath": "sklearn.manifold._t_sne.TSNE",
+    "classPath": "sklearn.manifold.TSNE",
     "description": "T-distributed Stochastic Neighbor Embedding.",
     "category": "Dimensionality Reduction",
     "tags": [
@@ -1084,6 +1117,9 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.manifold._t_sne.TSNE"
+    ]
   }
 ]

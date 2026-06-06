@@ -3,7 +3,7 @@
     "id": "model.decision_tree_classifier",
     "name": "DecisionTreeClassifier",
     "type": "model",
-    "classPath": "sklearn.tree._classes.DecisionTreeClassifier",
+    "classPath": "sklearn.tree.DecisionTreeClassifier",
     "description": "A decision tree classifier.",
     "category": "sklearn-tree",
     "tags": [
@@ -118,13 +118,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.tree._classes.DecisionTreeClassifier"
+    ]
   },
   {
     "id": "model.decision_tree_regressor",
     "name": "DecisionTreeRegressor",
     "type": "model",
-    "classPath": "sklearn.tree._classes.DecisionTreeRegressor",
+    "classPath": "sklearn.tree.DecisionTreeRegressor",
     "description": "A decision tree regressor.",
     "category": "sklearn-tree",
     "tags": [
@@ -239,13 +242,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.tree._classes.DecisionTreeRegressor"
+    ]
   },
   {
     "id": "model.extra_tree_classifier",
     "name": "ExtraTreeClassifier",
     "type": "model",
-    "classPath": "sklearn.tree._classes.ExtraTreeClassifier",
+    "classPath": "sklearn.tree.ExtraTreeClassifier",
     "description": "An extremely randomized tree classifier.",
     "category": "sklearn-tree",
     "tags": [
@@ -361,13 +367,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.tree._classes.ExtraTreeClassifier"
+    ]
   },
   {
     "id": "model.extra_tree_regressor",
     "name": "ExtraTreeRegressor",
     "type": "model",
-    "classPath": "sklearn.tree._classes.ExtraTreeRegressor",
+    "classPath": "sklearn.tree.ExtraTreeRegressor",
     "description": "An extremely randomized tree regressor.",
     "category": "sklearn-tree",
     "tags": [
@@ -484,6 +493,9 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.tree._classes.ExtraTreeRegressor"
+    ]
   }
 ]

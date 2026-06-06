@@ -3,7 +3,7 @@
     "id": "model.gaussian_process_classifier",
     "name": "GaussianProcessClassifier",
     "type": "model",
-    "classPath": "sklearn.gaussian_process._gpc.GaussianProcessClassifier",
+    "classPath": "sklearn.gaussian_process.GaussianProcessClassifier",
     "description": "Gaussian process classification (GPC) based on Laplace approximation.",
     "category": "sklearn-gaussian-process",
     "tags": [
@@ -72,13 +72,16 @@
         "default": "one_vs_rest",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.gaussian_process._gpc.GaussianProcessClassifier"
     ]
   },
   {
     "id": "model.gaussian_process_regressor",
     "name": "GaussianProcessRegressor",
     "type": "model",
-    "classPath": "sklearn.gaussian_process._gpr.GaussianProcessRegressor",
+    "classPath": "sklearn.gaussian_process.GaussianProcessRegressor",
     "description": "Gaussian process regression (GPR).",
     "category": "sklearn-gaussian-process",
     "tags": [
@@ -160,6 +163,9 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.gaussian_process._gpr.GaussianProcessRegressor"
+    ]
   }
 ]

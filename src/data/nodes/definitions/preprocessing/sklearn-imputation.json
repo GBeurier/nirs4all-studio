@@ -3,7 +3,7 @@
     "id": "preprocessing.knn_imputer",
     "name": "KNNImputer",
     "type": "preprocessing",
-    "classPath": "sklearn.impute._knn.KNNImputer",
+    "classPath": "sklearn.impute.KNNImputer",
     "description": "Imputation for completing missing values using k-Nearest Neighbors.",
     "category": "Imputation",
     "tags": [
@@ -68,13 +68,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.impute._knn.KNNImputer"
+    ]
   },
   {
     "id": "preprocessing.missing_indicator",
     "name": "MissingIndicator",
     "type": "preprocessing",
-    "classPath": "sklearn.impute._base.MissingIndicator",
+    "classPath": "sklearn.impute.MissingIndicator",
     "description": "Binary indicators for missing values.",
     "category": "Imputation",
     "tags": [
@@ -109,13 +112,16 @@
         "default": true,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.impute._base.MissingIndicator"
     ]
   },
   {
     "id": "preprocessing.simple_imputer",
     "name": "SimpleImputer",
     "type": "preprocessing",
-    "classPath": "sklearn.impute._base.SimpleImputer",
+    "classPath": "sklearn.impute.SimpleImputer",
     "description": "Univariate imputer for completing missing values with simple strategies.",
     "category": "Imputation",
     "tags": [
@@ -184,6 +190,9 @@
         "default": false,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.impute._base.SimpleImputer"
     ]
   }
 ]

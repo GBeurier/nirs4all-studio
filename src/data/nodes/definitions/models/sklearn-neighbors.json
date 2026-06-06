@@ -3,7 +3,7 @@
     "id": "model.k_neighbors_classifier",
     "name": "KNeighborsClassifier",
     "type": "model",
-    "classPath": "sklearn.neighbors._classification.KNeighborsClassifier",
+    "classPath": "sklearn.neighbors.KNeighborsClassifier",
     "description": "Classifier implementing the k-nearest neighbors vote.",
     "category": "sklearn-neighbors",
     "tags": [
@@ -74,13 +74,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.neighbors._classification.KNeighborsClassifier"
+    ]
   },
   {
     "id": "model.k_neighbors_regressor",
     "name": "KNeighborsRegressor",
     "type": "model",
-    "classPath": "sklearn.neighbors._regression.KNeighborsRegressor",
+    "classPath": "sklearn.neighbors.KNeighborsRegressor",
     "description": "Regression based on k-nearest neighbors.",
     "category": "sklearn-neighbors",
     "tags": [
@@ -151,13 +154,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.neighbors._regression.KNeighborsRegressor"
+    ]
   },
   {
     "id": "model.nearest_centroid",
     "name": "NearestCentroid",
     "type": "model",
-    "classPath": "sklearn.neighbors._nearest_centroid.NearestCentroid",
+    "classPath": "sklearn.neighbors.NearestCentroid",
     "description": "Nearest centroid classifier.",
     "category": "sklearn-neighbors",
     "tags": [
@@ -186,13 +192,16 @@
         "default": "uniform",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.neighbors._nearest_centroid.NearestCentroid"
     ]
   },
   {
     "id": "model.radius_neighbors_classifier",
     "name": "RadiusNeighborsClassifier",
     "type": "model",
-    "classPath": "sklearn.neighbors._classification.RadiusNeighborsClassifier",
+    "classPath": "sklearn.neighbors.RadiusNeighborsClassifier",
     "description": "Classifier implementing a vote among neighbors within a given radius.",
     "category": "sklearn-neighbors",
     "tags": [
@@ -260,13 +269,16 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.neighbors._classification.RadiusNeighborsClassifier"
     ]
   },
   {
     "id": "model.radius_neighbors_regressor",
     "name": "RadiusNeighborsRegressor",
     "type": "model",
-    "classPath": "sklearn.neighbors._regression.RadiusNeighborsRegressor",
+    "classPath": "sklearn.neighbors.RadiusNeighborsRegressor",
     "description": "Regression based on neighbors within a fixed radius.",
     "category": "sklearn-neighbors",
     "tags": [
@@ -329,6 +341,9 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.neighbors._regression.RadiusNeighborsRegressor"
     ]
   }
 ]

@@ -3,7 +3,7 @@
     "id": "preprocessing.birch",
     "name": "Birch",
     "type": "preprocessing",
-    "classPath": "sklearn.cluster._birch.Birch",
+    "classPath": "sklearn.cluster.Birch",
     "description": "Implements the BIRCH clustering algorithm.",
     "category": "Clustering & Neighbors",
     "tags": [
@@ -47,13 +47,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.cluster._birch.Birch"
+    ]
   },
   {
     "id": "preprocessing.bisecting_k_means",
     "name": "BisectingKMeans",
     "type": "preprocessing",
-    "classPath": "sklearn.cluster._bisect_k_means.BisectingKMeans",
+    "classPath": "sklearn.cluster.BisectingKMeans",
     "description": "Bisecting K-Means clustering.",
     "category": "Clustering & Neighbors",
     "tags": [
@@ -126,13 +129,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.cluster._bisect_k_means.BisectingKMeans"
+    ]
   },
   {
     "id": "preprocessing.feature_agglomeration",
     "name": "FeatureAgglomeration",
     "type": "preprocessing",
-    "classPath": "sklearn.cluster._agglomerative.FeatureAgglomeration",
+    "classPath": "sklearn.cluster.FeatureAgglomeration",
     "description": "Agglomerate features.",
     "category": "Clustering & Neighbors",
     "tags": [
@@ -202,13 +208,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.cluster._agglomerative.FeatureAgglomeration"
+    ]
   },
   {
     "id": "preprocessing.k_means",
     "name": "KMeans",
     "type": "preprocessing",
-    "classPath": "sklearn.cluster._kmeans.KMeans",
+    "classPath": "sklearn.cluster.KMeans",
     "description": "K-Means clustering.",
     "category": "Clustering & Neighbors",
     "tags": [
@@ -275,13 +284,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.cluster._kmeans.KMeans"
+    ]
   },
   {
     "id": "preprocessing.k_neighbors_transformer",
     "name": "KNeighborsTransformer",
     "type": "preprocessing",
-    "classPath": "sklearn.neighbors._graph.KNeighborsTransformer",
+    "classPath": "sklearn.neighbors.KNeighborsTransformer",
     "description": "Transform X into a (weighted) graph of k nearest neighbors.",
     "category": "Clustering & Neighbors",
     "tags": [
@@ -342,13 +354,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.neighbors._graph.KNeighborsTransformer"
+    ]
   },
   {
     "id": "preprocessing.mini_batch_k_means",
     "name": "MiniBatchKMeans",
     "type": "preprocessing",
-    "classPath": "sklearn.cluster._kmeans.MiniBatchKMeans",
+    "classPath": "sklearn.cluster.MiniBatchKMeans",
     "description": "Mini-Batch K-Means clustering.",
     "category": "Clustering & Neighbors",
     "tags": [
@@ -432,13 +447,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.cluster._kmeans.MiniBatchKMeans"
+    ]
   },
   {
     "id": "preprocessing.radius_neighbors_transformer",
     "name": "RadiusNeighborsTransformer",
     "type": "preprocessing",
-    "classPath": "sklearn.neighbors._graph.RadiusNeighborsTransformer",
+    "classPath": "sklearn.neighbors.RadiusNeighborsTransformer",
     "description": "Transform X into a (weighted) graph of neighbors nearer than a radius.",
     "category": "Clustering & Neighbors",
     "tags": [
@@ -491,6 +509,9 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.neighbors._graph.RadiusNeighborsTransformer"
     ]
   }
 ]

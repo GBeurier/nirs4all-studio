@@ -52,7 +52,7 @@
     "id": "model.cca",
     "name": "CCA",
     "type": "model",
-    "classPath": "sklearn.cross_decomposition._pls.CCA",
+    "classPath": "sklearn.cross_decomposition.CCA",
     "description": "Canonical Correlation Analysis, also known as \"Mode B\" PLS.",
     "category": "sklearn-cross-decomposition",
     "tags": [
@@ -96,7 +96,10 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.cross_decomposition._pls.CCA"
+    ]
   },
   {
     "id": "model.dummy_classifier",
@@ -228,7 +231,7 @@
     "id": "model.fixed_threshold_classifier",
     "name": "FixedThresholdClassifier",
     "type": "model",
-    "classPath": "sklearn.model_selection._classification_threshold.FixedThresholdClassifier",
+    "classPath": "sklearn.model_selection.FixedThresholdClassifier",
     "description": "Binary classifier that manually sets the decision threshold.",
     "category": "sklearn-probabilistic",
     "tags": [
@@ -262,6 +265,9 @@
         "default": "auto",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.model_selection._classification_threshold.FixedThresholdClassifier"
     ]
   },
   {
@@ -394,7 +400,7 @@
     "id": "model.label_propagation",
     "name": "LabelPropagation",
     "type": "model",
-    "classPath": "sklearn.semi_supervised._label_propagation.LabelPropagation",
+    "classPath": "sklearn.semi_supervised.LabelPropagation",
     "description": "Label Propagation classifier.",
     "category": "sklearn-semi-supervised",
     "tags": [
@@ -467,13 +473,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.semi_supervised._label_propagation.LabelPropagation"
+    ]
   },
   {
     "id": "model.label_spreading",
     "name": "LabelSpreading",
     "type": "model",
-    "classPath": "sklearn.semi_supervised._label_propagation.LabelSpreading",
+    "classPath": "sklearn.semi_supervised.LabelSpreading",
     "description": "LabelSpreading model for semi-supervised learning.",
     "category": "sklearn-semi-supervised",
     "tags": [
@@ -558,13 +567,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.semi_supervised._label_propagation.LabelSpreading"
+    ]
   },
   {
     "id": "model.pls_canonical",
     "name": "PLSCanonical",
     "type": "model",
-    "classPath": "sklearn.cross_decomposition._pls.PLSCanonical",
+    "classPath": "sklearn.cross_decomposition.PLSCanonical",
     "description": "Partial Least Squares transformer and regressor.",
     "category": "sklearn-cross-decomposition",
     "tags": [
@@ -614,13 +626,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.cross_decomposition._pls.PLSCanonical"
+    ]
   },
   {
     "id": "model.self_training_classifier",
     "name": "SelfTrainingClassifier",
     "type": "model",
-    "classPath": "sklearn.semi_supervised._self_training.SelfTrainingClassifier",
+    "classPath": "sklearn.semi_supervised.SelfTrainingClassifier",
     "description": "Self-training classifier.",
     "category": "sklearn-semi-supervised",
     "tags": [
@@ -690,13 +705,16 @@
         "default": 10,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.semi_supervised._self_training.SelfTrainingClassifier"
     ]
   },
   {
     "id": "model.transformed_target_regressor",
     "name": "TransformedTargetRegressor",
     "type": "model",
-    "classPath": "sklearn.compose._target.TransformedTargetRegressor",
+    "classPath": "sklearn.compose.TransformedTargetRegressor",
     "description": "Meta-estimator to regress on a transformed target.",
     "category": "sklearn-misc-models",
     "tags": [
@@ -734,13 +752,16 @@
         "default": true,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.compose._target.TransformedTargetRegressor"
     ]
   },
   {
     "id": "model.tuned_threshold_classifier_cv",
     "name": "TunedThresholdClassifierCV",
     "type": "model",
-    "classPath": "sklearn.model_selection._classification_threshold.TunedThresholdClassifierCV",
+    "classPath": "sklearn.model_selection.TunedThresholdClassifierCV",
     "description": "Classifier that post-tunes the decision threshold using cross-validation.",
     "category": "sklearn-probabilistic",
     "tags": [
@@ -797,6 +818,9 @@
         "default": false,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.model_selection._classification_threshold.TunedThresholdClassifierCV"
     ]
   }
 ]
