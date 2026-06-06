@@ -48,3 +48,6 @@ dist-electron/
 /playwright/.cache/
 /playwright/.auth/
 docs/user-guide/build/
+# local code-intelligence index + rtk state
+.codegraph/
+.rtk/
