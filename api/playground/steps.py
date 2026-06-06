@@ -346,9 +346,12 @@ def execute_splitter(
             unique_y = np.unique(split_y)
             n_bins = min(5, len(unique_y))
             if n_bins > 1:
-                split_y = np.digitize(
-                    split_y,
-                    np.percentile(split_y, np.linspace(0, 100, n_bins + 1)[1:-1]),
+                # Quantile binning is library-owned (PG-08); 5 bins stays a
+                # preview-stratification choice of the playground.
+                from nirs4all.data.binning import BinningCalculator
+
+                split_y, _edges = BinningCalculator.bin_continuous_targets(
+                    np.asarray(split_y, dtype=float), bins=n_bins, strategy="quantile"
                 )
 
     requires_wrapper = resolved_groups.requires_wrapper
