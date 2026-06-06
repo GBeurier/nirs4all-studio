@@ -1399,105 +1399,25 @@ class ShapePropagationResponse(BaseModel):
 
 # Operator shape effects mapping.
 #
-# BOUNDARY FLAG (PIPE-01 -> T2.1): this dict and ``_propagate_shape`` below
-# hand-encode nirs4all operator output-shape semantics (PLS ``n_components``,
-# wavelet ``level``, crop/resample feature math) in the backend, which violates
-# the "backend never reimplements nirs4all logic" rule. nirs4all currently only
-# exposes ``n_features_out_`` as a *fitted* attribute (set during ``fit``), so
-# there is no public pre-fit "given operator + params + input shape -> output
-# shape" inference to call from this editor-time endpoint. Until T2.1 adds a
-# queryable static shape-inference surface to nirs4all, this hand-math is kept
-# in place deliberately (it is necessarily incomplete: unknown operators fall
-# back to shape-preserving + a warning). Do not extend it operator-by-operator;
-# route the fix through T2.1.
-SHAPE_TRANSFORMS = {
-    # Preprocessing that preserves shape
-    "StandardNormalVariate": lambda inp, params: inp,
-    "SNV": lambda inp, params: inp,
-    "MultiplicativeScatterCorrection": lambda inp, params: inp,
-    "MSC": lambda inp, params: inp,
-    "StandardScaler": lambda inp, params: inp,
-    "MinMaxScaler": lambda inp, params: inp,
-    "RobustScaler": lambda inp, params: inp,
-    "Normalize": lambda inp, params: inp,
-    "LogTransform": lambda inp, params: inp,
-    "Detrend": lambda inp, params: inp,
-    "Baseline": lambda inp, params: inp,
-    "ASLSBaseline": lambda inp, params: inp,
-    "AirPLS": lambda inp, params: inp,
-    "ArPLS": lambda inp, params: inp,
-    "SNIP": lambda inp, params: inp,
-    "Gaussian": lambda inp, params: inp,
-    "ReflectanceToAbsorbance": lambda inp, params: inp,
-    "ToAbsorbance": lambda inp, params: inp,
-    "FromAbsorbance": lambda inp, params: inp,
-    "FirstDerivative": lambda inp, params: inp,
-    "SecondDerivative": lambda inp, params: inp,
-    "SavitzkyGolay": lambda inp, params: inp,
-
-    # Feature reduction
-    "PLSRegression": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": min(params.get("n_components", 10), inp["features"], inp["samples"]),
-    },
-    "PCA": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": min(params.get("n_components", inp["features"]), inp["features"], inp["samples"]),
-    },
-    "IKPLS": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": min(params.get("n_components", 10), inp["features"], inp["samples"]),
-    },
-    "OPLS": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": min(params.get("n_components", 10), inp["features"], inp["samples"]),
-    },
-
-    # Resampling
-    "ResampleTransformer": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": params.get("n_features", params.get("target_points", inp["features"])),
-    },
-    "Resampler": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": params.get("n_features", params.get("target_points", inp["features"])),
-    },
-    "CropTransformer": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": max(1, params.get("end", inp["features"]) - params.get("start", 0)),
-    },
-
-    # Wavelets
-    "Wavelet": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": inp["features"] // (2 ** params.get("level", 1)),
-    },
-    "Haar": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": inp["features"] // (2 ** params.get("level", 1)),
-    },
-}
-
-# Parameters that should be checked against dimensions
-DIMENSION_PARAMS = {
-    "n_components": "features",
-    "n_splits": "samples",
-    "window_length": "features",
-    "start": "features",
-    "end": "features",
-    "n_features": "features",
-    "target_points": "features",
-}
-
-
 def _propagate_shape(step: dict[str, Any], input_shape: dict[str, int]) -> tuple:
-    """Calculate output shape for a single step."""
+    """Calculate output shape for a single step.
+
+    Shape semantics are library-owned (PIPE-01):
+    nirs4all.pipeline.analysis.shape_inference provides the per-operator
+    pre-fit rules and the dimension-bound parameter taxonomy; this function
+    only shapes warnings for the editor response.
+    """
+    from nirs4all.pipeline.analysis.shape_inference import (
+        DIMENSION_BOUND_PARAMS,
+        infer_output_shape,
+    )
+
     step_name = step.get("name", "")
     params = step.get("params", {})
     warnings = []
 
-    # Check dimension parameters
-    for param_name, dim_source in DIMENSION_PARAMS.items():
+    # Check dimension-bounded parameters (taxonomy from the library)
+    for param_name, dim_source in DIMENSION_BOUND_PARAMS.items():
         param_value = params.get(param_name)
         if param_value is not None and isinstance(param_value, (int, float)):
             max_value = input_shape.get(dim_source, float("inf"))
@@ -1513,10 +1433,11 @@ def _propagate_shape(step: dict[str, Any], input_shape: dict[str, int]) -> tuple
                     "severity": "error" if param_name == "n_components" else "warning",
                 })
 
-    # Calculate output shape
-    transform = SHAPE_TRANSFORMS.get(step_name)
-    if transform:
-        output_shape = transform(input_shape, params)
+    inferred = infer_output_shape(
+        step_name, params, input_shape.get("samples", 0), input_shape.get("features", 0)
+    )
+    if inferred is not None:
+        output_shape = {"samples": inferred[0], "features": inferred[1]}
     else:
         # Unknown operator - preserve shape, add warning
         output_shape = input_shape.copy()
