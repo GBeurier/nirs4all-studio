@@ -431,13 +431,23 @@ export interface DropIndicator {
   position: "before" | "after" | "inside"; // Where relative to the target
 }
 
+// ---------------------------------------------------------------------------
+// Local variant-count estimator (synchronous, per-step / per-sweep)
+//
+// This family powers INLINE UI feedback that must update on every keystroke:
+// tree-node badges, sweep-popover live previews, generator option counts, and
+// per-step config-panel summaries. It is deliberately synchronous and local.
+//
+// It is NOT redundant with the `useVariantCount` hook. That hook counts a WHOLE
+// pipeline by calling the nirs4all backend (`/pipelines/count-variants`),
+// debounced and asynchronous — the authoritative total for the editor footer.
+// These functions answer "how many variants does THIS step / sweep produce?"
+// without a round-trip, which the debounced async hook cannot do without
+// latency and flicker. Keep both: backend hook = whole-pipeline truth,
+// this estimator = instant per-node math.
+// ---------------------------------------------------------------------------
+
 // Utility to calculate sweep variant count
-/**
- * @deprecated Use the `useVariantCount` hook instead, which calls the nirs4all
- * backend API for accurate variant counting. This local calculation is kept
- * for offline/fallback scenarios but may not match nirs4all's actual behavior.
- * @see useVariantCount from '@/hooks/useVariantCount'
- */
 export function calculateSweepVariants(sweep: ParameterSweep): number {
   switch (sweep.type) {
     case "range":
@@ -543,13 +553,8 @@ export function calculateGeneratorExpansionCount(step: PipelineStep): number {
   return branches.length;
 }
 
-// Calculate total variants for a step (product of all param sweeps)
-/**
- * @deprecated Use the `useVariantCount` hook instead, which calls the nirs4all
- * backend API for accurate variant counting. This local calculation is kept
- * for offline/fallback scenarios but may not match nirs4all's actual behavior.
- * @see useVariantCount from '@/hooks/useVariantCount'
- */
+// Calculate total variants for a single step (product of all param sweeps).
+// Part of the synchronous local estimator documented above.
 export function calculateStepVariants(step: PipelineStep): number {
   let variants = 1;
 
@@ -677,13 +682,9 @@ function binomialCoefficient(n: number, k: number): number {
   return Math.round(result);
 }
 
-// Calculate total pipeline variants (recursive through all steps)
-/**
- * @deprecated Use the `useVariantCount` hook instead, which calls the nirs4all
- * backend API for accurate variant counting. This local calculation is kept
- * for offline/fallback scenarios but may not match nirs4all's actual behavior.
- * @see useVariantCount from '@/hooks/useVariantCount'
- */
+// Calculate total pipeline variants (recursive through all steps).
+// Part of the synchronous local estimator documented above; the recursive
+// backbone used by the cartesian/generator stage counters.
 export function calculatePipelineVariants(steps: PipelineStep[]): number {
   let totalVariants = 1;
 
