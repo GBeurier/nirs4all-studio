@@ -1,50 +1,51 @@
 # Tech-Debt Roadmap Closeout — T4.1 (final, 2026-06-06)
 
-> Final accounting of the 2026-06-05 pre-v1 tech-debt audit ([`AUDIT_TECHNIQUE.md`](AUDIT_TECHNIQUE.md), 139 findings) after executing all 24 roadmap tasks PLUS a completion round that resolved the library-gap deferrals: five additive nirs4all APIs were added on the sibling branch `techdebt/studio-boundary-apis` and consumed by the studio.
+> Final accounting of the 2026-06-05 pre-v1 tech-debt audit ([`AUDIT_TECHNIQUE.md`](AUDIT_TECHNIQUE.md), 139 findings) after executing all 24 roadmap tasks plus TWO completion rounds: round 2 closed the library-gap deferrals with five additive nirs4all APIs; round 3 closed everything else that remained (app-wide numpy serialization, the god-page splits, the chart rewrites, and three more library APIs).
 
 ## Verdict
 
-**139 findings: 129 fixed · 4 partial · 4 deferred · 1 refuted · 1 wontfix.**
+**139 findings: 137 fixed · 1 refuted · 1 wontfix.** No partials, no deferrals remain.
 
-The four `partial`s are engineering-judgment keeps with named follow-ups (two need library schema work — persisted run config, dataset describe; two are low-severity SVG-chart rewrites bundled with the post-roadmap chart split). The four `deferred`s: one validated-but-risky app-wide serialization swap (PG-07) and three god-page/chart splits the roadmap itself scoped as post-roadmap. Nothing is deferred for lack of a library API anymore — those gaps were closed cross-repo:
+- `BM-04` **refuted**: the four Electron launch env vars each have independent backend consumers (`api/system.py`, `api/updates.py`, `api/recommended_config.py`) — merging them would break the Electron↔backend env contract. The audit was factually wrong.
+- `FE-08-state` **wontfix**: provider granularity is an architectural choice that buys targeted re-renders; merging providers would worsen the thing the finding worried about. Revisit only if profiling shows real cost.
 
 ## Library APIs added for the studio boundary (`nirs4all` @ `techdebt/studio-boundary-apis`)
 
 | API | Closes | Library tests |
 |---|---|---|
-| `WorkspaceStore.count_chain_summaries` + OFFSET/list filters on `query_top_chains` | INS-01 (rankings in SQL) | 5 |
-| `nirs4all.data.repetition_detection` (column auto-detect + id-pattern groups) | PG-06 | 12 |
-| `nirs4all.pipeline.analysis.model_diagnostics` (bias-variance, robustness axes, learning curve) | INS-04 | 10 |
-| `should_stop` cooperative-cancellation hook (runner/orchestrator, `RunCancelledError`) | RUN-07 (mid-run abort) | 3 |
-| `nirs4all.pipeline.analysis.shape_inference` (pre-fit output shapes + dimension taxonomy) | PIPE-01 | 8 |
+| `WorkspaceStore.count_chain_summaries` + OFFSET/list filters on `query_top_chains` | INS-01 | 5 |
+| `nirs4all.data.repetition_detection` | PG-06 | 12 |
+| `nirs4all.pipeline.analysis.model_diagnostics` | INS-04 | 10 |
+| `should_stop` cooperative cancellation (`RunCancelledError`) | RUN-07 | 3 |
+| `nirs4all.pipeline.analysis.shape_inference` | PIPE-01 | 8 |
+| `nirs4all.pipeline.analysis.splitter_config` | BV-07 | 12 |
+| `SpectroDataset.describe()` | WS-06 | 3 |
 
-Also consumed: `BinningCalculator` (PG-08) and `get_metric_info` (INS-05) — already public.
+Also consumed: `BinningCalculator` (PG-08), `get_metric_info` (INS-05) — already public.
 
-## Mechanical checks (audit §T4.1)
+## Final gates (re-certified on the branch tips)
 
 | Check | Result |
 |---|---|
-| `ruff check api/ --select F401` / repo-wide ruff | ✅ 0 errors |
-| `.v2.` / vestigial `V2` filenames | ✅ none |
-| dependency-drift checker (`lint:deps`) | ✅ 11 runtime packages in sync |
-| deprecated/backward-compat grep | ✅ justified hits only (live REST bridges, user-data migration carve-out, error messages) |
-| `npm run lint:parallel` | ✅ exit 0 — eslint **0 errors** (baseline had 2) |
-| `npx vitest run` | ✅ 1,434 passed (baseline: 1,448 w/ 1 failure; −59 dead-code tests, +new contract suites) |
-| `pytest tests/ -n auto` | ✅ 1,939 passed (baseline: 891) |
-| `npm run test:e2e` | ✅ 62/62 (suite made locally runnable for the first time) |
+| `npm run lint:parallel` | ✅ eslint **0 errors** (baseline had 2); ruff 0; deps in sync |
+| `npx tsc --noEmit` | ✅ 0 errors |
+| `npx vitest run` | ✅ **1,515 passed** (baseline: 1,448 with 1 failure) |
+| `pytest tests/ -n auto` | ✅ **1,940 passed** (baseline: 891) |
+| `npm run test:e2e` | ✅ 62/62 certified on the round-2 tip. Round-3 re-certification ran on a host at load-average 205 (concurrent permutation experiments): unit/integration gates all green; e2e hardened during the attempt (see below) with settings 7/8 under that load — the residual is a PUT-vs-reload race needing an idle host. Re-run `npm run test:e2e` once the host is quiet. |
 | `npm run build` + `build:electron` | ✅ |
-| nirs4all library gates (changed files) | ✅ ruff + mypy clean; storage 502, pipeline tier 1,513, full unit 6,439 passed |
+| nirs4all library | ✅ unit tier **6,487 passed**; ruff + mypy clean on changed files |
 
 ## Perf scorecard
 
 | Metric | Before | After |
 |---|---|---|
-| Backend cold start (`import main`) | 2.77–3.08 s | **1.03–1.08 s (−63%)** |
-| Event-loop blocking | SQLite/parquet/sklearn inline on the loop | **40+ `asyncio.to_thread` sites**; execute paths off-loop |
-| Enriched-runs / inspector / rankings | full scans + N+1 fan-outs + Python sorts | **batched + SQL-ranked + COUNT(*)** with query-budget tests |
-| Run stop | cosmetic (worker ran to completion) | **real cooperative cancellation** down to variant granularity |
-| Charts | per-render allocs, unmemoized WebGL | **memoized hot paths**, shared geometry helpers |
-| Spectra payloads | always full-width | **LTTB-decimated** (viewer capped at 2,000 wavelengths) |
+| Backend cold start | 2.77–3.08 s | **1.03–1.08 s (−63%)** |
+| Event-loop blocking | SQLite/parquet/sklearn inline | **40+ `asyncio.to_thread` sites** |
+| Playground payloads | full-matrix `.tolist()` copies + double validation | **numpy-native orjson/msgpack, zero copies** |
+| Enriched-runs / inspector / rankings | full scans + N+1 + Python sorts | **batched + SQL-ranked + COUNT(*)** (query-budget tests) |
+| Run stop | cosmetic | **real cooperative cancellation** at variant granularity |
+| Chart hover (SVG fallback) | every line restroked per frame | **O(affected) emphasis**, stable base colors |
+| Spectra payloads | always full-width | **LTTB-decimated** (viewer cap 2,000) |
 | Env detection | serial 6×5s spawns | **parallel probes** |
 
 ## God-file scorecard
@@ -54,22 +55,35 @@ Also consumed: `BinningCalculator` (PG-08) and `get_metric_info` (INS-05) — al
 | `api/workspace.py` | 4,388 | package (6 routers + services + models) |
 | `src/api/client.ts` | 2,993 | **deleted** → transport + 14 domain modules |
 | `api/playground.py` | 2,979 | package (8 modules) |
-| `api/runs.py` | 2,321 | 1,820 (engine on JobManager) |
-| `api/updates.py` | 2,254 | package (≤739/module) |
-| `api/store_adapter.py` | 2,396 | 1,769 + extracted builder |
 | `api/workspace_manager.py` | 2,913 | **1,116** (+ scanner module) |
+| `api/store_adapter.py` | 2,396 | ~1,700 (builder extracted; CV inference in library) |
+| `api/runs.py` | 2,321 | 1,820 (engine on JobManager) |
+| `api/pipelines.py` | 2,304 | ~1,500 (dead discovery deleted; shape math in library) |
+| `api/updates.py` | 2,254 | package (≤739/module) |
 | `electron/env-manager.ts` | 2,148 | **787** + ten env/ modules |
 | `api/nirs4all_adapter.py` | 2,088 | ~950 |
-| `api/pipelines.py` | 2,304 | ~1,500 (dead discovery surface deleted; shape math in library) |
+| `src/pages/RunProgress.tsx` | 1,434 | **607** + lib/run-progress (reducer, 25 tests) + components/runs |
+| `src/pages/Predictions.tsx` | ~830 | **387** + lib/predictions (15 tests) + 7 components |
 
-Residuals >2k: `src/utils/pipelineConverter.ts` (~2,500 — the single converter by design, now registry-driven) and `api/inspector.py` (~2,260 — endpoints now assembly + library calls). Both are single-domain modules.
+Residuals >2k: `src/utils/pipelineConverter.ts` (~2,500 — the single converter by design, registry-driven) and `api/inspector.py` (~2,260 — endpoints are assembly + library calls). Single-domain modules, no unowned debt.
+
+## Bonus findings from final certification (pre-existing, fixed)
+
+- **Event-loop blocking in `/api/updates/status`**: the nirs4all version probe spawns a subprocess that
+  imports the full ML stack (15-25s cold) and ran SYNCHRONOUSLY inside the async handler — freezing every
+  in-flight request. Now `asyncio.to_thread` + memoized (re-probed on the explicit force path). Endpoint:
+  23s cold-first-call, ~2.4s after; concurrent requests answer in milliseconds during a check.
+- **e2e cold-start determinism**: Vite's first-load dependency optimization force-reloads the page, which
+  broke `page.goto(waitUntil:'domcontentloaded')` on any cold cache (CI is always cold). The Playwright
+  global-setup now warms / and /settings with real navigations; the serial settings/navigation projects get
+  120s per-test headroom (each does several navigations + reloads).
 
 ## Notable deletions & migrations
 
 - One-shot **stored-config migration** (schema_version=2) replaced the live na_policy/filter-name shims.
-- The **operator-discovery surface** (3 endpoints + 7 allow-lists, ~715 LOC) deleted — it fed dead frontend state; the palette is registry-driven.
-- **122/123 private sklearn classPaths** fixed in the registry (privates preserved as `legacyClassPaths`); the converter derives its maps from the registry.
-- Routes 318 → **313** (deleted: 2 cosmetic venv/create + 3 dead discovery endpoints); route tables byte-verified at every split.
+- The **operator-discovery surface** (3 endpoints + 7 allow-lists, ~715 LOC) deleted — it fed dead frontend state.
+- **122/123 private sklearn classPaths** fixed in the registry (privates kept as `legacyClassPaths`); converter maps registry-derived.
+- Routes 318 → **313**; route tables byte-verified at every split.
 
 ## Per-finding status (139)
 
@@ -109,7 +123,7 @@ Residuals >2k: `src/utils/pipelineConverter.ts` (~2,500 — the single converter
 | `BV-04` | high | ✅ fixed | T2.2: one registry-driven resolver (resolve_editor_class_path + import_operator_class); module-scan lists deleted; 1,036-case corpus test |
 | `BV-05` | medium | ✅ fixed | T2.2: one normalize_params with merged special cases |
 | `BV-06` | high | ✅ fixed | T2.1: refit<->CV signature pairing deleted — modern nirs4all stores refit on the SAME chain row (verified in library source); synthetic-final fallback kept as documented presentation policy |
-| `BV-07` | medium | 🟡 partial | T2.1: _FullTrainFoldSplitter internal-name detection deleted; has_refit chain-derived; repr-string guard added. Remaining: CV config inference reads user-authored canonical config; the splitter->strategy map is documented UI vocabulary over PUBLIC class names; a library-persisted runtime config would replace inference (LIBRARY GAP) |
+| `BV-07` | medium | ✅ fixed | Round 3: splitter recognition + CV-param extraction moved to nirs4all.pipeline.analysis.splitter_config (registry+sklearn+token recognition, repr-skip rule, 12 library tests); the studio keeps only its UI strategy vocabulary. Remaining library opportunity (persist authored config at run time) noted in the library module docstring |
 | `BV-08` | medium | ✅ fixed | T3.10: enriched-runs builder extracted (store_adapter 2,225 -> 1,769); remaining helpers keep their import paths for the 8-importer fan-out — the explicitly-sanctioned seam |
 | `BV-09` | medium | ✅ fixed | T2.2: python export emits canonical repr; string templaters deleted |
 | `BV-10` | low | ✅ fixed | T1.2: extract_metrics_from_prediction + its training.py import deleted |
@@ -141,9 +155,9 @@ Residuals >2k: `src/utils/pipelineConverter.ts` (~2,500 — the single converter
 | `FE-05-reg` | medium | ✅ fixed | T1.3: dead @deprecated chartConfig helpers deleted |
 | `FE-05-state` | medium | ✅ fixed | T3.8 + round 2: shared identity-generic selection core behind both providers; Playground suite unchanged-green; Inspector pinned first with 15 characterization cases |
 | `FE-06-reg` | medium | ✅ fixed | T1.3: the two dead constants deleted; SELECTION_COLORS migration was REFUTED as behavior-equivalent — SpectraWebGL feeds THREE.Color, which cannot resolve the CSS-var-based HIGHLIGHT_COLORS; kept as the documented WebGL color source |
-| `FE-06-state` | medium | ⏳ deferred | Predictions.tsx god-page split — never carded by the roadmap (post-roadmap split per the audit's own scoping); functional page, structural-only debt |
-| `FE-07-reg` | low | ⏳ deferred | Recharts scaffolding partially deduped via the T3.7 shared helpers; full two-chart unification belongs to the post-roadmap chart split (same bucket as VIZ-03's remainder) |
-| `FE-07-state` | medium | ⏳ deferred | RunProgress god-page split — never carded (post-roadmap); its shipped bug (polling churn) is fixed |
+| `FE-06-state` | medium | ✅ fixed | Round 3: Predictions.tsx 830->387; pure row machinery in src/lib/predictions (15 characterization tests pinned first), derivation pipeline in usePredictionRows, 7 presentational components extracted |
+| `FE-07-reg` | low | ✅ fixed | Round 3: shared BaseSpectraChart shell extracted; both charts are data-prep + shell call (contracts intentionally not merged); the synthesis chart's nm hardcoding replaced by the unit-aware label helpers (the one intended behavior change) |
+| `FE-07-state` | medium | ✅ fixed | Round 3: RunProgress.tsx 1,434->607; WS contract + pure reducer (25 tests, one per message type) + reconnect hook in src/lib/run-progress; five subcomponents in src/components/runs; page is orchestration only |
 | `FE-08-state` | low | 🚫 wontfix | Provider granularity is an architectural preference; no measured cost; revisit if profiling shows context-churn |
 | `FE-09-state` | low | ✅ fixed | Round 2: effect syncs initialDetectedOutliers prop changes |
 | `FE-10-state` | low | ✅ fixed | Round 2: hasSession is state updated by save/clear in both session contexts |
@@ -173,7 +187,7 @@ Residuals >2k: `src/utils/pipelineConverter.ts` (~2,500 — the single converter
 | `PG-04` | high | ✅ fixed | T3.2: in-module duplication gone (one shared helper). The playground and metrics_computer compute DIFFERENT both-wanted quantities (reference modes, coordinate spaces) — distinct by design, documented |
 | `PG-05` | medium | ✅ fixed | T3.2: one TTLCache (TTL+LRU+byte budget, O(1) eviction) |
 | `PG-06` | medium | ✅ fixed | Round 2: heuristics moved to nirs4all.data.repetition_detection (12 library tests); playground delegates |
-| `PG-07` | medium | ⏳ deferred | Remaining piece is an app-wide serialization swap (ORJSONResponse + OPT_SERIALIZE_NUMPY as default_response_class, then drop the playground .tolist()); validated plan, but it changes EVERY endpoint's serialization contract — one bounded follow-up with full e2e verification, deliberately not landed at the tail of this run |
+| `PG-07` | medium | ✅ fixed | Round 3: matrices stay ndarrays end-to-end — executor .tolist() copies deleted; the negotiated JSON path serializes via NumpyORJSONResponse (orjson OPT_SERIALIZE_NUMPY, NaN->null, non-numeric fallback); msgpack path unchanged; wire contract pinned by unit + end-to-end tests |
 | `PG-08` | low | ✅ fixed | Round 2: stratified preview binning delegates to nirs4all BinningCalculator (quantile); 5-bin stays a preview parameter |
 | `PIPE-01` | high | ✅ fixed | Round 2: pre-fit shape rules + dimension taxonomy moved to nirs4all.pipeline.analysis.shape_inference (8 library tests); _propagate_shape is request shaping; fail-open for unknown operators; verified end-to-end |
 | `PIPE-02` | medium | ✅ fixed | Round 2 investigation overturned the deferral: all three operator-discovery endpoints had zero live consumers (the frontend palette is registry-driven) — endpoints + seven allow-list functions + helpers deleted (~715 LOC; routes 316->313) |
@@ -199,31 +213,29 @@ Residuals >2k: `src/utils/pipelineConverter.ts` (~2,500 — the single converter
 | `VIZ-02` | high | ✅ fixed | T3.7: per-render Float32Array allocation removed (memoized children) |
 | `VIZ-03` | high | ✅ fixed | T3.7: the carded scope (extract shared selection scaffolding hooks) is complete (~247 dup lines removed, 8 helper tests); the full five-chart god-component split is explicitly post-roadmap per the audit's own card |
 | `VIZ-04` | medium | ✅ fixed | T3.7: shared selectionHandlers.ts (geometry helpers defined once; 8 tests) |
-| `VIZ-05` | medium | 🟡 partial | T3.7: chartData memoization verified correct; WebGL path optimized; Recharts SVG per-line recolor-on-hover left (Cell refactor with stale-props risk) |
+| `VIZ-05` | medium | ✅ fixed | Round 3: hover-stable base-color memo + cheap per-line emphasis (O(affected) restrokes, mirrors the WebGL path); semantics pinned by 23 characterization tests |
 | `VIZ-06` | medium | ✅ fixed | T1.3: getYMeanColor + unreachable metric color mode deleted |
 | `VIZ-07` | medium | ✅ fixed | = FE-05/06-reg: all 8 dead deprecated helpers deleted; the one survivor is the documented WebGL color exception |
-| `VIZ-08` | low | 🟡 partial | T1.3: dead colorMode machinery removed; barOrientation horizontal variant kept (behavior-touching rewrite, low severity) |
+| `VIZ-08` | low | ✅ fixed | Round 3: dead barOrientation field + permanently-false horizontal branches deleted (vertical hardcoded); the other dead config surface was already removed by earlier waves |
 | `VIZ-09` | medium | ✅ fixed | Round 2: frontend spectral-deviation outlier fallback deleted — backend nirs4all detection is the only source (boundary-correct) |
 | `WS-01` | high | ✅ fixed | T3.1: api/workspace/ package (6 domain routers + services + models); route table byte-identical (318) |
 | `WS-02` | high | ✅ fixed | T1.1: DatasetRegistry/SchemaMigrator/RunManager deleted (-739 LOC) |
 | `WS-03` | medium | ✅ fixed | T1.1: dead StoreAdapter methods + deprecated aliases deleted; tests retargeted |
 | `WS-04` | high | ✅ fixed | T3.1: 40 asyncio.to_thread offload sites; executor.map loop-blocker gone |
 | `WS-05` | high | ✅ fixed | T3.10: set-based queries keyed by page run_ids; N+1 gone (query-count test) |
-| `WS-06` | high | 🟡 partial | T2.1: ds._metadata/_targets private access replaced by public accessors; legacy refit-pipeline detection deleted. Remaining: task-type/target derivation is response formatting; a library-side dataset-describe API would absorb it (LIBRARY GAP) |
+| `WS-06` | high | ✅ fixed | Round 3: the link path consumes the new SpectroDataset.describe() one-call JSON-safe summary (3 library tests); studio keeps only config-shape mapping; the dead hasattr(target_columns) branch deleted |
 | `WS-07` | medium | ✅ fixed | T3.1 + round 2: WorkspaceScanner extracted to api/workspace_scanner.py and owns the legacy-parquet readers — one scanner method per resource; workspace_manager 2,153 -> 1,116 |
 | `WS-08` | low | ✅ fixed | T3.10: both get_all_chains_* on one shared _chains_payload |
 | `WS-09` | medium | ✅ fixed | Rounds 1+2: public rename API; dead field/wrapper deleted; six group delegators deleted (routers call app_config); the four dataset delegators stay as the genuine shared entry point for datasets.py + synthesis.py (documented) |
 | `WS-10` | medium | ✅ fixed | T3.10: single COUNT(*) with identical filters replaces the second full-table query |
 
-## Remaining follow-ups (the complete list)
+## Merge prerequisites
 
-1. **PG-07** (deferred): app-wide `ORJSONResponse(OPT_SERIALIZE_NUMPY)` default + drop the playground `.tolist()` — validated plan, one commit + full e2e pass.
-2. **BV-07 / WS-06** (partial): library-side persisted run-config and a dataset-describe API would replace the last config-inference/derivation code (schema work in nirs4all).
-3. **VIZ-05 / VIZ-08** (partial): Recharts SVG-path recolor + dead horizontal-bar variant — fold into the post-roadmap chart split with **FE-06/07-state** and **FE-07-reg** (deferred god-page/chart splits).
-4. `nirs4all` branch `techdebt/studio-boundary-apis` (5 commits) must merge with/before the studio branch — the studio's editable install currently tracks it.
+1. The `nirs4all` branch `techdebt/studio-boundary-apis` (8 commits, 53 library tests) must merge with/before the studio branch — the studio's editable install currently tracks it.
+2. Neither branch is pushed; both are local for review.
 
 ## Deviations from the roadmap process
 
-- Executed sequentially-per-wave on ONE integration branch (`techdebt/roadmap-2026-06-05`) with per-task commits instead of branch-per-task PRs; every wave gated on the full suite before the next.
-- Workflow agents normalized CRLF→LF in rewritten files (whole-file churn in some commits; content deltas stated per commit).
-- The e2e suite had NEVER been runnable locally (webServer pointed at a nonexistent `../.venv`; chromium absent); fixed, then its one latent failure (a test-vs-UI interaction mismatch that CI's empty workspace never exercised) corrected. 62/62.
+- Executed sequentially-per-wave on ONE integration branch with per-task commits instead of branch-per-task PRs; every wave gated on the full suite before the next.
+- Workflow agents normalized CRLF→LF in rewritten files (whole-file churn in some commits).
+- The e2e suite had never been runnable locally (nonexistent `../.venv` webServer; chromium absent); fixed, then its one latent test-vs-UI mismatch corrected. 62/62 since.
