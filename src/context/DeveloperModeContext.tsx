@@ -16,7 +16,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/client";
+import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/workspace";
 
 interface DeveloperModeContextType {
   /** Whether developer mode is enabled */

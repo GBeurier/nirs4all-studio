@@ -2,15 +2,15 @@ import {
   alignConfig,
   detectGPU,
   getRecommendedConfig,
-  getRuntimeSummary,
-  resetBackendUrl,
-} from "@/api/client";
+} from "@/api/config";
+import { getRuntimeSummary } from "@/api/system";
+import { resetBackendUrl } from "@/api/transport";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import {
   getPreselectedOptionalPackageNames,
   getVisibleOptionalPackages,
 } from "@/lib/setup-config";
-import type { AlignConfigResponse } from "@/api/client";
+import type { AlignConfigResponse } from "@/api/config";
 import type { PostSwitchValidation } from "@/types/pythonRuntime";
 
 async function retryAsync<T>(fn: () => Promise<T>, attempts: number = 5): Promise<T> {

@@ -3,7 +3,7 @@
     "id": "preprocessing.binarizer",
     "name": "Binarizer",
     "type": "preprocessing",
-    "classPath": "sklearn.preprocessing._data.Binarizer",
+    "classPath": "sklearn.preprocessing.Binarizer",
     "description": "Binarize data (set feature values to 0 or 1) according to a threshold.",
     "category": "Scaling",
     "tags": [
@@ -22,13 +22,16 @@
         "sweepable": true
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.preprocessing._data.Binarizer"
+    ]
   },
   {
     "id": "preprocessing.function_transformer",
     "name": "FunctionTransformer",
     "type": "preprocessing",
-    "classPath": "sklearn.preprocessing._function_transformer.FunctionTransformer",
+    "classPath": "sklearn.preprocessing.FunctionTransformer",
     "description": "Constructs a transformer from an arbitrary callable.",
     "category": "Scaling",
     "tags": [
@@ -83,13 +86,16 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.preprocessing._function_transformer.FunctionTransformer"
     ]
   },
   {
     "id": "preprocessing.normalizer",
     "name": "Normalizer",
     "type": "preprocessing",
-    "classPath": "sklearn.preprocessing._data.Normalizer",
+    "classPath": "sklearn.preprocessing.Normalizer",
     "description": "Normalize samples individually to unit norm.",
     "category": "Scaling",
     "tags": [
@@ -120,13 +126,16 @@
           }
         ]
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.preprocessing._data.Normalizer"
     ]
   },
   {
     "id": "preprocessing.polynomial_features",
     "name": "PolynomialFeatures",
     "type": "preprocessing",
-    "classPath": "sklearn.preprocessing._polynomial.PolynomialFeatures",
+    "classPath": "sklearn.preprocessing.PolynomialFeatures",
     "description": "Generate polynomial and interaction features.",
     "category": "Scaling",
     "tags": [
@@ -170,13 +179,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.preprocessing._polynomial.PolynomialFeatures"
+    ]
   },
   {
     "id": "preprocessing.spline_transformer",
     "name": "SplineTransformer",
     "type": "preprocessing",
-    "classPath": "sklearn.preprocessing._polynomial.SplineTransformer",
+    "classPath": "sklearn.preprocessing.SplineTransformer",
     "description": "Generate univariate B-spline bases for features.",
     "category": "Scaling",
     "tags": [
@@ -250,6 +262,9 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.preprocessing._polynomial.SplineTransformer"
+    ]
   }
 ]

@@ -6,7 +6,7 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OPERATOR_AVAILABILITY_INVALIDATED_EVENT } from "@/lib/pipelineOperatorAvailability";
-import type { OperatorAvailabilityResponse } from "@/api/client";
+import type { OperatorAvailabilityResponse } from "@/api/system";
 import { OperatorAvailabilityProvider, useOperatorAvailability } from "./OperatorAvailabilityContext";
 
 const mocks = vi.hoisted(() => ({
@@ -14,8 +14,11 @@ const mocks = vi.hoisted(() => ({
   runPreflight: vi.fn(),
 }));
 
-vi.mock("@/api/client", () => ({
+vi.mock("@/api/system", () => ({
   getOperatorAvailability: mocks.getOperatorAvailability,
+}));
+
+vi.mock("@/api/runs", () => ({
   runPreflight: mocks.runPreflight,
 }));
 

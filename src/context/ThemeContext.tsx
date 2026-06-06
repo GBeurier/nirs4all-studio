@@ -17,7 +17,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/client";
+import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/workspace";
 import type { ThemeOption } from "@/types/settings";
 
 type Theme = ThemeOption;

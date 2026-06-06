@@ -19,8 +19,6 @@ _spec.loader.exec_module(_mod)
 build_nirs4all_config = _mod.build_nirs4all_config
 build_nirs4all_config_from_stored = _mod.build_nirs4all_config_from_stored
 normalize_file_type = _mod.normalize_file_type
-normalize_na_policy = _mod.normalize_na_policy
-normalize_na_policy_in_config = _mod.normalize_na_policy_in_config
 
 
 def _norm(path: str) -> str:
@@ -560,34 +558,22 @@ class TestAggregationFoldsPersistence:
         assert config["train_x_params"]["header_unit"] == "cm-1"
 
 
-# ============= na_policy normalization (regression: "Invalid na_policy: 'Drop'") =============
+# ============= na_policy pass-through =============
+#
+# Legacy na_policy aliases ("drop"/"Drop"/"keep") are no longer normalized here:
+# the one-shot stored-config migration in api/app_config.py rewrites persisted
+# payloads to nirs4all's vocabulary, so the translator trusts its input and only
+# forwards canonical values. See tests/test_app_config_migration.py for the
+# legacy-alias migration coverage.
 
 
-class TestNaPolicyNormalization:
-    """nirs4all only accepts {auto, abort, remove_sample, remove_feature, replace,
-    ignore}; legacy webapp values ("drop"/"Drop"/"keep") must be translated at the
-    canonical-translator boundary or processing fails with
-    ``ValueError: Invalid na_policy: 'Drop'``."""
+class TestNaPolicyPassThrough:
+    """The canonical translator forwards na_policy verbatim (no normalization)."""
 
     VALID = {"auto", "abort", "remove_sample", "remove_feature", "replace", "ignore"}
 
     def _files(self):
         return [{"path": "spectra.csv", "type": "X", "split": "train"}]
-
-    def test_legacy_drop_is_normalized_case_insensitively(self):
-        for legacy in ("drop", "Drop", " DROP "):
-            config = build_nirs4all_config(
-                files=self._files(),
-                parsing={"delimiter": ";", "na_policy": legacy},
-            )
-            assert config["global_params"]["na_policy"] == "remove_sample"
-
-    def test_legacy_keep_maps_to_ignore(self):
-        config = build_nirs4all_config(
-            files=self._files(),
-            parsing={"delimiter": ";", "na_policy": "Keep"},
-        )
-        assert config["global_params"]["na_policy"] == "ignore"
 
     def test_valid_policies_pass_through(self):
         for policy in self.VALID:
@@ -601,18 +587,14 @@ class TestNaPolicyNormalization:
         config = build_nirs4all_config(files=self._files(), parsing={"delimiter": ";"})
         assert "na_policy" not in config["global_params"]
 
-    def test_per_file_override_na_policy_is_normalized(self):
+    def test_per_file_override_na_policy_pass_through(self):
         files = [
             {
                 "path": "spectra.csv",
                 "type": "X",
                 "split": "train",
-                "overrides": {"na_policy": "Drop"},
+                "overrides": {"na_policy": "remove_sample"},
             },
         ]
         config = build_nirs4all_config(files=files, parsing={"delimiter": ";"})
         assert config["train_x_params"]["na_policy"] == "remove_sample"
-
-    def test_every_normalized_legacy_value_is_valid_for_nirs4all(self):
-        for legacy in ("drop", "Drop", "keep", "Keep"):
-            assert normalize_na_policy(legacy) in self.VALID

@@ -66,7 +66,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   generateSyntheticDataset,
   getSyntheticPresets,
-} from "@/api/client";
+} from "@/api/datasets";
 import type {
   GenerateSyntheticRequest,
   SyntheticPreset,

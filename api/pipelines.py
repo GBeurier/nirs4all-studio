@@ -16,9 +16,9 @@ from __future__ import annotations
 import inspect
 import json
 from datetime import datetime
-from enum import Enum, StrEnum
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, get_type_hints
+from typing import Any, get_type_hints
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -45,7 +45,7 @@ from .workspace_manager import workspace_manager
 logger = get_logger(__name__)
 
 # nirs4all imports are lazy-loaded via api/lazy_imports.py to speed up backend startup.
-from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+from .lazy_imports import get_cached, is_ml_ready
 
 NIRS4ALL_AVAILABLE = True  # Assume available, endpoints guard via require_ml_ready()
 
@@ -342,12 +342,6 @@ def _render_canonical_pipeline_content(
     }
 
 
-@router.get("/pipelines/operators")
-async def list_operators_forward():
-    """Forward to the list_operators implementation."""
-    return await _list_operators_impl()
-
-
 @router.post("/pipelines/validate")
 async def validate_pipeline_forward(request: PipelineValidateRequest):
     """Forward to the validate_pipeline implementation."""
@@ -520,51 +514,6 @@ async def clone_pipeline(pipeline_id: str, new_name: str | None = None):
         )
 
 
-# Implementation function - called by forwarding route defined earlier
-async def _list_operators_impl():
-    """
-    List all available operators for pipeline building.
-
-    Uses dynamic discovery from nirs4all modules. Delegates to
-    the _discover_*_operators() functions which use introspection.
-    """
-    if NIRS4ALL_AVAILABLE:
-        # Use dynamic discovery functions (defined later in file)
-        operators = {
-            "preprocessing": _discover_transform_operators(),
-            "splitting": _discover_splitter_operators(),
-            "models": _discover_model_operators(),
-            "augmentation": _discover_augmentation_operators(),
-            "metrics": _discover_metric_operators(),
-            "feature_selection": _discover_feature_selection_operators(),
-            "filters": _discover_filter_operators(),
-        }
-    else:
-        # Minimal fallback when nirs4all not available
-        operators = {
-            "preprocessing": [
-                {"name": "StandardScaler", "display_name": "Standard Scaler", "description": "Standardize features", "params": {}, "source": "sklearn"},
-                {"name": "MinMaxScaler", "display_name": "Min-Max Scaler", "description": "Scale features to [0, 1]", "params": {}, "source": "sklearn"},
-            ],
-            "splitting": [
-                {"name": "KFold", "display_name": "K-Fold CV", "description": "K-Fold cross-validation", "params": {"n_splits": {"type": "int", "default": 5}}, "source": "sklearn"},
-            ],
-            "models": [
-                {"name": "PLSRegression", "display_name": "PLS Regression", "description": "Partial Least Squares", "params": {"n_components": {"type": "int", "default": 10}}, "source": "sklearn"},
-            ],
-            "augmentation": [],
-            "metrics": [],
-            "feature_selection": [],
-            "filters": [],
-        }
-
-    # Count totals
-    total = sum(len(ops) for ops in operators.values())
-
-    return {"operators": operators, "total": total, "nirs4all_available": NIRS4ALL_AVAILABLE}
-
-
-# Implementation function - called by forwarding route defined earlier
 async def _validate_pipeline_impl(request: PipelineValidateRequest):
     """
     Validate a pipeline configuration using nirs4all's validate_spec().
@@ -637,46 +586,6 @@ async def _validate_pipeline_impl(request: PipelineValidateRequest):
 # ============= Phase 2: Dynamic Operator Discovery =============
 
 
-def _extract_params_from_class(cls: type) -> dict[str, Any]:
-    """
-    Extract parameter schema from a class's __init__ signature.
-
-    Returns a dictionary mapping parameter names to their metadata.
-    """
-    params = {}
-
-    try:
-        sig = inspect.signature(cls.__init__)
-        hints = {}
-        try:
-            hints = get_type_hints(cls.__init__)
-        except Exception:
-            pass
-
-        for name, param in sig.parameters.items():
-            if name in ("self", "args", "kwargs"):
-                continue
-
-            param_info = {"required": param.default is inspect.Parameter.empty}
-
-            # Get default value
-            if param.default is not inspect.Parameter.empty:
-                param_info["default"] = param.default
-
-            # Get type from annotation or hints
-            annotation = hints.get(name) or param.annotation
-            if annotation is not inspect.Parameter.empty:
-                param_info["type"] = _annotation_to_type_string(annotation)
-
-            params[name] = param_info
-
-    except Exception:
-        # Fallback: return empty params
-        pass
-
-    return params
-
-
 def _annotation_to_type_string(annotation) -> str:
     """Convert type annotation to string representation."""
     if annotation is None:
@@ -709,619 +618,6 @@ def _annotation_to_type_string(annotation) -> str:
         return annotation.__name__.lower()
 
     return "any"
-
-
-def _discover_transform_operators() -> list[dict[str, Any]]:
-    """
-    Dynamically discover preprocessing transforms from nirs4all.
-
-    Returns a list of operator info dictionaries.
-    """
-    operators = []
-
-    if not NIRS4ALL_AVAILABLE:
-        return operators
-
-    try:
-        from nirs4all.operators import transforms as tf_module
-
-        # List of known transform classes to expose
-        transform_classes = [
-            # NIRS preprocessing
-            "StandardNormalVariate",
-            "LocalStandardNormalVariate",
-            "RobustStandardNormalVariate",
-            "MultiplicativeScatterCorrection",
-            "SavitzkyGolay",
-            "Wavelet",
-            "Haar",
-            "FirstDerivative",
-            "SecondDerivative",
-            "LogTransform",
-            "ReflectanceToAbsorbance",
-            # Baseline correction
-            "ASLSBaseline",
-            "AirPLS",
-            "ArPLS",
-            "SNIP",
-            "IModPoly",
-            "ModPoly",
-            # Signal processing
-            "Baseline",
-            "Detrend",
-            "Gaussian",
-            "Normalize",
-            # Features
-            "CropTransformer",
-            "ResampleTransformer",
-            "Resampler",
-            # Signal conversion
-            "ToAbsorbance",
-            "FromAbsorbance",
-            "PercentToFraction",
-            "FractionToPercent",
-            "KubelkaMunk",
-        ]
-
-        for name in transform_classes:
-            cls = getattr(tf_module, name, None)
-            if cls is None:
-                continue
-
-            params = _extract_params_from_class(cls)
-
-            # Get docstring for description
-            description = ""
-            if cls.__doc__:
-                description = cls.__doc__.strip().split("\n")[0]
-
-            operators.append({
-                "name": name,
-                "display_name": _class_name_to_display(name),
-                "description": description or f"{name} transform",
-                "params": params,
-                "category": _categorize_transform(name),
-                "source": "nirs4all",
-            })
-
-    except Exception as e:
-        logger.error("Error discovering transforms: %s", e)
-
-    return operators
-
-
-def _discover_splitter_operators() -> list[dict[str, Any]]:
-    """Dynamically discover splitter operators from nirs4all."""
-    operators = []
-
-    if not NIRS4ALL_AVAILABLE:
-        return operators
-
-    try:
-        from nirs4all.operators import splitters as sp_module
-
-        splitter_classes = [
-            "KennardStoneSplitter",
-            "SPXYSplitter",
-            "SPXYGFold",
-            "KMeansSplitter",
-            "KBinsStratifiedSplitter",
-            "BinnedStratifiedGroupKFold",
-        ]
-
-        for name in splitter_classes:
-            cls = getattr(sp_module, name, None)
-            if cls is None:
-                continue
-
-            params = _extract_params_from_class(cls)
-            description = ""
-            if cls.__doc__:
-                description = cls.__doc__.strip().split("\n")[0]
-
-            operators.append({
-                "name": name,
-                "display_name": _class_name_to_display(name),
-                "description": description or f"{name} splitter",
-                "params": params,
-                "source": "nirs4all",
-            })
-
-    except Exception as e:
-        logger.error("Error discovering splitters: %s", e)
-
-    return operators
-
-
-def _discover_model_operators() -> list[dict[str, Any]]:
-    """Dynamically discover model operators from nirs4all."""
-    operators = []
-
-    if not NIRS4ALL_AVAILABLE:
-        return operators
-
-    try:
-        from nirs4all.operators import models as model_module
-
-        model_classes = [
-            "IKPLS",
-            "OPLS",
-            "OPLSDA",
-            "PLSDA",
-            "MBPLS",
-            "DiPLS",
-            "SparsePLS",
-            "SIMPLS",
-            "LWPLS",
-            "IntervalPLS",
-            "RobustPLS",
-            "RecursivePLS",
-            "KOPLS",
-            "KernelPLS",
-            "NLPLS",
-            "KPLS",
-            "OKLMPLS",
-            "FCKPLS",
-        ]
-
-        for name in model_classes:
-            cls = getattr(model_module, name, None)
-            if cls is None:
-                continue
-
-            params = _extract_params_from_class(cls)
-            description = ""
-            if cls.__doc__:
-                description = cls.__doc__.strip().split("\n")[0]
-
-            operators.append({
-                "name": name,
-                "display_name": _class_name_to_display(name),
-                "description": description or f"{name} model",
-                "params": params,
-                "source": "nirs4all",
-            })
-
-    except Exception as e:
-        logger.error("Error discovering models: %s", e)
-
-    return operators
-
-
-def _discover_augmentation_operators() -> list[dict[str, Any]]:
-    """Dynamically discover data augmentation operators from nirs4all."""
-    operators = []
-
-    if not NIRS4ALL_AVAILABLE:
-        return operators
-
-    try:
-        from nirs4all.operators import transforms as tf_module
-
-        augmenter_classes = [
-            "GaussianAdditiveNoise",
-            "MultiplicativeNoise",
-            "LinearBaselineDrift",
-            "PolynomialBaselineDrift",
-            "WavelengthShift",
-            "WavelengthStretch",
-            "LocalWavelengthWarp",
-            "SmoothMagnitudeWarp",
-            "BandPerturbation",
-            "GaussianSmoothingJitter",
-            "UnsharpSpectralMask",
-            "BandMasking",
-            "ChannelDropout",
-            "SpikeNoise",
-            "LocalClipping",
-            "MixupAugmenter",
-            "LocalMixupAugmenter",
-            "ScatterSimulationMSC",
-            "Spline_Smoothing",
-            "Spline_X_Perturbations",
-            "Spline_Y_Perturbations",
-        ]
-
-        for name in augmenter_classes:
-            cls = getattr(tf_module, name, None)
-            if cls is None:
-                continue
-
-            params = _extract_params_from_class(cls)
-            description = ""
-            if cls.__doc__:
-                description = cls.__doc__.strip().split("\n")[0]
-
-            operators.append({
-                "name": name,
-                "display_name": _class_name_to_display(name),
-                "description": description or f"{name} augmentation",
-                "params": params,
-                "source": "nirs4all",
-            })
-
-    except Exception as e:
-        logger.error("Error discovering augmenters: %s", e)
-
-    return operators
-
-
-def _discover_metric_operators() -> list[dict[str, Any]]:
-    """Dynamically discover metric operators from nirs4all."""
-    operators = []
-
-    if not NIRS4ALL_AVAILABLE:
-        return operators
-
-    try:
-        from nirs4all.core import metrics as metrics_module
-
-        # Get available metrics
-        if hasattr(metrics_module, 'METRIC_FUNCTIONS'):
-            for name, func in metrics_module.METRIC_FUNCTIONS.items():
-                description = func.__doc__.strip().split("\n")[0] if func.__doc__ else f"{name} metric"
-                operators.append({
-                    "name": name,
-                    "display_name": _class_name_to_display(name),
-                    "description": description,
-                    "params": {},
-                    "source": "nirs4all",
-                })
-        else:
-            # Fallback: common metrics
-            metric_info = [
-                ("r2", "R2 Score", "Coefficient of determination"),
-                ("rmse", "RMSE", "Root Mean Square Error"),
-                ("mae", "MAE", "Mean Absolute Error"),
-                ("mse", "MSE", "Mean Square Error"),
-                ("rpd", "RPD", "Ratio of Performance to Deviation"),
-                ("rpiq", "RPIQ", "Ratio of Performance to IQR"),
-                ("bias", "Bias", "Mean prediction bias"),
-            ]
-            for name, display, desc in metric_info:
-                operators.append({
-                    "name": name,
-                    "display_name": display,
-                    "description": desc,
-                    "params": {},
-                    "source": "nirs4all",
-                })
-    except Exception as e:
-        logger.error("Error discovering metrics: %s", e)
-
-    return operators
-
-
-def _discover_feature_selection_operators() -> list[dict[str, Any]]:
-    """Dynamically discover feature selection operators from nirs4all."""
-    operators = []
-
-    if not NIRS4ALL_AVAILABLE:
-        return operators
-
-    try:
-        from nirs4all.operators import feature_selection as fs_module
-
-        fs_classes = [
-            "CARS",
-            "MCUVE",
-            "VIP",
-            "SPA",
-            "iPLS",
-            "GA",
-            "UVE",
-        ]
-
-        for name in fs_classes:
-            cls = getattr(fs_module, name, None)
-            if cls is None:
-                continue
-
-            params = _extract_params_from_class(cls)
-            description = ""
-            if cls.__doc__:
-                description = cls.__doc__.strip().split("\n")[0]
-
-            operators.append({
-                "name": name,
-                "display_name": _class_name_to_display(name),
-                "description": description or f"{name} feature selection",
-                "params": params,
-                "source": "nirs4all",
-            })
-    except Exception as e:
-        logger.error("Error discovering feature selection: %s", e)
-
-    return operators
-
-
-def _discover_filter_operators() -> list[dict[str, Any]]:
-    """Dynamically discover filter operators from nirs4all."""
-    operators = []
-
-    if not NIRS4ALL_AVAILABLE:
-        return operators
-
-    try:
-        from nirs4all.operators import filters as filter_module
-
-        filter_classes = [
-            "XOutlierFilter",
-            "YOutlierFilter",
-            "MetadataFilter",
-            "SpectralQualityFilter",
-            "HighLeverageFilter",
-        ]
-
-        for name in filter_classes:
-            cls = getattr(filter_module, name, None)
-            if cls is None:
-                continue
-
-            params = _extract_params_from_class(cls)
-            description = ""
-            if cls.__doc__:
-                description = cls.__doc__.strip().split("\n")[0]
-
-            operators.append({
-                "name": name,
-                "display_name": _class_name_to_display(name),
-                "description": description or f"{name} filter",
-                "params": params,
-                "source": "nirs4all",
-            })
-    except Exception as e:
-        logger.error("Error discovering filters: %s", e)
-
-    return operators
-
-
-def _class_name_to_display(name: str) -> str:
-    """Convert class name to display-friendly name."""
-    # Handle common abbreviations
-    abbreviations = {
-        "SNV": "SNV",
-        "MSC": "MSC",
-        "PLS": "PLS",
-        "SVM": "SVM",
-        "KNN": "KNN",
-        "ASLS": "ASLS",
-        "ArPLS": "ArPLS",
-        "AirPLS": "AirPLS",
-        "SNIP": "SNIP",
-    }
-
-    for abbr in abbreviations:
-        if name.upper() == abbr.upper():
-            return abbreviations[abbr]
-
-    # Insert spaces before capital letters
-    import re
-    result = re.sub(r"([A-Z])", r" \1", name).strip()
-    return result
-
-
-def _categorize_transform(name: str) -> str:
-    """Categorize a transform by name."""
-    name_lower = name.lower()
-
-    if any(x in name_lower for x in ["snv", "msc", "scatter"]):
-        return "scatter_correction"
-    if any(x in name_lower for x in ["derivative", "deriv"]):
-        return "derivative"
-    if any(x in name_lower for x in ["baseline", "asls", "airpls", "arpls", "snip"]):
-        return "baseline"
-    if any(x in name_lower for x in ["gaussian", "smooth", "savgol", "savitzky"]):
-        return "smoothing"
-    if any(x in name_lower for x in ["normalize", "scaler", "scale"]):
-        return "scaling"
-    if any(x in name_lower for x in ["wavelet", "haar"]):
-        return "wavelet"
-    if any(x in name_lower for x in ["absorbance", "reflectance", "convert"]):
-        return "conversion"
-    if any(x in name_lower for x in ["crop", "resample"]):
-        return "features"
-
-    return "other"
-
-
-def _discover_sklearn_operators() -> dict[str, list[dict[str, Any]]]:
-    """
-    Dynamically discover sklearn operators via introspection.
-
-    Returns operators grouped by category: models, preprocessing, splitting.
-    """
-    result = {"models": [], "preprocessing": [], "splitting": []}
-
-    try:
-        # Models - common sklearn regressors
-        from sklearn.cross_decomposition import PLSRegression
-        from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
-        from sklearn.linear_model import ElasticNet, Lasso, Ridge
-        from sklearn.svm import SVR
-
-        model_classes = [
-            (PLSRegression, "PLS Regression"),
-            (RandomForestRegressor, "Random Forest Regressor"),
-            (GradientBoostingRegressor, "Gradient Boosting"),
-            (SVR, "Support Vector Regression"),
-            (Ridge, "Ridge Regression"),
-            (Lasso, "Lasso Regression"),
-            (ElasticNet, "Elastic Net"),
-        ]
-
-        for cls, display_name in model_classes:
-            params = _extract_params_from_class(cls)
-            description = cls.__doc__.strip().split("\n")[0] if cls.__doc__ else display_name
-            result["models"].append({
-                "name": cls.__name__,
-                "display_name": display_name,
-                "description": description,
-                "params": params,
-                "source": "sklearn",
-            })
-
-        # Preprocessing - sklearn scalers
-        from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
-
-        scaler_classes = [
-            (StandardScaler, "Standard Scaler"),
-            (MinMaxScaler, "Min-Max Scaler"),
-            (RobustScaler, "Robust Scaler"),
-        ]
-
-        for cls, display_name in scaler_classes:
-            params = _extract_params_from_class(cls)
-            description = cls.__doc__.strip().split("\n")[0] if cls.__doc__ else display_name
-            result["preprocessing"].append({
-                "name": cls.__name__,
-                "display_name": display_name,
-                "description": description,
-                "params": params,
-                "source": "sklearn",
-                "category": "scaling",
-            })
-
-        # Splitting - sklearn CV splitters
-        from sklearn.model_selection import KFold, ShuffleSplit, StratifiedKFold
-
-        splitter_classes = [
-            (KFold, "K-Fold CV"),
-            (StratifiedKFold, "Stratified K-Fold"),
-            (ShuffleSplit, "Shuffle Split"),
-        ]
-
-        for cls, display_name in splitter_classes:
-            params = _extract_params_from_class(cls)
-            description = cls.__doc__.strip().split("\n")[0] if cls.__doc__ else display_name
-            result["splitting"].append({
-                "name": cls.__name__,
-                "display_name": display_name,
-                "description": description,
-                "params": params,
-                "source": "sklearn",
-            })
-
-    except ImportError as e:
-        logger.error("Error discovering sklearn operators: %s", e)
-
-    return result
-
-
-@router.get("/pipelines/operators/discover")
-async def discover_operators():
-    """
-    Dynamically discover all operators from nirs4all and sklearn modules.
-
-    Uses introspection to extract parameters and documentation.
-    """
-    discovered = {
-        "preprocessing": _discover_transform_operators(),
-        "splitting": _discover_splitter_operators(),
-        "models": _discover_model_operators(),
-        "augmentation": _discover_augmentation_operators(),
-        "feature_selection": _discover_feature_selection_operators(),
-        "filters": _discover_filter_operators(),
-        "metrics": _discover_metric_operators(),
-    }
-
-    # Add sklearn operators via dynamic discovery
-    sklearn_ops = _discover_sklearn_operators()
-    discovered["models"].extend(sklearn_ops["models"])
-    discovered["preprocessing"].extend(sklearn_ops["preprocessing"])
-    discovered["splitting"].extend(sklearn_ops["splitting"])
-
-    # Count totals
-    total = sum(len(ops) for ops in discovered.values())
-
-    return {
-        "operators": discovered,
-        "total": total,
-        "nirs4all_available": NIRS4ALL_AVAILABLE,
-        "categories": list(discovered.keys()),
-    }
-
-
-@router.get("/pipelines/operators/{operator_name}")
-async def get_operator_details(operator_name: str):
-    """
-    Get detailed information about a specific operator.
-
-    Returns parameter schema, docstring, and examples.
-    """
-    if not NIRS4ALL_AVAILABLE:
-        raise HTTPException(
-            status_code=501,
-            detail="nirs4all library not available for operator introspection",
-        )
-
-    operator_info = None
-    operator_cls = None
-
-    # Search in transforms
-    try:
-        from nirs4all.operators import transforms as tf_module
-        operator_cls = getattr(tf_module, operator_name, None)
-        if operator_cls:
-            operator_info = {
-                "name": operator_name,
-                "module": "transforms",
-                "type": "preprocessing",
-            }
-    except Exception:
-        pass
-
-    # Search in splitters
-    if not operator_cls:
-        try:
-            from nirs4all.operators import splitters as sp_module
-            operator_cls = getattr(sp_module, operator_name, None)
-            if operator_cls:
-                operator_info = {
-                    "name": operator_name,
-                    "module": "splitters",
-                    "type": "splitting",
-                }
-        except Exception:
-            pass
-
-    # Search in models
-    if not operator_cls:
-        try:
-            from nirs4all.operators import models as model_module
-            operator_cls = getattr(model_module, operator_name, None)
-            if operator_cls:
-                operator_info = {
-                    "name": operator_name,
-                    "module": "models",
-                    "type": "model",
-                }
-        except Exception:
-            pass
-
-    if not operator_cls:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Operator '{operator_name}' not found in nirs4all",
-        )
-
-    # Extract detailed information
-    params = _extract_params_from_class(operator_cls)
-    docstring = operator_cls.__doc__ or ""
-
-    operator_info.update({
-        "display_name": _class_name_to_display(operator_name),
-        "description": docstring.strip().split("\n")[0] if docstring else "",
-        "full_docstring": docstring,
-        "params": params,
-        "class_name": operator_cls.__name__,
-        "module_path": operator_cls.__module__,
-    })
-
-    return {"operator": operator_info}
-
-
-# ============= Phase 2: Pipeline Execution Preparation =============
 
 
 @router.post("/pipelines/{pipeline_id}/prepare")
@@ -1612,7 +908,7 @@ def _run_pipeline_task(job, progress_callback):
     Returns:
         Execution result dictionary
     """
-    from .nirs4all_adapter import ensure_models_dir
+    from .nirs4all_adapter import ensure_models_dir, extract_best_metrics
 
     config = job.config
     steps = config.get("pipeline_steps", [])
@@ -1666,14 +962,8 @@ def _run_pipeline_task(job, progress_callback):
 
         progress_callback(80, "Extracting results...")
 
-        # Extract metrics from result
-        metrics = {}
-        if hasattr(result, 'best_rmse'):
-            metrics['rmse'] = float(result.best_rmse)
-        if hasattr(result, 'best_r2'):
-            metrics['r2'] = float(result.best_r2)
-        if hasattr(result, 'best_score'):
-            metrics['score'] = float(result.best_score)
+        # NaN-safe shared extraction (single source of truth, RUN-02)
+        metrics = extract_best_metrics(result)
 
         # Get top results if available
         top_results = []
@@ -1843,31 +1133,6 @@ def _load_sample_file(filepath: Path) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to load sample: {e}")
 
 
-def _filter_comments(payload: Any) -> Any:
-    """Remove explicit ``_comment`` metadata recursively from a pipeline payload."""
-    if isinstance(payload, list):
-        filtered: list[Any] = []
-        for item in payload:
-            cleaned = _filter_comments(item)
-            if cleaned is not None:
-                filtered.append(cleaned)
-        return filtered
-
-    if isinstance(payload, dict):
-        if set(payload.keys()) == {"_comment"}:
-            return None
-        filtered_dict: dict[str, Any] = {}
-        for key, value in payload.items():
-            if key == "_comment":
-                continue
-            cleaned = _filter_comments(value)
-            if cleaned is not None:
-                filtered_dict[key] = cleaned
-        return filtered_dict
-
-    return payload
-
-
 def _stable_sort_template(value: Any) -> Any:
     """Return a deterministically key-sorted copy of a JSON-like structure."""
     if isinstance(value, dict):
@@ -1889,7 +1154,7 @@ def _semantic_pipeline_template(
     """Build the library-semantic template used for canonical round-trip checks."""
     from nirs4all.pipeline.config.pipeline_config import PipelineConfigs
 
-    filtered_steps = _filter_comments(steps)
+    filtered_steps = filter_canonical_comments(steps)
     config = PipelineConfigs(filtered_steps, name=name, description=description)
     return _stable_sort_template(config.original_template)
 
@@ -1907,7 +1172,7 @@ def _get_canonical_pipeline(filepath: Path) -> dict[str, Any]:
         return {
             "name": data.get("name", filepath.stem) if isinstance(data, dict) else filepath.stem,
             "description": data.get("description", "") if isinstance(data, dict) else "",
-            "pipeline": _filter_comments(steps) if isinstance(steps, list) else steps,
+            "pipeline": filter_canonical_comments(steps) if isinstance(steps, list) else steps,
             "has_generators": False,
             "num_configurations": 1,
         }
@@ -1928,7 +1193,7 @@ def _get_canonical_pipeline(filepath: Path) -> dict[str, Any]:
         else:
             raise ValueError("Pipeline must be list or dict with 'pipeline' key")
 
-        steps = _filter_comments(steps)
+        steps = filter_canonical_comments(steps)
 
         # Create PipelineConfigs to get canonical form while preserving the
         # original generator template instead of only the first expansion.
@@ -1949,7 +1214,7 @@ def _get_canonical_pipeline(filepath: Path) -> dict[str, Any]:
         return {
             "name": data.get("name", filepath.stem) if isinstance(data, dict) else filepath.stem,
             "description": data.get("description", "") if isinstance(data, dict) else "",
-            "pipeline": _filter_comments(steps) if isinstance(steps, list) else steps,
+            "pipeline": filter_canonical_comments(steps) if isinstance(steps, list) else steps,
             "has_generators": False,
             "num_configurations": 1,
             "error": str(e),
@@ -2024,9 +1289,9 @@ async def get_pipeline_sample(sample_id: str, canonical: bool = True):
     else:
         result = _load_sample_file(filepath)
         if isinstance(result, dict) and "pipeline" in result:
-            result["pipeline"] = _filter_comments(result["pipeline"])
+            result["pipeline"] = filter_canonical_comments(result["pipeline"])
         elif isinstance(result, list):
-            result = {"pipeline": _filter_comments(result), "name": filepath.stem}
+            result = {"pipeline": filter_canonical_comments(result), "name": filepath.stem}
 
     result["source_file"] = filepath.name
     return result
@@ -2076,8 +1341,8 @@ async def validate_sample_roundtrip(sample_id: str, editor_steps: list[dict[str,
             description=canonical.get("description", ""),
         )
     except Exception:
-        original_normalized = _stable_sort_template(_filter_comments(original_steps))
-        editor_normalized = _stable_sort_template(_filter_comments(editor_steps))
+        original_normalized = _stable_sort_template(filter_canonical_comments(original_steps))
+        editor_normalized = _stable_sort_template(filter_canonical_comments(editor_steps))
 
     original_json = json.dumps(original_normalized, sort_keys=True)
     editor_json = json.dumps(editor_normalized, sort_keys=True)
@@ -2090,8 +1355,8 @@ async def validate_sample_roundtrip(sample_id: str, editor_steps: list[dict[str,
             differences.append(f"Step count differs: {len(original_steps)} vs {len(editor_steps)}")
 
         for i, (orig, edit) in enumerate(zip(original_steps, editor_steps)):
-            orig_json = json.dumps(_stable_sort_template(_filter_comments(orig)), sort_keys=True)
-            edit_json = json.dumps(_stable_sort_template(_filter_comments(edit)), sort_keys=True)
+            orig_json = json.dumps(_stable_sort_template(filter_canonical_comments(orig)), sort_keys=True)
+            edit_json = json.dumps(_stable_sort_template(filter_canonical_comments(edit)), sort_keys=True)
             if orig_json != edit_json:
                 differences.append(f"Step {i} differs")
 
@@ -2132,95 +1397,27 @@ class ShapePropagationResponse(BaseModel):
     is_valid: bool
 
 
-# Operator shape effects mapping
-SHAPE_TRANSFORMS = {
-    # Preprocessing that preserves shape
-    "StandardNormalVariate": lambda inp, params: inp,
-    "SNV": lambda inp, params: inp,
-    "MultiplicativeScatterCorrection": lambda inp, params: inp,
-    "MSC": lambda inp, params: inp,
-    "StandardScaler": lambda inp, params: inp,
-    "MinMaxScaler": lambda inp, params: inp,
-    "RobustScaler": lambda inp, params: inp,
-    "Normalize": lambda inp, params: inp,
-    "LogTransform": lambda inp, params: inp,
-    "Detrend": lambda inp, params: inp,
-    "Baseline": lambda inp, params: inp,
-    "ASLSBaseline": lambda inp, params: inp,
-    "AirPLS": lambda inp, params: inp,
-    "ArPLS": lambda inp, params: inp,
-    "SNIP": lambda inp, params: inp,
-    "Gaussian": lambda inp, params: inp,
-    "ReflectanceToAbsorbance": lambda inp, params: inp,
-    "ToAbsorbance": lambda inp, params: inp,
-    "FromAbsorbance": lambda inp, params: inp,
-    "FirstDerivative": lambda inp, params: inp,
-    "SecondDerivative": lambda inp, params: inp,
-    "SavitzkyGolay": lambda inp, params: inp,
-
-    # Feature reduction
-    "PLSRegression": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": min(params.get("n_components", 10), inp["features"], inp["samples"]),
-    },
-    "PCA": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": min(params.get("n_components", inp["features"]), inp["features"], inp["samples"]),
-    },
-    "IKPLS": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": min(params.get("n_components", 10), inp["features"], inp["samples"]),
-    },
-    "OPLS": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": min(params.get("n_components", 10), inp["features"], inp["samples"]),
-    },
-
-    # Resampling
-    "ResampleTransformer": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": params.get("n_features", params.get("target_points", inp["features"])),
-    },
-    "Resampler": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": params.get("n_features", params.get("target_points", inp["features"])),
-    },
-    "CropTransformer": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": max(1, params.get("end", inp["features"]) - params.get("start", 0)),
-    },
-
-    # Wavelets
-    "Wavelet": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": inp["features"] // (2 ** params.get("level", 1)),
-    },
-    "Haar": lambda inp, params: {
-        "samples": inp["samples"],
-        "features": inp["features"] // (2 ** params.get("level", 1)),
-    },
-}
-
-# Parameters that should be checked against dimensions
-DIMENSION_PARAMS = {
-    "n_components": "features",
-    "n_splits": "samples",
-    "window_length": "features",
-    "start": "features",
-    "end": "features",
-    "n_features": "features",
-    "target_points": "features",
-}
-
-
+# Operator shape effects mapping.
+#
 def _propagate_shape(step: dict[str, Any], input_shape: dict[str, int]) -> tuple:
-    """Calculate output shape for a single step."""
+    """Calculate output shape for a single step.
+
+    Shape semantics are library-owned (PIPE-01):
+    nirs4all.pipeline.analysis.shape_inference provides the per-operator
+    pre-fit rules and the dimension-bound parameter taxonomy; this function
+    only shapes warnings for the editor response.
+    """
+    from nirs4all.pipeline.analysis.shape_inference import (
+        DIMENSION_BOUND_PARAMS,
+        infer_output_shape,
+    )
+
     step_name = step.get("name", "")
     params = step.get("params", {})
     warnings = []
 
-    # Check dimension parameters
-    for param_name, dim_source in DIMENSION_PARAMS.items():
+    # Check dimension-bounded parameters (taxonomy from the library)
+    for param_name, dim_source in DIMENSION_BOUND_PARAMS.items():
         param_value = params.get(param_name)
         if param_value is not None and isinstance(param_value, (int, float)):
             max_value = input_shape.get(dim_source, float("inf"))
@@ -2236,10 +1433,11 @@ def _propagate_shape(step: dict[str, Any], input_shape: dict[str, int]) -> tuple
                     "severity": "error" if param_name == "n_components" else "warning",
                 })
 
-    # Calculate output shape
-    transform = SHAPE_TRANSFORMS.get(step_name)
-    if transform:
-        output_shape = transform(input_shape, params)
+    inferred = infer_output_shape(
+        step_name, params, input_shape.get("samples", 0), input_shape.get("features", 0)
+    )
+    if inferred is not None:
+        output_shape = {"samples": inferred[0], "features": inferred[1]}
     else:
         # Unknown operator - preserve shape, add warning
         output_shape = input_shape.copy()

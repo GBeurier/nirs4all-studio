@@ -18,6 +18,7 @@ import {
   useMemo,
   useEffect,
   useRef,
+  useState,
   type ReactNode,
 } from 'react';
 import type {
@@ -157,6 +158,7 @@ export function InspectorSessionProvider({ children }: { children: ReactNode }) 
     };
 
     sessionRef.current = newState;
+    setHasSession(true);
 
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
@@ -168,15 +170,16 @@ export function InspectorSessionProvider({ children }: { children: ReactNode }) 
 
   const clearSession = useCallback(() => {
     sessionRef.current = null;
+    setHasSession(false);
     sessionStorage.removeItem(STORAGE_KEY);
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
   }, []);
 
-  const hasSession = useMemo(() => {
-    return loadSession() !== null;
-  }, []);
+  // State (not a render-time storage read): updated by save/clear so
+  // consumers see session lifecycle changes (FE-10-state).
+  const [hasSession, setHasSession] = useState<boolean>(() => loadSession() !== null);
 
   const value = useMemo<InspectorSessionContextValue>(() => ({
     getSession,

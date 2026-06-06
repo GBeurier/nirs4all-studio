@@ -43,8 +43,9 @@ import {
   useCompleteSetup,
   useSkipSetup,
 } from "@/hooks/useRecommendedConfig";
-import { alignConfig, getDependencies } from "@/api/client";
-import type { ProfileInfo, OptionalPackageInfo } from "@/api/client";
+import { alignConfig } from "@/api/config";
+import { getDependencies } from "@/api/dependencies";
+import type { ProfileInfo, OptionalPackageInfo } from "@/api/config";
 import {
   getCompatibleProfiles,
   getPreselectedOptionalPackageNames,

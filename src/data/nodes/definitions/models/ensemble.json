@@ -4,6 +4,9 @@
     "name": "RandomForestRegressor",
     "type": "model",
     "classPath": "sklearn.ensemble.RandomForestRegressor",
+    "aliases": [
+      "RandomForest"
+    ],
     "description": "Random Forest Regressor",
     "longDescription": "Ensemble of decision trees for regression with bagging.",
     "category": "Ensemble",
@@ -270,6 +273,9 @@
     "name": "XGBoost",
     "type": "model",
     "classPath": "xgboost.XGBRegressor",
+    "legacyClassPaths": [
+      "xgboost.sklearn.XGBRegressor"
+    ],
     "description": "XGBoost Gradient Boosting",
     "longDescription": "Extreme Gradient Boosting - optimized distributed gradient boosting library.",
     "category": "Ensemble",
@@ -400,6 +406,9 @@
     "name": "XGBoostClassifier",
     "type": "model",
     "classPath": "xgboost.XGBClassifier",
+    "legacyClassPaths": [
+      "xgboost.sklearn.XGBClassifier"
+    ],
     "description": "XGBoost Gradient Boosting Classifier",
     "longDescription": "Extreme Gradient Boosting for classification - optimized distributed gradient boosting library.",
     "category": "Ensemble",
@@ -531,6 +540,9 @@
     "name": "LightGBM",
     "type": "model",
     "classPath": "lightgbm.LGBMRegressor",
+    "legacyClassPaths": [
+      "lightgbm.sklearn.LGBMRegressor"
+    ],
     "description": "LightGBM Gradient Boosting",
     "longDescription": "Light Gradient Boosting Machine - fast, distributed, high-performance gradient boosting.",
     "category": "Ensemble",
@@ -661,6 +673,9 @@
     "name": "LightGBMClassifier",
     "type": "model",
     "classPath": "lightgbm.LGBMClassifier",
+    "legacyClassPaths": [
+      "lightgbm.sklearn.LGBMClassifier"
+    ],
     "description": "LightGBM Gradient Boosting Classifier",
     "longDescription": "Light Gradient Boosting Machine for classification - fast, distributed, high-performance gradient boosting.",
     "category": "Ensemble",

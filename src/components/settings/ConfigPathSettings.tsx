@@ -36,7 +36,7 @@ import {
   setConfigPath,
   resetConfigPath,
   type ConfigPathResponse,
-} from "@/api/client";
+} from "@/api/appSettings";
 
 export function ConfigPathSettings() {
   const [configPath, setConfigPathState] = useState<ConfigPathResponse | null>(null);

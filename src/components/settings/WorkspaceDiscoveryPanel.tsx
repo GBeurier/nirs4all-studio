@@ -28,7 +28,7 @@ import {
   getN4AWorkspaceExports,
   getN4AWorkspacePredictions,
   getN4AWorkspaceTemplates,
-} from "@/api/client";
+} from "@/api/linkedWorkspaces";
 import { formatRelativeTime, formatBytes } from "@/utils/formatters";
 import type {
   DiscoveredRun,

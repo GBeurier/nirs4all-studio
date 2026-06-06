@@ -20,7 +20,7 @@ import {
   ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getActiveRuns, getRun } from "@/api/client";
+import { getActiveRuns, getRun } from "@/api/runs";
 import type { Run, RunStatus } from "@/types/runs";
 import { getWebSocketBaseUrl } from "@/lib/websocket";
 

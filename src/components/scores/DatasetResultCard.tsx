@@ -21,12 +21,12 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { isClassificationTaskType, isLowerBetter } from "@/lib/scores";
+import { deleteWorkspaceDatasetPredictions } from "@/api/linkedWorkspaces";
 import {
-  deleteWorkspaceDatasetPredictions,
   getAllChainsForDataset,
   getAllChainsForResultsDataset,
-  getChainPartitionDetail,
-} from "@/api/client";
+} from "@/api/enrichedRuns";
+import { getChainPartitionDetail } from "@/api/aggregatedPredictions";
 import {
   formatPredictionDeletionSummary,
   invalidatePredictionRelatedQueries,

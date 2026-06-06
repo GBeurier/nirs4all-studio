@@ -6,10 +6,8 @@
  */
 
 import { useEffect, useState } from "react";
-import {
-  getN4AWorkspacePredictionScatter,
-  getPredictionArrays,
-} from "@/api/client";
+import { getN4AWorkspacePredictionScatter } from "@/api/linkedWorkspaces";
+import { getPredictionArrays } from "@/api/aggregatedPredictions";
 import type { PartitionDataset, ViewerPartitionTarget } from "./types";
 
 interface Options {

@@ -13,7 +13,6 @@ import {
   HardDrive,
   Layers,
   ListTree,
-  Pause,
   Play,
   RefreshCw,
   Terminal,
@@ -36,7 +35,7 @@ import {
   getN4AWorkspaceRunDetail,
   getWorkspaceRunPipelineLogs,
   rerunWorkspaceRun,
-} from "@/api/client";
+} from "@/api/linkedWorkspaces";
 import { runStatusConfig } from "@/types/runs";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import type { RunStatus } from "@/types/runs";
@@ -62,7 +61,6 @@ const statusIcons = {
   running: RefreshCw,
   completed: CheckCircle2,
   failed: AlertCircle,
-  paused: Pause,
   partial: CircleDashed,
 };
 

@@ -20,11 +20,18 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/api/client")>("@/api/client");
+vi.mock("@/api/runs", async () => {
+  const actual = await vi.importActual<typeof import("@/api/runs")>("@/api/runs");
   return {
     ...actual,
     listRuns: mocks.listRuns,
+  };
+});
+
+vi.mock("@/api/enrichedRuns", async () => {
+  const actual = await vi.importActual<typeof import("@/api/enrichedRuns")>("@/api/enrichedRuns");
+  return {
+    ...actual,
     getEnrichedRuns: mocks.getEnrichedRuns,
   };
 });

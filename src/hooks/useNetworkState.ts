@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getNetworkState, type NetworkState } from "@/api/client";
+import { getNetworkState, type NetworkState } from "@/api/system";
 
 export const networkKeys = {
   all: ["network"] as const,

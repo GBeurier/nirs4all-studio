@@ -56,14 +56,16 @@ import {
   refreshDataset,
   updateDatasetConfig,
   type UpdateDatasetRequest,
+  detectUnified,
+  detectFilesList,
+} from "@/api/datasets";
+import {
   createGroup,
   renameGroup,
   deleteGroup,
   addDatasetToGroup,
   removeDatasetFromGroup,
-  detectUnified,
-  detectFilesList,
-} from "@/api/client";
+} from "@/api/workspace";
 import {
   useDatasetsQuery,
   useLinkedWorkspacesQuery,

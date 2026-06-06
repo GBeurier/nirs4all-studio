@@ -14,10 +14,9 @@ from collections import deque
 from datetime import datetime
 from importlib import metadata as importlib_metadata
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .node_registry_loader import load_editor_registry_reference
@@ -84,7 +83,7 @@ def clear_error_log() -> int:
 def _get_nirs4all_version() -> str:
     """Try to get nirs4all library version."""
     try:
-        import nirs4all
+        import nirs4all  # noqa: F401 (availability probe)
         return nirs4all.__version__
     except ImportError:
         return "not installed"
@@ -207,7 +206,7 @@ async def system_status():
         }
 
     try:
-        import nirs4all
+        import nirs4all  # noqa: F401 (availability probe)
         status["nirs4all_available"] = True
     except ImportError:
         pass
@@ -424,43 +423,43 @@ async def system_capabilities():
 
     # Check each package
     try:
-        import nirs4all
+        import nirs4all  # noqa: F401 (availability probe)
         capabilities["nirs4all"] = True
     except ImportError:
         pass
 
     try:
-        import tensorflow
+        import tensorflow  # noqa: F401 (availability probe)
         capabilities["tensorflow"] = True
     except ImportError:
         pass
 
     try:
-        import torch
+        import torch  # noqa: F401 (availability probe)
         capabilities["torch"] = True
     except ImportError:
         pass
 
     try:
-        import jax
+        import jax  # noqa: F401 (availability probe)
         capabilities["jax"] = True
     except ImportError:
         pass
 
     try:
-        import shap
+        import shap  # noqa: F401 (availability probe)
         capabilities["shap"] = True
     except ImportError:
         pass
 
     try:
-        import umap
+        import umap  # noqa: F401 (availability probe)
         capabilities["umap"] = True
     except ImportError:
         pass
 
     try:
-        import autogluon
+        import autogluon  # noqa: F401 (availability probe)
         capabilities["autogluon"] = True
     except ImportError:
         pass

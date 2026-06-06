@@ -20,14 +20,26 @@ import {
   useEffect,
   useMemo,
   useState,
-  useRef,
-  useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import {
+  applySelectionMode,
+  toggleInSet,
+  addToSet,
+  removeFromSet,
+  pushHistory as pushHistoryCore,
+  undoHistory,
+  redoHistory,
+  rangeIndices,
+  persistSelection,
+  loadPersistedSelection,
+  type SelectionModeBase,
+  type PersistFieldNames,
+} from './selection/createSelectionCore';
 
 // ============= Types =============
 
-export type SelectionMode = 'replace' | 'add' | 'remove' | 'toggle';
+export type SelectionMode = SelectionModeBase;
 
 /** Selection tool type for area selection (click, box, lasso) */
 export type SelectionToolType = 'click' | 'box' | 'lasso';
@@ -138,9 +150,15 @@ export interface SelectionContextValue extends SelectionState {
 
 // ============= Constants =============
 
-// Reduced from 50 to 10 to prevent memory accumulation with large datasets
-const MAX_HISTORY = 10;
+// History depth (MAX_HISTORY=10) and the set/history primitives are shared via
+// ./selection/createSelectionCore so this twin and InspectorSelectionContext
+// cannot drift apart on the common selection logic (FE-05-state).
 const STORAGE_KEY = 'playground-selection-state';
+const PERSIST_FIELDS: PersistFieldNames = {
+  selected: 'selectedSamples',
+  pinned: 'pinnedSamples',
+  savedSelections: 'savedSelections',
+};
 
 // ============= Initial State =============
 
@@ -157,45 +175,38 @@ const createInitialState = (): SelectionState => ({
   selectionToolMode: 'click',
 });
 
+// ============= Helpers =============
+
+/** Record a new selection snapshot in the shared bounded undo history. */
+function pushHistory(
+  state: SelectionState,
+  newSelection: Set<number>
+): Pick<SelectionState, 'selectionHistory' | 'historyIndex'> {
+  return pushHistoryCore(state.selectionHistory, state.historyIndex, newSelection);
+}
+
+/**
+ * Collapse the selection onto a single index and snapshot it — the shared
+ * fallback used by both range actions when there is no anchor or the anchor /
+ * target is outside the supplied order.
+ */
+function selectSingle(state: SelectionState, toIndex: number): SelectionState {
+  const newSelection = new Set([toIndex]);
+  return {
+    ...state,
+    selectedSamples: newSelection,
+    ...pushHistory(state, newSelection),
+    lastSelectedIndex: toIndex,
+  };
+}
+
 // ============= Reducer =============
 
 function selectionReducer(state: SelectionState, action: SelectionAction): SelectionState {
   switch (action.type) {
     case 'SELECT': {
       const mode = action.mode ?? state.selectionMode;
-      let newSelection: Set<number>;
-
-      switch (mode) {
-        case 'replace':
-          newSelection = new Set(action.indices);
-          break;
-        case 'add':
-          newSelection = new Set([...state.selectedSamples, ...action.indices]);
-          break;
-        case 'remove':
-          newSelection = new Set(state.selectedSamples);
-          action.indices.forEach(i => newSelection.delete(i));
-          break;
-        case 'toggle':
-          newSelection = new Set(state.selectedSamples);
-          action.indices.forEach(i => {
-            if (newSelection.has(i)) {
-              newSelection.delete(i);
-            } else {
-              newSelection.add(i);
-            }
-          });
-          break;
-        default:
-          newSelection = new Set(action.indices);
-      }
-
-      // Update history
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
+      const newSelection = applySelectionMode(state.selectedSamples, action.indices, mode);
 
       // Track last selected index for range selection (use the last index in the array)
       const lastIdx = action.indices.length > 0 ? action.indices[action.indices.length - 1] : state.lastSelectedIndex;
@@ -203,70 +214,41 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
         lastSelectedIndex: lastIdx,
       };
     }
 
     case 'DESELECT': {
-      const newSelection = new Set(state.selectedSamples);
-      action.indices.forEach(i => newSelection.delete(i));
-
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
+      const newSelection = removeFromSet(state.selectedSamples, action.indices);
 
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
     case 'TOGGLE': {
-      const newSelection = new Set(state.selectedSamples);
+      let newSelection = state.selectedSamples;
       action.indices.forEach(i => {
-        if (newSelection.has(i)) {
-          newSelection.delete(i);
-        } else {
-          newSelection.add(i);
-        }
+        newSelection = toggleInSet(newSelection, i);
       });
-
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
 
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
     case 'SELECT_ALL': {
-      const newSelection = new Set(
-        Array.from({ length: action.totalSamples }, (_, i) => i)
-      );
-
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
+      const newSelection = new Set(rangeIndices(action.totalSamples));
 
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
@@ -274,19 +256,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       // Range selection: select all indices between lastSelectedIndex and toIndex
       if (state.lastSelectedIndex === null) {
         // No previous selection, just select the target index
-        const newSelection = new Set([action.toIndex]);
-        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-        newHistory.push(newSelection);
-        if (newHistory.length > MAX_HISTORY) {
-          newHistory.shift();
-        }
-        return {
-          ...state,
-          selectedSamples: newSelection,
-          selectionHistory: newHistory,
-          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
-          lastSelectedIndex: action.toIndex,
-        };
+        return selectSingle(state, action.toIndex);
       }
 
       // Generate range indices
@@ -294,47 +264,15 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       const toIdx = action.toIndex;
       const minIdx = Math.min(fromIdx, toIdx);
       const maxIdx = Math.max(fromIdx, toIdx);
-      const rangeIndices = Array.from({ length: maxIdx - minIdx + 1 }, (_, i) => minIdx + i);
+      const range = Array.from({ length: maxIdx - minIdx + 1 }, (_, i) => minIdx + i);
 
       const mode = action.mode ?? 'add'; // Default to 'add' for range selection
-      let newSelection: Set<number>;
-
-      switch (mode) {
-        case 'replace':
-          newSelection = new Set(rangeIndices);
-          break;
-        case 'add':
-          newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
-          break;
-        case 'remove':
-          newSelection = new Set(state.selectedSamples);
-          rangeIndices.forEach(i => newSelection.delete(i));
-          break;
-        case 'toggle':
-          newSelection = new Set(state.selectedSamples);
-          rangeIndices.forEach(i => {
-            if (newSelection.has(i)) {
-              newSelection.delete(i);
-            } else {
-              newSelection.add(i);
-            }
-          });
-          break;
-        default:
-          newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
-      }
-
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
+      const newSelection = applySelectionMode(state.selectedSamples, range, mode);
 
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
         lastSelectedIndex: action.toIndex,
       };
     }
@@ -349,19 +287,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
 
       if (state.lastSelectedIndex === null) {
         // No previous selection, just select the target index
-        const newSelection = new Set([action.toIndex]);
-        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-        newHistory.push(newSelection);
-        if (newHistory.length > MAX_HISTORY) {
-          newHistory.shift();
-        }
-        return {
-          ...state,
-          selectedSamples: newSelection,
-          selectionHistory: newHistory,
-          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
-          lastSelectedIndex: action.toIndex,
-        };
+        return selectSingle(state, action.toIndex);
       }
 
       // Find positions in the order array
@@ -370,65 +296,21 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
 
       // If either index is not in the order array, fall back to single selection
       if (fromPos === -1 || toPos === -1) {
-        const newSelection = new Set([action.toIndex]);
-        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-        newHistory.push(newSelection);
-        if (newHistory.length > MAX_HISTORY) {
-          newHistory.shift();
-        }
-        return {
-          ...state,
-          selectedSamples: newSelection,
-          selectionHistory: newHistory,
-          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
-          lastSelectedIndex: action.toIndex,
-        };
+        return selectSingle(state, action.toIndex);
       }
 
       // Extract indices between the two positions (inclusive)
       const minPos = Math.min(fromPos, toPos);
       const maxPos = Math.max(fromPos, toPos);
-      const rangeIndices = order.slice(minPos, maxPos + 1);
+      const range = order.slice(minPos, maxPos + 1);
 
       const mode = action.mode ?? 'add'; // Default to 'add' for range selection
-      let newSelection: Set<number>;
-
-      switch (mode) {
-        case 'replace':
-          newSelection = new Set(rangeIndices);
-          break;
-        case 'add':
-          newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
-          break;
-        case 'remove':
-          newSelection = new Set(state.selectedSamples);
-          rangeIndices.forEach(i => newSelection.delete(i));
-          break;
-        case 'toggle':
-          newSelection = new Set(state.selectedSamples);
-          rangeIndices.forEach(i => {
-            if (newSelection.has(i)) {
-              newSelection.delete(i);
-            } else {
-              newSelection.add(i);
-            }
-          });
-          break;
-        default:
-          newSelection = new Set([...state.selectedSamples, ...rangeIndices]);
-      }
-
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
+      const newSelection = applySelectionMode(state.selectedSamples, range, mode);
 
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
         lastSelectedIndex: action.toIndex,
       };
     }
@@ -450,26 +332,15 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       if (selectionsMatch) {
         // Clear selection (same as clicking sole selected item)
         const newSelection = new Set<number>();
-        const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-        newHistory.push(newSelection);
-        if (newHistory.length > MAX_HISTORY) {
-          newHistory.shift();
-        }
         return {
           ...state,
           selectedSamples: newSelection,
-          selectionHistory: newHistory,
-          historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+          ...pushHistory(state, newSelection),
         };
       }
 
       // Replace selection with target
       const newSelection = new Set(action.indices);
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
 
       // Track last selected index for range selection
       const lastIdx = action.indices.length > 0 ? action.indices[action.indices.length - 1] : state.lastSelectedIndex;
@@ -477,8 +348,7 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
         lastSelectedIndex: lastIdx,
       };
     }
@@ -489,54 +359,36 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       }
 
       const newSelection = new Set<number>();
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
     case 'INVERT': {
       const newSelection = new Set(
-        Array.from({ length: action.totalSamples }, (_, i) => i)
-          .filter(i => !state.selectedSamples.has(i))
+        rangeIndices(action.totalSamples).filter(i => !state.selectedSamples.has(i))
       );
-
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
 
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
     case 'PIN': {
-      const newPinned = new Set([...state.pinnedSamples, ...action.indices]);
       return {
         ...state,
-        pinnedSamples: newPinned,
+        pinnedSamples: addToSet(state.pinnedSamples, action.indices),
       };
     }
 
     case 'UNPIN': {
-      const newPinned = new Set(state.pinnedSamples);
-      action.indices.forEach(i => newPinned.delete(i));
       return {
         ...state,
-        pinnedSamples: newPinned,
+        pinnedSamples: removeFromSet(state.pinnedSamples, action.indices),
       };
     }
 
@@ -569,17 +421,10 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
       }
 
       const newSelection = new Set(saved.indices);
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
@@ -591,32 +436,28 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
     }
 
     case 'UNDO': {
-      if (state.historyIndex <= 0) {
+      // undoHistory reuses the existing Set from history (no allocation).
+      const result = undoHistory(state.selectionHistory, state.historyIndex);
+      if (!result) {
         return state;
       }
-
-      const newIndex = state.historyIndex - 1;
-      // Reuse existing Set from history instead of creating a new one
-      // This prevents memory allocation on every undo
       return {
         ...state,
-        selectedSamples: state.selectionHistory[newIndex],
-        historyIndex: newIndex,
+        selectedSamples: result.selection,
+        historyIndex: result.historyIndex,
       };
     }
 
     case 'REDO': {
-      if (state.historyIndex >= state.selectionHistory.length - 1) {
+      // redoHistory reuses the existing Set from history (no allocation).
+      const result = redoHistory(state.selectionHistory, state.historyIndex);
+      if (!result) {
         return state;
       }
-
-      const newIndex = state.historyIndex + 1;
-      // Reuse existing Set from history instead of creating a new one
-      // This prevents memory allocation on every redo
       return {
         ...state,
-        selectedSamples: state.selectionHistory[newIndex],
-        historyIndex: newIndex,
+        selectedSamples: result.selection,
+        historyIndex: result.historyIndex,
       };
     }
 
@@ -682,18 +523,11 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
         };
       }
 
-      const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-      newHistory.push(newSelection);
-      if (newHistory.length > MAX_HISTORY) {
-        newHistory.shift();
-      }
-
       return {
         ...state,
         selectedSamples: newSelection,
         pinnedSamples: newPinned,
-        selectionHistory: newHistory,
-        historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+        ...pushHistory(state, newSelection),
       };
     }
 
@@ -706,124 +540,26 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
 
 export const SelectionContext = createContext<SelectionContextValue | undefined>(undefined);
 
-// ============= Hover Context (separated for performance) =============
-
-interface HoverContextValue {
-  hoveredSample: number | null;
-  setHovered: (index: number | null) => void;
-}
-
-const HoverContext = createContext<HoverContextValue | undefined>(undefined);
-
-/**
- * Hook to get only hover state - isolated from selection updates for performance
- */
-export function useHover(): HoverContextValue {
-  const context = useContext(HoverContext);
-  if (context === undefined) {
-    throw new Error('useHover must be used within a SelectionProvider');
-  }
-  return context;
-}
-
-/**
- * Hook to get only hoveredSample - even more granular for performance
- */
-export function useHoveredSample(): number | null {
-  const { hoveredSample } = useHover();
-  return hoveredSample;
-}
-
-// ============= Selection Store for Selector Pattern =============
-
-type SelectionSubscriber = () => void;
-
-interface SelectionStore {
-  getState: () => SelectionState;
-  subscribe: (callback: SelectionSubscriber) => () => void;
-}
-
-const SelectionStoreContext = createContext<SelectionStore | null>(null);
-
-/**
- * Selector hook for fine-grained selection state subscriptions.
- * Only re-renders when the selected slice of state changes.
- *
- * @example
- * const selectedSamples = useSelectionSelector(s => s.selectedSamples);
- * const pinnedCount = useSelectionSelector(s => s.pinnedSamples.size);
- */
-export function useSelectionSelector<T>(selector: (state: SelectionState) => T): T {
-  const store = useContext(SelectionStoreContext);
-  if (!store) {
-    throw new Error('useSelectionSelector must be used within a SelectionProvider');
-  }
-
-  const getSnapshot = useCallback(() => selector(store.getState()), [store, selector]);
-
-  return useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
-}
-
-/**
- * Hook to get only selected samples - common use case
- */
-export function useSelectedSamples(): Set<number> {
-  return useSelectionSelector(s => s.selectedSamples);
-}
-
-/**
- * Hook to get only pinned samples - common use case
- */
-export function usePinnedSamples(): Set<number> {
-  return useSelectionSelector(s => s.pinnedSamples);
-}
-
-/**
- * Hook to check if a specific sample is selected - useful for individual items
- */
-export function useIsSelected(index: number): boolean {
-  return useSelectionSelector(s => s.selectedSamples.has(index));
-}
-
 // ============= Storage Helpers =============
 
-interface SerializedState {
-  selectedSamples: number[];
-  pinnedSamples: number[];
-  savedSelections: SavedSelection[];
-}
-
 function persistState(state: SelectionState): void {
-  try {
-    const serialized: SerializedState = {
-      selectedSamples: Array.from(state.selectedSamples),
-      pinnedSamples: Array.from(state.pinnedSamples),
-      savedSelections: state.savedSelections,
-    };
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
-  } catch (e) {
-    console.warn('Failed to persist selection state:', e);
-  }
+  persistSelection(STORAGE_KEY, PERSIST_FIELDS, state.selectedSamples, state.pinnedSamples, state.savedSelections);
 }
 
 function loadPersistedState(): Partial<SelectionState> | null {
-  try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed: SerializedState = JSON.parse(stored);
-      return {
-        selectedSamples: new Set(parsed.selectedSamples || []),
-        pinnedSamples: new Set(parsed.pinnedSamples || []),
-        savedSelections: (parsed.savedSelections || []).map(s => ({
-          ...s,
-          createdAt: new Date(s.createdAt),
-        })),
-      };
-    }
-  } catch (e) {
-    console.warn('Failed to load persisted selection state:', e);
+  const parsed = loadPersistedSelection<number, SavedSelection>(STORAGE_KEY, PERSIST_FIELDS);
+  if (!parsed) {
+    return null;
   }
-  return null;
+  return {
+    selectedSamples: new Set(parsed.selected || []),
+    pinnedSamples: new Set(parsed.pinned || []),
+    // SavedSelection.createdAt persists as a string; re-hydrate to a Date.
+    savedSelections: (parsed.savedSelections || []).map(s => ({
+      ...s,
+      createdAt: new Date(s.createdAt),
+    })),
+  };
 }
 
 // ============= Provider =============
@@ -845,26 +581,6 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
   // Separate hover state for performance - hover changes don't trigger selection re-renders
   const [hoveredSample, setHoveredSampleState] = useState<number | null>(null);
 
-  // Create selection store for selector pattern
-  const stateRef = useRef(state);
-  stateRef.current = state;
-  const subscribersRef = useRef<Set<SelectionSubscriber>>(new Set());
-
-  const store = useMemo<SelectionStore>(() => ({
-    getState: () => stateRef.current,
-    subscribe: (callback: SelectionSubscriber) => {
-      subscribersRef.current.add(callback);
-      return () => {
-        subscribersRef.current.delete(callback);
-      };
-    },
-  }), []);
-
-  // Notify subscribers when state changes
-  useEffect(() => {
-    subscribersRef.current.forEach(callback => callback());
-  }, [state]);
-
   // Persist state changes (debounced) - 500ms to reduce GC pressure in Firefox
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -873,155 +589,42 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     return () => clearTimeout(timeout);
   }, [state.selectedSamples, state.pinnedSamples, state.savedSelections]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle shortcuts when typing in input fields
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        (e.target instanceof HTMLElement && e.target.isContentEditable)
-      ) {
-        return;
-      }
-
-      // Ctrl+Z or Cmd+Z - Undo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        dispatch({ type: 'UNDO' });
-        return;
-      }
-
-      // Ctrl+Shift+Z or Cmd+Shift+Z - Redo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
-        e.preventDefault();
-        dispatch({ type: 'REDO' });
-        return;
-      }
-
-      // Ctrl+Y or Cmd+Y - Redo (alternative)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
-        e.preventDefault();
-        dispatch({ type: 'REDO' });
-        return;
-      }
-
-      // Escape - Clear selection
-      if (e.key === 'Escape') {
-        dispatch({ type: 'CLEAR' });
-        return;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  // Keyboard shortcuts (undo/redo/clear) are owned exclusively by
+  // usePlaygroundShortcuts — the only consumer of SelectionProvider — so they are
+  // not bound here. A second window 'keydown' listener double-dispatched UNDO/CLEAR
+  // and clobbered selection on Ctrl+Z/Escape (FE-01-state).
 
   // Memoized action creators
-  const select = useCallback((indices: number[], mode?: SelectionMode) => {
-    dispatch({ type: 'SELECT', indices, mode });
-  }, []);
-
-  const deselect = useCallback((indices: number[]) => {
-    dispatch({ type: 'DESELECT', indices });
-  }, []);
-
-  const toggle = useCallback((indices: number[]) => {
-    dispatch({ type: 'TOGGLE', indices });
-  }, []);
-
-  const selectAll = useCallback((totalSamples: number) => {
-    dispatch({ type: 'SELECT_ALL', totalSamples });
-  }, []);
-
-  const selectRange = useCallback((toIndex: number, mode?: SelectionMode) => {
-    dispatch({ type: 'SELECT_RANGE', toIndex, mode });
-  }, []);
-
-  const selectRangeOrdered = useCallback((toIndex: number, order: number[], mode?: SelectionMode) => {
-    dispatch({ type: 'SELECT_RANGE_ORDERED', toIndex, order, mode });
-  }, []);
-
-  const replaceIfNotSole = useCallback((indices: number[]) => {
-    dispatch({ type: 'REPLACE_IF_NOT_SOLE', indices });
-  }, []);
-
-  const clear = useCallback(() => {
-    dispatch({ type: 'CLEAR' });
-  }, []);
-
-  const invert = useCallback((totalSamples: number) => {
-    dispatch({ type: 'INVERT', totalSamples });
-  }, []);
-
-  const pin = useCallback((indices: number[]) => {
-    dispatch({ type: 'PIN', indices });
-  }, []);
-
-  const unpin = useCallback((indices: number[]) => {
-    dispatch({ type: 'UNPIN', indices });
-  }, []);
-
-  const clearPins = useCallback(() => {
-    dispatch({ type: 'CLEAR_PINS' });
-  }, []);
+  const select = useCallback((indices: number[], mode?: SelectionMode) => dispatch({ type: 'SELECT', indices, mode }), []);
+  const deselect = useCallback((indices: number[]) => dispatch({ type: 'DESELECT', indices }), []);
+  const toggle = useCallback((indices: number[]) => dispatch({ type: 'TOGGLE', indices }), []);
+  const selectAll = useCallback((totalSamples: number) => dispatch({ type: 'SELECT_ALL', totalSamples }), []);
+  const selectRange = useCallback((toIndex: number, mode?: SelectionMode) => dispatch({ type: 'SELECT_RANGE', toIndex, mode }), []);
+  const selectRangeOrdered = useCallback((toIndex: number, order: number[], mode?: SelectionMode) => dispatch({ type: 'SELECT_RANGE_ORDERED', toIndex, order, mode }), []);
+  const replaceIfNotSole = useCallback((indices: number[]) => dispatch({ type: 'REPLACE_IF_NOT_SOLE', indices }), []);
+  const clear = useCallback(() => dispatch({ type: 'CLEAR' }), []);
+  const invert = useCallback((totalSamples: number) => dispatch({ type: 'INVERT', totalSamples }), []);
+  const pin = useCallback((indices: number[]) => dispatch({ type: 'PIN', indices }), []);
+  const unpin = useCallback((indices: number[]) => dispatch({ type: 'UNPIN', indices }), []);
+  const clearPins = useCallback(() => dispatch({ type: 'CLEAR_PINS' }), []);
 
   const togglePin = useCallback((index: number) => {
-    if (state.pinnedSamples.has(index)) {
-      dispatch({ type: 'UNPIN', indices: [index] });
-    } else {
-      dispatch({ type: 'PIN', indices: [index] });
-    }
+    dispatch(state.pinnedSamples.has(index) ? { type: 'UNPIN', indices: [index] } : { type: 'PIN', indices: [index] });
   }, [state.pinnedSamples]);
 
-  const saveSelection = useCallback((name: string, color?: string) => {
-    dispatch({ type: 'SAVE_SELECTION', name, color });
-  }, []);
-
-  const loadSelection = useCallback((id: string) => {
-    dispatch({ type: 'LOAD_SELECTION', id });
-  }, []);
-
-  const deleteSavedSelection = useCallback((id: string) => {
-    dispatch({ type: 'DELETE_SAVED_SELECTION', id });
-  }, []);
-
-  const undo = useCallback(() => {
-    dispatch({ type: 'UNDO' });
-  }, []);
-
-  const redo = useCallback(() => {
-    dispatch({ type: 'REDO' });
-  }, []);
-
-  const setSelecting = useCallback((isSelecting: boolean) => {
-    dispatch({ type: 'SET_SELECTING', isSelecting });
-  }, []);
-
-  const setSelectionMode = useCallback((mode: SelectionMode) => {
-    dispatch({ type: 'SET_SELECTION_MODE', mode });
-  }, []);
-
-  const setSelectionToolMode = useCallback((tool: SelectionToolType) => {
-    dispatch({ type: 'SET_SELECTION_TOOL', tool });
-  }, []);
-
-  // setHovered now uses separate state for performance
-  const setHovered = useCallback((index: number | null) => {
-    setHoveredSampleState(index);
-  }, []);
-
-  const intersectWithAvailable = useCallback((availableIndices: number[]) => {
-    dispatch({ type: 'INTERSECT_WITH_AVAILABLE', availableIndices });
-  }, []);
-
-  const isSelected = useCallback((index: number) => {
-    return state.selectedSamples.has(index);
-  }, [state.selectedSamples]);
-
-  const isPinned = useCallback((index: number) => {
-    return state.pinnedSamples.has(index);
-  }, [state.pinnedSamples]);
+  const saveSelection = useCallback((name: string, color?: string) => dispatch({ type: 'SAVE_SELECTION', name, color }), []);
+  const loadSelection = useCallback((id: string) => dispatch({ type: 'LOAD_SELECTION', id }), []);
+  const deleteSavedSelection = useCallback((id: string) => dispatch({ type: 'DELETE_SAVED_SELECTION', id }), []);
+  const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
+  const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
+  const setSelecting = useCallback((isSelecting: boolean) => dispatch({ type: 'SET_SELECTING', isSelecting }), []);
+  const setSelectionMode = useCallback((mode: SelectionMode) => dispatch({ type: 'SET_SELECTION_MODE', mode }), []);
+  const setSelectionToolMode = useCallback((tool: SelectionToolType) => dispatch({ type: 'SET_SELECTION_TOOL', tool }), []);
+  // setHovered uses separate state for performance — hover never re-renders selection consumers.
+  const setHovered = useCallback((index: number | null) => setHoveredSampleState(index), []);
+  const intersectWithAvailable = useCallback((availableIndices: number[]) => dispatch({ type: 'INTERSECT_WITH_AVAILABLE', availableIndices }), []);
+  const isSelected = useCallback((index: number) => state.selectedSamples.has(index), [state.selectedSamples]);
+  const isPinned = useCallback((index: number) => state.pinnedSamples.has(index), [state.pinnedSamples]);
 
   // Derived values
   const canUndo = state.historyIndex > 0;
@@ -1098,20 +701,10 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
     intersectWithAvailable,
   ]);
 
-  // Separate hover context value - only changes when hover state changes
-  const hoverValue = useMemo<HoverContextValue>(() => ({
-    hoveredSample,
-    setHovered,
-  }), [hoveredSample, setHovered]);
-
   return (
-    <SelectionStoreContext.Provider value={store}>
-      <HoverContext.Provider value={hoverValue}>
-        <SelectionContext.Provider value={value}>
-          {children}
-        </SelectionContext.Provider>
-      </HoverContext.Provider>
-    </SelectionStoreContext.Provider>
+    <SelectionContext.Provider value={value}>
+      {children}
+    </SelectionContext.Provider>
   );
 }
 
@@ -1123,14 +716,6 @@ export function useSelection(): SelectionContextValue {
     throw new Error('useSelection must be used within a SelectionProvider');
   }
   return context;
-}
-
-/**
- * Hook to get selection state without actions (for performance-sensitive components)
- */
-export function useSelectionState() {
-  const { selectedSamples, pinnedSamples, hoveredSample, isSelected, isPinned } = useSelection();
-  return { selectedSamples, pinnedSamples, hoveredSample, isSelected, isPinned };
 }
 
 export default SelectionProvider;

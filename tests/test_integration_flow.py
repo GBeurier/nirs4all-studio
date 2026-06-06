@@ -12,16 +12,10 @@ Requirements:
 - Sample dataset available
 """
 
-import asyncio
-import json
 
 # Import the FastAPI app
 import sys
-import time
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -48,7 +42,6 @@ def client(tmp_path):
         app_config.__init__()
         from api.workspace_manager import workspace_manager
         workspace_manager.app_config = app_config
-        workspace_manager.app_data_dir = app_config.config_dir
         with TestClient(app) as c:
             yield c
     finally:
@@ -174,8 +167,8 @@ class TestDatasetsEndpoints:
         tmp_path,
     ):
         """Legacy linked datasets without stored metadata columns should be enriched on read."""
-        import api.workspace as workspace_api
         from api.app_config import app_config
+        from api.workspace import router_datasets as workspace_api
 
         dataset_dir = tmp_path / "legacy_grouping_dataset"
         dataset_dir.mkdir()
@@ -278,16 +271,6 @@ class TestPipelinesEndpoints:
         assert isinstance(preset["steps_count"], int)
         assert "steps" not in preset
         assert "pipeline" in preset
-
-    def test_list_operators(self, client):
-        """Test listing available operators."""
-        response = client.get("/api/pipelines/operators")
-        assert response.status_code == 200
-        data = response.json()
-        assert "operators" in data
-        assert "preprocessing" in data["operators"]
-        assert "models" in data["operators"]
-        assert "splitting" in data["operators"]
 
     def test_list_samples(self, client):
         """Test listing pipeline samples."""
@@ -618,7 +601,7 @@ class TestDataSchemas:
 
     def test_run_status_values(self, client):
         """Verify run status values are valid."""
-        valid_statuses = ["queued", "running", "completed", "failed", "paused"]
+        valid_statuses = ["queued", "running", "completed", "failed"]
 
         response = client.get("/api/runs")
         if response.status_code == 200:

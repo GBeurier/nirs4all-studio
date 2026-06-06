@@ -3,7 +3,7 @@
     "id": "model.linear_svc",
     "name": "LinearSVC",
     "type": "model",
-    "classPath": "sklearn.svm._classes.LinearSVC",
+    "classPath": "sklearn.svm.LinearSVC",
     "description": "Linear Support Vector Classification.",
     "category": "sklearn-svm",
     "tags": [
@@ -124,13 +124,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.svm._classes.LinearSVC"
+    ]
   },
   {
     "id": "model.linear_svr",
     "name": "LinearSVR",
     "type": "model",
-    "classPath": "sklearn.svm._classes.LinearSVR",
+    "classPath": "sklearn.svm.LinearSVR",
     "description": "Linear Support Vector Regression.",
     "category": "sklearn-svm",
     "tags": [
@@ -234,13 +237,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.svm._classes.LinearSVR"
+    ]
   },
   {
     "id": "model.nu_svc",
     "name": "NuSVC",
     "type": "model",
-    "classPath": "sklearn.svm._classes.NuSVC",
+    "classPath": "sklearn.svm.NuSVC",
     "description": "Nu-Support Vector Classification.",
     "category": "sklearn-svm",
     "tags": [
@@ -359,13 +365,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.svm._classes.NuSVC"
+    ]
   },
   {
     "id": "model.nu_svr",
     "name": "NuSVR",
     "type": "model",
-    "classPath": "sklearn.svm._classes.NuSVR",
+    "classPath": "sklearn.svm.NuSVR",
     "description": "Nu Support Vector Regression.",
     "category": "sklearn-svm",
     "tags": [
@@ -473,6 +482,9 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.svm._classes.NuSVR"
+    ]
   }
 ]

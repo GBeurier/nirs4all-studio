@@ -1,7 +1,7 @@
 /**
- * Shared hook for YHistogramV2: bins computation, KDE, statistics, selection, event handlers.
+ * Shared hook for YHistogram: bins computation, KDE, statistics, selection, event handlers.
  *
- * All shared logic that was previously inline in YHistogramV2 is extracted here.
+ * All shared logic that was previously inline in YHistogram is extracted here.
  * Mode-specific chart components consume this hook's return value via props.
  */
 
@@ -32,7 +32,7 @@ import {
   getHistogramPartitionRoleColor,
 } from './utils';
 import {
-  type YHistogramV2Props,
+  type YHistogramProps,
   type BinData,
   type ClassBarData,
   type YStats,
@@ -43,7 +43,7 @@ import {
   RANGE_SELECTION_INITIAL,
 } from './types';
 
-export function useHistogramData(props: YHistogramV2Props) {
+export function useHistogramData(props: YHistogramProps) {
   const {
     y,
     processedY,

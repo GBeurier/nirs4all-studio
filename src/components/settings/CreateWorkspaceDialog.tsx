@@ -35,7 +35,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { selectFolder } from "@/utils/fileDialogs";
-import { createWorkspace, selectWorkspace, getLinkedWorkspaces, activateN4AWorkspace } from "@/api/client";
+import { createWorkspace, selectWorkspace } from "@/api/workspace";
+import { getLinkedWorkspaces, activateN4AWorkspace } from "@/api/linkedWorkspaces";
 import { datasetQueryKeys, useInvalidateDatasets } from "@/hooks/useDatasetQueries";
 import type { WorkspaceInfo } from "@/types/settings";
 

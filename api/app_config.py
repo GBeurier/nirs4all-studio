@@ -21,7 +21,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .shared.logger import get_logger
 from .shared.runtime_paths import get_portable_config_dir
@@ -32,6 +32,65 @@ logger = get_logger(__name__)
 # Default config directory name
 _CONFIG_DIR_NAME = "nirs4all"
 _REDIRECT_FILE_NAME = "config_redirect.txt"
+
+# Schema version for the dataset-links JSON. Bumped when a one-shot migration
+# rewrites already-persisted payloads into the current nirs4all vocabulary; the
+# stored ``schema_version`` marker makes the migration run exactly once.
+_DATASET_LINKS_SCHEMA_VERSION = 2
+
+# Legacy webapp builds stored na_policy as "drop"/"Drop"/"keep" (sometimes
+# capitalized) in dataset configs; nirs4all only accepts {auto, abort,
+# remove_sample, remove_feature, replace, ignore}. The migration below rewrites
+# any persisted legacy/cased value to the canonical vocabulary so runtime code
+# can trust the stored data without a live shim.
+_LEGACY_NA_POLICY_ALIASES = {
+    "drop": "remove_sample",  # legacy "drop rows with NaN"
+    "keep": "ignore",         # legacy "leave NaN as-is"
+}
+
+
+def _canonical_na_policy(na_policy: Any) -> Any:
+    """Map a legacy/cased na_policy value to nirs4all's vocabulary."""
+    if not isinstance(na_policy, str):
+        return na_policy
+    normalized = na_policy.strip().lower()
+    return _LEGACY_NA_POLICY_ALIASES.get(normalized, normalized)
+
+
+def _migrate_na_policy_in_config(config: dict[str, Any]) -> bool:
+    """Rewrite every na_policy in a stored dataset ``config`` dict, in place.
+
+    Covers each shape nirs4all treats as loader params: a root-level
+    ``na_policy``, ``global_params``, every per-file ``*_params`` block (a single
+    dict or a multi-source list of dicts), and per-file ``overrides`` inside the
+    ``files`` array. Returns ``True`` if any value was changed.
+    """
+    if not isinstance(config, dict):
+        return False
+
+    changed = False
+
+    def _apply(block: Any) -> None:
+        nonlocal changed
+        if isinstance(block, dict) and "na_policy" in block:
+            canonical = _canonical_na_policy(block["na_policy"])
+            if canonical != block["na_policy"]:
+                block["na_policy"] = canonical
+                changed = True
+
+    _apply(config)
+
+    for key, value in config.items():
+        if key != "global_params" and not key.endswith("_params"):
+            continue
+        for block in value if isinstance(value, list) else [value]:
+            _apply(block)
+
+    for file_info in config.get("files", []):
+        if isinstance(file_info, dict):
+            _apply(file_info.get("overrides"))
+
+    return changed
 
 
 @dataclass
@@ -419,14 +478,36 @@ class AppConfigManager:
         }
 
     def _load_dataset_links(self) -> dict[str, Any]:
-        """Load dataset links from disk."""
+        """Load dataset links from disk, applying the one-shot schema migration."""
         if self._dataset_links_path.exists():
             try:
                 with open(self._dataset_links_path, encoding="utf-8") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                self._migrate_dataset_links(data)
+                return data
             except Exception as e:
                 logger.error("Failed to load dataset links: %s", e)
         return self._default_dataset_links()
+
+    def _migrate_dataset_links(self, data: dict[str, Any]) -> None:
+        """Normalize legacy values in stored dataset payloads (idempotent, one-shot).
+
+        Rewrites legacy/cased na_policy values inside each dataset's ``config`` to
+        nirs4all's vocabulary and records ``schema_version`` so the rewrite runs
+        once. Safe on already-migrated, missing, and empty payloads (a no-op that
+        does not write). Persists back only when a value actually changed.
+        """
+        if data.get("schema_version") == _DATASET_LINKS_SCHEMA_VERSION:
+            return
+
+        changed = False
+        for dataset in data.get("datasets", []):
+            if _migrate_na_policy_in_config(dataset.get("config", {})):
+                changed = True
+
+        data["schema_version"] = _DATASET_LINKS_SCHEMA_VERSION
+        if changed:
+            self._save_dataset_links(data)
 
     def _save_dataset_links(self, data: dict[str, Any]) -> bool:
         """Save dataset links to disk."""
@@ -733,6 +814,25 @@ class AppConfigManager:
         self._save_dataset_links(data)
 
         return group
+
+    def rename_dataset_group(self, group_id: str, new_name: str) -> bool:
+        """Rename a dataset group.
+
+        Args:
+            group_id: ID of the group to rename
+            new_name: New group name
+
+        Returns:
+            True if the group was found and renamed
+        """
+        data = self._load_dataset_links()
+        groups = data.get("groups", [])
+        for group in groups:
+            if group.get("id") == group_id:
+                group["name"] = new_name
+                data["groups"] = groups
+                return self._save_dataset_links(data)
+        return False
 
     def delete_dataset_group(self, group_id: str) -> bool:
         """Delete a dataset group.

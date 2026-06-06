@@ -3,7 +3,7 @@
     "id": "model.ard_regression",
     "name": "ARDRegression",
     "type": "model",
-    "classPath": "sklearn.linear_model._bayes.ARDRegression",
+    "classPath": "sklearn.linear_model.ARDRegression",
     "description": "Bayesian ARD regression.",
     "category": "sklearn-linear",
     "tags": [
@@ -69,6 +69,9 @@
         "default": true,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._bayes.ARDRegression"
     ]
   },
   {
@@ -151,7 +154,7 @@
     "id": "model.elastic_net_cv",
     "name": "ElasticNetCV",
     "type": "model",
-    "classPath": "sklearn.linear_model._coordinate_descent.ElasticNetCV",
+    "classPath": "sklearn.linear_model.ElasticNetCV",
     "description": "Elastic Net model with iterative fitting along a regularization path.",
     "category": "sklearn-linear",
     "tags": [
@@ -241,13 +244,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._coordinate_descent.ElasticNetCV"
+    ]
   },
   {
     "id": "model.gamma_regressor",
     "name": "GammaRegressor",
     "type": "model",
-    "classPath": "sklearn.linear_model._glm.glm.GammaRegressor",
+    "classPath": "sklearn.linear_model.GammaRegressor",
     "description": "Generalized Linear Model with a Gamma distribution.",
     "category": "sklearn-linear",
     "tags": [
@@ -326,13 +332,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._glm.glm.GammaRegressor"
+    ]
   },
   {
     "id": "model.huber_regressor",
     "name": "HuberRegressor",
     "type": "model",
-    "classPath": "sklearn.linear_model._huber.HuberRegressor",
+    "classPath": "sklearn.linear_model.HuberRegressor",
     "description": "L2-regularized linear regression model that is robust to outliers.",
     "category": "sklearn-linear",
     "tags": [
@@ -388,13 +397,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._huber.HuberRegressor"
+    ]
   },
   {
     "id": "model.lars",
     "name": "Lars",
     "type": "model",
-    "classPath": "sklearn.linear_model._least_angle.Lars",
+    "classPath": "sklearn.linear_model.Lars",
     "description": "Least Angle Regression model a.k.a. LAR.",
     "category": "sklearn-linear",
     "tags": [
@@ -446,13 +458,16 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._least_angle.Lars"
     ]
   },
   {
     "id": "model.lars_cv",
     "name": "LarsCV",
     "type": "model",
-    "classPath": "sklearn.linear_model._least_angle.LarsCV",
+    "classPath": "sklearn.linear_model.LarsCV",
     "description": "Cross-validated Least Angle Regression model.",
     "category": "sklearn-linear",
     "tags": [
@@ -499,13 +514,16 @@
         "default": 2.220446049250313e-16,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._least_angle.LarsCV"
     ]
   },
   {
     "id": "model.lasso_cv",
     "name": "LassoCV",
     "type": "model",
-    "classPath": "sklearn.linear_model._coordinate_descent.LassoCV",
+    "classPath": "sklearn.linear_model.LassoCV",
     "description": "Lasso linear model with iterative fitting along a regularization path.",
     "category": "sklearn-linear",
     "tags": [
@@ -581,13 +599,16 @@
         "default": "cyclic",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._coordinate_descent.LassoCV"
     ]
   },
   {
     "id": "model.lasso_lars",
     "name": "LassoLars",
     "type": "model",
-    "classPath": "sklearn.linear_model._least_angle.LassoLars",
+    "classPath": "sklearn.linear_model.LassoLars",
     "description": "Lasso model fit with Least Angle Regression a.k.a. Lars.",
     "category": "sklearn-linear",
     "tags": [
@@ -659,13 +680,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._least_angle.LassoLars"
+    ]
   },
   {
     "id": "model.lasso_lars_cv",
     "name": "LassoLarsCV",
     "type": "model",
-    "classPath": "sklearn.linear_model._least_angle.LassoLarsCV",
+    "classPath": "sklearn.linear_model.LassoLarsCV",
     "description": "Cross-validated Lasso, using the LARS algorithm.",
     "category": "sklearn-linear",
     "tags": [
@@ -718,13 +742,16 @@
         "default": false,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._least_angle.LassoLarsCV"
     ]
   },
   {
     "id": "model.lasso_lars_ic",
     "name": "LassoLarsIC",
     "type": "model",
-    "classPath": "sklearn.linear_model._least_angle.LassoLarsIC",
+    "classPath": "sklearn.linear_model.LassoLarsIC",
     "description": "Lasso model fit with Lars using BIC or AIC for model selection.",
     "category": "sklearn-linear",
     "tags": [
@@ -806,13 +833,16 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._least_angle.LassoLarsIC"
     ]
   },
   {
     "id": "model.linear_regression",
     "name": "LinearRegression",
     "type": "model",
-    "classPath": "sklearn.linear_model._base.LinearRegression",
+    "classPath": "sklearn.linear_model.LinearRegression",
     "description": "Ordinary least squares Linear Regression.",
     "category": "sklearn-linear",
     "tags": [
@@ -842,13 +872,16 @@
         "default": false,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._base.LinearRegression"
     ]
   },
   {
     "id": "model.logistic_regression",
     "name": "LogisticRegression",
     "type": "model",
-    "classPath": "sklearn.linear_model._logistic.LogisticRegression",
+    "classPath": "sklearn.linear_model.LogisticRegression",
     "description": "Logistic Regression (aka logit, MaxEnt) classifier.",
     "category": "sklearn-linear",
     "tags": [
@@ -979,13 +1012,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._logistic.LogisticRegression"
+    ]
   },
   {
     "id": "model.logistic_regression_cv",
     "name": "LogisticRegressionCV",
     "type": "model",
-    "classPath": "sklearn.linear_model._logistic.LogisticRegressionCV",
+    "classPath": "sklearn.linear_model.LogisticRegressionCV",
     "description": "Logistic Regression CV (aka logit, MaxEnt) classifier.",
     "category": "sklearn-linear",
     "tags": [
@@ -1124,13 +1160,16 @@
         "default": "warn",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._logistic.LogisticRegressionCV"
     ]
   },
   {
     "id": "model.multi_task_elastic_net",
     "name": "MultiTaskElasticNet",
     "type": "model",
-    "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskElasticNet",
+    "classPath": "sklearn.linear_model.MultiTaskElasticNet",
     "description": "Multi-task ElasticNet model trained with L1/L2 mixed-norm as regularizer.",
     "category": "sklearn-linear",
     "tags": [
@@ -1197,13 +1236,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._coordinate_descent.MultiTaskElasticNet"
+    ]
   },
   {
     "id": "model.multi_task_elastic_net_cv",
     "name": "MultiTaskElasticNetCV",
     "type": "model",
-    "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskElasticNetCV",
+    "classPath": "sklearn.linear_model.MultiTaskElasticNetCV",
     "description": "Multi-task L1/L2 ElasticNet with built-in cross-validation.",
     "category": "sklearn-linear",
     "tags": [
@@ -1281,13 +1323,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._coordinate_descent.MultiTaskElasticNetCV"
+    ]
   },
   {
     "id": "model.multi_task_lasso",
     "name": "MultiTaskLasso",
     "type": "model",
-    "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskLasso",
+    "classPath": "sklearn.linear_model.MultiTaskLasso",
     "description": "Multi-task Lasso model trained with L1/L2 mixed-norm as regularizer.",
     "category": "sklearn-linear",
     "tags": [
@@ -1342,13 +1387,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._coordinate_descent.MultiTaskLasso"
+    ]
   },
   {
     "id": "model.multi_task_lasso_cv",
     "name": "MultiTaskLassoCV",
     "type": "model",
-    "classPath": "sklearn.linear_model._coordinate_descent.MultiTaskLassoCV",
+    "classPath": "sklearn.linear_model.MultiTaskLassoCV",
     "description": "Multi-task Lasso model trained with L1/L2 mixed-norm as regularizer.",
     "category": "sklearn-linear",
     "tags": [
@@ -1412,13 +1460,16 @@
         "default": "cyclic",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._coordinate_descent.MultiTaskLassoCV"
     ]
   },
   {
     "id": "model.orthogonal_matching_pursuit",
     "name": "OrthogonalMatchingPursuit",
     "type": "model",
-    "classPath": "sklearn.linear_model._omp.OrthogonalMatchingPursuit",
+    "classPath": "sklearn.linear_model.OrthogonalMatchingPursuit",
     "description": "Orthogonal Matching Pursuit model (OMP).",
     "category": "sklearn-linear",
     "tags": [
@@ -1452,13 +1503,16 @@
         "default": "auto",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._omp.OrthogonalMatchingPursuit"
     ]
   },
   {
     "id": "model.orthogonal_matching_pursuit_cv",
     "name": "OrthogonalMatchingPursuitCV",
     "type": "model",
-    "classPath": "sklearn.linear_model._omp.OrthogonalMatchingPursuitCV",
+    "classPath": "sklearn.linear_model.OrthogonalMatchingPursuitCV",
     "description": "Cross-validated Orthogonal Matching Pursuit model (OMP).",
     "category": "sklearn-linear",
     "tags": [
@@ -1486,13 +1540,16 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._omp.OrthogonalMatchingPursuitCV"
     ]
   },
   {
     "id": "model.passive_aggressive_classifier",
     "name": "PassiveAggressiveClassifier",
     "type": "model",
-    "classPath": "sklearn.linear_model._passive_aggressive.PassiveAggressiveClassifier",
+    "classPath": "sklearn.linear_model.PassiveAggressiveClassifier",
     "description": "Passive Aggressive Classifier.",
     "category": "sklearn-linear",
     "tags": [
@@ -1602,13 +1659,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._passive_aggressive.PassiveAggressiveClassifier"
+    ]
   },
   {
     "id": "model.passive_aggressive_regressor",
     "name": "PassiveAggressiveRegressor",
     "type": "model",
-    "classPath": "sklearn.linear_model._passive_aggressive.PassiveAggressiveRegressor",
+    "classPath": "sklearn.linear_model.PassiveAggressiveRegressor",
     "description": "Passive Aggressive Regressor.",
     "category": "sklearn-linear",
     "tags": [
@@ -1730,13 +1790,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._passive_aggressive.PassiveAggressiveRegressor"
+    ]
   },
   {
     "id": "model.perceptron",
     "name": "Perceptron",
     "type": "model",
-    "classPath": "sklearn.linear_model._perceptron.Perceptron",
+    "classPath": "sklearn.linear_model.Perceptron",
     "description": "Linear perceptron classifier.",
     "category": "sklearn-linear",
     "tags": [
@@ -1850,13 +1913,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._perceptron.Perceptron"
+    ]
   },
   {
     "id": "model.poisson_regressor",
     "name": "PoissonRegressor",
     "type": "model",
-    "classPath": "sklearn.linear_model._glm.glm.PoissonRegressor",
+    "classPath": "sklearn.linear_model.PoissonRegressor",
     "description": "Generalized Linear Model with a Poisson distribution.",
     "category": "sklearn-linear",
     "tags": [
@@ -1935,13 +2001,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._glm.glm.PoissonRegressor"
+    ]
   },
   {
     "id": "model.quantile_regressor",
     "name": "QuantileRegressor",
     "type": "model",
-    "classPath": "sklearn.linear_model._quantile.QuantileRegressor",
+    "classPath": "sklearn.linear_model.QuantileRegressor",
     "description": "Linear regression model that predicts conditional quantiles.",
     "category": "sklearn-linear",
     "tags": [
@@ -2019,13 +2088,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._quantile.QuantileRegressor"
+    ]
   },
   {
     "id": "model.ransac_regressor",
     "name": "RANSACRegressor",
     "type": "model",
-    "classPath": "sklearn.linear_model._ransac.RANSACRegressor",
+    "classPath": "sklearn.linear_model.RANSACRegressor",
     "description": "RANSAC (RANdom SAmple Consensus) algorithm.",
     "category": "sklearn-linear",
     "tags": [
@@ -2125,13 +2197,16 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._ransac.RANSACRegressor"
     ]
   },
   {
     "id": "model.ridge_classifier",
     "name": "RidgeClassifier",
     "type": "model",
-    "classPath": "sklearn.linear_model._ridge.RidgeClassifier",
+    "classPath": "sklearn.linear_model.RidgeClassifier",
     "description": "Classifier using Ridge regression.",
     "category": "sklearn-linear",
     "tags": [
@@ -2220,13 +2295,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._ridge.RidgeClassifier"
+    ]
   },
   {
     "id": "model.ridge_classifier_cv",
     "name": "RidgeClassifierCV",
     "type": "model",
-    "classPath": "sklearn.linear_model._ridge.RidgeClassifierCV",
+    "classPath": "sklearn.linear_model.RidgeClassifierCV",
     "description": "Ridge classifier with built-in cross-validation.",
     "category": "sklearn-linear",
     "tags": [
@@ -2270,13 +2348,16 @@
         "default": false,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._ridge.RidgeClassifierCV"
     ]
   },
   {
     "id": "model.ridge_cv",
     "name": "RidgeCV",
     "type": "model",
-    "classPath": "sklearn.linear_model._ridge.RidgeCV",
+    "classPath": "sklearn.linear_model.RidgeCV",
     "description": "Ridge regression with built-in cross-validation.",
     "category": "sklearn-linear",
     "tags": [
@@ -2331,13 +2412,16 @@
         "default": false,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._ridge.RidgeCV"
     ]
   },
   {
     "id": "model.sgd_classifier",
     "name": "SGDClassifier",
     "type": "model",
-    "classPath": "sklearn.linear_model._stochastic_gradient.SGDClassifier",
+    "classPath": "sklearn.linear_model.SGDClassifier",
     "description": "Linear classifiers (SVM, logistic regression, etc.) with SGD training.",
     "category": "sklearn-linear",
     "tags": [
@@ -2517,13 +2601,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._stochastic_gradient.SGDClassifier"
+    ]
   },
   {
     "id": "model.sgd_regressor",
     "name": "SGDRegressor",
     "type": "model",
-    "classPath": "sklearn.linear_model._stochastic_gradient.SGDRegressor",
+    "classPath": "sklearn.linear_model.SGDRegressor",
     "description": "Linear model fitted by minimizing a regularized empirical loss with SGD.",
     "category": "sklearn-linear",
     "tags": [
@@ -2703,13 +2790,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._stochastic_gradient.SGDRegressor"
+    ]
   },
   {
     "id": "model.theil_sen_regressor",
     "name": "TheilSenRegressor",
     "type": "model",
-    "classPath": "sklearn.linear_model._theil_sen.TheilSenRegressor",
+    "classPath": "sklearn.linear_model.TheilSenRegressor",
     "description": "Theil-Sen Estimator: robust multivariate regression model.",
     "category": "sklearn-linear",
     "tags": [
@@ -2755,13 +2845,16 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.linear_model._theil_sen.TheilSenRegressor"
     ]
   },
   {
     "id": "model.tweedie_regressor",
     "name": "TweedieRegressor",
     "type": "model",
-    "classPath": "sklearn.linear_model._glm.glm.TweedieRegressor",
+    "classPath": "sklearn.linear_model.TweedieRegressor",
     "description": "Generalized Linear Model with a Tweedie distribution.",
     "category": "sklearn-linear",
     "tags": [
@@ -2852,6 +2945,9 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.linear_model._glm.glm.TweedieRegressor"
+    ]
   }
 ]

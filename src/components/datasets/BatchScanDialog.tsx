@@ -28,13 +28,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  scanFolder,
-  linkDataset,
-  createGroup,
-  addDatasetToGroup,
-  getGroups,
-} from "@/api/client";
+import { scanFolder, linkDataset } from "@/api/datasets";
+import { createGroup, addDatasetToGroup, getGroups } from "@/api/workspace";
 import type { ScannedDataset } from "@/types/datasets";
 
 type Phase = "confirm" | "scanning" | "results" | "importing" | "done";

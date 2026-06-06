@@ -1,5 +1,5 @@
 /**
- * YHistogramV2 - Mode router for the histogram visualization.
+ * YHistogram - Mode router for the histogram visualization.
  *
  * Uses React.lazy() to code-split each render mode into its own chunk.
  * Calls the shared useHistogramData hook and selects the appropriate
@@ -29,7 +29,7 @@ import { BarChart3 } from 'lucide-react';
 import { getPresentPartitionRoles } from '@/lib/playground/colorConfig';
 import { useHistogramData } from './useHistogramData';
 import HistogramBase from './HistogramBase';
-import type { YHistogramV2Props, HistogramChartProps, BinData } from './types';
+import type { YHistogramProps, HistogramChartProps, BinData } from './types';
 
 // ============= Lazy-loaded mode components =============
 
@@ -53,7 +53,7 @@ function ChartLoadingFallback() {
 
 // ============= Component =============
 
-export function YHistogramV2(props: YHistogramV2Props) {
+export function YHistogram(props: YHistogramProps) {
   const data = useHistogramData(props);
 
   const {
@@ -209,4 +209,4 @@ export function YHistogramV2(props: YHistogramV2Props) {
   );
 }
 
-export default React.memo(YHistogramV2);
+export default React.memo(YHistogram);

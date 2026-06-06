@@ -163,7 +163,7 @@ async function measureSyntheticRender(sampleCount: number): Promise<number> {
 
   const start = performance.now();
 
-  // Simulate rendering like SpectraChartV2
+  // Simulate rendering like SpectraChart
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   for (let s = 0; s < spectra.length; s++) {

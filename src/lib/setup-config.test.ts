@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { RecommendedConfigResponse } from "@/api/client";
+import type { RecommendedConfigResponse } from "@/api/config";
 
 import {
   getCompatibleProfiles,

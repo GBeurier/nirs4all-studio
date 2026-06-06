@@ -8,7 +8,7 @@ through backend processing and WebSocket updates.
 Test categories:
 - test_quick_run_flow.py: End-to-end quick run tests
 - test_run_errors.py: Error handling and validation tests
-- test_run_lifecycle.py: Run lifecycle (stop, pause, retry) tests
+- test_run_lifecycle.py: Run lifecycle (stop, retry) tests
 - test_websocket_flow.py: WebSocket message sequence tests
 
 Run all integration tests:

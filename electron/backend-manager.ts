@@ -45,6 +45,9 @@ export class BackendManager {
   private isShuttingDown: boolean = false;
   private lastError: string | null = null;
   private consecutiveHealthFailures: number = 0;
+  /** Generation counter for the active ML-readiness poller. Bumping it
+   *  cancels any in-flight pollMlReadiness() loop (backend teardown/restart). */
+  private mlReadinessGeneration: number = 0;
   private envManager: EnvManager | null = null;
   /** When true, stop() kills only the backend process (no tree kill)
    *  so that child processes like the updater script survive. */
@@ -83,17 +86,45 @@ export class BackendManager {
 
       console.log(`Found orphaned backend PID ${pid}, killing...`);
       if (process.platform === "win32") {
-        spawn("taskkill", ["/pid", pid.toString(), "/t", "/f"]);
+        // Await taskkill's own exit so we do not race the orphan's port
+        // release before resolveStartupPort()/spawn run.
+        await this.taskkill(pid, true);
       } else {
         try { process.kill(pid, "SIGKILL"); } catch { /* already dead */ }
+        // Give the kernel a moment to reap the process and release the port.
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
-
-      // Wait briefly for the process to die and release the port
-      await new Promise(resolve => setTimeout(resolve, 500));
     } catch { /* ignore read/parse errors */ }
 
     // Clean up the stale PID file
     try { fs.unlinkSync(pidFile); } catch { /* ignore */ }
+  }
+
+  /**
+   * Force-kill a Windows process tree via `taskkill` and resolve only once
+   * taskkill itself has exited (or errored), so callers do not proceed while
+   * the target may still hold a port. A bounded fallback timer guarantees the
+   * promise settles even if taskkill hangs.
+   */
+  private taskkill(pid: number, treeKill: boolean): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const args = treeKill
+        ? ["/pid", pid.toString(), "/t", "/f"]
+        : ["/pid", pid.toString(), "/f"];
+      const proc = spawn("taskkill", args);
+
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(fallback);
+        resolve();
+      };
+
+      const fallback = setTimeout(done, 2000);
+      proc.once("exit", done);
+      proc.once("error", done);
+    });
   }
 
   /**
@@ -333,8 +364,13 @@ export class BackendManager {
     const startTime = Date.now();
     let mlNotified = false;
 
+    // Snapshot the active generation; if it changes (backend exit/restart) the
+    // poller for the previous backend must stop notifying the renderer.
+    const generation = this.mlReadinessGeneration;
+    const cancelled = () => this.isShuttingDown || this.mlReadinessGeneration !== generation;
+
     while (Date.now() - startTime < maxWait) {
-      if (this.isShuttingDown) return;
+      if (cancelled()) return;
 
       try {
         const response = await fetch(url, {
@@ -360,8 +396,18 @@ export class BackendManager {
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
+    if (cancelled()) return;
     console.warn("ML readiness polling timed out after 2 minutes");
     this.notifyMlReady(false, "ML loading timed out", false);
+  }
+
+  /**
+   * Cancel any in-flight ML-readiness poll so it stops fetching a dead/replaced
+   * backend and stops notifying the renderer. Called when the backend process
+   * exits or is terminated.
+   */
+  private cancelMlReadinessPoll(): void {
+    this.mlReadinessGeneration += 1;
   }
 
   /**
@@ -372,7 +418,13 @@ export class BackendManager {
   private notifyMlReady(ready: boolean, error?: string, workspaceReady: boolean = false): void {
     const windows = BrowserWindow.getAllWindows();
     for (const win of windows) {
-      win.webContents.send("backend:mlReady", { ready, error, workspaceReady });
+      try {
+        if (!win.isDestroyed()) {
+          win.webContents.send("backend:mlReady", { ready, error, workspaceReady });
+        }
+      } catch {
+        // Window may be closing during shutdown — ignore
+      }
     }
   }
 
@@ -449,12 +501,12 @@ export class BackendManager {
   }
 
   /**
-   * Spawn the backend process and monitor health in background.
-   * Does not block — health check completion is signaled via IPC.
+   * Spawn the backend process and wire its stdout/stderr/exit/error handlers.
+   * Shared by both the blocking (startInternal) and non-blocking
+   * (startInternalNonBlocking) start paths so the launch config, environment,
+   * and crash plumbing never drift between them.
    */
-  private startInternalNonBlocking(): void {
-    console.log(`Starting backend on port ${this.port} (non-blocking)...`);
-
+  private spawnBackend(): void {
     const { command, args, cwd, env: extraEnv } = this.getBackendPath();
 
     console.log(`Executing: ${command} ${args.join(" ")}`);
@@ -501,6 +553,7 @@ export class BackendManager {
       const wasRunning = this.status === "running";
       const wasStarting = this.status === "starting" || this.status === "restarting";
       this.process = null;
+      this.cancelMlReadinessPoll();
 
       if ((wasRunning || wasStarting) && !this.isShuttingDown) {
         this.lastError = code === null
@@ -515,9 +568,20 @@ export class BackendManager {
       console.error("Backend process error:", error);
       this.lastError = error.message;
       this.process = null;
+      this.cancelMlReadinessPoll();
       this.status = "error";
       this.notifyRenderer();
     });
+  }
+
+  /**
+   * Spawn the backend process and monitor health in background.
+   * Does not block — health check completion is signaled via IPC.
+   */
+  private startInternalNonBlocking(): void {
+    console.log(`Starting backend on port ${this.port} (non-blocking)...`);
+
+    this.spawnBackend();
 
     // Run health check in background — don't block
     this.waitForHealthCheck()
@@ -543,74 +607,7 @@ export class BackendManager {
   private async startInternal(): Promise<void> {
     console.log(`Starting backend on port ${this.port}...`);
 
-    const { command, args, cwd, env: extraEnv } = this.getBackendPath();
-
-    console.log(`Executing: ${command} ${args.join(" ")}`);
-    if (cwd) console.log(`Working directory: ${cwd}`);
-
-    // Set environment variables
-    const configuredPythonPath = this.envManager?.getConfiguredPythonPath() || "";
-    const envSettingsPath = this.envManager?.getSettingsPath() || "";
-    const env = {
-      ...process.env,
-      NIRS4ALL_PORT: this.port.toString(),
-      NIRS4ALL_DESKTOP: "true",
-      NIRS4ALL_ELECTRON: "true",
-      NIRS4ALL_APP_VERSION: electron.app.getVersion(),
-      NIRS4ALL_APP_DIR: path.dirname(process.execPath),
-      NIRS4ALL_APP_EXE: path.basename(process.execPath),
-      NIRS4ALL_EXPECTED_PYTHON: configuredPythonPath,
-      NIRS4ALL_ENV_SETTINGS_PATH: envSettingsPath,
-      NIRS4ALL_PID_FILE: this.getPidFilePath(),
-      KERAS_BACKEND: "torch",
-      // Portable mode: electron-builder sets PORTABLE_EXECUTABLE_FILE
-      ...(process.env.PORTABLE_EXECUTABLE_FILE
-        ? { NIRS4ALL_PORTABLE_EXE: process.env.PORTABLE_EXECUTABLE_FILE }
-        : {}),
-      ...extraEnv,
-    };
-
-    // Spawn the backend process
-    this.process = spawn(command, args, {
-      cwd,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: false,
-    });
-
-    // Log stdout
-    this.process.stdout?.on("data", (data: Buffer) => {
-      console.log(`[Backend] ${data.toString().trim()}`);
-    });
-
-    // Log stderr
-    this.process.stderr?.on("data", (data: Buffer) => {
-      console.error(`[Backend Error] ${data.toString().trim()}`);
-    });
-
-    // Handle process exit
-    this.process.on("exit", (code, signal) => {
-      console.log(`Backend exited with code ${code}, signal ${signal}`);
-      const wasRunning = this.status === "running";
-      const wasStarting = this.status === "starting" || this.status === "restarting";
-      this.process = null;
-
-      if ((wasRunning || wasStarting) && !this.isShuttingDown) {
-        this.lastError = code === null
-          ? `Backend exited unexpectedly (signal ${signal ?? "unknown"})`
-          : `Backend exited unexpectedly with code ${code}`;
-        this.status = "error";
-        this.notifyRenderer();
-      }
-    });
-
-    this.process.on("error", (error) => {
-      console.error("Backend process error:", error);
-      this.lastError = error.message;
-      this.process = null;
-      this.status = "error";
-      this.notifyRenderer();
-    });
+    this.spawnBackend();
 
     // Wait for the backend to be ready
     await this.waitForHealthCheck();
@@ -644,6 +641,10 @@ export class BackendManager {
     proc.removeAllListeners("exit");
     proc.removeAllListeners("error");
 
+    // Stop any ML-readiness poll bound to this backend so it cannot keep
+    // probing a dead port or notify the renderer for a replaced backend.
+    this.cancelMlReadinessPoll();
+
     await new Promise<void>((resolve) => {
       let finished = false;
 
@@ -659,13 +660,16 @@ export class BackendManager {
       const timeout = setTimeout(() => {
         console.warn("Backend did not stop gracefully, force killing...");
         if (process.platform === "win32") {
+          // Await taskkill's actual exit instead of guessing a fixed delay, so
+          // the port is released before the replacement backend spawns.
           if (pid) {
-            spawn("taskkill", ["/pid", pid.toString(), "/t", "/f"]);
+            void this.taskkill(pid, true).then(finish);
+          } else {
+            finish();
           }
         } else {
           proc.kill("SIGKILL");
         }
-        setTimeout(finish, 250);
       }, 2000);
 
       proc.once("exit", () => {

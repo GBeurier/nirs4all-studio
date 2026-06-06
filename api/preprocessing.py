@@ -7,7 +7,7 @@ getting their parameters, and applying preprocessing to spectral data.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -16,7 +16,7 @@ from .shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-from .lazy_imports import get_cached, require_ml_ready
+from .lazy_imports import get_cached
 
 NIRS4ALL_AVAILABLE = True
 

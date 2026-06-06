@@ -3,7 +3,7 @@ Integration tests for run lifecycle operations.
 
 Tests:
 - Stop/cancel running runs
-- Pause/resume runs
+- Stop is terminal (no worker resurrection)
 - Retry failed runs
 - Run deletion
 - Concurrent run handling
@@ -13,10 +13,8 @@ Run tests:
     pytest tests/integration/test_run_lifecycle.py -v
 """
 
-import json
 import time
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient
@@ -148,109 +146,62 @@ class TestRunStop:
 
 
 # ============================================================================
-# Pause/Resume Tests
+# Stop-Is-Terminal Tests (RUN-07 regression)
 # ============================================================================
 
 
-class TestRunPauseResume:
-    """Test pausing and resuming runs."""
+class TestStopIsTerminal:
+    """A stopped run must stay stopped.
 
-    @pytest.mark.timeout(30)
-    def test_pause_running_run(
-        self,
-        workspace_client: TestClient,
-        slow_mock_nirs4all,
-    ):
-        """Verify a running run can be paused."""
-        response = workspace_client.post("/api/runs/quick", json={
-            "pipeline_id": "test_pls",
-            "dataset_id": "test_dataset",
-            "cv_folds": 3,
-        })
-
-        if response.status_code not in (200, 201):
-            pytest.skip(f"Quick run creation failed: {response.json()}")
-
-        run_id = response.json()["id"]
-        time.sleep(0.5)
-
-        # Get initial status
-        initial_run = workspace_client.get(f"/api/runs/{run_id}").json()
-        if initial_run["status"] != "running":
-            pytest.skip("Run not in running state")
-
-        # Pause
-        pause_response = workspace_client.post(f"/api/runs/{run_id}/pause")
-        assert pause_response.status_code == 200
-
-        # Verify paused status
-        paused_run = workspace_client.get(f"/api/runs/{run_id}").json()
-        assert paused_run["status"] == "paused"
-
-        # Stop the run so the background asyncio task and worker thread fully
-        # terminate before the test exits — otherwise an in-flight thread can
-        # outlive the test and crash the xdist worker on teardown.
-        workspace_client.post(f"/api/runs/{run_id}/resume")
-        workspace_client.post(f"/api/runs/{run_id}/stop")
-        tracker = RunProgressTracker(workspace_client, run_id)
-        tracker.poll_until_complete(timeout=10.0, poll_interval=0.2)
+    The worker cannot abort an in-flight nirs4all.run() (no library cancel hook
+    yet), so the engine must instead refuse to publish results for a cancelled
+    run: the terminal status written by stop_run must never be overwritten to
+    'completed' when the worker eventually finishes (RUN-07).
+    """
 
     @pytest.mark.timeout(60)
-    def test_resume_paused_run(
+    def test_stopped_run_is_not_resurrected_by_worker(
         self,
         workspace_client: TestClient,
         slow_mock_nirs4all,
     ):
-        """Verify a paused run can be resumed."""
         response = workspace_client.post("/api/runs/quick", json={
             "pipeline_id": "test_pls",
             "dataset_id": "test_dataset",
             "cv_folds": 3,
         })
-
         if response.status_code not in (200, 201):
             pytest.skip(f"Quick run creation failed: {response.json()}")
-
-        run_id = response.json()["id"]
-        time.sleep(0.5)
-
-        # Pause first
-        pause_response = workspace_client.post(f"/api/runs/{run_id}/pause")
-        if pause_response.status_code != 200:
-            pytest.skip("Could not pause run")
-
-        # Resume
-        resume_response = workspace_client.post(f"/api/runs/{run_id}/resume")
-        assert resume_response.status_code == 200
-
-        # Verify status changed back to running
-        resumed_run = workspace_client.get(f"/api/runs/{run_id}").json()
-        assert resumed_run["status"] in ("running", "queued")
-
-    def test_cannot_resume_non_paused_run(
-        self,
-        workspace_client: TestClient,
-        mock_nirs4all,
-    ):
-        """Verify cannot resume a run that is not paused."""
-        response = workspace_client.post("/api/runs/quick", json={
-            "pipeline_id": "test_pls",
-            "dataset_id": "test_dataset",
-            "cv_folds": 3,
-        })
-
-        if response.status_code not in (200, 201):
-            pytest.skip(f"Quick run creation failed: {response.json()}")
-
         run_id = response.json()["id"]
 
-        # Wait for completion
-        tracker = RunProgressTracker(workspace_client, run_id)
-        tracker.poll_until_complete(timeout=30.0)
+        # Wait until the worker is actually executing
+        deadline = time.time() + 10.0
+        while time.time() < deadline:
+            if workspace_client.get(f"/api/runs/{run_id}").json()["status"] == "running":
+                break
+            time.sleep(0.1)
+        else:
+            pytest.skip("Run never reached running state")
 
-        # Try to resume completed run
-        resume_response = workspace_client.post(f"/api/runs/{run_id}/resume")
-        assert resume_response.status_code == 400
+        stop_response = workspace_client.post(f"/api/runs/{run_id}/stop")
+        assert stop_response.status_code == 200
+        assert workspace_client.get(f"/api/runs/{run_id}").json()["status"] == "failed"
+
+        # Let the in-flight worker finish, then verify the terminal status was
+        # NOT overwritten by the finishing worker.
+        from api.jobs.manager import JobStatus, job_manager
+        deadline = time.time() + 15.0
+        while time.time() < deadline:
+            job = job_manager.get_job(run_id)
+            if job is None or job.status not in (JobStatus.PENDING, JobStatus.RUNNING):
+                break
+            time.sleep(0.1)
+
+        final = workspace_client.get(f"/api/runs/{run_id}").json()
+        assert final["status"] == "failed"
+        for dataset in final["datasets"]:
+            for pipeline in dataset["pipelines"]:
+                assert pipeline["status"] != "completed"
 
 
 # ============================================================================

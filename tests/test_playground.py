@@ -1204,3 +1204,41 @@ class TestStepComparisonMode:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestNumpySerialization:
+    """PG-07: the negotiated JSON path serializes numpy natively (no .tolist() copies)."""
+
+    def test_numpy_payload_wire_format(self):
+        import numpy as np
+
+        from api.playground.serialization import NumpyORJSONResponse
+
+        payload = {
+            "spectra": np.array([[1.5, float("nan")], [2.0, 3.0]]),
+            "indices": np.arange(2),
+            "labels": np.array(["a", "b"]),  # non-numeric -> default fallback
+            "scalar": np.float32(1.25),
+            "none": None,
+        }
+        import orjson
+
+        body = NumpyORJSONResponse(payload).body
+        decoded = orjson.loads(body)
+        # NaN -> null, matrices -> nested lists, strings via fallback
+        assert decoded["spectra"] == [[1.5, None], [2.0, 3.0]]
+        assert decoded["indices"] == [0, 1]
+        assert decoded["labels"] == ["a", "b"]
+        assert decoded["scalar"] == 1.25
+        assert decoded["none"] is None
+
+    def test_execute_json_response_carries_arrays_as_lists(self):
+        """End-to-end: a JSON (non-msgpack) client still receives plain JSON lists."""
+        response = client.post("/api/playground/execute", json={
+            "data": {"x": [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], "wavelengths": [1000, 1100, 1200]},
+            "steps": [],
+        })
+        assert response.status_code == 200
+        data = response.json()
+        assert data["original"]["spectra"] == [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+        assert isinstance(data["original"]["sample_indices"], list)

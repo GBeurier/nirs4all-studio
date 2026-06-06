@@ -39,17 +39,19 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   alignConfig,
-  formatApiErrorDetail,
   getConfigDiff,
-  getDependencies,
-  getRuntimeSummary,
   type ConfigComparisonResponse,
-  type DependenciesResponse,
-  type DependencyInfo,
   type OptionalPackageInfo,
   type PackageFailure,
-  type RuntimeSummaryResponse,
-} from "@/api/client";
+} from "@/api/config";
+import { formatApiErrorDetail } from "@/api/transport";
+import {
+  getDependencies,
+  type DependenciesResponse,
+  type DependencyInfo,
+} from "@/api/dependencies";
+import { getRuntimeSummary } from "@/api/system";
+import type { RuntimeSummaryResponse } from "@/types/settings";
 import { PythonEnvInspectionCard } from "@/components/python/PythonEnvInspectionCard";
 import {
   announceBackendRestarted,

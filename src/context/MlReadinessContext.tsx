@@ -19,7 +19,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api } from "@/api/client";
+import { api } from "@/api/transport";
 import {
   datasetQueryKeys,
   prefetchDatasetsList,

@@ -19,12 +19,15 @@ const readinessState = vi.hoisted(() => ({
   workspaceReady: true,
 }));
 
-vi.mock("@/api/client", () => ({
+vi.mock("@/api/datasets", () => ({
   listDatasets: apiMocks.listDatasets,
   getDataset: apiMocks.getDataset,
   previewDatasetById: apiMocks.previewDatasetById,
-  getLinkedWorkspaces: apiMocks.getLinkedWorkspaces,
   getDatasetScores: apiMocks.getDatasetScores,
+}));
+
+vi.mock("@/api/linkedWorkspaces", () => ({
+  getLinkedWorkspaces: apiMocks.getLinkedWorkspaces,
 }));
 
 vi.mock("@/context/MlReadinessContext", () => ({

@@ -38,7 +38,8 @@ warn-*.txt
 
 # Electron
 dist-electron/
-workspace/
+# Runtime user-workspace dir at repo root only (api/workspace/ is a python package)
+/workspace/
 
 # Playwright
 /test-results/
@@ -47,3 +48,6 @@ workspace/
 /playwright/.cache/
 /playwright/.auth/
 docs/user-guide/build/
+# local code-intelligence index + rtk state
+.codegraph/
+.rtk/

@@ -11,10 +11,9 @@ Run with: pytest tests/test_aggregated_predictions_api.py -v
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, PropertyMock, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -230,24 +229,24 @@ class TestStoreAdapterAggregated:
             adapter._store = mock_store
             return adapter
 
-    def test_get_aggregated_predictions(self, mock_polars_df, sample_aggregated_rows):
+    def test_get_chain_summaries(self, mock_polars_df, sample_aggregated_rows):
         mock_store = MagicMock()
         mock_store.query_chain_summaries.return_value = mock_polars_df(sample_aggregated_rows)
 
         adapter = self._make_adapter(mock_store)
-        result = adapter.get_aggregated_predictions()
+        result = adapter.get_chain_summaries()
 
         assert len(result) == 2
         assert result[0]["chain_id"] == "chain-001"
         assert result[1]["chain_id"] == "chain-002"
         mock_store.query_chain_summaries.assert_called_once()
 
-    def test_get_aggregated_predictions_with_filters(self, mock_polars_df, sample_aggregated_rows):
+    def test_get_chain_summaries_with_filters(self, mock_polars_df, sample_aggregated_rows):
         mock_store = MagicMock()
         mock_store.query_chain_summaries.return_value = mock_polars_df(sample_aggregated_rows[:1])
 
         adapter = self._make_adapter(mock_store)
-        result = adapter.get_aggregated_predictions(
+        result = adapter.get_chain_summaries(
             run_id="run-001",
             model_class="PLSRegression",
             metric="rmse",
@@ -262,47 +261,6 @@ class TestStoreAdapterAggregated:
             model_class="PLSRegression",
             metric="rmse",
         )
-
-    def test_get_top_aggregated_predictions(self, mock_polars_df, sample_aggregated_rows):
-        mock_store = MagicMock()
-        mock_store.query_top_chains.return_value = mock_polars_df(sample_aggregated_rows[:1])
-
-        adapter = self._make_adapter(mock_store)
-        result = adapter.get_top_aggregated_predictions(metric="rmse", n=5)
-
-        assert len(result) == 1
-        assert result[0]["metric"] == "rmse"
-        mock_store.query_top_chains.assert_called_once_with(
-            metric="rmse",
-            n=5,
-            score_column="cv_val_score",
-        )
-
-    def test_get_chain_predictions(self, mock_polars_df, sample_chain_prediction_rows):
-        mock_store = MagicMock()
-        mock_store.get_chain_predictions.return_value = mock_polars_df(sample_chain_prediction_rows)
-
-        adapter = self._make_adapter(mock_store)
-        result = adapter.get_chain_predictions("chain-001")
-
-        assert len(result) == 3
-        assert all(r["chain_id"] == "chain-001" for r in result)
-        mock_store.get_chain_predictions.assert_called_once_with(
-            chain_id="chain-001",
-            partition=None,
-            fold_id=None,
-        )
-
-    def test_get_chain_predictions_with_partition(self, mock_polars_df, sample_chain_prediction_rows):
-        val_rows = [r for r in sample_chain_prediction_rows if r["partition"] == "val"]
-        mock_store = MagicMock()
-        mock_store.get_chain_predictions.return_value = mock_polars_df(val_rows)
-
-        adapter = self._make_adapter(mock_store)
-        result = adapter.get_chain_predictions("chain-001", partition="val")
-
-        assert len(result) == 2
-        assert all(r["partition"] == "val" for r in result)
 
     def test_get_prediction_arrays(self):
         mock_store = MagicMock()
@@ -365,7 +323,7 @@ class TestStoreAdapterAggregated:
         mock_store.query_chain_summaries.return_value = mock_polars_df(rows)
 
         adapter = self._make_adapter(mock_store)
-        result = adapter.get_aggregated_predictions()
+        result = adapter.get_chain_summaries()
 
         assert result[0]["cv_val_score"] is None
         assert result[0]["cv_test_score"] is None
@@ -408,133 +366,6 @@ class TestGetAggregatedPredictions:
         assert "cv_test_score" in pred
         assert "cv_train_score" in pred
         assert "pipeline_status" in pred
-
-    def test_matched_refit_chain_inherits_cv_fields(self, client, patched_endpoints, mock_polars_df):
-        rows = [
-            {
-                "run_id": "run-001",
-                "pipeline_id": "pipe-pls-2",
-                "chain_id": "chain-pls-2",
-                "model_name": "PLS",
-                "model_class": "PLSRegression",
-                "preprocessings": "SNV",
-                "branch_path": None,
-                "source_index": None,
-                "model_step_idx": 3,
-                "metric": "rmse",
-                "task_type": "regression",
-                "dataset_name": "dataset_a",
-                "best_params": None,
-                "cv_val_score": 23.314,
-                "cv_test_score": 22.0,
-                "cv_train_score": 21.0,
-                "cv_fold_count": 3,
-                "cv_scores": None,
-                "final_test_score": None,
-                "final_train_score": None,
-                "final_scores": None,
-                "pipeline_status": "completed",
-            },
-            {
-                "run_id": "run-001",
-                "pipeline_id": "pipe-pls-6",
-                "chain_id": "chain-pls-6",
-                "model_name": "PLS",
-                "model_class": "PLSRegression",
-                "preprocessings": "SNV",
-                "branch_path": None,
-                "source_index": None,
-                "model_step_idx": 3,
-                "metric": "rmse",
-                "task_type": "regression",
-                "dataset_name": "dataset_a",
-                "best_params": None,
-                "cv_val_score": 12.811,
-                "cv_test_score": 10.615,
-                "cv_train_score": 11.432,
-                "cv_fold_count": 3,
-                "cv_scores": None,
-                "final_test_score": None,
-                "final_train_score": None,
-                "final_scores": None,
-                "pipeline_status": "completed",
-            },
-            {
-                "run_id": "run-001",
-                "pipeline_id": "pipe-pls-refit",
-                "chain_id": "chain-pls-refit",
-                "model_name": "PLS",
-                "model_class": "PLSRegression",
-                "preprocessings": "SNV",
-                "branch_path": None,
-                "source_index": None,
-                "model_step_idx": 3,
-                "metric": "rmse",
-                "task_type": "regression",
-                "dataset_name": "dataset_a",
-                "best_params": None,
-                "cv_val_score": None,
-                "cv_test_score": None,
-                "cv_train_score": None,
-                "cv_fold_count": 0,
-                "cv_scores": None,
-                "final_test_score": 23.672,
-                "final_train_score": 22.654,
-                "final_scores": None,
-                "pipeline_status": "completed",
-            },
-        ]
-        pipeline_rows = [
-            {
-                "pipeline_id": "pipe-pls-2",
-                "expanded_config": [
-                    {"class": "sklearn.model_selection._split.KFold", "params": {"n_splits": 3}},
-                    None,
-                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 2}}, "name": "PLS"},
-                ],
-            },
-            {
-                "pipeline_id": "pipe-pls-6",
-                "expanded_config": [
-                    {"class": "sklearn.model_selection._split.KFold", "params": {"n_splits": 3}},
-                    None,
-                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 6}}, "name": "PLS"},
-                ],
-            },
-            {
-                "pipeline_id": "pipe-pls-refit",
-                "expanded_config": [
-                    {"class": "nirs4all.pipeline.execution.refit.executor._FullTrainFoldSplitter", "params": {}},
-                    None,
-                    {"model": {"class": "sklearn.cross_decomposition._pls.PLSRegression", "params": {"n_components": 6}}, "name": "PLS"},
-                ],
-            },
-        ]
-
-        patched_endpoints.query_chain_summaries.side_effect = [
-            mock_polars_df(rows),
-            mock_polars_df(rows),
-        ]
-
-        def _fetch_pl(sql, _params):
-            if "SELECT chain_id, fold_artifacts FROM chains" in sql:
-                return mock_polars_df([])
-            if "SELECT pipeline_id, expanded_config FROM pipelines" in sql:
-                return mock_polars_df(pipeline_rows)
-            return mock_polars_df([])
-
-        patched_endpoints._fetch_pl.side_effect = _fetch_pl
-
-        resp = client.get("/api/aggregated-predictions")
-        assert resp.status_code == 200
-
-        predictions = {row["chain_id"]: row for row in resp.json()["predictions"]}
-        assert predictions["chain-pls-refit"]["cv_val_score"] == pytest.approx(12.811)
-        assert predictions["chain-pls-refit"]["cv_test_score"] == pytest.approx(10.615)
-        assert predictions["chain-pls-refit"]["cv_fold_count"] == 3
-        assert predictions["chain-pls-refit"]["cv_source_chain_id"] == "chain-pls-6"
-        assert predictions["chain-pls-refit"]["is_refit_only"] is not True
-
     def test_cv_only_chain_gets_synthetic_refit_payload(self, client, patched_endpoints, mock_polars_df):
         rows = [
             {

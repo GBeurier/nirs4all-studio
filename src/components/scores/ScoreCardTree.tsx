@@ -21,7 +21,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { getChainPartitionDetail } from "@/api/client";
+import { getChainPartitionDetail } from "@/api/aggregatedPredictions";
 import { buildFoldTrainCards, enrichCrossvalRow } from "@/lib/score-adapters";
 import { ScoreCardRowView } from "./ScoreCardRowView";
 import type { ScoreCardRow } from "@/types/score-cards";

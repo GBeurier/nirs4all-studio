@@ -36,8 +36,9 @@ import {
   useAlignConfig,
   useRecommendedConfig,
 } from "@/hooks/useRecommendedConfig";
-import { getBuildInfo } from "@/api/client";
-import type { BuildInfoResponse, PackageDiff } from "@/api/client";
+import { getBuildInfo } from "@/api/system";
+import type { BuildInfoResponse } from "@/api/system";
+import type { PackageDiff } from "@/api/config";
 
 interface ActionResult {
   type: "align";

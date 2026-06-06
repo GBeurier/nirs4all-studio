@@ -1,4 +1,4 @@
-import type { OptionalPackageInfo, ProfileInfo, RecommendedConfigResponse } from "@/api/client";
+import type { OptionalPackageInfo, ProfileInfo, RecommendedConfigResponse } from "@/api/config";
 
 function normalizePackageName(name: string): string {
   return name.replace(/[-_.]+/g, "_").toLowerCase();

@@ -23,14 +23,28 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/api/client")>("@/api/client");
+vi.mock("@/api/system", async () => {
+  const actual = await vi.importActual<typeof import("@/api/system")>("@/api/system");
   return {
     ...actual,
     getRuntimeSummary: mocks.getRuntimeSummary,
+  };
+});
+
+vi.mock("@/api/config", async () => {
+  const actual = await vi.importActual<typeof import("@/api/config")>("@/api/config");
+  return {
+    ...actual,
     getConfigDiff: mocks.getConfigDiff,
-    getDependencies: mocks.getDependencies,
     alignConfig: mocks.alignConfig,
+  };
+});
+
+vi.mock("@/api/dependencies", async () => {
+  const actual = await vi.importActual<typeof import("@/api/dependencies")>("@/api/dependencies");
+  return {
+    ...actual,
+    getDependencies: mocks.getDependencies,
   };
 });
 

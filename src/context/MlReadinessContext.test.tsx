@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   prefetchDatasetsList: vi.fn(),
 }));
 
-vi.mock("@/api/client", () => ({
+vi.mock("@/api/transport", () => ({
   api: {
     get: mocks.apiGet,
   },

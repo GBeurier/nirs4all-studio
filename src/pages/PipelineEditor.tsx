@@ -29,11 +29,13 @@ import {
 import {
   savePipeline,
   getPipeline,
-  getChainPipelineSteps,
-  getRunPipelineSteps,
   previewPipelineImport,
   renderCanonicalPipeline,
-} from "@/api/client";
+} from "@/api/pipelines";
+import {
+  getChainPipelineSteps,
+  getRunPipelineSteps,
+} from "@/api/aggregatedPredictions";
 import { describeChainPipelineReload, describeRunPipelineReload } from "@/components/runs/runDetailUtils";
 import { motion } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
@@ -74,8 +76,8 @@ import {
 import { toast } from "sonner";
 import { clearPersistedState, hasPersistedPipelineState, migrateDraftKey, usePipelineEditor } from "@/hooks/usePipelineEditor";
 import { useDatasetBinding } from "@/hooks/useDatasetBinding";
-import { listPipelineSamples, getPipelineSample } from "@/api/client";
-import type { PipelineSampleInfo } from "@/api/client";
+import { listPipelineSamples, getPipelineSample } from "@/api/pipelines";
+import type { PipelineSampleInfo } from "@/api/pipelines";
 import {
   useVariantCount,
   formatVariantCount,
@@ -92,7 +94,6 @@ import {
   ExecutionPreviewCompact,
   FocusPanelRing,
   NavigationStatusBar,
-  DatasetBinding,
   PipelineYAMLView,
 } from "@/components/pipeline-editor";
 import { DatasetBindingProvider, NodeRegistryProvider, OperatorAvailabilityProvider, PipelineEditorPreferencesProvider } from "@/components/pipeline-editor/contexts";
@@ -206,34 +207,6 @@ export default function PipelineEditor() {
     pipelineId,
     persistBinding: true,
   });
-
-  // Calculate dimension warnings from bound dataset
-  const dimensionWarnings = useMemo(() => {
-    if (!boundDataset) return [];
-
-    const warnings: string[] = [];
-    const maxFeatures = boundDataset.shape.features;
-    const maxSamples = boundDataset.shape.samples;
-
-    // Check all steps for n_components > features
-    const checkStep = (step: EditorPipelineStep) => {
-      const nComponents = step.params?.n_components as number | undefined;
-      if (nComponents && nComponents > maxFeatures) {
-        warnings.push(`${step.name}: n_components (${nComponents}) exceeds features (${maxFeatures})`);
-      }
-      const nSplits = step.params?.n_splits as number | undefined;
-      if (nSplits && nSplits > maxSamples) {
-        warnings.push(`${step.name}: n_splits (${nSplits}) exceeds samples (${maxSamples})`);
-      }
-      // Check branches
-      step.branches?.forEach(branch => branch.forEach(checkStep));
-      // Check children
-      step.children?.forEach(checkStep);
-    };
-
-    steps.forEach(checkStep);
-    return warnings;
-  }, [boundDataset, steps]);
 
   const importIntoEditor = useCallback(
     async ({
@@ -832,24 +805,6 @@ export default function PipelineEditor() {
                         variantCount={variantCount}
                       />
                     )}
-                    {/* Dataset Binding for shape-aware validation (Phase 4) — hidden */}
-                    {/* eslint-disable-next-line no-constant-binary-expression */}
-                    {false && (
-                      <DatasetBinding
-                        boundDataset={boundDataset}
-                        datasets={datasets}
-                        isLoading={isDatasetsLoading}
-                        onBind={bindDataset}
-                        onClear={clearBinding}
-                        onSelectTarget={selectTarget}
-                        onRefresh={refreshDatasets}
-                        hasWarnings={dimensionWarnings.length > 0}
-                        warningMessage={dimensionWarnings.length > 0
-                          ? `${dimensionWarnings.length} step${dimensionWarnings.length > 1 ? 's' : ''} may exceed dataset dimensions`
-                          : undefined
-                        }
-                      />
-                    )}
                     {isDirty && (
                       <Badge variant="secondary" className="text-xs">
                         Unsaved
@@ -1145,7 +1100,7 @@ export default function PipelineEditor() {
 
           {/* Main Content: 3-Panel Layout */}
           <PipelineEditorPreferencesProvider>
-            <NodeRegistryProvider useJsonRegistry>
+            <NodeRegistryProvider>
               <OperatorAvailabilityProvider steps={steps} pipelineName={pipelineName}>
                 <DatasetBindingProvider
                   steps={steps}

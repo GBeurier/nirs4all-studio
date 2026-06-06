@@ -11,252 +11,41 @@ import importlib
 import inspect
 import math
 import re
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any
 
 from .logger import get_logger
 
 logger = get_logger(__name__)
 
-from ..lazy_imports import get_cached, is_ml_ready
+from ..lazy_imports import get_cached
+from ..pipeline_canonical import (
+    OperatorResolutionError,
+    import_operator_class,
+    resolve_editor_class_path,
+)
 
 NIRS4ALL_AVAILABLE = True
 
-
-# Cache for dynamically discovered operators
-_preprocessing_cache: dict[str, type] | None = None
-_splitter_cache: dict[str, tuple[str, str]] | None = None
-_augmentation_cache: dict[str, type] | None = None
 
 _RUNTIME_ONLY_PARAMS_BY_OPERATOR_TYPE: dict[str, set[str]] = {
     "splitting": {"group_by", "group", "ignore_repetition", "aggregation", "y_aggregation"},
 }
 
 
-def _build_preprocessing_cache() -> dict[str, type]:
-    """Build cache of preprocessing operators from nirs4all.operators.transforms.
-
-    Uses the module's __all__ exports and TransformerMixin detection for discovery.
-    Also includes common abbreviation aliases for user convenience.
-
-    Returns:
-        Dict mapping lowercase names to operator classes
-    """
-    cache = {}
-
-    transforms = get_cached("transforms")
-    if not NIRS4ALL_AVAILABLE or transforms is None:
-        return cache
-
-    # Common abbreviation aliases for user convenience
-    # Maps lowercase alias -> full class name (also lowercase)
-    common_aliases = {
-        "snv": "standardnormalvariate",
-        "robustsnv": "robuststandardnormalvariate",
-        "localsnv": "localstandardnormalvariate",
-        "msc": "multiplicativescattercorrection",
-        "savgol": "savitzkygolay",
-        "movingaverage": "savitzkygolay",
-        "baselinecorrection": "baseline",
-    }
-
-    # Get all exported names from transforms module
-    exported_names = getattr(transforms, "__all__", [])
-
-    for name in exported_names:
-        obj = getattr(transforms, name, None)
-        if obj is None:
-            continue
-
-        # Only include classes that are transformers
-        if not inspect.isclass(obj):
-            continue
-
-        if not hasattr(obj, "fit_transform"):
-            continue
-
-        # Add with multiple key variants for flexible lookup
-        cache[name.lower()] = obj
-        # Also add without common suffixes
-        name_normalized = name.lower().replace("_", "").replace("-", "")
-        cache[name_normalized] = obj
-
-    # Add common aliases pointing to their full class names
-    for alias, full_name in common_aliases.items():
-        if full_name in cache:
-            cache[alias] = cache[full_name]
-
-    # Add sklearn preprocessing and decomposition classes
-    sklearn_modules = [
-        "sklearn.preprocessing",
-        "sklearn.decomposition",
-        "sklearn.cluster",
-        "sklearn.neighbors",
-        "sklearn.manifold",
-        "sklearn.cross_decomposition",
-        "sklearn.feature_selection",
-        "sklearn.feature_extraction",
-        "sklearn.feature_extraction.text",
-        "sklearn.feature_extraction.image",
-        "sklearn.impute",
-        "sklearn.kernel_approximation",
-        "sklearn.random_projection",
-        "sklearn.neural_network",
-        "sklearn.compose",
-        "sklearn.pipeline",
-        "sklearn.ensemble",
-    ]
-
-    for module_path in sklearn_modules:
-        try:
-            module = importlib.import_module(module_path)
-            for attr_name in dir(module):
-                if attr_name.startswith("_"):
-                    continue
-                obj = getattr(module, attr_name, None)
-                if obj is None or not inspect.isclass(obj):
-                    continue
-                if hasattr(obj, "fit_transform") or hasattr(obj, "transform"):
-                    cache[attr_name.lower()] = obj
-        except ImportError:
-            pass
-
-    return cache
-
-
-def _build_splitter_cache() -> dict[str, tuple[str, str]]:
-    """Build cache of splitter operators from sklearn and nirs4all.
-
-    Returns:
-        Dict mapping lowercase names to (module_path, class_name) tuples
-    """
-    cache = {}
-
-    # sklearn splitters
-    sklearn_splitters = [
-        "KFold", "StratifiedKFold", "GroupKFold",
-        "ShuffleSplit", "StratifiedShuffleSplit", "GroupShuffleSplit",
-        "LeaveOneOut", "LeavePGroupsOut", "TimeSeriesSplit",
-    ]
-
-    for name in sklearn_splitters:
-        key = name.lower().replace("_", "")
-        cache[key] = ("sklearn.model_selection", name)
-
-    # nirs4all splitters - use module's __all__ exports
-    nirs_splitters = get_cached("nirs_splitters")
-    if nirs_splitters is not None:
-        exported_names = getattr(nirs_splitters, "__all__", [])
-        for name in exported_names:
-            obj = getattr(nirs_splitters, name, None)
-            if obj is None or not inspect.isclass(obj):
-                continue
-            # Check if it has a split method (splitter interface)
-            if not hasattr(obj, "split"):
-                continue
-            key = name.lower().replace("_", "")
-            cache[key] = ("nirs4all.operators.splitters", name)
-
-    # Short-name aliases for nirs4all splitters
-    cache["kennardstone"] = ("nirs4all.operators.splitters", "KennardStoneSplitter")
-    cache["spxy"] = ("nirs4all.operators.splitters", "SPXYSplitter")
-
-    return cache
-
-
-def _build_augmentation_cache() -> dict[str, type]:
-    """Build cache of augmentation operators from nirs4all.operators.augmentation.
-
-    Scans all augmentation submodules using the cached imports.
-
-    Returns:
-        Dict mapping lowercase names to operator classes
-    """
-    cache = {}
-
-    if not NIRS4ALL_AVAILABLE:
-        return cache
-
-    # Scan all cached augmentation modules
-    augmentation_modules = [
-        get_cached("augmentation_spectral"),
-        get_cached("augmentation_random"),
-        get_cached("augmentation_splines"),
-        get_cached("augmentation_environmental"),
-        get_cached("augmentation_scattering"),
-        get_cached("augmentation_edge_artifacts"),
-        get_cached("augmentation_synthesis"),
-    ]
-
-    for module in augmentation_modules:
-        if module is None:
-            continue
-
-        exported_names = getattr(module, "__all__", dir(module))
-        for name in exported_names:
-            if name.startswith("_"):
-                continue
-
-            obj = getattr(module, name, None)
-            if obj is None or not inspect.isclass(obj):
-                continue
-
-            # Check if it's an augmenter (has augment or fit_transform)
-            if not (hasattr(obj, "augment") or hasattr(obj, "fit_transform")):
-                continue
-
-            # Skip base classes
-            if name in ("Augmenter", "BaseEstimator", "TransformerMixin", "SpectraTransformerMixin"):
-                continue
-
-            cache[name.lower()] = obj
-            name_normalized = name.lower().replace("_", "").replace("-", "")
-            cache[name_normalized] = obj
-
-    return cache
-
-
-def _get_preprocessing_cache() -> dict[str, type]:
-    """Get or build preprocessing operator cache."""
-    global _preprocessing_cache
-    if _preprocessing_cache is None:
-        cache = _build_preprocessing_cache()
-        # Only memoize if ML deps are loaded, otherwise retry next call
-        if cache:
-            _preprocessing_cache = cache
-        return cache
-    return _preprocessing_cache
-
-
-def _get_splitter_cache() -> dict[str, tuple[str, str]]:
-    """Get or build splitter operator cache."""
-    global _splitter_cache
-    if _splitter_cache is None:
-        cache = _build_splitter_cache()
-        if cache:
-            _splitter_cache = cache
-        return cache
-    return _splitter_cache
-
-
-def _get_augmentation_cache() -> dict[str, type]:
-    """Get or build augmentation operator cache."""
-    global _augmentation_cache
-    if _augmentation_cache is None:
-        cache = _build_augmentation_cache()
-        if cache:
-            _augmentation_cache = cache
-        return cache
-    return _augmentation_cache
-
-
 def resolve_operator(
     name: str,
     operator_type: str = "preprocessing"
 ) -> type | None:
-    """Resolve an operator name to its class using dynamic introspection.
+    """Resolve an operator name (or dotted path) to its class.
+
+    Single registry-driven path: ``name -> classPath`` via the shared
+    :func:`resolve_editor_class_path` resolver (sourced from the generated node
+    registry), then a thin import through :func:`import_operator_class`.  Returns
+    the operator class, or ``None`` when it cannot be resolved or imported
+    (matching the previous contract relied on by ``instantiate_operator``).
 
     Args:
-        name: Operator name (case-insensitive)
+        name: Operator name (case-insensitive) or dotted class path
         operator_type: Type of operator ("preprocessing", "splitting", or "augmentation")
 
     Returns:
@@ -265,78 +54,14 @@ def resolve_operator(
     if not NIRS4ALL_AVAILABLE:
         return None
 
-    name_normalized = name.lower().replace("_", "").replace("-", "")
-
-    if operator_type == "splitting":
-        cache = _get_splitter_cache()
-
-        # Try normalized name in cache
-        if name_normalized in cache:
-            module_path, class_name = cache[name_normalized]
-            try:
-                module = importlib.import_module(module_path)
-                return getattr(module, class_name, None)
-            except ImportError:
-                return None
-
-        # Try exact match from sklearn
-        try:
-            from sklearn import model_selection
-            splitter_cls = getattr(model_selection, name, None)
-            if splitter_cls:
-                return splitter_cls
-        except ImportError:
-            pass
-
-        # Try nirs4all splitters direct lookup
-        nirs_splitters = get_cached("nirs_splitters")
-        if nirs_splitters:
-            splitter_cls = getattr(nirs_splitters, name, None)
-            if splitter_cls:
-                return splitter_cls
-
+    explicit = name if "." in name else None
+    class_path = resolve_editor_class_path(operator_type, name, explicit)
+    if "." not in class_path:
         return None
 
-    elif operator_type == "augmentation":
-        cache = _get_augmentation_cache()
-
-        # Try normalized name in cache
-        if name_normalized in cache:
-            return cache[name_normalized]
-
-        # Try exact name match
-        if name.lower() in cache:
-            return cache[name.lower()]
-
-        # Try direct lookup from augmentation package
-        try:
-            augmentation_pkg = importlib.import_module("nirs4all.operators.augmentation")
-            aug_cls = getattr(augmentation_pkg, name, None)
-            if aug_cls:
-                return aug_cls
-        except ImportError:
-            pass
-
-        return None
-
-    else:  # preprocessing
-        cache = _get_preprocessing_cache()
-
-        # Try normalized name in cache
-        if name_normalized in cache:
-            return cache[name_normalized]
-
-        # Try exact name match
-        if name.lower() in cache:
-            return cache[name.lower()]
-
-        # Try direct lookup from transforms module
-        transforms = get_cached("transforms")
-        if transforms:
-            transformer_cls = getattr(transforms, name, None)
-            if transformer_cls:
-                return transformer_cls
-
+    try:
+        return import_operator_class(class_path)
+    except OperatorResolutionError:
         return None
 
 
@@ -416,6 +141,23 @@ def normalize_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
             max_val = normalized.pop(max_key)
             if min_val is not None and max_val is not None:
                 normalized[base] = (min_val, max_val)
+
+    # SavitzkyGolay: frontend may send "window"; constructor wants "window_length".
+    if name == "SavitzkyGolay" and "window" in normalized and "window_length" not in normalized:
+        normalized["window_length"] = normalized.pop("window")
+
+    # MovingAverage is implemented as a SavitzkyGolay with polyorder=1, deriv=0.
+    if name == "MovingAverage":
+        window = normalized.get("window") or normalized.get("window_length") or 5
+        normalized = {
+            "window_length": window,
+            "polyorder": 1,
+            "deriv": 0,
+        }
+
+    # CropTransformer: end=-1 means "to the end" -> None for the constructor.
+    if name == "CropTransformer" and normalized.get("end") == -1:
+        normalized["end"] = None
 
     # LogTransform: convert base string to float
     if name == "LogTransform" and "base" in normalized:

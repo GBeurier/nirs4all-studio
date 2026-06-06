@@ -23,7 +23,6 @@ function createRegistry(
   sweepableByName: Record<string, ParameterDefinition[]> = {},
 ): StepMetadataRegistry {
   return {
-    isJsonRegistry: true,
     getNodesByType: (type) => nodes.filter((node) => node.type === type) as never,
     getNodeDefinition: (type, name) =>
       nodes.find((node) => node.type === type && node.name === name) as never,

@@ -44,7 +44,7 @@ import {
   getRecentWorkspaces,
   removeWorkspaceFromList,
   selectWorkspace,
-} from "@/api/client";
+} from "@/api/workspace";
 import { formatRelativeTime } from "@/utils/formatters";
 import type { WorkspaceInfo } from "@/types/settings";
 

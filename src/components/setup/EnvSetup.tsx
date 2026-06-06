@@ -50,7 +50,7 @@ import {
   type RecommendedConfigResponse,
   type ProfileInfo,
   type OptionalPackageInfo,
-} from "@/api/client";
+} from "@/api/config";
 import { PythonEnvInspectionCard } from "@/components/python/PythonEnvInspectionCard";
 import {
   announceBackendRestarted,

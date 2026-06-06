@@ -357,9 +357,9 @@ nirs4all_webapp/
 │   └── _internals/         # Developer guides
 ├── public/                 # Static assets
 ├── main.py                 # FastAPI application entry
-├── launcher.py             # PyInstaller entry point (production builds)
-├── nirs4all-webapp.spec    # PyInstaller spec file
-├── electron-builder.yml    # Electron packaging config
+├── backend.spec            # PyInstaller spec file (backend executable)
+├── electron-builder.installer.yml  # Electron packaging config (installer)
+├── electron-builder.archive.yml    # Electron packaging config (portable archive)
 └── package.json            # Node dependencies
 ```
 

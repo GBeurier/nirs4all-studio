@@ -56,7 +56,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { api } from "@/api/client";
+import { api } from "@/api/transport";
 import { useDatasetsQuery } from "@/hooks/useDatasetQueries";
 
 // ============================================================================

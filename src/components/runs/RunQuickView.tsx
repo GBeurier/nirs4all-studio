@@ -8,7 +8,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Database, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getScoreDistribution, getAggregatedPredictions } from "@/api/client";
+import { getScoreDistribution } from "@/api/enrichedRuns";
+import { getAggregatedPredictions } from "@/api/aggregatedPredictions";
 import { collapseStandaloneRefitSummaries } from "@/lib/score-adapters";
 import { ScoreHistogram } from "./ScoreHistogram";
 

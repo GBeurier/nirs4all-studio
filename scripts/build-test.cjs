@@ -163,7 +163,7 @@ async function main() {
   }
 
   const requiredRuntimeFiles = ["scripts/python-runtime-config.cjs", "recommended-config.json"];
-  for (const configName of ["electron-builder.yml", "electron-builder.installer.yml", "electron-builder.archive.yml"]) {
+  for (const configName of ["electron-builder.installer.yml", "electron-builder.archive.yml"]) {
     process.stdout.write(`  ${configName} packages runtime config... `);
     const packagedFiles = getTopLevelYamlList(path.join(projectRoot, configName), "files");
     const missingFiles = requiredRuntimeFiles.filter((item) => !packagedFiles.includes(item));

@@ -6,6 +6,7 @@ that applies to all test modules.
 """
 
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,42 @@ import pytest
 webapp_root = Path(__file__).parent.parent
 if str(webapp_root) not in sys.path:
     sys.path.insert(0, str(webapp_root))
+
+
+@pytest.fixture(autouse=True)
+def _drain_background_jobs():
+    """Ensure no background job outlives its test.
+
+    Run/training execution happens on the shared JobManager thread pool. A
+    worker that outlives its test would keep writing run manifests and store
+    entries into the NEXT test's freshly created workspace (the pool threads
+    are long-lived, so joining threads is not an option). Cancel anything still
+    active at teardown and wait for it to drain.
+    """
+    yield
+
+    try:
+        from api.jobs.manager import JobStatus, job_manager
+    except Exception:
+        return
+
+    deadline = time.time() + 15.0
+    active = []
+    while time.time() < deadline:
+        active = [
+            j
+            for j in job_manager.list_jobs(limit=1000)
+            if j.status in (JobStatus.PENDING, JobStatus.RUNNING)
+        ]
+        if not active:
+            return
+        for job in active:
+            job_manager.cancel_job(job.id)
+        time.sleep(0.05)
+
+    raise RuntimeError(
+        f"Background jobs still active 15s after test teardown: {[j.id for j in active]}"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -118,7 +155,7 @@ def pytest_collection_modifyitems(config, items):
 def nirs4all_available():
     """Check if nirs4all library is available."""
     try:
-        import nirs4all
+        import nirs4all  # noqa: F401 (availability probe)
         return True
     except ImportError:
         return False

@@ -13,16 +13,13 @@ Provides fixtures for:
 import asyncio
 import json
 import os
-import shutil
 import sys
 import threading
 import time
-import uuid
 from collections.abc import Generator
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from unittest.mock import MagicMock, patch
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -50,11 +47,10 @@ def client(tmp_path: Path) -> Generator[TestClient, None, None]:
     os.environ["NIRS4ALL_CONFIG"] = str(config_dir)
     try:
         # Re-initialize singletons with temporary config dir
-        from api.app_config import AppConfigManager, app_config
+        from api.app_config import app_config
         app_config.__init__()
         from api.workspace_manager import workspace_manager
         workspace_manager.app_config = app_config
-        workspace_manager.app_data_dir = app_config.config_dir
         with TestClient(app) as c:
             yield c
     finally:
@@ -457,16 +453,13 @@ def mock_nirs4all(monkeypatch):
 
 @pytest.fixture
 def slow_mock_nirs4all(monkeypatch):
-    """Mock nirs4all.run() with a slow execution for testing stop/pause.
+    """Mock nirs4all.run() with a slow execution for testing stop.
 
-    Uses a threading.Event so the mock can exit quickly during fixture cleanup,
-    and tracks the in-flight worker threads so they are joined before the test
-    exits — otherwise an orphaned thread holding the patched ``nirs4all.run``
-    can race with interpreter teardown and crash xdist workers on Windows.
+    Uses a threading.Event so the mock exits quickly at fixture cleanup; the
+    autouse ``_drain_background_jobs`` fixture (tests/conftest.py) then waits
+    for the JobManager job itself to finish, so no worker outlives the test.
     """
     stop_event = threading.Event()
-    active_threads: list[threading.Thread] = []
-    active_threads_lock = threading.Lock()
 
     class SlowResult:
         best_rmse = 0.5
@@ -481,33 +474,18 @@ def slow_mock_nirs4all(monkeypatch):
             Path(path).touch()
 
     def slow_run(**kwargs):
-        # Register the calling thread so cleanup can join it deterministically.
-        current = threading.current_thread()
-        with active_threads_lock:
-            active_threads.append(current)
-        try:
-            # Sleep in small increments; exit early when stop_event is set
-            for _ in range(50):
-                if stop_event.is_set():
-                    return SlowResult()
-                time.sleep(0.1)
-            return SlowResult()
-        finally:
-            with active_threads_lock:
-                if current in active_threads:
-                    active_threads.remove(current)
+        # Sleep in small increments; exit early when stop_event is set
+        for _ in range(50):
+            if stop_event.is_set():
+                return SlowResult()
+            time.sleep(0.1)
+        return SlowResult()
 
     monkeypatch.setattr("nirs4all.run", slow_run, raising=False)
     yield SlowResult
 
-    # Signal the mock to exit ASAP, then deterministically wait for every
-    # in-flight worker thread to finish. This prevents an orphaned thread from
-    # outliving the test and racing with xdist worker teardown.
+    # Signal the mock to exit ASAP; job draining happens in the autouse fixture.
     stop_event.set()
-    with active_threads_lock:
-        threads_snapshot = list(active_threads)
-    for t in threads_snapshot:
-        t.join(timeout=5.0)
 
 
 @pytest.fixture

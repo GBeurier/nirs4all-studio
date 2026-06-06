@@ -28,8 +28,8 @@ import {
 import {
   deleteWorkspaceChainPredictions,
   deleteWorkspacePredictionGroup,
-  getChainPartitionDetail,
-} from "@/api/client";
+} from "@/api/linkedWorkspaces";
+import { getChainPartitionDetail } from "@/api/aggregatedPredictions";
 import {
   formatPredictionDeletionSummary,
   invalidatePredictionRelatedQueries,

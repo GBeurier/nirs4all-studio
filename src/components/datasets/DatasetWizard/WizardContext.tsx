@@ -19,7 +19,7 @@ import type {
   MultiSourceConfig,
   FoldConfig,
 } from "@/types/datasets";
-import { getDataLoadingDefaults } from "@/api/client";
+import { getDataLoadingDefaults } from "@/api/workspace";
 import type { DataLoadingDefaults } from "@/types/settings";
 
 // System default parsing options (fallback)

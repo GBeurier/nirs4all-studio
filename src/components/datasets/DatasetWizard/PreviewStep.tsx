@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useWizard } from "./WizardContext";
-import { previewDataset, previewDatasetWithUploads } from "@/api/client";
+import { previewDataset, previewDatasetWithUploads } from "@/api/datasets";
 import { PartitionToggle } from "../PartitionToggle";
 import { SpectraChart, TargetHistogram } from "../charts";
 import { getPartitionTheme } from "../partitionTheme";

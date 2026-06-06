@@ -18,8 +18,8 @@ from pathlib import Path
 import pytest
 from fastapi.exceptions import HTTPException
 
+from api.pipeline_canonical import filter_comments as _filter_comments
 from api.pipelines import (
-    _filter_comments,
     _get_canonical_pipeline,
     _get_samples_dir,
     _load_sample_file,

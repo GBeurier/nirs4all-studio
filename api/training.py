@@ -19,9 +19,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -30,7 +28,6 @@ from .jobs import Job, JobStatus, JobType, job_manager
 from .nirs4all_adapter import (
     build_dataset_spec,
     ensure_models_dir,
-    extract_metrics_from_prediction,
     require_nirs4all,
 )
 from .shared.logger import get_logger
@@ -413,7 +410,7 @@ def _run_training_task(
     """
     import nirs4all
 
-    from .nirs4all_adapter import build_dataset_config
+    from .nirs4all_adapter import build_dataset_config, extract_best_metrics
     from .pipeline_canonical import editor_steps_to_runtime_canonical
 
     config = job.config
@@ -473,16 +470,8 @@ def _run_training_task(
     if not progress_callback(80, "Processing results..."):
         return {"error": "Cancelled"}
 
-    # Extract metrics from the result
-    best_metrics = {}
-    if hasattr(result, 'best_rmse') and result.best_rmse is not None:
-        best_metrics["rmse"] = float(result.best_rmse)
-    if hasattr(result, 'best_r2') and result.best_r2 is not None:
-        best_metrics["r2"] = float(result.best_r2)
-    if hasattr(result, 'best_score') and result.best_score is not None:
-        best_metrics["score"] = float(result.best_score)
-    if hasattr(result, 'best_accuracy') and result.best_accuracy is not None:
-        best_metrics["accuracy"] = float(result.best_accuracy)
+    # NaN-safe shared extraction (single source of truth, RUN-02)
+    best_metrics = extract_best_metrics(result)
 
     # Get result details
     n_variants = len(result) if hasattr(result, '__len__') else 1

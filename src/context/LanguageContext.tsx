@@ -23,7 +23,7 @@ import {
   changeLanguage as i18nChangeLanguage,
   type SupportedLanguage,
 } from "@/lib/i18n";
-import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/client";
+import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/workspace";
 
 /**
  * Language context type definition

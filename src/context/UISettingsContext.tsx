@@ -17,7 +17,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/client";
+import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/workspace";
 import { createLogger } from "@/lib/logger";
 import type { UIDensity, UIZoomLevel, GeneralSettings } from "@/types/settings";
 

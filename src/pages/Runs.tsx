@@ -22,11 +22,9 @@ import {
   orderMetricKeys,
 } from "@/lib/scores";
 import type { EnrichedRun } from "@/types/enriched-runs";
-import {
-  formatApiErrorDetail,
-  listRuns,
-  getEnrichedRuns,
-} from "@/api/client";
+import { formatApiErrorDetail } from "@/api/transport";
+import { listRuns } from "@/api/runs";
+import { getEnrichedRuns } from "@/api/enrichedRuns";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 
 export default function Runs() {

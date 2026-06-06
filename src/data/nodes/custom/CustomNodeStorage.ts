@@ -13,7 +13,7 @@
  */
 
 import type { NodeDefinition, NodeType, ParameterDefinition, ParameterType, CustomNodesFile } from '../types';
-import * as api from '@/api/client';
+import * as api from '@/api/customNodes';
 import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("CustomNodeStorage");

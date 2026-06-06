@@ -63,11 +63,11 @@ import {
   installDependency,
   uninstallDependency,
   refreshDependencies,
-  requestRestart,
-  resetBackendUrl,
   revertDependency,
-  getRuntimeSummary,
-} from "@/api/client";
+} from "@/api/dependencies";
+import { requestRestart } from "@/api/updates";
+import { resetBackendUrl } from "@/api/transport";
+import { getRuntimeSummary } from "@/api/system";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import { getPythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
 import { getDependencyVersionState } from "./dependencyVersionState";
@@ -75,8 +75,8 @@ import type {
   DependenciesResponse,
   DependencyCategory,
   DependencyInfo,
-  RuntimeSummaryResponse,
-} from "@/api/client";
+} from "@/api/dependencies";
+import type { RuntimeSummaryResponse } from "@/types/settings";
 
 interface PackageRowProps {
   pkg: DependencyInfo;

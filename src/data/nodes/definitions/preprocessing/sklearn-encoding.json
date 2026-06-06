@@ -3,7 +3,7 @@
     "id": "preprocessing.k_bins_discretizer",
     "name": "KBinsDiscretizer",
     "type": "preprocessing",
-    "classPath": "sklearn.preprocessing._discretization.KBinsDiscretizer",
+    "classPath": "sklearn.preprocessing.KBinsDiscretizer",
     "description": "Bin continuous data into intervals.",
     "category": "Encoding",
     "tags": [
@@ -105,13 +105,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.preprocessing._discretization.KBinsDiscretizer"
+    ]
   },
   {
     "id": "preprocessing.one_hot_encoder",
     "name": "OneHotEncoder",
     "type": "preprocessing",
-    "classPath": "sklearn.preprocessing._encoders.OneHotEncoder",
+    "classPath": "sklearn.preprocessing.OneHotEncoder",
     "description": "Encode categorical features as a one-hot numeric array.",
     "category": "Encoding",
     "tags": [
@@ -167,13 +170,16 @@
         "default": "concat",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.preprocessing._encoders.OneHotEncoder"
     ]
   },
   {
     "id": "preprocessing.ordinal_encoder",
     "name": "OrdinalEncoder",
     "type": "preprocessing",
-    "classPath": "sklearn.preprocessing._encoders.OrdinalEncoder",
+    "classPath": "sklearn.preprocessing.OrdinalEncoder",
     "description": "Encode categorical features as an integer array.",
     "category": "Encoding",
     "tags": [
@@ -222,13 +228,16 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.preprocessing._encoders.OrdinalEncoder"
     ]
   },
   {
     "id": "preprocessing.target_encoder",
     "name": "TargetEncoder",
     "type": "preprocessing",
-    "classPath": "sklearn.preprocessing._target_encoder.TargetEncoder",
+    "classPath": "sklearn.preprocessing.TargetEncoder",
     "description": "Target Encoder for regression and classification targets.",
     "category": "Encoding",
     "tags": [
@@ -275,6 +284,9 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.preprocessing._target_encoder.TargetEncoder"
     ]
   }
 ]

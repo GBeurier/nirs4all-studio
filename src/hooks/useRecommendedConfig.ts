@@ -23,7 +23,7 @@ import {
   type AlignConfigRequest,
   type AlignConfigResponse,
   type SetupStatusResponse,
-} from "@/api/client";
+} from "@/api/config";
 
 // Query keys
 export const configKeys = {

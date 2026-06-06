@@ -11,9 +11,9 @@ the "Filter to Selection" feature in the UI.
 Phase 1 Implementation - Foundation & Selection System
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
-from ..lazy_imports import get_cached, is_ml_ready
+from ..lazy_imports import get_cached
 
 NIRS4ALL_FILTERS_AVAILABLE = True
 
@@ -406,120 +406,20 @@ def instantiate_filter(name: str, params: dict[str, Any]) -> SampleIndexFilter |
         "SpectralQualityFilter": get_cached("SpectralQualityFilter"),
         "HighLeverageFilter": get_cached("HighLeverageFilter"),
         "MetadataFilter": get_cached("N4AMetadataFilter"),
-        # Legacy name mappings for backward compatibility
-        "OutlierFilter": get_cached("XOutlierFilter"),  # Map old OutlierFilter to XOutlierFilter
-        "RangeFilter": get_cached("YOutlierFilter"),    # Map old RangeFilter to YOutlierFilter (percentile method)
-        "QCFilter": get_cached("SpectralQualityFilter"),  # Map old QCFilter to SpectralQualityFilter
-        "DistanceFilter": get_cached("XOutlierFilter"),  # Map old DistanceFilter to XOutlierFilter (mahalanobis)
     }
 
     filter_cls = filter_map.get(name)
     if filter_cls is None:
         return None
 
-    # Handle parameter translation for legacy filters
-    translated_params = _translate_legacy_params(name, params)
-
     try:
-        filter_instance = filter_cls(**translated_params)
+        filter_instance = filter_cls(**params)
         return _Nirs4AllFilterAdapter(filter_instance)
     except TypeError:
         # Try without invalid params
         import inspect
         sig = inspect.signature(filter_cls.__init__)
         param_names = set(sig.parameters.keys()) - {"self"}
-        valid_params = {k: v for k, v in translated_params.items() if k in param_names}
+        valid_params = {k: v for k, v in params.items() if k in param_names}
         filter_instance = filter_cls(**valid_params)
         return _Nirs4AllFilterAdapter(filter_instance)
-
-
-def _translate_legacy_params(name: str, params: dict[str, Any]) -> dict[str, Any]:
-    """Translate legacy filter parameters to nirs4all equivalents.
-
-    Args:
-        name: Original filter name
-        params: Original parameters
-
-    Returns:
-        Translated parameters for nirs4all filters
-    """
-    translated = params.copy()
-
-    if name == "OutlierFilter":
-        # Map old OutlierFilter methods to XOutlierFilter methods
-        method_map = {
-            "hotelling": "pca_leverage",
-            "q_residual": "pca_residual",
-            "lof": "lof",
-            "elliptic": "isolation_forest",  # Closest equivalent
-        }
-        if "method" in translated:
-            translated["method"] = method_map.get(translated["method"], "mahalanobis")
-        # Remove old threshold param if it was a percentile (0-1 range)
-        if "threshold" in translated and translated["threshold"] <= 1:
-            # Old filter used percentile thresholds, new one uses different scaling
-            # For pca_leverage/pca_residual, threshold is auto-computed from percentile
-            del translated["threshold"]
-
-    elif name == "RangeFilter":
-        # Map old RangeFilter to YOutlierFilter with percentile method
-        translated["method"] = "percentile"
-        if "min_value" in translated and translated["min_value"] is not None:
-            # Convert min_value to lower_percentile if quantile_mode was True
-            if translated.get("quantile_mode", False):
-                translated["lower_percentile"] = translated.pop("min_value")
-            else:
-                # Can't directly translate absolute values to percentiles
-                # Use a placeholder - the filter will need re-fitting
-                translated.pop("min_value", None)
-        if "max_value" in translated and translated["max_value"] is not None:
-            if translated.get("quantile_mode", False):
-                translated["upper_percentile"] = translated.pop("max_value")
-            else:
-                translated.pop("max_value", None)
-        translated.pop("quantile_mode", None)
-
-    elif name == "QCFilter":
-        # Map old QCFilter params to SpectralQualityFilter
-        # max_nan_ratio, max_inf_ratio -> max_nan_ratio, check_inf
-        if "max_inf_ratio" in translated:
-            translated["check_inf"] = translated.pop("max_inf_ratio") <= 0
-        if "max_saturation_ratio" in translated:
-            # SpectralQualityFilter uses max_value instead of saturation_ratio
-            del translated["max_saturation_ratio"]
-        if "saturation_threshold" in translated:
-            translated["max_value"] = translated.pop("saturation_threshold")
-        if "require_y" in translated:
-            # SpectralQualityFilter doesn't have this param
-            del translated["require_y"]
-
-    elif name == "DistanceFilter":
-        # Map old DistanceFilter to XOutlierFilter with mahalanobis
-        translated["method"] = "mahalanobis"
-        if "metric" in translated:
-            metric = translated.pop("metric")
-            if metric == "mahalanobis":
-                translated["method"] = "mahalanobis"
-            elif metric == "euclidean":
-                translated["method"] = "mahalanobis"  # Closest available
-            # cosine not directly supported
-        if "quantile" in translated:
-            # XOutlierFilter doesn't use quantile directly
-            del translated["quantile"]
-        if "reference" in translated:
-            del translated["reference"]
-
-    return translated
-
-
-# Backward compatibility exports (deprecated)
-# These are kept only for imports that might reference them directly
-# The actual implementations are in nirs4all.operators.filters
-BaseFilter = None  # Removed - use SampleFilter from nirs4all
-OutlierFilter = None  # Removed - use XOutlierFilter from nirs4all
-RangeFilter = None  # Removed - use YOutlierFilter from nirs4all
-QCFilter = None  # Removed - use SpectralQualityFilter from nirs4all
-DistanceFilter = None  # Removed - use XOutlierFilter from nirs4all
-
-# Registry for backward compatibility - maps to instantiate_filter
-FILTER_REGISTRY: dict[str, type] = {}  # Empty - use instantiate_filter instead

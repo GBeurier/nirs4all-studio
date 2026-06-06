@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import copy
-import json
+import importlib
+import inspect
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -49,56 +49,6 @@ SAMPLER_KEYS = {"sample", "sampler"}
 FUNCTION_MODEL_CLASS_PATHS = {
     "nicon": "nirs4all.operators.models.pytorch.nicon.nicon",
     "cnn1d": "nirs4all.operators.models.pytorch.nicon.customizable_nicon",
-}
-MODEL_CLASS_PATH_ALIASES = {
-    "xgboost": "xgboost.XGBRegressor",
-    "xgbregressor": "xgboost.XGBRegressor",
-    "xgboostclassifier": "xgboost.XGBClassifier",
-    "xgbclassifier": "xgboost.XGBClassifier",
-    "xgboost.sklearn.xgbregressor": "xgboost.XGBRegressor",
-    "xgboost.sklearn.xgbclassifier": "xgboost.XGBClassifier",
-    "lightgbm": "lightgbm.LGBMRegressor",
-    "lightgbmclassifier": "lightgbm.LGBMClassifier",
-    "lgbmregressor": "lightgbm.LGBMRegressor",
-    "lgbmclassifier": "lightgbm.LGBMClassifier",
-    "lightgbm.sklearn.lgbmregressor": "lightgbm.LGBMRegressor",
-    "lightgbm.sklearn.lgbmclassifier": "lightgbm.LGBMClassifier",
-    "tabpfn": "tabpfn.TabPFNRegressor",
-    "tabpfnregressor": "tabpfn.TabPFNRegressor",
-    "tabpfnclassifier": "tabpfn.TabPFNClassifier",
-    "tabpfn.tabpfnregressor": "tabpfn.TabPFNRegressor",
-    "tabpfn.tabpfnclassifier": "tabpfn.TabPFNClassifier",
-    "tabpfn.regressor.tabpfnregressor": "tabpfn.TabPFNRegressor",
-    "tabpfn.classifier.tabpfnclassifier": "tabpfn.TabPFNClassifier",
-    "nirs4all.operators.models.tabpfn": "tabpfn.TabPFNRegressor",
-    "nirs4all.operators.models.tabpfnclassifier": "tabpfn.TabPFNClassifier",
-}
-MODEL_DISPLAY_NAME_ALIASES = {
-    "xgboost": "XGBoost",
-    "xgbregressor": "XGBoost",
-    "xgboost.xgbregressor": "XGBoost",
-    "xgboost.sklearn.xgbregressor": "XGBoost",
-    "xgboostclassifier": "XGBoostClassifier",
-    "xgbclassifier": "XGBoostClassifier",
-    "xgboost.xgbclassifier": "XGBoostClassifier",
-    "xgboost.sklearn.xgbclassifier": "XGBoostClassifier",
-    "lightgbm": "LightGBM",
-    "lgbmregressor": "LightGBM",
-    "lightgbm.lgbmregressor": "LightGBM",
-    "lightgbm.sklearn.lgbmregressor": "LightGBM",
-    "lightgbmclassifier": "LightGBMClassifier",
-    "lgbmclassifier": "LightGBMClassifier",
-    "lightgbm.lgbmclassifier": "LightGBMClassifier",
-    "lightgbm.sklearn.lgbmclassifier": "LightGBMClassifier",
-    "tabpfn": "TabPFN",
-    "tabpfnregressor": "TabPFN",
-    "tabpfn.tabpfnregressor": "TabPFN",
-    "tabpfn.regressor.tabpfnregressor": "TabPFN",
-    "nirs4all.operators.models.tabpfn": "TabPFN",
-    "tabpfnclassifier": "TabPFNClassifier",
-    "tabpfn.tabpfnclassifier": "TabPFNClassifier",
-    "tabpfn.classifier.tabpfnclassifier": "TabPFNClassifier",
-    "nirs4all.operators.models.tabpfnclassifier": "TabPFNClassifier",
 }
 KNOWN_FINETUNE_KEYS = {
     "n_trials",
@@ -332,17 +282,17 @@ def resolve_class_reference(
     *,
     forced_type: str | None = None,
 ) -> dict[str, Any]:
-    """Resolve a class/function reference using the generated registry first."""
-    raw_ref = str(reference or "").strip()
-    ref = MODEL_CLASS_PATH_ALIASES.get(raw_ref.lower(), raw_ref)
-    candidates = _reference_lookup().get(ref.strip().lower(), [])
+    """Resolve a class/function reference using the generated registry.
+
+    The generated node registry (``src/data/nodes`` definitions + canonical) is
+    the single source of truth for operator aliases: short names, legacy class
+    paths, and vendor spellings are carried as ``aliases`` / ``legacyClassPaths``
+    on each node and indexed in :func:`_reference_lookup`.
+    """
+    ref = str(reference or "").strip()
+    candidates = _reference_lookup().get(ref.lower(), [])
     node = _select_registry_node(candidates, forced_type=forced_type)
     class_name = _class_name_from_path(ref)
-    display_name = (
-        MODEL_DISPLAY_NAME_ALIASES.get(raw_ref.lower())
-        or MODEL_DISPLAY_NAME_ALIASES.get(ref.lower())
-        or MODEL_DISPLAY_NAME_ALIASES.get(class_name.lower())
-    )
 
     if node:
         canonical_class_path = str(node.get("classPath") or ref)
@@ -366,7 +316,7 @@ def resolve_class_reference(
             }
 
     return {
-        "name": display_name or class_name or ref or "Unknown",
+        "name": class_name or ref or "Unknown",
         "type": _infer_type_from_path(ref, forced_type=forced_type),
         "classPath": ref if "." in ref else None,
     }
@@ -398,10 +348,6 @@ def resolve_editor_class_path(
         function_model_path = FUNCTION_MODEL_CLASS_PATHS.get(normalized_name.lower())
         if function_model_path:
             return function_model_path
-
-        model_class_path = MODEL_CLASS_PATH_ALIASES.get(normalized_name.lower())
-        if model_class_path:
-            return model_class_path
 
     if explicit_candidate:
         return explicit_candidate
@@ -439,6 +385,57 @@ def resolve_required_editor_class_path(
         f"Could not resolve class path for {step_type} step '{name}'. "
         "Check that the step definition is valid."
     )
+
+
+class OperatorResolutionError(Exception):
+    """Raised when a dotted operator class path cannot be imported.
+
+    ``missing_dependency`` is ``True`` when the failure is a missing optional
+    package (the module itself could not be imported) rather than an invalid
+    reference (the module imported but the attribute does not exist).
+    """
+
+    def __init__(self, message: str, *, missing_dependency: bool = False) -> None:
+        super().__init__(message)
+        self.missing_dependency = missing_dependency
+
+
+def _lookup_module_attr(module: Any, attr: str, *, allow_callable: bool) -> Any | None:
+    candidate = getattr(module, attr, None)
+    if inspect.isclass(candidate) or (allow_callable and callable(candidate)):
+        return candidate
+
+    lowered = attr.lower()
+    for member_name in dir(module):
+        if member_name.lower() != lowered:
+            continue
+        member = getattr(module, member_name, None)
+        if inspect.isclass(member) or (allow_callable and callable(member)):
+            return member
+    return None
+
+
+def import_operator_class(class_path: str, *, allow_callable: bool = False) -> Any:
+    """Import a dotted operator class/function path resolved from the registry.
+
+    This is the single import step shared by every operator-resolution caller:
+    name->classPath resolution happens via :func:`resolve_editor_class_path`
+    (registry-driven), and this helper turns that dotted path into the live
+    class or callable, raising :class:`OperatorResolutionError` on failure.
+    """
+    module_path, _, attr = str(class_path or "").rpartition(".")
+    if not module_path or not attr:
+        raise OperatorResolutionError(f"Unsupported operator reference '{class_path}'")
+
+    try:
+        module = importlib.import_module(module_path)
+    except ImportError as exc:
+        raise OperatorResolutionError(str(exc), missing_dependency=True) from exc
+
+    obj = _lookup_module_attr(module, attr, allow_callable=allow_callable)
+    if obj is None:
+        raise OperatorResolutionError(f"Unsupported operator reference '{class_path}'")
+    return obj
 
 
 def _normalize_editor_kind(step: dict[str, Any]) -> tuple[str, str | None]:

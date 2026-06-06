@@ -35,7 +35,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getDatasetTargets } from "@/api/client";
+import { getDatasetTargets } from "@/api/datasets";
 import type { TargetConfig, TaskType } from "@/types/datasets";
 
 interface TargetSelectorProps {

@@ -192,33 +192,6 @@ export const CONTAINER_BRANCH_SUBTYPES: FlowStepSubType[] = [
   "generator",
 ];
 
-// Sample augmentation configuration
-export interface SampleAugmentationConfig {
-  transformers: TransformerConfig[];
-  count?: number;         // Number of augmented samples per original
-  selection?: "random" | "all" | "sequential";
-  random_state?: number;
-  variation_scope?: "sample" | "batch";
-}
-
-// Feature augmentation configuration
-export interface FeatureAugmentationConfig {
-  action?: "extend" | "add" | "replace";
-  // For _or_ generator mode
-  orOptions?: TransformerConfig[];
-  pick?: number | [number, number];
-  count?: number;
-  // For direct list mode
-  transforms?: TransformerConfig[];
-}
-
-// Sample filter configuration
-export interface SampleFilterConfig {
-  filters: TransformerConfig[];
-  mode?: "any" | "all" | "vote";
-  report?: boolean;
-}
-
 // Concat transform configuration
 export interface ConcatTransformConfig {
   branches: TransformerConfig[][];  // Each branch is a chain of transforms
@@ -328,12 +301,6 @@ export interface PipelineStep {
     scaler: string;
     params: PipelineParams;
   };
-  // Feature augmentation configuration (container params, not transforms)
-  featureAugmentationConfig?: FeatureAugmentationConfig;
-  // Sample augmentation configuration (container params, not transformers)
-  sampleAugmentationConfig?: SampleAugmentationConfig;
-  // Sample filter configuration (container params, not filters)
-  sampleFilterConfig?: SampleFilterConfig;
   // Concat transform configuration
   concatTransformConfig?: ConcatTransformConfig;
   // Merge configuration (complex merge with predictions)
@@ -431,13 +398,23 @@ export interface DropIndicator {
   position: "before" | "after" | "inside"; // Where relative to the target
 }
 
+// ---------------------------------------------------------------------------
+// Local variant-count estimator (synchronous, per-step / per-sweep)
+//
+// This family powers INLINE UI feedback that must update on every keystroke:
+// tree-node badges, sweep-popover live previews, generator option counts, and
+// per-step config-panel summaries. It is deliberately synchronous and local.
+//
+// It is NOT redundant with the `useVariantCount` hook. That hook counts a WHOLE
+// pipeline by calling the nirs4all backend (`/pipelines/count-variants`),
+// debounced and asynchronous — the authoritative total for the editor footer.
+// These functions answer "how many variants does THIS step / sweep produce?"
+// without a round-trip, which the debounced async hook cannot do without
+// latency and flicker. Keep both: backend hook = whole-pipeline truth,
+// this estimator = instant per-node math.
+// ---------------------------------------------------------------------------
+
 // Utility to calculate sweep variant count
-/**
- * @deprecated Use the `useVariantCount` hook instead, which calls the nirs4all
- * backend API for accurate variant counting. This local calculation is kept
- * for offline/fallback scenarios but may not match nirs4all's actual behavior.
- * @see useVariantCount from '@/hooks/useVariantCount'
- */
 export function calculateSweepVariants(sweep: ParameterSweep): number {
   switch (sweep.type) {
     case "range":
@@ -543,13 +520,8 @@ export function calculateGeneratorExpansionCount(step: PipelineStep): number {
   return branches.length;
 }
 
-// Calculate total variants for a step (product of all param sweeps)
-/**
- * @deprecated Use the `useVariantCount` hook instead, which calls the nirs4all
- * backend API for accurate variant counting. This local calculation is kept
- * for offline/fallback scenarios but may not match nirs4all's actual behavior.
- * @see useVariantCount from '@/hooks/useVariantCount'
- */
+// Calculate total variants for a single step (product of all param sweeps).
+// Part of the synchronous local estimator documented above.
 export function calculateStepVariants(step: PipelineStep): number {
   let variants = 1;
 
@@ -677,13 +649,9 @@ function binomialCoefficient(n: number, k: number): number {
   return Math.round(result);
 }
 
-// Calculate total pipeline variants (recursive through all steps)
-/**
- * @deprecated Use the `useVariantCount` hook instead, which calls the nirs4all
- * backend API for accurate variant counting. This local calculation is kept
- * for offline/fallback scenarios but may not match nirs4all's actual behavior.
- * @see useVariantCount from '@/hooks/useVariantCount'
- */
+// Calculate total pipeline variants (recursive through all steps).
+// Part of the synchronous local estimator documented above; the recursive
+// backbone used by the cartesian/generator stage counters.
 export function calculatePipelineVariants(steps: PipelineStep[]): number {
   let totalVariants = 1;
 
@@ -704,59 +672,6 @@ export function calculatePipelineVariants(steps: PipelineStep[]): number {
   }
 
   return totalVariants;
-}
-
-// Get detailed variant breakdown for display
-/**
- * @deprecated Use the `useVariantCount` hook's `breakdown` property instead,
- * which calls the nirs4all backend API for accurate variant counting.
- * @see useVariantCount from '@/hooks/useVariantCount'
- */
-export interface VariantBreakdown {
-  stepId: string;
-  stepName: string;
-  stepType: StepType;
-  variants: number;
-  sweeps: { param: string; count: number; display: string }[];
-  children?: VariantBreakdown[];
-}
-
-export function getVariantBreakdown(steps: PipelineStep[]): VariantBreakdown[] {
-  return steps
-    .filter(step => step.enabled !== false)
-    .map(step => {
-      const sweeps = step.paramSweeps
-        ? Object.entries(step.paramSweeps).map(([param, sweep]) => ({
-            param,
-            count: calculateSweepVariants(sweep),
-            display: formatSweepDisplay(sweep),
-          }))
-        : [];
-
-      const breakdown: VariantBreakdown = {
-        stepId: step.id,
-        stepName: step.name,
-        stepType: step.type,
-        variants: calculateStepVariants(step),
-        sweeps,
-      };
-
-      // Add children for branches
-      if (step.branches) {
-        breakdown.children = step.branches.flatMap((branch, idx) =>
-          getVariantBreakdown(branch).map(b => ({
-            ...b,
-            stepName: `${step.generatorKind === "cartesian" ? "Stage"
-              : step.generatorKind === "grid" || step.generatorKind === "zip" ? "Param"
-              : step.generatorKind === "chain" ? "Config"
-              : step.subType === "generator" ? "Option"
-              : "Branch"} ${idx + 1}: ${b.stepName}`
-          }))
-        );
-      }
-
-      return breakdown;
-    });
 }
 
 // Step options configuration (for component library)

@@ -3,7 +3,7 @@
     "id": "preprocessing.generic_univariate_select",
     "name": "GenericUnivariateSelect",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._univariate_selection.GenericUnivariateSelect",
+    "classPath": "sklearn.feature_selection.GenericUnivariateSelect",
     "description": "Univariate feature selector with configurable strategy.",
     "category": "Feature Selection",
     "tags": [
@@ -29,16 +29,19 @@
       {
         "name": "param",
         "type": "float",
-        "default": 0.00001,
+        "default": 1e-05,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.feature_selection._univariate_selection.GenericUnivariateSelect"
     ]
   },
   {
     "id": "preprocessing.rfe",
     "name": "RFE",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._rfe.RFE",
+    "classPath": "sklearn.feature_selection.RFE",
     "description": "Feature ranking with recursive feature elimination.",
     "category": "Feature Selection",
     "tags": [
@@ -72,13 +75,16 @@
         "default": "auto",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.feature_selection._rfe.RFE"
     ]
   },
   {
     "id": "preprocessing.rfecv",
     "name": "RFECV",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._rfe.RFECV",
+    "classPath": "sklearn.feature_selection.RFECV",
     "description": "Recursive feature elimination with cross-validation to select features.",
     "category": "Feature Selection",
     "tags": [
@@ -123,13 +129,16 @@
         "default": "auto",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.feature_selection._rfe.RFECV"
     ]
   },
   {
     "id": "preprocessing.select_fdr",
     "name": "SelectFdr",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._univariate_selection.SelectFdr",
+    "classPath": "sklearn.feature_selection.SelectFdr",
     "description": "Filter: Select the p-values for an estimated false discovery rate.",
     "category": "Feature Selection",
     "tags": [
@@ -152,13 +161,16 @@
         "default": 0.05,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.feature_selection._univariate_selection.SelectFdr"
     ]
   },
   {
     "id": "preprocessing.select_fpr",
     "name": "SelectFpr",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._univariate_selection.SelectFpr",
+    "classPath": "sklearn.feature_selection.SelectFpr",
     "description": "Filter: Select the pvalues below alpha based on a FPR test.",
     "category": "Feature Selection",
     "tags": [
@@ -181,13 +193,16 @@
         "default": 0.05,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.feature_selection._univariate_selection.SelectFpr"
     ]
   },
   {
     "id": "preprocessing.select_from_model",
     "name": "SelectFromModel",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._from_model.SelectFromModel",
+    "classPath": "sklearn.feature_selection.SelectFromModel",
     "description": "Meta-transformer for selecting features based on importance weights.",
     "category": "Feature Selection",
     "tags": [
@@ -231,13 +246,16 @@
         "default": "auto",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.feature_selection._from_model.SelectFromModel"
     ]
   },
   {
     "id": "preprocessing.select_fwe",
     "name": "SelectFwe",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._univariate_selection.SelectFwe",
+    "classPath": "sklearn.feature_selection.SelectFwe",
     "description": "Filter: Select the p-values corresponding to Family-wise error rate.",
     "category": "Feature Selection",
     "tags": [
@@ -260,13 +278,16 @@
         "default": 0.05,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.feature_selection._univariate_selection.SelectFwe"
     ]
   },
   {
     "id": "preprocessing.select_k_best",
     "name": "SelectKBest",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._univariate_selection.SelectKBest",
+    "classPath": "sklearn.feature_selection.SelectKBest",
     "description": "Select features according to the k highest scores.",
     "category": "Feature Selection",
     "tags": [
@@ -289,13 +310,16 @@
         "default": 10,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.feature_selection._univariate_selection.SelectKBest"
     ]
   },
   {
     "id": "preprocessing.select_percentile",
     "name": "SelectPercentile",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._univariate_selection.SelectPercentile",
+    "classPath": "sklearn.feature_selection.SelectPercentile",
     "description": "Select features according to a percentile of the highest scores.",
     "category": "Feature Selection",
     "tags": [
@@ -318,13 +342,16 @@
         "default": 10,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.feature_selection._univariate_selection.SelectPercentile"
     ]
   },
   {
     "id": "preprocessing.sequential_feature_selector",
     "name": "SequentialFeatureSelector",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._sequential.SequentialFeatureSelector",
+    "classPath": "sklearn.feature_selection.SequentialFeatureSelector",
     "description": "Transformer that performs Sequential Feature Selection.",
     "category": "Feature Selection",
     "tags": [
@@ -369,13 +396,16 @@
         "default": 5,
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.feature_selection._sequential.SequentialFeatureSelector"
     ]
   },
   {
     "id": "preprocessing.variance_threshold",
     "name": "VarianceThreshold",
     "type": "preprocessing",
-    "classPath": "sklearn.feature_selection._variance_threshold.VarianceThreshold",
+    "classPath": "sklearn.feature_selection.VarianceThreshold",
     "description": "Feature selector that removes all low-variance features.",
     "category": "Feature Selection",
     "tags": [
@@ -394,6 +424,9 @@
         "sweepable": true
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.feature_selection._variance_threshold.VarianceThreshold"
+    ]
   }
 ]

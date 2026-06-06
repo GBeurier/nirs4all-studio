@@ -15,8 +15,7 @@ import {
   checkForUpdates,
   getUpdateSettings,
   updateUpdateSettings,
-  getVenvStatus,
-  createVenv,
+  getRuntimeStatus,
   installNirs4all,
   getVersionInfo,
   startWebappDownload,
@@ -28,10 +27,9 @@ import {
   requestRestart,
   type UpdateStatus,
   type UpdateSettings,
-  type VenvStatus,
   type VersionInfo,
   type DownloadStatusResponse,
-} from "@/api/client";
+} from "@/api/updates";
 
 // Query keys
 export const updateKeys = {
@@ -106,27 +104,9 @@ export function useUpdateUpdateSettings() {
 export function useVenvStatus() {
   return useQuery({
     queryKey: updateKeys.venv(),
-    queryFn: getVenvStatus,
+    queryFn: getRuntimeStatus,
     staleTime: 30 * 1000, // 30 seconds
     retry: 1,
-  });
-}
-
-/**
- * Hook to call the legacy desktop-managed runtime creation endpoint
- */
-export function useCreateVenv() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (options?: { force?: boolean; install_nirs4all?: boolean; extras?: string[] }) =>
-      createVenv(options),
-    onSuccess: () => {
-      // Invalidate venv status to refetch
-      queryClient.invalidateQueries({ queryKey: updateKeys.venv() });
-      // Also invalidate update status since nirs4all version may have changed
-      queryClient.invalidateQueries({ queryKey: updateKeys.status() });
-    },
   });
 }
 

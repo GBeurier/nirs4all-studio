@@ -34,47 +34,6 @@ def _file_type_to_key_suffix(file_type: str) -> str | None:
     return mapping.get(file_type)
 
 
-# nirs4all's na_policy vocabulary is {auto, abort, remove_sample, remove_feature,
-# replace, ignore} (case-sensitive). Older webapp builds stored "drop"/"keep"
-# (sometimes capitalized), which nirs4all rejects with "Invalid na_policy: 'Drop'".
-# Translate those legacy values — and any casing — at this boundary so
-# already-saved datasets/settings keep working.
-_LEGACY_NA_POLICY_ALIASES = {
-    "drop": "remove_sample",  # legacy "drop rows with NaN"
-    "keep": "ignore",         # legacy "leave NaN as-is"
-}
-
-
-def normalize_na_policy(na_policy: Any) -> Any:
-    """Translate a legacy/cased na_policy value to nirs4all's vocabulary."""
-    if not isinstance(na_policy, str):
-        return na_policy
-    normalized = na_policy.strip().lower()
-    return _LEGACY_NA_POLICY_ALIASES.get(normalized, normalized)
-
-
-def normalize_na_policy_in_config(config: dict[str, Any]) -> None:
-    """Normalize any na_policy in a nirs4all dataset-config dict, in place.
-
-    Covers every shape nirs4all treats as loader params: a root-level
-    ``na_policy``, ``global_params``, and each per-file ``*_params`` block —
-    where a block may be a single dict or a list of dicts (multi-source). So a
-    legacy na_policy from any source (global default, per-file or per-source
-    override) is translated before the dict reaches ``DatasetConfigs``.
-    """
-    if not isinstance(config, dict):
-        return
-    if "na_policy" in config:
-        config["na_policy"] = normalize_na_policy(config["na_policy"])
-    for key, value in config.items():
-        if key != "global_params" and not key.endswith("_params"):
-            continue
-        blocks = value if isinstance(value, list) else [value]
-        for block in blocks:
-            if isinstance(block, dict) and "na_policy" in block:
-                block["na_policy"] = normalize_na_policy(block["na_policy"])
-
-
 def build_nirs4all_config(
     files: list[dict[str, Any]],
     parsing: dict[str, Any],
@@ -117,7 +76,7 @@ def build_nirs4all_config(
     if encoding:
         global_params["encoding"] = encoding
 
-    na_policy = normalize_na_policy(parsing.get("na_policy"))
+    na_policy = parsing.get("na_policy")
     if na_policy:
         global_params["na_policy"] = na_policy
         na_fill_config = parsing.get("na_fill_config")
@@ -209,9 +168,6 @@ def build_nirs4all_config(
     # Dataset name
     if dataset_name:
         config["name"] = dataset_name
-
-    # Normalize any na_policy carried by per-file overrides too (legacy values).
-    normalize_na_policy_in_config(config)
 
     return config
 

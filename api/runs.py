@@ -6,32 +6,39 @@ This module provides endpoints for managing experiment runs:
 - List all runs
 - Get run details
 - Create new run (experiment) with persistence
-- Real-time progress via WebSocket
-- Stop/pause running experiments
+- Real-time progress via WebSocket (dispatched by JobManager)
+- Stop running experiments
 - Retry failed runs
 - Delete runs
 - Quick run endpoint for single pipeline execution
+
+Execution runs on the shared JobManager thread pool (api/jobs/manager.py) — the
+same engine used by pipelines.py, training.py, automl.py and shap.py. Each run is
+one TRAINING job whose id IS the run id, so WebSocket subscribers keyed by run id
+receive the JobManager lifecycle notifications directly.
 """
 
-import asyncio
 import json
+import logging
 import math
-import re
 import sys
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from .jobs.manager import Job, JobType, job_manager
 from .pipeline_canonical import (
     contains_generators,
     count_runtime_variants,
     editor_steps_to_runtime_canonical,
 )
+from .shared.json_safe import sanitize_float
 from .shared.logger import get_logger
 from .shared.runtime_grouping import (
     normalize_split_group_by_mapping,
@@ -42,99 +49,9 @@ from .workspace_manager import workspace_manager
 logger = get_logger(__name__)
 
 
-# ============================================================================
-# Log Parsing Patterns for Granular Progress
-# ============================================================================
-
-# Fold patterns: "Fold 3/5", "fold 3 of 5", "[Fold 3]"
-FOLD_PATTERN = re.compile(r"[Ff]old\s*(\d+)\s*[/of]+\s*(\d+)", re.IGNORECASE)
-FOLD_START_PATTERN = re.compile(r"[Ff]old\s*(\d+)\s*[:|-]?\s*[Ss]tart", re.IGNORECASE)
-FOLD_COMPLETE_PATTERN = re.compile(r"[Ff]old\s*(\d+)\s*[:|-]?\s*[Cc]omplete|[Dd]one|[Ff]inish", re.IGNORECASE)
-
-# Branch patterns: "Branch [0]:", "branch 1:", "Branch: SNV -> PLS"
-BRANCH_PATTERN = re.compile(r"[Bb]ranch\s*\[?(\d+)\]?\s*[:|-]\s*(.+)")
-BRANCH_NAME_PATTERN = re.compile(r"[Bb]ranch:\s*(.+)")
-
-# Variant patterns: "Variant 2/6", "Config 3 of 10", "Testing variant 5"
-VARIANT_PATTERN = re.compile(r"[Vv]ariant\s*(\d+)\s*[/of]+\s*(\d+)", re.IGNORECASE)
-CONFIG_PATTERN = re.compile(r"[Cc]onfig(?:uration)?\s*(\d+)\s*[/of]+\s*(\d+)", re.IGNORECASE)
-
-# Step patterns: "Step 2/10", "Processing step 3"
-STEP_PATTERN = re.compile(r"[Ss]tep\s*(\d+)\s*[/of]+\s*(\d+)", re.IGNORECASE)
-
-
-def parse_log_for_progress(log_entry: str) -> dict[str, Any]:
-    """
-    Parse a log entry for granular progress information.
-
-    Returns dict with parsed info:
-    - fold_id, total_folds: if fold progress detected
-    - branch_path, branch_name: if branch info detected
-    - variant_index, total_variants, variant_description: if variant progress detected
-    - step_index, total_steps: if step progress detected
-    """
-    result = {}
-
-    # Check for fold patterns
-    fold_match = FOLD_PATTERN.search(log_entry)
-    if fold_match:
-        result["fold_id"] = int(fold_match.group(1))
-        result["total_folds"] = int(fold_match.group(2))
-
-    # Check for fold start
-    fold_start = FOLD_START_PATTERN.search(log_entry)
-    if fold_start:
-        result["fold_id"] = int(fold_start.group(1))
-        result["fold_status"] = "started"
-
-    # Check for fold complete
-    fold_complete = FOLD_COMPLETE_PATTERN.search(log_entry)
-    if fold_complete:
-        result["fold_id"] = int(fold_complete.group(1))
-        result["fold_status"] = "completed"
-
-    # Check for branch patterns
-    branch_match = BRANCH_PATTERN.search(log_entry)
-    if branch_match:
-        result["branch_path"] = [int(branch_match.group(1))]
-        result["branch_name"] = branch_match.group(2).strip()
-
-    branch_name_match = BRANCH_NAME_PATTERN.search(log_entry)
-    if branch_name_match and "branch_name" not in result:
-        result["branch_name"] = branch_name_match.group(1).strip()
-
-    # Check for variant patterns
-    variant_match = VARIANT_PATTERN.search(log_entry)
-    if variant_match:
-        result["variant_index"] = int(variant_match.group(1))
-        result["total_variants"] = int(variant_match.group(2))
-
-    config_match = CONFIG_PATTERN.search(log_entry)
-    if config_match and "variant_index" not in result:
-        result["variant_index"] = int(config_match.group(1))
-        result["total_variants"] = int(config_match.group(2))
-
-    # Check for step patterns
-    step_match = STEP_PATTERN.search(log_entry)
-    if step_match:
-        result["step_index"] = int(step_match.group(1))
-        result["total_steps"] = int(step_match.group(2))
-
-    return result
-
-
-def _sanitize_float(value: float | int | None) -> float | None:
-    """Sanitize float values for JSON serialization (NaN/Inf -> None)."""
-    if value is None:
-        return None
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    return float(value)
-
-
 def _sanitize_metrics(metrics: dict) -> dict:
     """Sanitize all float values in a metrics dict for JSON serialization."""
-    return {k: _sanitize_float(v) if isinstance(v, (int, float)) else v for k, v in metrics.items()}
+    return {k: sanitize_float(v) if isinstance(v, (int, float)) else v for k, v in metrics.items()}
 
 
 def _count_tested_pipeline_variants(result: Any, fallback: int = 1) -> int:
@@ -210,7 +127,7 @@ class PipelineRun(BaseModel):
     model: str
     preprocessing: str
     split_strategy: str
-    status: Literal["queued", "running", "completed", "failed", "paused"]
+    status: Literal["queued", "running", "completed", "failed"]
     progress: int = 0
     metrics: RunMetrics | None = None
     config: dict | None = None
@@ -253,7 +170,7 @@ class Run(BaseModel):
     name: str
     description: str | None = None
     datasets: list[DatasetRun]
-    status: Literal["queued", "running", "completed", "failed", "paused"]
+    status: Literal["queued", "running", "completed", "failed"]
     created_at: str
     started_at: str | None = None
     completed_at: str | None = None
@@ -315,7 +232,7 @@ class CreateRunRequest(BaseModel):
 
 
 class RunActionResponse(BaseModel):
-    """Response for run actions (stop, pause, retry)."""
+    """Response for run actions (stop, retry, delete)."""
     success: bool
     message: str
     run_id: str | None = None
@@ -341,7 +258,6 @@ class RunStatsResponse(BaseModel):
 # ============================================================================
 
 _runs: dict[str, Run] = {}
-_run_cancellation_flags: dict[str, bool] = {}  # Track cancellation requests
 _runs_loaded: bool = False  # Track if runs have been loaded from disk
 _current_workspace_path: str | None = None  # Track which workspace runs were loaded for
 
@@ -402,9 +318,6 @@ def _get_runs_dir() -> Path | None:
 
 class _NaNSafeJSONEncoder(json.JSONEncoder):
     """JSON encoder that converts NaN/Inf to null."""
-    def default(self, obj):
-        return super().default(obj)
-
     def encode(self, obj):
         return super().encode(self._sanitize(obj))
 
@@ -422,8 +335,17 @@ class _NaNSafeJSONEncoder(json.JSONEncoder):
 
 
 def _save_run_manifest(run: Run) -> bool:
-    """Save run manifest to workspace for persistence."""
-    runs_dir = _get_runs_dir()
+    """Save run manifest to workspace for persistence.
+
+    The manifest is pinned to the run's own workspace (run.workspace_path):
+    execution happens on a worker thread, and the globally selected workspace
+    may change mid-run — writes must never relocate to the new selection.
+    """
+    if run.workspace_path:
+        runs_dir = Path(run.workspace_path) / "runs"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        runs_dir = _get_runs_dir()
     if not runs_dir:
         return False
 
@@ -452,15 +374,9 @@ def _sanitize_run_metrics(data: dict) -> dict:
 
 
 def _load_persisted_runs() -> list[Run]:
-    """Load persisted runs from workspace.
-
-    Checks both the correct location (workspace/runs) and legacy location
-    (workspace/workspace/runs) for backward compatibility.
-    """
+    """Load persisted runs from the workspace runs directory."""
     runs = []
-    seen_run_ids = set()
 
-    # Primary location: workspace.path / "runs"
     runs_dir = _get_runs_dir()
     if runs_dir and runs_dir.exists():
         for run_dir in runs_dir.iterdir():
@@ -472,34 +388,9 @@ def _load_persisted_runs() -> list[Run]:
                     with open(manifest_path, encoding="utf-8") as f:
                         data = json.load(f)
                         data = _sanitize_run_metrics(data)
-                        run = Run(**data)
-                        runs.append(run)
-                        seen_run_ids.add(run.id)
+                        runs.append(Run(**data))
                 except Exception as e:
                     logger.error("Error loading run %s: %s", run_dir.name, e)
-
-    # Legacy location: workspace.path / "workspace" / "runs"
-    # (for runs created before the path fix)
-    workspace = workspace_manager.get_current_workspace()
-    if workspace:
-        legacy_runs_dir = Path(workspace.path) / "workspace" / "runs"
-        if legacy_runs_dir.exists() and legacy_runs_dir != runs_dir:
-            for run_dir in legacy_runs_dir.iterdir():
-                if not run_dir.is_dir():
-                    continue
-                manifest_path = run_dir / "manifest.json"
-                if manifest_path.exists():
-                    try:
-                        with open(manifest_path, encoding="utf-8") as f:
-                            data = json.load(f)
-                            data = _sanitize_run_metrics(data)
-                            run = Run(**data)
-                            # Avoid duplicates
-                            if run.id not in seen_run_ids:
-                                runs.append(run)
-                                seen_run_ids.add(run.id)
-                    except Exception as e:
-                        logger.error("Error loading legacy run %s: %s", run_dir.name, e)
 
     return runs
 
@@ -688,137 +579,77 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
     return run
 
 
-def _create_mock_run(config: ExperimentConfig) -> Run:
-    """Create a new run from experiment config."""
-    run_id = f"run_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}"
-    now = datetime.now().isoformat()
+def _start_run_job(run: Run) -> Job:
+    """Create and submit the JobManager job that executes a run.
 
-    # Build dataset runs from config
-    datasets = []
-    for ds_id in config.dataset_ids:
-        pipelines = []
-        for pl_id in config.pipeline_ids:
-            pipeline_run = PipelineRun(
-                id=f"{run_id}-{ds_id}-{pl_id}",
-                pipeline_id=pl_id,
-                pipeline_name=f"Pipeline {pl_id}",
-                model="PLS",
-                preprocessing="SNV",
-                split_strategy=f"KFold({config.cv_folds})",
-                status="queued",
-                progress=0,
-            )
-            pipelines.append(pipeline_run)
-
-        dataset_run = DatasetRun(
-            dataset_id=ds_id,
-            dataset_name=f"Dataset {ds_id}",
-            pipelines=pipelines,
-        )
-        datasets.append(dataset_run)
-
-    total_pipelines = len(config.dataset_ids) * len(config.pipeline_ids)
-    workspace = workspace_manager.get_current_workspace()
-
-    run = Run(
-        id=run_id,
-        name=config.name,
-        description=config.description,
-        datasets=datasets,
-        status="queued",
-        created_at=now,
-        cv_folds=config.cv_folds,
-        total_pipelines=total_pipelines,
-        completed_pipelines=0,
-        workspace_path=workspace.path if workspace else None,
-        project_id=config.project_id,
+    The job id IS the run id, so WebSocket clients subscribed to the run id
+    receive JobManager's job_started/job_progress/job_completed/job_failed
+    lifecycle notifications directly.
+    """
+    job = job_manager.create_job(
+        JobType.TRAINING,
+        {"run_id": run.id, "run_name": run.name},
+        job_id=run.id,
     )
+    job_manager.submit_job(job, lambda j, cb: _execute_run_job(run.id, j, cb))
+    return job
 
-    return run
 
+def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str, Any]:
+    """Execute every pipeline of a run (JobManager task, runs on a worker thread).
 
-async def _execute_run(run_id: str):
+    Cancellation is cooperative: stop_run() marks the run terminal and requests
+    job cancellation; this task checks the flag between pipelines and never
+    overwrites a terminal status set by stop_run — a stopped run must not be
+    resurrected to 'completed' by the still-running worker (RUN-07). The
+    cancellation flag is also threaded into nirs4all.run() as its should_stop
+    hook, so an in-flight pipeline aborts at the next variant/refit boundary
+    (RunCancelledError) instead of running to completion.
     """
-    Background task to execute a run.
-    Uses nirs4all library for actual training with WebSocket progress updates.
-    """
-    if run_id not in _runs:
-        return
+    run = _runs.get(run_id)
+    if run is None:
+        return {"run_id": run_id, "status": "unknown"}
 
-    run = _runs[run_id]
     run.status = "running"
     run.started_at = datetime.now().isoformat()
     _save_run_manifest(run)
 
-    # Import WebSocket notification functions
-    try:
-        from websocket.manager import (
-            notify_job_completed,
-            notify_job_failed,
-            notify_job_log,
-            notify_job_progress,
-            notify_job_started,
-        )
-        ws_available = True
-    except ImportError:
-        ws_available = False
-        logger.info("WebSocket notifications not available")
+    total_pipelines = run.total_pipelines or 1
+    cancelled = False
 
-    async def send_log(message: str, level: str = "info"):
-        """Helper to send log via WebSocket."""
-        if ws_available:
-            await notify_job_log(run_id, message, level)
-
-    async def send_progress(progress: float, message: str = "", metrics: dict = None):
-        """Helper to send progress via WebSocket."""
-        if ws_available:
-            await notify_job_progress(run_id, progress, message, metrics)
-
-    # Notify run started
-    if ws_available:
-        await notify_job_started(run_id, {
-            "run_id": run_id,
-            "name": run.name,
-            "total_pipelines": run.total_pipelines,
-            "datasets": [d.dataset_name for d in run.datasets],
-        })
+    # Pre-create a single store run so all pipelines are grouped together and the
+    # persisted store entry keeps the wizard-provided run name even for simple
+    # one-pipeline runs.
+    shared_store_run_id: str | None = None
+    if run.workspace_path:
+        try:
+            from nirs4all.pipeline.storage import WorkspaceStore
+            _pre_store = WorkspaceStore(Path(run.workspace_path))
+            dataset_meta = [{"name": d.dataset_name} for d in run.datasets]
+            shared_store_run_id = _pre_store.begin_run(
+                name=run.name or "run",
+                config={"n_pipelines": total_pipelines, "n_datasets": len(run.datasets)},
+                datasets=dataset_meta,
+            )
+            run.store_run_id = shared_store_run_id
+            if run.project_id:
+                _pre_store._fetch_pl(
+                    "UPDATE runs SET project_id = $2 WHERE run_id = $1",
+                    [shared_store_run_id, run.project_id],
+                )
+            _pre_store.close()
+        except Exception as e:
+            logger.warning("Failed to pre-create store run: %s", e)
+            shared_store_run_id = None
 
     try:
         pipeline_index = 0
-        total_pipelines = run.total_pipelines or 1
-
-        # Pre-create a single store run so all pipelines are grouped together
-        # and the persisted store entry keeps the wizard-provided run name even
-        # for simple one-pipeline runs.
-        shared_store_run_id: str | None = None
-        if run.workspace_path:
-            try:
-                from nirs4all.pipeline.storage import WorkspaceStore
-                _pre_store = WorkspaceStore(Path(run.workspace_path))
-                dataset_meta = [{"name": d.dataset_name} for d in run.datasets]
-                shared_store_run_id = _pre_store.begin_run(
-                    name=run.name or "run",
-                    config={"n_pipelines": total_pipelines, "n_datasets": len(run.datasets)},
-                    datasets=dataset_meta,
-                )
-                run.store_run_id = shared_store_run_id
-                if run.project_id:
-                    _pre_store._fetch_pl(
-                        "UPDATE runs SET project_id = $2 WHERE run_id = $1",
-                        [shared_store_run_id, run.project_id],
-                    )
-                _pre_store.close()
-            except Exception as e:
-                logger.warning("Failed to pre-create store run: %s", e)
-                shared_store_run_id = None
-
         for dataset in run.datasets:
             for pipeline in dataset.pipelines:
-                # Check for cancellation
-                if _run_cancellation_flags.get(run_id, False):
+                if job.cancellation_requested:
+                    cancelled = True
                     pipeline.status = "failed"
                     pipeline.error_message = "Cancelled by user"
-                    await send_log(f"[WARN] Pipeline {pipeline.pipeline_name} cancelled by user", "warn")
                     continue
 
                 pipeline.status = "running"
@@ -826,110 +657,123 @@ async def _execute_run(run_id: str):
                 pipeline.logs = [f"[INFO] Starting pipeline: {pipeline.pipeline_name}"]
                 _save_run_manifest(run)
 
-                # Calculate overall progress
                 base_progress = (pipeline_index / total_pipelines) * 100
-                await send_progress(
+                progress_callback(
                     base_progress,
                     f"Starting {pipeline.pipeline_name} on {dataset.dataset_name}...",
                 )
-                await send_log(f"[INFO] Starting pipeline: {pipeline.pipeline_name}")
 
                 try:
-                    # Execute the actual training with progress callback
-                    async def pipeline_progress_callback(step_progress: float, step_message: str):
-                        """Callback to update progress during pipeline execution."""
-                        # step_progress is 0-100 within this pipeline
-                        overall = base_progress + (step_progress / 100) * (100 / total_pipelines)  # noqa: B023
-                        await send_progress(overall, step_message)
-
-                    result = await _execute_pipeline_training(
+                    result = _execute_pipeline_training(
                         pipeline,
                         dataset.dataset_id,
-                        run.cv_folds or 5,
                         run.workspace_path,
                         run_id,
                         dataset.split_group_by,
-                        pipeline_progress_callback if ws_available else None,
                         store_run_id=shared_store_run_id,
+                        should_stop=lambda: job.cancellation_requested,
                     )
 
-                    pipeline.status = "completed"
-                    pipeline.progress = 100
-                    pipeline.completed_at = datetime.now().isoformat()
-                    # Sanitize metrics to handle NaN/Inf values
-                    sanitized_metrics = _sanitize_metrics(result.get("metrics", {}))
-                    pipeline.metrics = RunMetrics(**sanitized_metrics)
-                    pipeline.model_path = result.get("model_path")
-                    pipeline.logs = result.get("logs", pipeline.logs or [])
-                    pipeline.tested_variants = result.get("variants_tested", 1)
-
-                    # Capture store_run_id (from shared pre-created run or single pipeline)
-                    result_store_run_id = result.get("store_run_id")
-                    if result_store_run_id and not run.store_run_id:
-                        run.store_run_id = result_store_run_id
-
-                    # Log summary based on variants tested
-                    variants_info = f" ({pipeline.tested_variants} variants tested)" if pipeline.tested_variants > 1 else ""
-                    result_metrics = result.get("metrics", {})
-                    score_metric = result_metrics.get("score_metric")
-                    score_val = result_metrics.get("score")
-                    r2_val = result_metrics.get("r2")
-
-                    if score_metric and score_val is not None and r2_val is None:
-                        pipeline.logs.append(
-                            f"[INFO] Training complete{variants_info}. Best {score_metric}: {float(score_val):.4f}"
-                        )
-                        await send_log(
-                            f"[INFO] Completed {pipeline.pipeline_name}{variants_info}: "
-                            f"{score_metric}={float(score_val):.4f}"
-                        )
+                    if job.cancellation_requested:
+                        # The in-flight pipeline ran to completion (no library
+                        # cancel hook), but a stopped run must not publish it
+                        # as a success.
+                        cancelled = True
+                        pipeline.status = "failed"
+                        pipeline.error_message = "Cancelled by user"
                     else:
-                        safe_r2 = float(r2_val or 0)
-                        pipeline.logs.append(f"[INFO] Training complete{variants_info}. Best R²: {safe_r2:.4f}")
-                        await send_log(f"[INFO] Completed {pipeline.pipeline_name}{variants_info}: R²={safe_r2:.4f}")
+                        pipeline.status = "completed"
+                        pipeline.progress = 100
+                        pipeline.completed_at = datetime.now().isoformat()
+                        # Sanitize metrics to handle NaN/Inf values
+                        sanitized_metrics = _sanitize_metrics(result.get("metrics", {}))
+                        pipeline.metrics = RunMetrics(**sanitized_metrics)
+                        pipeline.model_path = result.get("model_path")
+                        pipeline.logs = result.get("logs", pipeline.logs or [])
+                        pipeline.tested_variants = result.get("variants_tested", 1)
 
-                    if run.completed_pipelines is not None:
-                        run.completed_pipelines += 1
+                        # Capture store_run_id (from shared pre-created run or single pipeline)
+                        result_store_run_id = result.get("store_run_id")
+                        if result_store_run_id and not run.store_run_id:
+                            run.store_run_id = result_store_run_id
 
-                    await send_progress(
-                        ((pipeline_index + 1) / total_pipelines) * 100,
-                        f"Completed {pipeline.pipeline_name}",
-                        result_metrics,
-                    )
+                        variants_info = (
+                            f" ({pipeline.tested_variants} variants tested)"
+                            if pipeline.tested_variants > 1
+                            else ""
+                        )
+                        result_metrics = result.get("metrics", {})
+                        score_metric = result_metrics.get("score_metric")
+                        score_val = result_metrics.get("score")
+                        r2_val = result_metrics.get("r2")
+
+                        if score_metric and score_val is not None and r2_val is None:
+                            pipeline.logs.append(
+                                f"[INFO] Training complete{variants_info}. Best {score_metric}: {float(score_val):.4f}"
+                            )
+                        else:
+                            r2_str = f"{float(r2_val):.4f}" if r2_val is not None else "N/A"
+                            pipeline.logs.append(
+                                f"[INFO] Training complete{variants_info}. Best R²: {r2_str}"
+                            )
+
+                        if run.completed_pipelines is not None:
+                            run.completed_pipelines += 1
+
+                        if result_metrics:
+                            job_manager.update_job_metrics(job.id, result_metrics, append_history=False)
+                        progress_callback(
+                            ((pipeline_index + 1) / total_pipelines) * 100,
+                            f"Completed {pipeline.pipeline_name}",
+                        )
 
                 except Exception as e:
-                    pipeline.status = "failed"
-                    pipeline.error_message = str(e)
-                    pipeline.logs = pipeline.logs or []
-                    pipeline.logs.append(f"[ERROR] {str(e)}")
-                    logger.error("Pipeline execution error: %s", e, exc_info=True)
-                    await send_log(f"[ERROR] {pipeline.pipeline_name} failed: {str(e)}", "error")
+                    from nirs4all.pipeline.execution.orchestrator import RunCancelledError
+
+                    if isinstance(e, RunCancelledError):
+                        cancelled = True
+                        pipeline.status = "failed"
+                        pipeline.error_message = "Cancelled by user"
+                        pipeline.logs = pipeline.logs or []
+                        pipeline.logs.append("[WARN] Pipeline cancelled by user")
+                    else:
+                        pipeline.status = "failed"
+                        pipeline.error_message = str(e)
+                        pipeline.logs = pipeline.logs or []
+                        pipeline.logs.append(f"[ERROR] {str(e)}")
+                        logger.error("Pipeline execution error: %s", e, exc_info=True)
 
                 _save_run_manifest(run)
                 pipeline_index += 1
 
+        if job.cancellation_requested:
+            cancelled = True
+
+        if cancelled:
+            # stop_run() already wrote the terminal status; keep it (RUN-07).
+            if not run.completed_at:
+                run.completed_at = datetime.now().isoformat()
+            _save_run_manifest(run)
+            if shared_store_run_id and run.workspace_path:
+                try:
+                    from nirs4all.pipeline.storage import WorkspaceStore
+                    _stop_store = WorkspaceStore(Path(run.workspace_path))
+                    _stop_store.fail_run(shared_store_run_id, "Stopped by user")
+                    _stop_store.close()
+                except Exception:
+                    pass
+            return {"run_id": run_id, "status": run.status, "cancelled": True}
+
         # Determine overall run status
         all_completed = all(
-            p.status == "completed"
-            for d in run.datasets
-            for p in d.pipelines
+            p.status == "completed" for d in run.datasets for p in d.pipelines
         )
         any_failed = any(
-            p.status == "failed"
-            for d in run.datasets
-            for p in d.pipelines
+            p.status == "failed" for d in run.datasets for p in d.pipelines
         )
-
-        if all_completed:
-            run.status = "completed"
-        elif any_failed:
-            run.status = "failed"
-        else:
-            run.status = "completed"
-
+        run.status = "completed" if all_completed or not any_failed else "failed"
         run.completed_at = datetime.now().isoformat()
 
-        # Calculate duration
         if run.started_at:
             start = datetime.fromisoformat(run.started_at)
             end = datetime.fromisoformat(run.completed_at)
@@ -943,18 +787,12 @@ async def _execute_run(run_id: str):
             try:
                 from nirs4all.pipeline.storage import WorkspaceStore
                 _post_store = WorkspaceStore(Path(run.workspace_path))
-                summary = {"total_pipelines": total_pipelines}
-                _post_store.complete_run(shared_store_run_id, summary)
+                _post_store.complete_run(shared_store_run_id, {"total_pipelines": total_pipelines})
                 _post_store.close()
             except Exception as e:
                 logger.warning("Failed to complete store run: %s", e)
 
-        if ws_available:
-            await notify_job_completed(run_id, {
-                "run_id": run_id,
-                "status": run.status,
-                "duration": run.duration,
-            })
+        return {"run_id": run_id, "status": run.status, "duration": run.duration}
 
     except Exception as e:
         run.status = "failed"
@@ -971,570 +809,289 @@ async def _execute_run(run_id: str):
             except Exception:
                 pass
 
-        if ws_available:
-            await notify_job_failed(run_id, str(e))
-
-    finally:
-        # Clean up cancellation flag
-        _run_cancellation_flags.pop(run_id, None)
+        # Re-raise so JobManager marks the job FAILED and dispatches the
+        # job_failed WebSocket notification.
+        raise
 
 
-
-async def _execute_pipeline_training(
+def _execute_pipeline_training(
     pipeline: PipelineRun,
     dataset_id: str,
-    cv_folds: int,
     workspace_path: str | None,
     run_id: str,
     split_group_by: str | None = None,
-    progress_callback: Any | None = None,
     store_run_id: str | None = None,
+    should_stop: Any | None = None,
 ) -> dict[str, Any]:
-    """
-    Execute pipeline training using nirs4all.run().
+    """Execute one pipeline via nirs4all.run() on the current worker thread.
 
-    This function uses the full nirs4all API which supports:
-    - Sweeps (_range_, _or_, etc.) generating multiple pipeline variants
-    - Branching (parallel execution paths)
-    - Finetuning (Optuna hyperparameter optimization)
-
-    Args:
-        pipeline: The pipeline run configuration
-        dataset_id: ID of the dataset to train on
-        cv_folds: Number of cross-validation folds
-        workspace_path: Path to workspace for saving models
-        run_id: ID of the parent run
-        split_group_by: Runtime metadata column selected for this dataset
-        progress_callback: Optional async callback(progress: float, message: str)
+    Supports sweeps (_range_, _or_, ...), branching and finetuning through the
+    full nirs4all API. Library log output is captured into the pipeline logs
+    (served by /runs/{run_id}/logs/{pipeline_id} and persisted in the manifest).
 
     Returns:
-        Dict with metrics, model_path, logs, and variant info
+        Dict with metrics, model_path, logs, variants_tested and store_run_id.
     """
-    logs = []
+    logs: list[str] = []
 
-    # Import WebSocket notification for streaming logs
-    try:
-        from websocket.manager import (
-            notify_branch_progress,
-            notify_fold_progress,
-            notify_job_log,
-            notify_variant_progress,
-        )
-        ws_available = True
-    except ImportError:
-        ws_available = False
-
-    # Track granular progress state
-    granular_state = {
-        "current_fold": None,
-        "total_folds": pipeline.fold_count or 1,
-        "current_branch": None,
-        "current_variant": None,
-        "total_variants": pipeline.estimated_variants or 1,
-    }
-
-    async def report_progress(progress: float, message: str):
-        """Report progress via callback and update pipeline."""
-        pipeline.progress = int(progress)
-        if progress_callback:
-            await progress_callback(progress, message)
-
-    async def stream_log(log_entry: str, level: str = "info"):
-        """Stream a log entry via WebSocket with granular progress parsing."""
-        # Parse log for granular progress info
-        parsed = parse_log_for_progress(log_entry)
-        context = None
-
-        if ws_available and parsed:
-            # Build context for log
-            context = {}
-            if "fold_id" in parsed:
-                context["fold_id"] = parsed["fold_id"]
-                context["total_folds"] = parsed.get("total_folds", granular_state["total_folds"])
-                # Send fold progress notification
-                fold_status = parsed.get("fold_status", "started")
-                await notify_fold_progress(
-                    run_id,
-                    parsed["fold_id"],
-                    context["total_folds"],
-                    status=fold_status,
-                )
-                # Update pipeline tracking
-                pipeline.current_fold = parsed["fold_id"]
-                granular_state["current_fold"] = parsed["fold_id"]
-
-            if "branch_name" in parsed:
-                context["branch_name"] = parsed["branch_name"]
-                branch_path = parsed.get("branch_path", [])
-                await notify_branch_progress(
-                    run_id,
-                    branch_path,
-                    parsed["branch_name"],
-                    status="entered",
-                )
-                pipeline.current_branch = parsed["branch_name"]
-                granular_state["current_branch"] = parsed["branch_name"]
-
-            if "variant_index" in parsed:
-                context["variant_index"] = parsed["variant_index"]
-                context["total_variants"] = parsed.get("total_variants", granular_state["total_variants"])
-                await notify_variant_progress(
-                    run_id,
-                    parsed["variant_index"],
-                    context["total_variants"],
-                    f"Variant {parsed['variant_index']}",
-                    status="started",
-                )
-                pipeline.current_variant = parsed["variant_index"]
-                granular_state["current_variant"] = parsed["variant_index"]
-
-        # Send log with context
-        if ws_available:
-            await notify_job_log(run_id, log_entry, level, context)
-
-        logs.append(log_entry)
-        # Also update pipeline logs in real-time
+    def log(msg: str) -> None:
+        logs.append(msg)
         if pipeline.logs is None:
             pipeline.logs = []
-        pipeline.logs.append(log_entry)
+        pipeline.logs.append(msg)
 
-    await report_progress(5, "Preparing pipeline...")
-    await stream_log("[INFO] Preparing pipeline...")
+    def _summarize_folds(predictions: Any) -> None:
+        """Log fold-level scores plus avg and weighted avg when available."""
+        try:
+            fold_groups = predictions.top(n=1, group_by=["fold_id"])
+        except Exception:
+            return
 
-    # Get pipeline config
+        if not isinstance(fold_groups, dict):
+            return
+
+        fold_scores = []
+        metric_name = "score"
+        try:
+            best_entry = predictions.top(n=1)
+            if best_entry:
+                metric_name = best_entry[0].get("metric", metric_name)
+        except Exception:
+            pass
+
+        for key, entries in fold_groups.items():
+            fold_id = key[0] if isinstance(key, tuple) else key
+            if not fold_id or str(fold_id).lower() in ("avg", "wavg", "ensemble"):
+                continue
+            entry = entries[0] if entries else None
+            if not entry:
+                continue
+            score = entry.get("test_score")
+            if score is None:
+                score = entry.get("val_score")
+            if score is None:
+                continue
+            n_samples = entry.get("n_samples") or 0
+            fold_scores.append((fold_id, float(score), int(n_samples)))
+            log(f"[INFO] Fold {fold_id}: {metric_name}={float(score):.4f} (n={int(n_samples)})")
+
+        if not fold_scores:
+            return
+
+        avg = sum(s for _, s, _ in fold_scores) / len(fold_scores)
+        log(f"[INFO] Fold avg: {metric_name}={avg:.4f}")
+
+        total_weight = sum(n for _, _, n in fold_scores)
+        if total_weight > 0:
+            wavg = sum(s * n for _, s, n in fold_scores) / total_weight
+            log(f"[INFO] Fold wavg (by n_samples): {metric_name}={wavg:.4f}")
+
+    log("[INFO] Preparing pipeline...")
+
     config = pipeline.config or {}
     steps = config.get("steps", [])
-
-    # Extract step info for progress messages
     model_name = pipeline.model or "Unknown"
-    preprocessing_name = pipeline.preprocessing or "None"
-    estimated_variants = pipeline.estimated_variants or 1
-    has_variants = pipeline.has_generators or estimated_variants > 1
-
-    # Thread-safe queue for streaming logs from thread to async
-    import queue
-    log_queue: queue.Queue = queue.Queue()
-
-    # Run all heavy operations in a thread to avoid blocking the event loop
-    import concurrent.futures
-
-    def run_pipeline_in_thread():
-        """Execute all pipeline operations in a thread to avoid blocking the event loop."""
-        thread_logs = []
-
-        def log(msg: str):
-            """Add log entry and queue it for streaming."""
-            thread_logs.append(msg)
-            log_queue.put(msg)
-
-        def _summarize_folds(predictions: Any) -> None:
-            """Log fold-level scores plus avg and weighted avg when available."""
-            try:
-                fold_groups = predictions.top(n=1, group_by=["fold_id"])
-            except Exception:
-                return
-
-            if not isinstance(fold_groups, dict):
-                return
-
-            fold_scores = []
-            metric_name = "score"
-            try:
-                best_entry = predictions.top(n=1)
-                if best_entry:
-                    metric_name = best_entry[0].get("metric", metric_name)
-            except Exception:
-                pass
-
-            for key, entries in fold_groups.items():
-                fold_id = key[0] if isinstance(key, tuple) else key
-                if not fold_id or str(fold_id).lower() in ("avg", "wavg", "ensemble"):
-                    continue
-                entry = entries[0] if entries else None
-                if not entry:
-                    continue
-                score = entry.get("test_score")
-                if score is None:
-                    score = entry.get("val_score")
-                if score is None:
-                    continue
-                n_samples = entry.get("n_samples") or 0
-                fold_scores.append((fold_id, float(score), int(n_samples)))
-                log(f"[INFO] Fold {fold_id}: {metric_name}={float(score):.4f} (n={int(n_samples)})")
-
-            if not fold_scores:
-                return
-
-            avg = sum(s for _, s, _ in fold_scores) / len(fold_scores)
-            log(f"[INFO] Fold avg: {metric_name}={avg:.4f}")
-
-            total_weight = sum(n for _, _, n in fold_scores)
-            if total_weight > 0:
-                wavg = sum(s * n for _, s, n in fold_scores) / total_weight
-                log(f"[INFO] Fold wavg (by n_samples): {metric_name}={wavg:.4f}")
-
-        # Import nirs4all in thread to avoid blocking event loop during heavy import
-        try:
-            import nirs4all
-        except ImportError as e:
-            raise ValueError(f"nirs4all is required for training: {e}")
-
-        import logging
-
-        class _QueueLogHandler(logging.Handler):
-            def emit(self, record):
-                try:
-                    msg = self.format(record)
-                except Exception:
-                    msg = record.getMessage()
-                if msg:
-                    log_queue.put(msg)
-
-        log_handler = _QueueLogHandler()
-        log_handler.setLevel(logging.INFO)
-        log_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
-        root_logger = logging.getLogger()
-        root_logger.addHandler(log_handler)
-
-        try:
-            # Build dataset config with proper loading parameters (delimiter, etc.)
-            from .nirs4all_adapter import build_dataset_config, ensure_models_dir, expand_pipeline_variants
-            from .spectra import _load_dataset
-            try:
-                dataset_config = build_dataset_config(dataset_id)
-                log(f"[INFO] Dataset config keys: {list(dataset_config.keys())}")
-            except Exception as e:
-                raise ValueError(f"Dataset '{dataset_id}' config build failed: {e}")
-
-            dataset_object = _load_dataset(dataset_id)
-            if dataset_object is None:
-                raise ValueError(f"Dataset '{dataset_id}' could not be loaded for runtime grouping.")
-
-            try:
-                prepared = prepare_pipeline_steps_with_runtime_grouping(
-                    steps,
-                    dataset_object,
-                    split_group_by,
-                )
-            except Exception as e:
-                raise ValueError(f"Runtime split grouping validation failed: {e}") from e
-
-            for warning_message in prepared.warnings:
-                log(f"[WARN] {warning_message}")
-
-            prepared_steps = prepared.steps
-            # Build pipeline - handle expanded variants vs full pipelines
-            nirs4all_steps = None
-            estimated_variants = 1
-            has_generators = False
-
-            # Check if this is an already-expanded variant
-            is_expanded_variant = pipeline.is_expanded_variant or False
-            variant_index = pipeline.variant_index
-
-            if prepared_steps:
-                try:
-                    if is_expanded_variant and variant_index is not None:
-                        # This is a specific variant - get its pre-expanded steps
-                        variants = expand_pipeline_variants(prepared_steps)
-                        if 0 <= variant_index < len(variants):
-                            selected_variant = variants[variant_index]
-                            nirs4all_steps = selected_variant.steps
-                            log(f"[INFO] Running variant {variant_index + 1}/{len(variants)}: {selected_variant.description}")
-                        else:
-                            log(f"[WARN] Variant index {variant_index} out of range, using first variant")
-                            if variants:
-                                nirs4all_steps = variants[0].steps
-                            else:
-                                nirs4all_steps = editor_steps_to_runtime_canonical(prepared_steps)
-                        estimated_variants = 1  # Only running this one variant
-                        has_generators = False
-                    else:
-                        # Full pipeline with generators preserved in canonical form
-                        nirs4all_steps = editor_steps_to_runtime_canonical(prepared_steps)
-                        if not nirs4all_steps:
-                            raise ValueError("Pipeline has no executable steps")
-                        estimated_variants = count_runtime_variants(nirs4all_steps)
-                        has_generators = contains_generators(nirs4all_steps)
-
-                        log(f"[INFO] Pipeline built: {len(nirs4all_steps)} steps")
-
-                        if has_generators:
-                            log(f"[INFO] Generators detected: ~{estimated_variants} variants will be tested")
-
-                except HTTPException as e:
-                    # HTTPException from _resolve_operator_class means a missing optional package
-                    detail = str(e.detail) if hasattr(e, "detail") else str(e)
-                    raise ValueError(
-                        f"Missing package for pipeline '{pipeline.pipeline_name}': {detail}. "
-                        f"Install it via Settings > Advanced > Dependencies."
-                    )
-                except Exception as e:
-                    raise ValueError(f"Pipeline build failed: {e}")
-            else:
-                raise ValueError("No pipeline steps provided")
-
-            # Execute using nirs4all.run()
-            log("[INFO] Executing nirs4all.run() with dataset config...")
-            log(f"[INFO] Training {model_name}...")
-
-            run_kwargs = {
-                "pipeline": nirs4all_steps,
-                "dataset": dataset_config,
-                "verbose": 1,
-                "save_artifacts": True,
-                "save_charts": False,
-                "plots_visible": False,
-                "workspace_path": workspace_path,
-            }
-            if store_run_id:
-                run_kwargs["store_run_id"] = store_run_id
-            result = nirs4all.run(**run_kwargs)
-        finally:
-            root_logger.removeHandler(log_handler)
-
-        log("[INFO] Training completed, extracting metrics...")
-
-        primary_metric: str | None = None
-        result_task_type: str | None = None
-        best_entry_score: float | None = None
-        try:
-            if hasattr(result, "predictions") and result.predictions:
-                best_entries = result.predictions.top(n=1)
-                if best_entries:
-                    best_entry = best_entries[0]
-                    if isinstance(best_entry, dict):
-                        raw_metric = best_entry.get("metric")
-                        raw_task_type = best_entry.get("task_type")
-                        raw_score = best_entry.get("test_score")
-                        if raw_score is None:
-                            raw_score = best_entry.get("val_score")
-                        primary_metric = str(raw_metric) if raw_metric is not None else None
-                        result_task_type = str(raw_task_type) if raw_task_type is not None else None
-                        if isinstance(raw_score, (int, float)) and not math.isnan(raw_score):
-                            best_entry_score = float(raw_score)
-        except Exception:
-            pass
-
-        is_classification_run = "classification" in str(result_task_type or "").lower()
-
-        # Extract metrics using RunResult properties
-        # Note: best_rmse/best_r2 return float('nan') when unavailable, not None
-        metrics = {}
-        if hasattr(result, 'best_rmse'):
-            rmse_val = result.best_rmse
-            if rmse_val is not None and not math.isnan(rmse_val):
-                metrics['rmse'] = float(rmse_val)
-        if hasattr(result, 'best_r2'):
-            r2_val = result.best_r2
-            if r2_val is not None and not math.isnan(r2_val):
-                metrics['r2'] = float(r2_val)
-        if hasattr(result, 'best_score'):
-            score_val = result.best_score
-            if score_val is not None and not math.isnan(score_val):
-                metrics['score'] = float(score_val)
-        if 'score' not in metrics and best_entry_score is not None:
-            metrics['score'] = best_entry_score
-        if primary_metric:
-            metrics['score_metric'] = primary_metric
-
-        # Compute RPD if we have regression RMSE
-        if not is_classification_run and 'rmse' in metrics and metrics['rmse'] > 0:
-            try:
-                if hasattr(result, 'predictions') and result.predictions:
-                    best_pred = result.predictions.best()
-                    if best_pred and hasattr(best_pred, 'y_true'):
-                        import numpy as np
-                        std_dev = float(np.std(best_pred.y_true))
-                        metrics['rpd'] = std_dev / metrics['rmse']
-            except Exception:
-                pass
-
-        # Preserve regression defaults for legacy UI summaries, but avoid
-        # publishing fake regression metrics for classification runs.
-        if not is_classification_run:
-            if 'r2' not in metrics or metrics['r2'] is None:
-                metrics['r2'] = 0.0
-            if 'rmse' not in metrics or metrics['rmse'] is None:
-                metrics['rmse'] = 999.0
-            if 'mae' not in metrics or metrics['mae'] is None:
-                metrics['mae'] = metrics.get('rmse', 0.0)
-            if 'rpd' not in metrics or metrics['rpd'] is None:
-                metrics['rpd'] = 0.0
-
-        # Sanitize all metrics to handle NaN/Inf values
-        metrics = _sanitize_metrics(metrics)
-
-        # Count actual pipeline variants, not fold/partition/refit prediction rows.
-        variants_tested = _count_tested_pipeline_variants(result, fallback=estimated_variants)
-
-        log(f"[INFO] Tested {variants_tested} pipeline variant(s)")
-        if is_classification_run and metrics.get("score") is not None:
-            metric_label = primary_metric or "score"
-            log(f"[INFO] Best {metric_label} = {metrics['score']:.4f}")
-        else:
-            r2_str = f"{metrics['r2']:.4f}" if metrics.get('r2') is not None else "N/A"
-            rmse_str = f"{metrics['rmse']:.4f}" if metrics.get('rmse') is not None else "N/A"
-            log(f"[INFO] Best R² = {r2_str}, RMSE = {rmse_str}")
-
-        # Fold summary (if available)
-        try:
-            _summarize_folds(result.predictions)
-        except Exception:
-            pass
-
-        # Get top results for logging
-        if has_generators and hasattr(result, 'top'):
-            try:
-                top_3 = list(result.top(3))
-                log("[INFO] Top 3 configurations:")
-                for i, pred in enumerate(top_3, 1):
-                    pred_rmse = getattr(pred, 'rmse', getattr(pred, 'test_rmse', None))
-                    pred_r2 = getattr(pred, 'r2', getattr(pred, 'test_r2', None))
-                    if pred_rmse is not None and pred_r2 is not None:
-                        log(f"[INFO]   {i}. RMSE={pred_rmse:.4f}, R²={pred_r2:.4f}")
-                    elif pred_rmse is not None:
-                        log(f"[INFO]   {i}. RMSE={pred_rmse:.4f}")
-            except Exception:
-                pass
-
-        # Extract result_store_run_id from the orchestrator
-        result_store_run_id = store_run_id  # Start with the caller-provided ID
-        try:
-            if hasattr(result, '_runner') and result._runner is not None:
-                orchestrator = getattr(result._runner, 'orchestrator', None)
-                if orchestrator is not None:
-                    orch_run_id = getattr(orchestrator, 'last_run_id', None)
-                    if orch_run_id:
-                        result_store_run_id = orch_run_id
-        except Exception:
-            pass
-
-        # Export model bundle (.n4a) using RunResult.export()
-        model_path = None
-        if workspace_path:
-            log("[INFO] Exporting model...")
-            try:
-                models_dir = ensure_models_dir(workspace_path)
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                model_filename = f"{pipeline.pipeline_id}_{run_id}_{timestamp}.n4a"
-                model_path = str(models_dir / model_filename)
-
-                result.export(model_path)
-                log(f"[INFO] Model exported: {model_filename}")
-            except Exception as e:
-                log(f"[WARN] Model export failed: {e}")
-
-        return {
-            "metrics": metrics,
-            "model_path": model_path,
-            "logs": thread_logs,
-            "variants_tested": variants_tested,
-            "store_run_id": result_store_run_id,
-        }
-
-    # Run the pipeline in a thread pool.
-    # Don't use `with` — on cancellation we need shutdown(wait=False) to avoid
-    # blocking the event loop while the thread finishes.
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(run_pipeline_in_thread)
-    cancelled = False
 
     try:
-        # Poll for completion with progress updates
-        # Progress phases based on pipeline execution stages
-        progress_step = 5
-        elapsed_ticks = 0
+        import nirs4all
+    except ImportError as e:
+        raise ValueError(f"nirs4all is required for training: {e}")
 
-        # Build dynamic progress messages based on pipeline content
-        progress_phases = []
+    # Capture library log output into the pipeline logs. Only records emitted
+    # from this worker thread are captured so concurrent jobs don't cross-pollute.
+    thread_id = threading.get_ident()
 
-        # Phase 1: Loading and preprocessing (5-20%)
-        progress_phases.append((5, "Loading dataset..."))
-        if preprocessing_name and preprocessing_name != "None":
-            progress_phases.append((12, f"Applying {preprocessing_name}..."))
-        else:
-            progress_phases.append((12, "Preparing data..."))
-
-        # Phase 2: Training (20-75%)
-        if has_variants:
-            # For pipelines with variants, show variant-based progress
-            variants_to_show = min(estimated_variants, 10)  # Don't show too many
-            for i in range(variants_to_show):
-                pct = 20 + int((i / variants_to_show) * 50)
-                if i == 0:
-                    progress_phases.append((pct, f"Training {model_name} (variant 1/{estimated_variants})..."))
-                else:
-                    progress_phases.append((pct, f"Training variant {i+1}/{estimated_variants}..."))
-            progress_phases.append((72, f"Evaluating {estimated_variants} configurations..."))
-        else:
-            # Single model training
-            progress_phases.append((25, f"Training {model_name}..."))
-            progress_phases.append((45, f"Cross-validating {model_name}..."))
-            progress_phases.append((65, "Evaluating performance..."))
-
-        # Phase 3: Finalization (75-90%)
-        progress_phases.append((78, "Selecting best model..."))
-        progress_phases.append((85, "Finalizing results..."))
-
-        phase_index = 0
-        current_msg = "Starting..."
-
-        while not future.done():
-            # Check for cancellation — exit the polling loop immediately so the
-            # asyncio task finishes before TestClient / event-loop teardown.
-            if _run_cancellation_flags.get(run_id, False):
-                cancelled = True
-                break
-
-            await asyncio.sleep(0.05)  # Fast polling for local execution
-            elapsed_ticks += 1
-
-            # Drain log queue and stream logs via WebSocket
-            while True:
-                try:
-                    log_entry = log_queue.get_nowait()
-                    await stream_log(log_entry)
-                except queue.Empty:
-                    break
-
-            # Slowly increment progress (max 90% while running)
-            if progress_step < 90:
-                # Slow progression - about 1% every 2 seconds
-                if elapsed_ticks % 10 == 0:
-                    progress_step += 1
-
-            # Update message based on progress
-            while phase_index < len(progress_phases) and progress_step >= progress_phases[phase_index][0]:
-                current_msg = progress_phases[phase_index][1]
-                phase_index += 1
-
-            await report_progress(progress_step, current_msg)
-
-        if cancelled:
-            raise ValueError("Cancelled by user")
-
-        # Drain any remaining logs after thread completes
-        while True:
+    class _PipelineLogHandler(logging.Handler):
+        def emit(self, record):
+            if record.thread != thread_id:
+                return
             try:
-                log_entry = log_queue.get_nowait()
-                await stream_log(log_entry)
-            except queue.Empty:
-                break
+                msg = self.format(record)
+            except Exception:
+                msg = record.getMessage()
+            if msg:
+                log(msg)
 
-        # Get result or raise exception
-        result = future.result()
-        # Logs already streamed via queue, but add any missed ones
-        for log_entry in result.get("logs", []):
-            if log_entry not in logs:
-                logs.append(log_entry)
-        await report_progress(100, "Complete!")
-        await stream_log("[INFO] Pipeline execution complete!")
-        return result
+    log_handler = _PipelineLogHandler()
+    log_handler.setLevel(logging.INFO)
+    log_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    root_logger = logging.getLogger()
+    root_logger.addHandler(log_handler)
+
+    estimated_variants = 1
+    has_generators = False
+
+    try:
+        # Build dataset config with proper loading parameters (delimiter, etc.)
+        from .nirs4all_adapter import build_dataset_config, ensure_models_dir, expand_pipeline_variants
+        from .spectra import _load_dataset
+        try:
+            dataset_config = build_dataset_config(dataset_id)
+            log(f"[INFO] Dataset config keys: {list(dataset_config.keys())}")
+        except Exception as e:
+            raise ValueError(f"Dataset '{dataset_id}' config build failed: {e}")
+
+        dataset_object = _load_dataset(dataset_id)
+        if dataset_object is None:
+            raise ValueError(f"Dataset '{dataset_id}' could not be loaded for runtime grouping.")
+
+        try:
+            prepared = prepare_pipeline_steps_with_runtime_grouping(
+                steps,
+                dataset_object,
+                split_group_by,
+            )
+        except Exception as e:
+            raise ValueError(f"Runtime split grouping validation failed: {e}") from e
+
+        for warning_message in prepared.warnings:
+            log(f"[WARN] {warning_message}")
+
+        prepared_steps = prepared.steps
+        nirs4all_steps = None
+
+        # Check if this is an already-expanded variant
+        is_expanded_variant = pipeline.is_expanded_variant or False
+        variant_index = pipeline.variant_index
+
+        if prepared_steps:
+            try:
+                if is_expanded_variant and variant_index is not None:
+                    # This is a specific variant - get its pre-expanded steps
+                    variants = expand_pipeline_variants(prepared_steps)
+                    if 0 <= variant_index < len(variants):
+                        selected_variant = variants[variant_index]
+                        nirs4all_steps = selected_variant.steps
+                        log(f"[INFO] Running variant {variant_index + 1}/{len(variants)}: {selected_variant.description}")
+                    else:
+                        log(f"[WARN] Variant index {variant_index} out of range, using first variant")
+                        if variants:
+                            nirs4all_steps = variants[0].steps
+                        else:
+                            nirs4all_steps = editor_steps_to_runtime_canonical(prepared_steps)
+                else:
+                    # Full pipeline with generators preserved in canonical form
+                    nirs4all_steps = editor_steps_to_runtime_canonical(prepared_steps)
+                    if not nirs4all_steps:
+                        raise ValueError("Pipeline has no executable steps")
+                    estimated_variants = count_runtime_variants(nirs4all_steps)
+                    has_generators = contains_generators(nirs4all_steps)
+
+                    log(f"[INFO] Pipeline built: {len(nirs4all_steps)} steps")
+
+                    if has_generators:
+                        log(f"[INFO] Generators detected: ~{estimated_variants} variants will be tested")
+
+            except HTTPException as e:
+                # HTTPException from _resolve_operator_class means a missing optional package
+                detail = str(e.detail) if hasattr(e, "detail") else str(e)
+                raise ValueError(
+                    f"Missing package for pipeline '{pipeline.pipeline_name}': {detail}. "
+                    f"Install it via Settings > Advanced > Dependencies."
+                )
+            except Exception as e:
+                raise ValueError(f"Pipeline build failed: {e}")
+        else:
+            raise ValueError("No pipeline steps provided")
+
+        # Execute using nirs4all.run()
+        log("[INFO] Executing nirs4all.run() with dataset config...")
+        log(f"[INFO] Training {model_name}...")
+
+        run_kwargs = {
+            "pipeline": nirs4all_steps,
+            "dataset": dataset_config,
+            "verbose": 1,
+            "save_artifacts": True,
+            "save_charts": False,
+            "plots_visible": False,
+            "workspace_path": workspace_path,
+        }
+        if store_run_id:
+            run_kwargs["store_run_id"] = store_run_id
+        if should_stop is not None:
+            # Cooperative cancellation: nirs4all polls this at dataset/variant/
+            # refit boundaries and aborts with RunCancelledError.
+            run_kwargs["should_stop"] = should_stop
+        result = nirs4all.run(**run_kwargs)
     finally:
-        # On cancellation: don't block waiting for the thread (it will finish on its own).
-        # On normal completion: thread is already done, shutdown is instant.
-        executor.shutdown(wait=not cancelled)
+        root_logger.removeHandler(log_handler)
+
+    log("[INFO] Training completed, extracting metrics...")
+
+    # Single source of truth for metric extraction across all run wrappers
+    # (RUN-02). Missing metrics stay absent — no sentinel fabrication (RUN-06).
+    from .nirs4all_adapter import extract_best_metrics
+    metrics = _sanitize_metrics(extract_best_metrics(result))
+
+    # Count actual pipeline variants, not fold/partition/refit prediction rows.
+    variants_tested = _count_tested_pipeline_variants(result, fallback=estimated_variants)
+    log(f"[INFO] Tested {variants_tested} pipeline variant(s)")
+
+    is_classification_run = "classification" in str(metrics.get("task_type") or "").lower()
+    if is_classification_run and metrics.get("score") is not None:
+        metric_label = metrics.get("score_metric") or "score"
+        log(f"[INFO] Best {metric_label} = {metrics['score']:.4f}")
+    else:
+        r2_str = f"{metrics['r2']:.4f}" if metrics.get("r2") is not None else "N/A"
+        rmse_str = f"{metrics['rmse']:.4f}" if metrics.get("rmse") is not None else "N/A"
+        log(f"[INFO] Best R² = {r2_str}, RMSE = {rmse_str}")
+
+    # Fold summary (if available)
+    try:
+        _summarize_folds(result.predictions)
+    except Exception:
+        pass
+
+    # Get top results for logging
+    if has_generators and hasattr(result, "top"):
+        try:
+            top_3 = list(result.top(3))
+            log("[INFO] Top 3 configurations:")
+            for i, pred in enumerate(top_3, 1):
+                pred_rmse = getattr(pred, "rmse", getattr(pred, "test_rmse", None))
+                pred_r2 = getattr(pred, "r2", getattr(pred, "test_r2", None))
+                if pred_rmse is not None and pred_r2 is not None:
+                    log(f"[INFO]   {i}. RMSE={pred_rmse:.4f}, R²={pred_r2:.4f}")
+                elif pred_rmse is not None:
+                    log(f"[INFO]   {i}. RMSE={pred_rmse:.4f}")
+        except Exception:
+            pass
+
+    # Extract result_store_run_id from the orchestrator
+    result_store_run_id = store_run_id  # Start with the caller-provided ID
+    try:
+        if hasattr(result, "_runner") and result._runner is not None:
+            orchestrator = getattr(result._runner, "orchestrator", None)
+            if orchestrator is not None:
+                orch_run_id = getattr(orchestrator, "last_run_id", None)
+                if orch_run_id:
+                    result_store_run_id = orch_run_id
+    except Exception:
+        pass
+
+    # Export model bundle (.n4a) using RunResult.export()
+    model_path = None
+    if workspace_path:
+        log("[INFO] Exporting model...")
+        try:
+            models_dir = ensure_models_dir(workspace_path)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            model_filename = f"{pipeline.pipeline_id}_{run_id}_{timestamp}.n4a"
+            model_path = str(models_dir / model_filename)
+
+            result.export(model_path)
+            log(f"[INFO] Model exported: {model_filename}")
+        except Exception as e:
+            log(f"[WARN] Model export failed: {e}")
+
+    return {
+        "metrics": metrics,
+        "model_path": model_path,
+        "logs": logs,
+        "variants_tested": variants_tested,
+        "store_run_id": result_store_run_id,
+    }
 
 
 # ============================================================================
@@ -1777,9 +1334,8 @@ async def create_run(request: CreateRunRequest):
     _runs[run.id] = run
     _save_run_manifest(run)
 
-    # Start execution in background using asyncio.create_task for proper async execution
-    # This ensures the event loop remains responsive while the run executes
-    asyncio.create_task(_execute_run(run.id))
+    # Execute on the shared JobManager thread pool (keeps the event loop free)
+    _start_run_job(run)
 
     return run
 
@@ -2098,9 +1654,8 @@ async def quick_run(request: QuickRunRequest):
     _runs[run.id] = run
     _save_run_manifest(run)
 
-    # Start execution in background using asyncio.create_task for proper async execution
-    # This ensures the event loop remains responsive while the run executes
-    asyncio.create_task(_execute_run(run.id))
+    # Execute on the shared JobManager thread pool (keeps the event loop free)
+    _start_run_job(run)
 
     return run
 
@@ -2119,8 +1674,8 @@ async def stop_run(run_id: str):
             detail=f"Cannot stop run with status {run.status}"
         )
 
-    # Set cancellation flag for background task
-    _run_cancellation_flags[run_id] = True
+    # Request cooperative cancellation of the JobManager job (job id == run id).
+    job_manager.cancel_job(run_id)
 
     run.status = "failed"
     for dataset in run.datasets:
@@ -2134,63 +1689,6 @@ async def stop_run(run_id: str):
     return RunActionResponse(
         success=True,
         message=f"Run {run_id} stopped",
-        run_id=run_id,
-    )
-
-
-@router.post("/{run_id}/pause", response_model=RunActionResponse)
-async def pause_run(run_id: str):
-    """Pause a running experiment."""
-    _ensure_runs_loaded()
-    if run_id not in _runs:
-        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
-
-    run = _runs[run_id]
-    if run.status != "running":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot pause run with status {run.status}"
-        )
-
-    run.status = "paused"
-    for dataset in run.datasets:
-        for pipeline in dataset.pipelines:
-            if pipeline.status == "running":
-                pipeline.status = "paused"
-
-    return RunActionResponse(
-        success=True,
-        message=f"Run {run_id} paused",
-        run_id=run_id,
-    )
-
-
-@router.post("/{run_id}/resume", response_model=RunActionResponse)
-async def resume_run(run_id: str):
-    """Resume a paused experiment."""
-    _ensure_runs_loaded()
-    if run_id not in _runs:
-        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
-
-    run = _runs[run_id]
-    if run.status != "paused":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot resume run with status {run.status}"
-        )
-
-    run.status = "running"
-    for dataset in run.datasets:
-        for pipeline in dataset.pipelines:
-            if pipeline.status == "paused":
-                pipeline.status = "queued"
-
-    # Resume execution in background using asyncio.create_task for proper async execution
-    asyncio.create_task(_execute_run(run_id))
-
-    return RunActionResponse(
-        success=True,
-        message=f"Run {run_id} resumed",
         run_id=run_id,
     )
 
@@ -2259,12 +1757,14 @@ async def retry_run(run_id: str):
         cv_folds=old_run.cv_folds,
         total_pipelines=old_run.total_pipelines,
         completed_pipelines=0,
+        workspace_path=old_run.workspace_path,
+        project_id=old_run.project_id,
     )
 
     _runs[new_run_id] = new_run
 
-    # Start execution in background using asyncio.create_task for proper async execution
-    asyncio.create_task(_execute_run(new_run_id))
+    # Execute on the shared JobManager thread pool
+    _start_run_job(new_run)
 
     return new_run
 

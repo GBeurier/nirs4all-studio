@@ -21,6 +21,8 @@ import os
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_submodules
+
 # Determine platform-specific settings
 is_windows = sys.platform == 'win32'
 is_macos = sys.platform == 'darwin'
@@ -100,55 +102,11 @@ hiddenimports = [
     'pydantic.deprecated',
     'pydantic.deprecated.decorator',
 
-    # API modules (all routers)
-    'api',
-    'api.aggregated_predictions',
-    'api.analysis',
-    'api.app_config',
-    'api.automl',
-    'api.datasets',
-    'api.evaluation',
-    'api.inspector',
-    'api.lazy_imports',
-    'api.models',
-    'api.nirs4all_adapter',
-    'api.pipelines',
-    'api.playground',
-    'api.predictions',
-    'api.preprocessing',
-    'api.projects',
-    'api.recommended_config',
-    'api.runs',
-    'api.shap',
-    'api.spectra',
-    'api.store_adapter',
-    'api.synthesis',
-    'api.system',
-    'api.training',
-    'api.transfer',
-    'api.update_downloader',
-    'api.updates',
-    'api.venv_manager',
-    'api.workspace',
-    'api.workspace_manager',
-    'api.jobs',
-    'api.jobs.manager',
-    'api.shared',
-    'api.shared.decimation',
-    'api.shared.filter_operators',
-    'api.shared.logger',
-    'api.shared.metrics_computer',
-    'api.shared.pipeline_service',
-
-    # WebSocket support
-    'websocket',
-    'websocket.manager',
+    # WebSocket transport (third-party)
     'websockets',
 
-    # Updater module
-    'updater',
-
-    # Additional utilities
+    # Additional utilities — keep in sync with BACKEND_COMMON_PACKAGES
+    # (validated by scripts/check-dep-sync.cjs).
     'multipart',
     'python_multipart',
     'httpx',
@@ -156,10 +114,18 @@ hiddenimports = [
     'packaging',
     'platformdirs',
     'orjson',
+    'msgpack',
+    'sentry_sdk',
 
     # nirs4all library (optional - will gracefully fail if not installed)
     'nirs4all',
 ]
+
+# First-party packages: collect every submodule so new routers/modules are picked
+# up automatically instead of a hand-maintained, drift-prone roster (PKG-06).
+hiddenimports += collect_submodules('api')
+hiddenimports += collect_submodules('websocket')
+hiddenimports += collect_submodules('updater')
 
 # GPU-specific hidden imports
 if IS_GPU_BUILD:

@@ -89,11 +89,9 @@ import { ConfigPathSettings } from "@/components/settings/ConfigPathSettings";
 import { ConfigAlignment } from "@/components/settings/ConfigAlignment";
 import { PythonEnvPicker } from "@/components/settings/PythonEnvPicker";
 import { StorageHealthWidget } from "@/components/settings/StorageHealthWidget";
-import {
-  getWorkspace,
-  requestRestart,
-  resetBackendUrl,
-} from "@/api/client";
+import { getWorkspace } from "@/api/workspace";
+import { requestRestart } from "@/api/updates";
+import { resetBackendUrl } from "@/api/transport";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import {
   useLinkedWorkspacesQuery,

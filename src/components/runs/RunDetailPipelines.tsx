@@ -27,11 +27,6 @@ function PipelineCard({
                 {pipeline.dataset_name}
               </Badge>
             )}
-            {pipeline.is_refit_pipeline && (
-              <Badge variant="secondary" className="bg-emerald-500/10 text-[10px] text-emerald-600">
-                Refit pipeline
-              </Badge>
-            )}
             {pipeline.status && (
               <Badge variant="outline" className="text-[10px]">
                 {pipeline.status}

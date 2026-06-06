@@ -9,8 +9,7 @@ transfer potential using PCA-based metrics (Grassmann, CKA, RV, etc.).
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -19,7 +18,7 @@ from .shared.logger import get_logger
 
 logger = get_logger(__name__)
 
-from .lazy_imports import get_cached, is_ml_ready, require_ml_ready
+from .lazy_imports import get_cached
 
 TRANSFER_AVAILABLE = True
 

@@ -21,16 +21,12 @@ Run mocked only (fast, CI-friendly):
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient
 
 from .websocket_utils import (
     RunProgressTracker,
-    assert_message_sequence,
-    assert_metrics_present,
-    assert_progress_increases,
 )
 
 
@@ -237,13 +233,18 @@ class TestQuickRunPollingCompletion:
 
         assert status == "completed", f"Run did not complete: {status}"
 
-        # Verify metrics
+        # Verify metrics. Missing metrics stay None (no fabricated sentinels,
+        # RUN-06) — the contract is that the primary score and its metric name
+        # are present; rmse/r2 are populated when that is what the score is.
         final_run = tracker.final_result
         pipeline = final_run["datasets"][0]["pipelines"][0]
         metrics = pipeline.get("metrics", {})
 
-        assert metrics.get("r2") is not None, "R² metric missing"
-        assert metrics.get("rmse") is not None, "RMSE metric missing"
+        assert metrics.get("score") is not None, f"Primary score missing: {metrics}"
+        assert metrics.get("score_metric"), f"score_metric missing: {metrics}"
+        assert metrics.get("rmse") is not None or metrics.get("r2") is not None, (
+            f"Neither RMSE nor R² present: {metrics}"
+        )
 
 
 class TestQuickRunWithWebSocket:
@@ -484,7 +485,7 @@ class TestQuickRunPersistence:
         tracker.poll_until_complete(timeout=60.0)
 
         # Simulate restart by clearing in-memory runs
-        from api.runs import _runs, _runs_loaded
+        from api.runs import _runs
         _runs.clear()
 
         # Access private module variable to reset loaded flag

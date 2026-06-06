@@ -3,7 +3,7 @@
     "id": "model.mlp_classifier",
     "name": "MLPClassifier",
     "type": "model",
-    "classPath": "sklearn.neural_network._multilayer_perceptron.MLPClassifier",
+    "classPath": "sklearn.neural_network.MLPClassifier",
     "description": "Multi-layer Perceptron classifier.",
     "category": "sklearn-neural",
     "tags": [
@@ -206,6 +206,9 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.neural_network._multilayer_perceptron.MLPClassifier"
+    ]
   }
 ]

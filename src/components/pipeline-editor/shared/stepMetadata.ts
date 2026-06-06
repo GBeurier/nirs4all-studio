@@ -13,7 +13,6 @@ import { stepOptions, type PipelineStep, type StepOption, type StepType } from "
 
 export type StepMetadataRegistry = Pick<
   NodeRegistryContextValue,
-  | "isJsonRegistry"
   | "getNodesByType"
   | "getNodeDefinition"
   | "getDefaultParams"
@@ -152,8 +151,8 @@ export function createStepMetadataCatalog(
       return cached;
     }
 
-    const registryNodes = registry?.isJsonRegistry ? registry.getNodesByType(type) : [];
-    const registryOptions = registry?.isJsonRegistry
+    const registryNodes = registry ? registry.getNodesByType(type) : [];
+    const registryOptions = registry
       ? registryNodes.map((node) =>
           nodeDefinitionToStepOption(node, getRegistryDefaultParams(registry, type, node)),
         )
@@ -190,7 +189,7 @@ export function createStepMetadataCatalog(
       return cached;
     }
 
-    if (registry?.isJsonRegistry) {
+    if (registry) {
       const node = registry.getNodeDefinition(type, name);
       if (node) {
         const defaultParams = getRegistryDefaultParams(registry, type, node);

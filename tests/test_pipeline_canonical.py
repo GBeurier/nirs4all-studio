@@ -9,7 +9,7 @@ import yaml
 from nirs4all.pipeline.config.generator import count_combinations
 
 import api.pipelines as pipelines_api
-from api.nirs4all_adapter import build_full_pipeline, check_pipeline_imports, expand_pipeline_variants
+from api.nirs4all_adapter import check_pipeline_imports, expand_pipeline_variants
 from api.pipeline_canonical import (
     canonical_to_editor,
     count_runtime_variants,
@@ -841,34 +841,6 @@ def test_check_pipeline_imports_prefers_class_model_classpath(monkeypatch):
 
     assert issues == []
     assert seen == [("tabicl.TabICLClassifier", "model")]
-
-
-def test_build_full_pipeline_prefers_class_model_classpath(monkeypatch):
-    seen: list[tuple[str, str]] = []
-
-    class DummyModel:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-    def fake_resolve(name: str, step_type: str):
-        seen.append((name, step_type))
-        return DummyModel
-
-    monkeypatch.setattr("api.nirs4all_adapter._resolve_operator_class", fake_resolve)
-
-    result = build_full_pipeline([
-        {
-            "id": "step-tabicl",
-            "type": "model",
-            "name": "TabICLClassifier",
-            "classPath": "tabicl.TabICLClassifier",
-            "params": {},
-        }
-    ])
-
-    assert seen == [("tabicl.TabICLClassifier", "model")]
-    assert len(result.steps) == 1
-    assert isinstance(result.steps[0]["model"], DummyModel)
 
 
 def test_render_canonical_pipeline_rejects_unknown_model_definition():

@@ -77,14 +77,14 @@ import { cn } from '@/lib/utils';
 import { computeRepetitionVariance } from '@/api/playground';
 import {
   SelectionContainer,
-  isPointInBox,
-  isPointInPolygon,
   type SelectionResult,
 } from '@/components/playground/SelectionTools';
 import {
   computeSelectionAction,
   computeAreaSelectionAction,
   executeSelectionAction,
+  selectRechartsPointsInArea,
+  selectPointsInDataSpace,
 } from '@/lib/playground/selectionHandlers';
 import {
   ScatterPureWebGL2D,
@@ -723,81 +723,12 @@ export function RepetitionsChart({
   const handleSelectionComplete = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
     if (!selectionCtx || plotData.length === 0 || !chartRef.current) return;
 
-    const container = chartRef.current;
-    const containerRect = container.getBoundingClientRect();
-
-    // Find all scatter symbols using DOM queries (more robust than coordinate calculation)
-    // Recharts renders symbols inside layer groups
-    const selectors = [
-      '.recharts-scatter-symbol',
-      '.recharts-symbols',
-      '.recharts-layer.recharts-scatter .recharts-symbols',
-      '.recharts-scatter path',
-      '.recharts-layer path[fill]',
-    ];
-
-    let scatterSymbols: NodeListOf<Element> | null = null;
-    for (const selector of selectors) {
-      const elements = container.querySelectorAll(selector);
-      if (elements.length > 0) {
-        scatterSymbols = elements;
-        break;
-      }
-    }
-
-    if (!scatterSymbols || scatterSymbols.length === 0) {
-      return;
-    }
-
-    // Build array of screen positions for each point using getBoundingClientRect
-    const pointScreenPositions: Array<{ screenX: number; screenY: number; dataIndex: number }> = [];
-
-    scatterSymbols.forEach((symbol, idx) => {
-      if (idx < plotData.length) {
-        const rect = symbol.getBoundingClientRect();
-        // Get the center of the symbol relative to container
-        const centerX = rect.left + rect.width / 2 - containerRect.left;
-        const centerY = rect.top + rect.height / 2 - containerRect.top;
-
-        if (Number.isFinite(centerX) && Number.isFinite(centerY) && rect.width > 0) {
-          pointScreenPositions.push({
-            screenX: centerX,
-            screenY: centerY,
-            dataIndex: plotData[idx].sampleIndex,
-          });
-        }
-      }
-    });
-
-    // Find points inside the selection using their screen coordinates
-    const selectedIndices: number[] = [];
-
-    if ('path' in result) {
-      // Lasso selection - check if each point's screen position is inside the lasso path
-      const screenPath = result.path;
-      if (screenPath.length < 3) return;
-
-      pointScreenPositions.forEach(point => {
-        if (isPointInPolygon({ x: point.screenX, y: point.screenY }, screenPath)) {
-          selectedIndices.push(point.dataIndex);
-        }
-      });
-    } else {
-      // Box selection - check if each point's screen position is inside the box
-      const bounds = {
-        minX: Math.min(result.start.x, result.end.x),
-        maxX: Math.max(result.start.x, result.end.x),
-        minY: Math.min(result.start.y, result.end.y),
-        maxY: Math.max(result.start.y, result.end.y),
-      };
-
-      pointScreenPositions.forEach(point => {
-        if (isPointInBox({ x: point.screenX, y: point.screenY }, bounds)) {
-          selectedIndices.push(point.dataIndex);
-        }
-      });
-    }
-
+    const selectedIndices = selectRechartsPointsInArea(
+      chartRef.current,
+      plotData.length,
+      result,
+      idx => plotData[idx].sampleIndex
+    );
     if (selectedIndices.length === 0) return;
 
     // Use area selection handler (doesn't clear when re-selecting same points)
@@ -830,36 +761,11 @@ export function RepetitionsChart({
       return { x: dataX, y: dataY };
     };
 
-    const selectedIndices: number[] = [];
-
-    if ('path' in result) {
-      // Lasso selection - convert screen path to data coordinates
-      const dataPath = result.path.map(p => screenToData(p.x, p.y));
-
-      for (const point of plotData) {
-        if (isPointInPolygon({ x: point.x, y: point.y }, dataPath)) {
-          selectedIndices.push(point.sampleIndex);
-        }
-      }
-    } else {
-      // Box selection - convert screen box to data coordinates
-      const startData = screenToData(result.start.x, result.start.y);
-      const endData = screenToData(result.end.x, result.end.y);
-
-      const dataBounds = {
-        minX: Math.min(startData.x, endData.x),
-        maxX: Math.max(startData.x, endData.x),
-        minY: Math.min(startData.y, endData.y),
-        maxY: Math.max(startData.y, endData.y),
-      };
-
-      for (const point of plotData) {
-        if (isPointInBox({ x: point.x, y: point.y }, dataBounds)) {
-          selectedIndices.push(point.sampleIndex);
-        }
-      }
-    }
-
+    const selectedIndices = selectPointsInDataSpace(
+      plotData.map(p => ({ x: p.x, y: p.y, index: p.sampleIndex })),
+      result,
+      screenToData
+    );
     if (selectedIndices.length === 0) return;
 
     // Use area selection handler

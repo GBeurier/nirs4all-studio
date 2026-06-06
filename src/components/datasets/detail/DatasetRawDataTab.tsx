@@ -27,6 +27,15 @@ import { PartitionToggle } from "../PartitionToggle";
 import type { Dataset, PartitionKey, PreviewDataResponse } from "@/types/datasets";
 import { getDatasetSpectra, type SpectraResponse } from "@/api/playground";
 
+/**
+ * Cap the wavelength axis shipped to the raw-data viewer. Wide NIRS spectra can
+ * carry thousands of wavelengths, but this table only renders a handful of
+ * representative columns, so requesting the full width wastes bandwidth. The
+ * backend applies feature-preserving LTTB decimation above this cap and still
+ * reports the true width in `num_features`.
+ */
+const MAX_RAW_WAVELENGTHS = 2000;
+
 interface DatasetRawDataTabProps {
   dataset: Dataset;
   preview: PreviewDataResponse | null;
@@ -81,6 +90,7 @@ export function DatasetRawDataTab({
           partition: effectivePartition,
           includeY: true,
           includeMetadata: true,
+          maxWavelengths: MAX_RAW_WAVELENGTHS,
         });
         if (!cancelled) setSpectraData(data);
       } catch (e) {

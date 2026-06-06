@@ -52,7 +52,7 @@ import {
   getChainPartitionDetail,
   getChainPipelineSteps,
   getPredictionArrays,
-} from "@/api/client";
+} from "@/api/aggregatedPredictions";
 import type {
   ChainSummary,
   ChainDetailResponse,

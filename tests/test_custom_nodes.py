@@ -9,7 +9,6 @@ Verifies:
 - Settings management
 """
 
-import json
 
 # Add parent path for imports
 import sys

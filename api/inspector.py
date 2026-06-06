@@ -25,14 +25,15 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from .lazy_imports import get_cached, is_ml_ready
+from .lazy_imports import get_cached
+from .shared.json_safe import sanitize_dict, sanitize_float
 from .workspace_manager import workspace_manager
 
 STORE_AVAILABLE = True
@@ -44,33 +45,6 @@ router = APIRouter(prefix="/inspector", tags=["inspector"])
 # ============================================================================
 # Pydantic models
 # ============================================================================
-
-
-class InspectorChainSummary(BaseModel):
-    """Chain summary row for Inspector."""
-
-    chain_id: str
-    run_id: str
-    pipeline_id: str
-    pipeline_name: str | None = None
-    model_class: str
-    model_name: str | None = None
-    preprocessings: str | None = None
-    preprocessing_steps: list[str] = []
-    branch_path: Any | None = None
-    source_index: int | None = None
-    metric: str | None = None
-    task_type: str | None = None
-    dataset_name: str | None = None
-    best_params: Any | None = None
-    variant_params: Any | None = None
-    cv_val_score: float | None = None
-    cv_test_score: float | None = None
-    cv_train_score: float | None = None
-    cv_fold_count: int = 0
-    final_test_score: float | None = None
-    final_train_score: float | None = None
-    pipeline_status: str | None = None
 
 
 class InspectorDataResponse(BaseModel):
@@ -133,24 +107,6 @@ class HistogramResponse(BaseModel):
     min_score: float | None = None
     max_score: float | None = None
     mean_score: float | None = None
-
-
-class RankingRow(BaseModel):
-    """A single ranking row."""
-
-    rank: int
-    chain_id: str
-    model_class: str
-    model_name: str | None = None
-    preprocessings: str | None = None
-    cv_val_score: float | None = None
-    cv_test_score: float | None = None
-    cv_train_score: float | None = None
-    final_test_score: float | None = None
-    final_train_score: float | None = None
-    cv_fold_count: int = 0
-    dataset_name: str | None = None
-    best_params: Any | None = None
 
 
 class RankingsResponse(BaseModel):
@@ -243,35 +199,6 @@ class CandlestickResponse(BaseModel):
 # ============================================================================
 
 
-def _sanitize_float(value: Any) -> Any:
-    """Convert NaN / Inf to None for JSON serialization."""
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    return value
-
-
-def _sanitize_dict(d: dict) -> dict:
-    """Recursively sanitize float values."""
-    out = {}
-    for k, v in d.items():
-        if isinstance(v, dict):
-            out[k] = _sanitize_dict(v)
-        elif isinstance(v, (float, int)):
-            out[k] = _sanitize_float(v)
-        elif isinstance(v, list):
-            out[k] = [
-                _sanitize_dict(item)
-                if isinstance(item, dict)
-                else _sanitize_float(item)
-                if isinstance(item, (float, int))
-                else item
-                for item in v
-            ]
-        else:
-            out[k] = v
-    return out
-
-
 def _parse_json_like(value: Any) -> Any:
     """Parse JSON-encoded strings commonly returned by chain summary views."""
     if not isinstance(value, str):
@@ -349,19 +276,26 @@ def _merge_variant_params(
 
 
 def _load_pipeline_metadata_map(store: Any, pipeline_ids: list[str]) -> dict[str, dict[str, Any]]:
-    """Load pipeline metadata needed to enrich chain summaries."""
-    pipeline_map: dict[str, dict[str, Any]] = {}
-    get_pipeline = getattr(store, "get_pipeline", None)
-    if not callable(get_pipeline):
-        return pipeline_map
+    """Load pipeline metadata needed to enrich chain summaries.
 
-    for pipeline_id in {pid for pid in pipeline_ids if pid}:
-        try:
-            pipeline = get_pipeline(pipeline_id)
-        except Exception:
-            pipeline = None
-        if isinstance(pipeline, dict):
-            pipeline_map[pipeline_id] = pipeline
+    Issues a single ``list_pipelines`` query for the whole workspace and
+    keeps only the rows whose ``pipeline_id`` is in *pipeline_ids* — avoiding
+    one DB round-trip per distinct pipeline (the former N+1).
+    """
+    wanted = {pid for pid in pipeline_ids if pid}
+    if not wanted:
+        return {}
+
+    list_pipelines = getattr(store, "list_pipelines", None)
+    if not callable(list_pipelines):
+        return {}
+
+    pipeline_map: dict[str, dict[str, Any]] = {}
+    df = list_pipelines()
+    for row in df.iter_rows(named=True):
+        pipeline_id = str(row.get("pipeline_id") or "")
+        if pipeline_id in wanted:
+            pipeline_map[pipeline_id] = dict(row)
 
     return pipeline_map
 
@@ -372,7 +306,7 @@ def _normalize_chain_record(
 ) -> dict[str, Any]:
     """Normalize a chain-summary row for frontend consumption."""
     pipeline_map = pipeline_map or {}
-    record = _sanitize_dict(dict(raw))
+    record = sanitize_dict(dict(raw))
     for json_field in ("best_params", "branch_path"):
         record[json_field] = _parse_json_like(record.get(json_field))
     pipeline_id = str(record.get("pipeline_id") or "")
@@ -388,19 +322,6 @@ def _normalize_chain_record(
     record["pipeline_name"] = pipeline.get("name")
     record["preprocessing_steps"] = _split_preprocessing_steps(record.get("preprocessings"))
     return record
-
-
-def _normalize_chain_rows(df: Any) -> list[dict[str, Any]]:
-    """Normalize all rows from a chain-summary style dataframe."""
-    rows = [dict(row) for row in df.iter_rows(named=True)]
-    pipeline_map = _load_pipeline_metadata_map(
-        getattr(df, "_store", None),
-        [],
-    )
-    # WorkspaceStore dataframes do not carry a back-reference to the store.
-    # Callers that need pipeline enrichment should pass rows through
-    # ``_normalize_chain_records`` instead.
-    return [_normalize_chain_record(row, pipeline_map) for row in rows]
 
 
 def _normalize_chain_records(store: Any, df: Any) -> list[dict[str, Any]]:
@@ -533,14 +454,16 @@ def _coerce_index_vector(values: Any) -> list[int] | None:
     return indices
 
 
-_LOWER_BETTER_METRICS = {"rmse", "mse", "mae", "rmsecv", "rmsep", "secv", "sep", "bias"}
-
-
 def _is_lower_better(metric: str | None) -> bool:
-    """Auto-detect if lower score is better for this metric."""
-    if not metric:
-        return True
-    return metric.lower().replace("_", "").replace("-", "") in _LOWER_BETTER_METRICS
+    """Return True when a lower score is better for *metric*.
+
+    Single source of truth: ``nirs4all.pipeline.run.get_metric_info`` — the
+    same metric-direction table the store uses to rank chains. Unknown
+    metrics inherit the library default (higher-is-better).
+    """
+    from nirs4all.pipeline.run import get_metric_info
+
+    return not bool(get_metric_info(metric).get("higher_is_better", True))
 
 
 # ============================================================================
@@ -570,13 +493,24 @@ async def get_inspector_data(
         _dataset_name = dataset_name if dataset_name and len(dataset_name) > 1 else (dataset_name[0] if dataset_name else None)
         _model_class = model_class if model_class and len(model_class) > 1 else (model_class[0] if model_class else None)
 
-        df = store.query_chain_summaries(
+        # Facet lists for filter bar dropdowns must reflect the *unfiltered* chain pool,
+        # otherwise selecting one value collapses the dropdown to just that value and the
+        # user cannot add a second selection.  We normalize this superset *once* and reuse
+        # it for both the facets and (by chain_id) the filtered record set, instead of
+        # scanning + normalizing the table twice per request.
+        facet_records = _normalize_chain_records(store, store.query_chain_summaries())
+        facet_by_id = {r.get("chain_id"): r for r in facet_records}
+
+        # Apply the SQL filters (run_id/dataset_name/model_class/metric, incl. LIKE) in the
+        # store, then map the matching chain_ids back onto the already-normalized records.
+        filtered_df = store.query_chain_summaries(
             run_id=_run_id,
             dataset_name=_dataset_name,
             model_class=_model_class,
             metric=metric,
         )
-        records = _normalize_chain_records(store, df)
+        filtered_ids = [str(row.get("chain_id") or "") for row in filtered_df.iter_rows(named=True)]
+        records = [facet_by_id[cid] for cid in filtered_ids if cid in facet_by_id]
 
         if task_type:
             records = [
@@ -594,11 +528,6 @@ async def get_inspector_data(
                     filtered.append(r)
             records = filtered
 
-        # Facet lists for filter bar dropdowns must reflect the *unfiltered* chain pool,
-        # otherwise selecting one value collapses the dropdown to just that value and the
-        # user cannot add a second selection.
-        facet_df = store.query_chain_summaries()
-        facet_records = _normalize_chain_records(store, facet_df)
         metrics_set = sorted({r.get("metric") for r in facet_records if r.get("metric")})
         models = sorted({r.get("model_class") for r in facet_records if r.get("model_class")})
         datasets = sorted({r.get("dataset_name") for r in facet_records if r.get("dataset_name")})
@@ -658,7 +587,7 @@ async def get_scatter_data(request: ScatterRequest):
             all_y_true: list[float] = []
             all_y_pred: list[float] = []
             all_indices: list[int] = []
-            score = _sanitize_float(first_row.get(score_field))
+            score = sanitize_float(first_row.get(score_field))
 
             for row in pred_df.iter_rows(named=True):
                 row_dict = dict(row)
@@ -797,30 +726,38 @@ async def get_rankings_data(
     """
     store = _get_store()
     try:
-        df = store.query_chain_summaries(
+        # Auto-detect sort direction from the metric of any matching chain
+        # (one-row peek; the previous full-scan used the first record's metric,
+        # which was equally arbitrary for mixed-metric sets).
+        if sort_ascending is None:
+            peek = store.query_top_chains(
+                n=1,
+                score_column=score_column,
+                ascending=True,
+                run_id=run_id or None,
+                dataset_name=dataset_name or None,
+            )
+            first_metric = None
+            if len(peek) > 0:
+                first_metric = peek.row(0, named=True).get("metric")
+            sort_ascending = _is_lower_better(first_metric)
+
+        # Ranking + pagination happen in SQL (ORDER BY ... LIMIT/OFFSET with
+        # NULLs last, matching the previous Python sort semantics); the total
+        # comes from a COUNT(*) with the same filters.
+        df = store.query_top_chains(
+            n=limit,
+            offset=offset,
+            score_column=score_column,
+            ascending=sort_ascending,
             run_id=run_id or None,
             dataset_name=dataset_name or None,
         )
         records = _normalize_chain_records(store, df)
-
-        # Auto-detect sort direction from metric if not specified
-        if sort_ascending is None:
-            # Check the first chain's metric to determine direction
-            first_metric = next((r.get("metric") for r in records if r.get("metric")), None)
-            sort_ascending = _is_lower_better(first_metric)
-
-        # Sort by score column
-        def sort_key(r: dict) -> float:
-            val = r.get(score_column)
-            if val is None:
-                return float("inf") if sort_ascending else float("-inf")
-            return float(val)
-
-        records.sort(key=sort_key, reverse=not sort_ascending)
-
-        # Apply offset/limit and add rank
-        total = len(records)
-        records = records[offset:offset + limit]
+        total = store.count_chain_summaries(
+            run_id=run_id or None,
+            dataset_name=dataset_name or None,
+        )
 
         rankings: list[dict] = []
         for i, r in enumerate(records):
@@ -1307,7 +1244,6 @@ async def get_fold_stability(request: FoldStabilityRequest):
     For each chain, retrieves fold-level predictions and extracts
     the score for the requested partition.
     """
-    import numpy as np
     if not request.chain_ids:
         return FoldStabilityResponse(
             entries=[], fold_ids=[], score_column=request.score_column, total_chains=0
@@ -1346,7 +1282,7 @@ async def get_fold_stability(request: FoldStabilityRequest):
                 if score is None:
                     continue
 
-                score = _sanitize_float(float(score))
+                score = sanitize_float(float(score))
                 if score is None:
                     continue
 
@@ -1624,7 +1560,10 @@ async def get_robustness_data(request: RobustnessRequest):
 
     Each axis is normalized 0–1 across all requested chains (higher = more robust).
     """
-    import numpy as np
+    # Robustness math lives in nirs4all (model_diagnostics.robustness_axes);
+    # this endpoint assembles fold scores from the store and shapes the response.
+    from nirs4all.pipeline.analysis.model_diagnostics import robustness_axes
+
     if not request.chain_ids:
         return RobustnessResponse(
             entries=[], axis_names=[], score_column=request.score_column,
@@ -1664,34 +1603,19 @@ async def get_robustness_data(request: RobustnessRequest):
                     row_dict = dict(row)
                     score = row_dict.get(score_field)
                     if score is not None:
-                        s = _sanitize_float(float(score))
+                        s = sanitize_float(float(score))
                         if s is not None:
                             fold_scores.append(s)
-
-            val_score = chain.get("cv_val_score")
-            train_score = chain.get("cv_train_score")
-            main_score = chain.get(request.score_column)
-
-            # CV stability: std of fold scores (lower = more stable)
-            cv_std = float(np.std(fold_scores, ddof=1)) if len(fold_scores) > 1 else 0.0
-
-            # Train-test gap
-            gap = abs(train_score - val_score) if train_score is not None and val_score is not None else 0.0
-
-            # Absolute score
-            abs_score = float(main_score) if main_score is not None else 0.0
-
-            # Fold count ratio
-            fold_count = chain.get("cv_fold_count", 0)
 
             raw_data.append({
                 "chain_id": chain_id,
                 "model_class": chain.get("model_class", ""),
                 "preprocessings": chain.get("preprocessings"),
-                "cv_std": cv_std,
-                "gap": gap,
-                "abs_score": abs_score,
-                "fold_count": fold_count,
+                "fold_scores": fold_scores,
+                "train_score": chain.get("cv_train_score"),
+                "val_score": chain.get("cv_val_score"),
+                "score": chain.get(request.score_column),
+                "fold_count": chain.get("cv_fold_count", 0),
             })
 
         if not raw_data:
@@ -1699,66 +1623,31 @@ async def get_robustness_data(request: RobustnessRequest):
                 entries=[], axis_names=[], score_column=request.score_column,
             )
 
-        # Compute normalization ranges
-        all_stds = [d["cv_std"] for d in raw_data]
-        all_gaps = [d["gap"] for d in raw_data]
-        all_scores = [d["abs_score"] for d in raw_data]
-        all_folds = [d["fold_count"] for d in raw_data]
-
-        max_std = max(all_stds) if all_stds else 1.0
-        max_gap = max(all_gaps) if all_gaps else 1.0
-        max_folds = max(all_folds) if all_folds else 1
-
         lower_better = _is_lower_better(
             next((chain_map[d["chain_id"]].get("metric") for d in raw_data if d["chain_id"] in chain_map), None)
         )
-
-        # Score normalization
-        score_min = min(all_scores) if all_scores else 0
-        score_max = max(all_scores) if all_scores else 1
-        score_range = score_max - score_min if score_max != score_min else 1.0
+        profiles = robustness_axes(raw_data, lower_better=lower_better)
 
         axis_names = ["cv_stability", "train_test_gap", "score_absolute", "fold_count_ratio"]
+        axis_meta = {
+            "cv_stability": ("CV Stability", "Cross-validation stability (1 - normalized std)"),
+            "train_test_gap": ("Train-Test Gap", "Small train-val gap (1 - normalized gap)"),
+            "score_absolute": ("Score", "Normalized absolute performance score"),
+            "fold_count_ratio": ("Fold Coverage", "Proportion of folds with results"),
+        }
 
         entries: list[dict] = []
-        for d in raw_data:
-            # cv_stability: 1 - std/max_std (higher = more stable)
-            cv_stability = 1.0 - (d["cv_std"] / max_std if max_std > 0 else 0.0)
-
-            # train_test_gap: 1 - gap/max_gap (higher = smaller gap)
-            train_test_gap = 1.0 - (d["gap"] / max_gap if max_gap > 0 else 0.0)
-
-            # score_absolute: normalize to 0-1, flip if lower-better
-            norm_score = (d["abs_score"] - score_min) / score_range
-            if lower_better:
-                norm_score = 1.0 - norm_score
-
-            # fold_count_ratio
-            fold_ratio = d["fold_count"] / max_folds if max_folds > 0 else 0.0
-
+        for d, profile in zip(raw_data, profiles):
             axes = [
                 RobustnessAxis(
-                    name="cv_stability", label="CV Stability",
-                    value=round(cv_stability, 4), raw_value=round(d["cv_std"], 6),
-                    description="Cross-validation stability (1 - normalized std)",
-                ).model_dump(),
-                RobustnessAxis(
-                    name="train_test_gap", label="Train-Test Gap",
-                    value=round(train_test_gap, 4), raw_value=round(d["gap"], 6),
-                    description="Small train-val gap (1 - normalized gap)",
-                ).model_dump(),
-                RobustnessAxis(
-                    name="score_absolute", label="Score",
-                    value=round(norm_score, 4), raw_value=round(d["abs_score"], 6),
-                    description="Normalized absolute performance score",
-                ).model_dump(),
-                RobustnessAxis(
-                    name="fold_count_ratio", label="Fold Coverage",
-                    value=round(fold_ratio, 4), raw_value=float(d["fold_count"]),
-                    description="Proportion of folds with results",
-                ).model_dump(),
+                    name=name,
+                    label=axis_meta[name][0],
+                    value=round(profile[name]["value"], 4),
+                    raw_value=round(profile[name]["raw"], 6),
+                    description=axis_meta[name][1],
+                ).model_dump()
+                for name in axis_names
             ]
-
             entries.append(RobustnessEntry(
                 chain_id=d["chain_id"],
                 model_class=d["model_class"],
@@ -1853,7 +1742,7 @@ async def get_metric_correlation(request: MetricCorrelationRequest):
                 else:
                     coef, _ = scipy_stats.pearsonr(arr_x, arr_y)
 
-                coef_val = _sanitize_float(round(float(coef), 4)) if not (math.isnan(coef) or math.isinf(coef)) else None
+                coef_val = sanitize_float(round(float(coef), 4)) if not (math.isnan(coef) or math.isinf(coef)) else None
 
                 cells.append(CorrelationCell(
                     metric_x=mx,
@@ -2056,9 +1945,9 @@ async def get_preprocessing_impact(request: PreprocessingImpactRequest):
 
             entries.append(PreprocessingImpactEntry(
                 step_name=step_name,
-                impact=_sanitize_float(round(impact, 6)),
-                mean_with=_sanitize_float(round(mean_w, 6)),
-                mean_without=_sanitize_float(round(mean_wo, 6)),
+                impact=sanitize_float(round(impact, 6)),
+                mean_with=sanitize_float(round(mean_w, 6)),
+                mean_without=sanitize_float(round(mean_wo, 6)),
                 count_with=len(scores_with),
                 count_without=len(scores_without),
             ).model_dump())
@@ -2165,7 +2054,10 @@ async def get_bias_variance(request: BiasVarianceRequest):
       variance = Var(y_pred across folds)
     Aggregated per group: mean_bias², mean_variance, total_error.
     """
-    import numpy as np
+    # Decomposition math lives in nirs4all (model_diagnostics); this endpoint
+    # only assembles per-sample predictions from the store and shapes the response.
+    from nirs4all.pipeline.analysis.model_diagnostics import bias_variance_decomposition
+
     if not request.chain_ids:
         return BiasVarianceResponse(
             entries=[], score_column=request.score_column, group_by=request.group_by,
@@ -2238,31 +2130,16 @@ async def get_bias_variance(request: BiasVarianceRequest):
                         sample_key = (dataset_name, int(sample_idx))
                         sample_preds.setdefault(sample_key, []).append((yt, yp))
 
-            # Compute bias² and variance per sample with 2+ predictions
-            biases_sq: list[float] = []
-            variances: list[float] = []
-            for _sample_key, pairs in sample_preds.items():
-                if len(pairs) < 2:
-                    continue
-                y_true_val = pairs[0][0]  # All should be the same y_true
-                preds = [p[1] for p in pairs]
-                mean_pred = float(np.mean(preds))
-                bias_sq = (mean_pred - y_true_val) ** 2
-                var = float(np.var(preds))
-                biases_sq.append(bias_sq)
-                variances.append(var)
-
-            if biases_sq:
-                mean_bias_sq = float(np.mean(biases_sq))
-                mean_var = float(np.mean(variances))
+            decomposition = bias_variance_decomposition(sample_preds)
+            if decomposition is not None:
                 entries.append(BiasVarianceEntry(
                     group_label=label,
-                    bias_squared=_sanitize_float(round(mean_bias_sq, 6)),
-                    variance=_sanitize_float(round(mean_var, 6)),
-                    total_error=_sanitize_float(round(mean_bias_sq + mean_var, 6)),
+                    bias_squared=sanitize_float(round(decomposition.bias_squared, 6)),
+                    variance=sanitize_float(round(decomposition.variance, 6)),
+                    total_error=sanitize_float(round(decomposition.total_error, 6)),
                     n_chains=len(chain_ids),
                     n_folds=total_folds,
-                    n_samples=len(biases_sq),
+                    n_samples=decomposition.n_samples,
                     chain_ids=chain_ids,
                 ).model_dump())
 
@@ -2290,7 +2167,15 @@ async def get_learning_curve(request: LearningCurveRequest):
     Groups chains by the number of training samples (inferred from
     prediction array lengths), computing mean/std of train and val scores.
     """
-    import numpy as np
+    # Curve math lives in nirs4all (model_diagnostics): estimate_train_size for
+    # the K-fold approximation and learning_curve_points for the aggregation.
+    # Remaining library gap: the store does not record the EXACT per-fold
+    # training size; once it does, the approximation path disappears.
+    from nirs4all.pipeline.analysis.model_diagnostics import (
+        estimate_train_size,
+        learning_curve_points,
+    )
+
     store = _get_store()
     try:
         df = store.query_chain_summaries(
@@ -2344,11 +2229,9 @@ async def get_learning_curve(request: LearningCurveRequest):
                             arrays = _get_arrays(store, pid)
                             y_true_values = _coerce_vector(arrays.get("y_true")) if arrays else None
                             if y_true_values:
-                                val_size = len(y_true_values)
-                                fold_count = r.get("cv_fold_count", 5) or 5
-                                # Approximate: train_size ≈ total - val_size
-                                total_approx = int(val_size * fold_count / max(1, fold_count - 1))
-                                train_size = total_approx - val_size
+                                train_size = estimate_train_size(
+                                    len(y_true_values), r.get("cv_fold_count", 5) or 5
+                                )
                 except Exception:
                     pass
 
@@ -2360,21 +2243,21 @@ async def get_learning_curve(request: LearningCurveRequest):
                 "val": val_score,
             })
 
-        # Build learning curve points
-        points: list[dict] = []
-        for size in sorted(size_scores.keys()):
-            entries = size_scores[size]
-            train_vals = [e["train"] for e in entries if e["train"] is not None]
-            val_vals = [e["val"] for e in entries if e["val"] is not None]
+        # Aggregation in the library; rounding/sanitizing is response shaping.
+        def _shape(value: float | None) -> float | None:
+            return sanitize_float(round(value, 6)) if value is not None else None
 
-            points.append(LearningCurvePoint(
-                train_size=size,
-                train_mean=_sanitize_float(round(float(np.mean(train_vals)), 6)) if train_vals else None,
-                train_std=_sanitize_float(round(float(np.std(train_vals)), 6)) if len(train_vals) > 1 else None,
-                val_mean=_sanitize_float(round(float(np.mean(val_vals)), 6)) if val_vals else None,
-                val_std=_sanitize_float(round(float(np.std(val_vals)), 6)) if len(val_vals) > 1 else None,
-                count=len(entries),
-            ).model_dump())
+        points = [
+            LearningCurvePoint(
+                train_size=p["train_size"],
+                train_mean=_shape(p["train_mean"]),
+                train_std=_shape(p["train_std"]),
+                val_mean=_shape(p["val_mean"]),
+                val_std=_shape(p["val_std"]),
+                count=p["count"],
+            ).model_dump()
+            for p in learning_curve_points(size_scores)
+        ]
 
         has_multiple = len(points) > 1
 

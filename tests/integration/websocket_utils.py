@@ -8,13 +8,11 @@ Provides helpers for:
 - Timeout handling
 """
 
-import json
 import queue
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from starlette.testclient import TestClient
 

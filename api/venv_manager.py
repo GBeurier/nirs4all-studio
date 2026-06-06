@@ -11,7 +11,6 @@ import os
 import subprocess
 import sys
 import time
-import venv
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -269,89 +268,6 @@ class VenvManager:
         except Exception:
             pass
         return total
-
-    def create_venv(
-        self,
-        progress_callback: Callable[[float, str], None] | None = None,
-        force: bool = False,
-    ) -> tuple[bool, str]:
-        """
-        Legacy helper that creates a Python environment in-place.
-
-        Args:
-            progress_callback: Optional callback for progress updates (percent, message)
-            force: If True, recreate even if venv exists
-
-        Returns:
-            Tuple of (success, message)
-        """
-        if progress_callback:
-            progress_callback(0, "Checking existing environment...")
-
-        # Check if already exists
-        if self._venv_path.exists() and not force:
-            if self._is_valid_venv():
-                return True, "Virtual environment already exists and is valid"
-            # Exists but invalid - remove it
-            if progress_callback:
-                progress_callback(5, "Removing invalid environment...")
-            import shutil
-            shutil.rmtree(self._venv_path, ignore_errors=True)
-        elif self._venv_path.exists() and force:
-            if progress_callback:
-                progress_callback(5, "Removing existing environment...")
-            import shutil
-            shutil.rmtree(self._venv_path, ignore_errors=True)
-
-        # Ensure parent directory exists
-        self._app_data_dir.mkdir(parents=True, exist_ok=True)
-
-        if progress_callback:
-            progress_callback(10, "Creating virtual environment...")
-
-        # Create the venv
-        try:
-            builder = venv.EnvBuilder(
-                system_site_packages=False,
-                clear=False,
-                symlinks=(sys.platform != "win32"),
-                upgrade=False,
-                with_pip=True,
-            )
-            builder.create(str(self._venv_path))
-        except Exception as e:
-            return False, f"Failed to create virtual environment: {e}"
-
-        if not self._is_valid_venv():
-            return False, "Created venv but it failed validation"
-
-        if progress_callback:
-            progress_callback(30, "Upgrading pip...")
-
-        # Upgrade pip
-        try:
-            result = subprocess.run(
-                [str(self.python_executable), "-m", "pip", "install", "--upgrade", "pip"],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if result.returncode != 0:
-                logger.warning("pip upgrade failed: %s", result.stderr)
-        except Exception as e:
-            logger.warning("pip upgrade failed: %s", e)
-
-        if progress_callback:
-            progress_callback(40, "Environment created successfully")
-
-        # Save metadata
-        self._save_metadata({
-            "created_at": datetime.now().isoformat(),
-            "last_updated": datetime.now().isoformat(),
-            "python_version": sys.version,
-        })
-
-        return True, "Virtual environment created successfully"
 
     def install_package(
         self,
@@ -687,7 +603,7 @@ def get_venv_manager() -> VenvManager:
     return _venv_manager
 
 
-# For backward compatibility - will be lazily initialized on first access
+# Lazy proxy: defers heavy VenvManager construction until first access
 class _LazyVenvManager:
     """Proxy class for lazy access to venv_manager."""
 

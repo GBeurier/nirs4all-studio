@@ -19,7 +19,7 @@ import {
   orderMetricKeys,
 } from "@/lib/scores";
 import { NoWorkspaceState, NoResultsState, CardSkeleton } from "@/components/ui/state-display";
-import { getWorkspaceResultsSummary } from "@/api/client";
+import { getWorkspaceResultsSummary } from "@/api/linkedWorkspaces";
 import type { DatasetTopChains } from "@/types/runs";
 import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
 import { DatasetResultCard } from "@/components/scores/DatasetResultCard";

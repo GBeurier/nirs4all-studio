@@ -9,7 +9,7 @@
  * 5. Preview & Confirm - View data preview and confirm
  */
 import { useEffect, useRef, useCallback } from "react";
-import { detectUnified, validateFiles } from "@/api/client";
+import { detectUnified, validateFiles } from "@/api/datasets";
 import {
   Dialog,
   DialogContent,

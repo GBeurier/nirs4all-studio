@@ -70,6 +70,30 @@ async function globalSetup(config: FullConfig) {
       }
     }
 
+    // Warm Vite's on-demand dependency optimization. The probe above fetches
+    // index.html over HTTP, which does NOT load /src/main.tsx in a browser, so
+    // esbuild's first-load optimizeDeps never runs. The first REAL navigation
+    // then triggers it mid-load and Vite force-reloads the page — which
+    // supersedes the navigation Playwright is tracking and makes
+    // page.goto(waitUntil:'domcontentloaded') time out on a cold cache. We
+    // absorb that one reload here so every test navigates against a warm cache.
+    if (frontendReady) {
+      // Visit the routes the timed projects start on so Vite has already
+      // compiled their module subtrees (and run any one-time dep optimization
+      // + reload) before the per-test 60s clock starts. The settings route is
+      // the gate project, so warm it explicitly — its first cold compile would
+      // otherwise land inside the first timed test.
+      for (const route of ['/', '/settings']) {
+        try {
+          await page.goto(`http://localhost:5173${route}`, { waitUntil: 'commit', timeout: 30000 });
+          await page.waitForLoadState('networkidle', { timeout: 90000 }).catch(() => {});
+        } catch (e) {
+          console.warn(`Vite warm-up navigation to ${route} failed:`, e);
+        }
+      }
+      console.log('Vite dependency cache warmed');
+    }
+
     // Skip first-launch setup wizard to prevent redirect to /setup during tests.
     // In CI the setup_status.json doesn't exist, so useStartupUpdateCheck would
     // redirect every page to /setup before tests can interact with it.

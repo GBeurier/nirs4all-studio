@@ -49,10 +49,14 @@ export default defineConfig({
   // Projects for different browsers and modes
   projects: [
     // Run settings mutations in isolation first to avoid cross-file backend contention.
+    // These tests each do several full navigations + reloads + backend round-trips
+    // serially (workers:1); under WSL2 / a cold OS cache the per-test wall clock can
+    // exceed the 60s default, so give the heavy serial projects more headroom.
     {
       name: 'web-chromium-settings',
       testMatch: ['**/settings.spec.ts'],
       workers: 1,
+      timeout: 120000,
       use: {
         ...devices['Desktop Chrome'],
         baseURL: 'http://localhost:5173',
@@ -64,6 +68,7 @@ export default defineConfig({
       name: 'web-chromium-navigation',
       testMatch: ['**/navigation.spec.ts'],
       workers: 1,
+      timeout: 120000,
       dependencies: ['web-chromium-settings'],
       use: {
         ...devices['Desktop Chrome'],
@@ -125,8 +130,8 @@ export default defineConfig({
       command: process.env.CI
         ? 'python main.py --no-reload'
         : process.platform === 'win32'
-          ? '..\\.venv\\Scripts\\python main.py --no-reload'
-          : '../.venv/bin/python main.py --no-reload',
+          ? '..\\nirs4all\\.venv\\Scripts\\python main.py --no-reload'
+          : '../nirs4all/.venv/bin/python main.py --no-reload',
       url: 'http://localhost:8000/api/health',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,

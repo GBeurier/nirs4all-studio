@@ -3,8 +3,8 @@ import type {
   GPUDetectionResponse,
   OptionalPackageInfo,
   RecommendedConfigResponse,
-  RuntimeSummaryResponse,
-} from "@/api/client";
+} from "@/api/config";
+import type { RuntimeSummaryResponse } from "@/types/settings";
 
 export type DesktopEnvKind = "system" | "venv" | "conda" | "managed" | "bundled";
 

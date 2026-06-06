@@ -1,20 +1,17 @@
 /**
  * Playground Visualization Components
- *
- * Phase 3 Complete: All V2 components are now the primary exports.
- * Legacy V1 components have been removed.
  */
 
 // ============= Primary Chart Components =============
 
 // SpectraChart - Enhanced with Phase 3 features + WebGL support
-export { SpectraChartV2 } from './SpectraChartV2';
+export { SpectraChart } from './SpectraChart';
 
 // YHistogram - Enhanced with KDE, ridge plots, etc.
-export { YHistogramV2 } from './YHistogramV2';
+export { YHistogram } from './histogram';
 
 // FoldDistributionChart - Enhanced with SelectionContext and advanced coloring
-export { FoldDistributionChartV2 } from './FoldDistributionChartV2';
+export { FoldDistributionChart } from './FoldDistributionChart';
 
 // Unified components (no V1/V2 variants)
 export { DimensionReductionChart } from './DimensionReductionChart';

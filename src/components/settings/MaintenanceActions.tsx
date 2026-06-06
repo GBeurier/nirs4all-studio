@@ -18,7 +18,7 @@ import {
   cleanDeadLinks,
   compactStorage,
   removeBottomPredictions,
-} from "@/api/client";
+} from "@/api/workspace";
 import type { CleanDeadLinksReport, RemoveBottomReport } from "@/types/storage";
 
 interface MaintenanceActionsProps {

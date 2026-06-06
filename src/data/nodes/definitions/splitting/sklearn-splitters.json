@@ -331,7 +331,7 @@
     "id": "splitting.leave_one_group_out",
     "name": "LeaveOneGroupOut",
     "type": "splitting",
-    "classPath": "sklearn.model_selection._split.LeaveOneGroupOut",
+    "classPath": "sklearn.model_selection.LeaveOneGroupOut",
     "description": "Leave One Group Out cross-validator.",
     "category": "Scikit-learn",
     "tags": [
@@ -348,13 +348,16 @@
       ]
     },
     "tier": "standard",
-    "parameters": []
+    "parameters": [],
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.LeaveOneGroupOut"
+    ]
   },
   {
     "id": "splitting.leave_p_groups_out",
     "name": "LeavePGroupsOut",
     "type": "splitting",
-    "classPath": "sklearn.model_selection._split.LeavePGroupsOut",
+    "classPath": "sklearn.model_selection.LeavePGroupsOut",
     "description": "Leave P Group(s) Out cross-validator.",
     "category": "Scikit-learn",
     "tags": [
@@ -378,13 +381,16 @@
         "default": 2,
         "min": 1
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.LeavePGroupsOut"
     ]
   },
   {
     "id": "splitting.leave_p_out",
     "name": "LeavePOut",
     "type": "splitting",
-    "classPath": "sklearn.model_selection._split.LeavePOut",
+    "classPath": "sklearn.model_selection.LeavePOut",
     "description": "Leave-P-Out cross-validator.",
     "category": "Scikit-learn",
     "tags": [
@@ -408,13 +414,16 @@
         "default": 1,
         "min": 1
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.LeavePOut"
     ]
   },
   {
     "id": "splitting.predefined_split",
     "name": "PredefinedSplit",
     "type": "splitting",
-    "classPath": "sklearn.model_selection._split.PredefinedSplit",
+    "classPath": "sklearn.model_selection.PredefinedSplit",
     "description": "Predefined split cross-validator.",
     "category": "Scikit-learn",
     "tags": [
@@ -441,13 +450,16 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.PredefinedSplit"
     ]
   },
   {
     "id": "splitting.repeated_stratified_k_fold",
     "name": "RepeatedStratifiedKFold",
     "type": "splitting",
-    "classPath": "sklearn.model_selection._split.RepeatedStratifiedKFold",
+    "classPath": "sklearn.model_selection.RepeatedStratifiedKFold",
     "description": "Repeated class-wise stratified K-Fold cross validator.",
     "category": "Scikit-learn",
     "tags": [
@@ -483,13 +495,16 @@
         "isAdvanced": true
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.RepeatedStratifiedKFold"
+    ]
   },
   {
     "id": "splitting.stratified_group_k_fold",
     "name": "StratifiedGroupKFold",
     "type": "splitting",
-    "classPath": "sklearn.model_selection._split.StratifiedGroupKFold",
+    "classPath": "sklearn.model_selection.StratifiedGroupKFold",
     "description": "Class-wise stratified K-Fold iterator variant with non-overlapping groups.",
     "category": "Scikit-learn",
     "tags": [
@@ -524,13 +539,16 @@
         "isAdvanced": true
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.StratifiedGroupKFold"
+    ]
   },
   {
     "id": "splitting.stratified_shuffle_split",
     "name": "StratifiedShuffleSplit",
     "type": "splitting",
-    "classPath": "sklearn.model_selection._split.StratifiedShuffleSplit",
+    "classPath": "sklearn.model_selection.StratifiedShuffleSplit",
     "description": "Class-wise stratified ShuffleSplit cross-validator.",
     "category": "Scikit-learn",
     "tags": [
@@ -569,13 +587,16 @@
         "isAdvanced": true
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.StratifiedShuffleSplit"
+    ]
   },
   {
     "id": "splitting.time_series_split",
     "name": "TimeSeriesSplit",
     "type": "splitting",
-    "classPath": "sklearn.model_selection._split.TimeSeriesSplit",
+    "classPath": "sklearn.model_selection.TimeSeriesSplit",
     "description": "Time Series cross-validator.",
     "category": "Scikit-learn",
     "tags": [
@@ -614,6 +635,9 @@
         "sweepable": true
       }
     ],
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.model_selection._split.TimeSeriesSplit"
+    ]
   }
 ]

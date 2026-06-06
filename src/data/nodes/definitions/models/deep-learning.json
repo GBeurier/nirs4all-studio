@@ -674,7 +674,8 @@
     ],
     "source": "nirs4all",
     "legacyClassPaths": [
-      "tabpfn.classifier.TabPFNClassifier"
+      "tabpfn.classifier.TabPFNClassifier",
+      "nirs4all.operators.models.TabPFNClassifier"
     ],
     "isDeepLearning": true,
     "parameters": [],

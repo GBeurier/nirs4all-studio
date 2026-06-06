@@ -32,7 +32,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { DatasetStatusBadge } from "./DatasetStatusBadge";
-import { openFolderInExplorer } from "@/api/client";
+import { openFolderInExplorer } from "@/api/system";
 import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import { formatScore } from "@/lib/scores";
 import type { Dataset, DatasetGroup, DatasetVersionStatus } from "@/types/datasets";

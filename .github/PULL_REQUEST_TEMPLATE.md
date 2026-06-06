@@ -9,7 +9,7 @@ Brief description of what this PR does.
 ## Testing
 
 - [ ] `npm run lint` passes
-- [ ] `npm run test` passes
+- [ ] `npm run test:parallel` passes
 - [ ] `pytest` passes (if backend changes)
 - [ ] New tests added (if applicable)
 - [ ] Manually tested in web mode

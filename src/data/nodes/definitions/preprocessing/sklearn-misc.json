@@ -3,7 +3,7 @@
     "id": "preprocessing.bernoulli_rbm",
     "name": "BernoulliRBM",
     "type": "preprocessing",
-    "classPath": "sklearn.neural_network._rbm.BernoulliRBM",
+    "classPath": "sklearn.neural_network.BernoulliRBM",
     "description": "Bernoulli Restricted Boltzmann Machine (RBM).",
     "category": "Other",
     "tags": [
@@ -52,13 +52,16 @@
       }
     ],
     "supportsFinetuning": true,
-    "supportsParameterSweeps": true
+    "supportsParameterSweeps": true,
+    "legacyClassPaths": [
+      "sklearn.neural_network._rbm.BernoulliRBM"
+    ]
   },
   {
     "id": "preprocessing.random_trees_embedding",
     "name": "RandomTreesEmbedding",
     "type": "preprocessing",
-    "classPath": "sklearn.ensemble._forest.RandomTreesEmbedding",
+    "classPath": "sklearn.ensemble.RandomTreesEmbedding",
     "description": "An ensemble of totally random trees.",
     "category": "Other",
     "tags": [
@@ -116,6 +119,9 @@
         "type": "string",
         "isAdvanced": true
       }
+    ],
+    "legacyClassPaths": [
+      "sklearn.ensemble._forest.RandomTreesEmbedding"
     ]
   }
 ]

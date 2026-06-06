@@ -18,7 +18,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSynthesisBuilder } from "./SynthesisBuilderContext";
-import { api } from "@/api/client";
+import { api } from "@/api/transport";
 
 // ============= Types =============
 

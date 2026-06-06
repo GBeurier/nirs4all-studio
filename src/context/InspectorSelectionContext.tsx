@@ -29,10 +29,23 @@ import {
   type ReactNode,
 } from 'react';
 import type { InspectorSelectionToolMode, InspectorSavedSelection } from '@/types/inspector';
+import {
+  applySelectionMode,
+  toggleInSet,
+  addToSet,
+  removeFromSet,
+  pushHistory as pushHistoryCore,
+  undoHistory,
+  redoHistory,
+  persistSelection,
+  loadPersistedSelection,
+  type SelectionModeBase,
+  type PersistFieldNames,
+} from './selection/createSelectionCore';
 
 // ============= Types =============
 
-export type InspectorSelectionMode = 'replace' | 'add' | 'remove' | 'toggle';
+export type InspectorSelectionMode = SelectionModeBase;
 
 export interface InspectorSelectionState {
   selectedChains: Set<string>;
@@ -100,8 +113,12 @@ export interface InspectorSelectionContextValue extends InspectorSelectionState 
 
 // ============= Constants =============
 
-const MAX_HISTORY = 10;
 const STORAGE_KEY = 'inspector-selection-state';
+const PERSIST_FIELDS: PersistFieldNames = {
+  selected: 'selectedChains',
+  pinned: 'pinnedChains',
+  savedSelections: 'savedSelections',
+};
 
 // ============= Initial State =============
 
@@ -117,13 +134,12 @@ const createInitialState = (): InspectorSelectionState => ({
 
 // ============= Helpers =============
 
-function pushHistory(state: InspectorSelectionState, newSelection: Set<string>): Pick<InspectorSelectionState, 'selectionHistory' | 'historyIndex'> {
-  const newHistory = state.selectionHistory.slice(0, state.historyIndex + 1);
-  newHistory.push(newSelection);
-  if (newHistory.length > MAX_HISTORY) newHistory.shift();
+/** Record a new selection snapshot in the shared bounded undo history. */
+function withHistory(state: InspectorSelectionState, selectedChains: Set<string>): InspectorSelectionState {
   return {
-    selectionHistory: newHistory,
-    historyIndex: Math.min(newHistory.length - 1, MAX_HISTORY - 1),
+    ...state,
+    selectedChains,
+    ...pushHistoryCore(state.selectionHistory, state.historyIndex, selectedChains),
   };
 }
 
@@ -135,79 +151,49 @@ function generateId(): string {
 
 function selectionReducer(state: InspectorSelectionState, action: InspectorSelectionAction): InspectorSelectionState {
   switch (action.type) {
-    case 'SELECT': {
-      const mode = action.mode ?? state.selectionMode;
-      let newSelection: Set<string>;
+    case 'SELECT':
+      return withHistory(
+        state,
+        applySelectionMode(state.selectedChains, action.chainIds, action.mode ?? state.selectionMode)
+      );
 
-      switch (mode) {
-        case 'replace':
-          newSelection = new Set(action.chainIds);
-          break;
-        case 'add':
-          newSelection = new Set([...state.selectedChains, ...action.chainIds]);
-          break;
-        case 'remove':
-          newSelection = new Set(state.selectedChains);
-          action.chainIds.forEach(id => newSelection.delete(id));
-          break;
-        case 'toggle':
-          newSelection = new Set(state.selectedChains);
-          action.chainIds.forEach(id => {
-            if (newSelection.has(id)) newSelection.delete(id);
-            else newSelection.add(id);
-          });
-          break;
-        default:
-          newSelection = new Set(action.chainIds);
-      }
-
-      return { ...state, selectedChains: newSelection, ...pushHistory(state, newSelection) };
-    }
-
-    case 'DESELECT': {
-      const newSelection = new Set(state.selectedChains);
-      action.chainIds.forEach(id => newSelection.delete(id));
-      return { ...state, selectedChains: newSelection, ...pushHistory(state, newSelection) };
-    }
+    case 'DESELECT':
+      return withHistory(state, removeFromSet(state.selectedChains, action.chainIds));
 
     case 'TOGGLE': {
-      const newSelection = new Set(state.selectedChains);
+      let newSelection = state.selectedChains;
       action.chainIds.forEach(id => {
-        if (newSelection.has(id)) newSelection.delete(id);
-        else newSelection.add(id);
+        newSelection = toggleInSet(newSelection, id);
       });
-      return { ...state, selectedChains: newSelection, ...pushHistory(state, newSelection) };
+      return withHistory(state, newSelection);
     }
 
     case 'CLEAR': {
       if (state.selectedChains.size === 0) return state;
-      const newSelection = new Set<string>();
-      return { ...state, selectedChains: newSelection, ...pushHistory(state, newSelection) };
+      return withHistory(state, new Set<string>());
     }
 
-    case 'SELECT_ALL': {
-      const newSelection = new Set(action.chainIds);
-      return { ...state, selectedChains: newSelection, ...pushHistory(state, newSelection) };
-    }
+    case 'SELECT_ALL':
+      return withHistory(state, new Set(action.chainIds));
 
     case 'INVERT': {
       const newSelection = new Set<string>();
       for (const id of action.allChainIds) {
         if (!state.selectedChains.has(id)) newSelection.add(id);
       }
-      return { ...state, selectedChains: newSelection, ...pushHistory(state, newSelection) };
+      return withHistory(state, newSelection);
     }
 
     case 'UNDO': {
-      if (state.historyIndex <= 0) return state;
-      const newIndex = state.historyIndex - 1;
-      return { ...state, selectedChains: state.selectionHistory[newIndex], historyIndex: newIndex };
+      const result = undoHistory(state.selectionHistory, state.historyIndex);
+      if (!result) return state;
+      return { ...state, selectedChains: result.selection, historyIndex: result.historyIndex };
     }
 
     case 'REDO': {
-      if (state.historyIndex >= state.selectionHistory.length - 1) return state;
-      const newIndex = state.historyIndex + 1;
-      return { ...state, selectedChains: state.selectionHistory[newIndex], historyIndex: newIndex };
+      const result = redoHistory(state.selectionHistory, state.historyIndex);
+      if (!result) return state;
+      return { ...state, selectedChains: result.selection, historyIndex: result.historyIndex };
     }
 
     case 'SET_MODE':
@@ -217,29 +203,19 @@ function selectionReducer(state: InspectorSelectionState, action: InspectorSelec
       return { ...state, selectionToolMode: action.tool };
 
     // Pin operations
-    case 'PIN': {
-      const newPinned = new Set(state.pinnedChains);
-      action.chainIds.forEach(id => newPinned.add(id));
-      return { ...state, pinnedChains: newPinned };
-    }
+    case 'PIN':
+      return { ...state, pinnedChains: addToSet(state.pinnedChains, action.chainIds) };
 
-    case 'UNPIN': {
-      const newPinned = new Set(state.pinnedChains);
-      action.chainIds.forEach(id => newPinned.delete(id));
-      return { ...state, pinnedChains: newPinned };
-    }
+    case 'UNPIN':
+      return { ...state, pinnedChains: removeFromSet(state.pinnedChains, action.chainIds) };
 
     case 'CLEAR_PINS': {
       if (state.pinnedChains.size === 0) return state;
       return { ...state, pinnedChains: new Set<string>() };
     }
 
-    case 'TOGGLE_PIN': {
-      const newPinned = new Set(state.pinnedChains);
-      if (newPinned.has(action.chainId)) newPinned.delete(action.chainId);
-      else newPinned.add(action.chainId);
-      return { ...state, pinnedChains: newPinned };
-    }
+    case 'TOGGLE_PIN':
+      return { ...state, pinnedChains: toggleInSet(state.pinnedChains, action.chainId) };
 
     // Saved selections
     case 'SAVE_SELECTION': {
@@ -257,13 +233,11 @@ function selectionReducer(state: InspectorSelectionState, action: InspectorSelec
     case 'LOAD_SELECTION': {
       const saved = state.savedSelections.find(s => s.id === action.id);
       if (!saved) return state;
-      const newSelection = new Set(saved.chain_ids);
-      return { ...state, selectedChains: newSelection, ...pushHistory(state, newSelection) };
+      return withHistory(state, new Set(saved.chain_ids));
     }
 
-    case 'DELETE_SAVED_SELECTION': {
+    case 'DELETE_SAVED_SELECTION':
       return { ...state, savedSelections: state.savedSelections.filter(s => s.id !== action.id) };
-    }
 
     case 'RESTORE':
       return {
@@ -282,7 +256,7 @@ function selectionReducer(state: InspectorSelectionState, action: InspectorSelec
 
 const InspectorSelectionContext = createContext<InspectorSelectionContextValue | undefined>(undefined);
 
-interface InspectorHoverContextValue {
+export interface InspectorHoverContextValue {
   hoveredChain: string | null;
   setHovered: (chainId: string | null) => void;
 }
@@ -292,23 +266,11 @@ const InspectorHoverContext = createContext<InspectorHoverContextValue | undefin
 // ============= Storage Helpers =============
 
 function persistState(state: InspectorSelectionState): void {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
-      selectedChains: Array.from(state.selectedChains),
-      pinnedChains: Array.from(state.pinnedChains),
-      savedSelections: state.savedSelections,
-    }));
-  } catch { /* ignore */ }
+  persistSelection(STORAGE_KEY, PERSIST_FIELDS, state.selectedChains, state.pinnedChains, state.savedSelections);
 }
 
-function loadPersistedState(): { selectedChains?: string[]; pinnedChains?: string[]; savedSelections?: InspectorSavedSelection[] } | null {
-  try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch { /* ignore */ }
-  return null;
+function loadPersistedState() {
+  return loadPersistedSelection<string, InspectorSavedSelection>(STORAGE_KEY, PERSIST_FIELDS);
 }
 
 // ============= Provider =============
@@ -320,8 +282,8 @@ export function InspectorSelectionProvider({ children }: { children: ReactNode }
     if (persisted) {
       return {
         ...initial,
-        selectedChains: persisted.selectedChains ? new Set(persisted.selectedChains) : initial.selectedChains,
-        pinnedChains: persisted.pinnedChains ? new Set(persisted.pinnedChains) : initial.pinnedChains,
+        selectedChains: persisted.selected ? new Set(persisted.selected) : initial.selectedChains,
+        pinnedChains: persisted.pinned ? new Set(persisted.pinned) : initial.pinnedChains,
         savedSelections: persisted.savedSelections ?? initial.savedSelections,
       };
     }
