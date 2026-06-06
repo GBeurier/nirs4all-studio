@@ -12,10 +12,14 @@ const electron = (() => {
   try {
     return require("electron") as typeof import("electron");
   } catch {
-    return undefined;
+    // Mirror the non-Electron-runtime shape: outside Electron the module is
+    // the binary path STRING, so member access yields undefined rather than
+    // throwing. An empty object keeps that exact semantic when the binary is
+    // absent (CI runners).
+    return {} as unknown as typeof import("electron");
   }
 })();
-const { BrowserWindow } = (electron ?? {}) as Partial<typeof import("electron")>;
+const { BrowserWindow } = electron as Partial<typeof import("electron")>;
 
 const HEALTH_CHECK_TIMEOUT = 90000; // 90 seconds (first launch may need pip installs)
 const HEALTH_CHECK_INTERVAL = 500; // 500ms between retries
