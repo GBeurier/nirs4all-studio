@@ -220,7 +220,7 @@ Residuals >2k: `src/utils/pipelineConverter.ts` (~2,500 — the single converter
 1. **PG-07** (deferred): app-wide `ORJSONResponse(OPT_SERIALIZE_NUMPY)` default + drop the playground `.tolist()` — validated plan, one commit + full e2e pass.
 2. **BV-07 / WS-06** (partial): library-side persisted run-config and a dataset-describe API would replace the last config-inference/derivation code (schema work in nirs4all).
 3. **VIZ-05 / VIZ-08** (partial): Recharts SVG-path recolor + dead horizontal-bar variant — fold into the post-roadmap chart split with **FE-06/07-state** and **FE-07-reg** (deferred god-page/chart splits).
-4. `nirs4all` branch `techdebt/studio-boundary-apis` (6 commits) must merge with/before the studio branch — the studio's editable install currently tracks it.
+4. `nirs4all` branch `techdebt/studio-boundary-apis` (5 commits) must merge with/before the studio branch — the studio's editable install currently tracks it.
 
 ## Deviations from the roadmap process
 
