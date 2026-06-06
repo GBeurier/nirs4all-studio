@@ -4,9 +4,18 @@ import path from "node:path";
 import type { EnvManager } from "./env-manager";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-// Use require for electron to avoid Rollup ESM/CJS interop issues
-const electron = require("electron") as typeof import("electron");
-const { BrowserWindow } = electron;
+// Use require for electron to avoid Rollup ESM/CJS interop issues.
+// Outside the Electron runtime the module resolves to the binary path string
+// (Vitest locally) or THROWS when the binary was never downloaded (CI
+// runners) — both cases must degrade to "no BrowserWindow available".
+const electron = (() => {
+  try {
+    return require("electron") as typeof import("electron");
+  } catch {
+    return undefined;
+  }
+})();
+const { BrowserWindow } = (electron ?? {}) as Partial<typeof import("electron")>;
 
 const HEALTH_CHECK_TIMEOUT = 90000; // 90 seconds (first launch may need pip installs)
 const HEALTH_CHECK_INTERVAL = 500; // 500ms between retries

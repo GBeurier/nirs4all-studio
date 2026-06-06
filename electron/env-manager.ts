@@ -57,7 +57,16 @@ import { computeEnvFingerprint, readVerifyCache, writeVerifyCache } from "./env/
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
-const electronModule = require("electron") as typeof import("electron") | string;
+// require("electron") resolves to the binary path string outside the Electron
+// runtime (Vitest locally) and THROWS when the binary was never downloaded
+// (CI runners). Both must fall through to the injected/stub app below.
+const electronModule = (() => {
+  try {
+    return require("electron") as typeof import("electron") | string;
+  } catch {
+    return "electron-unavailable";
+  }
+})();
 const testApp = (globalThis as { __NIRS4ALL_TEST_APP__?: AppLike }).__NIRS4ALL_TEST_APP__;
 const { app } = typeof electronModule === "string"
   ? {
