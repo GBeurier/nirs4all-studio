@@ -273,7 +273,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title="nirs4all API",
     description="API for nirs4all unified NIRS analysis desktop application",
-    version="0.3.2",
+    version="0.7.0",
     default_response_class=ORJSONResponse,
     lifespan=lifespan,
 )

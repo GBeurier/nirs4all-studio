@@ -458,21 +458,22 @@ describe("Validation Performance Benchmarks", () => {
         console.log(`  ${r.size} steps: ${r.avgMs.toFixed(2)}ms`);
       }
 
-      // Check that doubling steps doesn't more than triple time
-      // (allows for some constant overhead)
+      // Per-step ratios on a ~0.01ms base are timer noise under host load (a
+      // single noisy sample poisons one ratio). The regression this test
+      // exists to catch is QUADRATIC blowup, and the end-to-end ratio
+      // separates that cleanly: 10x more steps => ~10x for linear, ~100x for
+      // quadratic. Bound at 30x: generous to noise, far below quadratic.
       const ratio10to25 = results[1].avgMs / results[0].avgMs;
       const ratio25to50 = results[2].avgMs / results[1].avgMs;
       const ratio50to100 = results[3].avgMs / results[2].avgMs;
-
       console.log(
         `Ratios: 10→25: ${ratio10to25.toFixed(2)}x, ` +
           `25→50: ${ratio25to50.toFixed(2)}x, 50→100: ${ratio50to100.toFixed(2)}x`
       );
 
-      // Allow for up to 6x growth when doubling (accounting for CI runner variability)
-      expect(ratio10to25).toBeLessThan(6);
-      expect(ratio25to50).toBeLessThan(6);
-      expect(ratio50to100).toBeLessThan(6);
+      const overallRatio = results[3].avgMs / results[0].avgMs;
+      console.log(`Overall 10→100 ratio: ${overallRatio.toFixed(2)}x (linear ≈ 10x, quadratic ≈ 100x)`);
+      expect(overallRatio).toBeLessThan(30);
     });
   });
 });

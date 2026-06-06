@@ -249,7 +249,7 @@ describe("EnvManager", () => {
       callback(null, JSON.stringify({
         version: "3.11.7",
         installed: {
-          nirs4all: "0.9.1",
+          nirs4all: "0.9.3",
         },
       }));
     });
@@ -279,9 +279,9 @@ describe("EnvManager", () => {
       callback(null, JSON.stringify({
         version: "3.11.7",
         installed: inspectCalls === 1
-          ? { nirs4all: "0.9.1" }
+          ? { nirs4all: "0.9.3" }
           : {
-              nirs4all: "0.9.1",
+              nirs4all: "0.9.3",
               fastapi: "0.111.0",
               uvicorn: "0.30.0",
               pydantic: "2.10.0",
@@ -360,7 +360,7 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.8",
           installed: {
-            nirs4all: "0.9.1",
+            nirs4all: "0.9.3",
             fastapi: "0.111.0",
             uvicorn: "0.30.0",
             pydantic: "2.10.0",
@@ -422,7 +422,7 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.7",
           installed: {
-            nirs4all: "0.9.1",
+            nirs4all: "0.9.3",
             fastapi: "0.111.0",
             uvicorn: "0.30.0",
             pydantic: "2.10.0",
