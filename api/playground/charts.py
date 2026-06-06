@@ -248,53 +248,6 @@ def compute_repetition_analysis(
 
     import numpy as np
 
-    def _normalize_metadata_name(name: Any) -> str:
-        return re.sub(r"[^a-z0-9]+", "", str(name).strip().lower())
-
-    def _looks_like_repeat_index(name: str) -> bool:
-        return (
-            name in {"rep", "reps"}
-            or name.startswith("replicate")
-            or name.startswith("repeat")
-            or name.startswith("repetition")
-            or name.startswith("technicalrep")
-        )
-
-    def _auto_detect_metadata_group_column(metadata_dict: dict[str, Any]) -> str | None:
-        candidates: list[tuple[int, int, int, str]] = []
-        for column_name, raw_values in metadata_dict.items():
-            normalized_name = _normalize_metadata_name(column_name)
-            if normalized_name in {"set", "partition", "fold", "foldid"} or _looks_like_repeat_index(normalized_name):
-                continue
-
-            values = np.asarray(raw_values, dtype=object)
-            counts: dict[str, int] = {}
-            for value in values:
-                if value is None or value == "":
-                    continue
-                token = str(value)
-                counts[token] = counts.get(token, 0) + 1
-
-            repeated_groups = sum(1 for count in counts.values() if count >= 2)
-            repeated_measurements = sum(count for count in counts.values() if count >= 2)
-            if repeated_groups == 0:
-                continue
-
-            is_preferred = int(
-                normalized_name in {"biosample", "biosampleid", "biologicalsample", "biologicalsampleid", "samplegroup", "groupid"}
-                or ("bio" in normalized_name and "sample" in normalized_name)
-                or ("sample" in normalized_name and "group" in normalized_name)
-            )
-            if not is_preferred:
-                continue
-            candidates.append((is_preferred, repeated_groups, repeated_measurements, str(column_name)))
-
-        if not candidates:
-            return None
-
-        candidates.sort(key=lambda item: (-item[0], -item[1], -item[2], item[3]))
-        return candidates[0][3]
-
     # Get configuration
     bio_sample_column = options.get("bio_sample_column")
     if not bio_sample_column:
@@ -332,68 +285,31 @@ def compute_repetition_analysis(
         for idx, bio_id in enumerate(bio_col):
             bio_sample_map[str(bio_id)].append(idx)
     elif auto_detect and metadata:
-        detected_metadata_column = _auto_detect_metadata_group_column(metadata)
+        from nirs4all.data.repetition_detection import auto_detect_repetition_column
+
+        detected_metadata_column = auto_detect_repetition_column(metadata)
         if detected_metadata_column:
             bio_col = metadata[detected_metadata_column]
             bio_sample_column = detected_metadata_column
             for idx, bio_id in enumerate(bio_col):
                 bio_sample_map[str(bio_id)].append(idx)
     elif bio_sample_pattern:
-        # Use regex pattern on sample IDs
+        # Use regex pattern on sample IDs (library-owned grouping semantics)
+        from nirs4all.data.repetition_detection import detect_repetition_groups
+
         try:
-            pattern = re.compile(bio_sample_pattern)
-            for idx, sample_id in enumerate(sample_ids):
-                match = pattern.match(str(sample_id))
-                if match:
-                    bio_id = match.group(1) if match.groups() else match.group(0)
-                    bio_sample_map[bio_id].append(idx)
-                else:
-                    # Non-matching samples get their own group
-                    bio_sample_map[sample_id].append(idx)
+            detection = detect_repetition_groups(sample_ids, pattern=bio_sample_pattern)
         except re.error:
             return {"error": f"Invalid regex pattern: {bio_sample_pattern}"}
+        for bio_id, indices in detection.groups.items():
+            bio_sample_map[bio_id].extend(indices)
     elif auto_detect:
-        # Try common patterns for repetition detection
-        # Pattern 1: SampleName_rep1, SampleName_rep2, etc.
-        # Pattern 2: SampleName_1, SampleName_2, etc.
-        # Pattern 3: SampleName-A, SampleName-B, etc.
+        # Library-owned naming-convention ladder (sample_rep1 / sample_2 / ...)
+        from nirs4all.data.repetition_detection import detect_repetition_groups
 
-        patterns = [
-            r"^(.+?)[-_][Rr]ep\d+$",      # sample_rep1, sample-Rep2
-            r"^(.+?)[-_]\d+$",            # sample_1, sample-2
-            r"^(.+?)[-_][A-Za-z]$",       # sample_A, sample-b
-            r"^(.+?)\s*\(\d+\)$",         # sample (1), sample (2)
-        ]
-
-        best_pattern = None
-        best_groups = {}
-        best_rep_count = 0
-
-        for pattern in patterns:
-            try:
-                compiled = re.compile(pattern)
-                groups: dict[str, list[int]] = defaultdict(list)
-
-                for idx, sample_id in enumerate(sample_ids):
-                    match = compiled.match(str(sample_id))
-                    if match:
-                        bio_id = match.group(1)
-                        groups[bio_id].append(idx)
-                    else:
-                        groups[sample_id].append(idx)
-
-                # Count samples with repetitions
-                rep_count = sum(1 for indices in groups.values() if len(indices) >= 2)
-                if rep_count > best_rep_count:
-                    best_rep_count = rep_count
-                    best_pattern = pattern
-                    best_groups = dict(groups)
-
-            except re.error:
-                continue
-
-        if best_rep_count > 0:
-            bio_sample_map = best_groups
+        detection = detect_repetition_groups(sample_ids)
+        if detection.has_repetitions:
+            bio_sample_map = defaultdict(list, detection.groups)
         else:
             # No repetitions detected
             return {
