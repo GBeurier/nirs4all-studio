@@ -15,6 +15,7 @@ import path from "node:path";
 import { runCommand, rmWithRetry } from "./process-utils";
 import { downloadFile, extractTarball, removeQuarantine } from "./python-runtime-installer";
 import { MANAGED_RUNTIME_PACKAGES } from "./env-inspection";
+import { loadPythonRuntimeConfig } from "./external-config";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 interface PythonRuntimeConfigModule {
@@ -24,7 +25,7 @@ interface PythonRuntimeConfigModule {
   getDownloadUrl(platform: string, arch: string): string;
 }
 
-const pythonRuntimeConfig = require("../../scripts/python-runtime-config.cjs") as PythonRuntimeConfigModule;
+const pythonRuntimeConfig = loadPythonRuntimeConfig<PythonRuntimeConfigModule>();
 const { PBS_TAG, PYTHON_VERSION, getArchiveFilename, getDownloadUrl } = pythonRuntimeConfig;
 
 const isWindows = process.platform === "win32";

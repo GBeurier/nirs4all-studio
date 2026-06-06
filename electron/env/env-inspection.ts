@@ -8,14 +8,15 @@
  */
 
 import { execFile } from "node:child_process";
+import { loadPythonRuntimeConfig, loadRecommendedConfig } from "./external-config";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 interface PythonRuntimeConfigModule {
   MANAGED_RUNTIME_PACKAGES: readonly string[];
 }
 
-const pythonRuntimeConfig = require("../../scripts/python-runtime-config.cjs") as PythonRuntimeConfigModule;
-const recommendedConfig = require("../../recommended-config.json") as RecommendedConfigFile;
+const pythonRuntimeConfig = loadPythonRuntimeConfig<PythonRuntimeConfigModule>();
+const recommendedConfig = loadRecommendedConfig<RecommendedConfigFile>();
 
 export const MANAGED_RUNTIME_PACKAGES = pythonRuntimeConfig.MANAGED_RUNTIME_PACKAGES;
 

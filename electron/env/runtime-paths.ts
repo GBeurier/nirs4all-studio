@@ -14,13 +14,14 @@ import path from "node:path";
 
 import { getEnvRootForPythonPath, normalizeDetectedPath } from "./python-discovery";
 import type { DetectedEnv, EnvKind } from "./env-inspection";
+import { loadPythonRuntimeConfig } from "./external-config";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 interface PythonRuntimeConfigModule {
   PYTHON_VERSION_MM: string;
 }
 
-const pythonRuntimeConfig = require("../../scripts/python-runtime-config.cjs") as PythonRuntimeConfigModule;
+const pythonRuntimeConfig = loadPythonRuntimeConfig<PythonRuntimeConfigModule>();
 const { PYTHON_VERSION_MM } = pythonRuntimeConfig;
 
 const isWindows = process.platform === "win32";
