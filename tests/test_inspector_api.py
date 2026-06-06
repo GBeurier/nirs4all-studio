@@ -66,6 +66,31 @@ class StoreWithoutArrayGetter:
                 rows = [row for row in rows if self._matches(row.get(key), expected)]
         return MockDataFrame(rows)
 
+    def query_top_chains(self, n: int = 10, offset: int = 0, score_column: str = "cv_val_score",
+                         ascending: bool | None = None, **kwargs):
+        self._bump("query_top_chains")
+        rows = self._chain_rows
+        for key in ("run_id", "dataset_name", "model_class", "pipeline_id"):
+            expected = kwargs.get(key)
+            if expected is not None:
+                rows = [row for row in rows if self._matches(row.get(key), expected)]
+        if kwargs.get("metric") is not None:
+            rows = [row for row in rows if self._matches(row.get("metric"), kwargs["metric"])]
+
+        def sort_key(row):
+            value = row.get(score_column)
+            # NULLs last in either direction (mirrors the SQL ORDER BY)
+            return (value is None, value if value is not None else 0)
+
+        rows = sorted(rows, key=sort_key, reverse=not (ascending if ascending is not None else True))
+        # NULLs-last must survive the reverse for descending order
+        rows = sorted(rows, key=lambda r: r.get(score_column) is None)
+        return MockDataFrame(rows[offset:offset + n])
+
+    def count_chain_summaries(self, **kwargs):
+        self._bump("count_chain_summaries")
+        return len(self.query_chain_summaries(**kwargs)._rows)
+
     def get_chain_predictions(self, chain_id: str, partition: str | None = None, **_kwargs):
         self._bump("get_chain_predictions")
         rows = self._prediction_rows_by_chain.get(chain_id, [])

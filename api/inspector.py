@@ -726,30 +726,38 @@ async def get_rankings_data(
     """
     store = _get_store()
     try:
-        df = store.query_chain_summaries(
+        # Auto-detect sort direction from the metric of any matching chain
+        # (one-row peek; the previous full-scan used the first record's metric,
+        # which was equally arbitrary for mixed-metric sets).
+        if sort_ascending is None:
+            peek = store.query_top_chains(
+                n=1,
+                score_column=score_column,
+                ascending=True,
+                run_id=run_id or None,
+                dataset_name=dataset_name or None,
+            )
+            first_metric = None
+            if len(peek) > 0:
+                first_metric = peek.row(0, named=True).get("metric")
+            sort_ascending = _is_lower_better(first_metric)
+
+        # Ranking + pagination happen in SQL (ORDER BY ... LIMIT/OFFSET with
+        # NULLs last, matching the previous Python sort semantics); the total
+        # comes from a COUNT(*) with the same filters.
+        df = store.query_top_chains(
+            n=limit,
+            offset=offset,
+            score_column=score_column,
+            ascending=sort_ascending,
             run_id=run_id or None,
             dataset_name=dataset_name or None,
         )
         records = _normalize_chain_records(store, df)
-
-        # Auto-detect sort direction from metric if not specified
-        if sort_ascending is None:
-            # Check the first chain's metric to determine direction
-            first_metric = next((r.get("metric") for r in records if r.get("metric")), None)
-            sort_ascending = _is_lower_better(first_metric)
-
-        # Sort by score column
-        def sort_key(r: dict) -> float:
-            val = r.get(score_column)
-            if val is None:
-                return float("inf") if sort_ascending else float("-inf")
-            return float(val)
-
-        records.sort(key=sort_key, reverse=not sort_ascending)
-
-        # Apply offset/limit and add rank
-        total = len(records)
-        records = records[offset:offset + limit]
+        total = store.count_chain_summaries(
+            run_id=run_id or None,
+            dataset_name=dataset_name or None,
+        )
 
         rankings: list[dict] = []
         for i, r in enumerate(records):
