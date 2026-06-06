@@ -18,6 +18,43 @@ try:
 except ImportError:
     MSGPACK_AVAILABLE = False
 
+try:
+    import orjson
+    ORJSON_AVAILABLE = True
+except ImportError:
+    ORJSON_AVAILABLE = False
+
+
+def _orjson_numpy_default(obj: Any) -> Any:
+    """Fallback for values orjson cannot serialize natively.
+
+    OPT_SERIALIZE_NUMPY covers numeric/bool ndarrays zero-copy; non-numeric
+    arrays (string/object metadata columns) and exotic numpy scalars land here
+    and are converted exactly as the previous jsonable_encoder flow did.
+    """
+    import numpy as np
+
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.generic):
+        return obj.item()
+    raise TypeError(f"Type is not JSON serializable: {type(obj)}")
+
+
+class NumpyORJSONResponse(Response):
+    """ORJSON response that serializes numpy arrays/scalars natively.
+
+    ``orjson.OPT_SERIALIZE_NUMPY`` writes ndarrays straight from the buffer
+    (no ``.tolist()`` copy, no per-element Python objects) and emits
+    NaN/Infinity as ``null`` — byte-identical wire format to the previous
+    jsonable_encoder + ORJSONResponse flow for these payloads.
+    """
+
+    media_type = "application/json"
+
+    def render(self, content: Any) -> bytes:
+        return orjson.dumps(content, option=orjson.OPT_SERIALIZE_NUMPY, default=_orjson_numpy_default)
+
 
 def msgpack_default(obj: Any) -> Any:
     """Fallback serializer for msgpack — handles numpy types."""
@@ -48,5 +85,15 @@ def negotiate_response(data: dict, http_request: Request) -> Response | dict:
             data = data.model_dump(mode="python")
         packed = msgpack.packb(data, default=msgpack_default, use_bin_type=True)
         return Response(content=packed, media_type="application/x-msgpack")
-    # Return the dict unchanged — FastAPI handles response_model + ORJSONResponse.
+    if ORJSON_AVAILABLE:
+        # Serialize directly with numpy support (PG-07): the payload was already
+        # validated at construction (ExecuteResponse(...)), so skipping the
+        # response_model re-validation + jsonable_encoder pass changes nothing
+        # on the wire — it only removes the full-matrix Python-object copies.
+        # The msgpack branch above has always bypassed response_model the same way.
+        if isinstance(data, BaseModel):
+            data = data.model_dump(mode="python")
+        return NumpyORJSONResponse(data)
+    # orjson unavailable: return the dict unchanged — FastAPI handles
+    # response_model + JSONResponse (numpy must be pre-converted upstream).
     return data

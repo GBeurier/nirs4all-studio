@@ -617,32 +617,35 @@ class PlaygroundExecutor:
         response = ExecuteResponse(
             success=len(step_errors) == 0,
             execution_time_ms=total_time,
+            # PG-07: matrices stay ndarrays — both serializers handle them
+            # natively (orjson OPT_SERIALIZE_NUMPY / msgpack_default), so the
+            # full-matrix .tolist() Python-object copies are gone.
             original={
-                "spectra": X_sampled_out.tolist(),
+                "spectra": X_sampled_out,
                 "wavelengths": wavelengths_out,
-                "sample_indices": sample_indices.tolist(),
+                "sample_indices": sample_indices,
                 "shape": list(X_sampled.shape),
                 "statistics": original_stats,
                 "header_unit": resolved_header_unit,
                 "sample_ids": original_sample_ids,
                 "metadata": {
-                    k: v.tolist() if hasattr(v, "tolist") else list(v)
+                    k: v if isinstance(v, np.ndarray) else list(v)
                     for k, v in original_metadata_sampled.items()
                 } if original_metadata_sampled is not None else None,
-                "y": original_y_sampled.tolist() if original_y_sampled is not None else None,
+                "y": original_y_sampled,
             },
             processed={
-                "spectra": X_processed_out.tolist(),
+                "spectra": X_processed_out,
                 "wavelengths": wavelengths_out,
                 "shape": list(X_processed.shape),
                 "statistics": processed_stats,
                 "header_unit": resolved_header_unit,
                 "sample_ids": sample_ids_sampled,
                 "metadata": {
-                    k: v.tolist() if hasattr(v, "tolist") else list(v)
+                    k: v if isinstance(v, np.ndarray) else list(v)
                     for k, v in metadata_sampled.items()
                 } if metadata_sampled is not None else None,
-                "y": y_sampled.tolist() if y_sampled is not None else None,
+                "y": y_sampled,
             },
             pca=pca_result,
             umap=umap_result,
