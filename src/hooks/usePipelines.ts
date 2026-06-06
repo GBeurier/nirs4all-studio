@@ -9,7 +9,6 @@ import type {
   Pipeline,
   PipelinePreset,
   PipelinePresetVariantId,
-  PipelineOperators,
   PipelineListResponse,
   PipelinePresetsResponse,
   PipelineApiResponse,
@@ -28,7 +27,6 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [presets, setPresets] = useState<PipelinePreset[]>([]);
-  const [operators, setOperators] = useState<PipelineOperators | null>(null);
   const [loading, setLoading] = useState(false);
   const [presetsLoading, setPresetsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,16 +76,6 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
       console.error("Failed to fetch presets:", err);
     } finally {
       setPresetsLoading(false);
-    }
-  }, []);
-
-  // Fetch operators
-  const fetchOperators = useCallback(async () => {
-    try {
-      const response = await api.get<{ operators: PipelineOperators }>("/pipelines/operators");
-      setOperators(response.operators);
-    } catch (err) {
-      console.error("Failed to fetch operators:", err);
     }
   }, []);
 
@@ -319,7 +307,6 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
     pipelines,
     filteredPipelines,
     presets,
-    operators,
     stats,
     loading,
     presetsLoading,
@@ -338,7 +325,6 @@ export function usePipelines(options: UsePipelinesOptions = {}) {
     // Actions
     fetchPipelines,
     fetchPresets,
-    fetchOperators,
     createPipeline,
     createFromPreset,
     updatePipeline,

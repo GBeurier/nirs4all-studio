@@ -272,16 +272,6 @@ class TestPipelinesEndpoints:
         assert "steps" not in preset
         assert "pipeline" in preset
 
-    def test_list_operators(self, client):
-        """Test listing available operators."""
-        response = client.get("/api/pipelines/operators")
-        assert response.status_code == 200
-        data = response.json()
-        assert "operators" in data
-        assert "preprocessing" in data["operators"]
-        assert "models" in data["operators"]
-        assert "splitting" in data["operators"]
-
     def test_list_samples(self, client):
         """Test listing pipeline samples."""
         response = client.get("/api/pipelines/samples")

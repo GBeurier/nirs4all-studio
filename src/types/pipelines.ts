@@ -136,16 +136,6 @@ export interface OperatorParam {
   required?: boolean;
 }
 
-export interface PipelineOperators {
-  preprocessing: PipelineOperator[];
-  splitting: PipelineOperator[];
-  models: PipelineOperator[];
-  metrics: PipelineOperator[];
-  augmentation: PipelineOperator[];
-  feature_selection: PipelineOperator[];
-  charts?: PipelineOperator[];
-}
-
 /** Raw API response format from the backend */
 export interface PipelineApiResponse {
   id: string;
