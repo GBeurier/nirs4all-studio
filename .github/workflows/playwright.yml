@@ -49,8 +49,29 @@ jobs:
       - name: Install nirs4all from source
         run: pip install ./nirs4all-lib
 
+      # The browser download can crawl/hang on runner CDN bad days (observed
+      # 29 minutes before hitting the job timeout). Cache the browsers by
+      # Playwright version and bound the install step so a bad download fails
+      # fast instead of consuming the whole job budget.
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 10
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
 
       - name: Verify Playwright setup
         run: npx playwright --version
