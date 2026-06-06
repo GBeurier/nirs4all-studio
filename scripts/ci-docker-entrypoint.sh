@@ -34,7 +34,7 @@ do_lint() {
 }
 
 do_frontend() {
-    run_step "Vitest" npm run test -- --run
+    run_step "Vitest" npm run test:frontend
     run_step "Build (web)" npm run build
     run_step "Build (electron)" npm run build:electron
     run_step "Verify build" bash -c '

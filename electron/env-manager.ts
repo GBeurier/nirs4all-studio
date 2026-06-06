@@ -5,30 +5,30 @@
  * so the installer stays lightweight (~15MB instead of 350MB).
  * The Python env is stored in the user's app data directory.
  *
- * This module is the coordinator: it owns settings, the verify cache, runtime
- * mode resolution, and the setup/verify/detect/apply flows. The lower-level
- * mechanics are split into focused modules under `electron/env/`:
+ * This module is the coordinator: it owns the in-memory env state and the
+ * setup/verify/detect/apply flows. The lower-level mechanics are split into
+ * focused modules under `electron/env/`:
  *   - network-probe         — outbound reachability probe
  *   - process-utils         — runCommand / rmWithRetry / execFileText
  *   - python-discovery      — interpreter discovery across ecosystems
  *   - python-runtime-installer — download / extract / quarantine primitives
  *   - env-inspection        — package scoring and pure interpreter inspection
+ *   - env-settings          — env-settings.json shape + read/write
+ *   - runtime-paths         — runtime-mode + filesystem-layout resolution
+ *   - env-detection         — existing-env discovery, classification, TTL cache
+ *   - verify-cache          — verify-cache.json fingerprint + read/write
  */
 
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
 import { probeNetworkOnline } from "./env/network-probe";
 import {
-  gatherPythonCandidates,
   getEnvRootForPythonPath,
   getPythonExecutableCandidatesForEnvRoot,
-  normalizeDetectedPath,
 } from "./env/python-discovery";
 import {
-  getManagedCorePackageNames,
   getMissingCorePackages,
   getMissingOptionalPackages,
   guessProfileAlignment,
@@ -36,21 +36,28 @@ import {
 } from "./env/env-inspection";
 import type {
   DetectedEnv,
-  EnvKind,
   InspectedEnv,
   InspectPythonData,
 } from "./env/env-inspection";
 import { installCorePackages, provisionManagedRuntime } from "./env/provisioning";
 import type { ProvisioningContext } from "./env/provisioning";
+import { SETTINGS_FILE, readEnvSettings, writeEnvSettings } from "./env/env-settings";
+import type { EnvSettings } from "./env/env-settings";
+import {
+  detectBundledRuntime,
+  getEnvKind,
+  getManagedPythonPath,
+  getSitePackagesForPythonPath,
+  isLikelyWritable,
+  resolveSitePackages,
+} from "./env/runtime-paths";
+import type { BundledRuntimeInfo } from "./env/runtime-paths";
+import { checkPythonEnv, detectExistingEnvs } from "./env/env-detection";
+import { computeEnvFingerprint, readVerifyCache, writeVerifyCache } from "./env/verify-cache";
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-interface PythonRuntimeConfigModule {
-  PYTHON_VERSION_MM: string;
-}
-
 type AppLike = Pick<Electron.App, "getPath" | "getVersion">;
 const electronModule = require("electron") as typeof import("electron") | string;
-const pythonRuntimeConfig = require("../scripts/python-runtime-config.cjs") as PythonRuntimeConfigModule;
 const testApp = (globalThis as { __NIRS4ALL_TEST_APP__?: AppLike }).__NIRS4ALL_TEST_APP__;
 const { app } = typeof electronModule === "string"
   ? {
@@ -63,10 +70,6 @@ const { app } = typeof electronModule === "string"
       },
     }
   : electronModule;
-
-const { PYTHON_VERSION_MM } = pythonRuntimeConfig;
-
-const isWindows = process.platform === "win32";
 
 export type EnvStatus = "none" | "downloading" | "extracting" | "creating_venv" | "installing" | "ready" | "error";
 
@@ -82,40 +85,7 @@ export interface EnvInfo {
   error?: string;
 }
 
-interface BundledRuntimeInfo {
-  runtimeDir: string;
-  pythonPath: string;
-  sitePackages: string;
-}
-
 export type EnvRuntimeMode = "bundled" | "managed" | "custom" | "none";
-
-const SETTINGS_FILE = "env-settings.json";
-const VERIFY_CACHE_FILE = "verify-cache.json";
-
-// Short-TTL in-memory cache for detectExistingEnvs(). Scanning PATH and
-// spawning Python for every candidate is expensive, and the Settings UI can
-// trigger it multiple times in quick succession. This cache is intentionally
-// module-scope and non-persistent — the separate on-disk verify cache above
-// (verify-cache.json) covers ensureBackendPackages() and must not be
-// co-mingled with this transient cache.
-const DETECT_ENVS_TTL_MS = 30_000;
-let detectEnvsCache: { key: string; expiresAt: number; result: DetectedEnv[] } | null = null;
-
-interface VerifyCacheEntry {
-  pythonPath: string;
-  appVersion: string;
-  fingerprint: string;
-  verifiedAt: number;
-}
-
-interface EnvSettings {
-  pythonPath?: string;
-  /** App version when the setup wizard was last completed */
-  appVersion?: string;
-  /** "Don't ask again" flag — skips wizard on subsequent launches (portable mode) */
-  skipWizardOnLaunch?: boolean;
-}
 
 export interface EnvSummary {
   pythonPath: string;
@@ -152,35 +122,22 @@ export class EnvManager {
   }
 
   private loadSettings(): void {
-    try {
-      if (fs.existsSync(this.settingsPath)) {
-        const data = JSON.parse(fs.readFileSync(this.settingsPath, "utf-8")) as Record<string, unknown>;
-        this.savedAppVersion = (data.appVersion as string) ?? null;
-        this.savedSkipWizard = (data.skipWizardOnLaunch as boolean) ?? false;
+    const data = readEnvSettings(this.settingsPath);
+    if (!data) return;
 
-        if (data.pythonPath) {
-          this.pythonPath = data.pythonPath as string;
-        }
-      }
-    } catch (error) {
-      console.warn(`[EnvManager] Failed to load settings: ${error}`);
+    this.savedAppVersion = (data.appVersion as string) ?? null;
+    this.savedSkipWizard = (data.skipWizardOnLaunch as boolean) ?? false;
+    if (data.pythonPath) {
+      this.pythonPath = data.pythonPath as string;
     }
   }
 
   private saveSettings(): void {
-    try {
-      const dir = path.dirname(this.settingsPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      const data: EnvSettings = {};
-      if (this.pythonPath) data.pythonPath = this.pythonPath;
-      if (this.savedAppVersion) data.appVersion = this.savedAppVersion;
-      if (this.savedSkipWizard) data.skipWizardOnLaunch = this.savedSkipWizard;
-      fs.writeFileSync(this.settingsPath, JSON.stringify(data, null, 2));
-    } catch (error) {
-      console.error(`[EnvManager] Failed to save settings: ${error}`);
-    }
+    const data: EnvSettings = {};
+    if (this.pythonPath) data.pythonPath = this.pythonPath;
+    if (this.savedAppVersion) data.appVersion = this.savedAppVersion;
+    if (this.savedSkipWizard) data.skipWizardOnLaunch = this.savedSkipWizard;
+    writeEnvSettings(this.settingsPath, data);
   }
 
   /** Get the environment directory */
@@ -210,66 +167,11 @@ export class EnvManager {
   }
 
   detectBundledRuntime(): BundledRuntimeInfo | null {
-    const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
-    if (!resourcesPath) return null;
-
-    const runtimeDir = path.join(resourcesPath, "backend", "python-runtime");
-    const readyMarker = path.join(runtimeDir, "RUNTIME_READY.json");
-    if (!fs.existsSync(readyMarker)) {
-      return null;
-    }
-
-    const bundledCandidates: Array<{ envRoot: string; pythonPath: string }> = isWindows
-      ? [
-          {
-            envRoot: path.join(runtimeDir, "python"),
-            pythonPath: path.join(runtimeDir, "python", "python.exe"),
-          },
-          {
-            envRoot: path.join(runtimeDir, "venv"),
-            pythonPath: path.join(runtimeDir, "venv", "Scripts", "python.exe"),
-          },
-        ]
-      : [
-          {
-            envRoot: path.join(runtimeDir, "python"),
-            pythonPath: path.join(runtimeDir, "python", "bin", "python3"),
-          },
-          {
-            envRoot: path.join(runtimeDir, "python"),
-            pythonPath: path.join(runtimeDir, "python", "bin", "python"),
-          },
-          {
-            envRoot: path.join(runtimeDir, "venv"),
-            pythonPath: path.join(runtimeDir, "venv", "bin", "python"),
-          },
-        ];
-
-    for (const candidate of bundledCandidates) {
-      const sitePackages = this.resolveSitePackages(candidate.envRoot, true);
-      if (!fs.existsSync(candidate.pythonPath) || !sitePackages || !fs.existsSync(sitePackages)) {
-        continue;
-      }
-
-      return {
-        runtimeDir,
-        pythonPath: candidate.pythonPath,
-        sitePackages,
-      };
-    }
-
-    return null;
+    return detectBundledRuntime();
   }
 
   isBundled(): boolean {
-    return this.detectBundledRuntime() !== null;
-  }
-
-  private getManagedPythonPath(): string {
-    const venvDir = path.join(this.envDir, "venv");
-    return isWindows
-      ? path.join(venvDir, "Scripts", "python.exe")
-      : path.join(venvDir, "bin", "python");
+    return detectBundledRuntime() !== null;
   }
 
   /**
@@ -284,12 +186,12 @@ export class EnvManager {
       return this.pythonPath;
     }
 
-    const bundledRuntime = this.detectBundledRuntime();
+    const bundledRuntime = detectBundledRuntime();
     if (bundledRuntime) {
       return bundledRuntime.pythonPath;
     }
 
-    const managedPython = this.getManagedPythonPath();
+    const managedPython = getManagedPythonPath(this.envDir);
     return fs.existsSync(managedPython) ? managedPython : null;
   }
 
@@ -297,7 +199,7 @@ export class EnvManager {
   getConfiguredRuntimeMode(): EnvRuntimeMode {
     if (this.pythonPath && fs.existsSync(this.pythonPath)) return "custom";
     if (this.isBundled()) return "bundled";
-    return fs.existsSync(this.getManagedPythonPath()) ? "managed" : "none";
+    return fs.existsSync(getManagedPythonPath(this.envDir)) ? "managed" : "none";
   }
 
   /**
@@ -311,7 +213,7 @@ export class EnvManager {
 
   /** Get the Python executable path */
   getPythonPath(): string | null {
-    const bundledRuntime = this.detectBundledRuntime();
+    const bundledRuntime = detectBundledRuntime();
     if (bundledRuntime) {
       return bundledRuntime.pythonPath;
     }
@@ -326,133 +228,24 @@ export class EnvManager {
     // Since the venv is created on the user's machine (not bundled from build),
     // pyvenv.cfg has correct paths and sys.prefix resolves to the venv.
     // This ensures VenvManager's pip_executable and package installs work correctly.
-    return this.getManagedPythonPath();
-  }
-
-  private resolveSitePackages(envRoot: string, requireExisting: boolean = false): string | null {
-    const fallback = isWindows
-      ? path.join(envRoot, "Lib", "site-packages")
-      : path.join(envRoot, "lib", `python${PYTHON_VERSION_MM}`, "site-packages");
-
-    if (isWindows) {
-      return !requireExisting || fs.existsSync(fallback) ? fallback : null;
-    }
-
-    const libDir = path.join(envRoot, "lib");
-    if (fs.existsSync(libDir)) {
-      try {
-        const pyDir = fs.readdirSync(libDir).find((e) => e.startsWith("python3."));
-        if (pyDir) {
-          const detected = path.join(libDir, pyDir, "site-packages");
-          if (!requireExisting || fs.existsSync(detected)) return detected;
-        }
-      } catch { /* ignore */ }
-    }
-
-    return !requireExisting || fs.existsSync(fallback) ? fallback : null;
+    return getManagedPythonPath(this.envDir);
   }
 
   /** Get the site-packages path */
   getSitePackages(): string | null {
-    const bundledRuntime = this.detectBundledRuntime();
+    const bundledRuntime = detectBundledRuntime();
     if (bundledRuntime) {
       return bundledRuntime.sitePackages;
     }
 
     // Custom python path: derive env root from executable location
     if (this.pythonPath) {
-      return this.resolveSitePackages(getEnvRootForPythonPath(this.pythonPath), true);
+      return resolveSitePackages(getEnvRootForPythonPath(this.pythonPath), true);
     }
 
     // Managed env
     const venvDir = path.join(this.envDir, "venv");
-    return this.resolveSitePackages(venvDir);
-  }
-
-  private getSitePackagesForPythonPath(pythonPath: string | null): string | null {
-    if (!pythonPath) return null;
-    return this.resolveSitePackages(getEnvRootForPythonPath(pythonPath), true);
-  }
-
-  private compareDetectedEnvs(left: DetectedEnv, right: DetectedEnv): number {
-    const configuredPythonPath = this.getConfiguredPythonPath();
-    const configuredNormalized = configuredPythonPath ? normalizeDetectedPath(configuredPythonPath) : null;
-    const leftIsConfigured = configuredNormalized === normalizeDetectedPath(left.pythonPath);
-    const rightIsConfigured = configuredNormalized === normalizeDetectedPath(right.pythonPath);
-    if (leftIsConfigured !== rightIsConfigured) {
-      return Number(rightIsConfigured) - Number(leftIsConfigured);
-    }
-
-    if (left.hasCorePackages !== right.hasCorePackages) {
-      return Number(right.hasCorePackages) - Number(left.hasCorePackages);
-    }
-
-    if (left.writable !== right.writable) {
-      return Number(right.writable) - Number(left.writable);
-    }
-
-    const envKindPriority: Record<EnvKind, number> = {
-      managed: 0,
-      conda: 1,
-      venv: 2,
-      system: 3,
-      bundled: 4,
-    };
-    const kindDifference = envKindPriority[left.envKind] - envKindPriority[right.envKind];
-    if (kindDifference !== 0) {
-      return kindDifference;
-    }
-
-    const versionDifference = right.pythonVersion.localeCompare(left.pythonVersion, undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
-    if (versionDifference !== 0) {
-      return versionDifference;
-    }
-
-    return left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" });
-  }
-
-  private getEnvKind(envRoot: string, pythonPath: string): EnvKind {
-    const bundledRuntime = this.detectBundledRuntime();
-    if (bundledRuntime && path.normalize(bundledRuntime.pythonPath) === path.normalize(pythonPath)) {
-      return "bundled";
-    }
-
-    const managedPython = this.getManagedPythonPath();
-    if (path.normalize(managedPython) === path.normalize(pythonPath)) {
-      return "managed";
-    }
-
-    if (fs.existsSync(path.join(envRoot, "conda-meta"))) {
-      return "conda";
-    }
-
-    if (fs.existsSync(path.join(envRoot, "pyvenv.cfg"))) {
-      return "venv";
-    }
-
-    return "system";
-  }
-
-  private isLikelyWritable(envRoot: string, pythonPath: string): boolean {
-    const candidates = [
-      this.getSitePackagesForPythonPath(pythonPath),
-      envRoot,
-      path.dirname(pythonPath),
-    ].filter((candidate): candidate is string => Boolean(candidate));
-
-    for (const candidate of candidates) {
-      try {
-        fs.accessSync(candidate, fs.constants.W_OK);
-        return true;
-      } catch {
-        continue;
-      }
-    }
-
-    return false;
+    return resolveSitePackages(venvDir);
   }
 
   private buildInspectedEnv(pythonPath: string, data: InspectPythonData): InspectedEnv {
@@ -467,8 +260,8 @@ export class EnvManager {
       pythonVersion: data.version,
       hasNirs4all: installedPackageNames.has("nirs4all"),
       hasCorePackages: missingCorePackages.length === 0,
-      envKind: this.getEnvKind(envRoot, pythonPath),
-      writable: this.isLikelyWritable(envRoot, pythonPath),
+      envKind: getEnvKind(this.envDir, envRoot, pythonPath),
+      writable: isLikelyWritable(envRoot, pythonPath),
       missingCorePackages,
       missingOptionalPackages: getMissingOptionalPackages(installedPackageNames),
       profileAlignmentGuess,
@@ -480,14 +273,14 @@ export class EnvManager {
     const pythonPath = this.getConfiguredPythonPath();
     let pythonVersion: string | null = null;
     if (pythonPath && fs.existsSync(pythonPath)) {
-      const detected = await this.checkPython(pythonPath);
+      const detected = await checkPythonEnv(this.envDir, pythonPath);
       if (detected) pythonVersion = detected.pythonVersion;
     }
     return {
       status: this.status,
       envDir: this.envDir,
       pythonPath,
-      sitePackages: this.getSitePackagesForPythonPath(pythonPath),
+      sitePackages: getSitePackagesForPythonPath(pythonPath),
       pythonVersion,
       isCustom: this.getConfiguredRuntimeMode() === "custom",
       error: this.lastError ?? undefined,
@@ -609,7 +402,7 @@ export class EnvManager {
     const pythonPath = this.getConfiguredPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return null;
 
-    const info = await this.checkPython(pythonPath);
+    const info = await checkPythonEnv(this.envDir, pythonPath);
     if (!info) return null;
 
     return {
@@ -663,78 +456,6 @@ export class EnvManager {
   }
 
   /**
-   * Compute a fingerprint for the current Python environment, used as the
-   * cache key suffix for {@link verifyBackendRuntime}. Returns null when no
-   * reliable fingerprint can be built (e.g. user-provided custom env without
-   * a recognisable layout) — callers MUST treat this as "do not cache".
-   */
-  private computeEnvFingerprint(pythonPath: string): string | null {
-    const parts: string[] = [];
-
-    // Derive env root from python executable location.
-    const envRoot = getEnvRootForPythonPath(pythonPath);
-
-    const stat = (p: string): string | null => {
-      try {
-        const s = fs.statSync(p);
-        return `${s.mtimeMs}:${s.size}`;
-      } catch {
-        return null;
-      }
-    };
-
-    // build_info.json (managed env marker)
-    const buildInfo = stat(path.join(this.envDir, "build_info.json"));
-    if (buildInfo) parts.push(`build:${buildInfo}`);
-
-    // pyvenv.cfg
-    const pyvenvCfg = stat(path.join(envRoot, "pyvenv.cfg"));
-    if (pyvenvCfg) parts.push(`pyvenv:${pyvenvCfg}`);
-
-    // site-packages directory mtime
-    const sitePackages = this.getSitePackagesForPythonPath(pythonPath);
-    if (sitePackages) {
-      const sp = stat(sitePackages);
-      if (sp) parts.push(`site:${sp}`);
-    }
-
-    // For custom envs that don't expose any of the markers above, we can't
-    // build a reliable fingerprint — refuse to cache.
-    if (parts.length === 0) {
-      return null;
-    }
-
-    return parts.join("|");
-  }
-
-  private getVerifyCachePath(): string {
-    return path.join(app.getPath("userData"), VERIFY_CACHE_FILE);
-  }
-
-  private readVerifyCache(): VerifyCacheEntry | null {
-    try {
-      const p = this.getVerifyCachePath();
-      if (!fs.existsSync(p)) return null;
-      const data = JSON.parse(fs.readFileSync(p, "utf-8")) as VerifyCacheEntry;
-      if (!data.pythonPath || !data.appVersion || !data.fingerprint) return null;
-      return data;
-    } catch {
-      return null;
-    }
-  }
-
-  private writeVerifyCache(entry: VerifyCacheEntry): void {
-    try {
-      const p = this.getVerifyCachePath();
-      const dir = path.dirname(p);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(p, JSON.stringify(entry, null, 2));
-    } catch (error) {
-      console.warn(`[EnvManager] Failed to write verify cache: ${error}`);
-    }
-  }
-
-  /**
    * Ensure critical backend packages are installed.
    * Verifies the lightweight runtime first, then confirms that `nirs4all`
    * itself imports cleanly before writing the persistent verify cache.
@@ -765,10 +486,10 @@ export class EnvManager {
 
       // Fast path: persistent verify cache. Skips spawning Python entirely
       // when the env fingerprint matches a previously FULLY verified state.
-      const fingerprint = this.computeEnvFingerprint(pythonPath);
+      const fingerprint = computeEnvFingerprint(this.envDir, pythonPath);
       const currentVersion = app.getVersion();
       if (fingerprint) {
-        const cached = this.readVerifyCache();
+        const cached = readVerifyCache(app.getPath("userData"));
         if (
           cached
           && cached.pythonPath === pythonPath
@@ -852,9 +573,9 @@ export class EnvManager {
 
       // Persist a fresh cache entry. Recompute the fingerprint after any
       // install so the new site-packages mtime is captured.
-      const finalFingerprint = this.computeEnvFingerprint(pythonPath);
+      const finalFingerprint = computeEnvFingerprint(this.envDir, pythonPath);
       if (finalFingerprint) {
-        this.writeVerifyCache({
+        writeVerifyCache(app.getPath("userData"), {
           pythonPath,
           appVersion: currentVersion,
           fingerprint: finalFingerprint,
@@ -873,104 +594,15 @@ export class EnvManager {
   }
 
   /**
-   * Detect existing Python environments on the system.
-   *
-   * Results are cached in-memory for a short TTL, keyed on a hash of
-   * the active discovery inputs (`process.cwd()`, `PATH`, and key Python
-   * manager env vars). The cache is intentionally transient and separate from
-   * the persistent verify cache used by {@link ensureBackendPackages}.
+   * Detect existing Python environments on the system. Delegates discovery,
+   * classification, sorting, and the short-TTL cache to env-detection; this
+   * passes the configured/managed interpreter context.
    */
-  async detectExistingEnvs(): Promise<DetectedEnv[]> {
-    const cacheKey = createHash("sha1")
-      .update(process.platform)
-      .update("\u0000")
-      .update(process.cwd())
-      .update("\u0000")
-      .update(process.env.PATH || "")
-      .update("\u0000")
-      .update(process.env.CONDA_EXE || "")
-      .update("\u0000")
-      .update(process.env.PYENV_ROOT || "")
-      .digest("hex");
-    const now = Date.now();
-    if (detectEnvsCache && detectEnvsCache.key === cacheKey && detectEnvsCache.expiresAt > now) {
-      return detectEnvsCache.result.slice();
-    }
-
-    const candidatePaths = await gatherPythonCandidates([
-      this.pythonPath,
-      this.getManagedPythonPath(),
-      this.detectBundledRuntime()?.pythonPath,
-    ]);
-
-    const detected = (await Promise.all(
-      candidatePaths.map((candidate) => this.checkPython(candidate)),
-    )).filter((env): env is DetectedEnv => Boolean(env));
-
-    const envs: DetectedEnv[] = [];
-    const seenEnvRoots = new Set<string>();
-    for (const env of detected.sort((left, right) => this.compareDetectedEnvs(left, right))) {
-      const envKey = normalizeDetectedPath(env.path);
-      if (seenEnvRoots.has(envKey)) {
-        continue;
-      }
-
-      seenEnvRoots.add(envKey);
-      envs.push(env);
-    }
-
-    detectEnvsCache = {
-      key: cacheKey,
-      expiresAt: Date.now() + DETECT_ENVS_TTL_MS,
-      result: envs.slice(),
-    };
-
-    return envs;
-  }
-
-  /** Check a Python executable and return info if it's 3.11+ */
-  private async checkPython(pythonPath: string): Promise<DetectedEnv | null> {
-    const corePackageNames = JSON.stringify(getManagedCorePackageNames());
-    return new Promise((resolve) => {
-      execFile(
-        pythonPath,
-        [
-          "-c",
-          "import sys\n"
-          + "from importlib import metadata as importlib_metadata\n"
-          + "print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')\n"
-          + "installed = set()\n"
-          + "normalize = lambda name: name.replace('-', '_').replace('.', '_').lower()\n"
-          + "for dist in importlib_metadata.distributions():\n"
-          + "    name = dist.metadata.get('Name')\n"
-          + "    if name:\n"
-          + "        installed.add(normalize(name))\n"
-          + `core = [normalize(name) for name in ${corePackageNames}]\n`
-          + "print('nirs4all' in installed)\n"
-          + "print(all(name in installed for name in core))",
-        ],
-        { timeout: 5000, windowsHide: isWindows },
-        (error, stdout) => {
-          if (error) { resolve(null); return; }
-          const lines = stdout.trim().split("\n");
-          if (lines.length < 3) { resolve(null); return; }
-          const version = lines[0].trim();
-          const [major, minor] = version.split(".").map(Number);
-          if (major < 3 || (major === 3 && minor < 11)) { resolve(null); return; }
-          const hasNirs4all = lines[1].trim() === "True";
-          const hasCorePackages = lines[2].trim() === "True";
-          const envRoot = getEnvRootForPythonPath(pythonPath);
-          resolve({
-            path: envRoot,
-            pythonPath,
-            pythonVersion: version,
-            hasNirs4all,
-            hasCorePackages,
-            envKind: this.getEnvKind(envRoot, pythonPath),
-            writable: this.isLikelyWritable(envRoot, pythonPath),
-          });
-        },
-      );
+  detectExistingEnvs(): Promise<DetectedEnv[]> {
+    return detectExistingEnvs({
+      envDir: this.envDir,
+      customPythonPath: this.pythonPath,
+      configuredPythonPath: this.getConfiguredPythonPath(),
     });
   }
 

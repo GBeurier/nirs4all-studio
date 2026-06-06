@@ -32,7 +32,7 @@ jobs:
         run: npm ci
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint:eslint
 
       - name: Check backend dependency sync
         run: npm run lint:deps
@@ -44,7 +44,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Run tests
-        run: npm run test -- --run
+        run: npm run test:frontend
 
       - name: Build frontend
         run: npm run build
