@@ -3,19 +3,18 @@ predictions, exports, templates, and run rerun.
 """
 
 import asyncio
-import json
 import time
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
 
 from ..app_config import app_config
 from ..shared.logger import get_logger
-from ..workspace_manager import WorkspaceScanner, workspace_manager
+from ..workspace_manager import workspace_manager
+from ..workspace_scanner import WorkspaceScanner
 from ._shared import (
     _DATASET_SCORES_CACHE,
     _RESULTS_SUMMARY_CACHE,
@@ -186,116 +185,6 @@ async def scan_workspace(workspace_id: str):
         )
 
 
-def _discover_runs_legacy(workspace_path: Path, workspace_id: str, source: str) -> dict[str, Any]:
-    """Store-or-legacy run discovery (blocking; runs in a worker thread)."""
-    scanner = WorkspaceScanner(workspace_path)
-
-    # ---- Store path (primary) ----
-    # When a store exists, scanner.discover_runs() already reads
-    # from it and the parquet-derived phase is unnecessary.
-    if scanner._has_store():
-        all_runs = scanner.discover_runs()
-        all_runs.sort(key=lambda r: r.get("created_at", "") or "", reverse=True)
-        return {"workspace_id": workspace_id, "runs": all_runs, "total": len(all_runs)}
-
-    # ---- Legacy filesystem path ----
-    import pandas as pd
-
-    all_runs = []
-    seen_run_ids = set()
-
-    def normalize_run_id(run_id: str) -> str:
-        """Strip numeric prefix (e.g., '0003_config_xxx' -> 'config_xxx') for deduplication."""
-        import re
-        return re.sub(r'^\d+_', '', run_id)
-
-    # Phase 1: Discover runs from manifests (v2 format with templates)
-    if source in ("unified", "manifests"):
-        manifest_runs = scanner.discover_runs()
-
-        for run in manifest_runs:
-            run_id = run.get("id", "")
-            if run_id:
-                seen_run_ids.add(normalize_run_id(run_id))
-            all_runs.append(run)
-
-    # Phase 2: Extract additional runs from parquet files (for legacy/ungrouped data)
-    if source in ("unified", "parquet"):
-        parquet_files = list(workspace_path.glob("*.meta.parquet"))
-
-        for parquet_file in parquet_files:
-            try:
-                df = pd.read_parquet(parquet_file, columns=[
-                    "dataset_name", "config_name", "pipeline_uid",
-                    "model_name", "preprocessings", "partition",
-                    "val_score", "test_score", "n_samples"
-                ])
-
-                if "config_name" not in df.columns or df.empty:
-                    continue
-
-                dataset_name = parquet_file.stem.replace(".meta", "")
-
-                grouped = df.groupby("config_name", dropna=True)
-
-                agg_dict = {"config_name": "size"}
-                if "pipeline_uid" in df.columns:
-                    agg_dict["pipeline_uid"] = "nunique"
-                if "val_score" in df.columns:
-                    agg_dict["val_score"] = "max"
-                if "test_score" in df.columns:
-                    agg_dict["test_score"] = "max"
-
-                agg_df = grouped.agg(agg_dict)
-                agg_df.columns = ["predictions_count", "pipeline_count", "val_score", "test_score"][:len(agg_df.columns)]
-
-                if "model_name" in df.columns:
-                    models_per_config = grouped["model_name"].apply(
-                        lambda x: x.dropna().unique().tolist()[:5]
-                    ).to_dict()
-                else:
-                    models_per_config = {}
-
-                for config_name in agg_df.index:
-                    config_id = str(config_name)
-                    normalized_id = normalize_run_id(config_id)
-                    if normalized_id in seen_run_ids:
-                        continue
-                    seen_run_ids.add(normalized_id)
-
-                    row = agg_df.loc[config_name]
-                    val_score = row.get("val_score") if "val_score" in row.index else None
-                    test_score = row.get("test_score") if "test_score" in row.index else None
-
-                    all_runs.append({
-                        "id": config_id,
-                        "pipeline_id": config_id,
-                        "name": config_id,
-                        "dataset": dataset_name,
-                        "created_at": None,
-                        "schema_version": "derived",
-                        "format": "parquet_derived",
-                        "artifact_count": 0,
-                        "predictions_count": int(row.get("predictions_count", 0)),
-                        "pipeline_count": int(row.get("pipeline_count", 1)) if "pipeline_count" in row.index else 1,
-                        "models": models_per_config.get(config_name, []),
-                        "best_val_score": float(val_score) if pd.notna(val_score) else None,
-                        "best_test_score": float(test_score) if pd.notna(test_score) else None,
-                        "templates": [],
-                        "datasets": [{"name": dataset_name}],
-                        "dataset_info": {},
-                        "manifest_path": "",
-                    })
-            except Exception as e:
-                logger.error("Failed to read %s: %s", parquet_file, e)
-                continue
-
-    # Sort by created_at (newest first) for runs that have timestamps
-    all_runs.sort(key=lambda r: r.get("created_at", "") or "", reverse=True)
-
-    return {"workspace_id": workspace_id, "runs": all_runs, "total": len(all_runs)}
-
-
 @router.get("/workspaces/{workspace_id}/runs")
 async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh: bool = False):
     """Get discovered runs from a linked workspace.
@@ -324,8 +213,9 @@ async def get_workspace_runs(workspace_id: str, source: str = "unified", refresh
             if cached is not None:
                 return cached
 
+        scanner = WorkspaceScanner(workspace_path)
         result = await asyncio.to_thread(
-            _discover_runs_legacy, workspace_path, workspace_id, source
+            scanner.discover_runs_combined, workspace_id, source
         )
 
         # Cache the result for subsequent requests
@@ -973,157 +863,6 @@ async def get_workspace_predictions(workspace_id: str):
         )
 
 
-def _read_predictions_data(
-    workspace_path: Path,
-    limit: int,
-    offset: int,
-    dataset: str | None,
-    model_class: str | None,
-    partition: str | None,
-) -> Any:
-    """Read prediction records via store or legacy parquet (blocking; worker thread)."""
-    scanner = WorkspaceScanner(workspace_path)
-
-    # ---- Store path (primary) ----
-    if scanner._has_store():
-        return scanner.store_adapter.get_predictions_page(
-            dataset_name=dataset,
-            model_class=model_class,
-            partition=partition,
-            limit=limit,
-            offset=offset,
-        )
-
-    # ---- Legacy filesystem path (parquet files) ----
-    import pandas as pd
-
-    all_records = []
-
-    parquet_files = list(workspace_path.glob("*.meta.parquet"))
-
-    if dataset:
-        parquet_files = [f for f in parquet_files if f.stem.replace(".meta", "") == dataset]
-
-    for parquet_file in parquet_files:
-        try:
-            df = pd.read_parquet(parquet_file)
-            dataset_name = parquet_file.stem.replace(".meta", "")
-
-            columns_to_include = [
-                "id", "dataset_name", "config_name", "pipeline_uid",
-                "step_idx", "op_counter", "model_name", "model_classname",
-                "fold_id", "partition", "val_score", "test_score", "train_score",
-                "metric", "task_type", "n_samples", "n_features",
-                "preprocessings", "best_params", "scores",
-                "branch_id", "branch_name", "exclusion_count", "exclusion_rate",
-                "model_artifact_id", "trace_id"
-            ]
-
-            available_columns = [c for c in columns_to_include if c in df.columns]
-            subset = df[available_columns].copy()
-            records = subset.to_dict('records')
-
-            source_file_str = str(parquet_file)
-
-            def clean_nan(obj):
-                """Recursively clean NaN/Inf values from an object for JSON serialization."""
-                import math
-
-                import numpy as np
-                if isinstance(obj, dict):
-                    return {k: clean_nan(v) for k, v in obj.items()}
-                elif isinstance(obj, list):
-                    return [clean_nan(v) for v in obj]
-                elif isinstance(obj, (float, np.floating)):
-                    try:
-                        if math.isnan(obj) or math.isinf(obj):
-                            return None
-                    except (TypeError, ValueError):
-                        pass
-                    return float(obj)
-                elif isinstance(obj, np.integer):
-                    return int(obj)
-                try:
-                    if pd.isna(obj):
-                        return None
-                except (TypeError, ValueError):
-                    pass
-                return obj
-
-            for record in records:
-                record["source_dataset"] = dataset_name
-                record["source_file"] = source_file_str
-                record["predict_chain_id"] = (
-                    record.get("predict_chain_id")
-                    or (
-                        (record.get("trace_id") or record.get("pipeline_uid"))
-                        if record.get("model_artifact_id")
-                        else None
-                    )
-                )
-
-                for json_field in ["best_params", "scores"]:
-                    val = record.get(json_field)
-                    if val is not None and isinstance(val, str):
-                        try:
-                            record[json_field] = json.loads(val)
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-
-                for key in list(record.keys()):
-                    record[key] = clean_nan(record[key])
-
-            all_records.extend(records)
-        except Exception as e:
-            logger.error("Error reading %s: %s", parquet_file, e)
-            continue
-
-    total = len(all_records)
-    paginated = all_records[offset:offset + limit]
-
-    import math
-
-    import numpy as np
-
-    class NaNSafeEncoder(json.JSONEncoder):
-        def default(self, obj):
-            if isinstance(obj, (np.floating, float)):
-                if math.isnan(obj) or math.isinf(obj):
-                    return None
-                return float(obj)
-            if isinstance(obj, np.integer):
-                return int(obj)
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()
-            return super().default(obj)
-
-        def encode(self, obj):
-            def sanitize(o):
-                if isinstance(o, dict):
-                    return {k: sanitize(v) for k, v in o.items()}
-                elif isinstance(o, list):
-                    return [sanitize(v) for v in o]
-                elif isinstance(o, (float, np.floating)):
-                    if math.isnan(o) or math.isinf(o):
-                        return None
-                    return float(o)
-                elif isinstance(o, np.integer):
-                    return int(o)
-                return o
-            return super().encode(sanitize(obj))
-
-    response_data = {
-        "records": paginated,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "has_more": offset + limit < total,
-    }
-
-    json_str = json.dumps(response_data, cls=NaNSafeEncoder)
-    return Response(content=json_str, media_type="application/json")
-
-
 @router.get("/workspaces/{workspace_id}/predictions/data")
 async def get_workspace_predictions_data(
     workspace_id: str,
@@ -1144,9 +883,9 @@ async def get_workspace_predictions_data(
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
+        scanner = WorkspaceScanner(Path(ws.path))
         return await asyncio.to_thread(
-            _read_predictions_data,
-            Path(ws.path),
+            scanner.read_predictions_data,
             limit,
             offset,
             dataset,
@@ -1277,79 +1016,6 @@ async def delete_workspace_prediction(workspace_id: str, prediction_id: str):
         )
 
 
-def _read_prediction_scatter(workspace_path: Path, prediction_id: str) -> dict[str, Any]:
-    """Read scatter data via store or legacy parquet (blocking; worker thread)."""
-    scanner = WorkspaceScanner(workspace_path)
-
-    # ---- Store path (primary) ----
-    if scanner._has_store():
-        scatter = scanner.store_adapter.get_prediction_scatter(prediction_id)
-        if scatter is not None:
-            return scatter
-        raise HTTPException(
-            status_code=404,
-            detail=f"Prediction '{prediction_id}' not found or has no scatter data"
-        )
-
-    # ---- Legacy filesystem path ----
-    from nirs4all.data.predictions import Predictions
-
-    parquet_files = list(workspace_path.glob("*.meta.parquet"))
-
-    if not parquet_files:
-        raise HTTPException(status_code=404, detail="No predictions found in workspace")
-
-    for meta_file in parquet_files:
-        arrays_file = meta_file.with_name(
-            meta_file.name.replace(".meta.parquet", ".arrays.parquet")
-        )
-
-        if not arrays_file.exists():
-            continue
-
-        try:
-            pred_storage = Predictions()
-            pred_storage.load_from_file(str(meta_file), merge=False)
-
-            prediction = pred_storage.get_prediction_by_id(prediction_id, load_arrays=True)
-
-            if prediction:
-                y_true = prediction.get('y_true')
-                y_pred = prediction.get('y_pred')
-
-                if y_true is None or y_pred is None:
-                    continue
-
-                import numpy as np
-                y_true_list = y_true.tolist() if isinstance(y_true, np.ndarray) else list(y_true) if y_true is not None else []
-                y_pred_list = y_pred.tolist() if isinstance(y_pred, np.ndarray) else list(y_pred) if y_pred is not None else []
-                sample_metadata = prediction.get('sample_metadata')
-                if not isinstance(sample_metadata, dict):
-                    sample_metadata = prediction.get('metadata')
-
-                if not y_true_list or not y_pred_list:
-                    continue
-
-                return {
-                    "prediction_id": prediction_id,
-                    "y_true": y_true_list,
-                    "y_pred": y_pred_list,
-                    "n_samples": len(y_true_list),
-                    "partition": prediction.get('partition', 'unknown'),
-                    "model_name": prediction.get('model_name', 'unknown'),
-                    "dataset_name": prediction.get('dataset_name', 'unknown'),
-                    "sample_metadata": sample_metadata if isinstance(sample_metadata, dict) else None,
-                }
-        except Exception as e:
-            logger.error("Error reading %s: %s", meta_file, e)
-            continue
-
-    raise HTTPException(
-        status_code=404,
-        detail=f"Prediction '{prediction_id}' not found or has no scatter data"
-    )
-
-
 @router.get("/workspaces/{workspace_id}/predictions/{prediction_id}/scatter")
 async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
     """Get scatter plot data (y_true vs y_pred) for a specific prediction.
@@ -1368,8 +1034,9 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
+        scanner = WorkspaceScanner(Path(ws.path))
         return await asyncio.to_thread(
-            _read_prediction_scatter, Path(ws.path), prediction_id
+            scanner.read_prediction_scatter, prediction_id
         )
     except HTTPException:
         raise
@@ -1377,121 +1044,6 @@ async def get_prediction_scatter_data(workspace_id: str, prediction_id: str):
         raise HTTPException(
             status_code=500, detail=f"Failed to get scatter data: {str(e)}"
         )
-
-
-def _read_predictions_summary(workspace_path: Path) -> dict[str, Any]:
-    """Compute predictions summary via store or legacy parquet (blocking; worker thread)."""
-    scanner = WorkspaceScanner(workspace_path)
-
-    # ---- Store path (primary) ----
-    if scanner._has_store():
-        return scanner.store_adapter.get_predictions_summary()
-
-    # ---- Legacy filesystem path (parquet footers) ----
-    import pyarrow.parquet as pq
-
-    parquet_files = list(workspace_path.glob("*.meta.parquet"))
-
-    if not parquet_files:
-        return {
-            "total_predictions": 0,
-            "total_datasets": 0,
-            "datasets": [],
-            "models": [],
-            "runs": [],
-            "generated_at": datetime.now(UTC).isoformat(),
-        }
-
-    def read_summary(parquet_file: Path) -> dict[str, Any] | None:
-        """Read summary from a single parquet file."""
-        try:
-            pf = pq.ParquetFile(str(parquet_file))
-            metadata = pf.schema_arrow.metadata
-
-            if metadata and b"n4a_summary" in metadata:
-                summary = json.loads(metadata[b"n4a_summary"].decode("utf-8"))
-                summary["dataset"] = parquet_file.stem.replace(".meta", "")
-                summary["has_summary"] = True
-                return summary
-            else:
-                return {
-                    "dataset": parquet_file.stem.replace(".meta", ""),
-                    "total_predictions": pf.metadata.num_rows,
-                    "has_summary": False,
-                }
-        except Exception as e:
-            logger.error("Error reading %s: %s", parquet_file, e)
-            return None
-
-    # Already running in a worker thread (the whole handler is offloaded),
-    # so read parquet footers sequentially to avoid blocking on a nested
-    # executor.map join.
-    summaries = [s for s in (read_summary(pf) for pf in parquet_files) if s is not None]
-
-    total_predictions = sum(s.get("total_predictions", 0) for s in summaries)
-
-    all_models: dict[str, dict] = {}
-    for s in summaries:
-        for model in s.get("facets", {}).get("models", []):
-            name = model["name"]
-            if name not in all_models:
-                all_models[name] = {"name": name, "count": 0, "total_score": 0, "score_count": 0}
-            all_models[name]["count"] += model["count"]
-            if model.get("avg_val_score"):
-                all_models[name]["total_score"] += model["avg_val_score"] * model["count"]
-                all_models[name]["score_count"] += model["count"]
-
-    models = []
-    for m in all_models.values():
-        models.append({
-            "name": m["name"],
-            "count": m["count"],
-            "avg_val_score": round(m["total_score"] / m["score_count"], 4) if m["score_count"] > 0 else None,
-        })
-    models.sort(key=lambda x: x["count"], reverse=True)
-
-    all_runs = []
-    for s in summaries:
-        all_runs.extend(s.get("runs", []))
-
-    all_top = []
-    for s in summaries:
-        for pred in s.get("top_predictions", []):
-            pred["dataset"] = s.get("dataset")
-            all_top.append(pred)
-    all_top.sort(key=lambda x: x.get("val_score") or 0, reverse=True)
-    top_predictions = all_top[:10]
-
-    aggregated_stats = {}
-    for stat_key in ["val_score", "test_score", "train_score"]:
-        all_values = []
-        for s in summaries:
-            stats = s.get("stats", {}).get(stat_key, {})
-            if stats:
-                all_values.append({
-                    "min": stats.get("min", 0),
-                    "max": stats.get("max", 0),
-                    "mean": stats.get("mean", 0),
-                    "count": s.get("total_predictions", 0),
-                })
-        if all_values:
-            total_count = sum(v["count"] for v in all_values)
-            aggregated_stats[stat_key] = {
-                "min": min(v["min"] for v in all_values),
-                "max": max(v["max"] for v in all_values),
-                "mean": sum(v["mean"] * v["count"] for v in all_values) / total_count if total_count > 0 else 0,
-            }
-
-    return {
-        "total_predictions": total_predictions,
-        "total_datasets": len(summaries),
-        "datasets": summaries,
-        "models": models,
-        "runs": all_runs,
-        "top_predictions": top_predictions,
-        "stats": aggregated_stats,
-        "generated_at": datetime.now(UTC).isoformat(),
-    }
 
 
 @router.get("/workspaces/{workspace_id}/predictions/summary")
@@ -1512,7 +1064,8 @@ async def get_workspace_predictions_summary(workspace_id: str):
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
-        return await asyncio.to_thread(_read_predictions_summary, Path(ws.path))
+        scanner = WorkspaceScanner(Path(ws.path))
+        return await asyncio.to_thread(scanner.read_predictions_summary)
 
     except HTTPException:
         raise

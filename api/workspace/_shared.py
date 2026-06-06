@@ -212,7 +212,7 @@ def _resolve_store_backed_scanner(workspace_id: str, detail: str):
     """
     from fastapi import HTTPException
 
-    from ..workspace_manager import WorkspaceScanner
+    from ..workspace_scanner import WorkspaceScanner
 
     ws = workspace_manager._find_linked_workspace(workspace_id)
     if not ws:

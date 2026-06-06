@@ -11,7 +11,6 @@ from fastapi import APIRouter, HTTPException
 
 from ..app_config import app_config
 from ..shared.logger import get_logger
-from ..workspace_manager import workspace_manager
 from .models import CreateGroupRequest, LinkDatasetRequest
 
 logger = get_logger(__name__)
@@ -201,7 +200,7 @@ def _populate_linked_dataset_stats(dataset_info: dict[str, Any]) -> dict[str, An
                 }
                 if "config" in dataset_info:
                     update_data["config"] = dataset_info["config"]
-                workspace_manager.update_dataset(dataset_info["id"], update_data)
+                app_config.update_dataset(dataset_info["id"], update_data)
     except ImportError:
         pass
     except Exception as e:
@@ -214,7 +213,7 @@ def _populate_linked_dataset_stats(dataset_info: dict[str, Any]) -> dict[str, An
 async def link_dataset(request: LinkDatasetRequest):
     """Link a dataset globally (accessible across all workspaces)."""
     try:
-        dataset_info = workspace_manager.link_dataset(request.path, config=request.config)
+        dataset_info = app_config.link_dataset(request.path, config=request.config).to_dict()
 
         # Try to populate num_samples, num_features, and targets from the actual dataset
         dataset_info = await asyncio.to_thread(_populate_linked_dataset_stats, dataset_info)
@@ -238,7 +237,7 @@ async def link_dataset(request: LinkDatasetRequest):
 async def unlink_dataset(dataset_id: str):
     """Unlink a dataset globally (does not delete files)."""
     try:
-        success = workspace_manager.unlink_dataset(dataset_id)
+        success = app_config.unlink_dataset(dataset_id)
         if not success:
             raise HTTPException(status_code=404, detail="Dataset not found")
 
@@ -257,16 +256,17 @@ async def unlink_dataset(dataset_id: str):
 async def refresh_dataset(dataset_id: str):
     """Refresh dataset information by reloading it."""
     try:
-        dataset_info = await asyncio.to_thread(workspace_manager.refresh_dataset, dataset_id)
-        if not dataset_info:
+        dataset = await asyncio.to_thread(app_config.refresh_dataset, dataset_id)
+        if not dataset:
             raise HTTPException(
                 status_code=404, detail="Dataset not found or refresh failed"
             )
+        dataset_info = dataset.to_dict()
 
         metadata_columns = await asyncio.to_thread(_extract_dataset_metadata_columns, dataset_info)
         if metadata_columns is not None:
             dataset_info["metadata_columns"] = metadata_columns
-            workspace_manager.update_dataset(
+            app_config.update_dataset(
                 dataset_id,
                 {"metadata_columns": metadata_columns},
             )
@@ -292,7 +292,7 @@ async def refresh_dataset(dataset_id: str):
 @router.get("/workspace/groups")
 async def get_groups():
     try:
-        groups = workspace_manager.get_groups()
+        groups = [g.to_dict() for g in app_config.get_dataset_groups()]
         return {"groups": groups}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list groups: {str(e)}")
@@ -301,7 +301,7 @@ async def get_groups():
 @router.post("/workspace/groups")
 async def create_group(req: CreateGroupRequest):
     try:
-        grp = workspace_manager.create_group(req.name)
+        grp = app_config.create_dataset_group(req.name).to_dict()
         return {"success": True, "group": grp}
     except Exception as e:
         raise HTTPException(
@@ -312,7 +312,7 @@ async def create_group(req: CreateGroupRequest):
 @router.put("/workspace/groups/{group_id}")
 async def rename_group(group_id: str, req: CreateGroupRequest):
     try:
-        ok = workspace_manager.rename_group(group_id, req.name)
+        ok = app_config.rename_dataset_group(group_id, req.name)
         if not ok:
             raise HTTPException(status_code=404, detail="Group not found")
         return {"success": True}
@@ -327,7 +327,7 @@ async def rename_group(group_id: str, req: CreateGroupRequest):
 @router.delete("/workspace/groups/{group_id}")
 async def delete_group(group_id: str):
     try:
-        ok = workspace_manager.delete_group(group_id)
+        ok = app_config.delete_dataset_group(group_id)
         if not ok:
             raise HTTPException(status_code=404, detail="Group not found")
         return {"success": True}
@@ -345,7 +345,7 @@ async def add_dataset_to_group(group_id: str, body: dict[str, Any]):
         dataset_id = body.get("dataset_id")
         if not dataset_id:
             raise HTTPException(status_code=400, detail="dataset_id required")
-        ok = workspace_manager.add_dataset_to_group(group_id, dataset_id)
+        ok = app_config.add_dataset_to_group(dataset_id, group_id)
         if not ok:
             raise HTTPException(status_code=404, detail="Group not found")
         return {"success": True}
@@ -360,7 +360,7 @@ async def add_dataset_to_group(group_id: str, body: dict[str, Any]):
 @router.delete("/workspace/groups/{group_id}/datasets/{dataset_id}")
 async def remove_dataset_from_group(group_id: str, dataset_id: str):
     try:
-        ok = workspace_manager.remove_dataset_from_group(group_id, dataset_id)
+        ok = app_config.remove_dataset_from_group(dataset_id, group_id)
         if not ok:
             raise HTTPException(status_code=404, detail="Group not found")
         return {"success": True}
