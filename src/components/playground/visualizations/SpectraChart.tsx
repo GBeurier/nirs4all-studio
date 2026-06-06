@@ -129,6 +129,114 @@ export interface SpectraChartProps {
   showAbsoluteDifference?: boolean;
 }
 
+// ============= Line color helpers (VIZ-05) =============
+//
+// Recharts/SVG fallback hot path: the base stroke of every <Line> is
+// independent of hover/selection state, so it is computed once per sample
+// (hover-stable, memoizable). Hover/selection emphasis is applied on top via
+// a cheap O(affected) override so hovering one line no longer recolors every
+// line. The split preserves the exact visual semantics of the previous
+// single getColor() implementation.
+
+/** Base stroke for a spectra line, independent of hover/selection state. */
+export interface SpectraLineBaseColor {
+  /** The resolved base stroke color (raw, before dimming / both-transparency). */
+  color: string;
+  /**
+   * True when the color came from the outlier color-mode or outlier overlay,
+   * which short-circuit before dimming / original-transparency in the legacy
+   * getColor(). Emphasis must not apply dimming or both-mode transparency to a
+   * terminal base.
+   */
+  terminal: boolean;
+  /**
+   * True when this is an original line in 'both' view mode. The legacy getColor
+   * applied a 50% transparency as a fallback (only when dimming did not fire);
+   * emphasis reproduces that, using the raw `color`.
+   */
+  isOriginalBoth: boolean;
+}
+
+/**
+ * Resolve the hover/selection-independent base stroke for a line.
+ * Mirrors the non-emphasis branches of the legacy getColor().
+ */
+export function getSpectraLineBaseColor(params: {
+  isOutlier: boolean;
+  globalColorMode: GlobalColorConfig['mode'] | undefined;
+  showOutlierOverlay: boolean | undefined;
+  baseColor: string;
+  isOriginal: boolean;
+  viewModeBoth: boolean;
+}): SpectraLineBaseColor {
+  const { isOutlier, globalColorMode, showOutlierOverlay, baseColor, isOriginal, viewModeBoth } = params;
+
+  // Outlier color mode: red for outliers, grey for rest.
+  if (globalColorMode === 'outlier') {
+    return {
+      color: isOutlier ? HIGHLIGHT_COLORS.outlier : HIGHLIGHT_COLORS.unselected,
+      terminal: true,
+      isOriginalBoth: false,
+    };
+  }
+
+  // Outlier overlay in other color modes: show outliers as red.
+  if (isOutlier && showOutlierOverlay !== false) {
+    return { color: HIGHLIGHT_COLORS.outlier, terminal: true, isOriginalBoth: false };
+  }
+
+  return { color: baseColor, terminal: false, isOriginalBoth: isOriginal && viewModeBoth };
+}
+
+/**
+ * Apply hover/selection emphasis on top of a base line color.
+ * Mirrors the emphasis branches of the legacy getColor(). Cheap (no array
+ * iteration): called per visible line but only reads booleans + the precomputed
+ * base, so a hover changes O(affected lines) not O(all lines).
+ */
+export function applySpectraLineEmphasis(params: {
+  base: SpectraLineBaseColor;
+  isSelectedOnlyMode: boolean;
+  isHovered: boolean;
+  isSelected: boolean;
+  isPinned: boolean;
+  hasSelection: boolean;
+  selectionOverride: boolean;
+  highlightPinned: boolean;
+  selectionColor: string | undefined;
+  unselectedOpacity: number;
+}): string {
+  const {
+    base, isSelectedOnlyMode, isHovered, isSelected, isPinned, hasSelection,
+    selectionOverride, highlightPinned, selectionColor, unselectedOpacity,
+  } = params;
+
+  // Highlighted states take priority (except in selected_only mode).
+  if (!isSelectedOnlyMode) {
+    if (isHovered) return HIGHLIGHT_COLORS.hovered;
+    if (isSelected && selectionOverride) return selectionColor ?? HIGHLIGHT_COLORS.selected;
+    if (isPinned && highlightPinned) return HIGHLIGHT_COLORS.pinned;
+  } else if (isHovered) {
+    // In selected_only mode, only show hover highlight (not selection color).
+    return HIGHLIGHT_COLORS.hovered;
+  }
+
+  // Terminal bases (outlier mode / overlay) skip dimming and both-transparency.
+  if (base.terminal) return base.color;
+
+  // Dim non-selected samples when there's a selection (but not in selected_only mode).
+  if (hasSelection && !isSelectedOnlyMode && !isSelected && !isPinned) {
+    return `color-mix(in srgb, ${base.color} ${Math.round(unselectedOpacity * 100)}%, transparent)`;
+  }
+
+  // Original spectra are semi-transparent in 'both' mode (fallback when not dimmed).
+  if (base.isOriginalBoth) {
+    return `color-mix(in srgb, ${base.color} 50%, transparent)`;
+  }
+
+  return base.color;
+}
+
 // ============= Main Component =============
 
 export function SpectraChart({
@@ -516,57 +624,22 @@ export function SpectraChart({
     return 'hsl(var(--muted-foreground))';
   }, [globalColorConfig, computedColorContext]);
 
-  // Get color for a sample based on color config (including selection and outliers)
-  const getColor = useCallback((displayIdx: number, isOriginal: boolean) => {
-    const sampleIdx = displayIndices[displayIdx];
-    const isSelected = selectedSamples.has(sampleIdx);
-    const isHovered = hoveredSample === sampleIdx;
-    const isPinned = pinnedSamples.has(sampleIdx);
-    const hasSelection = selectedSamples.size > 0;
+  // VIZ-05: Hover/selection-INDEPENDENT base stroke for a line. Identity stays
+  // stable across hover/selection changes, so the per-line render no longer
+  // recomputes every stroke when one sample is hovered. Emphasis is layered on
+  // top per line via the cheap applySpectraLineEmphasis() pure helper.
+  const viewModeBoth = config.viewMode === 'both';
+  const getBaseLineColor = useCallback((sampleIdx: number, isOriginal: boolean): SpectraLineBaseColor => {
     const isOutlier = computedColorContext.outlierIndices?.has(sampleIdx) ?? false;
-
-    // In "selected_only" mode, don't apply selection overlay - keep global coloration
-    // The samples shown are already filtered to selected ones
-    const isSelectedOnlyMode = config.displayMode === 'selected_only';
-
-    // Highlighted states take priority - use distinctive colors (except in selected_only mode)
-    if (!isSelectedOnlyMode) {
-      if (isHovered) return HIGHLIGHT_COLORS.hovered; // Primary color
-      // Only override selected color when selectionOverride is enabled; otherwise selected samples keep their base color
-      if (isSelected && config.colorConfig.selectionOverride) return config.colorConfig.selectionColor ?? HIGHLIGHT_COLORS.selected;
-      if (isPinned && config.colorConfig.highlightPinned) return HIGHLIGHT_COLORS.pinned; // Gold for pinned
-    } else {
-      // In selected_only mode, only show hover highlight (not selection color)
-      if (isHovered) return HIGHLIGHT_COLORS.hovered;
-    }
-
-    // Outlier color mode: red for outliers, grey for rest
-    if (globalColorConfig?.mode === 'outlier') {
-      return isOutlier ? HIGHLIGHT_COLORS.outlier : HIGHLIGHT_COLORS.unselected;
-    }
-
-    // Outlier overlay in other color modes: show outliers as red
-    if (isOutlier && globalColorConfig?.showOutlierOverlay !== false) {
-      return HIGHLIGHT_COLORS.outlier;
-    }
-
-    const baseColor = getBaseColor(sampleIdx);
-
-    // Dim non-selected samples when there's a selection (but not in selected_only mode)
-    if (hasSelection && !isSelectedOnlyMode && !isSelected && !isPinned) {
-      const opacity = config.colorConfig.unselectedOpacity;
-      // Use color-mix for CSS-variable-safe opacity blending
-      return `color-mix(in srgb, ${baseColor} ${Math.round(opacity * 100)}%, transparent)`;
-    }
-
-    // Make original spectra semi-transparent when showing both (to differentiate from processed)
-    // Using transparency preserves the color while showing the difference
-    if (isOriginal && config.viewMode === 'both') {
-      return `color-mix(in srgb, ${baseColor} 50%, transparent)`;
-    }
-
-    return baseColor;
-  }, [displayIndices, selectedSamples, hoveredSample, pinnedSamples, config.viewMode, config.displayMode, config.colorConfig.highlightPinned, config.colorConfig.selectionOverride, config.colorConfig.unselectedOpacity, config.colorConfig.selectionColor, getBaseColor, computedColorContext.outlierIndices, globalColorConfig]);
+    return getSpectraLineBaseColor({
+      isOutlier,
+      globalColorMode: globalColorConfig?.mode,
+      showOutlierOverlay: globalColorConfig?.showOutlierOverlay,
+      baseColor: getBaseColor(sampleIdx),
+      isOriginal,
+      viewModeBoth,
+    });
+  }, [computedColorContext.outlierIndices, globalColorConfig?.mode, globalColorConfig?.showOutlierOverlay, getBaseColor, viewModeBoth]);
 
   // Compute sample colors for WebGL to match Canvas coloring
   // Uses getWebGLSampleColor which includes selection/outlier mode handling
@@ -1088,6 +1161,10 @@ export function SpectraChart({
   const showProcessed = showIndividualLines && (config.viewMode === 'both' || config.viewMode === 'processed');
   const showGroupedAggregation = config.displayMode === 'grouped' && groupedStats && groupKeys.length > 0;
 
+  // VIZ-05: hover/selection emphasis context (cheap scalars, read per line).
+  const hasSelection = selectedSamples.size > 0;
+  const isSelectedOnlyMode = config.displayMode === 'selected_only';
+
   // Phase 7: Compute difference statistics when in difference mode
   const differenceStats = useMemo(() => {
     if (config.viewMode !== 'difference') return null;
@@ -1477,13 +1554,25 @@ export function SpectraChart({
               const isHovered = hoveredSample === sampleIdx;
               const isPinned = pinnedSamples.has(sampleIdx);
               const highlighted = isSelected || isHovered || isPinned;
+              const stroke = applySpectraLineEmphasis({
+                base: getBaseLineColor(sampleIdx, true),
+                isSelectedOnlyMode,
+                isHovered,
+                isSelected,
+                isPinned,
+                hasSelection,
+                selectionOverride: config.colorConfig.selectionOverride,
+                highlightPinned: config.colorConfig.highlightPinned,
+                selectionColor: config.colorConfig.selectionColor,
+                unselectedOpacity: config.colorConfig.unselectedOpacity,
+              });
 
               return (
                 <Line
                   key={`orig-${displayIdx}`}
                   type="monotone"
                   dataKey={`o${displayIdx}`}
-                  stroke={getColor(displayIdx, true)}
+                  stroke={stroke}
                   strokeWidth={highlighted ? CHART_THEME.selectedLineStrokeWidth : CHART_THEME.lineStrokeWidth}
                   strokeDasharray={config.viewMode === 'both' ? '4 2' : undefined}
                   dot={false}
@@ -1499,13 +1588,25 @@ export function SpectraChart({
               const isHovered = hoveredSample === sampleIdx;
               const isPinned = pinnedSamples.has(sampleIdx);
               const highlighted = isSelected || isHovered || isPinned;
+              const stroke = applySpectraLineEmphasis({
+                base: getBaseLineColor(sampleIdx, false),
+                isSelectedOnlyMode,
+                isHovered,
+                isSelected,
+                isPinned,
+                hasSelection,
+                selectionOverride: config.colorConfig.selectionOverride,
+                highlightPinned: config.colorConfig.highlightPinned,
+                selectionColor: config.colorConfig.selectionColor,
+                unselectedOpacity: config.colorConfig.unselectedOpacity,
+              });
 
               return (
                 <Line
                   key={`proc-${displayIdx}`}
                   type="monotone"
                   dataKey={`p${displayIdx}`}
-                  stroke={getColor(displayIdx, false)}
+                  stroke={stroke}
                   strokeWidth={highlighted ? CHART_THEME.selectedLineStrokeWidth : CHART_THEME.lineStrokeWidth}
                   dot={false}
                   activeDot={false}

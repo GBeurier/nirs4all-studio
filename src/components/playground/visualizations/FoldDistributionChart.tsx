@@ -119,7 +119,6 @@ interface ChartConfig {
   showMeanLine: boolean;
   showLegend: boolean;
   showYLegend: boolean;
-  barOrientation: 'horizontal' | 'vertical';
 }
 
 /**
@@ -184,7 +183,6 @@ const DEFAULT_CONFIG: ChartConfig = {
   showMeanLine: false,
   showLegend: true,
   showYLegend: false,
-  barOrientation: 'vertical',
 };
 
 export function getCombinedGroupingNote(
@@ -1062,7 +1060,7 @@ export function FoldDistributionChart({
           <BarChart
             data={partitionBarData}
             margin={{ top: 10, right: 10, left: 10, bottom: 5 }}
-            layout={config.barOrientation === 'horizontal' ? 'vertical' : 'horizontal'}
+            layout="horizontal"
             onMouseDown={(state) => {
               handleChartMouseDown(state as { activeTooltipIndex?: number });
             }}
@@ -1077,34 +1075,17 @@ export function FoldDistributionChart({
               strokeDasharray={CHART_THEME.gridDasharray}
               stroke={CHART_THEME.gridStroke}
               opacity={CHART_THEME.gridOpacity}
-              horizontal={config.barOrientation !== 'horizontal'}
-              vertical={config.barOrientation === 'horizontal'}
+              horizontal
+              vertical={false}
             />
 
-            {config.barOrientation === 'horizontal' ? (
-              <>
-                <XAxis type="number" stroke={CHART_THEME.axisStroke} fontSize={CHART_THEME.axisFontSize} />
-                <YAxis
-                  dataKey="index"
-                  type="number"
-                  stroke={CHART_THEME.axisStroke}
-                  fontSize={11}
-                  width={70}
-                  tickFormatter={(value: number) => partitionBarData[value]?.label ?? ''}
-                  tick={{ fill: '#e4e4e7', fontWeight: 500 }}
-                />
-              </>
-            ) : (
-              <>
-                <XAxis
-                  dataKey="index"
-                  type="number"
-                  hide
-                  domain={[-0.5, partitionBarData.length - 0.5]}
-                />
-                <YAxis stroke={CHART_THEME.axisStroke} fontSize={CHART_THEME.axisFontSize} width={40} />
-              </>
-            )}
+            <XAxis
+              dataKey="index"
+              type="number"
+              hide
+              domain={[-0.5, partitionBarData.length - 0.5]}
+            />
+            <YAxis stroke={CHART_THEME.axisStroke} fontSize={CHART_THEME.axisFontSize} width={40} />
 
         <Tooltip
           isAnimationActive={false}
@@ -1281,8 +1262,8 @@ export function FoldDistributionChart({
           />
         )}
       </div>
-      {/* HTML labels below chart for vertical orientation */}
-      {config.barOrientation !== 'horizontal' && partitionBarData.length > 0 && (
+      {/* HTML labels below chart */}
+      {partitionBarData.length > 0 && (
         <div
           className="flex text-[10px] text-foreground mt-1"
           style={{ marginLeft: '10px', marginRight: '10px' }}
