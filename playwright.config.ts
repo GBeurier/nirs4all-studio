@@ -125,8 +125,8 @@ export default defineConfig({
       command: process.env.CI
         ? 'python main.py --no-reload'
         : process.platform === 'win32'
-          ? '..\\.venv\\Scripts\\python main.py --no-reload'
-          : '../.venv/bin/python main.py --no-reload',
+          ? '..\\nirs4all\\.venv\\Scripts\\python main.py --no-reload'
+          : '../nirs4all/.venv/bin/python main.py --no-reload',
       url: 'http://localhost:8000/api/health',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,
