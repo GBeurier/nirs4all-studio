@@ -24,6 +24,8 @@ import Settings from "@/pages/Settings";
 import SetupWizard from "@/pages/SetupWizard";
 import NotFound from "@/pages/NotFound";
 import EnvSetup from "@/components/setup/EnvSetup";
+import { TRANSFER_ENABLED } from "@/lib/featureFlags";
+import { useShapAvailable } from "@/hooks/useBackendCapabilities";
 
 const electronApi = (window as unknown as {
   electronApi?: {
@@ -264,6 +266,15 @@ function BackendConnectingScreen() {
   );
 }
 
+/**
+ * `/lab/shapley` requires `shap` in the backend (absent in lite builds).
+ * Mirrors the Transfer route guard: redirect to /lab when unavailable.
+ */
+function ShapleyRoute() {
+  const shapAvailable = useShapAvailable();
+  return shapAvailable ? <VariableImportance /> : <Navigate to="/lab" replace />;
+}
+
 function App() {
   // In Electron mode, decide whether to show the setup wizard.
   // The wizard is shown when: env not ready, new install/update, or portable mode.
@@ -326,8 +337,8 @@ function App() {
         <Route path="lab" element={<Lab />}>
           <Route index element={<Navigate to="/lab/synthesis" replace />} />
           <Route path="synthesis" element={<SpectraSynthesis />} />
-          <Route path="transfer" element={<TransferAnalysis />} />
-          <Route path="shapley" element={<VariableImportance />} />
+          <Route path="transfer" element={TRANSFER_ENABLED ? <TransferAnalysis /> : <Navigate to="/lab" replace />} />
+          <Route path="shapley" element={<ShapleyRoute />} />
         </Route>
         <Route path="settings" element={<Settings />} />
         <Route path="setup" element={<SetupWizard />} />

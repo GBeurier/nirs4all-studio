@@ -10,6 +10,7 @@ import {
   type TierLevel,
 } from "../contexts/PipelineEditorPreferencesContext";
 import { stepOptions, type PipelineStep, type StepOption, type StepType } from "../types";
+import { useDeepLearningAvailable } from "@/hooks/useBackendCapabilities";
 
 export type StepMetadataRegistry = Pick<
   NodeRegistryContextValue,
@@ -39,6 +40,9 @@ export interface StepMetadataCatalog {
 
 export interface StepMetadataCatalogOptions {
   tierLevel?: TierLevel;
+  /** Hide deep-learning operators (used in pure-sklearn "lite" builds where
+   *  torch/tensorflow/jax are not installed). */
+  hideDeepLearning?: boolean;
 }
 
 const REGISTRY_LEGACY_ALIAS_FALLBACKS: Partial<Record<StepType, Record<string, string[]>>> = {
@@ -174,12 +178,16 @@ export function createStepMetadataCatalog(
   const getStepOptions = (type: StepType, queryOptions: StepMetadataCatalogOptions = {}): StepOption[] => {
     const mergedOptions = getMergedStepOptions(type);
     const tierLevel = queryOptions.tierLevel ?? options.tierLevel;
+    const hideDeepLearning = queryOptions.hideDeepLearning ?? options.hideDeepLearning ?? false;
 
-    if (!tierLevel || tierLevel === "all") {
-      return mergedOptions;
+    let result = mergedOptions;
+    if (tierLevel && tierLevel !== "all") {
+      result = result.filter((option) => matchesTierLevel(option, tierLevel));
     }
-
-    return mergedOptions.filter((option) => matchesTierLevel(option, tierLevel));
+    if (hideDeepLearning) {
+      result = result.filter((option) => option.isDeepLearning !== true);
+    }
+    return result;
   };
 
   const getStepMetadata = (type: StepType, name: string): StepMetadata => {
@@ -245,6 +253,11 @@ export function useStepMetadataCatalog(
   const registry = useNodeRegistryOptional();
   const prefs = usePipelineEditorPreferencesOptional();
   const tierLevel = options.tierLevel ?? prefs?.tierLevel;
+  const deepLearningAvailable = useDeepLearningAvailable();
+  const hideDeepLearning = options.hideDeepLearning ?? !deepLearningAvailable;
 
-  return useMemo(() => createStepMetadataCatalog(registry, { tierLevel }), [registry, tierLevel]);
+  return useMemo(
+    () => createStepMetadataCatalog(registry, { tierLevel, hideDeepLearning }),
+    [registry, tierLevel, hideDeepLearning],
+  );
 }

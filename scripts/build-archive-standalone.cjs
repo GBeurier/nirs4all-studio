@@ -2,13 +2,14 @@
  * Build a standalone Electron archive with a fully baked backend runtime.
  *
  * This is the lot 4 packaging entrypoint for the archive-based standalone product.
- * It is intentionally locked to the v1 standalone scope: profile=cpu only.
+ * Supported profiles: cpu (full, with PyTorch) and cpu-lite (pure scikit-learn —
+ * no torch/tensorflow/jax/autogluon/tabpfn; deep-learning model nodes are hidden).
  *
  * Usage:
  *   node scripts/build-archive-standalone.cjs [options]
  *
  * Options:
- *   --profile <id>        Product profile to bake (default: cpu, and must stay cpu in v1)
+ *   --profile <id>        Product profile to bake: cpu (default) or cpu-lite
  *   --platform <id>       Target platform (default: current host platform)
  *   --arch <id>           Target arch (default: current host arch)
  *   --clean               Clean build artifacts before packaging
@@ -23,6 +24,7 @@ const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const {
+  LITE_PROFILE,
   STANDALONE_V1_PROFILE,
 } = require("./python-runtime-config.cjs");
 const { resolveSpawnCommand } = require("./spawn-command.cjs");
@@ -55,6 +57,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     clean: false,
     skipBackend: false,
     skipFrontend: false,
+    localNirs4all: false,
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
     constraintsFile: "",
   };
@@ -77,6 +80,8 @@ function parseArgs(argv = process.argv.slice(2)) {
       parsed.skipBackend = true;
     } else if (flag === "--skip-frontend") {
       parsed.skipFrontend = true;
+    } else if (flag === "--local-nirs4all") {
+      parsed.localNirs4all = true;
     } else if (flag === "--cache-dir") {
       parsed.cacheDir = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--constraints") {
@@ -96,9 +101,10 @@ function resolveBuildConfig(rawOptions, host = { platform: process.platform, arc
     constraintsFile: rawOptions.constraintsFile ? path.resolve(rawOptions.constraintsFile) : "",
   };
 
-  if (config.profile !== STANDALONE_V1_PROFILE) {
+  const allowedProfiles = [STANDALONE_V1_PROFILE, LITE_PROFILE];
+  if (!allowedProfiles.includes(config.profile)) {
     throw new Error(
-      `Standalone archive packaging is locked to the '${STANDALONE_V1_PROFILE}' profile in v1. Requested profile: '${config.profile}'.`,
+      `Standalone archive packaging supports the '${allowedProfiles.join("', '")}' profiles. Requested profile: '${config.profile}'.`,
     );
   }
 
@@ -224,6 +230,34 @@ async function createLinuxTarball(config) {
   console.log("");
 }
 
+// For the lite profile, tag every release artifact so lite and full archives are
+// distinguishable (and never collide) when both are published. The "all-in-one"
+// token is present in every archive name (win via electron-builder.archive.yml,
+// mac/linux via the helpers above).
+function renameLiteArtifacts(config) {
+  if (config.profile !== LITE_PROFILE) {
+    return;
+  }
+  const releaseDir = path.join(projectRoot, "release");
+  if (!fs.existsSync(releaseDir)) {
+    return;
+  }
+  console.log("=== Tagging lite artifacts ===");
+  for (const file of fs.readdirSync(releaseDir)) {
+    if (!file.includes("all-in-one") || file.includes("all-in-one-lite")) {
+      continue;
+    }
+    const from = path.join(releaseDir, file);
+    if (!fs.statSync(from).isFile()) {
+      continue;
+    }
+    const renamed = file.replace("all-in-one", "all-in-one-lite");
+    fs.renameSync(from, path.join(releaseDir, renamed));
+    console.log(`  ${file} -> ${renamed}`);
+  }
+  console.log("");
+}
+
 function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     console.log(`Running: ${command} ${args.join(" ")}`);
@@ -330,6 +364,9 @@ async function buildArchiveStandalone(config) {
       config.cacheDir,
       "--clean",
     ];
+    if (config.localNirs4all) {
+      bakeArgs.push("--local-nirs4all");
+    }
     if (config.constraintsFile) {
       bakeArgs.push("--constraints", config.constraintsFile);
     }
@@ -360,6 +397,8 @@ async function buildArchiveStandalone(config) {
   } else if (config.platform === "linux") {
     await createLinuxTarball(config);
   }
+
+  renameLiteArtifacts(config);
 }
 
 async function main() {

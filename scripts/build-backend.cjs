@@ -31,7 +31,7 @@ for (let i = 0; i < args.length; i++) {
 }
 
 // Validate flavor
-const validFlavors = ["cpu", "gpu", "gpu-metal"];
+const validFlavors = ["cpu", "cpu-lite", "gpu", "gpu-metal"];
 if (!validFlavors.includes(flavor)) {
   console.error(`Error: Invalid flavor '${flavor}'. Must be one of: ${validFlavors.join(", ")}`);
   process.exit(1);
@@ -122,10 +122,14 @@ async function main() {
       await runCommand(pipPath, ["install", "pyinstaller>=6.12.0"]);
     }
 
-    // Install flavor-specific dependencies
+    // Install flavor-specific dependencies.
+    // cpu-lite shares the CPU backend dependency set (the lite distinction is the
+    // runtime profile + backend.spec excludes, not the FastAPI/uvicorn deps).
     let requirementsFile;
     if (flavor === "gpu-metal") {
       requirementsFile = "requirements-gpu-macos.txt";
+    } else if (flavor === "cpu-lite") {
+      requirementsFile = "requirements-cpu.txt";
     } else {
       requirementsFile = `requirements-${flavor}.txt`;
     }

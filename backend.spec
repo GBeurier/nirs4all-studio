@@ -33,6 +33,7 @@ BUILD_FLAVOR = os.environ.get('NIRS4ALL_BUILD_FLAVOR', 'cpu').lower()
 IS_GPU_BUILD = BUILD_FLAVOR in ('gpu', 'gpu-metal')
 IS_METAL_BUILD = BUILD_FLAVOR == 'gpu-metal'
 IS_CUDA_BUILD = BUILD_FLAVOR == 'gpu'
+IS_LITE_BUILD = BUILD_FLAVOR == 'cpu-lite'  # pure-sklearn CPU: drop all heavy ML frameworks
 
 print(f"Building nirs4all-backend ({BUILD_FLAVOR.upper()} flavor)")
 if IS_METAL_BUILD:
@@ -166,6 +167,15 @@ if not IS_GPU_BUILD:
         'torch',
         'jax',
         'jaxlib',
+    ])
+
+# Lite build: also drop heavy AutoML / tabular-DL frameworks on top of the
+# torch/tensorflow/jax exclusions above (pure scikit-learn only).
+if IS_LITE_BUILD:
+    excludes.extend([
+        'autogluon',
+        'tabpfn',
+        'tabicl',
     ])
 
 # CUDA build on non-macOS: exclude Metal-specific packages

@@ -443,10 +443,21 @@ def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse
     )
 
 
+# CPU-only "lite" wheels provide the same import module as their default-named
+# counterpart, so map them back: e.g. xgboost-cpu satisfies the `xgboost` optional.
+# Without this, lite builds report xgboost "not installed" and the dependencies UI
+# would offer to install the heavy CUDA xgboost wheel on top. Mirror of
+# LITE_PACKAGE_RENAMES in scripts/python-runtime-config.cjs (keep the two in sync).
+_DISTRIBUTION_ALIASES = {"xgboost_cpu": "xgboost"}
+
+
 def _get_installed_packages() -> dict[str, str]:
     """Get dict of installed package names → versions from the venv."""
     try:
         packages = {pkg.name.lower().replace("-", "_"): pkg.version for pkg in venv_manager.get_installed_packages()}
+        for installed_name, canonical_name in _DISTRIBUTION_ALIASES.items():
+            if installed_name in packages and canonical_name not in packages:
+                packages[canonical_name] = packages[installed_name]
         runtime_nirs4all = venv_manager.get_nirs4all_version()
         if runtime_nirs4all:
             packages["nirs4all"] = runtime_nirs4all

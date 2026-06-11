@@ -2,6 +2,7 @@
   "schema_version": "1.2",
   "app_version": "0.6.2",
   "nirs4all": "0.9.3",
+  "_note": "The cpu-lite size win requires the slim nirs4all release (its core no longer bundles shap/matplotlib/umap-learn); the full profiles now install shap+matplotlib explicitly so SHAP keeps working. Bump the nirs4all pins (this top-level value and every profile's nirs4all entry) to the slim release version once it is published.",
   "profiles": {
     "cpu": {
       "label": "CPU Only",
@@ -10,7 +11,17 @@
       "packages": {
         "nirs4all": { "min": ">=0.9.3", "recommended": "0.9.3" },
         "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
-        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" }
+        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" },
+        "shap": { "min": ">=0.44", "recommended": "0.47.1" },
+        "matplotlib": { "min": ">=3.7.0", "recommended": "3.10.1" }
+      }
+    },
+    "cpu-lite": {
+      "label": "CPU — Lite (scikit-learn only)",
+      "description": "Lightweight pure-scikit-learn analysis. No PyTorch, TensorFlow, JAX, AutoGluon or TabPFN — much smaller install. Deep-learning model nodes are hidden.",
+      "platforms": ["win32", "linux", "darwin"],
+      "packages": {
+        "nirs4all": { "min": ">=0.9.3", "recommended": "0.9.3" }
       }
     },
     "gpu-cuda-torch": {
@@ -20,7 +31,9 @@
       "packages": {
         "nirs4all": { "min": ">=0.9.3", "recommended": "0.9.3" },
         "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
-        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" }
+        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" },
+        "shap": { "min": ">=0.44", "recommended": "0.47.1" },
+        "matplotlib": { "min": ">=3.7.0", "recommended": "3.10.1" }
       }
     },
     "gpu-mps": {
@@ -30,7 +43,9 @@
       "packages": {
         "nirs4all": { "min": ">=0.9.3", "recommended": "0.9.3" },
         "torch": { "min": ">=2.1.0", "recommended": "2.6.0" },
-        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" }
+        "tabicl": { "min": ">=2.0.0", "recommended": "2.0.3" },
+        "shap": { "min": ">=0.44", "recommended": "0.47.1" },
+        "matplotlib": { "min": ">=3.7.0", "recommended": "3.10.1" }
       }
     }
   },

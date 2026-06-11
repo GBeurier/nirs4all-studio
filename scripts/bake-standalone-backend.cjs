@@ -60,6 +60,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     platform: process.platform,
     arch: process.arch,
     clean: false,
+    localNirs4all: false,
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
     constraintsFile: "",
   };
@@ -78,6 +79,8 @@ function parseArgs(argv = process.argv.slice(2)) {
       parsed.arch = inlineValue ?? argv[++i];
     } else if (flag === "--clean") {
       parsed.clean = true;
+    } else if (flag === "--local-nirs4all") {
+      parsed.localNirs4all = true;
     } else if (flag === "--cache-dir") {
       parsed.cacheDir = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--constraints") {
@@ -255,6 +258,53 @@ async function precompile(runtimeRoot, backendDist) {
   await runCommand(bundledPython, ["-m", "compileall", "-q", "-j", "0", ...compileTargets]);
 }
 
+function findRuntimeSitePackages(runtimeRoot) {
+  const libBases = [path.join(runtimeRoot, "python", "lib"), path.join(runtimeRoot, "python", "Lib")];
+  for (const base of libBases) {
+    if (!fs.existsSync(base)) continue;
+    const direct = path.join(base, "site-packages"); // Windows layout: Lib/site-packages
+    if (fs.existsSync(direct)) return direct;
+    for (const entry of fs.readdirSync(base)) {
+      const sp = path.join(base, entry, "site-packages"); // POSIX: lib/pythonX.Y/site-packages
+      if (fs.existsSync(sp)) return sp;
+    }
+  }
+  return null;
+}
+
+// Strip the test suites bundled inside third-party wheels (numpy/scipy/pandas/
+// sklearn/pyarrow/...). They are never imported at runtime and account for
+// >100 MB in the baked runtime. Done for every profile (helps full + lite).
+function pruneRuntimeBallast(runtimeRoot) {
+  const sitePackages = findRuntimeSitePackages(runtimeRoot);
+  if (!sitePackages) {
+    console.log("  (site-packages not found; skipping prune)");
+    return;
+  }
+  let removed = 0;
+  const stack = [sitePackages];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.name === "tests") {
+        fs.rmSync(full, { recursive: true, force: true });
+        removed += 1;
+      } else {
+        stack.push(full);
+      }
+    }
+  }
+  console.log(`  pruned ${removed} bundled tests/ directories under site-packages`);
+}
+
 async function bakeStandaloneBackend(config) {
   const backendDist = path.join(projectRoot, "backend-dist");
   const runtimeRoot = path.join(backendDist, "python-runtime");
@@ -279,10 +329,17 @@ async function bakeStandaloneBackend(config) {
     "--build-mode",
     "standalone-bundled-runtime",
   ];
+  if (config.localNirs4all) {
+    setupArgs.push("--local-nirs4all");
+  }
   if (config.constraintsFile) {
     setupArgs.push("--constraints", config.constraintsFile);
   }
   await runCommand(nodeExec, setupArgs);
+
+  console.log("");
+  console.log("=== Step 1b: Prune runtime ballast (bundled tests/) ===");
+  pruneRuntimeBallast(runtimeRoot);
 
   console.log("");
   console.log("=== Step 2: Refresh backend source payload ===");

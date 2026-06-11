@@ -13,6 +13,25 @@ files:
   - scripts/python-runtime-config.cjs
   - recommended-config.json
   - "!**/*.map"
+  # Renderer/UI libraries are bundled into dist/ by Vite and are NEVER require()d
+  # from node_modules at runtime (the main process only loads @sentry/electron and
+  # its closure, which stay). Drop the heavy ones from the asar — they otherwise
+  # ship a second, dead copy. Keep @sentry/* and @opentelemetry/* (crash reporting).
+  - "!node_modules/three/**"
+  - "!node_modules/three-stdlib/**"
+  - "!node_modules/stats-gl/**"
+  - "!node_modules/hls.js/**"
+  - "!node_modules/@mediapipe/**"
+  - "!node_modules/@react-three/**"
+  - "!node_modules/recharts/**"
+  - "!node_modules/date-fns/**"
+  - "!node_modules/lucide-react/**"
+  - "!node_modules/regl/**"
+  - "!node_modules/framer-motion/**"
+  - "!node_modules/@radix-ui/**"
+  - "!node_modules/@dnd-kit/**"
+  - "!node_modules/@fontsource/**"
+  - "!node_modules/@tanstack/**"
 
 # Standalone archives embed the fully baked backend-dist/, including python-runtime/.
 extraResources:
@@ -36,6 +55,14 @@ extraResources:
     to: backend/
     filter:
       - "**/*"
+
+# Ship only en/fr Chromium locales instead of all ~50. Include both "en" (macOS
+# .lproj basename) and "en-US" (Linux/Windows .pak basename) so English survives
+# on every platform.
+electronLanguages:
+  - en
+  - en-US
+  - fr
 
 asar: true
 

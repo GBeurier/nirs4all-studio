@@ -53,8 +53,8 @@ for (let i = 0; i < args.length; i++) {
 }
 
 // Validate flavor
-if (!["cpu", "gpu"].includes(flavor)) {
-  console.error(`Error: Invalid flavor '${flavor}'. Must be 'cpu' or 'gpu'.`);
+if (!["cpu", "cpu-lite", "gpu"].includes(flavor)) {
+  console.error(`Error: Invalid flavor '${flavor}'. Must be 'cpu', 'cpu-lite', or 'gpu'.`);
   process.exit(1);
 }
 
@@ -245,14 +245,15 @@ async function main() {
     }
     console.log("");
 
-    // Rename output files to include flavor if GPU
-    if (flavor === "gpu" && fs.existsSync(releasePath)) {
-      console.log("Renaming output files to include GPU flavor...");
+    // Rename output files to include a flavor suffix (cpu is the default, unsuffixed).
+    const flavorSuffix = { gpu: "gpu", "cpu-lite": "lite" }[flavor];
+    if (flavorSuffix && fs.existsSync(releasePath)) {
+      console.log(`Renaming output files to include '${flavorSuffix}' flavor...`);
       const files = fs.readdirSync(releasePath);
       for (const file of files) {
         const filePath = path.join(releasePath, file);
-        if (fs.statSync(filePath).isFile() && !file.includes("-gpu")) {
-          const newName = file.replace(/(nirs4all-[\d.]+)/, "$1-gpu");
+        if (fs.statSync(filePath).isFile() && !file.includes(`-${flavorSuffix}`)) {
+          const newName = file.replace(/(nirs4all-[\d.]+)/, `$1-${flavorSuffix}`);
           if (newName !== file) {
             fs.renameSync(filePath, path.join(releasePath, newName));
             console.log(`  ${file} -> ${newName}`);

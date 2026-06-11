@@ -38,11 +38,44 @@ const BACKEND_COMMON_PACKAGES = Object.freeze([
 
 const LEGACY_FLAVOR_TO_PROFILE = Object.freeze({
   cpu: "cpu",
+  "cpu-lite": "cpu-lite",
   gpu: "gpu-cuda-torch",
   "gpu-metal": "gpu-mps",
 });
 
 const STANDALONE_V1_PROFILE = "cpu";
+
+// The "lite" (pure scikit-learn CPU) profile must never pull heavy ML frameworks,
+// including default-install optionals like torch. It also drops umap-learn, whose
+// numba + llvmlite + pynndescent stack adds ~170 MB. These names are stripped from
+// the lite profile's auto-installed optionals (see PROFILE_OPTIONAL_PACKAGES below).
+const LITE_PROFILE = "cpu-lite";
+const LITE_EXCLUDED_PACKAGE_NAMES = Object.freeze([
+  "torch", "tensorflow", "keras", "jax", "jaxlib", "flax", "tabpfn", "tabicl", "autogluon",
+  "umap-learn",
+]);
+
+// Lite also swaps CUDA-enabled wheels for their official CPU-only counterparts.
+// The linux/windows `xgboost` wheels bundle CUDA kernels (~227 MB) and on Linux
+// pull nvidia-nccl-cu12 (~399 MB unpacked); `xgboost-cpu` ships the same
+// `xgboost` module in ~5 MB. No macOS `xgboost-cpu` wheel exists — the regular
+// mac wheel is already CPU-only, so darwin keeps the original name.
+const LITE_PACKAGE_RENAMES = Object.freeze({
+  xgboost: "xgboost-cpu",
+});
+
+function applyLitePackageRenames(installSpecs, platform = process.platform) {
+  if (platform === "darwin") {
+    return Object.freeze([...installSpecs]);
+  }
+  return Object.freeze(
+    installSpecs.map((spec) => {
+      const base = spec.split(/[<>=!~ []/)[0].trim();
+      const renamed = LITE_PACKAGE_RENAMES[base];
+      return renamed ? renamed + spec.slice(base.length) : spec;
+    }),
+  );
+}
 
 const VISIBLE_PROFILE_MANAGED_OPTIONAL_NAMES = Object.freeze(
   Object.entries(recommendedConfig.optional ?? {})
@@ -70,10 +103,15 @@ function getDefaultOptionalPackageNamesForProfile(rawProfile = {}) {
 
 const PROFILE_OPTIONAL_PACKAGES = Object.freeze(
   Object.fromEntries(
-    Object.entries(recommendedConfig.profiles ?? {}).map(([profileId, rawProfile]) => [
-      profileId,
-      getDefaultOptionalPackageNamesForProfile(rawProfile),
-    ]),
+    Object.entries(recommendedConfig.profiles ?? {}).map(([profileId, rawProfile]) => {
+      let optionalNames = getDefaultOptionalPackageNamesForProfile(rawProfile);
+      if (profileId === LITE_PROFILE) {
+        optionalNames = Object.freeze(
+          optionalNames.filter((packageName) => !LITE_EXCLUDED_PACKAGE_NAMES.includes(packageName)),
+        );
+      }
+      return [profileId, optionalNames];
+    }),
   ),
 );
 
@@ -244,13 +282,16 @@ function getProfilePackageInstallSpecs(profileId, options = {}) {
   const allowedPackages = options.packageNames ? new Set(options.packageNames) : null;
   const omittedPackages = new Set(options.omitPackages ?? []);
 
-  return Object.freeze(
-    Object.entries(packageSpecs)
-      .filter(([packageName]) => (!allowedPackages || allowedPackages.has(packageName)) && !omittedPackages.has(packageName))
-      .map(([packageName, spec]) => stringifyPackageSpec(packageName, spec, {
-        preferRecommended: options.preferRecommended,
-      })),
-  );
+  const installSpecs = Object.entries(packageSpecs)
+    .filter(([packageName]) => (!allowedPackages || allowedPackages.has(packageName)) && !omittedPackages.has(packageName))
+    .map(([packageName, spec]) => stringifyPackageSpec(packageName, spec, {
+      preferRecommended: options.preferRecommended,
+    }));
+
+  if (profileId === LITE_PROFILE) {
+    return applyLitePackageRenames(installSpecs, options.platform);
+  }
+  return Object.freeze(installSpecs);
 }
 
 function resolveProfileForFlavor(flavor, platform = process.platform) {
@@ -280,6 +321,8 @@ module.exports = {
   assertProfileSupportedOnPlatform,
   BACKEND_COMMON_PACKAGES,
   LEGACY_FLAVOR_TO_PROFILE,
+  LITE_EXCLUDED_PACKAGE_NAMES,
+  LITE_PROFILE,
   MANAGED_RUNTIME_PACKAGES,
   PBS_BASE_URL,
   PBS_TAG,

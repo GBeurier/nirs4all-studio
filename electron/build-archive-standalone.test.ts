@@ -65,7 +65,25 @@ describe("build-archive-standalone", () => {
     expect(parsed.constraintsFile).toBe(path.resolve("build/constraints/linux.txt"));
   });
 
-  it("rejects non-cpu profiles for standalone archive v1", () => {
+  it("accepts the cpu-lite profile for standalone archive packaging", () => {
+    const config = archiveBuildModule.resolveBuildConfig(
+      {
+        profile: "cpu-lite",
+        platform: "linux",
+        arch: "x64",
+        clean: false,
+        skipBackend: false,
+        skipFrontend: false,
+        cacheDir: path.resolve("build/.python-cache"),
+        constraintsFile: "",
+      },
+      { platform: "linux", arch: "x64" },
+    );
+
+    expect(config.profile).toBe("cpu-lite");
+  });
+
+  it("rejects unsupported profiles for the standalone archive", () => {
     expect(() =>
       archiveBuildModule.resolveBuildConfig(
         {
@@ -80,7 +98,7 @@ describe("build-archive-standalone", () => {
         },
         { platform: "linux", arch: "x64" },
       ),
-    ).toThrow("Standalone archive packaging is locked to the 'cpu' profile in v1.");
+    ).toThrow("Standalone archive packaging supports the 'cpu', 'cpu-lite' profiles.");
   });
 
   it("rejects archive builds on a different host target", () => {
