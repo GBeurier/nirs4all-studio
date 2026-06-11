@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.8.0] — 2026-06-11
+
+### Added
+
+- **CPU-Lite edition** — a new `cpu-lite` build flavor / setup profile: a pure-scikit-learn install with no PyTorch / TensorFlow / JAX / AutoGluon / TabPFN / SHAP / umap-learn. Deep-learning pipeline-editor nodes and the SHAP ("Shapley") Lab tab are hidden via backend capability detection (`/system/capabilities`). Shrinks the all-in-one archive from ~885 MB to ~345 MB.
+
+### Changed
+
+- Requires **nirs4all >= 0.9.4** (slim core). Full profiles install `shap` + `matplotlib` explicitly so SHAP keeps working; `cpu-lite` excludes the heavy optionals and renames `xgboost` → `xgboost-cpu` (no CUDA/nvidia wheels). Enforced both at build time and in the interactive installer (`/config/align` + wizard preselection).
+- Smaller archives: bundled wheel `tests/` are pruned from the baked runtime, Vite-bundled renderer node_modules are dropped from the Electron asar, and Chromium locales are limited to en/fr.
+
+### Hidden
+
+- **Transfer Analysis** Lab tab temporarily hidden pending an algorithm revisit (`TRANSFER_ENABLED` flag in `src/lib/featureFlags.ts`).
+
+---
+
 ## [0.6.3] — 2026-04-18
 
 ### Added
