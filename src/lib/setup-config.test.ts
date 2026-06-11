@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import type { RecommendedConfigResponse } from "@/api/config";
 
 import {
+  filterOptionalPackagesForProfile,
+  filterPackageNamesForProfile,
   getCompatibleProfiles,
   getDefaultOptionalPackageNames,
   getPreselectedOptionalPackageNames,
@@ -110,5 +112,61 @@ describe("setup-config platform helpers", () => {
 
   it("merges default optional packages with packages already present in the runtime", () => {
     expect(getPreselectedOptionalPackageNames(buildConfig(), ["tabicl"])).toEqual(["torch", "tabicl"]);
+  });
+});
+
+describe("setup-config profile exclusion helpers", () => {
+  function buildLiteConfig(): RecommendedConfigResponse {
+    const config = buildConfig();
+    return {
+      ...config,
+      profiles: [
+        ...config.profiles,
+        {
+          id: "cpu-lite",
+          label: "CPU Lite",
+          description: "Lite profile",
+          platforms: ["win32", "linux", "darwin"],
+          packages: {
+            nirs4all: { min: ">=0.9.1", recommended: "0.9.1" },
+          },
+          exclude_optionals: ["torch", "tabicl", "umap-learn"],
+          package_renames: { xgboost: "xgboost-cpu" },
+        },
+      ],
+    };
+  }
+
+  it("hides excluded optional packages for the lite profile", () => {
+    const config = buildLiteConfig();
+    const names = filterOptionalPackagesForProfile(
+      getVisibleOptionalPackages(config),
+      config,
+      "cpu-lite",
+    ).map((pkg) => pkg.name);
+
+    expect(names).toEqual(["jax"]);
+  });
+
+  it("keeps every visible optional package for profiles without exclusions", () => {
+    const config = buildLiteConfig();
+    const visible = getVisibleOptionalPackages(config);
+
+    expect(filterOptionalPackagesForProfile(visible, config, "cpu")).toEqual(visible);
+  });
+
+  it("drops excluded names from a selection, matching normalized package names", () => {
+    const config = buildLiteConfig();
+
+    expect(
+      filterPackageNamesForProfile(["torch", "umap_learn", "jax"], config, "cpu-lite"),
+    ).toEqual(["jax"]);
+  });
+
+  it("leaves selections untouched for unknown profiles or missing config", () => {
+    const config = buildLiteConfig();
+
+    expect(filterPackageNamesForProfile(["torch"], config, "unknown")).toEqual(["torch"]);
+    expect(filterPackageNamesForProfile(["torch"], null, "cpu-lite")).toEqual(["torch"]);
   });
 });

@@ -75,6 +75,12 @@ class ProfileInfo(BaseModel):
     description: str
     packages: dict[str, ProfilePackageSpec]
     platforms: list[str] = []
+    # Optional packages this profile must never install (e.g. cpu-lite excludes
+    # torch/umap-learn), and pip-name renames it applies on install (e.g.
+    # xgboost -> xgboost-cpu). Shared with scripts/python-runtime-config.cjs via
+    # recommended-config.json.
+    exclude_optionals: list[str] = []
+    package_renames: dict[str, str] = {}
 
 
 class OptionalPackageInfo(BaseModel):
@@ -415,6 +421,8 @@ def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse
             description=pdata.get("description", ""),
             packages=parsed_packages,
             platforms=pdata.get("platforms", []),
+            exclude_optionals=pdata.get("exclude_optionals", []),
+            package_renames=pdata.get("package_renames", {}),
         ))
 
     optional = []
@@ -446,9 +454,48 @@ def _parse_config(raw: dict[str, Any], source: str) -> RecommendedConfigResponse
 # CPU-only "lite" wheels provide the same import module as their default-named
 # counterpart, so map them back: e.g. xgboost-cpu satisfies the `xgboost` optional.
 # Without this, lite builds report xgboost "not installed" and the dependencies UI
-# would offer to install the heavy CUDA xgboost wheel on top. Mirror of
-# LITE_PACKAGE_RENAMES in scripts/python-runtime-config.cjs (keep the two in sync).
+# would offer to install the heavy CUDA xgboost wheel on top. Inverse of the
+# `package_renames` carried by lite profiles in recommended-config.json (the
+# renames go canonical -> CPU wheel on install; this maps installed CPU wheels
+# back to the canonical optional name).
 _DISTRIBUTION_ALIASES = {"xgboost_cpu": "xgboost"}
+
+
+def _get_profile_excluded_optional_names(profile_data: dict[str, Any]) -> set[str]:
+    """Normalized optional-package names a profile refuses to install."""
+    return {_normalize_pkg_name(name) for name in profile_data.get("exclude_optionals", [])}
+
+
+def _get_profile_package_renames(profile_data: dict[str, Any]) -> dict[str, str]:
+    """Pip-name renames for a profile (e.g. xgboost -> xgboost-cpu on cpu-lite).
+
+    No macOS CPU-only wheels exist (the regular mac wheels are already CPU-only),
+    so darwin keeps the original names — mirrors applyLitePackageRenames in
+    scripts/python-runtime-config.cjs.
+    """
+    if sys.platform == "darwin":
+        return {}
+    return dict(profile_data.get("package_renames", {}))
+
+
+def _apply_package_renames(
+    spec: ResolvedInstallSpec,
+    renames: dict[str, str],
+) -> ResolvedInstallSpec:
+    """Swap a resolved install spec's pip package name per the profile renames."""
+    renamed = renames.get(spec.package)
+    if not renamed:
+        return spec
+    display_spec = spec.display_spec
+    if display_spec.startswith(spec.package):
+        display_spec = renamed + display_spec[len(spec.package):]
+    return ResolvedInstallSpec(
+        package=renamed,
+        version=spec.version,
+        display_spec=display_spec,
+        extra_pip_args=spec.extra_pip_args,
+        force_reinstall=spec.force_reinstall,
+    )
 
 
 def _get_installed_packages() -> dict[str, str]:
@@ -926,6 +973,8 @@ async def align_config(request: AlignConfigRequest):
     required_packages = profile_data.get("packages", {})
     optional_config = _get_filtered_optional_config(raw_config)
     visible_profile_optional_names = _get_visible_profile_managed_optional_names(raw_config)
+    excluded_optional_names = _get_profile_excluded_optional_names(profile_data)
+    package_renames = _get_profile_package_renames(profile_data)
     active_profile_managed_names = {
         _normalize_pkg_name(pkg_name)
         for pkg_name in required_packages
@@ -953,6 +1002,13 @@ async def align_config(request: AlignConfigRequest):
 
     for opt_name in request.optional_packages:
         norm_name = _normalize_pkg_name(opt_name)
+        if norm_name in excluded_optional_names:
+            logger.info(
+                "Skipping optional package %s — excluded by profile %s",
+                opt_name,
+                request.profile,
+            )
+            continue
         if norm_name in active_profile_managed_names:
             opt_data = optional_config.get(opt_name)
             if not opt_data or not _show_optional_when_profile_managed(opt_data):
@@ -989,6 +1045,9 @@ async def align_config(request: AlignConfigRequest):
             install_spec = _resolve_optional_install_spec(opt_name, opt_data, installed_ver)
             if install_spec is not None:
                 to_install.append(install_spec)
+
+    if package_renames:
+        to_install = [_apply_package_renames(spec, package_renames) for spec in to_install]
 
     if request.dry_run:
         return AlignConfigResponse(

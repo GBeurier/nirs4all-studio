@@ -108,6 +108,85 @@ describe("pythonRuntimeSwitch", () => {
     });
   });
 
+  it("never preselects optionals excluded by the suggested profile", async () => {
+    mocks.getRuntimeSummary.mockResolvedValue({
+      core_ready: true,
+      missing_optional_packages: [],
+    });
+    mocks.detectGPU.mockResolvedValue({
+      has_cuda: false,
+      has_metal: false,
+      cuda_version: null,
+      gpu_name: null,
+      driver_version: null,
+      torch_cuda_available: false,
+      torch_version: null,
+      detection_source: null,
+      recommended_profiles: [],
+    });
+    mocks.getRecommendedConfig.mockResolvedValue({
+      schema_version: "1.2",
+      app_version: "0.7.0",
+      nirs4all: "0.9.3",
+      fetched_from: "bundled",
+      fetched_at: "2026-06-11T08:00:00",
+      profiles: [
+        {
+          id: "cpu-lite",
+          label: "CPU Lite",
+          description: "Lite profile",
+          platforms: [],
+          packages: {},
+          exclude_optionals: ["torch", "umap-learn"],
+          package_renames: { xgboost: "xgboost-cpu" },
+        },
+      ],
+      optional: [
+        {
+          name: "torch",
+          min: ">=2.1.0",
+          recommended: "2.6.0",
+          description: "PyTorch",
+          category: "deep_learning",
+          note: null,
+          show_when_profile_managed: false,
+          default_install: true,
+        },
+        {
+          name: "umap-learn",
+          min: ">=0.5.0",
+          recommended: "0.5.7",
+          description: "UMAP",
+          category: "dimensionality",
+          note: null,
+          show_when_profile_managed: false,
+          default_install: true,
+        },
+        {
+          name: "xgboost",
+          min: ">=2.0.0",
+          recommended: "3.0.0",
+          description: "XGBoost",
+          category: "boosting",
+          note: null,
+          show_when_profile_managed: false,
+          default_install: true,
+        },
+      ],
+    });
+    mocks.alignConfig.mockRejectedValue(new Error("skip preview"));
+
+    const validation = await loadPostSwitchValidation();
+
+    expect(validation.selectedProfile).toBe("cpu-lite");
+    expect(validation.selectedExtras).toEqual(["xgboost"]);
+    expect(mocks.alignConfig).toHaveBeenCalledWith({
+      profile: "cpu-lite",
+      optional_packages: ["xgboost"],
+      dry_run: true,
+    });
+  });
+
   it("restarts the backend with skipEnsure enabled during runtime switches", async () => {
     const restartBackend = vi.fn().mockResolvedValue({ success: true });
     const restarted = vi.fn();

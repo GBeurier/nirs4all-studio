@@ -7,6 +7,7 @@ import { getRuntimeSummary } from "@/api/system";
 import { resetBackendUrl } from "@/api/transport";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import {
+  filterPackageNamesForProfile,
   getPreselectedOptionalPackageNames,
   getVisibleOptionalPackages,
 } from "@/lib/setup-config";
@@ -84,7 +85,13 @@ export async function loadPostSwitchValidation(): Promise<PostSwitchValidation> 
       .map((pkg) => pkg.name)
       .filter((name) => !missingOptionalNames.has(normalizePackageName(name)))
     : [];
-  const selectedExtras = getPreselectedOptionalPackageNames(config, installedVisibleOptionalNames);
+  // The selected profile may exclude optionals (cpu-lite never installs torch
+  // or umap-learn) — keep them out of the preselection and alignment preview.
+  const selectedExtras = filterPackageNamesForProfile(
+    getPreselectedOptionalPackageNames(config, installedVisibleOptionalNames),
+    config,
+    selectedProfile,
+  );
 
   const alignmentPreview = runtimeSummary?.core_ready && selectedProfile
     ? await previewRuntimeAlignment(selectedProfile, selectedExtras)

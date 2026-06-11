@@ -22,7 +22,9 @@
       "platforms": ["win32", "linux", "darwin"],
       "packages": {
         "nirs4all": { "min": ">=0.9.3", "recommended": "0.9.3" }
-      }
+      },
+      "exclude_optionals": ["torch", "tensorflow", "keras", "jax", "jaxlib", "flax", "tabpfn", "tabicl", "autogluon", "umap-learn"],
+      "package_renames": { "xgboost": "xgboost-cpu" }
     },
     "gpu-cuda-torch": {
       "label": "GPU — CUDA + PyTorch",

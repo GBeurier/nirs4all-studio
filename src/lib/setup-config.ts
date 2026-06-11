@@ -73,3 +73,42 @@ export function getPreselectedOptionalPackageNames(
     )
     .map((pkg) => pkg.name);
 }
+
+function getProfileExcludedOptionalNames(
+  config: RecommendedConfigResponse | null | undefined,
+  profileId: string | null | undefined,
+): Set<string> {
+  const profile = config?.profiles.find((candidate) => candidate.id === profileId);
+  return new Set((profile?.exclude_optionals ?? []).map((name) => normalizePackageName(name)));
+}
+
+/**
+ * Drop optional packages the selected profile refuses to install
+ * (`exclude_optionals`, e.g. cpu-lite excludes torch/umap-learn).
+ */
+export function filterOptionalPackagesForProfile(
+  packages: OptionalPackageInfo[],
+  config: RecommendedConfigResponse | null | undefined,
+  profileId: string | null | undefined,
+): OptionalPackageInfo[] {
+  const excluded = getProfileExcludedOptionalNames(config, profileId);
+  if (excluded.size === 0) {
+    return packages;
+  }
+  return packages.filter((pkg) => !excluded.has(normalizePackageName(pkg.name)));
+}
+
+/**
+ * Drop package names the selected profile refuses to install (`exclude_optionals`).
+ */
+export function filterPackageNamesForProfile(
+  names: string[],
+  config: RecommendedConfigResponse | null | undefined,
+  profileId: string | null | undefined,
+): string[] {
+  const excluded = getProfileExcludedOptionalNames(config, profileId);
+  if (excluded.size === 0) {
+    return names;
+  }
+  return names.filter((name) => !excluded.has(normalizePackageName(name)));
+}

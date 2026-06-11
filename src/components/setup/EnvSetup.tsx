@@ -59,7 +59,12 @@ import {
   restartBackendForRuntimeSwitch,
 } from "@/lib/pythonRuntimeSwitch";
 import { getDesktopEnvKindLabel, getDesktopEnvWriteAccessLabel } from "@/lib/pythonRuntimeDisplay";
-import { getCompatibleProfiles, getVisibleOptionalPackages } from "@/lib/setup-config";
+import {
+  filterOptionalPackagesForProfile,
+  filterPackageNamesForProfile,
+  getCompatibleProfiles,
+  getVisibleOptionalPackages,
+} from "@/lib/setup-config";
 import type { DesktopDetectedEnv, DesktopInspectedEnv } from "@/types/pythonRuntime";
 
 // --- Types ---
@@ -270,11 +275,17 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
       try {
         const setupStatus = await getSetupStatus();
         if (setupStatus.selected_profile) {
-          const dryRun = await previewRuntimeAlignment(setupStatus.selected_profile, validation.selectedExtras);
+          const extras = filterPackageNamesForProfile(
+            validation.selectedExtras,
+            validation.config,
+            setupStatus.selected_profile,
+          );
+          const dryRun = await previewRuntimeAlignment(setupStatus.selected_profile, extras);
           if (dryRun?.success && dryRun.installed.length === 0) {
             // Packages are aligned — skip to done
+            setConfig(validation.config);
             setSelectedProfile(setupStatus.selected_profile);
-            setSelectedExtras(validation.selectedExtras);
+            setSelectedExtras(extras);
             setCurrentStep("done");
             return;
           }
@@ -406,18 +417,21 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     setInstallMessage(t("setupWizard.install.preparing"));
     setInstallError(null);
 
+    // Never send optionals the selected profile excludes (e.g. torch on cpu-lite).
+    const extras = filterPackageNamesForProfile(selectedExtras, config, selectedProfile);
+
     try {
       setInstallMessage(t("setupWizard.install.installingProfile"));
 
       const result = await alignConfig({
         profile: selectedProfile,
-        optional_packages: selectedExtras,
+        optional_packages: extras,
       });
 
       if (result.success) {
         setInstallProgress(100);
         setInstallMessage(t("setupWizard.install.complete"));
-        await completeSetup(selectedProfile, selectedExtras);
+        await completeSetup(selectedProfile, extras);
         setTimeout(() => setCurrentStep("done"), 500);
       } else {
         setInstallError(result.message);
@@ -427,7 +441,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
       setInstallError(err instanceof Error ? err.message : t("setupWizard.install.failed"));
       setInstallProgress(100);
     }
-  }, [selectedProfile, selectedExtras, t]);
+  }, [config, selectedProfile, selectedExtras, t]);
 
   const handleSkipInstall = useCallback(async () => {
     try {
@@ -465,6 +479,10 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
 
   const filteredProfiles = getCompatibleProfiles(config, platform);
   const visibleOptionalPackages = getVisibleOptionalPackages(config);
+  // Hide optionals the selected profile excludes (cpu-lite never offers torch/umap-learn)
+  // and ignore any stale selections of them when installing or summarizing.
+  const profileOptionalPackages = filterOptionalPackagesForProfile(visibleOptionalPackages, config, selectedProfile);
+  const effectiveExtras = filterPackageNamesForProfile(selectedExtras, config, selectedProfile);
 
   useEffect(() => {
     const visiblePackages = getVisibleOptionalPackages(config);
@@ -859,7 +877,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
                   <CardDescription>{t("setupWizard.extras.description")}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {visibleOptionalPackages.map((pkg: OptionalPackageInfo) => (
+                  {profileOptionalPackages.map((pkg: OptionalPackageInfo) => (
                     <div
                       key={pkg.name}
                       className="flex items-start gap-3 p-3 rounded-lg border"
@@ -963,10 +981,10 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
                       <span className="text-muted-foreground">{t("setupWizard.ready.profile")}</span>
                       <span className="font-medium">{selectedProfile}</span>
                     </div>
-                    {selectedExtras.length > 0 && (
+                    {effectiveExtras.length > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">{t("setupWizard.ready.extras")}</span>
-                        <span className="font-medium">{selectedExtras.length} packages</span>
+                        <span className="font-medium">{effectiveExtras.length} packages</span>
                       </div>
                     )}
                   </div>

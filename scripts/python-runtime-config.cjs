@@ -49,20 +49,21 @@ const STANDALONE_V1_PROFILE = "cpu";
 // including default-install optionals like torch. It also drops umap-learn, whose
 // numba + llvmlite + pynndescent stack adds ~170 MB. These names are stripped from
 // the lite profile's auto-installed optionals (see PROFILE_OPTIONAL_PACKAGES below).
+//
+// The exclusion list and the CUDA-wheel renames are data on the cpu-lite profile in
+// recommended-config.json (`exclude_optionals` / `package_renames`) — the single
+// source of truth shared with api/recommended_config.py, which applies the same
+// rules to the interactive installer (/config/align and the setup wizard).
 const LITE_PROFILE = "cpu-lite";
-const LITE_EXCLUDED_PACKAGE_NAMES = Object.freeze([
-  "torch", "tensorflow", "keras", "jax", "jaxlib", "flax", "tabpfn", "tabicl", "autogluon",
-  "umap-learn",
-]);
+const LITE_PROFILE_RAW = recommendedConfig.profiles?.[LITE_PROFILE] ?? {};
+const LITE_EXCLUDED_PACKAGE_NAMES = Object.freeze([...(LITE_PROFILE_RAW.exclude_optionals ?? [])]);
 
 // Lite also swaps CUDA-enabled wheels for their official CPU-only counterparts.
 // The linux/windows `xgboost` wheels bundle CUDA kernels (~227 MB) and on Linux
 // pull nvidia-nccl-cu12 (~399 MB unpacked); `xgboost-cpu` ships the same
 // `xgboost` module in ~5 MB. No macOS `xgboost-cpu` wheel exists — the regular
 // mac wheel is already CPU-only, so darwin keeps the original name.
-const LITE_PACKAGE_RENAMES = Object.freeze({
-  xgboost: "xgboost-cpu",
-});
+const LITE_PACKAGE_RENAMES = Object.freeze({ ...(LITE_PROFILE_RAW.package_renames ?? {}) });
 
 function applyLitePackageRenames(installSpecs, platform = process.platform) {
   if (platform === "darwin") {

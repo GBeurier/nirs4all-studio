@@ -704,6 +704,137 @@ def test_align_config_skips_visible_profile_managed_optional_when_not_selected(m
     assert install_calls == ["nirs4all"]
 
 
+def _lite_raw_config() -> dict:
+    """Raw config with a cpu-lite profile carrying exclusions and renames."""
+    return {
+        "profiles": {
+            "cpu": {
+                "platforms": ["win32", "linux", "darwin"],
+                "packages": {
+                    "nirs4all": {"min": ">=0.9.0", "recommended": "0.9.0"},
+                    "torch": {"min": ">=2.1.0", "recommended": "2.6.0"},
+                },
+            },
+            "cpu-lite": {
+                "label": "CPU Lite",
+                "platforms": ["win32", "linux", "darwin"],
+                "packages": {"nirs4all": {"min": ">=0.9.0", "recommended": "0.9.0"}},
+                "exclude_optionals": ["torch", "umap-learn"],
+                "package_renames": {"xgboost": "xgboost-cpu"},
+            },
+        },
+        "optional": {
+            "torch": {
+                "min": ">=2.1.0",
+                "recommended": "2.6.0",
+                "show_when_profile_managed": True,
+                "default_install": True,
+            },
+            "umap-learn": {"min": ">=0.5.0", "recommended": "0.5.7", "default_install": True},
+            "xgboost": {"min": ">=2.0.0", "recommended": "3.0.0", "default_install": True},
+            "pyopls": {"min": ">=20.0", "recommended": "20.0", "default_install": True},
+        },
+    }
+
+
+def _no_gpu():
+    from api import recommended_config as rc
+
+    return rc.GPUDetectionResponse(
+        has_cuda=False,
+        has_metal=False,
+        cuda_version=None,
+        gpu_name=None,
+        driver_version=None,
+        torch_cuda_available=False,
+        torch_version=None,
+        detection_source=None,
+        recommended_profiles=["cpu"],
+    )
+
+
+def test_recommended_config_exposes_profile_exclusions_and_renames(monkeypatch):
+    from api import recommended_config as rc
+
+    bundled = {
+        "schema_version": "1.2",
+        "app_version": "0.7.0",
+        "nirs4all": "0.9.3",
+        **_lite_raw_config(),
+    }
+
+    monkeypatch.setattr(rc._config_cache, "get_cached_config", lambda: None)
+    monkeypatch.setattr(rc, "_load_bundled_config", lambda: bundled)
+
+    result = asyncio.run(rc.get_recommended_config())
+
+    profiles = {profile.id: profile for profile in result.profiles}
+    assert profiles["cpu-lite"].exclude_optionals == ["torch", "umap-learn"]
+    assert profiles["cpu-lite"].package_renames == {"xgboost": "xgboost-cpu"}
+    assert profiles["cpu"].exclude_optionals == []
+    assert profiles["cpu"].package_renames == {}
+
+
+def test_align_config_drops_profile_excluded_optionals_and_renames_packages(monkeypatch):
+    """cpu-lite alignment must never install excluded optionals and must use CPU wheels."""
+    from api import recommended_config as rc
+
+    install_calls: list[str] = []
+    monkeypatch.setattr(rc.sys, "platform", "linux")
+    monkeypatch.setattr(rc, "_load_active_raw_config", _lite_raw_config)
+    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {})
+    monkeypatch.setattr(rc, "_detect_gpu", _no_gpu)
+    monkeypatch.setattr(rc._config_cache, "set_setup_status", lambda profile: None)
+    monkeypatch.setattr(
+        rc.venv_manager,
+        "install_package",
+        lambda package, **kwargs: (install_calls.append(package) or True, "ok", []),
+    )
+
+    request = rc.AlignConfigRequest(
+        profile="cpu-lite",
+        optional_packages=["torch", "umap-learn", "xgboost", "pyopls"],
+    )
+
+    dry_run = asyncio.run(
+        rc.align_config(request.model_copy(update={"dry_run": True}))
+    )
+    assert dry_run.installed == ["nirs4all==0.9.0", "xgboost-cpu==3.0.0", "pyopls==20.0"]
+
+    result = asyncio.run(rc.align_config(request))
+
+    assert result.success is True
+    assert install_calls == ["nirs4all", "xgboost-cpu", "pyopls"]
+    assert "torch" not in install_calls
+    assert "umap-learn" not in install_calls
+
+
+def test_align_config_keeps_original_package_names_on_darwin(monkeypatch):
+    """No macOS xgboost-cpu wheel exists — darwin keeps the regular name."""
+    from api import recommended_config as rc
+
+    install_calls: list[str] = []
+    monkeypatch.setattr(rc.sys, "platform", "darwin")
+    monkeypatch.setattr(rc, "_load_active_raw_config", _lite_raw_config)
+    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {})
+    monkeypatch.setattr(rc, "_detect_gpu", _no_gpu)
+    monkeypatch.setattr(rc._config_cache, "set_setup_status", lambda profile: None)
+    monkeypatch.setattr(
+        rc.venv_manager,
+        "install_package",
+        lambda package, **kwargs: (install_calls.append(package) or True, "ok", []),
+    )
+
+    result = asyncio.run(
+        rc.align_config(
+            rc.AlignConfigRequest(profile="cpu-lite", optional_packages=["torch", "xgboost"])
+        )
+    )
+
+    assert result.success is True
+    assert install_calls == ["nirs4all", "xgboost"]
+
+
 def test_filtered_optional_config_keeps_explicitly_visible_profile_managed_package():
     from api import recommended_config as rc
 

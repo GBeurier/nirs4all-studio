@@ -47,6 +47,8 @@ import { alignConfig } from "@/api/config";
 import { getDependencies } from "@/api/dependencies";
 import type { ProfileInfo, OptionalPackageInfo } from "@/api/config";
 import {
+  filterOptionalPackagesForProfile,
+  filterPackageNamesForProfile,
   getCompatibleProfiles,
   getPreselectedOptionalPackageNames,
   getVisibleOptionalPackages,
@@ -123,6 +125,10 @@ export default function SetupWizard() {
   }, [gpuInfo, gpuLoading]);
 
   const visibleOptionalPackages = getVisibleOptionalPackages(config);
+  // Hide optionals the selected profile excludes (cpu-lite never offers torch/umap-learn)
+  // and ignore any stale selections of them when installing or summarizing.
+  const profileOptionalPackages = filterOptionalPackagesForProfile(visibleOptionalPackages, config, selectedProfile);
+  const effectiveExtras = filterPackageNamesForProfile(selectedExtras, config, selectedProfile);
 
   useEffect(() => {
     const visiblePackages = getVisibleOptionalPackages(config);
@@ -158,6 +164,9 @@ export default function SetupWizard() {
     setInstallMessage(t("setupWizard.install.preparing"));
     setInstallError(null);
 
+    // Never send optionals the selected profile excludes (e.g. torch on cpu-lite).
+    const extras = filterPackageNamesForProfile(selectedExtras, config, selectedProfile);
+
     try {
       // Simulate progress stages
       setInstallProgress(10);
@@ -165,7 +174,7 @@ export default function SetupWizard() {
 
       const result = await alignConfig({
         profile: selectedProfile,
-        optional_packages: selectedExtras,
+        optional_packages: extras,
       });
 
       if (result.success) {
@@ -175,7 +184,7 @@ export default function SetupWizard() {
         // Mark setup as complete
         completeSetupMutation.mutate({
           profile: selectedProfile,
-          optionalPackages: selectedExtras,
+          optionalPackages: extras,
         });
 
         setTimeout(() => setCurrentStep("ready"), 500);
@@ -413,7 +422,7 @@ export default function SetupWizard() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {visibleOptionalPackages.map((pkg: OptionalPackageInfo) => (
+                  {profileOptionalPackages.map((pkg: OptionalPackageInfo) => (
                     <div
                       key={pkg.name}
                       className="flex items-start gap-3 p-3 rounded-lg border"
@@ -526,13 +535,13 @@ export default function SetupWizard() {
                       </span>
                       <span className="font-medium">{selectedProfile}</span>
                     </div>
-                    {selectedExtras.length > 0 && (
+                    {effectiveExtras.length > 0 && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">
                           {t("setupWizard.ready.extras")}
                         </span>
                         <span className="font-medium">
-                          {selectedExtras.length} packages
+                          {effectiveExtras.length} packages
                         </span>
                       </div>
                     )}

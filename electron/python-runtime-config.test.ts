@@ -5,11 +5,13 @@ import { describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
   assertProfileSupportedOnPlatform(profileId: string, platform?: string): void;
+  LITE_EXCLUDED_PACKAGE_NAMES: string[];
   MANAGED_RUNTIME_PACKAGES: string[];
   PRODUCT_PROFILES: Record<string, { extraPackageNames: string[] }>;
   STANDALONE_V1_PROFILE: string;
   getArchiveFilename(platform: string, arch: string): string;
   getDownloadUrl(platform: string, arch: string): string;
+  getProfilePackageInstallSpecs(profileId: string, options?: { platform?: string }): string[];
   resolveProfileForFlavor(flavor: string, platform?: string): string;
 };
 
@@ -22,6 +24,48 @@ describe("python-runtime-config", () => {
       "xgboost",
       "umap-learn",
       "torch",
+    ]);
+  });
+
+  it("keeps the cpu-lite profile lite: exclusions and CPU-wheel renames come from recommended-config.json", () => {
+    // The lite rules are data on the cpu-lite profile (exclude_optionals /
+    // package_renames) shared with api/recommended_config.py — losing them in
+    // the JSON would silently re-grow the lite build, so pin the result here.
+    expect(runtimeConfig.LITE_EXCLUDED_PACKAGE_NAMES).toEqual([
+      "torch",
+      "tensorflow",
+      "keras",
+      "jax",
+      "jaxlib",
+      "flax",
+      "tabpfn",
+      "tabicl",
+      "autogluon",
+      "umap-learn",
+    ]);
+    expect(runtimeConfig.PRODUCT_PROFILES["cpu-lite"].extraPackageNames).toEqual([
+      "pyopls",
+      "trendfitter",
+      "xgboost",
+    ]);
+    expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "linux" })).toEqual([
+      "nirs4all>=0.9.3",
+      "pyopls>=20.0",
+      "trendfitter>=0.0.6",
+      "xgboost-cpu>=2.0.0",
+    ]);
+    expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "win32" })).toEqual([
+      "nirs4all>=0.9.3",
+      "pyopls>=20.0",
+      "trendfitter>=0.0.6",
+      "xgboost-cpu>=2.0.0",
+    ]);
+    // No macOS xgboost-cpu wheel exists — darwin keeps the regular name.
+    expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "darwin" })).toEqual([
+      "nirs4all>=0.9.3",
+      "pyopls>=20.0",
+      "trendfitter>=0.0.6",
+      "xgboost>=2.0.0",
     ]);
   });
 

@@ -64,7 +64,11 @@ import {
   getDesktopEnvWriteAccessLabel,
   getPythonRuntimeDisplayState,
 } from "@/lib/pythonRuntimeDisplay";
-import { getCompatibleProfiles } from "@/lib/setup-config";
+import {
+  filterOptionalPackagesForProfile,
+  filterPackageNamesForProfile,
+  getCompatibleProfiles,
+} from "@/lib/setup-config";
 import type {
   DesktopDetectedEnv,
   DesktopEnvActionResult,
@@ -380,7 +384,12 @@ export function PythonEnvPicker() {
     setIsReviewPreviewLoading(true);
     void previewRuntimeAlignment(
       selectedReviewProfile,
-      postSwitchValidation.selectedExtras,
+      // Never preview optionals the selected profile excludes (e.g. torch on cpu-lite).
+      filterPackageNamesForProfile(
+        postSwitchValidation.selectedExtras,
+        postSwitchValidation.config,
+        selectedReviewProfile,
+      ),
     ).then((alignmentPreview) => {
       if (cancelled) {
         return;
@@ -399,6 +408,7 @@ export function PythonEnvPicker() {
     reviewOpen,
     postSwitchValidation?.runtimeSummary?.core_ready,
     postSwitchValidation?.selectedExtras,
+    postSwitchValidation?.config,
     selectedReviewProfile,
   ]);
 
@@ -647,7 +657,12 @@ export function PythonEnvPicker() {
       setAlignFailures([]);
       const result = await alignConfig({
         profile: selectedReviewProfile,
-        optional_packages: postSwitchValidation.selectedExtras,
+        // Never install optionals the selected profile excludes (e.g. torch on cpu-lite).
+        optional_packages: filterPackageNamesForProfile(
+          postSwitchValidation.selectedExtras,
+          postSwitchValidation.config,
+          selectedReviewProfile,
+        ),
       });
       if (!result.success) {
         setReviewError(result.message);
@@ -724,6 +739,12 @@ export function PythonEnvPicker() {
   const reviewDependencyIndex = buildDependencyIndex(reviewDependencies);
   const hasAlignmentPreview = postSwitchValidation?.alignmentPreview !== null;
   const alignmentChangesCount = postSwitchValidation?.alignmentPreview?.installed.length ?? 0;
+  // Hide optionals the selected review profile excludes (cpu-lite never offers torch/umap-learn).
+  const reviewOptionalPackages = filterOptionalPackagesForProfile(
+    postSwitchValidation?.visibleOptionalPackages ?? [],
+    postSwitchValidation?.config,
+    selectedReviewProfile,
+  );
 
   return (
     <Card>
@@ -1201,11 +1222,11 @@ export function PythonEnvPicker() {
                   )}
                 </div>
 
-                {postSwitchValidation.visibleOptionalPackages.length > 0 && (
+                {reviewOptionalPackages.length > 0 && (
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Optional feature packages</label>
                     <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                      {postSwitchValidation.visibleOptionalPackages.map((pkg) => {
+                      {reviewOptionalPackages.map((pkg) => {
                         const dependency = reviewDependencyIndex.get(normalizePackageName(pkg.name));
                         const isSelected = postSwitchValidation.selectedExtras.includes(pkg.name);
                         const currentVersion = isReviewDetailsLoading

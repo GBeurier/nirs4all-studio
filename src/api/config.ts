@@ -16,6 +16,10 @@ export interface ProfileInfo {
   description: string;
   packages: Record<string, ProfilePackageSpec>;
   platforms: string[];
+  /** Optional packages this profile must never install (e.g. cpu-lite excludes torch). */
+  exclude_optionals?: string[];
+  /** Pip-name renames applied on install (e.g. xgboost -> xgboost-cpu on cpu-lite). */
+  package_renames?: Record<string, string>;
 }
 
 export interface OptionalPackageInfo {
