@@ -23,9 +23,9 @@ if (typeof performance !== "undefined" && typeof performance.measure === "functi
   };
 }
 
-// Initialize Sentry crash reporting before anything else renders
-import { initSentry, SentryErrorBoundary, SentryFallback, sentryEnabled } from "@/lib/sentry";
-initSentry();
+// Initialize Sentry crash reporting only when the user has opted in.
+import { initSentry, SentryErrorBoundary, SentryFallback } from "@/lib/sentry";
+import { getTelemetryConsentStatus } from "@/lib/telemetryConsent";
 
 // Use HashRouter for Electron (file:// protocol doesn't support BrowserRouter)
 const isElectron = typeof window !== "undefined" && (window as unknown as { electronApi?: unknown }).electronApi !== undefined;
@@ -95,8 +95,17 @@ const appTree = (
   </StrictMode>
 );
 
-createRoot(document.getElementById("root")!).render(
-  sentryEnabled
-    ? <SentryErrorBoundary fallback={SentryFallback}>{appTree}</SentryErrorBoundary>
-    : appTree
-);
+void (async () => {
+  try {
+    const telemetryConsent = await getTelemetryConsentStatus();
+    if (telemetryConsent === "accepted") {
+      initSentry();
+    }
+  } catch {
+    // Consent defaults to unset/disabled if the preference cannot be read.
+  }
+
+  createRoot(document.getElementById("root")!).render(
+    <SentryErrorBoundary fallback={SentryFallback}>{appTree}</SentryErrorBoundary>
+  );
+})();

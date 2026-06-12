@@ -149,6 +149,14 @@ const fr = {
         current: "Langue actuelle",
         restart: "Certains changements peuvent nécessiter un rechargement de la page",
       },
+      telemetry: {
+        title: "Confidentialité et diagnostics",
+        description: "Contrôlez l'envoi automatique de rapports techniques après une erreur de l'application",
+        enable: "Envoyer les rapports d'erreur",
+        hint: "Les rapports contiennent uniquement des diagnostics techniques. Les jeux de données, spectres, modèles, prédictions et fichiers importés ne sont pas envoyés volontairement.",
+        statusEnabled: "L'envoi automatique des rapports d'erreur est activé.",
+        statusDisabled: "L'envoi automatique des rapports d'erreur est désactivé.",
+      },
     },
 
     // Workspace section
@@ -458,6 +466,21 @@ const fr = {
       version: "nirs4all Studio v{{version}}",
       copyright: "© {{year}} nirs4all Studio",
     },
+  },
+
+  // ============= Telemetry Consent =============
+  telemetryConsent: {
+    title: "Aider à améliorer nirs4all Studio",
+    description:
+      "Autoriser l'envoi automatique de rapports techniques d'erreur pour améliorer la stabilité de l'application.",
+    includes:
+      "Les rapports peuvent inclure le message d'erreur, la trace d'appel, la version de l'application, le système d'exploitation et du contexte technique de diagnostic.",
+    excludes:
+      "Ils ne sont pas destinés à inclure vos jeux de données NIRS, spectres, modèles, prédictions, fichiers importés ou résultats d'analyse.",
+    changeLater:
+      "Vous pouvez modifier ce choix à tout moment dans les paramètres.",
+    decline: "Ne pas envoyer",
+    accept: "Autoriser les rapports (recommandé)",
   },
 
   // ============= Keyboard Shortcuts =============

@@ -150,6 +150,14 @@ const en = {
         current: "Current language",
         restart: "Some changes may require a page refresh",
       },
+      telemetry: {
+        title: "Privacy & Diagnostics",
+        description: "Control automatic technical reports sent after application errors",
+        enable: "Send error reports",
+        hint: "Reports include technical diagnostics only. Dataset files, spectra, models, predictions, and imported files are not intentionally sent.",
+        statusEnabled: "Automatic error reporting is enabled.",
+        statusDisabled: "Automatic error reporting is disabled.",
+      },
     },
 
     // Workspace section
@@ -458,6 +466,21 @@ const en = {
       version: "nirs4all Studio v{{version}}",
       copyright: "© {{year}} nirs4all Studio",
     },
+  },
+
+  // ============= Telemetry Consent =============
+  telemetryConsent: {
+    title: "Help improve nirs4all Studio",
+    description:
+      "Allow automatic technical error reports to help improve application stability.",
+    includes:
+      "Reports may include the error message, stack trace, application version, operating system, and technical diagnostic context.",
+    excludes:
+      "They are not intended to include your NIRS datasets, spectra, models, predictions, imported files, or analysis results.",
+    changeLater:
+      "You can change this choice at any time in Settings.",
+    decline: "Do not send",
+    accept: "Allow reports (recommended)",
   },
 
   // ============= Keyboard Shortcuts =============

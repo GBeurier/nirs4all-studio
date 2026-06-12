@@ -44,6 +44,17 @@ const electronApi = {
     ipcRenderer.invoke("system:openLogDir"),
 
   /**
+   * Telemetry consent
+   */
+  getTelemetryConsent: (): Promise<"accepted" | "declined" | "unset"> =>
+    ipcRenderer.invoke("telemetry:getConsent"),
+
+  setTelemetryConsent: (
+    enabled: boolean,
+  ): Promise<{ status: "accepted" | "declined"; decidedAt: string; backendRestarted?: boolean }> =>
+    ipcRenderer.invoke("telemetry:setConsent", enabled),
+
+  /**
    * Backend management
    */
   getBackendPort: (): Promise<number> => ipcRenderer.invoke("backend:getPort"),

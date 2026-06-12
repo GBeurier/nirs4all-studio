@@ -33,6 +33,7 @@ import {
   ZoomIn,
   RotateCcw,
   Loader2,
+  ShieldCheck,
 } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { useDeveloperMode } from "@/context/DeveloperModeContext";
@@ -93,6 +94,13 @@ import { getWorkspace } from "@/api/workspace";
 import { requestRestart } from "@/api/updates";
 import { resetBackendUrl } from "@/api/transport";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
+import { disableSentry, initSentry } from "@/lib/sentry";
+import {
+  TELEMETRY_CONSENT_UPDATED_EVENT,
+  getTelemetryConsentStatus,
+  setTelemetryConsentStatus,
+  type TelemetryConsentStatus,
+} from "@/lib/telemetryConsent";
 import {
   useLinkedWorkspacesQuery,
   useInvalidateDatasets,
@@ -124,6 +132,8 @@ export default function Settings() {
   const [isLoadingWorkspace, setIsLoadingWorkspace] = useState(true);
   const [backendUrl, setBackendUrl] = useState<string>("...");
   const [isRestarting, setIsRestarting] = useState(false);
+  const [telemetryConsent, setTelemetryConsent] = useState<TelemetryConsentStatus>("unset");
+  const [isSavingTelemetryConsent, setIsSavingTelemetryConsent] = useState(false);
 
   // Linked workspaces come from the shared cache so the active id is the same
   // value the rest of the app sees. `loadN4AWorkspaces` is now a thin
@@ -138,6 +148,26 @@ export default function Settings() {
   // Load workspace info on mount
   useEffect(() => {
     loadWorkspace();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getTelemetryConsentStatus().then((status) => {
+      if (!cancelled) setTelemetryConsent(status);
+    });
+
+    const handleConsentUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: TelemetryConsentStatus }>).detail;
+      if (detail?.status) {
+        setTelemetryConsent(detail.status);
+      }
+    };
+    window.addEventListener(TELEMETRY_CONSENT_UPDATED_EVENT, handleConsentUpdated);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(TELEMETRY_CONSENT_UPDATED_EVENT, handleConsentUpdated);
+    };
   }, []);
 
   // Resolve actual backend URL (dynamic port in Electron mode)
@@ -170,6 +200,24 @@ export default function Settings() {
       await setDeveloperMode(enabled);
     } catch (error) {
       console.error("Failed to update developer mode:", error);
+    }
+  };
+
+  const handleTelemetryConsentChange = async (enabled: boolean) => {
+    const status: Exclude<TelemetryConsentStatus, "unset"> = enabled ? "accepted" : "declined";
+    setIsSavingTelemetryConsent(true);
+    try {
+      await setTelemetryConsentStatus(status);
+      setTelemetryConsent(status);
+      if (status === "accepted") {
+        initSentry();
+      } else {
+        void disableSentry();
+      }
+    } catch (error) {
+      console.error("Failed to update telemetry consent:", error);
+    } finally {
+      setIsSavingTelemetryConsent(false);
     }
   };
 
@@ -360,6 +408,41 @@ export default function Settings() {
 
                 {/* Language Selection */}
                 <LanguageSelector />
+              </CardContent>
+            </Card>
+
+            {/* Privacy & Diagnostics */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5" />
+                  {t("settings.general.telemetry.title")}
+                </CardTitle>
+                <CardDescription>
+                  {t("settings.general.telemetry.description")}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <Label className="text-sm font-medium">
+                      {t("settings.general.telemetry.enable")}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {t("settings.general.telemetry.hint")}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {telemetryConsent === "accepted"
+                        ? t("settings.general.telemetry.statusEnabled")
+                        : t("settings.general.telemetry.statusDisabled")}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={telemetryConsent === "accepted"}
+                    onCheckedChange={handleTelemetryConsentChange}
+                    disabled={isSavingTelemetryConsent}
+                  />
+                </div>
               </CardContent>
             </Card>
 

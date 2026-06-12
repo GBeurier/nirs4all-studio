@@ -21,6 +21,14 @@ export interface AppFixtures {
 }
 
 export const test = base.extend<AppFixtures>({
+  page: async ({ page }, use) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('nirs4all-telemetry-consent', 'declined');
+      localStorage.setItem('nirs4all-telemetry-consent-decided-at', 'e2e');
+    });
+    await use(page);
+  },
+
   sidebar: async ({ page }, use) => {
     const sidebar = new SidebarPage(page);
     await use(sidebar);

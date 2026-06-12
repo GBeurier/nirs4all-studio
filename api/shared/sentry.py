@@ -5,6 +5,17 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+_SENSITIVE_KEY_PARTS = (
+    "dataset",
+    "spectra",
+    "spectrum",
+    "prediction",
+    "model",
+    "workspace",
+    "file",
+    "path",
+)
+
 
 def _exception_types(event: dict[str, Any]) -> set[str]:
     values = (event.get("exception") or {}).get("values") or []
@@ -37,6 +48,46 @@ def is_benign_shutdown_event(event: dict[str, Any]) -> bool:
     return "KeyboardInterrupt" in message and "CancelledError" in message
 
 
+def is_benign_job_notification_shutdown_event(event: dict[str, Any]) -> bool:
+    """Return True for pending job WebSocket notifications during shutdown."""
+    if event.get("logger") != "asyncio":
+        return False
+
+    message = _event_message(event)
+    return (
+        "Task was destroyed but it is pending!" in message
+        and "JobManager._dispatch_websocket_notification" in message
+        and "send_notification" in message
+    )
+
+
+def _strip_url_query(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    return value.split("?", 1)[0].split("#", 1)[0]
+
+
+def _redact_sensitive_event_data(event: dict[str, Any]) -> None:
+    """Remove request/user details and obvious analysis data before upload."""
+    event.pop("user", None)
+
+    request = event.get("request")
+    if isinstance(request, dict):
+        for key in ("cookies", "headers", "data", "query_string", "env"):
+            request.pop(key, None)
+        if "url" in request:
+            request["url"] = _strip_url_query(request["url"])
+
+    for container_key in ("extra", "contexts"):
+        container = event.get(container_key)
+        if not isinstance(container, dict):
+            continue
+        for key in list(container):
+            lowered = key.lower()
+            if any(part in lowered for part in _SENSITIVE_KEY_PARTS):
+                container[key] = "[Filtered]"
+
+
 def backend_before_send(
     event: dict[str, Any],
     hint: dict[str, Any] | None,
@@ -53,5 +104,8 @@ def backend_before_send(
 
     if is_benign_shutdown_event(event):
         return None
+    if is_benign_job_notification_shutdown_event(event):
+        return None
 
+    _redact_sensitive_event_data(event)
     return event

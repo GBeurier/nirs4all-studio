@@ -87,6 +87,20 @@ interface ElectronApi {
   openLogDir(): Promise<void>;
 
   /**
+   * Read the persisted telemetry/crash-reporting consent.
+   */
+  getTelemetryConsent(): Promise<"accepted" | "declined" | "unset">;
+
+  /**
+   * Persist telemetry/crash-reporting consent.
+   */
+  setTelemetryConsent(enabled: boolean): Promise<{
+    status: "accepted" | "declined";
+    decidedAt: string;
+    backendRestarted?: boolean;
+  }>;
+
+  /**
    * Resize the window to specified dimensions
    */
   resizeWindow(width: number, height: number): Promise<boolean>;

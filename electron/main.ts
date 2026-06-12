@@ -6,32 +6,94 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = electron;
 import path from "node:path";
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
-import { BackendManager } from "./backend-manager";
+import { BackendManager, type BackendStatus } from "./backend-manager";
 import { EnvManager } from "./env-manager";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { applyPortablePathOverrides } from "./portable-paths";
+import {
+  getTelemetryConsentStatus,
+  writeTelemetryConsent,
+  type TelemetryConsentStatus,
+} from "./telemetry-consent";
 
 const portableLayout = applyPortablePathOverrides(app);
 
-// Initialize Sentry crash reporting (must be as early as possible).
 const SENTRY_DSN_DEFAULT = "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960";
-const SentryMain = (() => {
+const SENTRY_DSN_FROM_ENV = process.env.SENTRY_DSN?.trim() || "";
+type SentryMainModule = typeof import("@sentry/electron/main");
+let SentryMain: SentryMainModule | null = null;
+
+function resolveSentryDsn(consentStatus: TelemetryConsentStatus): string {
+  return consentStatus === "accepted"
+    ? SENTRY_DSN_FROM_ENV || SENTRY_DSN_DEFAULT
+    : "";
+}
+
+function syncSentryEnvironment(consentStatus: TelemetryConsentStatus): string {
+  const dsn = resolveSentryDsn(consentStatus);
+  // Child processes inherit this. Empty string explicitly disables the Python SDK.
+  process.env.SENTRY_DSN = dsn;
+  return dsn;
+}
+
+function sanitizeSentryEvent(event: {
+  user?: unknown;
+  request?: Record<string, unknown>;
+}): typeof event {
+  delete event.user;
+
+  if (event.request && typeof event.request === "object") {
+    delete event.request.headers;
+    delete event.request.cookies;
+    delete event.request.data;
+    delete event.request.query_string;
+    const url = event.request.url;
+    if (typeof url === "string") {
+      event.request.url = url.split("?")[0].split("#")[0];
+    }
+  }
+
+  return event;
+}
+
+function enableMainSentry(consentStatus: TelemetryConsentStatus = getTelemetryConsentStatus(app)): void {
+  const dsn = syncSentryEnvironment(consentStatus);
+  if (!dsn || SentryMain) return;
+
   try {
-    const dsn = process.env.SENTRY_DSN || SENTRY_DSN_DEFAULT;
-    // Propagate DSN to child processes (Python backend) via environment
-    if (!process.env.SENTRY_DSN) process.env.SENTRY_DSN = dsn;
     const Sentry = require("@sentry/electron/main") as typeof import("@sentry/electron/main");
     Sentry.init({
       dsn,
       release: `nirs4all-studio@${app.getVersion()}`,
       environment: process.env.NODE_ENV || "production",
+      sendDefaultPii: false,
+      beforeSend: sanitizeSentryEvent,
     });
-    return Sentry;
+    SentryMain = Sentry;
   } catch {
     // Sentry not available or failed to init — non-fatal
-    return null;
+    SentryMain = null;
   }
-})();
+}
+
+function disableMainSentry(): void {
+  syncSentryEnvironment("declined");
+  if (!SentryMain) return;
+
+  const current = SentryMain;
+  SentryMain = null;
+  void current.close(2000);
+}
+
+function applyTelemetryConsent(consentStatus: TelemetryConsentStatus): void {
+  if (consentStatus === "accepted") {
+    enableMainSentry(consentStatus);
+  } else {
+    disableMainSentry();
+  }
+}
+
+applyTelemetryConsent(getTelemetryConsentStatus(app));
 
 // WSL2/WSLg fixes - must be set before app is ready
 if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
@@ -52,6 +114,21 @@ if (SentryMain) console.log("Sentry crash reporting enabled (main process)");
 const envManager = new EnvManager();
 const backendManager = new BackendManager();
 backendManager.setEnvManager(envManager);
+
+const ACTIVE_BACKEND_STATUSES = new Set<BackendStatus>(["starting", "running", "restarting"]);
+
+async function restartBackendAfterTelemetryChange(): Promise<boolean> {
+  const status = backendManager.getInfo().status;
+  if (!ACTIVE_BACKEND_STATUSES.has(status)) return false;
+
+  try {
+    await backendManager.restart();
+    return true;
+  } catch (error) {
+    console.error("Failed to restart backend after telemetry consent change:", error);
+    return false;
+  }
+}
 
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
@@ -330,6 +407,23 @@ ipcMain.handle("system:getLogDir", () => getLogDir());
 ipcMain.handle("system:openLogDir", () => {
   const dir = getLogDir();
   if (dir && fs.existsSync(dir)) shell.openPath(dir);
+});
+
+// IPC Handlers for telemetry consent
+ipcMain.handle("telemetry:getConsent", () => {
+  return getTelemetryConsentStatus(app);
+});
+
+ipcMain.handle("telemetry:setConsent", async (_event, enabled: boolean) => {
+  const previousStatus = getTelemetryConsentStatus(app);
+  const status: Exclude<TelemetryConsentStatus, "unset"> = enabled ? "accepted" : "declined";
+  const record = writeTelemetryConsent(app, status);
+  applyTelemetryConsent(status);
+  const shouldRestartBackend = previousStatus !== status && (previousStatus === "accepted" || status === "accepted");
+  const backendRestarted = shouldRestartBackend
+    ? await restartBackendAfterTelemetryChange()
+    : false;
+  return { ...record, backendRestarted };
 });
 
 // IPC Handlers for backend management

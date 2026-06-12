@@ -24,6 +24,7 @@ import Settings from "@/pages/Settings";
 import SetupWizard from "@/pages/SetupWizard";
 import NotFound from "@/pages/NotFound";
 import EnvSetup from "@/components/setup/EnvSetup";
+import { TelemetryConsentDialog } from "@/components/privacy/TelemetryConsentDialog";
 import { TRANSFER_ENABLED } from "@/lib/featureFlags";
 import { useShapAvailable } from "@/hooks/useBackendCapabilities";
 
@@ -300,12 +301,22 @@ function App() {
 
   // Loading state while checking
   if (showWizard === null) {
-    return <BackendConnectingScreen />;
+    return (
+      <>
+        <BackendConnectingScreen />
+        <TelemetryConsentDialog />
+      </>
+    );
   }
 
   // Show setup wizard (env selection + profile configuration)
   if (showWizard) {
-    return <EnvSetup onComplete={() => setShowWizard(false)} />;
+    return (
+      <>
+        <EnvSetup onComplete={() => setShowWizard(false)} />
+        <TelemetryConsentDialog />
+      </>
+    );
   }
 
   // Backend not yet reachable — show connecting screen
@@ -313,38 +324,46 @@ function App() {
   // After the first successful connection, keep the app chrome mounted and let
   // BackendStartupBanner communicate transient backend restarts/non-ready states.
   if (isElectron && !coreReady && !hasConnectedOnce) {
-    return <BackendConnectingScreen />;
+    return (
+      <>
+        <BackendConnectingScreen />
+        <TelemetryConsentDialog />
+      </>
+    );
   }
 
   return (
-    <Routes>
-      <Route element={<AppLayout />}>
-        <Route index element={<Navigate to="/datasets" replace />} />
-        <Route path="datasets" element={<Datasets />} />
-        <Route path="datasets/:id" element={<DatasetDetail />} />
-        <Route path="pipelines" element={<Pipelines />} />
-        <Route path="pipelines/:id" element={<PipelineEditor />} />
-        <Route path="pipelines/new" element={<PipelineEditor />} />
-        <Route path="editor" element={<NewExperiment />} />
-        <Route path="playground" element={<Playground />} />
-        <Route path="inspector" element={<Inspector />} />
-        <Route path="runs" element={<Runs />} />
-        <Route path="runs/:id" element={<RunProgress />} />
-        <Route path="results" element={<Results />} />
-        <Route path="results/aggregated" element={<AggregatedResults />} />
-        <Route path="predict" element={<Predict />} />
-        <Route path="predictions" element={<Predictions />} />
-        <Route path="lab" element={<Lab />}>
-          <Route index element={<Navigate to="/lab/synthesis" replace />} />
-          <Route path="synthesis" element={<SpectraSynthesis />} />
-          <Route path="transfer" element={TRANSFER_ENABLED ? <TransferAnalysis /> : <Navigate to="/lab" replace />} />
-          <Route path="shapley" element={<ShapleyRoute />} />
+    <>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route index element={<Navigate to="/datasets" replace />} />
+          <Route path="datasets" element={<Datasets />} />
+          <Route path="datasets/:id" element={<DatasetDetail />} />
+          <Route path="pipelines" element={<Pipelines />} />
+          <Route path="pipelines/:id" element={<PipelineEditor />} />
+          <Route path="pipelines/new" element={<PipelineEditor />} />
+          <Route path="editor" element={<NewExperiment />} />
+          <Route path="playground" element={<Playground />} />
+          <Route path="inspector" element={<Inspector />} />
+          <Route path="runs" element={<Runs />} />
+          <Route path="runs/:id" element={<RunProgress />} />
+          <Route path="results" element={<Results />} />
+          <Route path="results/aggregated" element={<AggregatedResults />} />
+          <Route path="predict" element={<Predict />} />
+          <Route path="predictions" element={<Predictions />} />
+          <Route path="lab" element={<Lab />}>
+            <Route index element={<Navigate to="/lab/synthesis" replace />} />
+            <Route path="synthesis" element={<SpectraSynthesis />} />
+            <Route path="transfer" element={TRANSFER_ENABLED ? <TransferAnalysis /> : <Navigate to="/lab" replace />} />
+            <Route path="shapley" element={<ShapleyRoute />} />
+          </Route>
+          <Route path="settings" element={<Settings />} />
+          <Route path="setup" element={<SetupWizard />} />
+          <Route path="*" element={<NotFound />} />
         </Route>
-        <Route path="settings" element={<Settings />} />
-        <Route path="setup" element={<SetupWizard />} />
-        <Route path="*" element={<NotFound />} />
-      </Route>
-    </Routes>
+      </Routes>
+      <TelemetryConsentDialog />
+    </>
   );
 }
 
