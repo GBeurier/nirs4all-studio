@@ -478,12 +478,12 @@ class UpdateManager:
                     _describe_exception(e),
                 )
             else:
-                logger.error(
+                logger.warning(
                     "GitHub release check failed for %s: %s",
                     api_url,
                     _describe_exception(e),
-                    exc_info=True,
                 )
+                logger.debug("GitHub release check traceback", exc_info=True)
             if cached:
                 self._apply_cached_github_release(info, cached)
                 logger.debug("Using cached GitHub release info after failed refresh: %s", api_url)
@@ -674,12 +674,12 @@ class UpdateManager:
                     _describe_exception(e),
                 )
             else:
-                logger.error(
+                logger.warning(
                     "PyPI release check failed for %s: %s",
                     api_url,
                     _describe_exception(e),
-                    exc_info=True,
                 )
+                logger.debug("PyPI release check traceback", exc_info=True)
             if cached:
                 self._apply_cached_pypi_release(info, cached)
                 logger.debug("Using cached PyPI release info after failed refresh: %s", api_url)

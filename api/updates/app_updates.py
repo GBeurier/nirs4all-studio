@@ -376,11 +376,14 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Update not confirmed")
 
     staging_dir = get_staging_dir()
-    content_dir, update_mode = _u._validate_staged_update_layout(staging_dir)
+    layout = _u._validate_staged_update_layout(staging_dir)
 
     try:
         # Create the updater script
-        script_path, _ = create_updater_script(content_dir)
+        script_path, _ = create_updater_script(
+            layout.content_dir,
+            staged_executable=layout.staged_executable,
+        )
 
         # Launch the updater (it will wait for us to exit)
         success = launch_updater(script_path)
@@ -393,7 +396,7 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> dict[str, Any]:
 
         return {
             "success": True,
-            "message": f"Update will be applied after app restart ({update_mode} mode). Please close the application.",
+            "message": f"Update will be applied after app restart ({layout.mode} mode). Please close the application.",
             "restart_required": True,
         }
 

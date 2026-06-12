@@ -33,10 +33,11 @@ def test_apply_update_accepts_portable_stage_for_portable_windows(monkeypatch, t
     staging_dir.mkdir()
     (staging_dir / "nirs4all Studio.exe").write_bytes(b"stub")
 
-    called: dict[str, Path] = {}
+    called: dict[str, Path | str | None] = {}
 
-    def _fake_create_updater_script(content_dir: Path):
+    def _fake_create_updater_script(content_dir: Path, staged_executable: str | None = None):
         called["content_dir"] = content_dir
+        called["staged_executable"] = staged_executable
         return tmp_path / "updater.bat", "echo test"
 
     monkeypatch.setenv("NIRS4ALL_PORTABLE_EXE", str(tmp_path / "nirs4all Studio.exe"))
@@ -50,6 +51,53 @@ def test_apply_update_accepts_portable_stage_for_portable_windows(monkeypatch, t
 
     assert response.status_code == 200
     assert called["content_dir"] == staging_dir
+    assert called["staged_executable"] == "nirs4all Studio.exe"
+
+
+def test_apply_update_passes_versioned_portable_asset_for_portable_windows(monkeypatch, tmp_path):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    staged_asset = staging_dir / "nirs4all.Studio-0.7.0-win-x64-portable.exe"
+    staged_asset.write_bytes(b"stub")
+
+    called: dict[str, Path | str | None] = {}
+
+    def _fake_create_updater_script(content_dir: Path, staged_executable: str | None = None):
+        called["content_dir"] = content_dir
+        called["staged_executable"] = staged_executable
+        return tmp_path / "updater.bat", "echo test"
+
+    monkeypatch.setenv("NIRS4ALL_PORTABLE_EXE", str(tmp_path / "nirs4all Studio.exe"))
+    monkeypatch.setenv("NIRS4ALL_APP_EXE", "nirs4all Studio.exe")
+    monkeypatch.setattr(updates_module.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(updater, "get_staging_dir", lambda: staging_dir)
+    monkeypatch.setattr(updater, "create_updater_script", _fake_create_updater_script)
+    monkeypatch.setattr(updater, "launch_updater", lambda script_path: True)
+
+    response = client.post("/api/updates/webapp/apply", json={"confirm": True})
+
+    assert response.status_code == 200
+    assert called["content_dir"] == staging_dir
+    assert called["staged_executable"] == "nirs4all.Studio-0.7.0-win-x64-portable.exe"
+    assert staged_asset.is_file()
+    assert not (staging_dir / "nirs4all Studio.exe").exists()
+
+
+def test_apply_update_rejects_ambiguous_portable_asset_for_portable_windows(monkeypatch, tmp_path):
+    staging_dir = tmp_path / "staging"
+    staging_dir.mkdir()
+    (staging_dir / "first.exe").write_bytes(b"stub")
+    (staging_dir / "second.exe").write_bytes(b"stub")
+
+    monkeypatch.setenv("NIRS4ALL_PORTABLE_EXE", str(tmp_path / "nirs4all Studio.exe"))
+    monkeypatch.setenv("NIRS4ALL_APP_EXE", "nirs4all Studio.exe")
+    monkeypatch.setattr(updates_module.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(updater, "get_staging_dir", lambda: staging_dir)
+
+    response = client.post("/api/updates/webapp/apply", json={"confirm": True})
+
+    assert response.status_code == 400
+    assert "multiple executables" in response.json()["detail"]
 
 
 def test_resolve_staged_content_dir_prefers_nested_app_root_over_wrapper_dir(monkeypatch, tmp_path):

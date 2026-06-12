@@ -313,6 +313,7 @@ set "STAGING_DIR={staging_dir}"
 set "BACKUP_DIR={backup_dir}"
 set "BACKEND_PID_FILE={backend_pid_file}"
 set "EXECUTABLE={executable}"
+set "STAGED_EXECUTABLE={staged_executable}"
 set "LOG_FILE={log_file}"
 set "PROGRESS_HTA={progress_hta}"
 set "UPDATE_MODE={update_mode}"
@@ -323,6 +324,7 @@ if exist "%PROGRESS_HTA%" start "" mshta.exe "%PROGRESS_HTA%"
 echo [%DATE% %TIME%] Starting update process >> "%LOG_FILE%"
 echo [%DATE% %TIME%] App dir: %APP_DIR% >> "%LOG_FILE%"
 echo [%DATE% %TIME%] Executable: %EXECUTABLE% >> "%LOG_FILE%"
+echo [%DATE% %TIME%] Staged executable: %STAGED_EXECUTABLE% >> "%LOG_FILE%"
 echo [%DATE% %TIME%] Mode: %UPDATE_MODE% >> "%LOG_FILE%"
 echo [%DATE% %TIME%] Waiting for application to exit (PID: %APP_PID%)... >> "%LOG_FILE%"
 
@@ -415,7 +417,7 @@ set "COPY_ATTEMPT=0"
 :portable_copy_loop
 set /a COPY_ATTEMPT+=1
 echo [%DATE% %TIME%] Replacing portable exe (attempt !COPY_ATTEMPT!)... >> "%LOG_FILE%"
-copy /y "%STAGING_DIR%\\%EXECUTABLE%" "%APP_DIR%\\%EXECUTABLE%" >> "%LOG_FILE%" 2>&1
+copy /y "%STAGING_DIR%\\%STAGED_EXECUTABLE%" "%APP_DIR%\\%EXECUTABLE%" >> "%LOG_FILE%" 2>&1
 
 if !ERRORLEVEL! neq 0 (
     if !COPY_ATTEMPT! lss 10 (
@@ -552,6 +554,7 @@ rm -f "$0"
 def create_updater_script(
     staging_dir: Path,
     app_dir: Path | None = None,
+    staged_executable: str | None = None,
 ) -> tuple[Path, str]:
     """
     Create a platform-specific updater script.
@@ -559,6 +562,7 @@ def create_updater_script(
     Args:
         staging_dir: Directory containing the staged update files
         app_dir: Application directory (defaults to detected location)
+        staged_executable: Source executable file name inside staging_dir for portable updates
 
     Returns:
         Tuple of (script_path, script_content)
@@ -579,12 +583,18 @@ def create_updater_script(
     else:
         app_pid = os.getpid()   # Python backend (web/standalone mode)
     executable = get_executable_name()
+    if staged_executable:
+        if staged_executable != Path(staged_executable).name or "/" in staged_executable or "\\" in staged_executable:
+            raise ValueError("staged_executable must be a file name, not a path")
+        staged_executable_name = staged_executable
+    else:
+        staged_executable_name = executable
     portable = is_portable_mode()
     bundle_mode = sys.platform == "darwin" and app_dir.suffix == ".app"
     update_mode = "portable" if portable else "bundle" if bundle_mode else "directory"
 
     print(f"[Updater] app_dir={app_dir}, executable={executable}, app_pid={app_pid}, portable={portable}, mode={update_mode}")
-    print(f"[Updater] staging_dir={staging_dir}, backup_dir={backup_dir}")
+    print(f"[Updater] staging_dir={staging_dir}, staged_executable={staged_executable_name}, backup_dir={backup_dir}")
 
     script_dir = Path(tempfile.mkdtemp(prefix="nirs4all-updater-"))
 
@@ -601,6 +611,7 @@ def create_updater_script(
             backup_dir=str(backup_dir),
             backend_pid_file=backend_pid_file,
             executable=executable,
+            staged_executable=staged_executable_name,
             log_file=str(log_file),
             progress_hta=str(hta_path),
             update_mode=update_mode,

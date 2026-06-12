@@ -83,6 +83,7 @@ from .manager import (  # noqa: F401
 )
 from .staging import (  # noqa: F401
     STAGED_UPDATE_METADATA_FILE,
+    StagedUpdateLayout,
     _expected_update_mode,
     _is_portable_runtime,
     _read_staged_update_metadata,
