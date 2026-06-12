@@ -86,6 +86,8 @@ class PackageInfo:
 # on that call.
 _INSTALLED_PACKAGES_CACHE_TTL_SECONDS = 30.0
 _installed_packages_cache: dict[str, tuple[float, list["PackageInfo"]]] = {}
+_OUTDATED_PACKAGES_CACHE_TTL_SECONDS = 15 * 60.0
+_outdated_packages_cache: dict[str, tuple[float, list[dict[str, str]]]] = {}
 
 
 def _installed_packages_fingerprint(python_exe: Path) -> str | None:
@@ -119,6 +121,7 @@ def invalidate_installed_packages_cache() -> None:
     they can opt in later.
     """
     _installed_packages_cache.clear()
+    _outdated_packages_cache.clear()
 
 
 class VenvManager:
@@ -502,13 +505,32 @@ class VenvManager:
         if not self._is_valid_venv():
             return []
 
+        fingerprint = _installed_packages_fingerprint(self.python_executable)
+        now = time.monotonic()
+        stale_outdated: list[dict[str, str]] | None = None
+        if fingerprint is not None:
+            cached = _outdated_packages_cache.get(fingerprint)
+            if cached is not None:
+                cached_at, cached_pkgs = cached
+                stale_outdated = list(cached_pkgs)
+                if now - cached_at < _OUTDATED_PACKAGES_CACHE_TTL_SECONDS:
+                    return stale_outdated
+
         outdated = []
         try:
             result = subprocess.run(
-                [str(self.python_executable), "-m", "pip", "list", "--outdated", "--format=json"],
+                [
+                    str(self.python_executable),
+                    "-m",
+                    "pip",
+                    "--disable-pip-version-check",
+                    "list",
+                    "--outdated",
+                    "--format=json",
+                ],
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=30,
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
@@ -518,8 +540,18 @@ class VenvManager:
                         "current_version": pkg.get("version", ""),
                         "latest_version": pkg.get("latest_version", ""),
                     })
+                if fingerprint is not None:
+                    _outdated_packages_cache[fingerprint] = (now, list(outdated))
+            else:
+                logger.warning("pip list --outdated failed: %s", result.stderr.strip())
+        except subprocess.TimeoutExpired as e:
+            logger.warning("pip list --outdated timed out after %s seconds", e.timeout)
+            if stale_outdated is not None:
+                return stale_outdated
         except Exception as e:
-            logger.error("Error checking outdated packages: %s", e)
+            logger.warning("Error checking outdated packages: %s", e)
+            if stale_outdated is not None:
+                return stale_outdated
 
         return outdated
 
