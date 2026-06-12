@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import importlib
+import os
 from pathlib import Path
 
 workspace_manager_module = importlib.import_module("api.workspace_manager")
@@ -53,6 +54,7 @@ def test_portable_default_workspace_uses_portable_root(monkeypatch, tmp_path):
     config_dir = tmp_path / "config"
 
     monkeypatch.delenv("NIRS4ALL_DESKTOP", raising=False)
+    monkeypatch.delenv("NIRS4ALL_WORKSPACE", raising=False)
     monkeypatch.setenv("NIRS4ALL_PORTABLE_ROOT", str(portable_root))
     monkeypatch.setattr(
         workspace_manager_module,
@@ -77,6 +79,7 @@ def test_default_workspace_creation_skips_ml_cache_until_ready(monkeypatch, tmp_
     cache_calls: list[tuple[str, bool]] = []
 
     monkeypatch.delenv("NIRS4ALL_DESKTOP", raising=False)
+    monkeypatch.delenv("NIRS4ALL_WORKSPACE", raising=False)
     monkeypatch.setenv("NIRS4ALL_PORTABLE_ROOT", str(portable_root))
     monkeypatch.setattr(
         workspace_manager_module,
@@ -90,6 +93,7 @@ def test_default_workspace_creation_skips_ml_cache_until_ready(monkeypatch, tmp_
             raise AssertionError("workspace bootstrap should not require ML-ready cache")
         return None
 
+    monkeypatch.setattr(lazy_imports, "is_ml_ready", lambda: False)
     monkeypatch.setattr(lazy_imports, "get_cached", fake_get_cached)
 
     manager = workspace_manager_module.WorkspaceManager()
@@ -98,4 +102,5 @@ def test_default_workspace_creation_skips_ml_cache_until_ready(monkeypatch, tmp_
     expected = portable_root / "workspace"
     assert active is not None
     assert Path(active.path) == expected.resolve()
-    assert cache_calls == [("nirs4all_workspace", True)]
+    assert cache_calls == []
+    assert os.environ["NIRS4ALL_WORKSPACE"] == str(expected.resolve())

@@ -370,6 +370,17 @@ async def _wait_for_ml_ready():
             break
         await asyncio.sleep(0.5)
 
+    if not is_ml_ready():
+        set_workspace_ready(True)
+        try:
+            await ws_manager.broadcast("system", {
+                "type": "ML_READY",
+                "data": {"ml_ready": False, "workspace_ready": True},
+            })
+        except Exception:
+            pass
+        return
+
     # Now that nirs4all is loaded, restore workspace properly.
     # `workspace_ready` stays False until this finishes so the frontend can
     # show a non-blocking "Loading workspace…" indicator instead of pretending
@@ -378,7 +389,7 @@ async def _wait_for_ml_ready():
         from api.workspace_manager import workspace_manager
         active_ws = workspace_manager.get_active_workspace()
         if active_ws:
-            nirs4all_workspace = get_cached("nirs4all_workspace")
+            nirs4all_workspace = get_cached("nirs4all_workspace", optional=True)
             if nirs4all_workspace:
                 nirs4all_workspace.set_active_workspace(active_ws.path)
                 logger.info("Workspace restored with nirs4all: %s", active_ws.path)

@@ -12,7 +12,7 @@ import threading
 import traceback
 import uuid
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -126,6 +126,8 @@ class JobManager:
         # threads (no running loop), so WebSocket notifications must be
         # scheduled onto this loop with run_coroutine_threadsafe.
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._notification_futures: set[Future[Any]] = set()
+        self._shutting_down = False
 
     def create_job(
         self,
@@ -192,6 +194,7 @@ class JobManager:
             # singleton must stay usable for the next app lifecycle.
             with self._lock:
                 self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
+                self._shutting_down = False
             self._executor.submit(run_task)
         return job
 
@@ -434,13 +437,21 @@ class JobManager:
             # the app event loop captured at submit time — running it on a
             # private per-thread loop would send on connections owned by a
             # foreign loop and silently drop messages.
+            if self._shutting_down:
+                return
+
             loop = self._loop
-            if loop is not None and not loop.is_closed():
-                asyncio.run_coroutine_threadsafe(send_notification(), loop)
+            if loop is not None and loop.is_running() and not loop.is_closed():
+                self._track_notification_future(
+                    asyncio.run_coroutine_threadsafe(send_notification(), loop)
+                )
             else:
                 try:
                     loop = asyncio.get_running_loop()
-                    asyncio.run_coroutine_threadsafe(send_notification(), loop)
+                    if loop.is_running() and not loop.is_closed():
+                        self._track_notification_future(
+                            asyncio.run_coroutine_threadsafe(send_notification(), loop)
+                        )
                 except RuntimeError:
                     # No app loop available (e.g. teardown) — best effort.
                     try:
@@ -453,6 +464,23 @@ class JobManager:
             pass
         except Exception as e:
             logger.error("Error dispatching WebSocket notification: %s", e)
+
+    def _track_notification_future(self, future: Future[Any]) -> None:
+        """Track scheduled WebSocket notifications so shutdown can cancel them."""
+        with self._lock:
+            self._notification_futures.add(future)
+
+        def _done(completed: Future[Any]) -> None:
+            with self._lock:
+                self._notification_futures.discard(completed)
+            if completed.cancelled() or self._shutting_down:
+                return
+            try:
+                completed.result()
+            except Exception as e:
+                logger.debug("Job WebSocket notification failed: %s", e)
+
+        future.add_done_callback(_done)
 
     def cleanup_old_jobs(self, max_age_hours: int = 24) -> int:
         """Remove old completed/failed jobs.
@@ -489,6 +517,12 @@ class JobManager:
         Args:
             wait: Whether to wait for pending jobs to complete
         """
+        self._shutting_down = True
+        with self._lock:
+            notification_futures = list(self._notification_futures)
+            self._notification_futures.clear()
+        for future in notification_futures:
+            future.cancel()
         self._executor.shutdown(wait=wait)
 
 

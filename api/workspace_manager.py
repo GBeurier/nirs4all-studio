@@ -279,12 +279,7 @@ class WorkspaceManager:
 
         # Set nirs4all workspace if this is the active one
         if is_first:
-            from .lazy_imports import get_cached
-            _nirs4all_ws = get_cached("nirs4all_workspace", optional=True)
-            if _nirs4all_ws is not None:
-                _nirs4all_ws.set_active_workspace(str(workspace_path))
-            else:
-                os.environ["NIRS4ALL_WORKSPACE"] = str(workspace_path)
+            self._set_process_local_active_workspace(linked_ws)
 
         return linked_ws
 
