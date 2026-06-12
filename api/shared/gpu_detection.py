@@ -11,11 +11,14 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from .logger import get_logger
+
 WINDOWS_NVIDIA_SMI_CANDIDATES = (
     Path(r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"),
     Path(r"C:\Windows\System32\nvidia-smi.exe"),
 )
 GPU_DETECTION_CACHE_TTL_SECONDS = 15.0
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -159,6 +162,9 @@ def _detect_with_torch() -> dict[str, Any]:
     try:
         import torch  # type: ignore
     except ImportError:
+        return info
+    except Exception as e:
+        logger.warning("Torch GPU detection unavailable: %s", e)
         return info
 
     info["torch_version"] = getattr(torch, "__version__", None)

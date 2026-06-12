@@ -1,3 +1,6 @@
+import builtins
+
+
 def test_detect_gpu_hardware_reuses_cached_result(monkeypatch):
     from api.shared import gpu_detection as gd
 
@@ -61,3 +64,26 @@ def test_detect_gpu_hardware_refreshes_cache_after_ttl(monkeypatch):
     gd.detect_gpu_hardware()
 
     assert calls["torch"] == 2
+
+
+def test_detect_with_torch_treats_runtime_import_failure_as_unavailable(monkeypatch):
+    from api.shared import gpu_detection as gd
+
+    original_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "torch":
+            raise OSError("[WinError 193] %1 is not a valid Win32 application")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    result = gd._detect_with_torch()
+
+    assert result == {
+        "torch_cuda_available": False,
+        "torch_version": None,
+        "cuda_version": None,
+        "gpu_name": None,
+        "has_metal": False,
+    }
