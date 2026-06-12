@@ -506,9 +506,13 @@ describe("EnvManager", () => {
       fs.writeFileSync(destPath, Buffer.alloc(11 * 1024 * 1024, 1));
     });
     vi.spyOn(installer, "extractTarball").mockImplementation(async (_tarPath: string, destDir: string) => {
-      fs.mkdirSync(path.dirname(embeddedPython), { recursive: true });
-      fs.writeFileSync(embeddedPython, "");
-      expect(destDir).toBe(baseDir);
+      expect(path.dirname(destDir)).toBe(baseDir);
+      expect(path.basename(destDir)).toMatch(/^\.python-extract-/);
+      const extractedPython = process.platform === "win32"
+        ? path.join(destDir, "python", "python.exe")
+        : path.join(destDir, "python", "bin", "python3");
+      fs.mkdirSync(path.dirname(extractedPython), { recursive: true });
+      fs.writeFileSync(extractedPython, "");
     });
 
     const { EnvManager } = await import("./env-manager");
@@ -558,9 +562,12 @@ describe("EnvManager", () => {
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       fs.writeFileSync(destPath, Buffer.alloc(11 * 1024 * 1024, 1));
     });
-    vi.spyOn(installer, "extractTarball").mockImplementation(async () => {
-      fs.mkdirSync(path.dirname(embeddedPython), { recursive: true });
-      fs.writeFileSync(embeddedPython, "");
+    vi.spyOn(installer, "extractTarball").mockImplementation(async (_tarPath: string, destDir: string) => {
+      const extractedPython = process.platform === "win32"
+        ? path.join(destDir, "python", "python.exe")
+        : path.join(destDir, "python", "bin", "python3");
+      fs.mkdirSync(path.dirname(extractedPython), { recursive: true });
+      fs.writeFileSync(extractedPython, "");
     });
 
     const { EnvManager } = await import("./env-manager");
@@ -630,9 +637,12 @@ describe("EnvManager", () => {
       fs.mkdirSync(path.dirname(destPath), { recursive: true });
       fs.writeFileSync(destPath, Buffer.alloc(11 * 1024 * 1024, 1));
     });
-    vi.spyOn(installer, "extractTarball").mockImplementation(async (_tarPath: string, _destDir: string) => {
-      fs.mkdirSync(path.dirname(embeddedPython), { recursive: true });
-      fs.writeFileSync(embeddedPython, "");
+    vi.spyOn(installer, "extractTarball").mockImplementation(async (_tarPath: string, destDir: string) => {
+      const extractedPython = process.platform === "win32"
+        ? path.join(destDir, "python", "python.exe")
+        : path.join(destDir, "python", "bin", "python3");
+      fs.mkdirSync(path.dirname(extractedPython), { recursive: true });
+      fs.writeFileSync(extractedPython, "");
     });
 
     const { EnvManager } = await import("./env-manager");

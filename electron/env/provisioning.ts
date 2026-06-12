@@ -123,11 +123,34 @@ export async function provisionManagedRuntime(
     ctx.setStatus("extracting");
     report(15, "extracting", "Extracting Python runtime...");
     const pythonDir = path.join(baseDir, "python");
-    if (fs.existsSync(pythonDir)) {
-      await rmWithRetry(pythonDir);
+    const extractDir = path.join(baseDir, `.python-extract-${process.pid}-${Date.now()}`);
+    if (fs.existsSync(extractDir)) {
+      await rmWithRetry(extractDir);
     }
+    fs.mkdirSync(extractDir, { recursive: true });
 
-    await extractTarball(cachedTarball, baseDir);
+    try {
+      await extractTarball(cachedTarball, extractDir);
+
+      const extractedPythonDir = path.join(extractDir, "python");
+      const extractedPython = isWindows
+        ? path.join(extractedPythonDir, "python.exe")
+        : path.join(extractedPythonDir, "bin", "python3");
+      if (!fs.existsSync(extractedPython)) {
+        throw new Error(`Python executable not found after extraction at ${extractedPython}`);
+      }
+
+      if (fs.existsSync(pythonDir)) {
+        await rmWithRetry(pythonDir);
+      }
+      fs.renameSync(extractedPythonDir, pythonDir);
+    } finally {
+      if (fs.existsSync(extractDir)) {
+        await rmWithRetry(extractDir).catch((error) => {
+          console.warn(`[EnvManager] Could not clean temporary extraction directory: ${String(error)}`);
+        });
+      }
+    }
 
     // Verify extraction — the tarball extracts a top-level `python/` directory
     const embeddedPython = isWindows
