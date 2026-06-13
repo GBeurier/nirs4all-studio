@@ -13,6 +13,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 - **nirs4all dependency**: Raised the managed runtime requirement and recommendation to **nirs4all 0.10.0** across all compute profiles.
 - **Node registries**: Regenerated canonical and extended node registries against nirs4all 0.10.0.
 - **Release packaging**: Build all-in-one archives and Docker images from the tagged `GBeurier/nirs4all@0.10.0` source while PyPI has not published that version yet.
+- **Docker GPU image**: Install a Python 3.11 standalone runtime when the CUDA base image only provides Python 3.10.
 
 ---
 
