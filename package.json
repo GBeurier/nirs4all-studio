@@ -4,7 +4,7 @@
   "version": "0.8.0",
   "type": "module",
   "description": "Unified NIRS analysis desktop application",
-  "license": "CECILL-2.1",
+  "license": "(CECILL-2.1 OR AGPL-3.0-or-later)",
   "main": "dist-electron/main.cjs",
   "packageManager": "npm@10.9.4",
   "engines": {
