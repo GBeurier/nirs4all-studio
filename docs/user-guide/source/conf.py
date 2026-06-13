@@ -69,9 +69,9 @@ html_css_files = ['css/custom.css']
 html_context = {
     'display_github': True,
     'github_user': 'gbeurier',
-    'github_repo': 'nirs4all',
+    'github_repo': 'nirs4all-studio',
     'github_version': 'main',
-    'conf_py_path': '/nirs4all-webapp/docs/user-guide/source/',
+    'conf_py_path': '/docs/user-guide/source/',
 }
 
 suppress_warnings = ['ref.*']
