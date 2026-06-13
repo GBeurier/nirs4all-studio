@@ -476,6 +476,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout nirs4all library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all
+          ref: 0.10.0
+          path: nirs4all-lib
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -511,7 +518,7 @@ jobs:
           echo "CSC_KEY_PASSWORD=$($env:WINDOWS_CERT_PASSWORD)" >> $env:GITHUB_ENV
 
       - name: Build all-in-one archive
-        run: node scripts/build-archive-standalone.cjs --clean --platform win32 --arch x64
+        run: node scripts/build-archive-standalone.cjs --clean --platform win32 --arch x64 --local-nirs4all --local-nirs4all-path nirs4all-lib
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -564,6 +571,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout nirs4all library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all
+          ref: 0.10.0
+          path: nirs4all-lib
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -599,7 +613,7 @@ jobs:
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build all-in-one archive
-        run: node scripts/build-archive-standalone.cjs --clean --platform linux --arch x64
+        run: node scripts/build-archive-standalone.cjs --clean --platform linux --arch x64 --local-nirs4all --local-nirs4all-path nirs4all-lib
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIRS4ALL_TAR_GZIP_PROGRAM: pigz -9
@@ -654,6 +668,13 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Checkout nirs4all library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all
+          ref: 0.10.0
+          path: nirs4all-lib
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -731,7 +752,7 @@ jobs:
           fi
           ulimit -n "$TARGET_LIMIT" || true
           echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
-          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch x64
+          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch x64 --local-nirs4all --local-nirs4all-path nirs4all-lib
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -823,6 +844,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Checkout nirs4all library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all
+          ref: 0.10.0
+          path: nirs4all-lib
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -899,7 +927,7 @@ jobs:
           fi
           ulimit -n "$TARGET_LIMIT" || true
           echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
-          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch arm64
+          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch arm64 --local-nirs4all --local-nirs4all-path nirs4all-lib
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -988,7 +1016,8 @@ jobs:
           - variant: cpu
             dockerfile: Dockerfile
             tag_suffix: ''
-            build_args: ''
+            build_args: |-
+              NIRS4ALL_VERSION=0.10.0
             cache_to: type=gha,mode=max,scope=cpu
           - variant: gpu-cuda
             dockerfile: Dockerfile
@@ -996,6 +1025,7 @@ jobs:
             build_args: |-
               BASE_IMAGE=nvidia/cuda:12.4.1-runtime-ubuntu22.04
               INSTALL_GPU=true
+              NIRS4ALL_VERSION=0.10.0
             cache_to: type=gha,mode=min,scope=gpu-cuda,timeout=5m,ignore-error=true
     steps:
       - uses: actions/checkout@v4
@@ -1044,7 +1074,26 @@ jobs:
       - archive-macos-x64
       - archive-macos-arm64
       - docker
-    if: always() && needs.prepare.result == 'success'
+    if: >-
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.installer-linux.result == 'success' &&
+      needs.installer-windows.result == 'success' &&
+      needs.installer-macos-x64.result == 'success' &&
+      needs.installer-macos-arm64.result == 'success' &&
+      (
+        needs.prepare.outputs.skip_all_in_one == 'true' ||
+        (
+          needs.archive-windows.result == 'success' &&
+          needs.archive-linux.result == 'success' &&
+          needs.archive-macos-x64.result == 'success' &&
+          needs.archive-macos-arm64.result == 'success'
+        )
+      ) &&
+      (
+        needs.prepare.outputs.skip_docker == 'true' ||
+        needs.docker.result == 'success'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write

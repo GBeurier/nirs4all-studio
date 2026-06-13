@@ -22,6 +22,9 @@
  *   --platform <id>        Target platform (default: current host platform)
  *   --arch <id>            Target arch (default: current host arch)
  *   --clean                Remove previous backend-dist before baking
+ *   --local-nirs4all       Install nirs4all from local source instead of PyPI
+ *   --local-nirs4all-path <path>
+ *                          Local nirs4all source path
  *   --cache-dir <path>     Cache dir for downloaded Python (default: build/.python-cache)
  *   --constraints <path>   Optional pip constraints file for platform/arch/profile
  *   --help                 Show usage
@@ -49,6 +52,9 @@ Options:
   --platform <id>        Target platform (default: ${process.platform})
   --arch <id>            Target arch (default: ${process.arch})
   --clean                Remove previous backend-dist before baking
+  --local-nirs4all       Install nirs4all from local source instead of PyPI
+  --local-nirs4all-path <path>
+                         Local nirs4all source path
   --cache-dir <path>     Cache dir for downloaded Python
   --constraints <path>   Optional pip constraints file
   --help                 Show this message`);
@@ -61,6 +67,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     arch: process.arch,
     clean: false,
     localNirs4all: false,
+    localNirs4allPath: "",
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
     constraintsFile: "",
   };
@@ -81,6 +88,8 @@ function parseArgs(argv = process.argv.slice(2)) {
       parsed.clean = true;
     } else if (flag === "--local-nirs4all") {
       parsed.localNirs4all = true;
+    } else if (flag === "--local-nirs4all-path") {
+      parsed.localNirs4allPath = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--cache-dir") {
       parsed.cacheDir = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--constraints") {
@@ -109,7 +118,9 @@ function resolveConstraintsFile(options, rootDir = projectRoot) {
 function resolveBakeConfig(rawOptions, host = { platform: process.platform, arch: process.arch }) {
   const config = {
     ...rawOptions,
+    localNirs4all: Boolean(rawOptions.localNirs4all),
     constraintsFile: rawOptions.constraintsFile || "",
+    localNirs4allPath: rawOptions.localNirs4allPath ? path.resolve(rawOptions.localNirs4allPath) : "",
   };
 
   assertProfileSupportedOnPlatform(config.profile, config.platform);
@@ -331,6 +342,9 @@ async function bakeStandaloneBackend(config) {
   ];
   if (config.localNirs4all) {
     setupArgs.push("--local-nirs4all");
+  }
+  if (config.localNirs4allPath) {
+    setupArgs.push("--local-nirs4all-path", config.localNirs4allPath);
   }
   if (config.constraintsFile) {
     setupArgs.push("--constraints", config.constraintsFile);

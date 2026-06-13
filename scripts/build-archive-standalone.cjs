@@ -15,6 +15,9 @@
  *   --clean               Clean build artifacts before packaging
  *   --skip-backend        Reuse the existing backend-dist/
  *   --skip-frontend       Reuse dist/ and dist-electron/
+ *   --local-nirs4all      Install nirs4all from local source instead of PyPI
+ *   --local-nirs4all-path <path>
+ *                          Local nirs4all source path
  *   --cache-dir <path>    Cache dir for python-build-standalone downloads
  *   --constraints <path>  Optional pip constraints file for the bake step
  *   --help                Show usage
@@ -44,6 +47,9 @@ Options:
   --clean               Clean build artifacts before packaging
   --skip-backend        Reuse the existing backend-dist/
   --skip-frontend       Reuse dist/ and dist-electron/
+  --local-nirs4all      Install nirs4all from local source instead of PyPI
+  --local-nirs4all-path <path>
+                        Local nirs4all source path
   --cache-dir <path>    Cache dir for python-build-standalone downloads
   --constraints <path>  Optional pip constraints file for the bake step
   --help                Show this message`);
@@ -58,6 +64,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     skipBackend: false,
     skipFrontend: false,
     localNirs4all: false,
+    localNirs4allPath: "",
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
     constraintsFile: "",
   };
@@ -82,6 +89,8 @@ function parseArgs(argv = process.argv.slice(2)) {
       parsed.skipFrontend = true;
     } else if (flag === "--local-nirs4all") {
       parsed.localNirs4all = true;
+    } else if (flag === "--local-nirs4all-path") {
+      parsed.localNirs4allPath = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--cache-dir") {
       parsed.cacheDir = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--constraints") {
@@ -97,8 +106,10 @@ function parseArgs(argv = process.argv.slice(2)) {
 function resolveBuildConfig(rawOptions, host = { platform: process.platform, arch: process.arch }) {
   const config = {
     ...rawOptions,
+    localNirs4all: Boolean(rawOptions.localNirs4all),
     cacheDir: path.resolve(rawOptions.cacheDir),
     constraintsFile: rawOptions.constraintsFile ? path.resolve(rawOptions.constraintsFile) : "",
+    localNirs4allPath: rawOptions.localNirs4allPath ? path.resolve(rawOptions.localNirs4allPath) : "",
   };
 
   const allowedProfiles = [STANDALONE_V1_PROFILE, LITE_PROFILE];
@@ -366,6 +377,9 @@ async function buildArchiveStandalone(config) {
     ];
     if (config.localNirs4all) {
       bakeArgs.push("--local-nirs4all");
+    }
+    if (config.localNirs4allPath) {
+      bakeArgs.push("--local-nirs4all-path", config.localNirs4allPath);
     }
     if (config.constraintsFile) {
       bakeArgs.push("--constraints", config.constraintsFile);

@@ -18,7 +18,8 @@
  *   --output-dir <path>          Output directory (default: backend-dist/)
  *   --runtime-only               Build only the embedded python runtime payload + build_info.json
  *   --build-mode <id>            build_info.json mode value (default: installer)
- *   --local-nirs4all             Install nirs4all from local ../nirs4all instead of PyPI
+ *   --local-nirs4all             Install nirs4all from local source instead of PyPI
+ *   --local-nirs4all-path <path> Local nirs4all source path (default: ../nirs4all, then ./nirs4all-lib)
  */
 
 const { spawn, execFile } = require("child_process");
@@ -59,6 +60,7 @@ let localNirs4all = false;
 let outputDir = path.join(projectRoot, "backend-dist");
 let runtimeOnly = false;
 let buildMode = "installer";
+let localNirs4allPath = "";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--flavor" && args[i + 1]) {
@@ -79,6 +81,8 @@ for (let i = 0; i < args.length; i++) {
     buildMode = String(args[++i]).trim() || "installer";
   } else if (args[i] === "--local-nirs4all") {
     localNirs4all = true;
+  } else if (args[i] === "--local-nirs4all-path" && args[i + 1]) {
+    localNirs4allPath = path.resolve(args[++i]);
   }
 }
 
@@ -222,6 +226,24 @@ function buildPipInstallArgs(packageSpecs, options = {}) {
     ...(options.constraintsFile ? ["-c", options.constraintsFile] : []),
     ...packageSpecs,
   ];
+}
+
+function getLocalNirs4allCandidates(explicitPath = localNirs4allPath, env = process.env) {
+  const candidates = [];
+  if (explicitPath) {
+    candidates.push(path.resolve(explicitPath));
+  }
+  if (env.NIRS4ALL_LOCAL_SOURCE_PATH) {
+    candidates.push(path.resolve(env.NIRS4ALL_LOCAL_SOURCE_PATH));
+  }
+  candidates.push(path.join(projectRoot, "..", "nirs4all"));
+  candidates.push(path.join(projectRoot, "nirs4all-lib"));
+  return Object.freeze([...new Set(candidates)]);
+}
+
+function resolveLocalNirs4allPath(explicitPath = localNirs4allPath, env = process.env) {
+  const candidates = getLocalNirs4allCandidates(explicitPath, env);
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
 function getStandaloneTorchIndexArgs(profileId, platform = process.platform) {
@@ -475,6 +497,9 @@ async function main() {
   console.log(`  Runtime only:   ${runtimeOnly}`);
   console.log(`  Build mode:     ${buildMode}`);
   console.log(`  Local nirs4all: ${localNirs4all}`);
+  if (localNirs4all) {
+    console.log(`  Local source:   ${resolveLocalNirs4allPath() || "(not found)"}`);
+  }
   console.log("");
 
   // 1. Resolve platform
@@ -632,8 +657,8 @@ async function main() {
   console.log("");
   console.log("=== Step 5: Install nirs4all ===");
 
-  const localNirs4allPath = path.join(projectRoot, "..", "nirs4all");
-  if (localNirs4all && fs.existsSync(localNirs4allPath)) {
+  const resolvedLocalNirs4allPath = resolveLocalNirs4allPath();
+  if (localNirs4all && resolvedLocalNirs4allPath) {
     console.log("  Installing nirs4all from local source (editable)...");
     await runCommandWithRetries(runtimePython, [
       "-m",
@@ -643,13 +668,13 @@ async function main() {
       ...(useBundledBasePython ? ["--no-compile"] : []),
       ...(constraintsFile ? ["-c", constraintsFile] : []),
       "-e",
-      localNirs4allPath,
+      resolvedLocalNirs4allPath,
     ], {}, {
       retries: isWindows ? 3 : 1,
-      label: "pip install -e ../nirs4all",
+      label: `pip install -e ${resolvedLocalNirs4allPath}`,
     });
   } else if (localNirs4all) {
-    console.log("  Warning: --local-nirs4all specified but ../nirs4all not found");
+    console.log(`  Warning: --local-nirs4all specified but no local source was found. Checked: ${getLocalNirs4allCandidates().join(", ")}`);
     const [nirs4allSpec] = getProfilePackageInstallSpecs(profile, {
       includeExtraPackages: false,
       packageNames: ["nirs4all"],
@@ -817,6 +842,8 @@ module.exports = {
   getCompileTargets,
   isStandaloneBundledRuntimeMode,
   buildPipInstallArgs,
+  getLocalNirs4allCandidates,
+  resolveLocalNirs4allPath,
   getDependencyInstallPhases,
   pruneStandaloneRuntimeArtifacts,
   pruneStandaloneRuntimeLaunchers,

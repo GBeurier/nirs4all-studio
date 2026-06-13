@@ -12,6 +12,7 @@
 # ── Build arguments ──
 ARG BASE_IMAGE=python:3.11-slim
 ARG INSTALL_GPU=false
+ARG NIRS4ALL_VERSION=0.10.0
 
 # ══════════════════════════════════════════════════════════════════════
 # Stage 1: Frontend builder
@@ -36,6 +37,7 @@ RUN npm run build
 FROM ${BASE_IMAGE} AS runtime
 
 ARG INSTALL_GPU=false
+ARG NIRS4ALL_VERSION=0.10.0
 
 # Apt retry config (mitigates transient mirror hash-sum mismatches in CI)
 RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries
@@ -66,7 +68,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
     fi
 
 # Install nirs4all
-RUN pip install --no-cache-dir nirs4all
+RUN pip install --no-cache-dir "https://github.com/GBeurier/nirs4all/archive/refs/tags/${NIRS4ALL_VERSION}.tar.gz" && \
+    python -c "import nirs4all; assert nirs4all.__version__ == '${NIRS4ALL_VERSION}', nirs4all.__version__"
 
 # Copy backend source
 COPY main.py ./

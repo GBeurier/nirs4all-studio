@@ -13,6 +13,8 @@ const archiveBuildModule = require("../scripts/build-archive-standalone.cjs") as
     clean: boolean;
     skipBackend: boolean;
     skipFrontend: boolean;
+    localNirs4all: boolean;
+    localNirs4allPath: string;
     cacheDir: string;
     constraintsFile: string;
     help?: boolean;
@@ -25,6 +27,8 @@ const archiveBuildModule = require("../scripts/build-archive-standalone.cjs") as
       clean: boolean;
       skipBackend: boolean;
       skipFrontend: boolean;
+      localNirs4all?: boolean;
+      localNirs4allPath?: string;
       cacheDir: string;
       constraintsFile: string;
     },
@@ -36,6 +40,8 @@ const archiveBuildModule = require("../scripts/build-archive-standalone.cjs") as
     clean: boolean;
     skipBackend: boolean;
     skipFrontend: boolean;
+    localNirs4all: boolean;
+    localNirs4allPath: string;
     cacheDir: string;
     constraintsFile: string;
   };
@@ -50,6 +56,9 @@ describe("build-archive-standalone", () => {
       "--arch=x64",
       "--clean",
       "--skip-frontend",
+      "--local-nirs4all",
+      "--local-nirs4all-path",
+      "nirs4all-lib",
       "--cache-dir=build/.cache",
       "--constraints",
       "build/constraints/linux.txt",
@@ -61,6 +70,8 @@ describe("build-archive-standalone", () => {
     expect(parsed.clean).toBe(true);
     expect(parsed.skipFrontend).toBe(true);
     expect(parsed.skipBackend).toBe(false);
+    expect(parsed.localNirs4all).toBe(true);
+    expect(parsed.localNirs4allPath).toBe(path.resolve("nirs4all-lib"));
     expect(parsed.cacheDir).toBe(path.resolve("build/.cache"));
     expect(parsed.constraintsFile).toBe(path.resolve("build/constraints/linux.txt"));
   });

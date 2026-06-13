@@ -16,6 +16,8 @@ const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
       extraPipArgs?: string[];
     },
   ): string[];
+  getLocalNirs4allCandidates(explicitPath?: string, env?: Record<string, string | undefined>): string[];
+  resolveLocalNirs4allPath(explicitPath?: string, env?: Record<string, string | undefined>): string | null;
   getDependencyInstallPhases(
     profileId: string,
     platform?: string,
@@ -102,6 +104,13 @@ describe("setup-python-env", () => {
     expect(phases[0].label).toBe("backend dependencies");
     expect(phases[0].extraPipArgs).toEqual([]);
     expect(phases[0].packageSpecs).toContain("torch>=2.1.0");
+  });
+
+  it("resolves an explicit local nirs4all source path", () => {
+    const sourceDir = makeTempDir("n4a-lib-");
+
+    expect(setupPythonEnvModule.resolveLocalNirs4allPath(sourceDir, {})).toBe(sourceDir);
+    expect(setupPythonEnvModule.getLocalNirs4allCandidates(sourceDir, {})).toContain(sourceDir);
   });
 
   it("prunes package caches and non-runtime launchers from standalone bundles", () => {
