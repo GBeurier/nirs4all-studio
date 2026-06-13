@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.8.1] — 2026-06-13
+
+### Changed
+
+- **nirs4all dependency**: Raised the managed runtime requirement and recommendation to **nirs4all 0.10.0** across all compute profiles.
+- **Node registries**: Regenerated canonical and extended node registries against nirs4all 0.10.0.
+
+---
+
 ## [0.8.0] — 2026-06-11
 
 ### Added

@@ -1,23 +1,23 @@
 {
-  "generatedAt": "2026-02-10T14:52:05.768813+00:00",
-  "nodeCount": 312,
-  "pythonVersion": "3.13.9",
+  "generatedAt": "2026-06-13T12:52:57.369977+00:00",
+  "nodeCount": 319,
+  "pythonVersion": "3.13.11",
   "sklearnVersion": "1.8.0",
-  "nirs4allVersion": "0.7.1",
+  "nirs4allVersion": "0.10.0",
   "generator": {
     "script": "scripts/generate_registry.py",
     "format": "NodeDefinition[]"
   },
   "countsByType": {
-    "model": 116,
-    "preprocessing": 121,
-    "splitting": 23,
+    "model": 117,
+    "preprocessing": 126,
+    "splitting": 24,
     "augmentation": 39,
     "filter": 5,
     "y_processing": 8
   },
   "countsBySource": {
-    "nirs4all": 117,
+    "nirs4all": 124,
     "sklearn": 195
   }
 }

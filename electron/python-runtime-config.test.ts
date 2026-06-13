@@ -49,20 +49,20 @@ describe("python-runtime-config", () => {
       "xgboost",
     ]);
     expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "linux" })).toEqual([
-      "nirs4all>=0.9.4",
+      "nirs4all>=0.10.0",
       "pyopls>=20.0",
       "trendfitter>=0.0.6",
       "xgboost-cpu>=2.0.0",
     ]);
     expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "win32" })).toEqual([
-      "nirs4all>=0.9.4",
+      "nirs4all>=0.10.0",
       "pyopls>=20.0",
       "trendfitter>=0.0.6",
       "xgboost-cpu>=2.0.0",
     ]);
     // No macOS xgboost-cpu wheel exists — darwin keeps the regular name.
     expect(runtimeConfig.getProfilePackageInstallSpecs("cpu-lite", { platform: "darwin" })).toEqual([
-      "nirs4all>=0.9.4",
+      "nirs4all>=0.10.0",
       "pyopls>=20.0",
       "trendfitter>=0.0.6",
       "xgboost>=2.0.0",
@@ -81,7 +81,7 @@ describe("python-runtime-config", () => {
   it("maps legacy installer flavors onto product profiles while preserving the managed runtime footprint", () => {
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "darwin")).toBe("gpu-mps");
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "win32")).toBe("gpu-cuda-torch");
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all>=0.9.4");
+    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all>=0.10.0");
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES.some((pkg) => pkg.startsWith("torch"))).toBe(false);
   });
 

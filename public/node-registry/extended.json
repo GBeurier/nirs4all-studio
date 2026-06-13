@@ -21,13 +21,7 @@
         "name": "learning_rate",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
-      },
-      {
-        "name": "algorithm",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "default": 1.0
       },
       {
         "name": "random_state",
@@ -70,7 +64,7 @@
         "name": "learning_rate",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "loss",
@@ -119,25 +113,25 @@
         "name": "alpha_1",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "alpha_2",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "lambda_1",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "lambda_2",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "compute_score",
@@ -149,7 +143,7 @@
         "name": "threshold_lambda",
         "type": "float",
         "isAdvanced": true,
-        "default": 10000
+        "default": 10000.0
       },
       {
         "name": "fit_intercept",
@@ -202,15 +196,15 @@
       },
       {
         "name": "max_samples",
-        "type": "float",
+        "type": "string",
         "isAdvanced": true,
-        "default": 1
+        "default": null
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "bootstrap",
@@ -287,15 +281,15 @@
       },
       {
         "name": "max_samples",
-        "type": "float",
+        "type": "string",
         "isAdvanced": true,
-        "default": 1
+        "default": null
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "bootstrap",
@@ -374,25 +368,25 @@
         "name": "alpha_1",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "alpha_2",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "lambda_1",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "lambda_2",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "alpha_init",
@@ -453,7 +447,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "force_alpha",
@@ -465,7 +459,7 @@
         "name": "binarize",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "fit_prior",
@@ -495,7 +489,7 @@
     "id": "model.calibrated_classifier_cv",
     "name": "CalibratedClassifierCV",
     "type": "model",
-    "description": "Probability calibration with isotonic regression or logistic regression.",
+    "description": "Calibrate probabilities using isotonic, sigmoid, or temperature scaling.",
     "parameters": [
       {
         "name": "estimator",
@@ -549,7 +543,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "force_alpha",
@@ -615,7 +609,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "copy",
@@ -706,7 +700,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "force_alpha",
@@ -784,7 +778,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_features",
@@ -808,7 +802,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "class_weight",
@@ -820,7 +814,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "monotonic_cst",
@@ -881,7 +875,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_features",
@@ -905,13 +899,13 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "monotonic_cst",
@@ -1014,7 +1008,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "l1_ratio",
@@ -1238,7 +1232,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_features",
@@ -1262,7 +1256,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "class_weight",
@@ -1274,7 +1268,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "monotonic_cst",
@@ -1335,13 +1329,13 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "random_state",
@@ -1353,7 +1347,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_leaf_nodes",
@@ -1365,7 +1359,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "monotonic_cst",
@@ -1426,7 +1420,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_features",
@@ -1444,7 +1438,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "bootstrap",
@@ -1492,7 +1486,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_samples",
@@ -1559,13 +1553,13 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "max_leaf_nodes",
@@ -1577,7 +1571,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "bootstrap",
@@ -1619,7 +1613,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_samples",
@@ -1699,7 +1693,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -1766,7 +1760,7 @@
         "name": "var_smoothing",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-9
+        "default": 1e-09
       }
     ],
     "source": "sklearn",
@@ -1948,7 +1942,7 @@
         "name": "subsample",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "criterion",
@@ -1972,7 +1966,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_depth",
@@ -1984,7 +1978,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "init",
@@ -2044,7 +2038,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       }
     ],
     "source": "sklearn",
@@ -2087,7 +2081,7 @@
         "name": "subsample",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "criterion",
@@ -2111,7 +2105,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_depth",
@@ -2123,7 +2117,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "init",
@@ -2189,7 +2183,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       }
     ],
     "source": "sklearn",
@@ -2250,13 +2244,13 @@
         "name": "l2_regularization",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "max_bins",
@@ -2316,7 +2310,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-7
+        "default": 1e-07
       },
       {
         "name": "verbose",
@@ -2401,13 +2395,13 @@
         "name": "l2_regularization",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "max_bins",
@@ -2467,7 +2461,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-7
+        "default": 1e-07
       },
       {
         "name": "verbose",
@@ -2534,7 +2528,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.00001
+        "default": 1e-05
       }
     ],
     "source": "sklearn",
@@ -3051,7 +3045,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -3233,7 +3227,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -3542,7 +3536,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "n_jobs",
@@ -3603,7 +3597,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "multi_class",
@@ -3670,7 +3664,7 @@
         "name": "epsilon",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "tol",
@@ -3682,7 +3676,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "loss",
@@ -3700,7 +3694,7 @@
         "name": "intercept_scaling",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "dual",
@@ -3749,7 +3743,19 @@
         "name": "penalty",
         "type": "string",
         "isAdvanced": true,
-        "default": "l2"
+        "default": "deprecated"
+      },
+      {
+        "name": "C",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 1.0
+      },
+      {
+        "name": "l1_ratio",
+        "type": "float",
+        "isAdvanced": true,
+        "default": 0.0
       },
       {
         "name": "dual",
@@ -3762,12 +3768,6 @@
         "type": "float",
         "isAdvanced": true,
         "default": 0.0001
-      },
-      {
-        "name": "C",
-        "type": "float",
-        "isAdvanced": true,
-        "default": 1
       },
       {
         "name": "fit_intercept",
@@ -3806,12 +3806,6 @@
         "default": 100
       },
       {
-        "name": "multi_class",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
-      },
-      {
         "name": "verbose",
         "type": "int",
         "isAdvanced": true,
@@ -3825,12 +3819,6 @@
       },
       {
         "name": "n_jobs",
-        "type": "string",
-        "isAdvanced": true,
-        "default": null
-      },
-      {
-        "name": "l1_ratio",
         "type": "string",
         "isAdvanced": true,
         "default": null
@@ -3861,6 +3849,12 @@
         "default": 10
       },
       {
+        "name": "l1_ratios",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "warn"
+      },
+      {
         "name": "fit_intercept",
         "type": "bool",
         "isAdvanced": true,
@@ -3882,7 +3876,7 @@
         "name": "penalty",
         "type": "string",
         "isAdvanced": true,
-        "default": "l2"
+        "default": "deprecated"
       },
       {
         "name": "scoring",
@@ -3936,13 +3930,7 @@
         "name": "intercept_scaling",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
-      },
-      {
-        "name": "multi_class",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
+        "default": 1.0
       },
       {
         "name": "random_state",
@@ -3951,10 +3939,10 @@
         "default": null
       },
       {
-        "name": "l1_ratios",
+        "name": "use_legacy_attributes",
         "type": "string",
         "isAdvanced": true,
-        "default": null
+        "default": "warn"
       }
     ],
     "source": "sklearn",
@@ -4101,7 +4089,7 @@
         "name": "epsilon",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-8
+        "default": 1e-08
       },
       {
         "name": "n_iter_no_change",
@@ -4266,7 +4254,7 @@
         "name": "epsilon",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-8
+        "default": 1e-08
       },
       {
         "name": "n_iter_no_change",
@@ -4363,7 +4351,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "l1_ratio",
@@ -4533,7 +4521,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -4691,7 +4679,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "force_alpha",
@@ -4794,7 +4782,7 @@
         "name": "coef0",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "shrinking",
@@ -4885,7 +4873,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "kernel",
@@ -4909,7 +4897,7 @@
         "name": "coef0",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "shrinking",
@@ -5170,7 +5158,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -5279,7 +5267,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -5430,7 +5418,7 @@
         "name": "eta0",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "n_jobs",
@@ -5521,7 +5509,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "copy",
@@ -5570,7 +5558,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "copy",
@@ -5601,7 +5589,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -5659,6 +5647,18 @@
     "description": "Quadratic Discriminant Analysis.",
     "parameters": [
       {
+        "name": "solver",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "svd"
+      },
+      {
+        "name": "shrinkage",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
+      },
+      {
         "name": "priors",
         "type": "string",
         "isAdvanced": true,
@@ -5668,7 +5668,7 @@
         "name": "reg_param",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "store_covariance",
@@ -5681,6 +5681,12 @@
         "type": "float",
         "isAdvanced": true,
         "default": 0.0001
+      },
+      {
+        "name": "covariance_estimator",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
       }
     ],
     "source": "sklearn",
@@ -5710,7 +5716,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -5753,7 +5759,7 @@
         "name": "radius",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "weights",
@@ -5826,7 +5832,7 @@
         "name": "radius",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "weights",
@@ -5923,7 +5929,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_features",
@@ -5941,7 +5947,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "bootstrap",
@@ -5989,7 +5995,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_samples",
@@ -6056,13 +6062,13 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_features",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "max_leaf_nodes",
@@ -6074,7 +6080,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "bootstrap",
@@ -6116,7 +6122,7 @@
         "name": "ccp_alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_samples",
@@ -6295,7 +6301,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -6362,7 +6368,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -6437,8 +6443,8 @@
         "isAdvanced": true,
         "default": [
           0.1,
-          1,
-          10
+          1.0,
+          10.0
         ]
       },
       {
@@ -6496,8 +6502,8 @@
         "isAdvanced": true,
         "default": [
           0.1,
-          1,
-          10
+          1.0,
+          10.0
         ]
       },
       {
@@ -6560,12 +6566,6 @@
         "type": "string",
         "isAdvanced": true,
         "default": null
-      },
-      {
-        "name": "base_estimator",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
       },
       {
         "name": "threshold",
@@ -6698,7 +6698,7 @@
         "name": "eta0",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.01
       },
       {
         "name": "power_t",
@@ -7014,7 +7014,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "kernel",
@@ -7038,7 +7038,7 @@
         "name": "coef0",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "shrinking",
@@ -7141,7 +7141,7 @@
         "name": "coef0",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "tol",
@@ -7153,7 +7153,7 @@
         "name": "C",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "epsilon",
@@ -7211,16 +7211,10 @@
         "default": true
       },
       {
-        "name": "copy_X",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
-      },
-      {
         "name": "max_subpopulation",
         "type": "float",
         "isAdvanced": true,
-        "default": 10000
+        "default": 10000.0
       },
       {
         "name": "n_subsamples",
@@ -7403,13 +7397,13 @@
         "name": "power",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_intercept",
@@ -7682,7 +7676,7 @@
         "name": "threshold",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "copy",
@@ -7732,12 +7726,6 @@
         "type": "bool",
         "isAdvanced": true,
         "default": true
-      },
-      {
-        "name": "copy",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
       }
     ],
     "source": "sklearn",
@@ -8061,7 +8049,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-8
+        "default": 1e-08
       },
       {
         "name": "fit_algorithm",
@@ -8484,7 +8472,7 @@
         "name": "delta",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "edge_order",
@@ -8674,7 +8662,7 @@
         "name": "param",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.00001
+        "default": 1e-05
       }
     ],
     "source": "sklearn",
@@ -9228,7 +9216,7 @@
         "name": "alpha",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "fit_inverse_transform",
@@ -9452,7 +9440,7 @@
         "name": "learning_offset",
         "type": "float",
         "isAdvanced": true,
-        "default": 10
+        "default": 10.0
       },
       {
         "name": "max_iter",
@@ -9476,7 +9464,7 @@
         "name": "total_samples",
         "type": "float",
         "isAdvanced": true,
-        "default": 1000000
+        "default": 1000000.0
       },
       {
         "name": "perp_tol",
@@ -9561,7 +9549,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.000001
+        "default": 1e-06
       },
       {
         "name": "max_iter",
@@ -9634,7 +9622,7 @@
         "name": "offset",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "auto_offset",
@@ -9646,7 +9634,7 @@
         "name": "min_value",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-8
+        "default": 1e-08
       },
       {
         "name": "copy",
@@ -9676,6 +9664,12 @@
         "type": "bool",
         "isAdvanced": true,
         "default": true
+      },
+      {
+        "name": "clip",
+        "type": "bool",
+        "isAdvanced": true,
+        "default": false
       }
     ],
     "source": "sklearn",
@@ -9921,7 +9915,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_no_improvement",
@@ -10012,7 +10006,7 @@
         "name": "alpha_W",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "alpha_H",
@@ -10024,7 +10018,7 @@
         "name": "l1_ratio",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "forget_factor",
@@ -10308,7 +10302,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0.00001
+        "default": 1e-05
       },
       {
         "name": "callback",
@@ -10393,7 +10387,7 @@
         "name": "alpha_W",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "alpha_H",
@@ -10405,7 +10399,7 @@
         "name": "l1_ratio",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "verbose",
@@ -10757,7 +10751,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "iterated_power",
@@ -10843,7 +10837,7 @@
         "name": "gamma",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "degree",
@@ -11032,7 +11026,7 @@
         "name": "radius",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "algorithm",
@@ -11117,7 +11111,7 @@
         "name": "min_weight_fraction_leaf",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "max_leaf_nodes",
@@ -11129,7 +11123,7 @@
         "name": "min_impurity_decrease",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "sparse_output",
@@ -11184,7 +11178,7 @@
         "name": "gamma",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "n_components",
@@ -11220,7 +11214,7 @@
         "name": "num_samples",
         "type": "string",
         "isAdvanced": true,
-        "required": true
+        "default": null
       }
     ],
     "source": "nirs4all",
@@ -11243,7 +11237,7 @@
         "name": "target_wavelengths",
         "type": "string",
         "isAdvanced": true,
-        "required": true
+        "default": null
       },
       {
         "name": "method",
@@ -11261,7 +11255,7 @@
         "name": "fill_value",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "bounds_error",
@@ -11441,8 +11435,8 @@
         "type": "array",
         "isAdvanced": true,
         "default": [
-          25,
-          75
+          25.0,
+          75.0
         ]
       },
       {
@@ -11498,7 +11492,7 @@
         "name": "delta",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "copy",
@@ -11527,7 +11521,7 @@
         "name": "delta",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "edge_order",
@@ -11905,7 +11899,7 @@
         "name": "skewedness",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "n_components",
@@ -12032,7 +12026,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-8
+        "default": 1e-08
       },
       {
         "name": "method",
@@ -12178,6 +12172,12 @@
         "type": "string",
         "isAdvanced": true,
         "default": "C"
+      },
+      {
+        "name": "handle_missing",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "error"
       },
       {
         "name": "sparse_output",
@@ -12426,7 +12426,7 @@
         "name": "tol",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       }
     ],
     "source": "sklearn",
@@ -12457,13 +12457,13 @@
         "name": "perplexity",
         "type": "float",
         "isAdvanced": true,
-        "default": 30
+        "default": 30.0
       },
       {
         "name": "early_exaggeration",
         "type": "float",
         "isAdvanced": true,
-        "default": 12
+        "default": 12.0
       },
       {
         "name": "learning_rate",
@@ -12487,7 +12487,7 @@
         "name": "min_grad_norm",
         "type": "float",
         "isAdvanced": true,
-        "default": 1e-7
+        "default": 1e-07
       },
       {
         "name": "metric",
@@ -12560,7 +12560,7 @@
         "name": "threshold",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       }
     ],
     "source": "sklearn",
@@ -12661,9 +12661,9 @@
     "parameters": [
       {
         "name": "test_size",
-        "type": "string",
+        "type": "float",
         "isAdvanced": true,
-        "required": true
+        "default": 0.25
       },
       {
         "name": "random_state",
@@ -12744,9 +12744,9 @@
     "parameters": [
       {
         "name": "test_size",
-        "type": "string",
+        "type": "float",
         "isAdvanced": true,
-        "required": true
+        "default": 0.25
       },
       {
         "name": "random_state",
@@ -12785,9 +12785,9 @@
     "parameters": [
       {
         "name": "test_size",
-        "type": "string",
+        "type": "float",
         "isAdvanced": true,
-        "required": true
+        "default": 0.25
       },
       {
         "name": "random_state",
@@ -13004,9 +13004,9 @@
     "parameters": [
       {
         "name": "test_size",
-        "type": "string",
+        "type": "float",
         "isAdvanced": true,
-        "required": true
+        "default": 0.25
       },
       {
         "name": "random_state",
@@ -13075,9 +13075,9 @@
     "parameters": [
       {
         "name": "test_size",
-        "type": "string",
+        "type": "float",
         "isAdvanced": true,
-        "required": true
+        "default": 0.25
       },
       {
         "name": "random_state",
@@ -13230,9 +13230,9 @@
     "parameters": [
       {
         "name": "test_size",
-        "type": "string",
+        "type": "float",
         "isAdvanced": true,
-        "required": true
+        "default": 0.25
       },
       {
         "name": "random_state",
@@ -13515,7 +13515,7 @@
         "name": "probability",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "random_state",
@@ -13556,7 +13556,7 @@
         "name": "effect_strength",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "noise_amplification",
@@ -13621,7 +13621,7 @@
         "name": "overall_strength",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "detector_model",
@@ -13668,7 +13668,7 @@
         "name": "asymmetry",
         "type": "float",
         "isAdvanced": true,
-        "default": 0
+        "default": 0.0
       },
       {
         "name": "edge_focus",
@@ -13805,7 +13805,7 @@
         "isAdvanced": true,
         "default": [
           0.5,
-          2
+          2.0
         ]
       },
       {
@@ -13882,7 +13882,7 @@
         "name": "fwhm",
         "type": "float",
         "isAdvanced": true,
-        "default": 3
+        "default": 3.0
       },
       {
         "name": "fwhm_range",
@@ -14043,7 +14043,7 @@
         "name": "max_shift",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "random_state",
@@ -14125,7 +14125,7 @@
         "name": "bound_water_shift",
         "type": "float",
         "isAdvanced": true,
-        "default": 25
+        "default": 25.0
       },
       {
         "name": "moisture_content",
@@ -14213,13 +14213,13 @@
         "name": "mean_size_um",
         "type": "float",
         "isAdvanced": true,
-        "default": 50
+        "default": 50.0
       },
       {
         "name": "size_variation_um",
         "type": "float",
         "isAdvanced": true,
-        "default": 15
+        "default": 15.0
       },
       {
         "name": "size_range_um",
@@ -14231,7 +14231,7 @@
         "name": "reference_size_um",
         "type": "float",
         "isAdvanced": true,
-        "default": 50
+        "default": 50.0
       },
       {
         "name": "wavelength_exponent",
@@ -14742,7 +14742,7 @@
         "name": "edge_enhancement",
         "type": "float",
         "isAdvanced": true,
-        "default": 2
+        "default": 2.0
       },
       {
         "name": "edge_width",
@@ -14783,7 +14783,7 @@
         "name": "temperature_delta",
         "type": "float",
         "isAdvanced": true,
-        "default": 5
+        "default": 5.0
       },
       {
         "name": "temperature_range",
@@ -14795,7 +14795,7 @@
         "name": "reference_temperature",
         "type": "float",
         "isAdvanced": true,
-        "default": 25
+        "default": 25.0
       },
       {
         "name": "enable_shift",
@@ -14916,7 +14916,7 @@
         "name": "sigma",
         "type": "float",
         "isAdvanced": true,
-        "default": 1
+        "default": 1.0
       },
       {
         "name": "kernel_width",
@@ -14952,8 +14952,8 @@
         "type": "array",
         "isAdvanced": true,
         "default": [
-          -2,
-          2
+          -2.0,
+          2.0
         ]
       },
       {
@@ -15048,9 +15048,9 @@
     "parameters": [
       {
         "name": "bins",
-        "type": "string",
+        "type": "int",
         "isAdvanced": true,
-        "required": true
+        "default": 5
       }
     ],
     "source": "nirs4all",
