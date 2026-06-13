@@ -835,6 +835,66 @@ def test_align_config_keeps_original_package_names_on_darwin(monkeypatch):
     assert install_calls == ["nirs4all", "xgboost"]
 
 
+def test_remote_recommended_config_url_points_to_studio_repo():
+    from api import recommended_config as rc
+
+    assert rc.GITHUB_RAW_URL == "https://raw.githubusercontent.com/GBeurier/nirs4all-studio/main/recommended-config.json"
+
+
+def test_align_config_skips_python_incompatible_optional(monkeypatch):
+    from api import recommended_config as rc
+
+    install_calls: list[str] = []
+    raw_config = _lite_raw_config()
+    raw_config["optional"]["autogluon"] = {
+        "min": ">=1.0.0",
+        "recommended": "1.2.0",
+        "python": "<3.13",
+    }
+
+    monkeypatch.setattr(rc.sys, "version_info", (3, 13, 1, "final", 0))
+    monkeypatch.setattr(rc.sys, "platform", "linux")
+    monkeypatch.setattr(rc, "_load_active_raw_config", lambda: raw_config)
+    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {"nirs4all": "0.9.0"})
+    monkeypatch.setattr(rc, "_detect_gpu", _no_gpu)
+    monkeypatch.setattr(rc._config_cache, "set_setup_status", lambda profile: None)
+    monkeypatch.setattr(
+        rc.venv_manager,
+        "install_package",
+        lambda package, **kwargs: (install_calls.append(package) or True, "ok", []),
+    )
+
+    result = asyncio.run(
+        rc.align_config(rc.AlignConfigRequest(profile="cpu-lite", optional_packages=["autogluon"]))
+    )
+
+    assert result.success is True
+    assert result.message == "All packages are already aligned with recommended config"
+    assert install_calls == []
+
+
+def test_align_config_package_install_failure_does_not_log_error(monkeypatch, caplog):
+    from api import recommended_config as rc
+
+    monkeypatch.setattr(rc.sys, "platform", "linux")
+    monkeypatch.setattr(rc, "_load_active_raw_config", _lite_raw_config)
+    monkeypatch.setattr(rc, "_get_installed_packages", lambda: {})
+    monkeypatch.setattr(rc, "_detect_gpu", _no_gpu)
+    monkeypatch.setattr(rc._config_cache, "set_setup_status", lambda profile: None)
+    monkeypatch.setattr(
+        rc.venv_manager,
+        "install_package",
+        lambda package, **kwargs: (False, "pip install failed", ["pip install failed"]),
+    )
+
+    with caplog.at_level("WARNING", logger="api.recommended_config"):
+        result = asyncio.run(rc.align_config(rc.AlignConfigRequest(profile="cpu-lite")))
+
+    assert result.success is False
+    assert result.failed == ["nirs4all==0.9.0"]
+    assert not any(record.levelname == "ERROR" for record in caplog.records)
+
+
 def test_filtered_optional_config_keeps_explicitly_visible_profile_managed_package():
     from api import recommended_config as rc
 

@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.8.2] — 2026-06-13
+
+### Fixed
+
+- **Updates**: Point the built-in GitHub release checker and remote recommended-config refresh at `GBeurier/nirs4all-studio`.
+- **Runtime alignment**: Skip optional packages whose declared Python compatibility does not match the current runtime, preventing known `autogluon==1.2.0` failures on Python 3.13.
+- **Sentry noise**: Downgrade user-visible pip install failures and transient workspace restore retries from error-level backend events.
+
+---
+
 ## [0.8.1] — 2026-06-13
 
 ### Changed

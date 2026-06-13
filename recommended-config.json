@@ -1,6 +1,6 @@
 {
   "schema_version": "1.2",
-  "app_version": "0.8.1",
+  "app_version": "0.8.2",
   "nirs4all": "0.10.0",
   "_note": "cpu-lite ships a slim install — its exclude_optionals + the xgboost->xgboost-cpu package_renames keep torch/tensorflow/jax/autogluon/tabpfn/umap-learn and CUDA wheels out (enforced at build and in the interactive installer). Requires nirs4all >= 0.10.0, whose slim core no longer bundles matplotlib/shap/umap; the full profiles install shap+matplotlib explicitly so SHAP keeps working.",
   "profiles": {
@@ -153,6 +153,7 @@
     "autogluon": {
       "min": ">=1.0.0",
       "recommended": "1.2.0",
+      "python": "<3.13",
       "description": "AutoGluon AutoML toolkit",
       "category": "automl"
     },

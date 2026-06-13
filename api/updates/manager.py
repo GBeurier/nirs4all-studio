@@ -70,7 +70,7 @@ def _is_expected_update_transport_error(exc: Exception) -> bool:
 
 
 # Default configuration
-DEFAULT_GITHUB_REPO = "GBeurier/nirs4all-webapp"
+DEFAULT_GITHUB_REPO = "GBeurier/nirs4all-studio"
 DEFAULT_PYPI_PACKAGE = "nirs4all"
 DEFAULT_CHECK_INTERVAL_HOURS = 24
 # ============= Data Models =============

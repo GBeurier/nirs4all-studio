@@ -393,6 +393,11 @@ async def _wait_for_ml_ready():
             if nirs4all_workspace:
                 nirs4all_workspace.set_active_workspace(active_ws.path)
                 logger.info("Workspace restored with nirs4all: %s", active_ws.path)
+    except HTTPException as e:
+        if e.status_code == 503:
+            logger.warning("Workspace restore deferred post-ML-load: %s", e.detail)
+        else:
+            logger.error("Failed to restore workspace post-ML-load: %s", e)
     except Exception as e:
         logger.error("Failed to restore workspace post-ML-load: %s", e)
     finally:

@@ -352,7 +352,7 @@ class VenvManager:
             if process.returncode != 0:
                 # Surface the real pip error: log full output and include the
                 # tail in the returned message so the caller can show it.
-                logger.error(
+                logger.warning(
                     "pip install %s failed with code %s. Output:\n%s",
                     pkg_spec,
                     process.returncode,

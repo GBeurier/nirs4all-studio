@@ -29,6 +29,7 @@ export interface OptionalPackageInfo {
   description: string;
   category: string;
   note?: string | null;
+  python?: string | null;
   show_when_profile_managed?: boolean;
   default_install?: boolean;
 }

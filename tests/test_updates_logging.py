@@ -19,6 +19,10 @@ def _make_manager(monkeypatch, tmp_path):
     return manager
 
 
+def test_default_update_repo_points_to_studio():
+    assert updates_module.UpdateSettings().github_repo == "GBeurier/nirs4all-studio"
+
+
 def test_check_github_release_offline_does_not_log_error(monkeypatch, tmp_path, caplog):
     manager = _make_manager(monkeypatch, tmp_path)
 

@@ -40,7 +40,7 @@ router = APIRouter(prefix="/config", tags=["config"])
 
 APP_NAME = "nirs4all-webapp"
 APP_AUTHOR = "nirs4all"
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/GBeurier/nirs4all-webapp/main/recommended-config.json"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/GBeurier/nirs4all-studio/main/recommended-config.json"
 TORCH_PACKAGE = "torch"
 TORCH_CPU_INDEX_URL = "https://download.pytorch.org/whl/cpu"
 TORCH_CUDA_INDEX_URL = "https://download.pytorch.org/whl/cu124"
@@ -91,6 +91,7 @@ class OptionalPackageInfo(BaseModel):
     description: str
     category: str
     note: str | None = None
+    python: str | None = None
     show_when_profile_managed: bool = False
     default_install: bool = False
 
@@ -676,6 +677,41 @@ def _resolve_required_install_spec(
     )
 
 
+def _current_python_version() -> str:
+    """Return the running Python version as a packaging-compatible string."""
+    major, minor, micro = sys.version_info[:3]
+    return f"{major}.{minor}.{micro}"
+
+
+def _python_version_satisfies(spec: str | None) -> bool:
+    """Return True when the running Python version satisfies a package constraint."""
+    if not spec:
+        return True
+
+    try:
+        from packaging.specifiers import SpecifierSet
+        from packaging.version import Version
+        return Version(_current_python_version()) in SpecifierSet(spec)
+    except Exception:
+        logger.debug("Ignoring invalid Python compatibility spec: %s", spec)
+        return True
+
+
+def _is_optional_python_compatible(pkg_name: str, pkg_raw: Any) -> bool:
+    """Return False for optional packages known to be incompatible here."""
+    python_spec = pkg_raw.get("python") if isinstance(pkg_raw, dict) else None
+    if _python_version_satisfies(python_spec):
+        return True
+
+    logger.warning(
+        "Skipping optional package %s because it requires Python %s (current: %s)",
+        pkg_name,
+        python_spec,
+        _current_python_version(),
+    )
+    return False
+
+
 def _resolve_optional_install_spec(
     pkg_name: str,
     pkg_raw: Any,
@@ -1041,6 +1077,8 @@ async def align_config(request: AlignConfigRequest):
 
         opt_data = optional_config.get(opt_name)
         if opt_data:
+            if not _is_optional_python_compatible(opt_name, opt_data):
+                continue
             installed_ver = installed.get(norm_name)
             install_spec = _resolve_optional_install_spec(opt_name, opt_data, installed_ver)
             if install_spec is not None:
@@ -1086,7 +1124,7 @@ async def align_config(request: AlignConfigRequest):
                 force_reinstall=install_spec.force_reinstall,
             )
             if not success:
-                logger.error("Failed to install %s: %s", install_spec.display_spec, message)
+                logger.warning("Failed to install %s: %s", install_spec.display_spec, message)
                 failed_pkgs.append(install_spec.display_spec)
                 failure_details.append(PackageFailure(
                     package=install_spec.display_spec,
@@ -1100,7 +1138,7 @@ async def align_config(request: AlignConfigRequest):
             else:
                 installed_pkgs.append(install_spec.display_spec)
         except Exception as e:
-            logger.error("Failed to install %s: %s", install_spec.display_spec, e)
+            logger.warning("Failed to install %s: %s", install_spec.display_spec, e)
             failed_pkgs.append(install_spec.display_spec)
             failure_details.append(PackageFailure(
                 package=install_spec.display_spec,
