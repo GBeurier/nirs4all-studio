@@ -25,7 +25,7 @@ from .catalog import (
     _resolve_user_data_dir,
     logger,
 )
-from .staging import _is_portable_runtime
+from .staging import _is_portable_runtime, get_update_capability
 
 # Try to import httpx for async HTTP requests, fall back to urllib
 try:
@@ -119,6 +119,9 @@ class UpdateStatus(BaseModel):
     nirs4all: Nirs4allUpdateInfo
     runtime: dict[str, Any]
     venv: dict[str, Any] | None = None
+    # Whether this build can apply a webapp update in place, or must be updated
+    # via its installer. See ``staging.get_update_capability``.
+    update_capability: dict[str, Any] | None = None
     last_check: str | None = None
     check_interval_hours: int = DEFAULT_CHECK_INTERVAL_HOURS
 
@@ -727,6 +730,7 @@ class UpdateManager:
             nirs4all=nirs4all_info,
             runtime=venv_info.to_dict(),
             venv=venv_info.to_dict(),
+            update_capability=get_update_capability(),
             last_check=datetime.now().isoformat(),
             check_interval_hours=self.settings.check_interval_hours,
         )

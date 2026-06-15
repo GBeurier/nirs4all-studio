@@ -73,6 +73,8 @@ import {
   deleteSnapshot,
   getWebappChangelog,
   requestRestart,
+  getLastApplyResult,
+  dismissLastApplyResult,
 } from "@/api/updates";
 import { getRuntimeSummary } from "@/api/system";
 import { resetBackendUrl } from "@/api/transport";
@@ -94,6 +96,18 @@ export function UpdatesSection() {
   // Auto-update download/apply state
   const updateDownload = useUpdateDownload();
   const { data: stagedUpdate } = useStagedUpdate();
+
+  // Surface a banner when the previous update apply silently failed (the app
+  // closed for the updater but came back on the old version).
+  const { data: lastApplyResult } = useQuery({
+    queryKey: ["updates", "last-apply-result"],
+    queryFn: getLastApplyResult,
+    staleTime: 60 * 1000,
+  });
+  const dismissApplyResultMutation = useMutation({
+    mutationFn: dismissLastApplyResult,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["updates", "last-apply-result"] }),
+  });
 
   // Snapshots
   const snapshotsQuery = useQuery({
@@ -207,6 +221,19 @@ export function UpdatesSection() {
   }
 
   const hasWebappUpdate = status?.webapp?.update_available ?? false;
+  // Builds that can't be replaced on disk (per-machine Windows, .deb, AppImage,
+  // DMG) must be updated via their installer; default true so web/dev keep the
+  // in-app flow when the backend reports no capability.
+  const canApplyInPlace = status?.update_capability?.can_apply_in_place ?? true;
+  const webappReleaseUrl = status?.webapp?.release_url ?? null;
+  const openReleasePage = () => {
+    if (!webappReleaseUrl) return;
+    const electronApi = (window as Record<string, unknown>).electronApi as
+      | { openExternal?: (u: string) => Promise<void> }
+      | undefined;
+    if (electronApi?.openExternal) void electronApi.openExternal(webappReleaseUrl);
+    else window.open(webappReleaseUrl, "_blank", "noopener,noreferrer");
+  };
   const hasNirs4allUpdate = status?.nirs4all?.update_available ?? false;
   const hasAnyUpdate = hasWebappUpdate || hasNirs4allUpdate;
   const runtimeDisplay = getPythonRuntimeDisplayState(runtimeSummary);
@@ -317,6 +344,42 @@ export function UpdatesSection() {
           </Alert>
         )}
 
+        {/* Previous update silently failed — surface it and offer the installer */}
+        {lastApplyResult?.status === "failed" && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="space-y-2">
+              <div>
+                The last update didn&apos;t complete — the app is still on{" "}
+                <span className="font-mono">{lastApplyResult.from_version}</span>
+                {lastApplyResult.to_version ? (
+                  <>
+                    {" "}
+                    (expected <span className="font-mono">{lastApplyResult.to_version}</span>)
+                  </>
+                ) : null}
+                . You can install it manually from the release page.
+              </div>
+              <div className="flex gap-2">
+                {webappReleaseUrl && (
+                  <Button size="sm" variant="outline" onClick={openReleasePage}>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Get installer
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => dismissApplyResultMutation.mutate()}
+                  disabled={dismissApplyResultMutation.isPending}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Webapp Update */}
         <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
           <div className="space-y-1">
@@ -348,19 +411,28 @@ export function UpdatesSection() {
               </Badge>
             )}
 
-            {/* Show ready to apply state */}
-            {(updateDownload.readyToApply || stagedUpdate?.has_staged_update) && !updateDownload.isDownloading && (
+            {/* Show ready to apply state (in-place capable builds only) */}
+            {canApplyInPlace && (updateDownload.readyToApply || stagedUpdate?.has_staged_update) && !updateDownload.isDownloading && (
               <Button size="sm" onClick={() => setWebappDialogOpen(true)}>
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Apply Update
               </Button>
             )}
 
-            {/* Show update available */}
-            {hasWebappUpdate && !updateDownload.readyToApply && !stagedUpdate?.has_staged_update && !updateDownload.isDownloading && (
+            {/* Update available — build can self-update in place */}
+            {hasWebappUpdate && canApplyInPlace && !updateDownload.readyToApply && !stagedUpdate?.has_staged_update && !updateDownload.isDownloading && (
               <Button size="sm" onClick={() => setWebappDialogOpen(true)}>
                 <Download className="mr-2 h-4 w-4" />
                 Update
+              </Button>
+            )}
+
+            {/* Update available — installer-only build: redirect to the release page.
+                Shown even if a stale staged update exists, so the only CTA is the safe one. */}
+            {hasWebappUpdate && !canApplyInPlace && !updateDownload.isDownloading && (
+              <Button size="sm" variant="outline" onClick={openReleasePage} disabled={!webappReleaseUrl}>
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Get installer
               </Button>
             )}
 
@@ -866,23 +938,25 @@ export function UpdatesSection() {
                   </Button>
                 )}
 
-                {/* Auto download button */}
-                <Button
-                  onClick={() => updateDownload.startDownload()}
-                  disabled={updateDownload.isStartingDownload}
-                >
-                  {updateDownload.isStartingDownload ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="mr-2 h-4 w-4" />
-                  )}
-                  Download & Install
-                </Button>
+                {/* Auto download button — only for builds that can self-update in place */}
+                {canApplyInPlace && (
+                  <Button
+                    onClick={() => updateDownload.startDownload()}
+                    disabled={updateDownload.isStartingDownload}
+                  >
+                    {updateDownload.isStartingDownload ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-2 h-4 w-4" />
+                    )}
+                    Download & Install
+                  </Button>
+                )}
               </>
             )}
 
-            {/* Apply Update button */}
-            {updateDownload.readyToApply && !updateDownload.isApplying && !updateDownload.applySuccess && (
+            {/* Apply Update button (in-place capable builds only) */}
+            {canApplyInPlace && updateDownload.readyToApply && !updateDownload.isApplying && !updateDownload.applySuccess && (
               <Button
                 onClick={() => setApplyConfirmOpen(true)}
               >

@@ -35,6 +35,7 @@ from .staging import (
     _resolve_staged_content_dir,
     _staging_entries,
     _write_staged_update_metadata,
+    get_update_capability,
 )
 
 if TYPE_CHECKING:
@@ -209,6 +210,7 @@ async def get_webapp_download_info() -> dict[str, Any]:
             "latest_version": webapp_info.latest_version,
         }
 
+    capability = get_update_capability()
     return {
         "update_available": True,
         "current_version": webapp_info.current_version,
@@ -218,6 +220,9 @@ async def get_webapp_download_info() -> dict[str, Any]:
         "download_size_bytes": webapp_info.download_size_bytes,
         "release_notes": webapp_info.release_notes,
         "release_url": webapp_info.release_url,
+        "can_apply_in_place": capability["can_apply_in_place"],
+        "update_channel": capability["channel"],
+        "install_kind": capability["install_kind"],
     }
 
 
@@ -237,6 +242,21 @@ async def start_webapp_download() -> dict[str, Any]:
 
     if not webapp_info.download_url:
         raise HTTPException(status_code=400, detail="No download URL available for this platform")
+
+    # Builds that can't apply in place (per-machine Windows, .deb, AppImage,
+    # DMG) must not download the all-in-one archive — it cannot be applied and
+    # would only strand the user. Redirect them to the installer instead.
+    capability = get_update_capability()
+    if not capability["can_apply_in_place"]:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "This build updates via its installer, not in place. Download the new installer from the release page.",
+                "reason": capability["reason"],
+                "update_channel": "installer",
+                "release_url": webapp_info.release_url,
+            },
+        )
 
     # Create download job
     job = job_manager.create_job(
@@ -370,10 +390,30 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> dict[str, Any]:
     3. Copy new files from staging
     4. Launch the new version
     """
-    from updater import create_updater_script, get_staging_dir, launch_updater
+    from updater import (
+        clear_apply_attempt,
+        create_updater_script,
+        get_staging_dir,
+        launch_updater,
+        record_apply_attempt,
+    )
 
     if not request.confirm:
         raise HTTPException(status_code=400, detail="Update not confirmed")
+
+    # Refuse in-place apply for builds that can't be replaced on disk — BEFORE
+    # the app is asked to quit. Otherwise the updater would close the app and
+    # never relaunch (the "update killed my app" class of failures).
+    capability = get_update_capability()
+    if not capability["can_apply_in_place"]:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "This build updates via its installer, not in place. Download the new installer from the release page.",
+                "reason": capability["reason"],
+                "update_channel": "installer",
+            },
+        )
 
     staging_dir = get_staging_dir()
     layout = _u._validate_staged_update_layout(staging_dir)
@@ -385,10 +425,26 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> dict[str, Any]:
             staged_executable=layout.staged_executable,
         )
 
+        # Record the attempt BEFORE launching so the signal is never lost if the
+        # process dies during launch. The next launch reconciles running version
+        # against the staged one to detect a silent apply failure.
+        try:
+            metadata = _read_staged_update_metadata(staging_dir) or {}
+            record_apply_attempt(
+                from_version=get_update_manager().get_webapp_version(),
+                to_version=metadata.get("version"),
+                update_mode=layout.mode,
+            )
+        except Exception:
+            pass
+
         # Launch the updater (it will wait for us to exit)
         success = launch_updater(script_path)
 
         if not success:
+            # The app will NOT quit, so clear the marker to avoid a false
+            # 'failed' reconciliation on the next normal start.
+            clear_apply_attempt()
             raise HTTPException(
                 status_code=500,
                 detail="Failed to launch updater script",
@@ -476,6 +532,28 @@ async def cleanup_updates() -> dict[str, Any]:
 
     cleanup_old_updates()
     return {"success": True, "message": "Cleanup complete"}
+
+
+@router.get("/webapp/last-apply-result")
+async def get_last_apply_result() -> dict[str, Any]:
+    """Return the reconciled result of the last update apply, if any.
+
+    The frontend surfaces a banner when an update silently failed (the app
+    closed for the updater but came back on the old version).
+    """
+    from updater import read_apply_result
+
+    result = read_apply_result()
+    return result if result else {"status": "none"}
+
+
+@router.delete("/webapp/last-apply-result")
+async def dismiss_last_apply_result() -> dict[str, Any]:
+    """Dismiss the stored apply-result banner."""
+    from updater import clear_apply_result
+
+    clear_apply_result()
+    return {"success": True}
 
 
 @router.post("/webapp/restart")

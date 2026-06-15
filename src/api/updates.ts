@@ -57,11 +57,20 @@ export interface PackageInfo {
   location: string | null;
 }
 
+/** Whether this build can apply a webapp update in place, or must use its installer. */
+export interface UpdateCapability {
+  can_apply_in_place: boolean;
+  channel: "in_place" | "installer";
+  reason: string;
+  install_kind: string;
+}
+
 export interface UpdateStatus {
   webapp: WebappUpdateInfo;
   nirs4all: Nirs4allUpdateInfo;
   runtime: RuntimeInfo;
   venv?: RuntimeInfo;
+  update_capability?: UpdateCapability | null;
   last_check: string | null;
   check_interval_hours: number;
 }
@@ -262,6 +271,32 @@ export async function requestRestart(): Promise<{
  */
 export async function getVersionInfo(): Promise<VersionInfo> {
   return api.get("/updates/version");
+}
+
+/** Reconciled result of the last update apply (detects silent failures). */
+export interface LastApplyResult {
+  status: "none" | "success" | "failed";
+  from_version?: string | null;
+  to_version?: string | null;
+  current_version?: string | null;
+  update_mode?: string | null;
+  attempted_at?: string | null;
+  reconciled_at?: string | null;
+  log_tail?: string;
+}
+
+/**
+ * Get the reconciled result of the last update apply, if any
+ */
+export async function getLastApplyResult(): Promise<LastApplyResult> {
+  return api.get("/updates/webapp/last-apply-result");
+}
+
+/**
+ * Dismiss the stored apply-result banner
+ */
+export async function dismissLastApplyResult(): Promise<{ success: boolean }> {
+  return api.delete("/updates/webapp/last-apply-result");
 }
 
 export interface ConfigSnapshot {

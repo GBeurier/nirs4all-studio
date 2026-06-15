@@ -13,12 +13,14 @@ The update flow:
 """
 
 import hashlib
+import json
 import os
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -373,7 +375,13 @@ if !ERRORLEVEL! neq 0 (
     echo [%DATE% %TIME%] No write access to %APP_DIR%, requesting elevation... >> "%LOG_FILE%"
     :: Close progress window before elevation — the elevated script will reopen it
     taskkill /f /im mshta.exe >NUL 2>NUL
-    powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs" >NUL 2>NUL
+    powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs" >NUL 2>NUL
+    if !ERRORLEVEL! neq 0 (
+        :: Elevation was declined or could not start — never strand the user
+        :: with no app: relaunch the current version without updating.
+        echo [%DATE% %TIME%] Elevation declined/failed, relaunching current version without update >> "%LOG_FILE%"
+        start "" "%APP_DIR%\\%EXECUTABLE%"
+    )
     exit /b 0
 )
 del "%ELEVATE_TEST%" 2>NUL
@@ -555,6 +563,7 @@ def create_updater_script(
     staging_dir: Path,
     app_dir: Path | None = None,
     staged_executable: str | None = None,
+    app_pid: int | None = None,
 ) -> tuple[Path, str]:
     """
     Create a platform-specific updater script.
@@ -563,6 +572,9 @@ def create_updater_script(
         staging_dir: Directory containing the staged update files
         app_dir: Application directory (defaults to detected location)
         staged_executable: Source executable file name inside staging_dir for portable updates
+        app_pid: PID the script waits on before replacing files (defaults to the
+            Electron parent / this process). Injectable so the apply path can be
+            exercised in a sandbox test.
 
     Returns:
         Tuple of (script_path, script_content)
@@ -578,10 +590,11 @@ def create_updater_script(
     # When running under Electron, wait for the Electron process (our parent)
     # instead of the Python backend. The Electron process holds file locks on
     # the .exe and asar files that must be released before we can copy.
-    if os.environ.get("NIRS4ALL_ELECTRON"):
-        app_pid = os.getppid()  # Electron main process
-    else:
-        app_pid = os.getpid()   # Python backend (web/standalone mode)
+    if app_pid is None:
+        if os.environ.get("NIRS4ALL_ELECTRON"):
+            app_pid = os.getppid()  # Electron main process
+        else:
+            app_pid = os.getpid()   # Python backend (web/standalone mode)
     executable = get_executable_name()
     if staged_executable:
         if staged_executable != Path(staged_executable).name or "/" in staged_executable or "\\" in staged_executable:
@@ -695,6 +708,139 @@ def launch_updater(script_path: Path) -> bool:
     except Exception as e:
         print(f"Failed to launch updater: {e}")
         return False
+
+
+# ---------- Post-update reconciliation ----------
+# The apply step runs in a detached OS script *after* the app has exited, so a
+# failure never reaches Sentry (no live process). To get a signal anyway, we
+# drop a marker before quitting and reconcile it on the next launch: if the
+# running version did not advance to the staged version, the update silently
+# failed.
+
+APPLY_ATTEMPT_FILE = "update_apply_attempt.json"
+APPLY_RESULT_FILE = "update_apply_result.json"
+
+
+def _read_update_log_tail(max_lines: int = 60) -> str:
+    """Return the tail of the updater log, if present."""
+    log_file = _get_update_log_dir() / "update.log"
+    try:
+        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        return "\n".join(lines[-max_lines:])
+    except OSError:
+        return ""
+
+
+def _version_advanced(from_version: str | None, current_version: str | None, to_version: str | None) -> bool:
+    """Return whether ``current_version`` reflects a completed update."""
+    if not current_version or current_version == "unknown":
+        return False
+    if to_version and current_version == to_version:
+        return True
+    try:
+        from packaging import version
+
+        if to_version:
+            return version.parse(current_version) >= version.parse(to_version)
+    except Exception:
+        pass
+    # Fallback: any change away from the pre-update version counts as progress.
+    return bool(from_version) and current_version != from_version
+
+
+def record_apply_attempt(from_version: str | None, to_version: str | None, update_mode: str) -> None:
+    """Persist an 'update apply attempt' marker just before the app quits.
+
+    On the next launch ``reconcile_apply`` compares the running version to
+    ``to_version`` to detect a silent apply failure (the app closed for the
+    updater but came back on the old version, or the updater never relaunched).
+    """
+    state_dir = _get_update_state_dir()
+    payload = {
+        "from_version": from_version,
+        "to_version": to_version,
+        "update_mode": update_mode,
+        "attempted_at": datetime.now().isoformat(),
+    }
+    try:
+        with open(state_dir / APPLY_ATTEMPT_FILE, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except OSError as e:
+        print(f"Could not record update apply attempt: {e}")
+
+
+def clear_apply_attempt() -> None:
+    """Remove a pending apply-attempt marker (e.g. if the updater failed to launch)."""
+    try:
+        (_get_update_state_dir() / APPLY_ATTEMPT_FILE).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def read_apply_result() -> dict | None:
+    """Return the last reconciled apply result, if any (for the UI banner)."""
+    result_file = _get_update_state_dir() / APPLY_RESULT_FILE
+    try:
+        with open(result_file, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def clear_apply_result() -> None:
+    """Dismiss the stored apply result."""
+    try:
+        (_get_update_state_dir() / APPLY_RESULT_FILE).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def reconcile_apply(current_version: str | None) -> dict | None:
+    """Reconcile a pending apply attempt against the running version.
+
+    Returns a result dict (``status`` is ``success`` or ``failed``) when an
+    attempt was pending, else ``None``. A ``failed`` result carries the updater
+    log tail so the caller can surface it (Sentry / UI) — this is the only
+    signal available, since the apply runs in a detached script after exit.
+    """
+    state_dir = _get_update_state_dir()
+    attempt_file = state_dir / APPLY_ATTEMPT_FILE
+    try:
+        with open(attempt_file, encoding="utf-8") as f:
+            attempt = json.load(f)
+    except (OSError, ValueError):
+        return None
+
+    from_version = attempt.get("from_version")
+    to_version = attempt.get("to_version")
+    advanced = _version_advanced(from_version, current_version, to_version)
+
+    result: dict = {
+        "status": "success" if advanced else "failed",
+        "from_version": from_version,
+        "to_version": to_version,
+        "current_version": current_version,
+        "update_mode": attempt.get("update_mode"),
+        "attempted_at": attempt.get("attempted_at"),
+        "reconciled_at": datetime.now().isoformat(),
+    }
+    if not advanced:
+        result["log_tail"] = _read_update_log_tail()
+
+    try:
+        with open(state_dir / APPLY_RESULT_FILE, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2)
+    except OSError:
+        pass
+
+    # Consume the marker, but never let a failed unlink swallow the result —
+    # the caller must still get the chance to report it (e.g. to Sentry).
+    try:
+        attempt_file.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return result
 
 
 def cleanup_old_updates() -> None:

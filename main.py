@@ -421,12 +421,77 @@ async def _wait_for_ml_ready():
 
 
 async def cleanup_old_updates_background():
-    """Background task to clean up old update artifacts."""
+    """Background task: reconcile a pending update apply, then clean up artifacts.
+
+    Reconciliation must run before cleanup so a silent apply failure (app closed
+    for the updater but relaunched on the old version) is detected and reported —
+    the only signal we get, since the apply runs in a detached post-exit script.
+    """
     try:
-        from updater import cleanup_old_updates
+        from api.updates import update_manager
+        from updater import cleanup_old_updates, reconcile_apply
+        try:
+            result = reconcile_apply(update_manager.get_webapp_version())
+            if result and result.get("status") == "failed":
+                logger.error(
+                    "Update apply did NOT complete: still on %s (expected %s). See the updater log.",
+                    result.get("from_version"), result.get("to_version"),
+                )
+                _report_update_failure(result)
+            elif result and result.get("status") == "success":
+                logger.info("Update applied successfully (now on %s)", result.get("to_version"))
+        except Exception as e:
+            logger.warning("Update reconciliation failed: %s", e)
+
         cleanup_old_updates()
     except Exception as e:
         logger.error("Background update cleanup failed: %s", e)
+
+
+def _scrub_paths(text: str) -> str:
+    """Best-effort scrub of user filesystem paths from text bound for Sentry.
+
+    The updater log is kept verbatim on disk for the user; only the copy sent to
+    an external service is redacted (it contains install/staging/backup paths).
+    """
+    if not text:
+        return text
+    import re
+
+    home = os.path.expanduser("~")
+    if home and home not in ("", "~"):
+        text = text.replace(home, "~")
+    text = re.sub(r"([A-Za-z]:\\Users\\)[^\\\r\n]+", r"\1<user>", text)
+    text = re.sub(r"(/(?:home|Users)/)[^/\r\n]+", r"\1<user>", text)
+    return text[-4000:]
+
+
+def _report_update_failure(result: dict) -> None:
+    """Send a failed-update signal to Sentry (best-effort; no-op if uninitialized)."""
+    try:
+        import sentry_sdk
+    except Exception:
+        return
+    msg = (
+        f"Webapp update did not apply: stayed on {result.get('from_version')} "
+        f"(expected {result.get('to_version')}, mode {result.get('update_mode')})"
+    )
+    try:
+        scope_factory = getattr(sentry_sdk, "new_scope", None) or getattr(sentry_sdk, "push_scope", None)
+        if scope_factory is not None:
+            with scope_factory() as scope:
+                scope.set_tag("update_apply", "failed")
+                scope.set_context("update", {
+                    "from_version": result.get("from_version"),
+                    "to_version": result.get("to_version"),
+                    "update_mode": result.get("update_mode"),
+                })
+                scope.set_extra("updater_log_tail", _scrub_paths(result.get("log_tail", "")))
+                sentry_sdk.capture_message(msg, level="error")
+        else:
+            sentry_sdk.capture_message(msg, level="error")
+    except Exception:
+        pass
 
 
 async def check_updates_background():

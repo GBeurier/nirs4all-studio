@@ -46,6 +46,77 @@ def _expected_update_mode() -> str:
     return "directory"
 
 
+def _path_is_writable(path: Path) -> bool:
+    """Return whether ``path`` is an existing directory we can write into."""
+    try:
+        if not path.is_dir():
+            return False
+        probe = path / ".nirs4all-write-test"
+        probe.write_text("", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _install_kind() -> str:
+    """Best-effort label for the current install layout (informational only)."""
+    if _is_portable_runtime():
+        return "portable"
+    if os.environ.get("APPIMAGE"):
+        return "appimage"
+    if os.environ.get("NIRS4ALL_RUNTIME_MODE") == "bundled":
+        return "all-in-one"
+    system = platform.system().lower()
+    if system == "darwin":
+        return "dmg"
+    if system == "windows":
+        return "windows-installer"
+    if system == "linux":
+        return "deb"
+    return "unknown"
+
+
+def get_update_capability() -> dict[str, Any]:
+    """Describe whether this build can apply a webapp update *in place*.
+
+    In-place self-update only works for the portable build and for an
+    all-in-one archive extracted into a user-writable folder. OS-installed
+    builds (per-machine Windows, ``.deb``, AppImage, DMG in ``/Applications``)
+    cannot be replaced in place — the updater would need privileges it does not
+    have, or (AppImage) the target is a read-only FUSE mount. Those builds must
+    be updated by downloading their installer instead, so the UI redirects to
+    the release page and the download/apply endpoints refuse before the app
+    quits (otherwise the app would close and never relaunch).
+    """
+    from updater import get_app_directory
+
+    install_kind = _install_kind()
+
+    if _is_portable_runtime():
+        return {"can_apply_in_place": True, "channel": "in_place", "reason": "portable", "install_kind": install_kind}
+
+    # AppImage runs from a read-only FUSE mount — never writable in place.
+    if os.environ.get("APPIMAGE"):
+        return {"can_apply_in_place": False, "channel": "installer", "reason": "appimage", "install_kind": install_kind}
+
+    try:
+        app_dir = get_app_directory()
+        # macOS replaces the whole .app from its PARENT dir
+        # (``rm -rf APP_DIR; cp -a staging APP_PARENT``), so the parent must be
+        # writable — the .app's own contents being writable is not enough
+        # (e.g. /Applications is not writable without admin rights).
+        probe_dir = app_dir.parent if platform.system().lower() == "darwin" else app_dir
+        writable = _path_is_writable(probe_dir)
+    except Exception:
+        writable = False
+
+    if writable:
+        return {"can_apply_in_place": True, "channel": "in_place", "reason": "writable", "install_kind": install_kind}
+
+    return {"can_apply_in_place": False, "channel": "installer", "reason": "read_only_location", "install_kind": install_kind}
+
+
 def _staging_entries(staging_dir: Path) -> list[Path]:
     """List staged entries, excluding the internal metadata file."""
     return [
