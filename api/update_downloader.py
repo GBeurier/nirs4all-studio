@@ -23,7 +23,10 @@ import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
+from api.shared.logger import get_logger
 from updater import calculate_sha256, get_executable_name, get_staging_dir, get_update_cache_dir
+
+logger = get_logger("api.update_downloader")
 
 
 class UpdateDownloader:
@@ -260,7 +263,14 @@ class UpdateDownloader:
         await loop.run_in_executor(None, _extract)
 
     async def _extract_zip(self, archive_path: Path, target_dir: Path) -> None:
-        """Extract a zip archive."""
+        """Extract a zip archive, recreating POSIX symlinks and permission bits.
+
+        ``zipfile.extract`` materializes a symlink entry as a *regular file*
+        whose contents are the link target. On macOS that corrupts the Electron
+        ``.app`` framework symlinks (``Versions/Current`` etc.), so the
+        relaunched app fails to load its frameworks and reports "is damaged".
+        We therefore recreate symlink entries explicitly.
+        """
         loop = asyncio.get_event_loop()
 
         def _extract():
@@ -270,13 +280,64 @@ class UpdateDownloader:
                 for i, member in enumerate(members):
                     if self._cancelled:
                         raise asyncio.CancelledError("Extraction cancelled")
-                    extracted_path = Path(zf.extract(member, target_dir))
-                    self._restore_zip_permissions(member, extracted_path)
+                    self._extract_zip_member(zf, member, target_dir)
                     if i % 100 == 0:
                         progress = 55 + (i / total) * 40
                         self._report_progress(progress, f"Extracting: {i}/{total} files")
 
         await loop.run_in_executor(None, _extract)
+
+    def _extract_zip_member(self, zf: zipfile.ZipFile, member: zipfile.ZipInfo, target_dir: Path) -> None:
+        """Extract one ZIP member, recreating symlinks instead of writing them
+        as regular files (which is what ``zipfile.extract`` would do).
+
+        Symlinks whose target escapes the staging dir are refused: otherwise a
+        later regular entry could be written *through* an escaping parent
+        symlink (symlink-based Zip-Slip).
+        """
+        mode = (member.external_attr >> 16) & 0xFFFF
+        base = Path(target_dir).resolve()
+
+        if os.name != "nt" and stat.S_ISLNK(mode):
+            # Sanitize the entry name (drop leading slashes / ``..`` segments)
+            # and verify the destination stays inside the staging dir.
+            parts = [p for p in member.filename.split("/") if p not in ("", os.curdir, os.pardir)]
+            if not parts:
+                return
+            dest = base.joinpath(*parts)
+            if not self._is_within(base, dest):
+                return
+            link_target = zf.read(member).decode("utf-8", "surrogateescape")
+            # Refuse links whose (lexical) target leaves the staging dir, so a
+            # later regular entry can't be written through an escaping parent.
+            if os.path.isabs(link_target):
+                resolved_target = Path(link_target)
+            else:
+                resolved_target = Path(os.path.normpath(dest.parent / link_target))
+            if not self._is_within(base, resolved_target):
+                logger.warning(
+                    "Skipping update symlink escaping staging: %s -> %s",
+                    member.filename,
+                    link_target,
+                )
+                return
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.is_symlink() or dest.exists():
+                dest.unlink()
+            os.symlink(link_target, dest)
+            return
+
+        extracted_path = Path(zf.extract(member, target_dir))
+        self._restore_zip_permissions(member, extracted_path)
+
+    @staticmethod
+    def _is_within(base: Path, candidate: Path) -> bool:
+        """Return whether ``candidate`` is lexically inside ``base``."""
+        try:
+            Path(os.path.normpath(candidate)).relative_to(base)
+            return True
+        except ValueError:
+            return False
 
     def _restore_zip_permissions(self, member: zipfile.ZipInfo, extracted_path: Path) -> None:
         """Restore POSIX permissions recorded in a ZIP entry when available."""

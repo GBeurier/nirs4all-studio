@@ -91,6 +91,7 @@ from .staging import (  # noqa: F401
     _staging_entries,
     _validate_staged_update_layout,
     _write_staged_update_metadata,
+    get_update_capability,
 )
 
 router = APIRouter(prefix="/updates", tags=["updates"])

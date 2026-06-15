@@ -32,7 +32,7 @@ React Settings UI
           |
           v
 FastAPI backend
-  ├─ api/updates.py
+  ├─ api/updates/        (package: manager · app_updates · staging · catalog · dependencies · snapshots)
   ├─ api/update_downloader.py
   ├─ api/venv_manager.py
   ├─ api/recommended_config.py
@@ -51,7 +51,11 @@ FastAPI backend
 
 ## Main Components
 
-### `api/updates.py`
+### `api/updates/` (package)
+
+Split into focused submodules (`manager`, `app_updates`, `staging`, `catalog`,
+`dependencies`, `snapshots`); shared state is re-exported at the package level so
+endpoints and tests reach it as `api.updates.<name>`.
 
 Responsibilities:
 
@@ -60,6 +64,16 @@ Responsibilities:
 - select the correct release asset for the current platform/runtime
 - expose update, download, staging, and apply endpoints
 - block runtime mutations when the runtime is read-only
+- **gate in-place self-update by capability** (`staging.get_update_capability`):
+  builds that can't be replaced on disk — per-machine Windows, `.deb`, AppImage,
+  DMG in `/Applications` — are reported with `can_apply_in_place: false` and the
+  `download-start`/`apply` endpoints refuse them with `400` **before the app
+  quits**, so the UI redirects to the installer instead of stranding the user.
+- **reconcile a pending apply on the next launch** (`updater.reconcile_apply`):
+  a marker recorded before quit is compared against the running version; if it
+  did not advance, the failure is logged + reported to Sentry with the updater
+  log tail (the only signal, since apply runs in a detached post-exit script),
+  and surfaced as a dismissible banner in Settings.
 
 Important details:
 
@@ -387,9 +401,17 @@ python3 scripts/smoke-update-zip-permissions.py --archive path/to/archive.zip --
 
 ### Update is downloaded but not applied
 
-Inspect:
+First check whether the build is even eligible for in-place update:
+
+- `GET /api/updates/webapp/download-info` → `can_apply_in_place` / `update_channel`.
+  If `installer`, this build (per-machine Windows, `.deb`, AppImage, DMG) is
+  intentionally redirected to the installer; in-app apply is refused by design.
+
+Otherwise inspect:
 
 - `/api/updates/webapp/staged-update`
+- `/api/updates/webapp/last-apply-result` (a `failed` status means the app
+  relaunched on the old version — see `log_tail`)
 - backend logs
 - updater log under the app log directory
 
