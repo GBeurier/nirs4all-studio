@@ -73,6 +73,15 @@ def _is_expected_update_transport_error(exc: Exception) -> bool:
 DEFAULT_GITHUB_REPO = "GBeurier/nirs4all-studio"
 DEFAULT_PYPI_PACKAGE = "nirs4all"
 DEFAULT_CHECK_INTERVAL_HOURS = 24
+
+
+def _github_api_base() -> str:
+    """GitHub API base URL, overridable via NIRS4ALL_UPDATE_API_BASE.
+
+    Lets an end-to-end test point the release check + changelog at a local
+    fixture server instead of api.github.com.
+    """
+    return os.environ.get("NIRS4ALL_UPDATE_API_BASE", "https://api.github.com").rstrip("/")
 # ============= Data Models =============
 
 
@@ -400,12 +409,13 @@ class UpdateManager:
         repo = self.settings.github_repo
         include_prereleases = self.settings.prerelease_channel
 
+        base = _github_api_base()
         if include_prereleases:
             # List all releases (includes pre-releases), take the newest
-            api_url = f"https://api.github.com/repos/{repo}/releases?per_page=1"
+            api_url = f"{base}/repos/{repo}/releases?per_page=1"
         else:
             # Only get the latest stable release
-            api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+            api_url = f"{base}/repos/{repo}/releases/latest"
 
         headers = {
             "Accept": "application/vnd.github.v3+json",

@@ -27,6 +27,7 @@ from .manager import (
     InstallRequest,
     UpdateSettings,
     UpdateStatus,
+    _github_api_base,
     get_update_manager,
 )
 from .staging import (
@@ -77,7 +78,7 @@ async def get_webapp_changelog(current_version: str | None = None) -> dict[str, 
         current_version = mgr.get_webapp_version()
 
     repo = mgr.settings.github_repo
-    api_url = f"https://api.github.com/repos/{repo}/releases"
+    api_url = f"{_github_api_base()}/repos/{repo}/releases"
     headers = {
         "Accept": "application/vnd.github.v3+json",
         "User-Agent": f"{APP_NAME}/{current_version}",
