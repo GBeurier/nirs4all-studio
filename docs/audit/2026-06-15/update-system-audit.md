@@ -160,7 +160,9 @@ Real notarized macOS launch through Gatekeeper; real per-machine Windows install
 
 ## 5. Roadmap
 
-> **Implementation status (2026-06-15):** P0 + the P1 test work are **done, Codex-reviewed, and green** (ruff + tsc + eslint + 45 update tests). Fix A (symlink extraction) + the Layer-1 extraction-fidelity test; server-side capability gating + redirect-to-installer + Windows never-vanish (B/C); post-update reconciliation + Sentry signal (E); `updater` testability seam + the Layer-2 sandbox apply test; UPDATE_SYSTEM.md drift fixed. **Remaining:** the full Layer-3 end-to-end self-update CI harness (P2 — `NIRS4ALL_UPDATE_API_BASE` seam + fixture server + `smoke-self-update.cjs` per-OS matrix) and the privileged/signed native paths (P3 — Windows elevation UX, macOS ditto-extract, Linux native channels). Nothing is committed yet.
+> **Implementation status (2026-06-15):** P0, P1, and the runnable part of P2 are **done, Codex-reviewed, and green** (ruff + tsc + eslint + ~48 update tests). Fix A (symlink extraction) + Layer-1 extraction-fidelity test; server-side capability gating + redirect-to-installer + Windows never-vanish (B/C); post-update reconciliation + Sentry signal (E); `updater` testability seam + Layer-2 sandbox apply test; **`NIRS4ALL_UPDATE_API_BASE` seam + a full pytest e2e** (`tests/test_self_update_e2e.py`: local fixture release server → check → download → checksum → extract → apply → relaunch); UPDATE_SYSTEM.md drift fixed.
+>
+> **Remaining:** only the **real-Electron, per-OS smoke** (`smoke-self-update.cjs`) — deferred because it can't be validated outside CI and has three concrete design problems to solve first: (a) the online/offline gate vs a localhost fixture (the smoke forces `NIRS4ALL_OFFLINE`, which would skip the update check), (b) it needs **two** full bundles built in CI (N and N+1, the latter served as the update asset), and (c) the updater relaunches the app **without the smoke's injected env** (forced backend port + sandbox HOME are lost), so the harness can't reach the relaunched process deterministically. Plus the privileged/signed native paths (P3 — Windows elevation UX, macOS ditto-extract, Linux native channels). Nothing is committed yet.
 
 ### P0 — stop the bleeding + gain visibility (days) — ✅ DONE
 1. **Fix A:** in `_extract_zip`, detect symlink entries (`stat.S_ISLNK((member.external_attr >> 16))`) and recreate with `os.symlink(link_target, path)` (the target is the entry's content). ~15 lines. Ship with the **Layer-1** test. *(Consider: on macOS, extract via `ditto`/`unzip` subprocess instead of `zipfile` so xattrs + signature survive — see P3.)*
@@ -172,9 +174,9 @@ Real notarized macOS launch through Gatekeeper; real per-machine Windows install
 4. Refactor `updater` (`apply_update(plan)` + seams).
 5. Land **Layer 1** + **Layer 2** in CI on PRs. Extend `smoke-update-zip-permissions.py` to assert symlink fidelity.
 
-### P2 — true end-to-end self-update CI (2–4 weeks)
-6. Add `NIRS4ALL_UPDATE_API_BASE` seam + fixture server.
-7. `smoke-self-update.cjs`, per-OS matrix, on tags/nightly, incl. read-only-app-dir Windows variant.
+### P2 — true end-to-end self-update CI (partial — ✅ pytest e2e done)
+6. ✅ `NIRS4ALL_UPDATE_API_BASE` seam + a pytest e2e against a local fixture release server (`tests/test_self_update_e2e.py`) — runs in the backend gate on every PR.
+7. ⏳ `smoke-self-update.cjs`, real-Electron per-OS matrix, on tags/nightly — see the three design problems in the status note above (online gate, two-bundle build, relaunch env injection).
 
 ### P3 — harden the privileged & signed paths (later)
 8. Windows: real elevation UX — on declined UAC, **relaunch the old app** and show "update needs admin", never vanish.
