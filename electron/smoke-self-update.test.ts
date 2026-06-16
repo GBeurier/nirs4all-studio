@@ -31,11 +31,23 @@ const smoke = require("../scripts/smoke-self-update.cjs") as {
     workDir: string,
   ): { assetName: string; assetPath: string; assetSize: number; assetSha: string };
   sentinelInstalledPath(layout: { appRoot: string }, platformId: string): string;
+  staleInstalledPath(layout: { appRoot: string }, platformId: string): string;
   startFixtureServer(opts: { assetPath: string; assetName: string; assetSha: string }): Promise<{
     base: string;
     close(): Promise<void>;
   }>;
   driveUpdate(baseUrl: string, timeoutMs: number): Promise<void>;
+};
+
+// waitForMlReady lives in the archive smoke (shared by both smokes) and is the
+// post-update ml-ready driver the self-update smoke calls in Phase 3b.
+const archiveSmoke = require("../scripts/smoke-archive-standalone.cjs") as {
+  waitForMlReady(
+    port: number,
+    timeoutMs: number,
+    child: { exitCode: number | null },
+    outputBuffer: string[],
+  ): Promise<{ core_ready: boolean; missing_core_packages: string[] }>;
 };
 
 const tempDirs: string[] = [];
@@ -91,6 +103,13 @@ describe("smoke-self-update", () => {
     expect(smoke.sentinelInstalledPath({ appRoot: "/app" }, "linux")).toBe(path.join("/app", "resources", "UPDATE_SMOKE_SENTINEL"));
     expect(smoke.sentinelInstalledPath({ appRoot: "/X.app" }, "darwin")).toBe(
       path.join("/X.app", "Contents", "Resources", "UPDATE_SMOKE_SENTINEL"),
+    );
+  });
+
+  it("resolves the stale-file path per platform", () => {
+    expect(smoke.staleInstalledPath({ appRoot: "/app" }, "linux")).toBe(path.join("/app", "resources", "UPDATE_SMOKE_STALE"));
+    expect(smoke.staleInstalledPath({ appRoot: "/X.app" }, "darwin")).toBe(
+      path.join("/X.app", "Contents", "Resources", "UPDATE_SMOKE_STALE"),
     );
   });
 
@@ -165,15 +184,54 @@ describe("smoke-self-update", () => {
       await server.close();
     }
   });
+
+  it("polls /api/system/env-coherence until the bundled runtime is ml-ready", async () => {
+    const server = await startFakeBackend({ envCoherence: "ready-after-poll" });
+    const child = { exitCode: null };
+    try {
+      const payload = await archiveSmoke.waitForMlReady(server.port, 10000, child, []);
+      expect(payload.core_ready).toBe(true);
+      expect(payload.missing_core_packages).toEqual([]);
+      // The fake reports not-ready on the first poll, so a passing run proves the
+      // driver actually polled env-coherence more than once.
+      const coherenceCalls = server.calls.filter((c) => c === "GET /api/system/env-coherence");
+      expect(coherenceCalls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("fails ml-ready with the last env-coherence payload when nirs4all never imports", async () => {
+    const server = await startFakeBackend({ envCoherence: "missing-nirs4all" });
+    const child = { exitCode: null };
+    try {
+      await expect(archiveSmoke.waitForMlReady(server.port, 1500, child, [])).rejects.toThrow(
+        /missing_core_packages.*nirs4all/,
+      );
+      expect(server.calls).toContain("GET /api/system/env-coherence");
+    } finally {
+      await server.close();
+    }
+  });
 });
 
-function startFakeBackend(opts: { canApplyInPlace: boolean }): Promise<{
+function startFakeBackend(opts: {
+  canApplyInPlace?: boolean;
+  // "ready-after-poll": not ml-ready on the first env-coherence poll, ready after
+  //   (mirrors the real slow nirs4all import).
+  // "missing-nirs4all": always reports nirs4all missing → never ml-ready.
+  envCoherence?: "ready-after-poll" | "missing-nirs4all";
+} = {}): Promise<{
   base: string;
+  port: number;
   calls: string[];
   close(): Promise<void>;
 }> {
+  const canApplyInPlace = opts.canApplyInPlace ?? true;
+  const envCoherence = opts.envCoherence ?? "ready-after-poll";
   const calls: string[] = [];
   let statusPolls = 0;
+  let coherencePolls = 0;
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const url = (req.url || "").split("?")[0];
@@ -185,7 +243,7 @@ function startFakeBackend(opts: { canApplyInPlace: boolean }): Promise<{
       };
       if (url === "/api/updates/check") return send({ webapp: {} });
       if (url === "/api/updates/webapp/download-info") {
-        return send({ update_available: true, can_apply_in_place: opts.canApplyInPlace, update_channel: opts.canApplyInPlace ? "in_place" : "installer" });
+        return send({ update_available: true, can_apply_in_place: canApplyInPlace, update_channel: canApplyInPlace ? "in_place" : "installer" });
       }
       if (url === "/api/updates/webapp/download-start") return send({ job_id: "job-1" });
       if (url.startsWith("/api/updates/webapp/download-status/")) {
@@ -193,6 +251,15 @@ function startFakeBackend(opts: { canApplyInPlace: boolean }): Promise<{
         return send({ status: statusPolls >= 2 ? "completed" : "running", progress: 100 });
       }
       if (url === "/api/updates/webapp/apply") return send({ restart_required: true, success: true });
+      if (url === "/api/system/env-coherence") {
+        coherencePolls += 1;
+        if (envCoherence === "missing-nirs4all") {
+          return send({ core_ready: false, missing_core_packages: ["nirs4all"] });
+        }
+        // Not ready on the first poll, ready after — proves the driver actually polls.
+        const ready = coherencePolls >= 2;
+        return send({ core_ready: ready, missing_core_packages: ready ? [] : ["nirs4all"] });
+      }
       res.writeHead(404);
       res.end();
     });
@@ -201,6 +268,7 @@ function startFakeBackend(opts: { canApplyInPlace: boolean }): Promise<{
       const port = typeof addr === "object" && addr ? addr.port : 0;
       resolve({
         base: `http://127.0.0.1:${port}`,
+        port,
         calls,
         close: () => new Promise((done) => server.close(() => done())),
       });
