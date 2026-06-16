@@ -312,6 +312,11 @@ class VenvManager:
 
         # Build pip command — use python -m pip (more reliable than direct pip path)
         cmd = [str(self.python_executable), "-m", "pip", "install"]
+        # Harden against slow/flaky networks: pip's default socket timeout is
+        # 15s, which routinely trips ReadTimeoutError on large dependency trees
+        # (e.g. autogluon). Give downloads more time and more retries. A caller
+        # can still override via extra_pip_args (appended last, so it wins).
+        cmd += ["--timeout", "60", "--retries", "5"]
         if upgrade:
             cmd.append("--upgrade")
         if force_reinstall:
