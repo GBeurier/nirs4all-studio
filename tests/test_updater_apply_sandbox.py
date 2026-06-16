@@ -196,3 +196,56 @@ def test_directory_mode_apply_does_not_overlay_on_failure(tmp_path, monkeypatch)
         for root, dirs, _ in os.walk(tmp_path):
             for name in dirs:
                 os.chmod(os.path.join(root, name), 0o755)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the chmod that makes the backup copy fail")
+def test_bundle_mode_does_not_delete_app_when_backup_fails(tmp_path, monkeypatch):
+    """macOS bundle mode must NOT delete the live .app when the backup copy fails.
+
+    `cp -a` can exit nonzero (disk full / unreadable file) while still leaving a
+    PARTIAL backup dir behind, so the guard checks the copy's exit status, not
+    just that the dir exists. With the old dir-existence-only guard the live app
+    would be deleted and then 'rolled back' from an incomplete backup (Codex
+    review of audit #4 on the bundle path)."""
+    app_dir = tmp_path / "nirs4all Studio.app"
+    (app_dir / "Contents").mkdir(parents=True)
+    live_marker = app_dir / "Contents" / "live.txt"
+    live_marker.write_text("the installed app")
+
+    # A 0-perm subdir makes `cp -a "$APP_DIR" "$BACKUP_DIR/"` exit nonzero (it
+    # cannot read the dir as non-root) yet still create a partial backup dir —
+    # the exact case the exit-status guard must catch.
+    locked = app_dir / "Contents" / "locked"
+    locked.mkdir()
+    (locked / "pinned").write_text("x")
+    locked.chmod(0o000)
+
+    staging = tmp_path / "staged" / "nirs4all Studio.app"
+    (staging / "Contents").mkdir(parents=True)
+    (staging / "Contents" / "staged_only.txt").write_text("new version")
+
+    try:
+        (tmp_path / "logs").mkdir()
+        monkeypatch.setattr(updater.sys, "platform", "darwin")
+        monkeypatch.setattr(updater, "get_backup_dir", lambda: tmp_path / "backup")
+        monkeypatch.setattr(updater, "_get_update_log_dir", lambda: tmp_path / "logs")
+        monkeypatch.delenv("NIRS4ALL_ELECTRON", raising=False)
+        monkeypatch.delenv("NIRS4ALL_PORTABLE_EXE", raising=False)
+        monkeypatch.delenv("NIRS4ALL_PORTABLE_ROOT", raising=False)
+
+        script_path, content = updater.create_updater_script(staging, app_dir=app_dir, app_pid=NONEXISTENT_PID)
+        assert 'UPDATE_MODE="bundle"' in content
+
+        # check=False: the macOS-only `open -n` relaunch tail is a no-op/failure
+        # on Linux; we only assert the on-disk state after the abort.
+        subprocess.run(["bash", str(script_path)], check=False, timeout=60)
+
+        # The live app was NOT deleted (backup failed -> abort, app untouched).
+        assert live_marker.exists(), "the live .app was deleted despite a failed backup"
+        assert live_marker.read_text() == "the installed app"
+        # The staged tree was NOT applied on top of the (untouched) install.
+        assert not (app_dir / "Contents" / "staged_only.txt").exists(), "staged tree applied despite a failed backup"
+    finally:
+        for root, dirs, _ in os.walk(tmp_path):
+            for name in dirs:
+                os.chmod(os.path.join(root, name), 0o755)

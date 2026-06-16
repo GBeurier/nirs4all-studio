@@ -185,12 +185,14 @@ function staleInstalledPath(layout, platformId) {
  * Build the "N+1" update asset from the installed bundle, with a sentinel file
  * the smoke can look for after the update is applied.
  *
- * Linux/Windows use directory-mode apply (the updater overlays staged files onto
- * the app dir with `cp -a STAGING/. APP_DIR/` / xcopy), so a minimal overlay
- * asset — the real executable + resources/<sentinel> — is enough to prove the
- * replace while keeping the relaunched app intact. macOS uses bundle-mode apply
- * (`rm -rf APP_DIR; cp -a STAGING APP_PARENT`), which is wholesale, so the asset
- * must be a complete .app; we ditto-zip it to preserve framework symlinks.
+ * The asset is a COMPLETE copy of the installed app tree (plus the sentinel) on
+ * every platform, because both apply modes are wholesale replacements: macOS
+ * bundle mode (`rm -rf APP_DIR; cp -a STAGING APP_PARENT`) and the Linux/Windows
+ * directory mode (atomic empty-then-copy, audit #4). A minimal overlay asset
+ * would leave the relaunched app missing its runtime/backend after the swap.
+ * macOS is ditto-zipped to preserve framework symlinks; Linux is tar.gz; Windows
+ * is a .zip. The stale marker is planted in the install AFTER this runs, so it is
+ * never part of the asset.
  */
 function buildUpdateAsset(layout, platformId, appName, workDir) {
   const assetName = assetNameForPlatform(platformId, FIXTURE_VERSION);
@@ -202,21 +204,25 @@ function buildUpdateAsset(layout, platformId, appName, workDir) {
     fs.writeFileSync(path.join(stageApp, "Contents", "Resources", SENTINEL_NAME), "self-update smoke\n");
     execFileSync("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", stageApp, assetPath]);
   } else {
-    // Linux/Windows directory-mode overlay: the real executable + a sentinel
-    // under resources/. The updater (cp -a / xcopy) merges it onto the app dir.
+    // Linux/Windows directory mode replaces the whole app dir atomically, so the
+    // asset must be a FULL copy of the installed tree + the sentinel — anything
+    // less leaves the post-update bundle unbootable.
     const topName = path.basename(layout.appRoot);
     const stageDir = path.join(workDir, "stage");
     const stageTop = path.join(stageDir, topName);
-    fs.mkdirSync(path.join(stageTop, "resources"), { recursive: true });
-    const exeName = path.basename(layout.executablePath);
-    fs.copyFileSync(layout.executablePath, path.join(stageTop, exeName));
-    if (platformId !== "win32") {
-      fs.chmodSync(path.join(stageTop, exeName), 0o755);
+    fs.mkdirSync(stageDir, { recursive: true });
+    if (platformId === "win32") {
+      // Node's recursive copy is cross-platform and keeps symlinks verbatim.
+      fs.cpSync(layout.appRoot, stageTop, { recursive: true, verbatimSymlinks: true });
+    } else {
+      // cp -a preserves perms, timestamps, and symlinks (bundled runtime).
+      execFileSync("cp", ["-a", layout.appRoot, stageTop]);
     }
+    fs.mkdirSync(path.join(stageTop, "resources"), { recursive: true });
     fs.writeFileSync(path.join(stageTop, "resources", SENTINEL_NAME), "self-update smoke\n");
     if (platformId === "win32") {
       // Windows all-in-one is a .zip; Compress-Archive the top folder so the
-      // staged layout matches the tar case (one top dir with exe + resources).
+      // staged layout matches the tar case (one top dir).
       execFileSync("powershell", [
         "-NoProfile",
         "-NonInteractive",
@@ -466,7 +472,7 @@ async function smokeSelfUpdate(rawConfig) {
 
   try {
     // Clear any stale marker left by a previous interrupted run BEFORE building the
-    // asset — on macOS the asset is a `cp -a` of the whole .app, so a leftover marker
+    // asset — the asset is a full copy of the installed tree, so a leftover marker
     // would otherwise be baked into the asset and survive even a correct atomic
     // replace, falsely failing Phase 2b.
     fs.rmSync(stalePath, { force: true });
@@ -505,8 +511,7 @@ async function smokeSelfUpdate(rawConfig) {
     // must be GONE — proving the updater replaces the tree atomically rather than
     // merging onto it. The sentinel write and the stale removal are the same swap,
     // so once the sentinel is visible the stale file's fate is already decided.
-    // NOTE: this assertion is expected to FAIL until the atomic-replace fix (audit
-    // #4) lands on directory-mode (Linux/Windows); it is the validator for that fix.
+    // This is the regression guard for the atomic-replace fix (audit #4).
     if (fs.existsSync(stalePath)) {
       throw new Error(
         `stale file survived the update (overlay merge, not atomic replace): ${stalePath}. `

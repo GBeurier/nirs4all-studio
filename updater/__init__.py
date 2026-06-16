@@ -543,18 +543,24 @@ if [ "$UPDATE_MODE" = "bundle" ]; then
     log "Creating backup of app bundle..."
     rm -rf "$BACKUP_DIR"
     mkdir -p "$BACKUP_DIR"
-    cp -a "$APP_DIR" "$BACKUP_DIR/" 2>> "$LOG_FILE"
 
-    log "Installing updated app bundle..."
-    rm -rf "$APP_DIR"
-    cp -a "$STAGING_DIR" "$APP_PARENT/" 2>> "$LOG_FILE"
-
-    if [ $? -ne 0 ]; then
-        log "Update failed, restoring backup..."
-        rm -rf "$APP_DIR"
-        cp -a "$BACKUP_DIR/$APP_BUNDLE_NAME" "$APP_PARENT/" 2>> "$LOG_FILE"
+    # Never delete the live app unless the backup FULLY succeeded. `cp -a` can
+    # exit nonzero (e.g. disk full) while still leaving a partial backup dir
+    # behind, so gate on the copy's exit status, not just that the dir exists.
+    if ! cp -a "$APP_DIR" "$BACKUP_DIR/" 2>> "$LOG_FILE" || [ ! -d "$BACKUP_DIR/$APP_BUNDLE_NAME" ]; then
+        log "Backup failed; aborting update without touching the installed app"
     else
-        log "Update completed successfully"
+        log "Installing updated app bundle..."
+        rm -rf "$APP_DIR"
+        cp -a "$STAGING_DIR" "$APP_PARENT/" 2>> "$LOG_FILE"
+
+        if [ $? -ne 0 ]; then
+            log "Update failed, restoring backup..."
+            rm -rf "$APP_DIR"
+            cp -a "$BACKUP_DIR/$APP_BUNDLE_NAME" "$APP_PARENT/" 2>> "$LOG_FILE"
+        else
+            log "Update completed successfully"
+        fi
     fi
 else
     # Standard directory mode: atomic replace (move old aside, swap staged in).

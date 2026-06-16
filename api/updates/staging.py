@@ -68,13 +68,31 @@ def _runtime_mode() -> str:
     return str(os.environ.get("NIRS4ALL_RUNTIME_MODE", "")).strip().lower()
 
 
+def _is_all_in_one() -> bool:
+    """Whether this is an all-in-one archive build (owns its whole tree).
+
+    The all-in-one bundle ships an embedded runtime, so Electron stamps
+    ``NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE=true`` — independently of which Python
+    runtime the user has *selected*. We must not key off ``_runtime_mode() ==
+    "bundled"`` alone: an all-in-one user who points the app at a custom Python
+    gets ``runtime_mode == "managed"`` (see electron/backend-manager.ts), yet it
+    is still an all-in-one build with no OS installer to route updates through.
+    The installer build provisions a managed venv (no bundled runtime), so the
+    flag is false there. The legacy ``runtime_mode == "bundled"`` is kept as a
+    fallback for launches that predate the flag.
+    """
+    if str(os.environ.get("NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE", "")).strip().lower() == "true":
+        return True
+    return _runtime_mode() == "bundled"
+
+
 def _install_kind() -> str:
     """Best-effort label for the current install layout (informational only)."""
     if _is_portable_runtime():
         return "portable"
     if os.environ.get("APPIMAGE"):
         return "appimage"
-    if _runtime_mode() == "bundled":
+    if _is_all_in_one():
         return "all-in-one"
     system = platform.system().lower()
     if system == "darwin":
@@ -134,8 +152,9 @@ def get_update_capability() -> dict[str, Any]:
         return {"can_apply_in_place": False, "channel": "installer", "reason": "appimage", "install_kind": install_kind}
 
     # The all-in-one archive owns its whole tree and can be overlaid in place,
-    # provided the location is writable.
-    if _runtime_mode() == "bundled":
+    # provided the location is writable. Detected via the bundled-runtime flag
+    # so it still holds when the user selected a custom Python runtime.
+    if _is_all_in_one():
         if _probe_app_dir_writable():
             return {"can_apply_in_place": True, "channel": "in_place", "reason": "bundled", "install_kind": install_kind}
         return {"can_apply_in_place": False, "channel": "installer", "reason": "read_only_location", "install_kind": install_kind}

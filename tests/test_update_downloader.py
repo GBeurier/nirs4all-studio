@@ -219,3 +219,60 @@ def test_download_resumes_smaller_cached_file(monkeypatch, tmp_path):
     assert path == cached
     assert captured["range"] == "bytes=2-"  # resumed from the partial offset
     assert cached.read_bytes() == b"GOOD"
+
+
+def test_download_fails_when_completed_file_size_mismatches_expected(monkeypatch, tmp_path):
+    """A transfer that ends short of the announced asset size (dropped
+    connection, captive-portal HTML) must be reported as a failure, not silently
+    accepted only to fail later during extraction/apply."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    truncated = b"NOT-THE-WHOLE-FILE"
+    monkeypatch.setattr(update_downloader, "get_update_cache_dir", lambda: cache_dir)
+    monkeypatch.setattr(
+        update_downloader.urllib.request,
+        "urlopen",
+        lambda *_a, **_k: _FakeResponse(truncated, status=200),
+    )
+
+    downloader = update_downloader.UpdateDownloader(
+        download_url="https://example.invalid/app-update.zip",
+        expected_size=len(truncated) + 100,  # server delivered fewer bytes than the asset
+    )
+
+    success, message, path = asyncio.run(downloader.download())
+
+    assert success is False
+    assert "size mismatch" in message.lower()
+    assert path is None
+
+
+def test_download_416_rejects_local_file_of_wrong_size(monkeypatch, tmp_path):
+    """A 416 (range not satisfiable) only means 'complete' when the local file
+    actually matches the expected size — a short/corrupt local file must fail
+    rather than be reported complete."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    cached = cache_dir / "app-update.zip"
+    cached.write_bytes(b"GO")  # smaller than expected -> triggers a resume Range request
+
+    monkeypatch.setattr(update_downloader, "get_update_cache_dir", lambda: cache_dir)
+
+    def _fake_urlopen(_req, *_a, **_k):
+        raise update_downloader.urllib.error.HTTPError(
+            "https://example.invalid/app-update.zip", 416, "Range Not Satisfiable", None, None
+        )
+
+    monkeypatch.setattr(update_downloader.urllib.request, "urlopen", _fake_urlopen)
+
+    downloader = update_downloader.UpdateDownloader(
+        download_url="https://example.invalid/app-update.zip",
+        expected_size=4,  # cached file is only 2 bytes
+    )
+
+    success, message, path = asyncio.run(downloader.download())
+
+    assert success is False
+    assert "expected size" in message.lower()
+    assert path is None
