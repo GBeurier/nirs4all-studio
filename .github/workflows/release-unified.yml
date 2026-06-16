@@ -825,23 +825,19 @@ jobs:
           FILE="${{ steps.archive.outputs.zip_path }}"
           shasum -a 256 "$FILE" > "$FILE.sha256"
 
-      - name: Publish assets to draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.prepare.outputs.tag }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          ZIP_PATH="${{ steps.archive.outputs.zip_path }}"
-          CHECKSUM_PATH="${ZIP_PATH}.sha256"
-
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --draft \
-              --title "nirs4all Studio ${VERSION}" \
-              --notes "Release assets are being published by CI."
-          fi
-
-          gh release upload "$TAG" "$ZIP_PATH" "$CHECKSUM_PATH" --clobber
+      # Upload as a workflow artifact (like every other archive job) so the
+      # single `Create Release` job consolidates and publishes it. Publishing to
+      # the release here too made macOS x64 a second publisher, which collided
+      # with `Create Release` on a fresh tag (workflow_dispatch) — duplicate
+      # release / "already_exists" at finalize.
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-macos-x64
+          path: |
+            ${{ steps.archive.outputs.zip_path }}
+            ${{ steps.archive.outputs.zip_path }}.sha256
+          retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
   # All-in-one archive: macOS arm64 (notarized + stapled when secrets are available)
