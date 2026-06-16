@@ -726,8 +726,8 @@ jobs:
         run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform win32
 
       - name: Smoke test self-update (download -> apply -> relaunch)
-        # Non-blocking until validated by a workflow_dispatch run (the Windows path is new); then drop continue-on-error.
-        continue-on-error: true
+        # Release-gating: a broken self-update must fail the build, not ship
+        # (validated green on all 4 platforms via workflow_dispatch).
         run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform win32
 
       - name: Clean up certificate
@@ -829,9 +829,8 @@ jobs:
         run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
       - name: Smoke test self-update (download -> apply -> relaunch)
-        # Non-blocking: this real-Electron smoke is a useful signal but too
-        # timing-sensitive in CI to gate releases on.
-        continue-on-error: true
+        # Release-gating: a broken self-update must fail the build, not ship
+        # (validated green on all 4 platforms via workflow_dispatch).
         run: xvfb-run -a node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
       - name: Generate checksum
@@ -1016,9 +1015,8 @@ jobs:
         run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Smoke test self-update (download -> apply -> relaunch)
-        # Non-blocking: this real-Electron smoke is a useful signal but too
-        # timing-sensitive in CI to gate releases on.
-        continue-on-error: true
+        # Release-gating: a broken self-update must fail the build, not ship
+        # (validated green on all 4 platforms via workflow_dispatch).
         run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Cleanup keychain
@@ -1201,9 +1199,8 @@ jobs:
         run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Smoke test self-update (download -> apply -> relaunch)
-        # Non-blocking: this real-Electron smoke is a useful signal but too
-        # timing-sensitive in CI to gate releases on.
-        continue-on-error: true
+        # Release-gating: a broken self-update must fail the build, not ship
+        # (validated green on all 4 platforms via workflow_dispatch).
         run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Cleanup keychain
