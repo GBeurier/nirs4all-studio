@@ -409,6 +409,27 @@ async function waitForSentinel(sentinelPath, timeoutMs) {
   throw new Error(`updater did not replace files in place (no sentinel at ${sentinelPath})`);
 }
 
+/** Wait until the updated executable is fully written (exists + size stable
+ *  across two checks). The staged asset is a FULL app tree, so the updater's
+ *  `cp -a STAGING/. APP_DIR/` can still be copying when the sentinel (a file
+ *  under resources/) appears — spawning the exe before its copy finishes would
+ *  ENOENT under CI load. The subsequent health poll absorbs the rest of the copy. */
+async function waitForStableExecutable(exePath, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let lastSize = -1;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(exePath)) {
+      const size = fs.statSync(exePath).size;
+      if (size > 0 && size === lastSize) {
+        return;
+      }
+      lastSize = size;
+    }
+    await delay(1000);
+  }
+  throw new Error(`updated executable not present/stable after timeout: ${exePath}`);
+}
+
 /** Spawn the packaged app and wait until /api/health reports ready. */
 async function launchHealthy(layout, env, port, timeoutMs, label) {
   const child = spawn(layout.executablePath, [], {
@@ -527,6 +548,10 @@ async function smokeSelfUpdate(rawConfig) {
     // updater's own relaunch (its env/port is platform-specific and unreliable).
     const env2 = archiveSmoke.buildSandboxEnv(config.platform, sandbox2, port2);
     env2.SENTRY_DSN = "";
+    // The staged asset is a full app tree, so the updater's copy can still be in
+    // flight when the sentinel appeared. Wait for the executable to be fully
+    // written before booting, so spawn() doesn't race the copy (ENOENT under load).
+    await waitForStableExecutable(layout.executablePath, config.timeoutMs);
     child = await launchHealthy(layout, env2, port2, config.timeoutMs, "post-update boot");
 
     // Phase 3b: the UPDATED bundle must be able to `import nirs4all` (Phase 2 /
