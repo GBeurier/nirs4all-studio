@@ -28,6 +28,9 @@ export interface WebappUpdateInfo {
   asset_name: string | null;
   checksum_sha256: string | null;
   is_prerelease: boolean;
+  /** Native installer asset for builds that can't update in place. */
+  installer_download_url?: string | null;
+  installer_asset_name?: string | null;
 }
 
 export interface Nirs4allUpdateInfo {
