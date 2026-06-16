@@ -236,12 +236,11 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
-      - name: Guard — require Windows signing secrets on tag releases
+      - name: Note — building an unsigned Windows installer (no signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_windows_signing != 'true'
         shell: bash
         run: |
-          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Windows code-signing secrets (WINDOWS_CERT_BASE64, WINDOWS_CERT_PASSWORD). Refusing to publish an unsigned installer. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
-          exit 1
+          echo "::warning::No Windows code-signing secrets set — publishing an UNSIGNED installer. Users see a SmartScreen prompt on first run (More info > Run anyway). This is fine for this project; add WINDOWS_CERT_BASE64 + WINDOWS_CERT_PASSWORD to sign."
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -343,11 +342,10 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
-      - name: Guard — require macOS signing/notarization secrets on tag releases
+      - name: Note — building an unsigned macOS DMG (no Apple signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
         run: |
-          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Apple signing/notarization secrets (APPLE_CERT_BASE64, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID). Refusing to publish an unsigned/un-notarized DMG. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
-          exit 1
+          echo "::warning::No Apple signing/notarization secrets set — publishing an UNSIGNED, un-notarized DMG. Users must right-click > Open on first launch (Gatekeeper). This is fine for this project; add APPLE_* secrets to sign + notarize."
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -500,11 +498,10 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
-      - name: Guard — require macOS signing/notarization secrets on tag releases
+      - name: Note — building an unsigned macOS DMG (no Apple signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
         run: |
-          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Apple signing/notarization secrets (APPLE_CERT_BASE64, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID). Refusing to publish an unsigned/un-notarized DMG. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
-          exit 1
+          echo "::warning::No Apple signing/notarization secrets set — publishing an UNSIGNED, un-notarized DMG. Users must right-click > Open on first launch (Gatekeeper). This is fine for this project; add APPLE_* secrets to sign + notarize."
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -655,12 +652,11 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
-      - name: Guard — require Windows signing secrets on tag releases
+      - name: Note — building an unsigned Windows archive (no signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_windows_signing != 'true'
         shell: bash
         run: |
-          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Windows code-signing secrets (WINDOWS_CERT_BASE64, WINDOWS_CERT_PASSWORD). Refusing to publish an unsigned all-in-one archive. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
-          exit 1
+          echo "::warning::No Windows code-signing secrets set — publishing an UNSIGNED all-in-one archive. Users see a SmartScreen prompt on first run. This is fine for this project; add WINDOWS_CERT_BASE64 + WINDOWS_CERT_PASSWORD to sign."
 
       - name: Checkout nirs4all library
         uses: actions/checkout@v4
@@ -869,11 +865,10 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
-      - name: Guard — require macOS signing/notarization secrets on tag releases
+      - name: Note — building an unsigned macOS archive (no Apple signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
         run: |
-          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Apple signing/notarization secrets (APPLE_CERT_BASE64, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID). Refusing to publish an unsigned/un-notarized all-in-one archive. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
-          exit 1
+          echo "::warning::No Apple signing/notarization secrets set — publishing an UNSIGNED, un-notarized all-in-one archive. Users must right-click > Open on first launch (Gatekeeper). This is fine for this project; add APPLE_* secrets to sign + notarize."
 
       - name: Checkout nirs4all library
         uses: actions/checkout@v4
@@ -1057,11 +1052,10 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
-      - name: Guard — require macOS signing/notarization secrets on tag releases
+      - name: Note — building an unsigned macOS archive (no Apple signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
         run: |
-          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Apple signing/notarization secrets (APPLE_CERT_BASE64, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID). Refusing to publish an unsigned/un-notarized all-in-one archive. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
-          exit 1
+          echo "::warning::No Apple signing/notarization secrets set — publishing an UNSIGNED, un-notarized all-in-one archive. Users must right-click > Open on first launch (Gatekeeper). This is fine for this project; add APPLE_* secrets to sign + notarize."
 
       - name: Checkout nirs4all library
         uses: actions/checkout@v4
