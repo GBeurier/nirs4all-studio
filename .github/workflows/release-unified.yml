@@ -539,6 +539,11 @@ jobs:
       - name: Smoke test offline all-in-one launch
         run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform win32
 
+      - name: Smoke test self-update (download -> apply -> relaunch)
+        # Non-blocking until validated by a workflow_dispatch run (the Windows path is new); then drop continue-on-error.
+        continue-on-error: true
+        run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform win32
+
       - name: Clean up certificate
         if: always()
         shell: pwsh
@@ -636,8 +641,6 @@ jobs:
         run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
       - name: Smoke test self-update (download -> apply -> relaunch)
-        # CI-only smoke; non-blocking until validated via a workflow_dispatch run, then drop continue-on-error.
-        continue-on-error: true
         run: xvfb-run -a node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
       - name: Generate checksum
@@ -810,8 +813,6 @@ jobs:
         run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Smoke test self-update (download -> apply -> relaunch)
-        # CI-only smoke; non-blocking until validated via a workflow_dispatch run, then drop continue-on-error.
-        continue-on-error: true
         run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Cleanup keychain
@@ -986,8 +987,6 @@ jobs:
         run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Smoke test self-update (download -> apply -> relaunch)
-        # CI-only smoke; non-blocking until validated via a workflow_dispatch run, then drop continue-on-error.
-        continue-on-error: true
         run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Cleanup keychain

@@ -190,15 +190,30 @@ function buildUpdateAsset(layout, platformId, appName, workDir) {
     fs.writeFileSync(path.join(stageApp, "Contents", "Resources", SENTINEL_NAME), "self-update smoke\n");
     execFileSync("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", stageApp, assetPath]);
   } else {
+    // Linux/Windows directory-mode overlay: the real executable + a sentinel
+    // under resources/. The updater (cp -a / xcopy) merges it onto the app dir.
     const topName = path.basename(layout.appRoot);
     const stageDir = path.join(workDir, "stage");
     const stageTop = path.join(stageDir, topName);
     fs.mkdirSync(path.join(stageTop, "resources"), { recursive: true });
     const exeName = path.basename(layout.executablePath);
     fs.copyFileSync(layout.executablePath, path.join(stageTop, exeName));
-    fs.chmodSync(path.join(stageTop, exeName), 0o755);
+    if (platformId !== "win32") {
+      fs.chmodSync(path.join(stageTop, exeName), 0o755);
+    }
     fs.writeFileSync(path.join(stageTop, "resources", SENTINEL_NAME), "self-update smoke\n");
-    execFileSync("tar", ["-czf", assetPath, "-C", stageDir, topName]);
+    if (platformId === "win32") {
+      // Windows all-in-one is a .zip; Compress-Archive the top folder so the
+      // staged layout matches the tar case (one top dir with exe + resources).
+      execFileSync("powershell", [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `Compress-Archive -Path '${stageTop}' -DestinationPath '${assetPath}' -Force`,
+      ]);
+    } else {
+      execFileSync("tar", ["-czf", assetPath, "-C", stageDir, topName]);
+    }
   }
 
   const bytes = fs.readFileSync(assetPath);
