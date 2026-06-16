@@ -399,6 +399,17 @@ async function main() {
   console.log("");
 
   if (!config.constraintsFile) {
+    // Distributable bakes (release CI) must be reproducible: set
+    // NIRS4ALL_REQUIRE_CONSTRAINTS=1 to turn a missing constraints file into a
+    // hard error. Local/dev bakes leave it unset and only get a warning.
+    const requireConstraints = ["1", "true"].includes((process.env.NIRS4ALL_REQUIRE_CONSTRAINTS || "").trim().toLowerCase());
+    if (requireConstraints) {
+      throw new Error(
+        `No platform/arch constraints file found for profile '${config.profile}' (${config.platform}-${config.arch}). ` +
+          "NIRS4ALL_REQUIRE_CONSTRAINTS is set, so this distributable bake refuses unpinned resolver output. " +
+          `Add build/constraints/standalone/${config.profile}-${config.platform}-${config.arch}.txt or unset NIRS4ALL_REQUIRE_CONSTRAINTS for a local bake.`,
+      );
+    }
     console.log("  Warning: no platform/arch constraints file found. Baking will proceed with unpinned resolver output.");
     console.log("");
   }
