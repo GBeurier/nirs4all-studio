@@ -42,6 +42,21 @@ def test_backend_before_send_drops_job_notification_pending_task_shutdown_event(
     assert backend_before_send(event, {}) is None
 
 
+def test_backend_before_send_drops_job_notification_pending_task_logentry_message():
+    event = {
+        "logger": "asyncio",
+        "logentry": {
+            "message": (
+                "Task was destroyed but it is pending! task: <Task pending "
+                "coro=<JobManager._dispatch_websocket_notification.<locals>."
+                "send_notification() running at api/jobs/manager.py:391>>"
+            ),
+        },
+    }
+
+    assert backend_before_send(event, {}) is None
+
+
 def test_backend_before_send_redacts_sensitive_payload_data():
     event = {
         "user": {"id": "local-user"},

@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -6,6 +7,40 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from api.nirs4all_adapter import _operator_reference_from_step
 from api.node_registry_loader import load_editor_registry_reference
 from api.pipeline_canonical import resolve_editor_class_path
+
+
+def test_editor_registry_falls_back_to_public_registry_when_src_nodes_absent(tmp_path, monkeypatch):
+    from api import node_registry_loader
+
+    public_dir = tmp_path / "public" / "node-registry"
+    public_dir.mkdir(parents=True)
+    (public_dir / "extended.json").write_text(
+        json.dumps([
+            {
+                "id": "model.public_fallback",
+                "name": "PublicFallback",
+                "type": "model",
+                "classPath": "example.PublicFallback",
+            }
+        ]),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(node_registry_loader, "_DEFINITIONS_DIR", tmp_path / "missing-definitions")
+    monkeypatch.setattr(node_registry_loader, "_GENERATED_DIR", tmp_path / "missing-generated")
+    monkeypatch.setattr(node_registry_loader, "_PUBLIC_REGISTRY_DIR", public_dir)
+    node_registry_loader.load_editor_registry_nodes.cache_clear()
+    node_registry_loader.load_editor_registry_reference.cache_clear()
+
+    try:
+        reference = node_registry_loader.load_editor_registry_reference()
+    finally:
+        node_registry_loader.load_editor_registry_nodes.cache_clear()
+        node_registry_loader.load_editor_registry_reference.cache_clear()
+
+    assert reference["version"] == "public-node-registry"
+    assert reference["totalNodes"] == 1
+    assert reference["nodes"][0]["id"] == "model.public_fallback"
 
 
 def _node_by_id(nodes: list[dict], node_id: str) -> dict:

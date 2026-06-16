@@ -19,6 +19,7 @@ from typing import Any
 _ROOT_DIR = Path(__file__).resolve().parent.parent
 _DEFINITIONS_DIR = _ROOT_DIR / "src" / "data" / "nodes" / "definitions"
 _GENERATED_DIR = _ROOT_DIR / "src" / "data" / "nodes" / "generated"
+_PUBLIC_REGISTRY_DIR = _ROOT_DIR / "public" / "node-registry"
 
 
 def _normalize_path(value: Any) -> str | None:
@@ -166,6 +167,10 @@ def load_editor_registry_nodes() -> list[dict[str, Any]]:
     if merged_nodes:
         return merged_nodes
 
+    public_nodes = _load_json_nodes(_PUBLIC_REGISTRY_DIR / "extended.json")
+    if public_nodes:
+        return public_nodes
+
     # Fallback for older checkouts that only carry the legacy generated file.
     return _load_json_nodes(_GENERATED_DIR / "node-reference.json")
 
@@ -177,6 +182,7 @@ def load_editor_registry_reference() -> dict[str, Any]:
         *_definition_files(),
         _GENERATED_DIR / "canonical-registry.json",
         _GENERATED_DIR / "node-reference.json",
+        _PUBLIC_REGISTRY_DIR / "extended.json",
     ]
     existing_files = [path for path in source_files if path.exists()]
     generated_at: str | None = None
@@ -185,7 +191,9 @@ def load_editor_registry_reference() -> dict[str, Any]:
         generated_at = datetime.fromtimestamp(latest_mtime, tz=UTC).isoformat()
 
     version = "editor-definitions+canonical"
-    if not nodes and (_GENERATED_DIR / "node-reference.json").exists():
+    if nodes and not _definition_files() and (_PUBLIC_REGISTRY_DIR / "extended.json").exists():
+        version = "public-node-registry"
+    elif not nodes and (_GENERATED_DIR / "node-reference.json").exists():
         version = "node-reference-fallback"
 
     return {

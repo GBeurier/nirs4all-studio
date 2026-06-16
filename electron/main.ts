@@ -613,19 +613,29 @@ app.whenReady().then(async () => {
     }
     await createWindow();
   } else if (envManager.isReady()) {
-    // Python env exists. We deliberately do NOT block window creation on
-    // ensureBackendPackages() any more — that path can spawn Python and import
-    // heavy modules, which used to delay the first paint. Instead:
-    //   1. spawn the backend non-blocking (it has its own health check loop)
-    //   2. open the window immediately
-    //   3. run ensureBackendPackages() in the background as a repair step
-    //
-    // The blocking ensure path is still used by explicit setup/restart flows
-    // (see ipcMain.handle("backend:restart") and env:startSetup).
+    // Verify and repair the runtime before the backend starts. Starting first
+    // can leave FastAPI serving degraded endpoints while nirs4all is missing,
+    // which then floods Sentry with avoidable 503/ImportError groups.
+    let backendCanStart = true;
+    const ensureStart = Date.now();
+    console.log("ensureBackendPackages: start (preflight)");
     try {
-      const backendStart = Date.now();
-      const port = await backendManager.startNonBlocking();
-      console.log(`Backend spawned on port ${port} (health check in background) in ${Date.now() - backendStart}ms`);
+      await envManager.ensureBackendPackages();
+      console.log(`ensureBackendPackages: preflight ok in ${Date.now() - ensureStart}ms`);
+    } catch (error) {
+      backendCanStart = false;
+      console.error(
+        `ensureBackendPackages preflight failed after ${Date.now() - ensureStart}ms:`,
+        error,
+      );
+    }
+
+    try {
+      if (backendCanStart) {
+        const backendStart = Date.now();
+        const port = await backendManager.startNonBlocking();
+        console.log(`Backend spawned on port ${port} (health check in background) in ${Date.now() - backendStart}ms`);
+      }
     } catch (error) {
       console.error("Failed to spawn backend:", error);
     }
@@ -633,30 +643,6 @@ app.whenReady().then(async () => {
     console.log("createWindow: start");
     await createWindow();
     console.log(`createWindow: done in ${Date.now() - windowStart}ms`);
-
-    // Background repair: if a stale managed env is missing core packages,
-    // reinstall them without holding up the UI. Failures are logged; the
-    // backend health check will surface a connection error to the renderer
-    // if the repair was actually required.
-    void (async () => {
-      const ensureStart = Date.now();
-      console.log("ensureBackendPackages: start (background)");
-      try {
-        const repaired = await envManager.ensureBackendPackages({ timeoutMs: 90_000 });
-        console.log(`ensureBackendPackages: done in ${Date.now() - ensureStart}ms`);
-        if (repaired) {
-          console.log("ensureBackendPackages: repaired runtime, restarting backend");
-          const restartStart = Date.now();
-          const port = await backendManager.restart();
-          console.log(`Backend restarted on port ${port} in ${Date.now() - restartStart}ms`);
-        }
-      } catch (error) {
-        console.error(
-          `ensureBackendPackages failed after ${Date.now() - ensureStart}ms:`,
-          error,
-        );
-      }
-    })();
   } else {
     // No Python env: show window immediately (it will display the setup screen)
     console.log("Python environment not found, showing setup screen...");

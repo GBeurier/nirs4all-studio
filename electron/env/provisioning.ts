@@ -30,8 +30,9 @@ const { PBS_TAG, PYTHON_VERSION, getArchiveFilename, getDownloadUrl } = pythonRu
 
 const isWindows = process.platform === "win32";
 const ENSUREPIP_TIMEOUT_MS = 60_000;
-const PIP_INSTALL_TIMEOUT_MS = 180_000;
+const PIP_INSTALL_TIMEOUT_MS = 600_000;
 const COMPILEALL_TIMEOUT_MS = 180_000;
+const PIP_INSTALL_BASE_ARGS = ["-m", "pip", "install", "--no-cache-dir", "--prefer-binary"] as const;
 
 export type EnvStatus = "none" | "downloading" | "extracting" | "creating_venv" | "installing" | "ready" | "error";
 export type ProgressCallback = (percent: number, step: string, detail: string) => void;
@@ -76,7 +77,7 @@ export async function installCorePackages(
   }
 
   // Install all core packages in a single pip call
-  await runCommand(pythonPath, ["-m", "pip", "install", "--no-cache-dir", ...MANAGED_RUNTIME_PACKAGES], {
+  await runCommand(pythonPath, [...PIP_INSTALL_BASE_ARGS, ...MANAGED_RUNTIME_PACKAGES], {
     retries: 2,
     timeoutMs,
   });
@@ -192,7 +193,7 @@ export async function provisionManagedRuntime(
       retries: 2,
       timeoutMs: ENSUREPIP_TIMEOUT_MS,
     });
-    await runCommand(venvPython, ["-m", "pip", "install", "--no-cache-dir", "--upgrade", "pip"], {
+    await runCommand(venvPython, [...PIP_INSTALL_BASE_ARGS, "--upgrade", "pip"], {
       retries: 2,
       timeoutMs: PIP_INSTALL_TIMEOUT_MS,
     });
@@ -210,7 +211,7 @@ export async function provisionManagedRuntime(
       const pkgName = pkg.split(">=")[0].split("[")[0];
       const progressPercent = 40 + Math.round(((i + 1) / totalPackages) * 50);
       report(progressPercent, "installing", `Installing ${pkgName}...`);
-      await runCommand(venvPython, ["-m", "pip", "install", "--no-cache-dir", pkg], {
+      await runCommand(venvPython, [...PIP_INSTALL_BASE_ARGS, pkg], {
         retries: 2,
         timeoutMs: PIP_INSTALL_TIMEOUT_MS,
       });

@@ -482,6 +482,35 @@ class JobManager:
 
         future.add_done_callback(_done)
 
+    def _take_notification_futures(self) -> list[Future[Any]]:
+        """Mark shutdown and detach currently scheduled notification futures."""
+        self._shutting_down = True
+        with self._lock:
+            notification_futures = list(self._notification_futures)
+            self._notification_futures.clear()
+        return notification_futures
+
+    async def shutdown_async(self, wait: bool = True, timeout: float = 2.0) -> None:
+        """Shutdown the job manager and drain cancelled WebSocket notifications."""
+        notification_futures = self._take_notification_futures()
+        for future in notification_futures:
+            future.cancel()
+
+        pending = [future for future in notification_futures if not future.done()]
+        if pending:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(
+                        *(asyncio.wrap_future(future) for future in pending),
+                        return_exceptions=True,
+                    ),
+                    timeout=timeout,
+                )
+            except TimeoutError:
+                logger.debug("Timed out waiting for job WebSocket notifications to cancel")
+
+        self._executor.shutdown(wait=wait)
+
     def cleanup_old_jobs(self, max_age_hours: int = 24) -> int:
         """Remove old completed/failed jobs.
 
@@ -517,10 +546,7 @@ class JobManager:
         Args:
             wait: Whether to wait for pending jobs to complete
         """
-        self._shutting_down = True
-        with self._lock:
-            notification_futures = list(self._notification_futures)
-            self._notification_futures.clear()
+        notification_futures = self._take_notification_futures()
         for future in notification_futures:
             future.cancel()
         self._executor.shutdown(wait=wait)

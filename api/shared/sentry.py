@@ -32,8 +32,14 @@ def _event_message(event: dict[str, Any]) -> str:
         formatted = logentry.get("formatted")
         if isinstance(formatted, str):
             return formatted
+        message = logentry.get("message")
+        if isinstance(message, str):
+            return message
     message = event.get("message")
-    return message if isinstance(message, str) else ""
+    if isinstance(message, str):
+        return message
+    title = event.get("title")
+    return title if isinstance(title, str) else ""
 
 
 def is_benign_shutdown_event(event: dict[str, Any]) -> bool:
