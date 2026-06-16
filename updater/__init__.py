@@ -388,16 +388,42 @@ del "%ELEVATE_TEST%" 2>NUL
 
 if "%UPDATE_MODE%"=="portable" goto :portable_update
 
-:: ===== Directory mode: full backup and replace =====
+:: ===== Directory mode: atomic replace (move old aside, swap staged in) =====
+:: APP_DIR's contents are emptied before the staged tree is copied in, so files
+:: removed in the new version do NOT linger (an overlay copy would leave them
+:: behind and produce a mixed-version install). APP_DIR itself is kept so its
+:: path, shortcuts and installer registration stay valid.
 echo [%DATE% %TIME%] Creating backup... >> "%LOG_FILE%"
 if exist "%BACKUP_DIR%" rmdir /s /q "%BACKUP_DIR%"
 mkdir "%BACKUP_DIR%"
 xcopy /e /i /h /y "%APP_DIR%\\*" "%BACKUP_DIR%\\" >> "%LOG_FILE%" 2>&1
+if !ERRORLEVEL! neq 0 (
+    echo [%DATE% %TIME%] Backup failed, leaving current install untouched >> "%LOG_FILE%"
+    goto cleanup
+)
 
 set "COPY_ATTEMPT=0"
 :copy_loop
 set /a COPY_ATTEMPT+=1
 echo [%DATE% %TIME%] Installing update (attempt !COPY_ATTEMPT!)... >> "%LOG_FILE%"
+:: Empty APP_DIR (files then subdirectories) without removing APP_DIR itself.
+:: Clear read-only/hidden/system attributes first so locked-down files (and the
+:: directories holding them) can actually be removed, then confirm APP_DIR is
+:: empty — a half-cleared tree must NOT be copied onto (it would leave stale
+:: files), so an incomplete wipe is treated as a failed attempt.
+attrib -r -h -s "%APP_DIR%\\*" /s /d >NUL 2>&1
+del /f /s /q "%APP_DIR%\\*" >> "%LOG_FILE%" 2>&1
+for /d %%D in ("%APP_DIR%\\*") do rmdir /s /q "%%D" >> "%LOG_FILE%" 2>&1
+dir /a /b "%APP_DIR%" 2>NUL | findstr "^" >NUL
+if !ERRORLEVEL!==0 (
+    if !COPY_ATTEMPT! lss 10 (
+        echo [%DATE% %TIME%] Could not empty app directory, retrying in 3 seconds... >> "%LOG_FILE%"
+        timeout /t 3 /nobreak >NUL
+        goto copy_loop
+    )
+    echo [%DATE% %TIME%] Could not empty app directory after 10 retries, restoring backup... >> "%LOG_FILE%"
+    goto restore_backup
+)
 xcopy /e /i /h /y "%STAGING_DIR%\\*" "%APP_DIR%\\" >> "%LOG_FILE%" 2>&1
 
 if !ERRORLEVEL! neq 0 (
@@ -407,11 +433,17 @@ if !ERRORLEVEL! neq 0 (
         goto copy_loop
     )
     echo [%DATE% %TIME%] Update failed after 10 retries, restoring backup... >> "%LOG_FILE%"
-    xcopy /e /i /h /y "%BACKUP_DIR%\\*" "%APP_DIR%\\" >> "%LOG_FILE%" 2>&1
-    goto cleanup
+    goto restore_backup
 )
 
 echo [%DATE% %TIME%] Update completed successfully >> "%LOG_FILE%"
+goto cleanup
+
+:restore_backup
+attrib -r -h -s "%APP_DIR%\\*" /s /d >NUL 2>&1
+del /f /s /q "%APP_DIR%\\*" >> "%LOG_FILE%" 2>&1
+for /d %%D in ("%APP_DIR%\\*") do rmdir /s /q "%%D" >> "%LOG_FILE%" 2>&1
+xcopy /e /i /h /y "%BACKUP_DIR%\\*" "%APP_DIR%\\" >> "%LOG_FILE%" 2>&1
 goto cleanup
 
 :portable_update
@@ -525,20 +557,37 @@ if [ "$UPDATE_MODE" = "bundle" ]; then
         log "Update completed successfully"
     fi
 else
-    # Standard directory mode
+    # Standard directory mode: atomic replace (move old aside, swap staged in).
+    # APP_DIR's contents are emptied before the staged tree is copied in, so files
+    # that were removed in the new version do NOT linger (an overlay copy would
+    # leave them behind and produce a mixed-version install). APP_DIR itself is
+    # kept so its path, shortcuts and installer registration stay valid.
     log "Creating backup..."
     rm -rf "$BACKUP_DIR"
     mkdir -p "$BACKUP_DIR"
     cp -a "$APP_DIR"/. "$BACKUP_DIR/" 2>> "$LOG_FILE"
 
-    log "Installing update..."
-    cp -a "$STAGING_DIR"/. "$APP_DIR/" 2>> "$LOG_FILE"
-
     if [ $? -ne 0 ]; then
-        log "Update failed, restoring backup..."
-        cp -a "$BACKUP_DIR"/. "$APP_DIR/" 2>> "$LOG_FILE"
+        log "Backup failed, leaving current install untouched"
     else
-        log "Update completed successfully"
+        log "Installing update (replacing app directory contents)..."
+        find "$APP_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {{}} + 2>> "$LOG_FILE"
+        # A half-emptied tree must NOT be copied onto (it would leave stale
+        # files), so an incomplete wipe is treated the same as a failed copy.
+        if [ -n "$(ls -A "$APP_DIR" 2>/dev/null)" ]; then
+            log "Could not empty app directory, restoring backup..."
+            find "$APP_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {{}} + 2>> "$LOG_FILE"
+            cp -a "$BACKUP_DIR"/. "$APP_DIR/" 2>> "$LOG_FILE"
+        else
+            cp -a "$STAGING_DIR"/. "$APP_DIR/" 2>> "$LOG_FILE"
+            if [ $? -ne 0 ]; then
+                log "Update failed, restoring backup..."
+                find "$APP_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {{}} + 2>> "$LOG_FILE"
+                cp -a "$BACKUP_DIR"/. "$APP_DIR/" 2>> "$LOG_FILE"
+            else
+                log "Update completed successfully"
+            fi
+        fi
     fi
 fi
 
