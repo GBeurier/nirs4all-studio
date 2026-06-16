@@ -635,6 +635,11 @@ jobs:
       - name: Smoke test offline all-in-one launch
         run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
+      - name: Smoke test self-update (download -> apply -> relaunch)
+        # CI-only smoke; non-blocking until validated via a workflow_dispatch run, then drop continue-on-error.
+        continue-on-error: true
+        run: xvfb-run -a node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
+
       - name: Generate checksum
         run: |
           FILE="${{ steps.archive.outputs.archive_path }}"
@@ -803,6 +808,11 @@ jobs:
 
       - name: Smoke test offline all-in-one launch
         run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
+
+      - name: Smoke test self-update (download -> apply -> relaunch)
+        # CI-only smoke; non-blocking until validated via a workflow_dispatch run, then drop continue-on-error.
+        continue-on-error: true
+        run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Cleanup keychain
         if: always()
@@ -978,6 +988,11 @@ jobs:
 
       - name: Smoke test offline all-in-one launch
         run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
+
+      - name: Smoke test self-update (download -> apply -> relaunch)
+        # CI-only smoke; non-blocking until validated via a workflow_dispatch run, then drop continue-on-error.
+        continue-on-error: true
+        run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Cleanup keychain
         if: always()
