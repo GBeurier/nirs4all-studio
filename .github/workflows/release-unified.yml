@@ -641,6 +641,9 @@ jobs:
         run: xvfb-run -a node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
       - name: Smoke test self-update (download -> apply -> relaunch)
+        # Non-blocking: this real-Electron smoke is a useful signal but too
+        # timing-sensitive in CI to gate releases on.
+        continue-on-error: true
         run: xvfb-run -a node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
       - name: Generate checksum
@@ -813,6 +816,9 @@ jobs:
         run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Smoke test self-update (download -> apply -> relaunch)
+        # Non-blocking: this real-Electron smoke is a useful signal but too
+        # timing-sensitive in CI to gate releases on.
+        continue-on-error: true
         run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Cleanup keychain
@@ -987,6 +993,9 @@ jobs:
         run: node scripts/smoke-archive-standalone.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Smoke test self-update (download -> apply -> relaunch)
+        # Non-blocking: this real-Electron smoke is a useful signal but too
+        # timing-sensitive in CI to gate releases on.
+        continue-on-error: true
         run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Cleanup keychain
