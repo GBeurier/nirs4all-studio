@@ -7,8 +7,6 @@
 <br><br>
 <img src="public/logo-cirad-en.jpg" width="260" alt="CIRAD Logo">
 
-# nirs4all Webapp
-
 **Unified NIRS Analysis Desktop Application**
 
 A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis, combining the power of the [nirs4all](https://github.com/GBeurier/nirs4all) Python library with a sleek React-based user interface.
@@ -27,7 +25,7 @@ A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis
 ---
 
 <div align="center">
-<img src="https://nirs4all.org/assets/playground-page.png" width="900" alt="Playground — Interactive spectral exploration">
+<img src="https://nirs4all.org/assets/screenshots_studio/playground-page.png" width="900" alt="Playground — Interactive spectral exploration">
 <br><em>Playground — Interactive spectral exploration with PCA, distributions, and preprocessing preview</em>
 </div>
 
@@ -255,31 +253,31 @@ The Electron main process automatically spawns the Python backend and manages it
 ## Screenshots
 
 <div align="center">
-<img src="https://nirs4all.org/assets/pipeline-page.png" width="900" alt="Pipeline Editor">
+<img src="https://nirs4all.org/assets/screenshots_studio/pipeline-page.png" width="900" alt="Pipeline Editor">
 <br><em>Pipeline Editor — Drag-and-drop builder with component library, validation, and hyperparameter tuning</em>
 </div>
 
 <br>
 
 <div align="center">
-<img src="https://nirs4all.org/assets/results-page.png" width="440" alt="Results & Model Comparison">
-<img src="https://nirs4all.org/assets/runs-page.png" width="440" alt="Runs Overview">
+<img src="https://nirs4all.org/assets/screenshots_studio/results-page.png" width="440" alt="Results & Model Comparison">
+<img src="https://nirs4all.org/assets/screenshots_studio/runs-page.png" width="440" alt="Runs Overview">
 <br><em>Left: Results with model ranking and CV scores — Right: Runs overview and monitoring</em>
 </div>
 
 <br>
 
 <div align="center">
-<img src="https://nirs4all.org/assets/inspector-after-refresh.jpg" width="440" alt="Inspector">
-<img src="https://nirs4all.org/assets/shap-page.png" width="440" alt="SHAP Analysis">
+<img src="https://nirs4all.org/assets/screenshots_studio/inspector-after-refresh.jpg" width="440" alt="Inspector">
+<img src="https://nirs4all.org/assets/screenshots_studio/shap-page.png" width="440" alt="SHAP Analysis">
 <br><em>Left: Inspector — prediction analysis and model diagnostics — Right: SHAP variable importance</em>
 </div>
 
 <br>
 
 <div align="center">
-<img src="https://nirs4all.org/assets/synthesis-page.png" width="440" alt="Spectra Synthesis">
-<img src="https://nirs4all.org/assets/predictions-page.png" width="440" alt="Predictions">
+<img src="https://nirs4all.org/assets/screenshots_studio/synthesis-page.png" width="440" alt="Spectra Synthesis">
+<img src="https://nirs4all.org/assets/screenshots_studio/predictions-page.png" width="440" alt="Predictions">
 <br><em>Left: Spectra Synthesis — realistic NIR data generation — Right: Predictions analysis</em>
 </div>
 
