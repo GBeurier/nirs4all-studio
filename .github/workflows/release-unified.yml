@@ -48,6 +48,21 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       skip_all_in_one: ${{ steps.flags.outputs.skip_all_in_one }}
       skip_docker: ${{ steps.flags.outputs.skip_docker }}
+      # Tag-push releases are public and must fail closed on signing.
+      # workflow_dispatch is used for smoke testing (often without secrets) and
+      # is allowed to build unsigned. `push` only fires on tags here (see `on:`).
+      is_tag_release: ${{ github.event_name == 'push' }}
+      # Signing detection computed once, here, from `secrets` — which can be read
+      # in a step `env:` but never in a job-level `if:`. Build jobs consume these
+      # via needs.prepare.outputs.* (reliable, unlike the old per-step env probe).
+      has_windows_signing: ${{ steps.signing.outputs.has_windows_signing }}
+      has_macos_signing: ${{ steps.signing.outputs.has_macos_signing }}
+      # The git ref every build job checks out. Tag push -> the triggering tag;
+      # workflow_dispatch -> inputs.tag when it already exists as a ref, else the
+      # triggering commit SHA (so a smoke-test tag that does not exist yet still
+      # checks out a valid, buildable ref instead of failing or silently building
+      # the wrong branch).
+      checkout_ref: ${{ steps.checkout_ref.outputs.checkout_ref }}
     steps:
       - uses: actions/checkout@v4
 
@@ -76,6 +91,61 @@ jobs:
           echo "- **Version**: $VERSION" >> $GITHUB_STEP_SUMMARY
           echo "- **Prerelease**: $PRERELEASE" >> $GITHUB_STEP_SUMMARY
 
+      - name: Resolve checkout ref
+        id: checkout_ref
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # Tag push: GITHUB_REF already points at the tag.
+            REF="$GITHUB_REF"
+            echo "Tag push: build jobs check out triggering ref $REF"
+          elif git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            # workflow_dispatch against an existing tag: build that tag.
+            REF="refs/tags/${TAG}"
+            echo "Dispatch: tag '${TAG}' exists; build jobs check out $REF"
+          else
+            # workflow_dispatch against a tag that does not exist yet (smoke test):
+            # fall back to the triggering commit so checkout always succeeds and
+            # we never silently build the wrong branch under the tag's version.
+            REF="$GITHUB_SHA"
+            echo "::warning::Dispatch tag '${TAG}' does not exist as a ref; build jobs will use the triggering commit $GITHUB_SHA (version is still stamped as ${{ steps.version.outputs.version }})."
+          fi
+          echo "checkout_ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Resolved checkout SHA: $(git rev-parse "$REF" 2>/dev/null || echo '(resolves in build jobs)')"
+          echo "- **Checkout ref**: \`$REF\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Detect signing secrets
+        id: signing
+        env:
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$WINDOWS_CERT_BASE64" ] && [ -n "$WINDOWS_CERT_PASSWORD" ]; then
+            echo "has_windows_signing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_windows_signing=false" >> "$GITHUB_OUTPUT"
+            echo "Windows signing secrets incomplete (WINDOWS_CERT_BASE64 / WINDOWS_CERT_PASSWORD)."
+          fi
+
+          macos_missing=()
+          for secret_name in APPLE_CERT_BASE64 APPLE_CERT_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!secret_name}" ]; then
+              macos_missing+=("$secret_name")
+            fi
+          done
+          if [ ${#macos_missing[@]} -eq 0 ]; then
+            echo "has_macos_signing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_macos_signing=false" >> "$GITHUB_OUTPUT"
+            echo "macOS signing/notarization secrets missing: ${macos_missing[*]}"
+          fi
+
       - name: Determine build flags
         id: flags
         run: |
@@ -91,6 +161,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -161,6 +233,15 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Guard — require Windows signing secrets on tag releases
+        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_windows_signing != 'true'
+        shell: bash
+        run: |
+          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Windows code-signing secrets (WINDOWS_CERT_BASE64, WINDOWS_CERT_PASSWORD). Refusing to publish an unsigned installer. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
+          exit 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -191,7 +272,7 @@ jobs:
 
       # ── Windows Code Signing (Phase 4 — P4-3) ──
       - name: Import code signing certificate
-        if: env.WINDOWS_CERT_BASE64 != ''
+        if: needs.prepare.outputs.has_windows_signing == 'true'
         env:
           WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
@@ -206,6 +287,26 @@ jobs:
         run: npx electron-builder --config electron-builder.installer.yml --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify Authenticode signature
+        if: needs.prepare.outputs.has_windows_signing == 'true'
+        shell: pwsh
+        run: |
+          $artifacts = Get-ChildItem release -Include *.exe -Recurse
+          if (-not $artifacts) {
+            Write-Error "No .exe artifacts found to verify."
+            exit 1
+          }
+          $failed = $false
+          foreach ($exe in $artifacts) {
+            $sig = Get-AuthenticodeSignature $exe.FullName
+            Write-Host "$($exe.Name): $($sig.Status)"
+            if ($sig.Status -ne 'Valid') {
+              Write-Host "::error::Authenticode signature for $($exe.Name) is '$($sig.Status)', expected 'Valid'."
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
 
       - name: Clean up certificate
         if: always()
@@ -239,6 +340,14 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Guard — require macOS signing/notarization secrets on tag releases
+        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
+        run: |
+          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Apple signing/notarization secrets (APPLE_CERT_BASE64, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID). Refusing to publish an unsigned/un-notarized DMG. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
+          exit 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -270,7 +379,7 @@ jobs:
 
       # ── macOS Code Signing (Phase 4 — P4-1) ──
       - name: Import Apple Developer certificate
-        if: env.APPLE_CERT_BASE64 != ''
+        if: needs.prepare.outputs.has_macos_signing == 'true'
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -304,27 +413,55 @@ jobs:
 
       # ── macOS Notarization (Phase 4 — P4-2) ──
       - name: Notarize macOS DMG
-        if: env.APPLE_ID != ''
+        if: needs.prepare.outputs.has_macos_signing == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           DMG=$(ls release/*.dmg 2>/dev/null | head -1)
-          if [ -n "$DMG" ]; then
-            echo "Notarizing $DMG..."
-            xcrun notarytool submit "$DMG" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --wait --timeout 600
-
-            echo "Stapling notarization ticket..."
-            xcrun stapler staple "$DMG"
-            echo "Notarization complete."
-          else
-            echo "::warning::No DMG found to notarize"
+          if [ -z "$DMG" ]; then
+            echo "::error::No DMG found to notarize."
+            exit 1
           fi
+          echo "Notarizing $DMG..."
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 600
+
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple "$DMG"
+          echo "Notarization complete."
+
+      - name: Verify signature and notarization
+        if: needs.prepare.outputs.has_macos_signing == 'true'
+        run: |
+          DMG=$(ls release/*.dmg 2>/dev/null | head -1)
+          if [ -z "$DMG" ]; then
+            echo "::error::No DMG found to verify."
+            exit 1
+          fi
+          echo "Validating stapled ticket on $DMG..."
+          xcrun stapler validate "$DMG"
+          echo "Gatekeeper assessment of the disk image..."
+          spctl --assess --type open --context context:primary-signature -vv "$DMG"
+
+          echo "Mounting DMG to verify the app bundle..."
+          MOUNT_DIR="$(mktemp -d)"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_DIR"
+          APP=$(ls -d "$MOUNT_DIR"/*.app 2>/dev/null | head -1)
+          if [ -z "$APP" ]; then
+            hdiutil detach "$MOUNT_DIR" || true
+            echo "::error::No .app found inside the mounted DMG."
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl --assess --type exec -vv "$APP"
+          xcrun stapler validate "$APP"
+          hdiutil detach "$MOUNT_DIR"
+          echo "Signature + notarization verified."
 
       - name: Cleanup keychain
         if: always()
@@ -358,6 +495,14 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Guard — require macOS signing/notarization secrets on tag releases
+        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
+        run: |
+          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Apple signing/notarization secrets (APPLE_CERT_BASE64, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID). Refusing to publish an unsigned/un-notarized DMG. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
+          exit 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -389,7 +534,7 @@ jobs:
 
       # ── macOS Code Signing (Phase 4 — P4-1) ──
       - name: Import Apple Developer certificate
-        if: env.APPLE_CERT_BASE64 != ''
+        if: needs.prepare.outputs.has_macos_signing == 'true'
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -420,27 +565,55 @@ jobs:
 
       # ── macOS Notarization (Phase 4 — P4-2) ──
       - name: Notarize macOS DMG
-        if: env.APPLE_ID != ''
+        if: needs.prepare.outputs.has_macos_signing == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           DMG=$(ls release/*.dmg 2>/dev/null | head -1)
-          if [ -n "$DMG" ]; then
-            echo "Notarizing $DMG..."
-            xcrun notarytool submit "$DMG" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --wait --timeout 600
-
-            echo "Stapling notarization ticket..."
-            xcrun stapler staple "$DMG"
-            echo "Notarization complete."
-          else
-            echo "::warning::No DMG found to notarize"
+          if [ -z "$DMG" ]; then
+            echo "::error::No DMG found to notarize."
+            exit 1
           fi
+          echo "Notarizing $DMG..."
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 600
+
+          echo "Stapling notarization ticket..."
+          xcrun stapler staple "$DMG"
+          echo "Notarization complete."
+
+      - name: Verify signature and notarization
+        if: needs.prepare.outputs.has_macos_signing == 'true'
+        run: |
+          DMG=$(ls release/*.dmg 2>/dev/null | head -1)
+          if [ -z "$DMG" ]; then
+            echo "::error::No DMG found to verify."
+            exit 1
+          fi
+          echo "Validating stapled ticket on $DMG..."
+          xcrun stapler validate "$DMG"
+          echo "Gatekeeper assessment of the disk image..."
+          spctl --assess --type open --context context:primary-signature -vv "$DMG"
+
+          echo "Mounting DMG to verify the app bundle..."
+          MOUNT_DIR="$(mktemp -d)"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_DIR"
+          APP=$(ls -d "$MOUNT_DIR"/*.app 2>/dev/null | head -1)
+          if [ -z "$APP" ]; then
+            hdiutil detach "$MOUNT_DIR" || true
+            echo "::error::No .app found inside the mounted DMG."
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl --assess --type exec -vv "$APP"
+          xcrun stapler validate "$APP"
+          hdiutil detach "$MOUNT_DIR"
+          echo "Signature + notarization verified."
 
       - name: Cleanup keychain
         if: always()
@@ -475,6 +648,15 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Guard — require Windows signing secrets on tag releases
+        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_windows_signing != 'true'
+        shell: bash
+        run: |
+          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Windows code-signing secrets (WINDOWS_CERT_BASE64, WINDOWS_CERT_PASSWORD). Refusing to publish an unsigned all-in-one archive. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
+          exit 1
 
       - name: Checkout nirs4all library
         uses: actions/checkout@v4
@@ -506,7 +688,7 @@ jobs:
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Import code signing certificate
-        if: env.WINDOWS_CERT_BASE64 != ''
+        if: needs.prepare.outputs.has_windows_signing == 'true'
         env:
           WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
@@ -575,6 +757,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
 
       - name: Checkout nirs4all library
         uses: actions/checkout@v4
@@ -679,6 +863,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Guard — require macOS signing/notarization secrets on tag releases
+        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
+        run: |
+          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Apple signing/notarization secrets (APPLE_CERT_BASE64, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID). Refusing to publish an unsigned/un-notarized all-in-one archive. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
+          exit 1
 
       - name: Checkout nirs4all library
         uses: actions/checkout@v4
@@ -769,6 +961,10 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # cpu-darwin-x64 ships a checked-in constraints file; fail the bake if
+          # it is ever missing so this distributable stays reproducible. Read by
+          # bake-standalone-backend.cjs (inherited through build-archive-standalone.cjs).
+          NIRS4ALL_REQUIRE_CONSTRAINTS: '1'
 
       - name: Notarize, staple, and rebuild final ZIP
         if: steps.notarization.outputs.enabled == 'true'
@@ -856,6 +1052,14 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Guard — require macOS signing/notarization secrets on tag releases
+        if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
+        run: |
+          echo "::error::Tag release ${{ needs.prepare.outputs.tag }} requires Apple signing/notarization secrets (APPLE_CERT_BASE64, APPLE_CERT_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID). Refusing to publish an unsigned/un-notarized all-in-one archive. Add the secrets or run via workflow_dispatch for an unsigned smoke build."
+          exit 1
 
       - name: Checkout nirs4all library
         uses: actions/checkout@v4
@@ -1048,6 +1252,8 @@ jobs:
             cache_to: type=gha,mode=min,scope=gpu-cuda,timeout=5m,ignore-error=true
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -1118,6 +1324,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
