@@ -18,6 +18,7 @@ extensions = [
     'sphinx_copybutton',
     'sphinx_design',
     'sphinxcontrib.mermaid',
+    'sphinxext.opengraph',
 ]
 
 templates_path = ['_templates']
@@ -50,8 +51,13 @@ myst_substitutions = {
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 
-html_logo = '_static/nirs4all_logo.png'
-html_favicon = '_static/nirs4all_logo.png'
+# Logo (dark variant — the rtd nav header is dark) + favicon
+html_logo = '_static/brand/horizontal-dark.svg'
+html_favicon = '_static/brand/favicon.ico'
+
+# -- OpenGraph / social cards ----------------------------------------------
+ogp_site_url = 'https://nirs4all-studio.readthedocs.io/en/latest/'
+ogp_image = 'https://nirs4all-studio.readthedocs.io/en/latest/_static/brand/og.png'
 
 html_theme_options = {
     'logo_only': False,

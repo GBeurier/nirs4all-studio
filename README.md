@@ -1,7 +1,11 @@
 <div align="center">
 
-<img src="public/nirs4all_logo.png" width="300" alt="NIRS4ALL Logo">
-<img src="public/logo-cirad-en.jpg" width="300" alt="CIRAD Logo">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/horizontal-dark.svg">
+  <img src="assets/brand/horizontal.svg" width="380" alt="nirs4all-studio">
+</picture>
+<br><br>
+<img src="public/logo-cirad-en.jpg" width="260" alt="CIRAD Logo">
 
 # nirs4all Webapp
 
