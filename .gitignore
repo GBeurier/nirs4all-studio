@@ -52,3 +52,26 @@ docs/user-guide/build/
 # local code-intelligence index + rtk state
 .codegraph/
 .rtk/
+
+# --- untracked build/process docs (kept locally, 2026-06-16) ---
+backlog.md
+docs/BACKLOG-pipeline-params-2026-04-18.md
+docs/DIAGNOSIS-pipeline-params-2026-04-18.md
+docs/UPDATE_STATUS.md
+docs/python-environment-refactor-plan-2026-04-17.md
+docs/python-environment-review-2026-04-17.md
+docs/venv-configuration-audit-2026-02-25.md
+docs/_internals/api_cleaning.md
+docs/_internals/playground_redesign.md
+docs/_internals/playground_performance_review.md
+docs/_internals/python-env-cleanup-audit.md
+docs/_internals/review-backend.md
+docs/_internals/review-config-cicd.md
+docs/_internals/review-electron.md
+docs/_internals/review-frontend.md
+docs/_internals/review-synthesis.md
+docs/_internals/webapp_api_library_discrepancy_review.md
+docs/_internals/wizard_refactor.md
+docs/_internals/backlog_hybrid_storage_webapp_adaptation.md
+docs/_internals/archive/
+docs/audit/
