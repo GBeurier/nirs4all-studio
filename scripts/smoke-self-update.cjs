@@ -33,6 +33,11 @@ const archiveSmoke = require("./smoke-archive-standalone.cjs");
 const DEFAULT_APP_NAME = "nirs4all Studio";
 const DEFAULT_TIMEOUT_MS = 240000;
 const SENTINEL_NAME = "UPDATE_SMOKE_SENTINEL";
+// A file that exists ONLY in the installed bundle and NOT in the update asset.
+// An atomic-replace updater must delete it; a merge-overlay updater leaves it,
+// producing a mixed-version install. This is the validator for the atomic-replace
+// fix (audit #4) — it may legitimately fail until that fix lands.
+const STALE_NAME = "UPDATE_SMOKE_STALE";
 // Far above any real version so the fixture release always reads as "newer".
 const FIXTURE_VERSION = "999.0.0";
 
@@ -167,6 +172,13 @@ function sentinelInstalledPath(layout, platformId) {
   return platformId === "darwin"
     ? path.join(layout.appRoot, "Contents", "Resources", SENTINEL_NAME)
     : path.join(layout.appRoot, "resources", SENTINEL_NAME);
+}
+
+/** Path of the stale-file marker inside the installed bundle (mirrors the sentinel layout). */
+function staleInstalledPath(layout, platformId) {
+  return platformId === "darwin"
+    ? path.join(layout.appRoot, "Contents", "Resources", STALE_NAME)
+    : path.join(layout.appRoot, "resources", STALE_NAME);
 }
 
 /**
@@ -444,6 +456,7 @@ async function smokeSelfUpdate(rawConfig) {
   const sandbox2 = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-selfupdate-s2-"));
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-selfupdate-asset-"));
   const sentinelPath = sentinelInstalledPath(layout, config.platform);
+  const stalePath = staleInstalledPath(layout, config.platform);
 
   let fixture;
   let child;
@@ -452,8 +465,21 @@ async function smokeSelfUpdate(rawConfig) {
   console.log(`Executable:             ${layout.executablePath}`);
 
   try {
+    // Clear any stale marker left by a previous interrupted run BEFORE building the
+    // asset — on macOS the asset is a `cp -a` of the whole .app, so a leftover marker
+    // would otherwise be baked into the asset and survive even a correct atomic
+    // replace, falsely failing Phase 2b.
+    fs.rmSync(stalePath, { force: true });
+
     const asset = buildUpdateAsset(layout, config.platform, config.appName, workDir);
     console.log(`Update asset:           ${asset.assetName} (${asset.assetSize} bytes)`);
+
+    // Plant a stale marker in the INSTALLED bundle only — after the asset is built
+    // so the asset never contains it. A correct (atomic-replace) updater swaps the
+    // whole tree and the stale file disappears; a merge-overlay updater leaves it.
+    fs.writeFileSync(stalePath, "self-update smoke stale file\n");
+    console.log(`Planted stale marker:   ${stalePath}`);
+
     fixture = await startFixtureServer(asset);
     console.log(`Fixture release server: ${fixture.base}`);
 
@@ -475,6 +501,20 @@ async function smokeSelfUpdate(rawConfig) {
     await waitForSentinel(sentinelPath, config.timeoutMs);
     console.log("Updater replaced files in place (sentinel present).");
 
+    // Phase 2b: the stale file (present in the install, absent from the asset)
+    // must be GONE — proving the updater replaces the tree atomically rather than
+    // merging onto it. The sentinel write and the stale removal are the same swap,
+    // so once the sentinel is visible the stale file's fate is already decided.
+    // NOTE: this assertion is expected to FAIL until the atomic-replace fix (audit
+    // #4) lands on directory-mode (Linux/Windows); it is the validator for that fix.
+    if (fs.existsSync(stalePath)) {
+      throw new Error(
+        `stale file survived the update (overlay merge, not atomic replace): ${stalePath}. `
+        + "Expected the updater to remove files absent from the new version.",
+      );
+    }
+    console.log("Stale file removed by the update (atomic replace).");
+
     // Phase 3: boot the UPDATED bundle ourselves, offline, on a distinct
     // port + sandbox. A clean boot of the on-disk bundle is the real "the app
     // works after the update" signal — and on macOS it proves the ditto-zipped
@@ -483,7 +523,12 @@ async function smokeSelfUpdate(rawConfig) {
     const env2 = archiveSmoke.buildSandboxEnv(config.platform, sandbox2, port2);
     env2.SENTRY_DSN = "";
     child = await launchHealthy(layout, env2, port2, config.timeoutMs, "post-update boot");
-    console.log("Self-update smoke passed: files replaced and the updated bundle boots.");
+
+    // Phase 3b: the UPDATED bundle must be able to `import nirs4all` (Phase 2 /
+    // ml_ready), not just boot FastAPI — this proves the updated runtime is whole,
+    // catching a broken editable/partial nirs4all install that ships green.
+    await archiveSmoke.waitForMlReady(port2, config.timeoutMs, child, []);
+    console.log("Self-update smoke passed: files replaced, stale file gone, and the updated bundle imports nirs4all.");
   } finally {
     await quitApp(child);
     if (fixture) {
@@ -521,5 +566,6 @@ module.exports = {
   driveUpdate,
   parseArgs,
   sentinelInstalledPath,
+  staleInstalledPath,
   startFixtureServer,
 };

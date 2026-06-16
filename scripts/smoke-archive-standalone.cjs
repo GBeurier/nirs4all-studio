@@ -21,6 +21,10 @@ const packageJson = require("../package.json");
 const DEFAULT_APP_NAME = "nirs4all Studio";
 const DEFAULT_TIMEOUT_MS = 180000;
 const DEFAULT_POLL_INTERVAL_MS = 1000;
+// Importing nirs4all (Phase 2 / ml_ready) is slow — the full ML stack cold-import
+// can take 60-120s — so the ml-ready probe gets its own generous budget instead
+// of sharing the (shorter) health budget.
+const DEFAULT_ML_READY_TIMEOUT_MS = 180000;
 
 function printHelp() {
   console.log(`Usage:
@@ -447,6 +451,49 @@ async function waitForReady(port, timeoutMs, child, outputBuffer) {
   throw new Error(`Timed out waiting for ${healthUrl}.\n${outputBuffer.join("\n")}`);
 }
 
+/**
+ * Assert the bundled runtime can actually `import nirs4all` (Phase 2 / ml_ready),
+ * not just boot FastAPI (Phase 1 / core_ready). A broken editable install ships a
+ * runtime that is "healthy" but cannot import nirs4all — every ML page is then
+ * dead for the user. /api/system/env-coherence reports `core_ready` true only once
+ * Phase 1 is done AND `missing_core_packages` (fastapi/uvicorn/nirs4all) is empty,
+ * so we poll it until both hold. On timeout we surface the last payload so a missing
+ * nirs4all is obvious in CI logs.
+ */
+async function waitForMlReady(port, timeoutMs, child, outputBuffer) {
+  const deadline = Date.now() + timeoutMs;
+  const coherenceUrl = `http://127.0.0.1:${port}/api/system/env-coherence`;
+  let lastPayload = null;
+
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(`App exited before ml-ready check completed (code ${child.exitCode}).\n${outputBuffer.join("\n")}`);
+    }
+
+    try {
+      const response = await fetch(coherenceUrl, { signal: AbortSignal.timeout(5000) });
+      if (response.ok) {
+        const payload = await response.json();
+        lastPayload = payload;
+        const missingCore = Array.isArray(payload.missing_core_packages) ? payload.missing_core_packages : [];
+        if (payload.core_ready === true && missingCore.length === 0) {
+          return payload;
+        }
+      }
+    } catch {
+      // Ignore transient connection errors while ML deps load.
+    }
+
+    await delay(DEFAULT_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(
+    `Timed out waiting for ml-ready at ${coherenceUrl} `
+    + `(import nirs4all may be broken in the bundled runtime). `
+    + `Last env-coherence: ${JSON.stringify(lastPayload)}\n${outputBuffer.join("\n")}`,
+  );
+}
+
 function pushOutput(buffer, label, chunk) {
   const text = chunk.toString().trim();
   if (!text) {
@@ -540,9 +587,16 @@ async function smokeArchiveStandalone(rawConfig) {
       throw new Error(`Expected bundled python executable, got ${pythonExecutable || "undefined"}`);
     }
 
+    // Phase 2: the bundled runtime must be able to `import nirs4all`, not just
+    // boot FastAPI — otherwise a broken editable install ships green and breaks
+    // only when a user runs a pipeline.
+    const mlReadyTimeoutMs = Math.max(config.timeoutMs, DEFAULT_ML_READY_TIMEOUT_MS);
+    const coherencePayload = await waitForMlReady(port, mlReadyTimeoutMs, child, outputBuffer);
+
     console.log("Smoke check passed.");
     console.log(`  runtime_mode: ${runtimeMode}`);
     console.log(`  python:       ${pythonExecutable}`);
+    console.log(`  ml_ready:     core packages present (${JSON.stringify(coherencePayload.missing_core_packages)} missing)`);
   } finally {
     await terminateApp(child);
     if (!config.keepSandbox && !config.sandboxRoot) {
@@ -578,4 +632,5 @@ module.exports = {
   resolveLaunchLayout,
   smokeArchiveStandalone,
   waitForChildExit,
+  waitForMlReady,
 };
