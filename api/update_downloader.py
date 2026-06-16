@@ -167,12 +167,33 @@ class UpdateDownloader:
                         # Keep partial file for future resume
                         return False, "Download cancelled", None
 
+            # A finished transfer must match the announced size — a dropped
+            # connection or captive-portal/partial-mirror response otherwise
+            # reports success and only fails later during extraction/apply.
+            actual_size = os.path.getsize(download_path)
+            if self.expected_size and actual_size != self.expected_size:
+                return (
+                    False,
+                    f"Download size mismatch: got {actual_size} bytes, expected {self.expected_size}. Partial download saved for resume.",
+                    None,
+                )
             self._report_progress(50, "Download complete")
             return True, "Download complete", download_path
 
         except urllib.error.HTTPError as e:
             if e.code == 416:
-                # Range not satisfiable — file might already be complete
+                # Range not satisfiable — the local file is already at least as
+                # long as the server content. Only treat it as complete when it
+                # actually matches the expected size; otherwise it is corrupt.
+                if self.expected_size and (
+                    not os.path.exists(download_path)
+                    or os.path.getsize(download_path) != self.expected_size
+                ):
+                    return (
+                        False,
+                        f"Resumed file does not match expected size {self.expected_size} bytes.",
+                        None,
+                    )
                 self._report_progress(50, "Download complete")
                 return True, "Download complete", download_path
             return False, f"Download failed with status {e.code}. Partial download saved for resume.", None

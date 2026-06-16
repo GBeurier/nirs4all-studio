@@ -114,14 +114,19 @@ describe("smoke-self-update", () => {
   });
 
   it.skipIf(process.platform === "win32")(
-    "builds a minimal overlay tar.gz asset with the executable + a sentinel",
+    "builds a full-tree tar.gz asset (whole install + a sentinel, not a minimal overlay)",
     () => {
       const root = makeTempDir("n4a-su-asset-");
       const appRoot = path.join(root, "nirs4all-studio");
-      fs.mkdirSync(path.join(appRoot, "resources"), { recursive: true });
+      fs.mkdirSync(path.join(appRoot, "resources", "backend"), { recursive: true });
       const exe = path.join(appRoot, "nirs4all-stub");
       fs.writeFileSync(exe, "#!/bin/sh\nexit 0\n");
       fs.chmodSync(exe, 0o755);
+      // A file that is NEITHER the executable NOR the sentinel: it must survive
+      // into the asset, proving a FULL-tree copy. The directory-mode apply now
+      // replaces the whole app dir atomically, so a minimal overlay (which would
+      // drop this file) leaves the relaunched app without its runtime/backend.
+      fs.writeFileSync(path.join(appRoot, "resources", "backend", "runtime.bin"), "runtime payload");
       const workDir = makeTempDir("n4a-su-work-");
 
       const asset = smoke.buildUpdateAsset({ appRoot, executablePath: exe }, "linux", "nirs4all Studio", workDir);
@@ -135,6 +140,8 @@ describe("smoke-self-update", () => {
       const top = path.join(extract, "nirs4all-studio");
       expect(fs.existsSync(path.join(top, "nirs4all-stub"))).toBe(true);
       expect(fs.existsSync(path.join(top, "resources", "UPDATE_SMOKE_SENTINEL"))).toBe(true);
+      // The whole tree came along — not just the exe + sentinel.
+      expect(fs.readFileSync(path.join(top, "resources", "backend", "runtime.bin"), "utf8")).toBe("runtime payload");
     },
   );
 

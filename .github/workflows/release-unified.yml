@@ -458,8 +458,10 @@ jobs:
             exit 1
           fi
           codesign --verify --deep --strict --verbose=2 "$APP"
+          # The notarization ticket is stapled to the DMG (above), not to the
+          # inner .app, so `stapler validate "$APP"` would always fail here.
+          # spctl assesses the app against the notary record (online) instead.
           spctl --assess --type exec -vv "$APP"
-          xcrun stapler validate "$APP"
           hdiutil detach "$MOUNT_DIR"
           echo "Signature + notarization verified."
 
@@ -610,8 +612,10 @@ jobs:
             exit 1
           fi
           codesign --verify --deep --strict --verbose=2 "$APP"
+          # The notarization ticket is stapled to the DMG (above), not to the
+          # inner .app, so `stapler validate "$APP"` would always fail here.
+          # spctl assesses the app against the notary record (online) instead.
           spctl --assess --type exec -vv "$APP"
-          xcrun stapler validate "$APP"
           hdiutil detach "$MOUNT_DIR"
           echo "Signature + notarization verified."
 
@@ -1436,6 +1440,10 @@ jobs:
           NOTES
 
       - name: Create GitHub Release
+        # Publish ONLY on a real tag push. workflow_dispatch is for build/smoke
+        # validation (often a not-yet-existent tag) — it must never publish a
+        # GitHub release. All build + smoke jobs above still run on dispatch.
+        if: needs.prepare.outputs.is_tag_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}

@@ -21,6 +21,13 @@ from api.updates import staging
 from api.updates.app_updates import ApplyUpdateRequest, apply_webapp_update
 
 
+@pytest.fixture(autouse=True)
+def _clear_bundled_runtime_env(monkeypatch):
+    """The all-in-one (bundled-runtime-available) signal must not leak from the
+    host environment into these capability tests; each test sets it explicitly."""
+    monkeypatch.delenv("NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE", raising=False)
+
+
 def test_capability_portable_writable_is_in_place(monkeypatch):
     monkeypatch.setattr(staging, "_is_portable_runtime", lambda: True)
     monkeypatch.setattr(staging, "_probe_app_dir_writable", lambda: True)
@@ -74,6 +81,25 @@ def test_capability_bundled_read_only_is_installer(monkeypatch):
     assert cap["can_apply_in_place"] is False
     assert cap["channel"] == "installer"
     assert cap["reason"] == "read_only_location"
+
+
+def test_capability_all_in_one_with_custom_runtime_is_in_place(monkeypatch):
+    """An all-in-one bundle whose user selected a custom Python runtime emits
+    ``runtime_mode == "managed"`` (see electron/backend-manager.ts), but it is
+    still an all-in-one build with no OS installer to route updates through.
+    The bundled-runtime-available flag must keep it eligible for in-place update,
+    otherwise these users hit a dead end (installer channel with no installer
+    asset). Regression guard for the runtime-mode-vs-install-kind conflation."""
+    monkeypatch.setattr(staging, "_is_portable_runtime", lambda: False)
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    monkeypatch.setenv("NIRS4ALL_RUNTIME_MODE", "managed")
+    monkeypatch.setenv("NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE", "true")
+    monkeypatch.setattr(staging, "_probe_app_dir_writable", lambda: True)
+    cap = staging.get_update_capability()
+    assert cap["can_apply_in_place"] is True
+    assert cap["channel"] == "in_place"
+    assert cap["reason"] == "bundled"
+    assert cap["install_kind"] == "all-in-one"
 
 
 def test_capability_managed_installer_is_installer_even_when_writable(monkeypatch):
