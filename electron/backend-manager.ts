@@ -21,7 +21,7 @@ const electron = (() => {
 })();
 const { BrowserWindow } = electron as Partial<typeof import("electron")>;
 
-const HEALTH_CHECK_TIMEOUT = 90000; // 90 seconds (first launch may need pip installs)
+const HEALTH_CHECK_TIMEOUT = 180000; // 180s — cold ML import on slower machines (e.g. Intel macOS) can exceed 90s on first launch
 const HEALTH_CHECK_INTERVAL = 500; // 500ms between retries
 const HEALTH_MONITOR_INTERVAL = 10000; // 10 seconds between periodic health checks
 const HEALTH_MONITOR_TIMEOUT = 30000; // 30 seconds for transient import / startup stalls
