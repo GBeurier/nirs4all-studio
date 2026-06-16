@@ -16,6 +16,8 @@ import os
 import shutil
 import ssl
 import stat
+import subprocess
+import sys
 import tarfile
 import urllib.error
 import urllib.request
@@ -218,7 +220,11 @@ class UpdateDownloader:
             if archive_name.endswith(".tar.gz") or archive_name.endswith(".tgz"):
                 await self._extract_tarball(archive_path, staging_dir)
             elif archive_name.endswith(".zip"):
-                await self._extract_zip(archive_path, staging_dir)
+                # On macOS, prefer `ditto` (the inverse of the `ditto -c -k` used
+                # to build the .app archive) so symlinks, xattrs, and the code
+                # signature survive. Fall back to the symlink-aware Python path.
+                if not (sys.platform == "darwin" and self._extract_zip_via_ditto(archive_path, staging_dir)):
+                    await self._extract_zip(archive_path, staging_dir)
             elif archive_name.endswith(".exe"):
                 # Portable executable — no extraction needed, stage with the expected name
                 self._report_progress(70, "Staging executable...")
@@ -349,6 +355,36 @@ class UpdateDownloader:
             return
 
         extracted_path.chmod(stat.S_IMODE(mode))
+
+    def _extract_zip_via_ditto(self, archive_path: Path, target_dir: Path) -> bool:
+        """Extract a zip with macOS ``ditto`` (the inverse of the ``ditto -c -k``
+        used to build the .app archive).
+
+        ``ditto`` preserves symlinks, extended attributes, and the code signature
+        more faithfully than Python's ``zipfile``. Returns ``False`` if ``ditto``
+        is unavailable or fails, so the caller falls back to the Python path.
+        """
+        ditto = shutil.which("ditto")
+        if not ditto:
+            return False
+
+        self._report_progress(60, "Extracting update (ditto)...")
+        try:
+            # `--rsrc` mirrors the build's `ditto -c -k --sequesterRsrc`, restoring
+            # resource forks / xattrs from the archive's AppleDouble sidecar.
+            subprocess.run(
+                [ditto, "-x", "-k", "--rsrc", str(archive_path), str(target_dir)],
+                check=True,
+                capture_output=True,
+            )
+            return True
+        except Exception as e:
+            logger.warning("ditto extraction failed, falling back to zipfile: %s", e)
+            # Remove any partial output so the zipfile fallback starts from a
+            # clean staging dir (ditto may have extracted some entries already).
+            shutil.rmtree(target_dir, ignore_errors=True)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            return False
 
 
 def _looks_like_macos_bundle_root(candidate: Path) -> bool:

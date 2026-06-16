@@ -112,3 +112,73 @@ def test_linux_accepts_all_in_one_zip_when_tarball_is_absent(monkeypatch):
 
     assert asset is not None
     assert asset["name"] == "nirs4all Studio-0.3.1-all-in-one-linux-x64.zip"
+
+
+def test_windows_installer_resolves_nsis_exe(monkeypatch):
+    monkeypatch.delenv("NIRS4ALL_PORTABLE_EXE", raising=False)
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+
+    manager = UpdateManager()
+    asset = manager._find_installer_asset(
+        [
+            _asset("nirs4all Studio-1.0.0-win-x64-portable.exe"),
+            _asset("nirs4all Studio-1.0.0-all-in-one-win-x64.zip"),
+            _asset("nirs4all Studio-1.0.0-win-x64.exe"),
+        ]
+    )
+
+    assert asset is not None
+    assert asset["name"] == "nirs4all Studio-1.0.0-win-x64.exe"
+
+
+def test_macos_installer_resolves_dmg_for_arch(monkeypatch):
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+
+    manager = UpdateManager()
+    asset = manager._find_installer_asset(
+        [
+            _asset("nirs4all Studio-1.0.0-mac-x64.dmg"),
+            _asset("nirs4all Studio-1.0.0-all-in-one-mac-arm64.zip"),
+            _asset("nirs4all Studio-1.0.0-mac-arm64.dmg"),
+        ]
+    )
+
+    assert asset is not None
+    assert asset["name"] == "nirs4all Studio-1.0.0-mac-arm64.dmg"
+
+
+def test_linux_installer_prefers_deb_by_default(monkeypatch):
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+
+    manager = UpdateManager()
+    asset = manager._find_installer_asset(
+        [
+            _asset("nirs4all Studio-1.0.0-linux-x64.AppImage"),
+            _asset("nirs4all Studio-1.0.0-linux-x64.deb"),
+            _asset("nirs4all Studio-1.0.0-all-in-one-linux-x64.tar.gz"),
+        ]
+    )
+
+    assert asset is not None
+    assert asset["name"].endswith(".deb")
+
+
+def test_linux_installer_resolves_appimage_when_running_appimage(monkeypatch):
+    monkeypatch.setenv("APPIMAGE", "/tmp/nirs4all.AppImage")
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+
+    manager = UpdateManager()
+    asset = manager._find_installer_asset(
+        [
+            _asset("nirs4all Studio-1.0.0-linux-x64.deb"),
+            _asset("nirs4all Studio-1.0.0-linux-x64.AppImage"),
+        ]
+    )
+
+    assert asset is not None
+    assert asset["name"].endswith(".AppImage")
