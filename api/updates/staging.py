@@ -59,13 +59,22 @@ def _path_is_writable(path: Path) -> bool:
         return False
 
 
+def _runtime_mode() -> str:
+    """Return the normalized runtime mode Electron/startup stamped on the env.
+
+    Values: ``development`` | ``managed`` (installer) | ``bundled`` (all-in-one)
+    | ``pyinstaller``. Empty when launched outside the desktop shell.
+    """
+    return str(os.environ.get("NIRS4ALL_RUNTIME_MODE", "")).strip().lower()
+
+
 def _install_kind() -> str:
     """Best-effort label for the current install layout (informational only)."""
     if _is_portable_runtime():
         return "portable"
     if os.environ.get("APPIMAGE"):
         return "appimage"
-    if os.environ.get("NIRS4ALL_RUNTIME_MODE") == "bundled":
+    if _runtime_mode() == "bundled":
         return "all-in-one"
     system = platform.system().lower()
     if system == "darwin":
@@ -77,44 +86,64 @@ def _install_kind() -> str:
     return "unknown"
 
 
-def get_update_capability() -> dict[str, Any]:
-    """Describe whether this build can apply a webapp update *in place*.
+def _probe_app_dir_writable() -> bool:
+    """Write-probe the directory the updater would replace in place.
 
-    In-place self-update only works for the portable build and for an
-    all-in-one archive extracted into a user-writable folder. OS-installed
-    builds (per-machine Windows, ``.deb``, AppImage, DMG in ``/Applications``)
-    cannot be replaced in place — the updater would need privileges it does not
-    have, or (AppImage) the target is a read-only FUSE mount. Those builds must
-    be updated by downloading their installer instead, so the UI redirects to
-    the release page and the download/apply endpoints refuse before the app
-    quits (otherwise the app would close and never relaunch).
+    On macOS the whole ``.app`` is replaced from its PARENT dir, so the parent
+    must be writable — the bundle's own contents being writable is not enough
+    (e.g. ``/Applications`` is not writable without admin rights).
     """
     from updater import get_app_directory
 
+    try:
+        app_dir = get_app_directory()
+        probe_dir = app_dir.parent if platform.system().lower() == "darwin" else app_dir
+        return _path_is_writable(probe_dir)
+    except Exception:
+        return False
+
+
+def get_update_capability() -> dict[str, Any]:
+    """Describe whether this build can apply a webapp update *in place*.
+
+    In-place self-update is only correct for runtimes that own their whole tree
+    and carry no OS-level installer/uninstaller state to keep in sync: the
+    ``portable`` build and the ``bundled`` all-in-one archive. An installer
+    runtime (``managed``: per-machine/per-user NSIS, ``.deb``, DMG into
+    ``/Applications``) must route to the installer channel **even when its
+    install dir happens to be writable** — overlaying an all-in-one archive on
+    top of it would desync the installer/uninstaller state, runtime model, and
+    shortcuts. AppImage runs from a read-only FUSE mount and is likewise
+    installer-only.
+
+    Even an in-place-capable runtime is refused when its target dir is not
+    actually writable (e.g. a portable build on a read-only USB stick / network
+    share), so the download/apply endpoints don't quit an app they cannot
+    relaunch.
+    """
     install_kind = _install_kind()
 
+    # Portable owns its whole folder, but a read-only mount can't be replaced.
     if _is_portable_runtime():
-        return {"can_apply_in_place": True, "channel": "in_place", "reason": "portable", "install_kind": install_kind}
+        if _probe_app_dir_writable():
+            return {"can_apply_in_place": True, "channel": "in_place", "reason": "portable", "install_kind": install_kind}
+        return {"can_apply_in_place": False, "channel": "installer", "reason": "read_only_location", "install_kind": install_kind}
 
     # AppImage runs from a read-only FUSE mount — never writable in place.
     if os.environ.get("APPIMAGE"):
         return {"can_apply_in_place": False, "channel": "installer", "reason": "appimage", "install_kind": install_kind}
 
-    try:
-        app_dir = get_app_directory()
-        # macOS replaces the whole .app from its PARENT dir
-        # (``rm -rf APP_DIR; cp -a staging APP_PARENT``), so the parent must be
-        # writable — the .app's own contents being writable is not enough
-        # (e.g. /Applications is not writable without admin rights).
-        probe_dir = app_dir.parent if platform.system().lower() == "darwin" else app_dir
-        writable = _path_is_writable(probe_dir)
-    except Exception:
-        writable = False
+    # The all-in-one archive owns its whole tree and can be overlaid in place,
+    # provided the location is writable.
+    if _runtime_mode() == "bundled":
+        if _probe_app_dir_writable():
+            return {"can_apply_in_place": True, "channel": "in_place", "reason": "bundled", "install_kind": install_kind}
+        return {"can_apply_in_place": False, "channel": "installer", "reason": "read_only_location", "install_kind": install_kind}
 
-    if writable:
-        return {"can_apply_in_place": True, "channel": "in_place", "reason": "writable", "install_kind": install_kind}
-
-    return {"can_apply_in_place": False, "channel": "installer", "reason": "read_only_location", "install_kind": install_kind}
+    # Everything else is an OS-managed installer build. Route to the installer
+    # channel regardless of writability — a writable per-user install dir does
+    # not make an in-place overlay safe.
+    return {"can_apply_in_place": False, "channel": "installer", "reason": "managed_install", "install_kind": install_kind}
 
 
 def _staging_entries(staging_dir: Path) -> list[Path]:

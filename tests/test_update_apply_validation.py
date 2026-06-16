@@ -18,7 +18,12 @@ def test_apply_update_rejects_installer_like_stage_for_installed_windows(monkeyp
 
     monkeypatch.delenv("NIRS4ALL_PORTABLE_EXE", raising=False)
     monkeypatch.delenv("NIRS4ALL_PORTABLE_ROOT", raising=False)
+    monkeypatch.delenv("APPIMAGE", raising=False)
     monkeypatch.setenv("NIRS4ALL_APP_EXE", "nirs4all Studio.exe")
+    # A writable all-in-one runtime passes the install-kind capability gate, so
+    # the request reaches the staged-layout validation we want to exercise here.
+    monkeypatch.setenv("NIRS4ALL_RUNTIME_MODE", "bundled")
+    monkeypatch.setattr(updates_module.staging, "_probe_app_dir_writable", lambda: True)
     monkeypatch.setattr(updates_module.platform, "system", lambda: "Windows")
     monkeypatch.setattr(updater, "get_staging_dir", lambda: staging_dir)
 

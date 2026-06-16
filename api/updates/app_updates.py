@@ -372,6 +372,42 @@ async def cancel_download(job_id: str) -> dict[str, Any]:
     }
 
 
+def _guard_staged_version_is_newer(staged_version: str | None, current_version: str | None) -> None:
+    """Refuse to apply a staged payload that is not strictly newer than current.
+
+    A leftover staged download (e.g. from a release that was later yanked, or a
+    re-run after the app already updated) must never downgrade or re-apply over
+    the running version. The download path always records the staged version, so
+    a real staged payload is always comparable; if either version is missing we
+    cannot prove the payload is stale and defer to the structural layout checks.
+    Comparison prefers ``packaging.version`` and falls back to a lexical string
+    compare (as the changelog endpoint does) when a version is unparseable or
+    ``packaging`` is unavailable.
+    """
+    if not staged_version or not current_version:
+        return
+
+    try:
+        from packaging import version as pkg_version
+        from packaging.version import InvalidVersion
+
+        try:
+            is_stale = pkg_version.parse(staged_version) <= pkg_version.parse(current_version)
+        except InvalidVersion:
+            is_stale = staged_version <= current_version
+    except ImportError:
+        is_stale = staged_version <= current_version
+
+    if is_stale:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"The staged update ({staged_version}) is not newer than the running version "
+                f"({current_version}); refusing to apply. Re-download the latest update."
+            ),
+        )
+
+
 class ApplyUpdateRequest(BaseModel):
     """Request to apply a staged update."""
     confirm: bool = True
@@ -421,6 +457,12 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> dict[str, Any]:
     staging_dir = get_staging_dir()
     layout = _u._validate_staged_update_layout(staging_dir)
 
+    # Refuse a stale/downgrade staged payload — also BEFORE asking the app to
+    # quit — so a leftover or yanked download can't replace a newer running app.
+    metadata = _read_staged_update_metadata(staging_dir) or {}
+    current_version = get_update_manager().get_webapp_version()
+    _guard_staged_version_is_newer(metadata.get("version"), current_version)
+
     try:
         # Create the updater script
         script_path, _ = create_updater_script(
@@ -432,9 +474,8 @@ async def apply_webapp_update(request: ApplyUpdateRequest) -> dict[str, Any]:
         # process dies during launch. The next launch reconciles running version
         # against the staged one to detect a silent apply failure.
         try:
-            metadata = _read_staged_update_metadata(staging_dir) or {}
             record_apply_attempt(
-                from_version=get_update_manager().get_webapp_version(),
+                from_version=current_version,
                 to_version=metadata.get("version"),
                 update_mode=layout.mode,
             )

@@ -96,10 +96,19 @@ class UpdateDownloader:
         resume_offset = 0
         if download_path.exists():
             resume_offset = download_path.stat().st_size
-            # If size matches expected, treat as already complete
-            if self.expected_size and resume_offset >= self.expected_size:
-                self._report_progress(50, "Download already complete")
-                return True, "Download complete", download_path
+            if self.expected_size:
+                # Accept a cached file only when its size EXACTLY matches the
+                # expected size — checksum verification still runs downstream.
+                # A file larger than expected is corrupt/wrong (e.g. a
+                # captive-portal HTML body or a stale mismatched asset appended
+                # past the end), so discard it and restart rather than resume
+                # from a poisoned tail or accept it outright.
+                if resume_offset == self.expected_size:
+                    self._report_progress(50, "Download already complete")
+                    return True, "Download complete", download_path
+                if resume_offset > self.expected_size:
+                    download_path.unlink(missing_ok=True)
+                    resume_offset = 0
 
         try:
             if resume_offset > 0:
