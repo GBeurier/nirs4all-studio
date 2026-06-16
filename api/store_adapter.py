@@ -630,6 +630,94 @@ class StoreAdapter:
                 merged[key] += int(summary.get(key, 0) or 0)
         return merged
 
+    def _prediction_deletion_summary(self, result: Any = None, *, deleted_predictions: int | None = None) -> dict[str, Any]:
+        """Normalize old and new WorkspaceStore deletion return shapes."""
+        summary = {
+            "success": False,
+            "deleted_predictions": 0,
+            "deleted_arrays": 0,
+            "deleted_chains": 0,
+            "deleted_pipelines": 0,
+            "deleted_artifacts": 0,
+            "updated_chains": 0,
+        }
+        if isinstance(result, dict):
+            for key in summary:
+                if key == "success":
+                    summary[key] = bool(result.get(key))
+                else:
+                    summary[key] = int(result.get(key, 0) or 0)
+            if not result.get("success"):
+                summary["success"] = bool(summary["deleted_predictions"])
+            return summary
+
+        if deleted_predictions is None:
+            if isinstance(result, bool):
+                deleted_predictions = 1 if result else 0
+            elif isinstance(result, int):
+                deleted_predictions = result
+            else:
+                deleted_predictions = 0
+
+        summary["deleted_predictions"] = max(0, int(deleted_predictions or 0))
+        summary["deleted_arrays"] = summary["deleted_predictions"]
+        summary["success"] = bool(summary["deleted_predictions"]) or result is True
+        return summary
+
+    def _delete_predictions_matching(
+        self,
+        *,
+        prediction_ids: list[str] | None = None,
+        chain_id: str | None = None,
+        fold_id: str | None = None,
+        dataset_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Call the best available WorkspaceStore prediction-deletion API."""
+        filters: dict[str, Any] = {}
+        if prediction_ids is not None:
+            filters["prediction_ids"] = prediction_ids
+        if chain_id is not None:
+            filters["chain_id"] = chain_id
+        if fold_id is not None:
+            filters["fold_id"] = fold_id
+        if dataset_name is not None:
+            filters["dataset_name"] = dataset_name
+
+        delete_matching = getattr(self._store, "delete_predictions_matching", None)
+        if not callable(delete_matching):
+            delete_matching = getattr(self._store, "_delete_predictions_matching", None)
+        if callable(delete_matching):
+            return self._prediction_deletion_summary(delete_matching(**filters))
+
+        if prediction_ids is not None:
+            delete_prediction = getattr(self._store, "delete_prediction", None)
+            if callable(delete_prediction):
+                summaries = [
+                    self._prediction_deletion_summary(delete_prediction(prediction_id))
+                    for prediction_id in prediction_ids
+                ]
+                return self._merge_prediction_deletion_summaries(summaries)
+
+        if chain_id is not None and fold_id is not None:
+            delete_group = getattr(self._store, "_delete_prediction_group", None)
+            if callable(delete_group):
+                return self._prediction_deletion_summary(delete_group(chain_id, fold_id))
+
+        if chain_id is not None and fold_id is None and dataset_name is None:
+            delete_chain = getattr(self._store, "_delete_chain_predictions", None)
+            if callable(delete_chain):
+                return self._prediction_deletion_summary(delete_chain(chain_id))
+
+        if dataset_name is not None and prediction_ids is None and chain_id is None and fold_id is None:
+            delete_dataset = getattr(self._store, "delete_dataset_predictions", None)
+            if callable(delete_dataset):
+                return self._prediction_deletion_summary(delete_dataset(dataset_name))
+
+        raise RuntimeError(
+            "WorkspaceStore does not expose a compatible prediction deletion API. "
+            "Update nirs4all to a version with delete_predictions_matching support."
+        )
+
     def _resolve_display_variant_chain_ids(self, chain_id: str) -> list[str]:
         """Return all sibling chains that back the same displayed model row.
 
@@ -703,7 +791,7 @@ class StoreAdapter:
 
     def delete_prediction(self, prediction_id: str) -> dict[str, Any]:
         """Delete one stored prediction row and clean up empty parents."""
-        summary = self._store.delete_predictions_matching(prediction_ids=[prediction_id])
+        summary = self._delete_predictions_matching(prediction_ids=[prediction_id])
         return {
             "success": bool(summary.get("deleted_predictions")),
             "scope": "prediction",
@@ -713,7 +801,7 @@ class StoreAdapter:
 
     def delete_prediction_group(self, chain_id: str, fold_id: str) -> dict[str, Any]:
         """Delete all prediction rows for a displayed chain/fold group."""
-        summary = self._store.delete_predictions_matching(chain_id=chain_id, fold_id=fold_id)
+        summary = self._delete_predictions_matching(chain_id=chain_id, fold_id=fold_id)
         return {
             "success": bool(summary.get("deleted_predictions")),
             "scope": "prediction_group",
@@ -732,7 +820,7 @@ class StoreAdapter:
         """
         chain_ids = self._resolve_display_variant_chain_ids(chain_id)
         summary = self._merge_prediction_deletion_summaries([
-            self._store.delete_predictions_matching(chain_id=resolved_chain_id)
+            self._delete_predictions_matching(chain_id=resolved_chain_id)
             for resolved_chain_id in chain_ids
         ])
         return {
@@ -744,7 +832,7 @@ class StoreAdapter:
 
     def delete_dataset_predictions(self, dataset_name: str) -> dict[str, Any]:
         """Delete all predictions for a dataset across the workspace."""
-        summary = self._store.delete_predictions_matching(dataset_name=dataset_name)
+        summary = self._delete_predictions_matching(dataset_name=dataset_name)
         return {
             "success": bool(summary.get("deleted_predictions")),
             "scope": "dataset",

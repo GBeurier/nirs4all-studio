@@ -46,9 +46,11 @@ _sentry_dsn = os.environ.get("SENTRY_DSN")
 if _sentry_dsn:
     try:
         import sentry_sdk
+        _app_version = os.environ.get("NIRS4ALL_APP_VERSION")
         sentry_sdk.init(
             dsn=_sentry_dsn,
             environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
+            release=f"nirs4all-studio@{_app_version}" if _app_version else os.environ.get("SENTRY_RELEASE"),
             send_default_pii=False,
             include_local_variables=False,
             include_source_context=False,
@@ -124,7 +126,7 @@ async def _shutdown_cleanup() -> None:
     try:
         from api.jobs.manager import job_manager
 
-        job_manager.shutdown(wait=False)
+        await job_manager.shutdown_async(wait=False)
         logger.info("Job manager shut down")
     except Exception as e:
         logger.warning("Error shutting down job manager: %s", e)

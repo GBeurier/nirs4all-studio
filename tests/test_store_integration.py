@@ -739,6 +739,50 @@ class TestStoreAdapter:
         assert result["deleted_predictions"] == 3
         mock_store.delete_predictions_matching.assert_called_once_with(chain_id="chain-cv")
 
+    def test_delete_prediction_group_uses_private_matching_api_on_legacy_store(self):
+        class LegacyStore:
+            def __init__(self):
+                self.calls = []
+
+            def _delete_predictions_matching(self, **kwargs):
+                self.calls.append(kwargs)
+                return {
+                    "success": True,
+                    "deleted_predictions": 2,
+                    "deleted_arrays": 2,
+                    "deleted_chains": 1,
+                    "deleted_pipelines": 0,
+                    "deleted_artifacts": 0,
+                    "updated_chains": 0,
+                }
+
+        legacy_store = LegacyStore()
+        adapter = self._make_adapter(legacy_store)
+
+        result = adapter.delete_prediction_group("chain-cv", "final")
+
+        assert result["success"] is True
+        assert result["deleted_predictions"] == 2
+        assert legacy_store.calls == [{"chain_id": "chain-cv", "fold_id": "final"}]
+
+    def test_delete_dataset_predictions_uses_legacy_dataset_delete_count(self):
+        class LegacyStore:
+            def __init__(self):
+                self.deleted_dataset = None
+
+            def delete_dataset_predictions(self, dataset_name):
+                self.deleted_dataset = dataset_name
+                return 4
+
+        legacy_store = LegacyStore()
+        adapter = self._make_adapter(legacy_store)
+
+        result = adapter.delete_dataset_predictions("corn")
+
+        assert result["success"] is True
+        assert result["deleted_predictions"] == 4
+        assert legacy_store.deleted_dataset == "corn"
+
     def test_context_manager_calls_close(self):
         mock_store = MagicMock()
         adapter = self._make_adapter(mock_store)
