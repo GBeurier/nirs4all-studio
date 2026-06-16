@@ -659,7 +659,14 @@ async function main() {
 
   const resolvedLocalNirs4allPath = resolveLocalNirs4allPath();
   if (localNirs4all && resolvedLocalNirs4allPath) {
-    console.log("  Installing nirs4all from local source (editable)...");
+    // A distributable bundle must NOT install nirs4all editable: an editable
+    // install leaves path-dependent artifacts (__editable__*.pth / *_finder.py
+    // / direct_url.json) pointing at the build machine's checkout, so
+    // `import nirs4all` fails on the user's machine. Install a *copy*
+    // (non-editable) into the bundled runtime. Editable is kept only for
+    // non-bundled dev setups where live-editing the local source is wanted.
+    const editable = !useBundledBasePython;
+    console.log(`  Installing nirs4all from local source (${editable ? "editable" : "copy"})...`);
     await runCommandWithRetries(runtimePython, [
       "-m",
       "pip",
@@ -667,11 +674,11 @@ async function main() {
       "--prefer-binary",
       ...(useBundledBasePython ? ["--no-compile"] : []),
       ...(constraintsFile ? ["-c", constraintsFile] : []),
-      "-e",
+      ...(editable ? ["-e"] : []),
       resolvedLocalNirs4allPath,
     ], {}, {
       retries: isWindows ? 3 : 1,
-      label: `pip install -e ${resolvedLocalNirs4allPath}`,
+      label: `pip install ${editable ? "-e " : ""}${resolvedLocalNirs4allPath}`,
     });
   } else if (localNirs4all) {
     console.log(`  Warning: --local-nirs4all specified but no local source was found. Checked: ${getLocalNirs4allCandidates().join(", ")}`);
@@ -762,13 +769,28 @@ async function main() {
   if (compileTargets.length === 0) {
     console.log("  No compile targets for this build mode");
   } else {
-    if (isStandaloneBundledRuntimeMode(buildMode)) {
-      console.log("  Compiling backend source only for the immutable bundled runtime...");
-    } else {
-      console.log("  Compiling .py -> .pyc for all packages and backend source...");
-    }
+    console.log(
+      isStandaloneBundledRuntimeMode(buildMode)
+        ? "  Compiling backend source..."
+        : "  Compiling .py -> .pyc for all packages and backend source...",
+    );
     await runCommand(runtimePython, ["-m", "compileall", "-q", ...compileTargets]);
     console.log("  Bytecode pre-compilation complete");
+  }
+
+  // The bundled runtime is pip-installed with --no-compile, so its third-party
+  // packages (fastapi/pydantic/nirs4all/...) ship without .pyc and compile on
+  // first import — a major cause of slow first launch (notably Intel macOS).
+  // Pre-compile the whole runtime here. Best-effort: a single odd .py in some
+  // dependency must not fail the bake.
+  if (isStandaloneBundledRuntimeMode(buildMode) && fs.existsSync(pythonDir)) {
+    console.log("  Pre-compiling the bundled runtime (third-party packages)...");
+    try {
+      await runCommand(runtimePython, ["-m", "compileall", "-q", "-j", "0", pythonDir]);
+      console.log("  Runtime bytecode pre-compilation complete");
+    } catch (err) {
+      console.log(`  Warning: runtime pre-compile reported errors (non-fatal): ${err.message}`);
+    }
   }
   console.log("");
 
