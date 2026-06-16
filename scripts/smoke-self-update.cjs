@@ -288,11 +288,27 @@ async function postJson(url, body) {
 
 /** Drive the backend through check -> download -> apply over HTTP. */
 async function driveUpdate(baseUrl, timeoutMs) {
-  await postJson(`${baseUrl}/api/updates/check`);
-
-  const info = await getJson(`${baseUrl}/api/updates/webapp/download-info`);
-  if (!info.update_available) {
-    throw new Error("fixture release was not seen as an available update");
+  // The in-app GitHub check can transiently fail under CI load (short HTTP
+  // timeout), so the fixture release may not be seen on the first try. Re-run
+  // the forced check until it is, bounded by the timeout. The last
+  // download-info is included in the error to tell a failed fetch
+  // (latest_version null) from a version-comparison miss (latest set).
+  const checkDeadline = Date.now() + Math.min(timeoutMs, 120000);
+  let info = {};
+  for (;;) {
+    try {
+      await postJson(`${baseUrl}/api/updates/check`);
+      info = await getJson(`${baseUrl}/api/updates/webapp/download-info`);
+    } catch {
+      info = {};
+    }
+    if (info.update_available) {
+      break;
+    }
+    if (Date.now() > checkDeadline) {
+      throw new Error(`fixture release was not seen as an available update after retries; last download-info=${JSON.stringify(info)}`);
+    }
+    await delay(5000);
   }
   if (info.can_apply_in_place === false) {
     throw new Error(`backend refused in-place update (channel=${info.update_channel})`);
