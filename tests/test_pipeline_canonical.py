@@ -871,3 +871,24 @@ def test_variant_expansion_returns_fully_expanded_canonical_variants(monkeypatch
     assert len(variants) == count_combinations(payload["pipeline"])
     assert variants
     assert all(count_combinations(variant.steps) == 1 for variant in variants)
+
+
+@pytest.mark.parametrize(
+    "chart_step",
+    [
+        {"id": "n1", "type": "utility", "name": "Chart"},
+        {"id": "n1", "type": "utility", "name": "Chart", "subType": ""},
+        {"id": "n1", "type": "utility", "name": "Chart", "subType": "Chart"},
+    ],
+)
+def test_utility_chart_without_usable_subtype_is_treated_as_chart(chart_step):
+    # Regression (Sentry NIRS4ALL-STUDIO-6T): a "Chart" utility node that reaches
+    # canonical conversion with a missing, empty, or mis-cased subType must be
+    # converted as a chart, not leak into the strict class-path resolver and
+    # raise "Could not resolve class path for utility step 'Chart'".
+    canonical = editor_to_canonical([chart_step])
+
+    assert len(canonical) == 1
+    entry = canonical[0]
+    key = entry if isinstance(entry, str) else next(iter(entry))
+    assert key == "chart_2d"

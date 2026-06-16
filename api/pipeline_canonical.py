@@ -2192,10 +2192,15 @@ def _convert_editor_step_to_canonical(step: dict[str, Any]) -> Any:
         if sub_type == "sequential":
             return _serialize_editor_steps(step.get("children") or [])
 
-    if step_type == "utility" and sub_type:
-        if sub_type == "chart":
+    if step_type == "utility":
+        # subType is the canonical discriminator, but editor steps can reach
+        # here with it missing, empty, or mis-cased (e.g. a "Chart" node saved
+        # without subType). Fall back to the node name so utility steps never
+        # leak into the strict class-path resolver below.
+        utility_kind = (sub_type or step.get("name") or "").strip().lower()
+        if utility_kind == "chart":
             return _convert_editor_chart_to_canonical(step)
-        if sub_type == "comment":
+        if utility_kind == "comment":
             return {"_comment": str(_ensure_mapping_payload(step.get("params")).get("text") or "")}
 
     if step_type == "model":
