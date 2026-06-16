@@ -221,6 +221,8 @@ async def get_webapp_download_info() -> dict[str, Any]:
         "download_size_bytes": webapp_info.download_size_bytes,
         "release_notes": webapp_info.release_notes,
         "release_url": webapp_info.release_url,
+        "installer_download_url": webapp_info.installer_download_url,
+        "installer_asset_name": webapp_info.installer_asset_name,
         "can_apply_in_place": capability["can_apply_in_place"],
         "update_channel": capability["channel"],
         "install_kind": capability["install_kind"],

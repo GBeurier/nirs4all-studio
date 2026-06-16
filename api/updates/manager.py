@@ -110,6 +110,9 @@ class WebappUpdateInfo(BaseModel):
     asset_name: str | None = None
     checksum_sha256: str | None = None
     is_prerelease: bool = False
+    # For builds that can't update in place: the matching native installer asset.
+    installer_download_url: str | None = None
+    installer_asset_name: str | None = None
 
 
 class Nirs4allUpdateInfo(BaseModel):
@@ -335,6 +338,8 @@ class UpdateManager:
         info.download_size_bytes = cached.get("download_size_bytes")
         info.checksum_sha256 = cached.get("checksum_sha256")
         info.is_prerelease = cached.get("is_prerelease", False)
+        info.installer_download_url = cached.get("installer_download_url")
+        info.installer_asset_name = cached.get("installer_asset_name")
         info.update_available = self._compare_versions(
             info.current_version,
             info.latest_version,
@@ -461,6 +466,13 @@ class UpdateManager:
                     assets, info.asset_name
                 )
 
+            # Resolve the native installer asset too, so builds that can't update
+            # in place can be pointed straight at the right download.
+            installer_asset = self._find_installer_asset(assets)
+            if installer_asset:
+                info.installer_download_url = installer_asset.get("browser_download_url")
+                info.installer_asset_name = installer_asset.get("name")
+
             # Check if update available
             info.update_available = self._compare_versions(
                 current_version, info.latest_version
@@ -478,6 +490,8 @@ class UpdateManager:
                 "download_size_bytes": info.download_size_bytes,
                 "checksum_sha256": info.checksum_sha256,
                 "is_prerelease": info.is_prerelease,
+                "installer_download_url": info.installer_download_url,
+                "installer_asset_name": info.installer_asset_name,
             }
             self._save_cache()
 
@@ -612,6 +626,56 @@ class UpdateManager:
             for asset in sorted(assets, key=_rank_asset):
                 if _matches_asset(asset, ext, require_arch=False):
                     return asset
+
+        return None
+
+    def _find_installer_asset(self, assets: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """Find the native OS installer asset for the current platform.
+
+        The inverse of ``_find_platform_asset``: it selects the installer that
+        ``_find_platform_asset`` deliberately excludes (NSIS ``.exe``, ``.dmg``,
+        ``.deb``, ``.AppImage``), so a build that can't update in place can be
+        pointed straight at the right download instead of the release page.
+        """
+        system = platform.system().lower()
+        machine = platform.machine().lower()
+
+        if system == "windows":
+            extensions = [".exe"]
+        elif system == "darwin":
+            extensions = [".dmg"]
+        elif system == "linux":
+            extensions = [".appimage"] if os.environ.get("APPIMAGE") else [".deb", ".appimage"]
+        else:
+            return None
+
+        os_keywords = {
+            "windows": ["win", "windows"],
+            "darwin": ["mac", "macos", "darwin", "osx"],
+            "linux": ["linux"],
+        }.get(system, [])
+
+        arch_keywords: list[str] = []
+        if machine in ("x86_64", "amd64"):
+            arch_keywords = ["x64", "x86_64", "amd64"]
+        elif machine in ("aarch64", "arm64"):
+            arch_keywords = ["arm64", "aarch64"]
+        all_arch_tokens = ("x64", "x86_64", "amd64", "arm64", "aarch64")
+
+        for extension in extensions:
+            for asset in assets:
+                name = asset.get("name", "").lower()
+                if not name.endswith(extension):
+                    continue
+                if not any(kw in name for kw in os_keywords):
+                    continue
+                # Reject a different architecture, but accept arch-less names.
+                if arch_keywords and any(tok in name for tok in all_arch_tokens) and not any(ak in name for ak in arch_keywords):
+                    continue
+                # The NSIS installer must not be the portable or all-in-one .exe.
+                if extension == ".exe" and any(marker in name for marker in ("portable", "all-in-one", "all_in_one", "allinone")):
+                    continue
+                return asset
 
         return None
 

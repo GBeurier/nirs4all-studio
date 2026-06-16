@@ -225,14 +225,16 @@ export function UpdatesSection() {
   // DMG) must be updated via their installer; default true so web/dev keep the
   // in-app flow when the backend reports no capability.
   const canApplyInPlace = status?.update_capability?.can_apply_in_place ?? true;
-  const webappReleaseUrl = status?.webapp?.release_url ?? null;
-  const openReleasePage = () => {
-    if (!webappReleaseUrl) return;
+  // Prefer the resolved native installer (.exe/.dmg/.deb/.AppImage); fall back
+  // to the release page when it couldn't be resolved.
+  const installerUrl = status?.webapp?.installer_download_url ?? status?.webapp?.release_url ?? null;
+  const openInstaller = () => {
+    if (!installerUrl) return;
     const electronApi = (window as Record<string, unknown>).electronApi as
       | { openExternal?: (u: string) => Promise<void> }
       | undefined;
-    if (electronApi?.openExternal) void electronApi.openExternal(webappReleaseUrl);
-    else window.open(webappReleaseUrl, "_blank", "noopener,noreferrer");
+    if (electronApi?.openExternal) void electronApi.openExternal(installerUrl);
+    else window.open(installerUrl, "_blank", "noopener,noreferrer");
   };
   const hasNirs4allUpdate = status?.nirs4all?.update_available ?? false;
   const hasAnyUpdate = hasWebappUpdate || hasNirs4allUpdate;
@@ -361,8 +363,8 @@ export function UpdatesSection() {
                 . You can install it manually from the release page.
               </div>
               <div className="flex gap-2">
-                {webappReleaseUrl && (
-                  <Button size="sm" variant="outline" onClick={openReleasePage}>
+                {installerUrl && (
+                  <Button size="sm" variant="outline" onClick={openInstaller}>
                     <ExternalLink className="mr-2 h-4 w-4" />
                     Get installer
                   </Button>
@@ -430,7 +432,7 @@ export function UpdatesSection() {
             {/* Update available — installer-only build: redirect to the release page.
                 Shown even if a stale staged update exists, so the only CTA is the safe one. */}
             {hasWebappUpdate && !canApplyInPlace && !updateDownload.isDownloading && (
-              <Button size="sm" variant="outline" onClick={openReleasePage} disabled={!webappReleaseUrl}>
+              <Button size="sm" variant="outline" onClick={openInstaller} disabled={!installerUrl}>
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Get installer
               </Button>
