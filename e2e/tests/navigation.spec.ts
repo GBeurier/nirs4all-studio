@@ -101,7 +101,11 @@ test.describe('Navigation', () => {
     await expect(page.getByRole('heading', { name: /settings/i })).toBeVisible({ timeout: 30000 });
 
     await page.goto('/datasets', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: /datasets/i })).toBeVisible({ timeout: 30000 });
+    // The /datasets page renders more than one heading matching /datasets/i
+    // (page title + dataset-card headings), so scope to the first like the
+    // DatasetsPage object does (e2e/pages/datasets.page.ts) — a bare match trips
+    // Playwright strict mode ("resolved to 2 elements").
+    await expect(page.getByRole('heading', { name: /datasets/i }).first()).toBeVisible({ timeout: 30000 });
 
     await page.goto('/pipelines', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: 'Pipelines', exact: true })).toBeVisible({ timeout: 30000 });
