@@ -4,6 +4,7 @@ System API routes for nirs4all webapp.
 This module provides FastAPI routes for system health and information.
 """
 
+import importlib
 import json
 import os
 import platform
@@ -408,62 +409,37 @@ async def system_build():
     }
 
 
+_CAPABILITY_MODULES = (
+    "nirs4all",
+    "tensorflow",
+    "torch",
+    "jax",
+    "shap",
+    "umap",
+    "autogluon",
+)
+
+
+def _module_importable(name: str) -> bool:
+    """Return True if an optional module imports cleanly.
+
+    Any import-time failure means the capability is not usable, so it is
+    reported as unavailable rather than allowed to surface. This deliberately
+    catches more than ImportError: an installed-but-incompatible dependency can
+    raise at import (e.g. a library touching ``numpy.dtypes.StringDType`` on a
+    pre-2.0 NumPy), and that must not 500 the capabilities endpoint.
+    """
+    try:
+        importlib.import_module(name)
+        return True
+    except Exception:
+        return False
+
+
 @router.get("/system/capabilities")
 async def system_capabilities():
     """Get available capabilities based on installed packages."""
-    capabilities = {
-        "nirs4all": False,
-        "tensorflow": False,
-        "torch": False,
-        "jax": False,
-        "shap": False,
-        "umap": False,
-        "autogluon": False,
-    }
-
-    # Check each package
-    try:
-        import nirs4all  # noqa: F401 (availability probe)
-        capabilities["nirs4all"] = True
-    except ImportError:
-        pass
-
-    try:
-        import tensorflow  # noqa: F401 (availability probe)
-        capabilities["tensorflow"] = True
-    except ImportError:
-        pass
-
-    try:
-        import torch  # noqa: F401 (availability probe)
-        capabilities["torch"] = True
-    except ImportError:
-        pass
-
-    try:
-        import jax  # noqa: F401 (availability probe)
-        capabilities["jax"] = True
-    except ImportError:
-        pass
-
-    try:
-        import shap  # noqa: F401 (availability probe)
-        capabilities["shap"] = True
-    except ImportError:
-        pass
-
-    try:
-        import umap  # noqa: F401 (availability probe)
-        capabilities["umap"] = True
-    except ImportError:
-        pass
-
-    try:
-        import autogluon  # noqa: F401 (availability probe)
-        capabilities["autogluon"] = True
-    except ImportError:
-        pass
-
+    capabilities = {name: _module_importable(name) for name in _CAPABILITY_MODULES}
     return {"capabilities": capabilities}
 
 

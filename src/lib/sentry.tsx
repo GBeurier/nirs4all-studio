@@ -21,7 +21,48 @@ function stripUrlQuery(value: unknown): unknown {
   return value.split("?")[0].split("#")[0];
 }
 
-function sanitizeSentryEvent(event: Sentry.Event): Sentry.Event | null {
+/**
+ * True for unhandled rejections that are just an unawaited API-error envelope.
+ *
+ * The renderer's API client rejects with a plain `{ detail, status }` object.
+ * When such a rejection isn't awaited (e.g. a fire-and-forget probe), the
+ * browser surfaces it as an unhandled rejection — but the app keeps working,
+ * so it is non-actionable noise rather than a crash. Genuine `Error`s and
+ * React render failures are unaffected.
+ */
+export function isUnhandledApiErrorRejection(event: Sentry.Event, hint?: Sentry.EventHint): boolean {
+  const values = event.exception?.values ?? [];
+  const isUnhandledRejection = values.some(
+    (v) => v.mechanism?.type === "onunhandledrejection" || v.mechanism?.handled === false,
+  );
+  if (!isUnhandledRejection) return false;
+
+  const original = hint?.originalException;
+  // A genuine Error is actionable even if it carries detail/status — keep it.
+  if (original instanceof Error) return false;
+  if (
+    original
+    && typeof original === "object"
+    && "detail" in original
+    && "status" in original
+  ) {
+    return true;
+  }
+
+  // Fallback when the original value isn't retained: match Sentry's synthetic
+  // "promise rejection captured with keys: detail, status" message.
+  return values.some(
+    (v) =>
+      typeof v.value === "string"
+      && /promise rejection/i.test(v.value)
+      && v.value.includes("detail")
+      && v.value.includes("status"),
+  );
+}
+
+function sanitizeSentryEvent(event: Sentry.Event, hint?: Sentry.EventHint): Sentry.Event | null {
+  if (isUnhandledApiErrorRejection(event, hint)) return null;
+
   delete event.user;
 
   if (event.request) {

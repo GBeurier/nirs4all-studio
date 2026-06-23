@@ -67,6 +67,26 @@ def is_benign_job_notification_shutdown_event(event: dict[str, Any]) -> bool:
     )
 
 
+def is_pipeline_execution_failure_event(event: dict[str, Any]) -> bool:
+    """Return True for expected pipeline/step execution failures.
+
+    nirs4all logs run and step failures on its own loggers while executing a
+    pipeline in-process (invalid user configs, model/data mismatches, bad
+    hyperparameters, NaNs, …). The studio's run worker logs the same class of
+    failure under ``api.runs``. Every one of these is already surfaced to the
+    user as a failed run (status, error message, logs) — none are studio
+    defects, so they must not be promoted to Sentry issues by the logging
+    integration. Genuine run-worker bugs use other ``api.runs`` messages and
+    still report normally.
+    """
+    logger_name = event.get("logger") or ""
+    if logger_name.startswith("nirs4all.pipeline.execution."):
+        return True
+    return logger_name == "api.runs" and _event_message(event).startswith(
+        "Pipeline execution error"
+    )
+
+
 def _strip_url_query(value: Any) -> Any:
     if not isinstance(value, str):
         return value
@@ -111,6 +131,8 @@ def backend_before_send(
     if is_benign_shutdown_event(event):
         return None
     if is_benign_job_notification_shutdown_event(event):
+        return None
+    if is_pipeline_execution_failure_event(event):
         return None
 
     _redact_sensitive_event_data(event)

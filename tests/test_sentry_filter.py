@@ -57,6 +57,49 @@ def test_backend_before_send_drops_job_notification_pending_task_logentry_messag
     assert backend_before_send(event, {}) is None
 
 
+def test_backend_before_send_drops_nirs4all_pipeline_execution_failure():
+    event = {
+        "logger": "nirs4all.pipeline.execution.orchestrator",
+        "logentry": {
+            "message": (
+                "Dataset 'spad' failed: Pipeline step 1 failed: estimator "
+                "requires y to be passed, but the target y is None"
+            ),
+        },
+    }
+
+    assert backend_before_send(event, {}) is None
+
+
+def test_backend_before_send_drops_run_worker_pipeline_execution_error():
+    event = {
+        "logger": "api.runs",
+        "logentry": {"message": "Pipeline execution error: %s"},
+    }
+
+    assert backend_before_send(event, {}) is None
+
+
+def test_backend_before_send_keeps_genuine_run_worker_error():
+    event = {
+        "logger": "api.runs",
+        "logentry": {"message": "Error saving run manifest: %s"},
+    }
+
+    assert backend_before_send(event, {}) == event
+
+
+def test_backend_before_send_keeps_run_postprocessing_failure():
+    # A failure after the pipeline trained is a studio defect, not an expected
+    # run outcome, and uses a distinct message so it stays reportable.
+    event = {
+        "logger": "api.runs",
+        "logentry": {"message": "Run result post-processing failed: %s"},
+    }
+
+    assert backend_before_send(event, {}) == event
+
+
 def test_backend_before_send_redacts_sensitive_payload_data():
     event = {
         "user": {"id": "local-user"},

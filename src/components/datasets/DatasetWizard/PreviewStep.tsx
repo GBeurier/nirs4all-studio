@@ -171,7 +171,7 @@ export function PreviewStep() {
       )}
 
       {/* Preview content */}
-      {preview && !loading && !error && (
+      {preview && preview.summary && !loading && !error && (
         <div className="grid grid-cols-2 gap-4">
           {/* Dataset Summary */}
           <Card>
