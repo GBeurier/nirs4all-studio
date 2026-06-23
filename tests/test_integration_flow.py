@@ -376,6 +376,25 @@ class TestSystemEndpoints:
         data = response.json()
         assert isinstance(data, dict)
 
+    def test_system_capabilities_survives_probe_import_error(self, client, monkeypatch):
+        """A probe import raising non-ImportError must not 500 the endpoint (issue 9S)."""
+        import api.system as system_mod
+
+        real_import = system_mod.importlib.import_module
+
+        def exploding_import(name, *args, **kwargs):
+            if name == "autogluon":
+                raise AttributeError(
+                    "module 'numpy.dtypes' has no attribute 'StringDType'"
+                )
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(system_mod.importlib, "import_module", exploding_import)
+
+        response = client.get("/api/system/capabilities")
+        assert response.status_code == 200
+        assert response.json()["capabilities"]["autogluon"] is False
+
     def test_system_status(self, client):
         """Test system status endpoint."""
         response = client.get("/api/system/status")

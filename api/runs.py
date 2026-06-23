@@ -663,6 +663,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                     f"Starting {pipeline.pipeline_name} on {dataset.dataset_name}...",
                 )
 
+                training_succeeded = False
                 try:
                     result = _execute_pipeline_training(
                         pipeline,
@@ -673,6 +674,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         store_run_id=shared_store_run_id,
                         should_stop=lambda: job.cancellation_requested,
                     )
+                    training_succeeded = True
 
                     if job.cancellation_requested:
                         # The in-flight pipeline ran to completion (no library
@@ -741,7 +743,14 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         pipeline.error_message = str(e)
                         pipeline.logs = pipeline.logs or []
                         pipeline.logs.append(f"[ERROR] {str(e)}")
-                        logger.error("Pipeline execution error: %s", e, exc_info=True)
+                        if training_succeeded:
+                            # The pipeline trained; the failure is in studio
+                            # post-processing (metrics shaping, job bookkeeping).
+                            # That is a studio defect, not an expected run
+                            # outcome — log it distinctly so it stays reportable.
+                            logger.error("Run result post-processing failed: %s", e, exc_info=True)
+                        else:
+                            logger.error("Pipeline execution error: %s", e, exc_info=True)
 
                 _save_run_manifest(run)
                 pipeline_index += 1

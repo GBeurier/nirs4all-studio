@@ -555,6 +555,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str = None):
 
     except WebSocketDisconnect:
         await ws_manager.disconnect(websocket)
+    except RuntimeError as e:
+        # Starlette raises RuntimeError when we receive/send on a socket the
+        # client already dropped mid-exchange ("WebSocket is not connected").
+        # The connection is gone; clean up quietly. This is normal client
+        # churn, not a studio defect, so it must not surface as an error.
+        logger.debug("WebSocket closed mid-exchange: %s", e)
+        await ws_manager.disconnect(websocket)
     except Exception as e:
         logger.error("WebSocket error: %s", e)
         await ws_manager.disconnect(websocket)

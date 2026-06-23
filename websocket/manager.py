@@ -255,7 +255,9 @@ class WebSocketManager:
             await websocket.send_text(message.to_json())
             return True
         except Exception as e:
-            logger.error("Error sending WebSocket message: %s", e)
+            # A failed send means the peer is already gone (disconnect race);
+            # drop the dead connection. Expected client churn, not an error.
+            logger.debug("Dropping WebSocket after failed send: %s", e)
             await self.disconnect(websocket)
             return False
 
