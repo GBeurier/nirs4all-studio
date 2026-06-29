@@ -246,10 +246,32 @@ class SQLQueryResponse(BaseModel):
 # ============================================================================
 
 
-def _get_store() -> Any:
-    """Get a WorkspaceStore for the current workspace (read-only queries).
+# The native results root inside a workspace (one ``<run_id>/`` native dir per dag-ml run).
+# Matches the nirs4all library default (``native_results._DEFAULT_RESULTS_ROOT``), so a future gated
+# cutover that runs with ``results_path=<workspace>/nirs4all_results`` lands exactly here.
+_NATIVE_RESULTS_DIRNAME = "nirs4all_results"
 
-    Raises HTTPException if no workspace is selected or store is unavailable.
+
+def _native_results_root(workspace_path: Path) -> Path | None:
+    """Return the workspace's native results root iff it holds at least one native run dir."""
+    root = workspace_path / _NATIVE_RESULTS_DIRNAME
+    if not root.is_dir():
+        return None
+    has_run = any(child.is_dir() and (child / "manifest.json").is_file() for child in root.iterdir())
+    return root if has_run else None
+
+
+def _get_store() -> Any:
+    """Get a results store for the current workspace (read-only queries).
+
+    Prefers the legacy SQLite/DuckDB :class:`WorkspaceStore` (unchanged for existing runs). When the
+    workspace has NO ``store.sqlite`` / ``store.duckdb`` but DOES hold a native results dir
+    (``nirs4all_results/<run_id>/``, the dag-ml on-disk format), falls back to a read-only
+    :class:`~api.native_results_adapter.NativeResultsAdapter` so Studio can still display those runs.
+    Both expose the same query surface (``query_chain_summaries`` / ``query_top_chains`` /
+    ``get_chain_predictions`` / prediction arrays / ``close``) the endpoints below consume.
+
+    Raises HTTPException if no workspace is selected or neither a store nor native results exist.
     """
     if not STORE_AVAILABLE:
         raise HTTPException(
@@ -262,13 +284,19 @@ def _get_store() -> Any:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
     workspace_path = Path(workspace.path)
-    if not (workspace_path / "store.sqlite").exists() and not (workspace_path / "store.duckdb").exists():
-        raise HTTPException(
-            status_code=404,
-            detail="No store found in workspace. Run a pipeline first.",
-        )
+    if (workspace_path / "store.sqlite").exists() or (workspace_path / "store.duckdb").exists():
+        return _get_workspace_store_cls()(workspace_path)
 
-    return _get_workspace_store_cls()(workspace_path)
+    native_root = _native_results_root(workspace_path)
+    if native_root is not None:
+        from .native_results_adapter import NativeResultsAdapter
+
+        return NativeResultsAdapter(native_root)
+
+    raise HTTPException(
+        status_code=404,
+        detail="No store found in workspace. Run a pipeline first.",
+    )
 
 
 def _get_workspace_path() -> Path:
