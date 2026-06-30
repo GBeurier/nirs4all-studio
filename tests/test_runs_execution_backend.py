@@ -1194,6 +1194,7 @@ def test_execute_run_job_tolerates_run_store_open_failure(monkeypatch, tmp_path,
         split_group_by=None,
         *,
         store_run_id=None,
+        engine=None,
         should_stop=None,
     ):
         training_calls.append(
@@ -1295,6 +1296,7 @@ def test_execute_run_job_tolerates_store_precreation_failure(monkeypatch, tmp_pa
         split_group_by=None,
         *,
         store_run_id=None,
+        engine=None,
         should_stop=None,
     ):
         training_store_run_ids.append(store_run_id)
@@ -1454,6 +1456,7 @@ def test_execute_run_job_clears_precreated_store_run_when_project_assignment_fai
         split_group_by=None,
         *,
         store_run_id=None,
+        engine=None,
         should_stop=None,
     ):
         training_store_run_ids.append(store_run_id)
