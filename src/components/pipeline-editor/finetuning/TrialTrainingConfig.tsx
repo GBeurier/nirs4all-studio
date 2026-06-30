@@ -43,7 +43,10 @@ export function TrialTrainingConfig({
   );
 
   // Get current trial training config
-  const trialConfig = config.trial_train_params ?? {};
+  const trialConfig = useMemo(
+    () => config.trial_train_params ?? {},
+    [config.trial_train_params]
+  );
 
   // Get used parameter names
   const usedParams = useMemo(() => {

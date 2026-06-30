@@ -216,9 +216,9 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
             />
             {showTooltip && (
               <Tooltip
-                content={({ active, payload }: { active?: boolean; payload?: Array<{ payload: ScatterDot }> }) => {
+                content={({ active, payload }) => {
                   if (!active || !payload || payload.length === 0) return null;
-                  const dot = payload[0]?.payload;
+                  const dot = payload[0]?.payload as ScatterDot | undefined;
                   if (!dot) return null;
                   return (
                     <div

@@ -10,66 +10,24 @@ import { Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useInspectorData } from '@/context/InspectorDataContext';
+import { useInspectorData } from '@/context/useInspectorDataContext';
+import {
+  addInspectorExpressionGroup,
+  addInspectorExpressionRule,
+  getInspectorExpressionOperatorForFieldChange,
+  getInspectorExpressionOperators,
+  INSPECTOR_EXPRESSION_FIELDS,
+  removeInspectorExpressionGroup,
+  removeInspectorExpressionRule,
+  updateInspectorExpressionGroup,
+  updateInspectorExpressionRule,
+} from '@/lib/inspector/expressionBuilder';
 import type {
   ExpressionField,
   ExpressionOperator,
   ExpressionCombinator,
-  ExpressionRule,
-  ExpressionGroup,
   GroupByExpressionConfig,
 } from '@/types/inspector';
-
-// Fields available for expressions
-const EXPRESSION_FIELDS: { value: ExpressionField; label: string; type: 'string' | 'number' }[] = [
-  { value: 'model_class', label: 'Model Class', type: 'string' },
-  { value: 'preprocessings', label: 'Preprocessing', type: 'string' },
-  { value: 'dataset_name', label: 'Dataset', type: 'string' },
-  { value: 'task_type', label: 'Task Type', type: 'string' },
-  { value: 'cv_val_score', label: 'CV Val Score', type: 'number' },
-  { value: 'cv_test_score', label: 'CV Test Score', type: 'number' },
-  { value: 'cv_train_score', label: 'CV Train Score', type: 'number' },
-  { value: 'final_test_score', label: 'Final Test', type: 'number' },
-  { value: 'final_train_score', label: 'Final Train', type: 'number' },
-  { value: 'cv_fold_count', label: 'Fold Count', type: 'number' },
-];
-
-const STRING_OPERATORS: { value: ExpressionOperator; label: string }[] = [
-  { value: 'eq', label: '=' },
-  { value: 'neq', label: '!=' },
-  { value: 'contains', label: 'contains' },
-  { value: 'not_contains', label: '!contains' },
-];
-
-const NUMBER_OPERATORS: { value: ExpressionOperator; label: string }[] = [
-  { value: 'eq', label: '=' },
-  { value: 'neq', label: '!=' },
-  { value: 'gt', label: '>' },
-  { value: 'lt', label: '<' },
-  { value: 'gte', label: '>=' },
-  { value: 'lte', label: '<=' },
-];
-
-function getFieldType(field: ExpressionField): 'string' | 'number' {
-  return EXPRESSION_FIELDS.find(f => f.value === field)?.type ?? 'string';
-}
-
-function getOperators(field: ExpressionField) {
-  return getFieldType(field) === 'number' ? NUMBER_OPERATORS : STRING_OPERATORS;
-}
-
-let nextId = 1;
-function uid(): string {
-  return `expr-${Date.now()}-${nextId++}`;
-}
-
-function createRule(): ExpressionRule {
-  return { id: uid(), field: 'model_class', operator: 'eq', value: '' };
-}
-
-function createGroup(): ExpressionGroup {
-  return { id: uid(), label: '', combinator: 'AND', rules: [createRule()] };
-}
 
 export function ExpressionBuilder() {
   const { expressionConfig, setExpressionConfig } = useInspectorData();
@@ -84,43 +42,34 @@ export function ExpressionBuilder() {
   );
 
   const addGroup = () => {
-    update(c => ({ groups: [...c.groups, createGroup()] }));
+    update(addInspectorExpressionGroup);
   };
 
   const removeGroup = (groupId: string) => {
-    update(c => ({ groups: c.groups.filter(g => g.id !== groupId) }));
+    update(c => removeInspectorExpressionGroup(c, groupId));
   };
 
-  const updateGroup = (groupId: string, partial: Partial<ExpressionGroup>) => {
-    update(c => ({
-      groups: c.groups.map(g => (g.id === groupId ? { ...g, ...partial } : g)),
-    }));
+  const updateGroup = (
+    groupId: string,
+    partial: Parameters<typeof updateInspectorExpressionGroup>[2],
+  ) => {
+    update(c => updateInspectorExpressionGroup(c, groupId, partial));
   };
 
   const addRule = (groupId: string) => {
-    update(c => ({
-      groups: c.groups.map(g =>
-        g.id === groupId ? { ...g, rules: [...g.rules, createRule()] } : g,
-      ),
-    }));
+    update(c => addInspectorExpressionRule(c, groupId));
   };
 
   const removeRule = (groupId: string, ruleId: string) => {
-    update(c => ({
-      groups: c.groups.map(g =>
-        g.id === groupId ? { ...g, rules: g.rules.filter(r => r.id !== ruleId) } : g,
-      ),
-    }));
+    update(c => removeInspectorExpressionRule(c, groupId, ruleId));
   };
 
-  const updateRule = (groupId: string, ruleId: string, partial: Partial<ExpressionRule>) => {
-    update(c => ({
-      groups: c.groups.map(g =>
-        g.id === groupId
-          ? { ...g, rules: g.rules.map(r => (r.id === ruleId ? { ...r, ...partial } : r)) }
-          : g,
-      ),
-    }));
+  const updateRule = (
+    groupId: string,
+    ruleId: string,
+    partial: Parameters<typeof updateInspectorExpressionRule>[3],
+  ) => {
+    update(c => updateInspectorExpressionRule(c, groupId, ruleId, partial));
   };
 
   return (
@@ -159,18 +108,18 @@ export function ExpressionBuilder() {
 
           {/* Rules */}
           {group.rules.map((rule) => {
-            const operators = getOperators(rule.field);
+            const operators = getInspectorExpressionOperators(rule.field);
             return (
               <div key={rule.id} className="flex items-center gap-1">
                 <Select
                   value={rule.field}
                   onValueChange={(v) => {
                     const newField = v as ExpressionField;
-                    const newType = getFieldType(newField);
-                    const oldType = getFieldType(rule.field);
-                    const newOp = newType !== oldType
-                      ? (newType === 'number' ? 'gt' : 'eq') as ExpressionOperator
-                      : rule.operator;
+                    const newOp = getInspectorExpressionOperatorForFieldChange(
+                      rule.field,
+                      newField,
+                      rule.operator,
+                    );
                     updateRule(group.id, rule.id, { field: newField, operator: newOp });
                   }}
                 >
@@ -178,7 +127,7 @@ export function ExpressionBuilder() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {EXPRESSION_FIELDS.map(f => (
+                    {INSPECTOR_EXPRESSION_FIELDS.map(f => (
                       <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
                     ))}
                   </SelectContent>

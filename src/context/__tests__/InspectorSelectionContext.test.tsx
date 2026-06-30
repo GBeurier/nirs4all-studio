@@ -14,14 +14,14 @@ import { createElement, type ReactNode } from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { InspectorSelectionProvider } from '../InspectorSelectionContext';
 import {
-  InspectorSelectionProvider,
   useInspectorSelection,
   useInspectorHover,
   type InspectorSelectionContextValue,
   type InspectorSelectionMode,
-} from '../InspectorSelectionContext';
-import type { InspectorHoverContextValue } from '../InspectorSelectionContext';
+  type InspectorHoverContextValue,
+} from '../useInspectorSelection';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;

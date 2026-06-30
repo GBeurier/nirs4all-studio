@@ -9,6 +9,11 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
+  clientStorageKeys,
+  readClientStorageString,
+  writeClientStorageString,
+} from '@/lib/clientStorage';
+import {
   type SpectraChartConfig,
   type SpectraViewMode,
   type OverlayStyle,
@@ -37,8 +42,6 @@ import {
   serializeConfig,
   deserializeConfig,
 } from './spectraConfig';
-
-const STORAGE_KEY = 'playground-spectra-chart-config';
 
 /**
  * Options for useSpectraChartConfig hook
@@ -131,7 +134,7 @@ export interface UseSpectraChartConfigResult {
  */
 function loadPersistedConfig(): SpectraChartConfig | null {
   try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
+    const stored = readClientStorageString(clientStorageKeys.playgroundSpectraChartConfig);
     if (stored) {
       return deserializeConfig(stored);
     }
@@ -146,7 +149,7 @@ function loadPersistedConfig(): SpectraChartConfig | null {
  */
 function persistConfig(config: SpectraChartConfig): void {
   try {
-    sessionStorage.setItem(STORAGE_KEY, serializeConfig(config));
+    writeClientStorageString(clientStorageKeys.playgroundSpectraChartConfig, serializeConfig(config));
   } catch (e) {
     console.warn('Failed to persist spectra chart config:', e);
   }

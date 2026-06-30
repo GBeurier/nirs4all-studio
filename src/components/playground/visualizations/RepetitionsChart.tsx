@@ -18,78 +18,31 @@
 
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import {
-  ScatterChart,
-  Scatter,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  Cell,
-  Tooltip,
-  ZAxis,
-  ReferenceLine,
-} from 'recharts';
-import {
-  Repeat,
-  Download,
-  Settings2,
-  AlertTriangle,
-  ArrowUpDown,
-  ZoomIn,
-  MousePointer2,
-  Monitor,
-  Zap,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import {
-  Tooltip as TooltipUI,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import { Badge } from '@/components/ui/badge';
-import { exportDataAsCSV } from '@/lib/chartExport';
-import {
-  CHART_THEME,
-  formatYValue,
-} from './chartConfig';
-import {
   type GlobalColorConfig,
   type ColorContext,
-  getWebGLSampleColor,
 } from '@/lib/playground/colorConfig';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection } from '@/context/useSelection';
 import type { RepetitionResult } from '@/types/playground';
 import type { UseSpectraChartConfigResult } from '@/lib/playground/useSpectraChartConfig';
 import type { DiffQuantile } from '@/lib/playground/spectraConfig';
-import { DiffModeControls } from './DiffModeControls';
-import { Separator } from '@/components/ui/separator';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
-import { computeRepetitionVariance } from '@/api/playground';
+  buildRepetitionQuantileValues,
+  buildRepetitionsPlotModel,
+  buildRepetitionsWebglData,
+  buildRepetitionsYDomain,
+  type RepetitionsPlotDataPoint,
+  type RepetitionsSortOption,
+} from '@/lib/playground/repetitionsChartData';
 import {
-  SelectionContainer,
-  type SelectionResult,
-} from '@/components/playground/SelectionTools';
-import {
-  computeSelectionAction,
-  computeAreaSelectionAction,
-  executeSelectionAction,
-  selectRechartsPointsInArea,
-  selectPointsInDataSpace,
-} from '@/lib/playground/selectionHandlers';
-import {
-  ScatterPureWebGL2D,
-  type DataBounds,
-} from './scatter';
+  buildRepetitionsColorContext,
+  getRepetitionsPointColor,
+} from '@/lib/playground/repetitionsChartPresentation';
+import { RepetitionsChartFooter } from './RepetitionsChartFooter';
+import { RepetitionsChartEmptyState } from './RepetitionsChartEmptyState';
+import { RepetitionsChartHeader } from './RepetitionsChartHeader';
+import { RepetitionsRendererSurface } from './RepetitionsRendererSurface';
+import { useRepetitionsChartInteractions } from './useRepetitionsChartInteractions';
+import { useRepetitionsDistances } from './useRepetitionsDistances';
 
 // ============= Types =============
 
@@ -124,47 +77,6 @@ interface RepetitionsChartProps {
   sampleIds?: string[];
 }
 
-interface PlotDataPoint {
-  /** X position (bio sample index) */
-  x: number;
-  /** Integer index of the bio sample group */
-  groupIndex: number;
-  /** Number of repetitions in this bio sample group */
-  groupSize: number;
-  /** Y position (distance) */
-  y: number;
-  /** Bio sample ID */
-  bioSample: string;
-  /** Rep index within bio sample */
-  repIndex: number;
-  /** Global sample index */
-  sampleIndex: number;
-  /** Sample ID string */
-  sampleId: string;
-  /** Target value for coloring */
-  targetY?: number;
-  /** Mean Y for the bio sample */
-  yMean?: number;
-  /** Is this an outlier? */
-  isOutlier: boolean;
-  /** Is this point selected? */
-  isSelected: boolean;
-}
-
-interface ComputedDistances {
-  distances: number[];
-  quantiles: Record<number, number>;
-  mean: number;
-  max: number;
-}
-
-function getDistanceColor(distance: number, maxDistance: number): string {
-  if (maxDistance === 0) return 'hsl(120, 60%, 50%)';
-  const t = Math.min(distance / maxDistance, 1);
-  const hue = 120 - t * 120;
-  return `hsl(${hue}, 70%, 50%)`;
-}
-
 function formatBioSampleLabel(value: string, maxLength: number = 14): string {
   if (value.length <= maxLength) {
     return value;
@@ -175,29 +87,8 @@ function formatBioSampleLabel(value: string, maxLength: number = 14): string {
 
 // ============= Constants =============
 
-const MIN_PIXELS_PER_SAMPLE = 4;
-const INITIAL_VISIBLE_SAMPLES = 20; // Initial zoom level
-const Y_AXIS_PADDING = 0.15; // 15% padding above max
-const POINT_RADIUS = { normal: 2, outlier: 3, selected: 4 };
-const QUANTILE_COLORS: Record<DiffQuantile, string> = {
-  50: 'hsl(var(--muted-foreground))',
-  75: 'hsl(180, 60%, 50%)',
-  90: 'hsl(45, 90%, 50%)',
-  95: 'hsl(0, 70%, 55%)',
-};
-
-// Sort options for X-axis ordering
-type SortOption = 'index' | 'distance' | 'distance_desc' | 'variance' | 'variance_desc' | 'color' | 'name' | 'metadata_column';
-const SORT_OPTIONS: { value: SortOption; label: string; description: string }[] = [
-  { value: 'index', label: 'Original Index', description: 'Original sample order' },
-  { value: 'name', label: 'Name', description: 'Alphabetical by bio sample' },
-  { value: 'distance', label: 'Distance ↑', description: 'Lowest distance first' },
-  { value: 'distance_desc', label: 'Distance ↓', description: 'Highest distance first' },
-  { value: 'variance', label: 'Variance ↑', description: 'Lowest within-group variance first' },
-  { value: 'variance_desc', label: 'Variance ↓', description: 'Highest within-group variance first' },
-  { value: 'color', label: 'Color Value', description: 'By color/target value' },
-  { value: 'metadata_column', label: 'Metadata Column', description: 'Group samples sharing the same metadata value on the same X' },
-];
+const EMPTY_SELECTED_SAMPLES = new Set<number>();
+const EMPTY_DIFF_QUANTILES: DiffQuantile[] = [];
 
 // ============= Component =============
 
@@ -220,18 +111,11 @@ export function RepetitionsChart({
   const chartRef = useRef<HTMLDivElement>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [enableHover, setEnableHover] = useState(true);
-  const [computedDistances, setComputedDistances] = useState<ComputedDistances | null>(null);
-  const [isComputing, setIsComputing] = useState(false);
-
-  // Zoom/pan state (right-click drag)
-  const [xDomain, setXDomain] = useState<[number, number] | null>(null);
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState<number | null>(null);
 
   // Note: Left-click area selection is now handled by SelectionContainer
 
   // Sort state
-  const [sortBy, setSortBy] = useState<SortOption>('index');
+  const [sortBy, setSortBy] = useState<RepetitionsSortOption>('index');
   // Column used when sortBy === 'metadata_column'
   const [metadataSortColumn, setMetadataSortColumn] = useState<string | null>(null);
 
@@ -249,9 +133,6 @@ export function RepetitionsChart({
     }
   }, [sortBy, metadataSortColumn, availableMetadataColumns]);
 
-  // Track if initial zoom has been set
-  const [initialZoomSet, setInitialZoomSet] = useState(false);
-
   // Renderer type (Recharts/WebGL)
   const [rendererType, setRendererType] = useState<'recharts' | 'webgl'>('webgl');
 
@@ -259,756 +140,156 @@ export function RepetitionsChart({
   // the hook is guarded by a boolean that is stable across renders, not a runtime value.
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const selectionCtx = useSelectionContext ? useSelection() : null;
-  const selectedSamples = selectionCtx?.selectedSamples ?? new Set<number>();
+  const selectedSamples = selectionCtx?.selectedSamples ?? EMPTY_SELECTED_SAMPLES;
 
   // Check if we have valid repetition data
-  const hasRepetitions = repetitionData?.has_repetitions && repetitionData?.data;
+  const hasRepetitions = Boolean(repetitionData?.has_repetitions && repetitionData?.data);
 
   // Get diff config from configResult
   const diffConfig = configResult?.config.diffConfig;
   const metric = diffConfig?.metric ?? 'euclidean';
   const scaleType = diffConfig?.scaleType ?? 'linear';
-  const quantiles = diffConfig?.quantiles ?? [];
+  const quantiles = diffConfig?.quantiles ?? EMPTY_DIFF_QUANTILES;
   const repetitionReference = diffConfig?.repetitionReference ?? 'group_mean';
 
-  // Compute distances when metric or reference changes
-  useEffect(() => {
-    if (!hasRepetitions || !repetitionData?.data || !spectraData || spectraData.length === 0) {
-      return;
-    }
-
-    const groupIds = repetitionData.data.map(d => d.bio_sample);
-
-    // Only compute if we have valid data
-    if (groupIds.length === 0 || spectraData.length !== groupIds.length) {
-      return;
-    }
-
-    setIsComputing(true);
-
-    computeRepetitionVariance({
-      X: spectraData,
-      group_ids: groupIds,
-      reference: repetitionReference,
-      metric: metric,
-    })
-      .then(response => {
-        if (response.success) {
-          // Validate distances - replace NaN/Inf with 0 to prevent chart breaking
-          const validDistances = response.distances.map(d => {
-            if (!Number.isFinite(d) || d < 0) return 0;
-            return d;
-          });
-
-          // Check if all distances are valid (non-zero)
-          const hasValidData = validDistances.some(d => d > 0);
-
-          if (hasValidData) {
-            setComputedDistances({
-              distances: validDistances,
-              quantiles: response.quantiles,
-              mean: validDistances.reduce((a, b) => a + b, 0) / validDistances.length,
-              max: Math.max(...validDistances.filter(d => Number.isFinite(d))),
-            });
-          } else {
-            // If all distances are 0 or invalid, clear computed distances to use fallback
-            console.warn('Metric computation returned invalid distances, using fallback');
-            setComputedDistances(null);
-          }
-        }
-      })
-      .catch(err => {
-        console.error('Failed to compute distances:', err);
-        setComputedDistances(null);
-      })
-      .finally(() => {
-        setIsComputing(false);
-      });
-  }, [hasRepetitions, repetitionData, spectraData, metric, repetitionReference]);
+  const { computedDistances, isComputing } = useRepetitionsDistances({
+    hasRepetitions,
+    repetitionData,
+    spectraData,
+    metric,
+    repetitionReference,
+  });
 
   // Get display filter from colorContext
   const displayFilteredIndices = colorContext?.displayFilteredIndices;
 
-  // Helper: fetch a metadata value for a sample_index, stringified.
-  const getMetadataValue = useCallback(
-    (sampleIndex: number, column: string | null): string | null => {
-      if (!column || !metadata || !metadata[column]) return null;
-      const raw = metadata[column][sampleIndex];
-      if (raw === null || raw === undefined || raw === '') return null;
-      return String(raw);
-    },
-    [metadata]
-  );
-
   // Transform data for plotting
-  const { plotData, bioSampleOrder, yRange, statistics } = useMemo(() => {
-    // Use computed distances if available, otherwise fall back to repetitionData distances
-    const distanceMap = new Map<number, number>();
-    if (hasRepetitions && repetitionData?.data && computedDistances?.distances) {
-      repetitionData.data.forEach((d, i) => {
-        distanceMap.set(d.sample_index, computedDistances.distances[i] ?? d.distance);
-      });
-    }
-
-    const effectiveSortColumn =
-      sortBy === 'metadata_column' && metadataSortColumn && metadata && metadata[metadataSortColumn]
-        ? metadataSortColumn
-        : null;
-
-    // -------- Branch A: repetitions configured, group by bio_sample --------
-    if (hasRepetitions && repetitionData?.data && repetitionData.data.length > 0) {
-      let data = repetitionData.data;
-
-      // Apply display filter if active (e.g., "selected only" mode)
-      if (displayFilteredIndices && displayFilteredIndices.size > 0) {
-        data = data.filter(d => displayFilteredIndices.has(d.sample_index));
-      }
-
-      if (data.length === 0) {
-        return {
-          plotData: [] as PlotDataPoint[],
-          bioSampleOrder: [] as string[],
-          yRange: { min: 0, max: 1 },
-          statistics: null,
-        };
-      }
-
-      const bioSamplesSet = new Set(data.map(d => d.bio_sample));
-      const bioSampleStats = new Map<
-        string,
-        { meanDist: number; variance: number; meanY: number; firstIndex: number; groupSize: number; firstMeta: string | null }
-      >();
-
-      for (const bioSample of bioSamplesSet) {
-        const groupData = data.filter(d => d.bio_sample === bioSample);
-        const distances = groupData.map(d => distanceMap.get(d.sample_index) ?? d.distance);
-        const meanDist = distances.reduce((a, b) => a + b, 0) / distances.length;
-        const variance = distances.length > 1
-          ? distances.reduce((sum, d) => sum + Math.pow(d - meanDist, 2), 0) / (distances.length - 1)
-          : 0;
-        const yValues = groupData.filter(d => d.y !== undefined).map(d => d.y!);
-        const meanY = yValues.length > 0 ? yValues.reduce((a, b) => a + b, 0) / yValues.length : 0;
-        const firstIndex = groupData[0]?.sample_index ?? 0;
-        const firstMeta = effectiveSortColumn ? getMetadataValue(firstIndex, effectiveSortColumn) : null;
-        bioSampleStats.set(bioSample, { meanDist, variance, meanY, firstIndex, groupSize: groupData.length, firstMeta });
-      }
-
-      const bioSampleList = Array.from(bioSamplesSet);
-      switch (sortBy) {
-        case 'name':
-          bioSampleList.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-          break;
-        case 'distance':
-          bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.meanDist ?? 0) - (bioSampleStats.get(b)?.meanDist ?? 0));
-          break;
-        case 'distance_desc':
-          bioSampleList.sort((a, b) => (bioSampleStats.get(b)?.meanDist ?? 0) - (bioSampleStats.get(a)?.meanDist ?? 0));
-          break;
-        case 'variance':
-          bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.variance ?? 0) - (bioSampleStats.get(b)?.variance ?? 0));
-          break;
-        case 'variance_desc':
-          bioSampleList.sort((a, b) => (bioSampleStats.get(b)?.variance ?? 0) - (bioSampleStats.get(a)?.variance ?? 0));
-          break;
-        case 'color':
-          bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.meanY ?? 0) - (bioSampleStats.get(b)?.meanY ?? 0));
-          break;
-        case 'metadata_column':
-          bioSampleList.sort((a, b) => {
-            const av = bioSampleStats.get(a)?.firstMeta ?? '';
-            const bv = bioSampleStats.get(b)?.firstMeta ?? '';
-            return av.localeCompare(bv, undefined, { numeric: true });
-          });
-          break;
-        case 'index':
-        default:
-          bioSampleList.sort((a, b) => (bioSampleStats.get(a)?.firstIndex ?? 0) - (bioSampleStats.get(b)?.firstIndex ?? 0));
-          break;
-      }
-
-      const bioSampleIndex = new Map<string, number>();
-      bioSampleList.forEach((bs, i) => bioSampleIndex.set(bs, i));
-
-      const allY = data.filter(d => d.y !== undefined).map(d => d.y!);
-      const yMin = allY.length > 0 ? Math.min(...allY) : 0;
-      const yMax = allY.length > 0 ? Math.max(...allY) : 1;
-
-      const maxDist = computedDistances?.max ?? repetitionData.statistics?.max_distance ?? 1;
-      const p95 = computedDistances?.quantiles?.[95] ?? repetitionData.statistics?.p95_distance ?? maxDist;
-
-      const plotData: PlotDataPoint[] = data.map((d) => {
-        const distance = distanceMap.get(d.sample_index) ?? d.distance;
-        const groupIndex = bioSampleIndex.get(d.bio_sample) ?? 0;
-        const groupSize = bioSampleStats.get(d.bio_sample)?.groupSize ?? 1;
-        const displayDistance = scaleType === 'log' ? Math.log1p(distance) : distance;
-
-        return {
-          x: groupIndex,
-          groupIndex,
-          groupSize,
-          y: displayDistance,
-          bioSample: d.bio_sample,
-          repIndex: d.rep_index,
-          sampleIndex: d.sample_index,
-          sampleId: d.sample_id,
-          targetY: d.y,
-          yMean: d.y_mean,
-          isOutlier: distance > p95,
-          isSelected: selectedSamples.has(d.sample_index),
-        };
-      });
-
-      // Dev-mode sanity check: surface silent backend regression where all
-      // bio_sample ids collapse to one-per-sample even though repetition was
-      // supposedly configured.
-      if (import.meta.env?.DEV && bioSamplesSet.size >= data.length * 0.95 && data.length > 4) {
-        console.warn(
-          '[RepetitionsChart] Repetition data reports', bioSamplesSet.size, 'distinct bio_samples for',
-          data.length, 'points — check that dataset_repetition / bio_sample_column is correctly propagated.'
-        );
-      }
-
-      const stats = computedDistances
-        ? {
-            mean_distance: computedDistances.mean,
-            max_distance: computedDistances.max,
-            p95_distance: computedDistances.quantiles[95] ?? computedDistances.max,
-          }
-        : repetitionData.statistics;
-
-      return {
-        plotData,
-        bioSampleOrder: bioSampleList,
-        yRange: { min: yMin, max: yMax },
-        statistics: stats,
-      };
-    }
-
-    // -------- Branch B: no repetitions configured --------
-    // Synthesize one point per sample. If metadata_column sort is active,
-    // group samples sharing the same value on the same X (like bio_samples).
-    // Otherwise each sample occupies its own X slot, ordered by sortBy.
-    const totalSamples = spectraData?.length ?? y?.length ?? 0;
-    if (totalSamples === 0) {
-      return {
-        plotData: [] as PlotDataPoint[],
-        bioSampleOrder: [] as string[],
-        yRange: { min: 0, max: 1 },
-        statistics: null,
-      };
-    }
-
-    const allIndices: number[] = [];
-    for (let i = 0; i < totalSamples; i++) {
-      if (displayFilteredIndices && displayFilteredIndices.size > 0 && !displayFilteredIndices.has(i)) continue;
-      allIndices.push(i);
-    }
-
-    // Derive a grouping key per sample.
-    // - metadata_column active -> the column value (empty string -> 'unknown')
-    // - otherwise -> sampleId if available, else index-based name
-    const groupKeyFor = (sampleIndex: number): string => {
-      if (effectiveSortColumn) {
-        return getMetadataValue(sampleIndex, effectiveSortColumn) ?? 'unknown';
-      }
-      if (sampleIds && sampleIds[sampleIndex] !== undefined) return String(sampleIds[sampleIndex]);
-      return `Sample_${sampleIndex}`;
-    };
-
-    const groupMembers = new Map<string, number[]>();
-    for (const idx of allIndices) {
-      const key = groupKeyFor(idx);
-      const arr = groupMembers.get(key);
-      if (arr) arr.push(idx);
-      else groupMembers.set(key, [idx]);
-    }
-
-    const groupList = Array.from(groupMembers.keys());
-    const statsForGroup = (key: string) => {
-      const members = groupMembers.get(key) ?? [];
-      const yVals = y ? members.map(i => y[i]).filter(v => v !== undefined && Number.isFinite(v)) as number[] : [];
-      const meanY = yVals.length > 0 ? yVals.reduce((a, b) => a + b, 0) / yVals.length : 0;
-      const firstIndex = members[0] ?? 0;
-      return { meanY, firstIndex, groupSize: members.length };
-    };
-
-    switch (sortBy) {
-      case 'name':
-      case 'metadata_column':
-        groupList.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-        break;
-      case 'color':
-        groupList.sort((a, b) => statsForGroup(a).meanY - statsForGroup(b).meanY);
-        break;
-      case 'index':
-      default:
-        groupList.sort((a, b) => statsForGroup(a).firstIndex - statsForGroup(b).firstIndex);
-        break;
-    }
-
-    const groupIdx = new Map<string, number>();
-    groupList.forEach((key, i) => groupIdx.set(key, i));
-
-    const yVals = y ? allIndices.map(i => y[i]).filter(v => v !== undefined && Number.isFinite(v)) as number[] : [];
-    const yMin = yVals.length > 0 ? Math.min(...yVals) : 0;
-    const yMax = yVals.length > 0 ? Math.max(...yVals) : 1;
-
-    // In no-repetition mode we do not compute per-sample distances yet;
-    // render as y=0 so the chart remains a purely positional overview.
-    const plotData: PlotDataPoint[] = allIndices.map(idx => {
-      const key = groupKeyFor(idx);
-      const gi = groupIdx.get(key) ?? 0;
-      const groupSize = groupMembers.get(key)?.length ?? 1;
-      return {
-        x: gi,
-        groupIndex: gi,
-        groupSize,
-        y: 0,
-        bioSample: key,
-        repIndex: 0,
-        sampleIndex: idx,
-        sampleId: sampleIds?.[idx] ?? `Sample_${idx}`,
-        targetY: y?.[idx],
-        yMean: y?.[idx],
-        isOutlier: false,
-        isSelected: selectedSamples.has(idx),
-      };
-    });
-
-    return {
-      plotData,
-      bioSampleOrder: groupList,
-      yRange: { min: yMin, max: yMax },
-      statistics: null,
-    };
-  }, [
+  const { plotData, bioSampleOrder, statistics, shouldWarnCollapsedBioSamples } = useMemo(() => buildRepetitionsPlotModel({
     repetitionData,
-    selectedSamples,
-    hasRepetitions,
+    spectraData,
+    y,
     computedDistances,
     scaleType,
     displayFilteredIndices,
     sortBy,
     metadataSortColumn,
     metadata,
+    sampleIds,
+    selectedSamples,
+  }), [
+    repetitionData,
     spectraData,
     y,
+    computedDistances,
+    scaleType,
+    displayFilteredIndices,
+    sortBy,
+    metadataSortColumn,
+    metadata,
     sampleIds,
-    getMetadataValue,
+    selectedSamples,
   ]);
 
+  useEffect(() => {
+    if (import.meta.env?.DEV && shouldWarnCollapsedBioSamples) {
+      console.warn(
+        '[RepetitionsChart] Repetition data reports', bioSampleOrder.length, 'distinct bio_samples for',
+        plotData.length, 'points — check that dataset_repetition / bio_sample_column is correctly propagated.'
+      );
+    }
+  }, [shouldWarnCollapsedBioSamples, bioSampleOrder.length, plotData.length]);
+
   // Compute Y domain with 15% padding (needed by event handlers)
-  const yDomain = useMemo(() => {
-    if (plotData.length === 0) return [0, 1] as [number, number];
-    const yValues = plotData.map(p => p.y);
-    const minY = Math.min(0, Math.min(...yValues)); // Include 0
-    const maxY = Math.max(...yValues);
-    const range = maxY - minY || 1;
-    return [minY, maxY + range * Y_AXIS_PADDING] as [number, number];
-  }, [plotData]);
+  const yDomain = useMemo(() => buildRepetitionsYDomain(plotData), [plotData]);
 
   // Max distance for color scaling
   const maxDistance = statistics?.max_distance ?? 1;
 
-  const targetValueRange = useMemo(() => {
-    const targetValues = (colorContext?.y ?? y ?? []).filter((value): value is number => Number.isFinite(value));
-    if (targetValues.length === 0) {
-      return { min: 0, max: 1 };
-    }
-
-    let min = targetValues[0];
-    let max = targetValues[0];
-    for (let i = 1; i < targetValues.length; i++) {
-      const value = targetValues[i];
-      if (value < min) min = value;
-      if (value > max) max = value;
-    }
-    return { min, max };
-  }, [colorContext?.y, y]);
-
-  const resolvedColorContext = useMemo<ColorContext>(() => ({
-    ...colorContext,
-    y: colorContext?.y ?? y,
-    yMin: colorContext?.yMin ?? targetValueRange.min,
-    yMax: colorContext?.yMax ?? targetValueRange.max,
-    totalSamples: colorContext?.totalSamples ?? plotData.length,
-    selectedSamples: colorContext?.selectedSamples ?? selectedSamples,
-  }), [colorContext, y, targetValueRange, plotData.length, selectedSamples]);
+  const resolvedColorContext = useMemo(
+    () => buildRepetitionsColorContext({
+      colorContext,
+      y,
+      plotDataLength: plotData.length,
+      selectedSamples,
+    }),
+    [colorContext, y, plotData.length, selectedSamples]
+  );
 
   // Get point color - handles all global color modes
-  const getPointColor = useCallback((point: PlotDataPoint): string => {
-    if (globalColorConfig) {
-      return getWebGLSampleColor(point.sampleIndex, globalColorConfig, resolvedColorContext);
-    }
-
-    // Default: color by distance
-    return getDistanceColor(point.y, scaleType === 'log' ? Math.log1p(maxDistance) : maxDistance);
-  }, [globalColorConfig, resolvedColorContext, scaleType, maxDistance]);
-
-  // Get point color for WebGL renderers - uses concrete HSL colors (no CSS variables)
-  const getWebGLPointColor = useCallback((point: PlotDataPoint): string => {
-    // Use the unified WebGL color function if globalColorConfig is provided
-    if (globalColorConfig) {
-      return getWebGLSampleColor(point.sampleIndex, globalColorConfig, resolvedColorContext);
-    }
-
-    // Default: color by distance (same as getPointColor but with concrete colors)
-    return getDistanceColor(point.y, scaleType === 'log' ? Math.log1p(maxDistance) : maxDistance);
+  const getPointColor = useCallback((point: RepetitionsPlotDataPoint): string => {
+    return getRepetitionsPointColor({
+      point,
+      globalColorConfig,
+      colorContext: resolvedColorContext,
+      scaleType,
+      maxDistance,
+    });
   }, [globalColorConfig, resolvedColorContext, scaleType, maxDistance]);
 
   // Pre-computed WebGL props for 2D renderers (ScatterPureWebGL2D, ScatterRegl2D)
-  const webglProps = useMemo(() => {
-    const points: [number, number][] = new Array(plotData.length);
-    const indices: number[] = new Array(plotData.length);
-    const colors: string[] = new Array(plotData.length);
-    const values: number[] = new Array(plotData.length);
+  const webglProps = useMemo(
+    () => buildRepetitionsWebglData(plotData, getPointColor),
+    [plotData, getPointColor]
+  );
 
-    for (let i = 0; i < plotData.length; i++) {
-      const point = plotData[i];
-      points[i] = [point.x, point.y];
-      indices[i] = point.sampleIndex;
-      colors[i] = getWebGLPointColor(point);
-      values[i] = point.targetY ?? point.y;
-    }
-
-    return { points, indices, colors, values };
-  }, [plotData, getWebGLPointColor]);
-
-  // Calculate custom bounds for WebGL based on xDomain
-  const webglBounds = useMemo((): DataBounds => {
-    const effectiveDomain = xDomain ?? [-0.5, bioSampleOrder.length - 0.5];
-    return {
-      minX: effectiveDomain[0],
-      maxX: effectiveDomain[1],
-      minY: yDomain[0],
-      maxY: yDomain[1],
-    };
-  }, [xDomain, yDomain, bioSampleOrder.length]);
-
-  // Handle point click using unified selection handler
-  // Special case: Shift+click selects entire bio-sample group (all repetitions)
-  const handlePointClick = useCallback((point: PlotDataPoint, event?: React.MouseEvent) => {
-    if (!selectionCtx) return;
-    // In box/lasso mode, clicking on points is disabled - area selection handles it
-    if (selectionCtx.selectionToolMode !== 'click') return;
-
-    // Special case: Shift+click selects the entire bio-sample group
-    if (event?.shiftKey) {
-      const bioSamplePoints = plotData.filter(p => p.bioSample === point.bioSample);
-      selectionCtx.select(bioSamplePoints.map(p => p.sampleIndex), 'add');
-      return;
-    }
-
-    // Use unified selection handler for standard click behavior
-    const action = computeSelectionAction(
-      { indices: [point.sampleIndex] },
-      selectedSamples,
-      { shift: false, ctrl: event?.ctrlKey || event?.metaKey || false }
-    );
-    executeSelectionAction(selectionCtx, action);
-  }, [selectionCtx, plotData, selectedSamples]);
-
-  // Background click handler for SelectionContainer
-  // Only clears selection in click mode when clicking on empty space
-  const handleBackgroundClick = useCallback((modifiers: { shift: boolean; ctrl: boolean }) => {
-    if (!selectionCtx) return;
-    // Only clear if no modifiers are pressed
-    if (!modifiers.shift && !modifiers.ctrl) {
-      selectionCtx.clear();
-    }
-  }, [selectionCtx]);
-
-  // Handle area selection completion from SelectionContainer (box or lasso)
-  // Uses DOM-based point detection for accuracy (similar to DimensionReductionChart)
-  const handleSelectionComplete = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
-    if (!selectionCtx || plotData.length === 0 || !chartRef.current) return;
-
-    const selectedIndices = selectRechartsPointsInArea(
-      chartRef.current,
-      plotData.length,
-      result,
-      idx => plotData[idx].sampleIndex
-    );
-    if (selectedIndices.length === 0) return;
-
-    // Use area selection handler (doesn't clear when re-selecting same points)
-    const action = computeAreaSelectionAction(
-      { indices: selectedIndices },
-      selectedSamples,
-      modifiers
-    );
-    executeSelectionAction(selectionCtx, action);
-  }, [selectionCtx, plotData, selectedSamples]);
-
-  // Handle selection for WebGL renderers - converts screen to data coordinates
-  const handleSelectionCompleteWebGL = useCallback((result: SelectionResult, modifiers: { shift: boolean; ctrl: boolean }) => {
-    if (!selectionCtx || plotData.length === 0 || !chartRef.current) return;
-
-    const container = chartRef.current;
-    const containerRect = container.getBoundingClientRect();
-    // Account for axis offsets (left-10 = 40px, bottom-6 = 24px)
-    const axisLeftOffset = 40;
-    const axisBottomOffset = 24;
-    const containerWidth = containerRect.width - axisLeftOffset;
-    const containerHeight = containerRect.height - axisBottomOffset;
-
-    // Convert screen coordinates to data coordinates (accounting for axis offset)
-    const screenToData = (screenX: number, screenY: number) => {
-      const bounds = webglBounds;
-      const adjustedX = screenX - axisLeftOffset;
-      const dataX = bounds.minX + (adjustedX / containerWidth) * (bounds.maxX - bounds.minX);
-      const dataY = bounds.maxY - (screenY / containerHeight) * (bounds.maxY - bounds.minY);
-      return { x: dataX, y: dataY };
-    };
-
-    const selectedIndices = selectPointsInDataSpace(
-      plotData.map(p => ({ x: p.x, y: p.y, index: p.sampleIndex })),
-      result,
-      screenToData
-    );
-    if (selectedIndices.length === 0) return;
-
-    // Use area selection handler
-    const action = computeAreaSelectionAction(
-      { indices: selectedIndices },
-      selectedSamples,
-      modifiers
-    );
-    executeSelectionAction(selectionCtx, action);
-  }, [selectionCtx, plotData, selectedSamples, webglBounds]);
-
-  // Prevent context menu on right-click (we use it for panning)
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-  }, []);
-
-  // Handle mouse wheel for X-axis zoom
-  // Note: We use a ref-based approach to add the wheel listener with { passive: false }
-  // to allow preventDefault() without triggering browser warnings
-  const handleWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-
-    const numSamples = bioSampleOrder.length;
-    if (numSamples === 0) return;
-
-    const currentDomain = xDomain ?? [-0.5, numSamples - 0.5];
-    const range = currentDomain[1] - currentDomain[0];
-    const center = (currentDomain[0] + currentDomain[1]) / 2;
-
-    // Zoom in or out
-    const zoomFactor = e.deltaY > 0 ? 1.2 : 0.8;
-    let newRange = range * zoomFactor;
-
-    // Limit zoom based on min pixels per sample
-    newRange = Math.max(newRange, 1); // At least 1 sample visible
-    newRange = Math.min(newRange, numSamples); // Can't zoom out beyond all samples
-
-    const newStart = Math.max(-0.5, center - newRange / 2);
-    const newEnd = Math.min(numSamples - 0.5, center + newRange / 2);
-
-    setXDomain([newStart, newEnd]);
-  }, [xDomain, bioSampleOrder.length]);
-
-  // Attach wheel listener with { passive: false } to allow preventDefault()
-  useEffect(() => {
-    const element = chartRef.current;
-    if (!element) return;
-
-    element.addEventListener('wheel', handleWheel, { passive: false });
-    return () => {
-      element.removeEventListener('wheel', handleWheel);
-    };
-  }, [handleWheel]);
-
-  // Handle right-click mouse down for panning
-  // Note: Left-click area selection is now handled by SelectionContainer
-  const handlePanMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 2) {
-      // Right click - start panning
-      e.preventDefault();
-      setIsPanning(true);
-      setPanStart(e.clientX);
-    }
-  }, []);
-
-  // Handle mouse move for panning only (area selection handled by SelectionContainer)
-  const handlePanMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isPanning || panStart === null) return;
-
-    const numSamples = bioSampleOrder.length;
-    if (numSamples === 0) return;
-
-    const chartWidth = chartRef.current?.clientWidth ?? 800;
-    const currentDomain = xDomain ?? [-0.5, numSamples - 0.5];
-    const range = currentDomain[1] - currentDomain[0];
-
-    const deltaX = e.clientX - panStart;
-    const deltaSamples = -(deltaX / chartWidth) * range;
-
-    let newStart = currentDomain[0] + deltaSamples;
-    let newEnd = currentDomain[1] + deltaSamples;
-
-    // Clamp to bounds
-    if (newStart < -0.5) {
-      newEnd -= (newStart + 0.5);
-      newStart = -0.5;
-    }
-    if (newEnd > numSamples - 0.5) {
-      newStart -= (newEnd - (numSamples - 0.5));
-      newEnd = numSamples - 0.5;
-    }
-
-    setXDomain([Math.max(-0.5, newStart), Math.min(numSamples - 0.5, newEnd)]);
-    setPanStart(e.clientX);
-  }, [isPanning, panStart, xDomain, bioSampleOrder.length]);
-
-  // Handle mouse up - finish pan only (area selection handled by SelectionContainer)
-  const handlePanMouseUp = useCallback(() => {
-    if (isPanning) {
-      setIsPanning(false);
-      setPanStart(null);
-    }
-  }, [isPanning]);
-
-  // Handle mouse leave - cancel pan
-  const handlePanMouseLeave = useCallback(() => {
-    if (isPanning) {
-      setIsPanning(false);
-      setPanStart(null);
-    }
-  }, [isPanning]);
-
-  // Reset zoom on double click
-  const handleDoubleClick = useCallback(() => {
-    setXDomain(null);
-  }, []);
-
-  // Export handler
-  const handleExport = useCallback(() => {
-    if (!repetitionData?.data) return;
-
-    const exportData = repetitionData.data.map((d, i) => ({
-      bio_sample: d.bio_sample,
-      rep_index: d.rep_index,
-      sample_id: d.sample_id,
-      sample_index: d.sample_index,
-      distance: computedDistances?.distances[i] ?? d.distance,
-      y: d.y ?? '',
-      y_mean: d.y_mean ?? '',
-    }));
-
-    exportDataAsCSV(exportData, 'repetition_analysis');
-  }, [repetitionData, computedDistances]);
+  const {
+    isPanning,
+    webglBounds,
+    zoomInfo,
+    effectiveXDomain,
+    xTicks,
+    handlePointClick,
+    handleBackgroundClick,
+    handleSelectionComplete,
+    handleSelectionCompleteWebGL,
+    handleContextMenu,
+    handlePanMouseDown,
+    handlePanMouseMove,
+    handlePanMouseUp,
+    handlePanMouseLeave,
+    handleDoubleClick,
+    handleExport,
+  } = useRepetitionsChartInteractions({
+    chartRef,
+    repetitionData,
+    computedDistances,
+    selectionCtx,
+    selectedSamples,
+    plotData,
+    bioSampleCount: bioSampleOrder.length,
+    yDomain,
+  });
 
   // Toggle grid
   const handleGridToggle = useCallback(() => {
     setShowGrid(prev => !prev);
   }, []);
 
-  // Set initial zoom when data loads (zoom to show ~INITIAL_VISIBLE_SAMPLES)
-  useEffect(() => {
-    if (!initialZoomSet && bioSampleOrder.length > 0) {
-      const numSamples = bioSampleOrder.length;
-      if (numSamples > INITIAL_VISIBLE_SAMPLES) {
-        // Start zoomed in to show first INITIAL_VISIBLE_SAMPLES
-        setXDomain([-0.5, INITIAL_VISIBLE_SAMPLES - 0.5]);
-      }
-      setInitialZoomSet(true);
-    }
-  }, [bioSampleOrder.length, initialZoomSet]);
-
-  // Compute zoom level for indicator
-  const zoomInfo = useMemo(() => {
-    const numSamples = bioSampleOrder.length;
-    if (numSamples === 0) return { level: 100, visible: 0, total: 0 };
-    const effectiveDomain = xDomain ?? [-0.5, numSamples - 0.5];
-    const visibleRange = effectiveDomain[1] - effectiveDomain[0];
-    const visibleSamples = Math.round(visibleRange);
-    const zoomPercent = Math.round((visibleSamples / numSamples) * 100);
-    return { level: zoomPercent, visible: visibleSamples, total: numSamples };
-  }, [xDomain, bioSampleOrder.length]);
-
   // Get quantile values for reference lines (must be before early returns — React Hook)
-  const quantileValues = useMemo(() => {
-    const values: { quantile: DiffQuantile; value: number }[] = [];
-    const source = computedDistances?.quantiles ?? {
-      50: statistics?.mean_distance ?? 0,
-      75: (statistics?.mean_distance ?? 0) * 1.5,
-      90: (statistics?.p95_distance ?? 0) * 0.9,
-      95: statistics?.p95_distance ?? 0,
-    };
-
-    for (const q of quantiles) {
-      let value = source[q] ?? 0;
-      if (scaleType === 'log') {
-        value = Math.log1p(value);
-      }
-      values.push({ quantile: q, value });
-    }
-    return values;
-  }, [quantiles, computedDistances, statistics, scaleType]);
+  const quantileValues = useMemo(
+    () => buildRepetitionQuantileValues({ quantiles, computedDistances, statistics, scaleType }),
+    [quantiles, computedDistances, statistics, scaleType]
+  );
 
   // Empty states
   if (!repetitionData && plotData.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-        <div className="text-center">
-          <Repeat className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
-          <p>Loading repetition data...</p>
-        </div>
-      </div>
-    );
+    return <RepetitionsChartEmptyState kind="loading" />;
   }
 
   if (repetitionData?.error) {
-    return (
-      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-        <div className="text-center">
-          <AlertTriangle className="w-8 h-8 text-amber-500/70 mx-auto mb-2" />
-          <p className="text-amber-600">Repetition analysis error</p>
-          <p className="text-xs mt-1 max-w-[200px]">{repetitionData.error}</p>
-        </div>
-      </div>
-    );
+    return <RepetitionsChartEmptyState kind="error" error={repetitionData.error} />;
   }
 
   // Only show the full "No repetitions" placeholder when there is also no
   // spectra / y data that could be rendered in the no-repetition fallback.
   if (!hasRepetitions && plotData.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-        <div className="text-center max-w-[250px]">
-          <Repeat className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
-          <p className="font-medium mb-1">No repetitions detected</p>
-          <p className="text-xs">{repetitionData?.message || 'Samples appear to be unique measurements.'}</p>
-          {onConfigureRepetitions && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3 text-xs"
-              onClick={onConfigureRepetitions}
-            >
-              <Settings2 className="w-3 h-3 mr-1" />
-              Configure Detection
-            </Button>
-          )}
-        </div>
-      </div>
+      <RepetitionsChartEmptyState
+        kind="no-repetitions"
+        message={repetitionData?.message}
+        onConfigureRepetitions={onConfigureRepetitions}
+      />
     );
-  }
-
-  // Compute X domain
-  const effectiveXDomain = xDomain ?? [-0.5, bioSampleOrder.length - 0.5];
-  const visibleStart = Math.max(0, Math.floor(effectiveXDomain[0]));
-  const visibleEnd = Math.min(bioSampleOrder.length - 1, Math.ceil(effectiveXDomain[1]));
-  const visibleCount = visibleEnd >= visibleStart ? visibleEnd - visibleStart + 1 : 0;
-  const xTickStep = Math.max(1, Math.ceil(Math.max(visibleCount, 1) / 18));
-  const xTicks: number[] = [];
-  for (let index = visibleStart; index <= visibleEnd; index += xTickStep) {
-    xTicks.push(index);
-  }
-  if (visibleEnd >= visibleStart && (xTicks.length === 0 || xTicks[xTicks.length - 1] !== visibleEnd)) {
-    xTicks.push(visibleEnd);
   }
 
   const formatXAxisTick = (value: number) => {
@@ -1016,619 +297,81 @@ export function RepetitionsChart({
     return label ? formatBioSampleLabel(label) : String(value);
   };
 
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: PlotDataPoint }> }) => {
-    if (!enableHover) return null;
-    if (!active || !payload || payload.length === 0) return null;
-    const point: PlotDataPoint | undefined = payload[0]?.payload;
-    if (!point) return null;
-
-    return (
-      <div className="bg-card border border-border rounded-lg p-2 shadow-lg text-xs max-w-[200px]">
-        <p className="font-medium mb-1 truncate">{point.bioSample}</p>
-        <div className="space-y-0.5 text-muted-foreground">
-          <p>Repetition: {point.repIndex + 1}</p>
-          <p>Sample: {point.sampleId}</p>
-          <p>Distance: {formatYValue(point.y)}</p>
-          {point.targetY !== undefined && (
-            <p>Y Value: {formatYValue(point.targetY)}</p>
-          )}
-          {point.isOutlier && (
-            <p className="text-amber-600 font-medium">⚠ High variability</p>
-          )}
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div
       className="h-full flex flex-col"
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <Repeat className="w-4 h-4 text-primary" />
-          Repetitions
-          <Badge variant="secondary" className="text-[10px] font-normal">
-            {hasRepetitions
-              ? `${repetitionData.n_with_reps ?? 0} bio samples`
-              : `${bioSampleOrder.length} groups`}
-          </Badge>
-          {!hasRepetitions && onConfigureRepetitions && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-[10px]"
-              onClick={onConfigureRepetitions}
-            >
-              <Settings2 className="w-3 h-3 mr-1" />
-              Configure
-            </Button>
-          )}
-          {(isComputing || isLoading) && (
-            <span className="text-[10px] text-muted-foreground animate-pulse">Computing...</span>
-          )}
-        </h3>
+      <RepetitionsChartHeader
+        hasRepetitions={hasRepetitions}
+        bioSampleCount={repetitionData?.n_with_reps ?? 0}
+        groupCount={bioSampleOrder.length}
+        compact={compact}
+        isBusy={isComputing || isLoading}
+        configResult={configResult}
+        hasReferenceDataset={hasReferenceDataset}
+        showGrid={showGrid}
+        onGridToggle={handleGridToggle}
+        sortBy={sortBy}
+        onSortByChange={setSortBy}
+        availableMetadataColumns={availableMetadataColumns}
+        metadataSortColumn={metadataSortColumn}
+        onMetadataSortColumnChange={setMetadataSortColumn}
+        rendererType={rendererType}
+        onRendererTypeChange={setRendererType}
+        enableHover={enableHover}
+        onEnableHoverChange={setEnableHover}
+        zoomInfo={zoomInfo}
+        onConfigureRepetitions={onConfigureRepetitions}
+        onExport={handleExport}
+      />
 
-        <div className="flex items-center gap-1.5">
-          {/* Diff Mode Controls */}
-          {configResult && (
-            <>
-              <DiffModeControls
-                configResult={configResult}
-                compact={compact}
-                hasReferenceDataset={hasReferenceDataset}
-                hasRepetitions={true}
-                showGrid={showGrid}
-                onGridToggle={handleGridToggle}
-              />
-              <Separator orientation="vertical" className="h-4 mx-0.5" />
-            </>
-          )}
-
-          {/* Sort Dropdown */}
-          <DropdownMenu>
-            <TooltipProvider delayDuration={200}>
-              <TooltipUI>
-                <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant={sortBy !== 'index' ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className="h-7 px-2 text-xs gap-1"
-                    >
-                      <ArrowUpDown className="w-3 h-3" />
-                      {!compact && SORT_OPTIONS.find(o => o.value === sortBy)?.label}
-                    </Button>
-                  </DropdownMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">Sort samples by</p>
-                </TooltipContent>
-              </TooltipUI>
-            </TooltipProvider>
-            <DropdownMenuContent side="bottom" align="start" className="w-48">
-              <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                Sort Samples By
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioGroup value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                {SORT_OPTIONS.map(option => {
-                  // Hide metadata_column option when no columns are available.
-                  if (option.value === 'metadata_column' && availableMetadataColumns.length === 0) return null;
-                  return (
-                    <DropdownMenuRadioItem
-                      key={option.value}
-                      value={option.value}
-                      className="text-xs"
-                    >
-                      <div className="flex flex-col">
-                        <span>{option.label}</span>
-                        <span className="text-[10px] text-muted-foreground">{option.description}</span>
-                      </div>
-                    </DropdownMenuRadioItem>
-                  );
-                })}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Column picker visible only when grouping by metadata value */}
-          {sortBy === 'metadata_column' && availableMetadataColumns.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="secondary" size="sm" className="h-7 px-2 text-xs gap-1">
-                  {metadataSortColumn ?? 'Column…'}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="bottom" align="start" className="w-48 max-h-72 overflow-y-auto">
-                <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                  Group / sort by column
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuRadioGroup
-                  value={metadataSortColumn ?? ''}
-                  onValueChange={(v) => setMetadataSortColumn(v || null)}
-                >
-                  {availableMetadataColumns.map(col => (
-                    <DropdownMenuRadioItem key={col} value={col} className="text-xs">
-                      {col}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* Renderer toggle (SVG/WebGL) */}
-          <TooltipProvider delayDuration={200}>
-            <div className="flex items-center border rounded-md">
-              <TooltipUI>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={rendererType === 'recharts' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="h-7 w-7 p-0 rounded-r-none border-r"
-                    onClick={() => setRendererType('recharts')}
-                  >
-                    <Monitor className="w-3.5 h-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">SVG renderer (Recharts)</p>
-                </TooltipContent>
-              </TooltipUI>
-
-              <TooltipUI>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={rendererType === 'webgl' ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="h-7 w-7 p-0 rounded-l-none border-l"
-                    onClick={() => setRendererType('webgl')}
-                  >
-                    <Zap className={`w-3.5 h-3.5 ${rendererType === 'webgl' ? 'text-yellow-500' : ''}`} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">WebGL (GPU accelerated)</p>
-                </TooltipContent>
-              </TooltipUI>
-            </div>
-          </TooltipProvider>
-
-          {/* Hover toggle */}
-          <TooltipProvider delayDuration={200}>
-            <TooltipUI>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={enableHover ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="h-7 px-2"
-                  onClick={() => setEnableHover(!enableHover)}
-                >
-                  <MousePointer2 className={cn("w-3.5 h-3.5", enableHover && "text-primary")} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">{enableHover ? 'Hover enabled' : 'Hover disabled'}</p>
-              </TooltipContent>
-            </TooltipUI>
-          </TooltipProvider>
-
-          {/* Zoom Indicator */}
-          {zoomInfo.level < 100 && (
-            <TooltipProvider delayDuration={200}>
-              <TooltipUI>
-                <TooltipTrigger asChild>
-                  <Badge variant="outline" className="h-6 text-[10px] gap-1 cursor-default">
-                    <ZoomIn className="w-3 h-3" />
-                    {zoomInfo.visible}/{zoomInfo.total}
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">Showing {zoomInfo.visible} of {zoomInfo.total} samples ({zoomInfo.level}%)</p>
-                  <p className="text-[10px] text-muted-foreground">Double-click to reset zoom</p>
-                </TooltipContent>
-              </TooltipUI>
-            </TooltipProvider>
-          )}
-
-          <Separator orientation="vertical" className="h-4 mx-0.5" />
-
-          {/* Configure */}
-          {onConfigureRepetitions && (
-            <TooltipProvider delayDuration={200}>
-              <TooltipUI>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2"
-                    onClick={onConfigureRepetitions}
-                  >
-                    <Settings2 className="w-3 h-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">Configure repetition detection</p>
-                </TooltipContent>
-              </TooltipUI>
-            </TooltipProvider>
-          )}
-
-          {/* Export */}
-          <TooltipProvider delayDuration={200}>
-            <TooltipUI>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 px-2" onClick={handleExport}>
-                  <Download className="w-3 h-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">Export data</p>
-              </TooltipContent>
-            </TooltipUI>
-          </TooltipProvider>
-        </div>
-      </div>
-
-      {/* Chart with loading overlay wrapped in SelectionContainer */}
-      <SelectionContainer
-        mode={selectionCtx?.selectionToolMode ?? 'click'}
-        onSelectionComplete={rendererType === 'recharts' ? handleSelectionComplete : handleSelectionCompleteWebGL}
+      <RepetitionsRendererSurface
+        chartRef={chartRef}
+        rendererType={rendererType}
+        selectionTool={selectionCtx?.selectionToolMode ?? 'click'}
+        selectionEnabled={!!selectionCtx}
+        useSelectionContext={useSelectionContext}
+        isPanning={isPanning}
+        isComputing={isComputing}
+        onRechartsSelectionComplete={handleSelectionComplete}
+        onWebglSelectionComplete={handleSelectionCompleteWebGL}
         onBackgroundClick={handleBackgroundClick}
-        enabled={!!selectionCtx}
-        className="flex-1 min-h-0"
-      >
-        <div
-          ref={chartRef}
-          className="h-full relative"
-          onMouseDown={handlePanMouseDown}
-          onMouseMove={handlePanMouseMove}
-          onMouseUp={handlePanMouseUp}
-          onMouseLeave={handlePanMouseLeave}
-          onDoubleClick={handleDoubleClick}
-          onContextMenu={handleContextMenu}
-          style={{
-            cursor: isPanning
-              ? 'grabbing'
-              : (selectionCtx?.selectionToolMode === 'box' || selectionCtx?.selectionToolMode === 'lasso')
-                ? 'crosshair'
-                : undefined
-          }}
-        >
-          {/* Loading overlay */}
-          {isComputing && (
-            <div className="absolute inset-0 bg-background/60 flex items-center justify-center z-10">
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs text-muted-foreground">Computing distances...</span>
-              </div>
-            </div>
-          )}
+        onPanMouseDown={handlePanMouseDown}
+        onPanMouseMove={handlePanMouseMove}
+        onPanMouseUp={handlePanMouseUp}
+        onPanMouseLeave={handlePanMouseLeave}
+        onDoubleClick={handleDoubleClick}
+        onContextMenu={handleContextMenu}
+        webglBounds={webglBounds}
+        scaleType={scaleType}
+        xTicks={xTicks}
+        bioSampleCount={bioSampleOrder.length}
+        showGrid={showGrid}
+        enableHover={enableHover}
+        quantileValues={quantileValues}
+        formatXAxisTick={formatXAxisTick}
+        plotData={plotData}
+        effectiveXDomain={effectiveXDomain}
+        yDomain={yDomain}
+        getPointColor={getPointColor}
+        onPointClick={handlePointClick}
+        webglData={webglProps}
+        clearWebglOnBackgroundClick={selectionCtx?.selectionToolMode === 'click'}
+      />
 
-          {/* WebGL indicator badge */}
-          {rendererType === 'webgl' && (
-            <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-2 py-0.5 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 rounded text-[10px] font-medium">
-              <Zap className="w-3 h-3" />
-              WebGL
-            </div>
-          )}
-
-          {/* Y-axis overlay for WebGL mode */}
-          {rendererType === 'webgl' && (
-            <div className="absolute left-0 top-0 bottom-6 w-10 pointer-events-none z-[6] flex flex-col justify-between py-1">
-              {/* Y-axis label */}
-              <div className="absolute -left-1 top-1/2 -translate-y-1/2 -rotate-90 origin-center text-[9px] text-muted-foreground whitespace-nowrap">
-                {scaleType === 'log' ? 'log(1 + Distance)' : 'Distance'}
-              </div>
-              {/* Y-axis ticks */}
-              {(() => {
-                const yRange = webglBounds.maxY - webglBounds.minY;
-                const tickCount = 5;
-                const ticks: number[] = [];
-                for (let i = 0; i <= tickCount; i++) {
-                  ticks.push(webglBounds.minY + (yRange * i) / tickCount);
-                }
-                return ticks.map((tick, i) => {
-                  const yPercent = ((webglBounds.maxY - tick) / yRange) * 100;
-                  return (
-                    <div
-                      key={`y-tick-${i}`}
-                      className="absolute right-1 text-[9px] text-muted-foreground"
-                      style={{ top: `${yPercent}%`, transform: 'translateY(-50%)' }}
-                    >
-                      {tick.toFixed(2)}
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-          )}
-
-          {/* X-axis labels overlay for WebGL mode */}
-          {rendererType === 'webgl' && (
-            <div className="absolute left-10 right-0 bottom-0 h-6 pointer-events-none z-[6]">
-              {xTicks.map((sampleIndex) => {
-                const xRange = webglBounds.maxX - webglBounds.minX;
-                const xPercent = ((sampleIndex - webglBounds.minX) / xRange) * 100;
-                if (xPercent < 0 || xPercent > 100) return null;
-                return (
-                  <div
-                    key={`x-label-${sampleIndex}`}
-                    className="absolute text-[9px] text-muted-foreground"
-                    style={{ left: `${xPercent}%`, transform: 'translateX(-50%)' }}
-                  >
-                    {formatXAxisTick(sampleIndex)}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Axis lines overlay for WebGL mode */}
-          {rendererType === 'webgl' && (
-            <div className="absolute left-10 right-0 top-0 bottom-6 pointer-events-none z-[3]">
-              {/* Y-axis line (left edge) */}
-              <div className="absolute left-0 top-0 bottom-0 border-l border-muted-foreground/50" />
-              {/* X-axis line (bottom edge) */}
-              <div className="absolute left-0 right-0 bottom-0 border-b border-muted-foreground/50" />
-            </div>
-          )}
-
-          {/* Grid lines overlay for WebGL mode */}
-          {rendererType === 'webgl' && showGrid && (
-            <div className="absolute left-10 right-0 top-0 bottom-6 pointer-events-none z-[4]">
-              {/* Vertical grid lines (at each sample) */}
-              {bioSampleOrder.map((_, sampleIndex) => {
-                const xRange = webglBounds.maxX - webglBounds.minX;
-                const xPercent = ((sampleIndex - webglBounds.minX) / xRange) * 100;
-                if (xPercent < 0 || xPercent > 100) return null;
-                return (
-                  <div
-                    key={`sample-grid-${sampleIndex}`}
-                    className="absolute top-0 bottom-0 border-l border-dashed opacity-30"
-                    style={{
-                      left: `${xPercent}%`,
-                      borderColor: 'currentColor',
-                    }}
-                  />
-                );
-              })}
-              {/* Horizontal grid lines */}
-              {(() => {
-                const yRange = webglBounds.maxY - webglBounds.minY;
-                const tickCount = 5;
-                const lines: React.ReactNode[] = [];
-                for (let i = 0; i <= tickCount; i++) {
-                  const tick = webglBounds.minY + (yRange * i) / tickCount;
-                  const yPercent = ((webglBounds.maxY - tick) / yRange) * 100;
-                  lines.push(
-                    <div
-                      key={`h-grid-${i}`}
-                      className="absolute left-0 right-0 border-t border-dashed opacity-30"
-                      style={{
-                        top: `${yPercent}%`,
-                        borderColor: 'currentColor',
-                      }}
-                    />
-                  );
-                }
-                return lines;
-              })()}
-            </div>
-          )}
-
-          {/* Quantile reference lines overlay for WebGL mode */}
-          {rendererType === 'webgl' && quantileValues.length > 0 && (
-            <div className="absolute left-10 right-0 top-0 bottom-6 pointer-events-none z-[5]">
-              {quantileValues.map(({ quantile, value }) => {
-                // Calculate Y position as percentage from top
-                const yRange = webglBounds.maxY - webglBounds.minY;
-                const yPercent = ((webglBounds.maxY - value) / yRange) * 100;
-                // Only show if in visible range
-                if (yPercent < 0 || yPercent > 100) return null;
-                return (
-                  <div
-                    key={`quantile-line-${quantile}`}
-                    className="absolute left-0 right-0 border-t-2 border-dashed"
-                    style={{
-                      top: `${yPercent}%`,
-                      borderColor: QUANTILE_COLORS[quantile],
-                    }}
-                  >
-                    <span
-                      className="absolute right-1 -top-3 text-[9px] font-medium"
-                      style={{ color: QUANTILE_COLORS[quantile] }}
-                    >
-                      P{quantile}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Recharts SVG renderer */}
-          {rendererType === 'recharts' && (
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 45 }}>
-                {showGrid && (
-                  <CartesianGrid
-                    strokeDasharray={CHART_THEME.gridDasharray}
-                    stroke={CHART_THEME.gridStroke}
-                    opacity={CHART_THEME.gridOpacity}
-                  />
-                )}
-
-                <XAxis
-                  type="number"
-                  dataKey="x"
-                  domain={effectiveXDomain}
-                  ticks={xTicks}
-                  tickFormatter={formatXAxisTick}
-                  stroke={CHART_THEME.axisStroke}
-                  fontSize={CHART_THEME.axisFontSize}
-                  interval={0}
-                  height={40}
-                  allowDataOverflow
-                />
-
-                <YAxis
-                  type="number"
-                  dataKey="y"
-                  domain={yDomain}
-                  stroke={CHART_THEME.axisStroke}
-                  fontSize={CHART_THEME.axisFontSize}
-                  width={40}
-                  scale={scaleType === 'log' ? 'linear' : 'linear'}
-                  label={{
-                    value: scaleType === 'log' ? 'log(1 + Distance)' : 'Distance',
-                    angle: -90,
-                    position: 'insideLeft',
-                    fontSize: CHART_THEME.axisLabelFontSize,
-                    offset: 5,
-                  }}
-                />
-
-                <ZAxis range={[20, 60]} />
-
-                <Tooltip
-                  isAnimationActive={false}
-                  cursor={enableHover ? { stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '4 2' } : false}
-                  content={<CustomTooltip />}
-                />
-
-                {/* Quantile reference lines */}
-                {quantileValues.map(({ quantile, value }) => (
-                  <ReferenceLine
-                    key={`quantile-${quantile}`}
-                    y={value}
-                    stroke={QUANTILE_COLORS[quantile]}
-                    strokeDasharray="3 3"
-                    strokeWidth={1}
-                    label={{
-                      value: `P${quantile}`,
-                      position: 'right',
-                      fontSize: 9,
-                      fill: QUANTILE_COLORS[quantile],
-                    }}
-                  />
-                ))}
-
-                {/* Scatter points */}
-                <Scatter
-                  data={plotData}
-                  cursor="pointer"
-                  onClick={(_data: unknown, index: number, event: React.MouseEvent) => {
-                    handlePointClick(plotData[index], event);
-                  }}
-                  isAnimationActive={false}
-                >
-                  {plotData.map((point, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={getPointColor(point)}
-                      stroke={
-                        point.isSelected
-                          ? 'hsl(var(--foreground))'
-                          : point.isOutlier
-                            ? 'hsl(var(--warning))'
-                            : 'none'
-                      }
-                      strokeWidth={point.isSelected ? 2 : point.isOutlier ? 1 : 0}
-                      r={point.isSelected ? POINT_RADIUS.selected : point.isOutlier ? POINT_RADIUS.outlier : POINT_RADIUS.normal}
-                    />
-                  ))}
-                </Scatter>
-              </ScatterChart>
-            </ResponsiveContainer>
-          )}
-
-          {/* WebGL renderer */}
-          {rendererType === 'webgl' && (
-            <div className="absolute left-10 right-0 top-0 bottom-6">
-              <ScatterPureWebGL2D
-                points={webglProps.points}
-                indices={webglProps.indices}
-                colors={webglProps.colors}
-                values={webglProps.values}
-                useSelectionContext={useSelectionContext}
-                pointSize={6}
-                showGrid={false}
-                showAxes={false}
-                className="h-full w-full"
-                clearOnBackgroundClick={selectionCtx?.selectionToolMode === 'click'}
-                customBounds={webglBounds}
-              />
-            </div>
-          )}
-
-        </div>
-      </SelectionContainer>
-
-      {/* Footer */}
-      {!compact && (
-        <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
-          <div className="flex items-center gap-3">
-            {hasRepetitions && repetitionData ? (
-              <>
-                <span>
-                  {repetitionData.total_repetitions} measurements from {repetitionData.n_with_reps} samples
-                </span>
-                {repetitionData.n_singletons && repetitionData.n_singletons > 0 && (
-                  <span>({repetitionData.n_singletons} singletons hidden)</span>
-                )}
-              </>
-            ) : (
-              <span>
-                {plotData.length} samples
-                {sortBy === 'metadata_column' && metadataSortColumn
-                  ? ` grouped by "${metadataSortColumn}" (${bioSampleOrder.length} groups)`
-                  : ''}
-              </span>
-            )}
-            <span className="text-muted-foreground/50">
-              Scroll to zoom • Right-drag to pan • Left-drag to select • Double-click to reset
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {statistics && (
-              <span>
-                Mean: {formatYValue(scaleType === 'log' ? Math.log1p(statistics.mean_distance) : statistics.mean_distance)} |
-                Max: {formatYValue(scaleType === 'log' ? Math.log1p(statistics.max_distance) : statistics.max_distance)}
-              </span>
-            )}
-
-            {selectedSamples.size > 0 && (
-              <span className="text-primary font-medium">
-                {selectedSamples.size} selected
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* High variability warning */}
-      {hasRepetitions &&
-       repetitionData?.high_variability_samples &&
-       repetitionData.high_variability_samples.length > 0 &&
-       !compact && (
-        <div className="flex items-center gap-1.5 mt-1 text-[10px] text-amber-600">
-          <AlertTriangle className="w-3 h-3" />
-          <span>
-            {repetitionData.high_variability_samples.length} sample(s) with high variability
-            {repetitionData.high_variability_samples.length <= 3 && (
-              <span className="text-muted-foreground ml-1">
-                ({repetitionData.high_variability_samples.map(s => s.bio_sample).join(', ')})
-              </span>
-            )}
-          </span>
-        </div>
-      )}
+      <RepetitionsChartFooter
+        compact={compact}
+        hasRepetitions={hasRepetitions}
+        repetitionData={repetitionData}
+        plotDataLength={plotData.length}
+        sortBy={sortBy}
+        metadataSortColumn={metadataSortColumn}
+        groupCount={bioSampleOrder.length}
+        scaleType={scaleType}
+        statistics={statistics}
+        selectedCount={selectedSamples.size}
+        highVariabilitySamples={repetitionData?.high_variability_samples}
+      />
     </div>
   );
 }

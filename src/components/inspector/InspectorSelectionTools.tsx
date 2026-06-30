@@ -1,7 +1,6 @@
 /**
  * InspectorSelectionTools — Selection mode toggle, actions bar for Inspector.
  *
- * Re-exports geometry utilities from Playground's SelectionTools.
  * Provides Inspector-specific wrappers that work with chain_ids (strings)
  * instead of sample indices (numbers).
  */
@@ -16,28 +15,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { useInspectorSelection } from '@/context/InspectorSelectionContext';
+import { useInspectorSelection } from '@/context/useInspectorSelection';
 import type { InspectorSelectionToolMode } from '@/types/inspector';
-
-// Re-export geometry utilities from Playground — no duplication
-export {
-  isPointInPolygon,
-  isPointInBox,
-  getBoundsFromPoints,
-  getBoundsFromCorners,
-  simplifyPath,
-  pointsToSvgPath,
-  SelectionOverlay,
-  SelectionContainer,
-} from '@/components/playground/SelectionTools';
-
-export type {
-  Point,
-  SelectionBounds,
-  LassoSelectionResult,
-  BoxSelectionResult,
-  SelectionResult,
-} from '@/components/playground/SelectionTools';
 
 // ============= Inspector Selection Mode Toggle =============
 

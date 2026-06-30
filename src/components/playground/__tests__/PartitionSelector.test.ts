@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getPartitionIndices } from '../PartitionSelector';
+import { getPartitionIndices } from '@/lib/playground/partitionFilters';
 import type { FoldsInfo } from '@/types/playground';
 
 describe('getPartitionIndices', () => {

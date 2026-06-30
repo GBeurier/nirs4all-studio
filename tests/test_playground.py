@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import api.shared  # noqa: F401  (import first to satisfy load-order constraint)
 from api.lazy_imports import _do_load_ml_deps, is_ml_ready
 from main import app
 
@@ -89,6 +90,45 @@ class _FakePartitionedDataset:
 
     def headers(self, _source_index):
         return self._headers
+
+
+class _FakeMultiSourceTargetDataset:
+    def __init__(
+        self,
+        X_sources: list[np.ndarray],
+        y_train: np.ndarray,
+        headers: list[list[float]],
+    ):
+        self._X = {
+            "train": X_sources,
+            "test": [np.empty((0, X.shape[1])) for X in X_sources],
+        }
+        self._y = {
+            "train": y_train,
+            "test": np.empty((0, y_train.shape[1] if y_train.ndim > 1 else 0)),
+        }
+        self._metadata = {
+            "train": _FakeMetadataFrame({}),
+            "test": _FakeMetadataFrame({}),
+        }
+        self._headers = headers
+        self.repetition = None
+
+    def x(self, context, layout="2d", concat_source=True):
+        sources = self._X[context["partition"]]
+        return sources if not concat_source else sources[0]
+
+    def y(self, context):
+        return self._y[context["partition"]]
+
+    def metadata(self, context):
+        return self._metadata[context["partition"]]
+
+    def headers(self, source_index):
+        return self._headers[source_index]
+
+    def header_unit(self, _source_index):
+        return "nm"
 
 
 @pytest.fixture
@@ -417,6 +457,101 @@ class TestSplitters:
         assert fold_indices == set(range(n_train))
         assert not any(idx >= n_train for idx in fold_indices)
 
+    def test_execute_dataset_uses_target_index_zero_by_default(self, monkeypatch):
+        """Dataset-backed execution should preserve the historical target column default."""
+        dataset = _FakeMultiSourceTargetDataset(
+            X_sources=[np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]], dtype=float)],
+            y_train=np.array([[1.0, 10.0], [2.0, 20.0], [3.0, 30.0]], dtype=float),
+            headers=[[1000.0, 1001.0]],
+        )
+        monkeypatch.setattr("api.spectra._load_dataset", lambda _dataset_id: dataset)
+
+        response = client.post(
+            "/api/playground/execute-dataset",
+            json={
+                "dataset_id": "playground-target-default",
+                "partition": "train",
+                "steps": [],
+                "options": {
+                    "use_cache": False,
+                    "compute_pca": False,
+                    "compute_repetitions": False,
+                    "compute_statistics": False,
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["original"]["y"] == [1.0, 2.0, 3.0]
+        assert data["processed"]["y"] == [1.0, 2.0, 3.0]
+
+    def test_execute_dataset_uses_explicit_target_index(self, monkeypatch):
+        """Dataset-backed execution should support selecting a non-default target column."""
+        dataset = _FakeMultiSourceTargetDataset(
+            X_sources=[np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]], dtype=float)],
+            y_train=np.array([[1.0, 10.0], [2.0, 20.0], [3.0, 30.0]], dtype=float),
+            headers=[[1000.0, 1001.0]],
+        )
+        monkeypatch.setattr("api.spectra._load_dataset", lambda _dataset_id: dataset)
+
+        response = client.post(
+            "/api/playground/execute-dataset",
+            json={
+                "dataset_id": "playground-target-index",
+                "partition": "train",
+                "target_index": 1,
+                "steps": [],
+                "options": {
+                    "use_cache": False,
+                    "compute_pca": False,
+                    "compute_repetitions": False,
+                    "compute_statistics": False,
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["original"]["y"] == [10.0, 20.0, 30.0]
+        assert data["processed"]["y"] == [10.0, 20.0, 30.0]
+
+    def test_execute_dataset_uses_explicit_source_index(self, monkeypatch):
+        """Dataset-backed execution should expose a source-index hook for multi-source X."""
+        source_0 = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]], dtype=float)
+        source_1 = np.array(
+            [[10.0, 11.0, 12.0], [13.0, 14.0, 15.0], [16.0, 17.0, 18.0]],
+            dtype=float,
+        )
+        dataset = _FakeMultiSourceTargetDataset(
+            X_sources=[source_0, source_1],
+            y_train=np.array([[1.0, 10.0], [2.0, 20.0], [3.0, 30.0]], dtype=float),
+            headers=[[1000.0, 1001.0], [2000.0, 2001.0, 2002.0]],
+        )
+        monkeypatch.setattr("api.spectra._load_dataset", lambda _dataset_id: dataset)
+
+        response = client.post(
+            "/api/playground/execute-dataset",
+            json={
+                "dataset_id": "playground-source-index",
+                "partition": "train",
+                "source_index": 1,
+                "steps": [],
+                "options": {
+                    "use_cache": False,
+                    "compute_pca": False,
+                    "compute_repetitions": False,
+                    "compute_statistics": False,
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["original"]["shape"] == [3, 3]
+        assert data["original"]["spectra"] == source_1.tolist()
+        assert data["original"]["wavelengths"] == [2000.0, 2001.0, 2002.0]
+
     def test_execute_dataset_repetition_analysis_uses_dataset_repetition(self, monkeypatch):
         """Dataset-backed repetition analysis must honor the configured dataset repetition column."""
         n_train = 8
@@ -559,6 +694,38 @@ class TestSplitters:
 
         assert data["repetition_column"] == "sample_group"
         assert data["metadata_columns"] == ["sample_id", "sample_group"]
+
+    def test_spectra_endpoint_selects_source_and_target_index(self, monkeypatch):
+        """Workspace spectra responses should honor source and target selections."""
+        from api import spectra as spectra_module
+
+        source_0 = np.array([[1.0, 2.0], [3.0, 4.0]])
+        source_1 = np.array([[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]])
+        y_train = np.array([[1.0, 100.0], [2.0, 200.0]])
+        dataset = _FakeMultiSourceTargetDataset(
+            [source_0, source_1],
+            y_train,
+            [[900.0, 901.0], [1100.0, 1101.0, 1102.0]],
+        )
+        monkeypatch.setattr(spectra_module, "_load_dataset", lambda _dataset_id: dataset)
+
+        data = asyncio.run(
+            spectra_module.get_spectra(
+                "source-target-contract",
+                start=0,
+                end=None,
+                partition="train",
+                source=1,
+                target_index=1,
+                include_metadata=False,
+                include_y=True,
+            )
+        )
+
+        assert data["source"] == 1
+        assert data["spectra"] == source_1.tolist()
+        assert data["wavelengths"] == [1100.0, 1101.0, 1102.0]
+        assert data["y"] == [100.0, 200.0]
 
     def test_spectra_endpoint_does_not_inject_set_metadata_for_all_partition(self, monkeypatch):
         """The spectra endpoint must not synthesize a metadata 'set' column for train/test."""

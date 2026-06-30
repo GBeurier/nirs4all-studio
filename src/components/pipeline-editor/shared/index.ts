@@ -29,11 +29,11 @@ export { ValidationMessage, InlineValidationMessage } from "./ValidationMessage"
 export type { ValidationMessageProps, InlineValidationMessageProps, ValidationSeverity } from "./ValidationMessage";
 
 // Hooks
-export { useParamInput, parameterInfo } from "./useParamInput";
+export { useParamInput } from "./useParamInput";
+export { parameterInfo } from "./paramInputOptions";
 
 // Utilities
 export { formatParamLabel } from "./ParameterInput";
 
 // Demo component for visual testing (not for production use)
 export { SharedComponentsDemo } from "./demo";
-

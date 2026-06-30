@@ -11,6 +11,13 @@ from nirs4all.pipeline.config.generator import count_combinations
 import api.pipelines as pipelines_api
 from api.nirs4all_adapter import check_pipeline_imports, expand_pipeline_variants
 from api.pipeline_canonical import (
+    _comparable_finetune_param_shape,
+    _finetune_param_values_equivalent,
+    _normalize_search_space_raw_value,
+    _normalize_search_space_token,
+    _parse_finetune_param_config,
+    _serialize_finetune_param_config,
+    _should_reuse_raw_finetune_param_value,
     canonical_to_editor,
     count_runtime_variants,
     editor_steps_to_runtime_canonical,
@@ -553,6 +560,66 @@ def test_preview_pipeline_import_normalizes_float_log_aliases():
     model_params = exported[0]["finetune_params"]["model_params"]
     assert model_params["alpha"] == ["log_float", 1e-4, 1e2]
     assert model_params["gamma"]["type"] == "log_float"
+
+
+def test_finetune_param_config_parses_tuple_and_object_search_space_forms():
+    tuple_param = _parse_finetune_param_config("n_components", ["int", 1, 25, 2])
+    assert tuple_param == {
+        "name": "n_components",
+        "type": "int",
+        "low": 1,
+        "high": 25,
+        "step": 2,
+        "rawValue": ["int", 1, 25, 2],
+    }
+
+    categorical_param = _parse_finetune_param_config("solver", ["categorical", ["svd", "lsqr"]])
+    assert categorical_param == {
+        "name": "solver",
+        "type": "categorical",
+        "choices": ["svd", "lsqr"],
+        "rawValue": ["categorical", ["svd", "lsqr"]],
+    }
+
+    object_param = _parse_finetune_param_config("alpha", {"type": "float", "low": 0.1, "high": 1.0, "step": 0.1})
+    assert object_param == {
+        "name": "alpha",
+        "type": "float",
+        "low": 0.1,
+        "high": 1.0,
+        "step": 0.1,
+        "choices": None,
+        "rawValue": {"type": "float", "low": 0.1, "high": 1.0, "step": 0.1},
+    }
+
+
+def test_finetune_search_space_legacy_tokens_are_normalized_by_reexported_helpers():
+    assert _normalize_search_space_token("float_log") == "log_float"
+    assert _normalize_search_space_raw_value(["float_log", 1e-4, 1e2]) == ["log_float", 1e-4, 1e2]
+    assert _normalize_search_space_raw_value({"type": "float_log", "low": 1e-4, "high": 1e2}) == {"type": "log_float", "low": 1e-4, "high": 1e2}
+
+    object_param = _parse_finetune_param_config("alpha", {"type": "float_log", "low": 1e-4, "high": 1e2})
+    assert object_param["type"] == "log_float"
+    assert object_param["rawValue"] == {"type": "log_float", "low": 1e-4, "high": 1e2}
+
+
+def test_finetune_raw_shape_reuse_and_serialization_preservation():
+    tuple_param = _parse_finetune_param_config("ratio", ["float", 0.0, 1.0, 0.1])
+    assert _should_reuse_raw_finetune_param_value(tuple_param) is True
+    assert _serialize_finetune_param_config(tuple_param) == ["float", 0.0, 1.0, 0.1]
+
+    object_param = _parse_finetune_param_config("ratio", {"type": "float", "low": 0.0, "high": 1.0})
+    assert _should_reuse_raw_finetune_param_value(object_param) is True
+    assert _serialize_finetune_param_config(object_param) == {"type": "float", "low": 0.0, "high": 1.0}
+
+    assert _finetune_param_values_equivalent(
+        _comparable_finetune_param_shape(tuple_param),
+        _comparable_finetune_param_shape(_parse_finetune_param_config("ratio", ["float", 0.0, 1.0, 0.1])),
+    )
+
+    tuple_param["high"] = 2.0
+    assert _should_reuse_raw_finetune_param_value(tuple_param) is False
+    assert _serialize_finetune_param_config(tuple_param) == {"type": "float", "low": 0.0, "high": 2.0, "step": 0.1}
 
 
 def test_editor_to_canonical_exports_edited_finetune_params_from_current_fields():

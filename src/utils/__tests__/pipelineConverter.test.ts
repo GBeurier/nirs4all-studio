@@ -14,9 +14,11 @@ import {
   exportToNirs4all,
   hydrateEditorPipelineSteps,
   validateRoundTrip,
-  type Nirs4allPipeline,
-  type Nirs4allStep,
 } from "../pipelineConverter";
+import type {
+  Nirs4allPipeline,
+  Nirs4allStep,
+} from "../nirs4allPipelineTypes";
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
 
 // Sample canonical pipelines as returned by nirs4all

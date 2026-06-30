@@ -5,12 +5,18 @@
  *
  * Both implement the same set-based selection surface (SELECT/DESELECT/TOGGLE/
  * SELECT_ALL/INVERT/CLEAR with replace/add/remove/toggle modes), the same
- * bounded undo history, the same pin set, and the same sessionStorage shape.
+ * bounded undo history, the same pin set, and the same persisted JSON shape.
  * This module owns that identity-agnostic half so the two reducers cannot drift
  * (FE-05-state: the history block was inlined 15× in one twin and extracted in
  * the other). Playground-only actions (range/intersect/replace-if-sole) and the
  * hover/keyboard ownership stay in each provider.
  */
+
+import {
+  defineClientStorageKey,
+  readClientStorageJson,
+  writeClientStorageJson,
+} from '@/lib/clientStorage';
 
 /** Mutation mode shared by both selection providers. */
 export type SelectionModeBase = 'replace' | 'add' | 'remove' | 'toggle';
@@ -101,17 +107,21 @@ export interface PersistFieldNames {
   savedSelections: string;
 }
 
+function createSelectionStorageKey<TValue>(key: string) {
+  return defineClientStorageKey<TValue>(key, {
+    area: 'session',
+    scope: 'session',
+    description: 'Selection state persisted for the active browser session.',
+  });
+}
+
 /** Persist selection/pin sets + saved selections under `key`; failures swallowed. */
 export function persistSelection<T, S>(key: string, fields: PersistFieldNames, selected: Set<T>, pinned: Set<T>, savedSelections: S[]): void {
-  try {
-    sessionStorage.setItem(key, JSON.stringify({
-      [fields.selected]: Array.from(selected),
-      [fields.pinned]: Array.from(pinned),
-      [fields.savedSelections]: savedSelections,
-    }));
-  } catch {
-    /* sessionStorage unavailable or full — selection is non-critical */
-  }
+  writeClientStorageJson(createSelectionStorageKey<Record<string, unknown>>(key), {
+    [fields.selected]: Array.from(selected),
+    [fields.pinned]: Array.from(pinned),
+    [fields.savedSelections]: savedSelections,
+  });
 }
 
 /** Canonical selection state read back by {@link loadPersistedSelection}. */
@@ -123,18 +133,13 @@ export interface PersistedSelection<T, S> {
 
 /** Read persisted state, normalizing provider field names; null when absent/invalid. */
 export function loadPersistedSelection<T, S>(key: string, fields: PersistFieldNames): PersistedSelection<T, S> | null {
-  try {
-    const stored = sessionStorage.getItem(key);
-    if (stored) {
-      const raw = JSON.parse(stored) as Record<string, unknown>;
-      return {
-        selected: raw[fields.selected] as T[] | undefined,
-        pinned: raw[fields.pinned] as T[] | undefined,
-        savedSelections: raw[fields.savedSelections] as S[] | undefined,
-      };
-    }
-  } catch {
-    /* corrupt/unavailable storage — fall back to empty selection */
+  const raw = readClientStorageJson<Record<string, unknown>>(createSelectionStorageKey(key));
+  if (raw) {
+    return {
+      selected: raw[fields.selected] as T[] | undefined,
+      pinned: raw[fields.pinned] as T[] | undefined,
+      savedSelections: raw[fields.savedSelections] as S[] | undefined,
+    };
   }
   return null;
 }

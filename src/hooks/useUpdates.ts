@@ -251,9 +251,9 @@ export function useUpdateDownload() {
       // Quit the app so it can proceed with file copy and relaunch.
       // Brief delay so the user sees the "restarting" message.
       setTimeout(() => {
-        const electronApi = (window as Record<string, unknown>).electronApi as
-          | { quitForUpdate?: () => Promise<{ success: boolean }> }
-          | undefined;
+        const electronApi = (window as unknown as {
+          electronApi?: { quitForUpdate?: () => Promise<{ success: boolean }> };
+        }).electronApi;
         if (electronApi?.quitForUpdate) {
           electronApi.quitForUpdate();
         } else {

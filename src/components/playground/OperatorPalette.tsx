@@ -9,219 +9,33 @@
  */
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import {
-  Waves,
-  Scaling,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  Maximize2,
-  Scissors,
-  Search,
-  Plus,
-  ChevronRight,
-  Shuffle,
-  Grid3X3,
-  Layers,
-  AlertCircle,
-  GitBranch,
-  Target,
-  Users,
-  Ruler,
-  Filter,
-  XCircle,
-  Shield,
-  Zap,
-} from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
 import { useNodeRegistryOptional, usePipelineEditorPreferencesOptional, type NodeDefinition, type TierLevel } from '@/components/pipeline-editor/contexts';
 import type { OperatorDefinition } from '@/types/playground';
-
-// Icon mapping for operator categories (case-insensitive lookup via normalized key)
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  // Preprocessing categories (from NodeRegistry JSON definitions)
-  'nirs core': Waves,
-  'baseline': Minus,
-  'smoothing': TrendingUp,
-  'scaling': Scaling,
-  'normalization': Scaling,
-  'derivatives': TrendingUp,
-  'wavelet': Layers,
-  'wavelets': Layers,
-  'conversion': TrendingDown,
-  'feature selection': Scissors,
-  'feature ops': Scissors,
-  'features': Scissors,
-  'dimensionality reduction': Maximize2,
-  // sklearn preprocessing subcategories
-  'scikit-scalers': Scaling,
-  'scikit-dimensionality': Maximize2,
-  'scikit-encoding': Layers,
-  'scikit-imputation': Shield,
-  'scikit-feature-selection': Scissors,
-  'scikit-feature-extraction': Scissors,
-  'scikit-kernel-projection': Maximize2,
-  'scikit-meta-transformers': Layers,
-  'scikit-misc-transformers': GitBranch,
-  'scikit-cluster-neighbors': Target,
-  'signal-conversion': TrendingDown,
-  'spectral-transforms': Waves,
-  'feature-engineering': Scissors,
-  'feature-selection': Scissors,
-  // Legacy backend keys
-  'scatter_correction': Waves,
-  'derivative': TrendingUp,
-  'wavelet_single': Layers,
-  // Augmentation categories
-  'noise': Waves,
-  'scattering': Waves,
-  'environmental': Zap,
-  'edge artifacts': Zap,
-  'spectral': Waves,
-  'spline': TrendingUp,
-  'synthesis': Layers,
-  'wavelength': Maximize2,
-  'random': Shuffle,
-  'mixing': Shuffle,
-  // Splitting categories
-  'nirs': Ruler,
-  'sklearn': Grid3X3,
-  'sklearn-splitters': Grid3X3,
-  // Filter categories
-  'outlier': XCircle,
-  'quality': Shield,
-  'selection': Filter,
-  'metadata': Layers,
-  // Fallback
-  'other': GitBranch,
-};
-
-/**
- * Get icon for an operator based on category (case-insensitive)
- */
-function getOperatorIcon(category: string): React.ComponentType<{ className?: string }> {
-  return ICON_MAP[category.toLowerCase()] || Waves;
-}
-
-// Playground tab type - maps to the 4 playground categories
-type PlaygroundTabType = 'preprocessing' | 'augmentation' | 'splitting' | 'filter';
-
-/**
- * Get display label for a category.
- */
-const CATEGORY_LABELS: Record<string, string> = {
-  'nirs core': 'NIRS Core',
-  'scatter_correction': 'Scatter Correction',
-  'sklearn': 'Scikit-learn',
-  'sklearn-splitters': 'Scikit-learn Splitters',
-};
-
-function humanizeCategoryLabel(category: string): string {
-  return category
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (match) => match.toUpperCase())
-    .replace(/\bNirs\b/g, 'NIRS')
-    .replace(/\bSklearn\b/g, 'Scikit-learn');
-}
-
-/**
- * Convert NodeDefinition to OperatorDefinition for playground compatibility
- */
-function nodeToOperatorDef(node: NodeDefinition, tabType: PlaygroundTabType): OperatorDefinition {
-  // Build params from node parameters, including rich metadata
-  const params: OperatorDefinition['params'] = {};
-  if (node.parameters) {
-    for (const param of node.parameters) {
-      params[param.name] = {
-        required: param.required ?? false,
-        default: param.default,
-        type: param.type,
-        default_is_callable: false,
-        min: param.min,
-        max: param.max,
-        step: param.step,
-        options: param.options as OperatorDefinition['params'][string]['options'],
-        description: param.description,
-        isAdvanced: param.isAdvanced,
-      };
-    }
-  }
-
-  // Use name as display_name, inserting spaces before capitals for readability
-  const displayName = node.name
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
-
-  return {
-    registryId: node.id,
-    classPath: node.classPath,
-    name: node.name,
-    display_name: displayName,
-    description: node.description,
-    category: node.category ?? 'Other',
-    params,
-    type: tabType,
-    source: node.source,
-  };
-}
-
-function getCategoryLabel(category: string, _type: PlaygroundTabType): string {
-  const trimmedCategory = category.trim();
-  if (trimmedCategory.length === 0) {
-    return 'Other';
-  }
-
-  const lookupKey = trimmedCategory.toLowerCase();
-  if (CATEGORY_LABELS[lookupKey]) {
-    return CATEGORY_LABELS[lookupKey];
-  }
-
-  if (/[A-Z]/.test(trimmedCategory) || trimmedCategory.includes(' ')) {
-    return trimmedCategory;
-  }
-
-  return humanizeCategoryLabel(trimmedCategory);
-}
-
-function getOperatorKey(operator: OperatorDefinition): string {
-  return operator.registryId
-    ?? operator.classPath
-    ?? `${operator.type}:${operator.source ?? 'unknown'}:${operator.name}`;
-}
+import {
+  buildOperatorsByTab,
+  countOperatorsByTab,
+  filterOperatorsBySearchQuery,
+  groupOperatorsByCategory,
+  type OperatorPaletteNodeType,
+  type PlaygroundTabType,
+} from '@/lib/playground/operatorPaletteData';
+import { OperatorPaletteCategorySection } from './OperatorPaletteCategorySection';
+import { OperatorPaletteSearch } from './OperatorPaletteSearch';
 
 /** Tier selector labels */
 const TIER_LABELS: Record<TierLevel, string> = {
@@ -236,15 +50,6 @@ const TIER_TOOLTIPS: Record<TierLevel, string> = {
   standard: "Standard operators (nirs4all + common sklearn)",
   all: "All operators including advanced and deep learning",
 };
-
-/** Check if a node passes the tier filter */
-function passesTierFilter(node: NodeDefinition, tierLevel: TierLevel): boolean {
-  if (tierLevel === "all") return true;
-  const tier = node.tier ?? (node.isAdvanced ? "advanced" : "standard");
-  if (tierLevel === "core") return tier === "core";
-  // "standard" — exclude advanced
-  return tier !== "advanced";
-}
 
 interface OperatorPaletteProps {
   onAddOperator: (definition: OperatorDefinition) => void;
@@ -283,60 +88,16 @@ export function OperatorPalette({
     [prefs]
   );
 
-  // Get operators from registry, organized by playground tab type
   const operatorsByTab = useMemo(() => {
-    const result: Record<PlaygroundTabType, OperatorDefinition[]> = {
-      preprocessing: [],
-      augmentation: [],
-      splitting: [],
-      filter: [],
-    };
-
-    if (!registryContext) return result;
-
-    // Node types that map to each playground tab
-    const typeGroups: Record<PlaygroundTabType, string[]> = {
-      preprocessing: ['preprocessing'],
-      augmentation: ['augmentation', 'sample_augmentation', 'feature_augmentation'],
-      splitting: ['splitting'],
-      filter: ['filter', 'sample_filter'],
-    };
-
-    for (const [tabType, nodeTypes] of Object.entries(typeGroups) as [PlaygroundTabType, string[]][]) {
-      for (const nodeType of nodeTypes) {
-        const nodes = registryContext.getNodesByType(nodeType as NodeDefinition['type']);
-        for (const node of nodes) {
-          // Filter by tier level
-          if (!passesTierFilter(node, tierLevel)) continue;
-          result[tabType].push(nodeToOperatorDef(node, tabType));
-        }
-      }
-    }
-
-    return result;
+    return buildOperatorsByTab({
+      tierLevel,
+      getNodesByType: registryContext
+        ? (nodeType: OperatorPaletteNodeType) => registryContext.getNodesByType(nodeType as NodeDefinition['type'])
+        : undefined,
+    });
   }, [registryContext, tierLevel]);
 
-  // Group operators by category
-  const operatorsByCategory = useMemo(() => {
-    const result: Record<PlaygroundTabType, Record<string, OperatorDefinition[]>> = {
-      preprocessing: {},
-      augmentation: {},
-      splitting: {},
-      filter: {},
-    };
-
-    for (const [tabType, operators] of Object.entries(operatorsByTab) as [PlaygroundTabType, OperatorDefinition[]][]) {
-      for (const op of operators) {
-        const category = op.category || 'other';
-        if (!result[tabType][category]) {
-          result[tabType][category] = [];
-        }
-        result[tabType][category].push(op);
-      }
-    }
-
-    return result;
-  }, [operatorsByTab]);
+  const operatorsByCategory = useMemo(() => groupOperatorsByCategory(operatorsByTab), [operatorsByTab]);
 
   const { preprocessing, augmentation, splitting, filter } = operatorsByTab;
   const {
@@ -351,7 +112,7 @@ export function OperatorPalette({
   const error = registryContext?.error;
   const extendedError = registryContext?.extendedError ?? null;
 
-  const totalCount = preprocessing.length + augmentation.length + splitting.length + filter.length;
+  const totalCount = countOperatorsByTab(operatorsByTab);
 
   // ⌘K / Ctrl+K keyboard shortcut to open search
   useEffect(() => {
@@ -404,36 +165,10 @@ export function OperatorPalette({
     ? `Adding another splitter will replace pipeline splitter "${currentSplitterName}".`
     : 'Adding another splitter will replace the current pipeline splitter.';
 
-  // Filter operators based on search
-  const filteredOperators = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return { preprocessing, augmentation, splitting, filter };
-    }
-
-    const query = searchQuery.toLowerCase();
-    return {
-      preprocessing: preprocessing.filter(
-        op => op.name.toLowerCase().includes(query) ||
-              op.display_name.toLowerCase().includes(query) ||
-              op.description.toLowerCase().includes(query)
-      ),
-      augmentation: augmentation.filter(
-        op => op.name.toLowerCase().includes(query) ||
-              op.display_name.toLowerCase().includes(query) ||
-              op.description.toLowerCase().includes(query)
-      ),
-      splitting: splitting.filter(
-        op => op.name.toLowerCase().includes(query) ||
-              op.display_name.toLowerCase().includes(query) ||
-              op.description.toLowerCase().includes(query)
-      ),
-      filter: filter.filter(
-        op => op.name.toLowerCase().includes(query) ||
-              op.display_name.toLowerCase().includes(query) ||
-              op.description.toLowerCase().includes(query)
-      ),
-    };
-  }, [preprocessing, augmentation, splitting, filter, searchQuery]);
+  const filteredOperators = useMemo(
+    () => filterOperatorsBySearchQuery(operatorsByTab, searchQuery),
+    [operatorsByTab, searchQuery]
+  );
 
   // Loading state
   if (isLoading) {
@@ -513,141 +248,15 @@ export function OperatorPalette({
         <div className="text-[10px] text-muted-foreground/70">Loading extended...</div>
       )}
 
-      {/* Quick search button */}
-      <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full justify-start text-muted-foreground gap-2 h-8"
-          >
-            <Search className="w-3.5 h-3.5" />
-            <span className="text-xs">Search operators...</span>
-            <kbd className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded">⌘K</kbd>
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-80 p-0" align="start" side="right">
-          <Command>
-            <CommandInput
-              placeholder="Search operators..."
-              value={searchQuery}
-              onValueChange={setSearchQuery}
-            />
-            <CommandList className="max-h-80">
-              <CommandEmpty>No operators found.</CommandEmpty>
-
-              {/* Preprocessing results */}
-              {filteredOperators.preprocessing.length > 0 && (
-                <CommandGroup heading="Preprocessing">
-                  {filteredOperators.preprocessing.map(op => {
-                    const Icon = getOperatorIcon(op.category);
-                    return (
-                      <CommandItem
-                        key={getOperatorKey(op)}
-                        value={`${op.name} ${op.description}`}
-                        onSelect={() => handleSelect(op)}
-                        className="gap-2 cursor-pointer"
-                      >
-                        <Icon className="w-4 h-4 text-primary" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium">{op.display_name}</div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {op.description}
-                          </div>
-                        </div>
-                        <Plus className="w-3.5 h-3.5 text-muted-foreground" />
-                      </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
-              )}
-
-              {/* Augmentation results */}
-              {filteredOperators.augmentation.length > 0 && (
-                <CommandGroup heading="Augmentation">
-                  {filteredOperators.augmentation.map(op => {
-                    const Icon = getOperatorIcon(op.category);
-                    return (
-                      <CommandItem
-                        key={getOperatorKey(op)}
-                        value={`${op.name} ${op.description}`}
-                        onSelect={() => handleSelect(op)}
-                        className="gap-2 cursor-pointer"
-                      >
-                        <Icon className="w-4 h-4 text-blue-500" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium">{op.display_name}</div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {op.description}
-                          </div>
-                        </div>
-                        <Plus className="w-3.5 h-3.5 text-muted-foreground" />
-                      </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
-              )}
-
-              {/* Splitting results */}
-              {filteredOperators.splitting.length > 0 && (
-                <CommandGroup heading="Splitting">
-                  {filteredOperators.splitting.map(op => {
-                    const Icon = getOperatorIcon(op.category);
-                    return (
-                      <CommandItem
-                        key={getOperatorKey(op)}
-                        value={`${op.name} ${op.description}`}
-                        onSelect={() => handleSelect(op)}
-                        className="gap-2 cursor-pointer"
-                      >
-                        <Icon className="w-4 h-4 text-orange-500" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium">
-                            {op.display_name}
-                            {showSplitterReplacementHint && (
-                              <span className="ml-2 text-[10px] text-orange-500">(replaces)</span>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {op.description}
-                          </div>
-                        </div>
-                        <Plus className="w-3.5 h-3.5 text-muted-foreground" />
-                      </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
-              )}
-
-              {/* Filter results */}
-              {filteredOperators.filter.length > 0 && (
-                <CommandGroup heading="Filtering">
-                  {filteredOperators.filter.map(op => {
-                    const Icon = getOperatorIcon(op.category);
-                    return (
-                      <CommandItem
-                        key={getOperatorKey(op)}
-                        value={`${op.name} ${op.description}`}
-                        onSelect={() => handleSelect(op)}
-                        className="gap-2 cursor-pointer"
-                      >
-                        <Icon className="w-4 h-4 text-red-500" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium">{op.display_name}</div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {op.description}
-                          </div>
-                        </div>
-                        <Plus className="w-3.5 h-3.5 text-muted-foreground" />
-                      </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
-              )}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      <OperatorPaletteSearch
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        searchQuery={searchQuery}
+        onSearchQueryChange={setSearchQuery}
+        filteredOperators={filteredOperators}
+        onSelect={handleSelect}
+        showSplitterReplacementHint={showSplitterReplacementHint}
+      />
 
       {/* Tabbed category list */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'preprocessing' | 'augmentation' | 'splitting' | 'filter')}>
@@ -670,7 +279,7 @@ export function OperatorPalette({
           <ScrollArea className="h-[300px] pr-3">
             <div className="space-y-1">
               {Object.entries(preprocessingByCategory).map(([category, ops]) => (
-                <CategorySection
+                <OperatorPaletteCategorySection
                   key={category}
                   category={category}
                   type="preprocessing"
@@ -688,7 +297,7 @@ export function OperatorPalette({
           <ScrollArea className="h-[300px] pr-3">
             <div className="space-y-1">
               {Object.entries(augmentationByCategory).map(([category, ops]) => (
-                <CategorySection
+                <OperatorPaletteCategorySection
                   key={category}
                   category={category}
                   type="augmentation"
@@ -711,7 +320,7 @@ export function OperatorPalette({
                 </div>
               )}
               {Object.entries(splittingByCategory).map(([category, ops]) => (
-                <CategorySection
+                <OperatorPaletteCategorySection
                   key={category}
                   category={category}
                   type="splitting"
@@ -719,7 +328,6 @@ export function OperatorPalette({
                   isExpanded={expandedCategory === category}
                   onToggle={() => toggleCategory(category)}
                   onSelect={handleSelect}
-                  hasSplitter={showSplitterReplacementHint}
                 />
               ))}
             </div>
@@ -733,7 +341,7 @@ export function OperatorPalette({
                 Filters remove samples from the dataset based on criteria
               </div>
               {Object.entries(filterByCategory).map(([category, ops]) => (
-                <CategorySection
+                <OperatorPaletteCategorySection
                   key={category}
                   category={category}
                   type="filter"
@@ -749,156 +357,6 @@ export function OperatorPalette({
       </Tabs>
     </div>
   );
-}
-
-// Category section component
-interface CategorySectionProps {
-  category: string;
-  type: 'preprocessing' | 'augmentation' | 'splitting' | 'filter';
-  operators: OperatorDefinition[];
-  isExpanded: boolean;
-  onToggle: () => void;
-  onSelect: (op: OperatorDefinition) => void;
-  hasSplitter?: boolean;
-}
-
-function CategorySection({
-  category,
-  type,
-  operators,
-  isExpanded,
-  onToggle,
-  onSelect,
-  hasSplitter,
-}: CategorySectionProps) {
-  const Icon = getOperatorIcon(category);
-  const label = getCategoryLabel(category, type);
-  const accentColor = type === 'filter' ? 'text-red-500' : type === 'splitting' ? 'text-orange-500' : type === 'augmentation' ? 'text-blue-500' : 'text-primary';
-
-  return (
-    <Collapsible open={isExpanded} onOpenChange={onToggle}>
-      <CollapsibleTrigger asChild>
-        <button className="w-full flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors">
-          <ChevronRight
-            className={cn(
-              'w-3.5 h-3.5 transition-transform',
-              isExpanded && 'rotate-90'
-            )}
-          />
-          <Icon className={cn('w-3.5 h-3.5', accentColor)} />
-          <span>{label}</span>
-          <span className="ml-auto text-[10px] opacity-60">{operators.length}</span>
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="flex flex-col gap-1 pt-1 pb-2 pl-5">
-          <TooltipProvider delayDuration={300}>
-            {operators.map((op) => (
-              <OperatorTooltip key={getOperatorKey(op)} operator={op}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-auto py-1.5 px-2 flex flex-row items-center gap-2 hover:bg-muted justify-start relative w-full"
-                  onClick={() => onSelect(op)}
-                >
-                  <Icon className={cn('w-3.5 h-3.5 shrink-0', accentColor)} />
-                  <span className="text-[10px] font-medium leading-tight text-left line-clamp-1">
-                    {op.display_name}
-                  </span>
-                </Button>
-              </OperatorTooltip>
-            ))}
-          </TooltipProvider>
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-/**
- * OperatorTooltip - Rich tooltip showing operator details and parameters
- */
-interface OperatorTooltipProps {
-  operator: OperatorDefinition;
-  children: React.ReactNode;
-}
-
-function OperatorTooltip({ operator, children }: OperatorTooltipProps) {
-  const paramCount = Object.keys(operator.params).filter(k => !k.startsWith('_')).length;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {children}
-      </TooltipTrigger>
-      <TooltipContent
-        side="right"
-        align="start"
-        className="max-w-xs p-3 bg-popover text-popover-foreground border shadow-lg"
-      >
-        <div className="space-y-2">
-          <div>
-            <div className="font-semibold text-sm">{operator.display_name}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">
-              {operator.description}
-            </div>
-          </div>
-
-          {paramCount > 0 && (
-            <div className="pt-1 border-t border-border">
-              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                Parameters
-              </div>
-              <div className="space-y-0.5">
-                {Object.entries(operator.params)
-                  .filter(([key]) => !key.startsWith('_'))
-                  .slice(0, 4)
-                  .map(([key, info]) => (
-                    <div key={key} className="flex items-center gap-1 text-[11px]">
-                      <code className="text-xs bg-muted px-1 rounded">{key}</code>
-                      {info.required && (
-                        <span className="text-destructive text-[10px]">*</span>
-                      )}
-                      {info.default !== undefined && !info.default_is_callable && (
-                        <span className="text-muted-foreground">
-                          = {formatDefaultValue(info.default)}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                {paramCount > 4 && (
-                  <div className="text-[10px] text-muted-foreground">
-                    +{paramCount - 4} more...
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="pt-1 border-t border-border text-[10px] text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <Plus className="w-2.5 h-2.5" />
-              Click to add to pipeline
-            </span>
-          </div>
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-/**
- * Format a default value for display
- */
-function formatDefaultValue(value: unknown): string {
-  if (value === null) return 'null';
-  if (value === undefined) return 'undefined';
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  if (typeof value === 'number') return String(value);
-  if (typeof value === 'string') return `"${value}"`;
-  if (Array.isArray(value)) return `[${value.length}]`;
-  if (typeof value === 'object') return '{...}';
-  return String(value);
 }
 
 export default OperatorPalette;

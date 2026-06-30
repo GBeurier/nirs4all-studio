@@ -2,7 +2,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { Plus, Sparkles, ArrowDown, PlayCircle, Flag } from "lucide-react";
 import { motion, AnimatePresence, LayoutGroup } from "@/lib/motion";
 import { PipelineNode } from "./PipelineNode";
-import { usePipelineDnd } from "./PipelineDndContext";
+import { usePipelineDnd } from "./usePipelineDnd";
 import type { PipelineStep } from "./types";
 
 interface PipelineCanvasProps {

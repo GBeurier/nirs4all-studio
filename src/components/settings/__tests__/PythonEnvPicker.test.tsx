@@ -60,23 +60,50 @@ import { PythonEnvPicker } from "../PythonEnvPicker";
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
 
-interface ElectronApiMock {
-  getEnvInfo: ReturnType<typeof vi.fn>;
-  detectExistingEnvs: ReturnType<typeof vi.fn>;
-  inspectExistingEnv: ReturnType<typeof vi.fn>;
-  inspectExistingPython: ReturnType<typeof vi.fn>;
-  applyExistingEnv: ReturnType<typeof vi.fn>;
-  applyExistingPython: ReturnType<typeof vi.fn>;
-  selectPythonExe: ReturnType<typeof vi.fn>;
-  selectFolder: ReturnType<typeof vi.fn>;
-  startEnvSetup: ReturnType<typeof vi.fn>;
-  onEnvSetupProgress: ReturnType<typeof vi.fn>;
-  restartBackend: ReturnType<typeof vi.fn>;
-  platform: string;
+type RendererElectronApi = NonNullable<Window["electronApi"]>;
+
+interface ElectronApiMock extends RendererElectronApi {
+  getEnvInfo: ReturnType<typeof vi.fn<RendererElectronApi["getEnvInfo"]>>;
+  detectExistingEnvs: ReturnType<typeof vi.fn<RendererElectronApi["detectExistingEnvs"]>>;
+  inspectExistingEnv: ReturnType<typeof vi.fn<RendererElectronApi["inspectExistingEnv"]>>;
+  inspectExistingPython: ReturnType<typeof vi.fn<RendererElectronApi["inspectExistingPython"]>>;
+  applyExistingEnv: ReturnType<typeof vi.fn<RendererElectronApi["applyExistingEnv"]>>;
+  applyExistingPython: ReturnType<typeof vi.fn<RendererElectronApi["applyExistingPython"]>>;
+  selectPythonExe: ReturnType<typeof vi.fn<RendererElectronApi["selectPythonExe"]>>;
+  selectFolder: ReturnType<typeof vi.fn<RendererElectronApi["selectFolder"]>>;
+  startEnvSetup: ReturnType<typeof vi.fn<RendererElectronApi["startEnvSetup"]>>;
+  onEnvSetupProgress: ReturnType<typeof vi.fn<RendererElectronApi["onEnvSetupProgress"]>>;
+  restartBackend: ReturnType<typeof vi.fn<RendererElectronApi["restartBackend"]>>;
 }
 
 function createElectronApi(): ElectronApiMock {
   return {
+    confirmDroppedFolder: vi.fn().mockResolvedValue(null),
+    selectFile: vi.fn().mockResolvedValue(null),
+    saveFile: vi.fn().mockResolvedValue(null),
+    revealInExplorer: vi.fn().mockResolvedValue(undefined),
+    openExternal: vi.fn().mockResolvedValue(undefined),
+    getLogPath: vi.fn().mockResolvedValue(null),
+    openLogDir: vi.fn().mockResolvedValue(undefined),
+    getTelemetryConsent: vi.fn().mockResolvedValue("unset"),
+    setTelemetryConsent: vi.fn().mockResolvedValue({
+      status: "declined",
+      decidedAt: "2026-04-18T08:00:00",
+    }),
+    resizeWindow: vi.fn().mockResolvedValue(true),
+    minimizeWindow: vi.fn().mockResolvedValue(true),
+    maximizeWindow: vi.fn().mockResolvedValue(true),
+    restoreWindow: vi.fn().mockResolvedValue(true),
+    getWindowSize: vi.fn().mockResolvedValue({ width: 1024, height: 768 }),
+    getBackendPort: vi.fn().mockResolvedValue(8000),
+    getBackendUrl: vi.fn().mockResolvedValue("http://127.0.0.1:8000"),
+    getBackendInfo: vi.fn().mockResolvedValue({
+      status: "running",
+      port: 8000,
+      url: "http://127.0.0.1:8000",
+      restartCount: 0,
+    }),
+    onBackendStatusChanged: vi.fn(() => () => undefined),
     getEnvInfo: vi.fn().mockResolvedValue({
       status: "ready",
       envDir: "C:\\envs\\configured",
@@ -95,7 +122,17 @@ function createElectronApi(): ElectronApiMock {
     startEnvSetup: vi.fn(),
     onEnvSetupProgress: vi.fn(() => () => undefined),
     restartBackend: vi.fn(),
+    getEnvStatus: vi.fn().mockResolvedValue("ready"),
+    isEnvReady: vi.fn().mockResolvedValue(true),
+    useExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    useExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    shouldShowWizard: vi.fn().mockResolvedValue(false),
+    markWizardComplete: vi.fn().mockResolvedValue(undefined),
+    getCurrentEnvSummary: vi.fn().mockResolvedValue(null),
+    isPortable: vi.fn().mockResolvedValue(false),
     platform: "win32",
+    isElectron: true,
+    getPathForFile: vi.fn(() => ""),
   };
 }
 
@@ -127,7 +164,7 @@ async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise
 }
 
 async function renderComponent(electronApi: ElectronApiMock) {
-  (window as Window & { electronApi?: ElectronApiMock }).electronApi = electronApi;
+  window.electronApi = electronApi;
 
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -150,7 +187,7 @@ async function renderComponent(electronApi: ElectronApiMock) {
 
 afterEach(() => {
   vi.clearAllMocks();
-  delete (window as Window & { electronApi?: ElectronApiMock }).electronApi;
+  delete window.electronApi;
 });
 
 describe("PythonEnvPicker", () => {

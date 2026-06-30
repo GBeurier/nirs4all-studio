@@ -3,7 +3,7 @@
  */
 
 import type React from 'react';
-import type { SelectionContextValue } from '@/context/SelectionContext';
+import type { SelectionContextValue } from '@/context/useSelection';
 import type { GlobalColorConfig, ColorContext } from '@/lib/playground/colorConfig';
 import type { FoldsInfo } from '@/types/playground';
 

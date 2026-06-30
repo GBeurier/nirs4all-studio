@@ -48,7 +48,8 @@ export interface NaFillConfig {
 /**
  * Task type for the dataset
  */
-export type TaskType = "auto" | "regression" | "binary_classification" | "multiclass_classification";
+export type TaskType = "auto" | "regression" | "classification" | "binary_classification" | "multiclass_classification";
+export type TargetTaskType = TaskType;
 
 /**
  * Parsing options for CSV files
@@ -124,7 +125,7 @@ export interface MultiSourceConfig {
  */
 export interface TargetConfig {
   column: string;
-  type: TaskType;
+  type: TargetTaskType;
   unit?: string;
   classes?: string[];
   /** Whether this is the default target when multiple are available */
@@ -133,6 +134,21 @@ export interface TargetConfig {
   label?: string;
   /** Description of what this target represents */
   description?: string;
+}
+
+/**
+ * Explicit target selection contract persisted with a dataset config.
+ *
+ * Legacy consumers still read `default_target` and `task_type`; this shape keeps
+ * multi-target intent available for newer campaign/dag-ml flows.
+ */
+export interface DatasetTargetSelectionConfig {
+  /** Ordered target columns selected for downstream execution. */
+  selected_targets: string[];
+  /** Default target column used by legacy single-target flows. */
+  default_target?: string;
+  /** Task type per selected target column. */
+  task_by_target: Record<string, TaskType>;
 }
 
 /**
@@ -171,6 +187,10 @@ export interface DatasetConfig {
   test_y_params?: Partial<ParsingOptions>;
   /** Target columns */
   targets?: TargetConfig[];
+  /** Multi-source/modal source descriptor for future multimodal loaders. */
+  multi_source?: MultiSourceConfig | null;
+  /** Explicit multi-target selection descriptor. */
+  target_selection?: DatasetTargetSelectionConfig;
   /** Default target column name */
   default_target?: string;
   /** Task type */
@@ -192,6 +212,8 @@ export interface Dataset {
   id: string;
   name: string;
   path: string;
+  /** Workspace-managed storage location (set by the backend store when present). */
+  storage_path?: string;
   linked_at: string;
   status?: "available" | "missing" | "loading" | "error";
   group_id?: string;
@@ -215,7 +237,7 @@ export interface Dataset {
   num_features?: number;
   n_sources?: number;
   is_multi_source?: boolean;
-  task_type?: TaskType | "classification" | null;
+  task_type?: TaskType | null;
   num_classes?: number;
   has_targets?: boolean;
   has_metadata?: boolean;
@@ -746,4 +768,3 @@ export interface RelinkDatasetResponse {
   new_hash: string;
   relinked_at: string;
 }
-

@@ -9,7 +9,8 @@ import { BarChart3, RefreshCw, Loader2, AlertCircle, Settings } from "lucide-rea
 import { SpectraChart } from "../charts";
 import { PartitionToggle } from "../PartitionToggle";
 import { getPartitionTheme } from "../partitionTheme";
-import type { PartitionKey, PreviewDataResponse, SpectraPreview } from "@/types/datasets";
+import { getDatasetSpectraPreviewReadModel } from "../DatasetPreviewData";
+import type { PartitionKey, PreviewDataResponse } from "@/types/datasets";
 
 interface DatasetSpectraTabProps {
   preview: PreviewDataResponse | null;
@@ -24,32 +25,23 @@ export function DatasetSpectraTab({
   error,
   onRefresh,
 }: DatasetSpectraTabProps) {
-  const partitionMap = preview?.spectra_preview_by_partition;
-  const trainCount = preview?.summary?.train_samples;
-  const testCount = preview?.summary?.test_samples;
-  const hasTest = !!partitionMap?.test || (testCount != null && testCount > 0);
-
   const [partition, setPartition] = useState<PartitionKey>("all");
-  // Reset to train if user previously selected test/all then dataset changes to one without test
-  const effectivePartition: PartitionKey = !hasTest && partition !== "train" ? "train" : partition;
+  const [selectedSource, setSelectedSource] = useState(0);
+  const {
+    trainCount,
+    testCount,
+    sourceCount,
+    hasTest,
+    hasPerSource,
+    effectivePartition,
+    spectra,
+    spectraSampleCount,
+  } = useMemo(
+    () => getDatasetSpectraPreviewReadModel(preview, partition, selectedSource),
+    [preview, partition, selectedSource],
+  );
   const partitionTheme = getPartitionTheme(effectivePartition);
 
-  const hasPerSource = (preview?.summary?.n_sources ?? 0) > 1 && !!preview?.spectra_per_source_by_partition;
-  const [selectedSource, setSelectedSource] = useState(0);
-
-  const spectraSource: SpectraPreview | undefined = useMemo(() => {
-    if (hasPerSource && preview?.spectra_per_source_by_partition) {
-      const sourceMap = preview.spectra_per_source_by_partition[selectedSource];
-      if (sourceMap) {
-        return sourceMap[effectivePartition] ?? sourceMap.train ?? preview?.spectra_preview;
-      }
-    }
-
-    if (partitionMap) {
-      return partitionMap[effectivePartition] ?? partitionMap.train ?? preview?.spectra_preview;
-    }
-    return preview?.spectra_preview;
-  }, [partitionMap, effectivePartition, preview, hasPerSource, selectedSource]);
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
@@ -75,7 +67,7 @@ export function DatasetSpectraTab({
     );
   }
 
-  if (!spectraSource) {
+  if (!spectra) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <BarChart3 className="h-8 w-8 text-muted-foreground mb-4 opacity-50" />
@@ -88,7 +80,6 @@ export function DatasetSpectraTab({
     );
   }
 
-  const spectra = spectraSource;
   const wavelengthMin = Math.min(...spectra.wavelengths);
   const wavelengthMax = Math.max(...spectra.wavelengths);
 
@@ -111,7 +102,7 @@ export function DatasetSpectraTab({
                     value={selectedSource}
                     onChange={(e) => setSelectedSource(Number(e.target.value))}
                   >
-                    {Array.from({ length: preview?.summary?.n_sources ?? 0 }).map((_, i) => (
+                    {Array.from({ length: sourceCount }).map((_, i) => (
                       <option key={i} value={i}>
                         Source {i + 1}
                       </option>
@@ -166,7 +157,7 @@ export function DatasetSpectraTab({
               {wavelengthMin.toFixed(0)} - {wavelengthMax.toFixed(0)}
             </p>
             <p className="text-xs text-muted-foreground">
-              {preview.summary?.header_unit === "nm" ? "nm" : preview.summary?.header_unit === "cm-1" ? "cm⁻¹" : "units"}
+              {preview?.summary?.header_unit === "nm" ? "nm" : preview?.summary?.header_unit === "cm-1" ? "cm⁻¹" : "units"}
             </p>
           </CardContent>
         </Card>
@@ -192,7 +183,7 @@ export function DatasetSpectraTab({
           <CardContent className="pt-4">
             <p className="text-sm text-muted-foreground">Samples</p>
             <p className="text-lg font-semibold">
-              {(spectra.n_samples ?? preview?.summary?.num_samples ?? 0).toLocaleString() || "--"}
+              {spectraSampleCount.toLocaleString() || "--"}
             </p>
             <p className="text-xs text-muted-foreground">{effectivePartition}</p>
           </CardContent>

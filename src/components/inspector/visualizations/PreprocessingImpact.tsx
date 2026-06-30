@@ -11,6 +11,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts';
+import {
+  buildPreprocessingImpactBars,
+  formatSignedPreprocessingImpact,
+  getPreprocessingImpactBarColor,
+  type PreprocessingImpactBarData,
+} from '@/lib/inspector/preprocessingImpactData';
 import type { PreprocessingImpactResponse } from '@/types/inspector';
 
 interface PreprocessingImpactProps {
@@ -18,40 +24,21 @@ interface PreprocessingImpactProps {
   isLoading: boolean;
 }
 
-interface BarData {
-  name: string;
-  impact: number;
-  mean_with: number;
-  mean_without: number;
-  count_with: number;
-  count_without: number;
-}
-
-function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: BarData }> }) {
+function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: PreprocessingImpactBarData }> }) {
   if (!active || !payload?.[0]) return null;
   const d = payload[0].payload;
   return (
     <div className="bg-popover text-popover-foreground text-xs p-2 rounded shadow-md border border-border">
       <div className="font-medium mb-1">{d.name}</div>
-      <div>Impact: {d.impact >= 0 ? '+' : ''}{d.impact.toFixed(4)}</div>
-      <div>Mean with: {d.mean_with.toFixed(4)} ({d.count_with} chains)</div>
-      <div>Mean without: {d.mean_without.toFixed(4)} ({d.count_without} chains)</div>
+      <div>Impact: {formatSignedPreprocessingImpact(d.impact)}</div>
+      <div>Mean with: {d.meanWith.toFixed(4)} ({d.countWith} chains)</div>
+      <div>Mean without: {d.meanWithout.toFixed(4)} ({d.countWithout} chains)</div>
     </div>
   );
 }
 
 export function PreprocessingImpact({ data, isLoading }: PreprocessingImpactProps) {
-  const bars = useMemo<BarData[]>(() => {
-    if (!data?.entries) return [];
-    return data.entries.map(e => ({
-      name: e.step_name,
-      impact: e.impact ?? 0,
-      mean_with: e.mean_with ?? 0,
-      mean_without: e.mean_without ?? 0,
-      count_with: e.count_with,
-      count_without: e.count_without,
-    }));
-  }, [data]);
+  const bars = useMemo(() => buildPreprocessingImpactBars(data), [data]);
 
   if (isLoading) {
     return (
@@ -93,7 +80,7 @@ export function PreprocessingImpact({ data, isLoading }: PreprocessingImpactProp
             {bars.map((entry, idx) => (
               <Cell
                 key={idx}
-                fill={entry.impact >= 0 ? '#059669' : '#e11d48'}
+                fill={getPreprocessingImpactBarColor(entry.impact)}
                 opacity={0.85}
               />
             ))}

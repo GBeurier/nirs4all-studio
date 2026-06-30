@@ -153,7 +153,7 @@ function ModelFoldRows({ chainId, metric }: { chainId: string; metric: string })
                             <div className="flex justify-between items-center border-b border-border/50 pb-0.5">
                               <span className="text-muted-foreground/80 uppercase">{metric}</span>
                               <span className="font-mono font-bold">
-                                {formatMetricValue(row[`${partition}_score`] as number, metric)}
+                                {formatMetricValue(row[`${partition}_score` as keyof typeof row] as number | null | undefined, metric)}
                               </span>
                             </div>
                           )}

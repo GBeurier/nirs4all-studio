@@ -233,8 +233,8 @@ export function getPipelineDisplayMetrics(
     return undefined;
   }
 
-  const keys: Array<keyof RunMetrics> = ["r2", "rmse", "mae", "rpd", "nrmse"];
-  const result: DisplayMetrics = {};
+  const keys = ["r2", "rmse", "mae", "rpd", "nrmse"] as const;
+  const result: Partial<Record<(typeof keys)[number], number>> = {};
 
   for (const key of keys) {
     const values = folds

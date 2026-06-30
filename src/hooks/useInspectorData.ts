@@ -10,7 +10,7 @@ import {
   getPreprocessingImpactData, getHyperparameterData, getBiasVarianceData,
 } from '@/api/inspector';
 import type {
-  ScatterRequest, HeatmapRequest, CandlestickRequest, BranchComparisonRequest, FoldStabilityRequest,
+  ScatterRequest, HeatmapRequest, CandlestickRequest, BranchComparisonRequest, BranchTopologyRequest, FoldStabilityRequest,
   ConfusionMatrixRequest,
   PreprocessingImpactRequest, HyperparameterRequest, BiasVarianceRequest,
 } from '@/types/inspector';
@@ -108,7 +108,7 @@ export function useInspectorBranchComparison(request: BranchComparisonRequest | 
 /**
  * Fetch branch topology data (pipeline DAG structure).
  */
-export function useInspectorBranchTopology(params: { pipeline_id: string; score_column?: string } | null) {
+export function useInspectorBranchTopology(params: BranchTopologyRequest | null) {
   return useQuery({
     queryKey: ['inspector', 'branch-topology', params],
     queryFn: () => getBranchTopologyData(params!),

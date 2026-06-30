@@ -1,7 +1,7 @@
 /**
  * React hook backing the prediction-chart configuration.
  *
- * Global chart settings stay shared in localStorage, while metadata-based
+ * Global chart settings stay shared in client storage, while metadata-based
  * coloration is persisted per dataset so it does not leak across datasets.
  */
 
@@ -11,6 +11,11 @@ import {
   CONTINUOUS_PALETTES,
 } from "@/lib/playground/colorConfig";
 import {
+  clientStorageKeys,
+  readClientStorageJson,
+  writeClientStorageJson,
+} from "@/lib/clientStorage";
+import {
   getConfusionGradientColors,
   getPartitionPaletteColors,
   isConfusionGradientPreset,
@@ -19,7 +24,6 @@ import {
 } from "./palettes";
 import { DEFAULT_CHART_CONFIG, type ChartConfig } from "./types";
 
-const STORAGE_KEY = "predictionChartConfig";
 const DEBOUNCE_MS = 300;
 const CONFIG_UPDATED_EVENT = "prediction-chart-config-updated";
 const STORAGE_VERSION = 2;
@@ -41,10 +45,14 @@ type DatasetColorationConfig = Pick<
   "colorMode" | "metadataKey" | "metadataType" | "continuousPalette" | "categoricalPalette"
 >;
 
+type StoredChartConfig = Partial<ChartConfig> & {
+  confusionColorScale?: unknown;
+};
+
 export interface PredictionChartConfigStorage {
   version: number;
-  global: Partial<ChartConfig> & Record<string, unknown>;
-  datasetColoration: Record<string, Partial<DatasetColorationConfig> & Record<string, unknown>>;
+  global: StoredChartConfig;
+  datasetColoration: Record<string, Partial<DatasetColorationConfig>>;
 }
 
 interface PendingWrite {
@@ -56,9 +64,7 @@ export interface UsePredictionChartConfigOptions {
   datasetKey?: string | null;
 }
 
-function resolveStoredColorMode(
-  parsed: Partial<ChartConfig> & Record<string, unknown>,
-): ChartConfig["colorMode"] {
+function resolveStoredColorMode(parsed: StoredChartConfig): ChartConfig["colorMode"] {
   const rawMode = parsed.colorMode;
   if (rawMode === "partition" || rawMode === "metadata") {
     return rawMode;
@@ -98,7 +104,7 @@ function resolveStoredContinuousPalette(rawPalette: unknown): ChartConfig["conti
   return DEFAULT_CHART_CONFIG.continuousPalette;
 }
 
-function resolveStoredConfusionPreset(parsed: Record<string, unknown>): ChartConfig["confusionGradientPreset"] {
+function resolveStoredConfusionPreset(parsed: StoredChartConfig): ChartConfig["confusionGradientPreset"] {
   const rawPreset = parsed.confusionGradientPreset;
   if (typeof rawPreset === "string" && isConfusionGradientPreset(rawPreset)) {
     return rawPreset;
@@ -145,7 +151,7 @@ function mergeConfusionGradient(
   };
 }
 
-function normalizeStoredConfig(parsed: Partial<ChartConfig> & Record<string, unknown>): ChartConfig {
+function normalizeStoredConfig(parsed: StoredChartConfig): ChartConfig {
   const colorMode = resolveStoredColorMode(parsed);
   const palette = resolveStoredPalette(parsed.palette);
   const metadataKey = typeof parsed.metadataKey === "string" && parsed.metadataKey.trim().length > 0
@@ -187,7 +193,7 @@ function normalizeDatasetColoration(
   raw: unknown,
 ): DatasetColorationConfig | null {
   if (!raw || typeof raw !== "object") return null;
-  const candidate = raw as Partial<DatasetColorationConfig> & Record<string, unknown>;
+  const candidate = raw as Partial<DatasetColorationConfig>;
   const colorMode = candidate.colorMode === "metadata" ? "metadata" : null;
   if (!colorMode) return null;
   return {
@@ -236,7 +242,7 @@ export function normalizePredictionChartStorage(raw: unknown): PredictionChartCo
   }
 
   if (!isVersionedStorage(raw)) {
-    const legacy = normalizeStoredConfig(raw as Partial<ChartConfig> & Record<string, unknown>);
+    const legacy = normalizeStoredConfig(raw as StoredChartConfig);
     return {
       version: STORAGE_VERSION,
       global: stripDatasetColorationForStorage(legacy),
@@ -319,13 +325,8 @@ function emitConfigUpdate(next: PredictionChartConfigStorage): void {
 
 function readStoragePayload(): PredictionChartConfigStorage {
   if (typeof window === "undefined") return createDefaultStorage();
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createDefaultStorage();
-    return normalizePredictionChartStorage(JSON.parse(raw));
-  } catch {
-    return createDefaultStorage();
-  }
+  const stored = readClientStorageJson(clientStorageKeys.predictionChartConfig);
+  return normalizePredictionChartStorage(stored);
 }
 
 function readResolvedConfig(datasetKey: string | null): ChartConfig {
@@ -334,7 +335,7 @@ function readResolvedConfig(datasetKey: string | null): ChartConfig {
 
 function writeStoragePayload(next: PredictionChartConfigStorage): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  writeClientStorageJson(clientStorageKeys.predictionChartConfig, next);
 }
 
 function persistResolvedConfig(datasetKey: string | null, config: ChartConfig): PredictionChartConfigStorage {
@@ -394,7 +395,7 @@ export function usePredictionChartConfig(
     };
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== STORAGE_KEY) return;
+      if (event.key !== clientStorageKeys.predictionChartConfig.key) return;
       setConfigState(readResolvedConfig(datasetKeyRef.current));
     };
 

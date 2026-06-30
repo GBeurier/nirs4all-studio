@@ -4,7 +4,7 @@
  * Phase 7 Implementation
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   FolderOpen,
   Clock,
@@ -19,6 +19,7 @@ import {
   Database,
   FileCode,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -43,12 +44,27 @@ import {
   activateN4AWorkspace,
   scanN4AWorkspace,
 } from "@/api/linkedWorkspaces";
-import { formatRelativeTime } from "@/utils/formatters";
 import type { LinkedWorkspace } from "@/types/linked-workspaces";
 import {
   useInvalidateDatasets,
   useLinkedWorkspacesQuery,
 } from "@/hooks/useDatasetQueries";
+import {
+  WORKSPACE_ACTION_COPY,
+  getLastScannedLabel,
+  getLinkedWorkspaceCountLabel,
+  getScanSuccessMessage,
+  getWorkspaceDiscoveredCountItems,
+  getWorkspaceItemState,
+  type DiscoveredCountKey,
+} from "./N4AWorkspaceListData";
+
+const discoveredCountIcons: Record<DiscoveredCountKey, LucideIcon> = {
+  runs: Play,
+  exports: FileBox,
+  datasets: Database,
+  templates: FileCode,
+};
 
 interface WorkspaceItemProps {
   workspace: LinkedWorkspace;
@@ -76,23 +92,24 @@ function WorkspaceItem({
     }
   };
 
-  const discovered = workspace.discovered ?? { runs_count: 0, datasets_count: 0, exports_count: 0, templates_count: 0 };
+  const itemState = getWorkspaceItemState(workspace);
+  const lastScannedLabel = getLastScannedLabel(workspace.last_scanned);
+  const discoveredCounts = getWorkspaceDiscoveredCountItems(workspace.discovered);
 
   return (
-    <div
-      className={
-        workspace.is_active
-          ? "p-4 rounded-lg border transition-colors bg-primary/5 border-primary/30"
-          : "p-4 rounded-lg border transition-colors bg-card hover:bg-muted/50"
-      }
-    >
+    <div className={itemState.containerClassName}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <FolderOpen className="h-4 w-4 text-primary flex-shrink-0" />
             <span className="font-medium truncate">{workspace.name}</span>
-            {workspace.is_active && (
-              <Badge variant="default" className="text-xs">Active</Badge>
+            {itemState.activeBadge && (
+              <Badge
+                variant={itemState.activeBadge.variant}
+                className={itemState.activeBadge.className}
+              >
+                {itemState.activeBadge.label}
+              </Badge>
             )}
           </div>
 
@@ -101,28 +118,22 @@ function WorkspaceItem({
           </p>
 
           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground flex-wrap">
-            {workspace.last_scanned && (
+            {lastScannedLabel && (
               <div className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                <span>Scanned {formatRelativeTime(workspace.last_scanned)}</span>
+                <span>{lastScannedLabel}</span>
               </div>
             )}
-            <div className="flex items-center gap-1">
-              <Play className="h-3 w-3" />
-              <span>{discovered.runs_count} runs</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <FileBox className="h-3 w-3" />
-              <span>{discovered.exports_count} exports</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Database className="h-3 w-3" />
-              <span>{discovered.datasets_count} datasets</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <FileCode className="h-3 w-3" />
-              <span>{discovered.templates_count} templates</span>
-            </div>
+            {discoveredCounts.map((item) => {
+              const CountIcon = discoveredCountIcons[item.key];
+
+              return (
+                <div key={item.key} className="flex items-center gap-1">
+                  <CountIcon className="h-3 w-3" />
+                  <span>{item.label}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -138,10 +149,10 @@ function WorkspaceItem({
                     disabled={isLoading}
                   >
                     <Zap className="h-4 w-4 mr-1" />
-                    Activate
+                    {WORKSPACE_ACTION_COPY.activate.label}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Set as active workspace</TooltipContent>
+                <TooltipContent>{WORKSPACE_ACTION_COPY.activate.tooltip}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
@@ -155,6 +166,7 @@ function WorkspaceItem({
                   className="h-8 w-8"
                   onClick={handleScan}
                   disabled={isLoading || isScanning}
+                  aria-label={WORKSPACE_ACTION_COPY.scan.tooltip}
                 >
                   {isScanning ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -163,7 +175,7 @@ function WorkspaceItem({
                   )}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Rescan workspace</TooltipContent>
+              <TooltipContent>{WORKSPACE_ACTION_COPY.scan.tooltip}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
@@ -177,26 +189,26 @@ function WorkspaceItem({
                       size="icon"
                       className="h-8 w-8 text-muted-foreground hover:text-destructive"
                       disabled={isLoading}
+                      aria-label={WORKSPACE_ACTION_COPY.unlink.tooltip}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </AlertDialogTrigger>
                 </TooltipTrigger>
-                <TooltipContent>Unlink workspace</TooltipContent>
+                <TooltipContent>{WORKSPACE_ACTION_COPY.unlink.tooltip}</TooltipContent>
               </Tooltip>
             </TooltipProvider>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Unlink workspace?</AlertDialogTitle>
+                <AlertDialogTitle>{WORKSPACE_ACTION_COPY.unlink.dialogTitle}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will remove the workspace from your linked list.
-                  The actual files will not be deleted.
+                  {WORKSPACE_ACTION_COPY.unlink.dialogDescription}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{WORKSPACE_ACTION_COPY.unlink.cancelLabel}</AlertDialogCancel>
                 <AlertDialogAction onClick={() => onUnlink(workspace.id)}>
-                  Unlink
+                  {WORKSPACE_ACTION_COPY.unlink.confirmLabel}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -251,8 +263,7 @@ export function N4AWorkspaceList({
     try {
       setError(null);
       const result = await scanN4AWorkspace(id);
-      const d = result.discovered ?? { runs_count: 0, exports_count: 0 };
-      setSuccessMessage("Scanned: " + d.runs_count + " runs, " + d.exports_count + " exports");
+      setSuccessMessage(getScanSuccessMessage(result.discovered));
       await invalidateDatasets();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to scan");
@@ -286,7 +297,7 @@ export function N4AWorkspaceList({
         <span>{error}</span>
         <Button variant="ghost" size="sm" onClick={() => void loadWorkspaces()}>
           <RefreshCw className="h-4 w-4 mr-1" />
-          Retry
+          {WORKSPACE_ACTION_COPY.retry.label}
         </Button>
       </div>
     );
@@ -304,7 +315,7 @@ export function N4AWorkspaceList({
     <div className={"space-y-3 " + className}>
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-muted-foreground">
-          {workspaces.length} workspace{workspaces.length !== 1 ? "s" : ""} linked
+          {getLinkedWorkspaceCountLabel(workspaces.length)}
         </span>
         <TooltipProvider>
           <Tooltip>
@@ -315,11 +326,12 @@ export function N4AWorkspaceList({
                 className="h-8 w-8"
                 onClick={() => void loadWorkspaces()}
                 disabled={isLoading}
+                aria-label={WORKSPACE_ACTION_COPY.refresh.tooltip}
               >
                 <RefreshCw className={isLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Refresh list</TooltipContent>
+            <TooltipContent>{WORKSPACE_ACTION_COPY.refresh.tooltip}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>

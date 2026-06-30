@@ -37,9 +37,16 @@ import {
 } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useSelection } from '@/context/SelectionContext';
-import type { FoldsInfo, FoldData } from '@/types/playground';
+import { useSelection } from '@/context/useSelection';
+import type { FoldsInfo } from '@/types/playground';
 import { cn } from '@/lib/utils';
+import {
+  buildSelectionFilterData,
+  getSamplesByFold,
+  getSamplesByMetadata,
+  getSamplesByPartition,
+  getSelectionFilterCount,
+} from '@/lib/playground/selectionFilterData';
 
 // ============= Types =============
 
@@ -48,8 +55,6 @@ interface SelectionFiltersProps {
   folds?: FoldsInfo | null;
   /** Metadata columns for metadata-based selection */
   metadata?: Record<string, unknown[]>;
-  /** Sample IDs for reference */
-  sampleIds?: string[];
   /** Total sample count */
   totalSamples: number;
   /** Whether to show compact mode */
@@ -63,7 +68,6 @@ interface SelectionFiltersProps {
 export function SelectionFilters({
   folds,
   metadata,
-  sampleIds,
   totalSamples,
   compact = false,
   className,
@@ -71,39 +75,16 @@ export function SelectionFilters({
   const { select, selectedSamples, clear } = useSelection();
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
 
-  // Get unique fold indices
-  const uniqueFolds = useMemo(() => {
-    if (!folds?.fold_labels) return [];
-    return [...new Set(folds.fold_labels.filter(f => f >= 0))].sort((a, b) => a - b);
-  }, [folds]);
-
-  // Get metadata column names and their unique values
-  const metadataColumns = useMemo(() => {
-    if (!metadata) return [];
-    return Object.entries(metadata).map(([key, values]) => {
-      // Get unique values (limit to first 100 for performance)
-      const uniqueValues = [...new Set(values.map(v => String(v)))].slice(0, 100);
-      return { key, uniqueValues, totalValues: [...new Set(values)].length };
-    }).filter(col => col.uniqueValues.length > 1 && col.uniqueValues.length <= 50); // Only show columns with 2-50 unique values
-  }, [metadata]);
-
-  // Get current fold's train/test indices
-  const currentFoldData = useMemo<FoldData | null>(() => {
-    if (!folds?.folds || folds.folds.length === 0) return null;
-    const foldIdx = folds.split_index ?? 0;
-    return folds.folds[foldIdx] ?? folds.folds[0] ?? null;
-  }, [folds]);
-
-  // Check if we have fold-based selections available
-  const hasFoldSelection = uniqueFolds.length > 0 || !!currentFoldData;
+  const {
+    uniqueFolds,
+    metadataColumns,
+    currentFoldData,
+    hasSelectionOptions,
+  } = useMemo(() => buildSelectionFilterData({ folds, metadata }), [folds, metadata]);
 
   // Select samples by fold
   const handleSelectByFold = useCallback((foldIdx: number, mode: 'replace' | 'add' = 'replace') => {
-    if (!folds?.fold_labels) return;
-
-    const samples = folds.fold_labels
-      .map((f, idx) => f === foldIdx ? idx : -1)
-      .filter(idx => idx >= 0);
+    const samples = getSamplesByFold(folds, foldIdx);
 
     if (samples.length > 0) {
       select(samples, mode);
@@ -117,10 +98,8 @@ export function SelectionFilters({
 
   // Select samples by partition (train/test)
   const handleSelectByPartition = useCallback((partition: 'train' | 'test', mode: 'replace' | 'add' = 'replace') => {
-    if (!currentFoldData) return;
-
-    const samples = partition === 'train' ? currentFoldData.train_indices : currentFoldData.test_indices;
-    if (samples && samples.length > 0) {
+    const samples = getSamplesByPartition(currentFoldData, partition);
+    if (samples.length > 0) {
       select(samples, mode);
       setActiveFilters(prev =>
         mode === 'add'
@@ -132,11 +111,7 @@ export function SelectionFilters({
 
   // Select samples by metadata value
   const handleSelectByMetadata = useCallback((column: string, value: string, mode: 'replace' | 'add' = 'replace') => {
-    if (!metadata?.[column]) return;
-
-    const samples = metadata[column]
-      .map((v, idx) => String(v) === value ? idx : -1)
-      .filter(idx => idx >= 0);
+    const samples = getSamplesByMetadata(metadata, column, value);
 
     if (samples.length > 0) {
       select(samples, mode);
@@ -156,20 +131,17 @@ export function SelectionFilters({
 
   // Count samples per filter
   const getFilterCount = useCallback((type: string, value: string | number): number => {
-    if (type === 'fold' && folds?.fold_labels) {
-      return folds.fold_labels.filter(f => f === value).length;
-    }
-    if (type === 'partition' && currentFoldData) {
-      return value === 'train' ? (currentFoldData.train_indices?.length ?? 0) : (currentFoldData.test_indices?.length ?? 0);
-    }
-    if (metadata?.[type]) {
-      return metadata[type].filter(v => String(v) === String(value)).length;
-    }
-    return 0;
+    return getSelectionFilterCount({
+      type,
+      value,
+      folds,
+      currentFoldData,
+      metadata,
+    });
   }, [folds, currentFoldData, metadata]);
 
   // Don't render if no selection options available
-  if (!hasFoldSelection && metadataColumns.length === 0) {
+  if (!hasSelectionOptions) {
     return null;
   }
 

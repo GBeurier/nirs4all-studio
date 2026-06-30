@@ -5,335 +5,61 @@
  * RunDetailSheet, DatasetSubItem, and other components.
  */
 
-/** Metrics where lower values are better (error-based). */
-const LOWER_IS_BETTER = new Set([
-  "rmse", "rmsecv", "rmsep", "mse", "mae", "mape", "bias", "sep", "nrmse",
-  "nmse", "nmae", "max_error", "median_ae", "hamming_loss", "log_loss",
-]);
+import {
+  canonicalMetricKey,
+  metricKeyCandidates,
+  normalizeMetricLookupKey,
+} from "./metricKeys";
+import {
+  getMetricDefinition,
+  isClassificationTaskType,
+  isKnownMetricKey,
+  orderMetricKeys,
+} from "./scoreMetricCatalog";
+import { isBetterScore, parseScoreNumber } from "./scoreValues";
 
-/** Regression display metrics (compact). */
-export const REGRESSION_METRICS = ["r2", "rmse", "rpd"] as const;
-
-/** Classification display metrics (compact). */
-export const CLASSIFICATION_METRICS = [
-  "accuracy",
-  "balanced_accuracy",
-  "precision",
-  "recall",
-] as const;
-
-/** Requested default metric set for dataset-item summaries on runs/results pages. */
-export const DEFAULT_DATASET_ITEM_REGRESSION_METRICS = [
-  "rmse",
-  "r2",
-  "nrmse",
-  "sep",
-  "rpd",
-  "pearson_r",
-] as const;
-
-export const LEGACY_DATASET_ITEM_REGRESSION_METRICS = [
-  "rmse",
-  "r2",
-  "sep",
-  "rpd",
-  "bias",
-  "mae",
-] as const;
-
-export const DEFAULT_DATASET_ITEM_CLASSIFICATION_METRICS = [
-  "accuracy",
-  "balanced_accuracy",
-  "precision",
-  "recall",
-] as const;
-
-export const LEGACY_DATASET_ITEM_CLASSIFICATION_METRICS = [
-  "accuracy",
-  "balanced_accuracy",
-  "f1",
-  "roc_auc",
-] as const;
-
-export function getMetricsForTaskType(taskType: string | null): readonly string[] {
-  if (isClassificationTaskType(taskType)) return CLASSIFICATION_METRICS;
-  return REGRESSION_METRICS;
-}
-
-// ============================================================================
-// Full metric catalog — matches nirs4all/core/metrics.py
-// ============================================================================
-
-export interface MetricDefinition {
-  key: string;
-  label: string;
-  abbreviation: string;
-  direction: "higher" | "lower" | "zero";
-  group: "general" | "regression" | "multiclass" | "binary";
-}
-
-export type MetricGroup = MetricDefinition["group"];
-
-const CLASSIFICATION_TASK_TYPES = new Set([
-  "classification",
-  "binary_classification",
-  "multiclass_classification",
-]);
-
-const METRIC_KEY_ALIASES: Record<string, string> = {
-  mean_squared_error: "mse",
-  root_mean_squared_error: "rmse",
-  mean_absolute_error: "mae",
-  mean_absolute_percentage_error: "mape",
-  r2_score: "r2",
-  explained_variance_score: "explained_variance",
-  median_absolute_error: "median_ae",
-  f1_score: "f1",
-  auc: "roc_auc",
-  mcc: "matthews_corrcoef",
-  kappa: "cohen_kappa",
-  jaccard_score: "jaccard",
-  rmsep: "rmse",
-  rmsecv: "rmse",
-};
-
-const METRIC_ALIAS_KEYS_BY_CANONICAL = new Map<string, string[]>();
-for (const [aliasKey, canonicalKey] of Object.entries(METRIC_KEY_ALIASES)) {
-  const aliases = METRIC_ALIAS_KEYS_BY_CANONICAL.get(canonicalKey) ?? [];
-  aliases.push(aliasKey);
-  METRIC_ALIAS_KEYS_BY_CANONICAL.set(canonicalKey, aliases);
-}
-
-function normalizeMetricLookupKey(key: string | null | undefined): string {
-  return (key ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-}
-
-export function canonicalMetricKey(key: string | null | undefined): string {
-  const normalized = normalizeMetricLookupKey(key);
-  if (!normalized) return "";
-  return METRIC_KEY_ALIASES[normalized] ?? normalized;
-}
-
-export function metricKeyCandidates(key: string | null | undefined): string[] {
-  const normalized = normalizeMetricLookupKey(key);
-  const canonical = canonicalMetricKey(key);
-  if (!canonical) return [];
-
-  const candidates = new Set<string>([canonical]);
-  if (normalized) candidates.add(normalized);
-  for (const aliasKey of METRIC_ALIAS_KEYS_BY_CANONICAL.get(canonical) ?? []) {
-    candidates.add(aliasKey);
-  }
-  return [...candidates];
-}
-
-export const ALL_GENERAL_METRICS: MetricDefinition[] = [];
-
-export const ALL_REGRESSION_METRICS: MetricDefinition[] = [
-  { key: "r2", label: "R²", abbreviation: "R²", direction: "higher", group: "regression" },
-  { key: "rmse", label: "RMSE", abbreviation: "RMSE", direction: "lower", group: "regression" },
-  { key: "mse", label: "MSE", abbreviation: "MSE", direction: "lower", group: "regression" },
-  { key: "mae", label: "MAE", abbreviation: "MAE", direction: "lower", group: "regression" },
-  { key: "mape", label: "MAPE", abbreviation: "MAPE", direction: "lower", group: "regression" },
-  { key: "sep", label: "SEP", abbreviation: "SEP", direction: "lower", group: "regression" },
-  { key: "rpd", label: "RPD", abbreviation: "RPD", direction: "higher", group: "regression" },
-  { key: "bias", label: "Bias", abbreviation: "Bias", direction: "zero", group: "regression" },
-  { key: "consistency", label: "Consistency", abbreviation: "Cons", direction: "higher", group: "regression" },
-  { key: "nrmse", label: "NRMSE", abbreviation: "NRMSE", direction: "lower", group: "regression" },
-  { key: "nmse", label: "NMSE", abbreviation: "NMSE", direction: "lower", group: "regression" },
-  { key: "nmae", label: "NMAE", abbreviation: "NMAE", direction: "lower", group: "regression" },
-  { key: "pearson_r", label: "Pearson", abbreviation: "Pearson", direction: "higher", group: "regression" },
-  { key: "spearman_r", label: "Spearman", abbreviation: "Spearman", direction: "higher", group: "regression" },
-  { key: "explained_variance", label: "Expl. Variance", abbreviation: "ExpVar", direction: "higher", group: "regression" },
-  { key: "max_error", label: "Max Error", abbreviation: "MaxErr", direction: "lower", group: "regression" },
-  { key: "median_ae", label: "Median AE", abbreviation: "MedAE", direction: "lower", group: "regression" },
-];
-
-export const ALL_CLASSIFICATION_METRICS: MetricDefinition[] = [
-  { key: "accuracy", label: "Accuracy", abbreviation: "Acc", direction: "higher", group: "multiclass" },
-  { key: "balanced_accuracy", label: "Balanced Accuracy", abbreviation: "BalAcc", direction: "higher", group: "multiclass" },
-  { key: "precision", label: "Precision", abbreviation: "Prec", direction: "higher", group: "multiclass" },
-  { key: "balanced_precision", label: "Balanced Precision", abbreviation: "BalPrec", direction: "higher", group: "multiclass" },
-  { key: "recall", label: "Recall", abbreviation: "Rec", direction: "higher", group: "multiclass" },
-  { key: "balanced_recall", label: "Balanced Recall", abbreviation: "BalRec", direction: "higher", group: "multiclass" },
-  { key: "f1", label: "F1", abbreviation: "F1", direction: "higher", group: "multiclass" },
-  { key: "specificity", label: "Specificity", abbreviation: "Spec", direction: "higher", group: "multiclass" },
-  { key: "roc_auc", label: "ROC AUC", abbreviation: "AUC", direction: "higher", group: "binary" },
-  { key: "matthews_corrcoef", label: "MCC", abbreviation: "MCC", direction: "higher", group: "binary" },
-  { key: "cohen_kappa", label: "Cohen Kappa", abbreviation: "Kappa", direction: "higher", group: "binary" },
-  { key: "jaccard", label: "Jaccard", abbreviation: "Jaccard", direction: "higher", group: "binary" },
-];
-
-export const ALL_SCORE_METRICS: MetricDefinition[] = [
-  ...ALL_GENERAL_METRICS,
-  ...ALL_REGRESSION_METRICS,
-  ...ALL_CLASSIFICATION_METRICS,
-];
-
-const METRIC_DEFINITIONS_BY_KEY = new Map(
-  ALL_SCORE_METRICS.map(metric => [metric.key, metric] as const),
-);
-
-export function isClassificationTaskType(taskType: string | null | undefined): boolean {
-  return CLASSIFICATION_TASK_TYPES.has((taskType || "").toLowerCase());
-}
-
-function hasRegressionTaskType(taskType: string | null | undefined): boolean {
-  return !!taskType && !isClassificationTaskType(taskType);
-}
-
-export function orderMetricKeys(metricKeys: readonly string[]): string[] {
-  const requested = new Set(
-    metricKeys
-      .map(key => canonicalMetricKey(key))
-      .filter(key => key && METRIC_DEFINITIONS_BY_KEY.has(key)),
-  );
-  return ALL_SCORE_METRICS
-    .map(metric => metric.key)
-    .filter(key => requested.has(key));
-}
-
-export function getMetricDefinitions(metricKeys: readonly string[]): MetricDefinition[] {
-  return orderMetricKeys(metricKeys)
-    .map(key => METRIC_DEFINITIONS_BY_KEY.get(key))
-    .filter((metric): metric is MetricDefinition => !!metric);
-}
-
-export function groupMetricDefinitions(metricKeys: readonly string[]): Array<{
-  group: MetricGroup;
-  label: string;
-  metrics: MetricDefinition[];
-}> {
-  const labels: Record<MetricGroup, string> = {
-    general: "General",
-    regression: "Regression",
-    multiclass: "Multiclass",
-    binary: "Binary",
-  };
-
-  const definitions = getMetricDefinitions(metricKeys);
-
-  return (["regression", "multiclass", "binary", "general"] as const)
-    .map(group => ({
-      group,
-      label: labels[group],
-      metrics: definitions.filter(metric => metric.group === group),
-    }))
-    .filter(section => section.metrics.length > 0);
-}
-
-function combineMetricSelections(...metricLists: Array<readonly string[] | null | undefined>): string[] {
-  return orderMetricKeys(metricLists.flatMap(metrics => metrics ?? []));
-}
-
-export function getDefaultSelectedMetricsForTaskTypes(
-  taskTypes: Iterable<string | null | undefined>,
-): string[] {
-  let hasClassification = false;
-  let hasRegression = false;
-
-  for (const taskType of taskTypes) {
-    if (isClassificationTaskType(taskType)) hasClassification = true;
-    else if (hasRegressionTaskType(taskType)) hasRegression = true;
-  }
-
-  if (hasClassification && hasRegression) {
-    return combineMetricSelections(
-      DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
-      DEFAULT_DATASET_ITEM_CLASSIFICATION_METRICS,
-    );
-  }
-  if (hasClassification) return [...DEFAULT_DATASET_ITEM_CLASSIFICATION_METRICS];
-  return [...DEFAULT_DATASET_ITEM_REGRESSION_METRICS];
-}
-
-export function getLegacySelectedMetricsForTaskTypes(
-  taskTypes: Iterable<string | null | undefined>,
-): string[] {
-  let hasClassification = false;
-  let hasRegression = false;
-
-  for (const taskType of taskTypes) {
-    if (isClassificationTaskType(taskType)) hasClassification = true;
-    else if (hasRegressionTaskType(taskType)) hasRegression = true;
-  }
-
-  if (hasClassification && hasRegression) {
-    return combineMetricSelections(
-      LEGACY_DATASET_ITEM_REGRESSION_METRICS,
-      LEGACY_DATASET_ITEM_CLASSIFICATION_METRICS,
-    );
-  }
-  if (hasClassification) return [...LEGACY_DATASET_ITEM_CLASSIFICATION_METRICS];
-  return [...LEGACY_DATASET_ITEM_REGRESSION_METRICS];
-}
-
-export function getDefaultSelectionUpgradeCandidatesForTaskTypes(
-  taskTypes: Iterable<string | null | undefined>,
-): string[][] {
-  let hasClassification = false;
-  let hasRegression = false;
-
-  for (const taskType of taskTypes) {
-    if (isClassificationTaskType(taskType)) hasClassification = true;
-    else if (hasRegressionTaskType(taskType)) hasRegression = true;
-  }
-
-  if (!(hasClassification && hasRegression)) {
-    return [];
-  }
-
-  return [
-    [...DEFAULT_DATASET_ITEM_REGRESSION_METRICS],
-    [...LEGACY_DATASET_ITEM_REGRESSION_METRICS],
-    [...DEFAULT_DATASET_ITEM_CLASSIFICATION_METRICS],
-    [...LEGACY_DATASET_ITEM_CLASSIFICATION_METRICS],
-  ].map(orderMetricKeys);
-}
-
-export function getAvailableMetricKeysForTaskTypes(
-  taskTypes: Iterable<string | null | undefined>,
-): string[] {
-  let hasClassification = false;
-  let hasRegression = false;
-
-  for (const taskType of taskTypes) {
-    if (isClassificationTaskType(taskType)) hasClassification = true;
-    else if (hasRegressionTaskType(taskType)) hasRegression = true;
-  }
-
-  if (hasClassification && hasRegression) {
-    return orderMetricKeys([
-      ...ALL_GENERAL_METRICS.map(metric => metric.key),
-      ...ALL_REGRESSION_METRICS.map(metric => metric.key),
-      ...ALL_CLASSIFICATION_METRICS.map(metric => metric.key),
-    ]);
-  }
-  if (hasClassification) {
-    return orderMetricKeys([
-      ...ALL_GENERAL_METRICS.map(metric => metric.key),
-      ...ALL_CLASSIFICATION_METRICS.map(metric => metric.key),
-    ]);
-  }
-  return orderMetricKeys([
-    ...ALL_GENERAL_METRICS.map(metric => metric.key),
-    ...ALL_REGRESSION_METRICS.map(metric => metric.key),
-  ]);
-}
-
-export function filterMetricsForTaskType(
-  metricKeys: readonly string[],
-  taskType: string | null | undefined,
-): string[] {
-  const allowedKeys = new Set(
-    [
-      ...ALL_GENERAL_METRICS,
-      ...(isClassificationTaskType(taskType) ? ALL_CLASSIFICATION_METRICS : ALL_REGRESSION_METRICS),
-    ].map(metric => metric.key),
-  );
-
-  return orderMetricKeys(metricKeys).filter(key => allowedKeys.has(key));
-}
+export { canonicalMetricKey, metricKeyCandidates } from "./metricKeys";
+export {
+  ALL_CLASSIFICATION_METRICS,
+  ALL_GENERAL_METRICS,
+  ALL_REGRESSION_METRICS,
+  ALL_SCORE_METRICS,
+  CLASSIFICATION_METRICS,
+  CLASSIFICATION_PRESETS,
+  DEFAULT_DATASET_ITEM_CLASSIFICATION_METRICS,
+  DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
+  filterMetricsForTaskType,
+  getAvailableMetricKeysForTaskTypes,
+  getAvailableMetrics,
+  getDefaultSelectedMetrics,
+  getDefaultSelectedMetricsForTaskTypes,
+  getDefaultSelectionUpgradeCandidatesForTaskTypes,
+  getLegacySelectedMetricsForTaskTypes,
+  getMetricDefinitions,
+  getMetricsForTaskType,
+  getPresetsForTaskType,
+  getPresetsForTaskTypes,
+  groupMetricDefinitions,
+  isClassificationTaskType,
+  LEGACY_DATASET_ITEM_CLASSIFICATION_METRICS,
+  LEGACY_DATASET_ITEM_REGRESSION_METRICS,
+  orderMetricKeys,
+  REGRESSION_METRICS,
+  REGRESSION_PRESETS,
+} from "./scoreMetricCatalog";
+export type {
+  MetricDefinition,
+  MetricGroup,
+  MetricPreset,
+} from "./scoreMetricCatalog";
+export {
+  formatMetricName,
+  formatMetricDisplayName,
+  formatMetricValue,
+  formatScore,
+  isBetterScore,
+  isLowerBetter,
+} from "./scoreValues";
 
 export function collectPresentMetricKeys(
   ...maps: Array<Record<string, unknown> | null | undefined>
@@ -361,7 +87,7 @@ export function collectPresentMetricKeys(
           : Number.NaN;
 
       const canonical = canonicalMetricKey(key);
-      if (Number.isFinite(num) && METRIC_DEFINITIONS_BY_KEY.has(canonical)) {
+      if (Number.isFinite(num) && isKnownMetricKey(canonical)) {
         keys.add(canonical);
       }
     }
@@ -372,112 +98,10 @@ export function collectPresentMetricKeys(
   return orderMetricKeys([...keys]);
 }
 
-/** Get all available metrics for a task type. */
-export function getAvailableMetrics(taskType: string | null): MetricDefinition[] {
-  if (isClassificationTaskType(taskType)) {
-    return ALL_CLASSIFICATION_METRICS;
-  }
-  return ALL_REGRESSION_METRICS;
-}
-
-/** Metric preset definitions. */
-export interface MetricPreset {
-  id: string;
-  label: string;
-  keys: string[];
-}
-
-export const REGRESSION_PRESETS: MetricPreset[] = [
-  { id: "essential", label: "Essential", keys: ["r2", "rmse", "mae"] },
-  { id: "nirs", label: "NIRS", keys: ["r2", "rmse", "sep", "rpd", "bias", "consistency", "nrmse"] },
-  { id: "ml", label: "ML", keys: ["r2", "rmse", "mse", "mae", "mape", "pearson_r"] },
-  { id: "full", label: "Full", keys: ALL_REGRESSION_METRICS.map(m => m.key) },
-];
-
-export const CLASSIFICATION_PRESETS: MetricPreset[] = [
-  { id: "essential", label: "Essential", keys: ["accuracy", "balanced_accuracy", "f1"] },
-  { id: "full", label: "Full", keys: ALL_CLASSIFICATION_METRICS.map(m => m.key) },
-];
-
-export function getPresetsForTaskType(taskType: string | null): MetricPreset[] {
-  if (isClassificationTaskType(taskType)) {
-    return CLASSIFICATION_PRESETS;
-  }
-  return REGRESSION_PRESETS;
-}
-
-export function getPresetsForTaskTypes(
-  taskTypes: Iterable<string | null | undefined>,
-): MetricPreset[] {
-  let hasClassification = false;
-  let hasRegression = false;
-
-  for (const taskType of taskTypes) {
-    if (isClassificationTaskType(taskType)) hasClassification = true;
-    else if (hasRegressionTaskType(taskType)) hasRegression = true;
-  }
-
-  if (!(hasClassification && hasRegression)) {
-    return getPresetsForTaskType(hasClassification ? "classification" : "regression");
-  }
-
-  const classificationEssential = CLASSIFICATION_PRESETS.find(preset => preset.id === "essential")?.keys ?? [];
-  const classificationFull = CLASSIFICATION_PRESETS.find(preset => preset.id === "full")?.keys ?? [];
-
-  return [
-    {
-      id: "essential",
-      label: "Essential",
-      keys: combineMetricSelections(
-        REGRESSION_PRESETS.find(preset => preset.id === "essential")?.keys,
-        classificationEssential,
-      ),
-    },
-    {
-      id: "nirs",
-      label: "NIRS",
-      keys: combineMetricSelections(
-        REGRESSION_PRESETS.find(preset => preset.id === "nirs")?.keys,
-        classificationEssential,
-      ),
-    },
-    {
-      id: "ml",
-      label: "ML",
-      keys: combineMetricSelections(
-        REGRESSION_PRESETS.find(preset => preset.id === "ml")?.keys,
-        classificationEssential,
-      ),
-    },
-    {
-      id: "full",
-      label: "Full",
-      keys: combineMetricSelections(
-        REGRESSION_PRESETS.find(preset => preset.id === "full")?.keys,
-        classificationFull,
-      ),
-    },
-  ];
-}
-
-/** Get the default selected metrics for a task type. */
-export function getDefaultSelectedMetrics(taskType: string | null): string[] {
-  if (isClassificationTaskType(taskType)) {
-    return [...DEFAULT_DATASET_ITEM_CLASSIFICATION_METRICS];
-  }
-  if (taskType == null) {
-    return combineMetricSelections(
-      DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
-      DEFAULT_DATASET_ITEM_CLASSIFICATION_METRICS,
-    );
-  }
-  return [...DEFAULT_DATASET_ITEM_REGRESSION_METRICS];
-}
-
 /** Get the abbreviation for a metric key. */
 export function getMetricAbbreviation(key: string): string {
   const canonical = canonicalMetricKey(key);
-  return METRIC_DEFINITIONS_BY_KEY.get(canonical)?.abbreviation ?? normalizeMetricLookupKey(key).toUpperCase();
+  return getMetricDefinition(canonical)?.abbreviation ?? normalizeMetricLookupKey(key).toUpperCase();
 }
 
 /**
@@ -516,15 +140,6 @@ export function getPrimaryContextMetricLabel(
   }
 
   return getMetricAbbreviation(normalized);
-}
-
-function parseScoreNumber(value: unknown): number | null {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value === "string") {
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
 }
 
 function findMetricValueInMap(
@@ -583,18 +198,6 @@ export function extractScoreValue(
   return null;
 }
 
-export function isLowerBetter(metric: string | null | undefined): boolean {
-  return LOWER_IS_BETTER.has(canonicalMetricKey(metric));
-}
-
-/**
- * Compare two scores, respecting the metric direction.
- * Returns true if `a` is better than `b`.
- */
-export function isBetterScore(a: number, b: number, metric: string | null | undefined): boolean {
-  return isLowerBetter(metric) ? a < b : a > b;
-}
-
 type ScoreBearingEntry = {
   final_test_score?: number | null;
   avg_val_score?: number | null;
@@ -615,7 +218,11 @@ export function getBestFinalEntry<T extends ScoreBearingEntry>(
 
   for (const entry of entries ?? []) {
     if (!isFiniteScore(entry.final_test_score)) continue;
-    if (!best || !isFiniteScore(best.final_test_score) || isBetterScore(entry.final_test_score, best.final_test_score, metric)) {
+    if (
+      !best ||
+      !isFiniteScore(best.final_test_score) ||
+      isBetterScore(entry.final_test_score, best.final_test_score, metric)
+    ) {
       best = entry;
     }
   }
@@ -640,35 +247,6 @@ export function getBestCvEntry<T extends ScoreBearingEntry>(
   }
 
   return best;
-}
-
-/**
- * Format a score value to 4 decimal places (or 3 for error metrics).
- */
-export function formatScore(value: number | string | undefined | null): string {
-  if (value == null) return "-";
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  if (!Number.isFinite(num)) return "-";
-  return num.toFixed(4);
-}
-
-/**
- * Format a metric-specific value (3 decimals for error metrics, 4 for others).
- */
-export function formatMetricValue(value: number | string | undefined | null, metric?: string): string {
-  if (value == null) return "-";
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  if (!Number.isFinite(num)) return "-";
-  if (metric && isLowerBetter(metric)) return num.toFixed(3);
-  return num.toFixed(4);
-}
-
-/**
- * Format a metric name for display (uppercase).
- */
-export function formatMetricName(metric: string | null | undefined): string {
-  if (!metric) return "";
-  return (canonicalMetricKey(metric) || normalizeMetricLookupKey(metric)).toUpperCase();
 }
 
 /** A single metric entry for TabReport-style display. */
@@ -763,7 +341,13 @@ export function extractCVMetrics(chain: ChainScores, taskType: string | null): M
     ].filter(m => m.value != null);
     if (metrics.length > 0) return metrics;
     if (chain.avg_val_score != null) {
-      return [{ label: "CV Val", value: chain.avg_val_score, key: canonicalMetricKey(chain.metric) || chain.metric || "score" }];
+      return [
+        {
+          label: "CV Val",
+          value: chain.avg_val_score,
+          key: canonicalMetricKey(chain.metric) || chain.metric || "score",
+        },
+      ];
     }
     return [];
   }
@@ -778,7 +362,13 @@ export function extractCVMetrics(chain: ChainScores, taskType: string | null): M
   ].filter(m => m.value != null);
   if (metrics.length > 0) return metrics;
   if (chain.avg_val_score != null) {
-    return [{ label: "CV Val", value: chain.avg_val_score, key: canonicalMetricKey(chain.metric) || chain.metric || "score" }];
+    return [
+      {
+        label: "CV Val",
+        value: chain.avg_val_score,
+        key: canonicalMetricKey(chain.metric) || chain.metric || "score",
+      },
+    ];
   }
   return [];
 }
@@ -797,7 +387,11 @@ export function extractCVOnlyMetrics(chain: ChainScores, taskType: string | null
       { label: "Acc (Test)", value: _test("accuracy"), key: "accuracy" },
       { label: "F1", value: (_val("f1") ?? _test("f1")), key: "f1" },
       { label: "AUC", value: (_val("roc_auc") ?? _test("roc_auc")), key: "roc_auc" },
-      { label: "BalAcc", value: (_val("balanced_accuracy") ?? _test("balanced_accuracy")), key: "balanced_accuracy" },
+      {
+        label: "BalAcc",
+        value: (_val("balanced_accuracy") ?? _test("balanced_accuracy")),
+        key: "balanced_accuracy",
+      },
       { label: "Prec", value: (_val("precision") ?? _test("precision")), key: "precision" },
       { label: "Recall", value: (_val("recall") ?? _test("recall")), key: "recall" },
     ].filter(m => m.value != null);
@@ -805,7 +399,14 @@ export function extractCVOnlyMetrics(chain: ChainScores, taskType: string | null
     // Fallback to scalar scores
     const entries: MetricEntry[] = [];
     const metricKey = canonicalMetricKey(chain.metric) || chain.metric || "score";
-    if (chain.avg_val_score != null) entries.push({ label: "CV Val", value: chain.avg_val_score, key: metricKey, highlight: true });
+    if (chain.avg_val_score != null) {
+      entries.push({
+        label: "CV Val",
+        value: chain.avg_val_score,
+        key: metricKey,
+        highlight: true,
+      });
+    }
     if (chain.avg_test_score != null) entries.push({ label: "CV Test", value: chain.avg_test_score, key: metricKey });
     return entries;
   }
@@ -824,7 +425,20 @@ export function extractCVOnlyMetrics(chain: ChainScores, taskType: string | null
   // Fallback to scalar scores
   const entries: MetricEntry[] = [];
   const metricKey = canonicalMetricKey(chain.metric) || chain.metric || "score";
-  if (chain.avg_val_score != null) entries.push({ label: "CV Val", value: chain.avg_val_score, key: metricKey, highlight: true });
-  if (chain.avg_test_score != null) entries.push({ label: "CV Test", value: chain.avg_test_score, key: metricKey });
+  if (chain.avg_val_score != null) {
+    entries.push({
+      label: "CV Val",
+      value: chain.avg_val_score,
+      key: metricKey,
+      highlight: true,
+    });
+  }
+  if (chain.avg_test_score != null) {
+    entries.push({
+      label: "CV Test",
+      value: chain.avg_test_score,
+      key: metricKey,
+    });
+  }
   return entries;
 }

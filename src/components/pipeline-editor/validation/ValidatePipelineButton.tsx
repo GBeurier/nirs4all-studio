@@ -37,7 +37,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { useValidationContext } from "./ValidationContext";
+import { useValidationContext } from "./useValidationContext";
 
 export interface ValidatePipelineButtonProps
   extends Omit<ButtonProps, "onClick"> {

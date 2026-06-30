@@ -4,6 +4,14 @@
  */
 
 import { api } from "./transport";
+import {
+  buildExecutionJobRecordsQueryParams,
+  normalizeExecutionJobRecord,
+  normalizeExecutionJobRecordsListPayload,
+  type ExecutionJobRecord,
+  type ExecutionJobRecordFilters,
+  type ExecutionJobRecordsListPayload,
+} from "@/lib/runs/executionJobRecords";
 import type {
   Run,
   RunListResponse,
@@ -11,7 +19,9 @@ import type {
   RunActionResponse,
   ExperimentConfig,
   SplitGroupByByDataset,
+  RunExecutionBackendsResponse,
 } from "@/types/runs";
+import type { NativeExperimentLaunchPayload } from "@/lib/experimentExecutionAdapter";
 
 export interface PredictionRecord {
   id: string;
@@ -45,8 +55,80 @@ export async function getRunStats(): Promise<RunStatsResponse> {
   return api.get("/runs/stats");
 }
 
+export async function getRunExecutionBackends(): Promise<RunExecutionBackendsResponse> {
+  return api.get("/runs/execution-backends");
+}
+
+export async function listRunExecutionJobRecords(
+  filters: ExecutionJobRecordFilters = {},
+): Promise<ExecutionJobRecordsListPayload> {
+  const params = buildExecutionJobRecordsQueryParams(filters).toString();
+  const endpoint = params
+    ? `/runs/execution-job-records?${params}`
+    : "/runs/execution-job-records";
+  const payload = await api.get<unknown>(endpoint);
+  return normalizeExecutionJobRecordsListPayload(payload);
+}
+
+export async function getRunExecutionJobRecord(runId: string): Promise<ExecutionJobRecord> {
+  const payload = await api.get<unknown>(`/runs/${runId}/execution-job-record`);
+  const record = normalizeExecutionJobRecord(payload);
+  if (record == null) {
+    throw new Error(`Malformed execution job record for run ${runId}`);
+  }
+  return record;
+}
+
+export async function getWorkspaceExecutionJobRecord(jobId: string): Promise<ExecutionJobRecord> {
+  const payload = await api.get<unknown>(`/runs/execution-job-records/${jobId}`);
+  const record = normalizeExecutionJobRecord(payload);
+  if (record == null) {
+    throw new Error(`Malformed workspace execution job record for job ${jobId}`);
+  }
+  return record;
+}
+
+export interface ExecutionJobCommandResponse {
+  action: "cancel";
+  job_id: string;
+  success: boolean;
+  message: string;
+  backend: string | null;
+  run_id?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export class ExecutionJobCommandError extends Error {
+  readonly kind = "execution_job_command_error";
+  readonly detail: string;
+  readonly response: ExecutionJobCommandResponse;
+
+  constructor(response: ExecutionJobCommandResponse, fallbackMessage: string) {
+    const detail = response.message || fallbackMessage;
+    super(detail);
+    this.name = "ExecutionJobCommandError";
+    this.detail = detail;
+    this.response = response;
+  }
+}
+
+export async function cancelExecutionJobRecord(jobId: string): Promise<ExecutionJobCommandResponse> {
+  const response = await api.post<ExecutionJobCommandResponse>(`/runs/execution-job-records/${jobId}/cancel`);
+  if (!response.success) {
+    throw new ExecutionJobCommandError(
+      response,
+      `Execution job ${jobId} could not be cancelled`,
+    );
+  }
+  return response;
+}
+
 export async function createRun(config: ExperimentConfig): Promise<Run> {
   return api.post("/runs", { config });
+}
+
+export async function createRunGroup(payload: NativeExperimentLaunchPayload): Promise<Run> {
+  return api.post("/runs/run-groups", payload);
 }
 
 export interface InlinePipelinePayload {

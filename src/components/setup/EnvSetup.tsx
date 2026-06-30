@@ -15,32 +15,9 @@
  * 7. done        — Summary + launch
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "@/lib/motion";
-import {
-  Download,
-  FolderOpen,
-  CheckCircle2,
-  Loader2,
-  AlertCircle,
-  ChevronRight,
-  ChevronLeft,
-  RefreshCw,
-  Terminal,
-  Cpu,
-  Gpu,
-  Zap,
-  Package,
-  SkipForward,
-} from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import {
   getSetupStatus,
   alignConfig,
@@ -48,41 +25,35 @@ import {
   skipSetup,
   type GPUDetectionResponse,
   type RecommendedConfigResponse,
-  type ProfileInfo,
-  type OptionalPackageInfo,
 } from "@/api/config";
-import { PythonEnvInspectionCard } from "@/components/python/PythonEnvInspectionCard";
 import {
   announceBackendRestarted,
   loadPostSwitchValidation,
   previewRuntimeAlignment,
   restartBackendForRuntimeSwitch,
 } from "@/lib/pythonRuntimeSwitch";
-import { getDesktopEnvKindLabel, getDesktopEnvWriteAccessLabel } from "@/lib/pythonRuntimeDisplay";
 import {
-  filterOptionalPackagesForProfile,
-  filterPackageNamesForProfile,
-  getCompatibleProfiles,
-  getVisibleOptionalPackages,
-} from "@/lib/setup-config";
+  buildEnvSetupViewState,
+  checkedStateToBoolean,
+  getEffectiveProfileExtras,
+  pruneSelectedExtrasForVisiblePackages,
+  updateExtraSelection,
+  type EnvSummary,
+  type EnvSetupCheckedState,
+  type SetupProgress,
+  type WizardStep,
+} from "./EnvSetup.helpers";
+import { EnvSetupEnvChoice } from "./EnvSetupEnvChoice";
+import { EnvSetupProgressDots } from "./EnvSetupProgressDots";
+import {
+  EnvProgressStepCard,
+  GpuDetectionStepCard,
+  InstallProgressStepCard,
+  OptionalExtrasStepCard,
+  ProfileSelectionStepCard,
+  ReadyStepCard,
+} from "./EnvSetupStepCards";
 import type { DesktopDetectedEnv, DesktopInspectedEnv } from "@/types/pythonRuntime";
-
-// --- Types ---
-
-const WIZARD_STEPS = ["env", "env-progress", "detect", "profile", "extras", "install", "done"] as const;
-type WizardStep = (typeof WIZARD_STEPS)[number];
-
-interface SetupProgress {
-  percent: number;
-  step: string;
-  detail: string;
-}
-
-interface EnvSummary {
-  pythonPath: string;
-  envPath: string;
-  version: string;
-}
 
 // --- Electron API ---
 
@@ -120,49 +91,6 @@ const stepVariants = {
   center: { opacity: 1, x: 0 },
   exit: { opacity: 0, x: -30 },
 };
-
-// --- Visual progress mapping ---
-
-const VISUAL_STEPS = ["env", "detect", "profile", "extras", "done"];
-
-function getVisualIndex(step: WizardStep): number {
-  switch (step) {
-    case "env":
-    case "env-progress":
-      return 0;
-    case "detect":
-      return 1;
-    case "profile":
-      return 2;
-    case "extras":
-    case "install":
-      return 3;
-    case "done":
-      return 4;
-  }
-}
-
-// --- Helpers ---
-
-function profileIcon(profileId: string) {
-  if (profileId.includes("gpu") || profileId.includes("cuda") || profileId.includes("mps")) {
-    return <Gpu className="h-5 w-5" />;
-  }
-  return <Cpu className="h-5 w-5" />;
-}
-
-function stepLabel(step: string, t: (key: string) => string): string {
-  switch (step) {
-    case "downloading": return t("setupWizard.envProgress.downloading");
-    case "extracting": return t("setupWizard.envProgress.extracting");
-    case "creating_venv": return t("setupWizard.envProgress.creatingVenv");
-    case "installing": return t("setupWizard.envProgress.installing");
-    case "validating": return t("setupWizard.envProgress.validating");
-    case "starting": return t("setupWizard.envProgress.startingBackend");
-    case "ready": return t("setupWizard.envProgress.ready");
-    default: return t("setupWizard.envProgress.settingUp");
-  }
-}
 
 // --- Component ---
 
@@ -275,7 +203,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
       try {
         const setupStatus = await getSetupStatus();
         if (setupStatus.selected_profile) {
-          const extras = filterPackageNamesForProfile(
+          const extras = getEffectiveProfileExtras(
             validation.selectedExtras,
             validation.config,
             setupStatus.selected_profile,
@@ -409,6 +337,22 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     setError(null);
   }, []);
 
+  // --- Derived state ---
+
+  const {
+    profiles: filteredProfiles,
+    profileOptionalPackages,
+    effectiveExtras,
+  } = useMemo(
+    () => buildEnvSetupViewState({
+      config,
+      platform,
+      selectedExtras,
+      selectedProfile,
+    }),
+    [config, platform, selectedExtras, selectedProfile],
+  );
+
   // --- Post-backend handlers ---
 
   const handleInstall = useCallback(async () => {
@@ -417,21 +361,18 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     setInstallMessage(t("setupWizard.install.preparing"));
     setInstallError(null);
 
-    // Never send optionals the selected profile excludes (e.g. torch on cpu-lite).
-    const extras = filterPackageNamesForProfile(selectedExtras, config, selectedProfile);
-
     try {
       setInstallMessage(t("setupWizard.install.installingProfile"));
 
       const result = await alignConfig({
         profile: selectedProfile,
-        optional_packages: extras,
+        optional_packages: effectiveExtras,
       });
 
       if (result.success) {
         setInstallProgress(100);
         setInstallMessage(t("setupWizard.install.complete"));
-        await completeSetup(selectedProfile, extras);
+        await completeSetup(selectedProfile, effectiveExtras);
         setTimeout(() => setCurrentStep("done"), 500);
       } else {
         setInstallError(result.message);
@@ -441,7 +382,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
       setInstallError(err instanceof Error ? err.message : t("setupWizard.install.failed"));
       setInstallProgress(100);
     }
-  }, [config, selectedProfile, selectedExtras, t]);
+  }, [effectiveExtras, selectedProfile, t]);
 
   const handleSkipInstall = useCallback(async () => {
     try {
@@ -466,6 +407,14 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     transitionToPostBackend();
   }, [transitionToPostBackend]);
 
+  const handleToggleExtra = useCallback((packageName: string, checked: EnvSetupCheckedState) => {
+    setSelectedExtras((prev) => updateExtraSelection(prev, packageName, checked));
+  }, []);
+
+  const handleSkipNextTimeChange = useCallback((checked: EnvSetupCheckedState) => {
+    setSkipNextTime(checkedStateToBoolean(checked));
+  }, []);
+
   const handleLaunch = useCallback(async () => {
     try {
       await electronApi?.markWizardComplete(skipNextTime);
@@ -473,25 +422,8 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
     onComplete();
   }, [onComplete, skipNextTime]);
 
-  // --- Derived state ---
-
-  const visualIndex = getVisualIndex(currentStep);
-
-  const filteredProfiles = getCompatibleProfiles(config, platform);
-  const visibleOptionalPackages = getVisibleOptionalPackages(config);
-  // Hide optionals the selected profile excludes (cpu-lite never offers torch/umap-learn)
-  // and ignore any stale selections of them when installing or summarizing.
-  const profileOptionalPackages = filterOptionalPackagesForProfile(visibleOptionalPackages, config, selectedProfile);
-  const effectiveExtras = filterPackageNamesForProfile(selectedExtras, config, selectedProfile);
-
   useEffect(() => {
-    const visiblePackages = getVisibleOptionalPackages(config);
-    if (visiblePackages.length === 0) {
-      setSelectedExtras([]);
-      return;
-    }
-    const visibleNames = new Set(visiblePackages.map((pkg) => pkg.name));
-    setSelectedExtras((prev) => prev.filter((name) => visibleNames.has(name)));
+    setSelectedExtras((prev) => pruneSelectedExtrasForVisiblePackages(prev, config));
   }, [config]);
 
   // --- Render ---
@@ -506,26 +438,7 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
         </div>
 
         {/* Progress dots (hidden on env choice step) */}
-        {currentStep !== "env" && (
-          <div className="flex items-center justify-center gap-2 mb-8">
-            {VISUAL_STEPS.map((_, i) => (
-              <div key={i} className="flex items-center">
-                <div
-                  className={`w-2.5 h-2.5 rounded-full transition-colors ${
-                    i <= visualIndex ? "bg-primary" : "bg-muted-foreground/30"
-                  }`}
-                />
-                {i < VISUAL_STEPS.length - 1 && (
-                  <div
-                    className={`w-8 h-0.5 transition-colors ${
-                      i < visualIndex ? "bg-primary" : "bg-muted-foreground/30"
-                    }`}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        <EnvSetupProgressDots currentStep={currentStep} />
 
         {/* Step content */}
         <AnimatePresence mode="wait">
@@ -539,482 +452,84 @@ export default function EnvSetup({ onComplete }: EnvSetupProps) {
           >
             {/* ── Step 1: Environment Choice ── */}
             {currentStep === "env" && (
-              <Card>
-                <CardHeader className="text-center">
-                  <CardTitle>{t("setupWizard.env.title")}</CardTitle>
-                  <CardDescription>{t("setupWizard.env.description")}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {error && (
-                    <Alert variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>{error}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  {inspection ? (
-                    <PythonEnvInspectionCard
-                      inspection={inspection}
-                      busy={isInspecting}
-                      onBack={() => setInspection(null)}
-                      onUseAsIs={() => {
-                        void handleApplyInspection(false);
-                      }}
-                      onInstallCoreAndSwitch={() => {
-                        void handleApplyInspection(true);
-                      }}
-                    />
-                  ) : (
-                    <>
-                      {/* Currently configured environment (shown on reinstall/update) */}
-                      {currentEnv && (
-                        <>
-                          <button
-                            className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-primary bg-primary/5 hover:bg-primary/10 transition-colors text-left"
-                            onClick={handleUseCurrent}
-                          >
-                            <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{t("setupWizard.env.currentEnv")}</span>
-                                <Badge variant="default" className="text-xs">{t("setupWizard.env.recommended")}</Badge>
-                              </div>
-                              <p className="text-sm text-muted-foreground truncate mt-0.5">{currentEnv.envPath}</p>
-                              <p className="text-xs text-muted-foreground">Python {currentEnv.version}</p>
-                            </div>
-                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                          </button>
-
-                          {/* Divider */}
-                          <div className="relative py-2">
-                            <div className="absolute inset-0 flex items-center">
-                              <span className="w-full border-t" />
-                            </div>
-                            <div className="relative flex justify-center text-xs uppercase">
-                              <span className="bg-background px-2 text-muted-foreground">{t("setupWizard.env.changeEnv")}</span>
-                            </div>
-                          </div>
-                        </>
-                      )}
-
-                      {/* Auto setup */}
-                      <Button
-                        variant={currentEnv ? "outline" : "default"}
-                        className="w-full h-auto py-4 flex-col items-start gap-1"
-                        onClick={handleAutoSetup}
-                      >
-                        <div className="flex items-center gap-2 w-full">
-                          <Download className="h-5 w-5 shrink-0" />
-                          <span className="font-medium">{t("setupWizard.env.autoSetup")}</span>
-                          {!currentEnv && (
-                            <Badge variant="secondary" className="ml-auto">{t("setupWizard.env.recommended")}</Badge>
-                          )}
-                        </div>
-                        <span className={`text-xs pl-7 ${currentEnv ? "text-muted-foreground" : "text-primary-foreground/70"}`}>
-                          {t("setupWizard.env.autoSetupDetail")}
-                        </span>
-                      </Button>
-
-                      {!currentEnv && (
-                        <div className="relative py-2">
-                          <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t" />
-                          </div>
-                          <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-background px-2 text-muted-foreground">{t("setupWizard.env.or")}</span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Detected environments */}
-                      {detectingEnvs || isInspecting ? (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center py-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span>{t("setupWizard.env.scanning")}</span>
-                        </div>
-                      ) : detectedEnvs.length > 0 ? (
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium text-muted-foreground">
-                            {t("setupWizard.env.detectedEnvs")}
-                          </p>
-                          {detectedEnvs.map((env) => (
-                            <button
-                              key={env.pythonPath}
-                              className="w-full flex items-center gap-3 p-3 rounded-lg border hover:border-primary/50 hover:bg-accent/50 transition-colors text-left"
-                              onClick={() => {
-                                void handleInspectExisting(env.path);
-                              }}
-                            >
-                              <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="text-sm font-medium truncate">Python {env.pythonVersion}</p>
-                                  <Badge variant="secondary" className="text-xs">{getDesktopEnvKindLabel(env.envKind)}</Badge>
-                                  <Badge variant={env.hasCorePackages ? "outline" : "destructive"} className="text-xs">
-                                    {env.hasCorePackages ? "Core ready" : "Core missing"}
-                                  </Badge>
-                                  <Badge variant={env.writable ? "outline" : "secondary"} className="text-xs">
-                                    {getDesktopEnvWriteAccessLabel(env.writable)}
-                                  </Badge>
-                                </div>
-                                <p className="text-xs text-muted-foreground truncate" title={env.path}>
-                                  Root: {env.path}
-                                </p>
-                                <p className="text-xs text-muted-foreground truncate" title={env.pythonPath}>
-                                  Executable: {env.pythonPath}
-                                </p>
-                              </div>
-                              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {/* Browse for python / Create in folder */}
-                      <div className="flex gap-2">
-                        <Button variant="outline" className="flex-1" onClick={handleBrowsePython}>
-                          <FolderOpen className="mr-2 h-4 w-4" />
-                          {t("setupWizard.env.browsePython")}
-                        </Button>
-                        <Button variant="outline" className="flex-1" onClick={handleCreateInFolder}>
-                          <Download className="mr-2 h-4 w-4" />
-                          {t("setupWizard.env.createInFolder")}
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+              <EnvSetupEnvChoice
+                currentEnv={currentEnv}
+                detectedEnvs={detectedEnvs}
+                detectingEnvs={detectingEnvs}
+                error={error}
+                inspection={inspection}
+                isInspecting={isInspecting}
+                onApplyInspection={handleApplyInspection}
+                onAutoSetup={handleAutoSetup}
+                onBrowsePython={handleBrowsePython}
+                onClearInspection={() => setInspection(null)}
+                onCreateInFolder={handleCreateInFolder}
+                onInspectExisting={handleInspectExisting}
+                onUseCurrent={handleUseCurrent}
+              />
             )}
 
             {/* ── Step 2: Environment Setup Progress ── */}
             {currentStep === "env-progress" && (
-              <Card>
-                <CardHeader className="text-center">
-                  <CardTitle className="flex items-center justify-center gap-2">
-                    {error ? (
-                      <AlertCircle className="h-5 w-5 text-destructive" />
-                    ) : (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    )}
-                    {error ? t("setupWizard.envProgress.failed") : t("setupWizard.envProgress.title")}
-                  </CardTitle>
-                  {!error && (
-                    <CardDescription>{stepLabel(progress.step, t)}</CardDescription>
-                  )}
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {error ? (
-                    <>
-                      <Alert variant="destructive">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>{error}</AlertDescription>
-                      </Alert>
-                      <div className="flex justify-center">
-                        <Button variant="outline" onClick={handleRetryEnv}>
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          {t("setupWizard.envProgress.tryAgain")}
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <Progress value={progress.percent} className="h-2" />
-                      <p className="text-sm text-center text-muted-foreground">
-                        {progress.detail}
-                      </p>
-                      <p className="text-xs text-center text-muted-foreground/60">
-                        {t("setupWizard.envProgress.timeNote")}
-                      </p>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+              <EnvProgressStepCard
+                error={error}
+                onRetry={handleRetryEnv}
+                progress={progress}
+              />
             )}
 
             {/* ── Step 3: GPU Detection ── */}
             {currentStep === "detect" && (
-              <Card>
-                <CardHeader className="text-center">
-                  <CardTitle className="flex items-center justify-center gap-2">
-                    <Zap className="h-5 w-5" />
-                    {t("setupWizard.detect.title")}
-                  </CardTitle>
-                  <CardDescription>{t("setupWizard.detect.description")}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col items-center gap-4">
-                  {!gpuInfo ? (
-                    <>
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                      <p className="text-sm text-muted-foreground">
-                        {t("setupWizard.detect.scanning")}
-                      </p>
-                    </>
-                  ) : (
-                    <div className="text-center space-y-3">
-                      {gpuInfo.has_cuda && (
-                        <div className="flex items-center gap-2 justify-center">
-                          <Gpu className="h-5 w-5 text-green-500" />
-                          <span className="font-medium">NVIDIA GPU: {gpuInfo.gpu_name}</span>
-                          {gpuInfo.cuda_version && (
-                            <Badge variant="secondary">CUDA {gpuInfo.cuda_version}</Badge>
-                          )}
-                        </div>
-                      )}
-                      {gpuInfo.has_metal && (
-                        <div className="flex items-center gap-2 justify-center">
-                          <Gpu className="h-5 w-5 text-green-500" />
-                          <span className="font-medium">Apple Metal (Apple Silicon)</span>
-                        </div>
-                      )}
-                      {!gpuInfo.has_cuda && !gpuInfo.has_metal && (
-                        <div className="flex items-center gap-2 justify-center">
-                          <Cpu className="h-5 w-5 text-muted-foreground" />
-                          <span className="text-muted-foreground">
-                            {t("setupWizard.detect.noGpu")}
-                          </span>
-                        </div>
-                      )}
-                      <p className="text-sm text-muted-foreground mt-2">
-                        {t("setupWizard.detect.autoAdvance")}
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <GpuDetectionStepCard gpuInfo={gpuInfo} />
             )}
 
             {/* ── Step 4: Profile Selection ── */}
             {currentStep === "profile" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Cpu className="h-5 w-5" />
-                    {t("setupWizard.profile.title")}
-                  </CardTitle>
-                  <CardDescription>{t("setupWizard.profile.description")}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {filteredProfiles.length === 0 && !config ? (
-                    <div className="flex flex-col items-center justify-center gap-3 py-8">
-                      <AlertCircle className="h-6 w-6 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">{t("setupWizard.profile.loadFailed")}</p>
-                      <Button variant="outline" size="sm" onClick={() => {
-                        void transitionToPostBackend();
-                      }}>
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        {t("common.retry")}
-                      </Button>
-                    </div>
-                  ) : (
-                    filteredProfiles.map((profile: ProfileInfo) => {
-                      const isRecommended = gpuInfo?.recommended_profiles[0] === profile.id;
-                      return (
-                        <div
-                          key={profile.id}
-                          className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${
-                            selectedProfile === profile.id
-                              ? "border-primary bg-primary/5"
-                              : "border-border hover:border-primary/50"
-                          }`}
-                          onClick={() => setSelectedProfile(profile.id)}
-                        >
-                          {profileIcon(profile.id)}
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{profile.label}</span>
-                              {isRecommended && (
-                                <Badge variant="default" className="text-xs">
-                                  {t("setupWizard.profile.recommended")}
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-1">
-                              {profile.description}
-                            </p>
-                            <div className="flex gap-1 mt-2 flex-wrap">
-                              {Object.keys(profile.packages).map((pkg) => (
-                                <Badge key={pkg} variant="outline" className="text-xs">
-                                  {pkg}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
-                          <div
-                            className={`w-4 h-4 rounded-full border-2 mt-1 ${
-                              selectedProfile === profile.id
-                                ? "border-primary bg-primary"
-                                : "border-muted-foreground/30"
-                            }`}
-                          />
-                        </div>
-                      );
-                    })
-                  )}
-
-                  <div className="flex justify-between pt-4">
-                    <Button variant="ghost" onClick={handleSkip}>
-                      <SkipForward className="mr-2 h-4 w-4" />
-                      {t("setupWizard.skip")}
-                    </Button>
-                    <Button onClick={() => setCurrentStep("extras")}>
-                      {t("common.next")}
-                      <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <ProfileSelectionStepCard
+                config={config}
+                gpuInfo={gpuInfo}
+                onNext={() => setCurrentStep("extras")}
+                onRetry={transitionToPostBackend}
+                onSelectProfile={setSelectedProfile}
+                onSkip={handleSkip}
+                profiles={filteredProfiles}
+                selectedProfile={selectedProfile}
+              />
             )}
 
             {/* ── Step 5: Optional Extras ── */}
             {currentStep === "extras" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Package className="h-5 w-5" />
-                    {t("setupWizard.extras.title")}
-                  </CardTitle>
-                  <CardDescription>{t("setupWizard.extras.description")}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {profileOptionalPackages.map((pkg: OptionalPackageInfo) => (
-                    <div
-                      key={pkg.name}
-                      className="flex items-start gap-3 p-3 rounded-lg border"
-                    >
-                      <Checkbox
-                        id={pkg.name}
-                        checked={selectedExtras.includes(pkg.name)}
-                        onCheckedChange={(checked) => {
-                          setSelectedExtras((prev) =>
-                            checked
-                              ? [...prev, pkg.name]
-                              : prev.filter((n) => n !== pkg.name),
-                          );
-                        }}
-                      />
-                      <div className="flex-1">
-                        <Label htmlFor={pkg.name} className="font-medium cursor-pointer">
-                          {pkg.name}
-                          {pkg.default_install && (
-                            <Badge variant="secondary" className="ml-2 text-xs">
-                              {t("common.default")}
-                            </Badge>
-                          )}
-                          <Badge variant="outline" className="ml-2 text-xs">
-                            {pkg.recommended || pkg.min}
-                          </Badge>
-                        </Label>
-                        <p className="text-sm text-muted-foreground mt-0.5">
-                          {pkg.description}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="flex justify-between pt-4">
-                    <Button variant="outline" onClick={() => setCurrentStep("profile")}>
-                      <ChevronLeft className="mr-2 h-4 w-4" />
-                      {t("common.back")}
-                    </Button>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" onClick={handleSkipInstall}>
-                        {t("setupWizard.extras.skipInstall")}
-                      </Button>
-                      <Button onClick={handleInstall}>
-                        {t("setupWizard.extras.install")}
-                        <ChevronRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <OptionalExtrasStepCard
+                onBack={() => setCurrentStep("profile")}
+                onInstall={handleInstall}
+                onSkipInstall={handleSkipInstall}
+                onToggleExtra={handleToggleExtra}
+                packages={profileOptionalPackages}
+                selectedExtras={selectedExtras}
+              />
             )}
 
             {/* ── Step 6: Installation Progress ── */}
             {currentStep === "install" && (
-              <Card>
-                <CardHeader className="text-center">
-                  <CardTitle className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    {t("setupWizard.install.title")}
-                  </CardTitle>
-                  <CardDescription>{t("setupWizard.install.description")}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Progress value={installProgress} className="h-2" />
-                  <p className="text-sm text-center text-muted-foreground">
-                    {installMessage}
-                  </p>
-
-                  {installError && (
-                    <Alert variant="destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>{installError}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  {installError && (
-                    <div className="flex justify-center pt-2">
-                      <Button variant="outline" onClick={handleSkipInstall}>
-                        {t("setupWizard.install.continueAnyway")}
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <InstallProgressStepCard
+                installError={installError}
+                installMessage={installMessage}
+                installProgress={installProgress}
+                onSkipInstall={handleSkipInstall}
+              />
             )}
 
             {/* ── Step 7: Done ── */}
             {currentStep === "done" && (
-              <Card>
-                <CardHeader className="text-center">
-                  <CardTitle className="flex items-center justify-center gap-2">
-                    <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    {t("setupWizard.ready.title")}
-                  </CardTitle>
-                  <CardDescription>{t("setupWizard.ready.description")}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t("setupWizard.ready.profile")}</span>
-                      <span className="font-medium">{selectedProfile}</span>
-                    </div>
-                    {effectiveExtras.length > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">{t("setupWizard.ready.extras")}</span>
-                        <span className="font-medium">{effectiveExtras.length} packages</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* "Don't ask again" checkbox for portable mode */}
-                  {isPortableMode && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <Checkbox
-                        id="skip-wizard"
-                        checked={skipNextTime}
-                        onCheckedChange={(checked) => setSkipNextTime(checked === true)}
-                      />
-                      <Label htmlFor="skip-wizard" className="text-sm text-muted-foreground cursor-pointer">
-                        {t("setupWizard.ready.dontAskAgain")}
-                      </Label>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between pt-2">
-                    <Button variant="ghost" onClick={handleReconfigure}>
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      {t("setupWizard.ready.reconfigure")}
-                    </Button>
-                    <Button size="lg" onClick={handleLaunch}>
-                      {t("setupWizard.ready.launch")}
-                      <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <ReadyStepCard
+                effectiveExtras={effectiveExtras}
+                isPortableMode={isPortableMode}
+                onLaunch={handleLaunch}
+                onReconfigure={handleReconfigure}
+                onSkipNextTimeChange={handleSkipNextTimeChange}
+                selectedProfile={selectedProfile}
+                skipNextTime={skipNextTime}
+              />
             )}
           </motion.div>
         </AnimatePresence>

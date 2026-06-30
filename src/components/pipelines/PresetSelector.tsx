@@ -26,9 +26,15 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { buildCanonicalPreviewSteps } from "@/lib/canonicalPipelinePreview";
 import type { PipelinePreset, PipelinePresetVariantId } from "@/types/pipelines";
-import { buildPipelinePreview, computePipelineStats } from "@/lib/pipelineStats";
+import {
+  buildPresetCardModel,
+  clampPresetComplexity,
+  getPresetComplexityMeta,
+  getPresetTaskColorKey,
+  getPresetVariants,
+  type PresetComplexityKey,
+} from "./PresetSelectorData";
 
 export type PresetSelectorVariant = "full" | "strip";
 
@@ -80,6 +86,14 @@ const variantButtonToneStyles: Record<PipelinePresetVariantId, string> = {
   ),
 };
 
+const complexityIcons: Record<PresetComplexityKey, React.ComponentType<{ className?: string }>> = {
+  starter: Zap,
+  quick: Sparkles,
+  balanced: Gauge,
+  heavy: Boxes,
+  exhaustive: Flame,
+};
+
 const compactVariantButtonClass =
   "h-6 rounded-full px-2.5 text-[10px] font-semibold leading-none shadow-none whitespace-nowrap [&_svg]:size-3";
 
@@ -96,71 +110,6 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 };
 
-type PresetComplexityMeta = {
-  label: string;
-  hint: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-  chipClass: string;
-  iconClass: string;
-};
-
-function clampComplexity(value: number | undefined) {
-  if (typeof value !== "number" || Number.isNaN(value)) return 5;
-  return Math.max(1, Math.min(10, Math.round(value)));
-}
-
-function getPresetComplexityMeta(complexity: number): PresetComplexityMeta {
-  if (complexity <= 2) {
-    return {
-      label: "Starter",
-      hint: "Fast baseline",
-      description: "Small search space intended for quick validation and first-pass comparisons.",
-      icon: Zap,
-      chipClass: "border-emerald-500/25 bg-emerald-500/[0.10] text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/[0.12] dark:text-emerald-200",
-      iconClass: "text-emerald-500 dark:text-emerald-300",
-    };
-  }
-  if (complexity <= 4) {
-    return {
-      label: "Quick",
-      hint: "Compact screening",
-      description: "Still lightweight, but broad enough to compare a few meaningful alternatives.",
-      icon: Sparkles,
-      chipClass: "border-sky-500/25 bg-sky-500/[0.10] text-sky-700 dark:border-sky-400/30 dark:bg-sky-400/[0.12] dark:text-sky-200",
-      iconClass: "text-sky-500 dark:text-sky-300",
-    };
-  }
-  if (complexity <= 6) {
-    return {
-      label: "Balanced",
-      hint: "Broader search",
-      description: "A middle-ground preset with enough breadth to explore several preprocessing and model families.",
-      icon: Gauge,
-      chipClass: "border-amber-500/25 bg-amber-500/[0.10] text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/[0.12] dark:text-amber-200",
-      iconClass: "text-amber-500 dark:text-amber-300",
-    };
-  }
-  if (complexity <= 8) {
-    return {
-      label: "Heavy",
-      hint: "Wide benchmark",
-      description: "Larger cartesian spaces or heavier models. Expect noticeably longer benchmarking runs.",
-      icon: Boxes,
-      chipClass: "border-orange-500/25 bg-orange-500/[0.10] text-orange-700 dark:border-orange-400/30 dark:bg-orange-400/[0.12] dark:text-orange-200",
-      iconClass: "text-orange-500 dark:text-orange-300",
-    };
-  }
-  return {
-    label: "Exhaustive",
-    hint: "Long exploration",
-    description: "Highest-complexity preset family for deep, slow exploration and exhaustive benchmarking.",
-    icon: Flame,
-    chipClass: "border-rose-500/25 bg-rose-500/[0.10] text-rose-700 dark:border-rose-400/30 dark:bg-rose-400/[0.12] dark:text-rose-200",
-    iconClass: "text-rose-500 dark:text-rose-300",
-  };
-}
-
 function PresetComplexityBadge({
   complexity,
   compact = false,
@@ -168,9 +117,9 @@ function PresetComplexityBadge({
   complexity: number;
   compact?: boolean;
 }) {
-  const score = clampComplexity(complexity);
+  const score = clampPresetComplexity(complexity);
   const meta = getPresetComplexityMeta(score);
-  const Icon = meta.icon;
+  const Icon = complexityIcons[meta.key];
 
   return (
     <Tooltip>
@@ -195,37 +144,6 @@ function PresetComplexityBadge({
       </TooltipContent>
     </Tooltip>
   );
-}
-
-/**
- * Convert a preset's canonical nirs4all pipeline into editor-step format so the
- * same stats/preview helpers used for saved pipelines work here too. Returns
- * an empty array on any parse failure — caller falls back to `steps_count`.
- */
-function getPresetVariants(preset: PipelinePreset): PipelinePresetVariantId[] {
-  if (preset.available_variants?.length > 0) {
-    return preset.available_variants;
-  }
-  if (preset.task_type) {
-    return [preset.task_type];
-  }
-  return ["regression"];
-}
-
-function getPresetPrimaryVariant(preset: PipelinePreset): PipelinePresetVariantId {
-  return preset.default_variant ?? preset.task_type ?? getPresetVariants(preset)[0];
-}
-
-function getPresetPipeline(preset: PipelinePreset, variant: PipelinePresetVariantId): unknown[] {
-  return preset.variants?.[variant]?.pipeline ?? preset.pipeline ?? [];
-}
-
-function deriveEditorStepsFromPreset(
-  preset: PipelinePreset,
-  variant: PipelinePresetVariantId
-): unknown[] {
-  const pipeline = getPresetPipeline(preset, variant);
-  return buildCanonicalPreviewSteps(pipeline);
 }
 
 function StatCell({
@@ -302,7 +220,7 @@ export function PresetSelector({
         <div className="flex items-center gap-2 overflow-x-auto pb-1 hide-scrollbar">
           {presets.map((preset) => {
             const Icon = presetIcons[preset.id] || presetIcons.default;
-            const colorClass = categoryColors[preset.task_type] || categoryColors.default;
+            const colorClass = categoryColors[getPresetTaskColorKey(preset)] || categoryColors.default;
             const variants = getPresetVariants(preset);
             return (
               <div
@@ -354,14 +272,9 @@ export function PresetSelector({
       >
         {presets.map((preset) => {
           const Icon = presetIcons[preset.id] || presetIcons.default;
-          const variants = getPresetVariants(preset);
-          const primaryVariant = getPresetPrimaryVariant(preset);
-          const editorSteps = deriveEditorStepsFromPreset(preset, primaryVariant);
-          const stats = computePipelineStats(editorSteps);
-          const preview = buildPipelinePreview(editorSteps, 5);
-          const complexity = clampComplexity(preset.complexity);
-          const complexityMeta = getPresetComplexityMeta(complexity);
-          const ComplexityIcon = complexityMeta.icon;
+          const card = buildPresetCardModel(preset);
+          const { variants, stats, preview, complexity, complexityMeta } = card;
+          const ComplexityIcon = complexityIcons[complexityMeta.key];
 
           return (
             <motion.div key={preset.id} variants={itemVariants}>
@@ -391,13 +304,13 @@ export function PresetSelector({
                 <div className="mt-3 grid grid-cols-4 gap-2 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
                   <StatCell
                     label="ops"
-                    value={stats.operators || preset.steps_count}
+                    value={card.operatorCount}
                   />
                   <StatCell label="models" value={stats.models} />
                   <StatCell label="branches" value={stats.branches} />
                   <StatCell
                     label="variants"
-                    value={stats.hasGenerators ? stats.variants : 1}
+                    value={card.variantCount}
                     emphasize={stats.hasGenerators}
                   />
                 </div>

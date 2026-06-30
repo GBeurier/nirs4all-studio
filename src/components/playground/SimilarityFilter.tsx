@@ -46,12 +46,21 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection } from '@/context/useSelection';
+import {
+  canUseSelectedReference,
+  getReferenceSampleLabel,
+  getSelectedReferenceIndex,
+  getSimilaritySearchArgs,
+  getSimilaritySelectionIndices,
+  parseReferenceIndexInput,
+  type DistanceMetric,
+} from '@/lib/playground/analysisSelection';
 import type { SimilarityResult } from '@/types/playground';
 
 // ============= Types =============
 
-export type DistanceMetric = 'euclidean' | 'cosine' | 'correlation';
+export type { DistanceMetric } from '@/lib/playground/analysisSelection';
 
 export interface SimilarityFilterProps {
   /** Callback to find similar samples via API */
@@ -119,22 +128,17 @@ export function SimilarityFilter({
 
   // Update reference from selected sample
   const handleUseSelectedAsReference = useCallback(() => {
-    if (selectedSample !== null && selectedSample !== undefined) {
-      setReferenceIdx(selectedSample);
-    } else if (selectedCount === 1) {
-      // Use the single selected sample from context
-      const idx = Array.from(selectedSamples)[0];
-      setReferenceIdx(idx);
-    }
+    const selectedReference = getSelectedReferenceIndex({
+      selectedSample,
+      selectedSamples,
+      selectedCount,
+    });
+    if (selectedReference !== null) setReferenceIdx(selectedReference);
   }, [selectedSample, selectedCount, selectedSamples]);
 
   // Get reference display name
   const referenceDisplay = useMemo(() => {
-    if (referenceIdx === null) return 'Not selected';
-    if (sampleIds && sampleIds[referenceIdx]) {
-      return sampleIds[referenceIdx];
-    }
-    return `Sample ${referenceIdx}`;
+    return getReferenceSampleLabel(referenceIdx, sampleIds);
   }, [referenceIdx, sampleIds]);
 
   // Handle search
@@ -143,24 +147,22 @@ export function SimilarityFilter({
 
     setIsSearching(true);
     try {
+      const searchArgs = getSimilaritySearchArgs({ useTopK, threshold, topK });
       const result = await onFindSimilar(
         referenceIdx,
         metric,
-        useTopK ? undefined : threshold,
-        useTopK ? topK : undefined
+        searchArgs.threshold,
+        searchArgs.topK
       );
       setLastResult(result);
 
       if (result.success) {
-        let indicesToSelect = result.similar_indices;
-
-        // If selectDifferent mode, we want samples NOT in the similar list
-        if (selectDifferent) {
-          const similarSet = new Set(result.similar_indices);
-          similarSet.add(referenceIdx); // Also exclude reference
-          indicesToSelect = Array.from({ length: totalSamples }, (_, i) => i)
-            .filter(i => !similarSet.has(i));
-        }
+        const indicesToSelect = getSimilaritySelectionIndices({
+          result,
+          referenceIdx,
+          selectDifferent,
+          totalSamples,
+        });
 
         // Apply selection
         if (useSelectionContext) {
@@ -177,7 +179,11 @@ export function SimilarityFilter({
   }, [referenceIdx, metric, useTopK, topK, threshold, selectDifferent, totalSamples, onFindSimilar, useSelectionContext, select, onSelectSimilar]);
 
   // Can use selected sample as reference
-  const canUseSelected = (selectedSample !== null && selectedSample !== undefined) || selectedCount === 1;
+  const canUseSelected = canUseSelectedReference({
+    selectedSample,
+    selectedSamples,
+    selectedCount,
+  });
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -221,8 +227,7 @@ export function SimilarityFilter({
                   type="number"
                   value={referenceIdx ?? ''}
                   onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    setReferenceIdx(isNaN(val) ? null : Math.max(0, Math.min(val, totalSamples - 1)));
+                    setReferenceIdx(parseReferenceIndexInput(e.target.value, totalSamples));
                   }}
                   placeholder="Sample index..."
                   className="h-8 text-xs pr-16"

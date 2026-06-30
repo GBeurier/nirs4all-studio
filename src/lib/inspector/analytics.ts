@@ -1,16 +1,29 @@
-import { isLowerBetter } from "@/lib/scores";
+import {
+  compareInspectorScoreValues,
+  getInspectorFiniteScore,
+  getInspectorScoreValues,
+  isInspectorLowerBetter,
+  sortInspectorChainsByScore,
+} from "@/lib/inspector/scoreAccess";
+import {
+  aggregateScores,
+  quantile,
+  summarizeScores,
+  type AggregateMode,
+} from "@/lib/inspector/statistics";
 import type {
   BranchComparisonResponse,
   CandlestickCategory,
   CandlestickResponse,
   HeatmapResponse,
-  HistogramResponse,
   HyperparameterResponse,
   InspectorChainSummary,
   PreprocessingImpactResponse,
   RankingsResponse,
   ScoreColumn,
 } from "@/types/inspector";
+
+export { buildHistogramData } from "@/lib/inspector/analyticsHistogram";
 
 type ChainField =
   | "model_class"
@@ -20,8 +33,6 @@ type ChainField =
   | "run_id"
   | "task_type"
   | "pipeline_id";
-
-type AggregateMode = "best" | "mean" | "median" | "worst";
 
 export interface FocusedChainsResult {
   chainIds: string[];
@@ -54,14 +65,8 @@ export interface InspectorOverviewStats {
   topPreprocessingLeader: OverviewLeader | null;
 }
 
-function getFiniteScore(chain: InspectorChainSummary, scoreColumn: ScoreColumn): number | null {
-  const value = chain[scoreColumn];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function getMetricDirection(chains: readonly InspectorChainSummary[]): boolean {
-  const metric = chains.find(chain => chain.metric)?.metric ?? null;
-  return isLowerBetter(metric);
+  return isInspectorLowerBetter(chains);
 }
 
 function toLabel(value: unknown, emptyLabel = "(empty)"): string {
@@ -87,32 +92,6 @@ function splitPreprocessingSteps(value: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-function quantile(sortedValues: number[], q: number): number {
-  if (sortedValues.length === 0) return Number.NaN;
-  const clampedQ = Math.min(1, Math.max(0, q));
-  const position = (sortedValues.length - 1) * clampedQ;
-  const lower = Math.floor(position);
-  const upper = Math.ceil(position);
-  if (lower === upper) return sortedValues[lower];
-  const weight = position - lower;
-  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
-}
-
-function summarizeScores(values: number[]): { mean: number; median: number; q25: number; q75: number } {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mean = sorted.reduce((sum, value) => sum + value, 0) / sorted.length;
-  return {
-    mean,
-    median: quantile(sorted, 0.5),
-    q25: quantile(sorted, 0.25),
-    q75: quantile(sorted, 0.75),
-  };
-}
-
-function compareScores(a: number, b: number, lowerBetter: boolean): number {
-  return lowerBetter ? a - b : b - a;
-}
-
 function getDistinctCount(chains: readonly InspectorChainSummary[], field: ChainField): number {
   return new Set(
     chains
@@ -136,7 +115,7 @@ function groupScores(
 ): Map<string, { chainIds: string[]; scores: number[] }> {
   const groups = new Map<string, { chainIds: string[]; scores: number[] }>();
   for (const chain of chains) {
-    const score = getFiniteScore(chain, scoreColumn);
+    const score = getInspectorFiniteScore(chain, scoreColumn);
     if (score == null) continue;
     const label = toLabel(chain[field]);
     const current = groups.get(label) ?? { chainIds: [], scores: [] };
@@ -145,14 +124,6 @@ function groupScores(
     groups.set(label, current);
   }
   return groups;
-}
-
-function aggregateScores(scores: number[], lowerBetter: boolean, aggregate: AggregateMode): number {
-  const sorted = [...scores].sort((a, b) => a - b);
-  if (aggregate === "best") return lowerBetter ? sorted[0] : sorted[sorted.length - 1];
-  if (aggregate === "worst") return lowerBetter ? sorted[sorted.length - 1] : sorted[0];
-  if (aggregate === "median") return quantile(sorted, 0.5);
-  return sorted.reduce((sum, value) => sum + value, 0) / sorted.length;
 }
 
 function chooseLeader(
@@ -168,7 +139,7 @@ function chooseLeader(
       score: summary.median,
       count: entry.scores.length,
     };
-    if (!leader || compareScores(candidate.score, leader.score, lowerBetter) < 0) {
+    if (!leader || compareInspectorScoreValues(candidate.score, leader.score, lowerBetter) < 0) {
       leader = candidate;
     }
   }
@@ -179,17 +150,7 @@ export function sortChainsByScore(
   chains: readonly InspectorChainSummary[],
   scoreColumn: ScoreColumn,
 ): InspectorChainSummary[] {
-  const lowerBetter = getMetricDirection(chains);
-  const sorted = [...chains];
-  sorted.sort((left, right) => {
-    const leftScore = getFiniteScore(left, scoreColumn);
-    const rightScore = getFiniteScore(right, scoreColumn);
-    if (leftScore == null && rightScore == null) return 0;
-    if (leftScore == null) return 1;
-    if (rightScore == null) return -1;
-    return compareScores(leftScore, rightScore, lowerBetter);
-  });
-  return sorted;
+  return sortInspectorChainsByScore(chains, scoreColumn);
 }
 
 export function pickFocusedChainIds(
@@ -218,10 +179,8 @@ export function buildOverviewStats(
   chains: readonly InspectorChainSummary[],
   scoreColumn: ScoreColumn,
 ): InspectorOverviewStats {
-  const scoredChains = chains.filter(chain => getFiniteScore(chain, scoreColumn) != null);
-  const scores = scoredChains
-    .map(chain => getFiniteScore(chain, scoreColumn))
-    .filter((value): value is number => value != null);
+  const scoredChains = chains.filter(chain => getInspectorFiniteScore(chain, scoreColumn) != null);
+  const scores = getInspectorScoreValues(scoredChains, scoreColumn);
   const sortedScoredChains = sortChainsByScore(scoredChains, scoreColumn);
   const metrics = new Set(chains.map(chain => chain.metric).filter(Boolean));
   const taskTypes = new Set(chains.map(chain => chain.task_type).filter(Boolean));
@@ -246,7 +205,7 @@ export function buildOverviewStats(
     runCount: getDistinctCount(chains, "run_id"),
     preprocessingCount: countPreprocessingVariants(chains),
     bestChain: sortedScoredChains[0] ?? null,
-    bestScore: scores.length > 0 ? getFiniteScore(sortedScoredChains[0], scoreColumn) : null,
+    bestScore: scores.length > 0 ? getInspectorFiniteScore(sortedScoredChains[0], scoreColumn) : null,
     medianScore,
     meanScore,
     iqr,
@@ -293,83 +252,13 @@ export function chooseCandlestickField(chains: readonly InspectorChainSummary[])
   return "model_class";
 }
 
-export function buildHistogramData(
-  chains: readonly InspectorChainSummary[],
-  scoreColumn: ScoreColumn,
-  nBins = 12,
-): HistogramResponse {
-  const scored = chains
-    .map(chain => ({
-      chainId: chain.chain_id,
-      score: getFiniteScore(chain, scoreColumn),
-    }))
-    .filter((entry): entry is { chainId: string; score: number } => entry.score != null);
-
-  if (scored.length === 0) {
-    return {
-      bins: [],
-      score_column: scoreColumn,
-      total_chains: 0,
-      min_score: null,
-      max_score: null,
-      mean_score: null,
-    };
-  }
-
-  const scores = scored.map(entry => entry.score);
-  const minScore = Math.min(...scores);
-  const maxScore = Math.max(...scores);
-  const meanScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-
-  if (minScore === maxScore) {
-    return {
-      bins: [{
-        bin_start: minScore,
-        bin_end: maxScore,
-        count: scored.length,
-        chain_ids: scored.map(entry => entry.chainId),
-      }],
-      score_column: scoreColumn,
-      total_chains: scored.length,
-      min_score: minScore,
-      max_score: maxScore,
-      mean_score: meanScore,
-    };
-  }
-
-  const binCount = Math.max(5, Math.min(nBins, scored.length));
-  const binWidth = (maxScore - minScore) / binCount;
-  const bins = Array.from({ length: binCount }, (_, index) => ({
-    bin_start: minScore + index * binWidth,
-    bin_end: index === binCount - 1 ? maxScore : minScore + (index + 1) * binWidth,
-    count: 0,
-    chain_ids: [] as string[],
-  }));
-
-  for (const entry of scored) {
-    const rawIndex = Math.floor((entry.score - minScore) / binWidth);
-    const index = Math.min(binCount - 1, Math.max(0, rawIndex));
-    bins[index].count += 1;
-    bins[index].chain_ids.push(entry.chainId);
-  }
-
-  return {
-    bins,
-    score_column: scoreColumn,
-    total_chains: scored.length,
-    min_score: minScore,
-    max_score: maxScore,
-    mean_score: meanScore,
-  };
-}
-
 export function buildRankingsData(
   chains: readonly InspectorChainSummary[],
   scoreColumn: ScoreColumn,
   limit = 50,
 ): RankingsResponse {
   const lowerBetter = getMetricDirection(chains);
-  const scoredCount = chains.filter(chain => getFiniteScore(chain, scoreColumn) != null).length;
+  const scoredCount = chains.filter(chain => getInspectorFiniteScore(chain, scoreColumn) != null).length;
   const sorted = sortChainsByScore(chains, scoreColumn).slice(0, limit);
   return {
     rankings: sorted.map((chain, index) => ({
@@ -404,7 +293,7 @@ export function buildHeatmapData(
   const grouped = new Map<string, { x: string; y: string; scores: number[]; chainIds: string[] }>();
 
   for (const chain of chains) {
-    const score = getFiniteScore(chain, scoreColumn);
+    const score = getInspectorFiniteScore(chain, scoreColumn);
     if (score == null) continue;
     const x = toLabel(chain[xVariable]);
     const y = toLabel(chain[yVariable]);
@@ -458,7 +347,7 @@ export function buildCandlestickData(
   const grouped = new Map<string, { scores: number[]; chainIds: string[] }>();
 
   for (const chain of chains) {
-    const score = getFiniteScore(chain, scoreColumn);
+    const score = getInspectorFiniteScore(chain, scoreColumn);
     if (score == null) continue;
     const label = toLabel(chain[categoryVariable]);
     const current = grouped.get(label) ?? { scores: [], chainIds: [] };
@@ -504,7 +393,7 @@ export function buildPreprocessingImpactData(
   scoreColumn: ScoreColumn,
 ): PreprocessingImpactResponse {
   const lowerBetter = getMetricDirection(chains);
-  const scoredChains = chains.filter(chain => getFiniteScore(chain, scoreColumn) != null);
+  const scoredChains = chains.filter(chain => getInspectorFiniteScore(chain, scoreColumn) != null);
   const allIndices = new Set(scoredChains.map((_, index) => index));
   const stepIndexes = new Map<string, Set<number>>();
 
@@ -520,10 +409,10 @@ export function buildPreprocessingImpactData(
     .map(([step, withIndexes]) => {
       const withoutIndexes = [...allIndices].filter(index => !withIndexes.has(index));
       const withScores = [...withIndexes]
-        .map(index => getFiniteScore(scoredChains[index], scoreColumn))
+        .map(index => getInspectorFiniteScore(scoredChains[index], scoreColumn))
         .filter((value): value is number => value != null);
       const withoutScores = withoutIndexes
-        .map(index => getFiniteScore(scoredChains[index], scoreColumn))
+        .map(index => getInspectorFiniteScore(scoredChains[index], scoreColumn))
         .filter((value): value is number => value != null);
 
       if (withScores.length === 0 || withoutScores.length === 0) return null;
@@ -576,7 +465,7 @@ export function buildHyperparameterData(
   const available_params = getAvailableHyperparameters(chains);
   const points = chains
     .map(chain => {
-      const score = getFiniteScore(chain, scoreColumn);
+      const score = getInspectorFiniteScore(chain, scoreColumn);
       const bestParams = chain.best_params;
       if (score == null || !bestParams || typeof bestParams !== "object") return null;
       const paramValue = (bestParams as Record<string, unknown>)[paramName];
@@ -606,7 +495,7 @@ export function buildBranchComparisonData(
   const grouped = new Map<string, { scores: number[]; chainIds: string[] }>();
 
   for (const chain of chains) {
-    const score = getFiniteScore(chain, scoreColumn);
+    const score = getInspectorFiniteScore(chain, scoreColumn);
     if (score == null) continue;
     const label = normalizeBranchPath(chain.branch_path);
     const current = grouped.get(label) ?? { scores: [], chainIds: [] };
@@ -636,7 +525,7 @@ export function buildBranchComparisonData(
         chain_ids: entry.chainIds,
       };
     })
-    .sort((left, right) => compareScores(left.mean, right.mean, lowerBetter));
+    .sort((left, right) => compareInspectorScoreValues(left.mean, right.mean, lowerBetter));
 
   return {
     branches,

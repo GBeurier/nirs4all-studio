@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  detectRepetitionGroups,
+  detectRepetitionGroupsFromPattern,
   getColumnarMetadata,
   getRepeatIndexColumnWarning,
   getSampleIdsFromMetadata,
   getSpectralRepetitionColumn,
   hasSpectralRepetitionGroups,
   isLikelyRepeatIndexColumnName,
+  summarizeRepetitionGroups,
+  validateRepetitionPattern,
 } from "../playground/repetition";
 
 describe("playground repetition helpers", () => {
@@ -81,5 +85,53 @@ describe("playground repetition helpers", () => {
     expect(getRepeatIndexColumnWarning("Replicate")).toContain("repetition counter");
     expect(isLikelyRepeatIndexColumnName("sample_id")).toBe(false);
     expect(getRepeatIndexColumnWarning("sample_id")).toBeNull();
+  });
+
+  it("detects repetition preview groups from a configured sample-id pattern", () => {
+    expect(detectRepetitionGroupsFromPattern([
+      "SampleA_rep1",
+      "SampleA_rep2",
+      "SampleB_rep1",
+      "SampleC_rep1",
+      "SampleC_rep2",
+      "SampleC_rep3",
+    ], "^(.+?)[-_][Rr]ep\\d+$")).toEqual([
+      {
+        bioSample: "SampleA",
+        sampleIds: ["SampleA_rep1", "SampleA_rep2"],
+        count: 2,
+      },
+      {
+        bioSample: "SampleC",
+        sampleIds: ["SampleC_rep1", "SampleC_rep2", "SampleC_rep3"],
+        count: 3,
+      },
+    ]);
+  });
+
+  it("chooses the strongest common pattern for auto-detected repetition previews", () => {
+    const groups = detectRepetitionGroups([
+      "A_1",
+      "A_2",
+      "B_1",
+      "B_2",
+      "B_3",
+      "C",
+    ], "auto");
+
+    expect(groups.map((group) => [group.bioSample, group.count])).toEqual([
+      ["A", 2],
+      ["B", 3],
+    ]);
+    expect(summarizeRepetitionGroups(groups)).toEqual({
+      bioSamples: 2,
+      totalReps: 5,
+      avgReps: 2.5,
+    });
+  });
+
+  it("keeps invalid custom patterns out of repetition previews", () => {
+    expect(validateRepetitionPattern("(")).toContain("Invalid regex");
+    expect(detectRepetitionGroups(["A_1", "A_2"], "pattern", "(")).toEqual([]);
   });
 });

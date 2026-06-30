@@ -6,9 +6,9 @@ Pre-release verification steps for the Python environment management system.
 
 - [ ] Backend tests pass (`pytest tests/ -v`)
 - [ ] Coherence smoke test passes (CI step)
-- [ ] Frontend tests pass (`npm run test -- --run`)
+- [ ] Frontend tests pass (`npm run test:frontend`)
 - [ ] Electron build test succeeds (dry-run)
-- [ ] Lint passes: `ruff check .` (backend), `npm run lint` (frontend)
+- [ ] Lint passes: `npm run lint:parallel`
 
 ## Manual — Environment Coherence
 

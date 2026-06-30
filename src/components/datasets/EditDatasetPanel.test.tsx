@@ -30,7 +30,7 @@ describe("buildInitialState", () => {
       createDataset({
         config: {
           repetition: "sample_id",
-        } as DatasetConfig,
+        } as Partial<DatasetConfig> as DatasetConfig,
       }),
     );
 
@@ -39,5 +39,39 @@ describe("buildInitialState", () => {
       column: "sample_id",
     });
     expect(state.metadataColumns).toEqual(["sample_id"]);
+  });
+
+  it("hydrates stored multi-source descriptors for the edit wizard", () => {
+    const config: Partial<DatasetConfig> = {
+      multi_source: {
+        link_by: "sample_id",
+        shared_targets: true,
+        sources: [
+          {
+            id: 1,
+            name: "nir",
+            files: [],
+          },
+        ],
+      },
+    };
+
+    const state = buildInitialState(
+      createDataset({
+        config: config as unknown as DatasetConfig,
+      }),
+    );
+
+    expect(state.multiSource).toEqual({
+      link_by: "sample_id",
+      shared_targets: true,
+      sources: [
+        {
+          id: 1,
+          name: "nir",
+          files: [],
+        },
+      ],
+    });
   });
 });

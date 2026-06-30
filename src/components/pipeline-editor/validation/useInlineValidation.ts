@@ -24,7 +24,7 @@
 
 import { useMemo } from "react";
 import type { ValidationIssue, ValidationSeverity } from "./types";
-import { useValidationContext } from "./ValidationContext";
+import { useValidationContext } from "./useValidationContext";
 
 export interface InlineValidationResult {
   /** Error message (highest severity issue) */
@@ -50,7 +50,7 @@ export function useInlineValidation(
   stepId: string,
   paramKey: string
 ): InlineValidationResult {
-  const { getStepIssues, result } = useValidationContext();
+  const { getStepIssues } = useValidationContext();
 
   return useMemo(() => {
     const stepIssues = getStepIssues(stepId);
@@ -81,7 +81,7 @@ export function useInlineValidation(
       hasIssues: true,
       severity: errorIssue ? "error" : warningIssue ? "warning" : "info",
     };
-  }, [stepId, paramKey, getStepIssues, result]);
+  }, [stepId, paramKey, getStepIssues]);
 }
 
 export interface StepValidationResult {
@@ -112,7 +112,7 @@ export interface StepValidationResult {
  * @returns Complete validation feedback for the step
  */
 export function useStepInlineValidation(stepId: string): StepValidationResult {
-  const { getStepIssues, result } = useValidationContext();
+  const { getStepIssues } = useValidationContext();
 
   return useMemo(() => {
     const issues = getStepIssues(stepId);
@@ -161,7 +161,7 @@ export function useStepInlineValidation(stepId: string): StepValidationResult {
       warningCount,
       severity: hasErrors ? "error" : hasWarnings ? "warning" : "info",
     };
-  }, [stepId, getStepIssues, result]);
+  }, [stepId, getStepIssues]);
 }
 
 /**

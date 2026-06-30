@@ -10,15 +10,19 @@
  */
 
 import {
-  createContext,
-  useContext,
   useReducer,
   useCallback,
   useMemo,
   useEffect,
   type ReactNode,
-  type Dispatch,
 } from "react";
+
+import {
+  defineClientStorageKey,
+  readClientStorageJson,
+  removeClientStorageItem,
+  writeClientStorageJson,
+} from "@/lib/clientStorage";
 
 // Simple ID generator using built-in crypto API
 function generateId(): string {
@@ -35,33 +39,26 @@ import {
   getStepDefinition,
   getDefaultStepParams,
   getDefaultSynthesisConfig,
-  SYNTHESIS_STEPS,
 } from "../definitions";
+import {
+  SynthesisBuilderContext,
+  type SynthesisBuilderContextValue,
+  type SynthesisBuilderState,
+} from "./useSynthesisBuilderContext";
 
 // ============= State Types =============
 
-interface SynthesisBuilderState {
-  // Core config
-  name: string;
-  n_samples: number;
-  random_state: number | null;
+type PersistedSynthesisBuilderState = Pick<
+  SynthesisConfig,
+  "name" | "n_samples" | "random_state" | "steps"
+>;
 
-  // Steps
-  steps: SynthesisStep[];
-
-  // UI state
-  selectedStepId: string | null;
-
-  // Validation
-  errors: ValidationError[];
-  warnings: ValidationWarning[];
-
-  // History
-  history: SynthesisBuilderState[];
-  historyIndex: number;
-
-  // Dirty flag
-  isDirty: boolean;
+function synthesisBuilderStorageKey(persistKey: string) {
+  return defineClientStorageKey<PersistedSynthesisBuilderState>(persistKey, {
+    area: "local",
+    scope: "user",
+    description: "Synthesis builder draft persisted under the caller-provided key.",
+  });
 }
 
 // ============= Action Types =============
@@ -354,45 +351,6 @@ function synthesisBuilderReducer(
   }
 }
 
-// ============= Context =============
-
-interface SynthesisBuilderContextValue {
-  // State
-  state: SynthesisBuilderState;
-
-  // Core config actions
-  setName: (name: string) => void;
-  setSamples: (n: number) => void;
-  setRandomState: (seed: number | null) => void;
-
-  // Step actions
-  addStep: (type: SynthesisStepType) => void;
-  removeStep: (id: string) => void;
-  updateStep: (id: string, params: Record<string, unknown>) => void;
-  toggleStep: (id: string) => void;
-  reorderSteps: (fromIndex: number, toIndex: number) => void;
-  selectStep: (id: string | null) => void;
-
-  // History
-  undo: () => void;
-  redo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-
-  // Import/Export
-  exportConfig: () => SynthesisConfig;
-  loadConfig: (config: SynthesisConfig) => void;
-  reset: () => void;
-
-  // Helpers
-  getSelectedStep: () => SynthesisStep | undefined;
-  getStepById: (id: string) => SynthesisStep | undefined;
-  hasStep: (type: SynthesisStepType) => boolean;
-  getEnabledSteps: () => SynthesisStep[];
-}
-
-const SynthesisBuilderContext = createContext<SynthesisBuilderContextValue | null>(null);
-
 // ============= Provider =============
 
 interface SynthesisBuilderProviderProps {
@@ -407,24 +365,19 @@ export function SynthesisBuilderProvider({
   persistKey = "nirs4all_synthesis_builder",
 }: SynthesisBuilderProviderProps) {
   const [state, dispatch] = useReducer(synthesisBuilderReducer, initialState, (initial) => {
-    // Try to load from localStorage
+    // Try to load from client storage
     if (persistKey) {
-      try {
-        const saved = localStorage.getItem(persistKey);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          const validation = validateSteps(parsed.steps || []);
-          return {
-            ...initial,
-            ...parsed,
-            history: [],
-            historyIndex: -1,
-            errors: validation.errors,
-            warnings: validation.warnings,
-          };
-        }
-      } catch {
-        // Ignore parse errors
+      const parsed = readClientStorageJson(synthesisBuilderStorageKey(persistKey));
+      if (parsed !== null) {
+        const validation = validateSteps(parsed.steps || []);
+        return {
+          ...initial,
+          ...parsed,
+          history: [],
+          historyIndex: -1,
+          errors: validation.errors,
+          warnings: validation.warnings,
+        };
       }
     }
 
@@ -442,20 +395,16 @@ export function SynthesisBuilderProvider({
     return initial;
   });
 
-  // Persist to localStorage
+  // Persist to client storage
   useEffect(() => {
     if (persistKey && state.isDirty) {
-      try {
-        const toSave = {
-          name: state.name,
-          n_samples: state.n_samples,
-          random_state: state.random_state,
-          steps: state.steps,
-        };
-        localStorage.setItem(persistKey, JSON.stringify(toSave));
-      } catch {
-        // Ignore save errors
-      }
+      const toSave: PersistedSynthesisBuilderState = {
+        name: state.name,
+        n_samples: state.n_samples,
+        random_state: state.random_state,
+        steps: state.steps,
+      };
+      writeClientStorageJson(synthesisBuilderStorageKey(persistKey), toSave);
     }
   }, [state, persistKey]);
 
@@ -520,7 +469,7 @@ export function SynthesisBuilderProvider({
   const reset = useCallback(() => {
     dispatch({ type: "RESET" });
     if (persistKey) {
-      localStorage.removeItem(persistKey);
+      removeClientStorageItem(synthesisBuilderStorageKey(persistKey));
     }
   }, [persistKey]);
 
@@ -604,18 +553,4 @@ export function SynthesisBuilderProvider({
       {children}
     </SynthesisBuilderContext.Provider>
   );
-}
-
-// ============= Hook =============
-
-export function useSynthesisBuilder(): SynthesisBuilderContextValue {
-  const context = useContext(SynthesisBuilderContext);
-  if (!context) {
-    throw new Error("useSynthesisBuilder must be used within a SynthesisBuilderProvider");
-  }
-  return context;
-}
-
-export function useSynthesisBuilderOptional(): SynthesisBuilderContextValue | null {
-  return useContext(SynthesisBuilderContext);
 }

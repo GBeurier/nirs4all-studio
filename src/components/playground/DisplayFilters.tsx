@@ -37,7 +37,7 @@ import {
   useFilterOptional,
   type OutlierFilter,
   type SelectionFilter,
-} from '@/context/FilterContext';
+} from '@/context/useFilter';
 
 // ============= Types =============
 

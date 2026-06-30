@@ -4,7 +4,7 @@ import {
   getSpectraLineBaseColor,
   applySpectraLineEmphasis,
   type SpectraLineBaseColor,
-} from '../visualizations/SpectraChart';
+} from '@/lib/playground/spectraLineColor';
 import { HIGHLIGHT_COLORS } from '@/lib/playground/colorConfig';
 
 /**

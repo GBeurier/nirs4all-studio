@@ -320,21 +320,18 @@ async shutdown(): Promise<void> {
 npm install
 pip install -r requirements-cpu.txt
 
-# Build backend (optional, can use Python directly in dev)
-npm run build:backend:cpu
+# Check local Node/npm/Python coherence
+npm run doctor
 ```
 
 ### Development Mode
 
 ```bash
-# Terminal 1: Vite dev server
-npm run dev
+# Terminal 1: Python backend
+python main.py --no-reload
 
-# Terminal 2: Python backend (with hot reload)
-python main.py --port 8000 --reload
-
-# Terminal 3: Electron (dev mode)
-npm run electron:dev
+# Terminal 2: Electron + Vite dev mode
+npm run start:desktop
 ```
 
 In development mode:
@@ -347,7 +344,7 @@ In development mode:
 ```bash
 # Build everything
 npm run build
-npm run build:backend:cpu
+npm run build:electron
 
 # Preview
 npm run electron:preview
@@ -437,9 +434,9 @@ npm run release -- --flavor gpu
 
 This runs:
 1. `npm run build` (React frontend)
-2. `npm run build:backend:{flavor}` (Python backend)
+2. backend runtime/archive preparation inside `scripts/build-release.cjs`
 3. `npm run build:electron` (Electron main process)
-4. `npm run dist` (electron-builder packaging)
+4. electron-builder packaging
 
 ---
 

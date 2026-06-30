@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildTargetHistogramData } from "./TargetHistogram";
+import { buildTargetHistogramData } from "./targetHistogramData";
 
 describe("buildTargetHistogramData", () => {
   it("returns backend histogram bins unchanged when provided", () => {

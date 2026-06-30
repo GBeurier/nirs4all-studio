@@ -12,7 +12,7 @@
  * - Integration with SelectionContext
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   AlertTriangle,
   Target,
@@ -46,12 +46,17 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection } from '@/context/useSelection';
+import {
+  getOutlierPreviewValues,
+  getOutlierSelectionIndices,
+  type OutlierMethod,
+} from '@/lib/playground/analysisSelection';
 import type { MetricsResult, OutlierResult } from '@/types/playground';
 
 // ============= Types =============
 
-export type OutlierMethod = 'hotelling_t2' | 'q_residual' | 'lof' | 'distance';
+export type { OutlierMethod } from '@/lib/playground/analysisSelection';
 
 export interface OutlierSelectorProps {
   /** Computed metrics from backend (for values preview) */
@@ -150,7 +155,7 @@ function DistributionPreview({ values, threshold, invert, height = 48 }: Distrib
     // Convert from quantile (0-1) to value position
     const thresholdValue = stats.p95; // Approximation
     return Math.min(100, Math.max(0, ((thresholdValue - stats.min) / (stats.max - stats.min)) * 100));
-  }, [stats, threshold]);
+  }, [stats]);
 
   if (!values || values.length === 0) {
     return (
@@ -230,16 +235,7 @@ export function OutlierSelector({
 
   // Get preview values for the selected method
   const previewValues = useMemo(() => {
-    if (!metrics?.values) return undefined;
-
-    const metricMap: Record<OutlierMethod, string> = {
-      hotelling_t2: 'hotelling_t2',
-      q_residual: 'q_residual',
-      lof: 'lof_score',
-      distance: 'distance_to_centroid',
-    };
-
-    return metrics.values[metricMap[method]];
+    return getOutlierPreviewValues(metrics, method);
   }, [metrics, method]);
 
   // Handle detection
@@ -250,31 +246,12 @@ export function OutlierSelector({
       setLastResult(result);
 
       if (result.success) {
-        // Select samples based on mode
-        let indicesToSelect: number[];
-
-        if (topKMode) {
-          // Get top K outliers
-          if (result.values && result.outlier_indices) {
-            // Sort outlier indices by their metric value (descending)
-            const outlierValues = result.outlier_indices.map(i => ({
-              index: i,
-              value: result.values![i],
-            }));
-            outlierValues.sort((a, b) => b.value - a.value);
-            indicesToSelect = outlierValues.slice(0, topK).map(x => x.index);
-          } else {
-            indicesToSelect = result.outlier_indices.slice(0, topK);
-          }
-        } else if (selectInliers) {
-          // Select inliers (typical samples)
-          indicesToSelect = result.inlier_mask
-            .map((isInlier, i) => isInlier ? i : -1)
-            .filter(i => i >= 0);
-        } else {
-          // Select outliers
-          indicesToSelect = result.outlier_indices;
-        }
+        const indicesToSelect = getOutlierSelectionIndices({
+          result,
+          topKMode,
+          topK,
+          selectInliers,
+        });
 
         // Apply selection
         if (useSelectionContext) {

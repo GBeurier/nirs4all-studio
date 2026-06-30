@@ -12,6 +12,11 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 
 from ..app_config import app_config
+from ..results_repository import (
+    ResultsRepositoryNotFound,
+    resolve_results_repository,
+    workspace_store_root,
+)
 from ..shared.logger import get_logger
 from ..workspace_manager import workspace_manager
 from ..workspace_scanner import WorkspaceScanner
@@ -35,6 +40,7 @@ from .models import (
 )
 from .services import (
     _build_dataset_scores_payload,
+    _build_results_summary_payload,
     _normalize_rerun_cv_strategy,
     _normalize_run_dataset_entries,
     _pipeline_clone_name,
@@ -243,14 +249,12 @@ async def get_enriched_workspace_runs(workspace_id: str, project_id: str | None 
             return {"runs": [], "total": 0}
 
         workspace_path = Path(ws.path)
-        store_path = workspace_path / "store.sqlite"
-        if not store_path.exists():
-            store_path = workspace_path / "store.duckdb"
-        if not store_path.exists():
+        store_root = workspace_store_root(workspace_path)
+        if store_root is None:
             return {"runs": [], "total": 0}
 
         def _fetch() -> Any:
-            adapter = StoreAdapter(workspace_path)
+            adapter = StoreAdapter(store_root)
             try:
                 return adapter.get_enriched_runs(limit=limit, offset=offset, project_id=project_id)
             finally:
@@ -571,14 +575,12 @@ async def get_all_chains_for_dataset(workspace_id: str, run_id: str, dataset_nam
             return {"chains": [], "total": 0, "metric": None}
 
         workspace_path = Path(ws.path)
-        store_path = workspace_path / "store.sqlite"
-        if not store_path.exists():
-            store_path = workspace_path / "store.duckdb"
-        if not store_path.exists():
+        store_root = workspace_store_root(workspace_path)
+        if store_root is None:
             return {"chains": [], "total": 0, "metric": None}
 
         def _fetch() -> Any:
-            adapter = StoreAdapter(workspace_path)
+            adapter = StoreAdapter(store_root)
             try:
                 return adapter.get_all_chains_for_dataset(run_id, dataset_name)
             finally:
@@ -623,46 +625,51 @@ async def get_score_distribution(workspace_id: str, run_id: str, dataset_name: s
 async def get_workspace_results_summary(workspace_id: str, n: int = 5):
     """Get results summary: top N models per dataset across all runs.
 
-    Cached at module scope keyed on (workspace_id, store file signature,
-    dataset-links signature, n). Cache entries are validated against the
-    current store signature on every read.
+    Store-backed repositories are cached at module scope keyed on
+    (workspace_id, store file signature, dataset-links signature, n). Native
+    repositories currently bypass this cache because they do not have a cheap
+    shared signature yet.
     """
     try:
         ws = workspace_manager._find_linked_workspace(workspace_id)
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
-        from api.store_adapter import STORE_AVAILABLE, StoreAdapter
-        if not STORE_AVAILABLE:
-            return {"workspace_id": workspace_id, "datasets": []}
-
         workspace_path = Path(ws.path)
         store_sig = _store_signature(workspace_path)
-        if store_sig is None:
-            return {"workspace_id": workspace_id, "datasets": []}
-
         linked_datasets = app_config.get_datasets()
         links_sig = _dataset_links_signature(linked_datasets)
-        cache_key = (workspace_id, store_sig, links_sig, ("summary", n))
+        cache_key = (workspace_id, store_sig, links_sig, ("summary", n)) if store_sig is not None else None
 
-        cached = _RESULTS_SUMMARY_CACHE.get(cache_key)
+        cached = _RESULTS_SUMMARY_CACHE.get(cache_key) if cache_key is not None else None
         if cached is not None:
             return cached
 
         def _fetch() -> Any:
-            adapter = StoreAdapter(workspace_path)
-            try:
-                result = adapter.get_dataset_top_chains(n=n)
-                result["workspace_id"] = workspace_id
+            from api.store_adapter import _get_workspace_store_cls
 
-                # Resolve store dataset names to linked dataset IDs
-                _resolve_dataset_mapping(result.get("datasets", []), linked_datasets)
-                return result
+            def _workspace_store_factory(path: Path) -> Any:
+                return _get_workspace_store_cls()(path)
+
+            try:
+                repository = resolve_results_repository(
+                    workspace_path,
+                    workspace_store_factory=_workspace_store_factory,
+                )
+            except ResultsRepositoryNotFound:
+                return {"workspace_id": workspace_id, "datasets": []}
+
+            try:
+                return _build_results_summary_payload(repository, workspace_id, linked_datasets, n=n)
             finally:
-                adapter.close()
+                try:
+                    repository.close()
+                except Exception:
+                    pass
 
         result = await asyncio.to_thread(_fetch)
-        _RESULTS_SUMMARY_CACHE[cache_key] = result
+        if cache_key is not None:
+            _RESULTS_SUMMARY_CACHE[cache_key] = result
         return result
     except HTTPException:
         raise
@@ -684,32 +691,42 @@ async def get_workspace_dataset_scores(workspace_id: str):
         if not ws:
             raise HTTPException(status_code=404, detail="Workspace not found")
 
-        from api.store_adapter import STORE_AVAILABLE, StoreAdapter
-        if not STORE_AVAILABLE:
-            return {"workspace_id": workspace_id, "datasets": []}
-
         workspace_path = Path(ws.path)
         store_sig = _store_signature(workspace_path)
-        if store_sig is None:
-            return {"workspace_id": workspace_id, "datasets": []}
 
         linked_datasets = app_config.get_datasets()
         links_sig = _dataset_links_signature(linked_datasets)
-        cache_key = (workspace_id, store_sig, links_sig, ("dataset_scores",))
+        cache_key = (workspace_id, store_sig, links_sig, ("dataset_scores",)) if store_sig is not None else None
 
-        cached = _DATASET_SCORES_CACHE.get(cache_key)
+        cached = _DATASET_SCORES_CACHE.get(cache_key) if cache_key is not None else None
         if cached is not None:
             return cached
 
         def _fetch() -> Any:
-            adapter = StoreAdapter(workspace_path)
+            from api.store_adapter import _get_workspace_store_cls
+
+            def _workspace_store_factory(path: Path) -> Any:
+                return _get_workspace_store_cls()(path)
+
             try:
-                return _build_dataset_scores_payload(adapter, workspace_id, linked_datasets)
+                repository = resolve_results_repository(
+                    workspace_path,
+                    workspace_store_factory=_workspace_store_factory,
+                )
+            except ResultsRepositoryNotFound:
+                return {"workspace_id": workspace_id, "datasets": []}
+
+            try:
+                return _build_dataset_scores_payload(repository, workspace_id, linked_datasets)
             finally:
-                adapter.close()
+                try:
+                    repository.close()
+                except Exception:
+                    pass
 
         payload = await asyncio.to_thread(_fetch)
-        _DATASET_SCORES_CACHE[cache_key] = payload
+        if cache_key is not None:
+            _DATASET_SCORES_CACHE[cache_key] = payload
         return payload
     except HTTPException:
         raise
@@ -730,14 +747,12 @@ async def get_all_chains_for_results_dataset(workspace_id: str, dataset_name: st
             return {"chains": [], "total": 0, "metric": None}
 
         workspace_path = Path(ws.path)
-        store_path = workspace_path / "store.sqlite"
-        if not store_path.exists():
-            store_path = workspace_path / "store.duckdb"
-        if not store_path.exists():
+        store_root = workspace_store_root(workspace_path)
+        if store_root is None:
             return {"chains": [], "total": 0, "metric": None}
 
         def _fetch() -> Any:
-            adapter = StoreAdapter(workspace_path)
+            adapter = StoreAdapter(store_root)
             try:
                 return adapter.get_all_chains_for_results_dataset(dataset_name)
             finally:

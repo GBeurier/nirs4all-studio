@@ -56,8 +56,14 @@ export interface InspectorChainSummary {
   cv_test_score: number | null;
   cv_train_score: number | null;
   cv_fold_count: number;
+  cv_scores?: unknown | null;
+  score_maps?: unknown | null;
   final_test_score: number | null;
   final_train_score: number | null;
+  final_scores?: unknown | null;
+  final_agg_test_score?: number | null;
+  final_agg_train_score?: number | null;
+  final_agg_scores?: unknown | null;
   pipeline_status: string | null;
 }
 
@@ -71,7 +77,15 @@ export interface InspectorDataResponse {
   available_datasets: string[];
   available_runs: string[];
   available_preprocessings: string[];
+  available_targets?: InspectorAvailableTarget[];
   generated_at: string;
+}
+
+export interface InspectorAvailableTarget {
+  index: number;
+  label: string;
+  count: number;
+  target_names: string[];
 }
 
 export interface ScatterPoint {
@@ -194,6 +208,7 @@ export interface CandlestickResponse {
 export interface ScatterRequest {
   chain_ids: string[];
   partition: string;
+  target_index?: number;
 }
 
 export interface InspectorDataFilters {
@@ -291,6 +306,46 @@ export type ScoreColumn =
   | 'final_test_score'
   | 'final_train_score';
 
+export type ScoreEvaluationProtocol = 'cross_validation' | 'final';
+
+export type ScorePartition = 'train' | 'validation' | 'test';
+
+export type ScoreAggregation = 'fold_mean' | 'final_model';
+
+export type ScoreRefProtocol = ScoreEvaluationProtocol | (string & {});
+
+export type ScoreRefPartition = ScorePartition | (string & {});
+
+export type ScoreRefAggregation = ScoreAggregation | (string & {});
+
+export interface ScoreRef {
+  key: string;
+  metric: string | null;
+  protocol: ScoreRefProtocol;
+  partition: ScoreRefPartition;
+  aggregation: ScoreRefAggregation;
+  legacyScoreColumn?: ScoreColumn | null;
+  targetIndex?: number | null;
+  targetName?: string | null;
+  sourceIndex?: number | null;
+  sourceName?: string | null;
+}
+
+export interface ScoreRefRequestPayload {
+  score_ref?: ScoreRef | null;
+}
+
+export interface MetricObservation<TValue = number> {
+  id: string;
+  chainId: string;
+  runId: string;
+  pipelineId: string;
+  datasetName: string | null;
+  taskType: string | null;
+  ref: ScoreRef;
+  value: TValue;
+}
+
 export const SCORE_COLUMNS: { value: ScoreColumn; label: string }[] = [
   { value: 'cv_val_score', label: 'CV Val Score' },
   { value: 'cv_test_score', label: 'CV Test Score' },
@@ -342,7 +397,7 @@ export interface TopologyNode {
   chain_ids?: string[];
 }
 
-export interface BranchTopologyRequest {
+export interface BranchTopologyRequest extends ScoreRefRequestPayload {
   pipeline_id: string;
   score_column?: string;
 }
@@ -367,7 +422,7 @@ export interface FoldScoreEntry {
   score: number;
 }
 
-export interface FoldStabilityRequest {
+export interface FoldStabilityRequest extends ScoreRefRequestPayload {
   chain_ids: string[];
   score_column: string;
   partition: string;
@@ -386,6 +441,7 @@ export interface ConfusionMatrixRequest {
   chain_ids: string[];
   partition: string;
   normalize?: 'none' | 'row' | 'column' | 'all';
+  target_index?: number;
 }
 
 export interface ConfusionMatrixCell {
@@ -483,7 +539,7 @@ export interface HyperparameterResponse {
 
 // ============= Bias-Variance Decomposition (Phase 5) =============
 
-export interface BiasVarianceRequest {
+export interface BiasVarianceRequest extends ScoreRefRequestPayload {
   chain_ids: string[];
   score_column: string;
   group_by?: string;

@@ -6,8 +6,24 @@ import {
   mergeNodeDefinitions,
   NodeRegistry,
 } from "@/data/nodes/NodeRegistry";
+import {
+  getClassPathAliases,
+  NodeRegistryIndex,
+  nodeHasCapability,
+  nodeMatchesSearch,
+} from "@/data/nodes/NodeRegistryIndex";
 import { allNodes } from "@/data/nodes/definitions";
 import type { NodeDefinition } from "@/data/nodes/types";
+
+const makeNode = (overrides: Partial<NodeDefinition>): NodeDefinition => ({
+  id: "splitting.example",
+  name: "ExampleSplitter",
+  type: "splitting",
+  description: "Example splitter",
+  parameters: [],
+  source: "sklearn",
+  ...overrides,
+});
 
 describe("NodeRegistry - Initialization", () => {
   const registry = createNodeRegistry({ validateOnLoad: true, warnOnDuplicates: true });
@@ -32,6 +48,19 @@ describe("NodeRegistry - Initialization", () => {
     const result = registry.getValidationResult();
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
+  });
+
+  it("keeps the first node when duplicate IDs are loaded", () => {
+    const duplicateRegistry = new NodeRegistry([
+      makeNode({ id: "preprocessing.duplicate", name: "First", type: "preprocessing" }),
+      makeNode({ id: "preprocessing.duplicate", name: "Second", type: "preprocessing" }),
+    ]);
+
+    expect(duplicateRegistry.size).toBe(1);
+    expect(duplicateRegistry.getById("preprocessing.duplicate")?.name).toBe("First");
+    expect(duplicateRegistry.getValidationResult().warnings).toContain(
+      "Duplicate node ID: preprocessing.duplicate"
+    );
   });
 });
 
@@ -294,17 +323,83 @@ describe("NodeRegistry - Stats", () => {
   });
 });
 
-describe("NodeRegistry - mergeNodeDefinitions", () => {
-  const makeNode = (overrides: Partial<NodeDefinition>): NodeDefinition => ({
-    id: "splitting.example",
-    name: "ExampleSplitter",
-    type: "splitting",
-    description: "Example splitter",
-    parameters: [],
-    source: "sklearn",
-    ...overrides,
+describe("NodeRegistryIndex", () => {
+  const nodes = [
+    makeNode({
+      id: "preprocessing.alpha",
+      name: "Alpha",
+      type: "preprocessing",
+      description: "Principal alpha transform",
+      classPath: "pkg.Alpha",
+      legacyClassPaths: ["pkg.legacy.Alpha"],
+      category: "Transforms",
+      tags: ["Signal"],
+      tier: "core",
+    }),
+    makeNode({
+      id: "model.beta",
+      name: "BetaModel",
+      type: "model",
+      classPath: "pkg.BetaModel",
+      isDeepLearning: true,
+      tier: "advanced",
+    }),
+    makeNode({
+      id: "flow.generator",
+      name: "Generator",
+      type: "flow",
+      isContainer: true,
+      isGenerator: true,
+      tier: "standard",
+    }),
+  ];
+
+  const index = new NodeRegistryIndex(nodes);
+
+  it("indexes IDs, names, types, class paths, and legacy class paths", () => {
+    expect(index.size).toBe(3);
+    expect(index.getById("preprocessing.alpha")?.name).toBe("Alpha");
+    expect(index.getByName("alpha")?.id).toBe("preprocessing.alpha");
+    expect(index.getByType("model")).toHaveLength(1);
+    expect(index.getByClassPath("pkg.legacy.Alpha")?.id).toBe("preprocessing.alpha");
   });
 
+  it("resolves class path and name maps without NodeRegistry state", () => {
+    expect(index.resolveClassPath("preprocessing", "Alpha")).toBe("pkg.Alpha");
+    expect(index.resolveNameFromClassPath("pkg.legacy.Alpha")).toBe("Alpha");
+    expect(index.buildClassPathToNameMap().get("pkg.legacy.Alpha")).toBe("Alpha");
+    expect(index.buildNameToClassPathMap().get("Alpha")).toBe("pkg.Alpha");
+  });
+
+  it("keeps search, tier, capability, and stats queries in the pure index", () => {
+    expect(index.search("principal").map((node) => node.id)).toEqual(["preprocessing.alpha"]);
+    expect(index.getNodesByTier("standard").map((node) => node.id)).toEqual([
+      "preprocessing.alpha",
+      "flow.generator",
+    ]);
+    expect(index.getByCapability("deepLearning").map((node) => node.id)).toEqual(["model.beta"]);
+    expect(index.getByCapability("container").map((node) => node.id)).toEqual(["flow.generator"]);
+    expect(index.getStats()).toMatchObject({
+      totalNodes: 3,
+      classPathCount: 3,
+      nodesByType: {
+        preprocessing: 1,
+        model: 1,
+        flow: 1,
+      },
+    });
+  });
+
+  it("exposes pure helpers for aliases, search, and capabilities", () => {
+    const alpha = nodes[0];
+
+    expect(getClassPathAliases(alpha)).toEqual(["pkg.alpha", "pkg.legacy.alpha"]);
+    expect(nodeMatchesSearch(alpha, "SIGNAL")).toBe(true);
+    expect(nodeHasCapability(nodes[1], "deepLearning")).toBe(true);
+  });
+});
+
+describe("NodeRegistry - mergeNodeDefinitions", () => {
   it("skips extended duplicates that match a preferred legacy class path", () => {
     const preferred = [
       makeNode({

@@ -1,14 +1,13 @@
-import { Brain, Database, Search } from "lucide-react";
+import { Brain, Database } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+  PredictionFacetSelect,
+  PredictionSearchFilter,
+  PredictionVisibilityToggleGroup,
+} from "@/components/predictions/PredictionFilterControls";
+import { getPredictionFiltersReadModel } from "@/components/predictions/PredictionFiltersData";
 import type { DataVisibility, FoldVisibility } from "@/lib/predictions/rows";
-
-const toggleItemClass = "h-7 px-2 text-[11px] border-border/60 hover:bg-muted/60 hover:text-foreground data-[state=on]:border-primary/40 data-[state=on]:bg-primary/10 data-[state=on]:text-primary";
 
 interface PredictionFiltersProps {
   searchQuery: string;
@@ -49,78 +48,61 @@ export function PredictionFilters({
   hasActiveFilters,
   onClearFilters,
 }: PredictionFiltersProps) {
+  const readModel = getPredictionFiltersReadModel({ hasActiveFilters });
+  const {
+    dataset: datasetFacet,
+    model: modelFacet,
+    taskType: taskTypeFacet,
+  } = readModel.facets;
+  const { foldTypes, dataKinds } = readModel.visibility;
+
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="relative flex-1 min-w-[180px] max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search models, datasets..."
-          value={searchQuery}
-          onChange={event => onSearchQueryChange(event.target.value)}
-          className="pl-9 h-8 bg-muted/50 text-sm"
-        />
-      </div>
-      <Select value={filterDataset} onValueChange={onFilterDatasetChange}>
-        <SelectTrigger className="w-[170px] h-8 bg-muted/50 text-xs">
-          <Database className="h-3.5 w-3.5 mr-1" />
-          <SelectValue placeholder="Dataset" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Datasets</SelectItem>
-          {datasetOptions.map(datasetName => <SelectItem key={datasetName} value={datasetName}>{datasetName}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      <Select value={filterModel} onValueChange={onFilterModelChange}>
-        <SelectTrigger className="w-[160px] h-8 bg-muted/50 text-xs">
-          <Brain className="h-3.5 w-3.5 mr-1" />
-          <SelectValue placeholder="Model" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Models</SelectItem>
-          {modelOptions.map(modelName => <SelectItem key={modelName} value={modelName}>{modelName}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      <Select value={filterTaskType} onValueChange={onFilterTaskTypeChange}>
-        <SelectTrigger className="w-[140px] h-8 bg-muted/50 text-xs">
-          <SelectValue placeholder="Task" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Tasks</SelectItem>
-          {taskTypeOptions.map(taskType => <SelectItem key={taskType} value={taskType}>{taskType}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/20 px-1 py-1">
-        <span className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Type</span>
-        <ToggleGroup
-          type="multiple"
-          value={visibleFoldTypes}
-          onValueChange={value => { if (value.length > 0) onVisibleFoldTypesChange(value as FoldVisibility[]); }}
-          variant="outline"
-          size="sm"
-          className="h-7"
-        >
-          <ToggleGroupItem value="folds" className={toggleItemClass}>Folds</ToggleGroupItem>
-          <ToggleGroupItem value="refits" className={toggleItemClass}>Refits</ToggleGroupItem>
-          <ToggleGroupItem value="averages" className={toggleItemClass}>Averages</ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-      <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/20 px-1 py-1">
-        <span className="px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Data</span>
-        <ToggleGroup
-          type="multiple"
-          value={visibleDataKinds}
-          onValueChange={value => { if (value.length > 0) onVisibleDataKindsChange(value as DataVisibility[]); }}
-          variant="outline"
-          size="sm"
-          className="h-7"
-        >
-          <ToggleGroupItem value="raw" className={toggleItemClass}>Raw</ToggleGroupItem>
-          <ToggleGroupItem value="aggregated" className={toggleItemClass}>Aggregated</ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-      {hasActiveFilters && (
+      <PredictionSearchFilter
+        value={searchQuery}
+        onValueChange={onSearchQueryChange}
+      />
+      <PredictionFacetSelect
+        value={filterDataset}
+        onValueChange={onFilterDatasetChange}
+        options={datasetOptions}
+        allLabel={datasetFacet.allLabel}
+        placeholder={datasetFacet.placeholder}
+        triggerClassName={datasetFacet.triggerClassName}
+        icon={<Database className="mr-1 h-3.5 w-3.5" />}
+      />
+      <PredictionFacetSelect
+        value={filterModel}
+        onValueChange={onFilterModelChange}
+        options={modelOptions}
+        allLabel={modelFacet.allLabel}
+        placeholder={modelFacet.placeholder}
+        triggerClassName={modelFacet.triggerClassName}
+        icon={<Brain className="mr-1 h-3.5 w-3.5" />}
+      />
+      <PredictionFacetSelect
+        value={filterTaskType}
+        onValueChange={onFilterTaskTypeChange}
+        options={taskTypeOptions}
+        allLabel={taskTypeFacet.allLabel}
+        placeholder={taskTypeFacet.placeholder}
+        triggerClassName={taskTypeFacet.triggerClassName}
+      />
+      <PredictionVisibilityToggleGroup
+        label={foldTypes.label}
+        value={visibleFoldTypes}
+        options={foldTypes.options}
+        onValueChange={onVisibleFoldTypesChange}
+      />
+      <PredictionVisibilityToggleGroup
+        label={dataKinds.label}
+        value={visibleDataKinds}
+        options={dataKinds.options}
+        onValueChange={onVisibleDataKindsChange}
+      />
+      {readModel.clearAction.isVisible && (
         <Button variant="ghost" size="sm" onClick={onClearFilters} className="h-7 text-xs text-muted-foreground">
-          Clear
+          {readModel.clearAction.label}
         </Button>
       )}
     </div>

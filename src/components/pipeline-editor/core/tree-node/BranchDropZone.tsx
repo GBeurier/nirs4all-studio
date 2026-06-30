@@ -6,7 +6,7 @@
 
 import { useDroppable } from "@dnd-kit/core";
 import { Plus } from "lucide-react";
-import { usePipelineDnd } from "../../PipelineDndContext";
+import { usePipelineDnd } from "../../usePipelineDnd";
 import type { BranchDropZoneProps } from "./types";
 
 /**

@@ -1,45 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   STORAGE_KEY_PREFIX,
-  clearPersistedState,
-  type PersistedPipelineState,
-} from "./usePipelineEditor";
+  clearPipelineEditorPersistedState,
+  listDirtyPipelineEditorDrafts,
+  type PipelineEditorDraftEntry,
+} from "@/lib/pipelineEditorPersistence";
 
-export interface DraftEntry {
-  id: string;
-  state: PersistedPipelineState;
-}
+export type DraftEntry = PipelineEditorDraftEntry;
 
 function readDrafts(): DraftEntry[] {
-  const drafts: DraftEntry[] = [];
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key || !key.startsWith(STORAGE_KEY_PREFIX)) continue;
-      const raw = localStorage.getItem(key);
-      if (!raw) continue;
-      try {
-        const parsed = JSON.parse(raw) as PersistedPipelineState;
-        if (parsed.isDirty !== true) continue;
-        drafts.push({
-          id: key.slice(STORAGE_KEY_PREFIX.length),
-          state: {
-            steps: Array.isArray(parsed.steps) ? parsed.steps : [],
-            pipelineName: parsed.pipelineName || "Untitled pipeline",
-            isFavorite: !!parsed.isFavorite,
-            lastModified: typeof parsed.lastModified === "number" ? parsed.lastModified : 0,
-            config: parsed.config,
-            isDirty: true,
-          },
-        });
-      } catch {
-        // ignore malformed entries
-      }
-    }
-  } catch (e) {
-    console.warn("Failed to scan pipeline drafts:", e);
-  }
-  return drafts.sort((a, b) => b.state.lastModified - a.state.lastModified);
+  return listDirtyPipelineEditorDrafts();
 }
 
 export function useDraftPipelines() {
@@ -50,7 +20,7 @@ export function useDraftPipelines() {
   }, []);
 
   const discard = useCallback((id: string) => {
-    clearPersistedState(id);
+    clearPipelineEditorPersistedState(id);
     setDrafts((prev) => prev.filter((d) => d.id !== id));
   }, []);
 

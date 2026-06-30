@@ -16,7 +16,6 @@ import { getEnvRootForPythonPath, normalizeDetectedPath } from "./python-discove
 import type { DetectedEnv, EnvKind } from "./env-inspection";
 import { loadPythonRuntimeConfig } from "./external-config";
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 interface PythonRuntimeConfigModule {
   PYTHON_VERSION_MM: string;
 }

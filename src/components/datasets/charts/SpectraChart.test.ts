@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSpectraChartData } from "./SpectraChart";
+import { buildSpectraChartData } from "./spectraChartData";
 
 describe("buildSpectraChartData", () => {
   it("returns one row per wavelength with mean and no range when min/max are absent", () => {

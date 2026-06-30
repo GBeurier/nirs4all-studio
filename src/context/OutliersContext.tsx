@@ -11,63 +11,25 @@
  */
 
 import {
-  createContext,
-  useContext,
   useReducer,
   useCallback,
   useMemo,
   useEffect,
   type ReactNode,
 } from 'react';
-
-// ============= Types =============
-
-export interface OutliersState {
-  /** User-marked outlier indices */
-  manualOutliers: Set<number>;
-  /** Algorithm-detected outlier indices (from outlier detection) */
-  detectedOutliers: Set<number>;
-}
-
-export type OutliersAction =
-  | { type: 'MARK_OUTLIERS'; indices: number[] }
-  | { type: 'UNMARK_OUTLIERS'; indices: number[] }
-  | { type: 'TOGGLE_OUTLIERS'; indices: number[] }
-  | { type: 'CLEAR_MANUAL' }
-  | { type: 'SET_DETECTED'; indices: number[] }
-  | { type: 'CLEAR_DETECTED' }
-  | { type: 'RESTORE'; state: Partial<OutliersState> };
-
-export interface OutliersContextValue extends OutliersState {
-  // Manual outlier operations
-  markAsOutliers: (indices: number[]) => void;
-  unmarkAsOutliers: (indices: number[]) => void;
-  toggleOutliers: (indices: number[]) => void;
-  clearManualOutliers: () => void;
-  isManualOutlier: (index: number) => boolean;
-
-  // Detected outlier operations
-  setDetectedOutliers: (indices: number[]) => void;
-  clearDetectedOutliers: () => void;
-  isDetectedOutlier: (index: number) => boolean;
-
-  // Combined
-  /** All outliers (manual + detected) */
-  allOutliers: Set<number>;
-  isOutlier: (index: number) => boolean;
-
-  // Counts
-  manualCount: number;
-  detectedCount: number;
-  totalOutlierCount: number;
-  hasManualOutliers: boolean;
-  hasDetectedOutliers: boolean;
-  hasOutliers: boolean;
-}
+import {
+  OutliersContext,
+  type OutliersAction,
+  type OutliersContextValue,
+  type OutliersState,
+} from '@/context/useOutliers';
+import {
+  clientStorageKeys,
+  readClientStorageJson,
+  writeClientStorageJson,
+} from '@/lib/clientStorage';
 
 // ============= Constants =============
-
-const STORAGE_KEY = 'playground-outliers-state';
 
 // ============= Initial State =============
 
@@ -129,38 +91,33 @@ function outliersReducer(state: OutliersState, action: OutliersAction): Outliers
   }
 }
 
-// ============= Context =============
-
-const OutliersContext = createContext<OutliersContextValue | null>(null);
-
 // ============= Storage Helpers =============
 
 interface SerializedOutliersState {
   manualOutliers: number[];
 }
 
-function persistState(state: OutliersState): void {
-  try {
-    const serialized: SerializedOutliersState = {
-      manualOutliers: Array.from(state.manualOutliers),
-    };
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
-  } catch (e) {
-    console.warn('Failed to persist outliers state:', e);
-  }
+function persistManualOutliers(manualOutliers: Set<number>): void {
+  const serialized: SerializedOutliersState = {
+    manualOutliers: Array.from(manualOutliers),
+  };
+  writeClientStorageJson(clientStorageKeys.playgroundOutliersState, serialized, {
+    onError: (e) => {
+      console.warn('Failed to persist outliers state:', e);
+    },
+  });
 }
 
 function loadPersistedState(): Partial<OutliersState> | null {
-  try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed: SerializedOutliersState = JSON.parse(stored);
-      return {
-        manualOutliers: new Set(parsed.manualOutliers || []),
-      };
-    }
-  } catch (e) {
-    console.warn('Failed to load persisted outliers state:', e);
+  const parsed = readClientStorageJson<SerializedOutliersState>(clientStorageKeys.playgroundOutliersState, {
+    onError: (e) => {
+      console.warn('Failed to load persisted outliers state:', e);
+    },
+  });
+  if (parsed) {
+    return {
+      manualOutliers: new Set(parsed.manualOutliers || []),
+    };
   }
   return null;
 }
@@ -193,7 +150,7 @@ export function OutliersProvider({
   // Persist manual outliers on change - 500ms to reduce GC pressure in Firefox
   useEffect(() => {
     const timeout = setTimeout(() => {
-      persistState(state);
+      persistManualOutliers(state.manualOutliers);
     }, 500);
     return () => clearTimeout(timeout);
   }, [state.manualOutliers]);
@@ -317,26 +274,6 @@ export function OutliersProvider({
       {children}
     </OutliersContext.Provider>
   );
-}
-
-// ============= Hooks =============
-
-/**
- * Hook to access outliers context (throws if not within provider)
- */
-export function useOutliers(): OutliersContextValue {
-  const context = useContext(OutliersContext);
-  if (!context) {
-    throw new Error('useOutliers must be used within an OutliersProvider');
-  }
-  return context;
-}
-
-/**
- * Optional hook that returns null if not within provider
- */
-export function useOutliersOptional(): OutliersContextValue | null {
-  return useContext(OutliersContext);
 }
 
 export default OutliersProvider;

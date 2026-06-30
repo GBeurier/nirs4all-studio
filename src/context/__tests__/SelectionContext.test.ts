@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 
 // Since the reducer is not exported, we need to test through the actions
 // We'll import types and create a minimal test harness
-import type { SelectionState, SelectionAction, SelectionMode } from '../SelectionContext';
+import type { SelectionState, SelectionAction, SelectionMode } from '../useSelection';
 
 // ============= Test Harness =============
 

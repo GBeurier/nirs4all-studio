@@ -68,6 +68,7 @@ function getTaskTypeBadgeVariant(type: TaskType): "default" | "secondary" | "out
   switch (type) {
     case "regression":
       return "default";
+    case "classification":
     case "binary_classification":
     case "multiclass_classification":
       return "secondary";
@@ -83,6 +84,8 @@ function getTaskTypeLabel(type: TaskType): string {
   switch (type) {
     case "regression":
       return "reg";
+    case "classification":
+      return "class";
     case "binary_classification":
       return "binary";
     case "multiclass_classification":

@@ -8,8 +8,8 @@
  * - T4.2: Store binding in local state (not saved with pipeline)
  * - T4.3: Pass bound dataset info to step components
  *
- * The binding is stored in session storage so it persists across
- * page refreshes but not across browser sessions. This is intentional
+ * The binding is stored for the current browser session so it persists across
+ * page refreshes but not across browser restarts. This is intentional
  * as the binding is meant to be temporary for the editing session.
  */
 
@@ -18,10 +18,24 @@ import {
   useDatasetsQuery,
   useInvalidateDatasets,
 } from "@/hooks/useDatasetQueries";
+import {
+  defineClientStorageKey,
+  readClientStorageString,
+  removeClientStorageItem,
+  writeClientStorageString,
+} from "@/lib/clientStorage";
 import type { Dataset } from "@/types/datasets";
 import type { BoundDataset, DataShape } from "@/components/pipeline-editor/DatasetBinding";
 
 const STORAGE_KEY = "nirs4all_pipeline_dataset_binding";
+
+function datasetBindingStorageKey(pipelineId: string) {
+  return defineClientStorageKey<string>(`${STORAGE_KEY}_${pipelineId}`, {
+    area: "session",
+    scope: "session",
+    description: "Pipeline dataset binding persisted for the current browser editing session.",
+  });
+}
 
 /**
  * Storage format for bound dataset
@@ -34,11 +48,11 @@ interface StoredBinding {
 }
 
 /**
- * Load binding from session storage
+ * Load binding from client storage
  */
 function loadBinding(pipelineId: string): StoredBinding | null {
   try {
-    const stored = sessionStorage.getItem(`${STORAGE_KEY}_${pipelineId}`);
+    const stored = readClientStorageString(datasetBindingStorageKey(pipelineId));
     if (stored) {
       const binding = JSON.parse(stored) as StoredBinding;
       // Check if binding is recent (within 24 hours)
@@ -53,15 +67,15 @@ function loadBinding(pipelineId: string): StoredBinding | null {
 }
 
 /**
- * Save binding to session storage
+ * Save binding to client storage
  */
 function saveBinding(pipelineId: string, binding: StoredBinding | null): void {
   try {
-    const key = `${STORAGE_KEY}_${pipelineId}`;
+    const key = datasetBindingStorageKey(pipelineId);
     if (binding) {
-      sessionStorage.setItem(key, JSON.stringify(binding));
+      writeClientStorageString(key, JSON.stringify(binding));
     } else {
-      sessionStorage.removeItem(key);
+      removeClientStorageItem(key);
     }
   } catch {
     // Ignore errors
@@ -132,7 +146,7 @@ export function useDatasetBinding({
   persistBinding = true,
 }: UseDatasetBindingOptions): UseDatasetBindingReturn {
   // Shared dataset cache: same source as the Datasets page and every other
-  // dataset-list consumer in the app, persisted to localStorage. The Pipeline
+  // dataset-list consumer in the app, persisted via client storage. The Pipeline
   // Editor no longer pays a round-trip on every mount.
   const datasetsQuery = useDatasetsQuery();
   const invalidateDatasets = useInvalidateDatasets();

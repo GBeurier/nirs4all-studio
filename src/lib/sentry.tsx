@@ -60,7 +60,7 @@ export function isUnhandledApiErrorRejection(event: Sentry.Event, hint?: Sentry.
   );
 }
 
-function sanitizeSentryEvent(event: Sentry.Event, hint?: Sentry.EventHint): Sentry.Event | null {
+function sanitizeSentryEvent(event: Sentry.ErrorEvent, hint?: Sentry.EventHint): Sentry.ErrorEvent | null {
   if (isUnhandledApiErrorRejection(event, hint)) return null;
 
   delete event.user;

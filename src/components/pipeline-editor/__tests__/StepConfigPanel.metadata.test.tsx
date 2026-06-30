@@ -7,14 +7,14 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterDefinition } from "@/data/nodes";
 import type { PipelineStep } from "../types";
-import { StepConfigPanel } from "../StepConfigPanel";
+import { StepConfigPanel, type StepConfigPanelProps } from "../StepConfigPanel";
 import type { StepMetadataRegistry } from "../shared/stepMetadata";
 
 const mocks = vi.hoisted(() => ({
   useNodeRegistryOptional: vi.fn(),
 }));
 
-vi.mock("../contexts/NodeRegistryContext", () => ({
+vi.mock("../contexts/useNodeRegistry", () => ({
   useNodeRegistryOptional: mocks.useNodeRegistryOptional,
 }));
 
@@ -78,7 +78,7 @@ function createRegistryContext(
 async function renderPanel(
   step: PipelineStep,
   registry: StepMetadataRegistry,
-  onUpdate: ReturnType<typeof vi.fn>,
+  onUpdate: StepConfigPanelProps["onUpdate"],
 ) {
   mocks.useNodeRegistryOptional.mockReturnValue(registry);
 

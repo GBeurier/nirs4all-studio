@@ -13,8 +13,6 @@
  */
 
 import {
-  createContext,
-  useContext,
   useReducer,
   useCallback,
   useEffect,
@@ -31,134 +29,24 @@ import {
   undoHistory,
   redoHistory,
   rangeIndices,
-  persistSelection,
-  loadPersistedSelection,
-  type SelectionModeBase,
-  type PersistFieldNames,
 } from './selection/createSelectionCore';
-
-// ============= Types =============
-
-export type SelectionMode = SelectionModeBase;
-
-/** Selection tool type for area selection (click, box, lasso) */
-export type SelectionToolType = 'click' | 'box' | 'lasso';
-
-export interface SavedSelection {
-  id: string;
-  name: string;
-  indices: number[];
-  createdAt: Date;
-  color?: string;
-}
-
-export interface SelectionState {
-  /** Currently selected sample indices */
-  selectedSamples: Set<number>;
-  /** Pinned samples (always visible, not affected by filters) */
-  pinnedSamples: Set<number>;
-  /** Named saved selections */
-  savedSelections: SavedSelection[];
-  /** Selection history for undo */
-  selectionHistory: Set<number>[];
-  /** Current position in history */
-  historyIndex: number;
-  /** Whether selection is active (being modified) */
-  isSelecting: boolean;
-  /** Current selection mode */
-  selectionMode: SelectionMode;
-  /** Hover state for cross-chart highlighting */
-  hoveredSample: number | null;
-  /** Last selected sample index for range selection (Shift+Click) */
-  lastSelectedIndex: number | null;
-  /** Current selection tool type (click, box, lasso) */
-  selectionToolMode: SelectionToolType;
-}
-
-export type SelectionAction =
-  | { type: 'SELECT'; indices: number[]; mode?: SelectionMode }
-  | { type: 'DESELECT'; indices: number[] }
-  | { type: 'TOGGLE'; indices: number[] }
-  | { type: 'SELECT_ALL'; totalSamples: number }
-  | { type: 'SELECT_RANGE'; toIndex: number; mode?: SelectionMode }
-  | { type: 'SELECT_RANGE_ORDERED'; toIndex: number; order: number[]; mode?: SelectionMode }
-  | { type: 'REPLACE_IF_NOT_SOLE'; indices: number[] }
-  | { type: 'CLEAR' }
-  | { type: 'INVERT'; totalSamples: number }
-  | { type: 'PIN'; indices: number[] }
-  | { type: 'UNPIN'; indices: number[] }
-  | { type: 'CLEAR_PINS' }
-  | { type: 'SAVE_SELECTION'; name: string; color?: string }
-  | { type: 'LOAD_SELECTION'; id: string }
-  | { type: 'DELETE_SAVED_SELECTION'; id: string }
-  | { type: 'UNDO' }
-  | { type: 'REDO' }
-  | { type: 'SET_SELECTING'; isSelecting: boolean }
-  | { type: 'SET_SELECTION_MODE'; mode: SelectionMode }
-  | { type: 'SET_SELECTION_TOOL'; tool: SelectionToolType }
-  | { type: 'SET_HOVERED'; index: number | null }
-  | { type: 'RESTORE'; state: Partial<SelectionState> }
-  | { type: 'INTERSECT_WITH_AVAILABLE'; availableIndices: number[] };
-
-export interface SelectionContextValue extends SelectionState {
-  // Selection operations
-  select: (indices: number[], mode?: SelectionMode) => void;
-  deselect: (indices: number[]) => void;
-  toggle: (indices: number[]) => void;
-  selectAll: (totalSamples: number) => void;
-  selectRange: (toIndex: number, mode?: SelectionMode) => void;
-  /** Select range with custom ordering (e.g., sorted by Y value, bar position) */
-  selectRangeOrdered: (toIndex: number, order: number[], mode?: SelectionMode) => void;
-  /** Replace selection with indices, or clear if indices exactly match current selection */
-  replaceIfNotSole: (indices: number[]) => void;
-  clear: () => void;
-  invert: (totalSamples: number) => void;
-
-  // Pin operations
-  pin: (indices: number[]) => void;
-  unpin: (indices: number[]) => void;
-  clearPins: () => void;
-  togglePin: (index: number) => void;
-
-  // Saved selections
-  saveSelection: (name: string, color?: string) => void;
-  loadSelection: (id: string) => void;
-  deleteSavedSelection: (id: string) => void;
-
-  // History
-  undo: () => void;
-  redo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-
-  // State setters
-  setSelecting: (isSelecting: boolean) => void;
-  setSelectionMode: (mode: SelectionMode) => void;
-  setSelectionToolMode: (tool: SelectionToolType) => void;
-  setHovered: (index: number | null) => void;
-
-  // Utilities
-  isSelected: (index: number) => boolean;
-  isPinned: (index: number) => boolean;
-  selectedCount: number;
-  pinnedCount: number;
-  hasSelection: boolean;
-
-  // Filter intersection
-  intersectWithAvailable: (availableIndices: number[]) => void;
-}
-
-// ============= Constants =============
+import {
+  loadPlaygroundSelectionState,
+  persistPlaygroundSelectionState,
+} from './selection/playgroundSelectionStorage';
+import {
+  SelectionContext,
+  type SavedSelection,
+  type SelectionAction,
+  type SelectionContextValue,
+  type SelectionMode,
+  type SelectionState,
+  type SelectionToolType,
+} from './useSelection';
 
 // History depth (MAX_HISTORY=10) and the set/history primitives are shared via
 // ./selection/createSelectionCore so this twin and InspectorSelectionContext
 // cannot drift apart on the common selection logic (FE-05-state).
-const STORAGE_KEY = 'playground-selection-state';
-const PERSIST_FIELDS: PersistFieldNames = {
-  selected: 'selectedSamples',
-  pinned: 'pinnedSamples',
-  savedSelections: 'savedSelections',
-};
 
 // ============= Initial State =============
 
@@ -536,32 +424,6 @@ function selectionReducer(state: SelectionState, action: SelectionAction): Selec
   }
 }
 
-// ============= Context =============
-
-export const SelectionContext = createContext<SelectionContextValue | undefined>(undefined);
-
-// ============= Storage Helpers =============
-
-function persistState(state: SelectionState): void {
-  persistSelection(STORAGE_KEY, PERSIST_FIELDS, state.selectedSamples, state.pinnedSamples, state.savedSelections);
-}
-
-function loadPersistedState(): Partial<SelectionState> | null {
-  const parsed = loadPersistedSelection<number, SavedSelection>(STORAGE_KEY, PERSIST_FIELDS);
-  if (!parsed) {
-    return null;
-  }
-  return {
-    selectedSamples: new Set(parsed.selected || []),
-    pinnedSamples: new Set(parsed.pinned || []),
-    // SavedSelection.createdAt persists as a string; re-hydrate to a Date.
-    savedSelections: (parsed.savedSelections || []).map(s => ({
-      ...s,
-      createdAt: new Date(s.createdAt),
-    })),
-  };
-}
-
 // ============= Provider =============
 
 interface SelectionProviderProps {
@@ -571,7 +433,7 @@ interface SelectionProviderProps {
 export function SelectionProvider({ children }: SelectionProviderProps) {
   const [state, dispatch] = useReducer(selectionReducer, null, () => {
     const initial = createInitialState();
-    const persisted = loadPersistedState();
+    const persisted = loadPlaygroundSelectionState();
     if (persisted) {
       return { ...initial, ...persisted };
     }
@@ -584,7 +446,7 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
   // Persist state changes (debounced) - 500ms to reduce GC pressure in Firefox
   useEffect(() => {
     const timeout = setTimeout(() => {
-      persistState(state);
+      persistPlaygroundSelectionState(state.selectedSamples, state.pinnedSamples, state.savedSelections);
     }, 500);
     return () => clearTimeout(timeout);
   }, [state.selectedSamples, state.pinnedSamples, state.savedSelections]);
@@ -595,13 +457,36 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
   // and clobbered selection on Ctrl+Z/Escape (FE-01-state).
 
   // Memoized action creators
-  const select = useCallback((indices: number[], mode?: SelectionMode) => dispatch({ type: 'SELECT', indices, mode }), []);
-  const deselect = useCallback((indices: number[]) => dispatch({ type: 'DESELECT', indices }), []);
-  const toggle = useCallback((indices: number[]) => dispatch({ type: 'TOGGLE', indices }), []);
-  const selectAll = useCallback((totalSamples: number) => dispatch({ type: 'SELECT_ALL', totalSamples }), []);
-  const selectRange = useCallback((toIndex: number, mode?: SelectionMode) => dispatch({ type: 'SELECT_RANGE', toIndex, mode }), []);
-  const selectRangeOrdered = useCallback((toIndex: number, order: number[], mode?: SelectionMode) => dispatch({ type: 'SELECT_RANGE_ORDERED', toIndex, order, mode }), []);
-  const replaceIfNotSole = useCallback((indices: number[]) => dispatch({ type: 'REPLACE_IF_NOT_SOLE', indices }), []);
+  const select = useCallback(
+    (indices: number[], mode?: SelectionMode) => dispatch({ type: 'SELECT', indices, mode }),
+    [],
+  );
+  const deselect = useCallback(
+    (indices: number[]) => dispatch({ type: 'DESELECT', indices }),
+    [],
+  );
+  const toggle = useCallback(
+    (indices: number[]) => dispatch({ type: 'TOGGLE', indices }),
+    [],
+  );
+  const selectAll = useCallback(
+    (totalSamples: number) => dispatch({ type: 'SELECT_ALL', totalSamples }),
+    [],
+  );
+  const selectRange = useCallback(
+    (toIndex: number, mode?: SelectionMode) => dispatch({ type: 'SELECT_RANGE', toIndex, mode }),
+    [],
+  );
+  const selectRangeOrdered = useCallback(
+    (toIndex: number, order: number[], mode?: SelectionMode) => {
+      dispatch({ type: 'SELECT_RANGE_ORDERED', toIndex, order, mode });
+    },
+    [],
+  );
+  const replaceIfNotSole = useCallback(
+    (indices: number[]) => dispatch({ type: 'REPLACE_IF_NOT_SOLE', indices }),
+    [],
+  );
   const clear = useCallback(() => dispatch({ type: 'CLEAR' }), []);
   const invert = useCallback((totalSamples: number) => dispatch({ type: 'INVERT', totalSamples }), []);
   const pin = useCallback((indices: number[]) => dispatch({ type: 'PIN', indices }), []);
@@ -609,20 +494,41 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
   const clearPins = useCallback(() => dispatch({ type: 'CLEAR_PINS' }), []);
 
   const togglePin = useCallback((index: number) => {
-    dispatch(state.pinnedSamples.has(index) ? { type: 'UNPIN', indices: [index] } : { type: 'PIN', indices: [index] });
+    dispatch(
+      state.pinnedSamples.has(index)
+        ? { type: 'UNPIN', indices: [index] }
+        : { type: 'PIN', indices: [index] },
+    );
   }, [state.pinnedSamples]);
 
-  const saveSelection = useCallback((name: string, color?: string) => dispatch({ type: 'SAVE_SELECTION', name, color }), []);
+  const saveSelection = useCallback(
+    (name: string, color?: string) => dispatch({ type: 'SAVE_SELECTION', name, color }),
+    [],
+  );
   const loadSelection = useCallback((id: string) => dispatch({ type: 'LOAD_SELECTION', id }), []);
   const deleteSavedSelection = useCallback((id: string) => dispatch({ type: 'DELETE_SAVED_SELECTION', id }), []);
   const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
-  const setSelecting = useCallback((isSelecting: boolean) => dispatch({ type: 'SET_SELECTING', isSelecting }), []);
-  const setSelectionMode = useCallback((mode: SelectionMode) => dispatch({ type: 'SET_SELECTION_MODE', mode }), []);
-  const setSelectionToolMode = useCallback((tool: SelectionToolType) => dispatch({ type: 'SET_SELECTION_TOOL', tool }), []);
+  const setSelecting = useCallback(
+    (isSelecting: boolean) => dispatch({ type: 'SET_SELECTING', isSelecting }),
+    [],
+  );
+  const setSelectionMode = useCallback(
+    (mode: SelectionMode) => dispatch({ type: 'SET_SELECTION_MODE', mode }),
+    [],
+  );
+  const setSelectionToolMode = useCallback(
+    (tool: SelectionToolType) => dispatch({ type: 'SET_SELECTION_TOOL', tool }),
+    [],
+  );
   // setHovered uses separate state for performance — hover never re-renders selection consumers.
   const setHovered = useCallback((index: number | null) => setHoveredSampleState(index), []);
-  const intersectWithAvailable = useCallback((availableIndices: number[]) => dispatch({ type: 'INTERSECT_WITH_AVAILABLE', availableIndices }), []);
+  const intersectWithAvailable = useCallback(
+    (availableIndices: number[]) => {
+      dispatch({ type: 'INTERSECT_WITH_AVAILABLE', availableIndices });
+    },
+    [],
+  );
   const isSelected = useCallback((index: number) => state.selectedSamples.has(index), [state.selectedSamples]);
   const isPinned = useCallback((index: number) => state.pinnedSamples.has(index), [state.pinnedSamples]);
 
@@ -706,16 +612,6 @@ export function SelectionProvider({ children }: SelectionProviderProps) {
       {children}
     </SelectionContext.Provider>
   );
-}
-
-// ============= Hook =============
-
-export function useSelection(): SelectionContextValue {
-  const context = useContext(SelectionContext);
-  if (context === undefined) {
-    throw new Error('useSelection must be used within a SelectionProvider');
-  }
-  return context;
 }
 
 export default SelectionProvider;

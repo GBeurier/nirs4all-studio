@@ -17,14 +17,22 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { ModelSelector } from './ModelSelector';
+import {
+  buildShapPredictHref,
+  normalizeShapExplainerType,
+  normalizeShapPartition,
+  SHAP_EXPLAINER_OPTIONS,
+  SHAP_PARTITION_OPTIONS,
+} from '@/lib/shapVariableImportanceFormData';
 import type {
   ExplainerType,
   Partition,
 } from '@/types/shap';
+import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 
 interface VariableImportanceFormProps {
   chainId: string | null;
-  onChainSelect: (chainId: string | null, datasetName: string | null) => void;
+  onChainSelect: (chainId: string | null, datasetName: string | null, modelRef?: ShapExplicitModelRef | null) => void;
   partition: Partition;
   onPartitionChange: (partition: Partition) => void;
   explainerType: ExplainerType;
@@ -51,7 +59,7 @@ export function VariableImportanceForm({
           </Label>
           {chainId && (
             <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 text-emerald-600" asChild>
-              <Link to={`/predict?model_id=${encodeURIComponent(chainId)}&source=chain`}>
+              <Link to={buildShapPredictHref(chainId)}>
                 <Zap className="h-3 w-3" /> Predict
               </Link>
             </Button>
@@ -85,14 +93,16 @@ export function VariableImportanceForm({
             </Tooltip>
           </TooltipProvider>
         </div>
-        <Select value={partition} onValueChange={(v) => onPartitionChange(v as Partition)}>
+        <Select value={partition} onValueChange={(value) => onPartitionChange(normalizeShapPartition(value))}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="test">Test</SelectItem>
-            <SelectItem value="train">Train</SelectItem>
-            <SelectItem value="all">All</SelectItem>
+            {SHAP_PARTITION_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -121,16 +131,17 @@ export function VariableImportanceForm({
         </div>
         <Select
           value={explainerType}
-          onValueChange={(v) => onExplainerTypeChange(v as ExplainerType)}
+          onValueChange={(value) => onExplainerTypeChange(normalizeShapExplainerType(value))}
         >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="auto">Auto-detect</SelectItem>
-            <SelectItem value="tree">Tree (RF, GBR, XGBoost)</SelectItem>
-            <SelectItem value="linear">Linear (PLS, Ridge)</SelectItem>
-            <SelectItem value="kernel">Kernel (any model)</SelectItem>
+            {SHAP_EXPLAINER_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

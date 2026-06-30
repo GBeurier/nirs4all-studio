@@ -1,7 +1,4 @@
-import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -26,14 +23,11 @@ import {
   Database, Pencil, Loader2, Trash2,
 } from "lucide-react";
 import {
-  deleteWorkspaceChainPredictions,
-  deleteWorkspacePredictionGroup,
-} from "@/api/linkedWorkspaces";
-import { getChainPartitionDetail } from "@/api/aggregatedPredictions";
-import {
-  formatPredictionDeletionSummary,
-  invalidatePredictionRelatedQueries,
-} from "@/lib/prediction-deletion";
+  buildModelActionDeleteDescriptor,
+  buildModelActionLinks,
+} from "@/lib/modelActionMenuData";
+import { useModelActionCsvExport } from "./useModelActionCsvExport";
+import { useModelPredictionDeleteAction } from "./useModelPredictionDeleteAction";
 
 interface ModelActionMenuProps {
   chainId: string;
@@ -52,106 +46,36 @@ interface ModelActionMenuProps {
   onDeleted?: () => void;
 }
 
-function csvEscape(value: unknown): string {
-  const s = value == null ? "" : String(value);
-  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function sanitizeFilename(value: string | null | undefined): string {
-  return (value || "chain").replace(/[^a-zA-Z0-9._-]+/g, "_");
-}
-
 export function ModelActionMenu({
   chainId, predictChainId, modelName, datasetName, runId: _runId,
   taskType: _taskType, hasRefit, workspaceId, deleteScope, foldId, onViewDetails, onViewChart, onExport, onDeleted,
 }: ModelActionMenuProps) {
-  const queryClient = useQueryClient();
-  const [csvBusy, setCsvBusy] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-
-  const pipelineEditorUrl = chainId ? `/pipelines/new?chainId=${encodeURIComponent(chainId)}` : null;
-  const canDelete = Boolean(
-    workspaceId
-    && chainId
-    && (deleteScope === "chain" || (deleteScope === "group" && foldId))
-  );
-  const deleteTitle = deleteScope === "group" ? "Delete prediction group?" : "Delete model predictions?";
-  const deleteDescription = deleteScope === "group"
-    ? `This removes the ${foldId || "selected"} prediction group for ${modelName}, including linked arrays. Empty chains and orphaned artifacts will be cleaned automatically.`
-    : `This removes all stored predictions for the displayed ${modelName} variant, including matched CV/refit siblings. Shared artifacts still used by other models are preserved automatically.`;
-  const deleteLabel = deleteScope === "group" ? "Delete prediction" : "Delete model";
-  const effectivePredictChainId = predictChainId || chainId;
-
-  const handleCsvExport = async () => {
-    if (!chainId) {
-      toast.error("Missing chain id");
-      return;
-    }
-    setCsvBusy(true);
-    try {
-      const detail = await getChainPartitionDetail(chainId);
-      const rows = detail.predictions || [];
-      if (rows.length === 0) {
-        toast.error("No predictions found for this chain");
-        return;
-      }
-      const header = [
-        "fold_id", "partition", "model_name", "dataset_name",
-        "val_score", "test_score", "train_score", "metric",
-        "n_samples", "preprocessings",
-      ];
-      const lines = rows.map((row) => header.map((col) => csvEscape((row as Record<string, unknown>)[col])).join(","));
-      const csv = [header.join(","), ...lines].join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      downloadBlob(blob, `${sanitizeFilename(modelName)}_${sanitizeFilename(chainId.slice(0, 8))}.csv`);
-      toast.success("CSV exported");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "CSV export failed");
-    } finally {
-      setCsvBusy(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!workspaceId || !chainId) {
-      toast.error("Missing workspace or chain identifier");
-      return;
-    }
-
-    setDeleteBusy(true);
-    try {
-      const result = deleteScope === "group"
-        ? await deleteWorkspacePredictionGroup(workspaceId, chainId, foldId || "")
-        : await deleteWorkspaceChainPredictions(workspaceId, chainId);
-
-      if (!result.success) {
-        toast.error("Nothing was deleted");
-        return;
-      }
-
-      await invalidatePredictionRelatedQueries(queryClient);
-      onDeleted?.();
-      setDeleteOpen(false);
-      toast.success(formatPredictionDeletionSummary(result));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Deletion failed");
-    } finally {
-      setDeleteBusy(false);
-    }
-  };
+  const actionLinks = buildModelActionLinks({
+    chainId,
+    predictChainId,
+    datasetName,
+    hasRefit,
+  });
+  const deleteDescriptor = buildModelActionDeleteDescriptor({
+    chainId,
+    deleteScope,
+    foldId,
+    modelName,
+    workspaceId,
+  });
+  const {
+    deleteOpen,
+    setDeleteOpen,
+    deleteBusy,
+    handleDelete,
+  } = useModelPredictionDeleteAction({
+    chainId,
+    deleteScope,
+    foldId,
+    workspaceId,
+    onDeleted,
+  });
+  const { csvBusy, handleCsvExport } = useModelActionCsvExport({ chainId, modelName });
 
   return (
     <>
@@ -173,11 +97,11 @@ export function ModelActionMenu({
             </DropdownMenuItem>
           )}
 
-          {hasRefit && (
+          {actionLinks.predictUrl && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link to={`/predict?model_id=${encodeURIComponent(effectivePredictChainId)}&source=chain`}>
+                <Link to={actionLinks.predictUrl}>
                   <Zap className="h-4 w-4 mr-2" /> Predict (new data)
                 </Link>
               </DropdownMenuItem>
@@ -198,22 +122,22 @@ export function ModelActionMenu({
 
           <DropdownMenuSeparator />
 
-          {pipelineEditorUrl && (
+          {actionLinks.pipelineEditorUrl && (
             <DropdownMenuItem asChild>
-              <Link to={pipelineEditorUrl}>
+              <Link to={actionLinks.pipelineEditorUrl}>
                 <Pencil className="h-4 w-4 mr-2" /> Open chain snapshot
               </Link>
             </DropdownMenuItem>
           )}
-          {datasetName && (
+          {actionLinks.datasetUrl && (
             <DropdownMenuItem asChild>
-              <Link to={`/datasets/${encodeURIComponent(datasetName)}`}>
+              <Link to={actionLinks.datasetUrl}>
                 <Database className="h-4 w-4 mr-2" /> Goto dataset
               </Link>
             </DropdownMenuItem>
           )}
 
-          {canDelete && (
+          {deleteDescriptor.canDelete && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -223,7 +147,7 @@ export function ModelActionMenu({
                   setDeleteOpen(true);
                 }}
               >
-                <Trash2 className="h-4 w-4 mr-2" /> {deleteLabel}
+                <Trash2 className="h-4 w-4 mr-2" /> {deleteDescriptor.label}
               </DropdownMenuItem>
             </>
           )}
@@ -233,14 +157,14 @@ export function ModelActionMenu({
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{deleteTitle}</AlertDialogTitle>
-            <AlertDialogDescription>{deleteDescription}</AlertDialogDescription>
+            <AlertDialogTitle>{deleteDescriptor.title}</AlertDialogTitle>
+            <AlertDialogDescription>{deleteDescriptor.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteBusy}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} disabled={deleteBusy}>
               {deleteBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-              {deleteLabel}
+              {deleteDescriptor.label}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

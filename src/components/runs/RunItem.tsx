@@ -22,8 +22,11 @@ import {
   Target, FolderKanban, Loader2, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
 import { invalidatePredictionRelatedQueries } from "@/lib/prediction-deletion";
+import { buildRunStorageArtifactMetadata } from "@/lib/runs/pageData";
+import type { RunsExecutionJobListIndicators } from "@/lib/runs/pageData";
+import { formatRunProgress, formatRunTokenLabel } from "@/lib/runs/format";
+import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
 import {
   formatMetricValue,
   getPrimaryContextMetricLabel,
@@ -46,6 +49,7 @@ interface RunItemProps {
   onViewDetails: (run: EnrichedRun) => void;
   workspaceId: string;
   selectedMetrics?: string[];
+  executionJob?: RunsExecutionJobListIndicators;
 }
 
 // ============================================================================
@@ -61,13 +65,6 @@ function formatDuration(seconds: number | null): string {
   return `${h}h ${m}m`;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
-}
-
 function formatDatetime(iso: string | null): string {
   if (!iso) return "-";
   try {
@@ -75,6 +72,16 @@ function formatDatetime(iso: string | null): string {
   } catch {
     return iso;
   }
+}
+
+function formatExecutionTokenLabel(value: string | null): string | null {
+  if (!value) return null;
+  return formatRunTokenLabel(value);
+}
+
+function formatExecutionProgress(progress: number | null): string | null {
+  if (progress == null || !Number.isFinite(progress)) return null;
+  return formatRunProgress(progress);
 }
 
 const statusIcons: Record<string, typeof Clock> = {
@@ -175,6 +182,7 @@ export function RunItem({
   onViewDetails,
   workspaceId,
   selectedMetrics = [...DEFAULT_DATASET_ITEM_REGRESSION_METRICS],
+  executionJob,
 }: RunItemProps) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
@@ -184,6 +192,26 @@ export function RunItem({
   const config = runStatusConfig[status] || runStatusConfig.completed;
   const StatusIcon = statusIcons[status] || CheckCircle2;
   const canDeleteRun = status !== "running" && status !== "queued";
+  const storageArtifactMetadata = buildRunStorageArtifactMetadata(run);
+  const storageArtifactFields = storageArtifactMetadata.fields;
+  const executionRequestedBackend = formatExecutionTokenLabel(executionJob?.requestedBackend ?? null);
+  const executionBackend = formatExecutionTokenLabel(executionJob?.executionBackend ?? null);
+  const executionStatus = formatExecutionTokenLabel(executionJob?.executionStatus ?? null);
+  const executionProgressUnavailable = executionJob?.progressUnavailable === true;
+  const executionProgress = executionProgressUnavailable
+    ? null
+    : formatExecutionProgress(executionJob?.progress ?? null);
+  const executionProgressSummary = executionProgressUnavailable
+    ? "Telemetry unavailable"
+    : executionProgress;
+  const executionJobCount = executionJob?.jobCount ?? 0;
+  const executionActiveJobCount = executionJob?.activeJobCount ?? 0;
+  const executionFailedJobCount = executionJob?.failedJobCount ?? 0;
+  const showExecutionJobCounts = Boolean(executionJob?.hasMultipleJobs);
+  const showExecutionSummary = Boolean(
+    executionJob
+    && (executionJob.hasDurableRecord || executionRequestedBackend || executionBackend),
+  );
 
   // Filter parasitic datasets
   const datasets = filterParasiticDatasets(run.datasets);
@@ -271,8 +299,18 @@ export function RunItem({
                   </span>
                   <span className="flex items-center gap-1" title="Artifact size">
                     <HardDrive className="h-3 w-3" />
-                    {formatBytes(run.artifact_size_bytes)}
+                    {storageArtifactMetadata.artifactSizeLabel}
                   </span>
+                  {showExecutionSummary && (
+                    <span className="flex items-center gap-1" title="Execution backend">
+                      <RefreshCw className={cn("h-3 w-3", executionJob?.executionStatus === "running" && "animate-spin")} />
+                      {executionStatus ?? executionRequestedBackend ?? executionBackend}
+                      {executionProgressSummary
+                        ? `${executionProgressUnavailable ? " · " : " "}${executionProgressSummary}`
+                        : ""}
+                      {showExecutionJobCounts ? ` · ${executionJobCount} jobs` : ""}
+                    </span>
+                  )}
                 </div>
                 <div className="hidden lg:block text-right text-xs text-muted-foreground">
                   <div>{formatDatetime(run.created_at)}</div>
@@ -303,6 +341,70 @@ export function RunItem({
         {/* Collapsible dataset score panels */}
         <CollapsibleContent>
           <CardContent className="px-4 pb-3 pt-1 space-y-3">
+            {executionJob?.hasDurableRecord && (
+              <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-medium text-foreground">Execution</span>
+                  {executionStatus && (
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                      {executionStatus}
+                    </Badge>
+                  )}
+                  {executionRequestedBackend && (
+                    <span className="text-muted-foreground">
+                      requested {executionRequestedBackend}
+                    </span>
+                  )}
+                  {executionBackend && executionBackend !== executionRequestedBackend && (
+                    <span className="text-muted-foreground">
+                      running on {executionBackend}
+                    </span>
+                  )}
+                  {executionProgressUnavailable && (
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                      Telemetry unavailable
+                    </Badge>
+                  )}
+                  {executionProgress && (
+                    <span className="font-mono text-muted-foreground">
+                      {executionProgress}
+                    </span>
+                  )}
+                  {showExecutionJobCounts && (
+                    <span className="text-muted-foreground">
+                      {executionJobCount} jobs
+                    </span>
+                  )}
+                  {executionActiveJobCount > 0 && (
+                    <span className="text-muted-foreground">
+                      {executionActiveJobCount} active
+                    </span>
+                  )}
+                  {executionFailedJobCount > 0 && (
+                    <span className="text-destructive">
+                      {executionFailedJobCount} failed
+                    </span>
+                  )}
+                </div>
+                {executionJob.progressMessage && (
+                  <div className="mt-1 truncate text-muted-foreground">
+                    {executionJob.progressMessage}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {storageArtifactFields.length > 0 && (
+              <div className="grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                {storageArtifactFields.map((field) => (
+                  <div key={field.key} className="min-w-0">
+                    <div className="text-muted-foreground">{field.label}</div>
+                    <div className="font-medium text-foreground break-words">{field.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Error display */}
             {run.error && (
               <div className="p-2 rounded bg-destructive/10 text-destructive text-xs">

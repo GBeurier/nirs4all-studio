@@ -12,41 +12,17 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { getBeeswarmData } from '@/api/shap';
-import type { BeeswarmDataResponse, BeeswarmBin } from '@/types/shap';
+import {
+  buildShapBeeswarmPoints,
+  buildShapBeeswarmYTicks,
+  getShapBeeswarmPointStyle,
+} from '@/lib/shapBeeswarmData';
+import type { BeeswarmDataResponse } from '@/types/shap';
 
 interface BeeswarmChartProps {
   jobId: string;
   onSampleSelect?: (sampleIdx: number) => void;
   selectedSamples?: number[];
-}
-
-// Generate jittered y-positions for points within each bin
-function jitterPoints(bin: BeeswarmBin, binIndex: number): Array<{
-  x: number;
-  y: number;
-  color: number;
-  sampleIdx: number;
-  binLabel: string;
-}> {
-  return bin.points.map((point) => {
-    const jitter = (Math.random() - 0.5) * 0.6;
-    return {
-      x: point.shap_value,
-      y: binIndex + jitter,
-      color: point.feature_value,
-      sampleIdx: point.sample_idx,
-      binLabel: bin.label,
-    };
-  });
-}
-
-// Get color based on feature value (0-1)
-function getPointColor(featureValue: number): string {
-  if (featureValue > 0.8) return '#ef4444';
-  if (featureValue > 0.6) return '#f97316';
-  if (featureValue > 0.4) return '#eab308';
-  if (featureValue > 0.2) return '#22c55e';
-  return '#3b82f6';
 }
 
 export const BeeswarmChart = memo(function BeeswarmChart({
@@ -75,22 +51,12 @@ export const BeeswarmChart = memo(function BeeswarmChart({
 
   const chartData = useMemo(() => {
     if (!data) return [];
-    const allPoints: Array<{
-      x: number;
-      y: number;
-      color: number;
-      sampleIdx: number;
-      binLabel: string;
-    }> = [];
-    data.bins.forEach((bin, binIndex) => {
-      allPoints.push(...jitterPoints(bin, binIndex));
-    });
-    return allPoints;
+    return buildShapBeeswarmPoints(data.bins);
   }, [data]);
 
   const yTickLabels = useMemo(() => {
     if (!data) return [];
-    return data.bins.map((bin, idx) => ({ value: idx, label: bin.label }));
+    return buildShapBeeswarmYTicks(data.bins);
   }, [data]);
 
   if (loading) {
@@ -168,13 +134,14 @@ export const BeeswarmChart = memo(function BeeswarmChart({
           >
             {chartData.map((entry, index) => {
               const isSelected = selectedSet.has(entry.sampleIdx);
+              const style = getShapBeeswarmPointStyle(entry.color, isSelected);
               return (
                 <Cell
                   key={index}
-                  fill={isSelected ? '#f59e0b' : getPointColor(entry.color)}
-                  fillOpacity={isSelected ? 1 : 0.7}
-                  stroke={isSelected ? '#f59e0b' : 'none'}
-                  strokeWidth={isSelected ? 2 : 0}
+                  fill={style.fill}
+                  fillOpacity={style.fillOpacity}
+                  stroke={style.stroke}
+                  strokeWidth={style.strokeWidth}
                   cursor="pointer"
                 />
               );

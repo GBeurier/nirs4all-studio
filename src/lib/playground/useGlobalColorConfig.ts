@@ -10,6 +10,11 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
+  clientStorageKeys,
+  readClientStorageString,
+  writeClientStorageString,
+} from '@/lib/clientStorage';
+import {
   GlobalColorConfig,
   GlobalColorMode,
   ContinuousPalette,
@@ -18,14 +23,12 @@ import {
   detectMetadataType,
 } from './colorConfig';
 
-const STORAGE_KEY = 'nirs4all_global_color_config';
-
 /**
  * Load config from session storage
  */
 function loadFromStorage(): GlobalColorConfig | null {
   try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
+    const stored = readClientStorageString(clientStorageKeys.playgroundGlobalColorConfig);
     if (stored) {
       const parsed = JSON.parse(stored);
       // Merge with defaults to handle missing fields from older versions
@@ -45,7 +48,7 @@ function loadFromStorage(): GlobalColorConfig | null {
  */
 function saveToStorage(config: GlobalColorConfig): void {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    writeClientStorageString(clientStorageKeys.playgroundGlobalColorConfig, JSON.stringify(config));
   } catch {
     // Ignore storage errors
   }

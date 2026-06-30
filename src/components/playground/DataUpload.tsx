@@ -18,25 +18,38 @@ import {
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SpectralData } from '@/types/spectral';
 import type { WorkspaceDatasetInfo } from '@/hooks/useSpectralData';
 import type { Dataset, PartitionKey } from '@/types/datasets';
 import { useDatasetsQuery } from '@/hooks/useDatasetQueries';
+import { buildDatasetSchemaRef } from '@/lib/datasetSchema';
+import {
+  buildDatasetSourceOptions,
+  buildDatasetTargetOptions,
+} from '@/lib/playground/datasetSelectionOptions';
 import { cn } from '@/lib/utils';
 import { formatWavelengthUnit } from '@/components/playground/visualizations/chartConfig';
+
+export type PlaygroundDatasetInfo = WorkspaceDatasetInfo & {
+  selectedSourceIndex?: number | null;
+  selectedTargetIndex?: number | null;
+  onSelectedSourceIndexChange?: (index: number | null) => void;
+  onSelectedTargetIndexChange?: (index: number | null) => void;
+};
 
 interface DataUploadProps {
   data: SpectralData | null;
   isLoading: boolean;
   error: string | null;
   dataSource: 'workspace' | 'demo' | null;
-  currentDatasetInfo: WorkspaceDatasetInfo | null;
+  currentDatasetInfo: PlaygroundDatasetInfo | null;
   onLoadDemo: () => void;
   onLoadFromWorkspace: (
     datasetId: string,
     datasetName: string,
     partition?: PartitionKey,
-    datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples'>,
+    datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples' | 'schemaRef'>,
   ) => void;
   onClear: () => void;
   /** Whether to show the dataset selector even when data is loaded */
@@ -82,11 +95,27 @@ export function DataUpload({
   const effectiveCurrentPartition: PartitionKey = !hasCurrentTestPartition && currentPartition !== 'train'
     ? 'train'
     : currentPartition;
+  const schemaRef = currentDatasetInfo?.schemaRef;
+  const sourceOptions = useMemo(
+    () => buildDatasetSourceOptions(schemaRef?.sourceCount),
+    [schemaRef?.sourceCount],
+  );
+  const targetOptions = useMemo(
+    () => buildDatasetTargetOptions(schemaRef),
+    [schemaRef],
+  );
+  const selectedSourceValue = String(currentDatasetInfo?.selectedSourceIndex ?? 0);
+  const selectedTargetValue = String(currentDatasetInfo?.selectedTargetIndex ?? 0);
+  const selectedSourceLabel = sourceOptions.find(option => option.value === selectedSourceValue)?.label ?? 'Source 1';
+  const selectedTargetLabel = targetOptions.find(option => option.value === selectedTargetValue)?.label ?? targetOptions[0]?.label;
+  const showSourceSelector = dataSource === 'workspace' && sourceOptions.length > 1;
+  const showTargetSelector = dataSource === 'workspace' && targetOptions.length > 1;
 
   const handleDatasetSelect = useCallback((dataset: Dataset, partition: PartitionKey = 'all') => {
     onLoadFromWorkspace(dataset.id, dataset.name, partition, {
       trainSamples: dataset.train_samples,
       testSamples: dataset.test_samples,
+      schemaRef: buildDatasetSchemaRef(dataset),
     });
   }, [onLoadFromWorkspace]);
 
@@ -155,6 +184,53 @@ export function DataUpload({
           </div>
         )}
 
+        {(showSourceSelector || showTargetSelector) && currentDatasetInfo && (
+          <div className="mb-3 grid grid-cols-1 gap-2 rounded-md border border-border/40 bg-muted/20 p-2">
+            {showSourceSelector && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Source</p>
+                <Select
+                  value={selectedSourceValue}
+                  onValueChange={(value) => currentDatasetInfo.onSelectedSourceIndexChange?.(Number(value))}
+                  disabled={!currentDatasetInfo.onSelectedSourceIndexChange}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Source" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sourceOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {showTargetSelector && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Target</p>
+                <Select
+                  value={selectedTargetValue}
+                  onValueChange={(value) => currentDatasetInfo.onSelectedTargetIndexChange?.(Number(value))}
+                  disabled={!currentDatasetInfo.onSelectedTargetIndexChange}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Target" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {targetOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Compact Stats Container */}
         <div className="bg-muted/30 rounded-md border border-border/40 divide-y divide-border/40">
            <div className="grid grid-cols-2 divide-x divide-border/40">
@@ -172,6 +248,20 @@ export function DataUpload({
                 <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Partition</span>
                 <span className="font-mono text-xs text-foreground">
                    {effectiveCurrentPartition === 'all' ? 'both' : effectiveCurrentPartition}
+                </span>
+             </div>
+           )}
+           {showSourceSelector && (
+             <div className="p-2 px-3 flex items-center justify-between">
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Source</span>
+                <span className="font-mono text-xs text-foreground">{selectedSourceLabel}</span>
+             </div>
+           )}
+           {showTargetSelector && selectedTargetLabel && (
+             <div className="p-2 px-3 flex items-center justify-between gap-2">
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Target</span>
+                <span className="font-mono text-xs text-foreground truncate max-w-[9rem]" title={selectedTargetLabel}>
+                  {selectedTargetLabel}
                 </span>
              </div>
            )}

@@ -32,6 +32,15 @@
       "type": "string",
       "description": "For function-based operators, e.g., 'nirs4all.operators.models.tensorflow.nicon.customizable_nicon'"
     },
+    "capabilities": {
+      "$ref": "#/definitions/OperatorCapabilityDeclaration",
+      "description": "Optional planning/execution capability contract for multi-backend operators."
+    },
+    "implementationRefs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/OperatorImplementationRef" },
+      "description": "Optional shorthand implementation references for multi-backend operators."
+    },
     "aliases": {
       "type": "array",
       "items": { "type": "string" },
@@ -277,6 +286,64 @@
         "active": { "type": "string" },
         "gradient": { "type": "string" }
       }
+    },
+    "CapabilityLevel": {
+      "type": "string",
+      "enum": [
+        "unavailable",
+        "metadata",
+        "plan",
+        "execute_local",
+        "execute_remote",
+        "execute_wasm"
+      ]
+    },
+    "OperatorImplementationRef": {
+      "type": "object",
+      "required": ["backend"],
+      "properties": {
+        "backend": {
+          "type": "string",
+          "description": "Implementation backend id, e.g. sklearn, n4a-methods, cluster, or wasm."
+        },
+        "id": {
+          "type": "string",
+          "description": "Backend-specific implementation id."
+        },
+        "label": {
+          "type": "string",
+          "description": "Optional user-facing implementation label."
+        },
+        "level": {
+          "$ref": "#/definitions/CapabilityLevel",
+          "description": "Highest supported capability level for this implementation."
+        },
+        "compute": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional compute features, e.g. cuda, omp, blas."
+        }
+      },
+      "additionalProperties": true
+    },
+    "OperatorCapabilityDeclaration": {
+      "type": "object",
+      "properties": {
+        "defaultLevel": {
+          "$ref": "#/definitions/CapabilityLevel",
+          "description": "Fallback capability level when no backend report is available."
+        },
+        "implementationRefs": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/OperatorImplementationRef" }
+        },
+        "requiredPackages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional package ids needed by the local implementation."
+        }
+      },
+      "additionalProperties": true
     },
     "WebappNodeMetadata": {
       "type": "object",

@@ -17,6 +17,7 @@ from typing import Any, get_type_hints
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .results_repository import ResultsRepository, ResultsRepositoryNotFound, resolve_results_repository
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -394,6 +395,27 @@ def _available_model_visibility_key(model: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+def _resolve_available_models_repository(workspace_path: Path) -> ResultsRepository | None:
+    """Resolve the workspace results repository, preserving the endpoint's no-store fallback."""
+
+    def _workspace_store_factory(path: Path) -> ResultsRepository:
+        WorkspaceStore = get_cached("WorkspaceStore")
+        if WorkspaceStore is None:
+            raise ResultsRepositoryNotFound("nirs4all WorkspaceStore is not available")
+        return WorkspaceStore(path)
+
+    try:
+        return resolve_results_repository(
+            workspace_path,
+            workspace_store_factory=_workspace_store_factory,
+        )
+    except ResultsRepositoryNotFound:
+        return None
+    except Exception as exc:
+        logger.error("Error resolving results repository for available models: %s", exc)
+        return None
+
+
 # ============= Model Type Routes =============
 
 
@@ -628,151 +650,149 @@ async def list_available_models():
             except Exception as e:
                 logger.error("Error reading bundle %s: %s", n4a_file, e)
 
-    # 2. Query chain summaries from WorkspaceStore — only chains with saved artifacts
+    # 2. Query chain summaries from the active results repository — only chains with saved artifacts
     workspace_path = Path(workspace.path)
-    store_exists = (workspace_path / "store.sqlite").exists() or (workspace_path / "store.duckdb").exists()
-    if store_exists:
+    repository = _resolve_available_models_repository(workspace_path)
+    if repository is not None:
         try:
             import math
 
-            WorkspaceStore = get_cached("WorkspaceStore")
-            if WorkspaceStore is not None:
-                store = WorkspaceStore(workspace_path)
-                try:
-                    df = store.query_chain_summaries()
+            store = repository
+            try:
+                df = store.query_chain_summaries()
 
-                    # Batch-fetch fold_artifacts to filter chains with saved models
-                    chain_ids = [row["chain_id"] for row in df.iter_rows(named=True)]
-                    artifacts_map: dict[str, dict] = {}
-                    prediction_score_map: dict[str, tuple[str | None, float | None]] = {}
-                    if chain_ids:
-                        try:
-                            placeholders = ", ".join("?" for _ in chain_ids)
-                            fa_df = store._fetch_pl(
-                                f"SELECT chain_id, fold_artifacts FROM chains WHERE chain_id IN ({placeholders})",
-                                chain_ids,
+                # Batch-fetch fold_artifacts to filter chains with saved models
+                chain_ids = [row["chain_id"] for row in df.iter_rows(named=True)]
+                artifacts_map: dict[str, dict] = {}
+                prediction_score_map: dict[str, tuple[str | None, float | None]] = {}
+                if chain_ids:
+                    try:
+                        placeholders = ", ".join("?" for _ in chain_ids)
+                        fa_df = store._fetch_pl(
+                            f"SELECT chain_id, fold_artifacts FROM chains WHERE chain_id IN ({placeholders})",
+                            chain_ids,
+                        )
+                        for r in fa_df.iter_rows(named=True):
+                            raw = r.get("fold_artifacts")
+                            if raw:
+                                fa = _coerce_json_object(raw)
+                                if isinstance(fa, dict) and fa:
+                                    artifacts_map[r["chain_id"]] = fa
+                    except Exception:
+                        pass
+
+                    try:
+                        score_df = store._fetch_pl(
+                            "SELECT chain_id, fold_id, test_score, scores "
+                            f"FROM predictions WHERE chain_id IN ({placeholders}) "
+                            "AND partition = 'test'",
+                            chain_ids,
+                        )
+                        prediction_rows: dict[str, dict[str, dict[str, Any]]] = {}
+                        for r in score_df.iter_rows(named=True):
+                            prediction_rows.setdefault(r["chain_id"], {})[str(r.get("fold_id"))] = dict(r)
+
+                        for row in df.iter_rows(named=True):
+                            chain_id = row["chain_id"]
+                            metric = (row.get("metric") or "").lower() or None
+                            fold_artifacts = artifacts_map.get(chain_id) or {}
+                            has_refit = bool(fold_artifacts.get("fold_final") or fold_artifacts.get("final"))
+
+                            final_metric = _extract_partition_metric(
+                                row.get("final_scores"),
+                                metric,
+                                partition="test",
                             )
-                            for r in fa_df.iter_rows(named=True):
-                                raw = r.get("fold_artifacts")
-                                if raw:
-                                    fa = _coerce_json_object(raw)
-                                    if isinstance(fa, dict) and fa:
-                                        artifacts_map[r["chain_id"]] = fa
-                        except Exception:
-                            pass
+                            final_test_score = row.get("final_test_score")
+                            if isinstance(final_test_score, float) and (math.isnan(final_test_score) or math.isinf(final_test_score)):
+                                final_test_score = None
 
-                        try:
-                            score_df = store._fetch_pl(
-                                "SELECT chain_id, fold_id, test_score, scores "
-                                f"FROM predictions WHERE chain_id IN ({placeholders}) "
-                                "AND partition = 'test'",
-                                chain_ids,
-                            )
-                            prediction_rows: dict[str, dict[str, dict[str, Any]]] = {}
-                            for r in score_df.iter_rows(named=True):
-                                prediction_rows.setdefault(r["chain_id"], {})[str(r.get("fold_id"))] = dict(r)
+                            chosen_metric = None
+                            chosen_score = None
+                            row_scores = prediction_rows.get(chain_id, {})
 
-                            for row in df.iter_rows(named=True):
-                                chain_id = row["chain_id"]
-                                metric = (row.get("metric") or "").lower() or None
-                                fold_artifacts = artifacts_map.get(chain_id) or {}
-                                has_refit = bool(fold_artifacts.get("fold_final") or fold_artifacts.get("final"))
-
-                                final_metric = _extract_partition_metric(
-                                    row.get("final_scores"),
-                                    metric,
-                                    partition="test",
-                                )
-                                final_test_score = row.get("final_test_score")
-                                if isinstance(final_test_score, float) and (math.isnan(final_test_score) or math.isinf(final_test_score)):
-                                    final_test_score = None
-
-                                chosen_metric = None
-                                chosen_score = None
-                                row_scores = prediction_rows.get(chain_id, {})
-
-                                if has_refit:
+                            if has_refit:
+                                chosen_metric = _prediction_metric_name(metric)
+                                chosen_score = final_metric if final_metric is not None else final_test_score
+                            else:
+                                avg_row = row_scores.get("avg") or row_scores.get("w_avg")
+                                if avg_row is not None:
+                                    avg_metric = _extract_partition_metric(
+                                        avg_row.get("scores"),
+                                        metric,
+                                        partition="test",
+                                    )
+                                    avg_test_score = avg_row.get("test_score")
+                                    if isinstance(avg_test_score, float) and (math.isnan(avg_test_score) or math.isinf(avg_test_score)):
+                                        avg_test_score = None
                                     chosen_metric = _prediction_metric_name(metric)
-                                    chosen_score = final_metric if final_metric is not None else final_test_score
+                                    chosen_score = avg_metric if avg_metric is not None else avg_test_score
                                 else:
-                                    avg_row = row_scores.get("avg") or row_scores.get("w_avg")
-                                    if avg_row is not None:
-                                        avg_metric = _extract_partition_metric(
-                                            avg_row.get("scores"),
+                                    fold_rows = [
+                                        value for fold_id, value in row_scores.items()
+                                        if fold_id not in {"final", "avg", "w_avg"}
+                                    ]
+                                    if len(fold_rows) == 1:
+                                        fold_row = fold_rows[0]
+                                        fold_metric = _extract_partition_metric(
+                                            fold_row.get("scores"),
                                             metric,
                                             partition="test",
                                         )
-                                        avg_test_score = avg_row.get("test_score")
-                                        if isinstance(avg_test_score, float) and (math.isnan(avg_test_score) or math.isinf(avg_test_score)):
-                                            avg_test_score = None
+                                        fold_test_score = fold_row.get("test_score")
+                                        if isinstance(fold_test_score, float) and (math.isnan(fold_test_score) or math.isinf(fold_test_score)):
+                                            fold_test_score = None
                                         chosen_metric = _prediction_metric_name(metric)
-                                        chosen_score = avg_metric if avg_metric is not None else avg_test_score
-                                    else:
-                                        fold_rows = [
-                                            value for fold_id, value in row_scores.items()
-                                            if fold_id not in {"final", "avg", "w_avg"}
-                                        ]
-                                        if len(fold_rows) == 1:
-                                            fold_row = fold_rows[0]
-                                            fold_metric = _extract_partition_metric(
-                                                fold_row.get("scores"),
-                                                metric,
-                                                partition="test",
-                                            )
-                                            fold_test_score = fold_row.get("test_score")
-                                            if isinstance(fold_test_score, float) and (math.isnan(fold_test_score) or math.isinf(fold_test_score)):
-                                                fold_test_score = None
-                                            chosen_metric = _prediction_metric_name(metric)
-                                            chosen_score = fold_metric if fold_metric is not None else fold_test_score
+                                        chosen_score = fold_metric if fold_metric is not None else fold_test_score
 
-                                if chosen_score is not None:
-                                    prediction_score_map[chain_id] = (chosen_metric, float(chosen_score))
-                        except Exception:
-                            pass
+                            if chosen_score is not None:
+                                prediction_score_map[chain_id] = (chosen_metric, float(chosen_score))
+                    except Exception:
+                        pass
 
-                    for row in df.iter_rows(named=True):
-                        cid = row["chain_id"]
-                        # Skip chains already covered by a bundle
-                        pid = row.get("pipeline_id", "")
-                        if pid and pid in seen_pipeline_uids:
-                            continue
+                for row in df.iter_rows(named=True):
+                    cid = row["chain_id"]
+                    # Skip chains already covered by a bundle
+                    pid = row.get("pipeline_id", "")
+                    if pid and pid in seen_pipeline_uids:
+                        continue
 
-                        # Only include chains that have at least one saved artifact
-                        fold_artifacts = artifacts_map.get(cid)
-                        if not fold_artifacts:
-                            continue
+                    # Only include chains that have at least one saved artifact
+                    fold_artifacts = artifacts_map.get(cid)
+                    if not fold_artifacts:
+                        continue
 
-                        # Prefer CV val score (consistent with Runs page).
-                        # Fall back to final_test only when CV is unavailable.
-                        # Use `is not None` to avoid treating 0.0 as missing.
-                        cv_val = row.get("cv_val_score")
-                        final_test = row.get("final_test_score")
-                        best_score = cv_val if cv_val is not None else final_test
-                        if isinstance(best_score, float) and (math.isnan(best_score) or math.isinf(best_score)):
-                            best_score = None
+                    # Prefer CV val score (consistent with Runs page).
+                    # Fall back to final_test only when CV is unavailable.
+                    # Use `is not None` to avoid treating 0.0 as missing.
+                    cv_val = row.get("cv_val_score")
+                    final_test = row.get("final_test_score")
+                    best_score = cv_val if cv_val is not None else final_test
+                    if isinstance(best_score, float) and (math.isnan(best_score) or math.isinf(best_score)):
+                        best_score = None
 
-                        has_refit = bool(fold_artifacts.get("fold_final") or fold_artifacts.get("final"))
-                        prediction_metric, prediction_score = prediction_score_map.get(cid, (None, None))
+                    has_refit = bool(fold_artifacts.get("fold_final") or fold_artifacts.get("final"))
+                    prediction_metric, prediction_score = prediction_score_map.get(cid, (None, None))
 
-                        models.append(AvailableModel(
-                            id=cid,
-                            name=row.get("model_name") or row.get("model_class", "Unknown"),
-                            source="chain",
-                            model_class=row.get("model_class", "Unknown"),
-                            dataset_name=row.get("dataset_name"),
-                            metric=row.get("metric"),
-                            best_score=best_score,
-                            created_at=None,
-                            file_size=None,
-                            preprocessing=row.get("preprocessings"),
-                            bundle_path=None,
-                            has_refit=has_refit,
-                            fold_artifacts=fold_artifacts,
-                            prediction_metric=prediction_metric,
-                            prediction_score=prediction_score,
-                        ).model_dump())
-                finally:
-                    store.close()
+                    models.append(AvailableModel(
+                        id=cid,
+                        name=row.get("model_name") or row.get("model_class", "Unknown"),
+                        source="chain",
+                        model_class=row.get("model_class", "Unknown"),
+                        dataset_name=row.get("dataset_name"),
+                        metric=row.get("metric"),
+                        best_score=best_score,
+                        created_at=None,
+                        file_size=None,
+                        preprocessing=row.get("preprocessings"),
+                        bundle_path=None,
+                        has_refit=has_refit,
+                        fold_artifacts=fold_artifacts,
+                        prediction_metric=prediction_metric,
+                        prediction_score=prediction_score,
+                    ).model_dump())
+            finally:
+                store.close()
         except Exception as e:
             logger.error("Error querying chain summaries: %s", e)
 

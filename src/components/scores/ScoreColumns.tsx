@@ -9,87 +9,14 @@ import { cn } from "@/lib/utils";
 import {
   canonicalMetricKey,
   formatMetricValue,
-  getMetricAbbreviation,
-  getPrimaryContextMetricLabel,
-  getScoreMapValue,
-  isClassificationTaskType,
-  isLowerBetter,
 } from "@/lib/scores";
 import { TableCell } from "@/components/ui/table";
-import type { ScoreCardRow, ScoreCardType } from "@/types/score-cards";
-
-// ============================================================================
-// Context label (RMSEP for refit, RMSECV for crossval, etc.)
-// ============================================================================
-
-/** Get the display label for a metric key based on card type. */
-export function getScoreContextLabel(
-  key: string,
-  cardType: ScoreCardType,
-  primaryMetric: string | null,
-  taskType?: string | null,
-): string {
-  const k = canonicalMetricKey(key);
-  const pm = canonicalMetricKey(primaryMetric);
-  const isPrimaryMetric = !!k && k === pm;
-
-  if ((cardType === "refit" || cardType === "crossval") && isPrimaryMetric) {
-    return getPrimaryContextMetricLabel(primaryMetric || key, cardType, taskType);
-  }
-
-  if ((k === "rmse" || k === pm) && isLowerBetter(k || key)) {
-    if (cardType === "refit") return "RMSEP";
-    if (cardType === "crossval") return "RMSECV";
-  }
-  return getMetricAbbreviation(k || key);
-}
-
-// ============================================================================
-// extractDisplayScores — get the best available score for each metric
-// ============================================================================
-
-/**
- * Extract the best available score for each selected metric from a ScoreCardRow.
- *
- * Priority depends on card type:
- * - refit: testScores → primaryTestScore fallback
- * - crossval: valScores → avgValScores → testScores → avgTestScores
- * - train: testScores → valScores → trainScores
- */
-export function extractDisplayScores(
-  row: ScoreCardRow,
-  selectedMetrics: string[],
-): Record<string, number | null> {
-  const result: Record<string, number | null> = {};
-  const pm = canonicalMetricKey(row.metric || "rmse");
-
-  for (const requestedMetric of selectedMetrics) {
-    const metricKey = canonicalMetricKey(requestedMetric) || requestedMetric;
-    let val: number | null = null;
-
-    if (row.cardType === "refit") {
-      val = getScoreMapValue(row.testScores, metricKey);
-      if (val == null && metricKey === pm) {
-        val = row.primaryTestScore;
-      }
-    } else if (row.cardType === "crossval") {
-      val = getScoreMapValue(row.valScores, metricKey) ?? getScoreMapValue(row.avgValScores, metricKey);
-      if (val == null) val = getScoreMapValue(row.testScores, metricKey) ?? getScoreMapValue(row.avgTestScores, metricKey);
-      if (val == null && metricKey === pm) {
-        val = row.primaryValScore ?? row.primaryTestScore;
-      }
-    } else {
-      // train card: show the partition's score
-      val = getScoreMapValue(row.testScores, metricKey) ?? getScoreMapValue(row.valScores, metricKey) ?? getScoreMapValue(row.trainScores, metricKey);
-      if (val == null && metricKey === pm) {
-        val = row.primaryTestScore ?? row.primaryValScore ?? row.primaryTrainScore;
-      }
-    }
-
-    result[requestedMetric] = val;
-  }
-  return result;
-}
+import type { ScoreCardRow } from "@/types/score-cards";
+import {
+  extractDisplayScores,
+  getScoreContextLabel,
+} from "@/lib/scoreColumnData";
+import { filterScoreRowMetricsForTaskType } from "@/lib/scoreRowData";
 
 // ============================================================================
 // InlineScoreDisplay — horizontal flex row of label/value pairs (card layout)
@@ -102,12 +29,8 @@ interface InlineScoreDisplayProps {
 }
 
 export function InlineScoreDisplay({ row, selectedMetrics, colorClass }: InlineScoreDisplayProps) {
-  const isClassification = isClassificationTaskType(row.taskType);
   const pm = canonicalMetricKey(row.metric);
-  const filteredMetrics = selectedMetrics.filter(metric => {
-    if (isClassification && canonicalMetricKey(metric) === "rmse") return false;
-    return true;
-  });
+  const filteredMetrics = filterScoreRowMetricsForTaskType(selectedMetrics, row.taskType);
   const scores = extractDisplayScores(row, filteredMetrics);
   const visibleMetrics = filteredMetrics.filter(metric => scores[metric] != null);
 
@@ -172,32 +95,4 @@ export function TableScoreCells({ row, selectedMetrics, maxMetrics = 4 }: TableS
       })}
     </>
   );
-}
-
-// ============================================================================
-// Utility: color class for card type
-// ============================================================================
-
-export function cardTypeColorClass(cardType: ScoreCardType): string {
-  switch (cardType) {
-    case "refit": return "text-emerald-500";
-    case "crossval": return "text-chart-1";
-    case "train": return "text-foreground/70";
-  }
-}
-
-export function cardTypeBorderClass(cardType: ScoreCardType): string {
-  switch (cardType) {
-    case "refit": return "border-emerald-500/20";
-    case "crossval": return "border-chart-1/20";
-    case "train": return "border-border/50";
-  }
-}
-
-export function cardTypeBgClass(cardType: ScoreCardType): string {
-  switch (cardType) {
-    case "refit": return "bg-emerald-500/5";
-    case "crossval": return "bg-chart-1/5";
-    case "train": return "";
-  }
 }

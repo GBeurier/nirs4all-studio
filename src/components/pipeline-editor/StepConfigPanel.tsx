@@ -32,14 +32,14 @@ import {
   Repeat,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { getStepColor } from "./stepPresentation";
 import {
-  getStepColor,
   type PipelineStep,
   type StepType,
   type StepSubType,
   type ParameterSweep,
-  calculateStepVariants,
 } from "./types";
+import { calculateStepVariants } from "./variantCounting";
 import { FinetuningBadge } from "./FinetuneConfig";
 import { useStepRenderer } from "./config/step-renderers";
 import { useStepMetadataCatalog } from "./shared/stepMetadata";

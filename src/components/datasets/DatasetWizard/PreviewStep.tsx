@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useWizard } from "./WizardContext";
+import { useWizard } from "./useWizard";
 import { previewDataset, previewDatasetWithUploads } from "@/api/datasets";
 import { PartitionToggle } from "../PartitionToggle";
 import { SpectraChart, TargetHistogram } from "../charts";

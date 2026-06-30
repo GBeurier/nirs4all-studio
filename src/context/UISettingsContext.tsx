@@ -10,68 +10,37 @@
  */
 
 import {
-  createContext,
-  useContext,
   useEffect,
   useState,
   useCallback,
   type ReactNode,
 } from "react";
 import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/workspace";
+import {
+  UISettingsContext,
+  type UISettingsContextType,
+} from "@/context/useUISettings";
+import {
+  clientStorageKeys,
+  type ClientStorageKey,
+  readClientStorageString,
+  writeClientStorageString,
+} from "@/lib/clientStorage";
 import { createLogger } from "@/lib/logger";
 import type { UIDensity, UIZoomLevel, GeneralSettings } from "@/types/settings";
 
 const logger = createLogger("UISettings");
 import { DEFAULT_GENERAL_SETTINGS } from "@/types/settings";
 
-interface UISettingsContextType {
-  /** Current UI density */
-  density: UIDensity;
-  /** Set UI density */
-  setDensity: (density: UIDensity) => Promise<void>;
-  /** Whether animations are reduced */
-  reduceAnimations: boolean;
-  /** Set reduce animations */
-  setReduceAnimations: (reduce: boolean) => Promise<void>;
-  /** Current zoom level (percentage) */
-  zoomLevel: UIZoomLevel;
-  /** Set zoom level */
-  setZoomLevel: (level: UIZoomLevel) => Promise<void>;
-  /** Whether settings are loading */
-  isLoading: boolean;
-  /** Refresh settings from backend */
-  refresh: () => Promise<void>;
-}
-
-const UISettingsContext = createContext<UISettingsContextType | undefined>(
-  undefined
-);
-
-const STORAGE_KEY_DENSITY = "nirs4all-ui-density";
-const STORAGE_KEY_ANIMATIONS = "nirs4all-reduce-animations";
-const STORAGE_KEY_ZOOM = "nirs4all-ui-zoom";
-
 const VALID_ZOOM_LEVELS: UIZoomLevel[] = [75, 80, 90, 100, 110, 125, 150];
 
-// Safe localStorage access - returns null if localStorage is unavailable
-function safeGetItem(key: string): string | null {
-  try {
-    return typeof window !== "undefined" && window.localStorage
-      ? localStorage.getItem(key)
-      : null;
-  } catch {
-    return null;
-  }
+// Safe client storage access - returns null if storage is unavailable
+function safeGetItem(key: ClientStorageKey<string>): string | null {
+  return readClientStorageString(key);
 }
 
-function safeSetItem(key: string, value: string): void {
-  try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      localStorage.setItem(key, value);
-    }
-  } catch {
-    // Silently fail if localStorage is unavailable
-  }
+function safeSetItem(key: ClientStorageKey<string>, value: string): void {
+  writeClientStorageString(key, value);
 }
 
 interface UISettingsProviderProps {
@@ -79,9 +48,9 @@ interface UISettingsProviderProps {
 }
 
 export function UISettingsProvider({ children }: UISettingsProviderProps) {
-  // Initialize from localStorage for fast render
+  // Initialize from client storage for fast render
   const [density, setDensityState] = useState<UIDensity>(() => {
-    const stored = safeGetItem(STORAGE_KEY_DENSITY);
+    const stored = safeGetItem(clientStorageKeys.uiDensity);
     if (stored === "compact" || stored === "comfortable" || stored === "spacious") {
       return stored;
     }
@@ -89,11 +58,11 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
   });
 
   const [reduceAnimations, setReduceAnimationsState] = useState<boolean>(() => {
-    return safeGetItem(STORAGE_KEY_ANIMATIONS) === "true";
+    return safeGetItem(clientStorageKeys.reduceAnimations) === "true";
   });
 
   const [zoomLevel, setZoomLevelState] = useState<UIZoomLevel>(() => {
-    const stored = safeGetItem(STORAGE_KEY_ZOOM);
+    const stored = safeGetItem(clientStorageKeys.uiZoom);
     if (stored) {
       const parsed = parseInt(stored, 10) as UIZoomLevel;
       if (VALID_ZOOM_LEVELS.includes(parsed)) {
@@ -141,7 +110,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
     root.classList.add(`zoom-${zoomLevel}`);
   }, [zoomLevel]);
 
-  // Load settings from workspace (non-blocking: localStorage defaults are already active)
+  // Load settings from workspace (non-blocking: client storage defaults are already active)
   const loadFromWorkspace = useCallback(async () => {
     setIsLoading(true);
     setIsInitialized(false);
@@ -160,7 +129,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
         setHasWorkspace(true);
       }
     } catch {
-      // No workspace - use localStorage values
+      // No workspace - use client storage values
       setHasWorkspace(false);
     } finally {
       setIsLoading(false);
@@ -186,7 +155,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
   // Set density with backend sync
   const setDensity = useCallback(async (newDensity: UIDensity) => {
     setDensityState(newDensity);
-    safeSetItem(STORAGE_KEY_DENSITY, newDensity);
+    safeSetItem(clientStorageKeys.uiDensity, newDensity);
 
     if (hasWorkspace) {
       try {
@@ -203,7 +172,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
   // Set reduce animations with backend sync
   const setReduceAnimations = useCallback(async (reduce: boolean) => {
     setReduceAnimationsState(reduce);
-    safeSetItem(STORAGE_KEY_ANIMATIONS, String(reduce));
+    safeSetItem(clientStorageKeys.reduceAnimations, String(reduce));
 
     if (hasWorkspace) {
       try {
@@ -220,7 +189,7 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
   // Set zoom level with backend sync
   const setZoomLevel = useCallback(async (level: UIZoomLevel) => {
     setZoomLevelState(level);
-    safeSetItem(STORAGE_KEY_ZOOM, String(level));
+    safeSetItem(clientStorageKeys.uiZoom, String(level));
 
     if (hasWorkspace) {
       try {
@@ -250,39 +219,4 @@ export function UISettingsProvider({ children }: UISettingsProviderProps) {
       {children}
     </UISettingsContext.Provider>
   );
-}
-
-/**
- * Hook to access UI settings context
- */
-export function useUISettings(): UISettingsContextType {
-  const context = useContext(UISettingsContext);
-  if (context === undefined) {
-    throw new Error("useUISettings must be used within a UISettingsProvider");
-  }
-  return context;
-}
-
-/**
- * Hook to get just the UI density
- */
-export function useUIDensity(): UIDensity {
-  const context = useContext(UISettingsContext);
-  return context?.density ?? "comfortable";
-}
-
-/**
- * Hook to check if animations are reduced
- */
-export function useReduceAnimations(): boolean {
-  const context = useContext(UISettingsContext);
-  return context?.reduceAnimations ?? false;
-}
-
-/**
- * Hook to get just the UI zoom level
- */
-export function useUIZoomLevel(): UIZoomLevel {
-  const context = useContext(UISettingsContext);
-  return context?.zoomLevel ?? 100;
 }

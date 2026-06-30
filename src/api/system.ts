@@ -15,6 +15,7 @@ import type {
   ErrorLogResponse,
   RuntimeSummaryResponse,
 } from "@/types/settings";
+import type { OperatorCapabilityEntry } from "@/lib/operatorCapability";
 
 /**
  * Get system and environment information
@@ -43,6 +44,12 @@ export interface OperatorAvailabilityEntry {
   type: string;
   class_path?: string | null;
   function_path?: string | null;
+  capability_level?: OperatorCapabilityEntry["level"];
+  backend?: string | null;
+  implementation_ref?: string | null;
+  compute?: string[];
+  available?: boolean;
+  reason?: string | null;
   error?: string | null;
 }
 
@@ -51,6 +58,7 @@ export interface OperatorAvailabilityResponse {
   generated_at?: string;
   computed_at: string;
   checked_count: number;
+  capabilities?: OperatorCapabilityEntry[];
   unavailable: OperatorAvailabilityEntry[];
 }
 

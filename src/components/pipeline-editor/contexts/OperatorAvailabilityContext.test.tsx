@@ -7,7 +7,8 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OPERATOR_AVAILABILITY_INVALIDATED_EVENT } from "@/lib/pipelineOperatorAvailability";
 import type { OperatorAvailabilityResponse } from "@/api/system";
-import { OperatorAvailabilityProvider, useOperatorAvailability } from "./OperatorAvailabilityContext";
+import { OperatorAvailabilityProvider } from "./OperatorAvailabilityContext";
+import { useOperatorAvailability } from "./useOperatorAvailability";
 
 const mocks = vi.hoisted(() => ({
   getOperatorAvailability: vi.fn(),
@@ -166,6 +167,50 @@ describe("OperatorAvailabilityProvider", () => {
 
     expect(view.result.current?.operatorsError).toBeNull();
     expect(view.result.current?.operatorAvailability).toEqual(response);
+
+    await view.unmount();
+  });
+
+  it("exposes non-executable capability entries through the legacy availability facade", async () => {
+    const response: OperatorAvailabilityResponse = {
+      capabilities: [{
+        available: false,
+        class_path: "pkg.MetadataOnly",
+        id: "model.metadata",
+        level: "metadata",
+        name: "MetadataOnly",
+        reason: "Available for preview only",
+        type: "model",
+      }],
+      checked_count: 1,
+      computed_at: "2026-04-17T00:00:00Z",
+      unavailable: [],
+    };
+
+    mocks.runPreflight.mockResolvedValue({ issues: [] });
+    mocks.getOperatorAvailability.mockResolvedValue(response);
+
+    const view = await renderProvider();
+
+    await waitFor(() => {
+      expect(view.result.current?.operatorAvailability).toEqual(response);
+    });
+
+    expect(view.result.current?.getNodeAvailability({
+      classPath: "pkg.MetadataOnly",
+      id: "model.metadata",
+      name: "MetadataOnly",
+      type: "model",
+    })).toMatchObject({
+      available: false,
+      capabilityLevel: "metadata",
+      issue: {
+        details: {
+          class_path: "pkg.MetadataOnly",
+          error: "Available for preview only",
+        },
+      },
+    });
 
     await view.unmount();
   });

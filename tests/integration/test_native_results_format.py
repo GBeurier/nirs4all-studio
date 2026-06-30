@@ -389,7 +389,7 @@ def test_summaries_df_handles_sparse_rows_and_empty_is_typed() -> None:
 
     Reproduces the Codex case: a first row with a null score column followed by a row with a float — the
     default first-rows inference flips/throws; the explicit schema does not. Also pins the empty frame to
-    the EXACT 28-column typed v_chain_summary shape (not all-Utf8).
+    the typed v_chain_summary-compatible shape plus native additive fields (not all-Utf8).
     """
     import polars as pl
 
@@ -419,6 +419,23 @@ def test_fetch_pl_refuses_raw_sql() -> None:
     adapter = NativeResultsAdapter.__new__(NativeResultsAdapter)
     with pytest.raises(NotImplementedError, match="not supported on a native results store"):
         adapter._fetch_pl("SELECT 1")
+
+
+def test_count_chain_summaries_delegates_to_filtered_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The native count method uses the same filter surface as chain summaries."""
+    from api.native_results_adapter import NativeResultsAdapter
+
+    adapter = NativeResultsAdapter.__new__(NativeResultsAdapter)
+    seen_filters = {}
+
+    def fake_query_chain_summaries(**filters):
+        seen_filters.update(filters)
+        return [object(), object()]
+
+    monkeypatch.setattr(adapter, "query_chain_summaries", fake_query_chain_summaries)
+
+    assert adapter.count_chain_summaries(run_id="run-1", dataset_name="diesel") == 2
+    assert seen_filters == {"run_id": "run-1", "dataset_name": "diesel"}
 
 
 @_SKIP_NO_NATIVE

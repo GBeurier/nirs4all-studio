@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PreviewData } from "../contexts";
-import { buildSynthesisChartData, getColorForTarget } from "./SpectraChart";
+import { buildSynthesisChartData, getColorForTarget } from "./synthesisChartData";
 
 /** Build a minimal PreviewData; only spectra/wavelengths/targets/target_type are read. */
 function previewData(

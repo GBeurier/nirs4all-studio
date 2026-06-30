@@ -10,28 +10,17 @@
  */
 
 import { useState, useCallback, useMemo } from "react";
+import type { ReactNode } from "react";
 import {
   Sparkles,
   Plus,
-  X,
-  GripVertical,
-  Settings,
-  ChevronDown,
-  ChevronUp,
-  Shuffle,
-  List,
-  Layers,
-  Check,
   Info,
-  Trash2,
-  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import {
   Popover,
   PopoverContent,
@@ -44,274 +33,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { PipelineStep, StepType, StepOption } from "./types";
-import { stepColors, getStepColor, createStepFromOption, cloneStep } from "./types";
+import { getStepColor, stepColors } from "./stepPresentation";
 import { useStepMetadataCatalog } from "./shared/stepMetadata";
+import {
+  calculateOrVariants,
+  canRemoveOrBranch,
+  coerceOrSelectionCount,
+  coerceOrSelectionRangeEnd,
+  coerceOrSelectionRangeStart,
+  getFilteredStepOptionGroups,
+  getOrDropZoneClassNames,
+  getOrGeneratorSummary,
+  getOrSelectionActionLabel,
+  getOrSelectionKindLabel,
+  getOrVariantLabel,
+  isRange,
+  selectionModeLabels,
+} from "./OrGeneratorData";
+import type { SelectionConfig, SelectionMode } from "./OrGeneratorData";
+import { OrOptionItem } from "./OrGeneratorOption";
 
-// Selection modes for OR generator - simplified to none/pick/arrange
-type SelectionMode = "none" | "pick" | "arrange";
-
-// Value can be a single number or a range [from, to]
-type SelectionValue = number | [number, number];
-
-interface SelectionConfig {
-  mode: SelectionMode;
-  value?: SelectionValue; // Single value or [from, to] range
-}
-
-// Check if value is a range
-function isRange(value: SelectionValue | undefined): value is [number, number] {
-  return Array.isArray(value) && value.length === 2;
-}
-
-const selectionModeLabels: Record<SelectionMode, { label: string; description: string }> = {
-  none: {
-    label: "Try Each",
-    description: "Test each option individually",
-  },
-  pick: {
-    label: "Pick",
-    description: "Choose options (combinations, order doesn't matter)",
-  },
-  arrange: {
-    label: "Arrange",
-    description: "Choose options (permutations, order matters)",
-  },
-};
-
-// Calculate combinations C(n, k)
-function combinations(n: number, k: number): number {
-  if (k < 0 || k > n) return 0;
-  if (k === 0 || k === n) return 1;
-  let result = 1;
-  for (let i = 0; i < k; i++) {
-    result = (result * (n - i)) / (i + 1);
-  }
-  return Math.round(result);
-}
-
-// Calculate permutations P(n, k)
-function permutations(n: number, k: number): number {
-  if (k < 0 || k > n) return 0;
-  let result = 1;
-  for (let i = 0; i < k; i++) {
-    result *= n - i;
-  }
-  return result;
-}
-
-// Calculate variants for a selection value (single or range)
-function calculateVariantsForValue(
-  optionCount: number,
-  mode: "pick" | "arrange",
-  value: SelectionValue
-): number {
-  if (isRange(value)) {
-    // Range [from, to]: sum of all variants from 'from' to 'to'
-    const [from, to] = value;
-    let total = 0;
-    for (let k = from; k <= to; k++) {
-      if (mode === "pick") {
-        total += combinations(optionCount, k);
-      } else {
-        total += permutations(optionCount, k);
-      }
-    }
-    return total;
-  } else {
-    // Single value
-    if (mode === "pick") {
-      return combinations(optionCount, value);
-    } else {
-      return permutations(optionCount, value);
-    }
-  }
-}
-
-// Calculate variant count based on selection mode
-function calculateOrVariants(
-  optionCount: number,
-  selection: SelectionConfig
-): number {
-  switch (selection.mode) {
-    case "none":
-      return optionCount;
-    case "pick":
-      return calculateVariantsForValue(optionCount, "pick", selection.value || 1);
-    case "arrange":
-      return calculateVariantsForValue(optionCount, "arrange", selection.value || 1);
-    default:
-      return optionCount;
-  }
-}
-
-/**
- * OrOptionItem - Individual option within an OR generator
- */
-interface OrOptionItemProps {
-  option: PipelineStep;
-  index: number;
-  isSelected?: boolean;
-  isExpanded?: boolean;
-  onSelect?: () => void;
-  onRemove?: () => void;
-  onDuplicate?: () => void;
-  onToggleExpand?: () => void;
-  onUpdate?: (updates: Partial<PipelineStep>) => void;
-}
-
-export function OrOptionItem({
-  option,
-  index,
-  isSelected = false,
-  isExpanded = false,
-  onSelect,
-  onRemove,
-  onDuplicate,
-  onToggleExpand,
-  onUpdate,
-}: OrOptionItemProps) {
-  const colors = getStepColor(option);
-
-  return (
-    <div
-      className={cn(
-        "group relative rounded-lg border transition-all",
-        colors.border,
-        colors.bg,
-        isSelected && colors.selected,
-        !isSelected && colors.hover
-      )}
-    >
-      {/* Option Header */}
-      <div
-        className="flex items-center gap-2 px-3 py-2 cursor-pointer"
-        onClick={onSelect}
-      >
-        {/* Index indicator */}
-        <div className="flex items-center justify-center w-5 h-5 rounded-full bg-background/50 text-xs font-mono text-muted-foreground">
-          {index + 1}
-        </div>
-
-        {/* Option name */}
-        <div className="flex-1 min-w-0">
-          <span className={cn("font-medium text-sm", colors.text)}>
-            {option.name}
-          </span>
-          {Object.keys(option.params).length > 0 && (
-            <span className="ml-2 text-xs text-muted-foreground">
-              ({Object.keys(option.params).length} params)
-            </span>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {onToggleExpand && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleExpand();
-                  }}
-                >
-                  {isExpanded ? (
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  ) : (
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {isExpanded ? "Collapse" : "Expand"} parameters
-              </TooltipContent>
-            </Tooltip>
-          )}
-          {onDuplicate && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDuplicate();
-                  }}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Duplicate option</TooltipContent>
-            </Tooltip>
-          )}
-          {onRemove && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 text-destructive hover:text-destructive"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemove();
-                  }}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Remove option</TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-      </div>
-
-      {/* Expanded Parameters */}
-      {isExpanded && Object.keys(option.params).length > 0 && (
-        <div className="px-3 pb-3 pt-1 space-y-2 border-t border-border/50">
-          {Object.entries(option.params).map(([key, value]) => (
-            <div key={key} className="flex items-center gap-2">
-              <Label className="text-xs text-muted-foreground capitalize flex-shrink-0 w-24">
-                {key.replace(/_/g, " ")}
-              </Label>
-              <Input
-                value={String(value)}
-                onChange={(e) => {
-                  if (!onUpdate) return;
-                  const newValue =
-                    typeof value === "number"
-                      ? parseFloat(e.target.value) || 0
-                      : typeof value === "boolean"
-                      ? e.target.value === "true"
-                      : e.target.value;
-                  onUpdate({
-                    params: { ...option.params, [key]: newValue },
-                  });
-                }}
-                className="h-7 text-xs font-mono flex-1"
-              />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+export { OrOptionItem } from "./OrGeneratorOption";
 
 /**
  * OrGeneratorContainer - Main container for OR generator visualization
@@ -346,7 +90,6 @@ interface OrGeneratorContainerProps {
 }
 
 export function OrGeneratorContainer({
-  step,
   options,
   selection,
   selectedIndex,
@@ -369,6 +112,7 @@ export function OrGeneratorContainer({
     () => calculateOrVariants(options.length, selection),
     [options.length, selection]
   );
+  const generatorSummary = getOrGeneratorSummary(options.length, variantCount);
 
   // Toggle option expansion
   const toggleExpand = useCallback((index: number) => {
@@ -385,21 +129,7 @@ export function OrGeneratorContainer({
 
   // Filter step options based on search
   const filteredStepOptions = useMemo(() => {
-    const query = searchQuery.toLowerCase();
-    const result: { type: StepType; options: StepOption[] }[] = [];
-
-    (["preprocessing", "model", "splitting"] as StepType[]).forEach((type) => {
-      const typeOptions = getStepOptions(type).filter(
-        (opt) =>
-          opt.name.toLowerCase().includes(query) ||
-          opt.description.toLowerCase().includes(query)
-      );
-      if (typeOptions.length > 0) {
-        result.push({ type, options: typeOptions });
-      }
-    });
-
-    return result;
+    return getFilteredStepOptionGroups(searchQuery, getStepOptions);
   }, [searchQuery, getStepOptions]);
 
   return (
@@ -420,8 +150,7 @@ export function OrGeneratorContainer({
               Choose (_or_)
             </h4>
             <p className="text-xs text-muted-foreground">
-              {options.length} option{options.length !== 1 ? "s" : ""} • {variantCount}{" "}
-              variant{variantCount !== 1 ? "s" : ""}
+              {generatorSummary}
             </p>
           </div>
         </div>
@@ -438,7 +167,7 @@ export function OrGeneratorContainer({
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover">
-              {Object.entries(selectionModeLabels).map(([mode, { label, description }]) => (
+              {Object.entries(selectionModeLabels).map(([mode, { label }]) => (
                 <SelectItem key={mode} value={mode}>
                   <div className="flex flex-col">
                     <span>{label}</span>
@@ -454,7 +183,7 @@ export function OrGeneratorContainer({
       {(selection.mode === "pick" || selection.mode === "arrange") && isEditing && (
         <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-background/50">
           <Label className="text-xs text-muted-foreground">
-            {selection.mode === "pick" ? "Pick" : "Arrange"}
+            {getOrSelectionActionLabel(selection.mode)}
           </Label>
           {isRange(selection.value) ? (
             (() => {
@@ -469,7 +198,10 @@ export function OrGeneratorContainer({
                     onChange={(e) =>
                       onSelectionChange?.({
                         ...selection,
-                        value: [Math.max(1, parseInt(e.target.value) || 1), rangeValue[1]],
+                        value: [
+                          coerceOrSelectionRangeStart(e.target.value),
+                          rangeValue[1],
+                        ],
                       })
                     }
                     className="w-12 h-7 text-xs font-mono"
@@ -483,7 +215,14 @@ export function OrGeneratorContainer({
                     onChange={(e) =>
                       onSelectionChange?.({
                         ...selection,
-                        value: [rangeValue[0], Math.max(rangeValue[0], Math.min(options.length, parseInt(e.target.value) || rangeValue[0]))],
+                        value: [
+                          rangeValue[0],
+                          coerceOrSelectionRangeEnd(
+                            e.target.value,
+                            rangeValue[0],
+                            options.length,
+                          ),
+                        ],
                       })
                     }
                     className="w-12 h-7 text-xs font-mono"
@@ -500,18 +239,17 @@ export function OrGeneratorContainer({
               onChange={(e) =>
                 onSelectionChange?.({
                   ...selection,
-                  value: Math.max(1, Math.min(options.length, parseInt(e.target.value) || 2)),
+                  value: coerceOrSelectionCount(e.target.value, options.length, 2),
                 })
               }
               className="w-14 h-7 text-xs font-mono"
             />
           )}
           <Label className="text-xs text-muted-foreground">
-            of {options.length}{" "}
-            {selection.mode === "pick" ? "(combinations)" : "(permutations)"}
+            of {options.length} {getOrSelectionKindLabel(selection.mode)}
           </Label>
           <Badge variant="secondary" className="ml-auto text-xs">
-            {variantCount} variant{variantCount !== 1 ? "s" : ""}
+            {getOrVariantLabel(variantCount)}
           </Badge>
         </div>
       )}
@@ -527,7 +265,9 @@ export function OrGeneratorContainer({
             isExpanded={expandedIndices.has(index)}
             onSelect={() => onSelectOption?.(index)}
             onRemove={
-              options.length > 1 ? () => onRemoveOption?.(index) : undefined
+              canRemoveOrBranch(options.length)
+                ? () => onRemoveOption?.(index)
+                : undefined
             }
             onDuplicate={() => onDuplicateOption?.(index)}
             onToggleExpand={() => toggleExpand(index)}
@@ -609,18 +349,11 @@ interface OrGeneratorDropZoneProps {
 
 export function OrGeneratorDropZone({
   isActive = false,
-  onDrop,
   className,
 }: OrGeneratorDropZoneProps) {
   return (
     <div
-      className={cn(
-        "flex items-center justify-center p-4 rounded-lg border-2 border-dashed transition-all",
-        isActive
-          ? "border-orange-500 bg-orange-500/10"
-          : "border-border/50 hover:border-orange-500/50 hover:bg-orange-500/5",
-        className
-      )}
+      className={cn(...getOrDropZoneClassNames(isActive), className)}
     >
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Sparkles className="h-4 w-4" />
@@ -639,7 +372,7 @@ interface WrapInOrGeneratorPopoverProps {
   onCancel: () => void;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  trigger?: React.ReactNode;
+  trigger?: ReactNode;
 }
 
 export function WrapInOrGeneratorPopover({
@@ -653,6 +386,7 @@ export function WrapInOrGeneratorPopover({
   const [selection, setSelection] = useState<SelectionConfig>({ mode: "none" });
 
   const variantCount = calculateOrVariants(selectedSteps.length, selection);
+  const variantSummary = getOrVariantLabel(variantCount);
 
   return (
     <Popover open={isOpen} onOpenChange={onOpenChange}>
@@ -707,7 +441,7 @@ export function WrapInOrGeneratorPopover({
 
           <div className="flex items-center justify-between pt-2">
             <Badge variant="secondary" className="bg-orange-500/20 text-orange-600">
-              {variantCount} variant{variantCount !== 1 ? "s" : ""}
+              {variantSummary}
             </Badge>
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" onClick={onCancel}>

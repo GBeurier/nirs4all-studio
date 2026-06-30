@@ -14,6 +14,71 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
+type RendererElectronApi = NonNullable<Window["electronApi"]>;
+
+function createElectronApiMock(
+  overrides: Partial<RendererElectronApi> = {},
+): RendererElectronApi {
+  return {
+    selectFolder: vi.fn().mockResolvedValue(null),
+    confirmDroppedFolder: vi.fn().mockResolvedValue(null),
+    selectFile: vi.fn().mockResolvedValue(null),
+    saveFile: vi.fn().mockResolvedValue(null),
+    revealInExplorer: vi.fn().mockResolvedValue(undefined),
+    openExternal: vi.fn().mockResolvedValue(undefined),
+    getLogPath: vi.fn().mockResolvedValue(null),
+    openLogDir: vi.fn().mockResolvedValue(undefined),
+    getTelemetryConsent: vi.fn().mockResolvedValue("unset"),
+    setTelemetryConsent: vi.fn().mockResolvedValue({
+      status: "declined",
+      decidedAt: "2026-04-18T08:00:00",
+    }),
+    resizeWindow: vi.fn().mockResolvedValue(true),
+    minimizeWindow: vi.fn().mockResolvedValue(true),
+    maximizeWindow: vi.fn().mockResolvedValue(true),
+    restoreWindow: vi.fn().mockResolvedValue(true),
+    getWindowSize: vi.fn().mockResolvedValue({ width: 1024, height: 768 }),
+    getBackendPort: vi.fn().mockResolvedValue(8000),
+    getBackendUrl: vi.fn().mockResolvedValue("http://127.0.0.1:8000"),
+    getBackendInfo: vi.fn().mockResolvedValue({
+      status: "running",
+      port: 8000,
+      url: "http://127.0.0.1:8000",
+      restartCount: 0,
+    }),
+    restartBackend: vi.fn().mockResolvedValue({ success: true }),
+    onBackendStatusChanged: vi.fn(() => () => undefined),
+    getEnvStatus: vi.fn().mockResolvedValue("ready"),
+    isEnvReady: vi.fn().mockResolvedValue(true),
+    getEnvInfo: vi.fn().mockResolvedValue({
+      status: "ready",
+      envDir: "",
+      pythonPath: null,
+      sitePackages: null,
+      pythonVersion: null,
+      isCustom: false,
+    }),
+    detectExistingEnvs: vi.fn().mockResolvedValue([]),
+    inspectExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    useExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    selectPythonExe: vi.fn().mockResolvedValue(null),
+    inspectExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    useExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    applyExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    applyExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    startEnvSetup: vi.fn().mockResolvedValue({ success: true }),
+    onEnvSetupProgress: vi.fn(() => () => undefined),
+    shouldShowWizard: vi.fn().mockResolvedValue(false),
+    markWizardComplete: vi.fn().mockResolvedValue(undefined),
+    getCurrentEnvSummary: vi.fn().mockResolvedValue(null),
+    isPortable: vi.fn().mockResolvedValue(false),
+    platform: "linux",
+    isElectron: true,
+    getPathForFile: vi.fn(() => ""),
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   resetBackendUrl();
 });
@@ -21,7 +86,7 @@ beforeEach(() => {
 afterEach(() => {
   resetBackendUrl();
   vi.unstubAllGlobals();
-  delete (window as Window & { electronApi?: unknown }).electronApi;
+  delete window.electronApi;
 });
 
 describe("formatApiErrorDetail", () => {
@@ -68,11 +133,10 @@ describe("API client request handling", () => {
       url: "http://127.0.0.1:39027",
       restartCount: 3,
     });
-    (window as Window & { electronApi?: unknown }).electronApi = {
-      isElectron: true,
+    window.electronApi = createElectronApiMock({
       getBackendUrl,
       getBackendInfo,
-    };
+    });
 
     const result = await getRecommendedConfig();
 

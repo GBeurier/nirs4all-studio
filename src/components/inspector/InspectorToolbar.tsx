@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Download, Filter, Pin, Settings2, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,16 +12,27 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useInspectorSelection } from "@/context/InspectorSelectionContext";
-import { useInspectorData } from "@/context/InspectorDataContext";
-import { useInspectorFilter } from "@/context/InspectorFilterContext";
-import { useInspectorView, type LayoutMode } from "@/context/InspectorViewContext";
+import { useInspectorSelection } from "@/context/useInspectorSelection";
+import { useInspectorData } from "@/context/useInspectorDataContext";
+import { useInspectorFilter } from "@/context/useInspectorFilter";
+import { useInspectorView, type LayoutMode } from "@/context/useInspectorView";
 import { useInspectorExport } from "@/hooks/useInspectorExport";
 import { INSPECTOR_PANELS } from "@/lib/inspector/chartRegistry";
-import { isLowerBetter } from "@/lib/scores";
-import { SCORE_COLUMNS } from "@/types/inspector";
+import {
+  buildInspectorMetricObservationReadModel,
+  type InspectorScoreRefAvailability,
+} from "@/lib/inspector/chartInputs";
+import { buildInspectorTargetOptions } from "@/lib/inspector/targetSelection";
+import {
+  getInspectorScoreColumnLabel,
+  getInspectorReferenceMetric,
+  getInspectorScoreDirectionLabel,
+  INSPECTOR_SCORE_OPTIONS,
+} from "@/lib/inspector/scoreSelection";
 import type { ScoreColumn } from "@/types/inspector";
 import { InspectorSelectionModeToggle } from "./InspectorSelectionTools";
+
+const AUTO_SCORE_REF_SELECT_VALUE = "__inspector_auto_score_ref__";
 
 const LAYOUT_OPTIONS: { value: LayoutMode; label: string }[] = [
   { value: "auto", label: "Auto" },
@@ -29,17 +41,72 @@ const LAYOUT_OPTIONS: { value: LayoutMode; label: string }[] = [
   { value: "single-column", label: "Stacked" },
 ];
 
+type ObservedScoreRefOption = InspectorScoreRefAvailability & {
+  legacyScoreColumn: ScoreColumn;
+};
+
+function isObservedScoreRefOption(scoreRef: InspectorScoreRefAvailability): scoreRef is ObservedScoreRefOption {
+  return scoreRef.legacyScoreColumn != null && scoreRef.observationCount > 0;
+}
+
+function formatScoreRefOptionLabel(scoreRef: ObservedScoreRefOption): string {
+  const metricLabel = scoreRef.metric ?? "Unknown metric";
+  const scoreLabel = getInspectorScoreColumnLabel(scoreRef.legacyScoreColumn);
+  return `${metricLabel} / ${scoreLabel} / ${scoreRef.observationCount}`;
+}
+
 export function InspectorToolbar() {
   const { selectedCount, hasSelection, clear, pinnedCount } = useInspectorSelection();
-  const { scoreColumn, setScoreColumn, partition, setPartition, totalChains, chains } = useInspectorData();
+  const {
+    scoreColumn,
+    setScoreColumn,
+    selectedScoreRefKey,
+    setSelectedScoreRefKey,
+    partition,
+    setPartition,
+    targetIndex,
+    setTargetIndex,
+    totalChains,
+    chains,
+    availableTargets,
+  } = useInspectorData();
   const { activeFilterCount, filteredChains } = useInspectorFilter();
   const { exportDataAsCsv, exportAllVisiblePanelsPng } = useInspectorExport();
   const { panelStates, layoutMode, setLayoutMode, togglePanel, showAll, resetView } = useInspectorView();
 
   const filteredCount = filteredChains.length;
-  const referenceMetric = chains.find(chain => chain.metric)?.metric ?? null;
-  const directionLabel = isLowerBetter(referenceMetric) ? "Lower is better" : "Higher is better";
+  const referenceMetric = getInspectorReferenceMetric(chains);
+  const directionLabel = getInspectorScoreDirectionLabel(referenceMetric);
   const shownPanelsCount = Object.values(panelStates).filter(state => state !== "hidden").length;
+  const metricObservations = useMemo(
+    () => buildInspectorMetricObservationReadModel(filteredChains),
+    [filteredChains],
+  );
+  const observedScoreRefs = useMemo(
+    () => metricObservations.scoreRefs.filter(isObservedScoreRefOption),
+    [metricObservations],
+  );
+  const targetOptions = useMemo(
+    () => buildInspectorTargetOptions(filteredChains, targetIndex, availableTargets),
+    [filteredChains, targetIndex, availableTargets],
+  );
+  const selectedScoreRefIsVisible = selectedScoreRefKey != null
+    && observedScoreRefs.some(scoreRef => scoreRef.key === selectedScoreRefKey);
+  const scoreRefSelectValue = selectedScoreRefIsVisible
+    ? selectedScoreRefKey
+    : AUTO_SCORE_REF_SELECT_VALUE;
+  const handleScoreRefChange = (value: string) => {
+    if (value === AUTO_SCORE_REF_SELECT_VALUE) {
+      setSelectedScoreRefKey(null);
+      return;
+    }
+
+    const scoreRef = observedScoreRefs.find(option => option.key === value);
+    setSelectedScoreRefKey(value);
+    if (scoreRef) {
+      setScoreColumn(scoreRef.legacyScoreColumn);
+    }
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border/60 bg-card/80 px-4 py-2.5 backdrop-blur-sm">
@@ -51,14 +118,36 @@ export function InspectorToolbar() {
         <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
           Score
         </span>
-        <Select value={scoreColumn} onValueChange={value => setScoreColumn(value as ScoreColumn)}>
+        <Select
+          value={scoreColumn}
+          onValueChange={value => {
+            setScoreColumn(value as ScoreColumn);
+            setSelectedScoreRefKey(null);
+          }}
+        >
           <SelectTrigger className="h-8 w-[170px] text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {SCORE_COLUMNS.map(option => (
+            {INSPECTOR_SCORE_OPTIONS.map(option => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={scoreRefSelectValue}
+          onValueChange={handleScoreRefChange}
+        >
+          <SelectTrigger className="h-8 w-[220px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={AUTO_SCORE_REF_SELECT_VALUE}>Auto</SelectItem>
+            {observedScoreRefs.map(scoreRef => (
+              <SelectItem key={scoreRef.key} value={scoreRef.key}>
+                {formatScoreRefOptionLabel(scoreRef)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -80,6 +169,24 @@ export function InspectorToolbar() {
             <SelectItem value="val">Val</SelectItem>
             <SelectItem value="test">Test</SelectItem>
             <SelectItem value="train">Train</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          Target
+        </span>
+        <Select value={String(targetIndex)} onValueChange={value => setTargetIndex(Number(value))}>
+          <SelectTrigger className="h-8 w-[104px] text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {targetOptions.map(option => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

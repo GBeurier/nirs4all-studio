@@ -9,10 +9,17 @@
  */
 import { useRef } from "react";
 import { Folder, File, FolderSearch, Info } from "lucide-react";
-import { useWizard } from "./WizardContext";
+import { useWizard } from "./useWizard";
 import { selectFolder, selectFile, isDesktop } from "@/utils/fileDialogs";
 import { detectUnified, detectFilesList } from "@/api/datasets";
-import type { WizardSourceType, DetectedFile } from "@/types/datasets";
+import type { WizardSourceType } from "@/types/datasets";
+import {
+  basePathFromFirstPath,
+  buildDetectedFilesFromFileList,
+  buildFallbackDetectedFilesFromPaths,
+  datasetNameFromFilename,
+  datasetNameFromFolderPath,
+} from "./SourceStepData";
 
 interface SourceOptionProps {
   type: WizardSourceType;
@@ -72,39 +79,12 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
     dispatch({ type: "SET_BASE_PATH", payload: "" }); // No path in web mode
 
     // Extract dataset name from first file
-    const firstName = files[0].name;
-    const nameParts = firstName.split(".");
-    nameParts.pop(); // Remove extension
-    dispatch({ type: "SET_DATASET_NAME", payload: nameParts.join(".") || "dataset" });
+    dispatch({ type: "SET_DATASET_NAME", payload: datasetNameFromFilename(files[0].name) });
 
     // Convert to DetectedFile format
     // Note: Type detection is delegated to backend via detectUnified for folder sources.
     // For manual file selection in web mode, users map file types in FileMappingStep.
-    const detectedFiles: DetectedFile[] = Array.from(files).map((file) => {
-      const filename = file.name;
-      const lowerName = filename.toLowerCase();
-
-      // Only detect format from extension (simple, unambiguous)
-      let format: DetectedFile["format"] = "csv";
-      if (lowerName.endsWith(".xlsx")) format = "xlsx";
-      else if (lowerName.endsWith(".xls")) format = "xls";
-      else if (lowerName.endsWith(".parquet")) format = "parquet";
-      else if (lowerName.endsWith(".npy")) format = "npy";
-      else if (lowerName.endsWith(".npz")) format = "npz";
-      else if (lowerName.endsWith(".mat")) format = "mat";
-
-      return {
-        path: filename, // Use filename as path in web mode
-        filename,
-        type: "unknown" as const, // User will map in next step
-        split: "train" as const, // Default to train
-        source: null,
-        format,
-        size_bytes: file.size,
-        confidence: 0.0,
-        detected: false,
-      };
-    });
+    const detectedFiles = buildDetectedFilesFromFileList(Array.from(files));
 
     dispatch({ type: "SET_FILES", payload: detectedFiles });
 
@@ -132,9 +112,7 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
         dispatch({ type: "SET_BASE_PATH", payload: folderPath });
 
         // Extract dataset name from folder
-        const parts = folderPath.split(/[/\\]/);
-        const name = parts[parts.length - 1] || "dataset";
-        dispatch({ type: "SET_DATASET_NAME", payload: name });
+        dispatch({ type: "SET_DATASET_NAME", payload: datasetNameFromFolderPath(folderPath) });
 
         // Auto-detect files in folder using nirs4all's FolderParser
         try {
@@ -185,13 +163,11 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
 
           // Use first file's directory as base path
           const firstPath = filePaths[0];
-          const basePath = firstPath.substring(0, firstPath.lastIndexOf("/") || firstPath.lastIndexOf("\\"));
+          const basePath = basePathFromFirstPath(firstPath);
           dispatch({ type: "SET_BASE_PATH", payload: basePath });
 
           // Extract dataset name
-          const parts = basePath.split(/[/\\]/);
-          const name = parts[parts.length - 1] || "dataset";
-          dispatch({ type: "SET_DATASET_NAME", payload: name });
+          dispatch({ type: "SET_DATASET_NAME", payload: datasetNameFromFolderPath(basePath) });
 
           // Use backend detection to get proper type/split assignments
           try {
@@ -203,55 +179,11 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
               }
             } else {
               // Fallback: create files with format detection only
-              const detectedFiles: DetectedFile[] = filePaths.map((filePath) => {
-                const filename = filePath.split(/[/\\]/).pop() || "";
-                const lowerName = filename.toLowerCase();
-                let format: DetectedFile["format"] = "csv";
-                if (lowerName.endsWith(".xlsx")) format = "xlsx";
-                else if (lowerName.endsWith(".xls")) format = "xls";
-                else if (lowerName.endsWith(".parquet")) format = "parquet";
-                else if (lowerName.endsWith(".npy")) format = "npy";
-                else if (lowerName.endsWith(".npz")) format = "npz";
-                else if (lowerName.endsWith(".mat")) format = "mat";
-                return {
-                  path: filePath,
-                  filename,
-                  type: "unknown" as const,
-                  split: "train" as const,
-                  source: null,
-                  format,
-                  size_bytes: 0,
-                  confidence: 0.0,
-                  detected: false,
-                };
-              });
-              dispatch({ type: "SET_FILES", payload: detectedFiles });
+              dispatch({ type: "SET_FILES", payload: buildFallbackDetectedFilesFromPaths(filePaths) });
             }
           } catch {
             // Fallback: create files with format detection only
-            const detectedFiles: DetectedFile[] = filePaths.map((filePath) => {
-              const filename = filePath.split(/[/\\]/).pop() || "";
-              const lowerName = filename.toLowerCase();
-              let format: DetectedFile["format"] = "csv";
-              if (lowerName.endsWith(".xlsx")) format = "xlsx";
-              else if (lowerName.endsWith(".xls")) format = "xls";
-              else if (lowerName.endsWith(".parquet")) format = "parquet";
-              else if (lowerName.endsWith(".npy")) format = "npy";
-              else if (lowerName.endsWith(".npz")) format = "npz";
-              else if (lowerName.endsWith(".mat")) format = "mat";
-              return {
-                path: filePath,
-                filename,
-                type: "unknown" as const,
-                split: "train" as const,
-                source: null,
-                format,
-                size_bytes: 0,
-                confidence: 0.0,
-                detected: false,
-              };
-            });
-            dispatch({ type: "SET_FILES", payload: detectedFiles });
+            dispatch({ type: "SET_FILES", payload: buildFallbackDetectedFilesFromPaths(filePaths) });
           }
           nextStep();
         }

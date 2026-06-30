@@ -26,6 +26,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from .analysis_results_repository import resolve_analysis_results_repository
+from .execution_driver import (
+    AnalysisExecutionRequest,
+    ExecutionArtifactRef,
+    build_analysis_job_config,
+    build_analysis_result_metadata,
+    new_execution_job_id,
+)
 from .jobs import Job, JobStatus, JobType, job_manager
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
@@ -38,6 +46,8 @@ NIRS4ALL_AVAILABLE = True
 
 
 router = APIRouter()
+
+_AUTOML_ANALYSIS_TYPE = "automl"
 
 
 # ============= Request/Response Models =============
@@ -129,6 +139,192 @@ class AutoMLResults(BaseModel):
     all_trials: list[TrialResult]
     model_path: str | None = None
     search_duration_seconds: float
+
+
+def _as_float(value: Any, default: float = 0.0) -> float:
+    """Return a plain float for persisted/response fields."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalise_trial_payload(trial: Any) -> dict[str, Any]:
+    """Return a JSON/result friendly trial mapping with the existing response defaults."""
+    if hasattr(trial, "model_dump"):
+        trial = trial.model_dump()
+    if not isinstance(trial, dict):
+        trial = {}
+    return {
+        "trial_id": trial.get("trial_id", 0),
+        "model_name": trial.get("model_name", "Unknown"),
+        "params": trial.get("params", {}),
+        "score": _as_float(trial.get("score")),
+        "std": trial.get("std"),
+        "duration_seconds": _as_float(trial.get("duration_seconds")),
+        "status": trial.get("status", "unknown"),
+        "error": trial.get("error"),
+    }
+
+
+def _automl_storage_payload(job_id: str, result: dict[str, Any], *, status: str) -> dict[str, Any]:
+    """Build the durable AutoML payload needed to reconstruct AutoMLResults."""
+    trials = result.get("trials", result.get("all_trials", []))
+    if not isinstance(trials, list):
+        trials = []
+
+    payload = dict(result)
+    payload.update(
+        {
+            "job_id": job_id,
+            "status": status,
+            "best_score": _as_float(result.get("best_score")),
+            "best_model": result.get("best_model") or "Unknown",
+            "best_params": result.get("best_params") if isinstance(result.get("best_params"), dict) else {},
+            "trials": [_normalise_trial_payload(trial) for trial in trials],
+            "model_path": result.get("model_path"),
+            "search_duration_seconds": _as_float(result.get("search_duration_seconds")),
+        }
+    )
+    return payload
+
+
+def _persist_automl_result(
+    job_id: str,
+    result: dict[str, Any],
+    workspace_path: str | None,
+    *,
+    status: str,
+) -> str:
+    """Persist a completed AutoML result; return the storage location label."""
+    repository = resolve_analysis_results_repository(workspace_path)
+    if repository is None:
+        return "memory_cache"
+    try:
+        repository.save(
+            _AUTOML_ANALYSIS_TYPE,
+            job_id,
+            _automl_storage_payload(job_id, result, status=status),
+        )
+        return "workspace_repository"
+    except Exception as exc:  # durability is best-effort; never fail the job
+        logger.error("Failed to persist AutoML result %s: %s", job_id, exc)
+        return "memory_cache"
+
+
+def _load_persisted_automl_result(job_id: str, workspace_path: str | None) -> dict[str, Any] | None:
+    """Return a persisted AutoML result payload for the workspace, if present."""
+    repository = resolve_analysis_results_repository(workspace_path)
+    if repository is None:
+        return None
+    return repository.load(_AUTOML_ANALYSIS_TYPE, job_id)
+
+
+def _active_workspace_path() -> str | None:
+    """Return the active workspace path for durable result lookup."""
+    workspace = workspace_manager.get_active_workspace()
+    if not workspace:
+        return None
+    return workspace.path
+
+
+def _automl_results_response(
+    payload: dict[str, Any],
+    *,
+    job_id: str,
+    status: str | None = None,
+    duration_seconds: float | None = None,
+) -> AutoMLResults:
+    """Convert an in-memory or persisted AutoML payload into the public response model."""
+    trials = payload.get("trials", payload.get("all_trials", []))
+    if not isinstance(trials, list):
+        trials = []
+
+    duration = duration_seconds
+    if duration is None:
+        duration = _as_float(payload.get("search_duration_seconds"))
+
+    return AutoMLResults(
+        job_id=str(payload.get("job_id") or job_id),
+        status=str(payload.get("status") or status or JobStatus.COMPLETED.value),
+        best_score=_as_float(payload.get("best_score")),
+        best_model=str(payload.get("best_model") or "Unknown"),
+        best_params=payload.get("best_params") if isinstance(payload.get("best_params"), dict) else {},
+        all_trials=[
+            TrialResult(
+                trial_id=trial["trial_id"],
+                model_name=trial["model_name"],
+                params=trial["params"],
+                score=trial["score"],
+                std=trial["std"],
+                duration_seconds=trial["duration_seconds"],
+                status=trial["status"],
+                error=trial["error"],
+            )
+            for trial in (_normalise_trial_payload(t) for t in trials)
+        ],
+        model_path=payload.get("model_path"),
+        search_duration_seconds=duration,
+    )
+
+
+def _build_automl_job_config(
+    request: AutoMLRequest,
+    *,
+    dataset_name: str,
+    enabled_models: list[dict[str, Any]],
+    workspace_path: str,
+    job_id: str,
+) -> dict[str, Any]:
+    """Build legacy AutoML config with execution metadata attached."""
+    base_config = {
+        "dataset_id": request.dataset_id,
+        "dataset_name": dataset_name,
+        "partition": request.partition,
+        "task_type": request.task_type,
+        "metric": request.metric,
+        "n_trials": request.n_trials,
+        "timeout_seconds": request.timeout_seconds,
+        "cv_folds": request.cv_folds,
+        "validation_split": request.validation_split,
+        "random_state": request.random_state,
+        "preprocessing_chain": request.preprocessing_chain,
+        "models": enabled_models,
+        "include_preprocessing_search": request.include_preprocessing_search,
+        "workspace_path": workspace_path,
+    }
+    execution_request = AnalysisExecutionRequest(
+        job_id=job_id,
+        analysis_type="automl",
+        dataset_id=request.dataset_id,
+        workspace_path=workspace_path,
+        artifacts=(
+            ExecutionArtifactRef(
+                role="input_dataset",
+                artifact_type="dataset",
+                artifact_id=request.dataset_id,
+                metadata={"partition": request.partition},
+            ),
+        ),
+        parameters={
+            "partition": request.partition,
+            "task_type": request.task_type,
+            "metric": request.metric,
+            "n_trials": request.n_trials,
+            "timeout_seconds": request.timeout_seconds,
+            "cv_folds": request.cv_folds,
+            "validation_split": request.validation_split,
+            "random_state": request.random_state,
+            "include_preprocessing_search": request.include_preprocessing_search,
+            "enabled_model_count": len(enabled_models),
+        },
+        metadata={
+            "dataset_name": dataset_name,
+        },
+    )
+    return build_analysis_job_config(base_config, execution_request)
 
 
 # ============= Default Search Spaces =============
@@ -293,26 +489,17 @@ async def start_automl(request: AutoMLRequest):
             detail="No models enabled for search",
         )
 
-    # Create job configuration
-    job_config = {
-        "dataset_id": request.dataset_id,
-        "dataset_name": dataset.name,
-        "partition": request.partition,
-        "task_type": request.task_type,
-        "metric": request.metric,
-        "n_trials": request.n_trials,
-        "timeout_seconds": request.timeout_seconds,
-        "cv_folds": request.cv_folds,
-        "validation_split": request.validation_split,
-        "random_state": request.random_state,
-        "preprocessing_chain": request.preprocessing_chain,
-        "models": enabled_models,
-        "include_preprocessing_search": request.include_preprocessing_search,
-        "workspace_path": workspace.path,
-    }
+    job_id = new_execution_job_id(JobType.AUTOML)
+    job_config = _build_automl_job_config(
+        request,
+        dataset_name=dataset.name,
+        enabled_models=enabled_models,
+        workspace_path=workspace.path,
+        job_id=job_id,
+    )
 
     # Create and submit job
-    job = job_manager.create_job(JobType.AUTOML, job_config)
+    job = job_manager.create_job(JobType.AUTOML, job_config, job_id=job_id)
     job_manager.submit_job(job, _run_automl_task)
 
     return AutoMLStatus(
@@ -403,7 +590,10 @@ async def get_automl_results(job_id: str):
     """
     job = job_manager.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        persisted = _load_persisted_automl_result(job_id, _active_workspace_path())
+        if persisted is None:
+            raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+        return _automl_results_response(persisted, job_id=job_id)
 
     if job.type != JobType.AUTOML:
         raise HTTPException(
@@ -417,30 +607,25 @@ async def get_automl_results(job_id: str):
             detail=f"Job '{job_id}' is not completed (status: {job.status.value})",
         )
 
-    result = job.result or {}
-    trials = result.get("trials", [])
+    if job.result:
+        return _automl_results_response(
+            job.result,
+            job_id=job.id,
+            status=job.status.value,
+            duration_seconds=job._get_duration() or 0.0,
+        )
 
-    return AutoMLResults(
+    persisted = _load_persisted_automl_result(job_id, job.config.get("workspace_path"))
+    if persisted is None:
+        persisted = _load_persisted_automl_result(job_id, _active_workspace_path())
+    if persisted is not None:
+        return _automl_results_response(persisted, job_id=job.id, status=job.status.value)
+
+    return _automl_results_response(
+        {},
         job_id=job.id,
         status=job.status.value,
-        best_score=result.get("best_score", 0.0),
-        best_model=result.get("best_model", "Unknown"),
-        best_params=result.get("best_params", {}),
-        all_trials=[
-            TrialResult(
-                trial_id=t.get("trial_id", 0),
-                model_name=t.get("model_name", "Unknown"),
-                params=t.get("params", {}),
-                score=t.get("score", 0.0),
-                std=t.get("std"),
-                duration_seconds=t.get("duration_seconds", 0.0),
-                status=t.get("status", "unknown"),
-                error=t.get("error"),
-            )
-            for t in trials
-        ],
-        model_path=result.get("model_path"),
-        search_duration_seconds=job._get_duration() or 0.0,
+        duration_seconds=job._get_duration() or 0.0,
     )
 
 
@@ -773,6 +958,7 @@ def _run_automl_task(
 
     # Export best model using RunResult.export()
     model_path = None
+    output_artifacts: list[ExecutionArtifactRef] = []
     if best and workspace_path:
         try:
             models_dir = Path(workspace_path) / "models"
@@ -784,6 +970,14 @@ def _run_automl_task(
 
             result.export(str(export_path))
             model_path = str(export_path)
+            output_artifacts.append(
+                ExecutionArtifactRef(
+                    role="output_model",
+                    artifact_type="model_bundle",
+                    path=model_path,
+                    metadata={"model_name": best_model_name},
+                )
+            )
         except Exception as e:
             logger.error("Error exporting AutoML model: %s", e)
 
@@ -792,8 +986,9 @@ def _run_automl_task(
     # Sort trials by score
     completed_trials = [t for t in trials if t["status"] == "completed"]
     completed_trials.sort(key=lambda t: t["score"], reverse=True)
+    execution_metadata = build_analysis_result_metadata(config, output_artifacts)
 
-    return {
+    result_payload = {
         "best_score": float(best_score) if best_score else 0.0,
         "best_model": best_model_name,
         "best_params": best_params,
@@ -802,7 +997,11 @@ def _run_automl_task(
         "total_trials": len(trials),
         "completed_trials": len(completed_trials),
         "search_duration_seconds": time.time() - start_time,
+        **execution_metadata,
     }
+    status = JobStatus.CANCELLED.value if getattr(job, "cancellation_requested", False) else JobStatus.COMPLETED.value
+    _persist_automl_result(job.id, result_payload, workspace_path, status=status)
+    return result_payload
 
 
 def _get_transformer_class(name: str):

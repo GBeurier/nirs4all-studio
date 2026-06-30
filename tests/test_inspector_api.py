@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
@@ -156,6 +157,44 @@ def make_client(store, mock_workspace):
             yield client
 
 
+def _score_ref_payload(
+    *,
+    protocol: str = "cv",
+    partition: str = "val",
+    aggregation: str = "mean",
+    legacy_score_column: str = "cv_val_score",
+) -> dict[str, str]:
+    return {
+        "key": f"rmse:{protocol}:{partition}:{aggregation}",
+        "metric": "rmse",
+        "protocol": protocol,
+        "partition": partition,
+        "aggregation": aggregation,
+        "legacyScoreColumn": legacy_score_column,
+    }
+
+
+def test_score_ref_resolution_prefers_consistent_legacy_column():
+    from api.inspector import ScoreRef, _resolve_score_column_from_score_ref
+
+    assert _resolve_score_column_from_score_ref(
+        "cv_train_score",
+        ScoreRef(protocol="cross_validation", partition="validation", aggregation="fold_mean", legacyScoreColumn="cv_val_score"),
+    ) == "cv_val_score"
+    assert _resolve_score_column_from_score_ref(
+        "cv_val_score",
+        ScoreRef(protocol="cross_validation", partition="test", aggregation="fold_mean"),
+    ) == "cv_test_score"
+    assert _resolve_score_column_from_score_ref(
+        "cv_val_score",
+        ScoreRef(protocol="cross_validation", partition="test", aggregation="fold_mean", legacyScoreColumn="cv_val_score"),
+    ) == "cv_test_score"
+    assert _resolve_score_column_from_score_ref(
+        "cv_val_score",
+        ScoreRef(protocol="nested_cv", partition="holdout", aggregation="trimmed_mean", legacyScoreColumn="outer"),
+    ) == "cv_val_score"
+
+
 def test_scatter_endpoint_falls_back_to_get_prediction(mock_workspace):
     chain_rows = [
         {
@@ -215,6 +254,75 @@ def test_scatter_endpoint_falls_back_to_get_prediction(mock_workspace):
     assert payload["points"][0]["sample_indices"] == [0, 1, 2]
 
 
+def test_scatter_selects_target_column_from_2d_arrays(mock_workspace):
+    chain_rows = [
+        {
+            "chain_id": "chain-a",
+            "run_id": "run-1",
+            "pipeline_id": "pipe-1",
+            "model_class": "PLSRegression",
+            "model_name": "PLS 8",
+            "preprocessings": "SNV",
+            "metric": "rmse",
+            "task_type": "regression",
+            "dataset_name": "diesel",
+            "cv_val_score": 0.12,
+            "cv_test_score": 0.14,
+            "cv_train_score": 0.1,
+            "cv_fold_count": 2,
+            "final_test_score": None,
+            "final_train_score": None,
+            "pipeline_status": "completed",
+            "model_step_idx": 1,
+            "branch_path": None,
+            "best_params": None,
+        }
+    ]
+    prediction_rows = {
+        "chain-a": [
+            {
+                "prediction_id": "pred-2d",
+                "chain_id": "chain-a",
+                "partition": "val",
+                "model_class": "PLSRegression",
+                "model_name": "PLS 8",
+                "preprocessings": "SNV",
+                "val_score": 0.12,
+                "test_score": 0.14,
+                "train_score": 0.1,
+            }
+        ]
+    }
+    predictions_by_id = {
+        "pred-2d": {
+            "y_true": [[1.0, 10.0], [2.0, 20.0], [3.0, 30.0]],
+            "y_pred": [[0.9, 9.5], [2.1, 20.5], [3.2, 29.5]],
+            "sample_indices": [0, 1, 2],
+        }
+    }
+
+    store = StoreWithoutArrayGetter(chain_rows, prediction_rows, predictions_by_id)
+
+    with make_client(store, mock_workspace) as client:
+        default_response = client.post("/api/inspector/scatter", json={"chain_ids": ["chain-a"], "partition": "val"})
+        target_1_response = client.post(
+            "/api/inspector/scatter",
+            json={"chain_ids": ["chain-a"], "partition": "val", "target_index": 1},
+        )
+
+    assert default_response.status_code == 200
+    default_payload = default_response.json()
+    assert default_payload["total_samples"] == 3
+    assert default_payload["points"][0]["y_true"] == [1.0, 2.0, 3.0]
+    assert default_payload["points"][0]["y_pred"] == [0.9, 2.1, 3.2]
+
+    assert target_1_response.status_code == 200
+    target_1_payload = target_1_response.json()
+    assert target_1_payload["total_samples"] == 3
+    assert target_1_payload["points"][0]["y_true"] == [10.0, 20.0, 30.0]
+    assert target_1_payload["points"][0]["y_pred"] == [9.5, 20.5, 29.5]
+
+
 def test_confusion_matrix_accepts_list_payloads(mock_workspace):
     chain_rows = [
         {
@@ -271,6 +379,178 @@ def test_confusion_matrix_accepts_list_payloads(mock_workspace):
     assert payload["labels"] == ["cat", "dog"]
     assert payload["total_samples"] == 4
     assert any(cell["true_label"] == "cat" and cell["pred_label"] == "dog" and cell["count"] == 1 for cell in payload["cells"])
+
+
+def test_confusion_matrix_selects_target_column_from_2d_arrays(mock_workspace):
+    chain_rows = [
+        {
+            "chain_id": "clf-chain",
+            "run_id": "run-1",
+            "pipeline_id": "pipe-1",
+            "model_class": "RandomForestClassifier",
+            "model_name": "RF",
+            "preprocessings": "SNV",
+            "metric": "accuracy",
+            "task_type": "classification",
+            "dataset_name": "beans",
+            "cv_val_score": 0.91,
+            "cv_test_score": 0.88,
+            "cv_train_score": 0.95,
+            "cv_fold_count": 2,
+            "final_test_score": None,
+            "final_train_score": None,
+            "pipeline_status": "completed",
+            "model_step_idx": 1,
+            "branch_path": None,
+            "best_params": None,
+        }
+    ]
+    prediction_rows = {
+        "clf-chain": [
+            {
+                "prediction_id": "clf-pred-2d",
+                "chain_id": "clf-chain",
+                "partition": "val",
+                "model_class": "RandomForestClassifier",
+                "model_name": "RF",
+                "preprocessings": "SNV",
+                "val_score": 0.91,
+                "test_score": 0.88,
+                "train_score": 0.95,
+            }
+        ]
+    }
+    predictions_by_id = {
+        "clf-pred-2d": {
+            "y_true": [["cat", "red"], ["dog", "blue"], ["cat", "red"], ["dog", "blue"]],
+            "y_pred": [["cat", "red"], ["dog", "red"], ["dog", "red"], ["dog", "blue"]],
+        }
+    }
+
+    store = StoreWithoutArrayGetter(chain_rows, prediction_rows, predictions_by_id)
+
+    with make_client(store, mock_workspace) as client:
+        default_response = client.post("/api/inspector/confusion", json={"chain_ids": ["clf-chain"], "partition": "val"})
+        target_1_response = client.post(
+            "/api/inspector/confusion",
+            json={"chain_ids": ["clf-chain"], "partition": "val", "target_index": 1},
+        )
+
+    assert default_response.status_code == 200
+    default_payload = default_response.json()
+    assert default_payload["labels"] == ["cat", "dog"]
+    assert default_payload["total_samples"] == 4
+    assert any(cell["true_label"] == "cat" and cell["pred_label"] == "dog" and cell["count"] == 1 for cell in default_payload["cells"])
+
+    assert target_1_response.status_code == 200
+    target_1_payload = target_1_response.json()
+    assert target_1_payload["labels"] == ["blue", "red"]
+    assert target_1_payload["total_samples"] == 4
+    assert any(cell["true_label"] == "blue" and cell["pred_label"] == "red" and cell["count"] == 1 for cell in target_1_payload["cells"])
+
+
+def test_fold_stability_accepts_score_ref_payload(mock_workspace):
+    prediction_rows = {
+        "chain-a": [
+            {
+                "prediction_id": "pred-a-1",
+                "chain_id": "chain-a",
+                "partition": "val",
+                "fold_id": "fold-1",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "val_score": 0.12,
+            }
+        ],
+    }
+    store = StoreWithoutArrayGetter([], prediction_rows, {})
+
+    with make_client(store, mock_workspace) as client:
+        response = client.post(
+            "/api/inspector/fold-stability",
+            json={
+                "chain_ids": ["chain-a"],
+                "score_column": "cv_val_score",
+                "score_ref": _score_ref_payload(),
+                "partition": "val",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["score_column"] == "cv_val_score"
+    assert payload["fold_ids"] == ["fold-1"]
+    assert payload["entries"][0]["score"] == 0.12
+
+
+def test_fold_stability_score_ref_selects_score_column_and_partition(mock_workspace):
+    prediction_rows = {
+        "chain-a": [
+            {
+                "prediction_id": "pred-a-test",
+                "chain_id": "chain-a",
+                "partition": "test",
+                "fold_id": "fold-test",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "val_score": 0.12,
+                "test_score": 0.42,
+            }
+        ],
+    }
+    store = StoreWithoutArrayGetter([], prediction_rows, {})
+
+    with make_client(store, mock_workspace) as client:
+        response = client.post(
+            "/api/inspector/fold-stability",
+            json={
+                "chain_ids": ["chain-a"],
+                "score_column": "cv_val_score",
+                "score_ref": _score_ref_payload(partition="test", legacy_score_column="cv_test_score"),
+                "partition": "val",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["score_column"] == "cv_test_score"
+    assert payload["fold_ids"] == ["fold-test"]
+    assert payload["entries"][0]["score"] == 0.42
+
+
+def test_fold_stability_unknown_score_ref_preserves_legacy_partition(mock_workspace):
+    prediction_rows = {
+        "chain-a": [
+            {
+                "prediction_id": "pred-a-test",
+                "chain_id": "chain-a",
+                "partition": "test",
+                "fold_id": "fold-test",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "val_score": 0.12,
+                "test_score": 0.38,
+            }
+        ],
+    }
+    store = StoreWithoutArrayGetter([], prediction_rows, {})
+
+    with make_client(store, mock_workspace) as client:
+        response = client.post(
+            "/api/inspector/fold-stability",
+            json={
+                "chain_ids": ["chain-a"],
+                "score_column": "cv_val_score",
+                "score_ref": _score_ref_payload(protocol="nested_cv", partition="holdout", aggregation="trimmed"),
+                "partition": "test",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["score_column"] == "cv_val_score"
+    assert payload["fold_ids"] == ["fold-test"]
+    assert payload["entries"][0]["score"] == 0.38
 
 
 def test_bias_variance_separates_same_sample_index_across_datasets(mock_workspace):
@@ -340,7 +620,12 @@ def test_bias_variance_separates_same_sample_index_across_datasets(mock_workspac
     with make_client(store, mock_workspace) as client:
         response = client.post(
             "/api/inspector/bias-variance",
-            json={"chain_ids": ["chain-a", "chain-b"], "score_column": "cv_val_score", "group_by": "model_class"},
+            json={
+                "chain_ids": ["chain-a", "chain-b"],
+                "score_column": "cv_val_score",
+                "score_ref": _score_ref_payload(),
+                "group_by": "model_class",
+            },
         )
 
     assert response.status_code == 200
@@ -377,6 +662,58 @@ def _chain_row(chain_id: str, pipeline_id: str, **overrides) -> dict:
     }
     row.update(overrides)
     return row
+
+
+def test_branch_topology_uses_legacy_score_column_without_score_ref(mock_workspace):
+    chain_rows = [
+        _chain_row("chain-a", "pipe-1", model_class="PLSRegression", cv_val_score=0.2, cv_test_score=0.8),
+        _chain_row("chain-b", "pipe-1", model_class="PLSRegression", cv_val_score=0.4, cv_test_score=0.9),
+    ]
+    store = StoreWithoutArrayGetter(chain_rows, {}, {})
+
+    with make_client(store, mock_workspace) as client:
+        response = client.get(
+            "/api/inspector/branch-topology",
+            params={"pipeline_id": "pipe-1", "score_column": "cv_val_score"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["nodes"][0]["metrics"]["mean_score"] == 0.3
+
+
+def test_branch_topology_score_ref_selects_resolved_score_column(mock_workspace):
+    chain_rows = [
+        _chain_row("chain-a", "pipe-1", model_class="PLSRegression", cv_val_score=0.2, cv_test_score=0.8),
+        _chain_row("chain-b", "pipe-1", model_class="PLSRegression", cv_val_score=0.4, cv_test_score=0.9),
+    ]
+    store = StoreWithoutArrayGetter(chain_rows, {}, {})
+
+    with make_client(store, mock_workspace) as client:
+        response = client.get(
+            "/api/inspector/branch-topology",
+            params={
+                "pipeline_id": "pipe-1",
+                "score_column": "cv_val_score",
+                "score_ref": json.dumps(_score_ref_payload(partition="test", legacy_score_column="cv_test_score")),
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["nodes"][0]["metrics"]["mean_score"] == 0.85
+
+
+def test_branch_topology_invalid_score_ref_returns_422(mock_workspace):
+    store = StoreWithoutArrayGetter([], {}, {})
+
+    with make_client(store, mock_workspace) as client:
+        response = client.get(
+            "/api/inspector/branch-topology",
+            params={"pipeline_id": "pipe-1", "score_ref": "not-json"},
+        )
+
+    assert response.status_code == 422
 
 
 def test_data_endpoint_query_budget_is_constant_in_pipeline_count(mock_workspace):
@@ -458,3 +795,31 @@ def test_rankings_unknown_metric_defaults_to_higher_is_better(mock_workspace):
     payload = response.json()
     assert payload["sort_ascending"] is False
     assert [r["chain_id"] for r in payload["rankings"]] == ["hi", "lo"]
+
+
+def test_get_store_uses_native_results_repository_when_no_store(tmp_path):
+    """A native-results-only workspace resolves through the shared repository resolver."""
+    import api.inspector
+
+    workspace_dir = tmp_path / "native_ws"
+    workspace_dir.mkdir()
+    native_dir = workspace_dir / "nirs4all_results" / "20260101T000000000000Z-deadbeef"
+    native_dir.mkdir(parents=True)
+    (native_dir / "manifest.json").write_text("{}")
+
+    class Workspace:
+        path = str(workspace_dir)
+
+    sentinel_adapter = object()
+
+    with (
+        patch.object(api.inspector, "workspace_manager") as mock_workspace_manager,
+        patch.object(api.inspector, "STORE_AVAILABLE", True),
+        patch("api.native_results_adapter.NativeResultsAdapter", return_value=sentinel_adapter) as mock_adapter_cls,
+    ):
+        mock_workspace_manager.get_current_workspace.return_value = Workspace()
+        resolved = api.inspector._get_store()
+
+    assert resolved is sentinel_adapter
+    called_arg = Path(mock_adapter_cls.call_args.args[0])
+    assert called_arg == workspace_dir / "nirs4all_results"

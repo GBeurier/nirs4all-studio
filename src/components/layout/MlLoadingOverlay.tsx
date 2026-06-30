@@ -4,7 +4,7 @@
  * Disappears automatically when mlReady becomes true.
  */
 
-import { useMlReadiness } from "@/context/MlReadinessContext";
+import { useMlReadiness } from "@/context/useMlReadiness";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 

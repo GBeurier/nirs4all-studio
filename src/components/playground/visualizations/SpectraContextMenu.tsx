@@ -38,7 +38,7 @@ import {
   EyeOff,
   Trash2,
 } from 'lucide-react';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection } from '@/context/useSelection';
 
 export interface SpectraContextMenuProps {
   /** The trigger element (chart area) */
@@ -75,8 +75,8 @@ export function SpectraContextMenu({
   const selectionCtx = useSelection();
 
   // Compute selection state
-  const selectedSamples = selectionCtx?.selectedSamples ?? new Set<number>();
-  const pinnedSamples = selectionCtx?.pinnedSamples ?? new Set<number>();
+  const selectedSamples = selectionCtx.selectedSamples;
+  const pinnedSamples = selectionCtx.pinnedSamples;
   const hasSelection = selectedSamples.size > 0;
   const hasPinned = pinnedSamples.size > 0;
 

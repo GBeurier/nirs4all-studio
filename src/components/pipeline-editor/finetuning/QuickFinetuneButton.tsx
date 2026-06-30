@@ -6,7 +6,10 @@ import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PipelineStep } from "../types";
-import { getPresetsForModel } from "./presets";
+import {
+  buildQuickFinetuneConfig,
+  getNumericFinetuneParamNames,
+} from "./QuickFinetuneData";
 
 interface QuickFinetuneButtonProps {
   step: PipelineStep;
@@ -22,11 +25,11 @@ export function QuickFinetuneButton({
   className,
 }: QuickFinetuneButtonProps) {
   const hasFinetuning = step.finetuneConfig?.enabled;
-
-  // Get available parameters from step params
-  const availableParams = Object.keys(step.params).filter(
-    (p) => typeof step.params[p] === "number"
-  );
+  const availableParams = getNumericFinetuneParamNames(step.params);
+  const quickFinetuneConfig = buildQuickFinetuneConfig({
+    modelName: step.name,
+    params: step.params,
+  });
 
   const handleQuickEnable = () => {
     if (hasFinetuning) {
@@ -34,33 +37,22 @@ export function QuickFinetuneButton({
       return;
     }
 
-    // Quick-enable with smart defaults
-    const presets = getPresetsForModel(step.name);
-    const matchingPresets = presets.filter((p) =>
-      availableParams.includes(p.name)
-    );
+    if (!quickFinetuneConfig) {
+      return;
+    }
 
     onUpdate({
-      finetuneConfig: {
-        enabled: true,
-        n_trials: 50,
-        approach: "grouped",
-        eval_mode: "best",
-        model_params: matchingPresets.slice(0, 2).map((p) => ({
-          name: p.name,
-          type: p.type,
-          low: p.low,
-          high: p.high,
-          step: p.step,
-          choices: p.choices,
-        })),
-      },
+      finetuneConfig: quickFinetuneConfig,
     });
 
     onOpenTab?.();
   };
 
   if (availableParams.length === 0) {
+    return null;
+  }
+
+  if (!hasFinetuning && !quickFinetuneConfig) {
     return null;
   }
 

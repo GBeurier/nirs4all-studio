@@ -44,7 +44,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ChartErrorBoundary } from './visualizations/ChartErrorBoundary';
-import type { ChartType, ViewState } from '@/context/PlaygroundViewContext';
+import type { ChartType, ViewState } from '@/context/usePlaygroundView';
 
 // Re-export for convenience
 export { ChartErrorBoundary };

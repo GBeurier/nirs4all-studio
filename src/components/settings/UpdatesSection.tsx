@@ -11,50 +11,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Download,
-  RefreshCw,
-  Package,
-  Settings2,
-  CheckCircle2,
-  AlertCircle,
-  ExternalLink,
-  ChevronDown,
-  Loader2,
-  HardDrive,
-  XCircle,
-  RotateCcw,
-  Save,
-  History,
-  Trash2,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   useUpdateStatus,
   useCheckForUpdates,
   useUpdateSettings,
@@ -81,6 +37,24 @@ import { resetBackendUrl } from "@/api/transport";
 import type { RuntimeSummaryResponse } from "@/types/settings";
 import { dispatchOperatorAvailabilityInvalidated } from "@/lib/pipelineOperatorAvailability";
 import { getPythonRuntimeDisplayState } from "@/lib/pythonRuntimeDisplay";
+import {
+  getCurrentRuntime,
+  getGpuDisplay,
+  getNirs4allUpdateRowState,
+  getRuntimeExecutablePath,
+  getTorchRuntimeDisplay,
+  getUpdateAvailability,
+  getWebappDialogCopy,
+  getWebappUpdateRowState,
+} from "./UpdatesSectionLogic";
+import {
+  UpdatesErrorCard,
+  UpdatesLoadingCard,
+  UpdatesSectionShell,
+} from "./UpdatesSectionShell";
+import { UpdatesApplyConfirmDialog } from "./UpdatesApplyConfirmDialog";
+import { UpdatesNirs4allDialog } from "./UpdatesNirs4allDialog";
+import { UpdatesWebappDialog } from "./UpdatesWebappDialog";
 
 export function UpdatesSection() {
   const queryClient = useQueryClient();
@@ -155,6 +129,25 @@ export function UpdatesSection() {
       .catch(() => setRuntimeSummary(null));
   }, []);
 
+  const handleRestartBackend = useCallback(async () => {
+    const electronApi = (window as unknown as Record<string, unknown>).electronApi as
+      | { restartBackend?: () => Promise<{ success: boolean }> }
+      | undefined;
+    if (electronApi?.restartBackend) {
+      const result = await electronApi.restartBackend();
+      if (result.success) {
+        resetBackendUrl();
+        setNeedsRestart(false);
+        dispatchOperatorAvailabilityInvalidated();
+        window.dispatchEvent(new CustomEvent("backend-restarted"));
+      }
+    } else {
+      await requestRestart();
+      setNeedsRestart(false);
+      dispatchOperatorAvailabilityInvalidated();
+    }
+  }, []);
+
   // Reload after backend restart (e.g., env change in PythonEnvPicker)
   useEffect(() => {
     const handler = () => {
@@ -176,75 +169,52 @@ export function UpdatesSection() {
   const isLoading = statusLoading || settingsLoading;
 
   if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
-            Updates
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-8 w-32" />
-        </CardContent>
-      </Card>
-    );
+    return <UpdatesLoadingCard />;
   }
 
   if (statusError) {
     return (
-      <Card className="border-destructive/50">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-destructive">
-            <Download className="h-5 w-5" />
-            Updates
-          </CardTitle>
-          <CardDescription className="text-destructive">
-            Failed to check for updates
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => checkMutation.mutate()}
-            disabled={checkMutation.isPending}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${checkMutation.isPending ? "animate-spin" : ""}`} />
-            Retry
-          </Button>
-        </CardContent>
-      </Card>
+      <UpdatesErrorCard
+        onRetry={() => checkMutation.mutate()}
+        isRetrying={checkMutation.isPending}
+      />
     );
   }
 
-  const hasWebappUpdate = status?.webapp?.update_available ?? false;
-  // Builds that can't be replaced on disk (per-machine Windows, .deb, AppImage,
-  // DMG) must be updated via their installer; default true so web/dev keep the
-  // in-app flow when the backend reports no capability.
-  const canApplyInPlace = status?.update_capability?.can_apply_in_place ?? true;
+  const updateAvailability = getUpdateAvailability(status);
+  const {
+    hasWebappUpdate,
+    hasAnyUpdate,
+    updateCount,
+  } = updateAvailability;
+  const webappRow = getWebappUpdateRowState({
+    status,
+    stagedUpdate,
+    download: updateDownload,
+  });
   // Prefer the resolved native installer (.exe/.dmg/.deb/.AppImage); fall back
   // to the release page when it couldn't be resolved.
-  const installerUrl = status?.webapp?.installer_download_url ?? status?.webapp?.release_url ?? null;
+  const installerUrl = webappRow.installerUrl;
+  const canApplyInPlace = webappRow.canApplyInPlace;
   const openInstaller = () => {
     if (!installerUrl) return;
-    const electronApi = (window as Record<string, unknown>).electronApi as
+    const electronApi = (window as unknown as Record<string, unknown>).electronApi as
       | { openExternal?: (u: string) => Promise<void> }
       | undefined;
     if (electronApi?.openExternal) void electronApi.openExternal(installerUrl);
     else window.open(installerUrl, "_blank", "noopener,noreferrer");
   };
-  const hasNirs4allUpdate = status?.nirs4all?.update_available ?? false;
-  const hasAnyUpdate = hasWebappUpdate || hasNirs4allUpdate;
   const runtimeDisplay = getPythonRuntimeDisplayState(runtimeSummary);
   const isReadOnlyRuntime = runtimeDisplay.isReadOnly;
-  const currentRuntime = venvStatus?.runtime ?? venvStatus?.venv;
-  const runtimeExecutablePath =
-    runtimeSummary?.running_python
-    ?? currentRuntime?.python_executable
-    ?? "Unavailable";
+  const nirs4allRow = getNirs4allUpdateRowState(status, isReadOnlyRuntime);
+  const currentRuntime = getCurrentRuntime(venvStatus);
+  const runtimeExecutablePath = getRuntimeExecutablePath(runtimeSummary, currentRuntime);
+  const gpuDisplay = getGpuDisplay(gpuInfo, gpuLoading);
+  const torchDisplay = getTorchRuntimeDisplay(gpuInfo);
+  const webappDialogCopy = getWebappDialogCopy({
+    download: updateDownload,
+    latestVersion: status?.webapp?.latest_version,
+  });
 
   const handleAutoCheckToggle = (checked: boolean) => {
     settingsMutation.mutate({ auto_check: checked });
@@ -264,801 +234,99 @@ export function UpdatesSection() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Download className="h-5 w-5" />
-              Updates
-              {hasAnyUpdate && (
-                <Badge variant="default" className="ml-2">
-                  {(hasWebappUpdate ? 1 : 0) + (hasNirs4allUpdate ? 1 : 0)} available
-                </Badge>
-              )}
-            </CardTitle>
-            <CardDescription>
-              Check for webapp and library updates
-            </CardDescription>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => checkMutation.mutate()}
-            disabled={checkMutation.isPending}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${checkMutation.isPending ? "animate-spin" : ""}`} />
-            Check Now
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Restart Banner */}
-        {needsRestart && (
-          <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-            <AlertCircle className="h-4 w-4 text-amber-600" />
-            <AlertDescription className="flex items-center justify-between">
-              <span>Package changes require a backend restart to take effect.</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const electronApi = (window as Record<string, unknown>).electronApi as { restartBackend?: () => Promise<{ success: boolean }> } | undefined;
-                  if (electronApi?.restartBackend) {
-                    const result = await electronApi.restartBackend();
-                    if (result.success) {
-                      resetBackendUrl();
-                      setNeedsRestart(false);
-                      dispatchOperatorAvailabilityInvalidated();
-                      window.dispatchEvent(new CustomEvent("backend-restarted"));
-                    }
-                  } else {
-                    await requestRestart();
-                    setNeedsRestart(false);
-                    dispatchOperatorAvailabilityInvalidated();
-                  }
-                }}
-              >
-                <RotateCcw className="mr-2 h-3 w-3" />
-                Restart Backend
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {isReadOnlyRuntime && (
-          <Alert className="border-blue-500/50 bg-blue-50 dark:bg-blue-950/20">
-            <AlertCircle className="h-4 w-4 text-blue-600" />
-            <AlertDescription>
-              {runtimeDisplay.isBundledEmbedded
-                ? "This bundled build is still using its embedded Python runtime. nirs4all installs and snapshot restores are disabled because the embedded runtime is read-only."
-                : "This packaged backend runtime is read-only. Package mutations are disabled in this mode."}
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {runtimeDisplay.isBundledExternal && (
-          <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-            <AlertCircle className="h-4 w-4 text-amber-600" />
-            <AlertDescription>
-              This bundled build is running on an external Python runtime. Package installs, updates, and snapshot restores now apply to that external environment.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Previous update silently failed — surface it and offer the installer */}
-        {lastApplyResult?.status === "failed" && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="space-y-2">
-              <div>
-                The last update didn&apos;t complete — the app is still on{" "}
-                <span className="font-mono">{lastApplyResult.from_version}</span>
-                {lastApplyResult.to_version ? (
-                  <>
-                    {" "}
-                    (expected <span className="font-mono">{lastApplyResult.to_version}</span>)
-                  </>
-                ) : null}
-                . You can install it manually from the release page.
-              </div>
-              <div className="flex gap-2">
-                {installerUrl && (
-                  <Button size="sm" variant="outline" onClick={openInstaller}>
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Get installer
-                  </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => dismissApplyResultMutation.mutate()}
-                  disabled={dismissApplyResultMutation.isPending}
-                >
-                  Dismiss
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Webapp Update */}
-        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-primary" />
-              <span className="font-medium">nirs4all Studio</span>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Current: <span className="font-mono">{status?.webapp?.current_version || "unknown"}</span>
-              {(hasWebappUpdate || stagedUpdate?.has_staged_update) && (
-                <>
-                  {" → "}
-                  <span className="font-mono text-primary">
-                    {stagedUpdate?.version || status?.webapp?.latest_version}
-                  </span>
-                  {status?.webapp?.is_prerelease && (
-                    <Badge variant="outline" className="text-xs py-0 ml-1">pre-release</Badge>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Show downloading state */}
-            {updateDownload.isDownloading && (
-              <Badge variant="secondary" className="flex items-center gap-1">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Downloading {Math.round(updateDownload.downloadProgress)}%
-              </Badge>
-            )}
-
-            {/* Show ready to apply state (in-place capable builds only) */}
-            {canApplyInPlace && (updateDownload.readyToApply || stagedUpdate?.has_staged_update) && !updateDownload.isDownloading && (
-              <Button size="sm" onClick={() => setWebappDialogOpen(true)}>
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Apply Update
-              </Button>
-            )}
-
-            {/* Update available — build can self-update in place */}
-            {hasWebappUpdate && canApplyInPlace && !updateDownload.readyToApply && !stagedUpdate?.has_staged_update && !updateDownload.isDownloading && (
-              <Button size="sm" onClick={() => setWebappDialogOpen(true)}>
-                <Download className="mr-2 h-4 w-4" />
-                Update
-              </Button>
-            )}
-
-            {/* Update available — installer-only build: redirect to the release page.
-                Shown even if a stale staged update exists, so the only CTA is the safe one. */}
-            {hasWebappUpdate && !canApplyInPlace && !updateDownload.isDownloading && (
-              <Button size="sm" variant="outline" onClick={openInstaller} disabled={!installerUrl}>
-                <ExternalLink className="mr-2 h-4 w-4" />
-                Get installer
-              </Button>
-            )}
-
-            {/* Show up to date */}
-            {!hasWebappUpdate && !updateDownload.readyToApply && !stagedUpdate?.has_staged_update && !updateDownload.isDownloading && (
-              <Badge variant="outline" className="flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3 text-green-500" />
-                Up to date
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {/* nirs4all Library Update */}
-        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-primary" />
-              <span className="font-medium">nirs4all Library</span>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {status?.nirs4all?.current_version ? (
-                <>
-                  Current: <span className="font-mono">{status?.nirs4all?.current_version}</span>
-                  {hasNirs4allUpdate && (
-                    <>
-                      {" → "}
-                      <span className="font-mono text-primary">{status?.nirs4all?.latest_version}</span>
-                    </>
-                  )}
-                </>
-              ) : (
-                <span className="text-amber-600">Not installed in current runtime</span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {hasNirs4allUpdate ? (
-              <Button size="sm" onClick={() => setNirs4allDialogOpen(true)} disabled={isReadOnlyRuntime}>
-                <Download className="mr-2 h-4 w-4" />
-                Update
-              </Button>
-            ) : status?.nirs4all?.current_version ? (
-              <Badge variant="outline" className="flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3 text-green-500" />
-                Up to date
-              </Badge>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => setNirs4allDialogOpen(true)} disabled={isReadOnlyRuntime}>
-                Install
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Last Check Info */}
-        {status?.last_check && (
-          <p className="text-xs text-muted-foreground">
-            Last checked: {new Date(status.last_check).toLocaleString()}
-          </p>
-        )}
-
-        {/* Current Runtime Section */}
-        <Collapsible open={venvOpen} onOpenChange={setVenvOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" className="w-full justify-between p-2 h-auto">
-              <span className="text-sm font-medium flex items-center gap-2">
-                <HardDrive className="h-4 w-4" />
-                Current Python Runtime
-              </span>
-              <div className="flex items-center gap-2">
-                {currentRuntime?.is_valid ? (
-                  <Badge variant="outline" className="text-green-600">Ready</Badge>
-                ) : (
-                  <Badge variant="outline" className="text-amber-600">Unavailable</Badge>
-                )}
-                <Badge variant="secondary" className="text-xs">{runtimeDisplay.label}</Badge>
-                <ChevronDown className={`h-4 w-4 transition-transform ${venvOpen ? "rotate-180" : ""}`} />
-              </div>
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-2 space-y-3">
-            {venvLoading ? (
-              <Skeleton className="h-20 w-full" />
-            ) : currentRuntime?.is_valid ? (
-              <div className="space-y-2 p-3 bg-muted/30 rounded-lg text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Python:</span>
-                  <span className="font-mono">{currentRuntime.python_version}</span>
-                </div>
-                <div className="flex justify-between items-start gap-4">
-                  <span className="text-muted-foreground">Runtime:</span>
-                  <span className="text-right max-w-[60%]">{runtimeDisplay.label}</span>
-                </div>
-                <div className="flex justify-between items-start gap-4">
-                  <span className="text-muted-foreground">Python executable:</span>
-                  <span className="font-mono text-xs break-all text-right max-w-[60%]">
-                    {runtimeExecutablePath}
-                  </span>
-                </div>
-                <div className="flex justify-between items-start gap-4">
-                  <span className="text-muted-foreground">Detected GPU:</span>
-                  <span className="text-right max-w-[60%]">
-                    {gpuLoading ? (
-                      <span className="text-muted-foreground">Detecting...</span>
-                    ) : gpuInfo?.has_cuda ? (
-                      <>
-                        {gpuInfo.gpu_name || "NVIDIA GPU"}
-                        {gpuInfo.cuda_version
-                          ? ` (CUDA ${gpuInfo.cuda_version})`
-                          : gpuInfo.driver_version
-                            ? ` (Driver ${gpuInfo.driver_version})`
-                            : ""}
-                      </>
-                    ) : gpuInfo?.has_metal ? (
-                      "Apple Metal"
-                    ) : (
-                      <span className="text-muted-foreground">CPU only</span>
-                    )}
-                  </span>
-                </div>
-                {gpuInfo && (
-                  <div className="flex justify-between items-start gap-4">
-                    <span className="text-muted-foreground">Torch runtime:</span>
-                    <span className="text-right max-w-[60%]">
-                      {gpuInfo.torch_version ? (
-                        gpuInfo.torch_cuda_available
-                          ? `${gpuInfo.torch_version} (CUDA ready)`
-                          : `${gpuInfo.torch_version} (CUDA unavailable)`
-                      ) : (
-                        <span className="text-muted-foreground">Not installed</span>
-                      )}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Size:</span>
-                  <span>{formatBytes(currentRuntime.size_bytes)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Packages:</span>
-                  <span>{venvStatus.packages?.length || 0} installed</span>
-                </div>
-                <div className="flex justify-between items-start">
-                  <span className="text-muted-foreground">Environment root:</span>
-                  <span className="font-mono text-xs break-all text-right max-w-[60%]">
-                    {currentRuntime.path}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  The current Python runtime is not valid. Use the Python Runtime section above to select or create a runtime before installing packages or restoring snapshots.
-                </AlertDescription>
-              </Alert>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
-
-        {/* Working Config Snapshots */}
-        <Collapsible open={snapshotsOpen} onOpenChange={setSnapshotsOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" className="w-full justify-between p-2 h-auto">
-              <span className="text-sm font-medium flex items-center gap-2">
-                <History className="h-4 w-4" />
-                Working Config
-              </span>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-muted-foreground">
-                  {snapshotsQuery.data?.snapshots?.length ?? 0} saved
-                </Badge>
-                <ChevronDown className={`h-4 w-4 transition-transform ${snapshotsOpen ? "rotate-180" : ""}`} />
-              </div>
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-2 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">
-                Save the current package state to restore later if an upgrade causes issues.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => createSnapshotMutation.mutate(undefined)}
-                disabled={createSnapshotMutation.isPending || !currentRuntime?.is_valid}
-              >
-                {createSnapshotMutation.isPending ? (
-                  <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                ) : (
-                  <Save className="mr-2 h-3 w-3" />
-                )}
-                Save Current
-              </Button>
-            </div>
-
-            {snapshotsQuery.data?.snapshots && snapshotsQuery.data.snapshots.length > 0 ? (
-              <div className="space-y-2">
-                {snapshotsQuery.data.snapshots.map((snap) => (
-                  <div key={snap.name} className="flex items-center justify-between p-2 bg-muted/30 rounded text-sm">
-                    <div>
-                      <span className="font-medium">{snap.label}</span>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        {new Date(snap.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2"
-                        onClick={() => restoreSnapshotMutation.mutate(snap.name)}
-                        disabled={restoreSnapshotMutation.isPending || isReadOnlyRuntime}
-                      >
-                        {restoreSnapshotMutation.isPending ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <RotateCcw className="h-3 w-3" />
-                        )}
-                        <span className="ml-1">Restore</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-destructive hover:text-destructive"
-                        onClick={() => deleteSnapshotMutation.mutate(snap.name)}
-                        disabled={deleteSnapshotMutation.isPending}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground italic p-2">
-                No snapshots saved yet. Save one before upgrading.
-              </p>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
-
-        {/* Settings Section */}
-        <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" className="w-full justify-between p-2 h-auto">
-              <span className="text-sm font-medium flex items-center gap-2">
-                <Settings2 className="h-4 w-4" />
-                Update Settings
-              </span>
-              <ChevronDown className={`h-4 w-4 transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-2 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="auto-check">Automatic update checks</Label>
-                <p className="text-xs text-muted-foreground">
-                  Check for updates on startup and periodically
-                </p>
-              </div>
-              <Switch
-                id="auto-check"
-                checked={settings?.auto_check ?? true}
-                onCheckedChange={handleAutoCheckToggle}
-                disabled={settingsMutation.isPending}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="prerelease">Include pre-releases</Label>
-                <p className="text-xs text-muted-foreground">
-                  Get notified about beta and preview versions
-                </p>
-              </div>
-              <Switch
-                id="prerelease"
-                checked={settings?.prerelease_channel ?? false}
-                onCheckedChange={handlePrereleaseToggle}
-                disabled={settingsMutation.isPending}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="offline-mode">Network mode</Label>
-                <p className="text-xs text-muted-foreground">
-                  Auto probes on startup, Offline disables all network calls
-                </p>
-              </div>
-              <select
-                id="offline-mode"
-                className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                value={settings?.offline_mode ?? "auto"}
-                onChange={(e) => handleOfflineModeChange(e.target.value as "auto" | "on" | "off")}
-                disabled={settingsMutation.isPending}
-              >
-                <option value="auto">Auto (detect)</option>
-                <option value="off">Always online</option>
-                <option value="on">Offline</option>
-              </select>
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      </CardContent>
-
-      {/* Webapp Update Dialog */}
-      <Dialog
+    <UpdatesSectionShell
+      hasAnyUpdate={hasAnyUpdate}
+      updateCount={updateCount}
+      isChecking={checkMutation.isPending}
+      onCheckNow={() => checkMutation.mutate()}
+      needsRestart={needsRestart}
+      onRestartBackend={handleRestartBackend}
+      runtimeDisplay={runtimeDisplay}
+      isReadOnlyRuntime={isReadOnlyRuntime}
+      lastApplyResult={lastApplyResult}
+      installerUrl={installerUrl}
+      onOpenInstaller={openInstaller}
+      onDismissApplyResult={() => dismissApplyResultMutation.mutate()}
+      isDismissApplyResultPending={dismissApplyResultMutation.isPending}
+      webappRow={webappRow}
+      nirs4allRow={nirs4allRow}
+      onOpenWebappDialog={() => setWebappDialogOpen(true)}
+      onOpenNirs4allDialog={() => setNirs4allDialogOpen(true)}
+      lastCheck={status?.last_check}
+      currentRuntime={currentRuntime}
+      gpuDisplay={gpuDisplay}
+      isRuntimeLoading={venvLoading}
+      venvOpen={venvOpen}
+      onVenvOpenChange={setVenvOpen}
+      packageCount={venvStatus?.packages?.length || 0}
+      runtimeExecutablePath={runtimeExecutablePath}
+      runtimeSizeLabel={currentRuntime ? formatBytes(currentRuntime.size_bytes) : ""}
+      torchDisplay={torchDisplay}
+      snapshotsOpen={snapshotsOpen}
+      onSnapshotsOpenChange={setSnapshotsOpen}
+      snapshots={snapshotsQuery.data?.snapshots ?? []}
+      canCreateSnapshot={!!currentRuntime?.is_valid}
+      onCreateSnapshot={() => createSnapshotMutation.mutate(undefined)}
+      isCreatingSnapshot={createSnapshotMutation.isPending}
+      onRestoreSnapshot={(name) => restoreSnapshotMutation.mutate(name)}
+      isRestoringSnapshot={restoreSnapshotMutation.isPending}
+      onDeleteSnapshot={(name) => deleteSnapshotMutation.mutate(name)}
+      isDeletingSnapshot={deleteSnapshotMutation.isPending}
+      settingsOpen={settingsOpen}
+      onSettingsOpenChange={setSettingsOpen}
+      settings={settings}
+      onAutoCheckToggle={handleAutoCheckToggle}
+      onPrereleaseToggle={handlePrereleaseToggle}
+      onOfflineModeChange={handleOfflineModeChange}
+      isSettingsPending={settingsMutation.isPending}
+    >
+      <UpdatesWebappDialog
         open={webappDialogOpen}
         onOpenChange={(open) => {
-          // Don't allow closing during download or if ready to apply
           if (!open && (updateDownload.isDownloading || updateDownload.readyToApply)) {
             return;
           }
           if (open && hasWebappUpdate) {
-            changelogQuery.refetch();
+            void changelogQuery.refetch();
           }
           setWebappDialogOpen(open);
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {updateDownload.readyToApply
-                ? "Update Ready to Apply"
-                : updateDownload.isDownloading
-                  ? "Downloading Update..."
-                  : "Webapp Update Available"}
-              {status?.webapp?.is_prerelease && (
-                <Badge variant="outline" className="text-xs">Pre-release</Badge>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {updateDownload.readyToApply
-                ? `Version ${updateDownload.stagedVersion || status?.webapp?.latest_version} is ready to install`
-                : updateDownload.isDownloading
-                  ? updateDownload.downloadMessage || "Downloading..."
-                  : `Version ${status?.webapp?.latest_version} is available`}
-            </DialogDescription>
-          </DialogHeader>
+        onClose={() => setWebappDialogOpen(false)}
+        onApplyClick={() => setApplyConfirmOpen(true)}
+        copy={webappDialogCopy}
+        status={status}
+        updateDownload={updateDownload}
+        canApplyInPlace={canApplyInPlace}
+        isChangelogLoading={changelogQuery.isLoading}
+        changelogEntries={changelogQuery.data?.entries}
+      />
 
-          <div className="space-y-4">
-            {/* Download Progress */}
-            {updateDownload.isDownloading && (
-              <div className="space-y-2">
-                <Progress value={updateDownload.downloadProgress} className="h-2" />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{updateDownload.downloadMessage}</span>
-                  <span>{Math.round(updateDownload.downloadProgress)}%</span>
-                </div>
-              </div>
-            )}
+      <UpdatesApplyConfirmDialog
+        open={applyConfirmOpen}
+        onOpenChange={setApplyConfirmOpen}
+        latestVersion={status?.webapp?.latest_version}
+        updateDownload={updateDownload}
+      />
 
-            {/* Download Error */}
-            {updateDownload.downloadError && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  {updateDownload.downloadError}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Ready to Apply */}
-            {updateDownload.readyToApply && !updateDownload.isApplying && (
-              <Alert>
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                <AlertDescription>
-                  Download complete. Click "Apply Update" to install. The application will restart automatically.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Apply in Progress */}
-            {updateDownload.isApplying && (
-              <Alert>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <AlertDescription>
-                  Applying update... The application will restart shortly.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Apply Success */}
-            {updateDownload.applySuccess && (
-              <Alert>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <AlertDescription>
-                  Update applied! Restarting the application...
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Apply Error */}
-            {updateDownload.applyError && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Failed to apply update: {updateDownload.applyError}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Changelog (only show when not downloading) */}
-            {!updateDownload.isDownloading && !updateDownload.readyToApply && (
-              <div className="max-h-48 overflow-y-auto p-3 bg-muted rounded-lg text-sm">
-                <h4 className="font-medium mb-2">What's New</h4>
-                {changelogQuery.isLoading ? (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Loading changelog...
-                  </div>
-                ) : changelogQuery.data?.entries && changelogQuery.data.entries.length > 0 ? (
-                  <div className="space-y-3">
-                    {changelogQuery.data.entries.map((entry) => (
-                      <div key={entry.version}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-primary">v{entry.version}</span>
-                          {entry.prerelease && (
-                            <Badge variant="outline" className="text-xs py-0">pre</Badge>
-                          )}
-                          {entry.date && (
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(entry.date).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                        <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap text-muted-foreground">
-                          {entry.body || "No release notes."}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : status?.webapp?.release_notes ? (
-                  <div className="prose prose-sm dark:prose-invert whitespace-pre-wrap">
-                    {status.webapp.release_notes}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground italic">No release notes available.</p>
-                )}
-              </div>
-            )}
-
-            {/* Download Size */}
-            {!updateDownload.isDownloading && !updateDownload.readyToApply && status?.webapp?.download_size_bytes && (
-              <p className="text-sm text-muted-foreground">
-                Download size: {formatBytes(status.webapp.download_size_bytes)}
-              </p>
-            )}
-
-            {/* Info Alert (only show before download starts) */}
-            {!updateDownload.isDownloading && !updateDownload.readyToApply && !updateDownload.downloadError && (
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Webapp updates will be downloaded and extracted. The application will restart to apply the update.
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            {/* Cancel/Close button */}
-            {!updateDownload.isApplying && !updateDownload.applySuccess && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (updateDownload.isDownloading) {
-                    updateDownload.cancelDownload();
-                  } else if (updateDownload.readyToApply) {
-                    updateDownload.cancelStagedUpdate();
-                    updateDownload.reset();
-                  } else {
-                    setWebappDialogOpen(false);
-                  }
-                }}
-                disabled={updateDownload.isCancellingDownload || updateDownload.isCancellingStagedUpdate}
-              >
-                {(updateDownload.isCancellingDownload || updateDownload.isCancellingStagedUpdate) && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {updateDownload.isDownloading || updateDownload.readyToApply ? (
-                  <>
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Cancel Update
-                  </>
-                ) : (
-                  "Later"
-                )}
-              </Button>
-            )}
-
-            {/* Main action button */}
-            {!updateDownload.readyToApply && !updateDownload.isDownloading && !updateDownload.applySuccess && (
-              <>
-                {/* Manual download link as fallback */}
-                {status?.webapp?.release_url && (
-                  <Button variant="outline" asChild>
-                    <a href={status.webapp.release_url} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Manual Download
-                    </a>
-                  </Button>
-                )}
-
-                {/* Auto download button — only for builds that can self-update in place */}
-                {canApplyInPlace && (
-                  <Button
-                    onClick={() => updateDownload.startDownload()}
-                    disabled={updateDownload.isStartingDownload}
-                  >
-                    {updateDownload.isStartingDownload ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Download className="mr-2 h-4 w-4" />
-                    )}
-                    Download & Install
-                  </Button>
-                )}
-              </>
-            )}
-
-            {/* Apply Update button (in-place capable builds only) */}
-            {canApplyInPlace && updateDownload.readyToApply && !updateDownload.isApplying && !updateDownload.applySuccess && (
-              <Button
-                onClick={() => setApplyConfirmOpen(true)}
-              >
-                <RotateCcw className="mr-2 h-4 w-4" />
-                Apply Update
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Apply Update Confirmation Dialog */}
-      <Dialog open={applyConfirmOpen} onOpenChange={setApplyConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Restart to Apply Update?</DialogTitle>
-            <DialogDescription>
-              The application will close and restart with version {updateDownload.stagedVersion || status?.webapp?.latest_version}.
-              Make sure you have saved any unsaved work.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setApplyConfirmOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                setApplyConfirmOpen(false);
-                updateDownload.applyUpdate();
-              }}
-              disabled={updateDownload.isApplying}
-            >
-              {updateDownload.isApplying ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RotateCcw className="mr-2 h-4 w-4" />
-              )}
-              Restart Now
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* nirs4all Update Dialog */}
-      <Dialog open={nirs4allDialogOpen} onOpenChange={setNirs4allDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {status?.nirs4all?.current_version ? "Update nirs4all" : "Install nirs4all"}
-            </DialogTitle>
-            <DialogDescription>
-              {status?.nirs4all?.current_version
-                ? `Update from ${status.nirs4all.current_version} to ${status.nirs4all.latest_version}`
-                : `Install nirs4all ${status?.nirs4all?.latest_version} in the current runtime`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            {status?.nirs4all?.release_notes && (
-              <div className="max-h-48 overflow-y-auto p-3 bg-muted rounded-lg text-sm">
-                <h4 className="font-medium mb-2">About this version</h4>
-                <p className="text-muted-foreground line-clamp-6">
-                  {status.nirs4all.release_notes.substring(0, 500)}...
-                </p>
-              </div>
-            )}
-            <p className="text-sm text-muted-foreground">
-              This will install or upgrade nirs4all in the current Python runtime.
-              A backend restart may be required afterward.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNirs4allDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                installMutation.mutate(
-                  { version: status?.nirs4all?.latest_version || undefined },
-                  {
-                    onSuccess: (data) => {
-                      setNirs4allDialogOpen(false);
-                      if (data?.requires_restart) {
-                        setNeedsRestart(true);
-                      }
-                    },
-                  }
-                );
-              }}
-              disabled={installMutation.isPending}
-            >
-              {installMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="mr-2 h-4 w-4" />
-              )}
-              {status?.nirs4all?.current_version ? "Update" : "Install"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </Card>
+      <UpdatesNirs4allDialog
+        open={nirs4allDialogOpen}
+        onOpenChange={setNirs4allDialogOpen}
+        status={status}
+        isInstalling={installMutation.isPending}
+        onInstall={() => {
+          installMutation.mutate(
+            { version: status?.nirs4all?.latest_version || undefined },
+            {
+              onSuccess: (data) => {
+                setNirs4allDialogOpen(false);
+                if ("requires_restart" in data && data.requires_restart) {
+                  setNeedsRestart(true);
+                }
+              },
+            }
+          );
+        }}
+      />
+    </UpdatesSectionShell>
   );
 }

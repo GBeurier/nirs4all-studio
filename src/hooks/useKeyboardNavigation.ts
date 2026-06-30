@@ -10,7 +10,7 @@
  * Part of Phase 5: UX Polish
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PipelineStep } from "../components/pipeline-editor/types";
 
 export type PanelFocus = "palette" | "tree" | "config";
@@ -146,11 +146,11 @@ export function useKeyboardNavigation(
   const treeRef = useRef<HTMLDivElement>(null);
   const configRef = useRef<HTMLDivElement>(null);
 
-  const panelRefs = {
+  const panelRefs = useMemo(() => ({
     palette: paletteRef,
     tree: treeRef,
     config: configRef,
-  };
+  }), []);
 
   // Flatten steps for sequential navigation
   const flattenedSteps = flattenSteps(steps);

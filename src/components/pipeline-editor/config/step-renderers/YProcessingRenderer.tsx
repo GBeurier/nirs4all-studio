@@ -12,8 +12,8 @@ import { useCallback } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   YProcessingPanel,
-  defaultYProcessingConfig,
 } from "../../YProcessingPanel";
+import { defaultYProcessingConfig } from "../../yProcessingConfig";
 import { StepActions } from "./StepActions";
 import type { StepRendererProps } from "./types";
 

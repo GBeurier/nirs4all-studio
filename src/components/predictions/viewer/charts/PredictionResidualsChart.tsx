@@ -178,9 +178,9 @@ export const PredictionResidualsChart = forwardRef<HTMLDivElement, PredictionRes
             />
             {showTooltip && (
               <Tooltip
-                content={({ active, payload }: { active?: boolean; payload?: Array<{ payload: ResidualDot }> }) => {
+                content={({ active, payload }) => {
                   if (!active || !payload || payload.length === 0) return null;
-                  const dot = payload[0]?.payload;
+                  const dot = payload[0]?.payload as ResidualDot | undefined;
                   if (!dot) return null;
                   return (
                     <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">

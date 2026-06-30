@@ -10,6 +10,11 @@
  * @see schema/parameter.schema.json
  */
 
+import type {
+  CapabilityLevel,
+  OperatorImplementationRef,
+} from "@/lib/operatorCapability";
+
 // ============================================================================
 // Node Types
 // ============================================================================
@@ -320,6 +325,14 @@ export interface NodeDefinition {
   aliases?: string[];
   /** For function-based operators */
   functionPath?: string;
+  /** Optional capability contract for planning/execution backends. */
+  capabilities?: {
+    defaultLevel?: CapabilityLevel;
+    implementationRefs?: OperatorImplementationRef[];
+    requiredPackages?: string[];
+  };
+  /** Shorthand implementation references for multi-backend operators. */
+  implementationRefs?: OperatorImplementationRef[];
 
   // === Display ===
   /** Short description for tooltips */

@@ -365,7 +365,28 @@ class TestGetAggregatedPredictions:
         assert "cv_val_score" in pred
         assert "cv_test_score" in pred
         assert "cv_train_score" in pred
+        assert "score_maps" in pred
         assert "pipeline_status" in pred
+
+    def test_response_preserves_additive_score_maps(self, client, patched_endpoints, mock_polars_df, sample_aggregated_rows):
+        row = {
+            **sample_aggregated_rows[0],
+            "score_maps": {
+                "cv": {
+                    "val": {"rmse": 0.12},
+                    "targets": {"protein": {"rmse": 0.31}},
+                },
+            },
+        }
+        patched_endpoints.query_chain_summaries.return_value = mock_polars_df([row])
+        patched_endpoints._fetch_pl.return_value = mock_polars_df([])
+
+        resp = client.get("/api/aggregated-predictions")
+
+        assert resp.status_code == 200
+        prediction = resp.json()["predictions"][0]
+        assert prediction["score_maps"]["cv"]["targets"]["protein"]["rmse"] == 0.31
+
     def test_cv_only_chain_gets_synthetic_refit_payload(self, client, patched_endpoints, mock_polars_df):
         rows = [
             {
@@ -610,6 +631,77 @@ class TestGetChainDetail:
             metric="rmse",
             dataset_name=None,
         )
+
+    def test_chain_detail_preserves_repository_variant_result_metadata(
+        self, client, patched_endpoints, mock_polars_df, sample_aggregated_rows,
+    ):
+        row = {
+            **sample_aggregated_rows[0],
+            "variant_params": {
+                "result_metadata": {"source": "native_results", "result_id": "native-result-1"},
+            },
+            "score_maps": {
+                "final": {
+                    "test": {"rmse": 0.21},
+                    "targets": {"protein": {"rmse": 0.27}},
+                },
+            },
+        }
+        patched_endpoints.query_chain_summaries.return_value = mock_polars_df([row])
+        patched_endpoints.get_chain_predictions.return_value = mock_polars_df([])
+        patched_endpoints._fetch_pl.return_value = mock_polars_df([])
+
+        resp = client.get("/api/aggregated-predictions/chain/chain-001")
+
+        assert resp.status_code == 200
+        assert resp.json()["summary"]["variant_params"] == {
+            "result_metadata": {"source": "native_results", "result_id": "native-result-1"},
+        }
+        assert resp.json()["summary"]["score_maps"]["final"]["targets"]["protein"]["rmse"] == 0.27
+
+    def test_chain_detail_preserves_prediction_score_maps_and_result_metadata(
+        self, client, patched_endpoints, mock_polars_df, sample_aggregated_rows,
+    ):
+        prediction_row = {
+            "prediction_id": "pred-native-1",
+            "pipeline_id": "run-1",
+            "chain_id": "chain-001",
+            "dataset_name": "dataset_a",
+            "model_name": "PLSRegression",
+            "model_class": "PLSRegression",
+            "fold_id": "avg",
+            "partition": "val",
+            "val_score": 0.12,
+            "test_score": None,
+            "train_score": None,
+            "metric": "rmse",
+            "task_type": "regression",
+            "n_samples": None,
+            "n_features": None,
+            "preprocessings": "base",
+            "scores": '{"val": {"rmse": 0.12}, "targets": {"protein": {"rmse": 0.31}}}',
+            "best_params": '{"n_components": 8}',
+            "source_index": 2,
+            "target_index": 1,
+            "target_name": "protein",
+            "result_metadata": {
+                "source": "native_results",
+                "dimensions": {"target_index": 1},
+            },
+        }
+        patched_endpoints.query_chain_summaries.return_value = mock_polars_df(sample_aggregated_rows[:1])
+        patched_endpoints.get_chain_predictions.return_value = mock_polars_df([prediction_row])
+
+        resp = client.get("/api/aggregated-predictions/chain/chain-001")
+
+        assert resp.status_code == 200
+        prediction = resp.json()["predictions"][0]
+        assert prediction["scores"]["targets"]["protein"]["rmse"] == 0.31
+        assert prediction["best_params"] == {"n_components": 8}
+        assert prediction["source_index"] == 2
+        assert prediction["target_index"] == 1
+        assert prediction["target_name"] == "protein"
+        assert prediction["result_metadata"]["dimensions"]["target_index"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -945,6 +1037,39 @@ class TestGetPredictionArrays:
         assert data["weights"] is None
         assert data["sample_indices"] == [10, 11]
         assert data["sample_metadata"] == {"class_name": ["cat", "dog"]}
+
+    def test_arrays_preserve_native_multitarget_context(self, client, patched_endpoints):
+        """Native arrays may be multitarget and carry source/target result context."""
+        patched_endpoints.get_prediction_arrays.return_value = {
+            "prediction_id": "pred-native-1",
+            "y_true": np.array([[1.0, 10.0], [2.0, 20.0]]),
+            "y_pred": np.array([[1.1, 10.1], [2.1, 20.1]]),
+            "y_proba": None,
+            "weights": None,
+            "sample_indices": np.array([4, 5]),
+            "sample_metadata": None,
+            "branch_path": ["root", "target-1"],
+            "source_index": 3,
+            "source_name": "nir",
+            "target_index": 1,
+            "target_name": "protein",
+            "result_metadata": {"dimensions": {"target_index": 1}},
+        }
+
+        resp = client.get("/api/aggregated-predictions/pred-native-1/arrays")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["prediction_id"] == "pred-native-1"
+        assert data["y_true"] == [[1.0, 10.0], [2.0, 20.0]]
+        assert data["y_pred"] == [[1.1, 10.1], [2.1, 20.1]]
+        assert data["n_samples"] == 2
+        assert data["branch_path"] == ["root", "target-1"]
+        assert data["source_index"] == 3
+        assert data["source_name"] == "nir"
+        assert data["target_index"] == 1
+        assert data["target_name"] == "protein"
+        assert data["result_metadata"]["dimensions"]["target_index"] == 1
 
 
 # ---------------------------------------------------------------------------

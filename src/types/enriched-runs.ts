@@ -3,6 +3,8 @@
  * These types match the response from GET /workspaces/{id}/runs/enriched.
  */
 
+import type { RunExecutionBackend } from "@/types/runs";
+
 export interface EnrichedRun {
   run_id: string;
   name: string;
@@ -21,6 +23,7 @@ export interface EnrichedRun {
   datasets: EnrichedDatasetRun[];
   error?: string | null;
   config?: {
+    execution_backend?: RunExecutionBackend;
     cv_folds?: number;
     cv_strategy?: string;
     metric?: string;

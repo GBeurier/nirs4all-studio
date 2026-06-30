@@ -5,7 +5,14 @@ export { PipelineTree } from "./PipelineTree";
 export { TreeNode } from "./TreeNode";
 export { PipelineNode } from "./PipelineNode";
 export { StepConfigPanel } from "./StepConfigPanel";
-export { PipelineDndProvider, usePipelineDnd } from "./PipelineDndContext";
+export { PipelineDndProvider } from "./PipelineDndContext";
+export { usePipelineDnd } from "./usePipelineDnd";
+export { PipelineEditorActionsMenu } from "./PipelineEditorActionsMenu";
+export { PipelineEditorHeader } from "./PipelineEditorHeader";
+export { PipelineEditorHeaderBadges } from "./PipelineEditorHeaderBadges";
+export { PipelineEditorRouteOverlays } from "./PipelineEditorRouteOverlays";
+export { PipelineEditorSettingsPopover } from "./PipelineEditorSettingsPopover";
+export { PipelineEditorWorkspace } from "./PipelineEditorWorkspace";
 
 // Phase 1: Foundation - Shared components and contexts
 export * from "./shared";
@@ -49,28 +56,34 @@ export {
   YProcessingCompact,
   YProcessingBadge,
   YProcessingQuickSetup,
+} from "./YProcessingPanel";
+export {
   Y_PROCESSING_OPTIONS,
   defaultYProcessingConfig,
   type YProcessingConfig,
-} from "./YProcessingPanel";
+} from "./yProcessingConfig";
 
 export {
   FeatureAugmentationPanel,
   FeatureAugmentationCompact,
   FeatureAugmentationBadge,
+} from "./FeatureAugmentationPanel";
+export {
   defaultFeatureAugmentationConfig,
   type FeatureAugmentationConfig,
   type FeatureAugmentationTransform,
   type FeatureAugmentationAction,
-} from "./FeatureAugmentationPanel";
+} from "./featureAugmentationConfig";
 
 export {
   StackingPanel,
   StackingBadge,
   MergeStackingSetup,
+} from "./StackingPanel";
+export {
   defaultStackingConfig,
   type StackingConfig,
-} from "./StackingPanel";
+} from "./stackingConfig";
 
 export {
   EnhancedBranchHeader,
@@ -88,8 +101,8 @@ export { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog";
 export {
   ExecutionPreviewPanel,
   ExecutionPreviewCompact,
-  type ExecutionBreakdown,
 } from "./ExecutionPreviewPanel";
+export type { ExecutionBreakdown } from "./executionAnalysis";
 export {
   FocusPanelRing,
   FocusBadge,
@@ -107,11 +120,10 @@ export {
   WhatsThisButton,
   OperatorHelpPanel,
   InfoCallout,
-  HelpModeProvider,
-  useHelpMode,
-  getOperatorHelp,
-  type OperatorHelp,
 } from "./HelpSystem";
+export { HelpModeProvider } from "./HelpModeProvider";
+export { useHelpMode } from "./useHelpMode";
+export { getOperatorHelp, type OperatorHelp } from "./helpContent";
 
 // Phase 4 (Roadmap): Pipeline-Dataset Integration
 export {

@@ -18,6 +18,19 @@
 import type { NodeDefinition, NodeType, ParameterDefinition, CategoryConfig } from './types';
 import { getCategoryConfig, getAllCategories, getColorScheme } from './categories';
 import { allNodes } from './definitions';
+import {
+  NodeRegistryIndex,
+  type NodeRegistryStats,
+  type NodeTierFilter,
+} from './NodeRegistryIndex';
+
+export {
+  mergeNodeDefinitions,
+  NodeRegistryIndex,
+  type NodeCapability,
+  type NodeRegistryStats,
+  type NodeTierFilter,
+} from './NodeRegistryIndex';
 
 /**
  * Options for creating a NodeRegistry instance
@@ -40,136 +53,12 @@ export interface ValidationResult {
   warnings: string[];
 }
 
-function cloneNodeDefinition(node: NodeDefinition): NodeDefinition {
-  return {
-    ...node,
-    legacyClassPaths: node.legacyClassPaths ? [...node.legacyClassPaths] : undefined,
-  };
-}
-
-function normalizeClassPath(path: string | undefined): string | null {
-  const normalized = path?.trim().toLowerCase();
-  return normalized ? normalized : null;
-}
-
-function getClassPathAliases(node: NodeDefinition): string[] {
-  const aliases = new Set<string>();
-  const classPath = normalizeClassPath(node.classPath);
-  if (classPath) {
-    aliases.add(classPath);
-  }
-  for (const legacyPath of node.legacyClassPaths ?? []) {
-    const normalized = normalizeClassPath(legacyPath);
-    if (normalized) {
-      aliases.add(normalized);
-    }
-  }
-  return Array.from(aliases);
-}
-
-function getTypeNameKey(node: NodeDefinition): string {
-  return `${String(node.type).toLowerCase()}::${node.name.toLowerCase()}`;
-}
-
-function mergeClassPathAliases(target: NodeDefinition, incoming: NodeDefinition): void {
-  const targetClassPath = normalizeClassPath(target.classPath);
-  const existingLegacy = new Set((target.legacyClassPaths ?? []).map((path) => path.toLowerCase()));
-  const mergedLegacy = [...(target.legacyClassPaths ?? [])];
-
-  const maybeAdd = (path: string | undefined) => {
-    const normalized = normalizeClassPath(path);
-    if (!normalized || normalized === targetClassPath || existingLegacy.has(normalized)) {
-      return;
-    }
-    mergedLegacy.push(path!);
-    existingLegacy.add(normalized);
-  };
-
-  maybeAdd(incoming.classPath);
-  for (const legacyPath of incoming.legacyClassPaths ?? []) {
-    maybeAdd(legacyPath);
-  }
-
-  target.legacyClassPaths = mergedLegacy.length > 0 ? mergedLegacy : undefined;
-}
-
-/**
- * Merge incoming node definitions into a preferred set while suppressing
- * semantic duplicates. Preferred nodes always win.
- *
- * Duplicate detection is based on:
- * - exact node ID
- * - any overlapping classPath / legacyClassPaths alias
- * - matching type + name (case-insensitive)
- *
- * When a duplicate is skipped, any new classPath aliases from the incoming
- * node are merged into the preferred node's `legacyClassPaths`.
- */
-export function mergeNodeDefinitions(
-  preferredNodes: NodeDefinition[],
-  incomingNodes: NodeDefinition[]
-): NodeDefinition[] {
-  const mergedNodes = preferredNodes.map(cloneNodeDefinition);
-  const nodesById = new Map<string, number>();
-  const nodesByAlias = new Map<string, number>();
-  const nodesByTypeName = new Map<string, number>();
-
-  const registerNode = (node: NodeDefinition, index: number) => {
-    nodesById.set(node.id, index);
-    nodesByTypeName.set(getTypeNameKey(node), index);
-    for (const alias of getClassPathAliases(node)) {
-      nodesByAlias.set(alias, index);
-    }
-  };
-
-  mergedNodes.forEach((node, index) => registerNode(node, index));
-
-  for (const incomingNode of incomingNodes) {
-    const candidate = cloneNodeDefinition(incomingNode);
-    let duplicateIndex = nodesById.get(candidate.id);
-
-    if (duplicateIndex === undefined) {
-      for (const alias of getClassPathAliases(candidate)) {
-        duplicateIndex = nodesByAlias.get(alias);
-        if (duplicateIndex !== undefined) {
-          break;
-        }
-      }
-    }
-
-    if (duplicateIndex === undefined) {
-      duplicateIndex = nodesByTypeName.get(getTypeNameKey(candidate));
-    }
-
-    if (duplicateIndex !== undefined) {
-      mergeClassPathAliases(mergedNodes[duplicateIndex], candidate);
-      registerNode(mergedNodes[duplicateIndex], duplicateIndex);
-      continue;
-    }
-
-    const nextIndex = mergedNodes.length;
-    mergedNodes.push(candidate);
-    registerNode(candidate, nextIndex);
-  }
-
-  return mergedNodes;
-}
-
 /**
  * NodeRegistry - Central registry for node definitions
  */
 export class NodeRegistry {
-  /** Map of node ID to definition */
-  private readonly nodesById: Map<string, NodeDefinition>;
-
-  /** Map of classPath to node definition (including legacy paths) */
-  private readonly nodesByClassPath: Map<string, NodeDefinition>;
-
-  /** Map of node type to definitions */
-  private readonly nodesByType: Map<NodeType, NodeDefinition[]>;
-
-  /** Map of lowercase name to definition (for case-insensitive lookup) */
-  private readonly nodesByName: Map<string, NodeDefinition>;
+  /** Pure lookup/search/classPath index over validated definitions */
+  private readonly index: NodeRegistryIndex;
 
   /** Validation errors and warnings */
   private readonly validationResult: ValidationResult;
@@ -184,20 +73,18 @@ export class NodeRegistry {
     nodes: NodeDefinition[],
     private readonly options: NodeRegistryOptions = {}
   ) {
-    this.nodesById = new Map();
-    this.nodesByClassPath = new Map();
-    this.nodesByType = new Map();
-    this.nodesByName = new Map();
     this.validationResult = { valid: true, errors: [], warnings: [] };
 
-    this.loadNodes(nodes);
+    this.index = new NodeRegistryIndex(this.prepareNodes(nodes));
   }
 
   /**
-   * Load nodes into the registry
+   * Validate and de-duplicate nodes before indexing.
    */
-  private loadNodes(nodes: NodeDefinition[]): void {
+  private prepareNodes(nodes: NodeDefinition[]): NodeDefinition[] {
     const { warnOnDuplicates = true, validateOnLoad = false, customValidator } = this.options;
+    const loadableNodes: NodeDefinition[] = [];
+    const seenIds = new Set<string>();
 
     for (const node of nodes) {
       // Validate if enabled
@@ -214,41 +101,18 @@ export class NodeRegistry {
       }
 
       // Check for duplicate IDs
-      if (this.nodesById.has(node.id)) {
+      if (seenIds.has(node.id)) {
         if (warnOnDuplicates) {
           this.validationResult.warnings.push(`Duplicate node ID: ${node.id}`);
         }
         continue;
       }
 
-      // Index by ID
-      this.nodesById.set(node.id, node);
-
-      // Index by classPath
-      if (node.classPath) {
-        this.nodesByClassPath.set(node.classPath, node);
-      }
-
-      // Index legacy classPaths
-      if (node.legacyClassPaths) {
-        for (const legacyPath of node.legacyClassPaths) {
-          if (!this.nodesByClassPath.has(legacyPath)) {
-            this.nodesByClassPath.set(legacyPath, node);
-          }
-        }
-      }
-
-      // Index by type
-      const typeNodes = this.nodesByType.get(node.type) ?? [];
-      typeNodes.push(node);
-      this.nodesByType.set(node.type, typeNodes);
-
-      // Index by lowercase name
-      const lowerName = node.name.toLowerCase();
-      if (!this.nodesByName.has(lowerName)) {
-        this.nodesByName.set(lowerName, node);
-      }
+      seenIds.add(node.id);
+      loadableNodes.push(node);
     }
+
+    return loadableNodes;
   }
 
   /**
@@ -296,50 +160,49 @@ export class NodeRegistry {
    * Get a node by its unique ID
    */
   getById(id: string): NodeDefinition | undefined {
-    return this.nodesById.get(id);
+    return this.index.getById(id);
   }
 
   /**
    * Get a node by its name (case-insensitive)
    */
   getByName(name: string): NodeDefinition | undefined {
-    return this.nodesByName.get(name.toLowerCase());
+    return this.index.getByName(name);
   }
 
   /**
    * Get a node by its classPath (supports legacy paths)
    */
   getByClassPath(classPath: string): NodeDefinition | undefined {
-    return this.nodesByClassPath.get(classPath);
+    return this.index.getByClassPath(classPath);
   }
 
   /**
    * Get all nodes of a specific type
    */
   getByType(type: NodeType): NodeDefinition[] {
-    return this.nodesByType.get(type) ?? [];
+    return this.index.getByType(type);
   }
 
   /**
    * Get a node by type and name combination
    */
   getByTypeAndName(type: NodeType, name: string): NodeDefinition | undefined {
-    const nodes = this.getByType(type);
-    return nodes.find(n => n.name === name);
+    return this.index.getByTypeAndName(type, name);
   }
 
   /**
    * Check if a node exists by ID
    */
   has(id: string): boolean {
-    return this.nodesById.has(id);
+    return this.index.has(id);
   }
 
   /**
    * Check if a classPath is registered
    */
   hasClassPath(classPath: string): boolean {
-    return this.nodesByClassPath.has(classPath);
+    return this.index.hasClassPath(classPath);
   }
 
   // ===========================================================================
@@ -350,60 +213,49 @@ export class NodeRegistry {
    * Get all registered node types
    */
   getTypes(): NodeType[] {
-    return Array.from(this.nodesByType.keys());
+    return this.index.getTypes();
   }
 
   /**
    * Get all nodes
    */
   getAll(): NodeDefinition[] {
-    return Array.from(this.nodesById.values());
+    return this.index.getAll();
   }
 
   /**
    * Get total node count
    */
   get size(): number {
-    return this.nodesById.size;
+    return this.index.size;
   }
 
   /**
    * Get nodes by category
    */
   getByCategory(category: string): NodeDefinition[] {
-    return this.getAll().filter(node => node.category === category);
+    return this.index.getByCategory(category);
   }
 
   /**
    * Get nodes by source
    */
   getBySource(source: string): NodeDefinition[] {
-    return this.getAll().filter(node => node.source === source);
+    return this.index.getBySource(source);
   }
 
   /**
    * Get nodes matching any of the given tags
    */
   getByTags(tags: string[]): NodeDefinition[] {
-    const tagSet = new Set(tags.map(t => t.toLowerCase()));
-    return this.getAll().filter(node =>
-      node.tags?.some(t => tagSet.has(t.toLowerCase()))
-    );
+    return this.index.getByTags(tags);
   }
 
   /**
    * Search nodes by query string (name, description, tags)
    */
   search(query: string): NodeDefinition[] {
-    if (!query.trim()) return this.getAll();
-
-    const lowerQuery = query.toLowerCase();
-    return this.getAll().filter(node =>
-      node.name.toLowerCase().includes(lowerQuery) ||
-      node.description.toLowerCase().includes(lowerQuery) ||
-      node.tags?.some(t => t.toLowerCase().includes(lowerQuery)) ||
-      node.category?.toLowerCase().includes(lowerQuery)
-    );
+    return this.index.search(query);
   }
 
   /**
@@ -413,42 +265,36 @@ export class NodeRegistry {
    * - "standard" returns core + standard (excludes advanced)
    * - "all" returns everything
    */
-  getNodesByTier(maxTier: "core" | "standard" | "all"): NodeDefinition[] {
-    if (maxTier === "all") return this.getAll();
-    if (maxTier === "core") return this.getAll().filter(n => n.tier === "core");
-    // "standard" — exclude advanced
-    return this.getAll().filter(n => n.tier !== "advanced");
+  getNodesByTier(maxTier: NodeTierFilter): NodeDefinition[] {
+    return this.index.getNodesByTier(maxTier);
   }
 
   /**
    * Get nodes of a specific type, filtered by maximum tier level.
    */
-  getByTypeAndTier(type: NodeType, maxTier: "core" | "standard" | "all"): NodeDefinition[] {
-    const nodes = this.getByType(type);
-    if (maxTier === "all") return nodes;
-    if (maxTier === "core") return nodes.filter(n => n.tier === "core");
-    return nodes.filter(n => n.tier !== "advanced");
+  getByTypeAndTier(type: NodeType, maxTier: NodeTierFilter): NodeDefinition[] {
+    return this.index.getByTypeAndTier(type, maxTier);
   }
 
   /**
    * Get deep learning models only
    */
   getDeepLearningModels(): NodeDefinition[] {
-    return this.getAll().filter(node => node.isDeepLearning === true);
+    return this.index.getByCapability('deepLearning');
   }
 
   /**
    * Get container nodes
    */
   getContainerNodes(): NodeDefinition[] {
-    return this.getAll().filter(node => node.isContainer === true);
+    return this.index.getByCapability('container');
   }
 
   /**
    * Get generator nodes
    */
   getGeneratorNodes(): NodeDefinition[] {
-    return this.getAll().filter(node => node.isGenerator === true);
+    return this.index.getByCapability('generator');
   }
 
   // ===========================================================================
@@ -459,15 +305,14 @@ export class NodeRegistry {
    * Resolve a classPath from a node type and name
    */
   resolveClassPath(type: NodeType, name: string): string | undefined {
-    const node = this.getByTypeAndName(type, name);
-    return node?.classPath;
+    return this.index.resolveClassPath(type, name);
   }
 
   /**
    * Resolve a node name from a classPath
    */
   resolveNameFromClassPath(classPath: string): string | undefined {
-    return this.getByClassPath(classPath)?.name;
+    return this.index.resolveNameFromClassPath(classPath);
   }
 
   /**
@@ -475,20 +320,7 @@ export class NodeRegistry {
    * Returns Map<classPath, nodeName>
    */
   buildClassPathToNameMap(): Map<string, string> {
-    const map = new Map<string, string>();
-
-    for (const node of this.getAll()) {
-      if (node.classPath) {
-        map.set(node.classPath, node.name);
-      }
-      if (node.legacyClassPaths) {
-        for (const legacyPath of node.legacyClassPaths) {
-          map.set(legacyPath, node.name);
-        }
-      }
-    }
-
-    return map;
+    return this.index.buildClassPathToNameMap();
   }
 
   /**
@@ -496,15 +328,7 @@ export class NodeRegistry {
    * Returns Map<nodeName, classPath>
    */
   buildNameToClassPathMap(): Map<string, string> {
-    const map = new Map<string, string>();
-
-    for (const node of this.getAll()) {
-      if (node.classPath) {
-        map.set(node.name, node.classPath);
-      }
-    }
-
-    return map;
+    return this.index.buildNameToClassPathMap();
   }
 
   // ===========================================================================
@@ -601,21 +425,8 @@ export class NodeRegistry {
   /**
    * Get registry statistics
    */
-  getStats(): {
-    totalNodes: number;
-    nodesByType: Record<string, number>;
-    classPathCount: number;
-  } {
-    const nodesByType: Record<string, number> = {};
-    for (const [type, nodes] of this.nodesByType) {
-      nodesByType[type] = nodes.length;
-    }
-
-    return {
-      totalNodes: this.size,
-      nodesByType,
-      classPathCount: this.nodesByClassPath.size,
-    };
+  getStats(): NodeRegistryStats {
+    return this.index.getStats();
   }
 
   /**

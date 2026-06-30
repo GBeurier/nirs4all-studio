@@ -11,8 +11,6 @@
  */
 
 import {
-  createContext,
-  useContext,
   useState,
   useCallback,
   useMemo,
@@ -24,8 +22,11 @@ import type { PlaygroundResult, UnifiedOperator } from '@/types/playground';
 import { loadWorkspaceDataset } from '@/api/playground';
 import { useReferenceDatasetQuery } from '@/hooks/useReferenceDatasetQuery';
 import {
+  ReferenceDatasetContext,
+  type ReferenceDatasetContextValue,
+} from '@/context/useReferenceDataset';
+import {
   type ReferenceMode,
-  type ReferenceDatasetInfo,
   type ReferenceDatasetState,
   type AlignmentMode,
   type DatasetCompatibility,
@@ -34,31 +35,6 @@ import {
   checkDatasetCompatibility,
   alignDatasets,
 } from '@/lib/playground/referenceDataset';
-
-// ============= Context Types =============
-
-interface ReferenceDatasetContextValue extends ReferenceDatasetState {
-  /** Set reference mode (step or dataset) */
-  setReferenceMode: (mode: ReferenceMode) => void;
-  /** Load a reference dataset from workspace */
-  loadReferenceDataset: (datasetId: string, datasetName: string) => Promise<void>;
-  /** Clear the reference dataset */
-  clearReferenceDataset: () => void;
-  /** Set alignment mode */
-  setAlignmentMode: (mode: AlignmentMode) => void;
-  /** Check compatibility with primary dataset */
-  checkCompatibility: (primary: SpectralData) => DatasetCompatibility | null;
-  /** Compute alignment with primary dataset */
-  computeAlignment: (primary: SpectralData) => AlignmentResult | null;
-  /** Whether reference mode is active (mode='dataset' and data loaded) */
-  isReferenceActive: boolean;
-  /** Whether reference dataset is being processed */
-  isProcessing: boolean;
-}
-
-// ============= Context =============
-
-const ReferenceDatasetContext = createContext<ReferenceDatasetContextValue | null>(null);
 
 // ============= Provider =============
 
@@ -256,36 +232,3 @@ export function ReferenceDatasetProvider({
     </ReferenceDatasetContext.Provider>
   );
 }
-
-// ============= Hook =============
-
-/**
- * Hook to access reference dataset context
- * @throws Error if used outside of ReferenceDatasetProvider
- */
-export function useReferenceDataset(): ReferenceDatasetContextValue {
-  const context = useContext(ReferenceDatasetContext);
-  if (!context) {
-    throw new Error('useReferenceDataset must be used within a ReferenceDatasetProvider');
-  }
-  return context;
-}
-
-/**
- * Hook to optionally access reference dataset context
- * Returns null if not within ReferenceDatasetProvider
- */
-export function useReferenceDatasetOptional(): ReferenceDatasetContextValue | null {
-  return useContext(ReferenceDatasetContext);
-}
-
-// ============= Re-exports =============
-
-export type {
-  ReferenceMode,
-  ReferenceDatasetInfo,
-  ReferenceDatasetState,
-  AlignmentMode,
-  DatasetCompatibility,
-  AlignmentResult,
-};

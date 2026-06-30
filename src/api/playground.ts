@@ -85,6 +85,9 @@ export async function executePlayground(
 export interface ExecuteDatasetRequest {
   dataset_id: string;
   partition?: 'train' | 'test' | 'all';
+  source_index?: number;
+  source?: number;
+  target_index?: number;
   steps: PlaygroundStep[];
   sampling?: ExecuteRequest['sampling'];
   options?: Record<string, unknown>;
@@ -244,6 +247,9 @@ export function buildExecuteRequest(params: {
  */
 export interface ChartComputeRequest {
   dataset_id?: string;
+  source_index?: number;
+  source?: number;
+  target_index?: number;
   steps: PlaygroundStep[];
   sampling?: { method: string; n_samples: number; seed: number };
   options?: Record<string, unknown>;
@@ -285,6 +291,7 @@ export async function getDatasetSpectra(
     end?: number;
     partition?: string;
     source?: number;
+    targetIndex?: number;
     includeY?: boolean;
     includeMetadata?: boolean;
     /**
@@ -300,6 +307,7 @@ export async function getDatasetSpectra(
   if (options?.end !== undefined) params.set('end', options.end.toString());
   if (options?.partition) params.set('partition', options.partition);
   if (options?.source !== undefined) params.set('source', options.source.toString());
+  if (options?.targetIndex !== undefined) params.set('target_index', options.targetIndex.toString());
   if (options?.includeY) params.set('include_y', 'true');
   if (options?.includeMetadata) params.set('include_metadata', 'true');
   if (options?.maxWavelengths !== undefined) {
@@ -341,10 +349,16 @@ export async function getDatasetSpectraStats(
 export async function loadWorkspaceDataset(
   datasetId: string,
   datasetName?: string,
-  partition: 'train' | 'test' | 'all' = 'all'
+  partition: 'train' | 'test' | 'all' = 'all',
+  options: {
+    sourceIndex?: number | null;
+    targetIndex?: number | null;
+  } = {},
 ): Promise<SpectralData> {
   const response = await getDatasetSpectra(datasetId, {
     partition,
+    source: options.sourceIndex ?? undefined,
+    targetIndex: options.targetIndex ?? undefined,
     includeY: true,
     includeMetadata: true,
   });

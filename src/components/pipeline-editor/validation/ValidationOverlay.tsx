@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useStepValidation } from "./useValidation";
-import { useOptionalValidationContext } from "./ValidationContext";
+import { useOptionalValidationContext } from "./useValidationContext";
 import type { PipelineValidationResult, ValidationIssue } from "./types";
 
 // ============================================================================

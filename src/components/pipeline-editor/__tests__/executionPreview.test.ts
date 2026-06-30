@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { PipelineStep } from "../types";
-import { analyzeExecution } from "../ExecutionPreviewPanel";
+import { analyzeExecution } from "../executionAnalysis";
+import {
+  buildExecutionFormula,
+  estimateExecutionTime,
+  generateExecutionSuggestions,
+  getExecutionProgressValue,
+  getFitsSeverity,
+} from "../executionPreviewPresentation";
 
 function makeStep(overrides: Partial<PipelineStep> & { name: string }): PipelineStep {
   return {
@@ -127,5 +134,76 @@ describe("analyzeExecution", () => {
     expect(breakdown.totalFits).toBe(144);
     expect(breakdown.refitModels).toBe(6);
     expect(breakdown.totalModels).toBe(150);
+  });
+});
+
+describe("execution preview presentation", () => {
+  const baseBreakdown = (): ReturnType<typeof analyzeExecution> => ({
+    sweepVariants: 1,
+    generatorVariants: 1,
+    finetuningTrials: 0,
+    cvFolds: 5,
+    cvFitsPerPipeline: 1,
+    totalFits: 5,
+    refitModels: 1,
+    totalPipelines: 1,
+    totalModels: 6,
+    modelsWithFinetuning: 0,
+    modelsWithSweeps: 0,
+    modelsWithGenerators: 0,
+    modelsWithRefit: 1,
+    modelCount: 1,
+  });
+
+  it("classifies total fit complexity at preview thresholds", () => {
+    expect(getFitsSeverity(100)).toBe("low");
+    expect(getFitsSeverity(101)).toBe("medium");
+    expect(getFitsSeverity(1001)).toBe("high");
+    expect(getFitsSeverity(10001)).toBe("extreme");
+  });
+
+  it("formats rough execution time estimates with stable units", () => {
+    expect(estimateExecutionTime(59)).toBe("~59s");
+    expect(estimateExecutionTime(60)).toBe("~1 min");
+    expect(estimateExecutionTime(3600)).toBe("~1.0 hours");
+    expect(estimateExecutionTime(86400)).toBe("~1.0 days");
+  });
+
+  it("keeps the progress preview bounded on a logarithmic scale", () => {
+    expect(getExecutionProgressValue(0)).toBe(0);
+    expect(getExecutionProgressValue(100000)).toBe(100);
+    expect(getExecutionProgressValue(1000000)).toBe(100);
+  });
+
+  it("generates suggestions for expensive sweep and CV configurations", () => {
+    const suggestions = generateExecutionSuggestions({
+      ...baseBreakdown(),
+      sweepVariants: 1200,
+      finetuningTrials: 150,
+      cvFolds: 12,
+      totalFits: 60000,
+    });
+
+    expect(suggestions).toEqual([
+      "Consider using Optuna finetuning instead of exhaustive grid search for faster optimization.",
+      "Reduce parameter sweep ranges or use coarser step sizes to limit combinations.",
+      "With many sweep variants, consider reducing Optuna trials per variant.",
+      "High CV fold count increases execution time. Consider 5-fold CV for faster iteration.",
+      "Consider using a subset of data for initial exploration, then full data for final model.",
+    ]);
+  });
+
+  it("builds a compact formula from mixed sweep, generator, CV, and refit counts", () => {
+    expect(
+      buildExecutionFormula({
+        ...baseBreakdown(),
+        sweepVariants: 3,
+        generatorVariants: 4,
+        cvFitsPerPipeline: 2,
+        cvFolds: 6,
+        refitModels: 12,
+        totalPipelines: 12,
+      }),
+    ).toBe("3 sweeps × 4 generators × 2 fits/pipeline × 6 folds + 12 refits");
   });
 });

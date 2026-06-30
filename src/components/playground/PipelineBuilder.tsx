@@ -68,7 +68,7 @@ function nodeParamsToOperatorParams(node: NodeDefinition | undefined): Record<st
       options: param.options as OperatorParamInfo['options'],
       description: param.description,
       isAdvanced: param.isAdvanced,
-      dynamicSource: (param as Record<string, unknown>).dynamicSource as string | undefined,
+      dynamicSource: (param as unknown as Record<string, unknown>).dynamicSource as string | undefined,
     };
   }
   return result;

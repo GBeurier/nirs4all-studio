@@ -6,13 +6,7 @@
  */
 
 import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
-import { useSelection, type SelectionContextValue } from '@/context/SelectionContext';
-import {
-  computeSelectionAction,
-  computeStackedBarAction,
-  executeSelectionAction,
-} from '@/lib/playground/selectionHandlers';
-import { extractModifiers } from '@/lib/playground/selectionUtils';
+import { useSelection } from '@/context/useSelection';
 import {
   getCategoricalColor,
   getContinuousColor,
@@ -25,22 +19,28 @@ import {
   normalizeValue,
 } from '@/lib/playground/colorConfig';
 import { exportChart } from '@/lib/chartExport';
-import { formatYValue } from '../chartConfig';
 import {
   calculateOptimalBinCount,
   computeKDE,
   getHistogramPartitionRoleColor,
 } from './utils';
+import { useHistogramSelectionHandlers } from './useHistogramSelectionHandlers';
+import {
+  computeClassBarData,
+  computeHistogramBins,
+  computeSelectedYStats,
+  computeYStats,
+  getHoveredBin,
+  getHoveredClass,
+  getSelectedBins,
+  getSelectedClasses,
+  mapSamplesToClasses,
+} from './histogramDataUtils';
 import {
   type YHistogramProps,
   type BinData,
-  type ClassBarData,
-  type YStats,
   type HistogramConfig,
-  type RechartsMouseEvent,
-  type RangeSelection,
   DEFAULT_CONFIG,
-  RANGE_SELECTION_INITIAL,
 } from './types';
 
 export function useHistogramData(props: YHistogramProps) {
@@ -59,20 +59,23 @@ export function useHistogramData(props: YHistogramProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<HistogramConfig>(DEFAULT_CONFIG);
 
-  // Range selection state for brush selection on Y axis
-  const [rangeSelection, setRangeSelection] = useState<RangeSelection>(RANGE_SELECTION_INITIAL);
-
   // SelectionContext integration for cross-chart highlighting
   // Always call hook unconditionally, then conditionally use the result
   const fullSelectionCtx = useSelection();
   const selectionCtx = useSelectionContextFlag ? fullSelectionCtx : null;
 
   // Determine effective selection state
+  const fallbackSelectedSamples = useMemo(
+    () => new Set<number>(
+      externalSelectedSample !== null && externalSelectedSample !== undefined
+        ? [externalSelectedSample]
+        : []
+    ),
+    [externalSelectedSample]
+  );
   const selectedSamples = useSelectionContextFlag
     ? fullSelectionCtx.selectedSamples
-    : new Set<number>(externalSelectedSample !== null && externalSelectedSample !== undefined
-      ? [externalSelectedSample]
-      : []);
+    : fallbackSelectedSamples;
 
   const hoveredSample = useSelectionContextFlag ? fullSelectionCtx.hoveredSample : null;
 
@@ -148,67 +151,12 @@ export function useHistogramData(props: YHistogramProps) {
 
   // Compute histogram bins
   const { histogramData, sampleBins } = useMemo(() => {
-    if (!displayY || displayY.length === 0) {
-      return { histogramData: [] as BinData[], sampleBins: [] as number[] };
-    }
-
-    const displayFilter = effectiveDisplayFilter;
-    const visibleValues = displayFilter
-      ? displayY.filter((_, idx) => displayFilter.has(idx))
-      : displayY;
-
-    if (visibleValues.length === 0) {
-      return { histogramData: [] as BinData[], sampleBins: [] as number[] };
-    }
-
-    const values = displayY;
-    const min = Math.min(...visibleValues);
-    const max = Math.max(...visibleValues);
-    const range = max - min;
-    const binWidth = range / effectiveBinCount || 1;
-
-    const histogram: BinData[] = Array.from({ length: effectiveBinCount }, (_, i) => ({
-      binStart: min + i * binWidth,
-      binEnd: min + (i + 1) * binWidth,
-      binCenter: min + (i + 0.5) * binWidth,
-      count: 0,
-      samples: [],
-      label: `${formatYValue(min + i * binWidth, 2)} - ${formatYValue(min + (i + 1) * binWidth, 2)}`,
-      foldCounts: {},
-      foldSamples: {},
-    }));
-
-    const sampleToBin: number[] = [];
-    const foldLabels = folds?.fold_labels ?? [];
-
-    values.forEach((v, idx) => {
-      // Phase 4: Skip samples not in display filter
-      if (displayFilter && !displayFilter.has(idx)) {
-        return;
-      }
-
-      let binIndex = Math.floor((v - min) / binWidth);
-      if (binIndex >= effectiveBinCount) binIndex = effectiveBinCount - 1;
-      if (binIndex < 0) binIndex = 0;
-
-      histogram[binIndex].count++;
-      histogram[binIndex].samples.push(idx);
-      sampleToBin[idx] = binIndex;
-
-      // Track fold distribution within bin
-      if (foldLabels.length > 0 && foldLabels[idx] !== undefined) {
-        const foldIdx = foldLabels[idx];
-        if (foldIdx >= 0) {
-          histogram[binIndex].foldCounts![foldIdx] = (histogram[binIndex].foldCounts![foldIdx] || 0) + 1;
-          if (!histogram[binIndex].foldSamples![foldIdx]) {
-            histogram[binIndex].foldSamples![foldIdx] = [];
-          }
-          histogram[binIndex].foldSamples![foldIdx].push(idx);
-        }
-      }
+    return computeHistogramBins({
+      values: displayY,
+      binCount: effectiveBinCount,
+      displayFilter: effectiveDisplayFilter,
+      foldLabels: folds?.fold_labels ?? [],
     });
-
-    return { histogramData: histogram, sampleBins: sampleToBin };
   }, [displayY, effectiveBinCount, folds, effectiveDisplayFilter]);
 
   // Phase 5: Determine if we're in classification mode
@@ -218,56 +166,16 @@ export function useHistogramData(props: YHistogramProps) {
   }, [colorContext?.targetType]);
 
   // Phase 5: Compute class bar data for classification mode
-  const classBarData = useMemo<ClassBarData[]>(() => {
+  const classBarData = useMemo(() => {
     if (!isClassificationMode) return [];
 
-    const classLabels = colorContext?.classLabels;
-    const classLabelMap = colorContext?.classLabelMap;
-    if (!classLabels || classLabels.length === 0) return [];
-
-    const displayFilter = effectiveDisplayFilter;
-    const foldLabels = folds?.fold_labels ?? [];
-
-    // Initialize class bars
-    const classBars: ClassBarData[] = classLabels.map((label, idx) => ({
-      classLabel: label,
-      classIndex: idx,
-      count: 0,
-      samples: [],
-      foldCounts: {},
-      foldSamples: {},
-    }));
-
-    // Count samples per class
-    displayY.forEach((yVal, idx) => {
-      // Skip samples not in display filter
-      if (displayFilter && !displayFilter.has(idx)) {
-        return;
-      }
-
-      const classIdx = classLabelMap
-        ? classLabelMap.get(String(yVal)) ?? -1
-        : classLabels.indexOf(String(yVal));
-      if (classIdx >= 0) {
-        classBars[classIdx].count++;
-        classBars[classIdx].samples.push(idx);
-
-        // Track fold distribution within class
-        if (foldLabels.length > 0 && foldLabels[idx] !== undefined) {
-          const foldIdx = foldLabels[idx];
-          if (foldIdx >= 0) {
-            classBars[classIdx].foldCounts![foldIdx] =
-              (classBars[classIdx].foldCounts![foldIdx] || 0) + 1;
-            if (!classBars[classIdx].foldSamples![foldIdx]) {
-              classBars[classIdx].foldSamples![foldIdx] = [];
-            }
-            classBars[classIdx].foldSamples![foldIdx].push(idx);
-          }
-        }
-      }
+    return computeClassBarData({
+      values: displayY,
+      classLabels: colorContext?.classLabels,
+      classLabelMap: colorContext?.classLabelMap,
+      displayFilter: effectiveDisplayFilter,
+      foldLabels: folds?.fold_labels ?? [],
     });
-
-    return classBars;
   }, [isClassificationMode, colorContext?.classLabels, colorContext?.classLabelMap, effectiveDisplayFilter, displayY, folds]);
 
   // Phase 5: Map samples to their class index for selection highlighting
@@ -275,59 +183,17 @@ export function useHistogramData(props: YHistogramProps) {
     if (!isClassificationMode) return [] as number[];
     const classLabels = colorContext?.classLabels ?? [];
     const classLabelMap = colorContext?.classLabelMap;
-    return displayY.map((yVal) =>
-      classLabelMap
-        ? classLabelMap.get(String(yVal)) ?? -1
-        : classLabels.indexOf(String(yVal))
-    );
+    return mapSamplesToClasses(displayY, classLabels, classLabelMap);
   }, [isClassificationMode, colorContext?.classLabels, colorContext?.classLabelMap, displayY]);
 
   // Compute statistics
-  const stats = useMemo<YStats | null>(() => {
-    if (!displayY || displayY.length === 0) return null;
-
-    const values = filteredDisplayY;
-
-    if (values.length === 0) return null;
-
-    const n = values.length;
-    const sorted = [...values].sort((a, b) => a - b);
-    const sum = values.reduce((a, b) => a + b, 0);
-    const mean = sum / n;
-    const median = n % 2 === 0
-      ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2
-      : sorted[Math.floor(n / 2)];
-    const variance = values.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / n;
-    const std = Math.sqrt(variance);
-    const q1 = sorted[Math.floor(n * 0.25)];
-    const q3 = sorted[Math.floor(n * 0.75)];
-
-    return { mean, median, std, min: sorted[0], max: sorted[n - 1], n, q1, q3 };
-  }, [filteredDisplayY]);
+  const stats = useMemo(() => computeYStats(filteredDisplayY), [filteredDisplayY]);
 
   // Compute stats for selected samples
-  const selectedStats = useMemo<YStats | null>(() => {
-    if (!displayY || displayY.length === 0 || selectedSamples.size === 0) return null;
-
-    const values = displayY.filter((_, idx) =>
-      selectedSamples.has(idx) && (!effectiveDisplayFilter || effectiveDisplayFilter.has(idx))
-    );
-    if (values.length === 0) return null;
-
-    const n = values.length;
-    const sorted = [...values].sort((a, b) => a - b);
-    const sum = values.reduce((a, b) => a + b, 0);
-    const mean = sum / n;
-    const median = n % 2 === 0
-      ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2
-      : sorted[Math.floor(n / 2)];
-    const variance = values.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / n;
-    const std = Math.sqrt(variance);
-    const q1 = sorted[Math.floor(n * 0.25)];
-    const q3 = sorted[Math.floor(n * 0.75)];
-
-    return { mean, median, std, min: sorted[0], max: sorted[n - 1], n, q1, q3 };
-  }, [displayY, effectiveDisplayFilter, selectedSamples]);
+  const selectedStats = useMemo(
+    () => computeSelectedYStats(displayY, selectedSamples, effectiveDisplayFilter),
+    [displayY, effectiveDisplayFilter, selectedSamples]
+  );
 
   // Stats to display in footer
   const displayStats = selectedSamples.size > 0 ? selectedStats : stats;
@@ -353,36 +219,20 @@ export function useHistogramData(props: YHistogramProps) {
 
   // Find which bins contain selected/hovered samples
   const selectedBins = useMemo(() => {
-    const bins = new Set<number>();
-    selectedSamples.forEach(idx => {
-      if (sampleBins[idx] !== undefined) {
-        bins.add(sampleBins[idx]);
-      }
-    });
-    return bins;
+    return getSelectedBins(selectedSamples, sampleBins);
   }, [selectedSamples, sampleBins]);
 
-  const hoveredBin = hoveredSample !== null && sampleBins[hoveredSample] !== undefined
-    ? sampleBins[hoveredSample]
-    : null;
+  const hoveredBin = getHoveredBin(hoveredSample, sampleBins);
 
   // Phase 5: Find which classes contain selected/hovered samples
   const selectedClasses = useMemo(() => {
     if (!isClassificationMode) return new Set<number>();
-    const classes = new Set<number>();
-    selectedSamples.forEach(idx => {
-      const classIdx = sampleToClass[idx];
-      if (classIdx !== undefined && classIdx >= 0) {
-        classes.add(classIdx);
-      }
-    });
-    return classes;
+    return getSelectedClasses(selectedSamples, sampleToClass);
   }, [isClassificationMode, selectedSamples, sampleToClass]);
 
   const hoveredClass = useMemo(() => {
-    if (!isClassificationMode || hoveredSample === null) return null;
-    const classIdx = sampleToClass[hoveredSample];
-    return classIdx !== undefined && classIdx >= 0 ? classIdx : null;
+    if (!isClassificationMode) return null;
+    return getHoveredClass(hoveredSample, sampleToClass);
   }, [isClassificationMode, hoveredSample, sampleToClass]);
 
   const hasFolds = uniqueFolds.length > 0;
@@ -406,133 +256,17 @@ export function useHistogramData(props: YHistogramProps) {
 
   const yAxisLabel = config.yAxisType === 'frequency' ? '%' : config.yAxisType === 'density' ? 'Density' : 'Count';
 
-  // ============= Mouse Event Tracking =============
-
-  const lastMouseEventRef = useRef<MouseEvent | null>(null);
-
-  useEffect(() => {
-    const handleNativeMouseUp = (e: MouseEvent) => {
-      lastMouseEventRef.current = e;
-    };
-    const handleNativeMouseDown = (e: MouseEvent) => {
-      // Store for use in drag detection
-      void e;
-    };
-    window.addEventListener('mouseup', handleNativeMouseUp, { capture: true });
-    window.addEventListener('mousedown', handleNativeMouseDown, { capture: true });
-    return () => {
-      window.removeEventListener('mouseup', handleNativeMouseUp, { capture: true });
-      window.removeEventListener('mousedown', handleNativeMouseDown, { capture: true });
-    };
-  }, []);
-
-  // ============= Range Selection Handlers =============
-
-  const handleMouseDown = useCallback((e: RechartsMouseEvent) => {
-    if (!e?.activeLabel) return;
-    const yValue = typeof e.activeLabel === 'number' ? e.activeLabel : parseFloat(e.activeLabel as string);
-    if (!isNaN(yValue)) {
-      setRangeSelection({ start: yValue, end: yValue, isSelecting: true });
-    }
-  }, []);
-
-  const handleMouseMove = useCallback((e: RechartsMouseEvent) => {
-    // Handle range selection only - hover propagation disabled for performance
-    if (!rangeSelection.isSelecting || !e?.activeLabel) return;
-    const yValue = typeof e.activeLabel === 'number' ? e.activeLabel : parseFloat(e.activeLabel as string);
-    if (!isNaN(yValue)) {
-      setRangeSelection(prev => ({ ...prev, end: yValue }));
-    }
-  }, [rangeSelection.isSelecting]);
-
-  const handleMouseLeave = useCallback(() => {
-    if (rangeSelection.isSelecting) {
-      setRangeSelection(RANGE_SELECTION_INITIAL);
-    }
-    if (selectionCtx) {
-      selectionCtx.setHovered(null);
-    }
-  }, [rangeSelection.isSelecting, selectionCtx]);
-
-  // ============= Unified Selection Handlers (Phase 3) =============
-
-  /**
-   * Handle bar click selection using unified computeSelectionAction.
-   * Used by simple (non-stacked) bar charts.
-   */
-  const handleBarSelection = useCallback((
-    samples: number[],
-    e: MouseEvent | null,
-    ctx: SelectionContextValue | null
-  ) => {
-    if (!ctx || samples.length === 0) return;
-
-    const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
-    const action = computeSelectionAction(
-      { indices: samples },
-      ctx.selectedSamples,
-      modifiers
-    );
-    executeSelectionAction(ctx, action);
-  }, []);
-
-  /**
-   * Handle stacked bar click selection using unified computeStackedBarAction.
-   * Supports progressive drill-down: bar → segment → clear.
-   */
-  const handleStackedBarSelection = useCallback((
-    barSamples: number[],
-    segmentSamples: number[],
-    e: MouseEvent | null,
-    ctx: SelectionContextValue | null
-  ) => {
-    if (!ctx || barSamples.length === 0) return;
-
-    const modifiers = e ? extractModifiers(e) : { shift: false, ctrl: false };
-    const effectiveSegment = segmentSamples.length > 0 ? segmentSamples : barSamples;
-
-    const action = computeStackedBarAction(
-      { barIndices: barSamples, segmentIndices: effectiveSegment },
-      ctx.selectedSamples,
-      modifiers
-    );
-    executeSelectionAction(ctx, action);
-  }, []);
-
-  // ============= Drag Selection Handler =============
-
-  const handleDragSelection = useCallback((e: MouseEvent | null): boolean => {
-    if (!rangeSelection.isSelecting || rangeSelection.start === null || rangeSelection.end === null) {
-      return false;
-    }
-
-    const minY = Math.min(rangeSelection.start, rangeSelection.end);
-    const maxY = Math.max(rangeSelection.start, rangeSelection.end);
-
-    // Check if this is a meaningful drag range or just a click
-    const binWidth = histogramData.length > 0
-      ? histogramData[0].binEnd - histogramData[0].binStart
-      : 0;
-
-    const isDragSelection = Math.abs(maxY - minY) > binWidth * 0.3;
-
-    if (isDragSelection) {
-      // Drag selection: find all bins that intersect with the selection range
-      const samplesInRange: number[] = [];
-      histogramData.forEach(bin => {
-        if (bin.binEnd >= minY && bin.binStart <= maxY) {
-          samplesInRange.push(...bin.samples);
-        }
-      });
-
-      // Use unified handler for range selection
-      handleBarSelection(samplesInRange, e, selectionCtx);
-      setRangeSelection(RANGE_SELECTION_INITIAL);
-      return true;
-    }
-
-    return false;
-  }, [rangeSelection, histogramData, selectionCtx, handleBarSelection]);
+  const {
+    lastMouseEventRef,
+    rangeSelection,
+    setRangeSelection,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseLeave,
+    handleDragSelection,
+    handleBarSelection,
+    handleStackedBarSelection,
+  } = useHistogramSelectionHandlers({ histogramData, selectionCtx });
 
   // ============= Export Handler =============
 
@@ -698,7 +432,7 @@ export function useHistogramData(props: YHistogramProps) {
         return getContinuousColor(t, globalColorConfig?.continuousPalette ?? 'blue_red');
       }
     }
-  }, [effectiveColorMode, uniqueFolds, globalColorConfig, colorContext, stats, displayY.length, metadata]);
+  }, [effectiveColorMode, globalColorConfig, colorContext, stats, displayY.length, metadata]);
 
   return {
     // Refs

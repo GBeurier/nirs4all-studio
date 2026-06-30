@@ -9,7 +9,7 @@
  * const { customNodes, addNode, removeNode, isEnabled, syncWithWorkspace } = useCustomNodes();
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   CustomNodeStorage,
   type CustomNodeValidationResult,
@@ -217,10 +217,7 @@ export function useCustomNodes(): UseCustomNodesReturn {
   );
 
   // Get allowed packages
-  const allowedPackages = useMemo(() => {
-    const storage = CustomNodeStorage.getInstance();
-    return storage.getAllowedPackages();
-  }, [securityConfig]);
+  const allowedPackages = CustomNodeStorage.getInstance().getAllowedPackages();
 
   // Add user package
   const addUserPackage = useCallback(

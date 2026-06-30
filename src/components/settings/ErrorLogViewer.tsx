@@ -14,7 +14,7 @@
  * Phase 5: System Information & Diagnostics
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle,
   AlertCircle,
@@ -205,7 +205,7 @@ export function ErrorLogViewer({
   const [error, setError] = useState<string | null>(null);
   const [isClearing, setIsClearing] = useState(false);
 
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
@@ -221,7 +221,7 @@ export function ErrorLogViewer({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [limit]);
 
   const handleClearLogs = async () => {
     try {
@@ -242,7 +242,7 @@ export function ErrorLogViewer({
       const interval = setInterval(loadLogs, refreshInterval * 1000);
       return () => clearInterval(interval);
     }
-  }, [limit, autoRefresh, refreshInterval]);
+  }, [loadLogs, autoRefresh, refreshInterval]);
 
   if (isLoading) {
     return (

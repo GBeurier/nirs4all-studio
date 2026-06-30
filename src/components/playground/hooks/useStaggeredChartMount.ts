@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { ChartType } from '@/context/PlaygroundViewContext';
+import type { ChartType } from '@/context/usePlaygroundView';
 
 /** Mount schedule: chart type → delay in ms */
 const MOUNT_SCHEDULE: readonly { chart: ChartType; delay: number }[] = [
@@ -55,6 +55,11 @@ export function useStaggeredChartMount({
   const [mountedCharts, setMountedCharts] = useState<Set<ChartType>>(new Set());
   const timersRef = useRef<number[]>([]);
   const prevHasDataRef = useRef(false);
+  const visibleChartsRef = useRef(visibleCharts);
+
+  useEffect(() => {
+    visibleChartsRef.current = visibleCharts;
+  }, [visibleCharts]);
 
   // Clear all pending timers
   const clearTimers = useCallback(() => {
@@ -74,7 +79,7 @@ export function useStaggeredChartMount({
       setMountedCharts(new Set());
 
       for (const { chart, delay } of MOUNT_SCHEDULE) {
-        if (!visibleCharts.has(chart)) continue;
+        if (!visibleChartsRef.current.has(chart)) continue;
 
         if (delay === 0) {
           // Mount immediately

@@ -8,21 +8,18 @@
  * - Pins (clear all pinned samples)
  * - Display filters (outlier, selection, metadata)
  * - Color configuration
- * - Step comparison state
  * - User-marked outliers
  */
 
 import { useCallback } from 'react';
-import { useSelection } from '@/context/SelectionContext';
-import { useFilterOptional } from '@/context/FilterContext';
-import { useOutliersOptional } from '@/context/OutliersContext';
+import { useSelection } from '@/context/useSelection';
+import { useFilterOptional } from '@/context/useFilter';
+import { useOutliersOptional } from '@/context/useOutliers';
 import { DEFAULT_GLOBAL_COLOR_CONFIG, type GlobalColorConfig } from '@/lib/playground/colorConfig';
 
 export interface PlaygroundResetCallbacks {
   /** Reset color configuration to defaults */
   onResetColorConfig?: (config: GlobalColorConfig) => void;
-  /** Reset step comparison */
-  onResetStepComparison?: () => void;
   /** Reset brush/zoom domain */
   onResetZoom?: () => void;
   /** Custom callback after reset */
@@ -32,8 +29,6 @@ export interface PlaygroundResetCallbacks {
 export interface UsePlaygroundResetResult {
   /** Reset all playground state */
   resetPlayground: () => void;
-  /** Check if there's anything to reset */
-  hasStateToReset: boolean;
 }
 
 /**
@@ -44,7 +39,6 @@ export function usePlaygroundReset(
 ): UsePlaygroundResetResult {
   const {
     onResetColorConfig,
-    onResetStepComparison,
     onResetZoom,
     onAfterReset,
   } = callbacks;
@@ -53,8 +47,6 @@ export function usePlaygroundReset(
   const {
     clear: clearSelection,
     clearPins,
-    selectedCount,
-    pinnedCount,
   } = useSelection();
 
   // Filter context (optional - may not be in provider)
@@ -62,13 +54,6 @@ export function usePlaygroundReset(
 
   // Outliers context (optional)
   const outliersContext = useOutliersOptional();
-
-  // Check if there's anything to reset
-  const hasStateToReset =
-    selectedCount > 0 ||
-    pinnedCount > 0 ||
-    (filterContext?.hasActiveFilters ?? false) ||
-    (outliersContext?.hasManualOutliers ?? false);
 
   // Reset all state
   const resetPlayground = useCallback(() => {
@@ -87,9 +72,6 @@ export function usePlaygroundReset(
     // Reset color config to defaults
     onResetColorConfig?.(DEFAULT_GLOBAL_COLOR_CONFIG);
 
-    // Reset step comparison
-    onResetStepComparison?.();
-
     // Reset zoom/brush
     onResetZoom?.();
 
@@ -101,14 +83,12 @@ export function usePlaygroundReset(
     filterContext,
     outliersContext,
     onResetColorConfig,
-    onResetStepComparison,
     onResetZoom,
     onAfterReset,
   ]);
 
   return {
     resetPlayground,
-    hasStateToReset,
   };
 }
 

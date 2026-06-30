@@ -21,7 +21,7 @@ import {
   type ClickModifiers,
   type SelectionActionResult,
 } from '../selectionHandlers';
-import type { SelectionResult } from '@/components/playground/SelectionTools';
+import type { SelectionResult } from '@/components/playground/selectionGeometry';
 
 // ============= computeSelectionAction Tests =============
 

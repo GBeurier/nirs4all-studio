@@ -7,65 +7,40 @@
 
 import type { ScoreCardRow } from "@/types/score-cards";
 import type { TopChainResult } from "@/types/enriched-runs";
-import type { ChainSummary, PartitionPrediction } from "@/types/aggregated-predictions";
-import type { PredictionRecord } from "@/types/linked-workspaces";
-import {
-  ALL_CLASSIFICATION_METRICS,
-  ALL_REGRESSION_METRICS,
-  extractScoreValue,
-  isLowerBetter,
-} from "@/lib/scores";
+import type { PartitionPrediction } from "@/types/aggregated-predictions";
 import { foldIdBase, safeNumber } from "@/lib/fold-utils";
+import {
+  averagePredictionScoreMaps,
+  coerceScoreMap,
+  extractPredictionScoreMap,
+  extremePredictionScoreMaps,
+  findFoldPrediction,
+  foldVariantId,
+  foldVariantSuffix,
+  isNumberedFoldId,
+  predictionMatchesVariant,
+  projectPartitionScoreMaps,
+  type FoldVariant,
+} from "@/lib/score-adapters-fold-scores";
+import { projectFinalScoreMaps } from "@/lib/score-adapters-score-maps";
+import {
+  compareCvChains,
+  compareRefitChains,
+  compareRefitRows,
+  dedupeChainsByVariant,
+  displayParams,
+  displayVariantKey,
+  findMatchingCvSource,
+  findMatchingCvSourceExact,
+} from "@/lib/score-adapters-chain-matching";
+
+export { coerceScoreMap };
+export { chainSummaryToRow, collapseStandaloneRefitSummaries } from "@/lib/score-adapters-chain-summaries";
+export { predictionRecordBestParams, predictionRecordToRow } from "@/lib/score-adapters-prediction-records";
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-type FoldVariant = "raw" | "aggregated";
-
-const KNOWN_SCORE_METRIC_KEYS = [
-  ...new Set([
-    ...ALL_REGRESSION_METRICS.map(metric => metric.key),
-    ...ALL_CLASSIFICATION_METRICS.map(metric => metric.key),
-  ]),
-];
-
-/** Extract multi-metric scores from a {partition: {metric: value}} structure. */
-function extractNestedScores(
-  scores: Record<string, Record<string, number>> | null | undefined,
-  partition: string,
-): Record<string, number | null> {
-  if (!scores) return {};
-  const inner = scores[partition];
-  if (!inner || typeof inner !== "object") return {};
-  const result: Record<string, number | null> = {};
-  for (const [k, v] of Object.entries(inner)) {
-    result[k] = safeNumber(v);
-  }
-  return result;
-}
-
-function parsePredictionJsonObject(value: unknown): Record<string, unknown> | null {
-  if (!value) return null;
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
-    } catch {
-      return null;
-    }
-  }
-  return typeof value === "object" ? value as Record<string, unknown> : null;
-}
-
-export function predictionRecordBestParams(pred: Pick<PredictionRecord, "best_params">): Record<string, unknown> | null {
-  const parsed = parsePredictionJsonObject(pred.best_params);
-  return parsed && Object.keys(parsed).length > 0 ? parsed : null;
-}
-
-function predictionRecordScores(pred: Pick<PredictionRecord, "scores">): Record<string, unknown> | null {
-  return parsePredictionJsonObject(pred.scores);
-}
 
 export function formatBestParams(params: Record<string, unknown> | null | undefined): string | null {
   if (!params || Object.keys(params).length === 0) return null;
@@ -80,11 +55,6 @@ function hasKeys(obj: Record<string, unknown> | null | undefined): boolean {
 
 function hasMeaningfulBestParams(params: Record<string, unknown> | null | undefined): boolean {
   return !!params && Object.keys(params).length > 0;
-}
-
-function displayParams(chain: TopChainResult | null | undefined): Record<string, unknown> | null {
-  if (!chain) return null;
-  return (chain.variant_params ?? chain.best_params ?? null) as Record<string, unknown> | null;
 }
 
 function hasCvData(chain: TopChainResult): boolean {
@@ -122,273 +92,6 @@ function cvSourceChainId(chain: Pick<TopChainResult, "chain_id" | "cv_source_cha
   return chain.cv_source_chain_id ?? chain.chain_id;
 }
 
-function foldVariantSuffix(variant: FoldVariant): string {
-  return variant === "aggregated" ? "_agg" : "";
-}
-
-function foldVariantId(baseFoldId: string, variant: FoldVariant): string {
-  return `${baseFoldId}${foldVariantSuffix(variant)}`;
-}
-
-function predictionMatchesVariant(prediction: Pick<PartitionPrediction, "fold_id">, variant: FoldVariant): boolean {
-  const isAgg = prediction.fold_id.endsWith("_agg");
-  return variant === "aggregated" ? isAgg : !isAgg;
-}
-
-function compareNullableScores(
-  a: number | null | undefined,
-  b: number | null | undefined,
-  lowerBetter: boolean,
-): number {
-  const aScore = safeNumber(a);
-  const bScore = safeNumber(b);
-  if (aScore == null && bScore == null) return 0;
-  if (aScore == null) return 1;
-  if (bScore == null) return -1;
-  if (aScore === bScore) return 0;
-  return lowerBetter ? aScore - bScore : bScore - aScore;
-}
-
-function compareRefitChains(a: TopChainResult, b: TopChainResult, metric: string | null): number {
-  const lowerBetter = isLowerBetter(metric);
-  const byFinal = compareNullableScores(a.final_test_score, b.final_test_score, lowerBetter);
-  if (byFinal !== 0) return byFinal;
-  const byCv = compareNullableScores(a.avg_val_score, b.avg_val_score, lowerBetter);
-  if (byCv !== 0) return byCv;
-  return a.chain_id.localeCompare(b.chain_id);
-}
-
-function compareCvChains(a: TopChainResult, b: TopChainResult, metric: string | null): number {
-  const lowerBetter = isLowerBetter(metric);
-  const byVal = compareNullableScores(a.avg_val_score, b.avg_val_score, lowerBetter);
-  if (byVal !== 0) return byVal;
-  const byTest = compareNullableScores(a.avg_test_score, b.avg_test_score, lowerBetter);
-  if (byTest !== 0) return byTest;
-  return a.chain_id.localeCompare(b.chain_id);
-}
-
-function compareRefitRows(a: ScoreCardRow, b: ScoreCardRow, metric: string | null): number {
-  const lowerBetter = isLowerBetter(metric);
-  const byTest = compareNullableScores(a.primaryTestScore, b.primaryTestScore, lowerBetter);
-  if (byTest !== 0) return byTest;
-  const byTrain = compareNullableScores(a.primaryTrainScore, b.primaryTrainScore, lowerBetter);
-  if (byTrain !== 0) return byTrain;
-  const byModel = a.modelName.localeCompare(b.modelName);
-  if (byModel !== 0) return byModel;
-  const byChain = a.chainId.localeCompare(b.chainId);
-  if (byChain !== 0) return byChain;
-  return (a.foldId ?? "").localeCompare(b.foldId ?? "");
-}
-
-function stableSerialize(value: unknown): string {
-  if (value == null) return "";
-  if (Array.isArray(value)) {
-    return `[${value.map(stableSerialize).join(",")}]`;
-  }
-  if (typeof value === "object") {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}:${stableSerialize(v)}`)
-      .join(",")}}`;
-  }
-  return String(value);
-}
-
-function normalizeToken(value: string | null | undefined): string {
-  return (value || "").trim().toLowerCase();
-}
-
-function normalizePreprocessings(value: string | null | undefined): string {
-  return normalizeToken(value).replace(/\s+/g, "");
-}
-
-function signatureParts(chain: TopChainResult) {
-  const params = displayParams(chain);
-  return {
-    modelClass: normalizeToken(chain.model_class),
-    modelName: normalizeToken(chain.model_name),
-    preprocessings: normalizePreprocessings(chain.preprocessings),
-    bestParams: stableSerialize(params),
-  };
-}
-
-function signaturePartsExactlyMatch(a: TopChainResult, b: TopChainResult): boolean {
-  const aSig = signatureParts(a);
-  const bSig = signatureParts(b);
-  return (
-    aSig.modelClass === bSig.modelClass
-    && aSig.modelName === bSig.modelName
-    && aSig.preprocessings === bSig.preprocessings
-    && aSig.bestParams === bSig.bestParams
-  );
-}
-
-function variantKey(chain: TopChainResult): string {
-  const params = displayParams(chain);
-  return [
-    normalizeToken(chain.model_name),
-    normalizeToken(chain.model_class),
-    normalizePreprocessings(chain.preprocessings),
-    stableSerialize(params),
-  ].join("::");
-}
-
-function displayVariantKey(chain: TopChainResult): string {
-  return [
-    normalizeToken(chain.model_name),
-    normalizeToken(chain.model_class),
-    normalizePreprocessings(chain.preprocessings),
-  ].join("::");
-}
-
-function dedupeChainsByVariant(
-  chains: TopChainResult[],
-  compare: (a: TopChainResult, b: TopChainResult) => number,
-): TopChainResult[] {
-  const bestByVariant = new Map<string, TopChainResult>();
-
-  for (const chain of chains) {
-    const key = variantKey(chain);
-    const current = bestByVariant.get(key);
-    if (!current || compare(chain, current) < 0) {
-      bestByVariant.set(key, chain);
-    }
-  }
-
-  return [...bestByVariant.values()].sort(compare);
-}
-
-function findMatchingCvSource(
-  refitChain: TopChainResult,
-  cvChains: TopChainResult[],
-  usedChainIds: Set<string>,
-  metric: string | null,
-): TopChainResult | null {
-  const refitSig = signatureParts(refitChain);
-  const available = cvChains.filter(chain => !usedChainIds.has(chain.chain_id));
-  const matchers = [
-    (chain: TopChainResult) => {
-      const sig = signatureParts(chain);
-      return (
-        sig.modelClass === refitSig.modelClass
-        && sig.modelName === refitSig.modelName
-        && sig.preprocessings === refitSig.preprocessings
-        && sig.bestParams === refitSig.bestParams
-      );
-    },
-    (chain: TopChainResult) => {
-      const sig = signatureParts(chain);
-      return (
-        sig.modelClass === refitSig.modelClass
-        && sig.modelName === refitSig.modelName
-        && sig.preprocessings === refitSig.preprocessings
-      );
-    },
-    (chain: TopChainResult) => {
-      const sig = signatureParts(chain);
-      return sig.modelClass === refitSig.modelClass && sig.modelName === refitSig.modelName;
-    },
-    (chain: TopChainResult) => {
-      const sig = signatureParts(chain);
-      return sig.modelClass === refitSig.modelClass;
-    },
-  ];
-
-  for (const matches of matchers) {
-    const candidates = available.filter(matches).sort((a, b) => compareCvChains(a, b, metric));
-    if (candidates.length === 1) return candidates[0];
-    if (candidates.length > 1) {
-      const [bestCandidate] = candidates;
-      if (bestCandidate && signatureParts(bestCandidate).preprocessings === refitSig.preprocessings) {
-        return bestCandidate;
-      }
-    }
-  }
-
-  return null;
-}
-
-function findMatchingCvSourceExact(
-  refitChain: TopChainResult,
-  cvChains: TopChainResult[],
-  usedChainIds: Set<string>,
-  metric: string | null,
-): TopChainResult | null {
-  const candidates = cvChains
-    .filter(chain => !usedChainIds.has(chain.chain_id))
-    .filter(chain => signaturePartsExactlyMatch(refitChain, chain))
-    .sort((a, b) => compareCvChains(a, b, metric));
-  return candidates[0] ?? null;
-}
-
-function summarySignature(summary: Pick<ChainSummary, "model_class" | "model_name" | "preprocessings" | "best_params">): string {
-  return [
-    normalizeToken(summary.model_name),
-    normalizeToken(summary.model_class),
-    normalizePreprocessings(summary.preprocessings),
-    stableSerialize(summary.best_params),
-  ].join("::");
-}
-
-export function collapseStandaloneRefitSummaries(summaries: ChainSummary[]): ChainSummary[] {
-  const standaloneSignatures = new Set(
-    summaries
-      .filter(summary => summary.is_refit_only && summary.final_test_score != null)
-      .map(summary => summarySignature(summary)),
-  );
-
-  return summaries.flatMap((summary) => {
-    const signature = summarySignature(summary);
-    if (summary.final_test_score == null && standaloneSignatures.has(signature)) {
-      return [];
-    }
-    if (!summary.is_refit_only) {
-      return [summary];
-    }
-    return [{
-      ...summary,
-      cv_val_score: null,
-      cv_test_score: null,
-      cv_train_score: null,
-      cv_fold_count: 0,
-      cv_scores: null,
-    }];
-  });
-}
-
-function appendMetricKeys(
-  keys: Set<string>,
-  map: Record<string, unknown> | null | undefined,
-): void {
-  if (!map) return;
-
-  for (const [key, value] of Object.entries(map)) {
-    if (
-      (key === "test" || key === "val" || key === "train")
-      && value
-      && typeof value === "object"
-      && !Array.isArray(value)
-    ) {
-      for (const nestedKey of Object.keys(value as Record<string, unknown>)) {
-        keys.add(nestedKey);
-      }
-      continue;
-    }
-
-    keys.add(key);
-  }
-}
-
-function collectKnownMetricKeys(
-  ...maps: Array<Record<string, unknown> | null | undefined>
-): string[] {
-  const keys = new Set(KNOWN_SCORE_METRIC_KEYS);
-  for (const map of maps) {
-    appendMetricKeys(keys, map);
-  }
-  return [...keys];
-}
-
 function buildCrossvalRow(
   chain: TopChainResult,
   metric: string | null,
@@ -396,12 +99,8 @@ function buildCrossvalRow(
   variant: FoldVariant = "raw",
 ): ScoreCardRow {
   const hasSummaryScores = variant === "raw";
-  const cvValScores = hasSummaryScores && chain.scores?.val
-    ? Object.fromEntries(Object.entries(chain.scores.val).map(([k, v]) => [k, safeNumber(v)]))
-    : {};
-  const cvTestScores = hasSummaryScores && chain.scores?.test
-    ? Object.fromEntries(Object.entries(chain.scores.test).map(([k, v]) => [k, safeNumber(v)]))
-    : {};
+  const cvValScores = hasSummaryScores ? coerceScoreMap(chain.scores?.val) : {};
+  const cvTestScores = hasSummaryScores ? coerceScoreMap(chain.scores?.test) : {};
 
   return {
     id: `cv-${cvSourceChainId(chain)}${foldVariantSuffix(variant)}`,
@@ -443,26 +142,13 @@ function buildRefitRow(
   const bestParams = hasMeaningfulBestParams(chainParams)
     ? chainParams
     : (hasMeaningfulBestParams(cvParams) ? cvParams : null);
-  const cvValScores = effectiveCvSource?.scores?.val
-    ? Object.fromEntries(Object.entries(effectiveCvSource.scores.val).map(([k, v]) => [k, safeNumber(v)]))
-    : {};
-  const cvTestScores = effectiveCvSource?.scores?.test
-    ? Object.fromEntries(Object.entries(effectiveCvSource.scores.test).map(([k, v]) => [k, safeNumber(v)]))
-    : {};
-  const finalMetricKeys = collectKnownMetricKeys(
+  const cvValScores = coerceScoreMap(effectiveCvSource?.scores?.val);
+  const cvTestScores = coerceScoreMap(effectiveCvSource?.scores?.test);
+  const { testScores: finalTestScores, trainScores: finalTrainScores } = projectFinalScoreMaps(
+    chain.final_scores as Record<string, unknown> | null | undefined,
     cvValScores,
     cvTestScores,
-    chain.final_scores as Record<string, unknown> | null | undefined,
   );
-  const finalTestScores: Record<string, number | null> = {};
-  const finalTrainScores: Record<string, number | null> = {};
-
-  if (chain.final_scores) {
-    for (const key of finalMetricKeys) {
-      finalTestScores[key] = extractScoreValue(chain.final_scores, key, "test");
-      finalTrainScores[key] = extractScoreValue(chain.final_scores, key, "train");
-    }
-  }
 
   return {
     id: `refit-${chain.chain_id}`,
@@ -506,20 +192,11 @@ function buildAggregatedRefitRow(
     ? chainParams
     : (hasMeaningfulBestParams(cvParams) ? cvParams : null);
   const aggSource = chain.final_agg_scores as Record<string, unknown> | null | undefined;
-  const finalMetricKeys = collectKnownMetricKeys(
-    effectiveCvSource?.scores?.val as Record<string, number | null> | undefined,
-    effectiveCvSource?.scores?.test as Record<string, number | null> | undefined,
+  const { testScores: finalTestScores, trainScores: finalTrainScores } = projectFinalScoreMaps(
     aggSource,
+    effectiveCvSource?.scores?.val as Record<string, unknown> | null | undefined,
+    effectiveCvSource?.scores?.test as Record<string, unknown> | null | undefined,
   );
-  const finalTestScores: Record<string, number | null> = {};
-  const finalTrainScores: Record<string, number | null> = {};
-
-  if (aggSource) {
-    for (const key of finalMetricKeys) {
-      finalTestScores[key] = extractScoreValue(aggSource, key, "test");
-      finalTrainScores[key] = extractScoreValue(aggSource, key, "train");
-    }
-  }
 
   return {
     id: `refit-${chain.chain_id}_agg`,
@@ -557,45 +234,8 @@ function buildAggregatedRefitRow(
  * distinguishes them visually.
  */
 export function partitionPredToTrainCard(pred: PartitionPrediction): ScoreCardRow {
-  // scores format from backend: {"val": {"rmse": 0.1, "r2": 0.95}, "test": {"rmse": ...}}
-  // Always nested by partition.
   const scoresObj = pred.scores as Record<string, unknown> | null;
-
-  const testScores: Record<string, number | null> = {};
-  const valScores: Record<string, number | null> = {};
-  const trainScores: Record<string, number | null> = {};
-
-  if (scoresObj && typeof scoresObj === "object") {
-    // Extract from nested partition keys
-    const testInner = scoresObj.test as Record<string, unknown> | undefined;
-    const valInner = scoresObj.val as Record<string, unknown> | undefined;
-    const trainInner = scoresObj.train as Record<string, unknown> | undefined;
-
-    if (testInner && typeof testInner === "object") {
-      for (const [k, v] of Object.entries(testInner)) testScores[k] = safeNumber(v);
-    }
-    if (valInner && typeof valInner === "object") {
-      for (const [k, v] of Object.entries(valInner)) valScores[k] = safeNumber(v);
-    }
-    if (trainInner && typeof trainInner === "object") {
-      for (const [k, v] of Object.entries(trainInner)) trainScores[k] = safeNumber(v);
-    }
-
-    // Fallback: if no partition keys found, try flat format {rmse: 0.3, r2: 0.95}
-    if (!testInner && !valInner && !trainInner) {
-      const flatScores: Record<string, number | null> = {};
-      for (const [k, v] of Object.entries(scoresObj)) {
-        const n = safeNumber(v);
-        if (n != null) flatScores[k] = n;
-      }
-      if (Object.keys(flatScores).length > 0) {
-        // Assign to the prediction's partition
-        if (pred.partition === "test") Object.assign(testScores, flatScores);
-        else if (pred.partition === "val") Object.assign(valScores, flatScores);
-        else if (pred.partition === "train") Object.assign(trainScores, flatScores);
-      }
-    }
-  }
+  const { testScores, valScores, trainScores } = projectPartitionScoreMaps(scoresObj, pred.partition);
 
   return {
     id: pred.prediction_id,
@@ -706,95 +346,6 @@ export function buildFoldTrainCards(
       taskType: row.taskType ?? parentRow?.taskType ?? null,
     };
   });
-}
-
-function extractPredictionScoreMap(pred: PartitionPrediction): Record<string, number | null> {
-  const scoresObj = pred.scores as Record<string, unknown> | null | undefined;
-  const result: Record<string, number | null> = {};
-
-  if (scoresObj && typeof scoresObj === "object") {
-    const nested = scoresObj[pred.partition];
-    if (nested && typeof nested === "object") {
-      for (const [key, value] of Object.entries(nested as Record<string, unknown>)) {
-        const num = safeNumber(value);
-        if (num != null) result[key] = num;
-      }
-    } else {
-      for (const [key, value] of Object.entries(scoresObj)) {
-        if (value && typeof value === "object") continue;
-        const num = safeNumber(value);
-        if (num != null) result[key] = num;
-      }
-    }
-  }
-
-  const primaryScore = pred.partition === "test"
-    ? safeNumber(pred.test_score)
-    : pred.partition === "val"
-      ? safeNumber(pred.val_score)
-      : safeNumber(pred.train_score);
-  const metricKey = (pred.metric || "").trim().toLowerCase() || "score";
-  if (primaryScore != null && result[metricKey] == null) {
-    result[metricKey] = primaryScore;
-  }
-
-  return result;
-}
-
-function averagePredictionScoreMaps(predictions: PartitionPrediction[]): Record<string, number | null> {
-  const totals = new Map<string, { sum: number; count: number }>();
-
-  for (const pred of predictions) {
-    for (const [key, value] of Object.entries(extractPredictionScoreMap(pred))) {
-      const num = safeNumber(value);
-      if (num == null) continue;
-      const current = totals.get(key) ?? { sum: 0, count: 0 };
-      current.sum += num;
-      current.count += 1;
-      totals.set(key, current);
-    }
-  }
-
-  return Object.fromEntries(
-    [...totals.entries()].map(([key, value]) => [key, value.count > 0 ? value.sum / value.count : null]),
-  );
-}
-
-function extremePredictionScoreMaps(
-  predictions: PartitionPrediction[],
-  mode: "min" | "max",
-): Record<string, number | null> {
-  const extrema = new Map<string, number>();
-
-  for (const pred of predictions) {
-    for (const [key, value] of Object.entries(extractPredictionScoreMap(pred))) {
-      const num = safeNumber(value);
-      if (num == null) continue;
-      const current = extrema.get(key);
-      if (current == null) {
-        extrema.set(key, num);
-        continue;
-      }
-      extrema.set(key, mode === "min" ? Math.min(current, num) : Math.max(current, num));
-    }
-  }
-
-  return Object.fromEntries([...extrema.entries()]);
-}
-
-function findFoldPrediction(
-  predictions: PartitionPrediction[],
-  foldId: string,
-  partition: string,
-): PartitionPrediction | undefined {
-  return predictions.find(pred => pred.fold_id === foldId && pred.partition === partition);
-}
-
-function isNumberedFoldId(foldId: string): boolean {
-  const baseFoldId = foldIdBase(foldId);
-  if (baseFoldId === "avg" || baseFoldId === "w_avg" || baseFoldId === "final") return false;
-  if (foldId !== baseFoldId) return false;
-  return true;
 }
 
 export function enrichCrossvalRow(
@@ -924,176 +475,4 @@ export function datasetChainsToRows(
   }
 
   return rows;
-}
-
-// ============================================================================
-// chainSummaryToRow — for Predictions page aggregated (ChainSummary → ScoreCardRow)
-// ============================================================================
-
-/**
- * Maps a ChainSummary (from aggregated-predictions) into a ScoreCardRow.
- *
- * If the chain has a final score → REFIT_CARD with a CROSSVAL child pre-attached.
- * Otherwise → CROSSVAL_CARD.
- * TRAIN children are loaded lazily.
- */
-export function chainSummaryToRow(summary: ChainSummary): ScoreCardRow {
-  const hasFinal = summary.final_test_score != null
-    || summary.final_train_score != null
-    || !!summary.final_scores;
-  const hasCv = !summary.is_refit_only && (summary.cv_val_score != null || summary.cv_fold_count > 0);
-  const cvValScores = extractNestedScores(summary.cv_scores, "val");
-  const cvTestScores = extractNestedScores(summary.cv_scores, "test");
-
-  // Use all known keys for final_scores extraction
-  const allKeys = collectKnownMetricKeys(
-    cvValScores,
-    cvTestScores,
-    summary.final_scores as Record<string, unknown> | null | undefined,
-    summary.final_agg_scores as Record<string, unknown> | null | undefined,
-  );
-  const finalTestScores: Record<string, number | null> = {};
-  const finalTrainScores: Record<string, number | null> = {};
-  if (summary.final_scores) {
-    for (const k of allKeys) {
-      finalTestScores[k] = extractScoreValue(summary.final_scores as Record<string, unknown>, k, "test");
-      finalTrainScores[k] = extractScoreValue(summary.final_scores as Record<string, unknown>, k, "train");
-    }
-  }
-
-  // Build CROSSVAL card
-  const crossvalRow: ScoreCardRow = {
-    id: `cv-${summary.cv_source_chain_id ?? summary.chain_id}`,
-    chainId: summary.cv_source_chain_id ?? summary.chain_id,
-    runId: summary.run_id,
-    pipelineId: summary.pipeline_id,
-    datasetName: summary.dataset_name ?? undefined,
-    modelName: summary.model_name || "",
-    modelClass: summary.model_class,
-    preprocessings: summary.preprocessings || null,
-    bestParams: (summary.best_params as Record<string, unknown>) ?? null,
-    cardType: "crossval",
-    foldCount: summary.cv_fold_count,
-    metric: summary.metric,
-    taskType: summary.task_type,
-    testScores: cvTestScores,
-    valScores: cvValScores,
-    trainScores: {},
-    avgValScores: cvValScores,
-    avgTestScores: cvTestScores,
-    primaryTestScore: safeNumber(summary.cv_test_score),
-    primaryValScore: safeNumber(summary.cv_val_score),
-    primaryTrainScore: safeNumber(summary.cv_train_score),
-    foldArtifacts: summary.fold_artifacts,
-    hasRefitArtifact: false,
-  };
-
-  if (hasFinal) {
-    const aggSource = summary.final_agg_scores as Record<string, unknown> | null | undefined;
-    const aggregatedTestScores: Record<string, number | null> = {};
-    const aggregatedTrainScores: Record<string, number | null> = {};
-    if (aggSource) {
-      for (const k of allKeys) {
-        aggregatedTestScores[k] = extractScoreValue(aggSource, k, "test");
-        aggregatedTrainScores[k] = extractScoreValue(aggSource, k, "train");
-      }
-    }
-    const hasAgg = aggSource != null || summary.final_agg_test_score != null;
-
-    // REFIT card with CROSSVAL child
-    const refitRow: ScoreCardRow = {
-      id: summary.chain_id,
-      chainId: summary.chain_id,
-      runId: summary.run_id,
-      pipelineId: summary.pipeline_id,
-      datasetName: summary.dataset_name ?? undefined,
-      modelName: summary.model_name || "",
-      modelClass: summary.model_class,
-      preprocessings: summary.preprocessings || null,
-      bestParams: (summary.best_params as Record<string, unknown>) ?? null,
-      cardType: "refit",
-      foldId: "final",
-      foldCount: summary.is_refit_only ? 0 : summary.cv_fold_count,
-      metric: summary.metric,
-      taskType: summary.task_type,
-      testScores: finalTestScores,
-      valScores: {},
-      trainScores: finalTrainScores,
-      avgValScores: summary.is_refit_only ? {} : cvValScores,
-      avgTestScores: summary.is_refit_only ? {} : cvTestScores,
-      primaryTestScore: safeNumber(summary.final_test_score),
-      primaryValScore: summary.is_refit_only ? null : safeNumber(summary.cv_val_score),
-      primaryTrainScore: safeNumber(summary.final_train_score),
-      foldArtifacts: summary.fold_artifacts,
-      hasRefitArtifact: !summary.synthetic_refit,
-      aggregatedTestScores: hasAgg ? aggregatedTestScores : undefined,
-      aggregatedTrainScores: hasAgg ? aggregatedTrainScores : undefined,
-      primaryAggTestScore: hasAgg ? safeNumber(summary.final_agg_test_score) : undefined,
-      primaryAggTrainScore: hasAgg ? safeNumber(summary.final_agg_train_score) : undefined,
-      children: hasCv ? [crossvalRow] : [],
-    };
-    return refitRow;
-  }
-
-  return crossvalRow;
-}
-
-// ============================================================================
-// predictionRecordToRow — for Predictions per-fold (PredictionRecord → ScoreCardRow)
-// ============================================================================
-
-/**
- * Maps a PredictionRecord (from parquet per-fold data) to a ScoreCardRow.
- * Always produces a TRAIN card (leaf node in the per-fold flat table).
- */
-export function predictionRecordToRow(pred: PredictionRecord): ScoreCardRow {
-  const scoresObj = predictionRecordScores(pred);
-  const valScores: Record<string, number | null> = {};
-  const testScores: Record<string, number | null> = {};
-  const trainScores: Record<string, number | null> = {};
-  const foldId = pred.fold_id;
-  const baseFoldId = foldId ? foldIdBase(foldId) : "";
-  const cardType = baseFoldId === "final"
-    ? "refit"
-    : (baseFoldId === "avg" || baseFoldId === "w_avg")
-      ? "crossval"
-      : "train";
-
-  if (scoresObj) {
-    const valPartition = scoresObj.val;
-    const testPartition = scoresObj.test;
-    const trainPartition = scoresObj.train;
-    if (valPartition && typeof valPartition === "object") {
-      for (const [k, v] of Object.entries(valPartition)) valScores[k] = safeNumber(v);
-    }
-    if (testPartition && typeof testPartition === "object") {
-      for (const [k, v] of Object.entries(testPartition)) testScores[k] = safeNumber(v);
-    }
-    if (trainPartition && typeof trainPartition === "object") {
-      for (const [k, v] of Object.entries(trainPartition)) trainScores[k] = safeNumber(v);
-    }
-  }
-
-  return {
-    id: pred.id,
-    chainId: pred.trace_id || pred.id,
-    datasetName: pred.source_dataset || pred.dataset_name,
-    modelName: pred.model_name,
-    modelClass: pred.model_classname || "",
-    preprocessings: pred.preprocessings || null,
-    bestParams: predictionRecordBestParams(pred),
-    cardType,
-    foldId,
-    partition: pred.partition,
-    nSamplesEval: pred.n_samples,
-    metric: pred.metric || null,
-    taskType: pred.task_type || null,
-    testScores,
-    valScores,
-    trainScores,
-    primaryTestScore: safeNumber(pred.test_score),
-    primaryValScore: safeNumber(pred.val_score),
-    primaryTrainScore: safeNumber(pred.train_score),
-    hasRefitArtifact: foldId === "final" && !!pred.model_artifact_id,
-  };
 }

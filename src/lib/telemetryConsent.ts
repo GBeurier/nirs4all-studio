@@ -1,9 +1,16 @@
+import {
+  clientStorageKeys,
+  readClientStorageString,
+  removeClientStorageItem,
+  writeClientStorageString,
+} from "@/lib/clientStorage";
+
 export type TelemetryConsentStatus = "accepted" | "declined" | "unset";
 
 export const TELEMETRY_CONSENT_UPDATED_EVENT = "nirs4all-telemetry-consent-updated";
 
-const STORAGE_KEY = "nirs4all-telemetry-consent";
-const DECIDED_AT_KEY = "nirs4all-telemetry-consent-decided-at";
+const STORAGE_KEY = clientStorageKeys.telemetryConsent;
+const DECIDED_AT_KEY = clientStorageKeys.telemetryConsentDecidedAt;
 
 type ElectronTelemetryApi = {
   getTelemetryConsent?: () => Promise<TelemetryConsentStatus>;
@@ -23,27 +30,16 @@ function isConsentStatus(value: string | null): value is TelemetryConsentStatus 
 }
 
 function readLocalConsentStatus(): TelemetryConsentStatus {
-  if (typeof window === "undefined") return "unset";
-  try {
-    const value = window.localStorage.getItem(STORAGE_KEY);
-    return isConsentStatus(value) ? value : "unset";
-  } catch {
-    return "unset";
-  }
+  const value = readClientStorageString(STORAGE_KEY);
+  return isConsentStatus(value) ? value : "unset";
 }
 
 function writeLocalConsentStatus(status: TelemetryConsentStatus, decidedAt?: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, status);
-    if (status === "accepted" || status === "declined") {
-      window.localStorage.setItem(DECIDED_AT_KEY, decidedAt ?? new Date().toISOString());
-    } else {
-      window.localStorage.removeItem(DECIDED_AT_KEY);
-    }
-  } catch {
-    // localStorage can be unavailable in restricted contexts; consent still
-    // goes through the Electron-side store when running desktop mode.
+  writeClientStorageString(STORAGE_KEY, status);
+  if (status === "accepted" || status === "declined") {
+    writeClientStorageString(DECIDED_AT_KEY, decidedAt ?? new Date().toISOString());
+  } else {
+    removeClientStorageItem(DECIDED_AT_KEY);
   }
 }
 

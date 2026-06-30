@@ -17,7 +17,6 @@ import { downloadFile, extractTarball, removeQuarantine } from "./python-runtime
 import { MANAGED_RUNTIME_PACKAGES } from "./env-inspection";
 import { loadPythonRuntimeConfig } from "./external-config";
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 interface PythonRuntimeConfigModule {
   PBS_TAG: string;
   PYTHON_VERSION: string;

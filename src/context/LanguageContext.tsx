@@ -1,15 +1,13 @@
 /**
  * Language Context Provider
  *
- * Manages language preferences with persistence to both localStorage and workspace settings.
+ * Manages language preferences with persistence to both client storage and workspace settings.
  * Provides hooks for accessing and changing the current language.
  *
  * Phase 6 Implementation - Settings Roadmap
  */
 
 import {
-  createContext,
-  useContext,
   useEffect,
   useState,
   useCallback,
@@ -24,33 +22,12 @@ import {
   type SupportedLanguage,
 } from "@/lib/i18n";
 import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/workspace";
-
-/**
- * Language context type definition
- */
-interface LanguageContextType {
-  /** Current language code */
-  language: SupportedLanguage;
-  /** Change the current language */
-  changeLanguage: (lang: SupportedLanguage) => Promise<void>;
-  /** List of supported languages */
-  languages: typeof supportedLanguages;
-  /** Whether the language is being loaded/changed */
-  isLoading: boolean;
-  /** Get display name for current language */
-  currentLanguageDisplay: string;
-  /** Get native name for current language */
-  currentLanguageNative: string;
-}
-
-const LanguageContext = createContext<LanguageContextType | undefined>(
-  undefined
-);
-
-/**
- * Local storage key for language preference
- */
-const LANGUAGE_STORAGE_KEY = "nirs4all-language";
+import { LanguageContext } from "@/context/useLanguage";
+import {
+  clientStorageKeys,
+  readClientStorageString,
+  writeClientStorageString,
+} from "@/lib/clientStorage";
 
 /**
  * Language Provider Component
@@ -78,9 +55,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch {
-        // Backend not available, use localStorage fallback
-        const storedLang = localStorage.getItem(
-          LANGUAGE_STORAGE_KEY
+        // Backend not available, use client storage fallback
+        const storedLang = readClientStorageString(
+          clientStorageKeys.languagePreference
         ) as SupportedLanguage | null;
         if (storedLang && supportedLanguages.some((l) => l.code === storedLang)) {
           if (storedLang !== language) {
@@ -130,8 +107,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         await i18nChangeLanguage(newLang);
         setLanguage(newLang);
 
-        // Save to localStorage for fallback
-        localStorage.setItem(LANGUAGE_STORAGE_KEY, newLang);
+        // Save to client storage for fallback
+        writeClientStorageString(clientStorageKeys.languagePreference, newLang);
 
         // Try to persist to backend
         try {
@@ -141,7 +118,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
             },
           } as Parameters<typeof updateWorkspaceSettings>[0]);
         } catch {
-          // Backend not available, already saved to localStorage
+          // Backend not available, already saved to client storage
         }
       } finally {
         setIsLoading(false);
@@ -169,23 +146,4 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       {children}
     </LanguageContext.Provider>
   );
-}
-
-/**
- * Hook to access language context
- */
-export function useLanguage(): LanguageContextType {
-  const context = useContext(LanguageContext);
-  if (context === undefined) {
-    throw new Error("useLanguage must be used within a LanguageProvider");
-  }
-  return context;
-}
-
-/**
- * Simple hook to get current language code
- */
-export function useCurrentLanguage(): SupportedLanguage {
-  const { language } = useLanguage();
-  return language;
 }
