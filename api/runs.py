@@ -885,17 +885,10 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
 
 def _execution_backend_unavailable_detail(driver: Any, requested_backend: ExecutionBackend) -> str:
     capability = getattr(driver, "capability", None)
-    if capability is None:
+    rt_error = capability.rt_error("run") if capability is not None else None
+    if rt_error is None:
         return f"Execution backend '{requested_backend}' is not available"
-
-    label = getattr(capability, "label", requested_backend)
-    metadata = getattr(capability, "metadata", {}) or {}
-    reason = metadata.get("message") if isinstance(metadata, dict) else None
-    if not isinstance(reason, str) or not reason.strip():
-        reason = metadata.get("reason") if isinstance(metadata, dict) else None
-    if isinstance(reason, str) and reason.strip():
-        return f"Execution backend '{requested_backend}' is not available: {reason}"
-    return f"Execution backend '{requested_backend}' is not available ({label})"
+    return f"Execution backend '{requested_backend}' is not available: {rt_error.message}"
 
 
 def _ensure_execution_driver_available(driver: Any, requested_backend: ExecutionBackend) -> None:
