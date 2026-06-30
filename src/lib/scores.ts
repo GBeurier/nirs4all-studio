@@ -9,16 +9,16 @@ import {
   canonicalMetricKey,
   metricKeyCandidates,
   normalizeMetricLookupKey,
-} from "./metricKeys";
+} from "@/ui/score/metricKeys";
 import {
   getMetricDefinition,
   isClassificationTaskType,
   isKnownMetricKey,
   orderMetricKeys,
-} from "./scoreMetricCatalog";
-import { isBetterScore, parseScoreNumber } from "./scoreValues";
+} from "@/ui/score/scoreMetricCatalog";
+import { isBetterScore, parseScoreNumber } from "@/ui/score/scoreValues";
 
-export { canonicalMetricKey, metricKeyCandidates } from "./metricKeys";
+export { canonicalMetricKey, metricKeyCandidates } from "@/ui/score/metricKeys";
 export {
   ALL_CLASSIFICATION_METRICS,
   ALL_GENERAL_METRICS,
@@ -46,12 +46,12 @@ export {
   orderMetricKeys,
   REGRESSION_METRICS,
   REGRESSION_PRESETS,
-} from "./scoreMetricCatalog";
+} from "@/ui/score/scoreMetricCatalog";
 export type {
   MetricDefinition,
   MetricGroup,
   MetricPreset,
-} from "./scoreMetricCatalog";
+} from "@/ui/score/scoreMetricCatalog";
 export {
   formatMetricName,
   formatMetricDisplayName,
@@ -59,7 +59,7 @@ export {
   formatScore,
   isBetterScore,
   isLowerBetter,
-} from "./scoreValues";
+} from "@/ui/score/scoreValues";
 
 export function collectPresentMetricKeys(
   ...maps: Array<Record<string, unknown> | null | undefined>

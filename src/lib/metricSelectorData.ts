@@ -8,8 +8,7 @@ import {
   type MetricGroup,
   type MetricPreset,
 } from '@/lib/scores';
-import { canonicalMetricKey } from '@/lib/metricKeys';
-import { formatMetricDisplayName, isLowerBetter } from '@/lib/scoreValues';
+import { canonicalMetricKey, formatMetricDisplayName, isLowerBetter } from '@/ui/score';
 
 type MetricSelectorGroup = MetricGroup | 'custom';
 

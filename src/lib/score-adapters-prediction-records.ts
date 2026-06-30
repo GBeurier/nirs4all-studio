@@ -2,7 +2,7 @@ import type { ScoreCardRow } from "@/types/score-cards";
 import type { PredictionRecord } from "@/types/linked-workspaces";
 import { safeNumber, scoreCardTypeForFoldId } from "@/lib/fold-utils";
 import { buildPredictionRecordModelArtifactRefs } from "@/lib/resultArtifacts";
-import { parseJsonRecord } from "@/lib/scoreValues";
+import { parseJsonRecord } from "@/ui/score";
 import { projectPartitionScoreMaps } from "@/lib/score-adapters-fold-scores";
 
 export function predictionRecordBestParams(pred: Pick<PredictionRecord, "best_params">): Record<string, unknown> | null {

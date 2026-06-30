@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseJsonRecord, parseScoreNumber } from "../scoreValues";
+import { parseJsonRecord, parseScoreNumber } from "@/ui/score/scoreValues";
 
 describe("scoreValues", () => {
   it("parses finite score numbers from numbers and numeric strings", () => {

@@ -4,7 +4,7 @@ import {
   getScoreMapValue,
   orderMetricKeys,
 } from "@/lib/scores";
-import { parseJsonRecord } from "@/lib/scoreValues";
+import { parseJsonRecord } from "@/ui/score";
 import { projectPartitionScoreMaps } from "@/lib/score-adapters-fold-scores";
 import type {
   ChainSummary,
