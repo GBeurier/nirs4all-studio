@@ -1,5 +1,6 @@
 import sys
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 
 from fastapi.routing import APIRoute
 
@@ -8,6 +9,14 @@ PUBLIC_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 
 def _fresh_app():
     """Return a freshly imported app so this registry test is not order-sensitive."""
+    _clear_route_modules()
+
+    import main
+
+    return main.app
+
+
+def _clear_route_modules():
     for module_name in [
         name
         for name in tuple(sys.modules)
@@ -21,19 +30,28 @@ def _fresh_app():
             if hasattr(api_package, attr_name):
                 delattr(api_package, attr_name)
 
-    import main
 
-    return main.app
+def _iter_public_routes(routes: Iterable[object], prefix: str = "") -> Iterator[tuple[str, APIRoute]]:
+    for route in routes:
+        if isinstance(route, APIRoute):
+            yield f"{prefix}{route.path}", route
+            continue
+
+        original_router = getattr(route, "original_router", None)
+        include_context = getattr(route, "include_context", None)
+        if original_router is None or include_context is None:
+            continue
+
+        nested_prefix = f"{prefix}{getattr(include_context, 'prefix', '') or ''}"
+        yield from _iter_public_routes(getattr(original_router, "routes", ()), nested_prefix)
 
 
 def test_public_api_routes_do_not_duplicate_method_and_path():
     routes_by_key: dict[tuple[str, str], list[str]] = defaultdict(list)
 
-    for route in _fresh_app().routes:
-        if not isinstance(route, APIRoute):
-            continue
+    for path, route in _iter_public_routes(_fresh_app().routes):
         for method in sorted((route.methods or set()) & PUBLIC_METHODS):
-            routes_by_key[(method, route.path)].append(route.name)
+            routes_by_key[(method, path)].append(route.name)
 
     duplicates = {
         f"{method} {path}": names
@@ -47,11 +65,9 @@ def test_public_api_routes_do_not_duplicate_method_and_path():
 def test_dataset_route_ownership_stays_partitioned():
     routes_by_key: dict[tuple[str, str], APIRoute] = {}
 
-    for route in _fresh_app().routes:
-        if not isinstance(route, APIRoute):
-            continue
+    for path, route in _iter_public_routes(_fresh_app().routes):
         for method in sorted((route.methods or set()) & PUBLIC_METHODS):
-            routes_by_key[(method, route.path)] = route
+            routes_by_key[(method, path)] = route
 
     expected_owners = {
         ("GET", "/api/datasets"): "api.workspace.router_datasets",
