@@ -1,16 +1,22 @@
+import importlib
 from collections import defaultdict
 
 from fastapi.routing import APIRoute
 
-from main import app
-
 PUBLIC_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+
+
+def _fresh_app():
+    """Return a freshly imported app so this registry test is not order-sensitive."""
+    import main
+
+    return importlib.reload(main).app
 
 
 def test_public_api_routes_do_not_duplicate_method_and_path():
     routes_by_key: dict[tuple[str, str], list[str]] = defaultdict(list)
 
-    for route in app.routes:
+    for route in _fresh_app().routes:
         if not isinstance(route, APIRoute):
             continue
         for method in sorted((route.methods or set()) & PUBLIC_METHODS):
@@ -28,7 +34,7 @@ def test_public_api_routes_do_not_duplicate_method_and_path():
 def test_dataset_route_ownership_stays_partitioned():
     routes_by_key: dict[tuple[str, str], APIRoute] = {}
 
-    for route in app.routes:
+    for route in _fresh_app().routes:
         if not isinstance(route, APIRoute):
             continue
         for method in sorted((route.methods or set()) & PUBLIC_METHODS):
