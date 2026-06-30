@@ -11,9 +11,15 @@ def _fresh_app():
     for module_name in [
         name
         for name in tuple(sys.modules)
-        if name == "main" or name == "api.workspace" or name.startswith("api.workspace.")
+        if name in {"main", "api.datasets", "api.workspace"} or name.startswith("api.workspace.")
     ]:
         sys.modules.pop(module_name, None)
+
+    api_package = sys.modules.get("api")
+    if api_package is not None:
+        for attr_name in ("datasets", "workspace"):
+            if hasattr(api_package, attr_name):
+                delattr(api_package, attr_name)
 
     import main
 
