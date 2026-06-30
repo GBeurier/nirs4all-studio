@@ -157,11 +157,12 @@ export function MobileSidebar() {
               {/* Header */}
               <div className="flex h-16 items-center justify-between border-b border-border/50 px-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-                    <span className="text-lg font-bold text-primary-foreground">
-                      N
-                    </span>
-                  </div>
+                  <img
+                    src={`${import.meta.env.BASE_URL}nirs4all_icon.svg`}
+                    alt=""
+                    aria-hidden="true"
+                    className="h-9 w-9 rounded-lg"
+                  />
                   <div className="flex flex-col">
                     <span className="text-base font-semibold text-foreground">
                       nirs4all Studio

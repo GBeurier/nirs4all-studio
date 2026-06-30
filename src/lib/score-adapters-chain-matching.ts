@@ -113,8 +113,20 @@ export function findMatchingCvSource(
   usedChainIds: Set<string>,
   metric: string | null,
 ): TopChainResult | null {
+  if (refitChain.cv_source_chain_id) {
+    const explicitMatch = cvChains.find(chain => (
+      chain.chain_id === refitChain.cv_source_chain_id
+      && !usedChainIds.has(chain.chain_id)
+    ));
+    if (explicitMatch) return explicitMatch;
+  }
+
   const refitSig = signatureParts(refitChain);
   const available = cvChains.filter(chain => !usedChainIds.has(chain.chain_id));
+  const sameRunAvailable = refitChain.run_id
+    ? available.filter(chain => chain.run_id === refitChain.run_id)
+    : [];
+  const searchPools = sameRunAvailable.length > 0 ? [sameRunAvailable, available] : [available];
   const matchers = [
     (chain: TopChainResult) => {
       const sig = signatureParts(chain);
@@ -143,13 +155,15 @@ export function findMatchingCvSource(
     },
   ];
 
-  for (const matches of matchers) {
-    const candidates = available.filter(matches).sort((a, b) => compareCvChains(a, b, metric));
-    if (candidates.length === 1) return candidates[0];
-    if (candidates.length > 1) {
-      const [bestCandidate] = candidates;
-      if (bestCandidate && signatureParts(bestCandidate).preprocessings === refitSig.preprocessings) {
-        return bestCandidate;
+  for (const pool of searchPools) {
+    for (const matches of matchers) {
+      const candidates = pool.filter(matches).sort((a, b) => compareCvChains(a, b, metric));
+      if (candidates.length === 1) return candidates[0];
+      if (candidates.length > 1) {
+        const [bestCandidate] = candidates;
+        if (bestCandidate && signatureParts(bestCandidate).preprocessings === refitSig.preprocessings) {
+          return bestCandidate;
+        }
       }
     }
   }
@@ -163,9 +177,23 @@ export function findMatchingCvSourceExact(
   usedChainIds: Set<string>,
   metric: string | null,
 ): TopChainResult | null {
-  const candidates = cvChains
-    .filter(chain => !usedChainIds.has(chain.chain_id))
-    .filter(chain => signaturePartsExactlyMatch(refitChain, chain))
-    .sort((a, b) => compareCvChains(a, b, metric));
-  return candidates[0] ?? null;
+  if (refitChain.cv_source_chain_id) {
+    const explicitMatch = cvChains.find(chain => (
+      chain.chain_id === refitChain.cv_source_chain_id
+      && !usedChainIds.has(chain.chain_id)
+    ));
+    if (explicitMatch) return explicitMatch;
+  }
+
+  const available = cvChains.filter(chain => !usedChainIds.has(chain.chain_id));
+  const sameRunAvailable = refitChain.run_id
+    ? available.filter(chain => chain.run_id === refitChain.run_id)
+    : [];
+  for (const pool of (sameRunAvailable.length > 0 ? [sameRunAvailable, available] : [available])) {
+    const candidates = pool
+      .filter(chain => signaturePartsExactlyMatch(refitChain, chain))
+      .sort((a, b) => compareCvChains(a, b, metric));
+    if (candidates[0]) return candidates[0];
+  }
+  return null;
 }

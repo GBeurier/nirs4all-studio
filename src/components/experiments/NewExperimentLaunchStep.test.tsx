@@ -170,37 +170,15 @@ describe("NewExperimentLaunchStep", () => {
     expect(container.textContent).toContain("1 run across 1 dataset and 1 pipeline");
     expect(container.textContent).toContain("Local Python");
     expect(container.textContent).toContain("Legacy local run API");
-    expect(container.textContent).toContain("Native adapter: Launches use the current local run API.");
-    expect(container.textContent).toContain("Execution environment");
-    expect(container.textContent).toContain("Adapters");
-    expect(container.textContent).toContain("legacy-local");
-    expect(container.textContent).toContain("Configured native");
-    expect(container.textContent).toContain("Unconfigured native");
-    expect(container.textContent).toContain("cluster, wasm-local");
-    expect(container.textContent).toContain("Submitters");
-    expect(container.textContent).toContain("Submission: Legacy config");
-    expect(container.textContent).toContain("Strict campaigns: Legacy only");
-    expect(container.textContent).toContain("Legacy local launches submit the current ExperimentConfig payload.");
-    expect(container.textContent).toContain("Strict campaign payloads are not used by legacy local launches.");
-    expect(container.textContent).toContain("Legacy inputs");
-    expect(container.textContent).toContain("1 dataset · 1 pipeline");
-    expect(container.textContent).toContain("Native payload");
-    expect(container.textContent).toContain("0 strict campaigns · 0 skipped runs");
-    expect(container.textContent).toContain("Submission target");
-    expect(container.textContent).toContain("Legacy local run API");
-    expect(container.textContent).toContain("Campaign cardinality");
-    expect(container.textContent).toContain("1 dataset x 1 pipeline · 1 run");
-    expect(container.textContent).toContain("Schema binding");
-    expect(container.textContent).toContain("Single dataset/pipeline binding · Single explicit pair");
-    expect(container.textContent).toContain("Payload schema");
-    expect(container.textContent).toContain("studio.native-launch-payload.v1");
-    expect(container.textContent).toContain("Payload readiness");
-    expect(container.textContent).toContain("Legacy config submission");
-    expect(container.textContent).toContain("Source runs");
-    expect(container.textContent).toContain("None");
     expect(container.textContent).toContain("1 run in explicit run matrix");
     expect(container.textContent).toContain("Corn");
     expect(container.textContent).toContain("Launch Experiment");
+    expect(container.textContent).not.toContain("Native adapter:");
+    expect(container.textContent).not.toContain("Execution environment");
+    expect(container.textContent).not.toContain("cluster, wasm-local");
+    expect(container.textContent).not.toContain("Submission: Legacy config");
+    expect(container.textContent).not.toContain("Legacy config submission");
+    expect(container.textContent).not.toContain("studio.native-launch-payload.v1");
     expect(getButton(container).disabled).toBe(false);
 
     await act(async () => {
@@ -253,18 +231,12 @@ describe("NewExperimentLaunchStep", () => {
     );
 
     expect(container.textContent).toContain("Cluster");
-    expect(container.textContent).toContain("Native adapter: Cluster execution adapter is selected for this campaign backend.");
-    expect(container.textContent).toContain("Configured native");
-    expect(container.textContent).toContain("cluster");
-    expect(container.textContent).toContain("Submitters");
-    expect(container.textContent).toContain("cluster");
-    expect(container.textContent).toContain("Submission target");
-    expect(container.textContent).toContain("Cluster via Cluster execution adapter");
-    expect(container.textContent).toContain("Campaign cardinality");
-    expect(container.textContent).toContain("1 dataset x 1 pipeline · 1 run");
-    expect(container.textContent).toContain("Schema binding");
-    expect(container.textContent).toContain("Single dataset/pipeline binding · Single explicit pair");
+    expect(container.textContent).toContain("Cluster execution adapter");
     expect(container.textContent).toContain("Submit to Cluster");
+    expect(container.textContent).not.toContain("Native adapter:");
+    expect(container.textContent).not.toContain("Configured native");
+    expect(container.textContent).not.toContain("Submitters");
+    expect(container.textContent).not.toContain("Submission target");
     expect(getButton(container).disabled).toBe(false);
 
     await act(async () => {
@@ -317,9 +289,9 @@ describe("NewExperimentLaunchStep", () => {
 
     expect(container.textContent).toContain("Native payload not ready");
     expect(container.textContent).toContain("Strict campaign payload is unavailable for this launch.");
-    expect(container.textContent).toContain("Payload readiness");
-    expect(container.textContent).toContain("Blocked for native submission");
     expect(container.textContent).toContain("Resolve Payload Issues");
+    expect(container.textContent).not.toContain("Payload readiness");
+    expect(container.textContent).not.toContain("Blocked for native submission");
     expect(getButton(container).disabled).toBe(true);
 
     await act(async () => {
@@ -360,9 +332,9 @@ describe("NewExperimentLaunchStep", () => {
     );
 
     expect(container.textContent).toContain("Cluster");
-    expect(container.textContent).toContain("Cluster execution is typed but no native submitter is configured.");
-    expect(container.textContent).toContain("Legacy fallback");
     expect(container.textContent).toContain("Resolve Plan Issues");
+    expect(container.textContent).not.toContain("Cluster execution is typed but no native submitter is configured.");
+    expect(container.textContent).not.toContain("Legacy fallback");
     expect(getButton(container).disabled).toBe(true);
 
     await act(async () => {

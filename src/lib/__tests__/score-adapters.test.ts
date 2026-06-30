@@ -187,11 +187,11 @@ describe("datasetChainsToRows", () => {
     expect(rows[0]?.cardType).toBe("refit");
     expect(rows[0]?.children).toHaveLength(1);
     expect(rows[0]?.children?.[0]?.chainId).toBe("cv-snv");
-    expect(rows[1]?.cardType).toBe("crossval");
-    expect(rows[1]?.chainId).toBe("cv-msc");
+    const cvRows = rows.filter(row => row.cardType === "crossval");
+    expect(cvRows.map(row => row.chainId)).toEqual(["cv-msc"]);
   });
 
-  it("keeps CV variants with different preprocessing chains visible", () => {
+  it("keeps only non-refit CV variants visible in the standalone CV section", () => {
     const rows = datasetChainsToRows([
       makeChain({
         chain_id: "refit-snv",
@@ -224,8 +224,62 @@ describe("datasetChainsToRows", () => {
     ], "rmse", "regression");
 
     const cvRows = rows.filter(row => row.cardType === "crossval");
+    expect(rows.find(row => row.cardType === "refit")?.children?.[0]?.chainId).toBe("cv-snv");
     expect(cvRows).toHaveLength(1);
-    expect(cvRows[0]?.chainId).toBe("cv-msc");
+    expect(cvRows.map(row => row.chainId)).toEqual(["cv-msc"]);
+  });
+
+  it("can preserve identical variants from separate runs for results drill-down", () => {
+    const rows = datasetChainsToRows([
+      makeChain({
+        chain_id: "refit-run-1",
+        run_id: "run-1",
+        model_name: "PLSRegression",
+        model_class: "PLSRegression",
+        preprocessings: "SNV",
+        final_test_score: 0.2,
+        final_scores: { rmse: 0.2 },
+        is_refit_only: true,
+      }),
+      makeChain({
+        chain_id: "cv-run-1",
+        run_id: "run-1",
+        model_name: "PLSRegression",
+        model_class: "PLSRegression",
+        preprocessings: "SNV",
+        avg_val_score: 0.24,
+        avg_test_score: 0.25,
+        fold_count: 5,
+        scores: { val: { rmse: 0.24 }, test: { rmse: 0.25 } },
+      }),
+      makeChain({
+        chain_id: "refit-run-2",
+        run_id: "run-2",
+        model_name: "PLSRegression",
+        model_class: "PLSRegression",
+        preprocessings: "SNV",
+        final_test_score: 0.19,
+        final_scores: { rmse: 0.19 },
+        is_refit_only: true,
+      }),
+      makeChain({
+        chain_id: "cv-run-2",
+        run_id: "run-2",
+        model_name: "PLSRegression",
+        model_class: "PLSRegression",
+        preprocessings: "SNV",
+        avg_val_score: 0.22,
+        avg_test_score: 0.23,
+        fold_count: 5,
+        scores: { val: { rmse: 0.22 }, test: { rmse: 0.23 } },
+      }),
+    ], "rmse", "regression", { preserveRunInstances: true });
+
+    const refitRows = rows.filter(row => row.cardType === "refit");
+    expect(refitRows.map(row => row.chainId)).toEqual(["refit-run-2", "refit-run-1"]);
+    expect(refitRows.find(row => row.chainId === "refit-run-1")?.children?.[0]?.chainId).toBe("cv-run-1");
+    expect(refitRows.find(row => row.chainId === "refit-run-2")?.children?.[0]?.chainId).toBe("cv-run-2");
+    expect(rows.filter(row => row.cardType === "crossval")).toHaveLength(0);
   });
 
   it("orders raw and aggregated refit rows by their own displayed score", () => {
@@ -266,6 +320,7 @@ describe("datasetChainsToRows", () => {
     expect(rows[0]?.children?.[0]?.chainId).toBe("cv-snv");
     expect(rows[1]?.cardType).toBe("refit");
     expect(rows[1]?.foldId).toBe("final");
+    expect(rows[1]?.children?.[0]?.chainId).toBe("cv-snv");
   });
 
   it("treats synthetic refits as non-exportable fallback rows", () => {
@@ -293,10 +348,11 @@ describe("datasetChainsToRows", () => {
     expect(row?.hasRefitArtifact).toBe(false);
   });
 
-  it("keeps standalone refits as a single displayed model with no synthetic CV branch", () => {
+  it("pairs standalone refits with their real CV source when it is present", () => {
     const rows = datasetChainsToRows([
       makeChain({
         chain_id: "refit-only",
+        cv_source_chain_id: "cv-duplicate",
         model_name: "PLSRegression",
         model_class: "PLSRegression",
         preprocessings: "MinMax",
@@ -312,8 +368,32 @@ describe("datasetChainsToRows", () => {
         preprocessings: "MinMax",
         avg_val_score: 0.24,
         avg_test_score: 0.25,
+        final_test_score: 0.25,
+        final_train_score: 0.12,
+        final_scores: { test: { rmse: 0.25 }, train: { rmse: 0.12 } },
         fold_count: 2,
         scores: { val: { rmse: 0.24 }, test: { rmse: 0.25 } },
+      }),
+    ], "rmse", "regression");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.cardType).toBe("refit");
+    expect(rows[0]?.children?.[0]?.chainId).toBe("cv-duplicate");
+    expect(rows[0]?.foldCount).toBe(2);
+    expect(rows[0]?.primaryValScore).toBe(0.24);
+  });
+
+  it("keeps standalone refits without a real CV source unbranched", () => {
+    const rows = datasetChainsToRows([
+      makeChain({
+        chain_id: "refit-only",
+        model_name: "PLSRegression",
+        model_class: "PLSRegression",
+        preprocessings: "MinMax",
+        final_test_score: 0.21,
+        final_train_score: 0.11,
+        final_scores: { test: { rmse: 0.21 }, train: { rmse: 0.11 } },
+        is_refit_only: true,
       }),
     ], "rmse", "regression");
 
@@ -353,6 +433,7 @@ describe("datasetChainsToRows", () => {
     expect(rawRefitRow?.children?.[0]?.foldId).toBe("avg");
     expect(aggregatedRefitRow?.children?.[0]?.chainId).toBe("cv-chain");
     expect(aggregatedRefitRow?.children?.[0]?.foldId).toBe("avg_agg");
+    expect(rows.find(row => row.cardType === "crossval")).toBeUndefined();
   });
 });
 

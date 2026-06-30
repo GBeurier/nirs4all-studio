@@ -38,6 +38,15 @@ async function render(element: ReactNode) {
   return { container, root };
 }
 
+async function expandCampaignPlanPreview(container: HTMLElement): Promise<void> {
+  const trigger = Array.from(container.querySelectorAll("button"))
+    .find((button) => /expand campaign plan preview/i.test(button.getAttribute("aria-label") ?? ""));
+  expect(trigger, "expected campaign plan preview trigger").toBeTruthy();
+  await act(async () => {
+    trigger!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
 afterEach(() => {
   for (const container of mountedContainers) {
     container.remove();
@@ -95,6 +104,8 @@ describe("NewExperimentCampaignPlanPreview", () => {
     );
 
     expect(container.textContent).toContain("Campaign Plan Preview");
+    expect(container.textContent).not.toContain("Legacy cartesian");
+    await expandCampaignPlanPreview(container);
     expect(container.textContent).toContain("Legacy cartesian");
     expect(container.textContent).toContain("Local Python");
     expect(container.textContent).toContain("2 datasets x 2 pipelines");
@@ -156,6 +167,7 @@ describe("NewExperimentCampaignPlanPreview", () => {
       />,
     );
 
+    await expandCampaignPlanPreview(container);
     expect(container.textContent).toContain("Legacy fallback");
     expect(container.textContent).toContain("Cluster execution is typed but no native submitter is configured.");
 
@@ -186,6 +198,7 @@ describe("NewExperimentCampaignPlanPreview", () => {
       />,
     );
 
+    await expandCampaignPlanPreview(container);
     expect(container.textContent).toContain("Execution Environment");
     expect(container.textContent).toContain("Adapters");
     expect(container.textContent).toContain("legacy-local, cluster");
@@ -223,6 +236,7 @@ describe("NewExperimentCampaignPlanPreview", () => {
       />,
     );
 
+    await expandCampaignPlanPreview(container);
     expect(container.textContent).toContain("Dataset Inputs");
     expect(container.textContent).toContain("Corn");
     expect(container.textContent).not.toContain("Wheat");
@@ -271,6 +285,7 @@ describe("NewExperimentCampaignPlanPreview", () => {
       />,
     );
 
+    await expandCampaignPlanPreview(container);
     expect(container.textContent).toContain("Dataset Inputs");
     expect(container.textContent).toContain("+ 1 more dataset inputs");
     expect(container.textContent).toContain("Pipeline Inputs");
@@ -312,6 +327,7 @@ describe("NewExperimentCampaignPlanPreview", () => {
       <NewExperimentCampaignPlanPreview campaignPreview={buildCampaignPlanPreview(campaign)} />,
     );
 
+    await expandCampaignPlanPreview(container);
     expect(container.textContent).toContain("Compatibility Preview");
     expect(container.textContent).toContain("Corn -> PLS");
     expect(container.textContent).toContain("Ready");

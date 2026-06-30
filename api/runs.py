@@ -58,6 +58,19 @@ def _sanitize_metrics(metrics: dict) -> dict:
     return {k: sanitize_float(v) if isinstance(v, (int, float)) else v for k, v in metrics.items()}
 
 
+def _invalidate_workspace_results_after_run(run: Any) -> None:
+    """Drop workspace discovery/results caches after a run mutates the store."""
+    workspace_path = getattr(run, "workspace_path", None)
+    if not workspace_path:
+        return
+    try:
+        from .workspace._shared import invalidate_workspace_cache
+
+        invalidate_workspace_cache(str(workspace_path))
+    except Exception as exc:
+        logger.debug("Failed to invalidate workspace caches after run %s: %s", getattr(run, "id", None), exc)
+
+
 def _count_tested_pipeline_variants(result: Any, fallback: int = 1) -> int:
     """Count actual CV pipeline variants rather than prediction rows."""
     safe_fallback = max(int(fallback or 1), 1)
@@ -1153,6 +1166,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         run_store_repository.fail_run(shared_store_run_id, "Stopped by user")
                 except Exception:
                     pass
+            _invalidate_workspace_results_after_run(run)
             return {"run_id": run_id, "status": run.status, "cancelled": True}
 
         # Determine overall run status
@@ -1193,6 +1207,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
             except Exception as e:
                 logger.warning("Failed to finalize store run: %s", e)
 
+        _invalidate_workspace_results_after_run(run)
         return {"run_id": run_id, "status": run.status, "duration": run.duration}
 
     except Exception as e:
@@ -1208,6 +1223,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
             except Exception:
                 pass
 
+        _invalidate_workspace_results_after_run(run)
         # Re-raise so JobManager marks the job FAILED and dispatches the
         # job_failed WebSocket notification.
         raise

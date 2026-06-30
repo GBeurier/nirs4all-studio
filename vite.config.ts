@@ -19,6 +19,7 @@ function copyElectronAssets(): Plugin {
       const assets = [
         { src: "electron/splash.html", dest: "splash.html" },
         { src: "public/nirs4all.ico", dest: "nirs4all.ico" },
+        { src: "public/nirs4all_icon.png", dest: "nirs4all_icon.png" },
         { src: "public/nirs4all_logo.png", dest: "nirs4all_logo.png" },
       ];
       for (const { src, dest } of assets) {

@@ -204,7 +204,7 @@ function closeSplash(): void {
 }
 
 function getMainWindowIconPath(): string {
-  const iconFileName = process.platform === "win32" ? "nirs4all.ico" : "nirs4all_logo.png";
+  const iconFileName = process.platform === "win32" ? "nirs4all.ico" : "nirs4all_icon.png";
   return isDev
     ? path.join(__dirname, "..", "public", iconFileName)
     : path.join(__dirname, iconFileName);

@@ -18,6 +18,7 @@ function syncElectronAssets(projectRoot) {
 
   const assets = [
     { src: "electron/splash.html", dest: "splash.html" },
+    { src: "public/nirs4all_icon.png", dest: "nirs4all_icon.png" },
     { src: "public/nirs4all_logo.png", dest: "nirs4all_logo.png" },
   ];
 

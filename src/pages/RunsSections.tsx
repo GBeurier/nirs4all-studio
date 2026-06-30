@@ -19,6 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogContent,
@@ -193,6 +194,7 @@ function formatJsonValue(value: unknown): string {
 }
 
 export function RunsExecutionTasksPanel({ data, onInspectJob }: RunsExecutionTasksPanelProps) {
+  const [isPanelExpanded, setPanelExpanded] = useState(false);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(() => new Set());
 
   if (!data.hasTasks) {
@@ -216,108 +218,121 @@ export function RunsExecutionTasksPanel({ data, onInspectJob }: RunsExecutionTas
 
   return (
     <Card>
-      <CardContent className="p-3 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="rounded-md bg-primary/10 p-1.5">
-              <Activity className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-sm font-semibold">Execution tasks</h2>
-              <p className="text-xs text-muted-foreground">
-                {data.activeCount} active / {data.totalCount} tracked
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {orphanedCount > 0 && (
-              <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                {orphanedCount} orphaned
-              </Badge>
-            )}
-            <Badge variant="outline">{data.remoteRequestedCount} remote requested</Badge>
-            <Badge variant="outline">{data.completedCount} completed</Badge>
-            {data.failedCount > 0 && (
-              <Badge variant="destructive">{data.failedCount} failed</Badge>
-            )}
-          </div>
-        </div>
-
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-          {visibleItems.map((item) => {
-            const isOrphaned = isOrphanedExecutionTask(item);
-
-            return (
-              <div
-                key={getExecutionTaskItemKey(item)}
-                className={cn(
-                  "rounded-md border bg-muted/20 p-2",
-                  isOrphaned && "border-amber-500/40 bg-amber-500/5",
-                )}
-              >
-                <div className="flex min-w-0 items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="truncate text-xs font-medium">{item.runName || item.runId}</div>
-                    <div className="truncate text-[11px] text-muted-foreground">
-                      {formatRunTokenLabel(item.requestedBackend)}
-                      {item.executionBackend !== item.requestedBackend
-                        ? ` -> ${formatRunTokenLabel(item.executionBackend)}`
-                        : ""}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {isOrphaned && (
-                      <Badge
-                        variant="outline"
-                        className="h-5 border-amber-500/40 bg-amber-500/10 px-1.5 text-[10px] text-amber-700 dark:text-amber-300"
-                      >
-                        Orphaned
-                      </Badge>
-                    )}
-                    <Badge variant={item.isActive ? "default" : "outline"} className="h-5 px-1.5 text-[10px]">
-                      {formatRunTokenLabel(item.executionStatus)}
-                    </Badge>
-                    {onInspectJob && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                              onClick={() => onInspectJob(item.jobId)}
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                              <span className="sr-only">Inspect execution job</span>
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Inspect job record</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
-                  </div>
+      <Collapsible open={isPanelExpanded} onOpenChange={setPanelExpanded}>
+        <CardContent className="p-3 space-y-3">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+              aria-label={isPanelExpanded ? "Collapse execution tasks" : "Expand execution tasks"}
+            >
+              <div className="flex items-center gap-2">
+                <div className="rounded-md bg-primary/10 p-1.5">
+                  <Activity className="h-4 w-4 text-primary" />
                 </div>
-                <div className="mt-2 space-y-1">
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span className="truncate">{item.progressMessage || item.runStatus}</span>
-                    {item.progressUnavailable ? (
-                      <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                        Telemetry unavailable
-                      </Badge>
-                    ) : (
-                      <span className="font-mono">{formatRunProgress(item.progress)}</span>
-                    )}
-                  </div>
-                  <Progress value={item.progress} className="h-1.5" />
+                <div>
+                  <h2 className="text-sm font-semibold">Execution tasks</h2>
+                  <p className="text-xs text-muted-foreground">
+                    {data.activeCount} active / {data.totalCount} tracked
+                  </p>
                 </div>
               </div>
-            );
-          })}
-        </div>
+              <div className="flex flex-wrap items-center justify-end gap-1.5">
+                {orphanedCount > 0 && (
+                  <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                    {orphanedCount} orphaned
+                  </Badge>
+                )}
+                <Badge variant="outline">{data.remoteRequestedCount} remote requested</Badge>
+                <Badge variant="outline">{data.completedCount} completed</Badge>
+                {data.failedCount > 0 && (
+                  <Badge variant="destructive">{data.failedCount} failed</Badge>
+                )}
+                {isPanelExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </div>
+            </button>
+          </CollapsibleTrigger>
 
-        {visibleGroups.length > 0 && (
-          <div className="space-y-2">
+          <CollapsibleContent className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+              {visibleItems.map((item) => {
+                const isOrphaned = isOrphanedExecutionTask(item);
+
+                return (
+                  <div
+                    key={getExecutionTaskItemKey(item)}
+                    className={cn(
+                      "rounded-md border bg-muted/20 p-2",
+                      isOrphaned && "border-amber-500/40 bg-amber-500/5",
+                    )}
+                  >
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-medium">{item.runName || item.runId}</div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {formatRunTokenLabel(item.requestedBackend)}
+                          {item.executionBackend !== item.requestedBackend
+                            ? ` -> ${formatRunTokenLabel(item.executionBackend)}`
+                            : ""}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {isOrphaned && (
+                          <Badge
+                            variant="outline"
+                            className="h-5 border-amber-500/40 bg-amber-500/10 px-1.5 text-[10px] text-amber-700 dark:text-amber-300"
+                          >
+                            Orphaned
+                          </Badge>
+                        )}
+                        <Badge variant={item.isActive ? "default" : "outline"} className="h-5 px-1.5 text-[10px]">
+                          {formatRunTokenLabel(item.executionStatus)}
+                        </Badge>
+                        {onInspectJob && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                  onClick={() => onInspectJob(item.jobId)}
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                  <span className="sr-only">Inspect execution job</span>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>Inspect job record</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span className="truncate">{item.progressMessage || item.runStatus}</span>
+                        {item.progressUnavailable ? (
+                          <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                            Telemetry unavailable
+                          </Badge>
+                        ) : (
+                          <span className="font-mono">{formatRunProgress(item.progress)}</span>
+                        )}
+                      </div>
+                      <Progress value={item.progress} className="h-1.5" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {visibleGroups.length > 0 && (
+              <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-xs font-semibold text-muted-foreground">Grouped jobs</h3>
               <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
@@ -440,9 +455,11 @@ export function RunsExecutionTasksPanel({ data, onInspectJob }: RunsExecutionTas
                 );
               })}
             </div>
-          </div>
-        )}
-      </CardContent>
+              </div>
+            )}
+          </CollapsibleContent>
+        </CardContent>
+      </Collapsible>
     </Card>
   );
 }

@@ -757,6 +757,50 @@ class TestGetChainPartitionDetail:
         assert data["partition"] is None
         assert data["fold_id"] is None
 
+    def test_refit_detail_includes_cv_source_predictions(self, client, patched_endpoints, mock_polars_df):
+        patched_endpoints.query_chain_summaries.return_value = mock_polars_df([
+            {
+                "chain_id": "chain-refit",
+                "cv_source_chain_id": "chain-cv",
+            }
+        ])
+
+        refit_rows = [
+            {
+                "prediction_id": "pred-final",
+                "pipeline_id": "pipe-001",
+                "chain_id": "chain-refit",
+                "dataset_name": "dataset_a",
+                "fold_id": "final",
+                "partition": "test",
+                "scores": '{"test":{"rmse":0.2}}',
+            }
+        ]
+        cv_rows = [
+            {
+                "prediction_id": "pred-fold-0",
+                "pipeline_id": "pipe-001",
+                "chain_id": "chain-cv",
+                "dataset_name": "dataset_a",
+                "fold_id": "fold-0",
+                "partition": "val",
+                "scores": '{"val":{"rmse":0.3}}',
+            }
+        ]
+
+        def _get_chain_predictions(chain_id, **_kwargs):
+            return mock_polars_df(refit_rows if chain_id == "chain-refit" else cv_rows)
+
+        patched_endpoints.get_chain_predictions.side_effect = _get_chain_predictions
+
+        resp = client.get("/api/aggregated-predictions/chain/chain-refit/detail")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert {row["chain_id"] for row in data["predictions"]} == {"chain-refit", "chain-cv"}
+        assert data["predictions"][0]["scores"] == {"test": {"rmse": 0.2}}
+        assert data["predictions"][1]["scores"] == {"val": {"rmse": 0.3}}
+
 
 # ---------------------------------------------------------------------------
 # Endpoint tests: GET /api/aggregated-predictions/chain/{chain_id}/pipeline-steps
