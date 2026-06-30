@@ -1,4 +1,4 @@
-import importlib
+import sys
 from collections import defaultdict
 
 from fastapi.routing import APIRoute
@@ -8,9 +8,16 @@ PUBLIC_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
 
 def _fresh_app():
     """Return a freshly imported app so this registry test is not order-sensitive."""
+    for module_name in [
+        name
+        for name in tuple(sys.modules)
+        if name == "main" or name == "api.workspace" or name.startswith("api.workspace.")
+    ]:
+        sys.modules.pop(module_name, None)
+
     import main
 
-    return importlib.reload(main).app
+    return main.app
 
 
 def test_public_api_routes_do_not_duplicate_method_and_path():
