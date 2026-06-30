@@ -147,6 +147,12 @@ class PipelineRun(BaseModel):
     status: Literal["queued", "running", "completed", "failed"]
     progress: int = 0
     metrics: RunMetrics | None = None
+    # ML engine that actually produced this pipeline's result (incl. transparent
+    # dag-ml->legacy fallback), the requested engine, and RtError fallback
+    # diagnostics (B-017 V1 / B-018). Orthogonal to the run's execution_backend.
+    engine: str | None = None
+    engine_requested: str | None = None
+    engine_diagnostics: list[dict[str, Any]] | None = None
     config: dict | None = None
     logs: list[str] | None = None
     started_at: str | None = None
@@ -187,6 +193,9 @@ class Run(BaseModel):
     name: str
     description: str | None = None
     execution_backend: ExecutionBackend = "local-python"
+    # Requested ML engine for the experiment (None = library default "legacy").
+    # The engine that actually ran is recorded per-pipeline on PipelineRun.engine.
+    engine: str | None = None
     datasets: list[DatasetRun]
     status: Literal["queued", "running", "completed", "failed"]
     created_at: str
@@ -216,6 +225,7 @@ class ExperimentConfig(BaseModel):
     dataset_ids: list[str] = Field(..., min_length=1)
     pipeline_ids: list[str] = Field(default_factory=list)  # Can be empty if inline_pipeline is provided
     execution_backend: ExecutionBackend = "local-python"
+    engine: str | None = Field(None, description="ML engine selector: 'legacy' (default) or 'dag-ml'")
     cv_folds: int = Field(default=5, ge=2, le=50)
     cv_strategy: Literal["kfold", "stratified", "loo", "holdout"] = "kfold"
     test_size: float | None = Field(default=0.2, ge=0.1, le=0.5)
@@ -235,6 +245,7 @@ class QuickRunRequest(BaseModel):
     export_model: bool = Field(True, description="Save trained model")
     cv_folds: int = Field(default=5, ge=2, le=50)
     random_state: int | None = Field(42, description="Random seed")
+    engine: str | None = Field(None, description="ML engine selector: 'legacy' (default) or 'dag-ml'")
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
     inline_pipeline: InlinePipeline | None = None
 
@@ -871,6 +882,7 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
         name=request.name or f"Quick Run: {pipeline_config.get('name', 'Pipeline')}",
         description=description,
         execution_backend="local-python",
+        engine=request.engine,
         datasets=[dataset_run],
         status="queued",
         created_at=now,
@@ -1062,6 +1074,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         run_id,
                         dataset.split_group_by,
                         store_run_id=shared_store_run_id,
+                        engine=run.engine,
                         should_stop=lambda: job.cancellation_requested,
                     )
                     training_succeeded = True
@@ -1083,6 +1096,11 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         pipeline.model_path = result.get("model_path")
                         pipeline.logs = result.get("logs", pipeline.logs or [])
                         pipeline.tested_variants = result.get("variants_tested", 1)
+                        # Record which ML engine actually ran (incl. fallback) +
+                        # any RtError diagnostics, so the run read model shows it.
+                        pipeline.engine = result.get("engine")
+                        pipeline.engine_requested = result.get("engine_requested")
+                        pipeline.engine_diagnostics = result.get("engine_diagnostics")
 
                         # Capture store_run_id (from shared pre-created run or single pipeline)
                         result_store_run_id = result.get("store_run_id")
@@ -1229,6 +1247,7 @@ def _execute_pipeline_training(
     run_id: str,
     split_group_by: str | None = None,
     store_run_id: str | None = None,
+    engine: str | None = None,
     should_stop: Any | None = None,
 ) -> dict[str, Any]:
     """Execute one pipeline via nirs4all.run() on the current worker thread.
@@ -1415,13 +1434,22 @@ def _execute_pipeline_training(
             "plots_visible": False,
             "workspace_path": workspace_path,
         }
+        # Thread the requested ML engine (legacy|dag-ml) into the run; absent =>
+        # the library default. Orthogonal to the run's execution_backend.
+        from .runtime_engine import engine_run_kwargs, observe_engine
+
+        run_kwargs.update(engine_run_kwargs(engine))
         if store_run_id:
             run_kwargs["store_run_id"] = store_run_id
         if should_stop is not None:
             # Cooperative cancellation: nirs4all polls this at dataset/variant/
             # refit boundaries and aborts with RunCancelledError.
             run_kwargs["should_stop"] = should_stop
-        result = nirs4all.run(**run_kwargs)
+        # Observe the call to record which engine actually ran (incl. transparent
+        # dag-ml->legacy fallback) and any RtError diagnostics.
+        with observe_engine(engine) as engine_observation:
+            result = nirs4all.run(**run_kwargs)
+        engine_record = engine_observation.finalize(result)
     finally:
         root_logger.removeHandler(log_handler)
 
@@ -1499,6 +1527,9 @@ def _execute_pipeline_training(
         "logs": logs,
         "variants_tested": variants_tested,
         "store_run_id": result_store_run_id,
+        "engine": engine_record.get("engine"),
+        "engine_requested": engine_record.get("engine_requested"),
+        "engine_diagnostics": engine_record.get("engine_diagnostics"),
     }
 
 
@@ -2058,6 +2089,7 @@ def _create_run_group_from_payload(
         name=config.name,
         description=config.description or "",
         execution_backend=config.execution_backend,
+        engine=config.engine,
         datasets=_build_dataset_runs_from_execution_plan(execution_plan),
         status="queued",
         created_at=now,
@@ -2124,6 +2156,7 @@ def _create_run_from_config(
         name=config.name,
         description=config.description or "",
         execution_backend=config.execution_backend,
+        engine=config.engine,
         datasets=_build_dataset_runs_from_execution_plan(execution_plan),
         status="queued",
         created_at=now,

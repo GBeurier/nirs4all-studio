@@ -103,7 +103,10 @@ def _run_prediction(
     model_name = pred_result.model_name or model_id
     preprocessing_steps = pred_result.preprocessing_steps or []
 
-    # Compute metrics if y_true is available
+    # Compute metrics if y_true is available. Route through the library's single
+    # metric implementation (nirs4all.core.metrics.eval_multi) instead of a
+    # Studio-side sklearn re-roll, so Studio metrics match the engine's and are
+    # oracle-checkable (B-017 V1; eval_multi already backs evaluation.py).
     metrics = None
     actual_values = None
     if y_true is not None:
@@ -111,22 +114,14 @@ def _run_prediction(
             y_true_arr = np.asarray(y_true).flatten()
             y_pred_arr = np.asarray(predictions)
             if len(y_true_arr) == len(y_pred_arr) and len(y_true_arr) > 0:
-                from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-
                 actual_values = y_true_arr.tolist()
-                rmse = float(np.sqrt(mean_squared_error(y_true_arr, y_pred_arr)))
-                r2 = float(r2_score(y_true_arr, y_pred_arr))
-                mae = float(mean_absolute_error(y_true_arr, y_pred_arr))
-                # RPD (Ratio of Performance to Deviation)
-                std_y = float(np.std(y_true_arr))
-                rpd = std_y / rmse if rmse > 0 else None
+                eval_multi = get_cached("eval_multi")
+                raw_metrics = eval_multi(y_true_arr, y_pred_arr, "regression")
                 metrics = {
-                    "rmse": sanitize_float(rmse),
-                    "r2": sanitize_float(r2),
-                    "mae": sanitize_float(mae),
+                    key: sanitize_float(float(value))
+                    for key, value in raw_metrics.items()
+                    if isinstance(value, (int, float))
                 }
-                if rpd is not None:
-                    metrics["rpd"] = sanitize_float(rpd)
         except Exception as e:
             logger.warning("Could not compute metrics: %s", e)
 

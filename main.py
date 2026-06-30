@@ -77,6 +77,7 @@ from api.evaluation import router as evaluation_router
 from api.inspector import router as inspector_router
 from api.models import router as models_router
 from api.network_state import router as network_state_router
+from api.operators import router as operators_router
 from api.pipelines import router as pipelines_router
 from api.playground import router as playground_router
 from api.predict import router as predict_router
@@ -355,6 +356,7 @@ app.include_router(shap_router, prefix="/api", tags=["shap"])
 app.include_router(projects_router, prefix="/api", tags=["projects"])
 app.include_router(inspector_router, prefix="/api", tags=["inspector"])
 app.include_router(config_router, prefix="/api", tags=["config"])
+app.include_router(operators_router, prefix="/api", tags=["operators"])
 
 
 async def _wait_for_ml_ready():
