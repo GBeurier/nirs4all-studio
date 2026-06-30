@@ -9,6 +9,7 @@ from typing import Any, Literal, Protocol
 
 from .execution_job_records import ExecutionJobRecordRepository, execution_job_record_from_job
 from .jobs.manager import Job, JobManager, JobType
+from .runtime_errors import RtError, RtUnsupportedError, rt_error_from_execution_metadata
 
 ExecutionBackend = Literal["local-python", "cluster", "wasm-local"]
 ExecutionDriverMode = Literal["in-process"]
@@ -41,6 +42,20 @@ class ExecutionDriverCapability:
             "supports_cancellation": self.supports_cancellation,
             "metadata": dict(self.metadata),
         }
+
+    def rt_error(self, verb: str = "run") -> RtError | None:
+        """Return the neutral ``RtError`` envelope for this capability.
+
+        Returns ``None`` when the backend is available (no error to report). The
+        envelope is derived purely from the existing capability fields, so the
+        frozen :meth:`to_dict` wire shape is unaffected.
+        """
+        return rt_error_from_execution_metadata(
+            verb=verb,
+            backend=self.backend,
+            available=self.available,
+            metadata=self.metadata,
+        )
 
 
 @dataclass(frozen=True)
@@ -357,8 +372,17 @@ class UnavailableExecutionDriver:
         job_manager: JobManager,
         task_fn: ExecutionTask,
     ) -> Job:
-        """Reject submission because this backend has no concrete driver yet."""
-        raise RuntimeError(_unavailable_execution_backend_message(self.capability))
+        """Reject submission with an explicit ``RtError``.
+
+        Raises :class:`RtUnsupportedError` (a ``RuntimeError`` subclass) carrying
+        the neutral envelope; the message is unchanged from the legacy bare
+        ``RuntimeError`` so existing handlers keep matching it.
+        """
+        rt_error = self.capability.rt_error(verb="run")
+        # An UnavailableExecutionDriver always wraps an unavailable capability,
+        # so the classifier never returns None here.
+        assert rt_error is not None
+        raise RtUnsupportedError(rt_error)
 
     def cancel_job(self, job_id: str, job_manager: JobManager) -> ExecutionJobCommandResult:
         """Return a structured cancellation refusal for unavailable backends."""
