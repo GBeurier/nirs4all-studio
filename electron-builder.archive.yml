@@ -77,7 +77,7 @@ win:
 mac:
   target:
     - target: zip
-  icon: public/nirs4all_logo.png
+  icon: public/nirs4all_icon.png
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
@@ -89,7 +89,7 @@ linux:
     - target: dir
       arch:
         - x64
-  icon: public/nirs4all_logo.png
+  icon: public/nirs4all_icon.png
   category: Science
   maintainer: nirs4all
   artifactName: "${productName}-${version}-all-in-one-linux-${arch}.${ext}"

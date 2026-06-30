@@ -29,7 +29,6 @@ import {
   compareRefitRows,
   dedupeChainsByVariant,
   displayParams,
-  displayVariantKey,
   findMatchingCvSource,
   findMatchingCvSourceExact,
 } from "@/lib/score-adapters-chain-matching";
@@ -134,9 +133,7 @@ function buildRefitRow(
   taskType: string | null,
   cvSource: TopChainResult | null = null,
 ): ScoreCardRow {
-  const effectiveCvSource = isStandaloneRefitChain(chain)
-    ? null
-    : (cvSource ?? (hasCvData(chain) ? chain : null));
+  const effectiveCvSource = cvSource ?? (isStandaloneRefitChain(chain) ? null : (hasCvData(chain) ? chain : null));
   const chainParams = displayParams(chain);
   const cvParams = displayParams(effectiveCvSource);
   const bestParams = hasMeaningfulBestParams(chainParams)
@@ -183,9 +180,7 @@ function buildAggregatedRefitRow(
   taskType: string | null,
   cvSource: TopChainResult | null = null,
 ): ScoreCardRow {
-  const effectiveCvSource = isStandaloneRefitChain(chain)
-    ? null
-    : (cvSource ?? (hasCvData(chain) ? chain : null));
+  const effectiveCvSource = cvSource ?? (isStandaloneRefitChain(chain) ? null : (hasCvData(chain) ? chain : null));
   const chainParams = displayParams(chain);
   const cvParams = displayParams(effectiveCvSource);
   const bestParams = hasMeaningfulBestParams(chainParams)
@@ -426,40 +421,49 @@ export function topChainToRows(
   return [];
 }
 
+interface DatasetChainsToRowsOptions {
+  preserveRunInstances?: boolean;
+}
+
 export function datasetChainsToRows(
   chains: TopChainResult[],
   metric: string | null,
   taskType: string | null,
+  options: DatasetChainsToRowsOptions = {},
 ): ScoreCardRow[] {
-  const refitChains = dedupeChainsByVariant(
-    chains.filter(chain => hasFinalData(chain)),
-    (a, b) => compareRefitChains(a, b, metric),
-  );
-  const cvOnlyChains = dedupeChainsByVariant(
-    chains.filter(chain => hasCvData(chain) && !hasFinalData(chain)),
-    (a, b) => compareCvChains(a, b, metric),
-  );
-  const refitDisplayVariants = new Set(refitChains.map(displayVariantKey));
+  const compareRefits = (a: TopChainResult, b: TopChainResult) => compareRefitChains(a, b, metric);
+  const compareCvs = (a: TopChainResult, b: TopChainResult) => compareCvChains(a, b, metric);
+  const refitInputChains = chains.filter(chain => hasFinalData(chain));
+  const refitChains = options.preserveRunInstances
+    ? [...refitInputChains].sort(compareRefits)
+    : dedupeChainsByVariant(refitInputChains, compareRefits);
+  const cvSourceChains = chains.filter(chain => hasCvData(chain));
+  const cvRowChains = options.preserveRunInstances
+    ? [...cvSourceChains].sort(compareCvs)
+    : dedupeChainsByVariant(cvSourceChains, compareCvs);
   const usedCvChainIds = new Set<string>();
   const refitRows: ScoreCardRow[] = [];
 
   for (const refitChain of refitChains) {
-    const matchedCv = isStandaloneRefitChain(refitChain)
-      ? findMatchingCvSourceExact(refitChain, cvOnlyChains, usedCvChainIds, metric)
-      : findMatchingCvSource(refitChain, cvOnlyChains, usedCvChainIds, metric);
+    const cvCandidates = cvSourceChains.filter(chain => chain.chain_id !== refitChain.chain_id);
+    const matchedCv = hasCvData(refitChain)
+      ? refitChain
+      : (isStandaloneRefitChain(refitChain)
+        ? findMatchingCvSourceExact(refitChain, cvCandidates, usedCvChainIds, metric)
+        : findMatchingCvSource(refitChain, cvCandidates, usedCvChainIds, metric));
     if (matchedCv) usedCvChainIds.add(matchedCv.chain_id);
     refitRows.push(buildRefitRow(
       refitChain,
       metric,
       taskType,
-      isStandaloneRefitChain(refitChain) ? null : matchedCv,
+      matchedCv,
     ));
     if (hasAggregatedRefitData(refitChain)) {
       refitRows.push(buildAggregatedRefitRow(
         refitChain,
         metric,
         taskType,
-        isStandaloneRefitChain(refitChain) ? null : matchedCv,
+        matchedCv,
       ));
     }
   }
@@ -468,9 +472,8 @@ export function datasetChainsToRows(
 
   const rows: ScoreCardRow[] = [...refitRows];
 
-  for (const cvChain of cvOnlyChains) {
+  for (const cvChain of cvRowChains) {
     if (usedCvChainIds.has(cvChain.chain_id)) continue;
-    if (refitDisplayVariants.has(displayVariantKey(cvChain))) continue;
     rows.push(buildCrossvalRow(cvChain, metric, taskType, "raw"));
   }
 

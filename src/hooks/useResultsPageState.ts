@@ -28,6 +28,7 @@ export function useResultsPageState() {
     queryFn: () => getWorkspaceResultsSummary(activeWorkspace!.id),
     enabled: !!activeWorkspace,
     staleTime: 30000,
+    refetchOnMount: "always",
   });
 
   const datasets = useMemo<DatasetTopChains[]>(

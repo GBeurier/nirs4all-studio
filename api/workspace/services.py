@@ -733,6 +733,8 @@ def _build_dataset_scores_payload(
             best_score = best_final_score
             best_kind = "final"
             cv_score = _to_float(best_final_row.get("cv_val_score"))
+            if cv_score is None:
+                cv_score = best_cv_score
         else:
             best_row = best_cv_row or {}
             best_score = best_cv_score

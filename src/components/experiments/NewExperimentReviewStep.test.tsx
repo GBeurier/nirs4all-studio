@@ -36,6 +36,15 @@ async function render(element: ReactNode) {
   return { container, root };
 }
 
+async function expandCampaignPlanPreview(container: HTMLElement): Promise<void> {
+  const trigger = Array.from(container.querySelectorAll("button"))
+    .find((button) => /expand campaign plan preview/i.test(button.getAttribute("aria-label") ?? ""));
+  expect(trigger, "expected campaign plan preview trigger").toBeTruthy();
+  await act(async () => {
+    trigger!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
 afterEach(() => {
   for (const container of mountedContainers) {
     container.remove();
@@ -113,6 +122,8 @@ describe("NewExperimentReviewStep", () => {
     );
 
     expect(container.textContent).toContain("Campaign Plan Preview");
+    expect(container.textContent).not.toContain("Legacy cartesian");
+    await expandCampaignPlanPreview(container);
     expect(container.textContent).toContain("Legacy cartesian");
     expect(container.textContent).toContain("Local Python");
     expect(container.textContent).toContain("Native adapter");
@@ -190,6 +201,7 @@ describe("NewExperimentReviewStep", () => {
       />,
     );
 
+    await expandCampaignPlanPreview(container);
     expect(container.textContent).toContain("Compatibility Preview");
     expect(container.textContent).toContain("Corn -> PLS");
     expect(container.textContent).toContain("Ready");

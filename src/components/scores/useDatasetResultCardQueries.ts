@@ -52,6 +52,7 @@ export function useDatasetResultCardQueries({
     },
     enabled: expanded && useFullDatasetChains,
     staleTime: 60000,
+    refetchOnMount: 'always',
   });
 
   const chains = useMemo(() => (
@@ -62,10 +63,11 @@ export function useDatasetResultCardQueries({
       runId,
     })
   ), [allChains, allChainsData, dataset.top_5, runId, useFullDatasetChains]);
+  const preserveRunInstances = !runId && useFullDatasetChains && Boolean(allChainsData?.chains);
 
   const scoreRows = useMemo(() => (
-    datasetChainsToRows(chains, dataset.metric, dataset.task_type)
-  ), [chains, dataset.metric, dataset.task_type]);
+    datasetChainsToRows(chains, dataset.metric, dataset.task_type, { preserveRunInstances })
+  ), [chains, dataset.metric, dataset.task_type, preserveRunInstances]);
 
   const handleViewDetails = useCallback((row: ScoreCardRow) => {
     const chain = chains.find((candidate) => candidate.chain_id === row.chainId);

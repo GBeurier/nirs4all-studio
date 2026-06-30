@@ -173,6 +173,15 @@ async function renderNode(node: ReactNode) {
   };
 }
 
+async function expandExecutionTasksPanel(container: HTMLElement): Promise<void> {
+  const trigger = Array.from(container.querySelectorAll("button"))
+    .find((button) => /expand execution tasks/i.test(button.getAttribute("aria-label") ?? ""));
+  expect(trigger, "expected execution tasks panel trigger").toBeTruthy();
+  await act(async () => {
+    trigger!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+}
+
 async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise<void> {
   const start = Date.now();
   while (true) {
@@ -321,8 +330,10 @@ describe("Runs page", () => {
         onInspectJob={inspectJob}
       />,
     );
+    await expandExecutionTasksPanel(view.container);
 
-    const inspectButtons = Array.from(view.container.querySelectorAll("button"));
+    const inspectButtons = Array.from(view.container.querySelectorAll("button"))
+      .filter((button) => /inspect execution job/i.test(button.textContent ?? ""));
     expect(inspectButtons).toHaveLength(2);
 
     await act(async () => {
@@ -372,6 +383,7 @@ describe("Runs page", () => {
         onInspectJob={vi.fn()}
       />,
     );
+    await expandExecutionTasksPanel(view.container);
 
     const text = view.container.textContent ?? "";
     expect(text).toContain("Progress unavailable");
@@ -450,6 +462,7 @@ describe("Runs page", () => {
         onInspectJob={inspectJob}
       />,
     );
+    await expandExecutionTasksPanel(view.container);
 
     expect(view.container.textContent).toContain("Multi job run");
     expect(view.container.textContent).toContain("Grouped jobs");
@@ -538,6 +551,7 @@ describe("Runs page", () => {
         onInspectJob={inspectJob}
       />,
     );
+    await expandExecutionTasksPanel(view.container);
 
     const findGroupedInspectButton = (jobId: string) => Array.from(view.container.querySelectorAll("button"))
       .find((candidate) => candidate.textContent?.includes(`Inspect execution job ${jobId}`));

@@ -36,6 +36,7 @@ import {
   downloadTextFile,
   sanitizeFilename,
 } from "@/components/runs";
+import { invalidatePredictionRelatedQueries } from "@/lib/prediction-deletion";
 import {
   PipelinesColumn,
   ProgressOverviewCard,
@@ -112,8 +113,10 @@ export default function RunProgress() {
 
       // Handle completion - show toast
       if (message.type === "job_completed") {
+        void invalidatePredictionRelatedQueries(queryClient);
         toast.success("Run completed successfully!");
       } else if (message.type === "job_failed") {
+        void invalidatePredictionRelatedQueries(queryClient);
         toast.error(`Run failed: ${message.data?.error || "Unknown error"}`);
       }
 
@@ -324,7 +327,6 @@ export default function RunProgress() {
         />
       )}
 
-      {/* Stats row */}
       <RunStatsGrid
         datasetCount={run.datasets.length}
         totalPipelines={run.total_pipelines || 0}
@@ -332,7 +334,6 @@ export default function RunProgress() {
         failedCount={failedCount}
       />
 
-      {/* Main content grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <PipelinesColumn
           run={run}

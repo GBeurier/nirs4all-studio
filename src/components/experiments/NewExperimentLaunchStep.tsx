@@ -24,7 +24,6 @@ export interface NewExperimentLaunchStepProps {
 export function NewExperimentLaunchStep({
   campaignPreview,
   datasetById,
-  executionEnvironmentDiagnostics,
   experimentDescription,
   experimentName,
   isLaunching,
@@ -45,10 +44,8 @@ export function NewExperimentLaunchStep({
       <NewExperimentLaunchSummary
         campaignPreview={campaignPreview}
         datasetById={datasetById}
-        executionEnvironmentDiagnostics={executionEnvironmentDiagnostics}
         experimentDescription={experimentDescription}
         experimentName={experimentName}
-        launchPayloadPlan={launchPayloadPlan}
         selectedDatasetIds={selectedDatasetIds}
       />
       <NewExperimentLaunchBlockingNotices blockingNotices={launchState.blockingNotices} />

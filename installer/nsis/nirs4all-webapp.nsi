@@ -45,8 +45,8 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; Interface Settings
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "..\..\public\icon.ico"
-!define MUI_UNICON "..\..\public\icon.ico"
+!define MUI_ICON "..\..\public\nirs4all.ico"
+!define MUI_UNICON "..\..\public\nirs4all.ico"
 
 ; Header image
 ;!define MUI_HEADERIMAGE

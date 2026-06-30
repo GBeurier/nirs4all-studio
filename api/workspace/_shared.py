@@ -92,7 +92,12 @@ def _store_signature(workspace_path: Path) -> tuple | None:
         return None
 
     parts: list[tuple[str, int, int]] = []
-    for name in STORE_DB_FILENAMES:
+    sidecar_names = {
+        f"{name}{suffix}"
+        for name in STORE_DB_FILENAMES
+        for suffix in ("-wal", "-shm", ".wal")
+    }
+    for name in [*STORE_DB_FILENAMES, *sorted(sidecar_names)]:
         p = store_root / name
         try:
             st = p.stat()

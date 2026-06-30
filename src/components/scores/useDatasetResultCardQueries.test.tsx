@@ -258,6 +258,49 @@ describe('useDatasetResultCardQueries', () => {
     await mounted.unmount();
   });
 
+  it('preserves repeated run instances when loading full results dataset chains', async () => {
+    apiMocks.getAllChainsForResultsDataset.mockResolvedValue({
+      chains: [
+        allChainEntry({
+          chain_id: 'chain-run-1',
+          run_id: 'run-1',
+          final_test_score: 0.21,
+          cv_val_score: 0.24,
+        }),
+        allChainEntry({
+          chain_id: 'chain-run-2',
+          run_id: 'run-2',
+          final_test_score: 0.19,
+          cv_val_score: 0.22,
+        }),
+      ],
+      total: 2,
+      metric: 'rmse',
+    });
+    const mounted = await renderHook(() => useDatasetResultCardQueries({
+      dataset: dataset({ top_5: [topChain({ chain_id: 'summary-chain' })] }),
+      workspaceId: 'workspace-1',
+      expanded: true,
+      quickViewPred: null,
+      quickViewOpen: false,
+      onOpenDetail: vi.fn(),
+    }));
+
+    await waitFor(() => {
+      expect(apiMocks.getAllChainsForResultsDataset).toHaveBeenCalledWith('workspace-1', 'dataset-a');
+    });
+    await waitFor(() => {
+      expect(mounted.result.current!.chains.map(chain => chain.chain_id)).toEqual(['chain-run-1', 'chain-run-2']);
+    });
+
+    expect(mounted.result.current!.scoreRows.filter(row => row.cardType === 'refit').map(row => row.chainId)).toEqual([
+      'chain-run-2',
+      'chain-run-1',
+    ]);
+
+    await mounted.unmount();
+  });
+
   it('loads sibling partitions for the quick prediction viewer', async () => {
     const selectedPrediction = partitionPrediction({
       prediction_id: 'pred-test',

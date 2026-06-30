@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge";
 import type { CampaignPlanPreview } from "@/lib/campaignPlanPreviewTypes";
 import {
   buildExperimentLaunchBadgeLabels,
-  formatExperimentLaunchAdapterStatusLine,
   getExperimentLaunchDescription,
 } from "@/lib/experimentLaunchPresentation";
 
@@ -41,9 +40,6 @@ export function NewExperimentLaunchHero({
             <Badge key={badge.id} variant="outline">{badge.label}</Badge>
           ))}
         </div>
-        <p className="mx-auto mt-2 max-w-md text-xs text-muted-foreground">
-          {formatExperimentLaunchAdapterStatusLine(campaignPreview)}
-        </p>
         {children}
       </div>
     </>

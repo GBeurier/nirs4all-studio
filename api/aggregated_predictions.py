@@ -417,6 +417,44 @@ def _resolve_chain_id(store: Any, chain_id: str) -> str | None:
     return None
 
 
+def _load_chain_prediction_records(
+    store: Any,
+    chain_id: str,
+    *,
+    cv_source_chain_id: str | None = None,
+    partition: str | None = None,
+    fold_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Load prediction rows for a chain, including its CV source when present."""
+    chain_ids = [chain_id]
+    if cv_source_chain_id and cv_source_chain_id != chain_id:
+        chain_ids.append(cv_source_chain_id)
+
+    records: list[dict[str, Any]] = []
+    seen_prediction_ids: set[str] = set()
+    for current_chain_id in chain_ids:
+        pred_df = store.get_chain_predictions(
+            current_chain_id,
+            partition=partition,
+            fold_id=fold_id,
+        )
+        for row in pred_df.iter_rows(named=True):
+            prediction = dict(row)
+            prediction_id = str(prediction.get("prediction_id") or "")
+            if prediction_id and prediction_id in seen_prediction_ids:
+                continue
+            if prediction_id:
+                seen_prediction_ids.add(prediction_id)
+            scores = _parse_json_maybe(prediction.get("scores"))
+            if isinstance(scores, dict):
+                prediction["scores"] = scores
+            best_params = _parse_json_maybe(prediction.get("best_params"))
+            if isinstance(best_params, dict):
+                prediction["best_params"] = best_params
+            records.append(sanitize_dict(prediction))
+    return records
+
+
 def _normalize_chain_reference(reference: Any) -> Any:
     if not isinstance(reference, str):
         return reference
@@ -745,18 +783,13 @@ async def get_chain_detail(
                     step_params,
                 )
 
-            # Get individual prediction rows
-            pred_df = store.get_chain_predictions(chain_id)
-            predictions = []
-            for row in pred_df.iter_rows(named=True):
-                prediction = dict(row)
-                scores = _parse_json_maybe(prediction.get("scores"))
-                if isinstance(scores, dict):
-                    prediction["scores"] = scores
-                best_params = _parse_json_maybe(prediction.get("best_params"))
-                if isinstance(best_params, dict):
-                    prediction["best_params"] = best_params
-                predictions.append(sanitize_dict(prediction))
+            # Get individual prediction rows, including the source CV folds
+            # for refit chains that store only the final prediction rows.
+            predictions = _load_chain_prediction_records(
+                store,
+                chain_id,
+                cv_source_chain_id=summary.get("cv_source_chain_id") if summary else None,
+            )
 
             if not predictions and summary is None:
                 raise HTTPException(status_code=404, detail=f"Chain {chain_id} not found or has no predictions")
@@ -907,27 +940,15 @@ async def get_chain_partition_detail(
     """
     store = _get_store()
     try:
-        df = store.get_chain_predictions(
-            chain_id=chain_id,
+        summary_df = store.query_chain_summaries(chain_id=chain_id)
+        summary = dict(summary_df.row(0, named=True)) if len(summary_df) > 0 else None
+        records = _load_chain_prediction_records(
+            store,
+            chain_id,
+            cv_source_chain_id=summary.get("cv_source_chain_id") if summary else None,
             partition=partition,
             fold_id=fold_id,
         )
-        records = []
-        for row in df.iter_rows(named=True):
-            d = dict(row)
-            if isinstance(d.get("scores"), str):
-                import json
-                try:
-                    d["scores"] = json.loads(d["scores"])
-                except Exception:
-                    pass
-            if isinstance(d.get("best_params"), str):
-                import json
-                try:
-                    d["best_params"] = json.loads(d["best_params"])
-                except Exception:
-                    pass
-            records.append(sanitize_dict(d))
         return {
             "chain_id": chain_id,
             "predictions": records,

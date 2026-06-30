@@ -479,6 +479,48 @@ class TestStoreAdapter:
         assert score_entry["cv_score"] == 0.12
         assert score_entry["model_name"] == "Model A"
 
+    def test_build_dataset_scores_uses_separate_cv_row_for_refit_final(self, mock_polars_df):
+        repository = MagicMock()
+        repository.query_chain_summaries.return_value = mock_polars_df([
+            {
+                "chain_id": "chain-cv",
+                "run_id": "run-001",
+                "pipeline_id": "pipe-001",
+                "dataset_name": "dataset_a",
+                "metric": "rmse",
+                "task_type": "regression",
+                "model_name": "Model A",
+                "model_class": "PLSRegression",
+                "cv_val_score": 0.12,
+                "final_test_score": None,
+            },
+            {
+                "chain_id": "chain-refit",
+                "run_id": "run-001",
+                "pipeline_id": "pipe-001-refit",
+                "dataset_name": "dataset_a",
+                "metric": "rmse",
+                "task_type": "regression",
+                "model_name": "Model A",
+                "model_class": "PLSRegression",
+                "cv_val_score": None,
+                "final_test_score": 0.18,
+            },
+        ])
+
+        from api.workspace.services import _build_dataset_scores_payload
+
+        payload = _build_dataset_scores_payload(
+            repository,
+            workspace_id="ws_001",
+            linked_datasets=[{"id": "ds_linked", "name": "dataset_a", "path": ""}],
+        )
+
+        score_entry = payload["datasets"][0]
+        assert score_entry["score_kind"] == "final"
+        assert score_entry["best_score"] == 0.18
+        assert score_entry["cv_score"] == 0.12
+
     def test_build_dataset_scores_accepts_results_repository(self, mock_polars_df):
         repository = MagicMock()
         repository.query_chain_summaries.return_value = mock_polars_df([
@@ -872,6 +914,25 @@ class TestWorkspaceResultsCaches:
         assert workspace_module._store_signature(tmp_path / "project") == (
             ("store.duckdb", stat.st_mtime_ns, stat.st_size),
         )
+
+    def test_store_signature_includes_wal_sidecars(self, tmp_path):
+        from api.workspace import _shared as workspace_module
+
+        workspace_dir = tmp_path / "workspace"
+        workspace_dir.mkdir()
+        store_file = workspace_dir / "store.duckdb"
+        wal_file = workspace_dir / "store.duckdb.wal"
+        store_file.write_bytes(b"store")
+        wal_file.write_bytes(b"wal")
+
+        first_signature = workspace_module._store_signature(workspace_dir)
+        assert first_signature is not None
+        assert any(part[0] == "store.duckdb.wal" for part in first_signature)
+
+        wal_file.write_bytes(b"wal-updated")
+
+        second_signature = workspace_module._store_signature(workspace_dir)
+        assert second_signature != first_signature
 
     def test_storage_status_opens_adapter_at_resolved_store_root(self, tmp_path):
         from api.workspace import _shared as workspace_module

@@ -513,6 +513,7 @@ def test_get_enriched_runs_batches_queries_across_runs_no_n_plus_one():
                 "model_class": "PLSRegression", "preprocessings": "SNV", "cv_fold_count": 5,
                 "best_params": None, "final_test_score": 0.19, "final_train_score": 0.15,
                 "final_scores": {"test": {"rmse": 0.19}},
+                "cv_source_chain_id": "c-B1-cv",
             },
         ],
     }
@@ -564,3 +565,5 @@ def test_get_enriched_runs_batches_queries_across_runs_no_n_plus_one():
     # _fetch_pl count is a small constant (pipelines + 6 batched aggregates),
     # independent of the run/dataset count -- proves the N+1 fan-out is gone.
     assert mock_store._fetch_pl.call_count == 8
+    run_b_ds1 = result["runs"][1]["datasets"][0]
+    assert run_b_ds1["top_5"][0]["cv_source_chain_id"] == "c-B1-cv"
