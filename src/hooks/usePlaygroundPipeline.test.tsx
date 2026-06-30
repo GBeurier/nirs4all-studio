@@ -181,4 +181,32 @@ describe('usePlaygroundPipeline', () => {
 
     await mounted.unmount();
   });
+
+  it('forwards selected dataset source and target indexes to the query hook', async () => {
+    const rawData = {
+      wavelengths: [900, 901],
+      spectra: [[0.1, 0.2]],
+      y: [1],
+    };
+
+    const mounted = await renderHook(() => usePlaygroundPipeline(rawData, {
+      datasetId: 'dataset-1',
+      datasetPartition: 'train',
+      datasetSourceIndex: 2,
+      datasetTargetIndex: 1,
+    }));
+
+    expect(queryMocks.usePlaygroundQuery).toHaveBeenLastCalledWith(
+      rawData,
+      [],
+      expect.objectContaining({
+        datasetId: 'dataset-1',
+        datasetPartition: 'train',
+        datasetSourceIndex: 2,
+        datasetTargetIndex: 1,
+      }),
+    );
+
+    await mounted.unmount();
+  });
 });

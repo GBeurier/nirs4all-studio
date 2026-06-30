@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ..jobs import JobStatus, JobType, job_manager
+from ..results_repository import STORE_DB_FILENAMES, workspace_store_path, workspace_store_root
 from ..shared.logger import get_logger
 from ..store_adapter import StoreAdapter
 from ..workspace_manager import workspace_manager
@@ -62,8 +63,8 @@ def invalidate_workspace_cache(workspace_path: str = None) -> None:
 # Phase 3/4: results-summary and dataset-scores caches
 #
 # These caches are keyed on (workspace_id, store_signature, dataset_links_signature,
-# shape_params). The store signature is the (mtime_ns, size) of store.sqlite
-# (and store.duckdb, if present). The dataset-links signature is a stable hash
+# shape_params). The store signature is the (mtime_ns, size) of the configured
+# WorkspaceStore database files when present. The dataset-links signature is a stable hash
 # of the (id, name, path) tuples returned by app_config.get_datasets() — that
 # input is the only piece of app config that influences the resolved
 # `linked_dataset_id` mapping. Both caches use the same key shape but live in
@@ -83,12 +84,16 @@ _DATASET_SCORES_CACHE: dict[tuple, Any] = {}
 def _store_signature(workspace_path: Path) -> tuple | None:
     """Return a cheap signature for the workspace store files.
 
-    Combines (mtime_ns, size) for store.sqlite and store.duckdb when present.
+    Combines (mtime_ns, size) for configured store DB files when present.
     Returns None if neither file exists.
     """
+    store_root = workspace_store_root(workspace_path)
+    if store_root is None:
+        return None
+
     parts: list[tuple[str, int, int]] = []
-    for name in ("store.sqlite", "store.duckdb"):
-        p = workspace_path / name
+    for name in STORE_DB_FILENAMES:
+        p = store_root / name
         try:
             st = p.stat()
         except (FileNotFoundError, OSError):
@@ -157,10 +162,9 @@ def _invalidate_results_caches(workspace_path_or_id: str | None = None) -> None:
 
 def _get_storage_status_for_workspace(workspace_path: Path) -> dict[str, Any]:
     """Resolve storage mode/status for a workspace."""
-    has_arrays_directory = (workspace_path / "arrays").exists()
-    db_path = workspace_path / "store.sqlite"
-    if not db_path.exists():
-        db_path = workspace_path / "store.duckdb"
+    store_path = workspace_store_path(workspace_path)
+    store_root = store_path.parent if store_path is not None else workspace_path
+    has_arrays_directory = (store_root / "arrays").exists()
 
     status = {
         "storage_mode": "new",
@@ -170,7 +174,7 @@ def _get_storage_status_for_workspace(workspace_path: Path) -> dict[str, Any]:
     }
 
     # Avoid opening WorkspaceStore when no DB exists (it can create one).
-    if not db_path.exists():
+    if store_path is None:
         if has_arrays_directory:
             status["storage_mode"] = "migrated"
         return status
@@ -180,7 +184,7 @@ def _get_storage_status_for_workspace(workspace_path: Path) -> dict[str, Any]:
         return status
 
     try:
-        with StoreAdapter(workspace_path) as adapter:
+        with StoreAdapter(store_root) as adapter:
             return adapter.get_store_status()
     except Exception:
         status["storage_mode"] = "unknown"

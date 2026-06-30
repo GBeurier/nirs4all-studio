@@ -1,6 +1,6 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Plus, Sparkles, PlayCircle, Flag } from "lucide-react";
-import { usePipelineDnd } from "./PipelineDndContext";
+import { usePipelineDnd } from "./usePipelineDnd";
 import { TreeNode } from "./TreeNode";
 import type { PipelineStep } from "./types";
 

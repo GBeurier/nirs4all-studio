@@ -25,6 +25,12 @@ from typing import Any
 from fastapi import HTTPException
 from fastapi.responses import Response
 
+from .results_repository import (
+    ResultsRepositoryNotFound,
+    resolve_results_repository,
+    workspace_content_dir,
+    workspace_store_root,
+)
 from .shared.logger import get_logger
 
 logger = get_logger(__name__)
@@ -61,46 +67,269 @@ class WorkspaceScanner:
         """
         self.workspace_path = Path(workspace_path)
 
-        # Support both structures:
-        # 1. Parent directory containing a workspace/ subdirectory
-        # 2. The workspace directory itself (contains runs/, exports/, etc.)
-        potential_workspace_dir = self.workspace_path / "workspace"
-        if potential_workspace_dir.exists() and potential_workspace_dir.is_dir():
-            # Structure 1: workspace_path/workspace/runs/
-            self.workspace_dir = potential_workspace_dir
-        elif (self.workspace_path / "runs").exists() or (self.workspace_path / "exports").exists():
-            # Structure 2: workspace_path is already the workspace dir (runs/ is direct child)
-            self.workspace_dir = self.workspace_path
-        else:
-            # Default to the nested structure
-            self.workspace_dir = potential_workspace_dir
+        self.workspace_dir = workspace_content_dir(self.workspace_path)
 
         # Lazily initialised StoreAdapter (only when store DB exists)
         self._store_adapter = None
+        self._results_repository = None
+
+    def _open_store_adapter(self, workspace_path: Path):
+        """Open the legacy StoreAdapter for repository resolution."""
+        from .store_adapter import StoreAdapter
+
+        adapter = StoreAdapter(workspace_path)
+        self._store_adapter = adapter
+        return adapter
+
+    @property
+    def results_repository(self):
+        """Return the resolved results repository when one is available."""
+        if self._results_repository is not None:
+            return self._results_repository
+        if self._store_adapter is not None:
+            self._results_repository = self._store_adapter
+            return self._results_repository
+        try:
+            self._results_repository = resolve_results_repository(
+                self.workspace_path,
+                workspace_store_factory=self._open_store_adapter,
+            )
+        except ResultsRepositoryNotFound:
+            return None
+        except Exception as exc:
+            logger.info("Could not open results repository: %s", exc)
+            return None
+        return self._results_repository
 
     @property
     def store_adapter(self):
         """Return a ``StoreAdapter`` if a store database file exists, else ``None``."""
         if self._store_adapter is not None:
             return self._store_adapter
-        store_db = self.workspace_dir / "store.sqlite"
-        if not store_db.exists():
-            store_db = self.workspace_dir / "store.duckdb"
-        if not store_db.exists():
-            store_db = self.workspace_path / "store.sqlite"
-        if not store_db.exists():
-            store_db = self.workspace_path / "store.duckdb"
-        if store_db.exists():
-            try:
-                from .store_adapter import StoreAdapter
-                self._store_adapter = StoreAdapter(store_db.parent)
-            except Exception as exc:
-                logger.info("Could not open WorkspaceStore: %s", exc)
+        if workspace_store_root(self.workspace_path) is None:
+            return None
+        repository = self.results_repository
+        if repository is self._store_adapter:
+            return self._store_adapter
         return self._store_adapter
 
     def _has_store(self) -> bool:
         """Return ``True`` if a store database is available."""
         return self.store_adapter is not None
+
+    @staticmethod
+    def _dataframe_rows(df: Any) -> list[dict[str, Any]]:
+        """Return row dicts from the small DataFrame surface used by repositories."""
+        if df is None:
+            return []
+        if isinstance(df, list):
+            return [dict(row) for row in df if isinstance(row, dict)]
+        iter_rows = getattr(df, "iter_rows", None)
+        if callable(iter_rows):
+            return [dict(row) for row in iter_rows(named=True)]
+        to_dicts = getattr(df, "to_dicts", None)
+        if callable(to_dicts):
+            return [dict(row) for row in to_dicts()]
+        return []
+
+    @staticmethod
+    def _first_present(row: dict[str, Any], *keys: str) -> Any:
+        """Return the first non-null, non-empty value from ``row``."""
+        for key in keys:
+            value = row.get(key)
+            if value is not None and value != "":
+                return value
+        return None
+
+    def _query_repository_chain_summaries(self, run_id: str | None = None) -> list[dict[str, Any]] | None:
+        """Read chain summaries from a non-store results repository, if available."""
+        repository = self.results_repository
+        if repository is None:
+            return None
+        query = getattr(repository, "query_chain_summaries", None)
+        if not callable(query):
+            return None
+        filters = {"run_id": run_id} if run_id else {}
+        try:
+            return self._dataframe_rows(query(**filters))
+        except Exception as exc:
+            logger.info("Could not read chain summaries from results repository: %s", exc)
+            return None
+
+    def _repository_chain_prediction_rows(self, chain_id: str) -> list[dict[str, Any]]:
+        """Read prediction rows for a chain from the resolved repository."""
+        if not chain_id:
+            return []
+        repository = self.results_repository
+        if repository is None:
+            return []
+        get_predictions = getattr(repository, "get_chain_predictions", None)
+        if not callable(get_predictions):
+            return []
+        try:
+            return self._dataframe_rows(get_predictions(chain_id))
+        except Exception as exc:
+            logger.info("Could not read predictions for chain %s: %s", chain_id, exc)
+            return []
+
+    def _pipeline_info_from_repository(self, pipeline_id: str) -> dict[str, Any]:
+        """Read best-effort pipeline display metadata from the repository."""
+        if not pipeline_id:
+            return {}
+        repository = self.results_repository
+        if repository is None:
+            return {}
+        get_pipeline = getattr(repository, "get_pipeline", None)
+        if not callable(get_pipeline):
+            return {}
+        try:
+            pipeline = get_pipeline(pipeline_id)
+        except Exception as exc:
+            logger.info("Could not read pipeline %s from results repository: %s", pipeline_id, exc)
+            return {}
+        return pipeline if isinstance(pipeline, dict) else {}
+
+    def _discover_runs_from_results_repository(self) -> list[dict[str, Any]] | None:
+        """Project native/structured repository chain summaries into run rows."""
+        rows = self._query_repository_chain_summaries()
+        if rows is None:
+            return None
+
+        runs_by_id: dict[str, dict[str, Any]] = {}
+        datasets_by_run: dict[str, set[str]] = {}
+        models_by_run: dict[str, set[str]] = {}
+        metrics_by_run: dict[str, set[str]] = {}
+
+        for row in rows:
+            run_id = str(self._first_present(row, "run_id", "pipeline_id") or "")
+            if not run_id:
+                continue
+            pipeline_id = str(row.get("pipeline_id") or run_id)
+            pipeline_info = self._pipeline_info_from_repository(pipeline_id)
+            run = runs_by_id.setdefault(
+                run_id,
+                {
+                    "id": run_id,
+                    "name": pipeline_info.get("name") or run_id,
+                    "status": row.get("pipeline_status") or pipeline_info.get("status") or "completed",
+                    "created_at": pipeline_info.get("created_at") or "",
+                    "completed_at": pipeline_info.get("completed_at") or "",
+                    "format": "native",
+                    "datasets": [],
+                    "summary": {},
+                    "results_count": 0,
+                    "completed_results": 0,
+                    "failed_results": 0,
+                    "predictions_count": 0,
+                    "pipeline_count": 1,
+                    "models": [],
+                },
+            )
+
+            run["results_count"] += 1
+            if (row.get("pipeline_status") or pipeline_info.get("status") or "completed") == "completed":
+                run["completed_results"] += 1
+            chain_id = str(row.get("chain_id") or "")
+            run["predictions_count"] += len(self._repository_chain_prediction_rows(chain_id))
+
+            dataset_name = str(row.get("dataset_name") or "")
+            if dataset_name:
+                datasets_by_run.setdefault(run_id, set()).add(dataset_name)
+            model_name = str(self._first_present(row, "model_name", "model_class") or "")
+            if model_name:
+                models_by_run.setdefault(run_id, set()).add(model_name)
+            metric = str(row.get("metric") or "")
+            if metric:
+                metrics_by_run.setdefault(run_id, set()).add(metric)
+
+            if run.get("best_val_score") is None:
+                run["best_val_score"] = self._first_present(row, "cv_val_score", "final_test_score", "cv_test_score")
+            if run.get("best_test_score") is None:
+                run["best_test_score"] = self._first_present(row, "final_test_score", "cv_test_score")
+
+        for run_id, run in runs_by_id.items():
+            datasets = sorted(datasets_by_run.get(run_id, set()))
+            models = sorted(models_by_run.get(run_id, set()))
+            metrics = sorted(metrics_by_run.get(run_id, set()))
+            run["dataset"] = datasets[0] if len(datasets) == 1 else ""
+            run["datasets"] = [{"name": dataset} for dataset in datasets]
+            run["models"] = models
+            run["summary"] = {
+                "total_results": run["results_count"],
+                "total_predictions": run["predictions_count"],
+                "datasets": datasets,
+                "models": models,
+                "metrics": metrics,
+            }
+
+        return [runs_by_id[run_id] for run_id in sorted(runs_by_id)]
+
+    def _discover_predictions_from_results_repository(self) -> list[dict[str, Any]] | None:
+        """Project repository chain predictions into dataset-level prediction summaries."""
+        rows = self._query_repository_chain_summaries()
+        if rows is None:
+            return None
+
+        datasets: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            chain_id = str(row.get("chain_id") or "")
+            fallback_dataset = str(row.get("dataset_name") or "unknown")
+            prediction_rows = self._repository_chain_prediction_rows(chain_id)
+            if not prediction_rows:
+                datasets.setdefault(
+                    fallback_dataset,
+                    {"dataset": fallback_dataset, "format": "native", "prediction_count": 0, "chains_count": 0},
+                )["chains_count"] += 1
+                continue
+
+            seen_datasets_for_chain: set[str] = set()
+            for prediction in prediction_rows:
+                dataset_name = str(prediction.get("dataset_name") or fallback_dataset or "unknown")
+                summary = datasets.setdefault(
+                    dataset_name,
+                    {"dataset": dataset_name, "format": "native", "prediction_count": 0, "chains_count": 0},
+                )
+                summary["prediction_count"] += 1
+                seen_datasets_for_chain.add(dataset_name)
+            for dataset_name in seen_datasets_for_chain:
+                datasets[dataset_name]["chains_count"] += 1
+
+        return [datasets[name] for name in sorted(datasets)]
+
+    def _discover_results_from_results_repository(self, run_id: str | None = None) -> list[dict[str, Any]] | None:
+        """Project repository chain summaries into result rows."""
+        rows = self._query_repository_chain_summaries(run_id=run_id)
+        if rows is None:
+            return None
+
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            chain_id = str(row.get("chain_id") or "")
+            pipeline_id = str(self._first_present(row, "pipeline_id", "run_id") or "")
+            prediction_rows = self._repository_chain_prediction_rows(chain_id)
+            results.append({
+                "id": chain_id or pipeline_id,
+                "run_id": row.get("run_id") or pipeline_id,
+                "pipeline_id": pipeline_id,
+                "chain_id": chain_id,
+                "dataset": row.get("dataset_name") or "",
+                "pipeline_config": self._first_present(row, "preprocessings", "model_name", "model_class", "chain_id") or "",
+                "pipeline_config_id": chain_id or pipeline_id,
+                "created_at": "",
+                "generator_choices": [],
+                "best_score": self._first_present(row, "cv_val_score", "final_test_score", "cv_test_score"),
+                "best_test_score": self._first_present(row, "final_test_score", "cv_test_score"),
+                "metric": row.get("metric") or "",
+                "task_type": row.get("task_type") or "",
+                "model_name": row.get("model_name") or "",
+                "model_class": row.get("model_class") or "",
+                "status": row.get("pipeline_status") or "completed",
+                "predictions_count": len(prediction_rows),
+                "artifact_count": 0,
+                "manifest_path": "",
+                "format": "native",
+            })
+        return results
 
     def is_valid_workspace(self) -> tuple[bool, str]:
         """Check if the path is a valid nirs4all workspace.
@@ -117,6 +346,9 @@ class WorkspaceScanner:
         # Store database is the primary indicator
         if self._has_store():
             return True, "Valid nirs4all workspace (store database)"
+
+        if workspace_store_root(self.workspace_path) is None and self.results_repository is not None:
+            return True, "Valid nirs4all workspace (results repository)"
 
         # workspace.json is a strong indicator (created by create_workspace)
         if (self.workspace_path / "workspace.json").exists():
@@ -197,6 +429,11 @@ class WorkspaceScanner:
         # ---- Store path (primary) ----
         if self._has_store():
             return self._discover_runs_from_store()
+
+        # ---- Structured repository path (native-only workspaces) ----
+        repository_runs = self._discover_runs_from_results_repository()
+        if repository_runs:
+            return repository_runs
 
         # ---- Legacy filesystem path ----
         runs: list[dict[str, Any]] = []
@@ -604,6 +841,11 @@ class WorkspaceScanner:
         if self._has_store():
             return self._discover_predictions_from_store()
 
+        # ---- Structured repository path (native-only workspaces) ----
+        repository_predictions = self._discover_predictions_from_results_repository()
+        if repository_predictions:
+            return repository_predictions
+
         # ---- Legacy filesystem path ----
         predictions: list[dict[str, Any]] = []
 
@@ -1008,6 +1250,11 @@ class WorkspaceScanner:
         # ---- Store path (primary) ----
         if self._has_store():
             return self._discover_results_from_store(run_id)
+
+        # ---- Structured repository path (native-only workspaces) ----
+        repository_results = self._discover_results_from_results_repository(run_id)
+        if repository_results:
+            return repository_results
 
         # ---- Legacy filesystem path ----
         results: list[dict[str, Any]] = []

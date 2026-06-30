@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { PipelineStep } from "../types";
-import { stepOptions } from "../types";
+import { stepOptions as stepOptionsFromTypes } from "../types";
+import { stepOptions } from "../stepOptions";
 import { getRenderableStepParams } from "../renderableParams";
 
 describe("getRenderableStepParams", () => {
+  it("keeps legacy types exports bound to the static step options", () => {
+    expect(stepOptionsFromTypes).toBe(stepOptions);
+  });
+
   it("shows default model parameters for imported swept presets", () => {
     const plsOption = stepOptions.model.find((option) => option.name === "PLSRegression");
     const step = {

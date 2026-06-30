@@ -77,6 +77,40 @@ describe("modelDetailClassification", () => {
     expect(result.cells.find((cell) => cell.true_label === "2" && cell.pred_label === "2")?.count).toBe(1);
   });
 
+  it("ignores multitarget matrices when building scalar classification matrices", () => {
+    const rows = [
+      {
+        prediction_id: "pred-multitarget",
+        partition: "test",
+      },
+    ] as PartitionPrediction[];
+
+    const arraysByPredictionId = {
+      "pred-multitarget": {
+        prediction_id: "pred-multitarget",
+        y_true: [[0, 1], [1, 0]],
+        y_pred: [[0, 1], [0, 1]],
+        y_proba: null,
+        sample_indices: [0, 1],
+        weights: null,
+        n_samples: 2,
+        target_index: 1,
+        target_name: "protein",
+      },
+    } satisfies Record<string, PredictionArraysResponse>;
+
+    const result = buildConfusionMatrixData({
+      rows,
+      arraysByPredictionId,
+      activePartitions: new Set(["test"]),
+      normalize: "none",
+      partitionLabel: "test",
+    });
+
+    expect(result.total_samples).toBe(0);
+    expect(result.reason).toBe("No class predictions are available for this fold and partition selection.");
+  });
+
   it("supports row normalization", () => {
     const rows = [
       {

@@ -122,7 +122,7 @@ export default function SetupWizard() {
         return () => clearTimeout(timer);
       }
     }
-  }, [gpuInfo, gpuLoading]);
+  }, [currentStep, gpuInfo, gpuLoading]);
 
   const visibleOptionalPackages = getVisibleOptionalPackages(config);
   // Hide optionals the selected profile excludes (cpu-lite never offers torch/umap-learn)

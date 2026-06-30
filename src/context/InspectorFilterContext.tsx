@@ -6,97 +6,27 @@
  */
 
 import {
-  createContext,
-  useContext,
   useCallback,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
-import { useInspectorData } from './InspectorDataContext';
-import { useInspectorSelection } from './InspectorSelectionContext';
+import { useInspectorData } from './useInspectorDataContext';
+import { useInspectorSelection } from './useInspectorSelection';
+import {
+  computeResultAnalysisOutlierChainIds,
+  computeResultAnalysisScoreStats,
+  filterResultAnalysisChains,
+} from '@/lib/inspector/filtering';
+import { buildResultAnalysisStore } from '@/lib/inspector/resultAnalysisStore';
 import type {
-  InspectorChainSummary,
   InspectorOutlierFilter,
   InspectorSelectionFilter,
-  ScoreColumn,
 } from '@/types/inspector';
-
-// ============= Types =============
-
-export interface InspectorFilterContextValue {
-  // Filter state
-  scoreRange: [number, number] | null;
-  outlier: InspectorOutlierFilter;
-  selection: InspectorSelectionFilter;
-
-  // Setters
-  setScoreRange: (range: [number, number] | null) => void;
-  setOutlierFilter: (filter: InspectorOutlierFilter) => void;
-  setSelectionFilter: (filter: InspectorSelectionFilter) => void;
-  clearAllFilters: () => void;
-
-  // Computed
-  filteredChains: InspectorChainSummary[];
-  filteredChainIds: Set<string>;
-  activeFilterCount: number;
-  hasActiveFilters: boolean;
-  scoreStats: { min: number; max: number; mean: number } | null;
-  outlierChainIds: Set<string>;
-}
-
-// ============= Context =============
-
-const InspectorFilterContext = createContext<InspectorFilterContextValue | null>(null);
-
-// ============= Outlier Detection =============
-
-function computeOutlierChainIds(chains: InspectorChainSummary[], scoreColumn: ScoreColumn): Set<string> {
-  const scores: number[] = [];
-  const chainIds: string[] = [];
-  for (const c of chains) {
-    const val = c[scoreColumn];
-    if (val != null) {
-      scores.push(val);
-      chainIds.push(c.chain_id);
-    }
-  }
-  if (scores.length < 4) return new Set();
-
-  const sorted = [...scores].sort((a, b) => a - b);
-  const q25 = sorted[Math.floor(sorted.length * 0.25)];
-  const q75 = sorted[Math.floor(sorted.length * 0.75)];
-  const iqr = q75 - q25;
-  const lower = q25 - 1.5 * iqr;
-  const upper = q75 + 1.5 * iqr;
-
-  const outliers = new Set<string>();
-  for (let i = 0; i < scores.length; i++) {
-    if (scores[i] < lower || scores[i] > upper) {
-      outliers.add(chainIds[i]);
-    }
-  }
-  return outliers;
-}
-
-function computeScoreStats(chains: InspectorChainSummary[], scoreColumn: ScoreColumn): { min: number; max: number; mean: number } | null {
-  const scores: number[] = [];
-  for (const c of chains) {
-    const val = c[scoreColumn];
-    if (val != null) scores.push(val);
-  }
-  if (scores.length === 0) return null;
-
-  let min = Infinity;
-  let max = -Infinity;
-  let sum = 0;
-  for (const s of scores) {
-    if (s < min) min = s;
-    if (s > max) max = s;
-    sum += s;
-  }
-  return { min, max, mean: sum / scores.length };
-}
+import {
+  InspectorFilterContext,
+  type InspectorFilterContextValue,
+} from '@/context/useInspectorFilter';
 
 // ============= Provider =============
 
@@ -108,51 +38,34 @@ export function InspectorFilterProvider({ children }: { children: ReactNode }) {
   const [outlier, setOutlier] = useState<InspectorOutlierFilter>('all');
   const [selection, setSelection] = useState<InspectorSelectionFilter>('all');
 
+  const analysisStore = useMemo(
+    () => buildResultAnalysisStore({ chains }),
+    [chains],
+  );
+
   // Score stats from unfiltered chains (for slider bounds)
   const scoreStats = useMemo(
-    () => computeScoreStats(chains as InspectorChainSummary[], scoreColumn),
-    [chains, scoreColumn],
+    () => computeResultAnalysisScoreStats(analysisStore, scoreColumn),
+    [analysisStore, scoreColumn],
   );
 
   // Outlier chain IDs (IQR-based)
   const outlierChainIds = useMemo(
-    () => computeOutlierChainIds(chains as InspectorChainSummary[], scoreColumn),
-    [chains, scoreColumn],
+    () => computeResultAnalysisOutlierChainIds(analysisStore, scoreColumn),
+    [analysisStore, scoreColumn],
   );
 
   // Apply filter pipeline (sequential AND logic)
-  const filteredChains = useMemo(() => {
-    let result = chains as InspectorChainSummary[];
-
-    // 1. Score range filter
-    if (scoreRange) {
-      const [min, max] = scoreRange;
-      result = result.filter(c => {
-        const val = c[scoreColumn];
-        return val != null && val >= min && val <= max;
-      });
-    }
-
-    // 2. Outlier filter
-    if (outlier !== 'all') {
-      if (outlier === 'hide') {
-        result = result.filter(c => !outlierChainIds.has(c.chain_id));
-      } else {
-        result = result.filter(c => outlierChainIds.has(c.chain_id));
-      }
-    }
-
-    // 3. Selection filter
-    if (selection !== 'all' && hasSelection) {
-      if (selection === 'selected') {
-        result = result.filter(c => selectedChains.has(c.chain_id));
-      } else {
-        result = result.filter(c => !selectedChains.has(c.chain_id));
-      }
-    }
-
-    return result;
-  }, [chains, scoreRange, scoreColumn, outlier, outlierChainIds, selection, hasSelection, selectedChains]);
+  const filteredChains = useMemo(() => filterResultAnalysisChains({
+    store: analysisStore,
+    scoreColumn,
+    scoreRange,
+    outlier,
+    outlierChainIds,
+    selection,
+    selectedChainIds: selectedChains,
+    hasSelection,
+  }), [analysisStore, scoreRange, scoreColumn, outlier, outlierChainIds, selection, hasSelection, selectedChains]);
 
   const filteredChainIds = useMemo(
     () => new Set(filteredChains.map(c => c.chain_id)),
@@ -198,14 +111,4 @@ export function InspectorFilterProvider({ children }: { children: ReactNode }) {
       {children}
     </InspectorFilterContext.Provider>
   );
-}
-
-// ============= Hook =============
-
-export function useInspectorFilter(): InspectorFilterContextValue {
-  const context = useContext(InspectorFilterContext);
-  if (!context) {
-    throw new Error('useInspectorFilter must be used within an InspectorFilterProvider');
-  }
-  return context;
 }

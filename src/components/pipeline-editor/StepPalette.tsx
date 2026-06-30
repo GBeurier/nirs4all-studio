@@ -1,21 +1,9 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { useDraggable } from "@dnd-kit/core";
 import {
-  Waves,
-  Shuffle,
-  Target,
   Search,
   ChevronDown,
   ChevronRight,
-  GitBranch,
-  GripVertical,
-  Sparkles,
-  Filter,
-  Zap,
-  BarChart3,
-  Star,
 } from "lucide-react";
-import { motion } from "@/lib/motion";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
@@ -30,211 +18,39 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { usePipelineDnd } from "./PipelineDndContext";
 import {
-  stepTypeLabels,
   stepColors,
-  type StepType,
-  type StepOption,
+  stepTypeLabels,
+} from "./stepPresentation";
+import {
+  filterPaletteOptions,
+  getMatchingPaletteSections,
+  getOptionsForPaletteGroup,
+  getPaletteAvailabilityDisplay,
+  getPaletteGroupDisplayLabel,
+  getPaletteOptionAvailability,
+  groupPaletteOptionsByCategory,
+  resolveStepType,
+  shouldShowPaletteSubcategories,
+  stepTypeOrder,
+  TIER_LABELS,
+  TIER_TOOLTIPS,
+  type PaletteGroupKey,
+} from "./StepPaletteData";
+import type {
+  StepOption,
+  StepType,
 } from "./types";
-import { useNodeRegistryOptional } from "./contexts/NodeRegistryContext";
-import { usePipelineEditorPreferencesOptional, type TierLevel } from "./contexts/PipelineEditorPreferencesContext";
-import { useOperatorAvailabilityOptional } from "./contexts/OperatorAvailabilityContext";
+import { useNodeRegistryOptional } from "./contexts/useNodeRegistry";
+import { usePipelineEditorPreferencesOptional, type TierLevel } from "./contexts/usePipelineEditorPreferences";
+import { useOperatorAvailabilityOptional } from "./contexts/useOperatorAvailability";
 import { useStepMetadataCatalog } from "./shared/stepMetadata";
-
-const stepIcons: Record<StepType, typeof Waves> = {
-  preprocessing: Waves,
-  y_processing: BarChart3,
-  splitting: Shuffle,
-  model: Target,
-  filter: Filter,
-  augmentation: Zap,
-  flow: GitBranch,
-  utility: Sparkles,
-};
-
-interface DraggableStepProps {
-  stepType: StepType;
-  option: StepOption;
-  onDoubleClick: () => void;
-  isCompact?: boolean;
-  isUnavailable?: boolean;
-  unavailableReason?: string;
-}
-
-function DraggableStep({
-  stepType,
-  option,
-  onDoubleClick,
-  isCompact = false,
-  isUnavailable = false,
-  unavailableReason,
-}: DraggableStepProps) {
-  const { isDragging: globalIsDragging } = usePipelineDnd();
-
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `palette-${stepType}-${option.name}`,
-    data: {
-      type: "palette-item" as const,
-      stepType,
-      option,
-    },
-  });
-
-  const Icon = stepIcons[stepType];
-  const colors = stepColors[stepType];
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <motion.div
-          ref={setNodeRef}
-          {...listeners}
-          {...attributes}
-          onDoubleClick={onDoubleClick}
-          initial={false}
-          animate={{
-            opacity: isDragging ? 0.4 : 1,
-            scale: isDragging ? 0.98 : 1,
-          }}
-          whileHover={!globalIsDragging ? { scale: 1.01, y: -1 } : {}}
-          whileTap={{ scale: 0.98 }}
-          transition={{ duration: 0.15 }}
-          className={`
-            flex items-center gap-2 p-2 rounded-md border cursor-grab active:cursor-grabbing
-            transition-colors select-none overflow-hidden w-full border-box
-            ${colors.border} ${colors.bg} ${colors.hover}
-            ${isDragging ? "ring-2 ring-primary shadow-lg" : ""}
-            ${option.isDeepLearning ? "border-l-2 border-l-violet-500" : ""}
-            ${isUnavailable ? "border-dashed border-amber-500/60 bg-amber-50/70 opacity-75 dark:bg-amber-950/20" : ""}
-          `}
-        >
-          <GripVertical className="h-3 w-3 flex-shrink-0 text-muted-foreground/50" />
-          <div className={`p-1 rounded ${colors.bg} ${colors.text} flex-shrink-0`}>
-            <Icon className="h-3 w-3" />
-          </div>
-          <div className="min-w-0 flex-1 w-0">
-            <div className="flex items-center gap-1">
-              <p className="text-xs font-medium text-foreground truncate">{option.name}</p>
-              {isUnavailable && (
-                <Badge variant="outline" className="h-4 px-1 text-[9px] text-amber-700 border-amber-500/50 dark:text-amber-300">
-                  Unavailable
-                </Badge>
-              )}
-              {option.isDeepLearning && (
-                <Star className="h-2.5 w-2.5 text-violet-500 flex-shrink-0" />
-              )}
-            </div>
-            {!isCompact && (
-              <p className="text-[10px] text-muted-foreground truncate leading-tight">{option.description}</p>
-            )}
-          </div>
-        </motion.div>
-      </TooltipTrigger>
-      <TooltipContent
-        side="right"
-        sideOffset={10}
-        className="max-w-[260px] p-0 overflow-hidden bg-popover text-popover-foreground border-border shadow-xl z-50"
-      >
-        <div className="p-3 space-y-2">
-          <div className="flex items-start justify-between gap-2">
-            <p className="font-semibold text-sm">{option.name}</p>
-            {option.category && (
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5 shrink-0 font-normal">{option.category}</Badge>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">{option.description}</p>
-          {isUnavailable && unavailableReason && (
-            <div className="rounded-md border border-amber-500/30 bg-amber-50 px-2 py-1 text-[10px] text-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
-              {unavailableReason}
-            </div>
-          )}
-          {option.isDeepLearning && (
-             <div className="flex items-center gap-1.5 pt-1">
-               <div className="h-1.5 w-1.5 rounded-full bg-violet-500" />
-               <span className="text-[10px] text-muted-foreground">Deep Learning Model</span>
-             </div>
-          )}
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
+import { stepIcons } from "./StepPaletteIcons";
+import { DraggableStep } from "./StepPaletteItem";
 
 interface StepPaletteProps {
   onAddStep: (stepType: StepType, option: StepOption) => void;
 }
-
-/**
- * Palette group key — superset of StepType, with the "model" group split into
- * two display-only buckets (regression vs classification). Drag-and-drop and
- * pipeline data still use the real StepType ("model").
- */
-type PaletteGroupKey = StepType | "model_regression" | "model_classification";
-
-// Order of step types in the palette (most commonly used first)
-const stepTypeOrder: PaletteGroupKey[] = [
-  "preprocessing",
-  "splitting",
-  "model_regression",
-  "model_classification",
-  "y_processing",
-  "flow",
-  "filter",
-  "augmentation",
-  "utility",
-];
-
-/** Group-level display labels (overrides stepTypeLabels for virtual groups). */
-const paletteGroupLabels: Partial<Record<PaletteGroupKey, string>> = {
-  model_regression: "Regression Models",
-  model_classification: "Classification Models",
-};
-
-/** Keywords that mark a model option as classification-oriented. */
-const CLASSIFIER_NAME_PATTERNS = [
-  /classifier$/i,
-  /classification$/i,
-  /^svc$/i,
-  /^nusvc$/i,
-  /^linearsvc$/i,
-  /^logisticregression(cv)?$/i,
-  /da$/i,                 // PLSDA, OPLSDA, LDA, QDA, LinearDiscriminantAnalysis (ends in "Analysis" — handled below)
-  /discriminantanalysis$/i,
-  /^(bernoulli|categorical|complement|gaussian|multinomial)nb$/i,
-  /^nearestcentroid$/i,
-  /^label(propagation|spreading)$/i,
-];
-
-/** Decide if a StepOption of type "model" is a classifier. */
-function isClassifierModel(opt: StepOption): boolean {
-  if (opt.tags?.some((t) => t.toLowerCase() === "classification")) return true;
-  const name = opt.name || "";
-  return CLASSIFIER_NAME_PATTERNS.some((re) => re.test(name));
-}
-
-/**
- * Resolve a palette group key to the underlying StepType used for data lookup.
- * Both virtual model groups map to the real "model" step type.
- */
-function resolveStepType(key: PaletteGroupKey): StepType {
-  if (key === "model_regression" || key === "model_classification") return "model";
-  return key;
-}
-
-/** Tier selector labels */
-const TIER_LABELS: Record<TierLevel, string> = {
-  core: "Essential",
-  standard: "Standard",
-  all: "All",
-};
-
-/** Tier selector tooltips */
-const TIER_TOOLTIPS: Record<TierLevel, string> = {
-  core: "Essential NIRS operators only",
-  standard: "Standard operators (nirs4all + common sklearn)",
-  all: "All operators including advanced and deep learning",
-};
 
 export function StepPalette({ onAddStep }: StepPaletteProps) {
   const [search, setSearch] = useState("");
@@ -274,30 +90,17 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
 
   // Get all options for a palette group (virtual model groups filter by classifier/regressor).
   const getOptionsForGroup = useCallback((key: PaletteGroupKey): { option: StepOption; actualType: StepType }[] => {
-    const stepType = resolveStepType(key);
-    const opts = getStepOptions(stepType).map((opt) => ({ option: opt, actualType: stepType }));
-    if (key === "model_regression") {
-      return opts.filter(({ option }) => !isClassifierModel(option));
-    }
-    if (key === "model_classification") {
-      return opts.filter(({ option }) => isClassifierModel(option));
-    }
-    return opts;
+    return getOptionsForPaletteGroup(key, getStepOptions);
   }, [getStepOptions]);
 
   const hasAvailabilitySnapshot = Boolean(availability?.operatorAvailability);
   const getOptionAvailability = useCallback(
     (actualType: StepType, option: StepOption) => {
-      if (!availability) {
-        return { available: true };
-      }
-      const nodeDef = registryContext?.getNodeDefinition(actualType, option.name);
-      return availability.getNodeAvailability({
-        id: nodeDef?.id,
-        type: actualType,
-        name: option.name,
-        classPath: option.classPath ?? nodeDef?.classPath,
-        functionPath: option.functionPath,
+      return getPaletteOptionAvailability({
+        actualType,
+        option,
+        availability,
+        registry: registryContext,
       });
     },
     [availability, registryContext]
@@ -306,19 +109,12 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
   const filteredOptions = useCallback(
     (key: PaletteGroupKey) => {
       const allOptions = getOptionsForGroup(key);
-      return allOptions.filter(
-        ({ option: opt, actualType }) => {
-          const optionAvailability = getOptionAvailability(actualType, opt);
-          return (
-            (showUnavailableOperators || !hasAvailabilitySnapshot || optionAvailability.available) &&
-            (
-            opt.name.toLowerCase().includes(search.toLowerCase()) ||
-            opt.description.toLowerCase().includes(search.toLowerCase()) ||
-            (opt.category?.toLowerCase().includes(search.toLowerCase()) ?? false)
-            )
-          );
-        }
-      );
+      return filterPaletteOptions(allOptions, {
+        search,
+        showUnavailableOperators,
+        hasAvailabilitySnapshot,
+        getOptionAvailability,
+      });
     },
     [getOptionAvailability, getOptionsForGroup, hasAvailabilitySnapshot, search, showUnavailableOperators]
   );
@@ -326,12 +122,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
   // Keep the open sections consistent when toggling extended mode during an active search.
   useEffect(() => {
     if (!search.trim()) return;
-    const matchingSections = new Set<PaletteGroupKey>();
-    stepTypeOrder.forEach((key) => {
-      const matches = filteredOptions(key);
-      if (matches.length > 0) matchingSections.add(key);
-    });
-    setOpenSections(matchingSections);
+    setOpenSections(getMatchingPaletteSections(stepTypeOrder, filteredOptions));
   }, [search, filteredOptions]);
 
   // When search changes, update search state
@@ -339,14 +130,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
     setSearch(value);
     if (value.trim()) {
       // Open all sections that have matches
-      const matchingSections = new Set<PaletteGroupKey>();
-      stepTypeOrder.forEach((key) => {
-        const matches = filteredOptions(key);
-        if (matches.length > 0) {
-          matchingSections.add(key);
-        }
-      });
-      setOpenSections(matchingSections);
+      setOpenSections(getMatchingPaletteSections(stepTypeOrder, filteredOptions));
     }
   };
 
@@ -387,6 +171,7 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
   const renderDraggableStep = useCallback(
     (actualType: StepType, option: StepOption, isCompact = false) => {
       const optionAvailability = getOptionAvailability(actualType, option);
+      const availabilityDisplay = getPaletteAvailabilityDisplay(optionAvailability);
       return (
         <DraggableStep
           key={`${actualType}-${option.name}`}
@@ -394,8 +179,8 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
           option={option}
           onDoubleClick={() => onAddStep(actualType, option)}
           isCompact={isCompact}
-          isUnavailable={!optionAvailability.available}
-          unavailableReason={optionAvailability.entry?.error ?? optionAvailability.issue?.details?.error}
+          isUnavailable={availabilityDisplay.isUnavailable}
+          unavailableReason={availabilityDisplay.unavailableReason}
         />
       );
     },
@@ -485,22 +270,18 @@ export function StepPalette({ onAddStep }: StepPaletteProps) {
             const options = filteredOptions(key);
             if (options.length === 0 && search) return null;
 
-            const displayLabel = paletteGroupLabels[key] ?? stepTypeLabels[underlyingType];
+            const displayLabel = getPaletteGroupDisplayLabel(key, stepTypeLabels);
 
             // Group by category
-            const groupedMap = new Map<string, { option: StepOption; actualType: StepType }[]>();
-            for (const item of options) {
-              const categoryKey = item.option.category || "General";
-              if (!groupedMap.has(categoryKey)) {
-                groupedMap.set(categoryKey, []);
-              }
-              groupedMap.get(categoryKey)!.push(item);
-            }
-
-            const hasCategories = groupedMap.size > 1 || !groupedMap.has("General");
+            const groupedMap = groupPaletteOptionsByCategory(options);
             const isExpanded = openSections.has(key);
             // Only show subcategories if we have more than SUBMENU_THRESHOLD options
-            const shouldShowSubcategories = hasCategories && !search && options.length >= SUBMENU_THRESHOLD;
+            const shouldShowSubcategories = shouldShowPaletteSubcategories({
+              groupedOptions: groupedMap,
+              search,
+              optionCount: options.length,
+              threshold: SUBMENU_THRESHOLD,
+            });
 
             return (
               <Collapsible

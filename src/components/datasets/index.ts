@@ -1,6 +1,5 @@
 // Dataset components barrel export
 export { DatasetCard } from "./DatasetCard";
-export { AddDatasetModal } from "./AddDatasetModal";
 export { EditDatasetModal } from "./EditDatasetModal";
 export { EditDatasetPanel } from "./EditDatasetPanel";
 export { GroupsModal } from "./GroupsModal";
@@ -27,8 +26,9 @@ export { SyntheticDataDialog } from "./SyntheticDataDialog";
 export { BatchScanDialog } from "./BatchScanDialog";
 
 // Drag & Drop
-export { DropZoneOverlay, useDragDrop } from "./DropZoneOverlay";
-export type { DroppedContent } from "./DropZoneOverlay";
+export { DropZoneOverlay } from "./DropZoneOverlay";
+export { useDragDrop } from "./useDragDrop";
+export type { DroppedContent } from "./useDragDrop";
 
 // Partition filter (train/test/all)
 export { PartitionToggle } from "./PartitionToggle";

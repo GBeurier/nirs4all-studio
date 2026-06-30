@@ -260,3 +260,74 @@ class TestModelsAvailableEndpoint:
         assert models["chain-avg-variant"]["prediction_metric"] == "rmsep"
         assert models["chain-avg-variant"]["prediction_score"] == pytest.approx(18.9)
         assert models["chain-avg-variant"]["best_score"] == pytest.approx(0.20)
+
+    def test_available_models_uses_native_results_repository_without_store(self, tmp_path, mock_polars_df):
+        from fastapi.testclient import TestClient
+
+        import api.models
+        from main import app
+
+        workspace_dir = tmp_path / "native_workspace"
+        native_run = workspace_dir / "nirs4all_results" / "run-1"
+        native_run.mkdir(parents=True)
+        (native_run / "manifest.json").write_text("{}", encoding="utf-8")
+
+        workspace = MagicMock()
+        workspace.path = str(workspace_dir)
+
+        native_repository = MagicMock(name="NativeResultsAdapter")
+        native_repository.query_chain_summaries.return_value = mock_polars_df([])
+        native_repository.close = MagicMock()
+        workspace_store_cls = MagicMock(name="WorkspaceStore")
+
+        def _patched_get_cached(name: str):
+            if name == "WorkspaceStore":
+                return workspace_store_cls
+            if name == "BundleLoader":
+                return None
+            return None
+
+        with (
+            patch.object(api.models, "workspace_manager") as mock_wm,
+            patch.object(api.models, "get_cached", side_effect=_patched_get_cached),
+            patch("api.native_results_adapter.NativeResultsAdapter", return_value=native_repository) as adapter_cls,
+        ):
+            mock_wm.get_current_workspace.return_value = workspace
+            with TestClient(app) as c:
+                resp = c.get("/api/models/available")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"models": [], "total": 0}
+        adapter_cls.assert_called_once_with(workspace_dir / "nirs4all_results")
+        workspace_store_cls.assert_not_called()
+        native_repository.query_chain_summaries.assert_called_once_with()
+        native_repository.close.assert_called_once_with()
+
+    def test_available_models_preserves_no_store_fallback_when_workspace_store_unavailable(self, tmp_path):
+        from fastapi.testclient import TestClient
+
+        import api.models
+        from main import app
+
+        workspace_dir = tmp_path / "legacy_workspace"
+        workspace_dir.mkdir()
+        (workspace_dir / "store.duckdb").touch()
+
+        workspace = MagicMock()
+        workspace.path = str(workspace_dir)
+
+        def _patched_get_cached(name: str):
+            if name == "WorkspaceStore":
+                raise RuntimeError("WorkspaceStore unavailable")
+            return None
+
+        with (
+            patch.object(api.models, "workspace_manager") as mock_wm,
+            patch.object(api.models, "get_cached", side_effect=_patched_get_cached),
+        ):
+            mock_wm.get_current_workspace.return_value = workspace
+            with TestClient(app) as c:
+                resp = c.get("/api/models/available")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"models": [], "total": 0}

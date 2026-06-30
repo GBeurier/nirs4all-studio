@@ -47,11 +47,13 @@ chain-centric SQLite identifiers do not exist and are SYNTHESIZED deterministica
   not survive across separate requests (chain-detail vs. arrays build separate adapter instances); this
   deterministic key is unique per row and identical across reads.
 
-Fields the native format CANNOT supply (reported as gaps; rendered as ``None`` / empty, never fabricated):
-``best_params`` / ``variant_params`` (no expanded pipeline config persisted), ``fold_artifacts`` (the
-native ``artifacts[]`` are REFIT model binaries, not the legacy per-fold artifact map), ``cv_source_chain_id``,
-``branch_path`` / ``source_index``, the repetition-aggregated ``final_agg_*`` scores, and the relation-replay
-columns. CV ``cv_train_score`` is present only when the projection carried a train fold (it usually does not).
+Fields the native format may not supply (reported as gaps; rendered as ``None`` / empty, never fabricated):
+``best_params`` / expanded operator params (no expanded pipeline config persisted), legacy per-fold artifact
+maps (a synthetic ``fold_final`` is exposed only when exactly one native REFIT model artifact is loadable for
+the chain), ``cv_source_chain_id``, the repetition-aggregated ``final_agg_*`` scores, and the
+relation-replay columns. ``branch_path`` / ``source_index`` are preserved only when the native projection
+or manifest carries them. ``variant_params`` is limited to additive native ``result_metadata`` provenance.
+CV ``cv_train_score`` is present only when the projection carried a train fold (it usually does not).
 """
 
 from __future__ import annotations
@@ -70,12 +72,13 @@ import polars as pl
 _REFIT_CONFIG_SUFFIX = "_refit"
 _AGGREGATE_FOLD_IDS = frozenset({"avg", "w_avg"})
 
-# The legacy ``v_chain_summary`` VIEW columns WITH their polars dtypes, in order. The chain-summary
-# endpoints build ``ChainSummary`` rows from these keys; we emit a DataFrame with EXACTLY this typed
-# schema so the endpoint code (and its ``ChainSummary`` pydantic model) consumes a native row
-# identically to a SQLite row. Dtypes mirror the ``chains`` table column types
+# The legacy ``v_chain_summary`` VIEW columns plus native-only additive fields, WITH their polars dtypes,
+# in order. The chain-summary endpoints build ``ChainSummary`` rows from these keys; we emit a typed
+# schema so endpoint code consumes native rows like SQLite rows while still surfacing native score maps
+# and provenance. Dtypes mirror the ``chains`` table column types where fields are legacy-shaped
 # (nirs4all/pipeline/storage/store_schema.py): TEXT→Utf8, REAL→Float64, INTEGER→Int64; ``run_id`` /
-# ``pipeline_status`` come from the joined ``pipelines`` row (TEXT).
+# ``pipeline_status`` come from the joined ``pipelines`` row (TEXT). Additive native payloads use
+# ``pl.Object`` so the API can return objects, not JSON strings.
 _CHAIN_SUMMARY_SCHEMA: dict[str, pl.DataType] = {
     "chain_id": pl.Utf8,
     "pipeline_id": pl.Utf8,
@@ -93,13 +96,15 @@ _CHAIN_SUMMARY_SCHEMA: dict[str, pl.DataType] = {
     "cv_test_score": pl.Float64,
     "cv_train_score": pl.Float64,
     "cv_fold_count": pl.Int64,
-    "cv_scores": pl.Utf8,
+    "cv_scores": pl.Object,
+    "score_maps": pl.Object,
     "final_test_score": pl.Float64,
     "final_train_score": pl.Float64,
-    "final_scores": pl.Utf8,
+    "final_scores": pl.Object,
     "final_agg_test_score": pl.Float64,
     "final_agg_train_score": pl.Float64,
-    "final_agg_scores": pl.Utf8,
+    "final_agg_scores": pl.Object,
+    "variant_params": pl.Object,
     "relation_replay_manifest": pl.Utf8,
     "relation_replay_version": pl.Int64,
     "relation_replay_fingerprint": pl.Utf8,
@@ -151,6 +156,328 @@ def _finite(value: Any) -> float | None:
     return f
 
 
+def _json_safe(value: Any) -> Any:
+    """Best-effort JSON-safe copy for native projection payloads."""
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, bool) or value is None or isinstance(value, str):
+        return value
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return _finite(value)
+
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _json_safe(item())
+        except Exception:
+            pass
+
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        try:
+            return _json_safe(tolist())
+        except Exception:
+            pass
+
+    try:
+        json.dumps(value, allow_nan=False)
+    except Exception:
+        return str(value)
+    return value
+
+
+def _first_present(mapping: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    """Return the first explicitly present non-null value for ``keys`` from ``mapping``."""
+    for key in keys:
+        if key in mapping and mapping[key] is not None:
+            return mapping[key]
+    return None
+
+
+def _branch_path_for_summary(value: Any) -> str | None:
+    """JSON-safe branch path text for the legacy TEXT summary column."""
+    if value is None:
+        return None
+    safe_value = _json_safe(value)
+    if isinstance(safe_value, str):
+        return safe_value
+    return json.dumps(safe_value, allow_nan=False, sort_keys=True)
+
+
+def _source_index_for_summary(value: Any) -> int | None:
+    """Coerce native source aliases to the legacy integer source_index field."""
+    safe_value = _json_safe(value)
+    if isinstance(safe_value, bool) or safe_value is None:
+        return None
+    if isinstance(safe_value, int):
+        return safe_value
+    if isinstance(safe_value, float):
+        if math.isfinite(safe_value) and safe_value.is_integer():
+            return int(safe_value)
+        return None
+    if isinstance(safe_value, str):
+        stripped = safe_value.strip()
+        if not stripped:
+            return None
+        try:
+            return int(stripped)
+        except ValueError:
+            return None
+    return None
+
+
+def _first_coerced_index(*values: Any) -> int | None:
+    """Return the first non-null integer-like index from native metadata candidates."""
+    for value in values:
+        index = _source_index_for_summary(value)
+        if index is not None:
+            return index
+    return None
+
+
+def _first_text_value(*values: Any) -> str | None:
+    """Return the first non-empty text value from native metadata candidates."""
+    for value in values:
+        if value is None:
+            continue
+        safe_value = _json_safe(value)
+        if isinstance(safe_value, str):
+            text = safe_value.strip()
+            if text:
+                return text
+    return None
+
+
+def _native_prediction_context(row: dict[str, Any]) -> dict[str, Any]:
+    """Additive source/target metadata for native prediction rows and arrays."""
+    result_metadata = row.get("result_metadata")
+    result_metadata = _json_safe(result_metadata) if isinstance(result_metadata, dict) else None
+    metadata_dict = result_metadata if isinstance(result_metadata, dict) else {}
+    dimensions = metadata_dict.get("dimensions")
+    dimensions = dimensions if isinstance(dimensions, dict) else {}
+
+    source_index = _first_coerced_index(
+        _first_present(row, ("source_index", "source_idx", "source")),
+        _first_present(metadata_dict, ("source_index", "source_idx", "source")),
+        _first_present(dimensions, ("source_index", "source_idx", "source")),
+    )
+    target_index = _first_coerced_index(
+        _first_present(row, ("target_index", "target_idx", "target")),
+        _first_present(metadata_dict, ("target_index", "target_idx", "target")),
+        _first_present(dimensions, ("target_index", "target_idx", "target")),
+    )
+
+    return {
+        "branch_path": _branch_path_for_summary(_first_present(row, ("branch_path",))),
+        "source_index": source_index,
+        "source_name": _first_text_value(
+            _first_present(row, ("source_name", "source_label")),
+            _first_present(metadata_dict, ("source_name", "source_label")),
+            _first_present(dimensions, ("source_name", "source_label")),
+        ),
+        "target_index": target_index,
+        "target_name": _first_text_value(
+            _first_present(row, ("target_name", "target_label")),
+            _first_present(metadata_dict, ("target_name", "target_label")),
+            _first_present(dimensions, ("target_name", "target_label")),
+        ),
+        "result_metadata": result_metadata,
+    }
+
+
+def _native_identity_candidates(manifest: dict[str, Any], base_config: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Potential identity metadata locations, ordered from most specific to broadest."""
+    candidates = list(rows)
+
+    for key in ("variants", "variant_metadata", "configs", "config_metadata"):
+        value = manifest.get(key)
+        if isinstance(value, dict):
+            entry = value.get(base_config) or value.get(f"{base_config}{_REFIT_CONFIG_SUFFIX}")
+            if isinstance(entry, dict):
+                candidates.append(entry)
+            continue
+        if isinstance(value, list):
+            for item in value:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("config_name") or item.get("variant_id") or item.get("name") or item.get("id")
+                if _native_base_config(str(name or "")) == base_config:
+                    candidates.append(item)
+
+    candidates.append(manifest)
+    return candidates
+
+
+def _native_summary_identity(manifest: dict[str, Any], base_config: str, rows: list[dict[str, Any]]) -> tuple[str | None, int | None]:
+    """Extract legacy identity fields when native rows/manifest carry them."""
+    branch_path: str | None = None
+    source_index: int | None = None
+
+    for candidate in _native_identity_candidates(manifest, base_config, rows):
+        if branch_path is None:
+            branch_path = _branch_path_for_summary(_first_present(candidate, ("branch_path",)))
+        if source_index is None:
+            source_index = _source_index_for_summary(_first_present(candidate, ("source_index", "source_idx", "source")))
+        if branch_path is not None and source_index is not None:
+            break
+
+    return branch_path, source_index
+
+
+def _partition_key(value: Any) -> str | None:
+    """Normalize native/legacy partition labels to the score-map keys the UI consumes."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    aliases = {
+        "validation": "val",
+        "valid": "val",
+        "val": "val",
+        "test": "test",
+        "train": "train",
+        "training": "train",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _flat_metric_scores(value: Any) -> dict[str, float]:
+    """Return ``{metric: score}`` for a flat score payload."""
+    if not isinstance(value, dict):
+        return {}
+    scores: dict[str, float] = {}
+    for key, item in value.items():
+        if isinstance(item, dict):
+            continue
+        score = _finite(item)
+        if score is not None:
+            scores[str(key)] = score
+    return scores
+
+
+def _merge_score_maps(*maps: dict[str, dict[str, float]] | None) -> dict[str, dict[str, float]] | None:
+    """Merge partitioned score maps, preserving any extra metrics emitted by the native projection."""
+    merged: dict[str, dict[str, float]] = {}
+    for score_map in maps:
+        if not score_map:
+            continue
+        for partition, scores in score_map.items():
+            if not scores:
+                continue
+            merged.setdefault(str(partition), {}).update(scores)
+    return merged or None
+
+
+def _merge_native_score_payloads(*payloads: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Merge JSON-safe native score payloads without flattening target/source dimensions."""
+    merged: dict[str, Any] = {}
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        for key, value in payload.items():
+            safe_value = _json_safe(value)
+            existing = merged.get(str(key))
+            if isinstance(existing, dict) and isinstance(safe_value, dict):
+                merged[str(key)] = _merge_native_score_payloads(existing, safe_value) or {}
+            else:
+                merged[str(key)] = safe_value
+    return merged or None
+
+
+def _row_score_map(row: dict[str, Any]) -> dict[str, dict[str, float]] | None:
+    """Map one native projection row's scores onto legacy ``{partition: {metric: value}}`` shape."""
+    score_map: dict[str, dict[str, float]] = {}
+
+    raw_scores = row.get("scores")
+    if isinstance(raw_scores, dict):
+        if any(isinstance(value, dict) for value in raw_scores.values()):
+            for key, value in raw_scores.items():
+                partition = _partition_key(str(key))
+                scores = _flat_metric_scores(value)
+                if partition and scores:
+                    score_map.setdefault(partition, {}).update(scores)
+        else:
+            partition = _partition_key(row.get("partition"))
+            scores = _flat_metric_scores(raw_scores)
+            if partition and scores:
+                score_map.setdefault(partition, {}).update(scores)
+
+    metric = row.get("metric")
+    metric_key = str(metric) if isinstance(metric, str) and metric else None
+    if metric_key:
+        for partition, field in (
+            ("val", "val_score"),
+            ("test", "test_score"),
+            ("train", "train_score"),
+        ):
+            score = _finite(row.get(field))
+            if score is not None:
+                score_map.setdefault(partition, {})[metric_key] = score
+
+    return score_map or None
+
+
+def _native_row_score_payload(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the raw native score payload plus scalar partition fallbacks."""
+    payload = row.get("scores")
+    score_payload = _json_safe(payload) if isinstance(payload, dict) else {}
+    partition_scores = _row_score_map(row)
+    if partition_scores:
+        score_payload = _merge_native_score_payloads(score_payload, partition_scores) or {}
+    return score_payload or None
+
+
+def _native_result_metadata(run_id: str, base_config: str, read: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Small provenance payload exposed as ``variant_params.result_metadata`` for native summaries."""
+    metadata: dict[str, Any] = {
+        "source": "native_results",
+        "run_id": run_id,
+        "chain_id": _native_chain_id(run_id, base_config),
+        "config_name": base_config,
+    }
+    manifest = read.get("manifest") if isinstance(read.get("manifest"), dict) else {}
+    selected_variant = manifest.get("selected_variant")
+    if isinstance(selected_variant, str) and selected_variant:
+        metadata["selected_variant"] = selected_variant
+
+    explicit = manifest.get("result_metadata")
+    if isinstance(explicit, dict):
+        metadata.update(_json_safe(explicit))
+
+    for row in rows:
+        row_metadata = row.get("result_metadata")
+        if isinstance(row_metadata, dict):
+            metadata.update(_json_safe(row_metadata))
+
+    return metadata
+
+
+def _variant_params_for_summary(
+    run_id: str,
+    base_config: str,
+    read: dict[str, Any],
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Additive native variant params; currently only provenance/result metadata is available."""
+    params: dict[str, Any] = {}
+    for row in rows:
+        row_params = row.get("variant_params")
+        if isinstance(row_params, dict):
+            params.update(_json_safe(row_params))
+
+    result_metadata = _native_result_metadata(run_id, base_config, read, rows)
+    existing_metadata = params.get("result_metadata")
+    if isinstance(existing_metadata, dict):
+        result_metadata.update(existing_metadata)
+    params["result_metadata"] = result_metadata
+    return params
+
+
 def _model_class_from_name(model_name: str) -> str:
     """Display class for a variant: the model name (its trailing segment if dotted)."""
     if not model_name:
@@ -172,6 +499,72 @@ def _infer_metric_ascending(metric: str | None) -> bool:
     from nirs4all.core.metrics import infer_ascending
 
     return infer_ascending(metric)
+
+
+def _native_base_config(config_name: str) -> str:
+    """The base variant name (the projection's ``"{base}_refit"`` rows fold into their base)."""
+    if config_name.endswith(_REFIT_CONFIG_SUFFIX):
+        return config_name[: -len(_REFIT_CONFIG_SUFFIX)]
+    return config_name
+
+
+def _native_chain_id(run_id: str, base_config: str) -> str:
+    """Deterministic surrogate chain id for a (run, base variant) — DOCUMENTED in the module docstring."""
+    return f"{run_id}::{base_config}"
+
+
+def _native_prediction_id(run_id: str, row: dict[str, Any]) -> str:
+    """STABLE surrogate prediction id from the row's identity (DOCUMENTED in the module docstring).
+
+    The library reader assigns a FRESH random ``id`` on every read, so it is NOT stable across
+    adapter instances / requests (the chain-detail call and the arrays call build separate adapters).
+    We instead derive a deterministic id from ``(run_id, config_name, partition, fold_id)`` — unique
+    per projected row and identical across reads — so an id handed out by one request resolves on the
+    next.
+    """
+    return "::".join(
+        (
+            run_id,
+            str(row.get("config_name") or ""),
+            str(row.get("partition") or ""),
+            str(row.get("fold_id") or ""),
+        )
+    )
+
+
+def _native_loadable_artifact_id(run_id: str, base_config: str, source_artifact_id: str) -> str:
+    """Stable synthetic artifact id emitted by ``get_chain(...).fold_artifacts`` for native refit models."""
+    return f"{run_id}::{base_config}::artifact::{source_artifact_id}"
+
+
+class _NativeArtifactModel:
+    """Predict-capable wrapper over a native ``{estimator, y_transform}`` artifact payload."""
+
+    def __init__(self, estimator: Any, y_transform: Any) -> None:
+        self.estimator = estimator
+        self.y_transform = y_transform
+
+    def predict(self, X: Any) -> Any:
+        """Predict in the original target space, applying y inverse transformation when present."""
+        import numpy as np
+
+        pred = np.asarray(self.estimator.predict(X), dtype=float)
+        if self.y_transform is None:
+            return pred
+        return np.asarray(self.y_transform.inverse_transform(pred.reshape(len(pred), -1)), dtype=float)
+
+
+def _native_model_from_artifact(artifact: dict[str, Any]) -> Any:
+    """Return a predict-capable model object from a rehydrated native artifact."""
+    estimator = artifact.get("estimator")
+    if estimator is None:
+        raise ValueError(f"Native results model artifact {artifact.get('artifact_id')!r} has no estimator payload.")
+    y_transform = artifact.get("y_transform")
+    try:
+        from nirs4all.api.result import _DagmlExportedModel
+    except Exception:
+        return _NativeArtifactModel(estimator, y_transform)
+    return _DagmlExportedModel(estimator, y_transform)
 
 
 class NativeResultsAdapter:
@@ -247,14 +640,12 @@ class NativeResultsAdapter:
     @staticmethod
     def _chain_id(run_id: str, base_config: str) -> str:
         """Deterministic surrogate chain id for a (run, base variant) — DOCUMENTED in the module docstring."""
-        return f"{run_id}::{base_config}"
+        return _native_chain_id(run_id, base_config)
 
     @staticmethod
     def _base_config(config_name: str) -> str:
         """The base variant name (the projection's ``"{base}_refit"`` rows fold into their base)."""
-        if config_name.endswith(_REFIT_CONFIG_SUFFIX):
-            return config_name[: -len(_REFIT_CONFIG_SUFFIX)]
-        return config_name
+        return _native_base_config(config_name)
 
     @staticmethod
     def _prediction_id(run_id: str, row: dict[str, Any]) -> str:
@@ -266,14 +657,7 @@ class NativeResultsAdapter:
         per projected row and identical across reads — so an id handed out by one request resolves on the
         next.
         """
-        return "::".join(
-            (
-                run_id,
-                str(row.get("config_name") or ""),
-                str(row.get("partition") or ""),
-                str(row.get("fold_id") or ""),
-            )
-        )
+        return _native_prediction_id(run_id, row)
 
     def _variant_summaries(self, run_id: str, read: dict[str, Any]) -> list[dict[str, Any]]:
         """One chain-summary dict per variant in a native run, from the library-projected rows.
@@ -299,7 +683,7 @@ class NativeResultsAdapter:
         # the refit rows under "{base}_refit" (folded back here).
         variants: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
-            base = self._base_config(str(row.get("config_name") or ""))
+            base = _native_base_config(str(row.get("config_name") or ""))
             variants.setdefault(base, []).append(row)
 
         summaries: list[dict[str, Any]] = []
@@ -313,6 +697,8 @@ class NativeResultsAdapter:
             cv_val = _finite(cv_summary.get("val_score")) if cv_summary else None
             cv_test = _finite(cv_summary.get("test_score")) if cv_summary else None
             cv_train = _finite(cv_summary.get("train_score")) if cv_summary else None
+            cv_scores = _row_score_map(cv_summary) if cv_summary else None
+            cv_score_payload = _native_row_score_payload(cv_summary) if cv_summary else None
             cv_fold_count = len({
                 str(r.get("fold_id") or "")
                 for r in cv_rows
@@ -321,23 +707,35 @@ class NativeResultsAdapter:
 
             final_test = next((_finite(r.get("test_score")) for r in refit_rows if _finite(r.get("test_score")) is not None), None)
             final_train = next((_finite(r.get("train_score")) for r in refit_rows if _finite(r.get("train_score")) is not None), None)
+            final_scores = _merge_score_maps(*(_row_score_map(r) for r in refit_rows))
+            final_score_payload = _merge_native_score_payloads(*(_native_row_score_payload(r) for r in refit_rows))
+            score_maps = {
+                key: value
+                for key, value in {
+                    "cv": cv_score_payload,
+                    "final": final_score_payload,
+                }.items()
+                if value
+            } or None
 
             source_rows = variant_rows
             model_name = next((str(r.get("model_name") or "") for r in source_rows if r.get("model_name")), "")
             dataset_name = next((str(r.get("dataset_name") or "") for r in source_rows if r.get("dataset_name")), "")
             metric = next((str(r.get("metric") or "") for r in source_rows if r.get("metric")), "") or (metric_default or "")
             task_type = next((str(r.get("task_type") or "") for r in source_rows if r.get("task_type")), "") or (task_default or "")
+            variant_params = _variant_params_for_summary(run_id, base_config, read, variant_rows)
+            branch_path, source_index = _native_summary_identity(manifest, base_config, variant_rows)
 
             summaries.append(
                 {
-                    "chain_id": self._chain_id(run_id, base_config),
+                    "chain_id": _native_chain_id(run_id, base_config),
                     "pipeline_id": run_id,
                     "model_class": _model_class_from_name(model_name),
                     "model_step_idx": 0,
                     "model_name": model_name,
                     "preprocessings": base_config,
-                    "branch_path": None,
-                    "source_index": None,
+                    "branch_path": branch_path,
+                    "source_index": source_index,
                     "metric": metric or None,
                     "task_type": task_type or None,
                     "best_params": None,
@@ -346,13 +744,15 @@ class NativeResultsAdapter:
                     "cv_test_score": cv_test,
                     "cv_train_score": cv_train,
                     "cv_fold_count": cv_fold_count,
-                    "cv_scores": None,
+                    "cv_scores": cv_scores,
+                    "score_maps": score_maps,
                     "final_test_score": final_test,
                     "final_train_score": final_train,
-                    "final_scores": None,
+                    "final_scores": final_scores,
                     "final_agg_test_score": None,
                     "final_agg_train_score": None,
                     "final_agg_scores": None,
+                    "variant_params": variant_params,
                     "relation_replay_manifest": None,
                     "relation_replay_version": None,
                     "relation_replay_fingerprint": None,
@@ -399,13 +799,12 @@ class NativeResultsAdapter:
         return str(value or "") == wanted
 
     def _summaries_df(self, rows: list[dict[str, Any]]) -> pl.DataFrame:
-        """Build the v_chain_summary-shaped DataFrame (exact typed schema) from summary dicts.
+        """Build the chain-summary-shaped DataFrame (explicit typed schema) from summary dicts.
 
-        The empty frame carries the EXACT 28-column typed v_chain_summary schema (not all-Utf8) so a
-        no-results native workspace is column/dtype-identical to legacy. Populated rows are built with
-        the explicit schema too, so a sparse column (e.g. a later row's first non-null score) cannot
-        flip the dtype or fail polars' first-rows schema inference — matching the legacy ``_fetch_pl``,
-        which infers across all rows.
+        The empty frame carries the typed v_chain_summary-compatible schema plus native additive fields
+        (not all-Utf8). Populated rows are built with the explicit schema too, so a sparse column (e.g. a
+        later row's first non-null score) cannot flip the dtype or fail polars' first-rows schema
+        inference — matching the legacy ``_fetch_pl``, which infers across all rows.
         """
         ordered = [{col: row.get(col) for col in _CHAIN_SUMMARY_COLUMNS} for row in rows]
         return pl.DataFrame(ordered, schema=_CHAIN_SUMMARY_SCHEMA)
@@ -441,6 +840,10 @@ class NativeResultsAdapter:
             and self._matches(row.get("task_type"), task_type)
         ]
         return self._summaries_df(rows)
+
+    def count_chain_summaries(self, **filters: Any) -> int:
+        """Count chain summaries using the same filters as ``query_chain_summaries``."""
+        return len(self.query_chain_summaries(**filters))
 
     def query_top_chains(
         self,
@@ -499,7 +902,7 @@ class NativeResultsAdapter:
         rows = read["predictions"].filter_predictions(load_arrays=False)
         records: list[dict[str, Any]] = []
         for row in rows:
-            if self._base_config(str(row.get("config_name") or "")) != base_config:
+            if _native_base_config(str(row.get("config_name") or "")) != base_config:
                 continue
             if partition is not None and str(row.get("partition") or "") != partition:
                 continue
@@ -508,7 +911,7 @@ class NativeResultsAdapter:
             model_name = str(row.get("model_name") or "")
             records.append(
                 {
-                    "prediction_id": self._prediction_id(run_id, row),
+                    "prediction_id": _native_prediction_id(run_id, row),
                     "pipeline_id": run_id,
                     "chain_id": chain_id,
                     "dataset_name": str(row.get("dataset_name") or ""),
@@ -524,8 +927,9 @@ class NativeResultsAdapter:
                     "n_samples": None,
                     "n_features": None,
                     "preprocessings": base_config,
-                    "scores": json.dumps(row.get("scores")) if isinstance(row.get("scores"), dict) else None,
-                    "best_params": None,
+                    "scores": _json_safe(row.get("scores")) if isinstance(row.get("scores"), dict) else None,
+                    "best_params": _json_safe(row.get("best_params")) if isinstance(row.get("best_params"), dict) else None,
+                    **_native_prediction_context(row),
                 }
             )
         if not records:
@@ -536,7 +940,7 @@ class NativeResultsAdapter:
         """Find the projected row whose STABLE surrogate id matches (across all native runs)."""
         for run_id, read in self._iter_runs():
             for row in read["predictions"].filter_predictions(load_arrays=True):
-                if self._prediction_id(run_id, row) == prediction_id:
+                if _native_prediction_id(run_id, row) == prediction_id:
                     return row
         return None
 
@@ -559,6 +963,7 @@ class NativeResultsAdapter:
             "weights": row.get("weights"),
             "sample_indices": row.get("sample_indices"),
             "sample_metadata": row.get("metadata"),
+            **_native_prediction_context(row),
         }
 
     def get_prediction(self, prediction_id: str, load_arrays: bool = True) -> dict[str, Any] | None:
@@ -582,8 +987,51 @@ class NativeResultsAdapter:
         resolved = self._resolve_chain(chain_id)
         if resolved is None:
             return None
-        run_id, base_config, _read = resolved
-        return {"chain_id": chain_id, "pipeline_id": run_id, "preprocessings": base_config}
+        run_id, base_config, read = resolved
+        chain: dict[str, Any] = {"chain_id": chain_id, "pipeline_id": run_id, "preprocessings": base_config}
+
+        summary = self.query_chain_summaries(chain_id=chain_id)
+        if summary.height:
+            row = summary.row(0, named=True)
+            chain.update(
+                {
+                    "model_class": row.get("model_class", ""),
+                    "model_name": row.get("model_name", ""),
+                    "dataset_name": row.get("dataset_name", ""),
+                    "metric": row.get("metric"),
+                    "task_type": row.get("task_type"),
+                }
+            )
+
+        artifact = self._single_artifact_for_chain(base_config, read)
+        if artifact is not None:
+            source_artifact_id = str(artifact.get("artifact_id") or "")
+            chain["fold_artifacts"] = {"fold_final": _native_loadable_artifact_id(run_id, base_config, source_artifact_id)}
+            chain["native_artifact_id"] = source_artifact_id
+        else:
+            chain["fold_artifacts"] = {}
+            chain["artifact_unavailable_reason"] = self._artifact_unavailable_reason(run_id, base_config, read)
+        return chain
+
+    def load_artifact(self, artifact_id: str) -> Any:
+        """Load a predict-capable model from a native synthetic artifact id.
+
+        Native results expose rehydrated REFIT model artifacts, not legacy per-fold artifact records. This
+        method only accepts the synthetic ids emitted through ``get_chain(...).fold_artifacts`` for chains
+        that map to exactly one loadable REFIT model.
+        """
+        for run_id, read in self._iter_runs():
+            for base_config in self._base_configs(read):
+                artifact = self._single_artifact_for_chain(base_config, read)
+                if artifact is None:
+                    continue
+                source_artifact_id = str(artifact.get("artifact_id") or "")
+                if _native_loadable_artifact_id(run_id, base_config, source_artifact_id) == artifact_id:
+                    return _native_model_from_artifact(artifact)
+        raise ValueError(
+            f"Native results artifact is not available or not uniquely loadable: {artifact_id!r}. "
+            "SHAP requires a single refit model artifact for the selected chain."
+        )
 
     def get_chains_for_pipeline(self, pipeline_id: str) -> pl.DataFrame:
         """Chain summaries for one surrogate pipeline (== run) — used to list sibling chains."""
@@ -645,11 +1093,81 @@ class NativeResultsAdapter:
         refit rows.
         """
         for run_id, read in self._iter_runs():
-            base_configs = {
-                self._base_config(str(row.get("config_name") or ""))
-                for row in read["predictions"].filter_predictions(load_arrays=False)
-            }
-            for base_config in base_configs:
-                if self._chain_id(run_id, base_config) == chain_id:
+            for base_config in self._base_configs(read):
+                if _native_chain_id(run_id, base_config) == chain_id:
                     return run_id, base_config, read
         return None
+
+    @staticmethod
+    def _base_configs(read: dict[str, Any]) -> set[str]:
+        """Base variant names present in one native run payload."""
+        return {
+            _native_base_config(str(row.get("config_name") or ""))
+            for row in read["predictions"].filter_predictions(load_arrays=False)
+        }
+
+    @staticmethod
+    def _selected_base_config(read: dict[str, Any]) -> str | None:
+        """Best/refit variant name recorded by the native manifest, normalized to a base config."""
+        manifest = read.get("manifest") or {}
+        selected = manifest.get("selected_variant")
+        if isinstance(selected, str) and selected:
+            return _native_base_config(selected)
+        return None
+
+    @staticmethod
+    def _artifact_matches_base_config(artifact: dict[str, Any], base_config: str) -> bool:
+        """Whether a native artifact id directly identifies the chain's base config."""
+        if not base_config:
+            return False
+        source_artifact_id = str(artifact.get("artifact_id") or "")
+        if source_artifact_id == base_config:
+            return True
+        return source_artifact_id.rsplit(":", 1)[-1] == base_config
+
+    def _artifact_candidates_for_chain(self, base_config: str, read: dict[str, Any]) -> list[dict[str, Any]]:
+        """Candidate rehydrated REFIT model artifacts for one native chain."""
+        artifacts = [artifact for artifact in (read.get("artifacts") or []) if isinstance(artifact, dict)]
+        if not artifacts:
+            return []
+
+        direct = [artifact for artifact in artifacts if self._artifact_matches_base_config(artifact, base_config)]
+        if direct:
+            return direct
+
+        selected_base = self._selected_base_config(read)
+        base_configs = self._base_configs(read)
+        if selected_base == base_config or (selected_base is None and base_configs == {base_config}):
+            return artifacts
+        return []
+
+    def _single_artifact_for_chain(self, base_config: str, read: dict[str, Any]) -> dict[str, Any] | None:
+        """Return the one loadable artifact for a chain, or ``None`` when the mapping is absent/ambiguous."""
+        candidates = self._artifact_candidates_for_chain(base_config, read)
+        if len(candidates) == 1:
+            return candidates[0]
+        return None
+
+    def _artifact_unavailable_reason(self, run_id: str, base_config: str, read: dict[str, Any]) -> str:
+        """Clear reason why a native chain cannot currently expose a SHAP-loadable final artifact."""
+        artifacts = [artifact for artifact in (read.get("artifacts") or []) if isinstance(artifact, dict)]
+        if not artifacts:
+            manifest = read.get("manifest") or {}
+            capabilities = manifest.get("capabilities") if isinstance(manifest.get("capabilities"), dict) else {}
+            if capabilities.get("has_model_artifacts") is False:
+                return (
+                    "Native results manifest reports has_model_artifacts=false; this run did not persist "
+                    "loadable refit model artifacts."
+                )
+            return "Native results manifest does not contain loadable refit model artifacts for this chain."
+
+        candidates = self._artifact_candidates_for_chain(base_config, read)
+        if len(candidates) > 1:
+            return (
+                f"Native chain {_native_chain_id(run_id, base_config)!r} maps to {len(candidates)} refit artifacts; "
+                "SHAP currently requires exactly one predict-capable model artifact."
+            )
+        return (
+            f"Native results artifacts do not identify a refit model for chain "
+            f"{_native_chain_id(run_id, base_config)!r}."
+        )

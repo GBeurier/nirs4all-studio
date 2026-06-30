@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useCallback, useMemo, useState } from 'react';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection } from '@/context/useSelection';
 
 // ============= Types =============
 

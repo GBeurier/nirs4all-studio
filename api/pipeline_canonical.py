@@ -9,23 +9,27 @@ from functools import lru_cache
 from typing import Any
 from uuid import uuid4
 
+from . import pipeline_canonical_branch_merge as branch_merge_editor
+from . import pipeline_canonical_generators as generator_editor
 from .node_registry_loader import load_editor_registry_nodes
-
-SEARCH_SPACE_TOKEN_ALIASES = {"float_log": "log_float"}
-SEARCH_SPACE_TOKENS = {"int", "float", "categorical", "log_float"} | set(
-    SEARCH_SPACE_TOKEN_ALIASES
+from .pipeline_canonical_finetune import (
+    SEARCH_SPACE_TOKEN_ALIASES,
+    SEARCH_SPACE_TOKENS,
+    _comparable_finetune_param_shape,
+    _finetune_param_values_equivalent,
+    _normalize_search_space_raw_value,
+    _normalize_search_space_token,
+    _parse_finetune_param_config,
+    _serialize_finetune_param_config,
+    _should_reuse_raw_finetune_param_value,
 )
-SEPARATION_BRANCH_KEYS = ("by_tag", "by_metadata", "by_filter", "by_source")
-GENERATOR_KEYWORDS = {
-    "_or_",
-    "_range_",
-    "_log_range_",
-    "_grid_",
-    "_cartesian_",
-    "_zip_",
-    "_chain_",
-    "_sample_",
-}
+from .pipeline_canonical_generators import (
+    GENERATOR_KEYWORDS,
+    _create_no_op_editor_step,
+    _sequence_child_from_steps,
+)
+
+SEPARATION_BRANCH_KEYS = branch_merge_editor.SEPARATION_BRANCH_KEYS
 FLOW_SUBTYPES = {
     "branch",
     "merge",
@@ -606,17 +610,6 @@ def _get_exportable_step_params(step: dict[str, Any]) -> dict[str, Any]:
     return filtered_params
 
 
-def _create_no_op_editor_step() -> dict[str, Any]:
-    return {
-        "id": _step_id(),
-        "type": "utility",
-        "name": "NoOp",
-        "params": {},
-        "isNoOp": True,
-        "rawNirs4all": None,
-    }
-
-
 def _passthrough_editor_step(
     raw_step: Any,
     *,
@@ -640,120 +633,22 @@ def _passthrough_editor_step(
 
 
 def _convert_generator_branch_to_editor(branch_value: Any) -> list[dict[str, Any]]:
-    if branch_value is None:
-        return [_create_no_op_editor_step()]
-    if isinstance(branch_value, list):
-        return [_convert_step_to_editor(item) for item in branch_value]
-    return [_convert_step_to_editor(branch_value)]
-
-
-def _sequence_child_from_steps(steps: list[dict[str, Any]]) -> dict[str, Any]:
-    if len(steps) == 1:
-        return steps[0]
-    return {
-        "id": _step_id(),
-        "type": "flow",
-        "subType": "sequential",
-        "name": "Sequential",
-        "params": {},
-        "children": steps,
-    }
-
-
-def _normalize_search_space_token(token: Any) -> Any:
-    if isinstance(token, str):
-        return SEARCH_SPACE_TOKEN_ALIASES.get(token, token)
-    return token
-
-
-def _normalize_search_space_raw_value(value: Any) -> Any:
-    normalized = clone_value(value)
-    if isinstance(normalized, list) and normalized and isinstance(normalized[0], str):
-        normalized[0] = _normalize_search_space_token(normalized[0])
-    elif isinstance(normalized, dict) and normalized.get("type") == "float_log":
-        normalized["type"] = "log_float"
-    return normalized
-
-
-def _parse_finetune_param_config(name: str, config: Any) -> dict[str, Any]:
-    if isinstance(config, list):
-        if config and isinstance(config[0], str) and config[0] in SEARCH_SPACE_TOKENS:
-            token = _normalize_search_space_token(config[0])
-            rest = config[1:]
-            raw_value = _normalize_search_space_raw_value(config)
-            if token == "categorical":
-                choices = rest[0] if rest and isinstance(rest[0], list) else rest
-                return {
-                    "name": name,
-                    "type": "categorical",
-                    "choices": clone_value(choices),
-                    "rawValue": raw_value,
-                }
-            return {
-                "name": name,
-                "type": token,
-                "low": rest[0] if len(rest) > 0 else None,
-                "high": rest[1] if len(rest) > 1 else None,
-                "step": rest[2] if len(rest) > 2 else None,
-                "rawValue": raw_value,
-            }
-        return {
-            "name": name,
-            "type": "categorical",
-            "choices": clone_value(config),
-            "rawValue": clone_value(config),
-        }
-
-    if isinstance(config, dict):
-        param_type = str(_normalize_search_space_token(config.get("type") or "int"))
-        if config.get("log"):
-            param_type = "log_float"
-        return {
-            "name": name,
-            "type": param_type,
-            "low": config.get("low"),
-            "high": config.get("high"),
-            "step": config.get("step"),
-            "choices": clone_value(config.get("choices")),
-            "rawValue": _normalize_search_space_raw_value(config),
-        }
-
-    return {
-        "name": name,
-        "type": "categorical",
-        "choices": [clone_value(config)],
-        "rawValue": clone_value(config),
-    }
-
-
-def _is_separation_branch(branch_data: Any) -> bool:
-    return (
-        isinstance(branch_data, dict)
-        and "steps" in branch_data
-        and any(
-            key in branch_data
-            for key in SEPARATION_BRANCH_KEYS
-        )
+    return generator_editor._convert_generator_branch_to_editor(
+        branch_value,
+        convert_step_to_editor=_convert_step_to_editor,
     )
 
 
+def _is_separation_branch(branch_data: Any) -> bool:
+    return branch_merge_editor._is_separation_branch(branch_data)
+
+
 def _branch_value_label(value: Any) -> str:
-    if isinstance(value, bool):
-        return "True" if value else "False"
-    if value is None:
-        return "null"
-    return str(value)
+    return branch_merge_editor._branch_value_label(value)
 
 
 def _build_separation_branch_name(config: dict[str, Any]) -> str:
-    kind = config.get("kind")
-    if kind == "by_tag":
-        return f"Branch by tag: {config.get('key', '')}".rstrip(": ")
-    if kind == "by_metadata":
-        return f"Branch by metadata: {config.get('key', '')}".rstrip(": ")
-    if kind == "by_source":
-        return "Branch by source"
-    return "Branch by filter"
+    return branch_merge_editor._build_separation_branch_name(config)
 
 
 def _apply_attached_generators(
@@ -1000,138 +895,18 @@ def _convert_y_processing_to_editor(step: dict[str, Any]) -> dict[str, Any]:
 
 
 def _convert_branch_to_editor(step: dict[str, Any]) -> dict[str, Any]:
-    branch_data = step.get("branch")
-    if _is_separation_branch(branch_data):
-        separation_config: dict[str, Any] = {}
-        for key in SEPARATION_BRANCH_KEYS:
-            if key not in branch_data:
-                continue
-            separation_config["kind"] = key
-            if key in {"by_tag", "by_metadata"}:
-                separation_config["key"] = clone_value(branch_data[key])
-            elif key == "by_filter":
-                separation_config["filter"] = clone_value(branch_data[key])
-            elif key == "by_source":
-                separation_config["enabled"] = bool(branch_data.get("by_source", True))
-            break
-
-        separation_steps = branch_data.get("steps")
-        branches: list[list[dict[str, Any]]] = []
-        branch_metadata: list[dict[str, Any]] = []
-
-        if isinstance(separation_steps, list):
-            branches.append([_convert_step_to_editor(item) for item in separation_steps])
-            branch_metadata.append({"name": "All values"})
-            separation_config["sharedSteps"] = True
-        elif isinstance(separation_steps, dict):
-            for branch_value, branch_steps in separation_steps.items():
-                items = branch_steps if isinstance(branch_steps, list) else [branch_steps]
-                branches.append([_convert_step_to_editor(item) for item in items])
-                branch_metadata.append(
-                    {
-                        "name": _branch_value_label(branch_value),
-                        "value": clone_value(branch_value),
-                    }
-                )
-        else:
-            return _passthrough_editor_step(
-                step,
-                name=_build_separation_branch_name(separation_config),
-                step_type="flow",
-                sub_type="branch",
-                extra={"branchMode": "separation"},
-            )
-
-        return {
-            "id": _step_id(),
-            "type": "flow",
-            "subType": "branch",
-            "name": _build_separation_branch_name(separation_config),
-            "params": {},
-            "branches": branches,
-            "branchMetadata": branch_metadata,
-            "branchMode": "separation",
-            "separationConfig": separation_config,
-        }
-
-    if not isinstance(branch_data, (list, dict)):
-        return _passthrough_editor_step(step, name="ParallelBranch", step_type="flow", sub_type="branch")
-
-    branches: list[list[dict[str, Any]]] = []
-    branch_metadata: list[dict[str, Any]] = []
-
-    if isinstance(branch_data, list):
-        for branch_steps in branch_data:
-            if not isinstance(branch_steps, list):
-                branch_steps = [branch_steps]
-            branches.append([_convert_step_to_editor(item) for item in branch_steps])
-            branch_metadata.append({})
-    else:
-        for branch_name, branch_steps in branch_data.items():
-            items = branch_steps if isinstance(branch_steps, list) else [branch_steps]
-            branches.append([_convert_step_to_editor(item) for item in items])
-            branch_metadata.append({"name": branch_name})
-
-    return {
-        "id": _step_id(),
-        "type": "flow",
-        "subType": "branch",
-        "name": "ParallelBranch",
-        "params": {},
-        "branches": branches,
-        "branchMetadata": branch_metadata,
-        "branchMode": "duplication",
-    }
+    return branch_merge_editor._convert_branch_to_editor(
+        step,
+        convert_step_to_editor=_convert_step_to_editor,
+        passthrough_editor_step=_passthrough_editor_step,
+    )
 
 
 def _convert_merge_to_editor(step: dict[str, Any]) -> dict[str, Any]:
-    merge_value = step.get("merge")
-    if isinstance(merge_value, str):
-        return {
-            "id": _step_id(),
-            "type": "flow",
-            "subType": "merge",
-            "name": "Stacking" if merge_value == "predictions" else "Concatenate",
-            "params": {"merge_type": merge_value},
-            "mergeConfig": {"mode": merge_value},
-        }
-    if isinstance(merge_value, dict):
-        if "sources" in merge_value:
-            known_keys = {"sources", "output_as", "on_missing"}
-            editor_step = {
-                "id": _step_id(),
-                "type": "flow",
-                "subType": "merge",
-                "name": "Concatenate",
-                "params": {"merge_type": "sources"},
-                "mergeConfig": {
-                    "mode": "sources",
-                    "sources": clone_value(merge_value.get("sources")),
-                    "output_as": merge_value.get("output_as"),
-                    "on_missing": merge_value.get("on_missing"),
-                },
-            }
-            if any(key not in known_keys for key in merge_value):
-                editor_step["rawNirs4all"] = clone_value(step)
-            return editor_step
-        editor_step = {
-            "id": _step_id(),
-            "type": "flow",
-            "subType": "merge",
-            "name": "Stacking",
-            "params": {},
-            "mergeConfig": {
-                "mode": "predictions",
-                "predictions": clone_value(merge_value.get("predictions")),
-                "features": clone_value(merge_value.get("features")),
-                "output_as": merge_value.get("output_as"),
-                "on_missing": merge_value.get("on_missing"),
-            },
-        }
-        if any(key not in {"predictions", "features", "output_as", "on_missing"} for key in merge_value):
-            editor_step["rawNirs4all"] = clone_value(step)
-        return editor_step
-    return _passthrough_editor_step(step, name="Merge", step_type="flow", sub_type="merge")
+    return branch_merge_editor._convert_merge_to_editor(
+        step,
+        passthrough_editor_step=_passthrough_editor_step,
+    )
 
 
 def _convert_sample_augmentation_to_editor(step: dict[str, Any]) -> dict[str, Any]:
@@ -1318,57 +1093,24 @@ def _convert_concat_transform_to_editor(step: dict[str, Any]) -> dict[str, Any]:
 
 
 def _convert_or_generator_to_editor(step: dict[str, Any]) -> dict[str, Any]:
-    alternatives = step.get("_or_") or []
-    return {
-        "id": _step_id(),
-        "type": "flow",
-        "subType": "generator",
-        "name": "Or",
-        "params": {},
-        "branches": [_convert_generator_branch_to_editor(item) for item in alternatives],
-        "generatorKind": "or",
-        "generatorOptions": {
-            "pick": step.get("pick"),
-            "arrange": step.get("arrange"),
-            "then_pick": step.get("then_pick"),
-            "then_arrange": step.get("then_arrange"),
-            "count": step.get("count"),
-        },
-    }
+    return generator_editor._convert_or_generator_to_editor(
+        step,
+        convert_step_to_editor=_convert_step_to_editor,
+    )
 
 
 def _convert_cartesian_generator_to_editor(step: dict[str, Any]) -> dict[str, Any]:
-    stages = step.get("_cartesian_") or []
-    params = {"_seed_": step.get("_seed_")} if "_seed_" in step else {}
-    return {
-        "id": _step_id(),
-        "type": "flow",
-        "subType": "generator",
-        "name": "Cartesian",
-        "params": params,
-        "branches": [_convert_generator_branch_to_editor(stage) for stage in stages],
-        "generatorKind": "cartesian",
-        "generatorOptions": {
-            "pick": step.get("pick"),
-            "arrange": step.get("arrange"),
-            "count": step.get("count"),
-        },
-    }
+    return generator_editor._convert_cartesian_generator_to_editor(
+        step,
+        convert_step_to_editor=_convert_step_to_editor,
+    )
 
 
 def _convert_chain_generator_to_editor(step: dict[str, Any]) -> dict[str, Any]:
-    configs = step.get("_chain_") or []
-    params = {"_seed_": step.get("_seed_")} if "_seed_" in step else {}
-    return {
-        "id": _step_id(),
-        "type": "flow",
-        "subType": "generator",
-        "name": "Chain",
-        "params": params,
-        "branches": [_convert_generator_branch_to_editor(config) for config in configs],
-        "generatorKind": "chain",
-        "generatorOptions": {"count": step.get("count")},
-    }
+    return generator_editor._convert_chain_generator_to_editor(
+        step,
+        convert_step_to_editor=_convert_step_to_editor,
+    )
 
 
 def _convert_scalar_generator_to_editor(
@@ -1376,57 +1118,7 @@ def _convert_scalar_generator_to_editor(
     *,
     kind: str,
 ) -> dict[str, Any]:
-    params = {"_seed_": step.get("_seed_")} if "_seed_" in step else {}
-    generator_options = {"count": step.get("count")} if step.get("count") is not None else {}
-
-    if kind in {"grid", "zip"}:
-        payload = step.get(f"_{kind}_")
-        if not isinstance(payload, dict):
-            return _passthrough_editor_step(
-                step,
-                name=kind.capitalize(),
-                step_type="flow",
-                sub_type="generator",
-                extra={"generatorKind": kind},
-            )
-        entries = [
-            {
-                "id": _step_id(),
-                "key": str(param_name),
-                "values": clone_value(values if isinstance(values, list) else [values]),
-            }
-            for param_name, values in payload.items()
-        ]
-        return {
-            "id": _step_id(),
-            "type": "flow",
-            "subType": "generator",
-            "name": "Grid" if kind == "grid" else "Zip",
-            "params": params,
-            "generatorKind": kind,
-            "generatorOptions": generator_options,
-            "scalarGeneratorConfig": {"entries": entries},
-        }
-
-    payload = step.get("_sample_")
-    if not isinstance(payload, dict):
-        return _passthrough_editor_step(
-            step,
-            name="Sample",
-            step_type="flow",
-            sub_type="generator",
-            extra={"generatorKind": "sample"},
-        )
-    return {
-        "id": _step_id(),
-        "type": "flow",
-        "subType": "generator",
-        "name": "Sample",
-        "params": params,
-        "generatorKind": "sample",
-        "generatorOptions": generator_options,
-        "scalarGeneratorConfig": {"sample": clone_value(payload)},
-    }
+    return generator_editor._convert_scalar_generator_to_editor(step, kind=kind)
 
 
 def _convert_step_to_editor(step: Any) -> dict[str, Any]:
@@ -1740,79 +1432,6 @@ def _serialize_component_list(steps: list[dict[str, Any]]) -> list[Any]:
     return _serialize_editor_steps(steps)
 
 
-def _finetune_param_values_equivalent(left: Any, right: Any) -> bool:
-    if isinstance(left, list) or isinstance(right, list):
-        if not isinstance(left, list) or not isinstance(right, list):
-            return False
-        if len(left) != len(right):
-            return False
-        return all(
-            _finetune_param_values_equivalent(value, right[index])
-            for index, value in enumerate(left)
-        )
-
-    if isinstance(left, dict):
-        if not isinstance(right, dict):
-            return False
-        if set(left.keys()) != set(right.keys()):
-            return False
-        return all(
-            _finetune_param_values_equivalent(value, right[key])
-            for key, value in left.items()
-        )
-
-    return left == right
-
-
-def _comparable_finetune_param_shape(param: dict[str, Any]) -> dict[str, Any]:
-    param_type = param.get("type")
-    if param_type == "categorical":
-        return {
-            "type": "categorical",
-            "choices": clone_value(param.get("choices") or []),
-        }
-
-    return {
-        "type": param_type,
-        "low": param.get("low"),
-        "high": param.get("high"),
-        "step": param.get("step"),
-    }
-
-
-def _should_reuse_raw_finetune_param_value(param: dict[str, Any]) -> bool:
-    if "rawValue" not in param:
-        return False
-
-    parsed_raw_value = _parse_finetune_param_config(
-        str(param.get("name") or ""), param["rawValue"]
-    )
-    return _finetune_param_values_equivalent(
-        _comparable_finetune_param_shape(param),
-        _comparable_finetune_param_shape(parsed_raw_value),
-    )
-
-
-def _serialize_finetune_param_config(param: dict[str, Any]) -> Any:
-    if _should_reuse_raw_finetune_param_value(param):
-        return clone_value(param["rawValue"])
-
-    param_type = param.get("type")
-    if param_type == "categorical":
-        return clone_value(param.get("choices") or [])
-
-    result: dict[str, Any] = {"type": param_type}
-    if param.get("low") is not None:
-        result["low"] = param["low"]
-    if param.get("high") is not None:
-        result["high"] = param["high"]
-    if param.get("step") is not None:
-        result["step"] = param["step"]
-    if param_type == "log_float":
-        result["log"] = True
-    return result
-
-
 def _build_train_params(step: dict[str, Any]) -> dict[str, Any] | None:
     training_config = _ensure_mapping_payload(step.get("trainingConfig"))
     metadata = _ensure_mapping_payload(step.get("stepMetadata"))
@@ -1919,91 +1538,20 @@ def _convert_editor_y_processing_to_canonical(step: dict[str, Any]) -> dict[str,
 
 
 def _convert_editor_branch_to_canonical(step: dict[str, Any]) -> dict[str, Any]:
-    if step.get("branchMode") == "separation":
-        separation_config = _ensure_mapping_payload(step.get("separationConfig"))
-        separation_kind = str(
-            separation_config.get("kind")
-            or _ensure_mapping_payload(step.get("params")).get("separationKind")
-            or "by_tag"
-        )
-        branch_payload: dict[str, Any] = {}
-        if separation_kind in {"by_tag", "by_metadata"}:
-            branch_payload[separation_kind] = clone_value(separation_config.get("key"))
-        elif separation_kind == "by_filter":
-            branch_payload[separation_kind] = clone_value(separation_config.get("filter"))
-        elif separation_kind == "by_source":
-            branch_payload["by_source"] = True
-
-        branches = step.get("branches") or []
-        metadata_list = step.get("branchMetadata") or []
-        shared_steps = bool(separation_config.get("sharedSteps")) and len(branches) == 1
-        if shared_steps:
-            branch_payload["steps"] = _serialize_editor_steps(branches[0])
-        else:
-            route_steps: dict[Any, Any] = {}
-            for index, branch_steps in enumerate(branches):
-                metadata = (
-                    _ensure_mapping_payload(metadata_list[index])
-                    if index < len(metadata_list)
-                    else {}
-                )
-                route_key = metadata.get("value", metadata.get("name", f"branch_{index}"))
-                route_steps[route_key] = _serialize_editor_steps(branch_steps)
-            branch_payload["steps"] = route_steps
-
-        return _append_attached_comment({"branch": branch_payload}, step)
-
-    branches = step.get("branches") or []
-    if not branches:
-        payload: dict[str, Any] = {"branch": {}}
-        return _append_attached_comment(payload, step)
-
-    metadata_list = step.get("branchMetadata") or []
-    has_names = any(isinstance(item, dict) and item.get("name") for item in metadata_list)
-
-    if has_names:
-        branch_payload: dict[str, Any] = {}
-        for index, branch_steps in enumerate(branches):
-            metadata = _ensure_mapping_payload(metadata_list[index]) if index < len(metadata_list) else {}
-            branch_name = metadata.get("name") or f"branch_{index}"
-            branch_payload[str(branch_name)] = _serialize_editor_steps(branch_steps)
-        payload = {"branch": branch_payload}
-    else:
-        payload = {"branch": [_serialize_editor_steps(branch_steps) for branch_steps in branches]}
-
-    return _append_attached_comment(payload, step)
+    return branch_merge_editor._convert_editor_branch_to_canonical(
+        step,
+        ensure_mapping_payload=_ensure_mapping_payload,
+        serialize_editor_steps=_serialize_editor_steps,
+        append_attached_comment=_append_attached_comment,
+    )
 
 
 def _convert_editor_merge_to_canonical(step: dict[str, Any]) -> dict[str, Any]:
-    merge_config = _ensure_mapping_payload(step.get("mergeConfig"))
-    if merge_config:
-        if merge_config.get("sources") is not None or merge_config.get("mode") == "sources":
-            merge_payload: dict[str, Any] = {
-                "sources": clone_value(merge_config.get("sources", "concat"))
-            }
-            for key in ("output_as", "on_missing"):
-                if merge_config.get(key) is not None:
-                    merge_payload[key] = clone_value(merge_config[key])
-            return _append_attached_comment({"merge": merge_payload}, step)
-
-        if merge_config.get("mode") and not merge_config.get("predictions") and not merge_config.get("features"):
-            payload = {"merge": merge_config["mode"]}
-            return _append_attached_comment(payload, step)
-
-        merge_payload: dict[str, Any] = {}
-        for key in ("predictions", "features", "output_as", "on_missing"):
-            if merge_config.get(key) is not None:
-                merge_payload[key] = clone_value(merge_config[key])
-        payload = {"merge": merge_payload}
-        return _append_attached_comment(payload, step)
-
-    params = _ensure_mapping_payload(step.get("params"))
-    if params.get("merge_type") and not params.get("predictions"):
-        payload = {"merge": params["merge_type"]}
-        return _append_attached_comment(payload, step)
-
-    payload = {"merge": clone_value(params)}
-    return _append_attached_comment(payload, step)
+    return branch_merge_editor._convert_editor_merge_to_canonical(
+        step,
+        ensure_mapping_payload=_ensure_mapping_payload,
+        append_attached_comment=_append_attached_comment,
+    )
 
 
 def _convert_editor_sample_augmentation_to_canonical(step: dict[str, Any]) -> dict[str, Any]:

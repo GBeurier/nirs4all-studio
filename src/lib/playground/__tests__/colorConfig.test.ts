@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_GLOBAL_COLOR_CONFIG,
+  HIGHLIGHT_COLORS,
   PARTITION_COLORS,
   getBaseColor,
   getCategoricalColor,
+  getContinuousColor,
+  getFiniteNumberDomain,
   getHeldOutTestColor,
   getMetadataUniqueCategories,
   getPresentPartitionRoles,
@@ -114,5 +117,48 @@ describe('colorConfig fold and partition semantics', () => {
     expect(getMetadataUniqueCategories(context.metadata!.partition)).toEqual(['train', 'test']);
     expect(getBaseColor(0, config, context)).toBe(getCategoricalColor(0, 'default'));
     expect(getBaseColor(1, config, context)).toBe(getCategoricalColor(1, 'default'));
+  });
+
+  it('computes continuous metadata domains from finite numeric values only', () => {
+    const values = [0, Number.NaN, 10, Number.POSITIVE_INFINITY, null, undefined];
+
+    expect(getFiniteNumberDomain(values)).toEqual({ min: 0, max: 10 });
+  });
+
+  it('does not emit invalid colors for non-finite target values', () => {
+    const config = {
+      ...DEFAULT_GLOBAL_COLOR_CONFIG,
+      mode: 'target' as const,
+      continuousPalette: 'blue_red' as const,
+    };
+
+    const context: ColorContext = {
+      y: [0, Number.NaN, 10],
+      yMin: 0,
+      yMax: 10,
+    };
+
+    expect(getBaseColor(0, config, context)).toBe(getContinuousColor(0, 'blue_red'));
+    expect(getBaseColor(1, config, context)).toBe(HIGHLIGHT_COLORS.unselected);
+  });
+
+  it('keeps continuous metadata coloring stable when a column has non-finite numbers', () => {
+    const config = {
+      ...DEFAULT_GLOBAL_COLOR_CONFIG,
+      mode: 'metadata' as const,
+      metadataKey: 'sensor_score',
+      metadataType: 'continuous' as const,
+      continuousPalette: 'blue_red' as const,
+    };
+
+    const context: ColorContext = {
+      metadata: {
+        sensor_score: [0, Number.POSITIVE_INFINITY, 10],
+      },
+    };
+
+    expect(getBaseColor(0, config, context)).toBe(getContinuousColor(0, 'blue_red'));
+    expect(getBaseColor(1, config, context)).toBe(HIGHLIGHT_COLORS.unselected);
+    expect(getBaseColor(2, config, context)).toBe(getContinuousColor(1, 'blue_red'));
   });
 });

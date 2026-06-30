@@ -3,76 +3,55 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "@/lib/motion";
 import {
+  clientStorageKeys,
+  readClientStorageString,
+  writeClientStorageString,
+} from "@/lib/clientStorage";
+import {
   Database,
   Plus,
-  Search,
   FolderOpen,
   RefreshCw,
-  Filter,
-  Tags,
-  FlaskConical,
-  ArrowUpDown,
-  BarChart3,
-  Grid3x3,
-  Layers,
-  HardDrive,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   DatasetCard,
-  AddDatasetModal,
-  EditDatasetPanel,
-  GroupsModal,
-  DatasetWizard,
-  SyntheticDataDialog,
   DatasetQuickView,
-  BatchScanDialog,
-  DropZoneOverlay,
   useDragDrop,
   type DroppedContent,
 } from "@/components/datasets";
 import type { DatasetScoreInfo } from "@/components/datasets/DatasetCard";
 import type { WizardInitialState } from "@/components/datasets/DatasetWizard";
-import { useIsDeveloperMode } from "@/context/DeveloperModeContext";
+import { useIsDeveloperMode } from "@/context/useDeveloperMode";
 import {
-  linkDataset,
-  unlinkDataset,
-  refreshDataset,
-  updateDatasetConfig,
-  type UpdateDatasetRequest,
   detectUnified,
   detectFilesList,
 } from "@/api/datasets";
 import {
-  createGroup,
-  renameGroup,
-  deleteGroup,
-  addDatasetToGroup,
-  removeDatasetFromGroup,
-} from "@/api/workspace";
-import {
   useDatasetsQuery,
   useLinkedWorkspacesQuery,
   useDatasetScoresQuery,
-  useInvalidateDatasets,
 } from "@/hooks/useDatasetQueries";
-import type { Dataset, DatasetConfig } from "@/types/datasets";
+import { useDatasetCatalogActions } from "@/hooks/useDatasetCatalogActions";
+import {
+  getDatasetCatalogStats,
+  getFilteredSortedDatasets,
+  type DatasetFilterGroup,
+  type DatasetSortDirection,
+  type DatasetSortField,
+} from "@/lib/datasetCatalog";
+import {
+  resolveDatasetDrop,
+} from "@/lib/datasetDrop";
+import type { Dataset, DatasetGroup } from "@/types/datasets";
+import {
+  DatasetsHeader,
+  DatasetsPageMounts,
+  DatasetsStatsCards,
+  DatasetsToolbar,
+  DatasetsWorkspaceInfo,
+} from "./DatasetsSections";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -87,7 +66,8 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 };
 
-type FilterGroup = "all" | string;
+const EMPTY_DATASETS: Dataset[] = [];
+const EMPTY_GROUPS: DatasetGroup[] = [];
 
 export default function Datasets() {
   const { t } = useTranslation();
@@ -111,10 +91,10 @@ export default function Datasets() {
   // ----------------------------------------------------------------------
   const datasetsQuery = useDatasetsQuery();
   const linkedWorkspacesQuery = useLinkedWorkspacesQuery();
-  const invalidateDatasets = useInvalidateDatasets();
 
-  const datasets = datasetsQuery.data?.datasets ?? [];
-  const groups = datasetsQuery.data?.groups ?? [];
+  const datasets = datasetsQuery.data?.datasets ?? EMPTY_DATASETS;
+  const groups = datasetsQuery.data?.groups ?? EMPTY_GROUPS;
+  const datasetActions = useDatasetCatalogActions(groups);
   const activeWorkspace = useMemo(
     () => linkedWorkspacesQuery.data?.workspaces.find((ws) => ws.is_active) ?? null,
     [linkedWorkspacesQuery.data]
@@ -156,29 +136,27 @@ export default function Datasets() {
 
   // UI state
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterGroup, setFilterGroup] = useState<FilterGroup>("all");
+  const [filterGroup, setFilterGroup] = useState<DatasetFilterGroup>("all");
 
   // Sort state — persisted to localStorage
-  type SortField = "name" | "linked_at" | "num_samples" | "group";
-  const [sortField, setSortField] = useState<SortField>(() => {
-    const saved = localStorage.getItem("datasets_sortField");
-    return (saved as SortField) || "linked_at";
+  const [sortField, setSortField] = useState<DatasetSortField>(() => {
+    const saved = readClientStorageString(clientStorageKeys.datasetsSortField);
+    return (saved as DatasetSortField) || "linked_at";
   });
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">(() => {
-    const saved = localStorage.getItem("datasets_sortDirection");
-    return (saved as "asc" | "desc") || "desc";
+  const [sortDirection, setSortDirection] = useState<DatasetSortDirection>(() => {
+    const saved = readClientStorageString(clientStorageKeys.datasetsSortDirection);
+    return (saved as DatasetSortDirection) || "desc";
   });
 
   // Persist sort state to localStorage
   useEffect(() => {
-    localStorage.setItem("datasets_sortField", sortField);
+    writeClientStorageString(clientStorageKeys.datasetsSortField, sortField);
   }, [sortField]);
   useEffect(() => {
-    localStorage.setItem("datasets_sortDirection", sortDirection);
+    writeClientStorageString(clientStorageKeys.datasetsSortDirection, sortDirection);
   }, [sortDirection]);
 
   // Modal state
-  const [addModalOpen, setAddModalOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [syntheticDialogOpen, setSyntheticDialogOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -195,143 +173,19 @@ export default function Datasets() {
   const [batchScanOpen, setBatchScanOpen] = useState(false);
   const [batchScanPath, setBatchScanPath] = useState("");
 
-  // Handle files/folders dropped from OS
   const handleDrop = useCallback(async (content: DroppedContent) => {
-    // Start with basic initial state
-    const initialState: WizardInitialState = {
-      sourceType: content.type,
-      basePath: content.path,
-      skipToStep: "files", // Skip source selection, go directly to file mapping
-    };
+    const resolution = await resolveDatasetDrop(content, {
+      detectUnified,
+      detectFilesList,
+    });
 
-    // For folder drops with a valid path, use unified detection
-    if (content.type === "folder" && content.path) {
-      // Multiple folders dropped → compute common parent and batch scan
-      if (content.paths.length > 1) {
-        const sep = content.paths[0].includes("\\") ? "\\" : "/";
-        const parts = content.paths.map((p) => p.split(/[/\\]/));
-        const commonParts: string[] = [];
-        for (let i = 0; i < parts[0].length; i++) {
-          if (parts.every((p) => p[i] === parts[0][i])) {
-            commonParts.push(parts[0][i]);
-          } else break;
-        }
-        const commonParent = commonParts.join(sep);
-        setBatchScanPath(commonParent || content.paths[0]);
-        setBatchScanOpen(true);
-        return;
-      }
-
-      try {
-        const result = await detectUnified({ path: content.path, recursive: true });
-        if (result.files.length === 0 || !result.has_standard_structure) {
-          // No dataset detected — offer batch scan
-          setBatchScanPath(content.path);
-          setBatchScanOpen(true);
-          return;
-        }
-        // Enrich initial state with detection results
-        initialState.files = result.files;
-        initialState.detectedParsing = result.parsing_options;
-        initialState.hasFoldFile = result.has_fold_file;
-        initialState.foldFilePath = result.fold_file_path;
-        initialState.metadataColumns = result.metadata_columns;
-      } catch (e) {
-        // Detection failed — offer batch scan as fallback
-        console.warn("Unified detection failed:", e);
-        setBatchScanPath(content.path);
-        setBatchScanOpen(true);
-        return;
-      }
-    } else if (content.type === "files" && content.paths.length > 0) {
-      // Desktop mode: individual files dropped — use backend detection
-      try {
-        const result = await detectFilesList(content.paths);
-        initialState.files = result.files;
-        initialState.detectedParsing = result.parsing_options;
-        initialState.hasFoldFile = result.has_fold_file;
-        initialState.foldFilePath = result.fold_file_path;
-        initialState.metadataColumns = result.metadata_columns;
-        // Derive basePath from common parent directory
-        const firstPath = content.paths[0];
-        const sep = firstPath.includes("\\") ? "\\" : "/";
-        const parentDir = firstPath.substring(0, firstPath.lastIndexOf(sep));
-        initialState.basePath = parentDir;
-      } catch (e) {
-        console.warn("File detection failed, wizard will handle manually:", e);
-      }
-    } else if (content.type === "folder" && content.folderName && content.items.length > 0) {
-      // Web mode: folder dropped with file contents but no filesystem path
-      initialState.basePath = content.folderName;
-      const detectedFiles = content.items.map((file) => {
-        const filename = file.name;
-        const lowerName = filename.toLowerCase();
-
-        let format: "csv" | "xlsx" | "xls" | "mat" | "npy" | "npz" | "parquet" = "csv";
-        if (lowerName.endsWith(".xlsx")) format = "xlsx";
-        else if (lowerName.endsWith(".xls")) format = "xls";
-        else if (lowerName.endsWith(".parquet")) format = "parquet";
-        else if (lowerName.endsWith(".npy")) format = "npy";
-        else if (lowerName.endsWith(".npz")) format = "npz";
-        else if (lowerName.endsWith(".mat")) format = "mat";
-
-        return {
-          path: content.relativePaths?.find(p => p.endsWith(filename)) || filename,
-          filename,
-          type: "unknown" as const,
-          split: "train" as const,
-          source: null,
-          format,
-          size_bytes: file.size,
-          confidence: 0,
-          detected: false,
-        };
-      });
-      initialState.files = detectedFiles;
-
-      // Store File objects for web mode (needed for reading file content)
-      const fileBlobs = new Map<string, File>();
-      content.items.forEach((file) => {
-        const path = content.relativePaths?.find(p => p.endsWith(file.name)) || file.name;
-        fileBlobs.set(path, file);
-      });
-      initialState.fileBlobs = fileBlobs;
-    } else if (content.type === "files" && content.items.length > 0) {
-      // Web mode: files dropped without paths — format detection only
-      const detectedFiles = content.items.map((file) => {
-        const filename = file.name;
-        const lowerName = filename.toLowerCase();
-
-        let format: "csv" | "xlsx" | "xls" | "mat" | "npy" | "npz" | "parquet" = "csv";
-        if (lowerName.endsWith(".xlsx")) format = "xlsx";
-        else if (lowerName.endsWith(".xls")) format = "xls";
-        else if (lowerName.endsWith(".parquet")) format = "parquet";
-        else if (lowerName.endsWith(".npy")) format = "npy";
-        else if (lowerName.endsWith(".npz")) format = "npz";
-        else if (lowerName.endsWith(".mat")) format = "mat";
-
-        return {
-          path: filename,
-          filename,
-          type: "unknown" as const,
-          split: "train" as const,
-          source: null,
-          format,
-          size_bytes: file.size,
-          confidence: 0,
-          detected: false,
-        };
-      });
-      initialState.files = detectedFiles;
-
-      const fileBlobs = new Map<string, File>();
-      content.items.forEach((file) => {
-        fileBlobs.set(file.name, file);
-      });
-      initialState.fileBlobs = fileBlobs;
+    if (resolution.kind === "batch-scan") {
+      setBatchScanPath(resolution.path);
+      setBatchScanOpen(true);
+      return;
     }
 
-    setWizardInitialState(initialState);
+    setWizardInitialState(resolution.initialState);
     setWizardOpen(true);
   }, []);
 
@@ -341,80 +195,26 @@ export default function Datasets() {
     disabled: false,
   });
 
-  // Normalize datasets to ensure they have required fields
-  const normalizedDatasets = datasets.map((ds, index) => {
-    if (!ds) return null;
-    return {
-      ...ds,
-      id: ds.id || ds.path || `temp-${index}`,
-      name: ds.name || ds.path?.split("/").pop() || `Dataset ${index + 1}`,
-      path: ds.path || "",
-    };
-  }).filter((ds): ds is Dataset => ds !== null);
-
-  // Helper to get assigned groups for a dataset (multi-group)
-  const getAssignedGroups = (datasetId: string) =>
-    groups.filter((g) => g.dataset_ids?.includes(datasetId));
+  const normalizedDatasets = datasets;
 
   // Filter datasets
-  const filteredDatasets = normalizedDatasets
-    .filter((ds) => {
-      // Search filter (with null safety) - includes group names
-      const assignedGroups = getAssignedGroups(ds.id);
-      const matchesSearch =
-        !searchQuery ||
-        ds.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ds.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        assignedGroups.some(g => g.name.toLowerCase().includes(searchQuery.toLowerCase()));
-
-      // Group filter
-      let matchesGroup = true;
-      if (filterGroup !== "all") {
-        const group = groups.find((g) => g.id === filterGroup);
-        matchesGroup = group?.dataset_ids?.includes(ds.id) || false;
-      }
-
-      return matchesSearch && matchesGroup;
-    })
-    .sort((a, b) => {
-      // Sort datasets
-      let comparison = 0;
-
-      switch (sortField) {
-        case "name":
-          comparison = a.name.localeCompare(b.name);
-          break;
-        case "linked_at":
-          comparison = new Date(a.linked_at).getTime() - new Date(b.linked_at).getTime();
-          break;
-        case "num_samples":
-          comparison = (a.num_samples || 0) - (b.num_samples || 0);
-          break;
-        case "group": {
-          // Sort by first group name, ungrouped last
-          const groupsA = getAssignedGroups(a.id);
-          const groupsB = getAssignedGroups(b.id);
-          const groupA = groupsA.length > 0 ? groupsA[0].name : "\uffff";
-          const groupB = groupsB.length > 0 ? groupsB[0].name : "\uffff";
-          comparison = groupA.localeCompare(groupB);
-          break;
-        }
-      }
-
-      return sortDirection === "asc" ? comparison : -comparison;
-    });
-
+  const filteredDatasets = useMemo(
+    () => getFilteredSortedDatasets({
+      datasets: normalizedDatasets,
+      groups,
+      searchQuery,
+      filterGroup,
+      sortField,
+      sortDirection,
+    }),
+    [normalizedDatasets, groups, searchQuery, filterGroup, sortField, sortDirection],
+  );
 
   // Stats
-  const totalSamples = normalizedDatasets.reduce(
-    (sum, ds) => sum + (ds.num_samples || 0),
-    0
+  const { totalSamples, hasFeatureCounts, minFeatures, maxFeatures } = useMemo(
+    () => getDatasetCatalogStats(normalizedDatasets),
+    [normalizedDatasets],
   );
-  const featureCounts = normalizedDatasets
-    .map((ds) => ds.num_features)
-    .filter((n): n is number => n != null && n > 0);
-  const minFeatures = featureCounts.length > 0 ? Math.min(...featureCounts) : 0;
-  const maxFeatures = featureCounts.length > 0 ? Math.max(...featureCounts) : 0;
 
   // Handlers
   const handleSelectWorkspace = () => {
@@ -422,19 +222,7 @@ export default function Datasets() {
   };
 
   const handleRefreshAll = async () => {
-    // Force a background refetch of every dataset cache key.
-    await invalidateDatasets();
-  };
-
-  const handleAddDataset = async (
-    path: string,
-    config?: Partial<DatasetConfig>
-  ) => {
-    const result = await linkDataset(path, config);
-    if (!result.success) {
-      throw new Error("Failed to link dataset");
-    }
-    await invalidateDatasets();
+    await datasetActions.refreshAll();
   };
 
   const handleEditDataset = (dataset: Dataset) => {
@@ -442,76 +230,13 @@ export default function Datasets() {
     setEditModalOpen(true);
   };
 
-  const handleSaveDatasetConfig = async (
-    datasetId: string,
-    updates: UpdateDatasetRequest
-  ) => {
-    await updateDatasetConfig(datasetId, updates);
-    await invalidateDatasets();
-  };
-
   const handleDeleteDataset = async (dataset: Dataset) => {
     if (!confirm(`Remove "${dataset.name}" from workspace?`)) return;
-    await unlinkDataset(dataset.id);
+    await datasetActions.removeDataset(dataset.id);
     // Clear quick view if deleted dataset was selected
     if (quickViewDataset?.id === dataset.id) {
       setQuickViewDataset(null);
     }
-    await invalidateDatasets();
-  };
-
-  const handleRefreshDataset = async (dataset: Dataset) => {
-    await refreshDataset(dataset.id);
-    await invalidateDatasets();
-  };
-
-  const handleAssignGroup = async (
-    dataset: Dataset,
-    groupId: string | null
-  ) => {
-    if (groupId === null) {
-      // "No Group" — remove from all groups
-      const currentGroups = getAssignedGroups(dataset.id);
-      for (const g of currentGroups) {
-        await removeDatasetFromGroup(g.id, dataset.id);
-      }
-    } else {
-      // Toggle group membership: if already in group, remove; otherwise add
-      const isInGroup = groups.find(
-        (g) => g.id === groupId && g.dataset_ids?.includes(dataset.id)
-      );
-      if (isInGroup) {
-        await removeDatasetFromGroup(groupId, dataset.id);
-      } else {
-        await addDatasetToGroup(groupId, dataset.id);
-      }
-    }
-
-    await invalidateDatasets();
-  };
-
-  // Groups handlers
-  const handleCreateGroup = async (name: string) => {
-    await createGroup(name);
-    await invalidateDatasets();
-  };
-
-  const handleRenameGroup = async (groupId: string, newName: string) => {
-    await renameGroup(groupId, newName);
-    await invalidateDatasets();
-  };
-
-  const handleDeleteGroup = async (groupId: string) => {
-    await deleteGroup(groupId);
-    await invalidateDatasets();
-  };
-
-  const handleRemoveDatasetFromGroup = async (
-    groupId: string,
-    datasetId: string
-  ) => {
-    await removeDatasetFromGroup(groupId, datasetId);
-    await invalidateDatasets();
   };
 
   return (
@@ -522,243 +247,50 @@ export default function Datasets() {
       animate="visible"
     >
       {/* Header */}
-      <motion.div
-        variants={itemVariants}
-        className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t("datasets.title")}</h1>
-          <p className="text-muted-foreground">
-            {t("datasets.subtitle")}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setGroupsModalOpen(true)}>
-            <Tags className="mr-2 h-4 w-4" />
-            {t("datasets.groups")}
-          </Button>
-          {isDeveloperMode && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    onClick={() => setSyntheticDialogOpen(true)}
-                    className="border-primary/30 hover:border-primary/50"
-                  >
-                    <FlaskConical className="mr-2 h-4 w-4" />
-                    {t("datasets.generateSynthetic")}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t("datasets.generateSyntheticHint")}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          <Button onClick={() => setWizardOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t("datasets.addDataset")}
-          </Button>
-        </div>
+      <motion.div variants={itemVariants}>
+        <DatasetsHeader
+          isDeveloperMode={isDeveloperMode}
+          onOpenGroups={() => setGroupsModalOpen(true)}
+          onOpenSynthetic={() => setSyntheticDialogOpen(true)}
+          onOpenWizard={() => setWizardOpen(true)}
+        />
       </motion.div>
 
       {/* Workspace Info */}
       <motion.div variants={itemVariants}>
-        <Card className="glass-card border-primary/20">
-          <CardContent className="py-1.5 px-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                  <HardDrive className="h-4.5 w-4.5 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0 flex flex-col justify-center">
-                  <p className="text-xs font-medium text-muted-foreground leading-none">
-                    {t("datasets.workspace")}
-                  </p>
-                  <p className="text-sm font-medium truncate leading-none mt-1">
-                    {workspacePath || (
-                      <span className="text-muted-foreground italic">
-                        {t("datasets.noWorkspaceSelected")}
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </div>
-              <Button variant="outline" size="sm" className="h-8" onClick={handleSelectWorkspace}>
-                <FolderOpen className="mr-2 h-3.5 w-3.5" />
-                {workspacePath ? t("datasets.change") : t("datasets.selectWorkspace")}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <DatasetsWorkspaceInfo
+          workspacePath={workspacePath}
+          onSelectWorkspace={handleSelectWorkspace}
+        />
       </motion.div>
 
-      {/* Stats - Compact and Fancy */}
-      <motion.div variants={itemVariants} className="grid gap-3 grid-cols-2 md:grid-cols-4">
-        <Card className="glass-card">
-          <CardContent className="py-1.5 px-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                <Database className="h-4.5 w-4.5 text-primary" />
-              </div>
-              <div className="flex flex-col justify-center">
-                <p className="text-xs text-muted-foreground leading-none">
-                  {t("datasets.stats.totalDatasets")}
-                </p>
-                <p className="text-xl font-bold leading-none">{normalizedDatasets.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="glass-card">
-          <CardContent className="py-1.5 px-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                <BarChart3 className="h-4.5 w-4.5 text-primary" />
-              </div>
-              <div className="flex flex-col justify-center">
-                <p className="text-xs text-muted-foreground leading-none">
-                  {t("datasets.stats.totalSamples")}
-                </p>
-                <p className="text-xl font-bold leading-none">
-                  {totalSamples.toLocaleString()}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="glass-card">
-          <CardContent className="py-1.5 px-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                <Grid3x3 className="h-4.5 w-4.5 text-primary" />
-              </div>
-              <div className="flex flex-col justify-center">
-                <p className="text-xs text-muted-foreground leading-none">
-                  {t("datasets.stats.features")}
-                </p>
-                <p className="text-xl font-bold leading-none">
-                  {featureCounts.length > 0
-                    ? minFeatures === maxFeatures
-                      ? minFeatures.toLocaleString()
-                      : `${minFeatures}-${maxFeatures}`
-                    : "--"}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="glass-card">
-          <CardContent className="py-1.5 px-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                <Layers className="h-4.5 w-4.5 text-primary" />
-              </div>
-              <div className="flex flex-col justify-center">
-                <p className="text-xs text-muted-foreground leading-none">
-                  {t("datasets.stats.groups")}
-                </p>
-                <p className="text-xl font-bold leading-none">{groups.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats */}
+      <motion.div variants={itemVariants}>
+        <DatasetsStatsCards
+          datasetCount={normalizedDatasets.length}
+          totalSamples={totalSamples}
+          hasFeatureCounts={hasFeatureCounts}
+          minFeatures={minFeatures}
+          maxFeatures={maxFeatures}
+          groupCount={groups.length}
+        />
       </motion.div>
 
       {/* Search and Filter */}
-      <motion.div
-        variants={itemVariants}
-        className="flex flex-wrap items-center gap-4"
-      >
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={t("datasets.filters.searchPlaceholder")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-
-        {groups.length > 0 && (
-          <Select
-            value={filterGroup}
-            onValueChange={(v) => setFilterGroup(v as FilterGroup)}
-          >
-            <SelectTrigger className="w-[180px]">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder={t("datasets.filters.groupPlaceholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("datasets.filters.allDatasets")}</SelectItem>
-              {groups.map((group) => (
-                <SelectItem key={group.id} value={group.id}>
-                  {group.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {/* Sort dropdown */}
-        <Select
-          value={sortField}
-          onValueChange={(v) => setSortField(v as SortField)}
-        >
-          <SelectTrigger className="w-[150px]">
-            <ArrowUpDown className="h-4 w-4 mr-2" />
-            <SelectValue placeholder={t("datasets.filters.sortPlaceholder")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="name">{t("datasets.sort.name")}</SelectItem>
-            <SelectItem value="linked_at">{t("datasets.sort.dateAdded")}</SelectItem>
-            <SelectItem value="num_samples">{t("datasets.sort.samples")}</SelectItem>
-            <SelectItem value="group">{t("datasets.sort.group")}</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {/* Sort direction toggle */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSortDirection((d) => (d === "asc" ? "desc" : "asc"))}
-              >
-                {sortDirection === "asc" ? (
-                  <ArrowUpDown className="h-4 w-4 rotate-180" />
-                ) : (
-                  <ArrowUpDown className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {sortDirection === "asc" ? t("datasets.sort.ascending") : t("datasets.sort.descending")}
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        <div className="ml-auto">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleRefreshAll}
-                  disabled={refreshing}
-                >
-                  <RefreshCw
-                    className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
-                  />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t("datasets.refreshAll")}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+      <motion.div variants={itemVariants}>
+        <DatasetsToolbar
+          groups={groups}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          filterGroup={filterGroup}
+          onFilterGroupChange={setFilterGroup}
+          sortField={sortField}
+          onSortFieldChange={setSortField}
+          sortDirection={sortDirection}
+          onSortDirectionChange={setSortDirection}
+          refreshing={refreshing}
+          onRefreshAll={() => { void handleRefreshAll(); }}
+        />
       </motion.div>
 
       {/* Main Content: List + Quick View Panel */}
@@ -837,8 +369,8 @@ export default function Datasets() {
                   onPreview={(ds) => setQuickViewDataset(ds)}
                   onEdit={() => handleEditDataset(dataset)}
                   onDelete={() => handleDeleteDataset(dataset)}
-                  onRefresh={() => handleRefreshDataset(dataset)}
-                  onAssignGroup={(ds, groupId) => handleAssignGroup(ds, groupId)}
+                  onRefresh={() => datasetActions.refreshDatasetById(dataset.id)}
+                  onAssignGroup={(ds, groupId) => datasetActions.assignGroup(ds, groupId)}
                 />
               ))}
             </div>
@@ -860,76 +392,44 @@ export default function Datasets() {
         )}
       </motion.div>
 
-      {/* Modals */}
-      <AddDatasetModal
-        open={addModalOpen}
-        onOpenChange={setAddModalOpen}
-        onAdd={handleAddDataset}
-      />
-
-      {/* New Dataset Wizard */}
-      <DatasetWizard
-        open={wizardOpen}
-        onOpenChange={(open) => {
+      <DatasetsPageMounts
+        onAddDataset={datasetActions.addDataset}
+        wizardOpen={wizardOpen}
+        onWizardOpenChange={(open) => {
           setWizardOpen(open);
           // Clear initial state when wizard closes
           if (!open) {
             setWizardInitialState(undefined);
           }
         }}
-        onAdd={handleAddDataset}
-        initialState={wizardInitialState}
+        wizardInitialState={wizardInitialState}
         onScanFolder={(path) => {
           setWizardOpen(false);
           setBatchScanPath(path);
           setBatchScanOpen(true);
         }}
-      />
-
-      <EditDatasetPanel
-        open={editModalOpen}
-        onOpenChange={setEditModalOpen}
-        dataset={selectedDataset}
-        onSave={handleSaveDatasetConfig}
-        onRefresh={async (datasetId) => {
-          await refreshDataset(datasetId);
-          await invalidateDatasets();
-        }}
-      />
-
-      <GroupsModal
-        open={groupsModalOpen}
-        onOpenChange={setGroupsModalOpen}
+        editModalOpen={editModalOpen}
+        onEditModalOpenChange={setEditModalOpen}
+        selectedDataset={selectedDataset}
+        onSaveDatasetConfig={datasetActions.saveDatasetConfig}
+        onRefreshDatasetById={datasetActions.refreshDatasetById}
+        groupsModalOpen={groupsModalOpen}
+        onGroupsModalOpenChange={setGroupsModalOpen}
         groups={groups}
         datasets={datasets}
-        onCreateGroup={handleCreateGroup}
-        onRenameGroup={handleRenameGroup}
-        onDeleteGroup={handleDeleteGroup}
-        onAddDatasetToGroup={async (groupId, datasetId) => {
-          await addDatasetToGroup(groupId, datasetId);
-          await invalidateDatasets();
-        }}
-        onRemoveDatasetFromGroup={handleRemoveDatasetFromGroup}
-      />
-
-      {/* Synthetic Data Dialog (Developer Mode) */}
-      <SyntheticDataDialog
-        open={syntheticDialogOpen}
-        onOpenChange={setSyntheticDialogOpen}
-        onDatasetGenerated={() => { void invalidateDatasets(); }}
-      />
-
-      {/* Batch Scan Dialog */}
-      <BatchScanDialog
-        open={batchScanOpen}
-        onOpenChange={setBatchScanOpen}
-        folderPath={batchScanPath}
-        onComplete={() => { void invalidateDatasets(); }}
-      />
-
-      {/* Drag & Drop Overlay */}
-      <DropZoneOverlay
-        isVisible={isDragging}
+        onCreateDatasetGroup={datasetActions.createDatasetGroup}
+        onRenameDatasetGroup={datasetActions.renameDatasetGroup}
+        onDeleteDatasetGroup={datasetActions.deleteDatasetGroup}
+        onAddDatasetToDatasetGroup={datasetActions.addDatasetToDatasetGroup}
+        onRemoveDatasetFromDatasetGroup={datasetActions.removeDatasetFromDatasetGroup}
+        syntheticDialogOpen={syntheticDialogOpen}
+        onSyntheticDialogOpenChange={setSyntheticDialogOpen}
+        onDatasetGenerated={() => { void datasetActions.refreshAll(); }}
+        batchScanOpen={batchScanOpen}
+        onBatchScanOpenChange={setBatchScanOpen}
+        batchScanPath={batchScanPath}
+        onBatchScanComplete={() => { void datasetActions.refreshAll(); }}
+        isDragging={isDragging}
         dropType={dropType}
         itemCount={itemCount}
       />

@@ -207,14 +207,16 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
                 <>
                   {/* Metrics Cards - Similar to Predictions page */}
                   <div className="grid grid-cols-2 gap-3">
-                    <MetricCard
-                      label="R² Score"
-                      value={pipeline.metrics.r2}
-                      format={4}
-                      icon={<Target className="h-4 w-4" />}
-                      variant="primary"
-                    />
-                    {pipeline.metrics.rmse > 0 && (
+                    {pipeline.metrics.r2 != null && (
+                      <MetricCard
+                        label="R² Score"
+                        value={pipeline.metrics.r2}
+                        format={4}
+                        icon={<Target className="h-4 w-4" />}
+                        variant="primary"
+                      />
+                    )}
+                    {pipeline.metrics.rmse != null && pipeline.metrics.rmse > 0 && (
                       <MetricCard
                         label="RMSE"
                         value={pipeline.metrics.rmse}

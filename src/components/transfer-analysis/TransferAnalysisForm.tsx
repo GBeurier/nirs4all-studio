@@ -33,7 +33,7 @@ export function TransferAnalysisForm({
   onKnnChange,
 }: TransferAnalysisFormProps) {
   // Datasets come from the shared cache (see src/hooks/useDatasetQueries.ts)
-  // — instant on mount, persisted to localStorage. Presets and preprocessing
+  // — instant on mount, persisted through the shared dataset cache. Presets and preprocessing
   // options remain in their own effect because they have no shared cache yet.
   const datasetsQuery = useDatasetsQuery();
   const datasets = datasetsQuery.data?.datasets ?? [];

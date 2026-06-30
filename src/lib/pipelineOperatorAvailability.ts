@@ -1,6 +1,12 @@
-import type { InlinePipelinePayload, PreflightIssue } from "@/api/runs";
+import type { InlinePipelinePayload, PreflightIssue, PreflightResult } from "@/api/runs";
 import type { OperatorAvailabilityResponse } from "@/api/system";
 import type { PipelineStep } from "@/components/pipeline-editor/types";
+import {
+  clientStorageKeys,
+  readClientStorageJson,
+  removeClientStorageItem,
+  writeClientStorageJson,
+} from "@/lib/clientStorage";
 
 export const OPERATOR_AVAILABILITY_CACHE_KEY = "pipelineEditor.operatorAvailability.v2";
 export const OPERATOR_AVAILABILITY_INVALIDATED_EVENT = "pipeline-operator-availability-invalidated";
@@ -43,35 +49,22 @@ function shallowEqualStringArray(a: string[], b: string[]): boolean {
 }
 
 export function readCachedOperatorAvailability(): OperatorAvailabilityResponse | null {
-  try {
-    const raw = localStorage.getItem(OPERATOR_AVAILABILITY_CACHE_KEY);
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw) as OperatorAvailabilityResponse;
-    if (!parsed || !Array.isArray(parsed.unavailable)) {
-      return null;
-    }
-    return parsed;
-  } catch {
+  const parsed = readClientStorageJson<OperatorAvailabilityResponse>(
+    clientStorageKeys.pipelineOperatorAvailability,
+  );
+  if (!parsed || !Array.isArray(parsed.unavailable)) {
     return null;
   }
+
+  return parsed;
 }
 
 export function writeCachedOperatorAvailability(payload: OperatorAvailabilityResponse): void {
-  try {
-    localStorage.setItem(OPERATOR_AVAILABILITY_CACHE_KEY, JSON.stringify(payload));
-  } catch {
-    // Ignore localStorage write failures.
-  }
+  writeClientStorageJson(clientStorageKeys.pipelineOperatorAvailability, payload);
 }
 
 export function clearCachedOperatorAvailability(): void {
-  try {
-    localStorage.removeItem(OPERATOR_AVAILABILITY_CACHE_KEY);
-  } catch {
-    // Ignore localStorage delete failures.
-  }
+  removeClientStorageItem(clientStorageKeys.pipelineOperatorAvailability);
 }
 
 export function dispatchOperatorAvailabilityInvalidated(): void {
@@ -83,6 +76,58 @@ export function dispatchOperatorAvailabilityInvalidated(): void {
 
 export function filterMissingOperatorIssues(issues: PreflightIssue[]): MissingOperatorIssue[] {
   return issues.filter((issue): issue is MissingOperatorIssue => issue.type === "missing_module");
+}
+
+export type PreflightIssueResolutionStatus = "ready" | "missing_operators" | "blocking";
+
+export interface PreflightIssueResolution {
+  status: PreflightIssueResolutionStatus;
+  missingIssues: MissingOperatorIssue[];
+  blockingIssues: PreflightIssue[];
+  message: string;
+}
+
+export function formatPreflightIssueMessages(issues: Array<Pick<PreflightIssue, "message">>): string {
+  return issues.map((issue) => issue.message).join("\n");
+}
+
+export function resolvePreflightIssues(preflight: PreflightResult): PreflightIssueResolution {
+  const missingIssues = filterMissingOperatorIssues(preflight.issues);
+  const blockingIssues = preflight.issues.filter((issue) => issue.type !== "missing_module");
+
+  if (preflight.ready) {
+    return {
+      status: "ready",
+      missingIssues: [],
+      blockingIssues: [],
+      message: "",
+    };
+  }
+
+  if (blockingIssues.length > 0) {
+    return {
+      status: "blocking",
+      missingIssues,
+      blockingIssues,
+      message: formatPreflightIssueMessages(preflight.issues),
+    };
+  }
+
+  if (missingIssues.length > 0) {
+    return {
+      status: "missing_operators",
+      missingIssues,
+      blockingIssues: [],
+      message: formatPreflightIssueMessages(missingIssues),
+    };
+  }
+
+  return {
+    status: "blocking",
+    missingIssues: [],
+    blockingIssues: preflight.issues,
+    message: formatPreflightIssueMessages(preflight.issues),
+  };
 }
 
 export function buildMissingOperatorLookups(issues: MissingOperatorIssue[]): MissingOperatorLookups {

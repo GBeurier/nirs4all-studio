@@ -11,6 +11,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { rebinShapResults } from '@/api/shap';
+import {
+  buildShapRebinRequest,
+  getShapRebinErrorMessage,
+  normalizeShapBinAggregation,
+  parseShapBinSizeInput,
+  parseShapBinStrideInput,
+  SHAP_BIN_AGGREGATION_OPTIONS,
+  SHAP_BIN_SIZE_LIMITS,
+  SHAP_BIN_STRIDE_LIMITS,
+} from '@/lib/shapBinningControlsData';
 import type { BinAggregation, BinnedImportanceData } from '@/types/shap';
 
 interface BinningControlsProps {
@@ -33,7 +43,7 @@ export const BinningControls = memo(function BinningControls({
   const [binSize, setBinSize] = useState(initialBinSize);
   const [binStride, setBinStride] = useState(initialBinStride);
   const [binAggregation, setBinAggregation] = useState<BinAggregation>(
-    (initialAggregation as BinAggregation) || 'mean_abs',
+    normalizeShapBinAggregation(initialAggregation),
   );
   const [isRebinning, setIsRebinning] = useState(false);
   const [rebinError, setRebinError] = useState<string | null>(null);
@@ -49,14 +59,10 @@ export const BinningControls = memo(function BinningControls({
         setIsRebinning(true);
         setRebinError(null);
         try {
-          const result = await rebinShapResults(jobId, {
-            bin_size: size,
-            bin_stride: stride,
-            bin_aggregation: agg,
-          });
+          const result = await rebinShapResults(jobId, buildShapRebinRequest(size, stride, agg));
           onBinnedDataUpdateRef.current(result.binned_importance);
         } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Rebin failed';
+          const msg = getShapRebinErrorMessage(err);
           setRebinError(msg);
           console.error('Rebin failed:', err);
         } finally {
@@ -91,12 +97,12 @@ export const BinningControls = memo(function BinningControls({
           type="number"
           value={binSize}
           onChange={(e) => {
-            const val = parseInt(e.target.value, 10);
-            if (!isNaN(val) && val >= 5 && val <= 100) setBinSize(val);
+            const val = parseShapBinSizeInput(e.target.value);
+            if (val !== null) setBinSize(val);
           }}
           className="w-20 h-8 text-sm"
-          min={5}
-          max={100}
+          min={SHAP_BIN_SIZE_LIMITS.min}
+          max={SHAP_BIN_SIZE_LIMITS.max}
         />
       </div>
 
@@ -108,12 +114,12 @@ export const BinningControls = memo(function BinningControls({
           type="number"
           value={binStride}
           onChange={(e) => {
-            const val = parseInt(e.target.value, 10);
-            if (!isNaN(val) && val >= 1 && val <= 50) setBinStride(val);
+            const val = parseShapBinStrideInput(e.target.value);
+            if (val !== null) setBinStride(val);
           }}
           className="w-20 h-8 text-sm"
-          min={1}
-          max={50}
+          min={SHAP_BIN_STRIDE_LIMITS.min}
+          max={SHAP_BIN_STRIDE_LIMITS.max}
         />
       </div>
 
@@ -129,10 +135,11 @@ export const BinningControls = memo(function BinningControls({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="sum">Sum</SelectItem>
-            <SelectItem value="sum_abs">Sum |SHAP|</SelectItem>
-            <SelectItem value="mean">Mean</SelectItem>
-            <SelectItem value="mean_abs">Mean |SHAP|</SelectItem>
+            {SHAP_BIN_AGGREGATION_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

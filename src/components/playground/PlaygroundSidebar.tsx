@@ -27,7 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { DataUpload } from './DataUpload';
+import { DataUpload, type PlaygroundDatasetInfo } from './DataUpload';
 import { OperatorPalette } from './OperatorPalette';
 import { PipelineBuilder } from './PipelineBuilder';
 import { ExecutionStatus } from './ExecutionStatus';
@@ -42,7 +42,7 @@ interface PlaygroundSidebarProps {
   isLoading: boolean;
   error: string | null;
   dataSource: 'workspace' | 'demo' | null;
-  currentDatasetInfo: WorkspaceDatasetInfo | null;
+  currentDatasetInfo: PlaygroundDatasetInfo | null;
 
   // Pipeline state
   operators: UnifiedOperator[];
@@ -66,7 +66,7 @@ interface PlaygroundSidebarProps {
     datasetId: string,
     datasetName: string,
     partition?: PartitionKey,
-    datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples'>,
+    datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples' | 'schemaRef'>,
   ) => void;
   onClearData: () => void;
 

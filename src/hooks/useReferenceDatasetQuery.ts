@@ -94,9 +94,7 @@ export function useReferenceDatasetQuery(
   }
 
   // Only enabled operators affect output
-  const effectiveOperators = useMemo(() => {
-    return stableOperatorsRef.current.filter(op => op.enabled);
-  }, [debouncedPipelineHash]);
+  const effectiveOperators = stableOperatorsRef.current.filter(op => op.enabled);
 
   const repetitionColumn = useMemo(
     () => getSpectralRepetitionColumn(referenceData),

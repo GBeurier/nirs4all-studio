@@ -3,34 +3,23 @@
  *
  * Phase 5: Added support for loading workspace defaults for parsing options
  */
-import React, { createContext, useContext, useReducer, useCallback, useEffect, useState, useRef } from "react";
+import { useReducer, useCallback, useEffect, useState, useRef } from "react";
 import type {
   WizardState,
   WizardStep,
-  WizardSourceType,
-  DetectedFile,
   ParsingOptions,
-  TargetConfig,
-  TaskType,
-  AggregationConfig,
-  PreviewDataResponse,
-  DetectionConfidence,
-  // Advanced configuration types
-  MultiSourceConfig,
-  FoldConfig,
 } from "@/types/datasets";
 import { getDataLoadingDefaults } from "@/api/workspace";
 import type { DataLoadingDefaults } from "@/types/settings";
-
-// System default parsing options (fallback)
-const SYSTEM_DEFAULT_PARSING: ParsingOptions = {
-  delimiter: ";",
-  decimal_separator: ".",
-  has_header: true,
-  header_unit: "cm-1",
-  signal_type: "auto",
-  na_policy: "auto",
-};
+import {
+  DEFAULT_AGGREGATION,
+  DEFAULT_PARSING,
+  STEP_ORDER,
+  WizardContext,
+  type WizardAction,
+  type WizardInitialState,
+  type WizardProviderProps,
+} from "./useWizard";
 
 // Convert DataLoadingDefaults to ParsingOptions
 function convertDefaultsToParsing(defaults: DataLoadingDefaults): ParsingOptions {
@@ -43,12 +32,6 @@ function convertDefaultsToParsing(defaults: DataLoadingDefaults): ParsingOptions
     na_policy: defaults.na_policy as ParsingOptions["na_policy"],
   };
 }
-
-// Default aggregation
-const DEFAULT_AGGREGATION: AggregationConfig = {
-  enabled: false,
-  method: "mean",
-};
 
 // Initial state factory (needs defaults parameter)
 const createInitialState = (parsing: ParsingOptions): WizardState => ({
@@ -83,75 +66,7 @@ const createInitialState = (parsing: ParsingOptions): WizardState => ({
 });
 
 // Initial state (uses system defaults, will be updated when workspace defaults load)
-const initialState: WizardState = createInitialState(SYSTEM_DEFAULT_PARSING);
-
-/**
- * Initial state that can be passed from drag-and-drop
- */
-export interface WizardInitialState {
-  sourceType: WizardSourceType;
-  basePath: string;
-  datasetName?: string;
-  files?: DetectedFile[];
-  skipToStep?: WizardStep;
-  parsing?: Partial<ParsingOptions>;
-  perFileOverrides?: Record<string, Partial<ParsingOptions>>;
-  targets?: TargetConfig[];
-  defaultTarget?: string;
-  taskType?: TaskType;
-  aggregation?: Partial<AggregationConfig>;
-  multiSource?: MultiSourceConfig | null;
-  folds?: FoldConfig | null;
-  // Detection results from unified detection
-  detectedParsing?: Partial<ParsingOptions>;
-  hasFoldFile?: boolean;
-  foldFilePath?: string;
-  metadataColumns?: string[];
-  confidence?: DetectionConfidence;
-  // Web mode - File objects for reading content when filesystem paths aren't available
-  fileBlobs?: Map<string, File>;
-}
-
-// Action types
-type WizardAction =
-  | { type: "SET_STEP"; payload: WizardStep }
-  | { type: "SET_SOURCE_TYPE"; payload: WizardSourceType }
-  | { type: "SET_BASE_PATH"; payload: string }
-  | { type: "SET_DATASET_NAME"; payload: string }
-  | { type: "SET_FILES"; payload: DetectedFile[] }
-  | { type: "UPDATE_FILE"; payload: { index: number; updates: Partial<DetectedFile> } }
-  | { type: "REMOVE_FILE"; payload: number }
-  | { type: "ADD_FILES"; payload: DetectedFile[] }
-  | { type: "SET_PARSING"; payload: Partial<ParsingOptions> }
-  | { type: "SET_FILE_OVERRIDE"; payload: { path: string; options: Partial<ParsingOptions> | null } }
-  | { type: "SET_TARGETS"; payload: TargetConfig[] }
-  | { type: "SET_DEFAULT_TARGET"; payload: string }
-  | { type: "SET_TASK_TYPE"; payload: TaskType }
-  | { type: "SET_AGGREGATION"; payload: Partial<AggregationConfig> }
-  | { type: "SET_PREVIEW"; payload: PreviewDataResponse | null }
-  | { type: "SET_LOADING"; payload: boolean }
-  | { type: "SET_ERROR"; payload: { key: string; message: string | null } }
-  | { type: "APPLY_DEFAULTS"; payload: ParsingOptions }
-  | { type: "INIT_FROM_DROP"; payload: { initial: WizardInitialState; parsing: ParsingOptions } }
-  | { type: "RESET"; payload?: ParsingOptions }
-  // Detection results action
-  | { type: "SET_DETECTION_RESULTS"; payload: {
-      files?: DetectedFile[];
-      parsing?: Partial<ParsingOptions>;
-      hasFoldFile?: boolean;
-      foldFilePath?: string | null;
-      metadataColumns?: string[];
-      confidence?: DetectionConfidence;
-    }}
-  // Advanced configuration actions
-  | { type: "SET_MULTI_SOURCE"; payload: MultiSourceConfig | null }
-  | { type: "SET_FOLDS"; payload: FoldConfig | null }
-  // Validation actions
-  | { type: "SET_VALIDATING"; payload: boolean }
-  | { type: "SET_VALIDATED_SHAPES"; payload: Record<string, { num_rows?: number; num_columns?: number; error?: string }> }
-  | { type: "SET_VALIDATION_ERROR"; payload: string | null }
-  // Web mode file blobs
-  | { type: "SET_FILE_BLOBS"; payload: Map<string, File> };
+const initialState: WizardState = createInitialState(DEFAULT_PARSING);
 
 // Reducer
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
@@ -333,35 +248,6 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   }
 }
 
-// Context
-interface WizardContextType {
-  state: WizardState;
-  dispatch: React.Dispatch<WizardAction>;
-  // Helper actions
-  goToStep: (step: WizardStep) => void;
-  nextStep: () => void;
-  prevStep: () => void;
-  reset: () => void;
-  canProceed: () => boolean;
-  // Phase 5: Defaults
-  workspaceDefaults: ParsingOptions | null;
-  isLoadingDefaults: boolean;
-  reloadDefaults: () => Promise<void>;
-  // Drag-and-drop initialization
-  initFromDrop: (initial: WizardInitialState) => void;
-}
-
-const WizardContext = createContext<WizardContextType | null>(null);
-
-// Step order
-const STEP_ORDER: WizardStep[] = ["source", "files", "parsing", "targets", "preview"];
-
-// Provider props
-interface WizardProviderProps {
-  children: React.ReactNode;
-  initialState?: WizardInitialState;
-}
-
 // Provider
 export function WizardProvider({ children, initialState: initialProp }: WizardProviderProps) {
   const [state, dispatch] = useReducer(wizardReducer, initialState);
@@ -381,7 +267,7 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
     } catch (error) {
       // Workspace may not be selected, use system defaults
       console.log("Using system defaults for parsing options");
-      setWorkspaceDefaults(SYSTEM_DEFAULT_PARSING);
+      setWorkspaceDefaults(DEFAULT_PARSING);
     } finally {
       setIsLoadingDefaults(false);
     }
@@ -399,7 +285,7 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
         type: "INIT_FROM_DROP",
         payload: {
           initial: initialProp,
-          parsing: workspaceDefaults || SYSTEM_DEFAULT_PARSING,
+          parsing: workspaceDefaults || DEFAULT_PARSING,
         },
       });
     }
@@ -412,7 +298,7 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
         type: "INIT_FROM_DROP",
         payload: {
           initial,
-          parsing: workspaceDefaults || SYSTEM_DEFAULT_PARSING,
+          parsing: workspaceDefaults || DEFAULT_PARSING,
         },
       });
     },
@@ -439,7 +325,7 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
 
   const reset = useCallback(() => {
     // Reset with workspace defaults if available
-    dispatch({ type: "RESET", payload: workspaceDefaults || SYSTEM_DEFAULT_PARSING });
+    dispatch({ type: "RESET", payload: workspaceDefaults || DEFAULT_PARSING });
   }, [workspaceDefaults]);
 
   const canProceed = useCallback(() => {
@@ -483,15 +369,3 @@ export function WizardProvider({ children, initialState: initialProp }: WizardPr
     </WizardContext.Provider>
   );
 }
-
-// Hook
-export function useWizard() {
-  const context = useContext(WizardContext);
-  if (!context) {
-    throw new Error("useWizard must be used within a WizardProvider");
-  }
-  return context;
-}
-
-// Export defaults for reuse
-export { SYSTEM_DEFAULT_PARSING as DEFAULT_PARSING, DEFAULT_AGGREGATION, STEP_ORDER };

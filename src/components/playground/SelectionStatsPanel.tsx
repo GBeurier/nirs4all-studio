@@ -26,7 +26,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection } from '@/context/useSelection';
 import { cn } from '@/lib/utils';
 import { formatYValue } from './visualizations/chartConfig';
 

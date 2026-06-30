@@ -41,12 +41,12 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { PipelineStep, ParameterSweep, StepType } from "./types";
+import { formatSweepDisplay } from "./stepFactory";
+import { stepColors } from "./stepPresentation";
 import {
-  stepColors,
   calculateSweepVariants,
   calculateStepVariants,
-  formatSweepDisplay,
-} from "./types";
+} from "./variantCounting";
 
 interface StepSweepInfo {
   stepId: string;

@@ -2,25 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "@/lib/motion";
-import {
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Target,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
-import { EmptyState, ErrorState, LoadingState, NoWorkspaceState } from "@/components/ui/state-display";
+import { ErrorState, LoadingState } from "@/components/ui/state-display";
 import { getN4AWorkspacePredictionsData } from "@/api/linkedWorkspaces";
 import type { LinkedWorkspace, PredictionRecord } from "@/types/linked-workspaces";
-import { PredictionViewer } from "@/components/predictions/viewer/PredictionViewer";
-import { PredictionQuickView } from "@/components/predictions/PredictionQuickView";
-import { PredictionFilters } from "@/components/predictions/PredictionFilters";
-import { PredictionStats } from "@/components/predictions/PredictionStats";
-import { PredictionsHeader } from "@/components/predictions/PredictionsHeader";
-import { PredictionsTable } from "@/components/predictions/PredictionsTable";
-import { ExportDialog } from "@/components/predictions/ExportDialog";
-import { ChainDetailSheet } from "@/components/predictions/ChainDetailSheet";
+import {
+  PredictionsEmptyPanel,
+  PredictionsNoWorkspacePanel,
+  PredictionsOverlays,
+  PredictionsResultsSection,
+} from "@/components/predictions/PredictionsPageSections";
 import type {
   ChainDetailFocus,
   ChainDetailMetaHint,
@@ -30,21 +21,23 @@ import type {
   ViewerHeader,
   ViewerPartitionTarget,
 } from "@/components/predictions/viewer/types";
-import { useMetricSelection } from "@/components/scores/MetricSelector";
+import { useMetricSelection } from "@/components/scores/useMetricSelection";
 import {
-  canonicalMetricKey,
   getDefaultSelectedMetricsForTaskTypes,
   getDefaultSelectionUpgradeCandidatesForTaskTypes,
   getMetricAbbreviation,
-  getMetricDefinitions,
   getLegacySelectedMetricsForTaskTypes,
-  isClassificationTaskType,
-  orderMetricKeys,
 } from "@/lib/scores";
 import type { ScoreCardRow } from "@/types/score-cards";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 import { usePredictionRows } from "@/hooks/usePredictionRows";
-import { predictionGroupKey, type MetricTaskFilter } from "@/lib/predictions/rows";
+import type { MetricTaskFilter } from "@/lib/predictions/rows";
+import {
+  buildEffectivePredictionMetricContext,
+  getInitialPredictionMetricTaskFilter,
+  resolvePredictionPrimaryMetricKey,
+  selectPredictionQuickView,
+} from "@/lib/predictions/pageData";
 
 const FETCH_PAGE_SIZE = 1000;
 
@@ -114,43 +107,27 @@ export default function Predictions() {
 
   const rows = usePredictionRows(rawPredictions, metricTaskFilter);
   const {
-    allRows, contextDatasets, datasetOptions, modelOptions, taskTypeOptions,
-    filteredRows, pageRows, stats, metricContext,
-    searchQuery, setSearchQuery, filterDataset, setFilterDataset,
-    filterModel, setFilterModel, filterTaskType, setFilterTaskType,
-    visibleFoldTypes, setVisibleFoldTypes, visibleDataKinds, setVisibleDataKinds,
-    sortField, sortOrder, handleSort,
-    currentPage, setCurrentPage, pageSize, setPageSize,
-    totalCount, totalPages, startIndex, endIndex,
-    hasActiveFilters, clearFilters,
+    allRows,
+    contextDatasets,
+    filteredRows,
+    metricContext,
+    setCurrentPage,
+    setPageSize,
   } = rows;
 
   const didInitMetricFilter = useRef(false);
   useEffect(() => {
     if (didInitMetricFilter.current) return;
-    if (allRows.length === 0) return;
-    const hasClassification = allRows.some(row => isClassificationTaskType(row.taskType));
-    const hasRegression = allRows.some(row => row.taskType && !isClassificationTaskType(row.taskType));
-    if (hasClassification && !hasRegression) setMetricTaskFilter("classification");
+    const initialFilter = getInitialPredictionMetricTaskFilter(allRows);
+    if (!initialFilter) {
+      if (allRows.length === 0) return;
+    } else {
+      setMetricTaskFilter(initialFilter);
+    }
     didInitMetricFilter.current = true;
   }, [allRows]);
 
-  const effectiveMetricContext = (() => {
-    const filteredKeys = orderMetricKeys(
-      metricContext.availableMetricKeys.filter(key => {
-        const def = getMetricDefinitions([key])[0];
-        if (!def) return true;
-        if (def.group === "general") return true;
-        if (metricTaskFilter === "regression") return def.group === "regression";
-        return def.group === "multiclass" || def.group === "binary";
-      }),
-    );
-    return {
-      taskType: metricTaskFilter,
-      taskTypes: [metricTaskFilter],
-      availableMetricKeys: filteredKeys,
-    };
-  })();
+  const effectiveMetricContext = buildEffectivePredictionMetricContext(metricContext, metricTaskFilter);
 
   const [selectedMetrics, setSelectedMetrics] = useMetricSelection(
     "predictions",
@@ -185,21 +162,22 @@ export default function Predictions() {
   };
 
   const handleQuickView = (predictionId: string) => {
-    const prediction = rawPredictions.find(record => record.id === predictionId);
-    if (!prediction) return;
-    // Collect all records that belong to the same (dataset, pipeline, fold) group
-    const key = predictionGroupKey(prediction);
-    const siblings = rawPredictions.filter(r => predictionGroupKey(r) === key);
-    const primary = siblings.find(r => r.partition === "test") ?? siblings.find(r => r.partition === "val") ?? prediction;
-    setQuickViewInitialKind("scatter");
-    setQuickViewPrediction(primary);
-    setQuickViewSiblings(siblings.length > 0 ? siblings : [prediction]);
+    const selection = selectPredictionQuickView(predictionId, rawPredictions);
+    if (!selection) return;
+    setQuickViewInitialKind(selection.initialKind);
+    setQuickViewPrediction(selection.primary);
+    setQuickViewSiblings(selection.siblings);
     setQuickViewOpen(true);
   };
 
   const handleRefresh = () => {
     refetchWorkspaces();
     refetchPredictions();
+  };
+
+  const handlePageSizeChange = (nextPageSize: number) => {
+    setPageSize(nextPageSize);
+    setCurrentPage(1);
   };
 
   if (workspacesLoading) {
@@ -219,13 +197,10 @@ export default function Predictions() {
 
   if (!activeWorkspace) {
     return (
-      <motion.div className="space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
-          <p className="mt-1 text-muted-foreground">{t("predictions.subtitle")}</p>
-        </div>
-        <NoWorkspaceState title="No workspace linked" description="Link a nirs4all workspace in Settings to view prediction records." />
-      </motion.div>
+      <PredictionsNoWorkspacePanel
+        title={t("predictions.title")}
+        subtitle={t("predictions.subtitle")}
+      />
     );
   }
 
@@ -246,26 +221,28 @@ export default function Predictions() {
 
   if (allRows.length === 0) {
     return (
-      <motion.div className="space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("predictions.title")}</h1>
-          <p className="mt-1 text-muted-foreground">Workspace: {activeWorkspace.name}</p>
-        </div>
-        <EmptyState icon={Target} title="No predictions yet" description="Run nirs4all.run() to generate predictions." action={{ label: t("common.refresh"), onClick: handleRefresh }} />
-      </motion.div>
+      <PredictionsEmptyPanel
+        title={t("predictions.title")}
+        workspaceName={activeWorkspace.name}
+        refreshLabel={t("common.refresh")}
+        onRefresh={handleRefresh}
+      />
     );
   }
 
-  const primaryMetricKey = canonicalMetricKey(filteredRows.find(row => row.metric)?.metric)
-    || selectedMetrics[0]
-    || (isClassificationTaskType(effectiveMetricContext.taskType) ? "accuracy" : "rmse");
+  const primaryMetricKey = resolvePredictionPrimaryMetricKey({
+    effectiveMetricTaskType: effectiveMetricContext.taskType,
+    filteredRows,
+    selectedMetrics,
+  });
   const primaryMetricLabel = getMetricAbbreviation(primaryMetricKey);
 
   return (
     <motion.div className="space-y-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <PredictionsHeader
+      <PredictionsResultsSection
         title={t("predictions.title")}
-        totalScored={stats.total}
+        rows={rows}
+        workspaceId={activeWorkspace.id}
         workspaceName={activeWorkspace.name}
         predictionsLoading={predictionsLoading}
         metricTaskFilter={metricTaskFilter}
@@ -274,114 +251,42 @@ export default function Predictions() {
         selectedMetrics={selectedMetrics}
         onSelectedMetricsChange={setSelectedMetrics}
         availableMetricKeys={effectiveMetricContext.availableMetricKeys}
+        primaryMetricLabel={primaryMetricLabel}
         onRefresh={handleRefresh}
         onExport={() => setExportDialogOpen(true)}
         exportDisabled={contextDatasets.length === 0}
+        onPageSizeChange={handlePageSizeChange}
+        onViewPrediction={handleQuickView}
+        onViewDetails={handleViewDetails}
       />
 
-      <PredictionStats stats={stats} />
-
-      <PredictionFilters
-        searchQuery={searchQuery}
-        onSearchQueryChange={setSearchQuery}
-        filterDataset={filterDataset}
-        onFilterDatasetChange={setFilterDataset}
-        filterModel={filterModel}
-        onFilterModelChange={setFilterModel}
-        filterTaskType={filterTaskType}
-        onFilterTaskTypeChange={setFilterTaskType}
-        datasetOptions={datasetOptions}
-        modelOptions={modelOptions}
-        taskTypeOptions={taskTypeOptions}
-        visibleFoldTypes={visibleFoldTypes}
-        onVisibleFoldTypesChange={setVisibleFoldTypes}
-        visibleDataKinds={visibleDataKinds}
-        onVisibleDataKindsChange={setVisibleDataKinds}
-        hasActiveFilters={hasActiveFilters}
-        onClearFilters={clearFilters}
+      <PredictionsOverlays
+        workspaceId={activeWorkspace.id}
+        exportDialogOpen={exportDialogOpen}
+        onExportDialogOpenChange={setExportDialogOpen}
+        exportDatasets={contextDatasets}
+        quickViewPrediction={quickViewPrediction}
+        quickViewSiblings={quickViewSiblings}
+        quickViewOpen={quickViewOpen}
+        onQuickViewOpenChange={setQuickViewOpen}
+        quickViewInitialKind={quickViewInitialKind}
+        detailChainId={detailChainId}
+        detailMetaHint={detailMetaHint}
+        detailFocus={detailFocus}
+        detailOpen={detailOpen}
+        onDetailOpenChange={setDetailOpen}
+        detailViewerOpen={detailViewerOpen}
+        onDetailViewerOpenChange={setDetailViewerOpen}
+        detailViewerPartitions={detailViewerPartitions}
+        detailViewerHeader={detailViewerHeader}
+        detailViewerKind={detailViewerKind}
+        onOpenDetailViewer={(partitions, header, kind) => {
+          setDetailViewerPartitions(partitions);
+          setDetailViewerHeader(header);
+          setDetailViewerKind(kind);
+          setDetailViewerOpen(true);
+        }}
       />
-
-        <PredictionsTable
-          pageRows={pageRows}
-          selectedMetrics={selectedMetrics}
-          sortField={sortField}
-          sortOrder={sortOrder}
-          onSort={handleSort}
-          primaryMetricLabel={primaryMetricLabel}
-          workspaceId={activeWorkspace.id}
-          startIndex={startIndex}
-          onViewPrediction={handleQuickView}
-          onViewDetails={handleViewDetails}
-        />
-
-        {totalCount > 0 && (
-          <div className="flex items-center justify-between px-1 text-xs">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <span>Showing {startIndex + 1}-{endIndex} of {totalCount}</span>
-              <Select value={String(pageSize)} onValueChange={value => { setPageSize(Number(value)); setCurrentPage(1); }}>
-                <SelectTrigger className="w-[85px] h-7 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 25, 50, 100, 200, 500, 1000].map(size => <SelectItem key={size} value={String(size)}>{size}/page</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center gap-0.5">
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>
-                <ChevronsLeft className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(page => Math.max(1, page - 1))} disabled={currentPage === 1}>
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-              <span className="px-2 text-muted-foreground">Page {currentPage} of {totalPages}</span>
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages}>
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}>
-                <ChevronsRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
-
-        <ExportDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen} datasets={contextDatasets} />
-
-        <PredictionQuickView
-          prediction={quickViewPrediction}
-          siblings={quickViewSiblings}
-          open={quickViewOpen}
-          onOpenChange={setQuickViewOpen}
-          workspaceId={activeWorkspace.id}
-          initialKind={quickViewInitialKind}
-        />
-
-        <ChainDetailSheet
-          chainId={detailChainId}
-          metaHint={detailMetaHint}
-          focus={detailFocus}
-          metric={detailMetaHint?.metric ?? null}
-          open={detailOpen}
-          onOpenChange={setDetailOpen}
-          isViewerOpen={detailViewerOpen}
-          onOpenViewer={(partitions, header, kind) => {
-            setDetailViewerPartitions(partitions);
-            setDetailViewerHeader(header);
-            setDetailViewerKind(kind);
-            setDetailViewerOpen(true);
-          }}
-        />
-
-        {detailViewerHeader && (
-          <PredictionViewer
-            open={detailViewerOpen}
-            onOpenChange={setDetailViewerOpen}
-            header={detailViewerHeader}
-            partitions={detailViewerPartitions}
-            workspaceId={activeWorkspace.id}
-            initialKind={detailViewerKind}
-          />
-        )}
     </motion.div>
   );
 }

@@ -16,9 +16,14 @@
  * }
  */
 
-import { createContext, useContext, useMemo, useState, useEffect, useRef, type ReactNode } from "react";
+import { useMemo, useState, useEffect, useRef, type ReactNode } from "react";
 import { type StepType } from "../types";
-import { usePipelineEditorPreferencesOptional } from "./PipelineEditorPreferencesContext";
+import { usePipelineEditorPreferencesOptional } from "./usePipelineEditorPreferences";
+import {
+  NodeRegistryContext,
+  type NodeDefinition,
+  type NodeRegistryContextValue,
+} from "./useNodeRegistry";
 
 // Import from the new node registry system
 import {
@@ -27,114 +32,12 @@ import {
   CustomNodeStorage,
   mergeNodeDefinitions,
   type NodeDefinition as JsonNodeDefinition,
-  type ParameterDefinition,
   type NodeType,
-  type CategoryConfig,
-  type WebappSplitMetadata,
 } from "@/data/nodes";
 
 const MAX_EXTENDED_REGISTRY_RETRIES = 5;
 const EXTENDED_REGISTRY_RETRY_BASE_MS = 1000;
 const EXTENDED_REGISTRY_RETRY_MAX_MS = 10000;
-
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Node definition interface used throughout the pipeline editor.
- */
-export interface NodeDefinition {
-  /** Unique identifier for the node */
-  id: string;
-  /** Display name */
-  name: string;
-  /** Node type category */
-  type: StepType;
-  /** Human-readable description */
-  description: string;
-  /** Parameter definitions */
-  parameters?: ParameterDefinition[];
-  /** Optional subcategory for palette organization */
-  category?: string;
-  /** Whether this is a deep learning model */
-  isDeepLearning?: boolean;
-  /** Whether this is an advanced/expert option */
-  isAdvanced?: boolean;
-  /** Searchable tags */
-  tags?: string[];
-  /** Full class path for nirs4all */
-  classPath?: string;
-  /** Source of the definition */
-  source?: "builtin" | "custom" | "nirs4all" | "sklearn" | "editor";
-  /** Legacy class paths for backwards compatibility */
-  legacyClassPaths?: string[];
-  /** Whether this is a container node */
-  isContainer?: boolean;
-  /** Whether this is a generator node */
-  isGenerator?: boolean;
-  /** Color scheme for the node type */
-  colorScheme?: CategoryConfig['color'];
-  /** Default parameter values (legacy support) */
-  defaultParams?: Record<string, unknown>;
-  /** Number of default branches for container/generator nodes */
-  defaultBranches?: number;
-  /** Generator kind (for generator nodes) */
-  generatorKind?: "or" | "cartesian";
-  /** Visibility tier for UI filtering */
-  tier?: "core" | "standard" | "advanced";
-  /** Splitter-specific runtime metadata for group handling */
-  _webapp_split?: WebappSplitMetadata;
-}
-
-/**
- * Registry context value interface.
- */
-export interface NodeRegistryContextValue {
-  /** Get all nodes of a specific type */
-  getNodesByType: (type: StepType) => NodeDefinition[];
-  /** Get a specific node definition by type and name */
-  getNodeDefinition: (type: StepType, name: string) => NodeDefinition | undefined;
-  /** Get a node by its unique ID */
-  getNodeById: (id: string) => NodeDefinition | undefined;
-  /** Get a node by its classPath */
-  getNodeByClassPath: (classPath: string) => NodeDefinition | undefined;
-  /** Get all node types */
-  getNodeTypes: () => StepType[];
-  /** Resolve class path for a node */
-  resolveClassPath: (type: StepType, name: string) => string | undefined;
-  /** Resolve node name from a classPath */
-  resolveNameFromClassPath: (classPath: string) => string | undefined;
-  /** Search nodes by query string */
-  searchNodes: (query: string) => NodeDefinition[];
-  /** Get default parameters for a node */
-  getDefaultParams: (type: StepType, name: string) => Record<string, unknown>;
-  /** Get parameter definition */
-  getParameterDef: (type: StepType, name: string, paramName: string) => ParameterDefinition | undefined;
-  /** Get sweepable parameters for a node */
-  getSweepableParams: (type: StepType, name: string) => ParameterDefinition[];
-  /** Get category configuration */
-  getCategoryConfig: (type: StepType) => CategoryConfig | undefined;
-  /** Check if registry is loading */
-  isLoading: boolean;
-  /** Fatal loading error (base registry failed — no operators available) */
-  error: Error | null;
-  /** Non-fatal error loading extended registry (base operators still available) */
-  extendedError: Error | null;
-  /** Registry version info */
-  version: {
-    registry: string;
-    nirs4all?: string;
-  };
-  /** Underlying NodeRegistry instance */
-  registry: NodeRegistry | null;
-}
-
-// ============================================================================
-// Context
-// ============================================================================
-
-const NodeRegistryContext = createContext<NodeRegistryContextValue | undefined>(undefined);
 
 // ============================================================================
 // Conversion
@@ -441,93 +344,4 @@ export function NodeRegistryProvider({ children }: NodeRegistryProviderProps) {
       {children}
     </NodeRegistryContext.Provider>
   );
-}
-
-// ============================================================================
-// Hooks
-// ============================================================================
-
-/**
- * Hook to access node registry context.
- *
- * Must be used within a NodeRegistryProvider.
- *
- * @throws Error if used outside of NodeRegistryProvider
- *
- * @example
- * function StepPalette() {
- *   const { getNodesByType, searchNodes } = useNodeRegistry();
- *   const preprocessingNodes = getNodesByType("preprocessing");
- *   const searchResults = searchNodes("pls");
- *   return <NodeList nodes={preprocessingNodes} />;
- * }
- */
-export function useNodeRegistry(): NodeRegistryContextValue {
-  const context = useContext(NodeRegistryContext);
-
-  if (context === undefined) {
-    throw new Error("useNodeRegistry must be used within a NodeRegistryProvider");
-  }
-
-  return context;
-}
-
-/**
- * Hook to access node registry with optional fallback.
- *
- * Useful for components that may be used both inside and outside
- * the node registry context.
- *
- * @returns The context value or undefined if not within a provider
- */
-export function useNodeRegistryOptional(): NodeRegistryContextValue | undefined {
-  return useContext(NodeRegistryContext);
-}
-
-/**
- * Hook to get nodes of a specific type.
- * Convenience wrapper around useNodeRegistry.
- */
-export function useNodesByType(type: StepType): NodeDefinition[] {
-  const { getNodesByType } = useNodeRegistry();
-  return useMemo(() => getNodesByType(type), [getNodesByType, type]);
-}
-
-/**
- * Hook to search nodes.
- * Convenience wrapper with debouncing.
- */
-export function useNodeSearch(query: string, debounceMs = 150): NodeDefinition[] {
-  const { searchNodes } = useNodeRegistry();
-  const [debouncedQuery, setDebouncedQuery] = useState(query);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(query), debounceMs);
-    return () => clearTimeout(timer);
-  }, [query, debounceMs]);
-
-  return useMemo(
-    () => (debouncedQuery ? searchNodes(debouncedQuery) : []),
-    [searchNodes, debouncedQuery]
-  );
-}
-
-/**
- * Hook to get parameter definitions for a node.
- */
-export function useNodeParameters(type: StepType, name: string): {
-  parameters: ParameterDefinition[];
-  sweepable: ParameterDefinition[];
-  defaults: Record<string, unknown>;
-} {
-  const { getNodeDefinition, getSweepableParams, getDefaultParams } = useNodeRegistry();
-
-  return useMemo(() => {
-    const node = getNodeDefinition(type, name);
-    return {
-      parameters: node?.parameters ?? [],
-      sweepable: getSweepableParams(type, name),
-      defaults: getDefaultParams(type, name),
-    };
-  }, [type, name, getNodeDefinition, getSweepableParams, getDefaultParams]);
 }

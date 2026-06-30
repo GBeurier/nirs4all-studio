@@ -37,6 +37,12 @@ export function formatPartitionLabel(partitions: Iterable<string>): string {
   return ordered.length > 0 ? ordered.join(" + ") : "none";
 }
 
+function isScalarPredictionVector(
+  value: PredictionArraysResponse["y_true"] | undefined,
+): value is number[] {
+  return Array.isArray(value) && value.every(item => typeof item === "number");
+}
+
 export function buildConfusionMatrixFromVectors({
   yTrue,
   yPred,
@@ -171,7 +177,7 @@ export function buildConfusionMatrixData({
   for (const row of rows) {
     if (!activePartitions.has(row.partition)) continue;
     const arrays = arraysByPredictionId[row.prediction_id];
-    if (!arrays?.y_true || !arrays?.y_pred) continue;
+    if (!isScalarPredictionVector(arrays?.y_true) || !isScalarPredictionVector(arrays?.y_pred)) continue;
 
     const n = Math.min(arrays.y_true.length, arrays.y_pred.length);
     for (let index = 0; index < n; index += 1) {

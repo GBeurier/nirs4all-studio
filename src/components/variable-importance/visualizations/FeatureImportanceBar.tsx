@@ -19,6 +19,11 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Download } from 'lucide-react';
+import {
+  buildShapFeatureImportanceCsv,
+  buildShapFeatureImportanceRows,
+  getShapFeatureImportanceFill,
+} from '@/lib/shapFeatureImportanceData';
 import type { ShapResultsResponse, BinnedImportanceData } from '@/types/shap';
 
 interface FeatureImportanceBarProps {
@@ -30,51 +35,13 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
   // Use rebinned data if available, otherwise from results
   const activeBinned = binnedData || results.binned_importance;
 
-  // Prepare binned importance data for the chart
   const chartData = useMemo(() => {
-    const binned_importance = activeBinned;
-    const maxImportance = Math.max(...binned_importance.bin_values);
-
-    return binned_importance.bin_centers
-      .map((center, idx) => ({
-        label: `${binned_importance.bin_ranges[idx][0].toFixed(0)}-${binned_importance.bin_ranges[idx][1].toFixed(0)}`,
-        center,
-        importance: binned_importance.bin_values[idx],
-        normalized: binned_importance.bin_values[idx] / maxImportance,
-        rank: 0, // Will be set after sorting
-      }))
-      .sort((a, b) => b.importance - a.importance)
-      .slice(0, 15)
-      .map((item, idx) => ({ ...item, rank: idx + 1 }));
+    return buildShapFeatureImportanceRows(activeBinned);
   }, [activeBinned]);
 
   // Export to CSV
   const handleExport = () => {
-    const binned_importance = activeBinned;
-
-    const rows = binned_importance.bin_centers.map((center, idx) => ({
-      wavelength_start: binned_importance.bin_ranges[idx][0],
-      wavelength_end: binned_importance.bin_ranges[idx][1],
-      center,
-      importance: binned_importance.bin_values[idx],
-    }));
-
-    // Sort by importance
-    rows.sort((a, b) => b.importance - a.importance);
-
-    // Create CSV content
-    const headers = ['Rank', 'Wavelength Range (cm⁻¹)', 'Center', 'Importance'];
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row, idx) =>
-        [
-          idx + 1,
-          `${row.wavelength_start.toFixed(1)}-${row.wavelength_end.toFixed(1)}`,
-          row.center.toFixed(1),
-          row.importance.toFixed(6),
-        ].join(',')
-      ),
-    ].join('\n');
+    const csvContent = buildShapFeatureImportanceCsv(activeBinned);
 
     // Download
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -135,7 +102,7 @@ export function FeatureImportanceBar({ results, binnedData }: FeatureImportanceB
               {chartData.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
-                  fill={`rgba(13, 148, 136, ${0.4 + 0.6 * entry.normalized})`}
+                  fill={getShapFeatureImportanceFill(entry.normalized)}
                 />
               ))}
             </Bar>

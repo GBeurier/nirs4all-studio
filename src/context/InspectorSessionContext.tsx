@@ -12,8 +12,6 @@
  */
 
 import {
-  createContext,
-  useContext,
   useCallback,
   useMemo,
   useEffect,
@@ -21,103 +19,26 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type {
-  InspectorDataFilters,
-  InspectorViewState as PanelViewState,
-  InspectorPanelType,
-  GroupMode,
-  GroupByVariable,
-  GroupByRangeConfig,
-  GroupByTopKConfig,
-  GroupByExpressionConfig,
-  ScoreColumn,
-} from '@/types/inspector';
-import type { LayoutMode } from './InspectorViewContext';
+import {
+  clientStorageKeys,
+  createClientStoragePersistenceStorage,
+} from '@/lib/clientStorage';
+import {
+  clearInspectorSessionState,
+  mergeInspectorSessionState,
+  readInspectorSessionState,
+  writeInspectorSessionState,
+  type InspectorSessionStorage,
+} from '@/lib/inspector/sessionState';
+import {
+  InspectorSessionContext,
+  type InspectorSessionContextValue,
+  type InspectorSessionState,
+} from '@/context/useInspectorSession';
 
-// ============= Types =============
-
-export interface InspectorSessionState {
-  // Source filters
-  filters: InspectorDataFilters;
-
-  // Group configuration
-  groupMode: GroupMode;
-  groupBy: GroupByVariable | null;
-  rangeConfig: GroupByRangeConfig | null;
-  topKConfig: GroupByTopKConfig | null;
-  expressionConfig: GroupByExpressionConfig | null;
-
-  // Score/partition
-  scoreColumn: ScoreColumn;
-  partition: string;
-
-  // View state
-  panelStates: Record<string, PanelViewState>;
-  layoutMode: LayoutMode;
-
-  // Timestamp
-  savedAt: number;
-}
-
-export interface InspectorSessionContextValue {
-  getSession: () => InspectorSessionState | null;
-  saveSession: (state: Partial<InspectorSessionState>) => void;
-  clearSession: () => void;
-  hasSession: boolean;
-}
-
-// ============= Constants =============
-
-const STORAGE_KEY = 'inspector-session-state';
-const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-// ============= Storage Helpers =============
-
-function migrateSession(state: InspectorSessionState): InspectorSessionState {
-  const filters = state.filters as Record<string, unknown>;
-  // Migrate old single-string filter fields to array format
-  if (filters && typeof filters.run_id === 'string') {
-    filters.run_ids = [filters.run_id];
-    delete filters.run_id;
-  }
-  if (filters && typeof filters.dataset_name === 'string') {
-    filters.dataset_names = [filters.dataset_name];
-    delete filters.dataset_name;
-  }
-  if (filters && typeof filters.model_class === 'string') {
-    filters.model_classes = [filters.model_class];
-    delete filters.model_class;
-  }
-  return state;
-}
-
-function loadSession(): InspectorSessionState | null {
-  try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
-    if (!stored) return null;
-
-    const parsed: InspectorSessionState = JSON.parse(stored);
-
-    if (Date.now() - parsed.savedAt > SESSION_MAX_AGE_MS) {
-      sessionStorage.removeItem(STORAGE_KEY);
-      return null;
-    }
-
-    return migrateSession(parsed);
-  } catch {
-    return null;
-  }
-}
-
-function persistSession(state: InspectorSessionState): void {
-  try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch { /* ignore */ }
-}
-
-// ============= Context =============
-
-const InspectorSessionContext = createContext<InspectorSessionContextValue | null>(null);
+const inspectorSessionStorage: InspectorSessionStorage = createClientStoragePersistenceStorage(
+  clientStorageKeys.inspectorSessionState,
+);
 
 // ============= Provider =============
 
@@ -126,37 +47,18 @@ export function InspectorSessionProvider({ children }: { children: ReactNode }) 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    sessionRef.current = loadSession();
+    sessionRef.current = readInspectorSessionState(inspectorSessionStorage);
   }, []);
 
   const getSession = useCallback((): InspectorSessionState | null => {
     if (!sessionRef.current) {
-      sessionRef.current = loadSession();
+      sessionRef.current = readInspectorSessionState(inspectorSessionStorage);
     }
     return sessionRef.current;
   }, []);
 
   const saveSession = useCallback((state: Partial<InspectorSessionState>) => {
-    const current = sessionRef.current || {
-      filters: {},
-      groupMode: 'by_variable' as GroupMode,
-      groupBy: 'model_class' as GroupByVariable,
-      rangeConfig: null,
-      topKConfig: null,
-      expressionConfig: null,
-      scoreColumn: 'cv_val_score' as ScoreColumn,
-      partition: 'val',
-      panelStates: {},
-      layoutMode: 'auto' as LayoutMode,
-      savedAt: Date.now(),
-    };
-
-    const newState: InspectorSessionState = {
-      ...current,
-      ...state,
-      savedAt: Date.now(),
-    };
-
+    const newState = mergeInspectorSessionState(sessionRef.current, state);
     sessionRef.current = newState;
     setHasSession(true);
 
@@ -164,14 +66,14 @@ export function InspectorSessionProvider({ children }: { children: ReactNode }) 
       clearTimeout(debounceRef.current);
     }
     debounceRef.current = setTimeout(() => {
-      persistSession(newState);
+      writeInspectorSessionState(inspectorSessionStorage, newState);
     }, 500);
   }, []);
 
   const clearSession = useCallback(() => {
     sessionRef.current = null;
     setHasSession(false);
-    sessionStorage.removeItem(STORAGE_KEY);
+    clearInspectorSessionState(inspectorSessionStorage);
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
@@ -179,7 +81,7 @@ export function InspectorSessionProvider({ children }: { children: ReactNode }) 
 
   // State (not a render-time storage read): updated by save/clear so
   // consumers see session lifecycle changes (FE-10-state).
-  const [hasSession, setHasSession] = useState<boolean>(() => loadSession() !== null);
+  const [hasSession, setHasSession] = useState<boolean>(() => readInspectorSessionState(inspectorSessionStorage) !== null);
 
   const value = useMemo<InspectorSessionContextValue>(() => ({
     getSession,
@@ -193,18 +95,4 @@ export function InspectorSessionProvider({ children }: { children: ReactNode }) 
       {children}
     </InspectorSessionContext.Provider>
   );
-}
-
-// ============= Hooks =============
-
-export function useInspectorSession(): InspectorSessionContextValue {
-  const context = useContext(InspectorSessionContext);
-  if (!context) {
-    throw new Error('useInspectorSession must be used within an InspectorSessionProvider');
-  }
-  return context;
-}
-
-export function useInspectorSessionOptional(): InspectorSessionContextValue | null {
-  return useContext(InspectorSessionContext);
 }

@@ -165,6 +165,7 @@ export interface PartitionDataset {
   yTrue: number[];
   yPred: number[];
   nSamples: number;
+  sampleIds?: Array<string | number>;
   sampleMetadata?: ViewerSampleMetadata | null;
 }
 

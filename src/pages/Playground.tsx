@@ -7,7 +7,6 @@
  * - Real-time pipeline execution with caching
  * - Workspace dataset loading
  * - Export to Pipeline Editor and JSON/CSV
- * - Step comparison mode
  * - Fold visualization for cross-validation
  * - Phase 6: Keyboard shortcuts, saved selections, render optimization
  */
@@ -16,31 +15,39 @@ import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { PlaygroundSidebar, MainCanvas, KeyboardShortcutsHelp } from '@/components/playground';
-import { SelectionProvider } from '@/context/SelectionContext';
-import { PlaygroundViewProvider, usePlaygroundView } from '@/context/PlaygroundViewContext';
-import { FilterProvider } from '@/context/FilterContext';
-import { ReferenceDatasetProvider } from '@/context/ReferenceDatasetContext';
-import { OutliersProvider } from '@/context/OutliersContext';
-import {
-  type PlaygroundSessionState,
-} from '@/context/PlaygroundSessionContext';
-import { NodeRegistryProvider, PipelineEditorPreferencesProvider } from '@/components/pipeline-editor/contexts';
-import { useSpectralData, type WorkspaceDatasetInfo } from '@/hooks/useSpectralData';
+import { useSpectralData } from '@/hooks/useSpectralData';
 import { usePlaygroundPipeline } from '@/hooks/usePlaygroundPipeline';
 import { usePrefetchOperators } from '@/hooks/usePlaygroundQuery';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
-import type { PartitionKey } from '@/types/datasets';
+import { buildPlaygroundDataView } from '@/lib/playground/dataView';
 import {
-  exportToPipelineEditor,
+  clientStorageKeys,
+  readClientStorageString,
+  removeClientStorageItem,
+  writeClientStorageJson,
+} from '@/lib/clientStorage';
+import { exportSpectraToCsv } from '@/lib/playground/export';
+import {
   prepareExportToPipelineEditor,
   importFromPipelineEditor,
   getPlaygroundExportData,
   clearPlaygroundExportData,
 } from '@/lib/playground/operatorFormat';
+import {
+  PLAYGROUND_PIPELINE_JSON_FILENAME,
+  buildPlaygroundPipelineJsonExportPayload,
+  buildPlaygroundSessionStatePayload,
+  chartVisibilityToExecuteOptions,
+  formatPlaygroundPipelineEditorExportName,
+  formatPlaygroundPipelineJsonExportDescription,
+  parsePipelineEditorImportData,
+  parsePlaygroundRouteAction,
+  parseStoredPlaygroundSessionState,
+  shouldClearOwnPlaygroundExportData,
+} from '@/lib/playground/playgroundRouteData';
 import type { OperatorDefinition } from '@/types/playground';
-
-const PLAYGROUND_SESSION_STORAGE_KEY = 'playground-session-state';
+import { PlaygroundProviders } from './PlaygroundProviders';
+import { PlaygroundContent } from './PlaygroundSections';
 
 export default function Playground() {
   const navigate = useNavigate();
@@ -75,11 +82,84 @@ export default function Playground() {
     setChartVisibility(prev => ({ ...prev, [chart]: !prev[chart] }));
   }, []);
 
+  const [selectedSourceIndex, setSelectedSourceIndex] = useState<number | null>(null);
+  const [selectedTargetIndex, setSelectedTargetIndex] = useState<number | null>(null);
+  const datasetSelectionKey = currentDatasetInfo
+    ? `${currentDatasetInfo.datasetId}:${currentDatasetInfo.partition}`
+    : dataSource;
+  const previousDatasetSelectionKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (previousDatasetSelectionKeyRef.current === datasetSelectionKey) {
+      return;
+    }
+    previousDatasetSelectionKeyRef.current = datasetSelectionKey;
+    setSelectedSourceIndex(null);
+    setSelectedTargetIndex(null);
+  }, [datasetSelectionKey]);
+
+  const playgroundDatasetInfo = useMemo(() => {
+    if (!currentDatasetInfo) {
+      return null;
+    }
+
+    return {
+      ...currentDatasetInfo,
+      selectedSourceIndex,
+      selectedTargetIndex,
+      onSelectedSourceIndexChange: setSelectedSourceIndex,
+      onSelectedTargetIndexChange: setSelectedTargetIndex,
+    };
+  }, [currentDatasetInfo, selectedSourceIndex, selectedTargetIndex]);
+  const loadedDatasetViewKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!currentDatasetInfo || dataSource !== 'workspace') {
+      loadedDatasetViewKeyRef.current = null;
+      return;
+    }
+
+    const sourceIndex = selectedSourceIndex ?? 0;
+    const targetIndex = selectedTargetIndex ?? 0;
+    const viewKey = `${currentDatasetInfo.datasetId}:${currentDatasetInfo.partition}:${sourceIndex}:${targetIndex}`;
+
+    if (selectedSourceIndex === null && selectedTargetIndex === null) {
+      loadedDatasetViewKeyRef.current = viewKey;
+      return;
+    }
+    if (loadedDatasetViewKeyRef.current === viewKey) {
+      return;
+    }
+
+    loadedDatasetViewKeyRef.current = viewKey;
+    void loadFromWorkspace(
+      currentDatasetInfo.datasetId,
+      currentDatasetInfo.datasetName,
+      currentDatasetInfo.partition,
+      {
+        trainSamples: currentDatasetInfo.trainSamples,
+        testSamples: currentDatasetInfo.testSamples,
+        schemaRef: currentDatasetInfo.schemaRef,
+      },
+      { sourceIndex, targetIndex },
+    );
+  }, [
+    currentDatasetInfo,
+    dataSource,
+    loadFromWorkspace,
+    selectedSourceIndex,
+    selectedTargetIndex,
+  ]);
+
   // Derive execute options from chart visibility — skip PCA/repetitions when hidden
-  const visibilityExecuteOptions = useMemo(() => ({
-    compute_pca: chartVisibility.pca,
-    compute_repetitions: chartVisibility.repetitions,
-  }), [chartVisibility.pca, chartVisibility.repetitions]);
+  const { pca: pcaChartVisible, repetitions: repetitionsChartVisible } = chartVisibility;
+  const visibilityExecuteOptions = useMemo(
+    () => chartVisibilityToExecuteOptions({
+      pca: pcaChartVisible,
+      repetitions: repetitionsChartVisible,
+    }),
+    [pcaChartVisible, repetitionsChartVisible]
+  );
 
   // Pipeline with backend integration
   const {
@@ -88,7 +168,6 @@ export default function Playground() {
     isProcessing,
     isFetching,
     isDebouncing,
-    executionError,
     addOperator,
     addOperatorByName,
     removeOperator,
@@ -102,13 +181,6 @@ export default function Playground() {
     canUndo,
     canRedo,
     hasSplitter,
-    refetch,
-    // Step comparison mode
-    stepComparisonEnabled,
-    setStepComparisonEnabled,
-    activeStep,
-    setActiveStep,
-    maxSteps,
     computeUmap,
     setComputeUmap,
     isUmapLoading,
@@ -122,6 +194,8 @@ export default function Playground() {
     },
     datasetId: currentDatasetInfo?.datasetId,
     datasetPartition: currentDatasetInfo?.partition,
+    datasetSourceIndex: currentDatasetInfo ? selectedSourceIndex : null,
+    datasetTargetIndex: currentDatasetInfo ? selectedTargetIndex : null,
     executeOptions: visibilityExecuteOptions,
   });
 
@@ -129,6 +203,11 @@ export default function Playground() {
   const handleAddOperator = useCallback((definition: OperatorDefinition) => {
     addOperator(definition);
   }, [addOperator]);
+
+  const dataView = useMemo(
+    () => buildPlaygroundDataView(rawData, result, currentDatasetInfo?.schemaRef),
+    [currentDatasetInfo?.schemaRef, rawData, result]
+  );
 
   // ============= Export Handlers =============
 
@@ -139,10 +218,10 @@ export default function Playground() {
       return;
     }
 
-    // Prepare export data and store in sessionStorage
+    // Prepare export data for the Pipeline Editor handoff.
     const exportData = prepareExportToPipelineEditor(
       operators,
-      `Playground Export ${new Date().toLocaleDateString()}`
+      formatPlaygroundPipelineEditorExportName()
     );
 
     toast.success('Pipeline exported', {
@@ -155,17 +234,7 @@ export default function Playground() {
 
   // Export pipeline as JSON download
   const handleExportPipelineJson = useCallback(() => {
-    const editorSteps = exportToPipelineEditor(operators);
-
-    const exportData = {
-      name: 'Playground Export',
-      description: 'Exported from Playground',
-      pipeline: editorSteps.map(step => ({
-        [step.type === 'splitting' ? 'split' : 'preprocessing']: step.name,
-        ...step.params,
-      })),
-      exported_at: new Date().toISOString(),
-    };
+    const exportData = buildPlaygroundPipelineJsonExportPayload(operators);
 
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: 'application/json',
@@ -173,126 +242,108 @@ export default function Playground() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'playground-pipeline.json';
+    a.download = PLAYGROUND_PIPELINE_JSON_FILENAME;
     a.click();
     URL.revokeObjectURL(url);
 
     toast.success('Pipeline exported', {
-      description: `${operators.length} operators saved to playground-pipeline.json`,
+      description: formatPlaygroundPipelineJsonExportDescription(operators.length),
     });
   }, [operators]);
 
   // Export processed data as CSV
   const handleExportDataCsv = useCallback(() => {
-    if (!result?.processed?.spectra || !result.processed.wavelengths) {
+    if (!dataView.processedSpectraExport) {
       toast.warning('No processed data to export');
       return;
     }
 
-    const { spectra, wavelengths } = result.processed;
-    const yValues = rawData?.y ?? [];
-    const sampleIds = rawData?.sampleIds ?? [];
-
-    // Build CSV header
-    const hasY = yValues.length === spectra.length;
-    const hasSampleIds = sampleIds.length === spectra.length;
-
-    const headers: string[] = [];
-    if (hasSampleIds) headers.push('sample_id');
-    headers.push(...wavelengths.map(w => String(w)));
-    if (hasY) headers.push('target');
-
-    // Build CSV rows
-    const rows = spectra.map((spectrum, idx) => {
-      const row: (string | number)[] = [];
-      if (hasSampleIds) row.push(sampleIds[idx]);
-      row.push(...spectrum.map(v => v.toFixed(6)));
-      if (hasY) row.push(yValues[idx]);
-      return row.join(',');
+    const exportResult = exportSpectraToCsv(dataView.processedSpectraExport, {
+      filename: 'processed-spectra',
+      includeTimestamp: false,
     });
 
-    const csv = [headers.join(','), ...rows].join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'processed-spectra.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+    if (!exportResult.success) {
+      toast.error('Data export failed', {
+        description: exportResult.error ?? 'Unable to export processed spectra',
+      });
+      return;
+    }
 
     toast.success('Data exported', {
-      description: `${spectra.length} samples × ${wavelengths.length} wavelengths saved to CSV`,
+      description: `${dataView.processedSampleCount} samples × ${dataView.processedFeatureCount} wavelengths saved to CSV`,
     });
-  }, [result, rawData]);
+  }, [dataView]);
 
   // ============= Import Handler =============
 
   // Import from Pipeline Editor (via URL params)
   const handleImportFromPipelineEditor = useCallback(() => {
-    // Check if there's data to import from sessionStorage (reverse flow)
+    // Check if there's data to import from the reverse Playground export flow.
     const importData = getPlaygroundExportData();
-    if (importData && importData.source === 'playground') {
+    if (shouldClearOwnPlaygroundExportData(importData)) {
       // This is our own export data, clear it
       clearPlaygroundExportData();
       return;
     }
 
     // Check for pipeline-editor key (different from playground export)
-    const editorData = sessionStorage.getItem('pipeline-editor-export-to-playground');
-    if (editorData) {
-      try {
-        const parsed = JSON.parse(editorData);
-        if (parsed.steps && Array.isArray(parsed.steps)) {
-          const { operators: importedOps, warnings } = importFromPipelineEditor(parsed.steps);
-
-          // Clear pipeline and add imported operators
-          clearPipeline();
-          importedOps.forEach(op => {
-            addOperatorByName(op.name, op.type, op.params);
-          });
-
-          // Show warnings if any
-          if (warnings.length > 0) {
-            toast.warning('Some steps were skipped', {
-              description: warnings.slice(0, 2).join('. '),
-            });
-          } else {
-            toast.success('Pipeline imported', {
-              description: `${importedOps.length} operators added from Pipeline Editor`,
-            });
-          }
-
-          // Clear the import data
-          sessionStorage.removeItem('pipeline-editor-export-to-playground');
-        }
-      } catch (e) {
-        toast.error('Failed to import pipeline', {
-          description: e instanceof Error ? e.message : 'Invalid format',
-        });
-      }
-    } else {
+    const editorData = readClientStorageString(clientStorageKeys.pipelineEditorExportToPlayground);
+    const importResult = parsePipelineEditorImportData(editorData);
+    if (importResult.status === 'missing') {
       toast.info('Import from Pipeline Editor', {
         description: 'Open a pipeline in the Pipeline Editor and use "Send to Playground" to import it here.',
       });
+      return;
     }
+
+    if (importResult.status === 'invalid') {
+      toast.error('Failed to import pipeline', {
+        description: importResult.error instanceof Error ? importResult.error.message : 'Invalid format',
+      });
+      return;
+    }
+
+    if (importResult.status === 'unsupported') {
+      return;
+    }
+
+    const { operators: importedOps, warnings } = importFromPipelineEditor(importResult.steps);
+
+    // Clear pipeline and add imported operators
+    clearPipeline();
+    importedOps.forEach(op => {
+      addOperatorByName(op.name, op.type, op.params);
+    });
+
+    // Show warnings if any
+    if (warnings.length > 0) {
+      toast.warning('Some steps were skipped', {
+        description: warnings.slice(0, 2).join('. '),
+      });
+    } else {
+      toast.success('Pipeline imported', {
+        description: `${importedOps.length} operators added from Pipeline Editor`,
+      });
+    }
+
+    // Clear the import data
+    removeClientStorageItem(clientStorageKeys.pipelineEditorExportToPlayground);
   }, [clearPipeline, addOperatorByName]);
 
   // Check for import data or incoming dataset selection on mount
   useEffect(() => {
-    const source = searchParams.get('source');
-    const incomingDatasetId = searchParams.get('datasetId');
-    const incomingDatasetName = searchParams.get('datasetName');
+    const routeAction = parsePlaygroundRouteAction(searchParams);
 
-    if (incomingDatasetId && incomingDatasetName) {
+    if (routeAction.type === 'load-workspace-dataset') {
       // URL-provided dataset wins over any persisted session state.
       sessionRestoredRef.current = true;
-      loadFromWorkspace(incomingDatasetId, incomingDatasetName);
+      loadFromWorkspace(routeAction.datasetId, routeAction.datasetName);
       navigate('/playground', { replace: true });
       return;
     }
 
-    if (source === 'pipeline-editor') {
+    if (routeAction.type === 'import-from-pipeline-editor') {
       handleImportFromPipelineEditor();
       // Clean up URL
       navigate('/playground', { replace: true });
@@ -337,72 +388,59 @@ export default function Playground() {
   useEffect(() => {
     if (sessionRestoredRef.current) return;
 
-    const stored = sessionStorage.getItem(PLAYGROUND_SESSION_STORAGE_KEY);
-    if (!stored) return;
+    const stored = readClientStorageString(clientStorageKeys.playgroundSessionState);
+    const restoreResult = parseStoredPlaygroundSessionState(stored);
 
-    try {
-      const session: PlaygroundSessionState = JSON.parse(stored);
+    if (restoreResult.status === 'missing') return;
 
-      // Check if session is still valid (not older than 24 hours)
-      if (Date.now() - session.savedAt > 24 * 60 * 60 * 1000) {
-        sessionStorage.removeItem(PLAYGROUND_SESSION_STORAGE_KEY);
-        return;
-      }
-
-      sessionRestoredRef.current = true;
-
-      // Restore view preferences
-      if (session.chartVisibility) {
-        setChartVisibility(session.chartVisibility);
-      }
-      if (session.renderMode) {
-        setRenderMode(session.renderMode);
-      }
-      if (session.stepComparisonEnabled !== undefined) {
-        setStepComparisonEnabled(session.stepComparisonEnabled);
-      }
-      if (session.activeStep !== undefined) {
-        setActiveStep(session.activeStep);
-      }
-
-      // Restore dataset
-      if (session.datasetId && session.datasetName && session.dataSource === 'workspace') {
-        loadFromWorkspace(session.datasetId, session.datasetName);
-      } else if (session.dataSource === 'demo') {
-        loadDemoData();
-      }
-    } catch (e) {
-      console.warn('Failed to restore playground session:', e);
-      sessionStorage.removeItem(PLAYGROUND_SESSION_STORAGE_KEY);
+    if (restoreResult.status === 'expired') {
+      removeClientStorageItem(clientStorageKeys.playgroundSessionState);
+      return;
     }
-  }, [loadFromWorkspace, loadDemoData, setStepComparisonEnabled, setActiveStep]);
+
+    if (restoreResult.status === 'invalid') {
+      console.warn('Failed to restore playground session:', restoreResult.error);
+      removeClientStorageItem(clientStorageKeys.playgroundSessionState);
+      return;
+    }
+
+    const { session } = restoreResult;
+    sessionRestoredRef.current = true;
+
+    // Restore view preferences
+    if (session.chartVisibility) {
+      setChartVisibility(session.chartVisibility);
+    }
+    if (session.renderMode) {
+      setRenderMode(session.renderMode);
+    }
+    // Restore dataset
+    if (session.datasetId && session.datasetName && session.dataSource === 'workspace') {
+      loadFromWorkspace(session.datasetId, session.datasetName);
+    } else if (session.dataSource === 'demo') {
+      loadDemoData();
+    }
+  }, [loadFromWorkspace, loadDemoData]);
 
   // Persist session on state changes
   useEffect(() => {
     const timeout = setTimeout(() => {
-      const session: PlaygroundSessionState = {
+      const session = buildPlaygroundSessionStatePayload({
         datasetId: currentDatasetInfo?.datasetId || null,
         datasetName: currentDatasetInfo?.datasetName || null,
         dataSource: dataSource,
-        operators: [],
         chartVisibility,
         renderMode,
-        stepComparisonEnabled,
-        activeStep,
-        savedAt: Date.now(),
-      };
-      sessionStorage.setItem(PLAYGROUND_SESSION_STORAGE_KEY, JSON.stringify(session));
+      });
+      writeClientStorageJson(clientStorageKeys.playgroundSessionState, session);
     }, 500);
 
     return () => clearTimeout(timeout);
   }, [
     currentDatasetInfo,
     dataSource,
-    operators,
     chartVisibility,
     renderMode,
-    stepComparisonEnabled,
-    activeStep,
   ]);
 
   // ============= Filter to Selection Handler =============
@@ -432,384 +470,66 @@ export default function Playground() {
 
   return (
     <MlLoadingOverlay>
-    <PipelineEditorPreferencesProvider>
-      <NodeRegistryProvider>
-        <PlaygroundViewProvider>
-          <SelectionProvider>
-            <FilterProvider>
-              <OutliersProvider>
-                <ReferenceDatasetProvider primaryData={rawData} operators={operators}>
-                  <PlaygroundContent
-                    // Data
-                    rawData={rawData}
-                    dataLoading={dataLoading}
-                    dataError={dataError}
-                    dataSource={dataSource}
-                    currentDatasetInfo={currentDatasetInfo}
-                    // Data handlers
-                    loadDemoData={loadDemoData}
-                    loadFromWorkspace={loadFromWorkspace}
-                    clearData={clearData}
-                    // Dataset selector
-                    showDatasetSelector={showDatasetSelector}
-                    onToggleDatasetSelector={handleToggleDatasetSelector}
-                    // Pipeline state
-                    operators={operators}
-                    result={result}
-                    isProcessing={isProcessing}
-                    isFetching={isFetching}
-                    isDebouncing={isDebouncing}
-                    hasSplitter={hasSplitter}
-                    canUndo={canUndo}
-                    canRedo={canRedo}
-                    // Pipeline handlers
-                    addOperator={handleAddOperator}
-                    updateOperator={updateOperator}
-                    updateOperatorParams={updateOperatorParams}
-                    removeOperator={removeOperator}
-                    toggleOperator={toggleOperator}
-                    reorderOperators={reorderOperators}
-                    clearPipeline={clearPipeline}
-                    undo={undo}
-                    redo={redo}
-                    // Step comparison
-                    stepComparisonEnabled={stepComparisonEnabled}
-                    setStepComparisonEnabled={setStepComparisonEnabled}
-                    activeStep={activeStep}
-                    setActiveStep={setActiveStep}
-                    // UMAP
-                    computeUmap={computeUmap}
-                    setComputeUmap={setComputeUmap}
-                    isUmapLoading={isUmapLoading}
-                    chartLoadingStates={chartLoadingStates}
-                    subsetMode={subsetMode}
-                    setSubsetMode={setSubsetMode}
-                    // Export handlers
-                    exportToPipelineEditor={operators.length > 0 ? handleExportToPipelineEditor : undefined}
-                    exportPipelineJson={operators.length > 0 ? handleExportPipelineJson : undefined}
-                    exportDataCsv={result?.processed?.spectra ? handleExportDataCsv : undefined}
-                    importPipeline={handleImportFromPipelineEditor}
-                    // Filter
-                    filterToSelection={handleFilterToSelection}
-                    addOperatorByName={addOperatorByName}
-                    // Shortcuts state
-                    showShortcutsHelp={showShortcutsHelp}
-                    setShowShortcutsHelp={setShowShortcutsHelp}
-                    renderMode={renderMode}
-                    setRenderMode={setRenderMode}
-                    chartVisibility={chartVisibility}
-                    toggleChartVisibility={toggleChartVisibility}
-                    selectedSample={selectedSample}
-                    setSelectedSample={setSelectedSample}
-                  />
-                </ReferenceDatasetProvider>
-              </OutliersProvider>
-            </FilterProvider>
-          </SelectionProvider>
-        </PlaygroundViewProvider>
-      </NodeRegistryProvider>
-    </PipelineEditorPreferencesProvider>
+      <PlaygroundProviders primaryData={rawData} operators={operators}>
+        <PlaygroundContent
+          // Data
+          rawData={rawData}
+          dataLoading={dataLoading}
+          dataError={dataError}
+          dataSource={dataSource}
+          currentDatasetInfo={playgroundDatasetInfo}
+          // Data handlers
+          loadDemoData={loadDemoData}
+          loadFromWorkspace={loadFromWorkspace}
+          clearData={clearData}
+          // Dataset selector
+          showDatasetSelector={showDatasetSelector}
+          onToggleDatasetSelector={handleToggleDatasetSelector}
+          // Pipeline state
+          operators={operators}
+          result={result}
+          isProcessing={isProcessing}
+          isFetching={isFetching}
+          isDebouncing={isDebouncing}
+          hasSplitter={hasSplitter}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          // Pipeline handlers
+          addOperator={handleAddOperator}
+          updateOperator={updateOperator}
+          updateOperatorParams={updateOperatorParams}
+          removeOperator={removeOperator}
+          toggleOperator={toggleOperator}
+          reorderOperators={reorderOperators}
+          clearPipeline={clearPipeline}
+          undo={undo}
+          redo={redo}
+          // UMAP
+          computeUmap={computeUmap}
+          setComputeUmap={setComputeUmap}
+          isUmapLoading={isUmapLoading}
+          chartLoadingStates={chartLoadingStates}
+          subsetMode={subsetMode}
+          setSubsetMode={setSubsetMode}
+          // Export handlers
+          exportToPipelineEditor={operators.length > 0 ? handleExportToPipelineEditor : undefined}
+          exportPipelineJson={operators.length > 0 ? handleExportPipelineJson : undefined}
+          exportDataCsv={dataView.processedSpectraExport ? handleExportDataCsv : undefined}
+          importPipeline={handleImportFromPipelineEditor}
+          // Filter
+          filterToSelection={handleFilterToSelection}
+          addOperatorByName={addOperatorByName}
+          // Shortcuts state
+          showShortcutsHelp={showShortcutsHelp}
+          setShowShortcutsHelp={setShowShortcutsHelp}
+          renderMode={renderMode}
+          setRenderMode={setRenderMode}
+          chartVisibility={chartVisibility}
+          toggleChartVisibility={toggleChartVisibility}
+          selectedSample={selectedSample}
+          setSelectedSample={setSelectedSample}
+        />
+      </PlaygroundProviders>
     </MlLoadingOverlay>
-  );
-}
-
-// ============= Inner Component (uses SelectionContext) =============
-
-interface PlaygroundContentProps {
-  rawData: ReturnType<typeof useSpectralData>['rawData'];
-  dataLoading: boolean;
-  dataError: ReturnType<typeof useSpectralData>['error'];
-  dataSource: ReturnType<typeof useSpectralData>['dataSource'];
-  currentDatasetInfo: ReturnType<typeof useSpectralData>['currentDatasetInfo'];
-  loadDemoData: ReturnType<typeof useSpectralData>['loadDemoData'];
-  loadFromWorkspace: ReturnType<typeof useSpectralData>['loadFromWorkspace'];
-  clearData: ReturnType<typeof useSpectralData>['clearData'];
-  showDatasetSelector: boolean;
-  onToggleDatasetSelector: () => void;
-  operators: ReturnType<typeof usePlaygroundPipeline>['operators'];
-  result: ReturnType<typeof usePlaygroundPipeline>['result'];
-  isProcessing: boolean;
-  isFetching: boolean;
-  isDebouncing: boolean;
-  hasSplitter: boolean;
-  canUndo: boolean;
-  canRedo: boolean;
-  addOperator: (definition: OperatorDefinition) => void;
-  updateOperator: ReturnType<typeof usePlaygroundPipeline>['updateOperator'];
-  updateOperatorParams: ReturnType<typeof usePlaygroundPipeline>['updateOperatorParams'];
-  removeOperator: ReturnType<typeof usePlaygroundPipeline>['removeOperator'];
-  toggleOperator: ReturnType<typeof usePlaygroundPipeline>['toggleOperator'];
-  reorderOperators: ReturnType<typeof usePlaygroundPipeline>['reorderOperators'];
-  clearPipeline: ReturnType<typeof usePlaygroundPipeline>['clearPipeline'];
-  undo: ReturnType<typeof usePlaygroundPipeline>['undo'];
-  redo: ReturnType<typeof usePlaygroundPipeline>['redo'];
-  stepComparisonEnabled: boolean;
-  setStepComparisonEnabled: (enabled: boolean) => void;
-  activeStep: number;
-  setActiveStep: (step: number) => void;
-  computeUmap: boolean;
-  setComputeUmap: (compute: boolean) => void;
-  isUmapLoading: boolean;
-  chartLoadingStates: ReturnType<typeof usePlaygroundPipeline>['chartLoadingStates'];
-  subsetMode: 'all' | 'visible';
-  setSubsetMode: (mode: 'all' | 'visible') => void;
-  exportToPipelineEditor?: () => void;
-  exportPipelineJson?: () => void;
-  exportDataCsv?: () => void;
-  importPipeline: () => void;
-  filterToSelection: (indices: number[]) => void;
-  addOperatorByName: ReturnType<typeof usePlaygroundPipeline>['addOperatorByName'];
-  showShortcutsHelp: boolean;
-  setShowShortcutsHelp: (show: boolean) => void;
-  renderMode: RenderMode;
-  setRenderMode: (mode: RenderMode) => void;
-  chartVisibility: { spectra: boolean; histogram: boolean; pca: boolean; folds: boolean; repetitions: boolean };
-  toggleChartVisibility: (chart: 'spectra' | 'histogram' | 'pca' | 'folds' | 'repetitions') => void;
-  selectedSample: number | null;
-  setSelectedSample: (sample: number | null) => void;
-}
-
-import { usePlaygroundShortcuts } from '@/hooks/usePlaygroundShortcuts';
-import { usePlaygroundReset } from '@/hooks/usePlaygroundReset';
-import { useOutliers } from '@/context/OutliersContext';
-
-function PlaygroundContent({
-  rawData,
-  dataLoading,
-  dataError,
-  dataSource,
-  currentDatasetInfo,
-  loadDemoData,
-  loadFromWorkspace,
-  clearData,
-  showDatasetSelector,
-  onToggleDatasetSelector,
-  operators,
-  result,
-  isProcessing,
-  isFetching,
-  isDebouncing,
-  hasSplitter,
-  canUndo,
-  canRedo,
-  addOperator,
-  updateOperator,
-  updateOperatorParams,
-  removeOperator,
-  toggleOperator,
-  reorderOperators,
-  clearPipeline,
-  undo,
-  redo,
-  stepComparisonEnabled,
-  setStepComparisonEnabled,
-  activeStep,
-  setActiveStep,
-  computeUmap,
-  setComputeUmap,
-  isUmapLoading,
-  chartLoadingStates,
-  subsetMode,
-  setSubsetMode,
-  exportToPipelineEditor,
-  exportPipelineJson,
-  exportDataCsv,
-  importPipeline,
-  filterToSelection,
-  showShortcutsHelp,
-  setShowShortcutsHelp,
-  renderMode,
-  setRenderMode,
-  chartVisibility,
-  toggleChartVisibility,
-  selectedSample,
-  setSelectedSample,
-}: PlaygroundContentProps) {
-  // View context — needed to sync keyboard shortcut chart toggles with the view state
-  const viewContext = usePlaygroundView();
-
-  const resetPipelineForDatasetChange = useCallback(() => {
-    if (operators.length > 0) {
-      clearPipeline();
-    }
-    setStepComparisonEnabled(false);
-    setActiveStep(0);
-  }, [operators.length, clearPipeline, setStepComparisonEnabled, setActiveStep]);
-
-  const handleLoadDemoData = useCallback(() => {
-    resetPipelineForDatasetChange();
-    loadDemoData();
-  }, [resetPipelineForDatasetChange, loadDemoData]);
-
-  const handleLoadFromWorkspace = useCallback((
-    datasetId: string,
-    datasetName: string,
-    partition?: PartitionKey,
-    datasetInfo?: Pick<WorkspaceDatasetInfo, 'trainSamples' | 'testSamples'>,
-  ) => {
-    resetPipelineForDatasetChange();
-    loadFromWorkspace(datasetId, datasetName, partition, datasetInfo);
-  }, [resetPipelineForDatasetChange, loadFromWorkspace]);
-
-  const handleClearData = useCallback(() => {
-    resetPipelineForDatasetChange();
-    clearData();
-  }, [resetPipelineForDatasetChange, clearData]);
-
-  // Phase 8: Outliers context for mark-as-outliers functionality
-  const { toggleOutliers, setDetectedOutliers, clearDetectedOutliers } = useOutliers();
-
-  // Feed tagged samples from filter "tag" mode into OutliersContext
-  useEffect(() => {
-    const taggedSamples = result?.filterInfo?.tagged_samples;
-    if (taggedSamples && Object.keys(taggedSamples).length > 0) {
-      const allTagged = Object.values(taggedSamples).flat();
-      setDetectedOutliers(allTagged);
-    } else {
-      clearDetectedOutliers();
-    }
-  }, [result?.filterInfo?.tagged_samples, setDetectedOutliers, clearDetectedOutliers]);
-
-  // Phase 8: Playground reset hook
-  const { resetPlayground, hasStateToReset } = usePlaygroundReset({
-    onResetStepComparison: () => {
-      setStepComparisonEnabled(false);
-      setActiveStep(0);
-    },
-  });
-
-  // Handle mark as outliers (Ctrl+O)
-  const handleMarkAsOutliers = useCallback((indices: number[]) => {
-    toggleOutliers(indices);
-    toast.success(`Toggled ${indices.length} sample${indices.length !== 1 ? 's' : ''} as outliers`);
-  }, [toggleOutliers]);
-
-  // Handle reset playground
-  const handleResetPlayground = useCallback(() => {
-    resetPlayground();
-    toast.success('Playground reset', {
-      description: 'All selections, filters, and settings have been cleared',
-    });
-  }, [resetPlayground]);
-
-  // Use the centralized keyboard shortcuts hook (now inside SelectionProvider)
-  const { shortcutsByCategory } = usePlaygroundShortcuts({
-    totalSamples: rawData?.spectra?.length ?? 0,
-    onUndo: undo,
-    onRedo: redo,
-    onClearPipeline: () => {
-      if (operators.length > 0) {
-        toast.warning(`Clear all ${operators.length} operators?`, {
-          action: { label: 'Clear', onClick: clearPipeline },
-          duration: 5000,
-        });
-      }
-    },
-    onSaveSelection: () => toast.info('Save Selection: Use toolbar button'),
-    onExportPng: () => toast.info('Export PNG: Use Export menu'),
-    onExportData: () => toast.info('Export Data: Use Export menu'),
-    onToggleChart: (index: number) => {
-      const charts = ['spectra', 'histogram', 'pca', 'folds', 'repetitions'] as const;
-      if (index >= 0 && index < charts.length) {
-        toggleChartVisibility(charts[index]);
-        viewContext.toggleChart(charts[index]);
-      }
-    },
-    onShowHelp: () => setShowShortcutsHelp(true),
-    onMarkAsOutliers: handleMarkAsOutliers,
-    onResetPlayground: handleResetPlayground,
-    canUndo,
-    canRedo,
-  });
-
-  return (
-    <div className="h-full flex -m-6">
-      <PlaygroundSidebar
-        // Data
-        data={rawData}
-        isLoading={dataLoading}
-        error={dataError}
-        dataSource={dataSource}
-        currentDatasetInfo={currentDatasetInfo}
-
-        // Pipeline state
-        operators={operators}
-        hasSplitter={hasSplitter}
-        canUndo={canUndo}
-        canRedo={canRedo}
-
-        // Execution state
-        isProcessing={isProcessing}
-        isFetching={isFetching}
-        isDebouncing={isDebouncing}
-        executionTimeMs={result?.executionTimeMs}
-        stepErrors={result?.errors}
-        warnings={result?.warnings}
-        filterInfo={result?.filterInfo}
-
-        // Data handlers
-        onLoadDemo={handleLoadDemoData}
-        onLoadFromWorkspace={handleLoadFromWorkspace}
-        onClearData={handleClearData}
-
-        // Dataset selector
-        showDatasetSelector={showDatasetSelector}
-        onToggleDatasetSelector={onToggleDatasetSelector}
-
-        // Pipeline handlers
-        onAddOperator={addOperator}
-        onUpdateOperator={updateOperator}
-        onUpdateOperatorParams={updateOperatorParams}
-        onRemoveOperator={removeOperator}
-        onToggleOperator={toggleOperator}
-        onReorderOperators={reorderOperators}
-        onClearPipeline={clearPipeline}
-        onUndo={undo}
-        onRedo={redo}
-
-        // Export handlers
-        onExportToPipelineEditor={exportToPipelineEditor}
-        onExportPipelineJson={exportPipelineJson}
-        onExportDataCsv={exportDataCsv}
-        onImportPipeline={importPipeline}
-      />
-      <MainCanvas
-        rawData={rawData}
-        result={result}
-        isLoading={isProcessing}
-        isFetching={isFetching}
-        selectedSample={selectedSample}
-        onSelectSample={setSelectedSample}
-        operators={operators}
-        stepComparisonEnabled={stepComparisonEnabled}
-        onStepComparisonEnabledChange={setStepComparisonEnabled}
-        activeStep={activeStep}
-        onActiveStepChange={setActiveStep}
-        onFilterToSelection={filterToSelection}
-        computeUmap={computeUmap}
-        onComputeUmapChange={setComputeUmap}
-        isUmapLoading={isUmapLoading}
-        subsetMode={subsetMode}
-        onSubsetModeChange={setSubsetMode}
-        // Phase 6 props
-        renderMode={renderMode}
-        onRenderModeChange={setRenderMode}
-        datasetId={currentDatasetInfo?.datasetId ?? 'playground'}
-        // Phase 8 props
-        onResetPlayground={handleResetPlayground}
-        hasStateToReset={hasStateToReset}
-        // Sync execute options (compute_repetitions, compute_pca) when toolbar toggles a chart
-        onChartToggle={toggleChartVisibility}
-        // Granular chart loading
-        chartLoadingStates={chartLoadingStates}
-      />
-
-      {/* Phase 6: Keyboard shortcuts help dialog */}
-      <KeyboardShortcutsHelp
-        open={showShortcutsHelp}
-        onOpenChange={setShowShortcutsHelp}
-        shortcutsByCategory={shortcutsByCategory}
-      />
-    </div>
   );
 }

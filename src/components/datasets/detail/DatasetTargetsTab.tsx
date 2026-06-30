@@ -7,11 +7,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Target, RefreshCw, Loader2, AlertCircle } from "lucide-react";
 import { TargetHistogram } from "../charts";
-import { buildTargetHistogramData } from "../charts/TargetHistogram";
+import { buildTargetHistogramData } from "../charts/targetHistogramData";
 import { PartitionToggle } from "../PartitionToggle";
 import { getPartitionTheme } from "../partitionTheme";
 import { getDatasetTaskLabel } from "@/lib/datasetTask";
-import type { Dataset, PartitionKey, PreviewDataResponse, TargetDistribution } from "@/types/datasets";
+import {
+  formatClassPercentage,
+  formatTargetStatistic,
+  getDatasetTargetSampleCounts,
+  getEffectiveTargetDistribution,
+  getEffectiveTargetPartition,
+  getRegressionThreeSigmaRange,
+  hasDatasetTargets,
+  hasTargetTestPartition,
+} from "./DatasetTargetsTabData";
+import type { Dataset, PartitionKey, PreviewDataResponse } from "@/types/datasets";
 
 interface DatasetTargetsTabProps {
   dataset: Dataset;
@@ -29,23 +39,21 @@ export function DatasetTargetsTab({
   onRefresh,
 }: DatasetTargetsTabProps) {
   // Hooks must be called unconditionally before any early return.
-  const hasTargets = dataset.targets && dataset.targets.length > 0;
+  const hasTargets = hasDatasetTargets(dataset);
   const partitionMap = preview?.target_distribution_by_partition;
-  const trainCount = preview?.summary?.train_samples;
-  const testCount = preview?.summary?.test_samples;
-  const hasTest = !!partitionMap?.test || (testCount != null && testCount > 0);
+  const { trainCount, testCount } = getDatasetTargetSampleCounts(preview);
+  const hasTest = hasTargetTestPartition(partitionMap, testCount);
 
   const [partition, setPartition] = useState<PartitionKey>("all");
-  const effectivePartition: PartitionKey = !hasTest && partition !== "train" ? "train" : partition;
+  const effectivePartition = getEffectiveTargetPartition(partition, hasTest);
   const partitionTheme = getPartitionTheme(effectivePartition);
 
-  const distribution: TargetDistribution | undefined = useMemo(() => {
-    if (partitionMap) {
-      return partitionMap[effectivePartition] ?? partitionMap.train ?? preview?.target_distribution;
-    }
-    return preview?.target_distribution;
-  }, [partitionMap, effectivePartition, preview?.target_distribution]);
+  const distribution = useMemo(
+    () => getEffectiveTargetDistribution(preview, effectivePartition),
+    [preview, effectivePartition],
+  );
   const histogramData = useMemo(() => buildTargetHistogramData(distribution), [distribution]);
+  const regressionRange = useMemo(() => getRegressionThreeSigmaRange(distribution), [distribution]);
 
   if (loading) {
     return (
@@ -181,34 +189,33 @@ export function DatasetTargetsTab({
                       <div className="p-3 bg-muted/30 rounded-lg">
                         <p className="text-xs text-muted-foreground">Minimum</p>
                         <p className="font-mono font-medium text-lg">
-                          {distribution.min?.toFixed(3) || "--"}
+                          {formatTargetStatistic(distribution.min)}
                         </p>
                       </div>
                       <div className="p-3 bg-muted/30 rounded-lg">
                         <p className="text-xs text-muted-foreground">Maximum</p>
                         <p className="font-mono font-medium text-lg">
-                          {distribution.max?.toFixed(3) || "--"}
+                          {formatTargetStatistic(distribution.max)}
                         </p>
                       </div>
                       <div className="p-3 bg-muted/30 rounded-lg">
                         <p className="text-xs text-muted-foreground">Mean</p>
                         <p className="font-mono font-medium text-lg">
-                          {distribution.mean?.toFixed(3) || "--"}
+                          {formatTargetStatistic(distribution.mean)}
                         </p>
                       </div>
                       <div className="p-3 bg-muted/30 rounded-lg">
                         <p className="text-xs text-muted-foreground">Std Dev</p>
                         <p className="font-mono font-medium text-lg">
-                          {distribution.std?.toFixed(3) || "--"}
+                          {formatTargetStatistic(distribution.std)}
                         </p>
                       </div>
                     </div>
-                    {distribution.mean && distribution.std && (
+                    {regressionRange.isVisible && (
                       <div className="p-3 bg-muted/30 rounded-lg">
                         <p className="text-xs text-muted-foreground">Range (±3σ)</p>
                         <p className="font-mono font-medium">
-                          {(distribution.mean - 3 * distribution.std).toFixed(2)} to{" "}
-                          {(distribution.mean + 3 * distribution.std).toFixed(2)}
+                          {regressionRange.label}
                         </p>
                       </div>
                     )}
@@ -227,7 +234,7 @@ export function DatasetTargetsTab({
                         <div className="flex items-center gap-2">
                           <span className="font-mono">{count}</span>
                           <span className="text-xs text-muted-foreground">
-                            ({((count / Object.values(distribution.class_counts!).reduce((a, b) => a + b, 0)) * 100).toFixed(1)}%)
+                            ({formatClassPercentage(count, distribution.class_counts)}%)
                           </span>
                         </div>
                       </div>

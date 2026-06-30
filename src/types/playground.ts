@@ -3,6 +3,8 @@
  * Aligned with backend API contracts from api/playground.py
  */
 
+import type { PipelineExecutionMetricObservation } from "@/lib/pipelineExecutionContract";
+
 // ============= Unified Operator Format =============
 
 /**
@@ -495,6 +497,8 @@ export interface ExecuteResponse {
   filter_info?: FilterInfo;
   repetitions?: RepetitionResult;
   metrics?: MetricsResult;
+  metric_observations?: PipelineExecutionMetricObservation[];
+  metricObservations?: PipelineExecutionMetricObservation[];
   subset_info?: SubsetInfo;
   execution_trace: StepTrace[];
   step_errors: StepError[];
@@ -654,6 +658,7 @@ export interface PlaygroundResult {
   filterInfo?: FilterInfo;
   repetitions?: RepetitionResult;
   metrics?: MetricsResult;
+  metricObservations?: PipelineExecutionMetricObservation[];
   subsetInfo?: SubsetInfo;
   executionTimeMs: number;
   trace: StepTrace[];

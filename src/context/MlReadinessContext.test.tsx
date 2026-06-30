@@ -42,11 +42,87 @@ interface MlStatusPayload {
   workspace_ready?: boolean;
 }
 
-interface ElectronApiMock {
-  isElectron: boolean;
+type RendererElectronApi = NonNullable<Window["electronApi"]>;
+type MlReadyListener = (info: {
+  ready: boolean;
+  error?: string;
+  workspaceReady?: boolean;
+}) => void;
+
+interface ElectronApiMock extends RendererElectronApi {
   getMlStatus: ReturnType<typeof vi.fn<() => Promise<MlStatusPayload>>>;
-  onMlReady: (cb: (info: { ready: boolean; error?: string; workspaceReady?: boolean }) => void) => () => void;
-  onBackendStatusChanged: (cb: (info: { status: string }) => void) => () => void;
+  onMlReady: (cb: MlReadyListener) => () => void;
+}
+
+function createElectronApiMock(
+  overrides: Partial<ElectronApiMock> = {},
+): ElectronApiMock {
+  return {
+    selectFolder: vi.fn().mockResolvedValue(null),
+    confirmDroppedFolder: vi.fn().mockResolvedValue(null),
+    selectFile: vi.fn().mockResolvedValue(null),
+    saveFile: vi.fn().mockResolvedValue(null),
+    revealInExplorer: vi.fn().mockResolvedValue(undefined),
+    openExternal: vi.fn().mockResolvedValue(undefined),
+    getLogPath: vi.fn().mockResolvedValue(null),
+    openLogDir: vi.fn().mockResolvedValue(undefined),
+    getTelemetryConsent: vi.fn().mockResolvedValue("unset"),
+    setTelemetryConsent: vi.fn().mockResolvedValue({
+      status: "declined",
+      decidedAt: "2026-04-18T08:00:00",
+    }),
+    resizeWindow: vi.fn().mockResolvedValue(true),
+    minimizeWindow: vi.fn().mockResolvedValue(true),
+    maximizeWindow: vi.fn().mockResolvedValue(true),
+    restoreWindow: vi.fn().mockResolvedValue(true),
+    getWindowSize: vi.fn().mockResolvedValue({ width: 1024, height: 768 }),
+    getBackendPort: vi.fn().mockResolvedValue(8000),
+    getBackendUrl: vi.fn().mockResolvedValue("http://127.0.0.1:8000"),
+    getBackendInfo: vi.fn().mockResolvedValue({
+      status: "running",
+      port: 8000,
+      url: "http://127.0.0.1:8000",
+      restartCount: 0,
+    }),
+    restartBackend: vi.fn().mockResolvedValue({ success: true }),
+    onBackendStatusChanged: vi.fn(() => () => undefined),
+    getEnvStatus: vi.fn().mockResolvedValue("ready"),
+    isEnvReady: vi.fn().mockResolvedValue(true),
+    getEnvInfo: vi.fn().mockResolvedValue({
+      status: "ready",
+      envDir: "",
+      pythonPath: null,
+      sitePackages: null,
+      pythonVersion: null,
+      isCustom: false,
+    }),
+    detectExistingEnvs: vi.fn().mockResolvedValue([]),
+    inspectExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    useExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    selectPythonExe: vi.fn().mockResolvedValue(null),
+    inspectExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    useExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    applyExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    applyExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    startEnvSetup: vi.fn().mockResolvedValue({ success: true }),
+    onEnvSetupProgress: vi.fn(() => () => undefined),
+    shouldShowWizard: vi.fn().mockResolvedValue(false),
+    markWizardComplete: vi.fn().mockResolvedValue(undefined),
+    getCurrentEnvSummary: vi.fn().mockResolvedValue(null),
+    isPortable: vi.fn().mockResolvedValue(false),
+    platform: "linux",
+    isElectron: true,
+    getPathForFile: vi.fn(() => ""),
+    getMlStatus: vi.fn<() => Promise<MlStatusPayload>>().mockResolvedValue({
+      core_ready: true,
+      ml_ready: true,
+      ml_loading: false,
+      ml_error: null,
+      workspace_ready: true,
+    }),
+    onMlReady: vi.fn(() => () => undefined),
+    ...overrides,
+  };
 }
 
 function createQueryClient() {
@@ -71,7 +147,6 @@ function deferred<T>() {
 
 async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise<void> {
   const start = Date.now();
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       assertion();
@@ -88,15 +163,19 @@ async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise
 }
 
 async function importProviderModule() {
-  const module = await import("./MlReadinessContext");
-  return module;
+  const providerModule = await import("./MlReadinessContext");
+  const readinessModule = await import("./useMlReadiness");
+  return {
+    MlReadinessProvider: providerModule.MlReadinessProvider,
+    useMlReadiness: readinessModule.useMlReadiness,
+  };
 }
 
 async function renderProvider(
   electronApi: ElectronApiMock,
 ) {
   vi.resetModules();
-  (window as Window & { electronApi?: ElectronApiMock }).electronApi = electronApi;
+  window.electronApi = electronApi;
 
   const { MlReadinessProvider, useMlReadiness } = await importProviderModule();
 
@@ -145,7 +224,7 @@ async function renderProvider(
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
-  delete (window as Window & { electronApi?: ElectronApiMock }).electronApi;
+  delete window.electronApi;
 });
 
 describe("MlReadinessProvider", () => {
@@ -175,12 +254,11 @@ describe("MlReadinessProvider", () => {
         workspace_ready: true,
       });
 
-    const view = await renderProvider({
-      isElectron: true,
+    const view = await renderProvider(createElectronApiMock({
       getMlStatus,
       onMlReady: () => () => undefined,
       onBackendStatusChanged: () => () => undefined,
-    });
+    }));
 
     await waitFor(() => {
       expect(view.result.current?.coreReady).toBe(true);
@@ -219,8 +297,7 @@ describe("MlReadinessProvider", () => {
     const getMlStatus = vi.fn<() => Promise<MlStatusPayload>>()
       .mockReturnValueOnce(firstPoll.promise);
 
-    const view = await renderProvider({
-      isElectron: true,
+    const view = await renderProvider(createElectronApiMock({
       getMlStatus,
       onMlReady: (cb) => {
         mlReadyListener = cb;
@@ -231,7 +308,7 @@ describe("MlReadinessProvider", () => {
         };
       },
       onBackendStatusChanged: () => () => undefined,
-    });
+    }));
 
     await act(async () => {
       mlReadyListener?.({ ready: true, workspaceReady: true });

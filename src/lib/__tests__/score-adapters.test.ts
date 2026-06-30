@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFoldTrainCards,
   chainSummaryToRow,
+  coerceScoreMap,
   collapseStandaloneRefitSummaries,
   datasetChainsToRows,
   enrichCrossvalRow,
@@ -76,6 +77,40 @@ function makePartitionPrediction(overrides: Partial<PartitionPrediction>): Parti
     preprocessings: overrides.preprocessings ?? "SNV",
   };
 }
+
+function nestedPredictionScores(
+  scores: Record<string, Record<string, unknown>>,
+): PartitionPrediction["scores"] {
+  return scores as unknown as PartitionPrediction["scores"];
+}
+
+describe("coerceScoreMap", () => {
+  it("returns an empty map for nullish or non-object inputs", () => {
+    expect(coerceScoreMap(null)).toEqual({});
+    expect(coerceScoreMap(undefined)).toEqual({});
+    expect(coerceScoreMap([1, 2, 3] as unknown as Record<string, unknown>)).toEqual({});
+  });
+
+  it("coerces every metric value through safeNumber, preserving keys", () => {
+    expect(
+      coerceScoreMap({ rmse: 0.24, r2: "0.91", broken: "n/a", missing: null }),
+    ).toEqual({ rmse: 0.24, r2: 0.91, broken: null, missing: null });
+  });
+
+  it("keeps every key (no silent drop), so arbitrary multi-target metrics survive", () => {
+    const input = { rmse: 0.1, nrmse: 0.02, custom_target_metric: 0.5 };
+    const out = coerceScoreMap(input);
+    expect(Object.keys(out)).toEqual(Object.keys(input));
+  });
+
+  it("does not mutate or alias its input", () => {
+    const input = { rmse: 0.24 };
+    const out = coerceScoreMap(input);
+    expect(out).not.toBe(input);
+    out.rmse = 99;
+    expect(input.rmse).toBe(0.24);
+  });
+});
 
 describe("datasetChainsToRows", () => {
   it("preserves extended regression metrics from final score payloads", () => {
@@ -405,6 +440,34 @@ describe("chainSummaryToRow", () => {
     expect(row.cardType).toBe("refit");
     expect(row.children?.[0]?.chainId).toBe("cv-chain");
   });
+
+  it("attaches normalized model artifact refs from fold_artifacts", () => {
+    const row = chainSummaryToRow(makeChainSummary({
+      chain_id: "chain-artifacts",
+      run_id: "run-1",
+      pipeline_id: "pipe-1",
+      dataset_name: "dataset-a",
+      metric: "rmse",
+      final_test_score: 0.21,
+      fold_artifacts: {
+        fold_final: "artifact-final",
+        fold_0: "artifact-fold-0",
+      },
+    }));
+
+    expect(row.artifactRefs?.map(ref => ref.foldId)).toEqual(["final", "0"]);
+    expect(row.artifactRefs?.[0]).toMatchObject({
+      kind: "model",
+      role: "refit-model",
+      source: "legacy-fold-artifacts",
+      artifactId: "artifact-final",
+      chainId: "chain-artifacts",
+      pipelineId: "pipe-1",
+      runId: "run-1",
+      datasetName: "dataset-a",
+      metric: "rmse",
+    });
+  });
 });
 
 describe("predictionRecordToRow", () => {
@@ -416,6 +479,14 @@ describe("predictionRecordToRow", () => {
     }))).toMatchObject({
       cardType: "refit",
       foldId: "final",
+      artifactRefs: [
+        expect.objectContaining({
+          kind: "model",
+          role: "refit-model",
+          artifactId: "artifact-final",
+          predictionId: "pred-final",
+        }),
+      ],
       hasRefitArtifact: true,
     });
 
@@ -505,13 +576,13 @@ describe("aggregated crossval drill-down", () => {
     expect(aggregatedCvRow?.foldId).toBe("avg_agg");
 
     const predictions = [
-      makePartitionPrediction({ prediction_id: "avg-raw-val", chain_id: "cv-snv", fold_id: "avg", partition: "val", val_score: 0.22, scores: { val: { rmse: 0.22 } } }),
-      makePartitionPrediction({ prediction_id: "avg-agg-val", chain_id: "cv-snv", fold_id: "avg_agg", partition: "val", val_score: 0.18, scores: { val: { rmse: 0.18 } } }),
-      makePartitionPrediction({ prediction_id: "avg-raw-test", chain_id: "cv-snv", fold_id: "avg", partition: "test", test_score: 0.23, scores: { test: { rmse: 0.23 } } }),
-      makePartitionPrediction({ prediction_id: "avg-agg-test", chain_id: "cv-snv", fold_id: "avg_agg", partition: "test", test_score: 0.19, scores: { test: { rmse: 0.19 } } }),
-      makePartitionPrediction({ prediction_id: "fold-0-agg", chain_id: "cv-snv", fold_id: "0_agg", partition: "test", test_score: 0.2, scores: { test: { rmse: 0.2 } } }),
-      makePartitionPrediction({ prediction_id: "fold-1-agg", chain_id: "cv-snv", fold_id: "1_agg", partition: "test", test_score: 0.18, scores: { test: { rmse: 0.18 } } }),
-      makePartitionPrediction({ prediction_id: "fold-0-raw", chain_id: "cv-snv", fold_id: "0", partition: "test", test_score: 0.28, scores: { test: { rmse: 0.28 } } }),
+      makePartitionPrediction({ prediction_id: "avg-raw-val", chain_id: "cv-snv", fold_id: "avg", partition: "val", val_score: 0.22, scores: nestedPredictionScores({ val: { rmse: 0.22 } }) }),
+      makePartitionPrediction({ prediction_id: "avg-agg-val", chain_id: "cv-snv", fold_id: "avg_agg", partition: "val", val_score: 0.18, scores: nestedPredictionScores({ val: { rmse: 0.18 } }) }),
+      makePartitionPrediction({ prediction_id: "avg-raw-test", chain_id: "cv-snv", fold_id: "avg", partition: "test", test_score: 0.23, scores: nestedPredictionScores({ test: { rmse: 0.23 } }) }),
+      makePartitionPrediction({ prediction_id: "avg-agg-test", chain_id: "cv-snv", fold_id: "avg_agg", partition: "test", test_score: 0.19, scores: nestedPredictionScores({ test: { rmse: 0.19 } }) }),
+      makePartitionPrediction({ prediction_id: "fold-0-agg", chain_id: "cv-snv", fold_id: "0_agg", partition: "test", test_score: 0.2, scores: nestedPredictionScores({ test: { rmse: 0.2 } }) }),
+      makePartitionPrediction({ prediction_id: "fold-1-agg", chain_id: "cv-snv", fold_id: "1_agg", partition: "test", test_score: 0.18, scores: nestedPredictionScores({ test: { rmse: 0.18 } }) }),
+      makePartitionPrediction({ prediction_id: "fold-0-raw", chain_id: "cv-snv", fold_id: "0", partition: "test", test_score: 0.28, scores: nestedPredictionScores({ test: { rmse: 0.28 } }) }),
     ];
 
     const enriched = enrichCrossvalRow(aggregatedCvRow!, predictions);

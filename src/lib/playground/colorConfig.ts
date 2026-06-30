@@ -11,6 +11,25 @@
  */
 
 import { type TargetType } from './targetTypeDetection';
+import {
+  type CategoricalPalette,
+  type ContinuousPalette,
+} from './colorConfigPalettes';
+import {
+  HIGHLIGHT_COLORS,
+  HIGHLIGHT_COLORS_CONCRETE,
+  detectMetadataType as detectMetadataTypeBase,
+  getBaseColor as getBaseColorBase,
+  getEffectiveTargetType as getEffectiveTargetTypeBase,
+  getMetadataUniqueCategories as getMetadataUniqueCategoriesBase,
+  isContinuousMode as isContinuousModeBase,
+} from './colorConfigBase';
+
+// Re-export the pure palette primitives so existing `from '.../colorConfig'`
+// imports keep working unchanged.
+export * from './colorConfigPalettes';
+export * from './colorConfigPartitions';
+export { HIGHLIGHT_COLORS, HIGHLIGHT_COLORS_CONCRETE } from './colorConfigBase';
 
 // ============= Type Definitions =============
 
@@ -25,32 +44,6 @@ export type GlobalColorMode =
   | 'selection'   // Selected=primary, unselected=grey
   | 'outlier'     // Outliers=red (front), non-outliers=grey
   | 'index';      // Continuous gradient by sample position (0 to N-1)
-
-/**
- * Palette types for continuous coloring
- */
-export type ContinuousPalette =
-  | 'blue_red'    // Current default (blue->cyan->green->yellow->red)
-  | 'viridis'     // Purple->blue->green->yellow
-  | 'plasma'      // Purple->pink->orange->yellow
-  | 'inferno'     // Black->purple->red->yellow
-  | 'coolwarm'    // Blue->white->red (diverging)
-  | 'spectral'    // Red->orange->yellow->green->blue (rainbow)
-  | 'cividis'     // Blue->green->yellow (colorblind-friendly)
-  | 'winter'      // Blue->cyan (cool colors only)
-  | 'blues'       // Light blue->dark blue (single hue)
-  | 'greens'      // Light green->dark green (single hue)
-  | 'turbo';      // Blue->cyan->green->yellow->red (improved rainbow)
-
-/**
- * Palette types for categorical coloring
- */
-export type CategoricalPalette =
-  | 'default'     // Current FOLD_COLORS (teal, blue, green, orange, purple...)
-  | 'tableau10'   // Tableau's colorblind-safe palette
-  | 'set1'        // ColorBrewer Set1
-  | 'set2'        // ColorBrewer Set2
-  | 'paired';     // ColorBrewer Paired
 
 /**
  * Unified global color configuration
@@ -163,508 +156,7 @@ export const DEFAULT_GLOBAL_COLOR_CONFIG: GlobalColorConfig = {
   showOutlierOverlay: true,
 };
 
-// ============= Palette Definitions =============
-
-/**
- * Continuous palette color functions
- * Each returns an HSL/RGB color string for a normalized value t (0-1)
- */
-export const CONTINUOUS_PALETTES: Record<ContinuousPalette, (t: number) => string> = {
-  blue_red: (t) => {
-    // Blue (240) -> Cyan (180) -> Green (120) -> Yellow (60) -> Red (0)
-    const hue = 240 - t * 240;
-    return `hsl(${hue}, 70%, 50%)`;
-  },
-
-  viridis: (t) => {
-    // Approximation of viridis colormap
-    if (t < 0.25) {
-      const s = t / 0.25;
-      return `hsl(${270 - s * 30}, ${70 + s * 10}%, ${25 + s * 10}%)`;
-    } else if (t < 0.5) {
-      const s = (t - 0.25) / 0.25;
-      return `hsl(${240 - s * 60}, ${80 - s * 10}%, ${35 + s * 10}%)`;
-    } else if (t < 0.75) {
-      const s = (t - 0.5) / 0.25;
-      return `hsl(${180 - s * 80}, ${70 - s * 5}%, ${45 + s * 10}%)`;
-    } else {
-      const s = (t - 0.75) / 0.25;
-      return `hsl(${100 - s * 40}, ${65 - s * 15}%, ${55 + s * 15}%)`;
-    }
-  },
-
-  plasma: (t) => {
-    // Approximation of plasma colormap
-    if (t < 0.33) {
-      const s = t / 0.33;
-      return `hsl(${280 - s * 20}, ${80 + s * 10}%, ${25 + s * 20}%)`;
-    } else if (t < 0.66) {
-      const s = (t - 0.33) / 0.33;
-      return `hsl(${260 - s * 210}, ${90 - s * 10}%, ${45 + s * 10}%)`;
-    } else {
-      const s = (t - 0.66) / 0.34;
-      return `hsl(${50 - s * 10}, ${80 + s * 10}%, ${55 + s * 20}%)`;
-    }
-  },
-
-  inferno: (t) => {
-    // Approximation of inferno colormap
-    if (t < 0.25) {
-      const s = t / 0.25;
-      return `hsl(${280 + s * 10}, ${60 + s * 20}%, ${10 + s * 15}%)`;
-    } else if (t < 0.5) {
-      const s = (t - 0.25) / 0.25;
-      return `hsl(${290 - s * 270}, ${80 + s * 10}%, ${25 + s * 15}%)`;
-    } else if (t < 0.75) {
-      const s = (t - 0.5) / 0.25;
-      return `hsl(${20 + s * 20}, ${90}%, ${40 + s * 15}%)`;
-    } else {
-      const s = (t - 0.75) / 0.25;
-      return `hsl(${40 + s * 20}, ${90 - s * 20}%, ${55 + s * 30}%)`;
-    }
-  },
-
-  coolwarm: (t) => {
-    // Diverging blue-white-red
-    if (t < 0.5) {
-      const intensity = (0.5 - t) * 2;
-      const lightness = 95 - intensity * 45;
-      return `hsl(220, ${Math.round(70 * intensity)}%, ${Math.round(lightness)}%)`;
-    } else {
-      const intensity = (t - 0.5) * 2;
-      const lightness = 95 - intensity * 45;
-      return `hsl(10, ${Math.round(70 * intensity)}%, ${Math.round(lightness)}%)`;
-    }
-  },
-
-  spectral: (t) => {
-    // Rainbow: Red -> Orange -> Yellow -> Green -> Blue
-    const hue = (1 - t) * 240;
-    return `hsl(${hue}, 80%, 50%)`;
-  },
-
-  cividis: (t) => {
-    // Colorblind-friendly: Navy blue -> teal -> olive -> yellow
-    // Based on the matplotlib cividis colormap
-    if (t < 0.25) {
-      const s = t / 0.25;
-      return `hsl(${235 - s * 25}, ${50 + s * 20}%, ${25 + s * 10}%)`;
-    } else if (t < 0.5) {
-      const s = (t - 0.25) / 0.25;
-      return `hsl(${210 - s * 30}, ${70 - s * 10}%, ${35 + s * 10}%)`;
-    } else if (t < 0.75) {
-      const s = (t - 0.5) / 0.25;
-      return `hsl(${180 - s * 100}, ${60 - s * 10}%, ${45 + s * 10}%)`;
-    } else {
-      const s = (t - 0.75) / 0.25;
-      return `hsl(${80 - s * 30}, ${50 + s * 30}%, ${55 + s * 25}%)`;
-    }
-  },
-
-  winter: (t) => {
-    // Cool colors only: Blue -> Cyan -> Light Cyan
-    const hue = 240 - t * 60; // 240 (blue) to 180 (cyan)
-    const lightness = 40 + t * 25; // Gets lighter
-    return `hsl(${hue}, 75%, ${lightness}%)`;
-  },
-
-  blues: (t) => {
-    // Single hue blue: Light blue -> Dark blue
-    const lightness = 90 - t * 55; // 90% (very light) to 35% (dark)
-    const saturation = 60 + t * 30; // More saturated as it gets darker
-    return `hsl(215, ${saturation}%, ${lightness}%)`;
-  },
-
-  greens: (t) => {
-    // Single hue green: Light green -> Dark green
-    const lightness = 90 - t * 55; // 90% (very light) to 35% (dark)
-    const saturation = 50 + t * 40; // More saturated as it gets darker
-    return `hsl(140, ${saturation}%, ${lightness}%)`;
-  },
-
-  turbo: (t) => {
-    // Improved rainbow: Blue -> Cyan -> Green -> Yellow -> Orange -> Red
-    // Better perceptual uniformity than jet/spectral
-    if (t < 0.2) {
-      const s = t / 0.2;
-      return `hsl(${260 - s * 40}, ${70 + s * 20}%, ${35 + s * 15}%)`;
-    } else if (t < 0.4) {
-      const s = (t - 0.2) / 0.2;
-      return `hsl(${220 - s * 40}, ${90}%, ${50 + s * 5}%)`;
-    } else if (t < 0.6) {
-      const s = (t - 0.4) / 0.2;
-      return `hsl(${180 - s * 60}, ${85}%, ${55 - s * 5}%)`;
-    } else if (t < 0.8) {
-      const s = (t - 0.6) / 0.2;
-      return `hsl(${120 - s * 70}, ${80 + s * 10}%, ${50}%)`;
-    } else {
-      const s = (t - 0.8) / 0.2;
-      return `hsl(${50 - s * 45}, ${90}%, ${50 - s * 5}%)`;
-    }
-  },
-};
-
-/**
- * Categorical palette color arrays
- * Colorblind-safe palettes from ColorBrewer and Tableau
- */
-export const CATEGORICAL_PALETTES: Record<CategoricalPalette, readonly string[]> = {
-  default: [
-    'hsl(173, 80%, 45%)', // Teal
-    'hsl(217, 70%, 50%)', // Blue
-    'hsl(142, 76%, 45%)', // Green
-    'hsl(38, 92%, 50%)',  // Orange
-    'hsl(280, 65%, 55%)', // Purple
-    'hsl(350, 70%, 55%)', // Red
-    'hsl(200, 70%, 45%)', // Cyan
-    'hsl(95, 60%, 45%)',  // Lime
-    'hsl(320, 60%, 55%)', // Magenta
-    'hsl(55, 80%, 45%)',  // Yellow
-  ],
-
-  tableau10: [
-    '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f',
-    '#edc948', '#b07aa1', '#ff9da7', '#9c755f', '#bab0ac',
-  ],
-
-  set1: [
-    '#e41a1c', '#377eb8', '#4daf4a', '#984ea3', '#ff7f00',
-    '#ffff33', '#a65628', '#f781bf', '#999999',
-  ],
-
-  set2: [
-    '#66c2a5', '#fc8d62', '#8da0cb', '#e78ac3', '#a6d854',
-    '#ffd92f', '#e5c494', '#b3b3b3',
-  ],
-
-  paired: [
-    '#a6cee3', '#1f78b4', '#b2df8a', '#33a02c', '#fb9a99',
-    '#e31a1c', '#fdbf6f', '#ff7f00', '#cab2d6', '#6a3d9a',
-  ],
-};
-
-/**
- * Fixed colors for train/test partition
- */
-export const PARTITION_COLORS = {
-  train: 'hsl(217, 70%, 50%)',      // Blue
-  val: 'hsl(38, 92%, 50%)',         // Orange
-  test: 'hsl(355, 72%, 42%)',       // Crimson
-  trainLight: 'hsl(217, 70%, 75%)',
-  valLight: 'hsl(38, 92%, 75%)',
-  testLight: 'hsl(355, 72%, 67%)',
-} as const;
-
-export type PartitionRole = 'train' | 'val' | 'test' | 'unknown';
-
-const PARTITION_ROLE_ORDER: readonly Exclude<PartitionRole, 'unknown'>[] = ['train', 'val', 'test'];
-
-/**
- * Fixed colors for selection/outlier modes
- * NOTE: Some of these use CSS variables which work in SVG/CSS but not in WebGL/canvas
- */
-export const HIGHLIGHT_COLORS = {
-  selected: 'hsl(var(--primary))',
-  hovered: 'hsl(var(--primary))',
-  pinned: 'hsl(45, 90%, 50%)',      // Gold
-  outlier: 'hsl(0, 70%, 55%)',      // Red
-  unselected: 'hsl(var(--muted-foreground))',
-  muted: 'hsl(var(--muted-foreground) / 0.3)',
-} as const;
-
-/**
- * Concrete color alternatives for WebGL/canvas renderers that can't parse CSS variables
- * These match the theme's typical primary/muted colors
- */
-export const HIGHLIGHT_COLORS_CONCRETE = {
-  selected: 'hsl(173, 80%, 45%)',   // Teal (matches --primary in default theme)
-  hovered: 'hsl(173, 80%, 45%)',    // Teal
-  pinned: 'hsl(45, 90%, 50%)',      // Gold
-  outlier: 'hsl(0, 70%, 55%)',      // Red
-  unselected: 'hsl(220, 10%, 50%)', // Muted gray
-  muted: 'hsl(220, 10%, 50%, 0.3)', // Muted gray with alpha
-} as const;
-
-interface HslColor {
-  h: number;
-  s: number;
-  l: number;
-  a?: number;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function parseHslColor(color: string): HslColor | null {
-  const match = color.trim().match(
-    /^hsla?\(\s*([+-]?\d*\.?\d+)(?:deg)?[,\s]+([+-]?\d*\.?\d+)%[,\s]+([+-]?\d*\.?\d+)%(?:[,\s/]+([+-]?\d*\.?\d+))?\s*\)$/i
-  );
-  if (!match) return null;
-  const [, h, s, l, a] = match;
-  return {
-    h: ((parseFloat(h) % 360) + 360) % 360,
-    s: clamp(parseFloat(s), 0, 100),
-    l: clamp(parseFloat(l), 0, 100),
-    a: a !== undefined ? clamp(parseFloat(a), 0, 1) : undefined,
-  };
-}
-
-function parseHexColor(color: string): { r: number; g: number; b: number } | null {
-  const value = color.trim();
-  const match = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-  if (!match) return null;
-  const hex = match[1];
-
-  if (hex.length === 3) {
-    return {
-      r: parseInt(hex[0] + hex[0], 16),
-      g: parseInt(hex[1] + hex[1], 16),
-      b: parseInt(hex[2] + hex[2], 16),
-    };
-  }
-
-  return {
-    r: parseInt(hex.slice(0, 2), 16),
-    g: parseInt(hex.slice(2, 4), 16),
-    b: parseInt(hex.slice(4, 6), 16),
-  };
-}
-
-function rgbToHsl(r: number, g: number, b: number): HslColor {
-  const rNorm = r / 255;
-  const gNorm = g / 255;
-  const bNorm = b / 255;
-  const max = Math.max(rNorm, gNorm, bNorm);
-  const min = Math.min(rNorm, gNorm, bNorm);
-  const delta = max - min;
-  const lightness = (max + min) / 2;
-
-  let hue = 0;
-  if (delta > 0) {
-    if (max === rNorm) {
-      hue = ((gNorm - bNorm) / delta) % 6;
-    } else if (max === gNorm) {
-      hue = (bNorm - rNorm) / delta + 2;
-    } else {
-      hue = (rNorm - gNorm) / delta + 4;
-    }
-    hue *= 60;
-    if (hue < 0) hue += 360;
-  }
-
-  const saturation = delta === 0
-    ? 0
-    : delta / (1 - Math.abs(2 * lightness - 1));
-
-  return {
-    h: hue,
-    s: saturation * 100,
-    l: lightness * 100,
-  };
-}
-
-function parseColorToHsl(color: string): HslColor | null {
-  const parsedHsl = parseHslColor(color);
-  if (parsedHsl) return parsedHsl;
-
-  const rgb = parseHexColor(color);
-  if (!rgb) return null;
-  return rgbToHsl(rgb.r, rgb.g, rgb.b);
-}
-
-function formatHslColor({ h, s, l, a }: HslColor): string {
-  const roundedHue = Math.round(h);
-  const roundedSaturation = Math.round(s);
-  const roundedLightness = Math.round(l);
-  if (a !== undefined && a < 1) {
-    return `hsla(${roundedHue}, ${roundedSaturation}%, ${roundedLightness}%, ${a})`;
-  }
-  return `hsl(${roundedHue}, ${roundedSaturation}%, ${roundedLightness}%)`;
-}
-
-function adjustColorVariant(
-  color: string,
-  {
-    saturationDelta = 0,
-    lightnessDelta = 0,
-  }: {
-    saturationDelta?: number;
-    lightnessDelta?: number;
-  }
-): string {
-  const parsed = parseColorToHsl(color);
-  if (!parsed) return color;
-  return formatHslColor({
-    ...parsed,
-    s: clamp(parsed.s + saturationDelta, 0, 100),
-    l: clamp(parsed.l + lightnessDelta, 0, 100),
-  });
-}
-
 // ============= Color Utility Functions =============
-
-/**
- * Get categorical color by index (wraps around)
- */
-export function getCategoricalColor(
-  index: number,
-  palette: CategoricalPalette = 'default'
-): string {
-  const colors = CATEGORICAL_PALETTES[palette];
-  return colors[index % colors.length];
-}
-
-export function getPartitionFoldVariantColor(
-  foldIndex: number,
-  palette: CategoricalPalette = 'default'
-): string {
-  return adjustColorVariant(getCategoricalColor(foldIndex, palette), {
-    saturationDelta: -18,
-    lightnessDelta: 14,
-  });
-}
-
-export function getHeldOutTestColor(): string {
-  return PARTITION_COLORS.test;
-}
-
-export function hasValidationSamples(
-  context: Pick<ColorContext, 'foldKind' | 'foldCount' | 'foldLabels'>
-): boolean {
-  if (context.foldKind === 'test_split') return false;
-  if (context.foldLabels?.some(label => label >= 0)) {
-    return true;
-  }
-  return (context.foldCount ?? 0) > 1;
-}
-
-export function usesFoldPartitionVariants(
-  context: Pick<ColorContext, 'foldKind' | 'foldCount' | 'foldLabels'>
-): boolean {
-  return hasValidationSamples(context);
-}
-
-export function isHeldOutTestSample(
-  sampleIndex: number,
-  context: Pick<ColorContext, 'testIndices' | 'foldKind' | 'foldCount' | 'foldLabels'>
-): boolean {
-  if (!context.testIndices?.has(sampleIndex)) {
-    return false;
-  }
-  if (context.foldKind !== 'test_split' && (context.foldCount ?? 0) > 1) {
-    const foldLabel = context.foldLabels?.[sampleIndex];
-    return foldLabel === undefined || foldLabel < 0;
-  }
-  return true;
-}
-
-export function isValidationSample(
-  sampleIndex: number,
-  context: Pick<ColorContext, 'foldKind' | 'foldCount' | 'foldLabels'>
-): boolean {
-  if (!hasValidationSamples(context)) {
-    return false;
-  }
-  const foldLabel = context.foldLabels?.[sampleIndex];
-  return foldLabel !== undefined && foldLabel >= 0;
-}
-
-export function getSamplePartitionRole(
-  sampleIndex: number,
-  context: Pick<ColorContext, 'trainIndices' | 'testIndices' | 'foldKind' | 'foldCount' | 'foldLabels'>
-): PartitionRole {
-  if (isHeldOutTestSample(sampleIndex, context)) {
-    return 'test';
-  }
-  if (isValidationSample(sampleIndex, context)) {
-    return 'val';
-  }
-  if (context.trainIndices?.has(sampleIndex)) {
-    return 'train';
-  }
-  if (context.testIndices?.has(sampleIndex)) {
-    return 'test';
-  }
-  return 'unknown';
-}
-
-export function getPartitionRoleColor(role: Exclude<PartitionRole, 'unknown'>): string {
-  switch (role) {
-    case 'train':
-      return PARTITION_COLORS.train;
-    case 'val':
-      return PARTITION_COLORS.val;
-    case 'test':
-      return PARTITION_COLORS.test;
-  }
-}
-
-export function getPartitionRoleLabel(role: Exclude<PartitionRole, 'unknown'>): string {
-  switch (role) {
-    case 'train':
-      return 'Train';
-    case 'val':
-      return 'Val';
-    case 'test':
-      return 'Test';
-  }
-}
-
-export function getPresentPartitionRoles(
-  context: Pick<ColorContext, 'trainIndices' | 'testIndices' | 'foldKind' | 'foldCount' | 'foldLabels'>
-): Exclude<PartitionRole, 'unknown'>[] {
-  const sampleIndices = new Set<number>();
-  context.trainIndices?.forEach(sampleIndex => sampleIndices.add(sampleIndex));
-  context.testIndices?.forEach(sampleIndex => sampleIndices.add(sampleIndex));
-  context.foldLabels?.forEach((_, sampleIndex) => sampleIndices.add(sampleIndex));
-
-  const roles = new Set<Exclude<PartitionRole, 'unknown'>>();
-  for (const sampleIndex of sampleIndices) {
-    const role = getSamplePartitionRole(sampleIndex, context);
-    if (role !== 'unknown') {
-      roles.add(role);
-    }
-  }
-
-  return PARTITION_ROLE_ORDER.filter(role => roles.has(role));
-}
-
-export function hasHeldOutTestSamples(
-  context: Pick<ColorContext, 'testIndices' | 'foldKind' | 'foldCount' | 'foldLabels'>
-): boolean {
-  if (!context.testIndices || context.testIndices.size === 0) {
-    return false;
-  }
-  if (context.foldKind !== 'test_split' && (context.foldCount ?? 0) > 1) {
-    for (const sampleIndex of context.testIndices) {
-      if (isHeldOutTestSample(sampleIndex, context)) {
-        return true;
-      }
-    }
-    return false;
-  }
-  return true;
-}
-
-/**
- * Get continuous color by normalized value
- */
-export function getContinuousColor(
-  t: number, // 0-1 normalized value
-  palette: ContinuousPalette = 'blue_red'
-): string {
-  const clampedT = Math.max(0, Math.min(1, t));
-  return CONTINUOUS_PALETTES[palette](clampedT);
-}
-
-/**
- * Normalize a value to 0-1 range
- */
-export function normalizeValue(value: number, min: number, max: number): number {
-  if (max === min) return 0.5;
-  return (value - min) / (max - min);
-}
 
 /**
  * Get the effective target type considering manual override
@@ -674,10 +166,7 @@ export function getEffectiveTargetType(
   detectedType: TargetType | undefined,
   override: TargetType | 'auto' | undefined
 ): TargetType | undefined {
-  if (override && override !== 'auto') {
-    return override;
-  }
-  return detectedType;
+  return getEffectiveTargetTypeBase(detectedType, override);
 }
 
 /**
@@ -690,37 +179,14 @@ export function isContinuousMode(
   targetType?: TargetType,
   targetTypeOverride?: TargetType | 'auto'
 ): boolean {
-  if (mode === 'target') {
-    // Phase 5: Check override first, then detected type
-    const effectiveType = getEffectiveTargetType(targetType, targetTypeOverride);
-    if (effectiveType === 'classification' || effectiveType === 'ordinal') {
-      return false;
-    }
-    return true;
-  }
-  if (mode === 'index') return true;
-  if (mode === 'metadata' && metadataType === 'continuous') return true;
-  return false;
+  return isContinuousModeBase(mode, metadataType, targetType, targetTypeOverride);
 }
 
 /**
  * Auto-detect if a metadata column is categorical or continuous
  */
 export function detectMetadataType(values: unknown[]): 'categorical' | 'continuous' {
-  if (values.length === 0) return 'categorical';
-
-  // Check if all non-null values are numbers
-  const nonNullValues = values.filter(v => v !== null && v !== undefined);
-  const allNumeric = nonNullValues.every(v => typeof v === 'number' && !isNaN(v as number));
-
-  if (!allNumeric) return 'categorical';
-
-  // If numeric, check uniqueness ratio
-  const uniqueValues = new Set(nonNullValues);
-  const uniqueRatio = uniqueValues.size / nonNullValues.length;
-
-  // If more than 20% unique values and more than 10 unique values, treat as continuous
-  return uniqueRatio > 0.2 && uniqueValues.size > 10 ? 'continuous' : 'categorical';
+  return detectMetadataTypeBase(values);
 }
 
 /**
@@ -731,107 +197,7 @@ export function getBaseColor(
   config: GlobalColorConfig,
   context: ColorContext
 ): string {
-  const {
-    y, yMin, yMax, trainIndices, testIndices,
-    foldLabels, metadata, outlierIndices,
-  } = context;
-
-  switch (config.mode) {
-    case 'target': {
-      if (!y || yMin === undefined || yMax === undefined) {
-        return HIGHLIGHT_COLORS.unselected;
-      }
-
-      // Phase 5: Classification mode - use categorical colors
-      // Check for manual override first, then use detected type
-      const { targetType: detectedType, classLabels, classLabelMap } = context;
-      const effectiveTargetType = config.targetTypeOverride && config.targetTypeOverride !== 'auto'
-        ? config.targetTypeOverride
-        : detectedType;
-
-      if (effectiveTargetType === 'classification' || effectiveTargetType === 'ordinal') {
-        if (classLabels && classLabels.length > 0) {
-          const yValue = y[sampleIndex];
-          const classIdx = classLabelMap
-            ? classLabelMap.get(String(yValue)) ?? -1
-            : classLabels.indexOf(String(yValue));
-          if (classIdx >= 0) {
-            return getCategoricalColor(classIdx, config.categoricalPalette);
-          }
-        }
-        return HIGHLIGHT_COLORS.unselected;
-      }
-
-      // Regression mode - continuous gradient
-      const t = normalizeValue(y[sampleIndex], yMin, yMax);
-      return getContinuousColor(t, config.continuousPalette);
-    }
-
-    case 'partition': {
-      const role = getSamplePartitionRole(sampleIndex, context);
-      if (role !== 'unknown') {
-        return getPartitionRoleColor(role);
-      }
-      return HIGHLIGHT_COLORS.unselected;
-    }
-
-    case 'fold': {
-      const foldLabel = foldLabels?.[sampleIndex];
-      if (foldLabel !== undefined && foldLabel >= 0) {
-        return getCategoricalColor(foldLabel, config.categoricalPalette);
-      }
-      if (isHeldOutTestSample(sampleIndex, context)) {
-        return getHeldOutTestColor();
-      }
-      return HIGHLIGHT_COLORS.unselected;
-    }
-
-    case 'metadata': {
-      if (!metadata || !config.metadataKey) {
-        return HIGHLIGHT_COLORS.unselected;
-      }
-      const values = metadata[config.metadataKey];
-      const value = values?.[sampleIndex];
-      if (value === undefined || value === null) {
-        return HIGHLIGHT_COLORS.unselected;
-      }
-
-      // Determine type (use explicit type or auto-detect)
-      const metadataType = config.metadataType ?? detectMetadataType(values);
-
-      if (metadataType === 'continuous' && typeof value === 'number') {
-        const numericValues = values.filter(v => typeof v === 'number') as number[];
-        const min = Math.min(...numericValues);
-        const max = Math.max(...numericValues);
-        const t = normalizeValue(value, min, max);
-        return getContinuousColor(t, config.continuousPalette);
-      } else {
-        // Categorical
-        const uniqueValues = getMetadataUniqueCategories(values);
-        const idx = uniqueValues.indexOf(String(value));
-        return getCategoricalColor(idx >= 0 ? idx : 0, config.categoricalPalette);
-      }
-    }
-
-    case 'selection': {
-      // In selection mode, base color is grey (selection highlighting handled separately)
-      return HIGHLIGHT_COLORS.unselected;
-    }
-
-    case 'outlier': {
-      const isOutlier = outlierIndices?.has(sampleIndex) ?? false;
-      return isOutlier ? HIGHLIGHT_COLORS.outlier : HIGHLIGHT_COLORS.unselected;
-    }
-
-    case 'index': {
-      const totalSamples = context.totalSamples ?? (y?.length || 1);
-      const t = sampleIndex / Math.max(1, totalSamples - 1);
-      return getContinuousColor(t, config.continuousPalette);
-    }
-
-    default:
-      return HIGHLIGHT_COLORS.unselected;
-  }
+  return getBaseColorBase(sampleIndex, config, context);
 }
 
 /**
@@ -957,7 +323,7 @@ export function getWebGLSampleColor(
   context: ColorContext
 ): string {
   const {
-    selectedSamples, pinnedSamples, hoveredSample, outlierIndices, displayFilteredIndices,
+    selectedSamples, hoveredSample, outlierIndices, displayFilteredIndices,
   } = context;
 
   // Display filtering - return transparent for hidden samples
@@ -966,9 +332,7 @@ export function getWebGLSampleColor(
   }
 
   const isSelected = selectedSamples?.has(sampleIndex) ?? false;
-  const isPinned = pinnedSamples?.has(sampleIndex) ?? false;
   const isHovered = hoveredSample === sampleIndex;
-  const hasSelection = (selectedSamples?.size ?? 0) > 0;
   const isOutlier = outlierIndices?.has(sampleIndex) ?? false;
 
   // Handle hover state (highest priority)
@@ -1015,11 +379,7 @@ export function getMetadataUniqueValues(
  * the original data order used by the other playground charts.
  */
 export function getMetadataUniqueCategories(values: unknown[]): string[] {
-  return [...new Set(
-    values
-      .filter(v => v !== null && v !== undefined)
-      .map(v => String(v))
-  )];
+  return getMetadataUniqueCategoriesBase(values);
 }
 
 /**
@@ -1066,41 +426,7 @@ export function getYBinIndex(
   return bins.length - 1;
 }
 
-// ============= Palette Display Helpers =============
-
-/**
- * Get display name for a continuous palette
- */
-export function getContinuousPaletteLabel(palette: ContinuousPalette): string {
-  const labels: Record<ContinuousPalette, string> = {
-    blue_red: 'Blue-Red',
-    viridis: 'Viridis',
-    plasma: 'Plasma',
-    inferno: 'Inferno',
-    coolwarm: 'Cool-Warm',
-    spectral: 'Spectral',
-    cividis: 'Cividis',
-    winter: 'Winter',
-    blues: 'Blues',
-    greens: 'Greens',
-    turbo: 'Turbo',
-  };
-  return labels[palette];
-}
-
-/**
- * Get display name for a categorical palette
- */
-export function getCategoricalPaletteLabel(palette: CategoricalPalette): string {
-  const labels: Record<CategoricalPalette, string> = {
-    default: 'Default',
-    tableau10: 'Tableau 10',
-    set1: 'Set 1',
-    set2: 'Set 2',
-    paired: 'Paired',
-  };
-  return labels[palette];
-}
+// ============= Mode Display Helpers =============
 
 /**
  * Get display name for a color mode
@@ -1116,16 +442,4 @@ export function getColorModeLabel(mode: GlobalColorMode): string {
     index: 'By Index',
   };
   return labels[mode];
-}
-
-/**
- * Generate preview gradient for a continuous palette (CSS gradient)
- */
-export function getContinuousPaletteGradient(palette: ContinuousPalette): string {
-  const stops: string[] = [];
-  for (let i = 0; i <= 10; i++) {
-    const t = i / 10;
-    stops.push(`${getContinuousColor(t, palette)} ${t * 100}%`);
-  }
-  return `linear-gradient(90deg, ${stops.join(', ')})`;
 }

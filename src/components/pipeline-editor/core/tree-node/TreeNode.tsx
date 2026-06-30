@@ -35,8 +35,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { usePipelineDnd } from "../../PipelineDndContext";
-import { useOperatorAvailabilityOptional } from "../../contexts/OperatorAvailabilityContext";
+import { usePipelineDnd } from "../../usePipelineDnd";
+import { useOperatorAvailabilityOptional } from "../../contexts/useOperatorAvailability";
 import { getStepColor } from "../../types";
 import type { TreeNodeProps } from "./types";
 import {
@@ -119,10 +119,10 @@ export function TreeNode({
   const isUnavailable = !stepAvailability.available;
 
   // Use memoized computed values from utilities
-  const sweepInfo = useMemo(() => computeSweepInfo(step), [step.paramSweeps, step.stepGenerator]);
-  const finetuneInfo = useMemo(() => computeFinetuneInfo(step), [step.finetuneConfig]);
-  const generatorInfo = useMemo(() => computeGeneratorInfo(step), [step.type, step.subType, step.generatorKind, step.generatorOptions, step.branches]);
-  const displayParams = useMemo(() => getDisplayParams(step, sweepInfo.sweepKeys), [step.params, sweepInfo.sweepKeys]);
+  const sweepInfo = useMemo(() => computeSweepInfo(step), [step]);
+  const finetuneInfo = useMemo(() => computeFinetuneInfo(step), [step]);
+  const generatorInfo = useMemo(() => computeGeneratorInfo(step), [step]);
+  const displayParams = useMemo(() => getDisplayParams(step, sweepInfo.sweepKeys), [step, sweepInfo.sweepKeys]);
 
   // Determine if this node is foldable
   const isBranchable = isBranchableStep(step);

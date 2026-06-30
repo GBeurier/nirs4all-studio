@@ -15,6 +15,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getSampleExplanation } from '@/api/shap';
+import {
+  buildShapWaterfallBars,
+  getShapWaterfallBarStyle,
+  getShapWaterfallNextSample,
+  getShapWaterfallPreviousSample,
+  parseShapWaterfallSampleInput,
+} from '@/lib/shapWaterfallData';
+import type { ShapWaterfallBarData } from '@/lib/shapWaterfallData';
 import type { SampleExplanationResponse } from '@/types/shap';
 
 interface WaterfallChartProps {
@@ -22,16 +30,6 @@ interface WaterfallChartProps {
   sampleIdx: number;
   totalSamples: number;
   onSampleChange: (idx: number) => void;
-}
-
-interface WaterfallBarData {
-  name: string;
-  start: number;
-  end: number;
-  value: number;
-  isPositive: boolean;
-  isBase: boolean;
-  isFinal: boolean;
 }
 
 export function WaterfallChart({
@@ -59,71 +57,19 @@ export function WaterfallChart({
       });
   }, [jobId, sampleIdx]);
 
-  // Prepare waterfall chart data
   const chartData = useMemo(() => {
     if (!data) return [];
-
-    const bars: WaterfallBarData[] = [];
-
-    // Base value bar
-    bars.push({
-      name: 'Base Value',
-      start: 0,
-      end: data.base_value,
-      value: data.base_value,
-      isPositive: true,
-      isBase: true,
-      isFinal: false,
-    });
-
-    // Contribution bars (sorted by absolute value, positive first)
-    const sortedContributions = [...data.contributions].sort((a, b) => {
-      // Sort by sign first (positive before negative), then by absolute value
-      if (a.shap_value >= 0 && b.shap_value < 0) return -1;
-      if (a.shap_value < 0 && b.shap_value >= 0) return 1;
-      return Math.abs(b.shap_value) - Math.abs(a.shap_value);
-    });
-
-    let cumulative = data.base_value;
-    sortedContributions.forEach((contrib) => {
-      const start = cumulative;
-      const end = cumulative + contrib.shap_value;
-      bars.push({
-        name: contrib.feature_name,
-        start,
-        end,
-        value: contrib.shap_value,
-        isPositive: contrib.shap_value >= 0,
-        isBase: false,
-        isFinal: false,
-      });
-      cumulative = end;
-    });
-
-    // Final prediction bar
-    bars.push({
-      name: 'Prediction',
-      start: 0,
-      end: data.predicted_value,
-      value: data.predicted_value,
-      isPositive: true,
-      isBase: false,
-      isFinal: true,
-    });
-
-    return bars;
+    return buildShapWaterfallBars(data);
   }, [data]);
 
   const handlePrevSample = () => {
-    if (sampleIdx > 0) {
-      onSampleChange(sampleIdx - 1);
-    }
+    const previousSample = getShapWaterfallPreviousSample(sampleIdx);
+    if (previousSample != null) onSampleChange(previousSample);
   };
 
   const handleNextSample = () => {
-    if (sampleIdx < totalSamples - 1) {
-      onSampleChange(sampleIdx + 1);
-    }
+    const nextSample = getShapWaterfallNextSample(sampleIdx, totalSamples);
+    if (nextSample != null) onSampleChange(nextSample);
   };
 
   if (loading) {
@@ -169,10 +115,8 @@ export function WaterfallChart({
             type="number"
             value={sampleIdx}
             onChange={(e) => {
-              const val = parseInt(e.target.value, 10);
-              if (!isNaN(val) && val >= 0 && val < totalSamples) {
-                onSampleChange(val);
-              }
+              const nextSample = parseShapWaterfallSampleInput(e.target.value, totalSamples);
+              if (nextSample != null) onSampleChange(nextSample);
             }}
             className="w-20 h-8 text-center"
             min={0}
@@ -221,7 +165,7 @@ export function WaterfallChart({
             <Tooltip
               content={({ active, payload }) => {
                 if (!active || !payload || !payload.length) return null;
-                const bar = payload[0].payload as WaterfallBarData;
+                const bar = payload[0].payload as ShapWaterfallBarData;
                 return (
                   <div className="bg-popover border rounded-lg shadow-lg p-2 text-sm">
                     <p className="font-medium">{bar.name}</p>
@@ -243,21 +187,16 @@ export function WaterfallChart({
             <Bar dataKey="start" stackId="stack" fill="transparent" />
             {/* Visible contribution bars */}
             <Bar dataKey="value" stackId="stack" radius={[0, 4, 4, 0]}>
-              {chartData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={
-                    entry.isBase
-                      ? 'hsl(var(--muted-foreground))'
-                      : entry.isFinal
-                        ? 'hsl(var(--primary))'
-                        : entry.isPositive
-                          ? '#22c55e' // green-500
-                          : '#ef4444' // red-500
-                  }
-                  fillOpacity={entry.isBase || entry.isFinal ? 0.8 : 0.7}
-                />
-              ))}
+              {chartData.map((entry, index) => {
+                const style = getShapWaterfallBarStyle(entry);
+                return (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={style.fill}
+                    fillOpacity={style.fillOpacity}
+                  />
+                );
+              })}
             </Bar>
           </BarChart>
         </ResponsiveContainer>

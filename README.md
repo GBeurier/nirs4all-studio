@@ -144,12 +144,19 @@ This project supports development on:
    pip install -r requirements-cpu.txt
    ```
 
-3. **Start development servers:**
+3. **Check your environment:**
 
    ```cmd
-   npm start             REM Frontend + backend together (web dev)
-   npm run start:desktop REM Electron desktop mode
-   npm run stop          REM Stop all servers
+   npm run doctor
+   ```
+
+4. **Start development servers:**
+
+   Use the cross-platform launcher for the full web stack:
+
+   ```cmd
+   scripts\launcher.cmd start web:dev
+   scripts\launcher.cmd stop
    ```
 
    Or run frontend and backend separately:
@@ -161,6 +168,12 @@ This project supports development on:
    ```cmd
    .venv\Scripts\activate
    python -m uvicorn main:app --reload --port 8000
+   ```
+
+   Desktop mode:
+
+   ```cmd
+   npm run start:desktop
    ```
 
 ---
@@ -179,12 +192,19 @@ This project supports development on:
    pip install -r requirements-cpu.txt  # or requirements-gpu.txt for GPU
    ```
 
-3. **Start development servers:**
+3. **Check your environment:**
 
    ```bash
-   npm start             # Frontend + backend together (web dev)
-   npm run start:desktop # Electron desktop mode
-   npm run stop          # Stop all servers
+   npm run doctor
+   ```
+
+4. **Start development servers:**
+
+   Use the cross-platform launcher for the full web stack:
+
+   ```bash
+   ./scripts/launcher.sh start web:dev
+   ./scripts/launcher.sh stop
    ```
 
    Or run frontend and backend separately:
@@ -196,6 +216,12 @@ This project supports development on:
    ```bash
    source .venv/bin/activate
    python -m uvicorn main:app --reload --port 8000
+   ```
+
+   Desktop mode:
+
+   ```bash
+   npm run start:desktop
    ```
 
 ---
@@ -380,19 +406,22 @@ Use the unified launcher for all modes:
 | `scripts\launcher.cmd stop` | `./scripts/launcher.sh stop` | Stop all servers |
 | `scripts\launcher.cmd status` | `./scripts/launcher.sh status` | Show server status |
 
-Or use `npm run start` / `npm run start:desktop` / `npm run stop` directly.
+Direct scripts are also available: `npm run dev` for Vite, `python -m uvicorn main:app --reload --port 8000` for the backend, and `npm run start:desktop` for Electron.
 
 ### npm Scripts - Development
 
 | Command | Description |
 |---------|-------------|
+| `npm run doctor` | Check Node, npm, Python, lockfile, and requirement files |
 | `npm run dev` | Start Vite dev server |
 | `npm run dev:electron` | Start Electron with hot reload |
-| `npm run dev:registry` | Start with node registry enabled |
-| `npm run lint` | Run ESLint |
-| `npm run test` | Run Vitest tests |
-| `npm run test:watch` | Run tests in watch mode |
-| `npm run storybook` | Start Storybook dev server |
+| `npm run start:desktop` | Alias for Electron development mode |
+| `npm run lint:parallel` | Run ESLint, TypeScript, node registry, Ruff, and dependency checks |
+| `npm run test:frontend` | Run Vitest tests |
+| `npm run test:backend` | Run pytest backend tests |
+| `npm run test:routes` | Check FastAPI route table uniqueness |
+| `npm run test:parallel` | Run Vitest and pytest together |
+| `npm run test:e2e` | Run Playwright web Chromium tests |
 
 ### npm Scripts - Production Builds
 
@@ -401,16 +430,10 @@ Or use `npm run start` / `npm run start:desktop` / `npm run stop` directly.
 | `npm run build` | Build frontend for production |
 | `npm run build:electron` | Build Electron app |
 | `npm run electron:preview` | Preview Electron production build |
-| `npm run build:backend` | Build Python backend (CPU, default) |
-| `npm run build:backend:cpu` | Build Python backend (CPU) |
-| `npm run build:backend:gpu` | Build Python backend (GPU/CUDA) |
-| `npm run build:backend:gpu-metal` | Build Python backend (GPU/Metal for macOS) |
-| `npm run build:backend:clean` | Clean and rebuild backend |
-| `npm run build:release` | Full release build (CPU, current platform) |
-| `npm run build:release:cpu` | Full release build (CPU edition) |
-| `npm run build:release:gpu` | Full release build (GPU edition) |
-| `npm run build:release:clean` | Clean and rebuild release |
-| `npm run build:release:all` | Build for all platforms |
+| `npm run release` | Build an installer release |
+| `npm run release:clean` | Clean and rebuild an installer release |
+| `npm run release:all-in-one` | Build a portable all-in-one archive |
+| `npm run release:all-in-one:clean` | Clean and rebuild a portable all-in-one archive |
 
 ### Build Modes
 
@@ -428,11 +451,10 @@ node scripts/build-release.cjs --mode standalone --flavor gpu
 
 | Command | Description |
 |---------|-------------|
-| `npm run electron:build` | Package for current platform |
-| `npm run build:release --platform win` | Package for Windows |
-| `npm run build:release --platform mac` | Package for macOS |
-| `npm run build:release --platform linux` | Package for Linux |
-| `npm run build:release --platform all` | Package for all platforms |
+| `npm run release -- --platform win` | Package for Windows |
+| `npm run release -- --platform mac` | Package for macOS |
+| `npm run release -- --platform linux` | Package for Linux |
+| `npm run release -- --platform all` | Package for all platforms |
 
 ---
 

@@ -16,44 +16,20 @@ import type { Dataset as DatasetInfo } from "@/types/datasets";
 import {
   getDatasetMetadataColumns,
   getDatasetRepetitionColumn,
-} from "@/lib/runtimeSplitGrouping";
+} from "@/lib/datasetGroupingFields";
+import {
+  normalizePipelineExecutionResult,
+  toLegacyPipelineExecutePayload,
+  type PipelineExecutionConfig,
+  type PipelineExecutionResult,
+} from "@/lib/pipelineExecutionContract";
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface ExecutionConfig {
-  pipelineId: string;
-  datasetId: string;
-  verbose?: number;
-  exportModel?: boolean;
-  modelName?: string;
-  splitGroupByByDataset?: Record<string, string | null>;
-  inlinePipeline?: {
-    name: string;
-    steps: unknown[];
-  };
-}
-
-export interface ExecutionResult {
-  success: boolean;
-  metrics?: {
-    rmse?: number;
-    r2?: number;
-    mae?: number;
-    score?: number;
-  };
-  topResults?: Array<{
-    rank: number;
-    rmse?: number;
-    r2?: number;
-    config?: string;
-  }>;
-  variantsTested?: number;
-  modelPath?: string;
-  error?: string;
-  traceback?: string;
-}
+export type ExecutionConfig = PipelineExecutionConfig;
+export type ExecutionResult = PipelineExecutionResult;
 
 export interface ExportOptions {
   format: "python" | "yaml" | "json";
@@ -104,7 +80,7 @@ export function usePipelineExecution() {
     } else if (jobStatus === "completed") {
       setStatus("completed");
       if (jobResult) {
-        setResult(jobResult as unknown as ExecutionResult);
+        setResult(normalizePipelineExecutionResult(jobResult));
       }
     } else if (jobStatus === "failed") {
       setStatus("failed");
@@ -128,14 +104,7 @@ export function usePipelineExecution() {
           success: boolean;
           job_id: string;
           message: string;
-        }>(`/pipelines/${config.pipelineId}/execute`, {
-          dataset_id: config.datasetId,
-          verbose: config.verbose ?? 1,
-          export_model: config.exportModel ?? true,
-          model_name: config.modelName,
-          split_group_by_by_dataset: config.splitGroupByByDataset ?? {},
-          inline_pipeline: config.inlinePipeline ?? null,
-        });
+        }>(`/pipelines/${config.pipelineId}/execute`, toLegacyPipelineExecutePayload(config));
 
         if (response.success) {
           setJobId(response.job_id);

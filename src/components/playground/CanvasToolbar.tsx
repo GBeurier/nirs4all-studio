@@ -12,88 +12,34 @@
  * - ACTIONS: Export, reset, reference mode
  */
 
-import { useCallback, memo, useMemo } from 'react';
-import {
-  Eye,
-  EyeOff,
-  Loader2,
-  Filter,
-  Palette,
-  ArrowLeftRight,
-  MousePointer2,
-  Layers,
-  Paintbrush,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
-import { PartitionSelector, type PartitionFilter } from './PartitionSelector';
-import { MetricsFilterPanel } from './MetricsFilterPanel';
-import { OutlierSelector, type OutlierMethod } from './OutlierSelector';
-import { SimilarityFilter, type DistanceMetric } from './SimilarityFilter';
-import { SavedSelections } from './SavedSelections';
-import { SelectionFilters } from './SelectionFilters';
-import { SelectionModeToggle } from './SelectionTools';
-import { useSelection } from '@/context/SelectionContext';
-import type { RenderMode } from '@/lib/playground/renderOptimizer';
-import type { UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, FoldsInfo, SubsetInfo } from '@/types/playground';
+import { memo } from 'react';
+import type { PartitionFilter } from '@/lib/playground/partitionFilters';
+import type { OutlierMethod } from './OutlierSelector';
+import type { DistanceMetric } from './SimilarityFilter';
+import type { MetricsResult, MetricFilter, OutlierResult, SimilarityResult, FoldsInfo, SubsetInfo } from '@/types/playground';
+import { CanvasToolbarColorGroup } from './CanvasToolbarColorGroup';
+import { CanvasToolbarFilterGroup } from './CanvasToolbarFilterGroup';
+import { CanvasToolbarSelectionGroup } from './CanvasToolbarSelectionGroup';
+import { CanvasToolbarViewGroup } from './CanvasToolbarViewGroup';
+import type { ToggleableChartControl } from './CanvasToolbarViewGroup';
 import {
   type GlobalColorConfig,
-  type GlobalColorMode,
-  type ContinuousPalette,
-  type CategoricalPalette,
   type ColorContext,
-  CATEGORICAL_PALETTES,
-  getContinuousPaletteLabel,
-  getCategoricalPaletteLabel,
-  getColorModeLabel,
-  getContinuousPaletteGradient,
-  isContinuousMode,
-  getEffectiveTargetType,
 } from '@/lib/playground/colorConfig';
-import { type TargetType, isCategoricalTarget } from '@/lib/playground/targetTypeDetection';
-import { type ChartType } from '@/context/PlaygroundViewContext';
+import { type ChartType } from '@/context/usePlaygroundView';
 import type { SpectraViewMode } from '@/lib/playground/spectraConfig';
+import type { PipelineExecutionMetricObservation } from '@/lib/pipelineExecutionContract';
 
 // Re-export ChartType for consumers
 export type { ChartType };
-
-export interface ChartConfig {
-  id: ChartType;
-  label: string;
-  requiresFolds?: boolean;
-  requiresRepetitions?: boolean;
-}
-
-export const CHART_CONFIG: ChartConfig[] = [
-  { id: 'spectra', label: 'Spectra' },
-  { id: 'histogram', label: 'Y Hist' },
-  { id: 'folds', label: 'Folds', requiresFolds: true },
-  { id: 'pca', label: 'PCA' },
-  { id: 'repetitions', label: 'Reps', requiresRepetitions: true },
-];
+export { CHART_CONFIG } from './CanvasToolbarChartConfig';
+export type { ChartConfig } from './CanvasToolbarChartConfig';
 
 export interface CanvasToolbarProps {
   // Chart visibility
   effectiveVisibleCharts: Set<ChartType>;
   onToggleChart: (chart: ChartType) => void;
+  toggleableCharts?: readonly ToggleableChartControl[];
   /** True when CV folds (kind="cv_folds", n_folds > 1) are available. */
   hasFolds: boolean;
   /**
@@ -123,6 +69,7 @@ export interface CanvasToolbarProps {
 
   // Advanced filtering (Phase 5)
   metrics?: MetricsResult | null;
+  metricObservations?: readonly PipelineExecutionMetricObservation[] | null;
   metricFilters?: MetricFilter[];
   onMetricFiltersChange?: (filters: MetricFilter[]) => void;
   onDetectOutliers?: (method: OutlierMethod, threshold: number) => Promise<OutlierResult>;
@@ -130,42 +77,13 @@ export interface CanvasToolbarProps {
   selectedSample?: number | null;
   sampleIds?: string[];
 
-  // Step comparison
-  hasOperators: boolean;
-  operators: UnifiedOperator[];
-  stepComparisonEnabled: boolean;
-  onStepComparisonEnabledChange?: (enabled: boolean) => void;
-  activeStep: number;
-  onActiveStepChange?: (step: number) => void;
-  enabledOperatorCount: number;
-
-  // Phase 6: Reference mode
-  /** Current dataset ID for reference picker exclusion */
-  currentDatasetId?: string;
-
   // Color mode
   colorConfig: GlobalColorConfig;
   onColorConfigChange: (config: GlobalColorConfig) => void;
   /** Whether outliers have been detected (enables outlier color mode) */
   hasOutliers?: boolean;
-  /** Number of outliers detected */
-  outlierCount?: number;
   /** Color context for legend display */
   colorContext?: ColorContext;
-
-  // Render mode
-  displayRenderMode: RenderMode;
-  effectiveRenderMode: RenderMode;
-  isWebGLActive: boolean;
-  onRenderModeChange: (mode: RenderMode) => void;
-
-  // Export handlers
-  onExportChartPng: (chartType: ChartType) => Promise<void>;
-  onExportSpectraCsv: () => Promise<void>;
-  onExportSelectionsJson: () => Promise<void>;
-  onBatchExport: () => Promise<void>;
-  /** Export combined report with all charts (Phase 8) */
-  onExportCombinedReport?: () => Promise<void>;
 
   // Interaction
   onInteractionStart: () => void;
@@ -180,12 +98,6 @@ export interface CanvasToolbarProps {
   /** Callback to toggle absolute/signed difference mode */
   onToggleAbsoluteDifference?: () => void;
 
-  // Phase 8: Reset functionality
-  /** Callback to reset playground state */
-  onResetPlayground?: () => void;
-  /** Whether there's state to reset */
-  hasStateToReset?: boolean;
-
   // OPT-3: Subset mode
   /** Current subset mode ('all' or 'visible') */
   subsetMode?: 'all' | 'visible';
@@ -195,222 +107,12 @@ export interface CanvasToolbarProps {
   subsetInfo?: SubsetInfo;
 }
 
-// ============= Sub-Components =============
-
-interface ColorModeSelectorProps {
-  colorConfig: GlobalColorConfig;
-  onChange: (config: GlobalColorConfig) => void;
-  hasFolds: boolean;
-  hasPartition: boolean;
-  hasOutliers: boolean;
-  metadataColumns: string[];
-  /** Color context for Phase 5 target type info */
-  colorContext?: ColorContext;
-}
-
-const ColorModeSelector = memo(function ColorModeSelector({
-  colorConfig,
-  onChange,
-  hasFolds,
-  hasPartition,
-  hasOutliers,
-  metadataColumns,
-  colorContext,
-}: ColorModeSelectorProps) {
-  const hasMetadata = metadataColumns.length > 0;
-
-  // Phase 5: Get effective target type considering override
-  const detectedTargetType = colorContext?.targetType;
-  const effectiveTargetType = getEffectiveTargetType(detectedTargetType, colorConfig.targetTypeOverride);
-  const isClassificationMode = effectiveTargetType && isCategoricalTarget(effectiveTargetType);
-
-  const showContinuousPalette = isContinuousMode(
-    colorConfig.mode,
-    colorConfig.metadataType,
-    detectedTargetType,
-    colorConfig.targetTypeOverride
-  );
-
-  // Palette preview colors
-  const continuousPaletteOptions: ContinuousPalette[] = [
-    'blue_red', 'viridis', 'plasma', 'inferno', 'coolwarm', 'spectral',
-    'cividis', 'winter', 'blues', 'greens', 'turbo'
-  ];
-  const categoricalPaletteOptions: CategoricalPalette[] = ['default', 'tableau10', 'set1', 'set2', 'paired'];
-
-  return (
-    <div className="flex items-center gap-1">
-      {/* Mode selector with icon */}
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Palette className="w-3 h-3 text-muted-foreground cursor-help" />
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Color mode: how samples are colored</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-      <Select
-        value={colorConfig.mode}
-        onValueChange={(mode) => onChange({
-          ...colorConfig,
-          mode: mode as GlobalColorMode,
-          // Clear metadata key when switching away from metadata mode
-          metadataKey: mode === 'metadata' ? colorConfig.metadataKey : undefined,
-        })}
-      >
-        <SelectTrigger className="h-6 w-28 text-[10px]">
-          <SelectValue>{getColorModeLabel(colorConfig.mode)}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="target">By Y Value</SelectItem>
-          <SelectItem value="partition" disabled={!hasPartition}>By Partition</SelectItem>
-          <SelectItem value="fold" disabled={!hasFolds}>By Fold</SelectItem>
-          <SelectItem value="metadata" disabled={!hasMetadata}>By Metadata</SelectItem>
-          <SelectItem value="selection">By Selection</SelectItem>
-          <SelectItem value="outlier">By Outlier</SelectItem>
-        </SelectContent>
-      </Select>
-
-      {/* Metadata column picker */}
-      {colorConfig.mode === 'metadata' && hasMetadata && (
-        <Select
-          value={colorConfig.metadataKey || metadataColumns[0]}
-          onValueChange={(key) => onChange({ ...colorConfig, metadataKey: key })}
-        >
-          <SelectTrigger className="h-6 w-24 text-[10px]">
-            <SelectValue placeholder="Column..." />
-          </SelectTrigger>
-          <SelectContent>
-            {metadataColumns.map(col => (
-              <SelectItem key={col} value={col}>{col}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {/* Palette selector dropdown */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-            <Palette className="w-3 h-3" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          {/* Phase 5: Target type override when in target mode */}
-          {colorConfig.mode === 'target' && (
-            <>
-              <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                Target Type
-                {detectedTargetType && (
-                  <span className="ml-1 text-muted-foreground/70">
-                    (detected: {detectedTargetType})
-                  </span>
-                )}
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={colorConfig.targetTypeOverride ?? 'auto'}
-                onValueChange={(value) => onChange({
-                  ...colorConfig,
-                  targetTypeOverride: value as TargetType | 'auto',
-                })}
-              >
-                <DropdownMenuRadioItem value="auto">
-                  <span className="text-xs">Auto-detect</span>
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="regression">
-                  <span className="text-xs">Force Regression (continuous)</span>
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="classification">
-                  <span className="text-xs">Force Classification (categorical)</span>
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="ordinal">
-                  <span className="text-xs">Force Ordinal (rating scale)</span>
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-              <DropdownMenuSeparator />
-            </>
-          )}
-
-          {showContinuousPalette ? (
-            <>
-              <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                Continuous Palette
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={colorConfig.continuousPalette}
-                onValueChange={(value) => onChange({ ...colorConfig, continuousPalette: value as ContinuousPalette })}
-              >
-                {continuousPaletteOptions.map(palette => (
-                  <DropdownMenuRadioItem key={palette} value={palette} className="flex items-center gap-2">
-                    <div
-                      className="w-16 h-3 rounded-sm"
-                      style={{ background: getContinuousPaletteGradient(palette) }}
-                    />
-                    <span className="text-xs">{getContinuousPaletteLabel(palette)}</span>
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </>
-          ) : (
-            <>
-              <DropdownMenuLabel className="text-[10px] text-muted-foreground">
-                Categorical Palette
-              </DropdownMenuLabel>
-              <DropdownMenuRadioGroup
-                value={colorConfig.categoricalPalette}
-                onValueChange={(value) => onChange({ ...colorConfig, categoricalPalette: value as CategoricalPalette })}
-              >
-                {categoricalPaletteOptions.map(palette => (
-                  <DropdownMenuRadioItem key={palette} value={palette} className="flex items-center gap-2">
-                    <div className="flex gap-0.5">
-                      {CATEGORICAL_PALETTES[palette].slice(0, 5).map((color, i) => (
-                        <div
-                          key={i}
-                          className="w-3 h-3 rounded-sm"
-                          style={{ backgroundColor: color }}
-                        />
-                      ))}
-                    </div>
-                    <span className="text-xs">{getCategoricalPaletteLabel(palette)}</span>
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-});
-
-// ============= Ribbon Group Component =============
-
-interface RibbonGroupProps {
-  label: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}
-
-const RibbonGroup = memo(function RibbonGroup({ label, icon, children, className }: RibbonGroupProps) {
-  return (
-    <div className={cn('flex items-center gap-2 pl-3 pr-4 border-r-2 border-border/60 last:border-r-0 last:pr-3', className)}>
-      <div className="flex items-center gap-1 text-[9px] text-muted-foreground font-medium uppercase tracking-wider shrink-0 select-none">
-        {icon}
-        <span className="border-b border-muted-foreground/30">{label}</span>
-      </div>
-      <div className="flex items-center gap-1">
-        {children}
-      </div>
-    </div>
-  );
-});
-
 // ============= Main Component =============
 
 export const CanvasToolbar = memo(function CanvasToolbar({
   effectiveVisibleCharts,
   onToggleChart,
+  toggleableCharts,
   hasFolds,
   hasPartition,
   showFoldsChart,
@@ -424,65 +126,28 @@ export const CanvasToolbar = memo(function CanvasToolbar({
   totalSamples,
   metadata,
   metrics,
+  metricObservations,
   metricFilters = [],
   onMetricFiltersChange,
   onDetectOutliers,
   onFindSimilar,
   selectedSample,
   sampleIds,
-  hasOperators,
-  operators,
-  stepComparisonEnabled,
-  onStepComparisonEnabledChange,
-  activeStep,
-  onActiveStepChange,
-  enabledOperatorCount,
-  currentDatasetId,
   colorConfig,
   onColorConfigChange,
   hasOutliers = false,
-  outlierCount = 0,
   colorContext,
-  displayRenderMode,
-  effectiveRenderMode,
-  isWebGLActive,
-  onRenderModeChange,
-  onExportChartPng,
-  onExportSpectraCsv,
-  onExportSelectionsJson,
-  onBatchExport,
-  onExportCombinedReport,
   onInteractionStart,
   // Phase 7: Spectra difference mode
   spectraViewMode,
   onSpectraViewModeChange,
   showAbsoluteDifference = false,
   onToggleAbsoluteDifference,
-  // Phase 8: Reset functionality
-  onResetPlayground,
-  hasStateToReset = false,
   // OPT-3: Subset mode
   subsetMode = 'all',
   onSubsetModeChange,
   subsetInfo,
 }: CanvasToolbarProps) {
-  // Get selection context for tool mode
-  const selectionCtx = useSelection();
-
-  const handleColorConfigChange = useCallback((config: GlobalColorConfig) => {
-    onInteractionStart();
-    onColorConfigChange(config);
-  }, [onInteractionStart, onColorConfigChange]);
-
-  // Extract metadata column names
-  const metadataColumns = useMemo(() => {
-    if (!metadata) return [];
-    return Object.keys(metadata).filter(key => {
-      const values = metadata[key];
-      return Array.isArray(values) && values.length > 0;
-    });
-  }, [metadata]);
-
   // hasPartition / hasFolds are now distinct concerns and are passed in directly.
 
   return (
@@ -494,276 +159,64 @@ export const CanvasToolbar = memo(function CanvasToolbar({
       {/* ============= ROW 1: View, Selection, Filter ============= */}
       <div className="flex items-stretch px-2 py-1 gap-0">
 
-        {/* VIEW GROUP */}
-        <RibbonGroup label="View" icon={<Layers className="w-2.5 h-2.5" />}>
-          {/* Chart visibility toggles */}
-          {CHART_CONFIG.map(({ id, label, requiresFolds, requiresRepetitions }) => {
-            const isVisible = effectiveVisibleCharts.has(id);
-            // The "folds" chart is shown for either CV folds or a train/test partition,
-            // since both produce a meaningful per-bucket distribution view.
-            const isDisabled = (requiresFolds && !showFoldsChart) || (requiresRepetitions && !hasRepetitions);
-            const tooltipText = isDisabled
-              ? (requiresFolds
-                  ? 'Add a splitter operator (or load a dataset with a test partition) to see fold distribution'
-                  : 'No repetitions detected in dataset')
-              : `${isVisible ? 'Hide' : 'Show'} ${label} chart (press ${CHART_CONFIG.findIndex(c => c.id === id) + 1})`;
+        <CanvasToolbarViewGroup
+          effectiveVisibleCharts={effectiveVisibleCharts}
+          onToggleChart={onToggleChart}
+          toggleableCharts={toggleableCharts}
+          showFoldsChart={showFoldsChart}
+          hasRepetitions={hasRepetitions}
+          isFetching={isFetching}
+          totalSamples={totalSamples}
+          onInteractionStart={onInteractionStart}
+          spectraViewMode={spectraViewMode}
+          onSpectraViewModeChange={onSpectraViewModeChange}
+          showAbsoluteDifference={showAbsoluteDifference}
+          onToggleAbsoluteDifference={onToggleAbsoluteDifference}
+          subsetMode={subsetMode}
+          onSubsetModeChange={onSubsetModeChange}
+          subsetInfo={subsetInfo}
+        />
 
-            return (
-              <TooltipProvider key={id} delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={isVisible ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className={cn(
-                        'h-5 text-[10px] gap-1 px-1.5',
-                        !isVisible && 'opacity-50',
-                        isDisabled && 'cursor-not-allowed opacity-30'
-                      )}
-                      onMouseDown={onInteractionStart}
-                      onClick={() => !isDisabled && onToggleChart(id)}
-                      disabled={isDisabled}
-                    >
-                      {isVisible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                      {label}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">{tooltipText}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            );
-          })}
+        <CanvasToolbarSelectionGroup
+          selectedCount={selectedCount}
+          onFilterToSelection={onFilterToSelection}
+          folds={folds}
+          metadata={metadata}
+          sampleIds={sampleIds}
+          totalSamples={totalSamples}
+        />
 
-          {/* Diff Mode Toggle */}
-          {onSpectraViewModeChange && (
-            <>
-              <Separator orientation="vertical" className="h-4 mx-1" />
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={spectraViewMode === 'difference' ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className={cn(
-                        'h-5 text-[10px] gap-1 px-1.5',
-                        spectraViewMode === 'difference' && 'bg-orange-500/20 text-orange-600 dark:text-orange-400'
-                      )}
-                      onMouseDown={onInteractionStart}
-                      onClick={() => onSpectraViewModeChange(spectraViewMode === 'difference' ? 'processed' : 'difference')}
-                    >
-                      <ArrowLeftRight className="w-3 h-3" />
-                      Diff
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {spectraViewMode === 'difference'
-                      ? 'Exit difference mode (show processed spectra)'
-                      : 'Enter difference mode (show per-sample distances)'}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              {spectraViewMode === 'difference' && onToggleAbsoluteDifference && (
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={showAbsoluteDifference ? 'secondary' : 'ghost'}
-                        size="sm"
-                        className="h-5 text-[10px] px-1.5"
-                        onClick={onToggleAbsoluteDifference}
-                      >
-                        {showAbsoluteDifference ? '|Δ|' : '±Δ'}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {showAbsoluteDifference ? 'Show signed differences' : 'Show absolute differences'}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </>
-          )}
-
-          {/* OPT-3: Subset mode toggle */}
-          {onSubsetModeChange && totalSamples > 200 && (
-            <>
-              <Separator orientation="vertical" className="h-4 mx-1" />
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={subsetMode === 'visible' ? 'secondary' : 'ghost'}
-                      size="sm"
-                      className={cn(
-                        'h-5 text-[10px] gap-1 px-1.5',
-                        subsetMode === 'visible' && 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
-                      )}
-                      onMouseDown={onInteractionStart}
-                      onClick={() => onSubsetModeChange(subsetMode === 'all' ? 'visible' : 'all')}
-                    >
-                      <Filter className="w-3 h-3" />
-                      {subsetMode === 'visible' ? 'Subset' : 'All'}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs">
-                    {subsetMode === 'visible' ? (
-                      <div className="text-xs">
-                        <p className="font-medium">Subset mode (faster)</p>
-                        <p>Processing {subsetInfo?.displayed_samples ?? 200} of {subsetInfo?.total_samples ?? totalSamples} samples.</p>
-                        <p className="text-muted-foreground mt-1">Click to process all samples. Fold distributions may not be representative in subset mode.</p>
-                      </div>
-                    ) : (
-                      <div className="text-xs">
-                        <p className="font-medium">All samples mode</p>
-                        <p>Processing all {totalSamples} samples.</p>
-                        <p className="text-muted-foreground mt-1">Click to process a representative subset for faster rendering.</p>
-                      </div>
-                    )}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              {subsetMode === 'visible' && subsetInfo && (
-                <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-normal text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
-                  {subsetInfo.displayed_samples}/{subsetInfo.total_samples}
-                </Badge>
-              )}
-            </>
-          )}
-
-          {/* Loading indicator */}
-          {isFetching && (
-            <Loader2 className="w-3 h-3 animate-spin text-primary ml-1" />
-          )}
-        </RibbonGroup>
-
-        {/* SELECTION GROUP */}
-        <RibbonGroup label="Selection" icon={<MousePointer2 className="w-2.5 h-2.5" />}>
-          {/* Selection Tool Mode Toggle */}
-          <SelectionModeToggle
-            mode={selectionCtx.selectionToolMode}
-            onChange={selectionCtx.setSelectionToolMode}
-          />
-          {selectionCtx.selectionToolMode !== 'click' && (
-            <span className="text-[9px] text-primary font-medium px-1 py-0.5 bg-primary/10 rounded">
-              {selectionCtx.selectionToolMode === 'box' ? 'Box' : 'Lasso'}
-            </span>
-          )}
-
-          {/* Selection by metadata/fold filter */}
-          <SelectionFilters
-            folds={folds}
-            metadata={metadata}
-            sampleIds={sampleIds}
-            totalSamples={totalSamples}
-            compact
-          />
-
-          {/* Selection count badge */}
-          {selectedCount > 0 && (
-            <>
-              <Separator orientation="vertical" className="h-4 mx-1" />
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-medium cursor-help">
-                      {selectedCount} sel.
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {selectedCount} sample{selectedCount !== 1 ? 's' : ''} currently selected. Press Esc to clear.
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              {onFilterToSelection && (
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-5 text-[10px] gap-1 px-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400"
-                        onClick={onFilterToSelection}
-                      >
-                        <Filter className="w-3 h-3" />
-                        Keep
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-xs">
-                      <p className="text-xs">
-                        Add a filter that keeps only the {selectedCount} selected sample{selectedCount !== 1 ? 's' : ''}.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </>
-          )}
-
-          {/* Saved Selections */}
-          <SavedSelections compact sampleIds={sampleIds} />
-        </RibbonGroup>
-
-        {/* FILTER GROUP */}
-        <RibbonGroup label="Filter" icon={<Filter className="w-2.5 h-2.5" />}>
-          {/* Partition filter — available when there's a partition (train/test) or CV folds */}
-          {(hasPartition || hasFolds) && (
-            <PartitionSelector
-              value={partitionFilter}
-              onChange={onPartitionFilterChange}
-              folds={folds}
-              totalSamples={totalSamples}
-              compact
-            />
-          )}
-
-          {/* Advanced Filtering: Metrics, Outliers, Similarity */}
-          {metrics && onMetricFiltersChange && (
-            <MetricsFilterPanel
-              metrics={metrics}
-              activeFilters={metricFilters ?? []}
-              onFiltersChange={onMetricFiltersChange}
-              totalSamples={totalSamples}
-              compact
-            />
-          )}
-
-          {onDetectOutliers && (
-            <OutlierSelector
-              onDetectOutliers={onDetectOutliers}
-              totalSamples={totalSamples}
-              useSelectionContext
-              compact
-            />
-          )}
-
-          {onFindSimilar && (
-            <SimilarityFilter
-              onFindSimilar={onFindSimilar}
-              selectedSample={selectedSample ?? null}
-              sampleIds={sampleIds}
-              useSelectionContext
-              totalSamples={totalSamples}
-              compact
-            />
-          )}
-        </RibbonGroup>
+        <CanvasToolbarFilterGroup
+          hasPartition={hasPartition}
+          hasFolds={hasFolds}
+          partitionFilter={partitionFilter}
+          onPartitionFilterChange={onPartitionFilterChange}
+          folds={folds}
+          totalSamples={totalSamples}
+          metrics={metrics}
+          metricObservations={metricObservations}
+          metricFilters={metricFilters}
+          onMetricFiltersChange={onMetricFiltersChange}
+          onDetectOutliers={onDetectOutliers}
+          onFindSimilar={onFindSimilar}
+          selectedSample={selectedSample}
+          sampleIds={sampleIds}
+        />
       </div>
 
       {/* ============= ROW 2: Coloration, Reference, Actions ============= */}
       <div className="flex items-stretch px-2 py-1 gap-0 border-t border-border/30">
 
-        {/* COLORATION GROUP */}
-        <RibbonGroup label="Coloration" icon={<Paintbrush className="w-2.5 h-2.5" />}>
-          <ColorModeSelector
-            colorConfig={colorConfig}
-            onChange={handleColorConfigChange}
-            hasFolds={hasFolds}
-            hasPartition={hasPartition}
-            hasOutliers={hasOutliers}
-            metadataColumns={metadataColumns}
-            colorContext={colorContext}
-          />
-        </RibbonGroup>
+        <CanvasToolbarColorGroup
+          colorConfig={colorConfig}
+          onColorConfigChange={onColorConfigChange}
+          onInteractionStart={onInteractionStart}
+          hasFolds={hasFolds}
+          hasPartition={hasPartition}
+          hasOutliers={hasOutliers}
+          metadata={metadata}
+          colorContext={colorContext}
+        />
 
       </div>
 

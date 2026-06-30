@@ -12,115 +12,26 @@
 import { useRef, useEffect, useCallback, useMemo, useState, forwardRef, useImperativeHandle } from 'react';
 import createRegl from 'regl';
 import { cn } from '@/lib/utils';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection } from '@/context/useSelection';
 import { RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { ScatterRendererProps, DataBounds } from './types';
+import type { ScatterRendererProps } from './types';
 import {
-  cssToRGBA,
-  getContinuousColor,
-  getCategoricalColor,
-  indexToPickColor,
-  pickColorToIndex,
-  normalizeValue,
-} from './utils/colorEncoding';
-import { mat4Perspective, mat4Identity } from './utils/projectionMatrix';
+  buildRegl3DPointBufferData,
+  buildRegl3DSelectionData,
+  calculateRegl3DBounds,
+  calculateRegl3DViewportSize,
+  computeRegl3DPointColors,
+  createRegl3DCameraMatrices,
+  createRegl3DIndexMap,
+  createRegl3DRectPickingPlan,
+  decodeRegl3DPickPixel,
+  generateRegl3DGridGeometry,
+  type Regl3DGridGeometry,
+  type Regl3DPoint,
+} from './utils/scatterRegl3DData';
 import { OrbitControls } from './utils/orbitControls';
-
-// ============= Types =============
-
-interface Point3DUniforms {
-  projection: Float32Array;
-  view: Float32Array;
-  model: Float32Array;
-  pointScale: number;
-  resolution: [number, number];
-  hasSelection: number;
-}
-
-interface Point3DAttributes {
-  position: Float32Array;
-  color: Float32Array;
-  size: Float32Array;
-  selected: Float32Array;
-  hovered: Float32Array;
-}
-
-interface Pick3DAttributes {
-  position: Float32Array;
-  pickColor: Float32Array;
-  size: Float32Array;
-}
-
-// ============= Helpers =============
-
-function calculate3DBounds(points: [number, number, number][]): DataBounds & { minZ: number; maxZ: number } {
-  if (points.length === 0) {
-    return { minX: -1, maxX: 1, minY: -1, maxY: 1, minZ: -1, maxZ: 1 };
-  }
-
-  let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
-  let minZ = Infinity, maxZ = -Infinity;
-
-  for (const [x, y, z] of points) {
-    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-      minZ = Math.min(minZ, z);
-      maxZ = Math.max(maxZ, z);
-    }
-  }
-
-  return { minX, maxX, minY, maxY, minZ, maxZ };
-}
-
-function normalizePoint3D(
-  x: number, y: number, z: number,
-  bounds: DataBounds & { minZ: number; maxZ: number }
-): [number, number, number] {
-  const rangeX = bounds.maxX - bounds.minX || 1;
-  const rangeY = bounds.maxY - bounds.minY || 1;
-  const rangeZ = bounds.maxZ - bounds.minZ || 1;
-
-  return [
-    ((x - bounds.minX) / rangeX) * 2 - 1,
-    ((y - bounds.minY) / rangeY) * 2 - 1,
-    ((z - bounds.minZ) / rangeZ) * 2 - 1,
-  ];
-}
-
-// Grid lines geometry
-function generateGridGeometry(): { positions: number[]; colors: number[] } {
-  const positions: number[] = [];
-  const colors: number[] = [];
-  const gridColor = [0.3, 0.3, 0.3, 0.5];
-  const axisColors = {
-    x: [1, 0.3, 0.3, 1],
-    y: [0.3, 1, 0.3, 1],
-    z: [0.3, 0.3, 1, 1],
-  };
-
-  const gridSize = 1;
-  const gridStep = 0.5;
-  for (let i = -gridSize; i <= gridSize; i += gridStep) {
-    positions.push(-gridSize, -1, i, gridSize, -1, i);
-    colors.push(...gridColor, ...gridColor);
-    positions.push(i, -1, -gridSize, i, -1, gridSize);
-    colors.push(...gridColor, ...gridColor);
-  }
-
-  positions.push(-1.2, -1, 0, 1.2, -1, 0);
-  colors.push(...axisColors.x, ...axisColors.x);
-  positions.push(0, -1.2, 0, 0, 1.2, 0);
-  colors.push(...axisColors.y, ...axisColors.y);
-  positions.push(0, -1, -1.2, 0, -1, 1.2);
-  colors.push(...axisColors.z, ...axisColors.z);
-
-  return { positions, colors };
-}
+import { createRegl3DDrawCommands } from './ScatterRegl3DCommands';
 
 // ============= Component =============
 
@@ -162,19 +73,27 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
   const pickFboSizeRef = useRef<{ width: number; height: number }>({ width: 1, height: 1 });
   const orbitControlsRef = useRef<OrbitControls | null>(null);
   const animationFrameRef = useRef<number>(0);
-  const gridDataRef = useRef<{ positions: number[]; colors: number[] } | null>(null);
+  const gridDataRef = useRef<Regl3DGridGeometry | null>(null);
 
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [, forceUpdate] = useState({});
 
   // Selection context
   const selectionCtx = useSelection();
+  const manualSelectedSamples = useMemo(
+    () => new Set(manualSelectedIndices ?? []),
+    [manualSelectedIndices]
+  );
+  const manualPinnedSamples = useMemo(
+    () => new Set(manualPinnedIndices ?? []),
+    [manualPinnedIndices]
+  );
   const selectedSamples = useSelectionContext
     ? selectionCtx.selectedSamples
-    : new Set(manualSelectedIndices ?? []);
+    : manualSelectedSamples;
   const pinnedSamples = useSelectionContext
     ? selectionCtx.pinnedSamples
-    : new Set(manualPinnedIndices ?? []);
+    : manualPinnedSamples;
   const contextHovered = useSelectionContext ? selectionCtx.hoveredSample : null;
   const effectiveHovered = useSelectionContext ? contextHovered : hoveredIndex;
 
@@ -188,27 +107,14 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
 
       const rect = canvas.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio, 2);
-
-      // Convert screen coords to canvas coords
-      const canvasX1 = Math.floor(Math.min(x1, x2) * dpr);
-      const canvasY1 = Math.floor(Math.min(y1, y2) * dpr);
-      const canvasX2 = Math.floor(Math.max(x1, x2) * dpr);
-      const canvasY2 = Math.floor(Math.max(y1, y2) * dpr);
-
-      const width = canvasX2 - canvasX1;
-      const height = canvasY2 - canvasY1;
-      if (width <= 0 || height <= 0) return [];
-
-      // Read from picking buffer
-      const canvasHeight = Math.floor(rect.height * dpr);
-      const flippedY = canvasHeight - canvasY2; // WebGL Y is flipped
+      const pickingPlan = createRegl3DRectPickingPlan(x1, y1, x2, y2, rect.height, dpr);
+      if (!pickingPlan) return [];
 
       // Sample the picking buffer at a grid of points
       const foundIndices = new Set<number>();
-      const stepSize = Math.max(2, Math.floor(Math.min(width, height) / 50)); // Sample ~50 points per dimension
 
-      for (let sx = canvasX1; sx <= canvasX2; sx += stepSize) {
-        for (let sy = flippedY; sy <= flippedY + height; sy += stepSize) {
+      for (let sx = pickingPlan.startX; sx <= pickingPlan.endX; sx += pickingPlan.stepSize) {
+        for (let sy = pickingPlan.startY; sy <= pickingPlan.endY; sy += pickingPlan.stepSize) {
           const pixel = regl.read({
             framebuffer: pickFbo,
             x: sx,
@@ -216,11 +122,9 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
             width: 1,
             height: 1,
           });
-          if (pixel[0] !== 0 || pixel[1] !== 0 || pixel[2] !== 0) {
-            const index = (pixel[0] << 16) | (pixel[1] << 8) | pixel[2];
-            if (index > 0) {
-              foundIndices.add(index - 1); // pickColor uses index + 1
-            }
+          const index = decodeRegl3DPickPixel(pixel);
+          if (index !== null) {
+            foundIndices.add(index);
           }
         }
       }
@@ -231,44 +135,15 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
 
   // Index mapping
   const indexMap = useMemo(() => {
-    if (indices) return indices;
-    return (points as [number, number, number][]).map((_, i) => i);
+    return createRegl3DIndexMap(points as Regl3DPoint[], indices);
   }, [indices, points]);
 
   // Calculate data bounds
-  const bounds = useMemo(() => calculate3DBounds(points as [number, number, number][]), [points]);
+  const bounds = useMemo(() => calculateRegl3DBounds(points as Regl3DPoint[]), [points]);
 
   // Calculate colors for each point
   const pointColors = useMemo(() => {
-    const result: [number, number, number, number][] = [];
-    const pts = points as [number, number, number][];
-    const uniqueLabels = labels ? [...new Set(labels)] : [];
-
-    let minVal = Infinity, maxVal = -Infinity;
-    if (values) {
-      for (const v of values) {
-        if (Number.isFinite(v)) {
-          minVal = Math.min(minVal, v);
-          maxVal = Math.max(maxVal, v);
-        }
-      }
-    }
-
-    for (let i = 0; i < pts.length; i++) {
-      if (colors?.[i]) {
-        result.push(cssToRGBA(colors[i]));
-      } else if (values && Number.isFinite(values[i])) {
-        const t = normalizeValue(values[i], minVal, maxVal);
-        result.push(getContinuousColor(t, 'blue_red'));
-      } else if (labels?.[i]) {
-        const labelIdx = uniqueLabels.indexOf(labels[i]);
-        result.push(getCategoricalColor(labelIdx));
-      } else {
-        result.push([0.231, 0.510, 0.965, 1.0]);
-      }
-    }
-
-    return result;
+    return computeRegl3DPointColors(points as Regl3DPoint[], colors, values, labels);
   }, [points, colors, values, labels]);
 
   // Initialize Regl
@@ -290,197 +165,13 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
     reglRef.current = regl;
 
     // Generate grid data
-    gridDataRef.current = generateGridGeometry();
+    gridDataRef.current = generateRegl3DGridGeometry();
 
-    // Create draw command for main rendering
-    drawPointsRef.current = regl({
-      vert: `
-        precision highp float;
-        attribute vec3 position;
-        attribute vec4 color;
-        attribute float size;
-        attribute float selected;
-        attribute float hovered;
-
-        uniform mat4 projection;
-        uniform mat4 view;
-        uniform mat4 model;
-        uniform float pointScale;
-
-        varying vec4 vColor;
-        varying float vSelected;
-        varying float vHovered;
-
-        void main() {
-          vec4 viewPos = view * model * vec4(position, 1.0);
-          gl_Position = projection * viewPos;
-
-          float depthScale = 300.0 / max(-viewPos.z, 0.1);
-          float sizeMult = 1.0 + selected * 0.6 + hovered * 0.4;
-          gl_PointSize = size * pointScale * depthScale * sizeMult * 0.01;
-
-          vColor = color;
-          vSelected = selected;
-          vHovered = hovered;
-        }
-      `,
-      frag: `
-        precision highp float;
-        varying vec4 vColor;
-        varying float vSelected;
-        varying float vHovered;
-        uniform float u_hasSelection;
-
-        void main() {
-          vec2 coord = gl_PointCoord - 0.5;
-          float dist = length(coord);
-
-          if (dist > 0.5) discard;
-
-          float shade = 0.6 + 0.4 * (1.0 - dist * 2.0);
-          float alpha = 1.0 - smoothstep(0.42, 0.5, dist);
-
-          vec4 color = vec4(vColor.rgb * shade, vColor.a);
-
-          if ((vSelected > 0.5 || vHovered > 0.5) && dist > 0.35) {
-            color = vec4(0.1, 0.1, 0.1, 1.0);
-          }
-
-          if (u_hasSelection > 0.5 && vSelected < 0.5 && vHovered < 0.5) {
-            alpha *= 0.3;
-          }
-
-          gl_FragColor = vec4(color.rgb, color.a * alpha);
-        }
-      `,
-      attributes: {
-        position: regl.prop<Point3DAttributes, 'position'>('position'),
-        color: regl.prop<Point3DAttributes, 'color'>('color'),
-        size: regl.prop<Point3DAttributes, 'size'>('size'),
-        selected: regl.prop<Point3DAttributes, 'selected'>('selected'),
-        hovered: regl.prop<Point3DAttributes, 'hovered'>('hovered'),
-      },
-      uniforms: {
-        projection: regl.prop<Point3DUniforms, 'projection'>('projection'),
-        view: regl.prop<Point3DUniforms, 'view'>('view'),
-        model: regl.prop<Point3DUniforms, 'model'>('model'),
-        pointScale: regl.prop<Point3DUniforms, 'pointScale'>('pointScale'),
-        resolution: regl.prop<Point3DUniforms, 'resolution'>('resolution'),
-        u_hasSelection: regl.prop<Point3DUniforms, 'hasSelection'>('hasSelection'),
-      },
-      count: regl.prop<{ count: number }, 'count'>('count'),
-      primitive: 'points',
-      blend: {
-        enable: true,
-        func: {
-          srcRGB: 'src alpha',
-          dstRGB: 'one minus src alpha',
-          srcAlpha: 'one',
-          dstAlpha: 'one minus src alpha',
-        },
-      },
-      depth: { enable: true },
-    });
-
-    // Create draw command for picking
-    drawPickingRef.current = regl({
-      vert: `
-        precision highp float;
-        attribute vec3 position;
-        attribute vec3 pickColor;
-        attribute float size;
-
-        uniform mat4 projection;
-        uniform mat4 view;
-        uniform mat4 model;
-        uniform float pointScale;
-
-        varying vec3 vPickColor;
-
-        void main() {
-          vec4 viewPos = view * model * vec4(position, 1.0);
-          gl_Position = projection * viewPos;
-
-          float depthScale = 300.0 / max(-viewPos.z, 0.1);
-          gl_PointSize = size * pointScale * depthScale * 0.012;
-
-          vPickColor = pickColor;
-        }
-      `,
-      frag: `
-        precision highp float;
-        varying vec3 vPickColor;
-
-        void main() {
-          vec2 coord = gl_PointCoord - 0.5;
-          if (length(coord) > 0.5) discard;
-          gl_FragColor = vec4(vPickColor, 1.0);
-        }
-      `,
-      attributes: {
-        position: regl.prop<Pick3DAttributes, 'position'>('position'),
-        pickColor: regl.prop<Pick3DAttributes, 'pickColor'>('pickColor'),
-        size: regl.prop<Pick3DAttributes, 'size'>('size'),
-      },
-      uniforms: {
-        projection: regl.prop<Point3DUniforms, 'projection'>('projection'),
-        view: regl.prop<Point3DUniforms, 'view'>('view'),
-        model: regl.prop<Point3DUniforms, 'model'>('model'),
-        pointScale: regl.prop<Point3DUniforms, 'pointScale'>('pointScale'),
-      },
-      count: regl.prop<{ count: number }, 'count'>('count'),
-      primitive: 'points',
-      depth: { enable: true },
-    });
-
-    // Create draw command for grid lines
-    drawLinesRef.current = regl({
-      vert: `
-        precision highp float;
-        attribute vec3 position;
-        attribute vec4 color;
-
-        uniform mat4 projection;
-        uniform mat4 view;
-        uniform mat4 model;
-
-        varying vec4 vColor;
-
-        void main() {
-          gl_Position = projection * view * model * vec4(position, 1.0);
-          vColor = color;
-        }
-      `,
-      frag: `
-        precision highp float;
-        varying vec4 vColor;
-
-        void main() {
-          gl_FragColor = vColor;
-        }
-      `,
-      attributes: {
-        position: regl.prop<{ position: number[] }, 'position'>('position'),
-        color: regl.prop<{ color: number[] }, 'color'>('color'),
-      },
-      uniforms: {
-        projection: regl.prop<Point3DUniforms, 'projection'>('projection'),
-        view: regl.prop<Point3DUniforms, 'view'>('view'),
-        model: regl.prop<Point3DUniforms, 'model'>('model'),
-      },
-      count: regl.prop<{ count: number }, 'count'>('count'),
-      primitive: 'lines',
-      blend: {
-        enable: true,
-        func: {
-          srcRGB: 'src alpha',
-          dstRGB: 'one minus src alpha',
-          srcAlpha: 'one',
-          dstAlpha: 'one minus src alpha',
-        },
-      },
-      depth: { enable: true },
-    });
+    // Create draw commands (points, picking, grid lines)
+    const commands = createRegl3DDrawCommands(regl);
+    drawPointsRef.current = commands.drawPoints;
+    drawPickingRef.current = commands.drawPicking;
+    drawLinesRef.current = commands.drawLines;
 
     // Create picking framebuffer
     pickFboRef.current = regl.framebuffer({
@@ -508,50 +199,18 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
 
   // Prepare buffer data
   const bufferData = useMemo(() => {
-    const pts = points as [number, number, number][];
-    const n = pts.length;
-
-    const position = new Float32Array(n * 3);
-    const color = new Float32Array(n * 4);
-    const size = new Float32Array(n);
-    const pickColor = new Float32Array(n * 3);
-
-    for (let i = 0; i < n; i++) {
-      const [nx, ny, nz] = normalizePoint3D(pts[i][0], pts[i][1], pts[i][2], bounds);
-      position[i * 3] = nx;
-      position[i * 3 + 1] = ny;
-      position[i * 3 + 2] = nz;
-
-      const c = pointColors[i];
-      color[i * 4] = c[0];
-      color[i * 4 + 1] = c[1];
-      color[i * 4 + 2] = c[2];
-      color[i * 4 + 3] = c[3];
-
-      size[i] = pointSize;
-
-      const [r, g, b] = indexToPickColor(indexMap[i]);
-      pickColor[i * 3] = r;
-      pickColor[i * 3 + 1] = g;
-      pickColor[i * 3 + 2] = b;
-    }
-
-    return { position, color, size, pickColor, count: n };
+    return buildRegl3DPointBufferData(points as Regl3DPoint[], bounds, pointColors, pointSize, indexMap);
   }, [points, pointColors, pointSize, indexMap, bounds]);
 
   // Selection/hover data
   const selectionData = useMemo(() => {
-    const n = (points as [number, number, number][]).length;
-    const selected = new Float32Array(n);
-    const hovered = new Float32Array(n);
-
-    for (let i = 0; i < n; i++) {
-      const sampleIdx = indexMap[i];
-      selected[i] = selectedSamples.has(sampleIdx) || pinnedSamples.has(sampleIdx) ? 1.0 : 0.0;
-      hovered[i] = effectiveHovered === sampleIdx ? 1.0 : 0.0;
-    }
-
-    return { selected, hovered };
+    return buildRegl3DSelectionData(
+      (points as Regl3DPoint[]).length,
+      indexMap,
+      selectedSamples,
+      pinnedSamples,
+      effectiveHovered
+    );
   }, [points, indexMap, selectedSamples, pinnedSamples, effectiveHovered]);
 
   // Render function
@@ -569,9 +228,7 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
 
     // Resize canvas if needed
     const rect = canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio, 2);
-    const width = Math.floor(rect.width * dpr);
-    const height = Math.floor(rect.height * dpr);
+    const { width, height, dpr } = calculateRegl3DViewportSize(rect.width, rect.height, window.devicePixelRatio);
 
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
@@ -581,9 +238,7 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
     }
 
     const viewMatrix = orbitControls.update();
-    const aspect = width / height;
-    const projectionMatrix = mat4Perspective(Math.PI / 4, aspect, 0.1, 100);
-    const modelMatrix = mat4Identity();
+    const { projection: projectionMatrix, model: modelMatrix } = createRegl3DCameraMatrices(width, height);
 
     // Render to picking buffer
     regl({ framebuffer: pickFbo })(() => {
@@ -613,7 +268,7 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
         projection: projectionMatrix,
         view: viewMatrix,
         model: modelMatrix,
-        count: gridData.positions.length / 3,
+        count: gridData.count,
       });
     }
 
@@ -669,7 +324,7 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
       height: 1,
     });
 
-    return pickColorToIndex(pixel[0], pixel[1], pixel[2]);
+    return decodeRegl3DPickPixel(pixel);
   }, []);
 
   // Mouse move handler for hover

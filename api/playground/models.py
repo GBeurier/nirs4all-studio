@@ -69,6 +69,9 @@ class ExecuteDatasetRequest(BaseModel):
 
     dataset_id: str = Field(..., description="Workspace dataset identifier")
     partition: str = Field("all", description="Dataset partition to load: train, test, or all")
+    source_index: int | None = Field(None, ge=0, description="Source index for multi-source datasets")
+    source: int | None = Field(None, ge=0, description="Alias for source_index")
+    target_index: int | None = Field(None, ge=0, description="Target column index for multi-target datasets")
     steps: list[PlaygroundStep] = Field(default_factory=list, description="Pipeline steps to execute")
     sampling: SamplingOptions | None = Field(None, description="Sampling options for large datasets")
     options: dict[str, Any] = Field(
@@ -85,6 +88,9 @@ class ChartComputeRequest(BaseModel):
     """
 
     dataset_id: str | None = Field(None, description="Workspace dataset identifier (for server-side data loading)")
+    source_index: int | None = Field(None, ge=0, description="Source index for multi-source datasets")
+    source: int | None = Field(None, ge=0, description="Alias for source_index")
+    target_index: int | None = Field(None, ge=0, description="Target column index for multi-target datasets")
     steps: list[PlaygroundStep] = Field(default_factory=list, description="Pipeline steps (used for step cache lookup)")
     sampling: SamplingOptions | None = Field(None, description="Sampling options")
     options: dict[str, Any] = Field(default_factory=dict, description="Execution options")

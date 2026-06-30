@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { ChevronRight, ChevronDown, Sparkles, GitBranch, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { usePipelineDnd } from "../../PipelineDndContext";
+import { usePipelineDnd } from "../../usePipelineDnd";
 import { BranchDropZone } from "./BranchDropZone";
 import type { BranchNodeProps } from "./types";
 

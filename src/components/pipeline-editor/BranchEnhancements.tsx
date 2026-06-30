@@ -30,8 +30,6 @@ import {
   ArrowRight,
   Hash,
   MoreHorizontal,
-  FolderOpen,
-  FolderClosed,
   Move,
   Eye,
   EyeOff,
@@ -55,10 +53,18 @@ import {
 import {
   Collapsible,
   CollapsibleContent,
-  CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { type PipelineStep, calculateStepVariants } from "./types";
+import type { PipelineStep } from "./types";
+import {
+  calculateBranchSummaryStats,
+  calculateBranchVariantCount,
+  getAddBranchButtonDescriptor,
+  getBranchOutputDescriptor,
+  getBranchSummaryLabel,
+  getBranchVisualClasses,
+  getDefaultBranchName,
+} from "./branchEnhancementsData";
 
 // Branch metadata interface
 export interface BranchMetadata {
@@ -66,18 +72,6 @@ export interface BranchMetadata {
   isCollapsed: boolean;
   color?: string;
   description?: string;
-}
-
-// Default branch names
-function getDefaultBranchName(type: "branch" | "generator", generatorKind?: string, index?: number): string {
-  const idx = (index ?? 0) + 1;
-  if (type === "generator") {
-    if (generatorKind === "cartesian") return `Stage ${idx}`;
-    if (generatorKind === "grid" || generatorKind === "zip") return `Param ${idx}`;
-    if (generatorKind === "chain") return `Config ${idx}`;
-    return `Option ${idx}`;
-  }
-  return `Branch ${idx}`;
 }
 
 interface EnhancedBranchHeaderProps {
@@ -167,16 +161,13 @@ export function EnhancedBranchHeader({
   }, [isEditing]);
 
   const BranchIcon = isGenerator ? Sparkles : GitBranch;
-  const CollapseIcon = isCollapsed ? FolderClosed : FolderOpen;
-  const borderColor = isGenerator ? "border-orange-400/50" : "border-cyan-500/50";
-  const iconColor = isGenerator ? "text-orange-400" : "text-cyan-500";
-  const bgColor = isGenerator ? "bg-orange-500/5" : "bg-cyan-500/5";
+  const { headerBackground, iconColor } = getBranchVisualClasses(isGenerator);
 
   return (
     <div
       className={cn(
         "flex items-center gap-2 py-1 px-2 rounded-md transition-colors group",
-        bgColor,
+        headerBackground,
         className
       )}
     >
@@ -333,32 +324,10 @@ export function BranchSummary({
   className,
 }: BranchSummaryProps) {
   const stats = useMemo(() => {
-    const totalSteps = branches.reduce((sum, b) => sum + b.length, 0);
-    const totalVariants = branches.reduce(
-      (sum, b) => sum + b.reduce((s, step) => s * calculateStepVariants(step), 1),
-      0
-    );
-    const modelCount = branches.reduce(
-      (sum, b) => sum + b.filter((s) => s.type === "model").length,
-      0
-    );
-    const emptyBranches = branches.filter((b) => b.length === 0).length;
-
-    return {
-      branchCount: branches.length,
-      totalSteps,
-      totalVariants,
-      modelCount,
-      emptyBranches,
-    };
+    return calculateBranchSummaryStats(branches);
   }, [branches]);
 
-  const label = isGenerator
-    ? (generatorKind === "cartesian" ? "stages"
-      : generatorKind === "grid" || generatorKind === "zip" ? "params"
-      : generatorKind === "chain" ? "configs"
-      : "options")
-    : "branches";
+  const label = getBranchSummaryLabel(isGenerator, generatorKind);
 
   return (
     <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", className)}>
@@ -420,6 +389,12 @@ interface BranchOutputIndicatorProps {
   className?: string;
 }
 
+const outputIconByKey = {
+  layers: Layers,
+  arrowRight: ArrowRight,
+  hash: Hash,
+} as const;
+
 /**
  * Visual indicator showing what a branch produces as output
  */
@@ -429,27 +404,13 @@ export function BranchOutputIndicator({
   modelCount,
   className,
 }: BranchOutputIndicatorProps) {
-  const getOutputDescription = () => {
-    switch (branchType) {
-      case "parallel":
-        return modelCount > 0
-          ? `${modelCount} parallel predictions → merge`
-          : `${branchCount} parallel processings`;
-      case "or":
-        return `1 of ${branchCount} alternatives`;
-      case "cartesian":
-        return `${branchCount} stage combinations`;
-    }
-  };
-
-  const Icon = branchType === "parallel" ? Layers : branchType === "or" ? ArrowRight : Hash;
-  const color =
-    branchType === "parallel" ? "text-cyan-500" : branchType === "or" ? "text-orange-500" : "text-orange-500";
+  const outputDescriptor = getBranchOutputDescriptor(branchType, branchCount, modelCount);
+  const Icon = outputIconByKey[outputDescriptor.icon];
 
   return (
     <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", className)}>
-      <Icon className={cn("h-3 w-3", color)} />
-      <span>{getOutputDescription()}</span>
+      <Icon className={cn("h-3 w-3", outputDescriptor.colorClass)} />
+      <span>{outputDescriptor.description}</span>
     </div>
   );
 }
@@ -493,11 +454,11 @@ export function CollapsibleBranchContainer({
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
 
   const variantCount = useMemo(
-    () => branch.reduce((acc, step) => acc * calculateStepVariants(step), 1),
+    () => calculateBranchVariantCount(branch),
     [branch]
   );
 
-  const borderColor = isGenerator ? "border-orange-400/30" : "border-cyan-500/30";
+  const { containerBorderColor } = getBranchVisualClasses(isGenerator);
 
   return (
     <div className={cn("relative", className)}>
@@ -521,7 +482,7 @@ export function CollapsibleBranchContainer({
       {/* Collapsible content with tree line */}
       <Collapsible open={!isCollapsed}>
         <CollapsibleContent>
-          <div className={cn("border-l-2 border-dashed ml-2 pl-3 mt-1", borderColor)}>
+          <div className={cn("border-l-2 border-dashed ml-2 pl-3 mt-1", containerBorderColor)}>
             {children}
           </div>
         </CollapsibleContent>
@@ -546,22 +507,13 @@ export function AddBranchButton({
   onClick,
   className,
 }: AddBranchButtonProps) {
-  const label = isGenerator
-    ? (generatorKind === "cartesian" ? "Add Stage"
-      : generatorKind === "grid" || generatorKind === "zip" ? "Add Param"
-      : generatorKind === "chain" ? "Add Config"
-      : "Add Option")
-    : "Add Branch";
-
-  const color = isGenerator
-    ? "text-orange-500 hover:text-orange-600 hover:bg-orange-500/10"
-    : "text-cyan-500 hover:text-cyan-600 hover:bg-cyan-500/10";
+  const { label, colorClass } = getAddBranchButtonDescriptor(isGenerator, generatorKind);
 
   return (
     <Button
       variant="ghost"
       size="sm"
-      className={cn("h-7 text-xs gap-1", color, className)}
+      className={cn("h-7 text-xs gap-1", colorClass, className)}
       onClick={onClick}
     >
       <Plus className="h-3 w-3" />

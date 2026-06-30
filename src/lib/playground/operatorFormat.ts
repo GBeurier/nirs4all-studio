@@ -9,6 +9,13 @@ import type {
   PlaygroundStep,
   OperatorDefinition,
 } from '@/types/playground';
+import {
+  clientStorageKeys,
+  isClientStorageAvailable,
+  readClientStorageJson,
+  removeClientStorageItem,
+  writeClientStorageJson,
+} from '@/lib/clientStorage';
 
 const PLAYGROUND_RUNTIME_ONLY_SPLITTER_PARAMS = new Set([
   'group_by',
@@ -161,11 +168,11 @@ export function exportToPipelineEditor(operators: UnifiedOperator[]): PipelineEd
 
 // ============= Navigation Export =============
 
-/** Key used in sessionStorage for pipeline export */
-export const PLAYGROUND_EXPORT_KEY = 'playground-pipeline-export';
+/** Key used in client storage for pipeline export */
+export const PLAYGROUND_EXPORT_KEY = clientStorageKeys.playgroundPipelineExport.key;
 
 /**
- * Data stored in sessionStorage when exporting to Pipeline Editor
+ * Data stored in client storage when exporting to Pipeline Editor
  */
 export interface PlaygroundExportData {
   name: string;
@@ -176,9 +183,9 @@ export interface PlaygroundExportData {
 }
 
 /**
- * Prepare export data and store in sessionStorage.
+ * Prepare export data and store in client storage.
  * Returns the export data for confirmation or the path to navigate to.
- * Throws an error if sessionStorage is unavailable or full.
+ * Throws an error if client storage is unavailable or full.
  */
 export function prepareExportToPipelineEditor(
   operators: UnifiedOperator[],
@@ -194,12 +201,20 @@ export function prepareExportToPipelineEditor(
     source: 'playground',
   };
 
-  // Store in sessionStorage for the Pipeline Editor to pick up
+  // Store in client storage for the Pipeline Editor to pick up.
   try {
-    sessionStorage.setItem(PLAYGROUND_EXPORT_KEY, JSON.stringify(exportData));
+    if (!isClientStorageAvailable(clientStorageKeys.playgroundPipelineExport.area)) {
+      throw new Error('Unable to export pipeline. Session storage may be unavailable.');
+    }
+
+    writeClientStorageJson(clientStorageKeys.playgroundPipelineExport, exportData, {
+      onError: (error) => {
+        throw error;
+      },
+    });
   } catch (e) {
-    // sessionStorage might be full or unavailable (private browsing mode in some browsers)
-    console.error('Failed to store export data in sessionStorage:', e);
+    // Client storage might be full or unavailable (private browsing mode in some browsers).
+    console.error('Failed to store export data in client storage:', e);
     if (e instanceof DOMException && e.name === 'QuotaExceededError') {
       throw new Error('Session storage is full. Please clear some data and try again.');
     }
@@ -213,22 +228,18 @@ export function prepareExportToPipelineEditor(
  * Check if there's pending export data from Playground
  */
 export function getPlaygroundExportData(): PlaygroundExportData | null {
-  try {
-    const data = sessionStorage.getItem(PLAYGROUND_EXPORT_KEY);
-    if (data) {
-      return JSON.parse(data);
-    }
-  } catch (e) {
-    console.warn('Failed to parse playground export data:', e);
-  }
-  return null;
+  return readClientStorageJson<PlaygroundExportData>(clientStorageKeys.playgroundPipelineExport, {
+    onError: (e) => {
+      console.warn('Failed to parse playground export data:', e);
+    },
+  });
 }
 
 /**
  * Clear the playground export data after it's been consumed
  */
 export function clearPlaygroundExportData(): void {
-  sessionStorage.removeItem(PLAYGROUND_EXPORT_KEY);
+  removeClientStorageItem(clientStorageKeys.playgroundPipelineExport);
 }
 
 // ============= Operator Creation =============

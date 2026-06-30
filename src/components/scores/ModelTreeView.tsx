@@ -10,8 +10,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { getChainPartitionDetail } from "@/api/aggregatedPredictions";
-import { buildFoldTree, type FoldTreeNode } from "@/lib/fold-utils";
-import { partitionPredToTrainCard } from "@/lib/score-adapters";
+import {
+  buildModelTreeDisplayData,
+  getModelTreePredictionSiblings,
+} from "@/lib/scoreCardTreeData";
 import { ScoreCardRowView } from "./ScoreCardRowView";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
 
@@ -36,7 +38,6 @@ interface ModelTreeViewProps {
 export function ModelTreeView({
   chainId,
   selectedMetrics,
-  metric,
   foldArtifacts,
   onViewPrediction,
   onViewDetails,
@@ -63,23 +64,15 @@ export function ModelTreeView({
     return <div className="text-xs text-muted-foreground text-center py-3">No fold data available</div>;
   }
 
-  const tree = buildFoldTree(predictions);
-  if (!tree) {
+  const treeDisplay = buildModelTreeDisplayData(predictions, foldArtifacts);
+  if (!treeDisplay) {
     return <div className="text-xs text-muted-foreground text-center py-3">No fold data available</div>;
   }
 
-  // Convert tree nodes to ScoreCardRows
-  const rootRow = partitionPredToTrainCard(tree.prediction);
-  rootRow.foldArtifacts = foldArtifacts;
-
   const handleViewPred = (predictionId: string) => {
     if (!onViewPrediction) return;
-    const pred = predictions.find(p => p.prediction_id === predictionId);
-    if (!pred) return;
-    // Collect all predictions for the same fold so the viewer shows all partitions
-    const siblings = pred.fold_id
-      ? predictions.filter(p => p.fold_id === pred.fold_id)
-      : [pred];
+    const siblings = getModelTreePredictionSiblings(predictions, predictionId);
+    if (!siblings) return;
     onViewPrediction(predictionId, siblings);
   };
 
@@ -98,7 +91,7 @@ export function ModelTreeView({
           </CollapsibleTrigger>
           <div className="flex-1 min-w-0">
             <ScoreCardRowView
-              row={rootRow}
+              row={treeDisplay.rootRow}
               selectedMetrics={selectedMetrics}
               variant="inline"
               onViewPrediction={handleViewPred}
@@ -110,20 +103,17 @@ export function ModelTreeView({
         {/* Children */}
         <CollapsibleContent>
           <div className="space-y-0.5">
-            {tree.children.map(child => {
-              const childRow = partitionPredToTrainCard(child.prediction);
-              return (
-                <ScoreCardRowView
-                  key={childRow.id}
-                  row={childRow}
-                  selectedMetrics={selectedMetrics}
-                  variant="inline"
-                  indent={1}
-                  onViewPrediction={handleViewPred}
-                  onViewDetails={onViewDetails}
-                />
-              );
-            })}
+            {treeDisplay.childRows.map(childRow => (
+              <ScoreCardRowView
+                key={childRow.id}
+                row={childRow}
+                selectedMetrics={selectedMetrics}
+                variant="inline"
+                indent={1}
+                onViewPrediction={handleViewPred}
+                onViewDetails={onViewDetails}
+              />
+            ))}
           </div>
         </CollapsibleContent>
       </Collapsible>

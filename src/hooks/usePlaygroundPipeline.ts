@@ -28,17 +28,25 @@ import {
   isSplitter,
   countSplitters,
 } from '@/lib/playground/operatorFormat';
+import {
+  clientStorageKeys,
+  removeClientStorageItem,
+} from '@/lib/clientStorage';
 
 const MAX_HISTORY = 50;
-const PIPELINE_STORAGE_KEY = 'playground-pipeline-state';
+const PIPELINE_STORAGE_KEY = clientStorageKeys.playgroundPipelineState;
 
 /**
- * Load persisted pipeline state from sessionStorage
+ * Load persisted pipeline state from client storage.
  */
 function loadPersistedState(): UnifiedOperator[] {
   try {
     // Playground operators should never reappear implicitly across launches.
-    sessionStorage.removeItem(PIPELINE_STORAGE_KEY);
+    removeClientStorageItem(PIPELINE_STORAGE_KEY, {
+      onError: (error) => {
+        throw error;
+      },
+    });
   } catch (e) {
     console.warn('Failed to load persisted pipeline state:', e);
   }
@@ -46,18 +54,26 @@ function loadPersistedState(): UnifiedOperator[] {
 }
 
 /**
- * Persist pipeline state to sessionStorage
+ * Persist pipeline state to client storage.
  */
 function persistState(operators: UnifiedOperator[]): void {
   try {
     if (operators.length === 0) {
-      sessionStorage.removeItem(PIPELINE_STORAGE_KEY);
+      removeClientStorageItem(PIPELINE_STORAGE_KEY, {
+        onError: (error) => {
+          throw error;
+        },
+      });
       return;
     }
     // Do not persist operators across refreshes/restarts.
-    sessionStorage.removeItem(PIPELINE_STORAGE_KEY);
+    removeClientStorageItem(PIPELINE_STORAGE_KEY, {
+      onError: (error) => {
+        throw error;
+      },
+    });
   } catch (e) {
-    // sessionStorage might be full or disabled
+    // Client storage might be full or disabled.
     console.warn('Failed to persist pipeline state:', e);
   }
 }
@@ -76,6 +92,10 @@ export interface UsePlaygroundPipelineOptions {
   datasetId?: string | null;
   /** Selected source dataset partition for workspace-backed runs. */
   datasetPartition?: PartitionKey;
+  /** Selected source index for multi-source workspace-backed runs. */
+  datasetSourceIndex?: number | null;
+  /** Selected target index for multi-target workspace-backed runs. */
+  datasetTargetIndex?: number | null;
 }
 
 /**
@@ -150,11 +170,13 @@ export function usePlaygroundPipeline(
     enableBackend = true,
     datasetId,
     datasetPartition,
+    datasetSourceIndex,
+    datasetTargetIndex,
   } = options;
 
   const initialOperators = useMemo(() => loadPersistedState(), []);
 
-  // Pipeline state - initialize from sessionStorage
+  // Pipeline state - initialize from client storage
   const [operators, setOperatorsRaw] = useState<UnifiedOperator[]>(() => [...initialOperators]);
   const [history, setHistory] = useState<UnifiedOperator[][]>(() => [[...initialOperators]]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -240,6 +262,8 @@ export function usePlaygroundPipeline(
     executeOptions,
     datasetId,
     datasetPartition,
+    datasetSourceIndex,
+    datasetTargetIndex,
   });
 
   // Change detection for granular chart loading states

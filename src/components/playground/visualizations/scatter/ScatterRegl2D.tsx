@@ -12,16 +12,21 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
 import createRegl from 'regl';
 import { cn } from '@/lib/utils';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection } from '@/context/useSelection';
 import type { ScatterRendererProps, DataBounds } from './types';
 import {
-  cssToRGBA,
-  getContinuousColor,
-  getCategoricalColor,
-  indexToPickColor,
   pickColorToIndex,
-  normalizeValue,
 } from './utils/colorEncoding';
+import {
+  buildRegl2DPointBufferData,
+  buildRegl2DSelectionData,
+  calculateRegl2DBounds,
+  calculateRegl2DViewportBounds,
+  computeRegl2DPointColors,
+  createRegl2DIndexMap,
+  createRegl2DTransform,
+  generateRegl2DGridGeometry,
+} from './utils/scatterRegl2DData';
 
 // ============= Types =============
 
@@ -44,123 +49,6 @@ interface PickAttributes {
   position: Float32Array;
   pickColor: Float32Array;
   size: Float32Array;
-}
-
-// ============= Helpers =============
-
-function calculateBounds(points: [number, number][]): DataBounds {
-  if (points.length === 0) {
-    return { minX: -1, maxX: 1, minY: -1, maxY: 1 };
-  }
-
-  let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
-
-  for (const [x, y] of points) {
-    if (Number.isFinite(x) && Number.isFinite(y)) {
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    }
-  }
-
-  const padX = (maxX - minX) * 0.05 || 0.1;
-  const padY = (maxY - minY) * 0.05 || 0.1;
-
-  return {
-    minX: minX - padX,
-    maxX: maxX + padX,
-    minY: minY - padY,
-    maxY: maxY + padY,
-  };
-}
-
-function mat3Ortho(
-  left: number,
-  right: number,
-  bottom: number,
-  top: number
-): Float32Array {
-  const w = right - left;
-  const h = top - bottom;
-
-  return new Float32Array([
-    2 / w, 0, 0,
-    0, 2 / h, 0,
-    -(right + left) / w, -(top + bottom) / h, 1,
-  ]);
-}
-
-// Calculate nice tick values for an axis
-function calculateTicks(min: number, max: number, targetCount: number = 5): number[] {
-  const range = max - min;
-  if (range <= 0) return [min];
-
-  const roughStep = range / targetCount;
-  const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
-  const normalized = roughStep / magnitude;
-
-  let niceStep: number;
-  if (normalized <= 1.5) niceStep = magnitude;
-  else if (normalized <= 3) niceStep = 2 * magnitude;
-  else if (normalized <= 7) niceStep = 5 * magnitude;
-  else niceStep = 10 * magnitude;
-
-  const ticks: number[] = [];
-  const start = Math.ceil(min / niceStep) * niceStep;
-
-  for (let t = start; t <= max + niceStep * 0.001; t += niceStep) {
-    if (t >= min - niceStep * 0.001 && t <= max + niceStep * 0.001) {
-      ticks.push(t);
-    }
-  }
-
-  return ticks;
-}
-
-// Generate grid geometry (lines and colors)
-function generateGridGeometry(
-  bounds: DataBounds,
-  showGrid: boolean,
-  showAxes: boolean
-): { positions: Float32Array; colors: Float32Array; count: number } {
-  const positions: number[] = [];
-  const colors: number[] = [];
-
-  const gridColor = [0.5, 0.5, 0.5, 0.4];
-  const axisColor = [0.4, 0.4, 0.4, 0.8];
-
-  if (showGrid) {
-    const xTicks = calculateTicks(bounds.minX, bounds.maxX);
-    const yTicks = calculateTicks(bounds.minY, bounds.maxY);
-
-    for (const x of xTicks) {
-      positions.push(x, bounds.minY, x, bounds.maxY);
-      colors.push(...gridColor, ...gridColor);
-    }
-
-    for (const y of yTicks) {
-      positions.push(bounds.minX, y, bounds.maxX, y);
-      colors.push(...gridColor, ...gridColor);
-    }
-  }
-
-  if (showAxes) {
-    const xAxisY = bounds.minY <= 0 && bounds.maxY >= 0 ? 0 : bounds.minY;
-    positions.push(bounds.minX, xAxisY, bounds.maxX, xAxisY);
-    colors.push(...axisColor, ...axisColor);
-
-    const yAxisX = bounds.minX <= 0 && bounds.maxX >= 0 ? 0 : bounds.minX;
-    positions.push(yAxisX, bounds.minY, yAxisX, bounds.maxY);
-    colors.push(...axisColor, ...axisColor);
-  }
-
-  return {
-    positions: new Float32Array(positions),
-    colors: new Float32Array(colors),
-    count: positions.length / 2,
-  };
 }
 
 interface LineAttributes {
@@ -210,58 +98,37 @@ export function ScatterRegl2D({
 
   // Selection context
   const selectionCtx = useSelection();
+  const manualSelectedSamples = useMemo(
+    () => new Set(manualSelectedIndices ?? []),
+    [manualSelectedIndices]
+  );
+  const manualPinnedSamples = useMemo(
+    () => new Set(manualPinnedIndices ?? []),
+    [manualPinnedIndices]
+  );
   const selectedSamples = useSelectionContext
     ? selectionCtx.selectedSamples
-    : new Set(manualSelectedIndices ?? []);
+    : manualSelectedSamples;
   const pinnedSamples = useSelectionContext
     ? selectionCtx.pinnedSamples
-    : new Set(manualPinnedIndices ?? []);
+    : manualPinnedSamples;
   const contextHovered = useSelectionContext ? selectionCtx.hoveredSample : null;
   const effectiveHovered = useSelectionContext ? contextHovered : hoveredIndex;
 
   // Index mapping
   const indexMap = useMemo(() => {
-    if (indices) return indices;
-    return (points as [number, number][]).map((_, i) => i);
+    return createRegl2DIndexMap(points as [number, number][], indices);
   }, [indices, points]);
 
   // Calculate data bounds - use customBounds if provided, otherwise calculate from data
   const bounds = useMemo(() => {
     if (customBounds) return customBounds;
-    return calculateBounds(points as [number, number][]);
+    return calculateRegl2DBounds(points as [number, number][]);
   }, [points, customBounds]);
 
   // Calculate colors for each point
   const pointColors = useMemo(() => {
-    const result: [number, number, number, number][] = [];
-    const pts = points as [number, number][];
-    const uniqueLabels = labels ? [...new Set(labels)] : [];
-
-    let minVal = Infinity, maxVal = -Infinity;
-    if (values) {
-      for (const v of values) {
-        if (Number.isFinite(v)) {
-          minVal = Math.min(minVal, v);
-          maxVal = Math.max(maxVal, v);
-        }
-      }
-    }
-
-    for (let i = 0; i < pts.length; i++) {
-      if (colors?.[i]) {
-        result.push(cssToRGBA(colors[i]));
-      } else if (values && Number.isFinite(values[i])) {
-        const t = normalizeValue(values[i], minVal, maxVal);
-        result.push(getContinuousColor(t, 'blue_red'));
-      } else if (labels?.[i]) {
-        const labelIdx = uniqueLabels.indexOf(labels[i]);
-        result.push(getCategoricalColor(labelIdx));
-      } else {
-        result.push([0.231, 0.510, 0.965, 1.0]);
-      }
-    }
-
-    return result;
+    return computeRegl2DPointColors(points as [number, number][], colors, values, labels);
   }, [points, colors, values, labels]);
 
   // Initialize Regl
@@ -470,53 +337,23 @@ export function ScatterRegl2D({
 
   // Prepare buffer data
   const bufferData = useMemo(() => {
-    const pts = points as [number, number][];
-    const n = pts.length;
-
-    const position = new Float32Array(n * 2);
-    const color = new Float32Array(n * 4);
-    const size = new Float32Array(n);
-    const pickColor = new Float32Array(n * 3);
-
-    for (let i = 0; i < n; i++) {
-      position[i * 2] = pts[i][0];
-      position[i * 2 + 1] = pts[i][1];
-
-      const c = pointColors[i];
-      color[i * 4] = c[0];
-      color[i * 4 + 1] = c[1];
-      color[i * 4 + 2] = c[2];
-      color[i * 4 + 3] = c[3];
-
-      size[i] = pointSize;
-
-      const [r, g, b] = indexToPickColor(indexMap[i]);
-      pickColor[i * 3] = r;
-      pickColor[i * 3 + 1] = g;
-      pickColor[i * 3 + 2] = b;
-    }
-
-    return { position, color, size, pickColor, count: n };
+    return buildRegl2DPointBufferData(points as [number, number][], pointColors, pointSize, indexMap);
   }, [points, pointColors, pointSize, indexMap]);
 
   // Selection/hover data (changes frequently)
   const selectionData = useMemo(() => {
-    const n = (points as [number, number][]).length;
-    const selected = new Float32Array(n);
-    const hovered = new Float32Array(n);
-
-    for (let i = 0; i < n; i++) {
-      const sampleIdx = indexMap[i];
-      selected[i] = selectedSamples.has(sampleIdx) || pinnedSamples.has(sampleIdx) ? 1.0 : 0.0;
-      hovered[i] = effectiveHovered === sampleIdx ? 1.0 : 0.0;
-    }
-
-    return { selected, hovered };
+    return buildRegl2DSelectionData(
+      (points as [number, number][]).length,
+      indexMap,
+      selectedSamples,
+      pinnedSamples,
+      effectiveHovered
+    );
   }, [points, indexMap, selectedSamples, pinnedSamples, effectiveHovered]);
 
   // Grid data for lines
   const gridData = useMemo(() => {
-    return generateGridGeometry(bounds, showGrid, showAxes);
+    return generateRegl2DGridGeometry(bounds, showGrid, showAxes);
   }, [bounds, showGrid, showAxes]);
 
   // Render function
@@ -544,32 +381,8 @@ export function ScatterRegl2D({
       pickFboSizeRef.current = { width, height };
     }
 
-    // Calculate transform matrix
-    let left = bounds.minX, right = bounds.maxX;
-    let bottom = bounds.minY, top = bounds.maxY;
-
-    if (preserveAspectRatio) {
-      // Maintain aspect ratio (equal scaling on X and Y)
-      const aspect = width / height;
-      const dataW = bounds.maxX - bounds.minX;
-      const dataH = bounds.maxY - bounds.minY;
-      const dataAspect = dataW / dataH;
-
-      if (dataAspect > aspect) {
-        const newH = dataW / aspect;
-        const pad = (newH - dataH) / 2;
-        bottom -= pad;
-        top += pad;
-      } else {
-        const newW = dataH * aspect;
-        const pad = (newW - dataW) / 2;
-        left -= pad;
-        right += pad;
-      }
-    }
-    // When preserveAspectRatio is false, data stretches to fill the container
-
-    const transform = mat3Ortho(left, right, bottom, top);
+    const viewportBounds = calculateRegl2DViewportBounds(bounds, width, height, preserveAspectRatio);
+    const transform = createRegl2DTransform(viewportBounds);
 
     // Render to picking buffer
     regl({ framebuffer: pickFbo })(() => {

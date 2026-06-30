@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -25,38 +23,22 @@ import {
   writeCachedOperatorAvailability,
   type MissingOperatorIssue,
 } from "@/lib/pipelineOperatorAvailability";
-
-interface OperatorAvailability {
-  available: boolean;
-  entry?: OperatorAvailabilityEntry;
-  issue?: MissingOperatorIssue | null;
-}
-
-interface OperatorAvailabilityContextValue {
-  isLoadingOperators: boolean;
-  isCheckingPipeline: boolean;
-  operatorsError: string | null;
-  pipelineError: string | null;
-  operatorAvailability: OperatorAvailabilityResponse | null;
-  missingIssues: MissingOperatorIssue[];
-  getNodeAvailability: (node: {
-    id?: string;
-    type?: string;
-    name?: string;
-    classPath?: string;
-    functionPath?: string;
-  }) => OperatorAvailability;
-  getStepAvailability: (step: PipelineStep) => OperatorAvailability;
-  refreshOperatorAvailability: () => Promise<void>;
-}
+import {
+  resolveOperatorCapability,
+  type OperatorCapabilityNode,
+  type OperatorCapabilityResolution,
+} from "@/lib/operatorCapability";
+import {
+  OperatorAvailabilityContext,
+  type OperatorAvailability,
+  type OperatorAvailabilityContextValue,
+} from "./useOperatorAvailability";
 
 export interface OperatorAvailabilityProviderProps {
   children: ReactNode;
   steps: PipelineStep[];
   pipelineName: string;
 }
-
-const OperatorAvailabilityContext = createContext<OperatorAvailabilityContextValue | undefined>(undefined);
 
 const MAX_OPERATOR_AVAILABILITY_RETRIES = 5;
 const OPERATOR_AVAILABILITY_RETRY_BASE_MS = 1000;
@@ -87,6 +69,32 @@ function makeSyntheticIssue(
       class_path: entry.class_path ?? undefined,
       function_path: entry.function_path ?? undefined,
       error: entry.error ?? undefined,
+    },
+  };
+}
+
+function makeCapabilityIssue(
+  node: OperatorCapabilityNode,
+  capability: OperatorCapabilityResolution,
+  pipelineName: string,
+): MissingOperatorIssue {
+  const entry = capability.entry;
+  const name = entry?.name ?? node.name ?? node.id ?? "Operator";
+  const type = entry?.type ?? node.type;
+  const classPath = entry?.class_path ?? node.classPath ?? undefined;
+  const functionPath = entry?.function_path ?? node.functionPath ?? undefined;
+  const reason = capability.reason ?? `${name} is not executable in the selected backend.`;
+
+  return {
+    type: "missing_module",
+    message: `Pipeline '${pipelineName}': ${reason}`,
+    details: {
+      pipeline_name: pipelineName,
+      step_name: name,
+      step_type: type,
+      class_path: classPath ?? undefined,
+      function_path: functionPath ?? undefined,
+      error: reason ?? undefined,
     },
   };
 }
@@ -283,16 +291,33 @@ export function OperatorAvailabilityProvider({
     classPath?: string;
     functionPath?: string;
   }): OperatorAvailability => {
+    const capability = resolveOperatorCapability(node, operatorAvailability);
+    if (!capability.executable) {
+      return {
+        available: false,
+        capability,
+        capabilityLevel: capability.level,
+        entry: capability.entry,
+        issue: makeCapabilityIssue(node, capability, pipelineName),
+      };
+    }
+
     const entry = getUnavailableEntry(node);
     if (!entry) {
-      return { available: true };
+      return {
+        available: true,
+        capability,
+        capabilityLevel: capability.level,
+      };
     }
     return {
       available: false,
+      capability,
+      capabilityLevel: capability.level,
       entry,
       issue: makeSyntheticIssue(entry, pipelineName),
     };
-  }, [getUnavailableEntry, pipelineName]);
+  }, [getUnavailableEntry, operatorAvailability, pipelineName]);
 
   const getStepAvailability = useCallback((step: PipelineStep): OperatorAvailability => {
     const issue = findMissingOperatorIssue(step, missingLookups);
@@ -303,23 +328,41 @@ export function OperatorAvailabilityProvider({
       };
     }
 
-    const entry = getUnavailableEntry({
+    const capabilityNode = {
       id: undefined,
       type: step.type,
       name: step.name,
       classPath: typeof step.classPath === "string" ? step.classPath : undefined,
       functionPath: typeof step.functionPath === "string" ? step.functionPath : undefined,
-    });
+    };
+    const capability = resolveOperatorCapability(capabilityNode, operatorAvailability);
+    if (!capability.executable) {
+      return {
+        available: false,
+        capability,
+        capabilityLevel: capability.level,
+        entry: capability.entry,
+        issue: makeCapabilityIssue(capabilityNode, capability, pipelineName),
+      };
+    }
+
+    const entry = getUnavailableEntry(capabilityNode);
     if (!entry) {
-      return { available: true };
+      return {
+        available: true,
+        capability,
+        capabilityLevel: capability.level,
+      };
     }
 
     return {
       available: false,
+      capability,
+      capabilityLevel: capability.level,
       entry,
       issue: makeSyntheticIssue(entry, pipelineName),
     };
-  }, [getUnavailableEntry, missingLookups, pipelineName]);
+  }, [getUnavailableEntry, missingLookups, operatorAvailability, pipelineName]);
 
   const value = useMemo<OperatorAvailabilityContextValue>(() => ({
     isLoadingOperators,
@@ -348,16 +391,4 @@ export function OperatorAvailabilityProvider({
       {children}
     </OperatorAvailabilityContext.Provider>
   );
-}
-
-export function useOperatorAvailability(): OperatorAvailabilityContextValue {
-  const context = useContext(OperatorAvailabilityContext);
-  if (!context) {
-    throw new Error("useOperatorAvailability must be used within an OperatorAvailabilityProvider");
-  }
-  return context;
-}
-
-export function useOperatorAvailabilityOptional(): OperatorAvailabilityContextValue | null {
-  return useContext(OperatorAvailabilityContext) ?? null;
 }

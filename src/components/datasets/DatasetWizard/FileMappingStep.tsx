@@ -7,327 +7,67 @@
  * - Assign sources for multi-source datasets
  * - Add additional files (via button or drag-and-drop)
  */
-import { useState, useCallback } from "react";
-import {
-  File,
-  Plus,
-  X,
-  ChevronDown,
-  ChevronUp,
-  Sparkles,
-  AlertCircle,
-  Upload,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useWizard } from "./WizardContext";
+import { useState, useCallback, useRef, type DragEvent } from "react";
+
+import { useWizard } from "./useWizard";
 import { selectFile } from "@/utils/fileDialogs";
 import { detectFilesList } from "@/api/datasets";
 import type { DetectedFile } from "@/types/datasets";
-
-// Format file size
-function formatSize(bytes: number): string {
-  if (bytes === 0) return "—";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-}
-
-// Get type badge color
-function getTypeBadgeVariant(
-  type: DetectedFile["type"]
-): "default" | "secondary" | "outline" {
-  switch (type) {
-    case "X":
-      return "default";
-    case "Y":
-      return "secondary";
-    case "metadata":
-      return "outline";
-    default:
-      return "outline";
-  }
-}
-
-interface FileRowProps {
-  file: DetectedFile;
-  index: number;
-  onUpdate: (updates: Partial<DetectedFile>) => void;
-  onRemove: () => void;
-  maxSource: number;
-  validatedShape?: { num_rows?: number; num_columns?: number; error?: string };
-}
-
-function FileRow({ file, index, onUpdate, onRemove, maxSource, validatedShape }: FileRowProps) {
-  const [expanded, setExpanded] = useState(false);
-  // Use validated shape when available, fall back to detection values only if no validation was attempted
-  const hasValidationError = validatedShape?.error != null;
-  const numRows = validatedShape?.num_rows ?? (hasValidationError ? undefined : file.num_rows);
-  const numColumns = validatedShape?.num_columns ?? (hasValidationError ? undefined : file.num_columns);
-
-  return (
-    <div className="border-b last:border-0">
-      <div className="p-3 hover:bg-muted/30">
-        <div className="flex items-start gap-3">
-          <File className="h-4 w-4 text-primary mt-1 flex-shrink-0" />
-
-          <div className="flex-1 min-w-0">
-            {/* File name and badges */}
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-sm truncate flex-1" title={file.path}>
-                {file.filename}
-              </span>
-
-              {file.detected && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Badge variant="secondary" className="text-xs">
-                        <Sparkles className="h-3 w-3 mr-1" />
-                        Auto
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Auto-detected ({Math.round(file.confidence * 100)}%
-                      confidence)
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-
-              <Badge variant="outline" className="text-xs uppercase">
-                {file.format}
-              </Badge>
-
-              <span className="text-xs text-muted-foreground">
-                {formatSize(file.size_bytes)}
-              </span>
-
-              {hasValidationError ? (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Badge variant="outline" className="text-xs font-mono text-destructive border-destructive/50">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        Error
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>{validatedShape?.error}</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : numRows != null && numColumns != null ? (
-                <Badge variant="outline" className="text-xs font-mono">
-                  {numRows} × {numColumns}
-                </Badge>
-              ) : null}
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => setExpanded(!expanded)}
-              >
-                {expanded ? (
-                  <ChevronUp className="h-3 w-3" />
-                ) : (
-                  <ChevronDown className="h-3 w-3" />
-                )}
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                onClick={onRemove}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-
-            {/* Main controls row */}
-            <div className="grid grid-cols-3 gap-2">
-              {/* Type selector */}
-              <div>
-                <Label className="text-xs text-muted-foreground">Role</Label>
-                <Select
-                  value={file.type}
-                  onValueChange={(v) =>
-                    onUpdate({
-                      type: v as DetectedFile["type"],
-                      source: v === "X" ? (file.source || 1) : null,
-                    })
-                  }
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="X">X (Features/Spectra)</SelectItem>
-                    <SelectItem value="Y">Y (Targets/Analyte)</SelectItem>
-                    <SelectItem value="metadata">Metadata</SelectItem>
-                    <SelectItem value="unknown">Unknown</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Split selector */}
-              <div>
-                <Label className="text-xs text-muted-foreground">Split</Label>
-                <Select
-                  value={file.split}
-                  onValueChange={(v) =>
-                    onUpdate({ split: v as DetectedFile["split"] })
-                  }
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="train">Train</SelectItem>
-                    <SelectItem value="test">Test</SelectItem>
-                    <SelectItem value="unknown">Unknown</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Source selector (only for X files) */}
-              <div>
-                <Label className="text-xs text-muted-foreground">Source</Label>
-                {file.type === "X" ? (
-                  <Select
-                    value={String(file.source || 1)}
-                    onValueChange={(v) => onUpdate({ source: parseInt(v) })}
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: Math.max(maxSource + 1, 5) }, (_, i) => (
-                        <SelectItem key={i + 1} value={String(i + 1)}>
-                          Source {i + 1}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="h-8 px-3 flex items-center text-xs text-muted-foreground bg-muted/50 rounded-md">
-                    N/A
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Expanded details */}
-            {expanded && (
-              <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="font-medium">Full path:</span>
-                    <div className="font-mono truncate">{file.path}</div>
-                  </div>
-                  <div>
-                    <span className="font-medium">Format:</span>
-                    <div>{file.format.toUpperCase()}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { FileMappingStepFileList } from "./FileMappingStepFileList";
+import { FileMappingStepHeader } from "./FileMappingStepHeader";
+import {
+  FILE_MAPPING_DIALOG_FILTERS,
+  buildFallbackDetectedFilesFromFileList,
+  buildFallbackDetectedFilesFromPaths,
+  extractDroppedFiles,
+  getFileMappingValidation,
+  getMaxSource,
+  mergeFileBlobs,
+  shouldStoreDroppedFileBlobs,
+} from "./FileMappingStepLogic";
+import { FileMappingStepWarnings } from "./FileMappingStepWarnings";
 
 export function FileMappingStep() {
   const { state, dispatch } = useWizard();
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const dragCounterRef = { current: 0 };
+  const dragCounterRef = useRef(0);
 
-  // Calculate max source number
-  const maxSource = Math.max(
-    0,
-    ...state.files.filter((f) => f.type === "X").map((f) => f.source || 0)
-  );
+  const maxSource = getMaxSource(state.files);
+  const validation = getFileMappingValidation(state.files);
 
-  // Validation
-  const hasXFiles = state.files.some((f) => f.type === "X");
-  const hasTrainX = state.files.some((f) => f.type === "X" && f.split === "train");
+  const addFilesFromPaths = useCallback(async (filePaths: string[]) => {
+    if (filePaths.length > 0) {
+      try {
+        const detected = await detectFilesList(filePaths);
+        if (detected.files.length > 0) {
+          dispatch({ type: "ADD_FILES", payload: detected.files });
+          return;
+        }
+      } catch {
+        // Fallback to format-only detection below.
+      }
+    }
+
+    dispatch({
+      type: "ADD_FILES",
+      payload: buildFallbackDetectedFilesFromPaths(filePaths),
+    });
+  }, [dispatch]);
 
   const handleAddFiles = async () => {
     try {
-      const result = await selectFile(
-        ["CSV files (*.csv)", "Excel files (*.xlsx;*.xls)", "All files (*.*)"],
-        true
-      );
+      const result = await selectFile(FILE_MAPPING_DIALOG_FILTERS, true);
 
       if (result) {
         const filePaths = Array.isArray(result) ? result : [result];
-
-        // Use backend detection for added files
-        if (filePaths.length > 0) {
-          try {
-            const detected = await detectFilesList(filePaths);
-            if (detected.files.length > 0) {
-              dispatch({ type: "ADD_FILES", payload: detected.files });
-              return;
-            }
-          } catch {
-            // Fallback to format-only detection below
-          }
-        }
-
-        const newFiles: DetectedFile[] = filePaths.map((filePath) => {
-          const filename = filePath.split(/[/\\]/).pop() || "";
-          const lowerName = filename.toLowerCase();
-
-          let format: DetectedFile["format"] = "csv";
-          if (lowerName.endsWith(".xlsx")) format = "xlsx";
-          else if (lowerName.endsWith(".xls")) format = "xls";
-          else if (lowerName.endsWith(".parquet")) format = "parquet";
-          else if (lowerName.endsWith(".npy")) format = "npy";
-          else if (lowerName.endsWith(".npz")) format = "npz";
-          else if (lowerName.endsWith(".mat")) format = "mat";
-
-          return {
-            path: filePath,
-            filename,
-            type: "unknown" as const,
-            split: "train" as const,
-            source: null,
-            format,
-            size_bytes: 0,
-            confidence: 0,
-            detected: false,
-          };
-        });
-
-        dispatch({ type: "ADD_FILES", payload: newFiles });
+        await addFilesFromPaths(filePaths);
       }
     } catch (error) {
       console.error("Failed to add files:", error);
     }
   };
 
-  // Drag-and-drop handlers for the file list area
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
+  const handleDragEnter = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     dragCounterRef.current++;
@@ -336,7 +76,7 @@ export function FileMappingStep() {
     }
   }, []);
 
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
+  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     dragCounterRef.current--;
@@ -345,45 +85,24 @@ export function FileMappingStep() {
     }
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
   }, []);
 
-  const handleFileDrop = useCallback(async (e: React.DragEvent) => {
+  const handleFileDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     dragCounterRef.current = 0;
     setIsDraggingOver(false);
 
-    const files = e.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-
-    // Extract paths (desktop mode)
-    const paths: string[] = [];
-    const fileList: File[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      fileList.push(file);
-      // Electron: use webUtils.getPathForFile
-      if (window.electronApi?.getPathForFile) {
-        try {
-          const path = window.electronApi.getPathForFile(file);
-          if (path) {
-            paths.push(path);
-            continue;
-          }
-        } catch { /* fallback */ }
-      }
-      // Fallback: check file.path property
-      const filePath = (file as File & { path?: string }).path;
-      if (filePath) {
-        paths.push(filePath);
-      }
-    }
+    const getPathForFile = window.electronApi?.getPathForFile
+      ? (file: File) => window.electronApi?.getPathForFile?.(file)
+      : undefined;
+    const { paths, fileList } = extractDroppedFiles(e.dataTransfer?.files, getPathForFile);
+    if (fileList.length === 0) return;
 
     if (paths.length > 0) {
-      // Desktop mode: use backend detection
       try {
         const result = await detectFilesList(paths);
         if (result.files.length > 0) {
@@ -391,45 +110,17 @@ export function FileMappingStep() {
           return;
         }
       } catch {
-        // Fallback to format-only detection below
+        // Fallback to format-only detection below.
       }
     }
 
-    // Web mode or fallback: add as unknown files with format detection
-    const newFiles: DetectedFile[] = fileList.map((file) => {
-      const filename = file.name;
-      const lowerName = filename.toLowerCase();
-
-      let format: DetectedFile["format"] = "csv";
-      if (lowerName.endsWith(".xlsx")) format = "xlsx";
-      else if (lowerName.endsWith(".xls")) format = "xls";
-      else if (lowerName.endsWith(".parquet")) format = "parquet";
-      else if (lowerName.endsWith(".npy")) format = "npy";
-      else if (lowerName.endsWith(".npz")) format = "npz";
-      else if (lowerName.endsWith(".mat")) format = "mat";
-
-      return {
-        path: filename,
-        filename,
-        type: "unknown" as const,
-        split: "train" as const,
-        source: null,
-        format,
-        size_bytes: file.size,
-        confidence: 0,
-        detected: false,
-      };
+    dispatch({
+      type: "ADD_FILES",
+      payload: buildFallbackDetectedFilesFromFileList(fileList),
     });
 
-    dispatch({ type: "ADD_FILES", payload: newFiles });
-
-    // Store File objects for web mode
-    if (state.fileBlobs.size > 0 || paths.length === 0) {
-      const newBlobs = new Map(state.fileBlobs);
-      fileList.forEach((file) => {
-        newBlobs.set(file.name, file);
-      });
-      dispatch({ type: "SET_FILE_BLOBS", payload: newBlobs });
+    if (shouldStoreDroppedFileBlobs(state.fileBlobs, paths)) {
+      dispatch({ type: "SET_FILE_BLOBS", payload: mergeFileBlobs(state.fileBlobs, fileList) });
     }
   }, [dispatch, state.fileBlobs]);
 
@@ -443,112 +134,30 @@ export function FileMappingStep() {
 
   return (
     <div className="flex-1 flex flex-col gap-4 py-2">
-      {/* Path display */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <Label className="text-sm text-muted-foreground">
-            {state.sourceType === "folder" ? "Folder Path" : "Base Path"}
-          </Label>
-          <div className="flex items-center gap-2">
-            <Label className="text-sm text-muted-foreground">Dataset Name</Label>
-            <Input
-              value={state.datasetName}
-              onChange={(e) =>
-                dispatch({ type: "SET_DATASET_NAME", payload: e.target.value })
-              }
-              className="h-7 w-48 text-sm"
-              placeholder="Enter dataset name"
-            />
-          </div>
-        </div>
-        <div className="px-3 py-2 bg-muted/50 rounded-md text-sm font-mono truncate">
-          {state.basePath}
-        </div>
-      </div>
+      <FileMappingStepHeader
+        sourceType={state.sourceType}
+        basePath={state.basePath}
+        datasetName={state.datasetName}
+        onDatasetNameChange={(datasetName) =>
+          dispatch({ type: "SET_DATASET_NAME", payload: datasetName })
+        }
+      />
 
-      {/* Validation warnings */}
-      {!hasXFiles && state.files.length > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-amber-500/10 text-amber-600 rounded-lg text-sm">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          <span>No feature files (X) detected. At least one X file is required.</span>
-        </div>
-      )}
+      <FileMappingStepWarnings validation={validation} />
 
-      {hasXFiles && !hasTrainX && (
-        <div className="flex items-center gap-2 p-3 bg-amber-500/10 text-amber-600 rounded-lg text-sm">
-          <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          <span>No training data detected. Consider marking at least one X file as 'Train'.</span>
-        </div>
-      )}
-
-      {/* File list with drag-and-drop */}
-      <div
-        className="flex-1 min-h-0 flex flex-col"
+      <FileMappingStepFileList
+        files={state.files}
+        validatedShapes={state.validatedShapes}
+        maxSource={maxSource}
+        isDraggingOver={isDraggingOver}
+        onAddFiles={handleAddFiles}
+        onUpdateFile={handleUpdateFile}
+        onRemoveFile={handleRemoveFile}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleFileDrop}
-      >
-        <div className="flex items-center justify-between mb-2">
-          <Label>
-            Dataset Files{" "}
-            <span className="text-muted-foreground">({state.files.length})</span>
-          </Label>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleAddFiles}
-            className="h-7 text-xs"
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            Add Files
-          </Button>
-        </div>
-
-        <div className={`flex-1 relative border rounded-md transition-colors ${isDraggingOver ? "border-primary border-dashed bg-primary/5" : ""}`}>
-          <ScrollArea className="h-full">
-            {state.files.length > 0 ? (
-              state.files.map((file, idx) => (
-                <FileRow
-                  key={file.path}
-                  file={file}
-                  index={idx}
-                  onUpdate={(updates) => handleUpdateFile(idx, updates)}
-                  onRemove={() => handleRemoveFile(idx)}
-                  maxSource={maxSource}
-                  validatedShape={state.validatedShapes[file.path]}
-                />
-              ))
-            ) : (
-              <div className="p-8 text-center text-muted-foreground">
-                <File className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>No files detected</p>
-                <p className="text-xs mt-1">Drag files here or use the button below</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={handleAddFiles}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Files
-                </Button>
-              </div>
-            )}
-          </ScrollArea>
-
-          {/* Drag overlay */}
-          {isDraggingOver && (
-            <div className="absolute inset-0 flex items-center justify-center bg-primary/5 rounded-md pointer-events-none z-10">
-              <div className="flex flex-col items-center gap-2 text-primary">
-                <Upload className="h-8 w-8" />
-                <span className="text-sm font-medium">Drop files to add</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
+      />
     </div>
   );
 }

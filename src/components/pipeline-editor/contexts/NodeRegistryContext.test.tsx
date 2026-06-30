@@ -5,13 +5,14 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NodeRegistryProvider, useNodeRegistry } from "./NodeRegistryContext";
+import { NodeRegistryProvider } from "./NodeRegistryContext";
+import { useNodeRegistry } from "./useNodeRegistry";
 
 const mocks = vi.hoisted(() => ({
   usePipelineEditorPreferencesOptional: vi.fn(() => ({ extendedMode: true })),
 }));
 
-vi.mock("./PipelineEditorPreferencesContext", () => ({
+vi.mock("./usePipelineEditorPreferences", () => ({
   usePipelineEditorPreferencesOptional: mocks.usePipelineEditorPreferencesOptional,
 }));
 

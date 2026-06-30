@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { useInspectorFilter } from '@/context/InspectorFilterContext';
+import { useInspectorFilter } from '@/context/useInspectorFilter';
 
 function LabelWithHelp({
   label,

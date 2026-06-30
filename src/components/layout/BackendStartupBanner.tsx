@@ -2,9 +2,16 @@ import { useEffect, useState } from "react";
 import { useIsFetching } from "@tanstack/react-query";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useMlReadiness } from "@/context/MlReadinessContext";
+import { useMlReadiness } from "@/context/useMlReadiness";
 import { datasetQueryKeys } from "@/hooks/useDatasetQueries";
 import { Progress } from "@/components/ui/progress";
+import {
+  buildBackendStartupBannerReadModel,
+  canSettleStartupBanner,
+  type StartupStepReadModel,
+  type StartupStepState,
+  type StartupTranslationText,
+} from "./BackendStartupBannerData";
 import { NirsSplashLoader } from "./NirsSplashLoader";
 
 // Minimum time the banner stays visible after mount. Without this, a fast
@@ -12,14 +19,6 @@ import { NirsSplashLoader } from "./NirsSplashLoader";
 // same frame AppLayout mounts and the banner disappears before the user can
 // perceive it.
 const MIN_VISIBLE_MS = 1500;
-
-type StartupStepState = "done" | "loading" | "waiting" | "error";
-
-interface StartupStep {
-  label: string;
-  detail: string;
-  state: StartupStepState;
-}
 
 function StepIcon({ state }: { state: StartupStepState }) {
   if (state === "done") {
@@ -34,7 +33,15 @@ function StepIcon({ state }: { state: StartupStepState }) {
   return <div className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40" aria-hidden="true" />;
 }
 
-function StepCard({ label, detail, state }: StartupStep) {
+function StepCard({
+  label,
+  detail,
+  state,
+}: {
+  label: string;
+  detail: string;
+  state: StartupStepState;
+}) {
   const tone =
     state === "error"
       ? "border-destructive/30 bg-destructive/5"
@@ -59,6 +66,10 @@ function StepCard({ label, detail, state }: StartupStep) {
       </div>
     </div>
   );
+}
+
+function translateText(t: ReturnType<typeof useTranslation>["t"], text: StartupTranslationText) {
+  return t(text.key, text.defaultValue);
 }
 
 export function BackendStartupBanner() {
@@ -88,18 +99,24 @@ export function BackendStartupBanner() {
   const [hasSettled, setHasSettled] = useState(false);
   useEffect(() => {
     if (hasSettled) return;
-    if (
-      workspaceReady &&
-      datasetsPrimed &&
-      fetchingDatasets === 0 &&
-      fetchingWorkspaces === 0
-    ) {
+    if (canSettleStartupBanner({
+      coreReady,
+      mlReady,
+      workspaceReady,
+      datasetsPrimed,
+      mlError,
+      fetchingDatasets,
+      fetchingWorkspaces,
+    })) {
       setHasSettled(true);
     }
   }, [
     hasSettled,
+    coreReady,
+    mlReady,
     workspaceReady,
     datasetsPrimed,
+    mlError,
     fetchingDatasets,
     fetchingWorkspaces,
   ]);
@@ -108,86 +125,29 @@ export function BackendStartupBanner() {
     return null;
   }
 
-  const workspacePhase =
-    !workspaceReady ||
-    !datasetsPrimed ||
-    fetchingDatasets > 0 ||
-    fetchingWorkspaces > 0;
-  const workspaceDone = !workspacePhase;
-
-  const title = !coreReady
-    ? t("layout.backendStartup.connectingTitle", "Connecting to backend...")
-    : mlError
-      ? t("layout.backendStartup.errorTitle", "Backend startup stalled")
-      : !mlReady
-        ? t("layout.backendStartup.loadingTitle", "Loading analysis backend...")
-        : t("layout.backendStartup.workspaceTitle", "Loading workspace...");
-
-  const description = !coreReady
-    ? t(
-        "layout.backendStartup.connectingDescription",
-        "The backend is still starting. Cached content may appear first, but actions stay limited until the API responds."
-      )
-    : mlError
-      ? mlError
-      : !mlReady
-        ? t(
-            "layout.backendStartup.loadingDescription",
-            "nirs4all and its ML dependencies are initializing in the background. Heavy analysis features will unlock automatically."
-          )
-        : t(
-            "layout.backendStartup.workspaceDescription",
-          "The backend is loading the active workspace. Dataset, run, result, and prediction views will refresh when startup finishes."
-          );
-
-  const progressValue = !coreReady ? 18 : !mlReady ? 52 : workspaceDone ? 100 : 84;
-  const badgeLabel = mlError
-    ? t("layout.backendStartup.errorBadge", "Startup issue")
-    : t("layout.backendStartup.badge", "Backend loading");
-
-  const steps: StartupStep[] = [
-    {
-      label: t("layout.backendStartup.apiLabel", "API"),
-      detail: coreReady
-        ? t("layout.backendStartup.apiReady", "Connected")
-        : t("layout.backendStartup.apiLoading", "Starting FastAPI"),
-      state: coreReady ? "done" : "loading",
-    },
-    {
-      label: t("layout.backendStartup.mlLabel", "ML Engine"),
-      detail: mlError
-        ? t("layout.backendStartup.mlError", "Initialization failed")
-        : mlReady
-          ? t("layout.backendStartup.mlReady", "Dependencies loaded")
-          : coreReady
-            ? t("layout.backendStartup.mlLoading", "Importing nirs4all and sklearn")
-            : t("layout.backendStartup.mlWaiting", "Waiting for API"),
-      state: mlError ? "error" : mlReady ? "done" : coreReady ? "loading" : "waiting",
-    },
-    {
-      label: t("layout.backendStartup.workspaceLabel", "Workspace"),
-      detail: mlError
-        ? t("layout.backendStartup.workspaceBlocked", "Blocked until backend recovers")
-        : workspaceDone
-          ? t("layout.backendStartup.workspaceReady", "Ready")
-          : mlReady
-            ? t("layout.backendStartup.workspaceLoading", "Loading datasets and run state")
-            : t("layout.backendStartup.workspaceWaiting", "Queued behind ML startup"),
-      state: mlError
-        ? "error"
-        : workspaceDone
-          ? "done"
-          : mlReady
-            ? "loading"
-            : "waiting",
-    },
-  ];
+  const model = buildBackendStartupBannerReadModel({
+    coreReady,
+    mlReady,
+    workspaceReady,
+    datasetsPrimed,
+    mlError,
+    fetchingDatasets,
+    fetchingWorkspaces,
+  });
+  const title = translateText(t, model.title);
+  const description = model.description.error ?? translateText(t, model.description);
+  const badgeLabel = translateText(t, model.badge.label);
+  const steps = model.steps.map((step: StartupStepReadModel) => ({
+    label: translateText(t, step.label),
+    detail: translateText(t, step.detail),
+    state: step.state,
+  }));
 
   return (
     <section
       role="status"
       aria-live="polite"
-      aria-busy={workspacePhase}
+      aria-busy={model.workspacePhase}
       className="shrink-0 border-b border-border/60 bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/85 md:px-6"
     >
       <div className="mx-auto flex max-w-7xl flex-col gap-4 rounded-2xl border border-primary/15 bg-card/90 p-4 shadow-sm">
@@ -202,7 +162,7 @@ export function BackendStartupBanner() {
             </div>
           </div>
           <div className="flex items-center gap-2 self-start rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary md:self-center">
-            {mlError ? (
+            {model.badge.iconKind === "error" ? (
               <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
             ) : (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -211,7 +171,7 @@ export function BackendStartupBanner() {
           </div>
         </div>
 
-        <Progress value={progressValue} className="h-1.5 bg-primary/10" />
+        <Progress value={model.progressValue} className="h-1.5 bg-primary/10" />
 
         <div className="grid gap-2 lg:grid-cols-3">
           {steps.map((step) => (

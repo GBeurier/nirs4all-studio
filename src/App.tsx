@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { NirsSplashLoader } from "@/components/layout/NirsSplashLoader";
-import { useMlReadiness } from "@/context/MlReadinessContext";
+import { useMlReadiness } from "@/context/useMlReadiness";
 import Datasets from "@/pages/Datasets";
 import DatasetDetail from "@/pages/DatasetDetail";
 import Pipelines from "@/pages/Pipelines";
@@ -210,7 +210,7 @@ function BackendConnectingScreen() {
   const [text, setText] = useState("");
   const [visible, setVisible] = useState(false);
   const idxRef = useRef(-1);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     function pickNext() {
@@ -228,7 +228,10 @@ function BackendConnectingScreen() {
       }, 3500);
     }
     const startDelay = setTimeout(cycle, 800);
-    return () => { clearTimeout(startDelay); clearTimeout(timerRef.current); };
+    return () => {
+      clearTimeout(startDelay);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, []);
 
   return (

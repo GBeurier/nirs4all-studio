@@ -9,16 +9,15 @@ these are FastAPI handlers; they are pure helpers invoked from the routers.
 import inspect
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from fastapi import HTTPException
 
 from ..lazy_imports import get_cached
+from ..results_repository import workspace_store_root
+from ..shared.json_safe import sanitize_dict, sanitize_float
 from ..shared.logger import get_logger
 from ._shared import MIGRATION_AVAILABLE, PREDICTIONS_AVAILABLE, STORE_AVAILABLE
-
-if TYPE_CHECKING:
-    from ..store_adapter import StoreAdapter
 
 logger = get_logger(__name__)
 
@@ -141,6 +140,446 @@ def _normalize_run_dataset_entries(raw_datasets: Any) -> list[dict[str, Any]]:
     return normalized
 
 
+# ============= Results-summary payload builder =============
+
+
+def _parse_json_maybe(value: Any) -> Any:
+    """Parse JSON strings, otherwise return the input unchanged."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return value
+    return value
+
+
+def _coerce_summary_score(value: Any) -> float | None:
+    """Return a finite float score, or None for missing/non-finite values."""
+    value = sanitize_float(value)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _summary_metric_higher_is_better(metric_name: str | None, cache: dict[str, bool]) -> bool:
+    key = metric_name or ""
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+
+    from nirs4all.pipeline.run import get_metric_info
+
+    value = bool(get_metric_info(metric_name).get("higher_is_better", True)) if metric_name else True
+    cache[key] = value
+    return value
+
+
+def _summary_is_better(candidate: float, incumbent: float | None, *, higher_is_better: bool) -> bool:
+    if incumbent is None:
+        return True
+    return candidate > incumbent if higher_is_better else candidate < incumbent
+
+
+def _summary_dict_payload(value: Any) -> dict[str, Any]:
+    parsed = _parse_json_maybe(value)
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _summary_optional_dict_payload(value: Any) -> dict[str, Any] | None:
+    parsed = _parse_json_maybe(value)
+    return parsed if isinstance(parsed, dict) and parsed else None
+
+
+def _summary_has_meaningful_final_payload(row: dict[str, Any]) -> bool:
+    if row.get("final_test_score") is not None or row.get("final_train_score") is not None:
+        return True
+    return bool(_summary_dict_payload(row.get("final_scores")))
+
+
+def _summary_has_cv_payload(row: dict[str, Any]) -> bool:
+    return (
+        row.get("cv_val_score") is not None
+        or row.get("cv_test_score") is not None
+        or row.get("cv_train_score") is not None
+        or bool(row.get("cv_fold_count"))
+        or bool(_summary_dict_payload(row.get("cv_scores")))
+    )
+
+
+def _mark_summary_refit_only_entries(rows: list[dict[str, Any]]) -> None:
+    for row in rows:
+        row["is_refit_only"] = bool(row.get("is_refit_only")) or (
+            _summary_has_meaningful_final_payload(row) and not _summary_has_cv_payload(row)
+        )
+
+
+def _build_summary_synthetic_final_scores(row: dict[str, Any]) -> dict[str, Any]:
+    cv_scores = _summary_dict_payload(row.get("cv_scores"))
+    if cv_scores:
+        return cv_scores
+
+    metric = row.get("metric")
+    if not isinstance(metric, str) or not metric:
+        return {}
+
+    scores: dict[str, dict[str, float]] = {}
+    for partition, value in (
+        ("val", row.get("cv_val_score")),
+        ("test", row.get("cv_test_score")),
+        ("train", row.get("cv_train_score")),
+    ):
+        score = _coerce_summary_score(value)
+        if score is None:
+            continue
+        scores.setdefault(partition, {})[metric] = score
+    return scores
+
+
+def _apply_summary_synthetic_refit_fallback(row: dict[str, Any]) -> None:
+    if _summary_has_meaningful_final_payload(row):
+        row["synthetic_refit"] = bool(row.get("synthetic_refit"))
+        return
+
+    if not _summary_has_cv_payload(row):
+        row["synthetic_refit"] = bool(row.get("synthetic_refit"))
+        return
+
+    row["final_test_score"] = _coerce_summary_score(row.get("cv_test_score"))
+    row["final_train_score"] = _coerce_summary_score(row.get("cv_train_score"))
+    row["final_scores"] = _build_summary_synthetic_final_scores(row)
+    row["synthetic_refit"] = True
+
+
+def _summary_extract_model_params(expanded_config: Any, model_step_idx: Any) -> dict[str, Any] | None:
+    steps = _parse_json_maybe(expanded_config)
+    if not isinstance(steps, list):
+        return None
+
+    try:
+        idx = int(model_step_idx) - 1
+    except Exception:
+        return None
+
+    if idx < 0 or idx >= len(steps):
+        return None
+
+    step = steps[idx]
+    if isinstance(step, dict) and "model" in step:
+        model_spec = step.get("model")
+        if isinstance(model_spec, dict):
+            params = model_spec.get("params")
+            return params if isinstance(params, dict) else None
+        return None
+
+    if isinstance(step, dict):
+        params = step.get("params")
+        return params if isinstance(params, dict) else None
+
+    return None
+
+
+def _summary_merge_variant_params(
+    step_params: dict[str, Any] | None,
+    best_params: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    merged: dict[str, Any] = {}
+    if isinstance(step_params, dict):
+        merged.update(step_params)
+    if isinstance(best_params, dict):
+        merged.update(best_params)
+    return merged or None
+
+
+def _query_chain_summaries_for_results_summary(source: Any) -> Any:
+    """Return all chain summaries from a repository, or from a legacy StoreAdapter."""
+    query_chain_summaries = getattr(source, "query_chain_summaries", None)
+    if callable(query_chain_summaries):
+        return query_chain_summaries()
+
+    store = getattr(source, "store", None)
+    query_chain_summaries = getattr(store, "query_chain_summaries", None)
+    if callable(query_chain_summaries):
+        return query_chain_summaries()
+
+    raise AttributeError("source does not expose query_chain_summaries")
+
+
+def _query_top_chains_for_results_summary(
+    source: Any,
+    *,
+    dataset_name: str,
+    metric: str | None,
+    n: int,
+) -> list[dict[str, Any]]:
+    """Return repository-ranked top CV rows for one dataset."""
+    query_top_chains = getattr(source, "query_top_chains", None)
+    if not callable(query_top_chains):
+        store = getattr(source, "store", None)
+        query_top_chains = getattr(store, "query_top_chains", None)
+    if not callable(query_top_chains):
+        return []
+
+    try:
+        df = query_top_chains(
+            dataset_name=dataset_name,
+            metric=metric,
+            n=n,
+            score_column="cv_val_score",
+        )
+    except Exception:
+        return []
+    return [dict(row) for row in df.iter_rows(named=True)]
+
+
+def _summary_chain_key(row: dict[str, Any]) -> tuple[Any, ...] | None:
+    chain_id = row.get("chain_id")
+    if chain_id:
+        return ("chain_id", chain_id)
+    fallback = (
+        row.get("run_id"),
+        row.get("pipeline_id"),
+        row.get("dataset_name"),
+        row.get("model_class"),
+        row.get("model_name"),
+        row.get("preprocessings"),
+    )
+    return fallback if any(value is not None for value in fallback) else None
+
+
+def _summary_rank_cv_rows(
+    rows: list[dict[str, Any]],
+    *,
+    n: int,
+    higher_is_better: bool,
+) -> list[dict[str, Any]]:
+    sentinel = float("-inf") if higher_is_better else float("inf")
+
+    def _cv_key(row: dict[str, Any], _sentinel: float = sentinel) -> float:
+        value = _coerce_summary_score(row.get("cv_val_score"))
+        return value if value is not None else _sentinel
+
+    return sorted(rows, key=_cv_key, reverse=higher_is_better)[:n]
+
+
+def _summary_pipeline_map(repository: Any, pipeline_ids: set[str]) -> dict[str, dict[str, Any]]:
+    get_pipeline = getattr(repository, "get_pipeline", None)
+    if not callable(get_pipeline):
+        return {}
+
+    pipeline_map: dict[str, dict[str, Any]] = {}
+    for pipeline_id in pipeline_ids:
+        try:
+            pipeline = get_pipeline(pipeline_id)
+        except Exception:
+            continue
+        if isinstance(pipeline, dict):
+            pipeline_map[pipeline_id] = pipeline
+    return pipeline_map
+
+
+def _serialize_results_summary_chain(
+    entry: dict[str, Any],
+    pipeline_map: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    pipeline_id = entry.get("pipeline_id")
+    pipeline_row = pipeline_map.get(str(pipeline_id or ""), {})
+    best_params = _summary_optional_dict_payload(entry.get("best_params"))
+    variant_params = _summary_optional_dict_payload(entry.get("variant_params"))
+    if variant_params is None:
+        variant_params = _summary_merge_variant_params(
+            _summary_extract_model_params(pipeline_row.get("expanded_config"), entry.get("model_step_idx")),
+            best_params,
+        )
+
+    payload = {
+        "chain_id": entry.get("chain_id", ""),
+        "run_id": entry.get("run_id", ""),
+        "pipeline_id": pipeline_id,
+        "pipeline_name": entry.get("pipeline_name") or pipeline_row.get("name"),
+        "model_name": entry.get("model_name", ""),
+        "model_class": entry.get("model_class", ""),
+        "preprocessings": entry.get("preprocessings", ""),
+        "avg_val_score": _coerce_summary_score(entry.get("cv_val_score")),
+        "avg_test_score": _coerce_summary_score(entry.get("cv_test_score")),
+        "avg_train_score": _coerce_summary_score(entry.get("cv_train_score")),
+        "fold_count": entry.get("cv_fold_count", 0),
+        "scores": _summary_dict_payload(entry.get("cv_scores")),
+        "cv_source_chain_id": entry.get("cv_source_chain_id"),
+        "final_test_score": _coerce_summary_score(entry.get("final_test_score")),
+        "final_train_score": _coerce_summary_score(entry.get("final_train_score")),
+        "final_scores": _summary_dict_payload(entry.get("final_scores")),
+        "final_agg_test_score": _coerce_summary_score(entry.get("final_agg_test_score")),
+        "final_agg_train_score": _coerce_summary_score(entry.get("final_agg_train_score")),
+        "final_agg_scores": _summary_dict_payload(entry.get("final_agg_scores")),
+        "best_params": best_params,
+        "variant_params": variant_params,
+        "synthetic_refit": bool(entry.get("synthetic_refit")),
+    }
+    if entry.get("is_refit_only"):
+        payload["is_refit_only"] = True
+    return sanitize_dict(payload)
+
+
+def _build_results_summary_payload(
+    repository: Any,
+    workspace_id: str,
+    linked_datasets: list,
+    *,
+    n: int,
+) -> dict[str, Any]:
+    """Compute the legacy results-summary response from a ResultsRepository.
+
+    The payload shape mirrors ``StoreAdapter.get_dataset_top_chains`` while
+    retrieving rows through the repository query surface.
+    """
+    try:
+        df = _query_chain_summaries_for_results_summary(repository)
+    except Exception:
+        return {"workspace_id": workspace_id, "datasets": []}
+
+    if len(df) == 0:
+        return {"workspace_id": workspace_id, "datasets": []}
+
+    rows = [dict(row) for row in df.iter_rows(named=True)]
+    by_dataset: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        dataset_name = row.get("dataset_name") or ""
+        if dataset_name:
+            by_dataset.setdefault(str(dataset_name), []).append(row)
+
+    metric_direction_cache: dict[str, bool] = {}
+    per_dataset_selection: list[tuple[str, str | None, str | None, list[dict[str, Any]]]] = []
+
+    for dataset_name in sorted(by_dataset):
+        dataset_rows = by_dataset[dataset_name]
+        _mark_summary_refit_only_entries(dataset_rows)
+        for row in dataset_rows:
+            _apply_summary_synthetic_refit_fallback(row)
+
+        metric = next((row.get("metric") for row in dataset_rows if row.get("metric")), "r2")
+        metric = str(metric) if metric is not None else None
+        task_type = next((row.get("task_type") for row in dataset_rows if row.get("task_type")), None)
+        task_type = str(task_type) if task_type is not None else None
+        higher_is_better = _summary_metric_higher_is_better(metric, metric_direction_cache)
+
+        cv_rows: list[dict[str, Any]] = []
+        refit_only_rows: list[dict[str, Any]] = []
+        best_final_row: dict[str, Any] | None = None
+        best_final_score: float | None = None
+
+        for row in dataset_rows:
+            fold_count = row.get("cv_fold_count") or 0
+            final_score = _coerce_summary_score(row.get("final_test_score"))
+            if fold_count > 0:
+                cv_rows.append(row)
+            elif final_score is not None:
+                refit_only_rows.append(row)
+
+            if final_score is not None and _summary_is_better(
+                final_score,
+                best_final_score,
+                higher_is_better=higher_is_better,
+            ):
+                best_final_score = final_score
+                best_final_row = row
+
+        row_by_key = {
+            key: row
+            for row in dataset_rows
+            if (key := _summary_chain_key(row)) is not None
+        }
+        queried_top_rows = _query_top_chains_for_results_summary(
+            repository,
+            dataset_name=dataset_name,
+            metric=metric,
+            n=n,
+        )
+
+        top_cv_rows: list[dict[str, Any]] = []
+        seen_top_keys: set[tuple[Any, ...]] = set()
+        for queried_row in queried_top_rows:
+            key = _summary_chain_key(queried_row)
+            row = row_by_key.get(key, queried_row) if key is not None else queried_row
+            if key is not None:
+                if key in seen_top_keys:
+                    continue
+                seen_top_keys.add(key)
+            if row.get("cv_fold_count") or row.get("cv_val_score") is not None:
+                top_cv_rows.append(row)
+            if len(top_cv_rows) >= n:
+                break
+
+        if len(top_cv_rows) < n:
+            for row in _summary_rank_cv_rows(cv_rows, n=n, higher_is_better=higher_is_better):
+                key = _summary_chain_key(row)
+                if key is not None and key in seen_top_keys:
+                    continue
+                if key is not None:
+                    seen_top_keys.add(key)
+                top_cv_rows.append(row)
+                if len(top_cv_rows) >= n:
+                    break
+
+        selected: list[dict[str, Any]] = []
+        seen_chain_ids: set[str] = set()
+
+        def _append_selected(
+            row: dict[str, Any],
+            *,
+            is_refit_only: bool = False,
+            _seen_chain_ids: set[str] = seen_chain_ids,
+            _selected: list[dict[str, Any]] = selected,
+        ) -> None:
+            chain_id = str(row.get("chain_id") or "")
+            if chain_id and chain_id in _seen_chain_ids:
+                return
+            if chain_id:
+                _seen_chain_ids.add(chain_id)
+            selected_row = dict(row)
+            if is_refit_only:
+                selected_row["is_refit_only"] = True
+            _selected.append(selected_row)
+
+        for row in top_cv_rows:
+            _append_selected(row)
+        for row in refit_only_rows:
+            _append_selected(row, is_refit_only=True)
+        if best_final_row is not None:
+            _append_selected(best_final_row)
+
+        if selected:
+            per_dataset_selection.append((dataset_name, metric, task_type, selected))
+
+    if not per_dataset_selection:
+        return {"workspace_id": workspace_id, "datasets": []}
+
+    pipeline_ids = {
+        str(row.get("pipeline_id"))
+        for _, _, _, selected in per_dataset_selection
+        for row in selected
+        if row.get("pipeline_id")
+    }
+    pipeline_map = _summary_pipeline_map(repository, pipeline_ids)
+
+    datasets_out: list[dict[str, Any]] = []
+    for dataset_name, metric, task_type, selected in per_dataset_selection:
+        datasets_out.append(sanitize_dict({
+            "dataset_name": dataset_name,
+            "metric": metric,
+            "task_type": task_type,
+            "top_chains": [
+                _serialize_results_summary_chain(row, pipeline_map)
+                for row in selected
+            ],
+        }))
+
+    _resolve_dataset_mapping(datasets_out, linked_datasets)
+    return {"workspace_id": workspace_id, "datasets": datasets_out}
+
+
 # ============= Rerun pipeline cloning helpers =============
 
 
@@ -202,18 +641,33 @@ def _normalize_rerun_cv_strategy(value: Any) -> str:
 # ============= Dataset-scores payload builder =============
 
 
+def _query_chain_summaries_for_dataset_scores(source: Any) -> Any:
+    """Return chain summaries from a repository, or from a legacy StoreAdapter."""
+    query_chain_summaries = getattr(source, "query_chain_summaries", None)
+    if callable(query_chain_summaries):
+        return query_chain_summaries()
+
+    store = getattr(source, "store", None)
+    query_chain_summaries = getattr(store, "query_chain_summaries", None)
+    if callable(query_chain_summaries):
+        return query_chain_summaries()
+
+    raise AttributeError("source does not expose query_chain_summaries")
+
+
 def _build_dataset_scores_payload(
-    adapter: "StoreAdapter",
+    repository: Any,
     workspace_id: str,
     linked_datasets: list,
 ) -> dict[str, Any]:
     """Compute the compact dataset-scores payload directly from
     ``v_chain_summary`` rows. Avoids loading pipeline metadata, parsing
     ``expanded_config``, or building any per-chain serialization that the
-    Datasets page does not render.
+    Datasets page does not render. Accepts a ResultsRepository-style object
+    directly, while preserving the legacy StoreAdapter call path.
     """
     try:
-        df = adapter.store.query_chain_summaries()
+        df = _query_chain_summaries_for_dataset_scores(repository)
     except Exception:
         return {"workspace_id": workspace_id, "datasets": []}
 
@@ -430,11 +884,12 @@ def _get_legacy_arrays_row_count(workspace_path: Path) -> int | None:
     """Count legacy rows in prediction_arrays if the table exists."""
     if not STORE_AVAILABLE:
         return None
-    if not (workspace_path / "store.sqlite").exists() and not (workspace_path / "store.duckdb").exists():
+    store_root = workspace_store_root(workspace_path)
+    if store_root is None:
         return None
 
     try:
-        store = get_cached("WorkspaceStore")(workspace_path)
+        store = get_cached("WorkspaceStore")(store_root)
     except Exception:
         return None
 

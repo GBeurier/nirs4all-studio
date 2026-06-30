@@ -12,6 +12,13 @@ import {
 } from 'recharts';
 import { Loader2 } from 'lucide-react';
 import { getSpectralDetail } from '@/api/shap';
+import {
+  buildShapSpectralBinnedBarData,
+  buildShapSpectralChartData,
+  buildShapSpectralHighlightRegions,
+  getShapSpectralImportanceColor,
+  hasShapSpectralAbsorbance,
+} from '@/lib/shapSpectralImportanceData';
 import type { ShapResultsResponse, BinnedImportanceData } from '@/types/shap';
 
 interface SpectralImportanceChartProps {
@@ -19,88 +26,6 @@ interface SpectralImportanceChartProps {
   results: ShapResultsResponse;
   binnedData?: BinnedImportanceData;
   selectedSamples?: number[];
-}
-
-const MAX_DISPLAY_POINTS = 400;
-
-/** Downsample an array by picking evenly-spaced indices. */
-function downsample<T>(arr: T[], maxN: number): T[] {
-  if (arr.length <= maxN) return arr;
-  const step = (arr.length - 1) / (maxN - 1);
-  const result: T[] = [];
-  for (let i = 0; i < maxN; i++) {
-    result.push(arr[Math.round(i * step)]);
-  }
-  return result;
-}
-
-type HighlightRegion = {
-  start: number;
-  end: number;
-  normalized: number;
-};
-
-function normalizeHighlightRegions(
-  regions: Array<{ start: number; end: number; score: number }>
-): HighlightRegion[] {
-  if (!regions.length) return [];
-  const maxScore = Math.max(...regions.map((region) => region.score), 1e-9);
-  return regions
-    .map((region) => ({
-      start: region.start,
-      end: region.end,
-      normalized: region.score / maxScore,
-    }))
-    .filter((region) => region.normalized > 0.2);
-}
-
-function buildFallbackBinRanges(
-  wavelengths: number[],
-  binSize: number,
-  binStride: number,
-): Array<[number, number]> {
-  if (!wavelengths.length) return [];
-  const resolvedBinSize = Math.max(1, Math.min(binSize || wavelengths.length, wavelengths.length));
-  const resolvedBinStride = Math.max(1, binStride || resolvedBinSize);
-  const ranges: Array<[number, number]> = [];
-
-  for (let startIndex = 0; startIndex < wavelengths.length; startIndex += resolvedBinStride) {
-    const endIndex = Math.min(startIndex + resolvedBinSize - 1, wavelengths.length - 1);
-    ranges.push([wavelengths[startIndex], wavelengths[endIndex]]);
-    if (endIndex === wavelengths.length - 1) break;
-  }
-
-  return ranges;
-}
-
-function buildHighlightRegionsFromCurve(
-  wavelengths: number[],
-  shapValues: number[],
-  ranges: Array<[number, number]>,
-): HighlightRegion[] {
-  const scoredRegions = ranges
-    .map((range) => {
-      let total = 0;
-      let count = 0;
-
-      for (let idx = 0; idx < wavelengths.length; idx += 1) {
-        const wavelength = wavelengths[idx];
-        if (wavelength < range[0] || wavelength > range[1]) continue;
-        total += Math.abs(shapValues[idx] ?? 0);
-        count += 1;
-      }
-
-      if (count === 0) return null;
-
-      return {
-        start: range[0],
-        end: range[1],
-        score: total / count,
-      };
-    })
-    .filter((region): region is { start: number; end: number; score: number } => region !== null && region.score > 0);
-
-  return normalizeHighlightRegions(scoredRegions);
 }
 
 export const SpectralImportanceChart = memo(function SpectralImportanceChart({
@@ -148,58 +73,20 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
 
   // Build full data, then downsample for display
   const chartData = useMemo(() => {
-    const { wavelengths } = results;
-    const full = wavelengths.map((wavelength, idx) => ({
-      wavelength,
-      importance: activeShap[idx] ?? 0,
-      absorbance: activeSpectrum[idx] ?? 0,
-    }));
-    return downsample(full, MAX_DISPLAY_POINTS);
-  }, [results, activeShap, activeSpectrum]);
+    return buildShapSpectralChartData(results.wavelengths, activeShap, activeSpectrum);
+  }, [results.wavelengths, activeShap, activeSpectrum]);
 
   // Binned regions for highlighting (use abs for normalization since signed aggregations can be negative)
   const significantRegions = useMemo(() => {
-    const binnedRegions = normalizeHighlightRegions(
-      activeBinned.bin_ranges
-        .map((range, idx) => {
-          const value = activeBinned.bin_values[idx];
-          if (!range || !Number.isFinite(value)) return null;
-          return {
-            start: range[0],
-            end: range[1],
-            score: Math.abs(value),
-          };
-        })
-        .filter((region): region is { start: number; end: number; score: number } => region !== null),
-    );
-
-    if (binnedRegions.length > 0) return binnedRegions;
-
-    const fallbackRanges = activeBinned.bin_ranges.length > 0
-      ? activeBinned.bin_ranges
-      : buildFallbackBinRanges(results.wavelengths, activeBinned.bin_size, activeBinned.bin_stride);
-
-    return buildHighlightRegionsFromCurve(results.wavelengths, activeShap, fallbackRanges);
+    return buildShapSpectralHighlightRegions(activeBinned, results.wavelengths, activeShap);
   }, [activeBinned, activeShap, results.wavelengths]);
-
-  const getImportanceColor = (normalized: number): string => {
-    if (normalized > 0.8) return 'rgba(13, 148, 136, 0.7)';
-    if (normalized > 0.6) return 'rgba(20, 184, 166, 0.5)';
-    if (normalized > 0.4) return 'rgba(45, 212, 191, 0.35)';
-    if (normalized > 0.2) return 'rgba(94, 234, 212, 0.25)';
-    return 'rgba(153, 246, 228, 0.15)';
-  };
 
   // Binned bar chart data
   const binnedBarData = useMemo(() => {
-    return activeBinned.bin_centers.map((center, idx) => ({
-      center,
-      importance: activeBinned.bin_values[idx],
-      label: `${activeBinned.bin_ranges[idx][0].toFixed(0)}-${activeBinned.bin_ranges[idx][1].toFixed(0)}`,
-    }));
+    return buildShapSpectralBinnedBarData(activeBinned);
   }, [activeBinned]);
 
-  const hasSpectrum = activeSpectrum.some((v) => v !== 0);
+  const hasSpectrum = hasShapSpectralAbsorbance(activeSpectrum);
 
   return (
     <div className="h-full flex flex-col gap-2">
@@ -253,7 +140,7 @@ export const SpectralImportanceChart = memo(function SpectralImportanceChart({
                 yAxisId="importance"
                 x1={region.start}
                 x2={region.end}
-                fill={getImportanceColor(region.normalized)}
+                fill={getShapSpectralImportanceColor(region.normalized)}
                 fillOpacity={1}
               />
             ))}

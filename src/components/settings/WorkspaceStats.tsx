@@ -46,7 +46,6 @@ import {
   Database,
   FolderOpen,
   FileBox,
-  Clock,
   AlertCircle,
   CheckCircle2,
   Loader2,
@@ -55,10 +54,18 @@ import {
   getWorkspaceStats,
   cleanWorkspaceCache,
 } from "@/api/workspace";
-import { formatBytes } from "@/utils/formatters";
+import {
+  getCleanCacheSuccessMessage,
+  getWorkspaceActionFeedbackDescriptors,
+  getWorkspaceCountCards,
+  getWorkspaceSpaceUsageRows,
+  getWorkspaceStorageSummaryCards,
+  type WorkspaceActionFeedbackDescriptor,
+  type WorkspaceActionState,
+  type WorkspaceSpaceUsageRow,
+} from "./WorkspaceStatsData";
 import type {
   WorkspaceStatsResponse,
-  SpaceUsageItem,
   CleanCacheRequest,
 } from "@/types/settings";
 
@@ -121,7 +128,7 @@ function getCategoryColor(name: string): string {
 }
 
 interface SpaceUsageBarProps {
-  item: SpaceUsageItem;
+  item: WorkspaceSpaceUsageRow;
 }
 
 function SpaceUsageBar({ item }: SpaceUsageBarProps) {
@@ -132,12 +139,12 @@ function SpaceUsageBar({ item }: SpaceUsageBarProps) {
           {getCategoryIcon(item.name)}
           <span className="capitalize font-medium">{item.name}</span>
           <Badge variant="outline" className="text-xs">
-            {item.file_count} files
+            {item.fileCountLabel}
           </Badge>
         </div>
         <div className="flex items-center gap-2 text-muted-foreground">
-          <span>{formatBytes(item.size_bytes)}</span>
-          <span className="w-12 text-right">{item.percentage}%</span>
+          <span>{item.sizeLabel}</span>
+          <span className="w-12 text-right">{item.percentageLabel}</span>
         </div>
       </div>
       <Progress
@@ -241,6 +248,22 @@ function CleanCacheDialog({ onClean, isLoading }: CleanCacheDialogProps) {
   );
 }
 
+function getActionFeedbackClassName(
+  feedback: WorkspaceActionFeedbackDescriptor,
+): string {
+  return feedback.tone === "success"
+    ? "flex items-center gap-2 text-sm text-green-600 dark:text-green-400"
+    : "flex items-center gap-2 text-sm text-destructive";
+}
+
+function getActionFeedbackIcon(feedback: WorkspaceActionFeedbackDescriptor) {
+  return feedback.icon === "check" ? (
+    <CheckCircle2 className="h-4 w-4" />
+  ) : (
+    <AlertCircle className="h-4 w-4" />
+  );
+}
+
 export interface WorkspaceStatsProps {
   /** Optional class name */
   className?: string;
@@ -253,10 +276,9 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastAction, setLastAction] = useState<{
-    type: "clean" | "backup";
-    message: string;
-  } | null>(null);
+  const [lastAction, setLastAction] = useState<WorkspaceActionState | null>(
+    null,
+  );
 
   const loadStats = useCallback(async () => {
     try {
@@ -285,7 +307,7 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
       const result = await cleanWorkspaceCache(options);
       setLastAction({
         type: "clean",
-        message: `Cleaned ${result.files_removed} files, freed ${formatBytes(result.bytes_freed)}`,
+        message: getCleanCacheSuccessMessage(result),
       });
       await loadStats();
       onStatsChange?.();
@@ -331,8 +353,13 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
     return null;
   }
 
-  // Filter out empty categories for cleaner display
-  const nonEmptyUsage = stats.space_usage.filter((item) => item.size_bytes > 0);
+  const countCards = getWorkspaceCountCards(stats);
+  const storageSummaryCards = getWorkspaceStorageSummaryCards(stats);
+  const spaceUsageRows = getWorkspaceSpaceUsageRows(stats.space_usage);
+  const actionFeedbackDescriptors = getWorkspaceActionFeedbackDescriptors({
+    lastAction,
+    error,
+  });
 
   return (
     <Card className={className}>
@@ -370,53 +397,31 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
         {/* Workspace-scoped counts (read from the active store via the
             scanner — these are what nirs4all itself sees in this workspace). */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Runs</p>
-            <p className="text-2xl font-bold">{stats.runs_count}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Datasets</p>
-            <p className="text-2xl font-bold">{stats.datasets_count}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Predictions</p>
-            <p className="text-2xl font-bold">{stats.predictions_count}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Models</p>
-            <p className="text-2xl font-bold">{stats.models_count}</p>
-          </div>
+          {countCards.map((card) => (
+            <div key={card.key} className="space-y-1">
+              <p className="text-sm text-muted-foreground">{card.label}</p>
+              <p className={card.valueClassName}>{card.value}</p>
+            </div>
+          ))}
         </div>
 
         <Separator />
 
         {/* Storage summary */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Total Size</p>
-            <p className="text-2xl font-bold">
-              {formatBytes(stats.total_size_bytes)}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Globally Linked Datasets</p>
-            <p className="text-2xl font-bold">
-              {stats.linked_datasets_count}
-              <span className="text-sm font-normal text-muted-foreground ml-2">
-                ({formatBytes(stats.linked_datasets_external_size)} external)
-              </span>
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Storage Mode</p>
-            <p className="text-xl font-semibold capitalize">{stats.storage_mode}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Database / Parquet</p>
-            <p className="text-sm font-medium">
-              {formatBytes(stats.duckdb_size_bytes)} / {formatBytes(stats.parquet_arrays_size_bytes)}
-            </p>
-          </div>
+          {storageSummaryCards.map((card) => (
+            <div key={card.key} className="space-y-1">
+              <p className="text-sm text-muted-foreground">{card.label}</p>
+              <p className={card.valueClassName}>
+                {card.value}
+                {card.detail && (
+                  <span className="text-sm font-normal text-muted-foreground ml-2">
+                    {card.detail}
+                  </span>
+                )}
+              </p>
+            </div>
+          ))}
         </div>
 
         <Separator />
@@ -424,10 +429,10 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
         {/* Space Usage Breakdown */}
         <div className="space-y-3">
           <h4 className="text-sm font-medium">Space Usage</h4>
-          {nonEmptyUsage.length > 0 ? (
+          {spaceUsageRows.length > 0 ? (
             <div className="space-y-4">
-              {nonEmptyUsage.map((item) => (
-                <SpaceUsageBar key={item.name} item={item} />
+              {spaceUsageRows.map((item) => (
+                <SpaceUsageBar key={item.key} item={item} />
               ))}
             </div>
           ) : (
@@ -437,22 +442,16 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
           )}
         </div>
 
-
-
         {/* Action Feedback */}
-        {lastAction && (
-          <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-            <CheckCircle2 className="h-4 w-4" />
-            <span>{lastAction.message}</span>
+        {actionFeedbackDescriptors.map((feedback) => (
+          <div
+            key={feedback.key}
+            className={getActionFeedbackClassName(feedback)}
+          >
+            {getActionFeedbackIcon(feedback)}
+            <span>{feedback.message}</span>
           </div>
-        )}
-
-        {error && (
-          <div className="flex items-center gap-2 text-sm text-destructive">
-            <AlertCircle className="h-4 w-4" />
-            <span>{error}</span>
-          </div>
-        )}
+        ))}
 
         {/* Actions */}
         <div className="flex gap-2">

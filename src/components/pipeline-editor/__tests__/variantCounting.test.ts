@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { PipelineStep } from "../types";
 import {
+  calculatePipelineVariants as calculatePipelineVariantsFromTypes,
+  calculateStepVariants as calculateStepVariantsFromTypes,
+} from "../types";
+import {
   calculatePipelineVariants,
   calculateStepVariants,
-} from "../types";
+} from "../variantCounting";
 
 function makeStep(overrides: Partial<PipelineStep> & { name: string }): PipelineStep {
   return {
@@ -19,6 +23,11 @@ function preprocessingStep(name: string): PipelineStep {
 }
 
 describe("variant counting", () => {
+  it("keeps legacy types exports bound to the variant-counting adapter", () => {
+    expect(calculatePipelineVariantsFromTypes).toBe(calculatePipelineVariants);
+    expect(calculateStepVariantsFromTypes).toBe(calculateStepVariants);
+  });
+
   it("counts cartesian stages as the product of stage alternatives", () => {
     const step = makeStep({
       name: "Cartesian",

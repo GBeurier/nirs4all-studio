@@ -8,6 +8,23 @@ export type RunStatus = "queued" | "running" | "completed" | "failed" | "partial
 
 export type RunFormat = "v1" | "v2" | "parquet_derived";
 
+export type RunExecutionBackend = "local-python" | "cluster" | "wasm-local";
+
+export interface RunExecutionBackendCapability {
+  backend: RunExecutionBackend;
+  label: string;
+  available: boolean;
+  mode: string;
+  supports_progress: boolean;
+  supports_cancellation: boolean;
+  metadata: Record<string, unknown>;
+}
+
+export interface RunExecutionBackendsResponse {
+  default_backend: RunExecutionBackend;
+  backends: RunExecutionBackendCapability[];
+}
+
 export interface RunMetrics {
   r2?: number | null;
   rmse?: number | null;
@@ -140,6 +157,7 @@ export interface Run {
   id: string;
   name: string;
   description?: string;
+  execution_backend?: RunExecutionBackend;
   status: RunStatus;
   format?: RunFormat;
   created_at: string;
@@ -170,6 +188,7 @@ export interface Run {
   store_run_id?: string;
   run_dir?: string;
   results_count?: number;
+  execution_metadata?: Record<string, unknown> | null;
 }
 
 export interface RunProgress {
@@ -222,6 +241,7 @@ export interface ExperimentConfig {
   description?: string;
   dataset_ids: string[];
   pipeline_ids: string[];
+  execution_backend?: RunExecutionBackend;
   cv_folds?: number;
   cv_strategy?: "kfold" | "stratified" | "loo" | "holdout";
   test_size?: number;

@@ -30,10 +30,11 @@ vi.mock("@/api/linkedWorkspaces", () => ({
   getLinkedWorkspaces: apiMocks.getLinkedWorkspaces,
 }));
 
-vi.mock("@/context/MlReadinessContext", () => ({
+vi.mock("@/context/useMlReadiness", () => ({
   useMlReadiness: () => readinessState,
 }));
 
+import { normalizeDatasetListResponse } from "@/lib/datasetDomain";
 import {
   datasetQueryKeys,
   hydrateDatasetCachesFromStorage,
@@ -75,7 +76,6 @@ function deferred<T>() {
 
 async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise<void> {
   const start = Date.now();
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       assertion();
@@ -171,7 +171,7 @@ describe("useDatasetQueries", () => {
     hydrateDatasetCachesFromStorage(queryClient);
 
     expect(queryClient.getQueryData(datasetQueryKeys.list())).toEqual(
-      datasetsCached.data,
+      normalizeDatasetListResponse(datasetsCached.data),
     );
     expect(queryClient.getQueryData(datasetQueryKeys.linkedWorkspaces())).toEqual(
       workspacesCached.data,
@@ -198,7 +198,9 @@ describe("useDatasetQueries", () => {
     const queryClient = createQueryClient();
     hydrateDatasetCachesFromStorage(queryClient);
 
-    expect(queryClient.getQueryData(datasetQueryKeys.list())).toEqual(cached.data);
+    expect(queryClient.getQueryData(datasetQueryKeys.list())).toEqual(
+      normalizeDatasetListResponse(cached.data),
+    );
     expect(queryClient.getQueryState(datasetQueryKeys.list())?.dataUpdatedAt).toBe(
       cached.ts,
     );
@@ -220,7 +222,9 @@ describe("useDatasetQueries", () => {
 
     const mounted = await renderHook(() => useDatasetsQuery());
 
-    expect(mounted.result.current?.data).toEqual(cachedPayload);
+    expect(mounted.result.current?.data).toEqual(
+      normalizeDatasetListResponse(cachedPayload),
+    );
     expect(readStored<typeof cachedPayload>(STORAGE_KEYS.datasets)?.ts).toBe(cachedTs);
 
     const freshPayload = {
@@ -231,7 +235,7 @@ describe("useDatasetQueries", () => {
 
     await waitFor(() => {
       expect(readStored<typeof freshPayload>(STORAGE_KEYS.datasets)?.data).toEqual(
-        freshPayload,
+        normalizeDatasetListResponse(freshPayload),
       );
     });
     expect(readStored<typeof freshPayload>(STORAGE_KEYS.datasets)?.v).toBe(

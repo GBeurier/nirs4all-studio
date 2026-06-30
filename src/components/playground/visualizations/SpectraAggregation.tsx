@@ -531,12 +531,14 @@ export function useAggregatedStats(
   enabled: boolean = true,
   quantileRange: [number, number] = [0.05, 0.95]
 ): AggregatedStats | null {
+  const [quantileLow, quantileHigh] = quantileRange;
+
   return useMemo(() => {
     if (!enabled || !spectra || spectra.length === 0) {
       return null;
     }
-    return computeAggregatedStats(spectra, quantileRange);
-  }, [spectra, enabled, quantileRange[0], quantileRange[1]]);
+    return computeAggregatedStats(spectra, [quantileLow, quantileHigh]);
+  }, [spectra, enabled, quantileLow, quantileHigh]);
 }
 
 /**
@@ -548,12 +550,14 @@ export function useGroupedStats(
   enabled: boolean = true,
   quantileRange: [number, number] = [0.05, 0.95]
 ): Map<string | number, AggregatedStats> | null {
+  const [quantileLow, quantileHigh] = quantileRange;
+
   return useMemo(() => {
     if (!enabled || !spectra || !groupLabels || spectra.length === 0) {
       return null;
     }
-    return computeGroupedStats(spectra, groupLabels, quantileRange);
-  }, [spectra, groupLabels, enabled, quantileRange[0], quantileRange[1]]);
+    return computeGroupedStats(spectra, groupLabels, [quantileLow, quantileHigh]);
+  }, [spectra, groupLabels, enabled, quantileLow, quantileHigh]);
 }
 
 export default {

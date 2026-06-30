@@ -11,101 +11,37 @@
  * Activated with Cmd+K (or Ctrl+K on Windows/Linux)
  *
  * Part of Phase 5: UX Polish
+ *
+ * The command read-models (build/filter/group) live in commandPaletteData.ts
+ * and the shared types in commandPalette.types.ts so this file stays focused on
+ * orchestration + state + rendering. See docs/ARCHITECTURE_BOUNDARIES.md.
  */
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Command,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
   CommandInput,
-  CommandItem,
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
 import {
-  Waves,
-  Shuffle,
-  Target,
-  GitBranch,
-  GitMerge,
-  Sparkles,
-  Filter,
-  Zap,
-  BarChart3,
-  Plus,
-  Copy,
-  Trash2,
-  Settings,
-  ArrowUp,
-  ArrowDown,
-  Repeat,
-  Layers,
-  Search,
-  Play,
-  Save,
-  Star,
-  Undo2,
-  Redo2,
-  FileJson,
-  Combine,
-  LineChart,
-  MessageSquare,
-  type LucideIcon,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import {
   type StepType,
-  type LegacyStepType,
   type StepOption,
   type PipelineStep,
 } from "./types";
 import { useStepMetadataCatalog } from "./shared/stepMetadata";
-
-// Icon mapping for step types
-const stepTypeIcons: Record<LegacyStepType, LucideIcon> = {
-  preprocessing: Waves,
-  y_processing: BarChart3,
-  splitting: Shuffle,
-  model: Target,
-  flow: GitBranch,
-  utility: Sparkles,
-  generator: Sparkles,
-  branch: GitBranch,
-  merge: GitMerge,
-  filter: Filter,
-  augmentation: Zap,
-  sample_augmentation: Zap,
-  feature_augmentation: Layers,
-  sample_filter: Filter,
-  concat_transform: Combine,
-  sequential: Layers,
-  chart: LineChart,
-  comment: MessageSquare,
-};
-
-// Color classes for step types
-const stepTypeColors: Record<LegacyStepType, string> = {
-  preprocessing: "text-blue-500",
-  y_processing: "text-amber-500",
-  splitting: "text-purple-500",
-  model: "text-emerald-500",
-  flow: "text-cyan-500",
-  utility: "text-orange-500",
-  generator: "text-orange-500",
-  branch: "text-cyan-500",
-  merge: "text-pink-500",
-  filter: "text-rose-500",
-  augmentation: "text-indigo-500",
-  sample_augmentation: "text-violet-500",
-  feature_augmentation: "text-fuchsia-500",
-  sample_filter: "text-red-500",
-  concat_transform: "text-teal-500",
-  sequential: "text-slate-500",
-  chart: "text-sky-500",
-  comment: "text-gray-500",
-};
+import { CommandPaletteItem } from "./CommandPaletteItem";
+import {
+  buildCommandActions,
+  categoryLabels,
+  filterCommandActions,
+  findSelectedStep,
+  flattenSteps,
+  groupCommandActions,
+} from "./commandPaletteData";
 
 export interface CommandPaletteProps {
   open: boolean;
@@ -135,25 +71,8 @@ export interface CommandPaletteProps {
   onFocusPanel?: (panel: "palette" | "tree" | "config") => void;
 }
 
-type CommandCategory =
-  | "step"
-  | "navigation"
-  | "action"
-  | "pipeline"
-  | "add-step";
-
-interface CommandAction {
-  id: string;
-  label: string;
-  description?: string;
-  category: CommandCategory;
-  icon: LucideIcon;
-  iconColor?: string;
-  keywords?: string[];
-  shortcut?: string;
-  onSelect: () => void;
-  disabled?: boolean;
-}
+/** Max navigation entries rendered before the "+ N more" hint. */
+const MAX_NAVIGATION_ITEMS = 10;
 
 export function CommandPalette({
   open,
@@ -185,363 +104,74 @@ export function CommandPalette({
   }, [open]);
 
   // Build flattened list of all steps for navigation
-  const flattenedSteps = useMemo(() => {
-    const result: { step: PipelineStep; path: string }[] = [];
-
-    function flatten(stepList: PipelineStep[], pathPrefix: string = "") {
-      for (const step of stepList) {
-        const path = pathPrefix ? `${pathPrefix} → ${step.name}` : step.name;
-        result.push({ step, path });
-
-        if (step.branches) {
-          for (let i = 0; i < step.branches.length; i++) {
-            const branchLabel = step.generatorKind === "cartesian" ? `Stage ${i + 1}`
-              : step.generatorKind === "grid" || step.generatorKind === "zip" ? `Param ${i + 1}`
-              : step.generatorKind === "chain" ? `Config ${i + 1}`
-              : step.subType === "generator" ? `Option ${i + 1}`
-              : `Branch ${i + 1}`;
-            flatten(step.branches[i], `${path} → ${branchLabel}`);
-          }
-        }
-      }
-    }
-
-    flatten(steps);
-    return result;
-  }, [steps]);
+  const flattenedSteps = useMemo(() => flattenSteps(steps), [steps]);
 
   // Get selected step for context-aware actions
-  const selectedStep = useMemo(() => {
-    if (!selectedStepId) return null;
-    return flattenedSteps.find(({ step }) => step.id === selectedStepId)?.step ?? null;
-  }, [selectedStepId, flattenedSteps]);
+  const selectedStep = useMemo(
+    () => findSelectedStep(flattenedSteps, selectedStepId),
+    [selectedStepId, flattenedSteps],
+  );
 
   // Build command actions
-  const actions = useMemo<CommandAction[]>(() => {
-    const result: CommandAction[] = [];
-
-    // === Selected Step Actions ===
-    if (selectedStep && selectedStepId) {
-      result.push({
-        id: "configure-step",
-        label: `Configure ${selectedStep.name}`,
-        description: "Open configuration panel",
-        category: "step",
-        icon: Settings,
-        iconColor: stepTypeColors[selectedStep.type],
-        shortcut: "Enter",
-        onSelect: () => {
-          onFocusPanel?.("config");
-          onOpenChange(false);
+  const actions = useMemo(
+    () =>
+      buildCommandActions({
+        steps,
+        flattenedSteps,
+        selectedStep,
+        selectedStepId,
+        getStepOptions,
+        handlers: {
+          onAddStep,
+          onSelectStep,
+          onDuplicateStep,
+          onRemoveStep,
+          onMoveStep,
+          onSave,
+          onRun,
+          onExport,
+          onToggleFavorite,
+          onUndo,
+          onRedo,
+          onOpenShortcutsHelp,
+          onFocusPanel,
+          onOpenChange,
         },
-      });
-
-      if (onDuplicateStep) {
-        result.push({
-          id: "duplicate-step",
-          label: `Duplicate ${selectedStep.name}`,
-          category: "step",
-          icon: Copy,
-          iconColor: stepTypeColors[selectedStep.type],
-          shortcut: "⌘D",
-          onSelect: () => {
-            onDuplicateStep(selectedStepId);
-            onOpenChange(false);
-          },
-        });
-      }
-
-      if (onMoveStep) {
-        const stepIndex = steps.findIndex(s => s.id === selectedStepId);
-        if (stepIndex > 0) {
-          result.push({
-            id: "move-step-up",
-            label: `Move ${selectedStep.name} Up`,
-            category: "step",
-            icon: ArrowUp,
-            onSelect: () => {
-              onMoveStep(selectedStepId, "up");
-              onOpenChange(false);
-            },
-          });
-        }
-        if (stepIndex < steps.length - 1 && stepIndex >= 0) {
-          result.push({
-            id: "move-step-down",
-            label: `Move ${selectedStep.name} Down`,
-            category: "step",
-            icon: ArrowDown,
-            onSelect: () => {
-              onMoveStep(selectedStepId, "down");
-              onOpenChange(false);
-            },
-          });
-        }
-      }
-
-      // Model-specific actions
-      if (selectedStep.type === "model") {
-        const hasFinetuning = selectedStep.finetuneConfig?.enabled;
-        result.push({
-          id: "configure-finetuning",
-          label: hasFinetuning ? "Edit Finetuning" : "Enable Finetuning",
-          description: "Configure Optuna hyperparameter optimization",
-          category: "step",
-          icon: Sparkles,
-          iconColor: "text-purple-500",
-          onSelect: () => {
-            onSelectStep(selectedStepId);
-            onFocusPanel?.("config");
-            onOpenChange(false);
-          },
-        });
-      }
-
-      // Add sweep action for steps with numeric params
-      const numericParams = Object.entries(selectedStep.params).filter(
-        ([_, v]) => typeof v === "number"
-      );
-      if (numericParams.length > 0) {
-        const hasSweeps = selectedStep.paramSweeps && Object.keys(selectedStep.paramSweeps).length > 0;
-        result.push({
-          id: "configure-sweep",
-          label: hasSweeps ? "Edit Parameter Sweeps" : "Add Parameter Sweep",
-          description: "Configure grid search for parameters",
-          category: "step",
-          icon: Repeat,
-          iconColor: "text-orange-500",
-          onSelect: () => {
-            onSelectStep(selectedStepId);
-            onFocusPanel?.("config");
-            onOpenChange(false);
-          },
-        });
-      }
-
-      if (onRemoveStep) {
-        result.push({
-          id: "delete-step",
-          label: `Delete ${selectedStep.name}`,
-          category: "step",
-          icon: Trash2,
-          iconColor: "text-destructive",
-          shortcut: "Del",
-          onSelect: () => {
-            onRemoveStep(selectedStepId);
-            onOpenChange(false);
-          },
-        });
-      }
-    }
-
-    // === Navigation Actions ===
-    for (const { step, path } of flattenedSteps) {
-      result.push({
-        id: `go-to-${step.id}`,
-        label: step.name,
-        description: path !== step.name ? path : undefined,
-        category: "navigation",
-        icon: stepTypeIcons[step.type],
-        iconColor: stepTypeColors[step.type],
-        keywords: [step.name, step.type, path],
-        onSelect: () => {
-          onSelectStep(step.id);
-          onOpenChange(false);
-        },
-      });
-    }
-
-    // === Pipeline Actions ===
-    if (onSave) {
-      result.push({
-        id: "save-pipeline",
-        label: "Save Pipeline",
-        category: "pipeline",
-        icon: Save,
-        shortcut: "⌘S",
-        onSelect: () => {
-          onSave();
-          onOpenChange(false);
-        },
-      });
-    }
-
-    if (onRun && steps.length > 0) {
-      result.push({
-        id: "run-pipeline",
-        label: "Run Pipeline",
-        description: "Use in experiment",
-        category: "pipeline",
-        icon: Play,
-        iconColor: "text-emerald-500",
-        onSelect: () => {
-          onRun();
-          onOpenChange(false);
-        },
-      });
-    }
-
-    if (onExport) {
-      result.push({
-        id: "export-json",
-        label: "Export as JSON",
-        category: "pipeline",
-        icon: FileJson,
-        onSelect: () => {
-          onExport();
-          onOpenChange(false);
-        },
-      });
-    }
-
-    if (onToggleFavorite) {
-      result.push({
-        id: "toggle-favorite",
-        label: "Toggle Favorite",
-        category: "pipeline",
-        icon: Star,
-        onSelect: () => {
-          onToggleFavorite();
-          onOpenChange(false);
-        },
-      });
-    }
-
-    // === Editing Actions ===
-    if (onUndo) {
-      result.push({
-        id: "undo",
-        label: "Undo",
-        category: "action",
-        icon: Undo2,
-        shortcut: "⌘Z",
-        onSelect: () => {
-          onUndo();
-          onOpenChange(false);
-        },
-      });
-    }
-
-    if (onRedo) {
-      result.push({
-        id: "redo",
-        label: "Redo",
-        category: "action",
-        icon: Redo2,
-        shortcut: "⌘⇧Z",
-        onSelect: () => {
-          onRedo();
-          onOpenChange(false);
-        },
-      });
-    }
-
-    if (onOpenShortcutsHelp) {
-      result.push({
-        id: "keyboard-shortcuts",
-        label: "Keyboard Shortcuts",
-        description: "Show all shortcuts",
-        category: "action",
-        icon: Settings,
-        shortcut: "⌘?",
-        onSelect: () => {
-          onOpenChange(false);
-          // Small delay to avoid conflict with command palette closing
-          setTimeout(() => onOpenShortcutsHelp(), 100);
-        },
-      });
-    }
-
-    // === Add Step Actions ===
-    // Most common step types for quick access
-    const quickAddTypes: StepType[] = ["preprocessing", "model", "splitting"];
-
-    for (const type of quickAddTypes) {
-      const options = getStepOptions(type);
-      // Show top 3 options per type
-      for (const option of options.slice(0, 3)) {
-        const Icon = stepTypeIcons[type];
-        result.push({
-          id: `add-${type}-${option.name}`,
-          label: `Add ${option.name}`,
-          description: option.description,
-          category: "add-step",
-          icon: Icon,
-          iconColor: stepTypeColors[type],
-          keywords: [type, option.name, option.description, option.category ?? ""],
-          onSelect: () => {
-            onAddStep(type, option);
-            onOpenChange(false);
-          },
-        });
-      }
-    }
-
-    return result;
-  }, [
-    selectedStep,
-    selectedStepId,
-    steps,
-    flattenedSteps,
-    onAddStep,
-    onSelectStep,
-    onDuplicateStep,
-    onRemoveStep,
-    onMoveStep,
-    onSave,
-    onRun,
-    onExport,
-    onToggleFavorite,
-    onUndo,
-    onRedo,
-    onOpenShortcutsHelp,
-    onFocusPanel,
-    onOpenChange,
-    getStepOptions,
-  ]);
+      }),
+    [
+      selectedStep,
+      selectedStepId,
+      steps,
+      flattenedSteps,
+      onAddStep,
+      onSelectStep,
+      onDuplicateStep,
+      onRemoveStep,
+      onMoveStep,
+      onSave,
+      onRun,
+      onExport,
+      onToggleFavorite,
+      onUndo,
+      onRedo,
+      onOpenShortcutsHelp,
+      onFocusPanel,
+      onOpenChange,
+      getStepOptions,
+    ],
+  );
 
   // Filter actions based on search query
-  const filteredActions = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return actions;
-    }
-
-    const query = searchQuery.toLowerCase();
-    return actions.filter((action) => {
-      const searchableText = [
-        action.label,
-        action.description ?? "",
-        ...(action.keywords ?? []),
-      ].join(" ").toLowerCase();
-
-      return searchableText.includes(query);
-    });
-  }, [actions, searchQuery]);
+  const filteredActions = useMemo(
+    () => filterCommandActions(actions, searchQuery),
+    [actions, searchQuery],
+  );
 
   // Group actions by category
-  const groupedActions = useMemo(() => {
-    const groups: Record<CommandCategory, CommandAction[]> = {
-      step: [],
-      navigation: [],
-      pipeline: [],
-      action: [],
-      "add-step": [],
-    };
-
-    for (const action of filteredActions) {
-      groups[action.category].push(action);
-    }
-
-    return groups;
-  }, [filteredActions]);
-
-  const categoryLabels: Record<CommandCategory, string> = {
-    step: "Selected Step",
-    navigation: "Go to Step",
-    pipeline: "Pipeline",
-    action: "Actions",
-    "add-step": "Add Step",
-  };
+  const groupedActions = useMemo(
+    () => groupCommandActions(filteredActions),
+    [filteredActions],
+  );
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
@@ -592,12 +222,12 @@ export function CommandPalette({
             <>
               <CommandSeparator />
               <CommandGroup heading={categoryLabels.navigation}>
-                {groupedActions.navigation.slice(0, 10).map((action) => (
+                {groupedActions.navigation.slice(0, MAX_NAVIGATION_ITEMS).map((action) => (
                   <CommandPaletteItem key={action.id} action={action} />
                 ))}
-                {groupedActions.navigation.length > 10 && (
+                {groupedActions.navigation.length > MAX_NAVIGATION_ITEMS && (
                   <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">
-                    + {groupedActions.navigation.length - 10} more steps...
+                    + {groupedActions.navigation.length - MAX_NAVIGATION_ITEMS} more steps...
                   </div>
                 )}
               </CommandGroup>
@@ -618,35 +248,6 @@ export function CommandPalette({
         </CommandList>
       </Command>
     </CommandDialog>
-  );
-}
-
-// Individual command item
-function CommandPaletteItem({ action }: { action: CommandAction }) {
-  const Icon = action.icon;
-
-  return (
-    <CommandItem
-      value={action.id}
-      onSelect={action.onSelect}
-      disabled={action.disabled}
-      className="flex items-center gap-3 px-3 py-2 cursor-pointer"
-    >
-      <Icon className={`h-4 w-4 flex-shrink-0 ${action.iconColor ?? "text-muted-foreground"}`} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="truncate">{action.label}</span>
-        </div>
-        {action.description && (
-          <p className="text-xs text-muted-foreground truncate">{action.description}</p>
-        )}
-      </div>
-      {action.shortcut && (
-        <kbd className="ml-auto text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-          {action.shortcut}
-        </kbd>
-      )}
-    </CommandItem>
   );
 }
 

@@ -27,6 +27,12 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from .results_repository import (
+    ResultsRepository,
+    ResultsRepositoryNotFound,
+    native_results_root,
+    resolve_results_repository,
+)
 from .shared.json_safe import sanitize_dict, sanitize_float
 from .store_adapter import (
     _apply_synthetic_refit_fallback_inplace,
@@ -111,6 +117,7 @@ class ChainSummary(BaseModel):
     cv_train_score: float | None = None
     cv_fold_count: int = 0
     cv_scores: Any | None = None
+    score_maps: Any | None = None
     cv_source_chain_id: str | None = None
     # Final/refit scores
     final_test_score: float | None = None
@@ -159,6 +166,14 @@ class PartitionPrediction(BaseModel):
     n_samples: int | None = None
     n_features: int | None = None
     preprocessings: str | None = None
+    scores: Any | None = None
+    best_params: Any | None = None
+    branch_path: Any | None = None
+    source_index: int | None = None
+    source_name: str | None = None
+    target_index: int | None = None
+    target_name: str | None = None
+    result_metadata: Any | None = None
 
 
 class ChainDetailResponse(BaseModel):
@@ -208,13 +223,19 @@ class PredictionArraysResponse(BaseModel):
     """Response for prediction arrays."""
 
     prediction_id: str
-    y_true: list[float] | None = None
-    y_pred: list[float] | None = None
+    y_true: Any | None = None
+    y_pred: Any | None = None
     y_proba: list[float] | list[list[float]] | None = None
     sample_indices: list[int] | None = None
     weights: list[float | None] | None = None
     sample_metadata: dict[str, list[Any]] | None = None
     n_samples: int = 0
+    branch_path: Any | None = None
+    source_index: int | None = None
+    source_name: str | None = None
+    target_index: int | None = None
+    target_name: str | None = None
+    result_metadata: Any | None = None
 
 
 class ExportRequest(BaseModel):
@@ -246,30 +267,13 @@ class SQLQueryResponse(BaseModel):
 # ============================================================================
 
 
-# The native results root inside a workspace (one ``<run_id>/`` native dir per dag-ml run).
-# Matches the nirs4all library default (``native_results._DEFAULT_RESULTS_ROOT``), so a future gated
-# cutover that runs with ``results_path=<workspace>/nirs4all_results`` lands exactly here.
-_NATIVE_RESULTS_DIRNAME = "nirs4all_results"
-
-
 def _native_results_root(workspace_path: Path) -> Path | None:
     """Return the workspace's native results root iff it holds at least one native run dir."""
-    root = workspace_path / _NATIVE_RESULTS_DIRNAME
-    if not root.is_dir():
-        return None
-    has_run = any(child.is_dir() and (child / "manifest.json").is_file() for child in root.iterdir())
-    return root if has_run else None
+    return native_results_root(workspace_path)
 
 
-def _get_store() -> Any:
-    """Get a results store for the current workspace (read-only queries).
-
-    Prefers the legacy SQLite/DuckDB :class:`WorkspaceStore` (unchanged for existing runs). When the
-    workspace has NO ``store.sqlite`` / ``store.duckdb`` but DOES hold a native results dir
-    (``nirs4all_results/<run_id>/``, the dag-ml on-disk format), falls back to a read-only
-    :class:`~api.native_results_adapter.NativeResultsAdapter` so Studio can still display those runs.
-    Both expose the same query surface (``query_chain_summaries`` / ``query_top_chains`` /
-    ``get_chain_predictions`` / prediction arrays / ``close``) the endpoints below consume.
+def _get_store() -> ResultsRepository:
+    """Get the active workspace results repository for read-only queries.
 
     Raises HTTPException if no workspace is selected or neither a store nor native results exist.
     """
@@ -283,20 +287,16 @@ def _get_store() -> Any:
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    workspace_path = Path(workspace.path)
-    if (workspace_path / "store.sqlite").exists() or (workspace_path / "store.duckdb").exists():
-        return _get_workspace_store_cls()(workspace_path)
-
-    native_root = _native_results_root(workspace_path)
-    if native_root is not None:
-        from .native_results_adapter import NativeResultsAdapter
-
-        return NativeResultsAdapter(native_root)
-
-    raise HTTPException(
-        status_code=404,
-        detail="No store found in workspace. Run a pipeline first.",
-    )
+    try:
+        return resolve_results_repository(
+            Path(workspace.path),
+            workspace_store_factory=_get_workspace_store_cls(),
+        )
+    except ResultsRepositoryNotFound as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="No store found in workspace. Run a pipeline first.",
+        ) from exc
 
 
 def _get_workspace_path() -> Path:
@@ -440,6 +440,21 @@ def _normalize_chain_payload(payload: Any) -> Any:
         else:
             normalized[key] = _normalize_chain_payload(value)
     return normalized
+
+
+def _merge_summary_variant_params(existing: Any, step_params: Any) -> dict[str, Any] | None:
+    """Merge repository-provided variant params with pipeline step params without losing result metadata."""
+    existing_params = _parse_json_maybe(existing)
+    merged: dict[str, Any] = {}
+    existing_result_metadata = None
+    if isinstance(existing_params, dict):
+        merged.update(existing_params)
+        existing_result_metadata = existing_params.get("result_metadata")
+    if isinstance(step_params, dict):
+        merged.update(step_params)
+    if existing_result_metadata is not None:
+        merged["result_metadata"] = existing_result_metadata
+    return merged or None
 
 
 def _looks_like_canonical_chain_payload(value: Any) -> bool:
@@ -725,11 +740,23 @@ async def get_chain_detail(
                     pipeline_row.get("expanded_config"),
                     summary.get("model_step_idx"),
                 )
-                summary["variant_params"] = step_params if isinstance(step_params, dict) else None
+                summary["variant_params"] = _merge_summary_variant_params(
+                    summary.get("variant_params"),
+                    step_params,
+                )
 
             # Get individual prediction rows
             pred_df = store.get_chain_predictions(chain_id)
-            predictions = [sanitize_dict(dict(row)) for row in pred_df.iter_rows(named=True)]
+            predictions = []
+            for row in pred_df.iter_rows(named=True):
+                prediction = dict(row)
+                scores = _parse_json_maybe(prediction.get("scores"))
+                if isinstance(scores, dict):
+                    prediction["scores"] = scores
+                best_params = _parse_json_maybe(prediction.get("best_params"))
+                if isinstance(best_params, dict):
+                    prediction["best_params"] = best_params
+                predictions.append(sanitize_dict(prediction))
 
             if not predictions and summary is None:
                 raise HTTPException(status_code=404, detail=f"Chain {chain_id} not found or has no predictions")
@@ -1001,6 +1028,16 @@ async def get_prediction_arrays(prediction_id: str):
             "sample_metadata": sample_metadata,
             "n_samples": n_samples,
         }
+        for key in (
+            "branch_path",
+            "source_index",
+            "source_name",
+            "target_index",
+            "target_name",
+            "result_metadata",
+        ):
+            if key in arrays:
+                result[key] = _to_list(arrays.get(key))
 
         return result
     finally:

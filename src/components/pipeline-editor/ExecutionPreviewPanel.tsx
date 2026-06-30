@@ -47,25 +47,17 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { PipelineStep, FinetuneConfig } from "./types";
-import { calculateStepVariants } from "./types";
 import { formatVariantCount, getVariantCountSeverity } from "@/hooks/useVariantCount";
-
-export interface ExecutionBreakdown {
-  sweepVariants: number;
-  generatorVariants: number;
-  finetuningTrials: number;
-  cvFolds: number;
-  cvFitsPerPipeline: number;
-  totalFits: number;
-  refitModels: number;
-  totalPipelines: number;
-  totalModels: number;
-  modelsWithFinetuning: number;
-  modelsWithSweeps: number;
-  modelsWithGenerators: number;
-  modelsWithRefit: number;
-  modelCount: number;
-}
+import { analyzeExecution } from "./executionAnalysis";
+import {
+  buildExecutionFormula,
+  estimateExecutionTime,
+  generateExecutionSuggestions,
+  getComplexityLabel,
+  getExecutionProgressValue,
+  getFitsSeverity,
+  getSeverityColor,
+} from "./executionPreviewPresentation";
 
 export interface ExecutionPreviewPanelProps {
   steps: PipelineStep[];
@@ -73,204 +65,6 @@ export interface ExecutionPreviewPanelProps {
   variantBreakdown?: Record<string, { name: string; count: number }>;
   isLoading?: boolean;
   className?: string;
-}
-
-// Extract execution statistics from pipeline
-export function analyzeExecution(
-  steps: PipelineStep[],
-  variantCount?: number,
-): ExecutionBreakdown {
-  let sweepVariants = 1;
-  let generatorVariants = 1;
-  let finetuningTrials = 0;
-  let cvFolds = 5; // Default
-  let cvFitsPerPipeline = 0;
-  let modelsWithFinetuning = 0;
-  let modelsWithSweeps = 0;
-  let modelsWithGenerators = 0;
-  let modelsWithRefit = 0;
-  let modelCount = 0;
-
-  function processSteps(
-    stepList: PipelineStep[],
-    variantsAlreadyAccounted = false,
-  ) {
-    for (const step of stepList) {
-      const isGeneratorStep = step.subType === "generator" && !!step.generatorKind;
-
-      // Check if this is a generator step
-      if (isGeneratorStep && step.branches) {
-        if (!variantsAlreadyAccounted) {
-          const genVariants = calculateStepVariants(step);
-          if (genVariants > 1) {
-            generatorVariants *= genVariants;
-            modelsWithGenerators++;
-          }
-        }
-
-        // Child generators and sweeps are already accounted for in the
-        // parent generator's expansion count, but nested models/splitters
-        // still need to be discovered for the execution summary.
-        for (const branch of step.branches) {
-          processSteps(branch, true);
-        }
-        continue;
-      }
-
-      // Count sweep variants (parameter sweeps)
-      const hasSweeps = (step.paramSweeps && Object.keys(step.paramSweeps).length > 0) || step.stepGenerator;
-      if (hasSweeps && !variantsAlreadyAccounted) {
-        const stepVariants = calculateStepVariants(step);
-        if (stepVariants > 1) {
-          sweepVariants *= stepVariants;
-          if (step.type === "model") {
-            modelsWithSweeps++;
-          }
-        }
-      }
-
-      // Check for splitter (CV folds)
-      if (step.type === "splitting") {
-        const nSplits = step.params.n_splits ?? step.params.n_repeats;
-        if (typeof nSplits === "number") {
-          cvFolds = nSplits;
-        }
-      }
-
-      // Count models and their configurations
-      if (step.type === "model") {
-        modelCount++;
-        const trials = step.finetuneConfig?.enabled
-          ? Math.max(1, step.finetuneConfig.n_trials ?? 50)
-          : 1;
-        cvFitsPerPipeline += trials;
-        // Refit is on by default
-        if (step.refitConfig?.enabled ?? true) {
-          modelsWithRefit++;
-        }
-        // Finetuning
-        if (step.finetuneConfig?.enabled) {
-          finetuningTrials += trials;
-          modelsWithFinetuning++;
-        }
-      }
-
-      // Process nested branches (non-generator)
-      if (step.branches && step.subType !== "generator") {
-        for (const branch of step.branches) {
-          processSteps(branch, variantsAlreadyAccounted);
-        }
-      }
-
-      // Process nested children for sequential and container nodes.
-      if (step.children) {
-        processSteps(step.children, variantsAlreadyAccounted);
-      }
-    }
-  }
-
-  processSteps(steps);
-
-  // Total distinct pipeline configurations. The page-level variantCount is
-  // authoritative because it comes from the backend's canonical counter.
-  const totalPipelines =
-    variantCount && variantCount > 0
-      ? variantCount
-      : sweepVariants * generatorVariants;
-
-  // Total CV fits = pipelines × per-pipeline model fits × CV folds
-  const totalFits = totalPipelines * cvFitsPerPipeline * cvFolds;
-
-  // Total refits = pipelines × refit-enabled model steps
-  const refitModels = totalPipelines * modelsWithRefit;
-  const totalModels = totalFits + refitModels;
-
-  return {
-    sweepVariants,
-    generatorVariants,
-    finetuningTrials,
-    cvFolds,
-    cvFitsPerPipeline,
-    totalFits,
-    refitModels,
-    totalPipelines,
-    totalModels,
-    modelsWithFinetuning,
-    modelsWithSweeps,
-    modelsWithGenerators,
-    modelsWithRefit,
-    modelCount,
-  };
-}
-
-// Get severity level for total fits
-function getFitsSeverity(fits: number): "low" | "medium" | "high" | "extreme" {
-  if (fits <= 100) return "low";
-  if (fits <= 1000) return "medium";
-  if (fits <= 10000) return "high";
-  return "extreme";
-}
-
-// Get color class for severity
-function getSeverityColor(severity: "low" | "medium" | "high" | "extreme"): string {
-  switch (severity) {
-    case "low":
-      return "text-emerald-500";
-    case "medium":
-      return "text-amber-500";
-    case "high":
-      return "text-orange-500";
-    case "extreme":
-      return "text-red-500";
-  }
-}
-
-// Estimate time (rough approximation)
-function estimateTime(fits: number): string {
-  // Assume ~1 second per fit for simple models, more for DL
-  const seconds = fits;
-
-  if (seconds < 60) return `~${seconds}s`;
-  if (seconds < 3600) return `~${Math.ceil(seconds / 60)} min`;
-  if (seconds < 86400) return `~${(seconds / 3600).toFixed(1)} hours`;
-  return `~${(seconds / 86400).toFixed(1)} days`;
-}
-
-// Generate optimization suggestions
-function generateSuggestions(breakdown: ExecutionBreakdown): string[] {
-  const suggestions: string[] = [];
-
-  if (breakdown.sweepVariants > 100 && breakdown.modelsWithFinetuning === 0) {
-    suggestions.push(
-      "Consider using Optuna finetuning instead of exhaustive grid search for faster optimization."
-    );
-  }
-
-  if (breakdown.sweepVariants > 1000) {
-    suggestions.push(
-      "Reduce parameter sweep ranges or use coarser step sizes to limit combinations."
-    );
-  }
-
-  if (breakdown.finetuningTrials > 100 && breakdown.sweepVariants > 1) {
-    suggestions.push(
-      "With many sweep variants, consider reducing Optuna trials per variant."
-    );
-  }
-
-  if (breakdown.cvFolds > 10) {
-    suggestions.push(
-      "High CV fold count increases execution time. Consider 5-fold CV for faster iteration."
-    );
-  }
-
-  if (breakdown.totalFits > 50000) {
-    suggestions.push(
-      "Consider using a subset of data for initial exploration, then full data for final model."
-    );
-  }
-
-  return suggestions;
 }
 
 export function ExecutionPreviewPanel({
@@ -286,15 +80,12 @@ export function ExecutionPreviewPanel({
   );
   const severity = getFitsSeverity(breakdown.totalFits);
   const severityColor = getSeverityColor(severity);
-  const timeEstimate = estimateTime(breakdown.totalFits);
-  const suggestions = useMemo(() => generateSuggestions(breakdown), [breakdown]);
-
-  // Progress bar value (logarithmic scale for better visualization)
-  const progressValue = useMemo(() => {
-    const maxLog = Math.log10(100000); // 100k as max
-    const currentLog = Math.log10(Math.max(1, breakdown.totalFits));
-    return Math.min(100, (currentLog / maxLog) * 100);
-  }, [breakdown.totalFits]);
+  const timeEstimate = estimateExecutionTime(breakdown.totalFits);
+  const suggestions = useMemo(() => generateExecutionSuggestions(breakdown), [breakdown]);
+  const progressValue = useMemo(
+    () => getExecutionProgressValue(breakdown.totalFits),
+    [breakdown.totalFits]
+  );
 
   if (steps.length === 0) {
     return null;
@@ -347,7 +138,7 @@ export function ExecutionPreviewPanel({
             {formatVariantCount(breakdown.totalFits)}
           </div>
           <p className="text-[10px] text-muted-foreground">
-            ~{timeEstimate}
+            {timeEstimate}
           </p>
         </div>
       </div>
@@ -357,9 +148,7 @@ export function ExecutionPreviewPanel({
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Execution Complexity</span>
           <span className={`font-medium ${severityColor}`}>
-            {severity === "low" ? "Light" :
-             severity === "medium" ? "Moderate" :
-             severity === "high" ? "Heavy" : "Extreme"}
+            {getComplexityLabel(severity)}
           </span>
         </div>
         <Progress
@@ -519,25 +308,6 @@ export function ExecutionPreviewPanel({
   );
 }
 
-// Build the formula string for total models
-function buildFormulaString(breakdown: ExecutionBreakdown): string {
-  const pipelineTerm = breakdown.totalPipelines > 1
-    ? (() => {
-      const pipelineParts: string[] = [];
-      if (breakdown.sweepVariants > 1) pipelineParts.push(`${breakdown.sweepVariants} sweeps`);
-      if (breakdown.generatorVariants > 1) pipelineParts.push(`${breakdown.generatorVariants} generators`);
-      return pipelineParts.length > 0 ? pipelineParts.join(" × ") : `${breakdown.totalPipelines} pipelines`;
-    })()
-    : "1 pipeline";
-
-  const fitTerm = `${breakdown.cvFitsPerPipeline} fit${breakdown.cvFitsPerPipeline !== 1 ? "s" : ""}/pipeline`;
-  const cvFormula = `${pipelineTerm} × ${fitTerm} × ${breakdown.cvFolds} folds`;
-  if (breakdown.refitModels > 0) {
-    return `${cvFormula} + ${breakdown.refitModels.toLocaleString()} refit${breakdown.refitModels !== 1 ? "s" : ""}`;
-  }
-  return cvFormula;
-}
-
 // Compact version for header/inline use — single training summary capsule.
 export function ExecutionPreviewCompact({
   steps,
@@ -640,7 +410,7 @@ export function ExecutionPreviewCompact({
 
             <div className="pt-2 border-t border-border space-y-1">
               <p className="text-[11px] text-muted-foreground font-mono">
-                {buildFormulaString(breakdown)} = {breakdown.totalModels.toLocaleString()}
+                {buildExecutionFormula(breakdown)} = {breakdown.totalModels.toLocaleString()}
               </p>
               <p className="text-xs text-muted-foreground">
                 Total model training operations when you run this pipeline.

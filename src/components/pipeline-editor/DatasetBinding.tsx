@@ -48,6 +48,12 @@ import {
 import { TargetSelector, TargetBadge } from "@/components/datasets/TargetSelector";
 import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import type { Dataset, TargetConfig, TaskType } from "@/types/datasets";
+import {
+  buildDatasetShapeDisplayModel,
+  formatBoundDatasetShapeBadge,
+  formatDatasetListShape,
+  partitionBindableDatasets,
+} from "./DatasetBindingData";
 
 /**
  * Shape information for data flowing through the pipeline
@@ -134,8 +140,7 @@ export function DatasetBinding({
   );
 
   // Group datasets by availability
-  const availableDatasets = datasets.filter((d) => d.status === "available");
-  const missingDatasets = datasets.filter((d) => d.status === "missing");
+  const { availableDatasets, missingDatasets } = partitionBindableDatasets(datasets);
 
   return (
     <div className="flex items-center gap-2">
@@ -152,7 +157,7 @@ export function DatasetBinding({
               <>
                 <span className="max-w-32 truncate">{boundDataset.name}</span>
                 <Badge variant="outline" className="text-xs px-1.5 py-0 h-5">
-                  {boundDataset.shape.samples.toLocaleString()} × {boundDataset.shape.features.toLocaleString()}
+                  {formatBoundDatasetShapeBadge(boundDataset.shape)}
                 </Badge>
               </>
             ) : (
@@ -233,8 +238,7 @@ export function DatasetBinding({
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{dataset.name}</div>
                           <div className="text-xs text-muted-foreground">
-                            {dataset.num_samples?.toLocaleString() || "?"} samples ·{" "}
-                            {dataset.num_features?.toLocaleString() || "?"} features
+                            {formatDatasetListShape(dataset)}
                           </div>
                         </div>
                         {dataset.task_type && (
@@ -333,14 +337,16 @@ export interface DatasetShapeDisplayProps {
 }
 
 export function DatasetShapeDisplay({ shape, className = "" }: DatasetShapeDisplayProps) {
+  const display = buildDatasetShapeDisplayModel(shape);
+
   return (
     <div className={`flex items-center gap-1 text-xs text-muted-foreground ${className}`}>
       <span className="font-mono">
-        ({shape.samples.toLocaleString()}, {shape.features.toLocaleString()})
+        {display.tuple}
       </span>
-      {shape.sources && shape.sources > 1 && (
+      {display.sourcesBadge && (
         <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-          {shape.sources} sources
+          {display.sourcesBadge.label}
         </Badge>
       )}
     </div>

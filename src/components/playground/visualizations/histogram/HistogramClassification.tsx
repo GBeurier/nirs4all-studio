@@ -135,23 +135,26 @@ export default function HistogramClassification({
         ];
 
       case 'outlier':
-        if ((colorContext?.outlierIndices?.size ?? 0) > 0) {
+        {
+          const outlierIndices = colorContext?.outlierIndices;
+          if (!outlierIndices || outlierIndices.size === 0) {
+            return [];
+          }
           return [
             {
               key: 'normal',
               label: 'Normal',
               color: UNSELECTED_FILL,
-              getSamples: (bar) => bar.samples.filter((sampleIdx) => !colorContext.outlierIndices?.has(sampleIdx)),
+              getSamples: (bar) => bar.samples.filter((sampleIdx) => !outlierIndices.has(sampleIdx)),
             },
             {
               key: 'outlier',
               label: 'Outliers',
               color: HIGHLIGHT_COLORS.outlier,
-              getSamples: (bar) => bar.samples.filter((sampleIdx) => colorContext.outlierIndices?.has(sampleIdx)),
+              getSamples: (bar) => bar.samples.filter((sampleIdx) => outlierIndices.has(sampleIdx)),
             },
           ];
         }
-        return [];
 
       case 'selection':
         return [

@@ -39,8 +39,10 @@ export * from './chartConfig';
 export { SpectraChartToolbar } from './SpectraChartToolbar';
 export { WavelengthRangePicker } from './WavelengthRangePicker';
 export { SpectraFilterPanel } from './SpectraFilterPanel';
-export { SourceDatasetSelector, buildSourceOptions } from './SourceDatasetSelector';
-export type { SourceOption, SourceDatasetSelectorProps } from './SourceDatasetSelector';
+export { SourceDatasetSelector } from './SourceDatasetSelector';
+export type { SourceDatasetSelectorProps } from './SourceDatasetSelector';
+export { buildSourceOptions } from './sourceDatasetOptions';
+export type { SourceOption } from './sourceDatasetOptions';
 export * from './SpectraAggregation';
 
 // ============= Phase 3: Enhanced Settings Popup =============

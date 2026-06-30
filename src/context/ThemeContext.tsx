@@ -2,7 +2,7 @@
  * Theme Context
  *
  * Provides application-wide theme management with:
- * - Local storage persistence (fallback)
+ * - Client-storage persistence (fallback)
  * - Backend workspace settings sync (primary when workspace is available)
  * - System theme detection
  *
@@ -10,26 +10,18 @@
  */
 
 import {
-  createContext,
-  useContext,
   useEffect,
   useState,
   useCallback,
   type ReactNode,
 } from "react";
 import { getWorkspaceSettings, updateWorkspaceSettings } from "@/api/workspace";
-import type { ThemeOption } from "@/types/settings";
-
-type Theme = ThemeOption;
-
-interface ThemeContextType {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
-  resolvedTheme: "dark" | "light";
-  isLoading: boolean;
-}
-
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+import { ThemeContext, type Theme } from "@/context/useTheme";
+import {
+  readClientStorageString,
+  themePreferenceStorageKey,
+  writeClientStorageString,
+} from "@/lib/clientStorage";
 
 interface ThemeProviderProps {
   children: ReactNode;
@@ -37,30 +29,14 @@ interface ThemeProviderProps {
   storageKey?: string;
 }
 
-// Helper to safely access localStorage (may be null in pywebview/embedded contexts)
-function getLocalStorage(): Storage | null {
-  try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      return window.localStorage;
-    }
-  } catch {
-    // localStorage access can throw in some contexts
-  }
-  return null;
-}
-
 export function ThemeProvider({
   children,
   defaultTheme = "light",
   storageKey = "nirs4all-theme",
 }: ThemeProviderProps) {
-  // Initialize from localStorage first for fast initial render
+  // Initialize from client storage first for fast initial render.
   const [theme, setThemeState] = useState<Theme>(() => {
-    const storage = getLocalStorage();
-    if (storage) {
-      return (storage.getItem(storageKey) as Theme) || defaultTheme;
-    }
-    return defaultTheme;
+    return (readClientStorageString(themePreferenceStorageKey(storageKey)) as Theme | null) || defaultTheme;
   });
 
   const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">("dark");
@@ -86,7 +62,7 @@ export function ThemeProvider({
           setHasWorkspace(true);
         }
       } catch {
-        // No workspace or error - use localStorage value
+        // No workspace or error - use client-storage value.
         setHasWorkspace(false);
       } finally {
         setIsLoading(false);
@@ -115,12 +91,9 @@ export function ThemeProvider({
     setResolvedTheme(effectiveTheme);
   }, [theme]);
 
-  // Always save to localStorage for fast initial load
+  // Always save to client storage for fast initial load.
   useEffect(() => {
-    const storage = getLocalStorage();
-    if (storage) {
-      storage.setItem(storageKey, theme);
-    }
+    writeClientStorageString(themePreferenceStorageKey(storageKey), theme);
   }, [theme, storageKey]);
 
   // Listen for system theme changes
@@ -144,10 +117,7 @@ export function ThemeProvider({
   const setTheme = useCallback(
     async (newTheme: Theme) => {
       setThemeState(newTheme);
-      const storage = getLocalStorage();
-      if (storage) {
-        storage.setItem(storageKey, newTheme);
-      }
+      writeClientStorageString(themePreferenceStorageKey(storageKey), newTheme);
 
       // Try to sync to workspace settings
       if (hasWorkspace) {
@@ -163,7 +133,7 @@ export function ThemeProvider({
             general: { ...currentGeneral, theme: newTheme },
           });
         } catch (error) {
-          // Silently fail - localStorage is the fallback
+          // Silently fail - client storage is the fallback.
           console.debug("Failed to sync theme to workspace:", error);
         }
       }
@@ -176,12 +146,4 @@ export function ThemeProvider({
       {children}
     </ThemeContext.Provider>
   );
-}
-
-export function useTheme() {
-  const context = useContext(ThemeContext);
-  if (context === undefined) {
-    throw new Error("useTheme must be used within a ThemeProvider");
-  }
-  return context;
 }

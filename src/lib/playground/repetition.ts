@@ -23,6 +23,47 @@ const SAMPLE_ID_PATTERNS = [
   /^(.+?)\s*\(\d+\)$/,
 ];
 
+export type RepetitionDetectionMethod = 'auto' | 'metadata' | 'pattern';
+
+export type RepetitionDistanceMetric = 'pca' | 'umap' | 'euclidean' | 'mahalanobis';
+
+export interface RepetitionDetectionConfig {
+  method: RepetitionDetectionMethod;
+  metadataColumn?: string;
+  pattern?: string;
+  distanceMetric: RepetitionDistanceMetric;
+}
+
+export interface RepetitionPatternPreset {
+  label: string;
+  pattern: string;
+  example: string;
+}
+
+export interface DetectedRepetitionGroup {
+  bioSample: string;
+  sampleIds: string[];
+  count: number;
+}
+
+export interface RepetitionDetectionSummary {
+  bioSamples: number;
+  totalReps: number;
+  avgReps: number;
+}
+
+export const DEFAULT_REPETITION_PATTERN = '^(.+?)[-_][Rr]ep\\d+$';
+
+export const COMMON_REPETITION_PATTERNS: RepetitionPatternPreset[] = [
+  { label: 'sample_rep1, sample_rep2', pattern: DEFAULT_REPETITION_PATTERN, example: 'Sample1_rep1' },
+  { label: 'sample_1, sample_2', pattern: '^(.+?)[-_]\\d+$', example: 'Sample1_1' },
+  { label: 'sample_A, sample_B', pattern: '^(.+?)[-_][A-Za-z]$', example: 'Sample1_A' },
+  { label: 'sample (1), sample (2)', pattern: '^(.+?)\\s*\\(\\d+\\)$', example: 'Sample1 (1)' },
+  { label: 'Custom pattern...', pattern: '', example: '' },
+];
+
+export const CUSTOM_REPETITION_PATTERN_INDEX = COMMON_REPETITION_PATTERNS.length - 1;
+
 function normalizeColumnToken(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
@@ -130,6 +171,107 @@ function hasRepeatedSampleIdPattern(sampleIds?: string[]): boolean {
   return false;
 }
 
+export function validateRepetitionPattern(pattern: string): string | null {
+  if (!pattern) {
+    return null;
+  }
+
+  try {
+    new RegExp(pattern);
+    return null;
+  } catch (error) {
+    return `Invalid regex: ${(error as Error).message}`;
+  }
+}
+
+export function detectRepetitionGroupsFromPattern(
+  sampleIds: string[],
+  pattern: string,
+): DetectedRepetitionGroup[] {
+  if (sampleIds.length === 0 || !pattern) {
+    return [];
+  }
+
+  const regex = new RegExp(pattern);
+  const groups: Map<string, string[]> = new Map();
+
+  for (const sampleId of sampleIds) {
+    const match = regex.exec(sampleId);
+    const bioSample = match ? match[1] : sampleId;
+    if (!groups.has(bioSample)) {
+      groups.set(bioSample, []);
+    }
+    groups.get(bioSample)!.push(sampleId);
+  }
+
+  return Array.from(groups.entries())
+    .filter(([, samples]) => samples.length >= 2)
+    .map(([bioSample, samples]) => ({
+      bioSample,
+      sampleIds: samples,
+      count: samples.length,
+    }));
+}
+
+export function detectRepetitionGroups(
+  sampleIds: string[],
+  method: RepetitionDetectionMethod,
+  pattern?: string,
+): DetectedRepetitionGroup[] {
+  if (sampleIds.length === 0) {
+    return [];
+  }
+
+  if (method === 'auto') {
+    let bestGroups: DetectedRepetitionGroup[] = [];
+    let bestRepCount = 0;
+
+    for (const preset of COMMON_REPETITION_PATTERNS) {
+      if (!preset.pattern) {
+        continue;
+      }
+
+      try {
+        const groups = detectRepetitionGroupsFromPattern(sampleIds, preset.pattern);
+        const repCount = groups.reduce((sum, group) => sum + group.count, 0);
+        if (repCount > bestRepCount) {
+          bestRepCount = repCount;
+          bestGroups = groups;
+        }
+      } catch {
+        // Pattern presets are static, but keep auto-detection defensive.
+      }
+    }
+
+    return bestGroups;
+  }
+
+  if (method === 'pattern' && pattern) {
+    try {
+      return detectRepetitionGroupsFromPattern(sampleIds, pattern);
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+export function summarizeRepetitionGroups(
+  groups: DetectedRepetitionGroup[],
+): RepetitionDetectionSummary {
+  if (groups.length === 0) {
+    return { bioSamples: 0, totalReps: 0, avgReps: 0 };
+  }
+
+  const totalReps = groups.reduce((sum, group) => sum + group.count, 0);
+  return {
+    bioSamples: groups.length,
+    totalReps,
+    avgReps: totalReps / groups.length,
+  };
+}
+
 export function isLikelyRepeatIndexColumnName(columnName: string): boolean {
   const normalized = normalizeColumnToken(columnName);
   if (!normalized) {
@@ -161,44 +303,47 @@ export function findLikelyRepetitionColumn(metadata?: SampleMetadata[]): string 
     return undefined;
   }
 
-  const candidates = columnNames
-    .map((columnName) => {
-      const normalized = normalizeColumnToken(columnName);
-      if (
-        !metadata ||
-        isLikelyRepeatIndexColumnName(normalized) ||
-        ['set', 'partition', 'fold', 'foldid'].includes(normalized)
-      ) {
-        return null;
-      }
+  if (!metadata) {
+    return undefined;
+  }
 
-      const values = metadata.map((row) => row?.[columnName]);
-      const stats = getRepeatedGroupStats(values);
-      if (stats.repeatedGroups === 0) {
-        return null;
-      }
+  const candidates: {
+    columnName: string;
+    isPreferredName: boolean;
+    repeatedGroups: number;
+    repeatedMeasurements: number;
+  }[] = [];
 
-      const isPreferredName =
-        DIRECT_REPETITION_COLUMN_NAMES.has(normalized) ||
-        (normalized.includes('bio') && normalized.includes('sample')) ||
-        (normalized.includes('sample') && normalized.includes('group'));
-      if (!isPreferredName) {
-        return null;
-      }
+  for (const columnName of columnNames) {
+    const normalized = normalizeColumnToken(columnName);
+    if (
+      isLikelyRepeatIndexColumnName(normalized) ||
+      ['set', 'partition', 'fold', 'foldid'].includes(normalized)
+    ) {
+      continue;
+    }
 
-      return {
-        columnName,
-        isPreferredName,
-        repeatedGroups: stats.repeatedGroups,
-        repeatedMeasurements: stats.repeatedMeasurements,
-      };
-    })
-    .filter((candidate): candidate is {
-      columnName: string;
-      isPreferredName: boolean;
-      repeatedGroups: number;
-      repeatedMeasurements: number;
-    } => candidate !== null);
+    const values = metadata.map((row) => row?.[columnName]);
+    const stats = getRepeatedGroupStats(values);
+    if (stats.repeatedGroups === 0) {
+      continue;
+    }
+
+    const isPreferredName =
+      DIRECT_REPETITION_COLUMN_NAMES.has(normalized) ||
+      (normalized.includes('bio') && normalized.includes('sample')) ||
+      (normalized.includes('sample') && normalized.includes('group'));
+    if (!isPreferredName) {
+      continue;
+    }
+
+    candidates.push({
+      columnName,
+      isPreferredName,
+      repeatedGroups: stats.repeatedGroups,
+      repeatedMeasurements: stats.repeatedMeasurements,
+    });
+  }
 
   if (candidates.length === 0) {
     return undefined;

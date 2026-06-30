@@ -7,6 +7,7 @@
  */
 
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
+import type { ScoreCardType } from "@/types/score-cards";
 
 // ============================================================================
 // Fold ordering
@@ -89,6 +90,13 @@ export function isAggFold(foldId: string): boolean {
 
 export function isNumberedFold(foldId: string): boolean {
   return !isFinalFold(foldId) && !isAggFold(foldId) && !isRepAggFold(foldId);
+}
+
+export function scoreCardTypeForFoldId(foldId: string | null | undefined): ScoreCardType {
+  const baseFoldId = foldId ? foldIdBase(foldId) : "";
+  if (baseFoldId === "final") return "refit";
+  if (baseFoldId === "avg" || baseFoldId === "w_avg") return "crossval";
+  return "train";
 }
 
 // ============================================================================

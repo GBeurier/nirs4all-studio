@@ -33,7 +33,17 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { ParameterSweep, SweepType } from "./types";
-import { calculateSweepVariants } from "./types";
+import { calculateSweepVariants } from "./variantCounting";
+import {
+  SWEEP_PRESET_LIMIT,
+  SWEEP_TYPE_OPTIONS,
+  buildEnableSweepDefault,
+  buildSweepTypeDefault,
+  formatSweepValue,
+  getRelevantSweepPresets,
+  getSweepPreviewValues,
+  parseSweepChoices,
+} from "./sweepConfigHelpers";
 
 // Sweep type configurations
 const sweepTypeConfig: Record<
@@ -66,24 +76,6 @@ const sweepTypeConfig: Record<
   },
 };
 
-// Quick presets for common parameter ranges
-interface Preset {
-  label: string;
-  sweep: ParameterSweep;
-  forParams?: string[];
-}
-
-const quickPresets: Preset[] = [
-  { label: "1→10", sweep: { type: "range", from: 1, to: 10, step: 1 }, forParams: ["n_components", "n_splits"] },
-  { label: "1→20", sweep: { type: "range", from: 1, to: 20, step: 1 }, forParams: ["n_components"] },
-  { label: "1→30", sweep: { type: "range", from: 1, to: 30, step: 1 }, forParams: ["n_components"] },
-  { label: "5→25 step 5", sweep: { type: "range", from: 5, to: 25, step: 5 }, forParams: ["n_components", "n_estimators"] },
-  { label: "0.001→100 log", sweep: { type: "log_range", from: 0.001, to: 100, count: 10 }, forParams: ["alpha", "C", "gamma"] },
-  { label: "0.0001→0.1 log", sweep: { type: "log_range", from: 0.0001, to: 0.1, count: 5 }, forParams: ["learning_rate", "lr"] },
-  { label: "3→15 odd", sweep: { type: "range", from: 3, to: 15, step: 2 }, forParams: ["window_length", "window"] },
-  { label: "0, 1, 2", sweep: { type: "or", choices: [0, 1, 2] }, forParams: ["deriv", "order", "polyorder"] },
-];
-
 interface SweepConfigPopoverProps {
   paramKey: string;
   currentValue: string | number | boolean;
@@ -114,96 +106,27 @@ export function SweepConfigPopover({
   );
 
   // Generate preview values
-  const previewValues = useMemo(() => {
-    if (!localSweep) return [];
-
-    switch (localSweep.type) {
-      case "range": {
-        const from = localSweep.from ?? 0;
-        const to = localSweep.to ?? 10;
-        const step = localSweep.step ?? 1;
-        const values: number[] = [];
-        for (let v = from; v <= to && values.length < 8; v += step) {
-          values.push(v);
-        }
-        return values;
-      }
-      case "log_range": {
-        const from = localSweep.from ?? 0.001;
-        const to = localSweep.to ?? 100;
-        const count = localSweep.count ?? 5;
-        const logFrom = Math.log10(from);
-        const logTo = Math.log10(to);
-        const logStep = (logTo - logFrom) / (count - 1);
-        const values: number[] = [];
-        for (let i = 0; i < count && values.length < 8; i++) {
-          values.push(Math.pow(10, logFrom + i * logStep));
-        }
-        return values;
-      }
-      case "or":
-        return (localSweep.choices ?? []).slice(0, 8);
-      default:
-        return [];
-    }
-  }, [localSweep]);
+  const previewValues = useMemo(
+    () => getSweepPreviewValues(localSweep),
+    [localSweep]
+  );
 
   // Get relevant presets
-  const relevantPresets = useMemo(() => {
-    return quickPresets.filter(
-      (preset) =>
-        !preset.forParams ||
-        preset.forParams.some(
-          (p) =>
-            paramKey.toLowerCase().includes(p.toLowerCase()) ||
-            p.toLowerCase().includes(paramKey.toLowerCase())
-        )
-    );
-  }, [paramKey]);
+  const relevantPresets = useMemo(
+    () => getRelevantSweepPresets(paramKey),
+    [paramKey]
+  );
 
   // Handle enabling sweep
   const handleEnableSweep = useCallback(() => {
-    if (isNumeric) {
-      const val = currentValue as number;
-      setLocalSweep({
-        type: "range",
-        from: Math.max(1, Math.floor(val * 0.5)),
-        to: Math.ceil(val * 1.5) || val + 10,
-        step: val >= 10 ? Math.ceil(val * 0.1) : 1,
-      });
-    } else {
-      setLocalSweep({
-        type: "or",
-        choices: [currentValue as string | boolean],
-      });
-    }
-  }, [currentValue, isNumeric]);
+    setLocalSweep(buildEnableSweepDefault(currentValue));
+  }, [currentValue]);
 
   // Handle type change
   const handleTypeChange = useCallback(
     (type: SweepType) => {
-      if (type === "range") {
-        const val = typeof currentValue === "number" ? currentValue : 10;
-        setLocalSweep({
-          type: "range",
-          from: Math.max(1, Math.floor(val * 0.5)),
-          to: Math.ceil(val * 1.5) || val + 10,
-          step: 1,
-        });
-      } else if (type === "log_range") {
-        const val = typeof currentValue === "number" ? Math.max(0.001, currentValue) : 1;
-        setLocalSweep({
-          type: "log_range",
-          from: Math.max(0.0001, val * 0.1),
-          to: val * 10,
-          count: 5,
-        });
-      } else if (type === "or") {
-        setLocalSweep({
-          type: "or",
-          choices: typeof currentValue === "number" ? [currentValue] : [currentValue as string | boolean],
-        });
-      }
+      const nextSweep = buildSweepTypeDefault(currentValue, type);
+      if (nextSweep) setLocalSweep(nextSweep);
     },
     [currentValue]
   );
@@ -234,16 +157,6 @@ export function SweepConfigPopover({
     },
     [sweep, handleEnableSweep]
   );
-
-  // Format value for display
-  const formatValue = (val: unknown): string => {
-    if (typeof val === "number") {
-      if (val < 0.001 || val >= 10000) return val.toExponential(1);
-      if (val % 1 !== 0) return val.toPrecision(3);
-      return String(val);
-    }
-    return String(val);
-  };
 
   return (
     <Popover open={isOpen} onOpenChange={handleOpenChange}>
@@ -297,7 +210,7 @@ export function SweepConfigPopover({
               Sweep Type
             </Label>
             <div className="flex gap-2">
-              {(["range", "log_range", "or"] as SweepType[])
+              {SWEEP_TYPE_OPTIONS
                 .filter((t) => t === "or" || isNumeric)
                 .map((type) => {
                   const config = sweepTypeConfig[type];
@@ -438,7 +351,7 @@ export function SweepConfigPopover({
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Sparkles className="h-3.5 w-3.5" />
                 <span>
-                  {formatValue(localSweep.from)} → {formatValue(localSweep.to)} ({localSweep.count} values, log scale)
+                  {formatSweepValue(localSweep.from)} → {formatSweepValue(localSweep.to)} ({localSweep.count} values, log scale)
                 </span>
               </div>
             </div>
@@ -452,18 +365,7 @@ export function SweepConfigPopover({
                 <Input
                   value={localSweep.choices?.join(", ") ?? ""}
                   onChange={(e) => {
-                    const choices = e.target.value
-                      .split(",")
-                      .map((s) => {
-                        const trimmed = s.trim();
-                        if (trimmed === "") return null;
-                        const num = parseFloat(trimmed);
-                        if (!isNaN(num) && isNumeric) return num;
-                        if (trimmed === "true") return true;
-                        if (trimmed === "false") return false;
-                        return trimmed;
-                      })
-                      .filter((v): v is string | number | boolean => v !== null);
+                    const choices = parseSweepChoices(e.target.value, isNumeric);
                     setLocalSweep({ ...localSweep, choices });
                   }}
                   className="h-9 text-sm font-mono"
@@ -487,7 +389,7 @@ export function SweepConfigPopover({
                 {previewValues.map((val, idx) => (
                   <span key={idx}>
                     <Badge variant="outline" className="font-mono text-xs px-2 py-0.5">
-                      {formatValue(val)}
+                      {formatSweepValue(val)}
                     </Badge>
                     {idx < previewValues.length - 1 && idx < 6 && (
                       <ArrowRight className="inline h-3 w-3 text-muted-foreground/50 mx-0.5" />
@@ -510,7 +412,7 @@ export function SweepConfigPopover({
                 Quick Presets
               </Label>
               <div className="flex flex-wrap gap-1.5">
-                {relevantPresets.slice(0, 6).map((preset, idx) => (
+                {relevantPresets.slice(0, SWEEP_PRESET_LIMIT).map((preset, idx) => (
                   <Button
                     key={idx}
                     variant="outline"

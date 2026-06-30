@@ -19,6 +19,15 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .analysis_results_repository import resolve_analysis_results_repository
+from .execution_driver import (
+    AnalysisExecutionRequest,
+    ExecutionArtifactRef,
+    build_analysis_job_config,
+    build_analysis_result_metadata,
+    new_execution_job_id,
+)
+from .results_repository import ResultsRepository, ResultsRepositoryNotFound, resolve_results_repository
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -28,10 +37,8 @@ from .lazy_imports import get_cached
 
 NIRS4ALL_AVAILABLE = True
 
-try:
-    from .store_adapter import STORE_AVAILABLE, StoreAdapter
-except ImportError:
-    STORE_AVAILABLE = False
+# Analysis type key used for durable result persistence.
+_SHAP_ANALYSIS_TYPE = "shap"
 
 router = APIRouter()
 
@@ -206,6 +213,65 @@ class ShapConfigResponse(BaseModel):
     shap_available: bool
 
 
+def _build_shap_job_config(
+    request: ShapComputeRequest,
+    *,
+    job_id: str,
+    workspace_path: str | None = None,
+) -> dict[str, Any]:
+    """Build legacy SHAP config with execution metadata attached."""
+    artifacts = [
+        ExecutionArtifactRef(
+            role="input_dataset",
+            artifact_type="dataset",
+            artifact_id=request.dataset_id,
+            metadata={"partition": request.partition},
+        )
+    ]
+    if request.chain_id:
+        artifacts.append(
+            ExecutionArtifactRef(
+                role="input_model",
+                artifact_type="workspace_chain",
+                artifact_id=request.chain_id,
+            )
+        )
+    if request.bundle_path:
+        artifacts.append(
+            ExecutionArtifactRef(
+                role="input_model",
+                artifact_type="model_bundle",
+                path=request.bundle_path,
+            )
+        )
+
+    execution_request = AnalysisExecutionRequest(
+        job_id=job_id,
+        analysis_type="shap",
+        dataset_id=request.dataset_id,
+        workspace_path=workspace_path,
+        artifacts=tuple(artifacts),
+        parameters={
+            "partition": request.partition,
+            "explainer_type": request.explainer_type,
+            "n_samples": request.n_samples,
+            "n_background": request.n_background,
+            "bin_size": request.bin_size,
+            "bin_stride": request.bin_stride,
+            "bin_aggregation": request.bin_aggregation,
+        },
+        metadata={
+            "model_ref_type": "chain" if request.chain_id else "bundle",
+        },
+    )
+    config = build_analysis_job_config(request.model_dump(), execution_request)
+    # Carry the workspace path explicitly so the background task can persist
+    # the completed result durably without re-resolving the active workspace.
+    if workspace_path:
+        config["workspace_path"] = workspace_path
+    return config
+
+
 # ============= API Endpoints =============
 
 
@@ -284,8 +350,14 @@ async def compute_shap_explanation(request: ShapComputeRequest):
 
     try:
         from .jobs import JobType, job_manager
-        config = request.model_dump()
-        job = job_manager.create_job(JobType.ANALYSIS, config)
+        job_id = new_execution_job_id(JobType.ANALYSIS)
+        workspace = workspace_manager.get_active_workspace()
+        config = _build_shap_job_config(
+            request,
+            job_id=job_id,
+            workspace_path=workspace.path if workspace else None,
+        )
+        job = job_manager.create_job(JobType.ANALYSIS, config, job_id=job_id)
         job_manager.submit_job(job, _run_shap_task)
         return ShapComputeResponse(job_id=job.id, status="running", message="SHAP analysis started")
     except Exception as e:
@@ -306,10 +378,10 @@ async def get_shap_status(job_id: str):
 @router.get("/analysis/shap/results/{job_id}", response_model=ShapResultsResponse)
 async def get_shap_results(job_id: str):
     """Get SHAP results for a completed job."""
-    if job_id not in _shap_results_cache:
+    r = _get_shap_result(job_id)
+    if r is None:
         raise HTTPException(status_code=404, detail=f"SHAP results not found for job_id: {job_id}")
 
-    r = _shap_results_cache[job_id]
     return ShapResultsResponse(
         job_id=r["job_id"],
         model_id=r["model_id"],
@@ -331,10 +403,10 @@ async def get_shap_results(job_id: str):
 @router.get("/analysis/shap/results/{job_id}/spectral", response_model=SpectralImportanceData)
 async def get_spectral_importance(job_id: str):
     """Get spectral importance data for visualization."""
-    if job_id not in _shap_results_cache:
+    r = _get_shap_result(job_id)
+    if r is None:
         raise HTTPException(status_code=404, detail=f"SHAP results not found for job_id: {job_id}")
 
-    r = _shap_results_cache[job_id]
     return SpectralImportanceData(
         wavelengths=r["wavelengths"],
         mean_spectrum=r["mean_spectrum"],
@@ -351,10 +423,10 @@ async def get_spectral_detail(job_id: str, sample_indices: str | None = Query(No
     importance and mean spectrum for only those samples.
     """
     import numpy as np
-    if job_id not in _shap_results_cache:
+    r = _get_shap_result(job_id)
+    if r is None:
         raise HTTPException(status_code=404, detail=f"SHAP results not found for job_id: {job_id}")
 
-    r = _shap_results_cache[job_id]
     shap_values = r["_raw_shap_values"]
     X = r["_raw_X"]
 
@@ -383,10 +455,10 @@ async def get_spectral_detail(job_id: str, sample_indices: str | None = Query(No
 @router.get("/analysis/shap/results/{job_id}/scatter")
 async def get_prediction_scatter(job_id: str):
     """Get prediction scatter data (y_true vs y_pred) for sample selection."""
-    if job_id not in _shap_results_cache:
+    r = _get_shap_result(job_id)
+    if r is None:
         raise HTTPException(status_code=404, detail=f"SHAP results not found for job_id: {job_id}")
 
-    r = _shap_results_cache[job_id]
     y_true = r.get("_y_true")
     y_pred = r.get("_y_pred")
 
@@ -405,10 +477,10 @@ async def get_prediction_scatter(job_id: str):
 @router.post("/analysis/shap/results/{job_id}/rebin")
 async def rebin_shap_results(job_id: str, request: RebinRequest):
     """Rebin SHAP results with new parameters without re-computing SHAP values."""
-    if job_id not in _shap_results_cache:
+    r = _get_shap_result(job_id)
+    if r is None:
         raise HTTPException(status_code=404, detail=f"SHAP results not found: {job_id}")
 
-    r = _shap_results_cache[job_id]
     binned = _compute_binned_importance(
         r["_raw_shap_values"], r["wavelengths"],
         request.bin_size, request.bin_stride, request.bin_aggregation
@@ -422,10 +494,10 @@ async def rebin_shap_results(job_id: str, request: RebinRequest):
 async def get_beeswarm_data(job_id: str, max_samples: int = 200):
     """Get beeswarm plot data."""
     import numpy as np
-    if job_id not in _shap_results_cache:
+    r = _get_shap_result(job_id)
+    if r is None:
         raise HTTPException(status_code=404, detail=f"SHAP results not found for job_id: {job_id}")
 
-    r = _shap_results_cache[job_id]
     shap_values = r["_raw_shap_values"]
     X = r["_raw_X"]
     wavelengths = r["wavelengths"]
@@ -607,15 +679,161 @@ def _run_shap_task(job: Any, progress_callback: Callable[[float, str], bool]) ->
 
     _shap_results_cache[job_id] = processed
 
+    # Persist the completed result durably under the workspace when one is
+    # available; the in-memory cache remains the fast path / fallback.
+    storage = _persist_shap_result(job_id, processed, config.get("workspace_path"))
+
+    execution_metadata = build_analysis_result_metadata(
+        config,
+        (
+            ExecutionArtifactRef(
+                role="output_analysis",
+                artifact_type="shap_explanation",
+                artifact_id=job_id,
+                metadata={
+                    "dataset_id": config["dataset_id"],
+                    "model_id": model_id,
+                    "explainer_type": processed["explainer_type"],
+                    "n_samples": processed["n_samples"],
+                    "n_features": processed["n_features"],
+                    "storage": storage,
+                },
+            ),
+        ),
+    )
+
     progress_callback(100, "Complete")
-    return {"job_id": job_id, "n_samples": processed["n_samples"]}
+    return {
+        "job_id": job_id,
+        "n_samples": processed["n_samples"],
+        **execution_metadata,
+    }
+
+
+# ============= Durable Result Persistence =============
+
+
+def _shap_storage_payload(processed: dict[str, Any]) -> dict[str, Any]:
+    """Return the JSON-serializable subset of a processed SHAP result.
+
+    Raw numpy arrays (``_raw_*``) are split out into a sidecar; pydantic models
+    are flattened to plain dicts so the payload round-trips through JSON.
+    """
+    payload: dict[str, Any] = {k: v for k, v in processed.items() if not k.startswith("_")}
+    payload["feature_importance"] = [
+        fi.model_dump() if hasattr(fi, "model_dump") else fi
+        for fi in processed.get("feature_importance", [])
+    ]
+    binned = processed.get("binned_importance")
+    payload["binned_importance"] = binned.model_dump() if hasattr(binned, "model_dump") else binned
+    # y_true / y_pred power the prediction-scatter endpoint and are JSON-safe.
+    payload["_y_true"] = processed.get("_y_true")
+    payload["_y_pred"] = processed.get("_y_pred")
+    return payload
+
+
+def _rehydrate_shap_result(payload: dict[str, Any], arrays: dict[str, Any]) -> dict[str, Any]:
+    """Reconstruct an in-memory SHAP result dict from a persisted payload."""
+    result = dict(payload)
+    result["_raw_shap_values"] = arrays["shap_values"]
+    result["_raw_X"] = arrays["X"]
+    return result
+
+
+def _persist_shap_result(job_id: str, processed: dict[str, Any], workspace_path: str | None) -> str:
+    """Persist a completed SHAP result; return the storage location label."""
+    repository = resolve_analysis_results_repository(workspace_path)
+    if repository is None:
+        return "memory_cache"
+    try:
+        repository.save(
+            _SHAP_ANALYSIS_TYPE,
+            job_id,
+            _shap_storage_payload(processed),
+            arrays={
+                "shap_values": processed["_raw_shap_values"],
+                "X": processed["_raw_X"],
+            },
+        )
+        return "workspace_repository"
+    except Exception as exc:  # durability is best-effort; never fail the job
+        logger.error("Failed to persist SHAP result %s: %s", job_id, exc)
+        return "memory_cache"
+
+
+def _get_shap_result(job_id: str) -> dict[str, Any] | None:
+    """Return a SHAP result from memory, falling back to durable storage.
+
+    On a durable hit the result is rehydrated into the in-memory cache so the
+    array-backed visualization endpoints keep working without re-reading disk.
+    """
+    cached = _shap_results_cache.get(job_id)
+    if cached is not None:
+        return cached
+
+    workspace = workspace_manager.get_active_workspace()
+    if not workspace:
+        return None
+    repository = resolve_analysis_results_repository(workspace.path)
+    if repository is None:
+        return None
+
+    payload = repository.load(_SHAP_ANALYSIS_TYPE, job_id)
+    arrays = repository.load_arrays(_SHAP_ANALYSIS_TYPE, job_id)
+    if payload is None or arrays is None:
+        return None
+
+    result = _rehydrate_shap_result(payload, arrays)
+    _shap_results_cache[job_id] = result
+    return result
 
 
 # ============= Helper Functions =============
 
 
+def _workspace_store_repository_factory(path: Path) -> ResultsRepository:
+    """Build the legacy WorkspaceStore only when repository resolution selects it."""
+    from nirs4all.pipeline.storage import WorkspaceStore
+
+    return WorkspaceStore(path)
+
+
+def _resolve_workspace_results_repository(workspace_path: Path) -> ResultsRepository:
+    """Resolve the active workspace's results repository for SHAP model lookup."""
+    try:
+        return resolve_results_repository(
+            workspace_path,
+            workspace_store_factory=_workspace_store_repository_factory,
+        )
+    except ResultsRepositoryNotFound as exc:
+        raise ValueError(str(exc)) from exc
+
+
+def _chain_summary_rows(repository: ResultsRepository) -> list[dict[str, Any]]:
+    """Return chain summary rows from any ResultsRepository implementation."""
+    summaries = repository.query_chain_summaries()
+    if hasattr(summaries, "iter_rows"):
+        return [dict(row) for row in summaries.iter_rows(named=True)]
+    return [dict(row) for row in summaries]
+
+
+def _final_model_artifact_id(chain_id: str, chain: dict[str, Any], *, raise_on_missing: bool = True) -> str | None:
+    """Return the final/refit artifact id for a chain, optionally raising a clear gap error."""
+    fold_artifacts = chain.get("fold_artifacts") or {}
+    artifact_id = fold_artifacts.get("fold_final") or fold_artifacts.get("final")
+    if artifact_id:
+        return str(artifact_id)
+    if not raise_on_missing:
+        return None
+
+    reason = chain.get("artifact_unavailable_reason")
+    if reason:
+        raise ValueError(f"No final model artifact for chain {chain_id}: {reason}")
+    raise ValueError(f"No final model artifact for chain {chain_id}. The model may not have been refit.")
+
+
 def _get_available_chains() -> list[DatasetChains]:
-    """Return refit chains from the workspace store, grouped by dataset.
+    """Return refit chains from the active results repository, grouped by dataset.
 
     Only chains that have a final refit model artifact (``fold_final`` or
     legacy ``final`` in ``fold_artifacts``) are returned -- SHAP analysis
@@ -623,14 +841,17 @@ def _get_available_chains() -> list[DatasetChains]:
     are omitted from the result entirely.
     """
     workspace = workspace_manager.get_active_workspace()
-    if not workspace or not STORE_AVAILABLE:
+    if not workspace:
         return []
 
+    repository = None
     try:
-        with StoreAdapter(Path(workspace.path)) as adapter:
-            summaries = adapter.get_chain_summaries()
+        repository = _resolve_workspace_results_repository(Path(workspace.path))
+        summaries = _chain_summary_rows(repository)
     except Exception as e:
         logger.error("Error querying chain summaries: %s", e)
+        if repository:
+            repository.close()
         return []
 
     # Group by dataset_name
@@ -642,26 +863,22 @@ def _get_available_chains() -> list[DatasetChains]:
         datasets_map.setdefault(ds, []).append(chain)
 
     # Check which chains have refit models
-    store = None
     refit_chains: set = set()
     try:
-        from nirs4all.pipeline.storage import WorkspaceStore
-        store = WorkspaceStore(Path(workspace.path))
         for ds_chains in datasets_map.values():
             for c in ds_chains:
                 chain_id = c.get("chain_id", "")
                 if not chain_id:
                     continue
-                chain_detail = store.get_chain(chain_id)
+                chain_detail = repository.get_chain(chain_id) if repository is not None else None
                 if chain_detail:
-                    fa = chain_detail.get("fold_artifacts") or {}
-                    if fa.get("fold_final") or fa.get("final"):
+                    if _final_model_artifact_id(chain_id, chain_detail, raise_on_missing=False):
                         refit_chains.add(chain_id)
     except Exception as e:
         logger.error("Error checking refit chains: %s", e)
     finally:
-        if store:
-            store.close()
+        if repository:
+            repository.close()
 
     result = []
     for ds_name in sorted(datasets_map):
@@ -743,24 +960,23 @@ def _get_available_bundles() -> list[AvailableBundle]:
 
 
 def _load_model_from_chain(chain_id: str) -> tuple[Any, dict[str, Any]]:
-    """Load a trained model from a chain's fold_final artifact."""
+    """Load a trained model from a chain's final artifact via the active results repository."""
     workspace = workspace_manager.get_active_workspace()
     if not workspace:
         raise ValueError("No active workspace")
 
-    from nirs4all.pipeline.storage import WorkspaceStore
-    store = WorkspaceStore(Path(workspace.path))
+    repository = _resolve_workspace_results_repository(Path(workspace.path))
     try:
-        chain = store.get_chain(chain_id)
+        chain = repository.get_chain(chain_id)
         if chain is None:
             raise ValueError(f"Chain not found: {chain_id}")
 
-        fold_artifacts = chain.get("fold_artifacts") or {}
-        artifact_id = fold_artifacts.get("fold_final") or fold_artifacts.get("final")
-        if not artifact_id:
-            raise ValueError(f"No final model artifact for chain {chain_id}. The model may not have been refit.")
+        artifact_id = _final_model_artifact_id(chain_id, chain)
+        load_artifact = getattr(repository, "load_artifact", None)
+        if not callable(load_artifact):
+            raise ValueError(f"Results repository for chain {chain_id} cannot load model artifacts.")
 
-        model = store.load_artifact(artifact_id)
+        model = load_artifact(artifact_id)
         model_info = {
             "chain_id": chain_id,
             "model_class": chain.get("model_class", ""),
@@ -768,7 +984,7 @@ def _load_model_from_chain(chain_id: str) -> tuple[Any, dict[str, Any]]:
         }
         return model, model_info
     finally:
-        store.close()
+        repository.close()
 
 
 def _load_model_from_bundle(bundle_path: str) -> tuple[Any, dict[str, Any]]:

@@ -7,9 +7,19 @@ import type {
   HeaderUnit,
   ParsingOptions,
   SignalType,
+  TaskType,
 } from "@/types/datasets";
 
 import type { WizardInitialState } from "./DatasetWizard";
+
+/**
+ * Coerce a stored dataset `task_type` into a strict {@link TaskType}, or
+ * `undefined` when it cannot be resolved so callers can fall back.
+ */
+function coerceTaskType(value: Dataset["task_type"]): TaskType | undefined {
+  if (value == null) return undefined;
+  return value;
+}
 
 const DEFAULT_PARSING: ParsingOptions = {
   delimiter: ";",
@@ -157,8 +167,9 @@ export function buildInitialState(dataset: Dataset): WizardInitialState {
     perFileOverrides: buildPerFileOverrides(config),
     targets: config.targets ?? dataset.targets ?? [],
     defaultTarget: dataset.default_target ?? config.default_target ?? "",
-    taskType: dataset.task_type ?? config.task_type ?? "auto",
+    taskType: coerceTaskType(dataset.task_type) ?? config.task_type ?? "auto",
     aggregation: getInitialAggregationConfig(config),
+    multiSource: config.multi_source ?? null,
     folds: config.folds ?? null,
     hasFoldFile: config.folds?.source === "file",
     foldFilePath: config.folds?.file,

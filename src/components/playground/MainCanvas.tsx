@@ -23,59 +23,57 @@
  * - Render mode optimization (auto/canvas/webgl)
  */
 
-import { useState, useMemo, useCallback, useRef, useEffect, memo, useDeferredValue } from 'react';
-import { FlaskConical, Info } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import {
-  SpectraChart,
-  YHistogram,
-  DimensionReductionChart,
-  FoldDistributionChart,
-  RepetitionsChart,
-  ChartSkeleton,
-} from './visualizations';
+import { useState, useMemo, useCallback, memo, useDeferredValue } from 'react';
 import {
   type GlobalColorConfig,
   type ColorContext,
   DEFAULT_GLOBAL_COLOR_CONFIG,
 } from '@/lib/playground/colorConfig';
-import {
-  detectTargetType,
-  createClassLabelMap,
-  type TargetType,
-} from '@/lib/playground/targetTypeDetection';
-import { SampleDetails } from './SampleDetails';
-import { type PartitionFilter, getPartitionIndices } from './PartitionSelector';
+import type { PartitionFilter } from '@/lib/playground/partitionFilters';
 import type { OutlierMethod } from './OutlierSelector';
 import type { DistanceMetric } from './SimilarityFilter';
-import { EmbeddingSelector } from './EmbeddingSelector';
-import { useSelection } from '@/context/SelectionContext';
-import {
-  usePlaygroundViewOptional,
-  type ChartType,
-  type ViewState,
-} from '@/context/PlaygroundViewContext';
-import {
-  useFilterOptional,
-  type FilterDataContext,
-} from '@/context/FilterContext';
-import { useReferenceDatasetOptional } from '@/context/ReferenceDatasetContext';
-import { useOutliers } from '@/context/OutliersContext';
+import { useSelection } from '@/context/useSelection';
+import type { ChartType } from '@/context/usePlaygroundView';
+import { ALL_CHARTS } from '@/context/usePlaygroundView';
+import { useFilterOptional } from '@/context/useFilter';
+import { useReferenceDatasetOptional } from '@/context/useReferenceDataset';
+import { useOutliers } from '@/context/useOutliers';
 import {
   useRenderOptimizer,
   type RenderMode,
 } from '@/lib/playground/renderOptimizer';
+import {
+  buildCanvasChartRenderStates,
+  buildEffectiveChartLoading,
+  buildEffectiveVisibleCharts,
+  computeCanvasGridLayout,
+  countVisibleNonMinimizedCharts,
+  getMinimizedCanvasCharts,
+} from '@/lib/playground/canvasLayout';
+import {
+  buildCanvasColorContext,
+  buildCanvasDisplayFilteredIndices,
+  buildCanvasFilterDataContext,
+  mergeCanvasOutlierIndices,
+  resolveCanvasFilteredIndices,
+} from '@/lib/playground/canvasSampleScope';
+import { isPlaygroundRawDataMode } from '@/lib/playground/operatorMode';
 
-import { CanvasToolbar } from './CanvasToolbar';
-import { ChartPanel } from './ChartPanel';
-import { usePlaygroundExport, type ChartRefs } from './hooks/usePlaygroundExport';
+import { MainCanvasEmptyState } from './MainCanvasEmptyState';
+import { MainCanvasRenderSections } from './MainCanvasRenderSections';
+import { getToggleableCharts } from './ChartRegistry';
+import type { ToggleableChartControl } from './CanvasToolbarViewGroup';
+import { useInteractionPending } from './hooks/useInteractionPending';
+import { useMainCanvasChartInputs } from './hooks/useMainCanvasChartInputs';
+import { useMainCanvasExports } from './hooks/useMainCanvasExports';
+import { useMainCanvasViewState } from './hooks/useMainCanvasViewState';
 import { useStaggeredChartMount } from './hooks/useStaggeredChartMount';
 import { useSpectraChartConfig } from '@/lib/playground/useSpectraChartConfig';
 import type { SpectraViewMode } from '@/lib/playground/spectraConfig';
-import { hasSpectralRepetitionGroups } from '@/lib/playground/repetition';
 
 import type { PlaygroundResult, UnifiedOperator, MetricsResult, MetricFilter, OutlierResult, SimilarityResult, PerChartLoadingState, SubsetInfo } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
+import type { DatasetSchemaRef } from '@/lib/datasetSchema';
 
 // ============= Types =============
 
@@ -92,16 +90,8 @@ interface MainCanvasProps {
   selectedSample?: number | null;
   /** Callback when sample is selected */
   onSelectSample?: (index: number | null) => void;
-  /** All pipeline operators (for step comparison) */
+  /** All pipeline operators used by charts that need pipeline context */
   operators?: UnifiedOperator[];
-  /** Step comparison mode enabled */
-  stepComparisonEnabled?: boolean;
-  /** Callback when step comparison enabled state changes */
-  onStepComparisonEnabledChange?: (enabled: boolean) => void;
-  /** Current active step in comparison mode */
-  activeStep?: number;
-  /** Callback when active step changes */
-  onActiveStepChange?: (step: number) => void;
   /** Callback when "Filter to Selection" is clicked */
   onFilterToSelection?: (selectedIndices: number[]) => void;
   /** Whether UMAP computation is enabled (currently unused) */
@@ -136,64 +126,16 @@ interface MainCanvasProps {
   onRenderModeChange?: (mode: RenderMode) => void;
   /** Dataset ID for saved selections */
   datasetId?: string;
+  /** Optional dataset schema projection for future multimodal data-view compatibility */
+  datasetSchemaRef?: DatasetSchemaRef | null;
   /** Last outlier detection result - from operators */
   lastOutlierResult?: OutlierResult | null;
-  // === Phase 8: Reset Functionality ===
-  /** Callback to reset all playground state */
-  onResetPlayground?: () => void;
-  /** Whether there is state that can be reset */
-  hasStateToReset?: boolean;
   // === Chart Toggle Notification ===
   /** Called when a chart is toggled from the toolbar — lets the parent sync execute options (e.g. compute_repetitions) */
   onChartToggle?: (chart: ChartType) => void;
   // === Granular Chart Loading ===
   /** Per-chart loading states from change detection */
   chartLoadingStates?: PerChartLoadingState;
-}
-
-// ============= Sub-Components =============
-
-/**
- * Raw Data Mode banner - shown when no operators are in the pipeline
- */
-const RawDataModeBanner = memo(function RawDataModeBanner() {
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border-b border-blue-500/20">
-      <Info className="w-4 h-4 text-blue-500 shrink-0" />
-      <span className="text-xs text-blue-700 dark:text-blue-300">
-        <strong>Raw Data Mode:</strong> Viewing original data without preprocessing.
-        Add operators from the palette to transform your spectra.
-      </span>
-    </div>
-  );
-});
-
-// ============= Grid Layout Utilities =============
-
-/**
- * Compute smart grid layout classes based on visible chart count and layout mode
- * Handles special cases like 3 views (2x2 with spanning)
- */
-function computeGridLayout(visibleCount: number, hasMaximized: boolean): { gridCols: string; gridRows: string } {
-  // When maximized, single cell takes all space
-  if (hasMaximized) {
-    return { gridCols: 'grid-cols-1', gridRows: 'grid-rows-1' };
-  }
-
-  switch (visibleCount) {
-    case 1:
-      return { gridCols: 'grid-cols-1', gridRows: 'grid-rows-1' };
-    case 2:
-      return { gridCols: 'grid-cols-1 sm:grid-cols-2', gridRows: 'grid-rows-1' };
-    case 3:
-      // 2x2 grid with one spanning (handled via CSS in the first/last child)
-      return { gridCols: 'grid-cols-2', gridRows: 'grid-rows-2' };
-    case 4:
-      return { gridCols: 'grid-cols-2', gridRows: 'grid-rows-2' };
-    case 5:
-    default:
-      return { gridCols: 'grid-cols-2', gridRows: 'grid-rows-3' };
-  }
 }
 
 // ============= Main Component =============
@@ -206,10 +148,6 @@ export function MainCanvas({
   selectedSample: externalSelectedSample,
   onSelectSample: externalOnSelectSample,
   operators = [],
-  stepComparisonEnabled = false,
-  onStepComparisonEnabledChange,
-  activeStep = 0,
-  onActiveStepChange,
   onFilterToSelection,
   computeUmap: _computeUmap = false,
   onComputeUmapChange,
@@ -227,99 +165,22 @@ export function MainCanvas({
   // Phase 6 props
   renderMode: _externalRenderMode,
   onRenderModeChange,
-  datasetId,
+  datasetSchemaRef,
   lastOutlierResult,
-  // Phase 8 props
-  onResetPlayground,
-  hasStateToReset = false,
   // Chart toggle notification
   onChartToggle,
   // Granular chart loading
   chartLoadingStates,
 }: MainCanvasProps) {
-  // ============= View Context (Phase 2) =============
-  // Use optional hook - falls back to local state if not within provider
-  const viewContext = usePlaygroundViewOptional();
-
-  // Local fallback state for chart visibility (used when not in provider)
-  const [localVisibleCharts, setLocalVisibleCharts] = useState<Set<ChartType>>(
-    new Set(['spectra', 'histogram', 'pca'])
-  );
-  const [localMaximizedChart, setLocalMaximizedChart] = useState<ChartType | null>(null);
-  const [localMinimizedCharts, setLocalMinimizedCharts] = useState<Set<ChartType>>(new Set());
-
-  // Determine which state to use
-  const visibleCharts = viewContext?.visibleCharts ?? localVisibleCharts;
-  const maximizedChart = viewContext?.maximizedChart ?? localMaximizedChart;
-
-  // Toggle chart visibility
-  const toggleChart = useCallback((chart: ChartType) => {
-    if (viewContext) {
-      viewContext.toggleChart(chart);
-    } else {
-      setLocalVisibleCharts(prev => {
-        const next = new Set(prev);
-        if (next.has(chart)) {
-          next.delete(chart);
-        } else {
-          next.add(chart);
-        }
-        return next;
-      });
-    }
-    // Notify parent so it can sync execute options (e.g. compute_repetitions)
-    onChartToggle?.(chart);
-  }, [viewContext, onChartToggle]);
-
-  // Get chart view state
-  const getChartViewState = useCallback((chart: ChartType): ViewState => {
-    if (viewContext) {
-      return viewContext.chartStates[chart];
-    }
-    if (!localVisibleCharts.has(chart)) return 'hidden';
-    if (localMaximizedChart === chart) return 'maximized';
-    if (localMinimizedCharts.has(chart)) return 'minimized';
-    return 'visible';
-  }, [viewContext, localVisibleCharts, localMaximizedChart, localMinimizedCharts]);
-
-  // Maximize chart handler
-  const handleMaximize = useCallback((chart: ChartType) => {
-    if (viewContext) {
-      viewContext.maximizeChart(chart);
-    } else {
-      setLocalMaximizedChart(chart);
-    }
-  }, [viewContext]);
-
-  // Minimize chart handler
-  const handleMinimize = useCallback((chart: ChartType) => {
-    if (viewContext) {
-      viewContext.minimizeChart(chart);
-    } else {
-      setLocalMinimizedCharts(prev => new Set([...prev, chart]));
-    }
-  }, [viewContext]);
-
-  // Restore chart handler
-  const handleRestore = useCallback((chart: ChartType) => {
-    if (viewContext) {
-      viewContext.restoreChart(chart);
-    } else {
-      if (localMaximizedChart === chart) {
-        setLocalMaximizedChart(null);
-      }
-      setLocalMinimizedCharts(prev => {
-        const next = new Set(prev);
-        next.delete(chart);
-        return next;
-      });
-    }
-  }, [viewContext, localMaximizedChart]);
-
-  // Hide chart handler
-  const handleHide = useCallback((chart: ChartType) => {
-    toggleChart(chart);
-  }, [toggleChart]);
+  const {
+    visibleCharts,
+    maximizedChart,
+    toggleChart,
+    getChartViewState,
+    handleRestore,
+    handleHide,
+    chartActions,
+  } = useMainCanvasViewState({ onChartToggle });
 
   // ============= Other State =============
 
@@ -359,18 +220,47 @@ export function MainCanvas({
   const partitionFilter = filterContext?.partition ?? localPartitionFilter;
   const setPartitionFilter = filterContext?.setPartitionFilter ?? setLocalPartitionFilter;
 
-  // Chart container refs for export
-  const spectraChartRef = useRef<HTMLDivElement>(null);
-  const histogramChartRef = useRef<HTMLDivElement>(null);
-  const pcaChartRef = useRef<HTMLDivElement>(null);
-  const foldsChartRef = useRef<HTMLDivElement>(null);
-  const repetitionsChartRef = useRef<HTMLDivElement>(null);
+  // Deferred result for secondary charts (histogram, PCA, folds, repetitions)
+  // This allows the spectra chart to render first while others are deferred
+  const deferredResult = useDeferredValue(result);
+  const isSecondaryChartsStale = deferredResult !== result;
+
+  const {
+    dataView,
+    toolbarDataState,
+    totalSamples,
+    toolbarSampleIds,
+    yValues,
+    yMin,
+    yMax,
+    targetType,
+    classLabels,
+    classLabelMap,
+    columnMetadata,
+    effectiveFolds,
+    trainIndices,
+    testIndices,
+    spectraChartInput,
+    sampleDetailsData,
+    histogramChartInput,
+    foldDistributionChartInput,
+    dimensionReductionChartInput,
+    embeddingOverlayInput,
+    repetitionsChartInput,
+  } = useMainCanvasChartInputs({
+    rawData,
+    result,
+    deferredResult,
+    datasetSchemaRef,
+    referencePca: referenceCtx?.referenceResult?.pca,
+    referenceLabel: referenceCtx?.referenceInfo?.datasetName,
+  });
 
   // Render mode optimization
-  const totalSamplesForRender = rawData?.spectra?.length ?? result?.processed?.spectra?.length ?? 0;
-  const wavelengthCountForRender = rawData?.wavelengths?.length ?? result?.processed?.wavelengths?.length ?? 0;
+  const totalSamplesForRender = dataView.rawSampleCount || dataView.processedSampleCount;
+  const wavelengthCountForRender = dataView.rawFeatureCount || dataView.processedFeatureCount;
 
-  const { renderMode: effectiveMode, webglAvailable: isWebGL, setForceMode, forceMode } = useRenderOptimizer({
+  const { renderMode: effectiveMode, setForceMode, forceMode } = useRenderOptimizer({
     nSamples: totalSamplesForRender,
     nWavelengths: wavelengthCountForRender,
     hasOverlay: false,
@@ -384,50 +274,30 @@ export function MainCanvas({
     onRenderModeChange?.(mode);
   }, [setForceMode, onRenderModeChange]);
 
-  // Deferred result for secondary charts (histogram, PCA, folds, repetitions)
-  // This allows the spectra chart to render first while others are deferred
-  const deferredResult = useDeferredValue(result);
-  const isSecondaryChartsStale = deferredResult !== result;
+  const {
+    hasPartition,
+    hasFolds,
+    showFoldsChart,
+    hasRepetitions,
+  } = toolbarDataState;
 
-  // Partition coloring is available when:
-  //   1. The source dataset already has a test partition (set on /execute-dataset),
-  //   2. The pipeline contains a first splitter (kind="test_split" creates the test partition).
-  // It is intentionally INDEPENDENT from CV-fold availability.
-  const hasPartition = useMemo(() => {
-    if (result?.source_partitions?.has_test) return true;
-    if (result?.folds?.kind === 'test_split') return true;
-    return false;
-  }, [result?.source_partitions, result?.folds]);
-
-  // Fold coloring is available whenever the backend returned real fold
-  // assignments. Do not rely only on kind, because some responses omit it
-  // even though fold_labels/n_folds clearly indicate CV structure.
-  const hasFolds = useMemo(() => {
-    const folds = result?.folds;
-    if (!folds) return false;
-    const distinctFoldLabels = new Set((folds.fold_labels ?? []).filter((label) => label >= 0));
-    if (distinctFoldLabels.size > 1) return true;
-    return folds.n_folds > 1;
-  }, [result?.folds]);
-
-  const hasRawRepetitions = useMemo(() => {
-    return hasSpectralRepetitionGroups(rawData);
-  }, [rawData]);
-
-  const hasRepetitions = useMemo(() => {
-    return Boolean(result?.repetitions?.has_repetitions) || hasRawRepetitions;
-  }, [result?.repetitions, hasRawRepetitions]);
-
-  // The fold-distribution chart is shown for either CV folds OR a train/test partition,
-  // since both produce a meaningful per-bucket breakdown.
-  const showFoldsChart = hasFolds || hasPartition;
+  const toggleableCharts = useMemo<readonly ToggleableChartControl[]>(() => {
+    const chartIds = new Set<ChartType>(ALL_CHARTS);
+    return getToggleableCharts({
+      result: deferredResult,
+      rawData,
+      dataView: dataView.spectralProjection,
+    })
+      .filter((chart) => chartIds.has(chart.id as ChartType))
+      .map((chart) => ({
+        ...chart,
+        id: chart.id as ChartType,
+      }));
+  }, [dataView.spectralProjection, deferredResult, rawData]);
 
   // Effective visible charts (filter out folds/repetitions if not available)
   const effectiveVisibleCharts = useMemo(() => {
-    const visible = new Set(visibleCharts);
-    if (!showFoldsChart && visible.has('folds')) {
-      visible.delete('folds');
-    }
+    const visible = buildEffectiveVisibleCharts(visibleCharts, showFoldsChart);
     // Keep 'repetitions' visible even when no repetitions are detected, since
     // the chart now also renders samples in a "no repetition" fallback mode
     // (one point per sample, with optional metadata-column grouping). The user
@@ -445,62 +315,18 @@ export function MainCanvas({
   // Skeleton display logic
   const showSkeletons = isLoading && !result;
 
-  // Track interaction pending state for loading overlay
-  const [interactionPending, setInteractionPending] = useState(false);
-  const interactionTimeoutRef = useRef<number | null>(null);
-
-  const triggerInteractionPending = useCallback(() => {
-    if (interactionTimeoutRef.current) {
-      clearTimeout(interactionTimeoutRef.current);
-    }
-    setInteractionPending(true);
-    interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 400);
-  }, []);
-
-  useEffect(() => () => {
-    if (interactionTimeoutRef.current) {
-      clearTimeout(interactionTimeoutRef.current);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isFetching || isLoading) {
-      setInteractionPending(true);
-      if (interactionTimeoutRef.current) {
-        clearTimeout(interactionTimeoutRef.current);
-      }
-      return;
-    }
-    interactionTimeoutRef.current = window.setTimeout(() => setInteractionPending(false), 150);
-  }, [isFetching, isLoading]);
+  const { triggerInteractionPending } = useInteractionPending({
+    isFetching,
+    isLoading,
+  });
 
   // Per-chart loading states: use granular states from useChangeDetection
   // The hook already handles all fetching/loading logic internally based on isFetching and hasResult
   const effectiveChartLoading = useMemo<PerChartLoadingState>(() => {
-    if (chartLoadingStates) {
-      return {
-        spectra: chartLoadingStates.spectra,
-        histogram: chartLoadingStates.histogram,
-        pca: chartLoadingStates.pca || isUmapLoading,
-        folds: chartLoadingStates.folds,
-        repetitions: chartLoadingStates.repetitions,
-      };
-    }
-
-    // Fallback when no granular states provided (shouldn't happen normally)
-    return {
-      spectra: false,
-      histogram: false,
-      pca: isUmapLoading,
-      folds: false,
-      repetitions: false,
-    };
+    return buildEffectiveChartLoading(chartLoadingStates, isUmapLoading);
   }, [chartLoadingStates, isUmapLoading]);
 
-  // Check if pipeline has any operators
-  const hasOperators = operators.length > 0;
-  const enabledOperatorCount = operators.filter(op => op.enabled).length;
-  const isRawDataMode = !hasOperators || enabledOperatorCount === 0;
+  const isRawDataMode = isPlaygroundRawDataMode(operators);
 
   // Get selection context
   // Note: hoveredSample is NOT extracted here - charts get it directly from SelectionContext
@@ -524,14 +350,7 @@ export function MainCanvas({
 
   // Count visible (non-hidden, non-minimized) charts for layout
   const visibleNonMinimizedCount = useMemo(() => {
-    let count = 0;
-    for (const chart of effectiveVisibleCharts) {
-      const state = getChartViewState(chart);
-      if (state === 'visible' || state === 'maximized') {
-        count++;
-      }
-    }
-    return count;
+    return countVisibleNonMinimizedCharts(effectiveVisibleCharts, getChartViewState);
   }, [effectiveVisibleCharts, getChartViewState]);
 
   // Handle sample selection
@@ -539,715 +358,207 @@ export function MainCanvas({
     setSelectedSample(null);
   }, [setSelectedSample]);
 
-  // Get Y values
-  const yValues = useMemo(() => {
-    if (result?.processed?.y && result.processed.y.length > 0) {
-      return result.processed.y;
-    }
-    return rawData?.y ?? [];
-  }, [result, rawData]);
-
-  // Memoize yMin/yMax separately - these only depend on yValues, not selections
-  // Using a loop instead of Math.min(...array) to avoid stack overflow and improve performance
-  const { yMin, yMax } = useMemo(() => {
-    if (yValues.length === 0) {
-      return { yMin: 0, yMax: 1 };
-    }
-    let min = yValues[0];
-    let max = yValues[0];
-    for (let i = 1; i < yValues.length; i++) {
-      const v = yValues[i];
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
-    return { yMin: min, yMax: max };
-  }, [yValues]);
+  const handleRequestUmap = useCallback(() => {
+    onComputeUmapChange?.(true);
+  }, [onComputeUmapChange]);
 
   // Merge outlier indices from explicit detection AND from OutliersContext (filter tag mode)
   const { allOutliers: contextOutliers } = useOutliers();
+  const lastOutlierIndices = lastOutlierResult?.outlier_indices;
   const outlierIndicesSet = useMemo(() => {
-    const fromDetection = lastOutlierResult ? lastOutlierResult.outlier_indices : [];
-    if (fromDetection.length === 0 && contextOutliers.size === 0) return undefined;
-    const merged = new Set(fromDetection);
-    for (const idx of contextOutliers) merged.add(idx);
-    return merged;
-  }, [lastOutlierResult, contextOutliers]);
+    return mergeCanvasOutlierIndices(lastOutlierIndices, contextOutliers);
+  }, [lastOutlierIndices, contextOutliers]);
 
-  // Convert metadata format
-  const columnMetadata = useMemo((): Record<string, unknown[]> | undefined => {
-    if (result?.processed?.metadata && Object.keys(result.processed.metadata).length > 0) {
-      return result.processed.metadata;
-    }
-    if (!rawData?.metadata || !Array.isArray(rawData.metadata) || rawData.metadata.length === 0) {
-      return undefined;
-    }
-    const keys = new Set<string>();
-    rawData.metadata.forEach(item => {
-      if (item && typeof item === 'object') {
-        Object.keys(item).forEach(key => keys.add(key));
-      }
-    });
-    const metadataByColumn: Record<string, unknown[]> = {};
-    keys.forEach(key => {
-      metadataByColumn[key] = rawData.metadata!.map(item => item?.[key] ?? null);
-    });
-    return Object.keys(metadataByColumn).length > 0 ? metadataByColumn : undefined;
-  }, [result?.processed?.metadata, rawData?.metadata]);
-
-  const metadataColumns = useMemo(() => {
-    return columnMetadata ? Object.keys(columnMetadata) : undefined;
-  }, [columnMetadata]);
-
-  // Create effective folds - either from result or synthesized from source_partitions.
-  const effectiveFolds = useMemo(() => {
-    // If we have folds from splitter, use them
-    if (result?.folds && result.folds.n_folds > 0) {
-      const totalResultSamples = rawData?.spectra?.length ?? rawData?.y?.length ?? 0;
-      const distinctFoldLabels = new Set((result.folds.fold_labels ?? []).filter((label) => label >= 0));
-
-      if (result.folds.n_folds <= 1 || (result.folds.fold_labels && distinctFoldLabels.size > 1)) {
-        return result.folds;
-      }
-
-      if (result.folds.n_folds > 1 && totalResultSamples > 0) {
-        const synthesizedFoldLabels = Array.from({ length: totalResultSamples }, () => -1);
-        result.folds.folds.forEach((fold) => {
-          fold.test_indices.forEach((sampleIdx) => {
-            if (sampleIdx >= 0 && sampleIdx < synthesizedFoldLabels.length) {
-              synthesizedFoldLabels[sampleIdx] = fold.fold_index;
-            }
-          });
-        });
-
-        return {
-          ...result.folds,
-          fold_labels: synthesizedFoldLabels,
-        };
-      }
-
-      return result.folds;
-    }
-
-    // If the source dataset has a pre-existing test partition, synthesize a
-    // single-fold view from the n_train/n_test boundary.
-    const sp = result?.source_partitions;
-    if (sp?.has_test && sp.n_train + sp.n_test > 0) {
-      const trainArr: number[] = [];
-      for (let i = 0; i < sp.n_train; i++) trainArr.push(i);
-      const testArr: number[] = [];
-      for (let i = 0; i < sp.n_test; i++) testArr.push(sp.n_train + i);
-
-      let yTrainStats = undefined;
-      let yTestStats = undefined;
-      if (rawData?.y && rawData.y.length > 0) {
-        const yTrain = trainArr.map(i => rawData.y![i]).filter(v => v !== undefined);
-        const yTest = testArr.map(i => rawData.y![i]).filter(v => v !== undefined);
-        if (yTrain.length > 0) {
-          const mean = yTrain.reduce((a, b) => a + b, 0) / yTrain.length;
-          const std = Math.sqrt(yTrain.reduce((a, b) => a + (b - mean) ** 2, 0) / yTrain.length);
-          yTrainStats = { mean, std, min: Math.min(...yTrain), max: Math.max(...yTrain) };
-        }
-        if (yTest.length > 0) {
-          const mean = yTest.reduce((a, b) => a + b, 0) / yTest.length;
-          const std = Math.sqrt(yTest.reduce((a, b) => a + (b - mean) ** 2, 0) / yTest.length);
-          yTestStats = { mean, std, min: Math.min(...yTest), max: Math.max(...yTest) };
-        }
-      }
-
-      return {
-        splitter_name: 'Source Partition',
-        n_folds: 1,
-        folds: [{
-          fold_index: 0,
-          train_count: sp.n_train,
-          test_count: sp.n_test,
-          train_indices: trainArr,
-          test_indices: testArr,
-          y_train_stats: yTrainStats,
-          y_test_stats: yTestStats,
-        }],
-        // No fold_labels: this is a single train/test split, not K-fold CV.
-        fold_labels: undefined,
-      };
-    }
-
-    return null;
-  }, [result?.folds, result?.source_partitions, rawData?.spectra?.length, rawData?.y]);
-
-  // Derive train/test indices for partition coloring. Prefer explicit source
-  // partitions over fold data so held-out test samples stay visible when CV
-  // folds are generated only on the training subset. Do not treat the first CV
-  // fold as a global train/test partition.
-  const { trainIndices, testIndices } = useMemo(() => {
-    const sp = result?.source_partitions;
-    if (sp?.has_test && sp.n_train + sp.n_test > 0) {
-      const train = new Set<number>();
-      const test = new Set<number>();
-      for (let i = 0; i < sp.n_train; i++) train.add(i);
-      for (let i = 0; i < sp.n_test; i++) test.add(sp.n_train + i);
-      return { trainIndices: train, testIndices: test };
-    }
-
-    if (effectiveFolds?.folds && effectiveFolds.folds.length === 1) {
-      const firstFold = effectiveFolds.folds[0];
-      const train = new Set<number>(firstFold.train_indices ?? []);
-      const test = new Set<number>(firstFold.test_indices ?? []);
-      return { trainIndices: train, testIndices: test };
-    }
-
-    // Multi-fold CV with held-out test: fold_labels[i] === -1 marks held-out
-    // samples. Everything else is in the train portion covered by CV folds.
-    const labels = effectiveFolds?.fold_labels;
-    if (labels && labels.length > 0 && labels.some((label) => label === -1)) {
-      const train = new Set<number>();
-      const test = new Set<number>();
-      labels.forEach((label, idx) => {
-        if (label === -1) test.add(idx);
-        else train.add(idx);
-      });
-      if (test.size > 0) {
-        return { trainIndices: train, testIndices: test };
-      }
-    }
-
-    return { trainIndices: undefined, testIndices: undefined };
-  }, [result?.source_partitions, effectiveFolds]);
-
-  // Total sample count
-  const totalSamples = useMemo(() => {
-    return result?.processed?.spectra?.length ?? rawData?.spectra?.length ?? rawData?.y?.length ?? 0;
-  }, [rawData, result]);
+  const spectraOutlierIndices = useMemo(() => {
+    return lastOutlierIndices ? new Set(lastOutlierIndices) : undefined;
+  }, [lastOutlierIndices]);
 
   // Get partition-filtered indices
   // Build filter data context for FilterContext
-  const filterDataContext = useMemo<FilterDataContext>(() => ({
+  const filterDataContext = useMemo(() => buildCanvasFilterDataContext({
     totalSamples,
     folds: effectiveFolds,
-    outlierIndices: outlierIndicesSet ?? new Set(),
+    outlierIndices: outlierIndicesSet,
     selectedSamples,
-    metadata: columnMetadata ?? null,
+    metadata: columnMetadata,
   }), [totalSamples, effectiveFolds, outlierIndicesSet, selectedSamples, columnMetadata]);
 
   // Get filtered indices - use FilterContext if available, otherwise just partition filter
-  const filteredIndices = useMemo(() => {
-    if (filterContext) {
-      return filterContext.getFilteredIndices(filterDataContext);
-    }
-    // Fallback to partition filter only
-    return getPartitionIndices(partitionFilter, effectiveFolds, totalSamples);
-  }, [filterContext, filterDataContext, partitionFilter, effectiveFolds, totalSamples]);
-
-  // Create a Set of filtered indices for efficient lookup
-  const filteredIndicesSet = useMemo(() => new Set(filteredIndices), [filteredIndices]);
+  const filteredIndices = useMemo(() => resolveCanvasFilteredIndices({
+    filterContext,
+    filterDataContext,
+    partitionFilter,
+    folds: effectiveFolds,
+    totalSamples,
+  }), [filterContext, filterDataContext, partitionFilter, effectiveFolds, totalSamples]);
 
   // Check if we need to filter display data
   const hasDisplayFilter = filterContext?.hasActiveFilters ?? false;
-
-  // Phase 5: Detect target type (regression vs classification)
-  const targetTypeResult = useMemo(() => {
-    if (!yValues || yValues.length === 0) return null;
-    return detectTargetType(yValues);
-  }, [yValues]);
-
-  const targetType: TargetType | undefined = targetTypeResult?.type;
-  const classLabels: string[] | undefined = targetTypeResult?.classLabels;
-  const classLabelMap = useMemo(() => {
-    if (!classLabels) return undefined;
-    return createClassLabelMap(classLabels);
-  }, [classLabels]);
+  const displayFilteredIndices = useMemo(
+    () => buildCanvasDisplayFilteredIndices(filteredIndices, hasDisplayFilter),
+    [filteredIndices, hasDisplayFilter]
+  );
 
   // Compute color context
   // NOTE: hoveredSample is intentionally NOT included here to avoid cascade re-renders
   // Charts that need hover highlighting should get it from SelectionContext directly
   // NOTE: Expensive computations (yMin/yMax, trainIndices, testIndices, outlierIndices)
   // are memoized separately above to avoid recomputation on selection changes
-  const colorContext = useMemo<ColorContext>(() => {
-    return {
-      y: yValues,
-      yMin,
-      yMax,
-      trainIndices,
-      testIndices,
-      foldLabels: effectiveFolds?.fold_labels,
-      foldKind: effectiveFolds?.kind,
-      foldCount: effectiveFolds?.n_folds,
-      metadata: columnMetadata,
-      outlierIndices: outlierIndicesSet,
-      totalSamples,
-      selectedSamples,
-      pinnedSamples: contextPinnedSamples,
-      // hoveredSample excluded - charts get it from SelectionContext directly
-      displayFilteredIndices: hasDisplayFilter ? filteredIndicesSet : undefined,
-      // Phase 5: Classification support
-      targetType,
-      classLabels,
-      classLabelMap,
-    };
-  }, [yValues, yMin, yMax, trainIndices, testIndices, effectiveFolds?.fold_labels, effectiveFolds?.kind, effectiveFolds?.n_folds, columnMetadata, outlierIndicesSet, totalSamples, selectedSamples, contextPinnedSamples, hasDisplayFilter, filteredIndicesSet, targetType, classLabels, classLabelMap]);
+  const colorContext = useMemo<ColorContext>(() => buildCanvasColorContext({
+    yValues,
+    yMin,
+    yMax,
+    trainIndices,
+    testIndices,
+    folds: effectiveFolds,
+    metadata: columnMetadata,
+    outlierIndices: outlierIndicesSet,
+    totalSamples,
+    selectedSamples,
+    pinnedSamples: contextPinnedSamples,
+    displayFilteredIndices,
+    targetType,
+    classLabels,
+    classLabelMap,
+  }), [yValues, yMin, yMax, trainIndices, testIndices, effectiveFolds, columnMetadata, outlierIndicesSet, totalSamples, selectedSamples, contextPinnedSamples, displayFilteredIndices, targetType, classLabels, classLabelMap]);
 
   // Compute grid layout
   const hasMaximized = maximizedChart !== null;
-  const { gridCols, gridRows } = computeGridLayout(visibleNonMinimizedCount, hasMaximized);
+  const { gridCols, gridRows } = computeCanvasGridLayout(visibleNonMinimizedCount, hasMaximized);
 
-  // Step comparison handlers
-  const handleActiveStepChange = useCallback((step: number) => {
-    onActiveStepChange?.(step);
-  }, [onActiveStepChange]);
-
-  // Chart refs for export
-  const chartRefs: ChartRefs = useMemo(() => ({
-    spectra: spectraChartRef,
-    histogram: histogramChartRef,
-    pca: pcaChartRef,
-    folds: foldsChartRef,
-    repetitions: repetitionsChartRef,
-  }), []);
-
-  // Export data (Phase 8: includes outlierIndices for CSV export)
-  const exportData = useMemo(() => ({
-    spectra: result?.processed?.spectra ?? rawData?.spectra ?? null,
-    wavelengths: result?.processed?.wavelengths ?? rawData?.wavelengths ?? null,
-    sampleIds: rawData?.sampleIds,
-    selectedSamples,
-    pinnedSamples: contextPinnedSamples,
-    outlierIndices: lastOutlierResult
-      ? new Set(lastOutlierResult.outlier_indices)
-      : undefined,
-  }), [result, rawData, selectedSamples, contextPinnedSamples, lastOutlierResult]);
-
-  // Use extracted export hook
   const {
+    chartRefs,
     exportChartPng,
     exportSpectraCsv,
     exportSelectionsJson,
     batchExportCharts,
     exportCombinedReportPng,
-  } = usePlaygroundExport({
-    chartRefs,
-    exportData,
+  } = useMainCanvasExports({
+    rawData,
+    result,
+    selectedSamples,
+    pinnedSamples: contextPinnedSamples,
+    outlierIndices: lastOutlierResult?.outlier_indices,
     visibleCharts: effectiveVisibleCharts,
+    dataView: dataView.spectralProjection,
   });
 
   // ============= Render Helper =============
 
-  // Helper to check if a chart should be rendered in the grid
-  const shouldRenderChart = useCallback((chart: ChartType): boolean => {
-    if (!effectiveVisibleCharts.has(chart)) return false;
-    const state = getChartViewState(chart);
-    if (state === 'hidden') return false;
-    // When maximized, only render the maximized chart
-    if (hasMaximized && maximizedChart !== chart) return false;
-    return true;
-  }, [effectiveVisibleCharts, getChartViewState, hasMaximized, maximizedChart]);
+  const chartRenderStates = useMemo(() => {
+    return buildCanvasChartRenderStates({
+      visibleCharts: effectiveVisibleCharts,
+      getChartViewState,
+      hasMaximized,
+      maximizedChart,
+      chartLoading: effectiveChartLoading,
+      showSkeletons,
+      isChartMounted,
+    });
+  }, [
+    effectiveVisibleCharts,
+    getChartViewState,
+    hasMaximized,
+    maximizedChart,
+    effectiveChartLoading,
+    showSkeletons,
+    isChartMounted,
+  ]);
+
+  const minimizedCharts = useMemo(
+    () => getMinimizedCanvasCharts(effectiveVisibleCharts, getChartViewState),
+    [effectiveVisibleCharts, getChartViewState]
+  );
 
   // ============= Empty State =============
 
   if (!rawData) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-background">
-        <div className="text-center max-w-lg px-6">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center mx-auto mb-6 shadow-lg">
-            <FlaskConical className="w-10 h-10 text-primary" />
-          </div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">
-            NIR Preprocessing Playground
-          </h2>
-          <p className="text-muted-foreground mb-6 text-base">
-            Explore and experiment with preprocessing transformations on your spectral data in real-time.
-          </p>
-
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className="bg-card rounded-lg border p-4 text-left">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                <span className="w-6 h-6 rounded bg-blue-500/10 flex items-center justify-center text-blue-500 text-xs font-bold">1</span>
-                Load Data
-              </h3>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                <li>Upload CSV file</li>
-                <li>Select from workspace</li>
-                <li>Use demo data</li>
-              </ul>
-            </div>
-            <div className="bg-card rounded-lg border p-4 text-left">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                <span className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">2</span>
-                Add Operators
-              </h3>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                <li>Preprocessing (SNV, SG...)</li>
-                <li>Splitters (KFold, SPXY...)</li>
-                <li>Combine & reorder</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <MainCanvasEmptyState />;
   }
 
   // ============= Main Render =============
 
   return (
-    <div className="flex-1 flex flex-col bg-background overflow-hidden relative">
-      {/* Sample details panel */}
-      {selectedSample !== null && rawData && (
-        <SampleDetails
-          data={{
-            wavelengths: result?.processed?.wavelengths ?? rawData.wavelengths,
-            spectra: result?.processed?.spectra ?? rawData.spectra,
-            y: yValues,
-            sampleIds: rawData.sampleIds,
-            metadata: rawData.metadata,
-            originalSpectra: result?.original?.spectra ?? rawData.spectra,
-            originalY: yValues,
-          }}
-          sampleIndex={selectedSample}
-          onClose={handleCloseSampleDetails}
-        />
-      )}
-
-      {/* Raw Data Mode banner */}
-      {isRawDataMode && <RawDataModeBanner />}
-
-      {/* Toolbar */}
-      <CanvasToolbar
-        effectiveVisibleCharts={effectiveVisibleCharts}
-        onToggleChart={toggleChart}
-        hasFolds={!!hasFolds}
-        hasPartition={hasPartition}
-        showFoldsChart={showFoldsChart}
-        hasRepetitions={hasRepetitions}
-        isFetching={isFetching}
-        selectedCount={selectedCount}
-        onFilterToSelection={onFilterToSelection ? handleFilterToSelection : undefined}
-        partitionFilter={partitionFilter}
-        onPartitionFilterChange={setPartitionFilter}
-        folds={effectiveFolds}
-        totalSamples={totalSamples}
-        metadata={columnMetadata}
-        metrics={metrics}
-        metricFilters={metricFilters}
-        onMetricFiltersChange={onMetricFiltersChange}
-        onDetectOutliers={onDetectOutliers}
-        onFindSimilar={onFindSimilar}
-        selectedSample={selectedSample}
-        sampleIds={rawData?.sampleIds}
-        hasOperators={hasOperators}
-        operators={operators}
-        stepComparisonEnabled={stepComparisonEnabled}
-        onStepComparisonEnabledChange={onStepComparisonEnabledChange}
-        activeStep={activeStep}
-        onActiveStepChange={handleActiveStepChange}
-        enabledOperatorCount={enabledOperatorCount}
-        currentDatasetId={datasetId}
-        colorConfig={colorConfig}
-        onColorConfigChange={setColorConfig}
-        hasOutliers={!!lastOutlierResult && lastOutlierResult.outlier_indices.length > 0}
-        outlierCount={lastOutlierResult?.outlier_indices.length ?? 0}
-        colorContext={colorContext}
-        displayRenderMode={displayRenderMode}
-        effectiveRenderMode={effectiveMode}
-        isWebGLActive={isWebGL}
-        onRenderModeChange={handleRenderModeChange}
-        onExportChartPng={exportChartPng}
-        onExportSpectraCsv={exportSpectraCsv}
-        onExportSelectionsJson={exportSelectionsJson}
-        onBatchExport={batchExportCharts}
-        onExportCombinedReport={exportCombinedReportPng}
-        onInteractionStart={triggerInteractionPending}
-        // Phase 7: Spectra difference mode
-        spectraViewMode={spectraViewMode}
-        onSpectraViewModeChange={handleSpectraViewModeChange}
-        showAbsoluteDifference={showAbsoluteDifference}
-        onToggleAbsoluteDifference={handleToggleAbsoluteDifference}
-        // Phase 8: Reset functionality
-        onResetPlayground={onResetPlayground}
-        hasStateToReset={hasStateToReset}
-        // OPT-3: Subset mode
-        subsetMode={_subsetMode}
-        onSubsetModeChange={onSubsetModeChange}
-        subsetInfo={result?.subsetInfo}
-      />
-
-      {/* Charts grid */}
-      <div
-        className={cn(
-          'flex-1 p-3 overflow-auto grid gap-3',
-          'transition-all duration-200 ease-in-out',
-          gridCols,
-          gridRows
-        )}
-        role="region"
-        aria-label="Data visualization charts"
-      >
-        {/* Spectra Chart */}
-        {shouldRenderChart('spectra') && (
-          <ChartPanel
-            ref={spectraChartRef}
-            chartType="spectra"
-            viewState={getChartViewState('spectra')}
-            isMaximized={maximizedChart === 'spectra'}
-            isLoading={effectiveChartLoading.spectra}
-            onMaximize={() => handleMaximize('spectra')}
-            onMinimize={() => handleMinimize('spectra')}
-            onRestore={() => handleRestore('spectra')}
-            onHide={() => handleHide('spectra')}
-            sampleCount={totalSamples}
-            selectedCount={selectedCount}
-            pinnedCount={pinnedCount}
-            className=""
-          >
-            {showSkeletons || !isChartMounted('spectra') ? (
-              <ChartSkeleton type="spectra" />
-            ) : result ? (
-              <SpectraChart
-                original={result.original}
-                processed={result.processed}
-                y={yValues}
-                sampleIds={rawData.sampleIds}
-                folds={effectiveFolds}
-                globalColorConfig={colorConfig}
-                colorContext={colorContext}
-                onInteractionStart={triggerInteractionPending}
-                isLoading={effectiveChartLoading.spectra}
-                operators={operators}
-                metadata={columnMetadata}
-                metadataColumns={metadataColumns}
-                renderMode={effectiveMode}
-                displayRenderMode={displayRenderMode}
-                onRenderModeChange={handleRenderModeChange}
-                outlierIndices={lastOutlierResult ? new Set(lastOutlierResult.outlier_indices) : undefined}
-                referenceDataset={referenceCtx?.referenceResult?.processed}
-                referenceLabel={referenceCtx?.referenceInfo?.datasetName}
-                externalConfig={spectraConfigResult}
-                showAbsoluteDifference={showAbsoluteDifference}
-              />
-            ) : rawData ? (
-              <SpectraChart
-                original={{
-                  spectra: rawData.spectra,
-                  wavelengths: rawData.wavelengths,
-                  shape: [rawData.spectra.length, rawData.wavelengths.length],
-                  header_unit: rawData.wavelengthUnit,
-                }}
-                processed={{
-                  spectra: rawData.spectra,
-                  wavelengths: rawData.wavelengths,
-                  shape: [rawData.spectra.length, rawData.wavelengths.length],
-                  header_unit: rawData.wavelengthUnit,
-                }}
-                y={yValues}
-                sampleIds={rawData.sampleIds}
-                folds={undefined}
-                globalColorConfig={colorConfig}
-                colorContext={colorContext}
-                onInteractionStart={triggerInteractionPending}
-                isLoading={effectiveChartLoading.spectra}
-                operators={operators}
-                metadata={columnMetadata}
-                metadataColumns={metadataColumns}
-                renderMode={effectiveMode}
-                displayRenderMode={displayRenderMode}
-                onRenderModeChange={handleRenderModeChange}
-                referenceDataset={referenceCtx?.referenceResult?.processed}
-                referenceLabel={referenceCtx?.referenceInfo?.datasetName}
-                externalConfig={spectraConfigResult}
-                showAbsoluteDifference={showAbsoluteDifference}
-              />
-            ) : (
-              <ChartSkeleton type="spectra" />
-            )}
-          </ChartPanel>
-        )}
-
-        {/* Embedding Selector Overlay (shown over spectra) */}
-        {showEmbeddingOverlay && result?.pca && (
-          <div className="absolute top-24 right-6 z-30">
-            <EmbeddingSelector
-              embedding={result.pca.coordinates}
-              partitions={colorContext.trainIndices && colorContext.testIndices
-                ? Array.from({ length: totalSamples }, (_, i) =>
-                    colorContext.trainIndices?.has(i) ? 'Train' : 'Test'
-                  )
-                : undefined}
-              targets={yValues}
-              sampleIds={rawData?.sampleIds}
-              embeddingMethod="pca"
-              expanded={false}
-              onToggleExpanded={onToggleEmbeddingOverlay}
-              useSelectionContext
-              visible={showEmbeddingOverlay}
-            />
-          </div>
-        )}
-
-        {/* Y Histogram */}
-        {shouldRenderChart('histogram') && (
-          <ChartPanel
-            ref={histogramChartRef}
-            chartType="histogram"
-            viewState={getChartViewState('histogram')}
-            isMaximized={maximizedChart === 'histogram'}
-            isLoading={effectiveChartLoading.histogram}
-            onMaximize={() => handleMaximize('histogram')}
-            onMinimize={() => handleMinimize('histogram')}
-            onRestore={() => handleRestore('histogram')}
-            onHide={() => handleHide('histogram')}
-            sampleCount={filteredIndices.length}
-            selectedCount={selectedCount}
-          >
-            {showSkeletons || !isChartMounted('histogram') ? (
-              <ChartSkeleton type="histogram" />
-            ) : yValues.length > 0 ? (
-              <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
-                <YHistogram
-                  y={yValues}
-                  folds={effectiveFolds}
-                  metadata={columnMetadata}
-                  useSelectionContext
-                  globalColorConfig={colorConfig}
-                  colorContext={colorContext}
-                />
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                No Y values available
-              </div>
-            )}
-          </ChartPanel>
-        )}
-
-        {/* Fold / partition distribution chart (shown for either CV folds or a train/test partition) */}
-        {shouldRenderChart('folds') && showFoldsChart && (
-          <ChartPanel
-            ref={foldsChartRef}
-            chartType="folds"
-            viewState={getChartViewState('folds')}
-            isMaximized={maximizedChart === 'folds'}
-            isLoading={effectiveChartLoading.folds}
-            onMaximize={() => handleMaximize('folds')}
-            onMinimize={() => handleMinimize('folds')}
-            onRestore={() => handleRestore('folds')}
-            onHide={() => handleHide('folds')}
-            sampleCount={totalSamples}
-          >
-            {showSkeletons || !isChartMounted('folds') ? (
-              <ChartSkeleton type="folds" />
-            ) : (
-              <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
-                <FoldDistributionChart
-                  folds={effectiveFolds}
-                  y={yValues}
-                  metadata={columnMetadata}
-                  useSelectionContext
-                  globalColorConfig={colorConfig}
-                  colorContext={colorContext}
-                />
-              </div>
-            )}
-          </ChartPanel>
-        )}
-
-        {/* PCA/UMAP Plot */}
-        {shouldRenderChart('pca') && (
-          <ChartPanel
-            ref={pcaChartRef}
-            chartType="pca"
-            viewState={getChartViewState('pca')}
-            isMaximized={maximizedChart === 'pca'}
-            isLoading={effectiveChartLoading.pca}
-            onMaximize={() => handleMaximize('pca')}
-            onMinimize={() => handleMinimize('pca')}
-            onRestore={() => handleRestore('pca')}
-            onHide={() => handleHide('pca')}
-            sampleCount={totalSamples}
-            selectedCount={selectedCount}
-          >
-            {showSkeletons || !isChartMounted('pca') ? (
-              <ChartSkeleton type="pca" />
-            ) : deferredResult?.pca ? (
-              <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
-                <DimensionReductionChart
-                  pca={deferredResult.pca}
-                  umap={deferredResult.umap}
-                  y={yValues}
-                  folds={effectiveFolds}
-                  sampleIds={rawData.sampleIds}
-                  metadata={columnMetadata}
-                  useSelectionContext
-                  onRequestUMAP={onComputeUmapChange ? () => onComputeUmapChange(true) : undefined}
-                  isUMAPLoading={isUmapLoading}
-                  globalColorConfig={colorConfig}
-                  colorContext={colorContext}
-                  referencePca={referenceCtx?.referenceResult?.pca}
-                  referenceLabel={referenceCtx?.referenceInfo?.datasetName}
-                />
-              </div>
-            ) : (
-              <ChartSkeleton type="pca" />
-            )}
-          </ChartPanel>
-        )}
-
-        {/* Repetitions Chart */}
-        {shouldRenderChart('repetitions') && (
-          <ChartPanel
-            ref={repetitionsChartRef}
-            chartType="repetitions"
-            viewState={getChartViewState('repetitions')}
-            isMaximized={maximizedChart === 'repetitions'}
-            isLoading={effectiveChartLoading.repetitions}
-            onMaximize={() => handleMaximize('repetitions')}
-            onMinimize={() => handleMinimize('repetitions')}
-            onRestore={() => handleRestore('repetitions')}
-            onHide={() => handleHide('repetitions')}
-            sampleCount={totalSamples}
-          >
-            {showSkeletons || !isChartMounted('repetitions') ? (
-              <ChartSkeleton type="histogram" />
-            ) : (
-              <div className={cn("h-full", isSecondaryChartsStale && "opacity-70 transition-opacity")}>
-                <RepetitionsChart
-                  repetitionData={deferredResult?.repetitions ?? null}
-                  spectraData={deferredResult?.processed?.spectra ?? rawData?.spectra}
-                  y={yValues}
-                  useSelectionContext
-                  globalColorConfig={colorConfig}
-                  colorContext={colorContext}
-                  configResult={spectraConfigResult}
-                  metadata={columnMetadata}
-                  metadataColumns={metadataColumns}
-                  sampleIds={result?.processed?.sample_ids ?? rawData?.sampleIds}
-                />
-              </div>
-            )}
-          </ChartPanel>
-        )}
-
-        {/* Minimized charts bar */}
-        {Array.from(effectiveVisibleCharts).filter(chart => getChartViewState(chart) === 'minimized').length > 0 && (
-          <div className="col-span-full flex gap-2 flex-wrap">
-            {Array.from(effectiveVisibleCharts)
-              .filter(chart => getChartViewState(chart) === 'minimized')
-              .map(chart => (
-                <ChartPanel
-                  key={chart}
-                  chartType={chart}
-                  viewState="minimized"
-                  isMaximized={false}
-                  onRestore={() => handleRestore(chart)}
-                  onHide={() => handleHide(chart)}
-                  className="w-auto min-w-[200px]"
-                >
-                  {/* No content - header only */}
-                  <div />
-                </ChartPanel>
-              ))}
-          </div>
-        )}
-      </div>
-
-    </div>
+    <MainCanvasRenderSections
+      sampleDetailsData={sampleDetailsData}
+      selectedSample={selectedSample}
+      onCloseSampleDetails={handleCloseSampleDetails}
+      showRawDataModeBanner={isRawDataMode}
+      toolbarProps={{
+        effectiveVisibleCharts,
+        onToggleChart: toggleChart,
+        toggleableCharts,
+        hasFolds: !!hasFolds,
+        hasPartition,
+        showFoldsChart,
+        hasRepetitions,
+        isFetching,
+        selectedCount,
+        onFilterToSelection: onFilterToSelection ? handleFilterToSelection : undefined,
+        partitionFilter,
+        onPartitionFilterChange: setPartitionFilter,
+        folds: effectiveFolds,
+        totalSamples,
+        metadata: columnMetadata,
+        metrics,
+        metricObservations: result?.metricObservations ?? null,
+        metricFilters,
+        onMetricFiltersChange,
+        onDetectOutliers,
+        onFindSimilar,
+        selectedSample,
+        sampleIds: toolbarSampleIds,
+        colorConfig,
+        onColorConfigChange: setColorConfig,
+        hasOutliers: !!lastOutlierResult && lastOutlierResult.outlier_indices.length > 0,
+        colorContext,
+        onInteractionStart: triggerInteractionPending,
+        spectraViewMode,
+        onSpectraViewModeChange: handleSpectraViewModeChange,
+        showAbsoluteDifference,
+        onToggleAbsoluteDifference: handleToggleAbsoluteDifference,
+        subsetMode: _subsetMode,
+        onSubsetModeChange,
+        subsetInfo: result?.subsetInfo,
+      }}
+      chartGridProps={{
+        gridCols,
+        gridRows,
+        chartRefs,
+        chartRenderStates,
+        spectraChartInput,
+        embeddingOverlayInput,
+        histogramChartInput,
+        foldDistributionChartInput,
+        dimensionReductionChartInput,
+        repetitionsChartInput,
+        totalSamples,
+        histogramSampleCount: filteredIndices.length,
+        selectedCount,
+        pinnedCount,
+        colorConfig,
+        colorContext,
+        onInteractionStart: triggerInteractionPending,
+        operators,
+        renderMode: effectiveMode,
+        displayRenderMode,
+        onRenderModeChange: handleRenderModeChange,
+        spectraOutlierIndices,
+        referenceDataset: referenceCtx?.referenceResult?.processed,
+        referenceLabel: referenceCtx?.referenceInfo?.datasetName,
+        spectraConfigResult,
+        showAbsoluteDifference,
+        showEmbeddingOverlay,
+        onToggleEmbeddingOverlay,
+        isSecondaryChartsStale,
+        isUmapLoading,
+        onRequestUMAP: onComputeUmapChange ? handleRequestUmap : undefined,
+        chartActions,
+        minimizedCharts,
+        onRestore: handleRestore,
+        onHide: handleHide,
+      }}
+    />
   );
 }
 

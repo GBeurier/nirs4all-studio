@@ -1,41 +1,60 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useTranslation } from "react-i18next";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  Play, Clock, CheckCircle2, AlertCircle, RefreshCw, Layers, Plus,
-} from "lucide-react";
-import { Link } from "react-router-dom";
-import { cn } from "@/lib/utils";
-import { RunItem } from "@/components/runs/RunItem";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RunDetailSheet } from "@/components/runs/RunDetailSheet";
-import { ProjectFilter } from "@/components/runs/ProjectFilter";
-import { NoWorkspaceState, EmptyState, CardSkeleton, ErrorState } from "@/components/ui/state-display";
-import { MetricSelector, useMetricSelection } from "@/components/scores/MetricSelector";
+import { useMetricSelection } from "@/components/scores/useMetricSelection";
 import {
-  collectPresentMetricKeys,
+  RunsExecutionJobRecordDialog,
+  RunsExecutionTasksPanel,
+  RunsList,
+  RunsPageHeader,
+  RunsStatsGrid,
+} from "./RunsSections";
+import {
   getDefaultSelectedMetricsForTaskTypes,
   getDefaultSelectionUpgradeCandidatesForTaskTypes,
   getLegacySelectedMetricsForTaskTypes,
-  isClassificationTaskType,
-  orderMetricKeys,
 } from "@/lib/scores";
+import {
+  buildRunPageIdLookup,
+  buildRunsExecutionJobListItems,
+  buildRunsExecutionTaskPanelData,
+  buildRunsMetricSelectionContext,
+  buildRunsPageItems,
+  getExecutionJobRecordDetailRefetchInterval,
+  summarizeRunsPageStats,
+} from "@/lib/runs/pageData";
 import type { EnrichedRun } from "@/types/enriched-runs";
 import { formatApiErrorDetail } from "@/api/transport";
-import { listRuns } from "@/api/runs";
+import {
+  cancelExecutionJobRecord,
+  getWorkspaceExecutionJobRecord,
+  listRunExecutionJobRecords,
+  listRuns,
+  retryRun,
+} from "@/api/runs";
 import { getEnrichedRuns } from "@/api/enrichedRuns";
 import { useLinkedWorkspacesQuery } from "@/hooks/useDatasetQueries";
 
+function formatRunsErrorMessage(error: unknown): string | null {
+  if (!error) return null;
+
+  return formatApiErrorDetail(
+    typeof error === "object" && error && "detail" in error
+      ? (error as { detail: unknown }).detail
+      : error,
+  );
+}
+
 export default function Runs() {
-  const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [detailRun, setDetailRun] = useState<EnrichedRun | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [inspectedExecutionJobId, setInspectedExecutionJobId] = useState<string | null>(null);
 
   const { data: workspacesData } = useLinkedWorkspacesQuery();
 
-  const activeWorkspaceId = workspacesData?.active_workspace_id;
+  const activeWorkspaceId = workspacesData?.active_workspace_id ?? undefined;
 
   const {
     data: enrichedData,
@@ -57,105 +76,79 @@ export default function Runs() {
     refetchInterval: 10000,
   });
 
-  const runs = useMemo(() => {
-    const enriched = enrichedData?.runs || [];
-    const activeRuns = activeRunsData?.runs || [];
-    const enrichedIds = new Set(enriched.map(r => r.run_id));
+  const { data: executionJobRecordsData } = useQuery({
+    queryKey: ["runs", "execution-job-records", activeWorkspaceId],
+    queryFn: () => listRunExecutionJobRecords({ include_orphaned: true }),
+    enabled: !!activeWorkspaceId,
+    staleTime: 5000,
+    refetchInterval: 10000,
+  });
 
-    const activeOnlyRuns: EnrichedRun[] = activeRuns
-      .filter(ar => !enrichedIds.has(ar.id) && !enrichedIds.has(ar.store_run_id || "") && (ar.status === "running" || ar.status === "queued"))
-      .map((ar): EnrichedRun => ({
-        run_id: ar.id, name: ar.name, status: ar.status, project_id: null,
-        created_at: ar.created_at, completed_at: ar.completed_at || null,
-        duration_seconds: null, artifact_size_bytes: 0,
-        datasets_count: ar.datasets?.length || 0, pipeline_runs_count: ar.total_pipelines || 0,
-        final_models_count: 0, total_models_trained: 0, total_folds: 0, datasets: [],
-      }));
+  const {
+    data: inspectedExecutionJobRecord = null,
+    error: inspectedExecutionJobError,
+    isLoading: isLoadingInspectedExecutionJob,
+  } = useQuery({
+    queryKey: ["runs", "execution-job-record-detail", inspectedExecutionJobId],
+    queryFn: () => getWorkspaceExecutionJobRecord(inspectedExecutionJobId!),
+    enabled: inspectedExecutionJobId != null,
+    staleTime: 5000,
+    refetchInterval: (query) => getExecutionJobRecordDetailRefetchInterval(query.state.data),
+  });
 
-    const merged = enriched.map(er => {
-      const activeMatch = activeRuns.find(ar => ar.id === er.run_id || ar.store_run_id === er.run_id);
-      if (activeMatch && (activeMatch.status === "running" || activeMatch.status === "queued")) {
-        return { ...er, status: activeMatch.status };
-      }
-      return er;
-    });
+  const runs = useMemo(
+    () => buildRunsPageItems(enrichedData?.runs, activeRunsData?.runs),
+    [enrichedData, activeRunsData],
+  );
 
-    return [...activeOnlyRuns, ...merged];
-  }, [enrichedData, activeRunsData]);
+  const executionJobIndicators = useMemo(() => {
+    return new Map(
+      buildRunsExecutionJobListItems(runs, executionJobRecordsData?.records)
+        .map(item => [item.runId, item.execution]),
+    );
+  }, [runs, executionJobRecordsData]);
 
-  const runPageIdLookup = useMemo(() => {
-    const lookup = new Map<string, string>();
-    for (const run of activeRunsData?.runs || []) {
-      lookup.set(run.id, run.id);
-      if (run.store_run_id) {
-        lookup.set(run.store_run_id, run.id);
-      }
-    }
-    return lookup;
-  }, [activeRunsData]);
+  const executionTaskPanelData = useMemo(
+    () => buildRunsExecutionTaskPanelData(executionJobRecordsData?.records),
+    [executionJobRecordsData],
+  );
+
+  const runPageIdLookup = useMemo(
+    () => buildRunPageIdLookup(activeRunsData?.runs),
+    [activeRunsData],
+  );
 
   const isLoading = isLoadingEnriched;
   const hasActiveWorkspace = !!activeWorkspaceId;
-  const enrichedErrorMessage = enrichedError
-    ? formatApiErrorDetail(
-      typeof enrichedError === "object" && enrichedError && "detail" in enrichedError
-        ? enrichedError.detail
-        : enrichedError,
-    )
-    : null;
+  const enrichedErrorMessage = formatRunsErrorMessage(enrichedError);
+  const inspectedExecutionJobErrorMessage = formatRunsErrorMessage(inspectedExecutionJobError);
+  const refreshRunExecutionData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["runs"] }),
+      queryClient.invalidateQueries({ queryKey: ["enriched-runs"] }),
+    ]);
+  };
+  const cancelExecutionJobRecordMutation = useMutation({
+    mutationFn: cancelExecutionJobRecord,
+    onSuccess: refreshRunExecutionData,
+  });
+  const retryExecutionJobRunMutation = useMutation({
+    mutationFn: retryRun,
+    onSuccess: refreshRunExecutionData,
+  });
+  const executionJobActionErrorMessage = formatRunsErrorMessage(
+    cancelExecutionJobRecordMutation.error ?? retryExecutionJobRunMutation.error,
+  );
+  const pendingExecutionJobAction = cancelExecutionJobRecordMutation.isPending
+    ? "cancel"
+    : retryExecutionJobRunMutation.isPending
+      ? "retry"
+      : null;
 
-  const metricContext = useMemo(() => {
-    const taskTypes = new Set<string>();
-    const availableMetricKeys = new Set<string>();
-
-    for (const run of runs) {
-      for (const dataset of run.datasets) {
-        if (isClassificationTaskType(dataset.task_type)) {
-          taskTypes.add("classification");
-        } else if (dataset.task_type) {
-          taskTypes.add("regression");
-        }
-
-        if (dataset.metric && (
-          dataset.best_final_score != null
-          || dataset.best_avg_val_score != null
-          || dataset.best_avg_test_score != null
-        )) {
-          availableMetricKeys.add(dataset.metric);
-        }
-
-        for (const chain of dataset.top_5) {
-          for (const key of collectPresentMetricKeys(
-            chain.scores?.val as Record<string, unknown> | undefined,
-            chain.scores?.test as Record<string, unknown> | undefined,
-            chain.final_scores as Record<string, unknown> | undefined,
-            chain.final_agg_scores as Record<string, unknown> | undefined,
-          )) {
-            availableMetricKeys.add(key);
-          }
-
-          if (
-            dataset.metric
-            && (
-              chain.avg_val_score != null
-              || chain.avg_test_score != null
-              || chain.avg_train_score != null
-              || chain.final_test_score != null
-              || chain.final_train_score != null
-            )
-          ) {
-            availableMetricKeys.add(dataset.metric);
-          }
-        }
-      }
-    }
-
-    return {
-      taskType: taskTypes.size === 1 ? [...taskTypes][0] : null,
-      taskTypes: [...taskTypes],
-      availableMetricKeys: orderMetricKeys([...availableMetricKeys]),
-    };
-  }, [runs]);
+  const metricContext = useMemo(
+    () => buildRunsMetricSelectionContext(runs),
+    [runs],
+  );
 
   const [selectedMetrics, setSelectedMetrics] = useMetricSelection(
     "runs",
@@ -167,11 +160,7 @@ export default function Runs() {
     getDefaultSelectionUpgradeCandidatesForTaskTypes(metricContext.taskTypes),
   );
 
-  const runningCount = runs.filter(r => r.status === "running").length;
-  const queuedCount = runs.filter(r => r.status === "queued").length;
-  const completedCount = runs.filter(r => r.status === "completed").length;
-  const failedCount = runs.filter(r => r.status === "failed").length;
-  const totalPipelines = runs.reduce((acc, r) => acc + r.pipeline_runs_count, 0);
+  const stats = useMemo(() => summarizeRunsPageStats(runs), [runs]);
 
   const handleViewDetails = (enrichedRun: EnrichedRun) => {
     setDetailRun(enrichedRun);
@@ -180,96 +169,47 @@ export default function Runs() {
 
   return (
     <div className="p-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("runs.title")}</h1>
-          <p className="text-muted-foreground text-sm">{t("runs.subtitle")}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <MetricSelector
-            taskType={metricContext.taskType}
-            taskTypes={metricContext.taskTypes}
-            selectedMetrics={selectedMetrics}
-            onSelectedMetricsChange={setSelectedMetrics}
-            availableMetricKeys={metricContext.availableMetricKeys}
-          />
-          <ProjectFilter selectedProjectId={selectedProjectId} onProjectChange={setSelectedProjectId} />
-          <Button asChild>
-            <Link to="/editor"><Plus className="h-4 w-4 mr-2" />{t("runs.newRun")}</Link>
-          </Button>
-        </div>
-      </div>
+      <RunsPageHeader
+        metricContext={metricContext}
+        selectedMetrics={selectedMetrics}
+        onSelectedMetricsChange={setSelectedMetrics}
+        selectedProjectId={selectedProjectId}
+        onProjectChange={setSelectedProjectId}
+      />
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-        <Card><CardContent className="p-3 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-chart-2/10">
-            <RefreshCw className={cn("h-4 w-4 text-chart-2", runningCount > 0 && "animate-spin")} />
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">{t("runs.stats.running")}</p>
-            <p className="text-xl font-bold">{runningCount}</p>
-          </div>
-        </CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-muted/50"><Clock className="h-4 w-4 text-muted-foreground" /></div>
-          <div>
-            <p className="text-xs text-muted-foreground">{t("runs.stats.queued")}</p>
-            <p className="text-xl font-bold">{queuedCount}</p>
-          </div>
-        </CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-chart-1/10"><CheckCircle2 className="h-4 w-4 text-chart-1" /></div>
-          <div>
-            <p className="text-xs text-muted-foreground">{t("runs.stats.completed")}</p>
-            <p className="text-xl font-bold">{completedCount}</p>
-          </div>
-        </CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-destructive/10"><AlertCircle className="h-4 w-4 text-destructive" /></div>
-          <div>
-            <p className="text-xs text-muted-foreground">{t("runs.stats.failed")}</p>
-            <p className="text-xl font-bold">{failedCount}</p>
-          </div>
-        </CardContent></Card>
-        <Card><CardContent className="p-3 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10"><Layers className="h-4 w-4 text-primary" /></div>
-          <div>
-            <p className="text-xs text-muted-foreground">{t("runs.stats.totalPipelines")}</p>
-            <p className="text-xl font-bold">{totalPipelines}</p>
-          </div>
-        </CardContent></Card>
-      </div>
+      <RunsStatsGrid stats={stats} />
 
-      {/* Runs List */}
-      <div className="space-y-3">
-        {isLoading ? (
-          <CardSkeleton count={3} />
-        ) : !hasActiveWorkspace ? (
-          <NoWorkspaceState title="No workspace linked" description="Link a nirs4all workspace to see your runs. Go to Settings." />
-        ) : enrichedErrorMessage && runs.length === 0 ? (
-          <ErrorState
-            title="Failed to load run history"
-            message={enrichedErrorMessage}
-            onRetry={() => {
-              void refetchEnrichedRuns();
-            }}
-          />
-        ) : runs.length === 0 ? (
-          <EmptyState icon={Play} title={t("runs.empty")} description={t("runs.emptyHint")} action={{ label: t("runs.newRun"), href: "/editor" }} />
-        ) : (
-          runs.map(run => (
-            <RunItem
-              key={run.run_id}
-              run={run}
-              onViewDetails={handleViewDetails}
-              workspaceId={activeWorkspaceId!}
-              selectedMetrics={selectedMetrics}
-            />
-          ))
-        )}
-      </div>
+      <RunsExecutionTasksPanel
+        data={executionTaskPanelData}
+        onInspectJob={setInspectedExecutionJobId}
+      />
+
+      <RunsExecutionJobRecordDialog
+        open={inspectedExecutionJobId != null}
+        onOpenChange={(open) => {
+          if (!open) setInspectedExecutionJobId(null);
+        }}
+        jobId={inspectedExecutionJobId}
+        record={inspectedExecutionJobRecord}
+        isLoading={isLoadingInspectedExecutionJob}
+        errorMessage={inspectedExecutionJobErrorMessage}
+        actionErrorMessage={executionJobActionErrorMessage}
+        pendingAction={pendingExecutionJobAction}
+        onCancelJob={(jobId) => cancelExecutionJobRecordMutation.mutate(jobId)}
+        onRetryRun={(runId) => retryExecutionJobRunMutation.mutate(runId)}
+      />
+
+      <RunsList
+        isLoading={isLoading}
+        hasActiveWorkspace={hasActiveWorkspace}
+        errorMessage={enrichedErrorMessage}
+        runs={runs}
+        onRetry={refetchEnrichedRuns}
+        onViewDetails={handleViewDetails}
+        workspaceId={activeWorkspaceId}
+        selectedMetrics={selectedMetrics}
+        executionJobIndicators={executionJobIndicators}
+      />
 
       <RunDetailSheet
         run={detailRun}

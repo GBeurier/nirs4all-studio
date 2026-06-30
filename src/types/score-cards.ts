@@ -1,3 +1,5 @@
+import type { ResultArtifactRef } from "@/lib/resultArtifacts";
+
 /**
  * Unified score card types for the 3 card types: TRAIN, CROSSVAL, REFIT.
  * Used across History (Runs), Results, and Predictions pages.
@@ -66,6 +68,7 @@ export interface ScoreCardRow {
 
   // Artifact availability
   foldArtifacts?: Record<string, string> | null;
+  artifactRefs?: ResultArtifactRef[];
   hasRefitArtifact: boolean;
 
   // Hierarchy: children for expandable rows

@@ -10,7 +10,6 @@
 import { execFile } from "node:child_process";
 import { loadPythonRuntimeConfig, loadRecommendedConfig } from "./external-config";
 
-/* eslint-disable @typescript-eslint/no-require-imports */
 interface PythonRuntimeConfigModule {
   MANAGED_RUNTIME_PACKAGES: readonly string[];
 }

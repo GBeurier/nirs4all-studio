@@ -95,6 +95,14 @@ const appTree = (
   </StrictMode>
 );
 
+function renderSentryFallback({ error }: { error: unknown }) {
+  return (
+    <SentryFallback
+      error={error instanceof Error ? error : new Error(String(error))}
+    />
+  );
+}
+
 void (async () => {
   try {
     const telemetryConsent = await getTelemetryConsentStatus();
@@ -106,6 +114,6 @@ void (async () => {
   }
 
   createRoot(document.getElementById("root")!).render(
-    <SentryErrorBoundary fallback={SentryFallback}>{appTree}</SentryErrorBoundary>
+    <SentryErrorBoundary fallback={renderSentryFallback}>{appTree}</SentryErrorBoundary>
   );
 })();

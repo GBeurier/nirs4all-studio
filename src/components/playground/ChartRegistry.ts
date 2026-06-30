@@ -28,6 +28,17 @@ import {
 } from 'lucide-react';
 import type { PlaygroundResult } from '@/types/playground';
 import type { SpectralData } from '@/types/spectral';
+import type { PlaygroundDataViewProjection } from '@/lib/playground/dataViewProjection';
+import {
+  buildPlaygroundChartAvailabilityReadModel,
+  type PlaygroundChartAvailabilityContext,
+  getPlaygroundChartDisabledReason,
+  isPlaygroundChartAvailable,
+  isPlaygroundChartDisabled,
+  isPlaygroundChartId,
+  shouldRecommendPlaygroundChart,
+  type PlaygroundChartId,
+} from '@/lib/playground/chartAvailability';
 
 // ============= Types =============
 
@@ -65,12 +76,36 @@ export interface ChartDefinition {
   icon: LucideIcon;
   /** Chart component to render */
   component: ComponentType<Record<string, unknown>>; // Will be passed BaseChartProps + specific props
-  /** Check if this chart should be available given the data */
-  requiresData: (result: PlaygroundResult | null, rawData: SpectralData | null) => boolean;
-  /** Check if this chart is disabled (available but not functional) */
-  isDisabled?: (result: PlaygroundResult | null, rawData: SpectralData | null) => boolean;
-  /** Reason why the chart is disabled */
-  disabledReason?: (result: PlaygroundResult | null, rawData: SpectralData | null) => string | null;
+  /** Check if this chart should be available given the full chart availability context. */
+  requiresDataContext?: (
+    context: PlaygroundChartAvailabilityContext,
+  ) => boolean;
+  /** Legacy availability callback. Prefer requiresDataContext for new chart extensions. */
+  requiresData?: (
+    result: PlaygroundResult | null,
+    rawData: SpectralData | null,
+    dataView?: PlaygroundDataViewProjection | null,
+  ) => boolean;
+  /** Check if this chart is disabled using the full chart availability context. */
+  isDisabledContext?: (
+    context: PlaygroundChartAvailabilityContext,
+  ) => boolean;
+  /** Legacy disabled callback. Prefer isDisabledContext for new chart extensions. */
+  isDisabled?: (
+    result: PlaygroundResult | null,
+    rawData: SpectralData | null,
+    dataView?: PlaygroundDataViewProjection | null,
+  ) => boolean;
+  /** Reason why the chart is disabled using the full chart availability context. */
+  disabledReasonContext?: (
+    context: PlaygroundChartAvailabilityContext,
+  ) => string | null;
+  /** Legacy disabled-reason callback. Prefer disabledReasonContext for new chart extensions. */
+  disabledReason?: (
+    result: PlaygroundResult | null,
+    rawData: SpectralData | null,
+    dataView?: PlaygroundDataViewProjection | null,
+  ) => string | null;
   /** Default visibility (shown by default) */
   defaultVisible: boolean;
   /** Priority for ordering (lower = higher priority) */
@@ -86,6 +121,49 @@ export interface ChartDefinition {
  */
 export type ChartVisibility = Record<string, boolean>;
 
+export type ChartAvailabilityInput = PlaygroundResult | PlaygroundChartAvailabilityContext | null;
+
+function isRegisteredPlaygroundChartId(id: string): id is PlaygroundChartId {
+  return isPlaygroundChartId(id);
+}
+
+function isPlaygroundChartAvailabilityContext(
+  value: ChartAvailabilityInput,
+): value is PlaygroundChartAvailabilityContext {
+  return Boolean(value && typeof value === 'object' && 'result' in value && 'rawData' in value);
+}
+
+function toPlaygroundChartAvailabilityContext(
+  resultOrContext: ChartAvailabilityInput,
+  rawData?: SpectralData | null,
+  dataView?: PlaygroundDataViewProjection | null,
+): PlaygroundChartAvailabilityContext {
+  if (isPlaygroundChartAvailabilityContext(resultOrContext)) {
+    return resultOrContext;
+  }
+
+  return {
+    result: resultOrContext,
+    rawData: rawData ?? null,
+    dataView,
+  };
+}
+
+function toPlaygroundChartRegistryContext(
+  resultOrContext: ChartAvailabilityInput,
+  rawData?: SpectralData | null,
+  dataView?: PlaygroundDataViewProjection | null,
+): PlaygroundChartAvailabilityContext {
+  const context = toPlaygroundChartAvailabilityContext(resultOrContext, rawData, dataView);
+  if (context.availability) {
+    return context;
+  }
+  return {
+    ...context,
+    availability: buildPlaygroundChartAvailabilityReadModel(context),
+  };
+}
+
 // ============= Chart Definitions =============
 
 /**
@@ -99,9 +177,7 @@ export const CHART_DEFINITIONS: ChartDefinition[] = [
     description: 'Visualize original and processed spectral data with overlay',
     icon: Layers,
     component: () => null, // Placeholder - actual component passed at render time
-    requiresData: (result, rawData) => {
-      return (result?.processed?.spectra?.length ?? 0) > 0 || (rawData?.spectra?.length ?? 0) > 0;
-    },
+    requiresData: (result, rawData, dataView) => isPlaygroundChartAvailable('spectra', { result, rawData, dataView }),
     defaultVisible: true,
     priority: 10,
     category: 'core',
@@ -114,11 +190,9 @@ export const CHART_DEFINITIONS: ChartDefinition[] = [
     description: 'Distribution of target values with fold coloring',
     icon: BarChart2,
     component: () => null,
-    requiresData: (result, rawData) => {
-      return (rawData?.y?.length ?? 0) > 0;
-    },
-    isDisabled: (result, rawData) => (rawData?.y?.length ?? 0) === 0,
-    disabledReason: () => 'No Y values in dataset',
+    requiresData: (result, rawData, dataView) => isPlaygroundChartAvailable('histogram', { result, rawData, dataView }),
+    isDisabled: (result, rawData, dataView) => isPlaygroundChartDisabled('histogram', { result, rawData, dataView }),
+    disabledReason: (result, rawData, dataView) => getPlaygroundChartDisabledReason('histogram', { result, rawData, dataView }),
     defaultVisible: true,
     priority: 20,
     category: 'core',
@@ -131,9 +205,7 @@ export const CHART_DEFINITIONS: ChartDefinition[] = [
     description: 'PCA or UMAP projection of spectral data',
     icon: ScatterChart,
     component: () => null,
-    requiresData: (result) => {
-      return !!result?.pca?.coordinates && result.pca.coordinates.length > 0;
-    },
+    requiresData: (result, rawData, dataView) => isPlaygroundChartAvailable('pca', { result, rawData, dataView }),
     defaultVisible: true,
     priority: 30,
     category: 'core',
@@ -146,11 +218,9 @@ export const CHART_DEFINITIONS: ChartDefinition[] = [
     description: 'Cross-validation fold sample counts and Y statistics',
     icon: LayoutGrid,
     component: () => null,
-    requiresData: (result) => {
-      return !!result?.folds && result.folds.n_folds > 0;
-    },
-    isDisabled: (result) => !result?.folds || result.folds.n_folds === 0,
-    disabledReason: () => 'Add a splitter to see folds',
+    requiresData: (result, rawData, dataView) => isPlaygroundChartAvailable('folds', { result, rawData, dataView }),
+    isDisabled: (result, rawData, dataView) => isPlaygroundChartDisabled('folds', { result, rawData, dataView }),
+    disabledReason: (result, rawData, dataView) => getPlaygroundChartDisabledReason('folds', { result, rawData, dataView }),
     defaultVisible: true,
     priority: 40,
     category: 'core',
@@ -163,17 +233,9 @@ export const CHART_DEFINITIONS: ChartDefinition[] = [
     description: 'Visualize intra-sample variability between repetitions',
     icon: Repeat,
     component: () => null,
-    requiresData: (result) => {
-      return !!result?.repetitions;
-    },
-    isDisabled: (result) => !result?.repetitions?.has_repetitions,
-    disabledReason: (result) => {
-      if (!result?.repetitions) return 'Repetition analysis not computed';
-      if (!result.repetitions.has_repetitions) {
-        return result.repetitions.message || 'No repetitions detected in dataset';
-      }
-      return null;
-    },
+    requiresData: (result, rawData, dataView) => isPlaygroundChartAvailable('repetitions', { result, rawData, dataView }),
+    isDisabled: (result, rawData, dataView) => isPlaygroundChartDisabled('repetitions', { result, rawData, dataView }),
+    disabledReason: (result, rawData, dataView) => getPlaygroundChartDisabledReason('repetitions', { result, rawData, dataView }),
     defaultVisible: false, // Not visible by default until reps detected
     priority: 50,
     category: 'analysis',
@@ -232,8 +294,13 @@ class ChartRegistryClass {
   /**
    * Get available charts based on current data
    */
-  getAvailable(result: PlaygroundResult | null, rawData: SpectralData | null): ChartDefinition[] {
-    return this.getAll().filter(chart => chart.requiresData(result, rawData));
+  getAvailable(
+    result: ChartAvailabilityInput,
+    rawData?: SpectralData | null,
+    dataView?: PlaygroundDataViewProjection | null,
+  ): ChartDefinition[] {
+    const context = toPlaygroundChartRegistryContext(result, rawData, dataView);
+    return this.getAll().filter(chart => this.isAvailable(chart.id, context));
   }
 
   /**
@@ -250,28 +317,61 @@ class ChartRegistryClass {
   /**
    * Check if a specific chart is available
    */
-  isAvailable(id: string, result: PlaygroundResult | null, rawData: SpectralData | null): boolean {
+  isAvailable(
+    id: string,
+    result: ChartAvailabilityInput,
+    rawData?: SpectralData | null,
+    dataView?: PlaygroundDataViewProjection | null,
+  ): boolean {
     const chart = this.get(id);
     if (!chart) return false;
-    return chart.requiresData(result, rawData);
+    const context = toPlaygroundChartRegistryContext(result, rawData, dataView);
+    if (isRegisteredPlaygroundChartId(id)) {
+      return isPlaygroundChartAvailable(id, context);
+    }
+    return chart.requiresDataContext?.(context)
+      ?? chart.requiresData?.(context.result, context.rawData, context.dataView)
+      ?? false;
   }
 
   /**
    * Check if a specific chart is disabled
    */
-  isDisabled(id: string, result: PlaygroundResult | null, rawData: SpectralData | null): boolean {
+  isDisabled(
+    id: string,
+    result: ChartAvailabilityInput,
+    rawData?: SpectralData | null,
+    dataView?: PlaygroundDataViewProjection | null,
+  ): boolean {
     const chart = this.get(id);
     if (!chart) return true;
-    return chart.isDisabled?.(result, rawData) ?? false;
+    const context = toPlaygroundChartRegistryContext(result, rawData, dataView);
+    if (isRegisteredPlaygroundChartId(id)) {
+      return isPlaygroundChartDisabled(id, context);
+    }
+    return chart.isDisabledContext?.(context)
+      ?? chart.isDisabled?.(context.result, context.rawData, context.dataView)
+      ?? false;
   }
 
   /**
    * Get the reason a chart is disabled
    */
-  getDisabledReason(id: string, result: PlaygroundResult | null, rawData: SpectralData | null): string | null {
+  getDisabledReason(
+    id: string,
+    result: ChartAvailabilityInput,
+    rawData?: SpectralData | null,
+    dataView?: PlaygroundDataViewProjection | null,
+  ): string | null {
     const chart = this.get(id);
     if (!chart) return 'Chart not found';
-    return chart.disabledReason?.(result, rawData) ?? null;
+    const context = toPlaygroundChartRegistryContext(result, rawData, dataView);
+    if (isRegisteredPlaygroundChartId(id)) {
+      return getPlaygroundChartDisabledReason(id, context);
+    }
+    return chart.disabledReasonContext?.(context)
+      ?? chart.disabledReason?.(context.result, context.rawData, context.dataView)
+      ?? null;
   }
 }
 
@@ -296,17 +396,19 @@ export function getChartConfig(id: string): ChartDefinition | undefined {
  */
 export function buildEffectiveVisibility(
   visibility: ChartVisibility,
-  result: PlaygroundResult | null,
-  rawData: SpectralData | null
+  result: ChartAvailabilityInput,
+  rawData?: SpectralData | null,
+  dataView?: PlaygroundDataViewProjection | null,
 ): ChartVisibility {
   const effective: ChartVisibility = { ...visibility };
+  const context = toPlaygroundChartRegistryContext(result, rawData, dataView);
 
-  for (const [id, isVisible] of Object.entries(visibility)) {
+  for (const id of Object.keys(visibility)) {
     const chart = chartRegistry.get(id);
     if (!chart) continue;
 
     // If chart requires specific data that's not available, hide it
-    if (!chart.requiresData(result, rawData)) {
+    if (!chartRegistry.isAvailable(id, context)) {
       effective[id] = false;
     }
   }
@@ -320,18 +422,20 @@ export function buildEffectiveVisibility(
  */
 export function computeRecommendedVisibility(
   current: ChartVisibility,
-  result: PlaygroundResult | null,
-  rawData: SpectralData | null
+  result: ChartAvailabilityInput,
+  rawData?: SpectralData | null,
+  dataView?: PlaygroundDataViewProjection | null,
 ): ChartVisibility {
   const recommended: ChartVisibility = { ...current };
+  const context = toPlaygroundChartRegistryContext(result, rawData, dataView);
 
   // Enable repetitions chart when repetitions are detected
-  if (result?.repetitions?.has_repetitions && !current.repetitions) {
+  if (shouldRecommendPlaygroundChart('repetitions', context) && !current.repetitions) {
     recommended.repetitions = true;
   }
 
   // Enable folds chart when a splitter is added
-  if (result?.folds && result.folds.n_folds > 0 && !current.folds) {
+  if (shouldRecommendPlaygroundChart('folds', context) && !current.folds) {
     recommended.folds = true;
   }
 
@@ -342,14 +446,17 @@ export function computeRecommendedVisibility(
  * Get list of chart IDs that should show toggle buttons
  */
 export function getToggleableCharts(
-  result: PlaygroundResult | null,
-  rawData: SpectralData | null
+  result: ChartAvailabilityInput,
+  rawData?: SpectralData | null,
+  dataView?: PlaygroundDataViewProjection | null,
 ): { id: string; label: string; disabled: boolean; disabledReason: string | null }[] {
+  const context = toPlaygroundChartRegistryContext(result, rawData, dataView);
+
   return chartRegistry.getAll().map(chart => ({
     id: chart.id,
     label: chart.shortName || chart.name,
-    disabled: chart.isDisabled?.(result, rawData) ?? false,
-    disabledReason: chart.disabledReason?.(result, rawData) ?? null,
+    disabled: chartRegistry.isDisabled(chart.id, context),
+    disabledReason: chartRegistry.getDisabledReason(chart.id, context),
   }));
 }
 

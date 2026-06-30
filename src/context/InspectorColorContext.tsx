@@ -7,71 +7,47 @@
  */
 
 import {
-  createContext,
-  useContext,
   useCallback,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
-import { useInspectorData } from './InspectorDataContext';
-import { useInspectorSelection, useInspectorHover } from './InspectorSelectionContext';
+import { useInspectorData } from './useInspectorDataContext';
+import { useInspectorSelection, useInspectorHover } from './useInspectorSelection';
 import {
-  CONTINUOUS_PALETTES,
-  CATEGORICAL_PALETTES,
   type ContinuousPalette,
   type CategoricalPalette,
 } from '@/lib/playground/colorConfig';
-import type {
-  InspectorColorMode,
-  InspectorColorConfig,
-  InspectorChainSummary,
-} from '@/types/inspector';
+import {
+  clientStorageKeys,
+  readClientStorageJson,
+  writeClientStorageJson,
+} from '@/lib/clientStorage';
 import { DEFAULT_INSPECTOR_COLOR_CONFIG } from '@/types/inspector';
-
-// ============= Types =============
-
-export interface InspectorColorContextValue {
-  config: InspectorColorConfig;
-  setMode: (mode: InspectorColorMode) => void;
-  setContinuousPalette: (palette: ContinuousPalette) => void;
-  setCategoricalPalette: (palette: CategoricalPalette) => void;
-  setUnselectedOpacity: (opacity: number) => void;
-  resetConfig: () => void;
-
-  getChainColor: (chainId: string) => string;
-  getChainOpacity: (chainId: string) => number;
-}
-
-// ============= Constants =============
-
-const FALLBACK_COLOR = '#64748b'; // slate-500
-const SESSION_KEY = 'inspector-color-config';
+import {
+  computeInspectorColorScoreRange,
+  resolveInspectorChainColor,
+  resolveInspectorChainOpacity,
+} from '@/lib/inspector/coloring';
+import { buildResultAnalysisStore } from '@/lib/inspector/resultAnalysisStore';
+import {
+  InspectorColorContext,
+  type InspectorColorConfig,
+  type InspectorColorContextValue,
+  type InspectorColorMode,
+} from '@/context/useInspectorColor';
 
 // ============= Helpers =============
 
 function loadConfigFromStorage(): InspectorColorConfig {
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    if (raw) return { ...DEFAULT_INSPECTOR_COLOR_CONFIG, ...JSON.parse(raw) };
-  } catch { /* ignore */ }
+  const parsed = readClientStorageJson<Partial<InspectorColorConfig>>(clientStorageKeys.inspectorColorConfig);
+  if (parsed) return { ...DEFAULT_INSPECTOR_COLOR_CONFIG, ...parsed };
   return { ...DEFAULT_INSPECTOR_COLOR_CONFIG };
 }
 
 function saveConfigToStorage(config: InspectorColorConfig) {
-  try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(config));
-  } catch { /* ignore */ }
+  writeClientStorageJson(clientStorageKeys.inspectorColorConfig, config);
 }
-
-function normalizeValue(value: number, min: number, max: number): number {
-  if (max === min) return 0.5;
-  return Math.max(0, Math.min(1, (value - min) / (max - min)));
-}
-
-// ============= Context =============
-
-const InspectorColorContext = createContext<InspectorColorContextValue | null>(null);
 
 // ============= Provider =============
 
@@ -82,31 +58,16 @@ export function InspectorColorProvider({ children }: { children: ReactNode }) {
 
   const [config, setConfig] = useState<InspectorColorConfig>(loadConfigFromStorage);
 
-  // Build chain lookup map
-  const chainMap = useMemo(() => {
-    const map = new Map<string, InspectorChainSummary>();
-    for (const c of chains as InspectorChainSummary[]) {
-      map.set(c.chain_id, c);
-    }
-    return map;
-  }, [chains]);
+  const analysisStore = useMemo(
+    () => buildResultAnalysisStore({ chains }),
+    [chains],
+  );
 
   // Score stats for gradient normalization
-  const scoreStats = useMemo(() => {
-    const scores: number[] = [];
-    for (const c of chains as InspectorChainSummary[]) {
-      const val = c[scoreColumn];
-      if (val != null) scores.push(val);
-    }
-    if (scores.length === 0) return null;
-    let min = Infinity;
-    let max = -Infinity;
-    for (const s of scores) {
-      if (s < min) min = s;
-      if (s > max) max = s;
-    }
-    return { min, max };
-  }, [chains, scoreColumn]);
+  const scoreRange = useMemo(
+    () => computeInspectorColorScoreRange(analysisStore, scoreColumn),
+    [analysisStore, scoreColumn],
+  );
 
   // Setters with persistence
   const setMode = useCallback((mode: InspectorColorMode) => {
@@ -149,45 +110,27 @@ export function InspectorColorProvider({ children }: { children: ReactNode }) {
 
   // Core color function
   const getChainColor = useCallback((chainId: string): string => {
-    const chain = chainMap.get(chainId);
-    if (!chain) return FALLBACK_COLOR;
-
-    switch (config.mode) {
-      case 'group': {
-        const group = getChainGroup(chainId);
-        return group?.color ?? FALLBACK_COLOR;
-      }
-      case 'score': {
-        const score = chain[scoreColumn];
-        if (score == null || !scoreStats) return FALLBACK_COLOR;
-        const t = normalizeValue(score, scoreStats.min, scoreStats.max);
-        const paletteFn = CONTINUOUS_PALETTES[config.continuousPalette];
-        return paletteFn ? paletteFn(t) : FALLBACK_COLOR;
-      }
-      case 'dataset': {
-        const ds = chain.dataset_name ?? '(unknown)';
-        const dsIndex = availableDatasets.indexOf(ds);
-        const palette = CATEGORICAL_PALETTES[config.categoricalPalette];
-        return palette ? palette[(dsIndex >= 0 ? dsIndex : 0) % palette.length] : FALLBACK_COLOR;
-      }
-      case 'model_class': {
-        const mc = chain.model_class;
-        const mcIndex = availableModels.indexOf(mc);
-        const palette = CATEGORICAL_PALETTES[config.categoricalPalette];
-        return palette ? palette[(mcIndex >= 0 ? mcIndex : 0) % palette.length] : FALLBACK_COLOR;
-      }
-      default:
-        return FALLBACK_COLOR;
-    }
-  }, [chainMap, config.mode, config.continuousPalette, config.categoricalPalette, scoreColumn, scoreStats, getChainGroup, availableDatasets, availableModels]);
+    return resolveInspectorChainColor({
+      store: analysisStore,
+      chainId,
+      config,
+      scoreColumn,
+      scoreRange,
+      getChainGroup,
+      availableDatasets,
+      availableModels,
+    });
+  }, [analysisStore, config, scoreColumn, scoreRange, getChainGroup, availableDatasets, availableModels]);
 
   // Core opacity function
   const getChainOpacity = useCallback((chainId: string): number => {
-    if (hoveredChain === chainId) return 1;
-    if (hasSelection) {
-      return selectedChains.has(chainId) ? 1 : config.unselectedOpacity;
-    }
-    return 0.7;
+    return resolveInspectorChainOpacity({
+      chainId,
+      hoveredChain,
+      hasSelection,
+      selectedChainIds: selectedChains,
+      unselectedOpacity: config.unselectedOpacity,
+    });
   }, [config.unselectedOpacity, hoveredChain, hasSelection, selectedChains]);
 
   const value = useMemo<InspectorColorContextValue>(() => ({
@@ -209,14 +152,4 @@ export function InspectorColorProvider({ children }: { children: ReactNode }) {
       {children}
     </InspectorColorContext.Provider>
   );
-}
-
-// ============= Hook =============
-
-export function useInspectorColor(): InspectorColorContextValue {
-  const context = useContext(InspectorColorContext);
-  if (!context) {
-    throw new Error('useInspectorColor must be used within an InspectorColorProvider');
-  }
-  return context;
 }

@@ -6,54 +6,41 @@
  * - Add/remove stages and options
  * - Combination count preview
  * - Visual matrix for small combinations
+ *
+ * This file stays a thin orchestrator: combinatoric/label/badge rules live in
+ * `CartesianGeneratorData.ts` and the repetitive visual sections live in
+ * `CartesianGeneratorSections.tsx`.
  */
 
 import { useState, useCallback, useMemo } from "react";
-import {
-  Grid,
-  Plus,
-  X,
-  Layers,
-  Info,
-  ChevronDown,
-  ChevronUp,
-  Trash2,
-  Copy,
-  LayoutGrid,
-  ArrowRight,
-} from "lucide-react";
+import { ChevronDown, ChevronUp, Grid, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { PipelineStep, StepType, StepOption } from "./types";
+import { calculateStepVariants } from "./variantCounting";
 import {
-  calculateCartesianStageVariants,
-  calculateStepVariants,
-  stepColors,
-  getStepColor,
-  generateStepId,
-  createStepFromOption,
-} from "./types";
-import { useStepMetadataCatalog } from "./shared/stepMetadata";
+  computeBaseCombinations,
+  computeMatrixCombinations,
+  generateCombinationExamples,
+  getCartesianStageOptionsLabel,
+  resolveCartesianStageLabel,
+  type CartesianMatrixStage,
+} from "./CartesianGeneratorData";
+import {
+  CartesianCombinationPreview,
+  CartesianContainerHeader,
+  CartesianInfoNote,
+  StageConnector,
+  StageOptionChip,
+  StageOptionPicker,
+} from "./CartesianGeneratorSections";
 
 /**
  * CartesianStage - A single stage in the cartesian generator
@@ -96,30 +83,10 @@ export function CartesianStage({
   isOnlyStage = false,
   className,
 }: CartesianStageProps) {
-  const [showAddPopover, setShowAddPopover] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [isEditingLabel, setIsEditingLabel] = useState(false);
-  const [localLabel, setLocalLabel] = useState(label || `Stage ${index + 1}`);
-  const { getStepOptions } = useStepMetadataCatalog();
-
-  // Filter step options
-  const filteredStepOptions = useMemo(() => {
-    const query = searchQuery.toLowerCase();
-    const result: { type: StepType; options: StepOption[] }[] = [];
-
-    (["preprocessing", "model"] as StepType[]).forEach((type) => {
-      const typeOptions = getStepOptions(type).filter(
-        (opt) =>
-          opt.name.toLowerCase().includes(query) ||
-          opt.description.toLowerCase().includes(query)
-      );
-      if (typeOptions.length > 0) {
-        result.push({ type, options: typeOptions });
-      }
-    });
-
-    return result;
-  }, [searchQuery, getStepOptions]);
+  const [localLabel, setLocalLabel] = useState(
+    resolveCartesianStageLabel(label, index)
+  );
 
   // Save label on blur
   const handleLabelBlur = useCallback(() => {
@@ -163,7 +130,7 @@ export function CartesianStage({
         )}
 
         <Badge variant="secondary" className="text-xs bg-cyan-500/20 text-cyan-600">
-          {options.length} option{options.length !== 1 ? "s" : ""}
+          {getCartesianStageOptionsLabel(options.length)}
         </Badge>
 
         <div className="flex items-center gap-1">
@@ -202,83 +169,19 @@ export function CartesianStage({
       {/* Stage Options */}
       {isExpanded && (
         <div className="p-3 space-y-2">
-          {/* Options list */}
           <div className="flex flex-wrap gap-2">
             {options.map((option, optIndex) => (
-              <div
+              <StageOptionChip
                 key={option.id}
-                className={cn(
-                  "group flex items-center gap-1.5 px-2 py-1 rounded-md border text-sm",
-                  getStepColor(option).border,
-                  getStepColor(option).bg
-                )}
-              >
-                <span className={getStepColor(option).text}>
-                  {option.name}
-                </span>
-                {options.length > 1 && onRemoveOption && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => onRemoveOption(optIndex)}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                )}
-              </div>
+                option={option}
+                canRemove={options.length > 1}
+                onRemove={
+                  onRemoveOption ? () => onRemoveOption(optIndex) : undefined
+                }
+              />
             ))}
 
-            {/* Add option button */}
-            {onAddOption && (
-              <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 px-2 border-dashed border-cyan-500/50 text-cyan-500 hover:bg-cyan-500/10"
-                  >
-                    <Plus className="h-3.5 w-3.5 mr-1" />
-                    Add
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  className="w-64 p-2 bg-popover"
-                >
-                  <Input
-                    placeholder="Search..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="mb-2 h-7 text-xs"
-                  />
-                  <ScrollArea className="h-48">
-                    {filteredStepOptions.map(({ type, options: opts }) => (
-                      <div key={type} className="mb-2">
-                        <div className="text-xs font-medium text-muted-foreground px-2 py-1 capitalize">
-                          {type}
-                        </div>
-                        {opts.slice(0, 5).map((opt) => (
-                          <Button
-                            key={opt.name}
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start text-xs h-7"
-                            onClick={() => {
-                              onAddOption(type, opt);
-                              setShowAddPopover(false);
-                              setSearchQuery("");
-                            }}
-                          >
-                            <span className={stepColors[type].text}>{opt.name}</span>
-                          </Button>
-                        ))}
-                      </div>
-                    ))}
-                  </ScrollArea>
-                </PopoverContent>
-              </Popover>
-            )}
+            {onAddOption && <StageOptionPicker onAddOption={onAddOption} />}
           </div>
         </div>
       )}
@@ -328,12 +231,10 @@ export function CartesianGeneratorContainer({
     () => new Set(stages.map((_, i) => i))
   );
 
-  const baseCombinations = useMemo(() => {
-    return stages.reduce(
-      (acc, stage) => acc * calculateCartesianStageVariants(stage),
-      1
-    );
-  }, [stages]);
+  const baseCombinations = useMemo(
+    () => computeBaseCombinations(stages),
+    [stages]
+  );
 
   const totalVariants = useMemo(() => calculateStepVariants(step), [step]);
 
@@ -351,34 +252,10 @@ export function CartesianGeneratorContainer({
   }, []);
 
   // Generate combination examples for preview
-  const combinationExamples = useMemo(() => {
-    if (stages.length === 0) return [];
-    if (baseCombinations > 20) return []; // Too many to show
-
-    const examples: string[][] = [];
-
-    const generateCombinations = (
-      currentStage: number,
-      current: string[]
-    ): void => {
-      if (currentStage >= stages.length) {
-        examples.push([...current]);
-        return;
-      }
-
-      const stage = stages[currentStage];
-      if (stage.length === 0) {
-        generateCombinations(currentStage + 1, [...current, "(empty)"]);
-      } else {
-        for (const option of stage) {
-          generateCombinations(currentStage + 1, [...current, option.name]);
-        }
-      }
-    };
-
-    generateCombinations(0, []);
-    return examples.slice(0, 10); // Limit to 10 examples
-  }, [stages, baseCombinations]);
+  const combinationExamples = useMemo(
+    () => generateCombinationExamples(stages, baseCombinations),
+    [stages, baseCombinations]
+  );
 
   return (
     <div
@@ -387,41 +264,11 @@ export function CartesianGeneratorContainer({
         className
       )}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-cyan-500/20">
-            <LayoutGrid className="h-4 w-4 text-cyan-500" />
-          </div>
-          <div>
-            <h4 className="font-medium text-sm text-cyan-600">
-              Cartesian (_cartesian_)
-            </h4>
-            <p className="text-xs text-muted-foreground">
-              {stages.length} stage{stages.length !== 1 ? "s" : ""} •{" "}
-              {baseCombinations.toLocaleString()} base combination
-              {baseCombinations !== 1 ? "s" : ""}
-              {totalVariants !== baseCombinations && (
-                <> • {totalVariants.toLocaleString()} generated variant{totalVariants !== 1 ? "s" : ""}</>
-              )}
-            </p>
-          </div>
-        </div>
-
-        <Badge
-          variant="secondary"
-          className={cn(
-            "text-sm font-bold",
-            totalVariants > 100
-              ? "bg-orange-500/20 text-orange-600"
-              : totalVariants > 1000
-              ? "bg-red-500/20 text-red-600"
-              : "bg-cyan-500/20 text-cyan-600"
-          )}
-        >
-          {totalVariants.toLocaleString()} pipelines
-        </Badge>
-      </div>
+      <CartesianContainerHeader
+        stageCount={stages.length}
+        baseCombinations={baseCombinations}
+        totalVariants={totalVariants}
+      />
 
       {/* Stages */}
       <div className="space-y-3">
@@ -449,11 +296,7 @@ export function CartesianGeneratorContainer({
             />
 
             {/* Arrow between stages */}
-            {stageIndex < stages.length - 1 && (
-              <div className="flex justify-center py-1">
-                <ArrowRight className="h-4 w-4 text-cyan-500/50 rotate-90" />
-              </div>
-            )}
+            {stageIndex < stages.length - 1 && <StageConnector />}
           </div>
         ))}
       </div>
@@ -471,53 +314,14 @@ export function CartesianGeneratorContainer({
       )}
 
       {/* Combination Preview */}
-      {combinationExamples.length > 0 && combinationExamples.length <= 10 && (
-        <Collapsible>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="w-full text-xs">
-              <Grid className="h-3.5 w-3.5 mr-1" />
-              Preview Combinations
-              <ChevronDown className="h-3.5 w-3.5 ml-1" />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="mt-2 p-3 rounded-lg bg-background/50 space-y-1.5">
-              {combinationExamples.map((combo, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center gap-1.5 text-xs font-mono"
-                >
-                  <span className="text-muted-foreground w-4">{idx + 1}.</span>
-                  {combo.map((step, stepIdx) => (
-                    <span key={stepIdx} className="flex items-center">
-                      {stepIdx > 0 && (
-                        <ArrowRight className="h-3 w-3 mx-1 text-muted-foreground" />
-                      )}
-                      <Badge variant="outline" className="text-xs py-0">
-                        {step}
-                      </Badge>
-                    </span>
-                  ))}
-                </div>
-              ))}
-              {totalCombinations > 10 && (
-                <p className="text-xs text-muted-foreground pt-1">
-                  ...and {totalCombinations - 10} more combinations
-                </p>
-              )}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
+      {combinationExamples.length > 0 && (
+        <CartesianCombinationPreview
+          examples={combinationExamples}
+          baseCombinations={baseCombinations}
+        />
       )}
 
-      {/* Info */}
-      <div className="flex items-start gap-2 p-2 rounded-lg bg-background/50 text-xs text-muted-foreground">
-        <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-        <span>
-          Generates all combinations across stages. Each stage can have multiple
-          options; one from each stage is selected per pipeline variant.
-        </span>
-      </div>
+      <CartesianInfoNote />
     </div>
   );
 }
@@ -526,7 +330,7 @@ export function CartesianGeneratorContainer({
  * CartesianPreview - Visual matrix showing combinations
  */
 interface CartesianPreviewProps {
-  stages: { label: string; options: string[] }[];
+  stages: CartesianMatrixStage[];
   maxDisplay?: number;
   className?: string;
 }
@@ -536,9 +340,10 @@ export function CartesianPreview({
   maxDisplay = 50,
   className,
 }: CartesianPreviewProps) {
-  const totalCombinations = useMemo(() => {
-    return stages.reduce((acc, stage) => acc * Math.max(1, stage.options.length), 1);
-  }, [stages]);
+  const totalCombinations = useMemo(
+    () => computeMatrixCombinations(stages),
+    [stages]
+  );
 
   if (totalCombinations > maxDisplay) {
     return (

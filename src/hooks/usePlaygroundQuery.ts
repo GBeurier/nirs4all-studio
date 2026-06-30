@@ -22,6 +22,7 @@ import {
   createPlaygroundQueryKey,
   hashPipeline,
 } from '@/lib/playground/hashing';
+import { projectPlaygroundMetricObservations } from '@/lib/playground/metricObservations';
 import { unifiedToPlaygroundSteps } from '@/lib/playground/operatorFormat';
 import {
   getColumnarMetadata,
@@ -53,6 +54,10 @@ export interface UsePlaygroundQueryOptions {
   datasetId?: string | null;
   /** Selected source dataset partition when using datasetId. */
   datasetPartition?: PartitionKey;
+  /** Selected source index when using a multi-source workspace dataset. */
+  datasetSourceIndex?: number | null;
+  /** Selected target index when using a multi-target workspace dataset. */
+  datasetTargetIndex?: number | null;
   /** Callback when execution completes */
   onSuccess?: (result: PlaygroundResult) => void;
   /** Callback when execution fails */
@@ -95,6 +100,11 @@ function transformResponse(response: ExecuteResponse): PlaygroundResult {
     filterInfo: response.filter_info,
     repetitions: response.repetitions,
     subsetInfo: response.subset_info,
+    metrics: response.metrics,
+    metricObservations: projectPlaygroundMetricObservations(
+      response.metrics,
+      response.metric_observations ?? response.metricObservations,
+    ),
     executionTimeMs: response.execution_time_ms,
     trace: response.execution_trace,
     errors: response.step_errors,
@@ -129,6 +139,8 @@ export function usePlaygroundQuery(
     debounceMs = DEBOUNCE_DELAYS.STRUCTURE_CHANGE,
     datasetId,
     datasetPartition,
+    datasetSourceIndex,
+    datasetTargetIndex,
     onSuccess,
     onError,
   } = options;
@@ -202,14 +214,31 @@ export function usePlaygroundQuery(
 
     // Add datasetId and datasetPartition to distinguish dataset-ref queries
     if (datasetId) {
-      return [...baseKey, 'dataset', datasetId, datasetPartition ?? 'all'] as const;
+      return [
+        ...baseKey,
+        'dataset',
+        datasetId,
+        datasetPartition ?? 'all',
+        datasetSourceIndex ?? 0,
+        datasetTargetIndex ?? 0,
+      ] as const;
     }
 
     return baseKey;
     // stableOperatorsRef.current is refreshed from debouncedPipelineHash above;
     // keep the hash here so the query key tracks the debounced pipeline state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, debouncedPipelineHash, sampling, executeOptions, datasetId, datasetPartition, metadataSignature]);
+  }, [
+    data,
+    debouncedPipelineHash,
+    sampling,
+    executeOptions,
+    datasetId,
+    datasetPartition,
+    datasetSourceIndex,
+    datasetTargetIndex,
+    metadataSignature,
+  ]);
 
   // Query function with abort support
   const queryFn = useCallback(async (): Promise<PlaygroundResult> => {
@@ -238,6 +267,8 @@ export function usePlaygroundQuery(
           {
             dataset_id: datasetId,
             partition: datasetPartition,
+            source_index: datasetSourceIndex ?? undefined,
+            target_index: datasetTargetIndex ?? undefined,
             steps,
             sampling: sampling.method !== 'all'
               ? { method: sampling.method, n_samples: sampling.n_samples, seed: sampling.seed }
@@ -312,7 +343,16 @@ export function usePlaygroundQuery(
     // stableOperatorsRef.current is intentionally synchronized via
     // debouncedPipelineHash before this callback executes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, datasetId, datasetPartition, debouncedPipelineHash, sampling, executeOptions]);
+  }, [
+    data,
+    datasetId,
+    datasetPartition,
+    datasetSourceIndex,
+    datasetTargetIndex,
+    debouncedPipelineHash,
+    sampling,
+    executeOptions,
+  ]);
 
   // Parallel chart queries are disabled — PCA and repetitions are computed
   // in the main query for reliability. The parallel endpoints relied on a
@@ -346,12 +386,14 @@ export function usePlaygroundQuery(
   const steps = useMemo(() => unifiedToPlaygroundSteps(stableOperatorsRef.current), [debouncedPipelineHash]);
   const chartRequest = useMemo(() => ({
     dataset_id: datasetId || undefined,
+    source_index: datasetSourceIndex ?? undefined,
+    target_index: datasetTargetIndex ?? undefined,
     steps,
     sampling: sampling.method !== 'all'
       ? { method: sampling.method, n_samples: sampling.n_samples, seed: sampling.seed }
       : undefined,
     options: {},
-  }), [datasetId, steps, sampling]);
+  }), [datasetId, datasetSourceIndex, datasetTargetIndex, steps, sampling]);
 
   const pcaQuery = useQuery({
     queryKey: [...queryKey, 'pca-parallel'],

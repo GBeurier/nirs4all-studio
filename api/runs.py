@@ -21,23 +21,28 @@ receive the JobManager lifecycle notifications directly.
 import json
 import logging
 import math
+import shutil
 import sys
 import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .jobs.manager import Job, JobType, job_manager
+from .execution_driver import ExecutionBackend, ExecutionJobCommandResult, ExecutionRequest, get_execution_driver, list_execution_driver_capabilities
+from .execution_job_records import ExecutionJobRecord, WorkspaceExecutionJobRecordRepository
+from .jobs.manager import Job, job_manager
 from .pipeline_canonical import (
     contains_generators,
     count_runtime_variants,
     editor_steps_to_runtime_canonical,
 )
+from .run_execution_plan import build_campaign_run_group_execution_plan, build_legacy_run_execution_plan, build_retry_run_execution_plan
+from .run_store_repository import RunStoreRepository
 from .shared.json_safe import sanitize_float
 from .shared.logger import get_logger
 from .shared.runtime_grouping import (
@@ -47,7 +52,6 @@ from .shared.runtime_grouping import (
 from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
-
 
 def _sanitize_metrics(metrics: dict) -> dict:
     """Sanitize all float values in a metrics dict for JSON serialization."""
@@ -169,6 +173,7 @@ class Run(BaseModel):
     id: str
     name: str
     description: str | None = None
+    execution_backend: ExecutionBackend = "local-python"
     datasets: list[DatasetRun]
     status: Literal["queued", "running", "completed", "failed"]
     created_at: str
@@ -182,6 +187,7 @@ class Run(BaseModel):
     workspace_path: str | None = None  # For persistence
     store_run_id: str | None = None  # WorkspaceStore run UUID
     project_id: str | None = None  # Project grouping
+    execution_metadata: dict[str, Any] | None = Field(default=None, exclude=True)
 
 
 class InlinePipeline(BaseModel):
@@ -196,6 +202,7 @@ class ExperimentConfig(BaseModel):
     description: str | None = None
     dataset_ids: list[str] = Field(..., min_length=1)
     pipeline_ids: list[str] = Field(default_factory=list)  # Can be empty if inline_pipeline is provided
+    execution_backend: ExecutionBackend = "local-python"
     cv_folds: int = Field(default=5, ge=2, le=50)
     cv_strategy: Literal["kfold", "stratified", "loo", "holdout"] = "kfold"
     test_size: float | None = Field(default=0.2, ge=0.1, le=0.5)
@@ -231,11 +238,73 @@ class CreateRunRequest(BaseModel):
     config: ExperimentConfig
 
 
+class NativeExperimentLaunchPayloadManifest(BaseModel):
+    """Frontend-native launch manifest for explicit run-group submissions."""
+    version: Literal["studio.native-launch-payload.v1"]
+    legacyExperimentName: str
+    legacyDatasetCount: int
+    legacyPipelineCount: int
+    strictCampaignCount: int
+    skippedRunCount: int
+    sourceRunIds: list[str] = Field(default_factory=list)
+    skippedRunIds: list[str] = Field(default_factory=list)
+
+
+class CampaignSinglePairSplitSpecPayload(BaseModel):
+    """One strict single-pair campaign spec materialized by the frontend."""
+    id: str
+    sourceRunId: str
+    sourceDatasetId: str
+    sourcePipelineId: str
+    campaign: dict[str, Any]
+
+
+class CampaignSinglePairSplitSpecResultPayload(BaseModel):
+    """Collection of frontend strict campaign split specs."""
+    splitSpecs: list[CampaignSinglePairSplitSpecPayload] = Field(default_factory=list)
+    skippedRunIds: list[str] = Field(default_factory=list)
+
+
+class NativeExperimentLaunchPayload(BaseModel):
+    """Native launch payload submitted by future execution adapters."""
+    legacyConfig: ExperimentConfig
+    manifest: NativeExperimentLaunchPayloadManifest
+    strictCampaignSpecs: CampaignSinglePairSplitSpecResultPayload
+
+
 class RunActionResponse(BaseModel):
     """Response for run actions (stop, retry, delete)."""
     success: bool
     message: str
     run_id: str | None = None
+
+
+class ExecutionJobCommandResponse(BaseModel):
+    """Response for driver-level execution job commands."""
+    action: Literal["cancel"]
+    job_id: str
+    success: bool
+    message: str
+    backend: str
+    run_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExecutionDriverCapabilityResponse(BaseModel):
+    """Serializable execution-driver capability advertised to Studio."""
+    backend: ExecutionBackend
+    label: str
+    available: bool
+    mode: str
+    supports_progress: bool
+    supports_cancellation: bool
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExecutionDriverCapabilitiesResponse(BaseModel):
+    """Available and future execution backends known by the API."""
+    default_backend: ExecutionBackend = "local-python"
+    backends: list[ExecutionDriverCapabilityResponse]
 
 
 class RunListResponse(BaseModel):
@@ -364,6 +433,35 @@ def _save_run_manifest(run: Run) -> bool:
         return False
 
 
+def _is_safe_run_path_segment(run_id: str) -> bool:
+    return bool(run_id) and run_id not in {".", ".."} and "/" not in run_id and "\\" not in run_id
+
+
+def _get_run_manifest_dir(run: Run) -> Path | None:
+    if not _is_safe_run_path_segment(run.id):
+        raise ValueError(f"Invalid run id for filesystem path: {run.id!r}")
+
+    if run.workspace_path:
+        return Path(run.workspace_path) / "runs" / run.id
+
+    runs_dir = _get_runs_dir()
+    if runs_dir is None:
+        return None
+    return runs_dir / run.id
+
+
+def _delete_run_manifest_dir(run: Run) -> bool:
+    """Delete the persisted run directory, including execution job snapshots."""
+    run_dir = _get_run_manifest_dir(run)
+    if run_dir is None or not run_dir.exists():
+        return False
+    if not run_dir.is_dir():
+        raise ValueError(f"Run manifest path is not a directory: {run_dir}")
+
+    shutil.rmtree(run_dir)
+    return True
+
+
 def _sanitize_run_metrics(data: dict) -> dict:
     """Sanitize metrics in a run data dict loaded from disk."""
     for dataset in data.get("datasets", []):
@@ -414,6 +512,198 @@ def _compute_run_stats() -> RunStatsResponse:
         completed=completed,
         failed=failed,
         total_pipelines=total_pipelines,
+    )
+
+
+def _load_execution_job_record_for_run(run: Run) -> ExecutionJobRecord | None:
+    """Load the durable execution job snapshot for a run, if one exists."""
+    workspace_path = run.workspace_path
+    if workspace_path is None:
+        workspace = workspace_manager.get_current_workspace()
+        workspace_path = workspace.path if workspace else None
+    if workspace_path is None:
+        return None
+
+    return WorkspaceExecutionJobRecordRepository(workspace_path).get(run.id)
+
+
+def _parse_csv_filter(value: str | None) -> set[str] | None:
+    if value is None:
+        return None
+    filters = {item.strip() for item in value.split(",") if item.strip()}
+    return filters or None
+
+
+def _execution_job_record_payload(record: ExecutionJobRecord, *, run: Run | None = None) -> dict[str, Any]:
+    payload = record.to_dict()
+    if run is not None:
+        payload["run_id"] = run.id
+        payload["run_name"] = run.name
+        payload["run_status"] = run.status
+        payload["is_orphaned"] = False
+        return payload
+
+    payload["run_id"] = record.job_id
+    payload["run_name"] = str(record.request.get("run_name") or record.job_id)
+    payload["run_status"] = "orphaned"
+    payload["is_orphaned"] = True
+    return payload
+
+
+def _build_execution_job_record_list(
+    runs: list[Run],
+    *,
+    run_status: str | None = None,
+    execution_status: str | None = None,
+    requested_backend: str | None = None,
+    include_orphaned: bool = False,
+) -> list[dict[str, Any]]:
+    """Build list-ready execution job record snapshots for runs that have one."""
+    allowed_run_statuses = _parse_csv_filter(run_status)
+    allowed_execution_statuses = _parse_csv_filter(execution_status)
+    allowed_requested_backends = _parse_csv_filter(requested_backend)
+    records: list[dict[str, Any]] = []
+    seen_job_ids: set[str] = {run.id for run in runs}
+
+    for run in runs:
+        if allowed_run_statuses is not None and run.status not in allowed_run_statuses:
+            continue
+
+        try:
+            record = _load_execution_job_record_for_run(run)
+        except ValueError as exc:
+            logger.warning("Skipping invalid execution job record for run %s: %s", run.id, exc)
+            continue
+
+        if record is None:
+            continue
+        if allowed_execution_statuses is not None and record.status not in allowed_execution_statuses:
+            continue
+        if allowed_requested_backends is not None and record.requested_backend not in allowed_requested_backends:
+            continue
+
+        records.append(_execution_job_record_payload(record, run=run))
+
+    if include_orphaned:
+        records.extend(
+            _build_orphaned_execution_job_record_list(
+                seen_job_ids,
+                run_status=run_status,
+                execution_status=execution_status,
+                requested_backend=requested_backend,
+            )
+        )
+
+    records.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+    return records
+
+
+def _build_orphaned_execution_job_record_list(
+    known_job_ids: set[str],
+    *,
+    run_status: str | None = None,
+    execution_status: str | None = None,
+    requested_backend: str | None = None,
+) -> list[dict[str, Any]]:
+    workspace = workspace_manager.get_current_workspace()
+    if workspace is None:
+        return []
+
+    allowed_run_statuses = _parse_csv_filter(run_status)
+    allowed_execution_statuses = _parse_csv_filter(execution_status)
+    allowed_requested_backends = _parse_csv_filter(requested_backend)
+    orphaned_run_status = "orphaned"
+    if allowed_run_statuses is not None and orphaned_run_status not in allowed_run_statuses:
+        return []
+
+    records: list[dict[str, Any]] = []
+    repository = WorkspaceExecutionJobRecordRepository(workspace.path)
+    for record in repository.list_records():
+        if record.job_id in known_job_ids:
+            continue
+        if allowed_execution_statuses is not None and record.status not in allowed_execution_statuses:
+            continue
+        if allowed_requested_backends is not None and record.requested_backend not in allowed_requested_backends:
+            continue
+
+        records.append(_execution_job_record_payload(record))
+    return records
+
+
+def _load_workspace_execution_job_record(job_id: str) -> ExecutionJobRecord | None:
+    workspace = workspace_manager.get_current_workspace()
+    if workspace is None:
+        return None
+    return WorkspaceExecutionJobRecordRepository(workspace.path).get(job_id)
+
+
+def _request_execution_job_cancel(job_id: str, backend: str) -> ExecutionJobCommandResult:
+    try:
+        driver = get_execution_driver(cast(ExecutionBackend, backend))
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported execution backend {backend}",
+        ) from exc
+    return driver.cancel_job(job_id, job_manager)
+
+
+def _execution_job_command_response(
+    result: ExecutionJobCommandResult,
+    *,
+    run_id: str | None = None,
+) -> ExecutionJobCommandResponse:
+    return ExecutionJobCommandResponse(
+        action=result.action,
+        job_id=result.job_id,
+        success=result.success,
+        message=result.message,
+        backend=result.backend,
+        run_id=run_id,
+        metadata=dict(result.metadata),
+    )
+
+
+def _cancel_run(
+    run: Run,
+    *,
+    job_id: str | None = None,
+    force_local_state_on_command_failure: bool = True,
+) -> tuple[RunActionResponse, ExecutionJobCommandResult]:
+    if run.status not in ("running", "queued"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot stop run with status {run.status}"
+        )
+
+    command_job_id = job_id or run.id
+    result = _request_execution_job_cancel(command_job_id, run.execution_backend)
+    if not result.success and not force_local_state_on_command_failure:
+        return (
+            RunActionResponse(
+                success=False,
+                message=result.message,
+                run_id=run.id,
+            ),
+            result,
+        )
+
+    run.status = "failed"
+    for dataset in run.datasets:
+        for pipeline in dataset.pipelines:
+            if pipeline.status in ("running", "queued"):
+                pipeline.status = "failed"
+                pipeline.error_message = "Stopped by user"
+
+    _save_run_manifest(run)
+
+    return (
+        RunActionResponse(
+            success=True,
+            message=f"Run {run.id} stopped",
+            run_id=run.id,
+        ),
+        result,
     )
 
 
@@ -567,6 +857,7 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
         id=run_id,
         name=request.name or f"Quick Run: {pipeline_config.get('name', 'Pipeline')}",
         description=description,
+        execution_backend="local-python",
         datasets=[dataset_run],
         status="queued",
         created_at=now,
@@ -579,6 +870,43 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
     return run
 
 
+def _execution_backend_unavailable_detail(driver: Any, requested_backend: ExecutionBackend) -> str:
+    capability = getattr(driver, "capability", None)
+    if capability is None:
+        return f"Execution backend '{requested_backend}' is not available"
+
+    label = getattr(capability, "label", requested_backend)
+    metadata = getattr(capability, "metadata", {}) or {}
+    reason = metadata.get("message") if isinstance(metadata, dict) else None
+    if not isinstance(reason, str) or not reason.strip():
+        reason = metadata.get("reason") if isinstance(metadata, dict) else None
+    if isinstance(reason, str) and reason.strip():
+        return f"Execution backend '{requested_backend}' is not available: {reason}"
+    return f"Execution backend '{requested_backend}' is not available ({label})"
+
+
+def _ensure_execution_driver_available(driver: Any, requested_backend: ExecutionBackend) -> None:
+    capability = getattr(driver, "capability", None)
+    if capability is not None and getattr(capability, "available", True) is False:
+        raise HTTPException(
+            status_code=501,
+            detail=_execution_backend_unavailable_detail(driver, requested_backend),
+        )
+
+
+def _get_available_execution_driver(
+    requested_backend: ExecutionBackend,
+    *,
+    job_record_repository: WorkspaceExecutionJobRecordRepository | None = None,
+) -> Any:
+    driver = get_execution_driver(
+        requested_backend,
+        job_record_repository=job_record_repository,
+    )
+    _ensure_execution_driver_available(driver, requested_backend)
+    return driver
+
+
 def _start_run_job(run: Run) -> Job:
     """Create and submit the JobManager job that executes a run.
 
@@ -586,13 +914,72 @@ def _start_run_job(run: Run) -> Job:
     receive JobManager's job_started/job_progress/job_completed/job_failed
     lifecycle notifications directly.
     """
-    job = job_manager.create_job(
-        JobType.TRAINING,
-        {"run_id": run.id, "run_name": run.name},
-        job_id=run.id,
+    execution_request = ExecutionRequest(
+        run_id=run.id,
+        run_name=run.name,
+        requested_backend=run.execution_backend,
+        total_pipelines=run.total_pipelines or 0,
+        dataset_count=len(run.datasets),
+        workspace_path=run.workspace_path,
+        created_at=run.created_at,
+        metadata=_build_run_execution_metadata(run),
     )
-    job_manager.submit_job(job, lambda j, cb: _execute_run_job(run.id, j, cb))
-    return job
+    job_record_repository = (
+        WorkspaceExecutionJobRecordRepository(run.workspace_path)
+        if run.workspace_path
+        else None
+    )
+    driver = _get_available_execution_driver(
+        run.execution_backend,
+        job_record_repository=job_record_repository,
+    )
+    return driver.submit(
+        execution_request,
+        job_manager,
+        lambda j, cb: _execute_run_job(run.id, j, cb),
+    )
+
+
+def _build_run_execution_metadata(run: Run) -> dict[str, Any]:
+    """Return campaign-shaped metadata for future remote execution drivers."""
+    dataset_bindings: list[dict[str, Any]] = []
+    for dataset in run.datasets:
+        dataset_bindings.append({
+            "dataset_id": dataset.dataset_id,
+            "dataset_name": dataset.dataset_name,
+            "split_group_by": dataset.split_group_by,
+            "pipeline_count": len(dataset.pipelines),
+            "pipeline_ids": [pipeline.pipeline_id for pipeline in dataset.pipelines],
+        })
+
+    metadata: dict[str, Any] = {
+        "kind": "campaign",
+        "campaign_shape": "legacy-cartesian",
+        "dataset_bindings": dataset_bindings,
+        "planned_pipeline_runs": run.total_pipelines or sum(binding["pipeline_count"] for binding in dataset_bindings),
+    }
+    if run.project_id:
+        metadata["project_id"] = run.project_id
+    if run.store_run_id:
+        metadata["store_run_id"] = run.store_run_id
+    if run.execution_metadata:
+        metadata.update(run.execution_metadata)
+    return metadata
+
+
+def _open_run_store_repository(workspace_path: str | Path) -> RunStoreRepository:
+    return RunStoreRepository(workspace_path)
+
+
+def _build_store_run_config(run: Run, total_pipelines: int) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "n_pipelines": total_pipelines,
+        "n_datasets": len(run.datasets),
+        "execution_backend": run.execution_backend,
+    }
+    if run.project_id:
+        config["project_id"] = run.project_id
+    return config
 
 
 def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str, Any]:
@@ -621,26 +1008,23 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
     # persisted store entry keeps the wizard-provided run name even for simple
     # one-pipeline runs.
     shared_store_run_id: str | None = None
+    run_store_repository: RunStoreRepository | None = None
     if run.workspace_path:
         try:
-            from nirs4all.pipeline.storage import WorkspaceStore
-            _pre_store = WorkspaceStore(Path(run.workspace_path))
+            run_store_repository = _open_run_store_repository(run.workspace_path)
             dataset_meta = [{"name": d.dataset_name} for d in run.datasets]
-            shared_store_run_id = _pre_store.begin_run(
+            shared_store_run_id = run_store_repository.begin_run(
                 name=run.name or "run",
-                config={"n_pipelines": total_pipelines, "n_datasets": len(run.datasets)},
+                config=_build_store_run_config(run, total_pipelines),
                 datasets=dataset_meta,
             )
-            run.store_run_id = shared_store_run_id
             if run.project_id:
-                _pre_store._fetch_pl(
-                    "UPDATE runs SET project_id = $2 WHERE run_id = $1",
-                    [shared_store_run_id, run.project_id],
-                )
-            _pre_store.close()
+                run_store_repository.set_project(shared_store_run_id, run.project_id)
+            run.store_run_id = shared_store_run_id
         except Exception as e:
             logger.warning("Failed to pre-create store run: %s", e)
             shared_store_run_id = None
+            run_store_repository = None
 
     try:
         pipeline_index = 0
@@ -765,10 +1149,8 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
             _save_run_manifest(run)
             if shared_store_run_id and run.workspace_path:
                 try:
-                    from nirs4all.pipeline.storage import WorkspaceStore
-                    _stop_store = WorkspaceStore(Path(run.workspace_path))
-                    _stop_store.fail_run(shared_store_run_id, "Stopped by user")
-                    _stop_store.close()
+                    if run_store_repository is not None:
+                        run_store_repository.fail_run(shared_store_run_id, "Stopped by user")
                 except Exception:
                     pass
             return {"run_id": run_id, "status": run.status, "cancelled": True}
@@ -791,15 +1173,25 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
 
         _save_run_manifest(run)
 
-        # Complete the shared store run
+        # Mirror the final run state in the shared store run.
         if shared_store_run_id and run.workspace_path:
             try:
-                from nirs4all.pipeline.storage import WorkspaceStore
-                _post_store = WorkspaceStore(Path(run.workspace_path))
-                _post_store.complete_run(shared_store_run_id, {"total_pipelines": total_pipelines})
-                _post_store.close()
+                if run_store_repository is not None:
+                    if run.status == "failed":
+                        failure_message = next(
+                            (
+                                p.error_message
+                                for d in run.datasets
+                                for p in d.pipelines
+                                if p.status == "failed" and p.error_message
+                            ),
+                            "Run failed",
+                        )
+                        run_store_repository.fail_run(shared_store_run_id, failure_message)
+                    else:
+                        run_store_repository.complete_run(shared_store_run_id, {"total_pipelines": total_pipelines})
             except Exception as e:
-                logger.warning("Failed to complete store run: %s", e)
+                logger.warning("Failed to finalize store run: %s", e)
 
         return {"run_id": run_id, "status": run.status, "duration": run.duration}
 
@@ -811,10 +1203,8 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
         # Fail the shared store run
         if shared_store_run_id and run.workspace_path:
             try:
-                from nirs4all.pipeline.storage import WorkspaceStore
-                _fail_store = WorkspaceStore(Path(run.workspace_path))
-                _fail_store.fail_run(shared_store_run_id, str(e))
-                _fail_store.close()
+                if run_store_repository is not None:
+                    run_store_repository.fail_run(shared_store_run_id, str(e))
             except Exception:
                 pass
 
@@ -1134,6 +1524,92 @@ async def get_run_stats():
     return _compute_run_stats()
 
 
+@router.get("/execution-backends", response_model=ExecutionDriverCapabilitiesResponse)
+async def list_run_execution_backends():
+    """List typed execution backends and whether they can currently run jobs."""
+    return ExecutionDriverCapabilitiesResponse(
+        backends=[
+            ExecutionDriverCapabilityResponse(**capability.to_dict())
+            for capability in list_execution_driver_capabilities()
+        ],
+    )
+
+
+@router.get("/execution-job-records")
+async def list_run_execution_job_records(
+    run_status: str = None,
+    execution_status: str = None,
+    requested_backend: str = None,
+    include_orphaned: bool = False,
+) -> dict[str, Any]:
+    """List latest durable execution job records for runs that have snapshots."""
+    _ensure_runs_loaded()
+    records = _build_execution_job_record_list(
+        list(_runs.values()),
+        run_status=run_status,
+        execution_status=execution_status,
+        requested_backend=requested_backend,
+        include_orphaned=include_orphaned,
+    )
+    return {"records": records, "total": len(records)}
+
+
+@router.get("/execution-job-records/{job_id}")
+async def get_workspace_execution_job_record(job_id: str) -> dict[str, Any]:
+    """Get a durable execution job record by job id, even without a Run anchor."""
+    _ensure_runs_loaded()
+    run = _runs.get(job_id)
+    try:
+        record = _load_execution_job_record_for_run(run) if run is not None else _load_workspace_execution_job_record(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Execution job record {job_id} not found",
+        )
+
+    return _execution_job_record_payload(record, run=run)
+
+
+@router.post("/execution-job-records/{job_id}/cancel", response_model=ExecutionJobCommandResponse)
+async def cancel_workspace_execution_job_record(job_id: str):
+    """Cancel a durable execution job record by job id."""
+    _ensure_runs_loaded()
+    run = _runs.get(job_id)
+    try:
+        record = _load_execution_job_record_for_run(run) if run is not None else _load_workspace_execution_job_record(job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Execution job record {job_id} not found",
+        )
+
+    if run is None:
+        record_run_id = record.request.get("run_id")
+        if isinstance(record_run_id, str):
+            run = _runs.get(record_run_id)
+
+    if run is None:
+        result = _request_execution_job_cancel(record.job_id, record.requested_backend)
+        record_run_id = record.request.get("run_id")
+        return _execution_job_command_response(
+            result,
+            run_id=record_run_id if isinstance(record_run_id, str) else None,
+        )
+
+    _, result = _cancel_run(
+        run,
+        job_id=record.job_id,
+        force_local_state_on_command_failure=False,
+    )
+    return _execution_job_command_response(result, run_id=run.id)
+
+
 @router.get("/{run_id}", response_model=Run)
 async def get_run(run_id: str):
     """Get details of a specific run."""
@@ -1141,6 +1617,27 @@ async def get_run(run_id: str):
     if run_id not in _runs:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
     return _runs[run_id]
+
+
+@router.get("/{run_id}/execution-job-record")
+async def get_run_execution_job_record(run_id: str) -> dict[str, Any]:
+    """Get the latest durable execution job record for a run."""
+    _ensure_runs_loaded()
+    run = _runs.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    try:
+        record = _load_execution_job_record_for_run(run)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Execution job record for run {run_id} not found",
+        )
+    return _execution_job_record_payload(record, run=run)
 
 
 @router.post("/preflight")
@@ -1250,6 +1747,8 @@ async def create_run(request: CreateRunRequest):
             detail="At least one pipeline (saved or inline) must be specified"
         )
 
+    _get_available_execution_driver(config.execution_backend)
+
     try:
         config.split_group_by_by_dataset = normalize_split_group_by_mapping(
             config.dataset_ids,
@@ -1349,6 +1848,225 @@ async def create_run(request: CreateRunRequest):
     return run
 
 
+def _single_pair_campaign_parts(split_spec: CampaignSinglePairSplitSpecPayload) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    campaign = split_spec.campaign
+    if campaign.get("mode") != "paired_by_index":
+        raise HTTPException(status_code=400, detail=f"Campaign split '{split_spec.id}' must use paired_by_index mode")
+
+    datasets = campaign.get("datasets")
+    pipelines = campaign.get("pipelines")
+    run_matrix = campaign.get("runMatrix")
+    if not isinstance(datasets, list) or len(datasets) != 1:
+        raise HTTPException(status_code=400, detail=f"Campaign split '{split_spec.id}' must contain exactly one dataset")
+    if not isinstance(pipelines, list) or len(pipelines) != 1:
+        raise HTTPException(status_code=400, detail=f"Campaign split '{split_spec.id}' must contain exactly one pipeline")
+    if not isinstance(run_matrix, list) or len(run_matrix) != 1:
+        raise HTTPException(status_code=400, detail=f"Campaign split '{split_spec.id}' must contain exactly one run entry")
+    if not isinstance(datasets[0], dict) or not isinstance(pipelines[0], dict) or not isinstance(run_matrix[0], dict):
+        raise HTTPException(status_code=400, detail=f"Campaign split '{split_spec.id}' contains malformed refs")
+
+    return campaign, datasets[0], pipelines[0], run_matrix[0]
+
+
+def _validate_native_run_group_payload(payload: NativeExperimentLaunchPayload) -> list[CampaignSinglePairSplitSpecPayload]:
+    config = payload.legacyConfig
+    split_specs = payload.strictCampaignSpecs.splitSpecs
+    skipped_run_ids = [*payload.strictCampaignSpecs.skippedRunIds, *payload.manifest.skippedRunIds]
+
+    if skipped_run_ids or payload.manifest.skippedRunCount > 0:
+        raise HTTPException(status_code=400, detail="Native run-group payload contains skipped run ids")
+    if payload.manifest.strictCampaignCount != len(split_specs):
+        raise HTTPException(status_code=400, detail="Native run-group manifest strictCampaignCount does not match splitSpecs")
+    if not split_specs:
+        raise HTTPException(status_code=422, detail="Native run-group payload must contain at least one strict campaign spec")
+
+    for split_spec in split_specs:
+        campaign, dataset_ref, pipeline_ref, run_entry = _single_pair_campaign_parts(split_spec)
+        if campaign.get("executionBackend") != config.execution_backend:
+            raise HTTPException(status_code=400, detail=f"Campaign split '{split_spec.id}' execution backend does not match legacyConfig")
+
+        dataset_id = run_entry.get("datasetId") or dataset_ref.get("id")
+        pipeline_id = run_entry.get("pipelineId") or pipeline_ref.get("id")
+        if dataset_id != split_spec.sourceDatasetId:
+            raise HTTPException(status_code=400, detail=f"Campaign split '{split_spec.id}' dataset id does not match sourceDatasetId")
+        if pipeline_id != split_spec.sourcePipelineId:
+            raise HTTPException(status_code=400, detail=f"Campaign split '{split_spec.id}' pipeline id does not match sourcePipelineId")
+
+        source = pipeline_ref.get("source")
+        if source in {"inline", "inline-pruned"} and not isinstance(pipeline_ref.get("steps"), list):
+            raise HTTPException(status_code=422, detail=f"Campaign split '{split_spec.id}' inline pipeline is missing executable steps")
+
+    return split_specs
+
+
+def _build_dataset_runs_from_execution_plan(execution_plan) -> list[DatasetRun]:
+    datasets = []
+    for dataset_plan in execution_plan.datasets:
+        pipelines = [
+            PipelineRun(
+                id=pipeline_plan.pipeline_run_id,
+                pipeline_id=pipeline_plan.pipeline_id,
+                pipeline_name=pipeline_plan.pipeline_name,
+                model=pipeline_plan.model,
+                preprocessing=pipeline_plan.preprocessing,
+                split_strategy=pipeline_plan.split_strategy,
+                status="queued",
+                progress=0,
+                config=pipeline_plan.pipeline_config,
+                variant_index=pipeline_plan.variant_index,
+                variant_description=pipeline_plan.variant_description,
+                variant_choices=pipeline_plan.variant_choices,
+                is_expanded_variant=pipeline_plan.is_expanded_variant,
+                estimated_variants=pipeline_plan.estimated_variants,
+                has_generators=pipeline_plan.has_generators,
+                fold_count=pipeline_plan.fold_count,
+                branch_count=pipeline_plan.branch_count,
+                total_model_count=pipeline_plan.total_model_count,
+                model_count_breakdown=pipeline_plan.model_count_breakdown,
+            )
+            for pipeline_plan in dataset_plan.pipelines
+        ]
+        datasets.append(
+            DatasetRun(
+                dataset_id=dataset_plan.dataset_id,
+                dataset_name=dataset_plan.dataset_name,
+                split_group_by=dataset_plan.split_group_by,
+                pipelines=pipelines,
+            )
+        )
+    return datasets
+
+
+@router.post("/run-groups", response_model=Run)
+async def create_run_group(payload: NativeExperimentLaunchPayload):
+    """Create and start an explicit run group from a native campaign payload."""
+    _ensure_runs_loaded()
+    config = payload.legacyConfig
+    split_specs = _validate_native_run_group_payload(payload)
+
+    workspace = workspace_manager.get_current_workspace()
+    if not workspace:
+        raise HTTPException(status_code=409, detail="No workspace selected")
+
+    _get_available_execution_driver(config.execution_backend)
+
+    from .pipelines import _load_pipeline
+    from .spectra import _load_dataset
+
+    dataset_infos: dict[str, dict[str, str]] = {}
+    datasets_by_id: dict[str, Any] = {}
+    pipeline_configs: dict[str, dict[str, Any]] = {}
+
+    for split_spec in split_specs:
+        _, dataset_ref, pipeline_ref, run_entry = _single_pair_campaign_parts(split_spec)
+        dataset_id = str(run_entry.get("datasetId") or dataset_ref.get("id"))
+        pipeline_id = str(run_entry.get("pipelineId") or pipeline_ref.get("id"))
+
+        if dataset_id not in dataset_infos:
+            try:
+                dataset = _load_dataset(dataset_id)
+                if not dataset:
+                    raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
+                dataset_infos[dataset_id] = {
+                    "name": getattr(dataset, "name", None) or str(dataset_ref.get("name") or dataset_id),
+                    "id": dataset_id,
+                }
+                datasets_by_id[dataset_id] = dataset
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found: {str(e)}") from e
+
+        source = pipeline_ref.get("source")
+        if source in {"inline", "inline-pruned"}:
+            pipeline_config = {
+                "name": str(pipeline_ref.get("name") or pipeline_id),
+                "steps": pipeline_ref.get("steps") or [],
+            }
+        else:
+            if pipeline_id not in pipeline_configs:
+                try:
+                    pipeline_configs[pipeline_id] = _load_pipeline(pipeline_id)
+                except HTTPException:
+                    raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found") from None
+                except Exception as e:
+                    raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_id}' not found: {str(e)}") from e
+            pipeline_config = pipeline_configs[pipeline_id]
+
+        runtime_group_by = run_entry.get("splitGroupBy")
+        if runtime_group_by is None:
+            runtime_group_by = dataset_ref.get("splitGroupBy")
+        try:
+            prepare_pipeline_steps_with_runtime_grouping(
+                pipeline_config.get("steps", []),
+                datasets_by_id[dataset_id],
+                runtime_group_by,
+            )
+        except Exception as exc:
+            pipeline_name = pipeline_config.get("name", pipeline_id)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Dataset '{dataset_id}' cannot run pipeline '{pipeline_name}': {exc}",
+            ) from exc
+
+    run = _create_run_group_from_payload(payload, dataset_infos, pipeline_configs, workspace.path)
+    _runs[run.id] = run
+    _save_run_manifest(run)
+    _start_run_job(run)
+    return run
+
+
+def _create_run_group_from_payload(
+    payload: NativeExperimentLaunchPayload,
+    dataset_infos: dict[str, dict[str, str]],
+    pipeline_configs: dict[str, dict[str, Any]],
+    workspace_path: str,
+    expand_variants: bool = True,
+) -> Run:
+    config = payload.legacyConfig
+    run_id = f"run_{int(datetime.now().timestamp())}_{uuid.uuid4().hex[:6]}"
+    now = datetime.now().isoformat()
+
+    def expand_pipeline_variants_for_plan(steps: list[dict[str, Any]]) -> Any:
+        from .nirs4all_adapter import expand_pipeline_variants
+
+        return expand_pipeline_variants(steps)
+
+    execution_plan = build_campaign_run_group_execution_plan(
+        run_id=run_id,
+        split_specs=[split_spec.model_dump() for split_spec in payload.strictCampaignSpecs.splitSpecs],
+        dataset_infos=dataset_infos,
+        pipeline_configs=pipeline_configs,
+        cv_folds=config.cv_folds,
+        expand_variants=expand_variants,
+        extract_pipeline_info=_extract_pipeline_info,
+        estimate_pipeline_variants=_estimate_pipeline_variants,
+        expand_pipeline_variants=expand_pipeline_variants_for_plan,
+    )
+
+    return Run(
+        id=run_id,
+        name=config.name,
+        description=config.description or "",
+        execution_backend=config.execution_backend,
+        datasets=_build_dataset_runs_from_execution_plan(execution_plan),
+        status="queued",
+        created_at=now,
+        cv_folds=config.cv_folds,
+        total_pipelines=execution_plan.total_pipeline_runs,
+        completed_pipelines=0,
+        workspace_path=workspace_path,
+        project_id=config.project_id,
+        execution_metadata={
+            "campaign_shape": "explicit-run-group",
+            "native_payload_version": payload.manifest.version,
+            "source_run_ids": payload.manifest.sourceRunIds,
+            "skipped_run_ids": payload.manifest.skippedRunIds,
+            "strict_campaign_count": payload.manifest.strictCampaignCount,
+        },
+    )
+
+
 def _create_run_from_config(
     config: ExperimentConfig,
     dataset_infos: dict[str, dict[str, str]],
@@ -1373,98 +2091,35 @@ def _create_run_from_config(
     # Use provided pipeline_ids or fall back to config.pipeline_ids
     effective_pipeline_ids = pipeline_ids if pipeline_ids is not None else list(config.pipeline_ids)
 
-    datasets = []
-    total_pipeline_runs = 0
+    def expand_pipeline_variants_for_plan(steps: list[dict[str, Any]]) -> Any:
+        from .nirs4all_adapter import expand_pipeline_variants
 
-    for ds_id in config.dataset_ids:
-        pipelines = []
-        ds_info = dataset_infos.get(ds_id, {"name": ds_id, "id": ds_id})
+        return expand_pipeline_variants(steps)
 
-        for pl_id in effective_pipeline_ids:
-            pl_config = pipeline_configs.get(pl_id, {})
-            pl_steps = pl_config.get("steps", [])
-            base_model, base_preprocessing, split_strategy = _extract_pipeline_info(pl_config)
-
-            # Expand variants if requested and pipeline has generators
-            estimate = _estimate_pipeline_variants(pl_config, cv_folds=config.cv_folds)
-
-            if expand_variants and estimate.has_generators and estimate.estimated_variants > 1:
-                # Expand pipeline into separate variant entries
-                from .nirs4all_adapter import expand_pipeline_variants
-                variants = expand_pipeline_variants(pl_steps)
-
-                for variant in variants:
-                    # Build variant-specific name
-                    variant_name = f"{pl_config.get('name', pl_id)}"
-                    if variant.description:
-                        variant_name = f"{variant_name} [{variant.description}]"
-
-                    # Use variant-specific model/preprocessing or fall back to extracted
-                    model_name = variant.model_name if variant.model_name != "Unknown" else base_model
-                    preprocessing_str = " → ".join(variant.preprocessing_names) if variant.preprocessing_names else base_preprocessing
-
-                    pipeline_run = PipelineRun(
-                        id=f"{run_id}-{ds_id}-{pl_id}-v{variant.index}",
-                        pipeline_id=pl_id,
-                        pipeline_name=variant_name,
-                        model=model_name,
-                        preprocessing=preprocessing_str,
-                        split_strategy=f"KFold({config.cv_folds})" if split_strategy == "KFold(5)" else split_strategy,
-                        status="queued",
-                        progress=0,
-                        config=pl_config,
-                        variant_index=variant.index,
-                        variant_description=variant.description,
-                        variant_choices=variant.choices,
-                        is_expanded_variant=True,
-                        estimated_variants=1,  # This IS the variant
-                        has_generators=False,  # Already expanded
-                        fold_count=estimate.fold_count,
-                        branch_count=1,  # Variants are already expanded
-                        total_model_count=estimate.fold_count,
-                        model_count_breakdown=f"{estimate.fold_count} folds" if estimate.fold_count > 1 else "1 model",
-                    )
-                    pipelines.append(pipeline_run)
-                    total_pipeline_runs += 1
-            else:
-                # Single pipeline (no generators or expansion disabled)
-                pipeline_run = PipelineRun(
-                    id=f"{run_id}-{ds_id}-{pl_id}",
-                    pipeline_id=pl_id,
-                    pipeline_name=pl_config.get("name", pl_id),
-                    model=base_model,
-                    preprocessing=base_preprocessing,
-                    split_strategy=f"KFold({config.cv_folds})" if split_strategy == "KFold(5)" else split_strategy,
-                    status="queued",
-                    progress=0,
-                    config=pl_config,
-                    estimated_variants=estimate.estimated_variants,
-                    has_generators=estimate.has_generators,
-                    fold_count=estimate.fold_count,
-                    branch_count=estimate.branch_count,
-                    total_model_count=estimate.total_model_count,
-                    model_count_breakdown=estimate.model_count_breakdown,
-                )
-                pipelines.append(pipeline_run)
-                total_pipeline_runs += 1
-
-        dataset_run = DatasetRun(
-            dataset_id=ds_id,
-            dataset_name=ds_info.get("name", ds_id),
-            split_group_by=config.split_group_by_by_dataset.get(ds_id),
-            pipelines=pipelines,
-        )
-        datasets.append(dataset_run)
+    execution_plan = build_legacy_run_execution_plan(
+        run_id=run_id,
+        dataset_ids=config.dataset_ids,
+        effective_pipeline_ids=effective_pipeline_ids,
+        dataset_infos=dataset_infos,
+        pipeline_configs=pipeline_configs,
+        split_group_by_by_dataset=config.split_group_by_by_dataset,
+        cv_folds=config.cv_folds,
+        expand_variants=expand_variants,
+        extract_pipeline_info=_extract_pipeline_info,
+        estimate_pipeline_variants=_estimate_pipeline_variants,
+        expand_pipeline_variants=expand_pipeline_variants_for_plan,
+    )
 
     run = Run(
         id=run_id,
         name=config.name,
         description=config.description or "",
-        datasets=datasets,
+        execution_backend=config.execution_backend,
+        datasets=_build_dataset_runs_from_execution_plan(execution_plan),
         status="queued",
         created_at=now,
         cv_folds=config.cv_folds,
-        total_pipelines=total_pipeline_runs,
+        total_pipelines=execution_plan.total_pipeline_runs,
         completed_pipelines=0,
         workspace_path=workspace_path,
         project_id=config.project_id,
@@ -1677,29 +2332,8 @@ async def stop_run(run_id: str):
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
 
     run = _runs[run_id]
-    if run.status not in ("running", "queued"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot stop run with status {run.status}"
-        )
-
-    # Request cooperative cancellation of the JobManager job (job id == run id).
-    job_manager.cancel_job(run_id)
-
-    run.status = "failed"
-    for dataset in run.datasets:
-        for pipeline in dataset.pipelines:
-            if pipeline.status in ("running", "queued"):
-                pipeline.status = "failed"
-                pipeline.error_message = "Stopped by user"
-
-    _save_run_manifest(run)
-
-    return RunActionResponse(
-        success=True,
-        message=f"Run {run_id} stopped",
-        run_id=run_id,
-    )
+    response, _ = _cancel_run(run, job_id=run_id)
+    return response
 
 
 @router.post("/{run_id}/retry", response_model=Run)
@@ -1716,59 +2350,61 @@ async def retry_run(run_id: str):
             detail=f"Cannot retry run with status {old_run.status}"
         )
 
-    # Create a new run with same config
     new_run_id = str(uuid.uuid4())[:8]
     now = datetime.now().isoformat()
-
-    # Reset all pipelines to queued
-    new_datasets = []
-    for dataset in old_run.datasets:
-        new_pipelines = []
-        for pipeline in dataset.pipelines:
-            new_pipeline = PipelineRun(
-                id=f"{new_run_id}-{pipeline.pipeline_id}",
-                pipeline_id=pipeline.pipeline_id,
-                pipeline_name=pipeline.pipeline_name,
-                model=pipeline.model,
-                preprocessing=pipeline.preprocessing,
-                split_strategy=pipeline.split_strategy,
-                status="queued",
-                progress=0,
-                config=pipeline.config,
-                variant_index=pipeline.variant_index,
-                variant_description=pipeline.variant_description,
-                variant_choices=pipeline.variant_choices,
-                is_expanded_variant=pipeline.is_expanded_variant,
-                estimated_variants=pipeline.estimated_variants,
-                has_generators=pipeline.has_generators,
-                fold_count=pipeline.fold_count,
-                branch_count=pipeline.branch_count,
-                total_model_count=pipeline.total_model_count,
-                model_count_breakdown=pipeline.model_count_breakdown,
-            )
-            new_pipelines.append(new_pipeline)
-
-        new_dataset = DatasetRun(
-            dataset_id=dataset.dataset_id,
-            dataset_name=dataset.dataset_name,
-            split_group_by=dataset.split_group_by,
-            pipelines=new_pipelines,
-        )
-        new_datasets.append(new_dataset)
+    retry_plan = build_retry_run_execution_plan(
+        old_run=old_run,
+        new_run_id=new_run_id,
+        created_at=now,
+    )
 
     new_run = Run(
-        id=new_run_id,
-        name=f"{old_run.name} (retry)",
-        description=old_run.description,
-        datasets=new_datasets,
-        status="queued",
-        created_at=now,
-        cv_folds=old_run.cv_folds,
-        total_pipelines=old_run.total_pipelines,
-        completed_pipelines=0,
-        workspace_path=old_run.workspace_path,
-        project_id=old_run.project_id,
+        id=retry_plan.run_id,
+        name=retry_plan.name,
+        description=retry_plan.description,
+        execution_backend=retry_plan.execution_backend,
+        datasets=[
+            DatasetRun(
+                dataset_id=dataset.dataset_id,
+                dataset_name=dataset.dataset_name,
+                split_group_by=dataset.split_group_by,
+                pipelines=[
+                    PipelineRun(
+                        id=pipeline.pipeline_run_id,
+                        pipeline_id=pipeline.pipeline_id,
+                        pipeline_name=pipeline.pipeline_name,
+                        model=pipeline.model,
+                        preprocessing=pipeline.preprocessing,
+                        split_strategy=pipeline.split_strategy,
+                        status=pipeline.status,
+                        progress=pipeline.progress,
+                        config=pipeline.pipeline_config,
+                        variant_index=pipeline.variant_index,
+                        variant_description=pipeline.variant_description,
+                        variant_choices=pipeline.variant_choices,
+                        is_expanded_variant=pipeline.is_expanded_variant,
+                        estimated_variants=pipeline.estimated_variants,
+                        has_generators=pipeline.has_generators,
+                        fold_count=pipeline.fold_count,
+                        branch_count=pipeline.branch_count,
+                        total_model_count=pipeline.total_model_count,
+                        model_count_breakdown=pipeline.model_count_breakdown,
+                    )
+                    for pipeline in dataset.pipelines
+                ],
+            )
+            for dataset in retry_plan.datasets
+        ],
+        status=retry_plan.status,
+        created_at=retry_plan.created_at,
+        cv_folds=retry_plan.cv_folds,
+        total_pipelines=retry_plan.total_pipelines,
+        completed_pipelines=retry_plan.completed_pipelines,
+        workspace_path=retry_plan.workspace_path,
+        project_id=retry_plan.project_id,
     )
+
+    _get_available_execution_driver(new_run.execution_backend)
 
     _runs[new_run_id] = new_run
 
@@ -1791,6 +2427,21 @@ async def delete_run(run_id: str):
             status_code=400,
             detail="Cannot delete a running experiment. Stop it first."
         )
+
+    try:
+        _delete_run_manifest_dir(run)
+    except Exception as exc:
+        logger.error("Failed to delete persisted run directory for %s: %s", run_id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete persisted run {run_id}",
+        ) from exc
+
+    if run.store_run_id and run.workspace_path:
+        try:
+            _open_run_store_repository(run.workspace_path).delete_run(run.store_run_id)
+        except Exception as exc:
+            logger.warning("Failed to delete store run %s for run %s: %s", run.store_run_id, run_id, exc)
 
     del _runs[run_id]
 

@@ -30,7 +30,7 @@ export function EditDatasetPanel({
     const updates: UpdateDatasetRequest = {
       config,
       default_target: config.default_target ?? dataset.default_target,
-      task_type: config.task_type ?? dataset.task_type,
+      task_type: config.task_type ?? dataset.task_type ?? undefined,
       signal_types: config.signal_type && config.signal_type !== "auto" ? [config.signal_type] : [],
     };
 

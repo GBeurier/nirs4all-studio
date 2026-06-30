@@ -1,6 +1,12 @@
 import { getNodeByClassPath, getNodeByName } from "@/data/nodes";
 import type { PipelineStep } from "@/api/pipelines";
 
+import {
+  getDatasetMetadataColumns,
+  getDatasetRepetitionColumn,
+  type DatasetGroupingFieldsInput,
+} from "./datasetGroupingFields";
+
 type StepLike = PipelineStep & {
   classPath?: string;
   children?: unknown[];
@@ -37,19 +43,7 @@ export interface DatasetRuntimeGroupingState {
   optionalPropagationWarning: string | null;
 }
 
-type DatasetGroupingInput = {
-  config?: {
-    aggregation?: {
-      enabled?: boolean;
-      column?: string;
-      method?: "mean" | "median" | "vote";
-    };
-    repetition?: string;
-  };
-  metadata_columns?: string[];
-  metadataColumns?: string[];
-  repetitionColumn?: string | null;
-};
+type DatasetGroupingInput = DatasetGroupingFieldsInput;
 
 export const RUNTIME_GROUPING_COPY = {
   additiveDescription:
@@ -222,7 +216,7 @@ export function evaluateDatasetRuntimeGrouping(
         : RUNTIME_GROUPING_COPY.requiredBlocking
       : null,
     repetitionOnlyWarning:
-      selection.hasRequiredSplitters && !cleanedGroupBy && Boolean(repetitionColumn)
+      selection.hasRequiredSplitters && !cleanedGroupBy && repetitionColumn
         ? getRuntimeGroupingRepetitionOnlyWarning(repetitionColumn)
         : null,
     optionalPropagationWarning:
@@ -232,37 +226,7 @@ export function evaluateDatasetRuntimeGrouping(
   };
 }
 
-export function getDatasetRepetitionColumn(
-  dataset: Pick<DatasetGroupingInput, "config" | "repetitionColumn"> | null | undefined,
-): string | null {
-  if (typeof dataset?.repetitionColumn === "string" && dataset.repetitionColumn.trim()) {
-    return dataset.repetitionColumn.trim();
-  }
-
-  const config = dataset?.config;
-  if (!config) {
-    return null;
-  }
-
-  if (config.aggregation?.enabled && typeof config.aggregation.column === "string" && config.aggregation.column.trim()) {
-    return config.aggregation.column.trim();
-  }
-
-  if (typeof config.repetition === "string" && config.repetition.trim()) {
-    return config.repetition.trim();
-  }
-
-  return null;
-}
-
-export function getDatasetMetadataColumns(
-  dataset: Pick<DatasetGroupingInput, "metadata_columns" | "metadataColumns"> | null | undefined,
-): string[] {
-  const columns = dataset?.metadata_columns ?? dataset?.metadataColumns ?? [];
-  return [...new Set(columns.filter((column): column is string => typeof column === "string" && column.length > 0))].sort(
-    (left, right) => left.localeCompare(right),
-  );
-}
+export { getDatasetMetadataColumns, getDatasetRepetitionColumn };
 
 function visitSteps(
   steps: unknown[],

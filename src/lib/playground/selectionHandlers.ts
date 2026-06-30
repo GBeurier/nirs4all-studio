@@ -9,13 +9,13 @@
  * @see docs/_internals/PLAYGROUND_SELECTION_MODEL.md
  */
 
-import type { SelectionContextValue, SelectionMode } from '@/context/SelectionContext';
+import type { SelectionContextValue, SelectionMode } from '@/context/useSelection';
 import {
   isPointInBox,
   isPointInPolygon,
   type Point,
   type SelectionResult,
-} from '@/components/playground/SelectionTools';
+} from '@/components/playground/selectionGeometry';
 
 // ============= Type Definitions =============
 

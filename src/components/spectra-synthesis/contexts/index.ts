@@ -1,9 +1,23 @@
-export { SynthesisBuilderProvider, useSynthesisBuilder, useSynthesisBuilderOptional } from "./SynthesisBuilderContext";
+export { SynthesisBuilderProvider } from "./SynthesisBuilderContext";
+export {
+  useSynthesisBuilder,
+  useSynthesisBuilderOptional,
+} from "./useSynthesisBuilderContext";
+export type {
+  SynthesisBuilderContextValue,
+  SynthesisBuilderState,
+} from "./useSynthesisBuilderContext";
 export {
   SynthesisPreviewProvider,
+} from "./SynthesisPreviewContext";
+export {
   useSynthesisPreview,
   useSynthesisPreviewOptional,
-  type PreviewData,
-  type PreviewStatistics,
-  type PreviewMode,
-} from "./SynthesisPreviewContext";
+} from "./useSynthesisPreviewContext";
+export type {
+  PreviewData,
+  PreviewStatistics,
+  PreviewMode,
+  SynthesisPreviewContextValue,
+  SynthesisPreviewState,
+} from "./useSynthesisPreviewContext";

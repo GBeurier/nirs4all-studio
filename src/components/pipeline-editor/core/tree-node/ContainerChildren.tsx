@@ -8,7 +8,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Plus, GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { usePipelineDnd } from "../../PipelineDndContext";
+import { usePipelineDnd } from "../../usePipelineDnd";
 import { getStepColor } from "../../types";
 import type { ContainerChildrenNodeProps, ContainerChildItemProps } from "./types";
 import { getStepIcon } from "./utils";

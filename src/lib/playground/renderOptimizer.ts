@@ -10,6 +10,12 @@
  */
 
 import { createLogger } from "@/lib/logger";
+import {
+  clientStorageKeys,
+  readClientStorageJson,
+  removeClientStorageItem,
+  writeClientStorageJson,
+} from "@/lib/clientStorage";
 
 const logger = createLogger("RenderOptimizer");
 
@@ -59,8 +65,6 @@ export interface OptimizationConfig {
 }
 
 // ============= Constants =============
-
-const STORAGE_KEY = 'playground-render-preferences';
 
 const DEFAULT_CONFIG: OptimizationConfig = {
   canvasComplexityLimit: 1,           // WebGL is the default for any dataset (>20 samples); Canvas only used when forced
@@ -300,46 +304,36 @@ export interface RenderPreferences {
  * Load user render preferences from storage
  */
 export function loadRenderPreferences(): RenderPreferences | null {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (e) {
-    logger.warn('Failed to load render preferences:', e);
-  }
-  return null;
+  return readClientStorageJson<RenderPreferences>(clientStorageKeys.playgroundRenderPreferences, {
+    onError: (error) => logger.warn('Failed to load render preferences:', error),
+  });
 }
 
 /**
  * Save user render preferences to storage
  */
 export function saveRenderPreferences(prefs: Partial<RenderPreferences>): void {
-  try {
-    const existing = loadRenderPreferences();
-    const updated: RenderPreferences = {
-      forceMode: null,
-      aggregationThreshold: null,
-      showPerformanceWarnings: true,
-      ...existing,
-      ...prefs,
-      updatedAt: new Date().toISOString(),
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-  } catch (e) {
-    logger.warn('Failed to save render preferences:', e);
-  }
+  const existing = loadRenderPreferences();
+  const updated: RenderPreferences = {
+    forceMode: null,
+    aggregationThreshold: null,
+    showPerformanceWarnings: true,
+    ...existing,
+    ...prefs,
+    updatedAt: new Date().toISOString(),
+  };
+  writeClientStorageJson(clientStorageKeys.playgroundRenderPreferences, updated, {
+    onError: (error) => logger.warn('Failed to save render preferences:', error),
+  });
 }
 
 /**
  * Clear user render preferences
  */
 export function clearRenderPreferences(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch (e) {
-    logger.warn('Failed to clear render preferences:', e);
-  }
+  removeClientStorageItem(clientStorageKeys.playgroundRenderPreferences, {
+    onError: (error) => logger.warn('Failed to clear render preferences:', error),
+  });
 }
 
 // ============= Performance Monitoring =============

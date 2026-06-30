@@ -7,7 +7,7 @@
  * Phase 6 Implementation - Settings Roadmap
  */
 
-import { useLanguage } from "@/context/LanguageContext";
+import { useLanguage } from "@/context/useLanguage";
 import { useTranslation } from "react-i18next";
 import { Check, Globe, Loader2 } from "lucide-react";
 import {

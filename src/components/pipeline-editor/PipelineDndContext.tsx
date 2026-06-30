@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from "react";
+import { useState, useCallback, useMemo, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -35,8 +35,12 @@ import {
   Zap,
 } from "lucide-react";
 import type { PipelineStep, StepType, LegacyStepType, StepOption, DragData, DropIndicator } from "./types";
-import { stepColors, getStepColor } from "./types";
+import { getStepColor, stepColors } from "./stepPresentation";
 import { getStepItemDropIndicator } from "./dnd-utils";
+import {
+  PipelineDndContext,
+  type PipelineDndContextValue,
+} from "./usePipelineDnd";
 
 // Icons for step types
 const stepIcons: Record<LegacyStepType, typeof Waves> = {
@@ -59,23 +63,6 @@ const stepIcons: Record<LegacyStepType, typeof Waves> = {
   chart: LineChart,
   comment: MessageSquare,
 };
-
-interface PipelineDndContextValue {
-  activeData: DragData | null;
-  dropIndicator: DropIndicator | null;
-  isDragging: boolean;
-  activeId: UniqueIdentifier | null;
-}
-
-const PipelineDndContext = createContext<PipelineDndContextValue | null>(null);
-
-export function usePipelineDnd() {
-  const context = useContext(PipelineDndContext);
-  if (!context) {
-    throw new Error("usePipelineDnd must be used within PipelineDndProvider");
-  }
-  return context;
-}
 
 interface PipelineDndProviderProps {
   children: ReactNode;
@@ -157,6 +144,7 @@ export function PipelineDndProvider({ children, onDrop, onReorder }: PipelineDnd
       position?: "before" | "after" | "inside";
       accepts?: boolean | string[];
       parentStepId?: string;
+      stepId?: string;
     };
 
     if ((overData?.type === "drop-zone" || overData?.type === "container-drop-zone") && overData.accepts !== false) {

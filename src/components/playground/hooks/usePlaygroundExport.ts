@@ -21,7 +21,7 @@ import {
   type ChartExportData,
   type CombinedReportOptions,
 } from '@/lib/playground/export';
-import type { SavedSelection } from '@/context/SelectionContext';
+import type { SavedSelection } from '@/context/useSelection';
 import type { ChartType } from '../CanvasToolbar';
 
 // ============= Types =============

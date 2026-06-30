@@ -19,8 +19,6 @@
  */
 
 import {
-  createContext,
-  useContext,
   useReducer,
   useCallback,
   useEffect,
@@ -30,86 +28,23 @@ import {
 } from 'react';
 import type { InspectorSelectionToolMode, InspectorSavedSelection } from '@/types/inspector';
 import {
-  applySelectionMode,
-  toggleInSet,
-  addToSet,
-  removeFromSet,
-  pushHistory as pushHistoryCore,
-  undoHistory,
-  redoHistory,
   persistSelection,
   loadPersistedSelection,
-  type SelectionModeBase,
   type PersistFieldNames,
 } from './selection/createSelectionCore';
-
-// ============= Types =============
-
-export type InspectorSelectionMode = SelectionModeBase;
-
-export interface InspectorSelectionState {
-  selectedChains: Set<string>;
-  pinnedChains: Set<string>;
-  savedSelections: InspectorSavedSelection[];
-  selectionHistory: Set<string>[];
-  historyIndex: number;
-  selectionMode: InspectorSelectionMode;
-  selectionToolMode: InspectorSelectionToolMode;
-}
-
-type InspectorSelectionAction =
-  | { type: 'SELECT'; chainIds: string[]; mode?: InspectorSelectionMode }
-  | { type: 'DESELECT'; chainIds: string[] }
-  | { type: 'TOGGLE'; chainIds: string[] }
-  | { type: 'CLEAR' }
-  | { type: 'SELECT_ALL'; chainIds: string[] }
-  | { type: 'INVERT'; allChainIds: string[] }
-  | { type: 'UNDO' }
-  | { type: 'REDO' }
-  | { type: 'SET_MODE'; mode: InspectorSelectionMode }
-  | { type: 'SET_TOOL_MODE'; tool: InspectorSelectionToolMode }
-  | { type: 'PIN'; chainIds: string[] }
-  | { type: 'UNPIN'; chainIds: string[] }
-  | { type: 'CLEAR_PINS' }
-  | { type: 'TOGGLE_PIN'; chainId: string }
-  | { type: 'SAVE_SELECTION'; name: string; color?: string }
-  | { type: 'LOAD_SELECTION'; id: string }
-  | { type: 'DELETE_SAVED_SELECTION'; id: string }
-  | { type: 'RESTORE'; selectedChains: string[]; pinnedChains?: string[]; savedSelections?: InspectorSavedSelection[] };
-
-export interface InspectorSelectionContextValue extends InspectorSelectionState {
-  // Selection
-  select: (chainIds: string[], mode?: InspectorSelectionMode) => void;
-  deselect: (chainIds: string[]) => void;
-  toggle: (chainIds: string[]) => void;
-  clear: () => void;
-  selectAll: (chainIds: string[]) => void;
-  invert: (allChainIds: string[]) => void;
-  undo: () => void;
-  redo: () => void;
-  setSelectionMode: (mode: InspectorSelectionMode) => void;
-  isSelected: (chainId: string) => boolean;
-  selectedCount: number;
-  hasSelection: boolean;
-  canUndo: boolean;
-  canRedo: boolean;
-
-  // Pins
-  pin: (chainIds: string[]) => void;
-  unpin: (chainIds: string[]) => void;
-  clearPins: () => void;
-  togglePin: (chainId: string) => void;
-  isPinned: (chainId: string) => boolean;
-  pinnedCount: number;
-
-  // Saved selections
-  saveSelection: (name: string, color?: string) => void;
-  loadSelection: (id: string) => void;
-  deleteSavedSelection: (id: string) => void;
-
-  // Tool mode
-  setSelectionToolMode: (tool: InspectorSelectionToolMode) => void;
-}
+import {
+  createInspectorSavedSelection,
+  getInspectorSelectionDerivedState,
+  inspectorSelectionReducer,
+  restoreInspectorSelectionState,
+} from '@/lib/inspector/selectionState';
+import {
+  InspectorHoverContext,
+  InspectorSelectionContext,
+  type InspectorHoverContextValue,
+  type InspectorSelectionContextValue,
+  type InspectorSelectionMode,
+} from './useInspectorSelection';
 
 // ============= Constants =============
 
@@ -120,154 +55,7 @@ const PERSIST_FIELDS: PersistFieldNames = {
   savedSelections: 'savedSelections',
 };
 
-// ============= Initial State =============
-
-const createInitialState = (): InspectorSelectionState => ({
-  selectedChains: new Set<string>(),
-  pinnedChains: new Set<string>(),
-  savedSelections: [],
-  selectionHistory: [new Set<string>()],
-  historyIndex: 0,
-  selectionMode: 'replace',
-  selectionToolMode: 'click',
-});
-
-// ============= Helpers =============
-
-/** Record a new selection snapshot in the shared bounded undo history. */
-function withHistory(state: InspectorSelectionState, selectedChains: Set<string>): InspectorSelectionState {
-  return {
-    ...state,
-    selectedChains,
-    ...pushHistoryCore(state.selectionHistory, state.historyIndex, selectedChains),
-  };
-}
-
-function generateId(): string {
-  return `sel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-// ============= Reducer =============
-
-function selectionReducer(state: InspectorSelectionState, action: InspectorSelectionAction): InspectorSelectionState {
-  switch (action.type) {
-    case 'SELECT':
-      return withHistory(
-        state,
-        applySelectionMode(state.selectedChains, action.chainIds, action.mode ?? state.selectionMode)
-      );
-
-    case 'DESELECT':
-      return withHistory(state, removeFromSet(state.selectedChains, action.chainIds));
-
-    case 'TOGGLE': {
-      let newSelection = state.selectedChains;
-      action.chainIds.forEach(id => {
-        newSelection = toggleInSet(newSelection, id);
-      });
-      return withHistory(state, newSelection);
-    }
-
-    case 'CLEAR': {
-      if (state.selectedChains.size === 0) return state;
-      return withHistory(state, new Set<string>());
-    }
-
-    case 'SELECT_ALL':
-      return withHistory(state, new Set(action.chainIds));
-
-    case 'INVERT': {
-      const newSelection = new Set<string>();
-      for (const id of action.allChainIds) {
-        if (!state.selectedChains.has(id)) newSelection.add(id);
-      }
-      return withHistory(state, newSelection);
-    }
-
-    case 'UNDO': {
-      const result = undoHistory(state.selectionHistory, state.historyIndex);
-      if (!result) return state;
-      return { ...state, selectedChains: result.selection, historyIndex: result.historyIndex };
-    }
-
-    case 'REDO': {
-      const result = redoHistory(state.selectionHistory, state.historyIndex);
-      if (!result) return state;
-      return { ...state, selectedChains: result.selection, historyIndex: result.historyIndex };
-    }
-
-    case 'SET_MODE':
-      return { ...state, selectionMode: action.mode };
-
-    case 'SET_TOOL_MODE':
-      return { ...state, selectionToolMode: action.tool };
-
-    // Pin operations
-    case 'PIN':
-      return { ...state, pinnedChains: addToSet(state.pinnedChains, action.chainIds) };
-
-    case 'UNPIN':
-      return { ...state, pinnedChains: removeFromSet(state.pinnedChains, action.chainIds) };
-
-    case 'CLEAR_PINS': {
-      if (state.pinnedChains.size === 0) return state;
-      return { ...state, pinnedChains: new Set<string>() };
-    }
-
-    case 'TOGGLE_PIN':
-      return { ...state, pinnedChains: toggleInSet(state.pinnedChains, action.chainId) };
-
-    // Saved selections
-    case 'SAVE_SELECTION': {
-      if (state.selectedChains.size === 0) return state;
-      const newSaved: InspectorSavedSelection = {
-        id: generateId(),
-        name: action.name,
-        chain_ids: Array.from(state.selectedChains),
-        createdAt: new Date().toISOString(),
-        color: action.color,
-      };
-      return { ...state, savedSelections: [...state.savedSelections, newSaved] };
-    }
-
-    case 'LOAD_SELECTION': {
-      const saved = state.savedSelections.find(s => s.id === action.id);
-      if (!saved) return state;
-      return withHistory(state, new Set(saved.chain_ids));
-    }
-
-    case 'DELETE_SAVED_SELECTION':
-      return { ...state, savedSelections: state.savedSelections.filter(s => s.id !== action.id) };
-
-    case 'RESTORE':
-      return {
-        ...state,
-        selectedChains: new Set(action.selectedChains),
-        pinnedChains: action.pinnedChains ? new Set(action.pinnedChains) : state.pinnedChains,
-        savedSelections: action.savedSelections ?? state.savedSelections,
-      };
-
-    default:
-      return state;
-  }
-}
-
-// ============= Contexts =============
-
-const InspectorSelectionContext = createContext<InspectorSelectionContextValue | undefined>(undefined);
-
-export interface InspectorHoverContextValue {
-  hoveredChain: string | null;
-  setHovered: (chainId: string | null) => void;
-}
-
-const InspectorHoverContext = createContext<InspectorHoverContextValue | undefined>(undefined);
-
 // ============= Storage Helpers =============
-
-function persistState(state: InspectorSelectionState): void {
-  persistSelection(STORAGE_KEY, PERSIST_FIELDS, state.selectedChains, state.pinnedChains, state.savedSelections);
-}
 
 function loadPersistedState() {
   return loadPersistedSelection<string, InspectorSavedSelection>(STORAGE_KEY, PERSIST_FIELDS);
@@ -276,25 +64,25 @@ function loadPersistedState() {
 // ============= Provider =============
 
 export function InspectorSelectionProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(selectionReducer, null, () => {
-    const initial = createInitialState();
-    const persisted = loadPersistedState();
-    if (persisted) {
-      return {
-        ...initial,
-        selectedChains: persisted.selected ? new Set(persisted.selected) : initial.selectedChains,
-        pinnedChains: persisted.pinned ? new Set(persisted.pinned) : initial.pinnedChains,
-        savedSelections: persisted.savedSelections ?? initial.savedSelections,
-      };
-    }
-    return initial;
-  });
+  const [state, dispatch] = useReducer(
+    inspectorSelectionReducer,
+    loadPersistedState(),
+    restoreInspectorSelectionState,
+  );
 
   const [hoveredChain, setHoveredChainState] = useState<string | null>(null);
 
   // Persist state changes
   useEffect(() => {
-    const timeout = setTimeout(() => persistState(state), 500);
+    const timeout = setTimeout(() => {
+      persistSelection(
+        STORAGE_KEY,
+        PERSIST_FIELDS,
+        state.selectedChains,
+        state.pinnedChains,
+        state.savedSelections,
+      );
+    }, 500);
     return () => clearTimeout(timeout);
   }, [state.selectedChains, state.pinnedChains, state.savedSelections]);
 
@@ -352,18 +140,29 @@ export function InspectorSelectionProvider({ children }: { children: ReactNode }
   const togglePin = useCallback((chainId: string) => dispatch({ type: 'TOGGLE_PIN', chainId }), []);
 
   // Action creators — Saved selections
-  const saveSelection = useCallback((name: string, color?: string) => dispatch({ type: 'SAVE_SELECTION', name, color }), []);
+  const saveSelection = useCallback((name: string, color?: string) => {
+    dispatch({
+      type: 'SAVE_SELECTION',
+      selection: createInspectorSavedSelection({
+        chainIds: state.selectedChains,
+        color,
+        name,
+      }),
+    });
+  }, [state.selectedChains]);
   const loadSelection = useCallback((id: string) => dispatch({ type: 'LOAD_SELECTION', id }), []);
   const deleteSavedSelection = useCallback((id: string) => dispatch({ type: 'DELETE_SAVED_SELECTION', id }), []);
 
   // Derived state
   const isSelected = useCallback((chainId: string) => state.selectedChains.has(chainId), [state.selectedChains]);
   const isPinned = useCallback((chainId: string) => state.pinnedChains.has(chainId), [state.pinnedChains]);
-  const canUndo = state.historyIndex > 0;
-  const canRedo = state.historyIndex < state.selectionHistory.length - 1;
-  const selectedCount = state.selectedChains.size;
-  const hasSelection = selectedCount > 0;
-  const pinnedCount = state.pinnedChains.size;
+  const {
+    canRedo,
+    canUndo,
+    hasSelection,
+    pinnedCount,
+    selectedCount,
+  } = useMemo(() => getInspectorSelectionDerivedState(state), [state]);
 
   const setHovered = useCallback((chainId: string | null) => setHoveredChainState(chainId), []);
 
@@ -393,22 +192,4 @@ export function InspectorSelectionProvider({ children }: { children: ReactNode }
       </InspectorSelectionContext.Provider>
     </InspectorHoverContext.Provider>
   );
-}
-
-// ============= Hooks =============
-
-export function useInspectorSelection(): InspectorSelectionContextValue {
-  const context = useContext(InspectorSelectionContext);
-  if (context === undefined) {
-    throw new Error('useInspectorSelection must be used within an InspectorSelectionProvider');
-  }
-  return context;
-}
-
-export function useInspectorHover(): InspectorHoverContextValue {
-  const context = useContext(InspectorHoverContext);
-  if (context === undefined) {
-    throw new Error('useInspectorHover must be used within an InspectorSelectionProvider');
-  }
-  return context;
 }

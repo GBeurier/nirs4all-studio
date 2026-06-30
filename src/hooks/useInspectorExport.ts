@@ -7,9 +7,9 @@
 
 import { useCallback } from 'react';
 import { toast } from 'sonner';
-import { useInspectorData } from '@/context/InspectorDataContext';
-import { useInspectorFilter } from '@/context/InspectorFilterContext';
-import { useInspectorView } from '@/context/InspectorViewContext';
+import { useInspectorData } from '@/context/useInspectorDataContext';
+import { useInspectorFilter } from '@/context/useInspectorFilter';
+import { useInspectorView } from '@/context/useInspectorView';
 import { INSPECTOR_PANELS } from '@/lib/inspector/chartRegistry';
 import type { InspectorPanelType } from '@/types/inspector';
 

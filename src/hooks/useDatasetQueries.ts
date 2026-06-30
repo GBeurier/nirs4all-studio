@@ -48,13 +48,27 @@ import {
   getDatasetScores,
 } from "@/api/datasets";
 import { getLinkedWorkspaces } from "@/api/linkedWorkspaces";
-import { useMlReadiness } from "@/context/MlReadinessContext";
+import { useMlReadiness } from "@/context/useMlReadiness";
+import {
+  normalizeDataset,
+  normalizeDatasetListResponse,
+} from "@/lib/datasetDomain";
+import {
+  clientStorageKeyPrefixes,
+  clientStorageKeys,
+  datasetScoresCacheKey,
+  listClientStorageItemKeys,
+  readClientStorageString,
+  removeClientStorageItem,
+  writeClientStorageString,
+  type ClientStorageKey,
+} from "@/lib/clientStorage";
 import type {
   Dataset,
   DatasetListResponse,
-  LinkedWorkspaceListResponse,
   PreviewDataResponse,
 } from "@/types/datasets";
+import type { LinkedWorkspaceListResponse } from "@/types/linked-workspaces";
 
 // Long-lived caches: dataset list & preview rarely change behind our back, and
 // we explicitly invalidate after mutations and on workspaceReady. 30 minutes of
@@ -70,7 +84,7 @@ const baseOptions = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Persistent localStorage cache
+// Persistent client-storage cache
 //
 // React Query's cache is in-memory only, so on every cold start the dataset
 // list and linked-workspaces would be re-fetched and the page would spin
@@ -85,7 +99,7 @@ const baseOptions = {
 //
 // Cache invalidation is correctness-backstopped two ways:
 //   - Every mutation handler calls `useInvalidateDatasets()` which clears
-//     both the in-memory cache AND the localStorage entries.
+//     both the in-memory cache AND the client-storage entries.
 //   - Stored payloads carry the schema version below; bumping it on a
 //     breaking change purges all stale on-disk caches.
 // ---------------------------------------------------------------------------
@@ -93,9 +107,9 @@ const baseOptions = {
 const CACHE_VERSION = 2;
 const READABLE_CACHE_VERSIONS = new Set([1, CACHE_VERSION]);
 const STORAGE_KEYS = {
-  datasets: "n4a:cache:datasets:list",
-  linkedWorkspaces: "n4a:cache:workspaces:linked",
-  scores: (workspaceId: string) => `n4a:cache:workspaces:${workspaceId}:scores`,
+  datasets: clientStorageKeys.datasetsListCache,
+  linkedWorkspaces: clientStorageKeys.linkedWorkspacesCache,
+  scores: datasetScoresCacheKey,
 };
 
 interface CachedEntry<T> {
@@ -104,9 +118,9 @@ interface CachedEntry<T> {
   data: T;
 }
 
-function readCache<T>(key: string): CachedEntry<T> | null {
+function readCache<T>(key: ClientStorageKey<unknown>): CachedEntry<T> | null {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = readClientStorageString(key as ClientStorageKey<string>);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedEntry<T>;
     // v2 did not change the on-disk payload shape, so keep honoring the
@@ -118,18 +132,18 @@ function readCache<T>(key: string): CachedEntry<T> | null {
   }
 }
 
-function writeCache<T>(key: string, data: T, timestamp: number = Date.now()): void {
+function writeCache<T>(key: ClientStorageKey<unknown>, data: T, timestamp: number = Date.now()): void {
   try {
     const entry: CachedEntry<T> = { v: CACHE_VERSION, ts: timestamp, data };
-    localStorage.setItem(key, JSON.stringify(entry));
+    writeClientStorageString(key as ClientStorageKey<string>, JSON.stringify(entry));
   } catch {
     // Quota exceeded or storage disabled — ignore, in-memory cache still works.
   }
 }
 
-function clearCacheKey(key: string): void {
+function clearCacheKey(key: ClientStorageKey<unknown>): void {
   try {
-    localStorage.removeItem(key);
+    removeClientStorageItem(key);
   } catch {
     // ignore
   }
@@ -144,27 +158,30 @@ function clearAllDatasetCaches(): void {
     clearCacheKey(STORAGE_KEYS.datasets);
     clearCacheKey(STORAGE_KEYS.linkedWorkspaces);
     // Per-workspace score caches are namespaced — sweep them all.
-    const toRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith("n4a:cache:workspaces:") && k.endsWith(":scores")) {
-        toRemove.push(k);
-      }
-    }
-    toRemove.forEach(clearCacheKey);
+    listClientStorageItemKeys("local")
+      .filter((key) => (
+        key.startsWith(clientStorageKeyPrefixes.datasetWorkspaceScores)
+        && key.endsWith(":scores")
+      ))
+      .forEach((key) => clearCacheKey(datasetScoresCacheKey(
+        key.slice(
+          clientStorageKeyPrefixes.datasetWorkspaceScores.length,
+          -":scores".length,
+        ),
+      )));
   } catch {
     // ignore
   }
 }
 
 /**
- * Hook helper: persist a query's data to localStorage after a fresh fetch.
+ * Hook helper: persist a query's data to client storage after a fresh fetch.
  * Hydrated/initialData snapshots must not be re-stamped as fresh on mount,
- * otherwise a stale localStorage entry can keep skipping revalidation for the
+ * otherwise a stale persisted entry can keep skipping revalidation for the
  * next cold start.
  */
 function usePersistOnSuccess<T>(
-  key: string | null,
+  key: ClientStorageKey<unknown> | null,
   query: Pick<UseQueryResult<T>, "data" | "dataUpdatedAt" | "fetchStatus" | "status">,
   sourceTimestamp?: number,
 ): void {
@@ -203,13 +220,14 @@ export const datasetQueryKeys = {
 // ---------------------------------------------------------------------------
 
 export function useDatasetsQuery() {
-  // Hydrate from localStorage so the page renders the previous session's
+  // Hydrate from client storage so the page renders the previous session's
   // dataset list synchronously, before any HTTP request fires.
   const cached = readCache<DatasetListResponse>(STORAGE_KEYS.datasets);
+  const cachedData = cached ? normalizeDatasetListResponse(cached.data) : undefined;
   const query = useQuery<DatasetListResponse>({
     queryKey: datasetQueryKeys.list(),
-    queryFn: () => listDatasets(),
-    initialData: cached?.data,
+    queryFn: async () => normalizeDatasetListResponse(await listDatasets()),
+    initialData: cachedData,
     // Treat the persisted data as old enough to refetch in the background:
     // staleTime is 5 min, so any timestamp older than that triggers a fetch
     // while still rendering cached content immediately.
@@ -238,7 +256,7 @@ export function useDatasetQuery(id: string | undefined) {
     queryKey: datasetQueryKeys.detail(id ?? null),
     queryFn: async () => {
       const { dataset } = await getDataset(id as string);
-      return dataset;
+      return normalizeDataset(dataset);
     },
     enabled: !!id,
     ...baseOptions,
@@ -333,7 +351,7 @@ export function useInvalidateDatasets() {
 export function prefetchDatasetsList(queryClient: QueryClient) {
   queryClient.prefetchQuery({
     queryKey: datasetQueryKeys.list(),
-    queryFn: () => listDatasets(),
+    queryFn: async () => normalizeDatasetListResponse(await listDatasets()),
     staleTime: LONG_STALE_MS,
     gcTime: LONG_GC_MS,
   });
@@ -357,7 +375,7 @@ export function prefetchDatasetsList(queryClient: QueryClient) {
 export function hydrateDatasetCachesFromStorage(queryClient: QueryClient): void {
   const datasetsCached = readCache<DatasetListResponse>(STORAGE_KEYS.datasets);
   if (datasetsCached) {
-    queryClient.setQueryData(datasetQueryKeys.list(), datasetsCached.data, {
+    queryClient.setQueryData(datasetQueryKeys.list(), normalizeDatasetListResponse(datasetsCached.data), {
       updatedAt: datasetsCached.ts,
     });
   }

@@ -84,16 +84,22 @@ If you prefer to run nirs4all Studio as a local web application in your browser,
    Then install the requirements:
 
    ```bash
-   pip install -r requirements.txt
+   pip install -r requirements-cpu.txt
    ```
 
 4. **Start the application**:
 
    ```bash
-   npm start
+   npm run dev
    ```
 
-   This launches both the frontend development server and the FastAPI backend. Open your browser to the URL shown in the terminal (usually `http://localhost:5173`).
+   In another terminal, activate the virtual environment and start the FastAPI backend:
+
+   ```bash
+   python main.py --no-reload
+   ```
+
+   Open your browser to the URL shown by Vite, usually `http://localhost:5173`.
 
 :::{warning}
 Web mode is intended for development and advanced use. For everyday analysis work, the desktop app provides a smoother experience with automatic backend management and native file dialogs.

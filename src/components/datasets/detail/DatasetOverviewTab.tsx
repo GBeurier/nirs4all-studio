@@ -9,14 +9,22 @@ import { getDatasetTaskLabel } from "@/lib/datasetTask";
 import { getRepeatIndexColumnWarning } from "@/lib/playground/repetition";
 import { Target, Info, FileSpreadsheet, Clock, GitBranch } from "lucide-react";
 import { TargetHistogram } from "../charts";
-import { buildTargetHistogramData } from "../charts/TargetHistogram";
+import { buildTargetHistogramData } from "../charts/targetHistogramData";
 import { PartitionToggle } from "../PartitionToggle";
 import { getPartitionTheme } from "../partitionTheme";
+import {
+  formatCount,
+  getDatasetOverviewSampleCounts,
+  getEffectivePartition,
+  getEffectiveTargetDistribution,
+  getPartitionSampleCount,
+  getRelativeTime,
+  hasTestPartition,
+} from "./DatasetOverviewTabData";
 import type {
   Dataset,
   PartitionKey,
   PreviewDataResponse,
-  TargetDistribution,
 } from "@/types/datasets";
 
 interface DatasetOverviewTabProps {
@@ -24,53 +32,29 @@ interface DatasetOverviewTabProps {
   preview: PreviewDataResponse | null;
 }
 
-function getRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays} days ago`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
-  return `${Math.floor(diffDays / 365)} years ago`;
-}
-
-function formatCount(value: number | null | undefined): string {
-  if (value == null) return "--";
-  return value.toLocaleString();
-}
-
 export function DatasetOverviewTab({ dataset, preview }: DatasetOverviewTabProps) {
   const repetitionColumn = getConfiguredRepetitionColumn(dataset.config);
   const repetitionColumnWarning = getRepeatIndexColumnWarning(repetitionColumn);
 
-  const trainCount = preview?.summary?.train_samples ?? dataset.train_samples;
-  const testCount = preview?.summary?.test_samples ?? dataset.test_samples;
-  const hasTest = !!preview?.target_distribution_by_partition?.test || (testCount != null && testCount > 0);
+  const { trainCount, testCount } = getDatasetOverviewSampleCounts(dataset, preview);
+  const hasTest = hasTestPartition(preview?.target_distribution_by_partition, testCount);
 
   const [partition, setPartition] = useState<PartitionKey>("all");
-  const effectivePartition: PartitionKey = !hasTest && partition !== "train" ? "train" : partition;
+  const effectivePartition = getEffectivePartition(partition, hasTest);
   const partitionTheme = getPartitionTheme(effectivePartition);
 
-  const distribution: TargetDistribution | undefined = useMemo(() => {
-    if (preview?.target_distribution_by_partition) {
-      return preview.target_distribution_by_partition[effectivePartition]
-        ?? preview.target_distribution_by_partition.train
-        ?? preview.target_distribution;
-    }
-    return preview?.target_distribution;
-  }, [preview?.target_distribution_by_partition, preview?.target_distribution, effectivePartition]);
-
-  const partitionSampleCount = distribution?.n_samples ?? (
-    effectivePartition === "test"
-      ? testCount
-      : effectivePartition === "train"
-      ? trainCount
-      : ((trainCount ?? 0) + (testCount ?? 0)) || dataset.num_samples
+  const distribution = useMemo(
+    () => getEffectiveTargetDistribution(preview, effectivePartition),
+    [preview, effectivePartition],
   );
+
+  const partitionSampleCount = getPartitionSampleCount({
+    distribution,
+    effectivePartition,
+    trainCount,
+    testCount,
+    totalCount: dataset.num_samples,
+  });
   const histogramData = useMemo(() => buildTargetHistogramData(distribution), [distribution]);
 
   return (

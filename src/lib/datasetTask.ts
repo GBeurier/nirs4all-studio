@@ -1,7 +1,6 @@
-import type { TaskType } from "@/types/datasets";
 import { isClassificationTaskType } from "@/lib/scores";
 
-type DatasetTaskValue = TaskType | "classification" | null | undefined;
+type DatasetTaskValue = string | null | undefined;
 
 interface DatasetTaskLabelOptions {
   short?: boolean;

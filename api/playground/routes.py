@@ -63,6 +63,36 @@ MAX_FEATURES = 10000
 MAX_STEPS = 50
 
 
+def _resolve_source_index(source_index: int | None, source: int | None) -> int:
+    return source_index if source_index is not None else (source if source is not None else 0)
+
+
+def _resolve_target_index(target_index: int | None) -> int:
+    return target_index if target_index is not None else 0
+
+
+def _has_explicit_source(source_index: int | None, source: int | None) -> bool:
+    return source_index is not None or source is not None
+
+
+def _select_source_array(X_raw: Any, source_index: int) -> Any:
+    if isinstance(X_raw, list):
+        if source_index >= len(X_raw):
+            return None
+        return X_raw[source_index]
+    return X_raw
+
+
+def _select_target_array(y_raw: Any, target_index: int) -> Any:
+    if y_raw is None or len(y_raw) == 0:
+        return None
+    if getattr(y_raw, "ndim", 1) == 1:
+        return y_raw
+    if target_index >= y_raw.shape[1]:
+        return None
+    return y_raw[:, target_index]
+
+
 @router.post("/execute", response_model=ExecuteResponse)
 async def execute_pipeline(request: ExecuteRequest, http_request: Request):
     """Execute a playground pipeline on spectral data.
@@ -206,6 +236,10 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
             detail=f"Dataset '{request.dataset_id}' not found or could not be loaded"
         )
 
+    source_index = _resolve_source_index(request.source_index, request.source)
+    target_index = _resolve_target_index(request.target_index)
+    use_explicit_source = _has_explicit_source(request.source_index, request.source)
+
     # Extract X, y, wavelengths from SpectroDataset as numpy arrays (no .tolist() conversion).
     # When the dataset has a pre-existing test partition, we load both train and test
     # and concatenate them so the playground can color samples by their source partition
@@ -214,9 +248,11 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
         def _load_partition(part: str):
             """Return (X, y, metadata_dict) for a single partition, or (None, None, None) if empty."""
             try:
-                X_p = dataset.x({"partition": part}, layout="2d")
-                if isinstance(X_p, list):
-                    X_p = X_p[0]
+                if use_explicit_source:
+                    X_p = dataset.x({"partition": part}, layout="2d", concat_source=False)
+                else:
+                    X_p = dataset.x({"partition": part}, layout="2d")
+                X_p = _select_source_array(X_p, source_index)
                 if X_p is None or len(X_p) == 0:
                     return None, None, None
             except Exception:
@@ -225,8 +261,7 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
             y_p = None
             try:
                 y_raw = dataset.y({"partition": part})
-                if y_raw is not None and len(y_raw) > 0:
-                    y_p = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
+                y_p = _select_target_array(y_raw, target_index)
             except Exception:
                 pass
 
@@ -315,7 +350,7 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
                 metadata_np = meta_train
 
         try:
-            headers = dataset.headers(0)
+            headers = dataset.headers(source_index)
             if headers is not None and len(headers) > 0:
                 if len(headers) == 1 and isinstance(headers[0], (list, tuple, np.ndarray)):
                     headers = list(headers[0])
@@ -329,7 +364,7 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
         # can label charts with the correct quantity. nirs4all detects this
         # from the dataset headers; we forward it as-is to the executor.
         try:
-            dataset_header_unit = dataset.header_unit(0)
+            dataset_header_unit = dataset.header_unit(source_index)
         except Exception:
             dataset_header_unit = None
     except HTTPException:
@@ -401,6 +436,8 @@ async def execute_dataset_pipeline(request: ExecuteDatasetRequest, http_request:
     exec_options = dict(request.options or {})
     exec_options["source_partitions"] = source_partitions
     exec_options["dataset_repetition"] = getattr(dataset, "repetition", None)
+    exec_options["source_index"] = source_index
+    exec_options["target_index"] = target_index
 
     # Check cache using a fast fingerprint (not requiring .tolist())
     use_cache = exec_options.get("use_cache", True)
@@ -524,10 +561,18 @@ def _get_processed_data_from_cache(request: ChartComputeRequest) -> dict | None:
         if not dataset:
             return None
 
+        source_index = _resolve_source_index(request.source_index, request.source)
+        target_index = _resolve_target_index(request.target_index)
+        use_explicit_source = _has_explicit_source(request.source_index, request.source)
+
         try:
-            X = dataset.x({"partition": "train"}, layout="2d")
-            if isinstance(X, list):
-                X = X[0]
+            if use_explicit_source:
+                X = dataset.x({"partition": "train"}, layout="2d", concat_source=False)
+            else:
+                X = dataset.x({"partition": "train"}, layout="2d")
+            X = _select_source_array(X, source_index)
+            if X is None:
+                return None
             if X.dtype != np.float64:
                 X = X.astype(np.float64)
         except Exception:
@@ -541,8 +586,7 @@ def _get_processed_data_from_cache(request: ChartComputeRequest) -> dict | None:
                 y_np = None
                 try:
                     y_raw = dataset.y({"partition": "train"})
-                    if y_raw is not None and len(y_raw) > 0:
-                        y_np = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
+                    y_np = _select_target_array(y_raw, target_index)
                 except Exception:
                     pass
                 sample_indices = executor._apply_sampling(X, y_np, request.sampling)
@@ -585,15 +629,23 @@ async def compute_pca_chart(request: ChartComputeRequest, http_request: Request)
                 from ..spectra import _load_dataset
                 dataset = _load_dataset(request.dataset_id)
                 if dataset:
+                    source_index = _resolve_source_index(request.source_index, request.source)
+                    target_index = _resolve_target_index(request.target_index)
+                    use_explicit_source = _has_explicit_source(request.source_index, request.source)
+
                     y_raw = dataset.y({"partition": "train"})
-                    if y_raw is not None and len(y_raw) > 0:
-                        y_sampled = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
+                    y_sampled = _select_target_array(y_raw, target_index)
+                    if y_sampled is not None:
                         # Apply the same sampling to y so it matches X_processed
                         if len(y_sampled) != X_processed.shape[0] and request.sampling and request.sampling.method != "all":
                             try:
-                                X_full = dataset.x({"partition": "train"}, layout="2d")
-                                if isinstance(X_full, list):
-                                    X_full = X_full[0]
+                                if use_explicit_source:
+                                    X_full = dataset.x({"partition": "train"}, layout="2d", concat_source=False)
+                                else:
+                                    X_full = dataset.x({"partition": "train"}, layout="2d")
+                                X_full = _select_source_array(X_full, source_index)
+                                if X_full is None:
+                                    raise ValueError("source data unavailable")
                                 sample_indices = executor._apply_sampling(X_full, y_sampled, request.sampling)
                                 y_sampled = y_sampled[sample_indices]
                             except Exception:
@@ -646,11 +698,16 @@ async def compute_repetitions_chart(request: ChartComputeRequest, http_request: 
                 from ..spectra import _load_dataset
                 dataset = _load_dataset(request.dataset_id)
                 if dataset:
+                    source_index = _resolve_source_index(request.source_index, request.source)
+                    target_index = _resolve_target_index(request.target_index)
+                    use_explicit_source = _has_explicit_source(request.source_index, request.source)
                     chart_options.setdefault("dataset_repetition", getattr(dataset, "repetition", None))
 
-                    X_full = dataset.x({"partition": "train"}, layout="2d")
-                    if isinstance(X_full, list):
-                        X_full = X_full[0]
+                    if use_explicit_source:
+                        X_full = dataset.x({"partition": "train"}, layout="2d", concat_source=False)
+                    else:
+                        X_full = dataset.x({"partition": "train"}, layout="2d")
+                    X_full = _select_source_array(X_full, source_index)
                     if (
                         request.sampling
                         and request.sampling.method != "all"
@@ -660,8 +717,9 @@ async def compute_repetitions_chart(request: ChartComputeRequest, http_request: 
                         sample_indices = executor._apply_sampling(X_full, None, request.sampling)
 
                     y_raw = dataset.y({"partition": "train"})
-                    if y_sampled is None and y_raw is not None and len(y_raw) > 0:
-                        y_sampled = y_raw if y_raw.ndim == 1 else y_raw[:, 0]
+                    if y_sampled is None:
+                        y_sampled = _select_target_array(y_raw, target_index)
+                    if y_sampled is not None:
                         if sample_indices is not None:
                             y_sampled = y_sampled[sample_indices]
                         elif len(y_sampled) != X_processed.shape[0]:

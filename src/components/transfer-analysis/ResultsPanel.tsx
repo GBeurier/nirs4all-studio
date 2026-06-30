@@ -8,6 +8,12 @@ import { DistanceMatrixHeatmap } from './visualizations/DistanceMatrixHeatmap';
 import { PreprocessingRankingChart } from './visualizations/PreprocessingRankingChart';
 import { TransferPCAScatter } from './visualizations/TransferPCAScatter';
 import { MetricConvergenceChart } from './visualizations/MetricConvergenceChart';
+import {
+  getActivePreprocessingKey,
+  getResultsPanelChartModel,
+  getResultsPanelControlsModel,
+  getResultsPanelSummaryModel,
+} from './ResultsPanelData';
 import type { TransferAnalysisResponse, TransferMetricType } from '@/types/transfer';
 
 interface ResultsPanelProps {
@@ -26,6 +32,10 @@ export function ResultsPanel({
   onMetricChange,
 }: ResultsPanelProps) {
   const [activeTab, setActiveTab] = useState<string>('summary');
+  const summary = getResultsPanelSummaryModel(results);
+  const controls = getResultsPanelControlsModel(results, activePreprocessing);
+  const chartModel = getResultsPanelChartModel(results, selectedMetric, activePreprocessing);
+  const activePreprocessingKey = getActivePreprocessingKey(activePreprocessing);
 
   return (
     <div className="space-y-4">
@@ -36,13 +46,12 @@ export function ResultsPanel({
             <div>
               <CardTitle className="text-lg">Analysis Results</CardTitle>
               <CardDescription>
-                {results.summary.n_datasets} datasets, {results.summary.n_preprocessings} preprocessings,{' '}
-                {results.summary.n_pairs} pairwise comparisons
+                {summary.description}
               </CardDescription>
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
-              {results.execution_time_ms.toFixed(0)}ms
+              {summary.executionTimeLabel}
             </div>
           </div>
         </CardHeader>
@@ -52,38 +61,33 @@ export function ResultsPanel({
               <p className="text-xs text-muted-foreground">Best Preprocessing</p>
               <div className="flex items-center gap-2">
                 <Award className="h-4 w-4 text-primary" />
-                <span className="font-medium text-sm">{results.summary.best_preprocessing}</span>
+                <span className="font-medium text-sm">{summary.bestPreprocessing}</span>
               </div>
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">Distance Reduction</p>
-              <span
-                className={`font-medium text-sm ${
-                  results.summary.best_reduction_pct > 0 ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
-                {results.summary.best_reduction_pct > 0 ? '+' : ''}
-                {results.summary.best_reduction_pct.toFixed(1)}%
+              <span className={`font-medium text-sm ${summary.reduction.className}`}>
+                {summary.reduction.label}
               </span>
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">Datasets</p>
               <div className="flex flex-wrap gap-1">
-                {results.datasets.slice(0, 3).map((ds) => (
-                  <Badge key={ds.id} variant="outline" className="text-xs">
-                    {ds.name}
+                {summary.datasetBadges.map((dataset) => (
+                  <Badge key={dataset.id} variant="outline" className="text-xs">
+                    {dataset.label}
                   </Badge>
                 ))}
-                {results.datasets.length > 3 && (
+                {summary.datasetOverflowLabel && (
                   <Badge variant="outline" className="text-xs">
-                    +{results.datasets.length - 3}
+                    {summary.datasetOverflowLabel}
                   </Badge>
                 )}
               </div>
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground">Preprocessings</p>
-              <span className="font-medium text-sm">{results.preprocessings.length} tested</span>
+              <span className="font-medium text-sm">{summary.preprocessingsTestedLabel}</span>
             </div>
           </div>
         </CardContent>
@@ -94,16 +98,16 @@ export function ResultsPanel({
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Preprocessing:</span>
           <Select
-            value={activePreprocessing || ''}
+            value={controls.activePreprocessingSelectValue}
             onValueChange={(v) => onPreprocessingChange(v || null)}
           >
             <SelectTrigger className="w-[180px] h-8">
               <SelectValue placeholder="Select preprocessing" />
             </SelectTrigger>
             <SelectContent>
-              {results.preprocessings.map((pp) => (
-                <SelectItem key={pp} value={pp}>
-                  {pp}
+              {controls.preprocessingOptions.map((preprocessing) => (
+                <SelectItem key={preprocessing.value} value={preprocessing.value}>
+                  {preprocessing.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -119,8 +123,11 @@ export function ResultsPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="centroid">Centroid</SelectItem>
-              <SelectItem value="spread">Spread</SelectItem>
+              {controls.metricOptions.map((metric) => (
+                <SelectItem key={metric.value} value={metric.value}>
+                  {metric.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -157,7 +164,7 @@ export function ResultsPanel({
             </CardHeader>
             <CardContent>
               <PreprocessingRankingChart
-                ranking={results.preprocessing_ranking[selectedMetric] || []}
+                ranking={chartModel.ranking}
                 metric={selectedMetric}
               />
             </CardContent>
@@ -169,13 +176,13 @@ export function ResultsPanel({
             <CardHeader>
               <CardTitle className="text-base">Distance Matrices</CardTitle>
               <CardDescription>
-                Pairwise distances between datasets for: {activePreprocessing || 'raw'}
+                Pairwise distances between datasets for: {activePreprocessingKey}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <DistanceMatrixHeatmap
-                distances={results.distance_matrices[activePreprocessing || ''] || []}
-                datasets={results.datasets.map((d) => d.name)}
+                distances={chartModel.distanceRows}
+                datasets={chartModel.datasetNames}
                 metric={selectedMetric}
               />
             </CardContent>
@@ -187,13 +194,13 @@ export function ResultsPanel({
             <CardHeader>
               <CardTitle className="text-base">PCA Visualization</CardTitle>
               <CardDescription>
-                Dataset clustering in PCA space: {activePreprocessing || 'raw'}
+                Dataset clustering in PCA space: {activePreprocessingKey}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <TransferPCAScatter
-                coordinates={results.pca_coordinates[activePreprocessing || 'raw'] || []}
-                datasets={results.datasets.map((d) => d.name)}
+                coordinates={chartModel.pcaCoordinates}
+                datasets={chartModel.datasetNames}
               />
             </CardContent>
           </Card>
@@ -208,7 +215,7 @@ export function ResultsPanel({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <MetricConvergenceChart convergenceData={results.metric_convergence} />
+              <MetricConvergenceChart convergenceData={chartModel.convergenceData} />
             </CardContent>
           </Card>
         </TabsContent>

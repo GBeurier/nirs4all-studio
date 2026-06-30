@@ -17,15 +17,16 @@
  * TRAIN_CARD                      ← always leaf, never expandable
  */
 
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { getChainPartitionDetail } from "@/api/aggregatedPredictions";
-import { buildFoldTrainCards, enrichCrossvalRow } from "@/lib/score-adapters";
-import { ScoreCardRowView } from "./ScoreCardRowView";
+import { partitionScoreCardRows } from "@/lib/scoreCardTreeData";
 import type { ScoreCardRow } from "@/types/score-cards";
 import type { PartitionPrediction } from "@/types/aggregated-predictions";
+import {
+  CrossvalExpandableRow,
+  RefitExpandableRow,
+} from "./ScoreCardExpandableRows";
 
 // ============================================================================
 // Props
@@ -43,306 +44,6 @@ interface ScoreCardTreeProps {
   startCollapsed?: boolean;
 }
 
-// ============================================================================
-// CrossvalExpandable — a CROSSVAL row that lazily loads TRAIN children
-// ============================================================================
-
-function CrossvalExpandable({
-  row,
-  selectedMetrics,
-  workspaceId,
-  rank,
-  variant,
-  onViewDetails,
-  onViewPrediction,
-  maxTableMetrics,
-  indent = 0,
-  defaultExpanded = false,
-}: {
-  row: ScoreCardRow;
-  selectedMetrics: string[];
-  workspaceId?: string;
-  rank?: number;
-  variant: "card" | "table";
-  onViewDetails?: (row: ScoreCardRow) => void;
-  onViewPrediction?: (predictionId: string, prediction?: PartitionPrediction) => void;
-  maxTableMetrics?: number;
-  indent?: number;
-  defaultExpanded?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-
-  // Lazy-fetch fold details → build TRAIN children (numbered folds only)
-  const { data: foldData, isLoading } = useQuery({
-    queryKey: ["chain-partition-detail", row.chainId],
-    queryFn: () => getChainPartitionDetail(row.chainId),
-    enabled: !!row.chainId,
-    staleTime: 60000,
-  });
-
-  const trainChildren = useMemo(() => {
-    if (!foldData?.predictions) return [];
-    return buildFoldTrainCards(foldData.predictions, {
-      runId: row.runId,
-      pipelineId: row.pipelineId,
-      datasetName: row.datasetName,
-      modelName: row.modelName,
-      modelClass: row.modelClass,
-      preprocessings: row.preprocessings,
-      bestParams: row.bestParams,
-      metric: row.metric,
-      taskType: row.taskType,
-    }, row.foldId?.endsWith("_agg") ? "aggregated" : "raw");
-  }, [foldData, row]);
-
-  const displayRow = useMemo(() => {
-    if (!foldData?.predictions) return row;
-    return enrichCrossvalRow(row, foldData.predictions);
-  }, [foldData, row]);
-
-  const handleViewPred = (predictionId: string) => {
-    if (!onViewPrediction) return;
-    const pred = foldData?.predictions?.find(p => p.prediction_id === predictionId);
-    onViewPrediction(predictionId, pred);
-  };
-
-  const handleViewChainChart = () => {
-    if (!onViewPrediction || !foldData?.predictions || foldData.predictions.length === 0) return;
-    const preds = foldData.predictions;
-    const pick = preds.find(p => p.fold_id === "final")
-      ?? preds.find(p => p.fold_id === "avg")
-      ?? preds.find(p => p.fold_id === "w_avg")
-      ?? preds.find(p => p.partition === "test")
-      ?? preds[0];
-    onViewPrediction(pick.prediction_id, pick);
-  };
-
-  if (variant === "card") {
-    return (
-      <div>
-        <ScoreCardRowView
-          row={displayRow}
-          selectedMetrics={selectedMetrics}
-          workspaceId={workspaceId}
-          rank={rank}
-          variant="inline"
-          expandable
-          expanded={expanded}
-          onToggleExpand={() => setExpanded(!expanded)}
-          onViewDetails={onViewDetails ? () => onViewDetails(displayRow) : undefined}
-          onViewChart={onViewPrediction ? handleViewChainChart : undefined}
-          indent={indent}
-        />
-        {expanded && (
-          <div className="ml-6 mt-0.5 space-y-0.5 border-l-2 border-border/30 pl-2">
-            {isLoading && (
-              <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading folds...
-              </div>
-            )}
-            {trainChildren.map(child => (
-              <ScoreCardRowView
-                key={child.id}
-                row={child}
-                selectedMetrics={selectedMetrics}
-                workspaceId={workspaceId}
-                variant="inline"
-                onViewPrediction={onViewPrediction ? handleViewPred : undefined}
-                onViewDetails={onViewDetails ? () => onViewDetails(child) : undefined}
-              />
-            ))}
-            {!isLoading && trainChildren.length === 0 && (
-              <div className="text-xs text-muted-foreground py-1">No fold data</div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Table variant
-  return (
-    <>
-      <ScoreCardRowView
-        row={displayRow}
-        selectedMetrics={selectedMetrics}
-        workspaceId={workspaceId}
-        rank={rank}
-        variant="table-row"
-        expandable
-        expanded={expanded}
-        onToggleExpand={() => setExpanded(!expanded)}
-        onViewDetails={onViewDetails ? () => onViewDetails(displayRow) : undefined}
-        onViewChart={onViewPrediction ? handleViewChainChart : undefined}
-        maxTableMetrics={maxTableMetrics}
-      />
-      {expanded && (
-        <tr>
-          <td colSpan={100} className="p-0">
-            <div className="border-t bg-muted/10 px-4 py-2 space-y-0.5 ml-8 border-l-2 border-border/30">
-              {isLoading && (
-                <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading folds...
-                </div>
-              )}
-              {trainChildren.map(child => (
-                <ScoreCardRowView
-                  key={child.id}
-                  row={child}
-                  selectedMetrics={selectedMetrics}
-                  workspaceId={workspaceId}
-                  variant="inline"
-                  onViewPrediction={onViewPrediction ? handleViewPred : undefined}
-                  onViewDetails={onViewDetails ? () => onViewDetails(child) : undefined}
-                />
-              ))}
-              {!isLoading && trainChildren.length === 0 && (
-                <div className="text-xs text-muted-foreground py-1">No fold data</div>
-              )}
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-// ============================================================================
-// RefitExpandable — a REFIT row whose children are pre-attached CROSSVAL cards
-// ============================================================================
-
-function RefitExpandable({
-  row,
-  selectedMetrics,
-  workspaceId,
-  rank,
-  variant,
-  onViewDetails,
-  onViewPrediction,
-  maxTableMetrics,
-  defaultExpanded = false,
-}: {
-  row: ScoreCardRow;
-  selectedMetrics: string[];
-  workspaceId?: string;
-  rank?: number;
-  variant: "card" | "table";
-  onViewDetails?: (row: ScoreCardRow) => void;
-  onViewPrediction?: (predictionId: string, prediction?: PartitionPrediction) => void;
-  maxTableMetrics?: number;
-  defaultExpanded?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-
-  // Pre-attached CROSSVAL children (from topChainToRows / chainSummaryToRow)
-  const crossvalChildren = row.children?.filter(c => c.cardType === "crossval") || [];
-
-  // Fetch chain detail so "Chart view" can open the viewer with all partitions
-  const { data: foldData } = useQuery({
-    queryKey: ["chain-partition-detail", row.chainId],
-    queryFn: () => getChainPartitionDetail(row.chainId),
-    enabled: !!row.chainId,
-    staleTime: 60000,
-  });
-
-  const handleViewChainChart = () => {
-    if (!onViewPrediction || !foldData?.predictions || foldData.predictions.length === 0) return;
-    const preds = foldData.predictions;
-    const pick = preds.find(p => p.fold_id === "final")
-      ?? preds.find(p => p.fold_id === "avg")
-      ?? preds.find(p => p.fold_id === "w_avg")
-      ?? preds.find(p => p.partition === "test")
-      ?? preds[0];
-    onViewPrediction(pick.prediction_id, pick);
-  };
-
-  if (variant === "card") {
-    return (
-      <div>
-        <ScoreCardRowView
-          row={row}
-          selectedMetrics={selectedMetrics}
-          workspaceId={workspaceId}
-          rank={rank}
-          variant="inline"
-          expandable
-          expanded={expanded}
-          onToggleExpand={() => setExpanded(!expanded)}
-          onViewDetails={onViewDetails ? () => onViewDetails(row) : undefined}
-          onViewChart={onViewPrediction ? handleViewChainChart : undefined}
-        />
-        {expanded && (
-          <div className="ml-4 mt-0.5 space-y-0.5">
-            {crossvalChildren.map(cvRow => (
-              <CrossvalExpandable
-                key={cvRow.id}
-                row={cvRow}
-                selectedMetrics={selectedMetrics}
-                workspaceId={workspaceId}
-                variant="card"
-                onViewDetails={onViewDetails}
-                onViewPrediction={onViewPrediction}
-                maxTableMetrics={maxTableMetrics}
-                indent={1}
-                defaultExpanded
-              />
-            ))}
-            {crossvalChildren.length === 0 && (
-              <div className="text-xs text-muted-foreground py-1 ml-2">No CV data</div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Table variant
-  return (
-    <>
-      <ScoreCardRowView
-        row={row}
-        selectedMetrics={selectedMetrics}
-        workspaceId={workspaceId}
-        rank={rank}
-        variant="table-row"
-        expandable
-        expanded={expanded}
-        onToggleExpand={() => setExpanded(!expanded)}
-        onViewDetails={onViewDetails ? () => onViewDetails(row) : undefined}
-        onViewChart={onViewPrediction ? handleViewChainChart : undefined}
-        maxTableMetrics={maxTableMetrics}
-      />
-      {expanded && (
-        <tr>
-          <td colSpan={100} className="p-0">
-            <div className="border-t bg-muted/10 px-4 py-2 space-y-1">
-              {crossvalChildren.map(cvRow => (
-                <CrossvalExpandable
-                  key={cvRow.id}
-                  row={cvRow}
-                  selectedMetrics={selectedMetrics}
-                  workspaceId={workspaceId}
-                  variant="card"
-                  onViewDetails={onViewDetails}
-                  onViewPrediction={onViewPrediction}
-                  maxTableMetrics={maxTableMetrics}
-                />
-              ))}
-              {crossvalChildren.length === 0 && (
-                <div className="text-xs text-muted-foreground py-1">No CV data</div>
-              )}
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-// ============================================================================
-// ScoreCardTree — main component
-// ============================================================================
-
 export function ScoreCardTree({
   rows,
   selectedMetrics,
@@ -356,11 +57,7 @@ export function ScoreCardTree({
 }: ScoreCardTreeProps) {
   const [nonRefitExpanded, setNonRefitExpanded] = useState(false);
 
-  const { refitRows, cvRows } = useMemo(() => {
-    const refit = rows.filter(r => r.cardType === "refit");
-    const cv = rows.filter(r => r.cardType === "crossval");
-    return { refitRows: refit, cvRows: cv };
-  }, [rows]);
+  const { refitRows, cvRows } = useMemo(() => partitionScoreCardRows(rows), [rows]);
 
   if (variant === "card") {
     return (
@@ -374,7 +71,7 @@ export function ScoreCardTree({
               <span className="text-muted-foreground">{refitRows.length}</span>
             </div>
             {refitRows.map((row, idx) => (
-              <RefitExpandable
+              <RefitExpandableRow
                 key={row.id}
                 row={row}
                 selectedMetrics={selectedMetrics}
@@ -407,7 +104,7 @@ export function ScoreCardTree({
             <CollapsibleContent>
               <div className="space-y-1 mt-1">
                 {cvRows.map((row, idx) => (
-                  <CrossvalExpandable
+                  <CrossvalExpandableRow
                     key={row.id}
                     row={row}
                     selectedMetrics={selectedMetrics}
@@ -449,7 +146,7 @@ export function ScoreCardTree({
         </tr>
       )}
       {refitRows.map((row, idx) => (
-        <RefitExpandable
+        <RefitExpandableRow
           key={row.id}
           row={row}
           selectedMetrics={selectedMetrics}
@@ -475,17 +172,17 @@ export function ScoreCardTree({
         </tr>
       )}
       {showNonRefitSection && cvRows.map((row, idx) => (
-        <CrossvalExpandable
+        <CrossvalExpandableRow
           key={row.id}
           row={row}
           selectedMetrics={selectedMetrics}
           workspaceId={workspaceId}
           rank={refitRows.length + idx + 1}
-        variant="table"
-        onViewDetails={onViewDetails}
-        onViewPrediction={onViewPrediction}
-        maxTableMetrics={maxTableMetrics}
-      />
+          variant="table"
+          onViewDetails={onViewDetails}
+          onViewPrediction={onViewPrediction}
+          maxTableMetrics={maxTableMetrics}
+        />
       ))}
     </>
   );

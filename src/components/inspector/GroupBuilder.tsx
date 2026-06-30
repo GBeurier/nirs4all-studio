@@ -13,30 +13,21 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { useInspectorData } from '@/context/InspectorDataContext';
-import { useInspectorSelection } from '@/context/InspectorSelectionContext';
+import { useInspectorData } from '@/context/useInspectorDataContext';
+import { useInspectorSelection } from '@/context/useInspectorSelection';
 import { GroupChip } from './GroupChip';
 import { ExpressionBuilder } from './ExpressionBuilder';
-import { SCORE_COLUMNS } from '@/types/inspector';
+import { INSPECTOR_SCORE_OPTIONS } from '@/lib/inspector/scoreSelection';
+import {
+  clampInspectorRangeBinCount,
+  clampInspectorTopK,
+  getInspectorGroupModeOptions,
+  getInspectorRangeConfigForColumn,
+  getInspectorTopKConfigForScore,
+  INSPECTOR_GROUP_BY_OPTIONS,
+  isInspectorAdvancedGroupMode,
+} from '@/lib/inspector/groupBuilder';
 import type { GroupByVariable, GroupMode, ScoreColumn } from '@/types/inspector';
-
-const GROUP_BY_OPTIONS: { value: GroupByVariable; label: string }[] = [
-  { value: 'model_class', label: 'Model Class' },
-  { value: 'preprocessings', label: 'Preprocessing' },
-  { value: 'dataset_name', label: 'Dataset' },
-  { value: 'task_type', label: 'Task Type' },
-];
-
-const PRIMARY_MODES: { value: GroupMode; label: string }[] = [
-  { value: 'by_variable', label: 'Variable' },
-  { value: 'by_top_k', label: 'Top K' },
-];
-
-const ADVANCED_MODES: { value: GroupMode; label: string }[] = [
-  { value: 'by_range', label: 'Range' },
-  { value: 'by_branch', label: 'Branch' },
-  { value: 'by_expression', label: 'Expr' },
-];
 
 export function GroupBuilder() {
   const { t } = useTranslation();
@@ -50,7 +41,7 @@ export function GroupBuilder() {
   const { select, selectedChains } = useInspectorSelection();
   const [advancedVisible, setAdvancedVisible] = useState(() => {
     // Show advanced if current mode is an advanced mode
-    return ADVANCED_MODES.some(m => m.value === groupMode);
+    return isInspectorAdvancedGroupMode(groupMode);
   });
 
   if (chains.length === 0) return null;
@@ -64,7 +55,7 @@ export function GroupBuilder() {
     }
   };
 
-  const allModes = advancedVisible ? [...PRIMARY_MODES, ...ADVANCED_MODES] : PRIMARY_MODES;
+  const allModes = getInspectorGroupModeOptions(advancedVisible);
 
   return (
     <TooltipProvider delayDuration={180}>
@@ -88,10 +79,10 @@ export function GroupBuilder() {
               onClick={() => {
                 setGroupMode(opt.value);
                 if (opt.value === 'by_range' && !rangeConfig) {
-                  setRangeConfig({ column: scoreColumn, binCount: 5 });
+                  setRangeConfig(getInspectorRangeConfigForColumn(scoreColumn, rangeConfig));
                 }
                 if (opt.value === 'by_top_k' && !topKConfig) {
-                  setTopKConfig({ scoreColumn, k: 5 });
+                  setTopKConfig(getInspectorTopKConfigForScore(scoreColumn, topKConfig));
                 }
               }}
             >
@@ -126,7 +117,7 @@ export function GroupBuilder() {
               <SelectValue placeholder={t('inspector.sidebar.groupBy', 'Group by...')} />
             </SelectTrigger>
             <SelectContent>
-              {GROUP_BY_OPTIONS.map(opt => (
+              {INSPECTOR_GROUP_BY_OPTIONS.map(opt => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>
@@ -147,7 +138,7 @@ export function GroupBuilder() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SCORE_COLUMNS.map(col => (
+                {INSPECTOR_SCORE_OPTIONS.map(col => (
                   <SelectItem key={col.value} value={col.value}>
                     {col.label}
                   </SelectItem>
@@ -165,7 +156,7 @@ export function GroupBuilder() {
                 onChange={(e) =>
                   setRangeConfig({
                     column: rangeConfig?.column ?? scoreColumn,
-                    binCount: Math.max(2, Math.min(20, Number(e.target.value) || 5)),
+                    binCount: clampInspectorRangeBinCount(Number(e.target.value)),
                   })
                 }
               />
@@ -185,7 +176,7 @@ export function GroupBuilder() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SCORE_COLUMNS.map(col => (
+                {INSPECTOR_SCORE_OPTIONS.map(col => (
                   <SelectItem key={col.value} value={col.value}>
                     {col.label}
                   </SelectItem>
@@ -203,7 +194,7 @@ export function GroupBuilder() {
                 onChange={(e) =>
                   setTopKConfig({
                     scoreColumn: topKConfig?.scoreColumn ?? scoreColumn,
-                    k: Math.max(1, Math.min(100, Number(e.target.value) || 5)),
+                    k: clampInspectorTopK(Number(e.target.value)),
                   })
                 }
               />

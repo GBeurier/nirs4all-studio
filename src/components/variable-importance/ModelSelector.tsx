@@ -13,23 +13,34 @@ import {
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { getAvailableModels } from '@/api/shap';
-import { isLowerBetter } from '@/lib/scores';
-import type { AvailableModelsResponse, AvailableChain, DatasetChains } from '@/types/shap';
+import {
+  buildShapChainLabel,
+  buildShapChainTooltip,
+  countShapModelChains,
+  filterShapModelBundles,
+  filterShapModelDatasets,
+  getShapModelClassOptions,
+  getShapModelDatasetOptions,
+  getVisibleShapChainScore,
+  hasVisibleShapModelOptions,
+  resolveShapModelSelection,
+  SHAP_MODEL_SELECTOR_ALL_VALUE,
+} from '@/lib/shapModelSelectorData';
+import type { AvailableModelsResponse } from '@/types/shap';
+import type { ShapExplicitModelRef } from '@/lib/shapAnalysisRequest';
 
 interface ModelSelectorProps {
   selectedChainId: string | null;
-  onChainSelect: (chainId: string | null, datasetName: string | null) => void;
+  onChainSelect: (chainId: string | null, datasetName: string | null, modelRef?: ShapExplicitModelRef | null) => void;
 }
-
-const ALL = '__all__';
 
 export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorProps) {
   const { t } = useTranslation();
   const [data, setData] = useState<AvailableModelsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [datasetFilter, setDatasetFilter] = useState<string>(ALL);
-  const [modelFilter, setModelFilter] = useState<string>(ALL);
+  const [datasetFilter, setDatasetFilter] = useState<string>(SHAP_MODEL_SELECTOR_ALL_VALUE);
+  const [modelFilter, setModelFilter] = useState<string>(SHAP_MODEL_SELECTOR_ALL_VALUE);
 
   useEffect(() => {
     setLoading(true);
@@ -46,46 +57,20 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
     return data.datasets;
   }, [data]);
 
-  // Short model class name (remove package prefix)
-  const shortModelClass = (cls: string) => {
-    const parts = cls.split('.');
-    return parts[parts.length - 1];
-  };
-
   // Filter options: datasets that exist + model classes available under the current dataset filter
-  const datasetOptions = useMemo(() => allChains.map((ds) => ds.dataset_name), [allChains]);
+  const datasetOptions = useMemo(() => getShapModelDatasetOptions(allChains), [allChains]);
   const modelOptions = useMemo(() => {
-    const scoped = datasetFilter === ALL ? allChains : allChains.filter((ds) => ds.dataset_name === datasetFilter);
-    return Array.from(new Set(scoped.flatMap((ds) => ds.chains.map((c) => shortModelClass(c.model_class))))).sort();
+    return getShapModelClassOptions(allChains, datasetFilter);
   }, [allChains, datasetFilter]);
 
   // Apply filters + sort chains by score (direction depends on metric)
   const filteredDatasets = useMemo(() => {
-    const chainScore = (c: AvailableChain): number | null =>
-      c.final_test_score ?? c.cv_val_score;
-    return allChains
-      .filter((ds) => datasetFilter === ALL || ds.dataset_name === datasetFilter)
-      .map((ds) => {
-        const chains =
-          modelFilter === ALL ? ds.chains : ds.chains.filter((c) => shortModelClass(c.model_class) === modelFilter);
-        const lowerBetter = isLowerBetter(ds.metric);
-        const sorted = [...chains].sort((a, b) => {
-          const sa = chainScore(a);
-          const sb = chainScore(b);
-          if (sa === null && sb === null) return 0;
-          if (sa === null) return 1; // scoreless entries go last
-          if (sb === null) return -1;
-          return lowerBetter ? sa - sb : sb - sa;
-        });
-        return { ...ds, chains: sorted };
-      })
-      .filter((ds) => ds.chains.length > 0);
+    return filterShapModelDatasets(allChains, datasetFilter, modelFilter);
   }, [allChains, datasetFilter, modelFilter]);
 
   const filteredBundles = useMemo(() => {
     const bundles = data?.bundles ?? [];
-    if (modelFilter !== ALL) return [];
-    return datasetFilter === ALL ? bundles : bundles.filter((b) => b.dataset_name === datasetFilter);
+    return filterShapModelBundles(bundles, datasetFilter, modelFilter);
   }, [data, datasetFilter, modelFilter]);
 
   if (loading) {
@@ -106,7 +91,7 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
     );
   }
 
-  const totalChains = allChains.reduce((n, d) => n + d.chains.length, 0);
+  const totalChains = countShapModelChains(allChains);
   if (totalChains === 0 && (!data?.bundles || data.bundles.length === 0)) {
     return (
       <div className="text-center py-4 text-muted-foreground text-sm">
@@ -116,62 +101,11 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
   }
 
   const handleSelect = (value: string) => {
-    if (!value) {
-      onChainSelect(null, null);
-      return;
-    }
-    // Find chain to get dataset_name
-    for (const ds of allChains) {
-      const chain = ds.chains.find((c) => c.chain_id === value);
-      if (chain) {
-        onChainSelect(chain.chain_id, chain.dataset_name);
-        return;
-      }
-    }
-    // Check bundles
-    if (data?.bundles) {
-      const bundle = data.bundles.find((b) => b.bundle_path === value);
-      if (bundle) {
-        onChainSelect(value, bundle.dataset_name || null);
-        return;
-      }
-    }
-    onChainSelect(value, null);
+    const selection = resolveShapModelSelection(value, allChains, data?.bundles ?? []);
+    onChainSelect(selection.chainId, selection.datasetName, selection.modelRef);
   };
 
-  const formatScore = (score: number | null) => {
-    if (score === null || score === undefined) return null;
-    return score.toFixed(4);
-  };
-
-  const buildChainLabel = (chain: AvailableChain) => {
-    const modelLabel = chain.model_name || shortModelClass(chain.model_class);
-    return chain.preprocessings ? `${chain.preprocessings} → ${modelLabel}` : modelLabel;
-  };
-
-  const buildChainTooltip = (chain: AvailableChain) => {
-    const metric = (chain.metric || '').toLowerCase();
-    const metricLabel = metric ? metric.toUpperCase() : 'SCORE';
-    const lines = [`Full chain: ${buildChainLabel(chain)}`];
-
-    const finalScore = formatScore(chain.final_test_score);
-    if (finalScore) {
-      lines.push(`${metric === 'rmse' ? 'RMSEP' : `Final ${metricLabel}`}: ${finalScore}`);
-    }
-
-    const cvScore = formatScore(chain.cv_val_score);
-    if (cvScore) {
-      lines.push(`${metric === 'rmse' ? 'RMSECV' : `CV ${metricLabel}`}: ${cvScore}`);
-    }
-
-    return lines.join('\n');
-  };
-
-  const getVisibleScore = (chain: AvailableChain) => (
-    formatScore(chain.final_test_score ?? chain.cv_val_score)
-  );
-
-  const hasVisible = filteredDatasets.length > 0 || filteredBundles.length > 0;
+  const hasVisible = hasVisibleShapModelOptions(filteredDatasets, filteredBundles);
 
   return (
     <div className="space-y-2">
@@ -181,7 +115,7 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
           <Select value={datasetFilter} onValueChange={setDatasetFilter}>
             <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>All datasets</SelectItem>
+              <SelectItem value={SHAP_MODEL_SELECTOR_ALL_VALUE}>All datasets</SelectItem>
               {datasetOptions.map((name) => (
                 <SelectItem key={name} value={name}>{name}</SelectItem>
               ))}
@@ -193,7 +127,7 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
           <Select value={modelFilter} onValueChange={setModelFilter}>
             <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>All models</SelectItem>
+              <SelectItem value={SHAP_MODEL_SELECTOR_ALL_VALUE}>All models</SelectItem>
               {modelOptions.map((name) => (
                 <SelectItem key={name} value={name}>{name}</SelectItem>
               ))}
@@ -212,7 +146,7 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
               No models match these filters
             </div>
           )}
-          {filteredDatasets.map((ds: DatasetChains) => (
+          {filteredDatasets.map((ds) => (
             <SelectGroup key={ds.dataset_name}>
               <SelectLabel className="flex items-center gap-2">
                 <Database className="h-3 w-3" />
@@ -221,10 +155,10 @@ export function ModelSelector({ selectedChainId, onChainSelect }: ModelSelectorP
                   <span className="text-xs text-muted-foreground">({ds.metric})</span>
                 )}
               </SelectLabel>
-              {ds.chains.map((chain: AvailableChain) => {
-                const chainLabel = buildChainLabel(chain);
-                const chainTooltip = buildChainTooltip(chain);
-                const visibleScore = getVisibleScore(chain);
+              {ds.chains.map((chain) => {
+                const chainLabel = buildShapChainLabel(chain);
+                const chainTooltip = buildShapChainTooltip(chain);
+                const visibleScore = getVisibleShapChainScore(chain);
 
                 return (
                   <SelectItem key={chain.chain_id} value={chain.chain_id}>

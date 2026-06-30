@@ -45,7 +45,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { Dataset } from '@/types/datasets';
 import { useDatasetsQuery } from '@/hooks/useDatasetQueries';
-import { useReferenceDatasetOptional, type ReferenceMode, type AlignmentMode } from '@/context/ReferenceDatasetContext';
+import { useReferenceDatasetOptional, type ReferenceMode, type AlignmentMode } from '@/context/useReferenceDataset';
 
 interface ReferenceModeControlsProps {
   /** Whether step comparison is enabled (passed from parent) */
@@ -71,10 +71,13 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // Shared dataset cache (see src/hooks/useDatasetQueries.ts) — instant on
-  // every picker open after the first navigation, persisted to localStorage.
+  // every picker open after the first navigation, persisted through the shared cache.
   // Hooks must be called before early return (Rules of Hooks).
   const datasetsQuery = useDatasetsQuery();
-  const datasets: Dataset[] = datasetsQuery.data?.datasets ?? [];
+  const datasets: Dataset[] = useMemo(
+    () => datasetsQuery.data?.datasets ?? [],
+    [datasetsQuery.data],
+  );
   const datasetsLoading = datasetsQuery.isLoading && !datasetsQuery.data;
   const datasetsError = datasetsQuery.error
     ? datasetsQuery.error instanceof Error
@@ -438,11 +441,11 @@ export const ReferenceModeControls = memo(function ReferenceModeControls({
                       )}
                     >
                       <div className="text-sm font-medium">{dataset.name}</div>
-                      {(dataset.samples || dataset.features) && (
+                      {(dataset.num_samples || dataset.num_features) && (
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {dataset.samples && `${dataset.samples} samples`}
-                          {dataset.samples && dataset.features && ' · '}
-                          {dataset.features && `${dataset.features} features`}
+                          {dataset.num_samples && `${dataset.num_samples} samples`}
+                          {dataset.num_samples && dataset.num_features && ' · '}
+                          {dataset.num_features && `${dataset.num_features} features`}
                         </div>
                       )}
                     </button>

@@ -42,7 +42,10 @@ export function BestModelTrainingConfig({
   );
 
   // Get current training config
-  const trainingConfig = step.trainingConfig ?? { epochs: 100, batch_size: 32 };
+  const trainingConfig = useMemo(
+    () => step.trainingConfig ?? { epochs: 100, batch_size: 32 },
+    [step.trainingConfig]
+  );
 
   // Get used parameter names
   const usedParams = useMemo(() => {

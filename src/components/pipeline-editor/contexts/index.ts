@@ -11,43 +11,72 @@
 
 export {
   PipelineProvider,
+} from "./PipelineContext";
+export {
   usePipeline,
   usePipelineOptional,
-  type PipelineContextValue,
-  type PipelineProviderProps,
-} from "./PipelineContext";
+} from "./usePipelineContext";
+export type {
+  PipelineContextValue,
+  PipelineProviderProps,
+} from "./usePipelineContext";
 
 export {
   NodeRegistryProvider,
+} from "./NodeRegistryContext";
+export {
   useNodeRegistry,
   useNodeRegistryOptional,
-  type NodeDefinition,
-  type NodeRegistryContextValue,
-  type NodeRegistryProviderProps,
+  useNodesByType,
+  useNodeSearch,
+  useNodeParameters,
+} from "./useNodeRegistry";
+export type {
+  NodeDefinition,
+  NodeRegistryContextValue,
+} from "./useNodeRegistry";
+export type {
+  NodeRegistryProviderProps,
 } from "./NodeRegistryContext";
 
 export {
   PipelineEditorPreferencesProvider,
+} from "./PipelineEditorPreferencesContext";
+export {
   usePipelineEditorPreferences,
   usePipelineEditorPreferencesOptional,
-  type PipelineEditorPreferences,
-  type TierLevel,
-} from "./PipelineEditorPreferencesContext";
+} from "./usePipelineEditorPreferences";
+export type {
+  PipelineEditorPreferences,
+  TierLevel,
+} from "./usePipelineEditorPreferences";
 
 export {
   OperatorAvailabilityProvider,
+} from "./OperatorAvailabilityContext";
+export {
   useOperatorAvailability,
   useOperatorAvailabilityOptional,
-  type OperatorAvailabilityProviderProps,
+} from "./useOperatorAvailability";
+export type {
+  OperatorAvailability,
+  OperatorAvailabilityContextValue,
+} from "./useOperatorAvailability";
+export type {
+  OperatorAvailabilityProviderProps,
 } from "./OperatorAvailabilityContext";
 
 // Phase 4: Pipeline Integration
 export {
   DatasetBindingProvider,
+} from "./DatasetBindingContext";
+export {
   useDatasetBindingContext,
   useDatasetBindingOptional,
   useStepShape,
   useStepDimensionWarnings,
-  type DatasetBindingContextValue,
-  type DatasetBindingProviderProps,
-} from "./DatasetBindingContext";
+} from "./useDatasetBindingContext";
+export type {
+  DatasetBindingContextValue,
+  DatasetBindingProviderProps,
+} from "./useDatasetBindingContext";

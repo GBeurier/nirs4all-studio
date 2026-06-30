@@ -20,18 +20,7 @@ import { TrainParamsList } from "./TrainParamsList";
 import { TrialTrainingConfig } from "./TrialTrainingConfig";
 import { BestModelTrainingConfig } from "./BestModelTrainingConfig";
 import { getPresetsForModel } from "./presets";
-
-/**
- * Default finetuning configuration
- */
-export const defaultFinetuneConfig: FinetuneConfig = {
-  enabled: false,
-  n_trials: 50,
-  timeout: undefined,
-  approach: "grouped",
-  eval_mode: "best",
-  model_params: [],
-};
+import { defaultFinetuneConfig } from "./finetuneDefaults";
 
 interface FinetuneTabProps {
   step: PipelineStep;

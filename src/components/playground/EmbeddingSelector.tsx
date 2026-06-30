@@ -47,7 +47,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { useSelection } from '@/context/SelectionContext';
+import { useSelection } from '@/context/useSelection';
 import type { ExecuteResponse } from '@/types/playground';
 
 // ============= Types =============

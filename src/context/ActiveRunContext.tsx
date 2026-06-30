@@ -11,8 +11,6 @@
  */
 
 import {
-  createContext,
-  useContext,
   useState,
   useCallback,
   useEffect,
@@ -20,8 +18,13 @@ import {
   ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getActiveRuns, getRun } from "@/api/runs";
-import type { Run, RunStatus } from "@/types/runs";
+import { getActiveRuns } from "@/api/runs";
+import type { RunStatus } from "@/types/runs";
+import {
+  ActiveRunContext,
+  type ActiveRunContextValue,
+  type RunProgressState,
+} from "@/context/useActiveRuns";
 import { getWebSocketBaseUrl } from "@/lib/websocket";
 
 // WebSocket message types
@@ -40,47 +43,6 @@ interface WsMessage {
   };
   timestamp: string;
 }
-
-// Progress state for a single run
-export interface RunProgressState {
-  runId: string;
-  runName: string;
-  status: RunStatus;
-  progress: number;
-  message: string;
-  logs: string[];
-  startedAt?: string;
-  updatedAt: number;
-}
-
-// Context value type
-interface ActiveRunContextValue {
-  /** Currently active/running runs */
-  activeRuns: RunProgressState[];
-
-  /** Whether there are any active runs */
-  hasActiveRuns: boolean;
-
-  /** Get progress for a specific run */
-  getRunProgress: (runId: string) => RunProgressState | undefined;
-
-  /** Manually refresh active runs list */
-  refreshActiveRuns: () => void;
-
-  /** Whether the floating widget is minimized */
-  isMinimized: boolean;
-
-  /** Toggle minimized state */
-  toggleMinimized: () => void;
-
-  /** Currently selected run in the widget (for multi-run support) */
-  selectedRunId: string | null;
-
-  /** Select a run to show details for */
-  selectRun: (runId: string | null) => void;
-}
-
-const ActiveRunContext = createContext<ActiveRunContextValue | undefined>(undefined);
 
 export function ActiveRunProvider({ children }: { children: ReactNode }) {
   const [runProgressMap, setRunProgressMap] = useState<Map<string, RunProgressState>>(new Map());
@@ -263,8 +225,11 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
 
   // Cleanup on unmount
   useEffect(() => {
+    const wsConnections = wsConnectionsRef.current;
     return () => {
-      wsConnectionsRef.current.forEach((ws) => ws.close());
+      wsConnections.forEach((ws) => {
+        if (ws) ws.close();
+      });
     };
   }, []);
 
@@ -301,12 +266,4 @@ export function ActiveRunProvider({ children }: { children: ReactNode }) {
       {children}
     </ActiveRunContext.Provider>
   );
-}
-
-export function useActiveRuns() {
-  const context = useContext(ActiveRunContext);
-  if (!context) {
-    throw new Error("useActiveRuns must be used within an ActiveRunProvider");
-  }
-  return context;
 }

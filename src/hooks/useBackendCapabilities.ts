@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/api/transport";
+import type { CapabilityLevel } from "@/lib/operatorCapability";
 
 /**
  * Backend capability probes derived from `GET /system/capabilities`.
@@ -19,11 +20,43 @@ import { api } from "@/api/transport";
  */
 interface CapabilityFlags {
   deepLearning: boolean;
+  report: BackendCapabilityStatus[];
   shap: boolean;
+}
+
+type BooleanCapabilityKey = "deepLearning" | "shap";
+
+export interface BackendCapabilityStatus {
+  available: boolean;
+  id: "torch" | "tensorflow" | "jax" | "shap" | string;
+  level: CapabilityLevel;
 }
 
 let cached: CapabilityFlags | null = null;
 let inflight: Promise<CapabilityFlags> | null = null;
+
+function buildBackendCapabilityStatus(id: BackendCapabilityStatus["id"], available: boolean): BackendCapabilityStatus {
+  return {
+    available,
+    id,
+    level: available ? "execute_local" : "metadata",
+  };
+}
+
+function buildCapabilityFlags(caps: Record<string, boolean>): CapabilityFlags {
+  const report = [
+    buildBackendCapabilityStatus("torch", Boolean(caps.torch)),
+    buildBackendCapabilityStatus("tensorflow", Boolean(caps.tensorflow)),
+    buildBackendCapabilityStatus("jax", Boolean(caps.jax)),
+    buildBackendCapabilityStatus("shap", Boolean(caps.shap)),
+  ];
+
+  return {
+    deepLearning: report.some((entry) => ["torch", "tensorflow", "jax"].includes(entry.id) && entry.available),
+    report,
+    shap: Boolean(caps.shap),
+  };
+}
 
 function probeCapabilities(): Promise<CapabilityFlags> {
   if (inflight) {
@@ -33,21 +66,27 @@ function probeCapabilities(): Promise<CapabilityFlags> {
     .get<{ capabilities?: Record<string, boolean> }>("/system/capabilities")
     .then((res) => {
       const caps = res?.capabilities ?? {};
-      cached = {
-        deepLearning: Boolean(caps.torch || caps.tensorflow || caps.jax),
-        shap: Boolean(caps.shap),
-      };
+      cached = buildCapabilityFlags(caps);
       return cached;
     })
     .catch(() => {
       // Backend unreachable / probe failed — assume available so nothing is hidden.
-      cached = { deepLearning: true, shap: true };
+      cached = {
+        deepLearning: true,
+        report: [
+          buildBackendCapabilityStatus("torch", true),
+          buildBackendCapabilityStatus("tensorflow", true),
+          buildBackendCapabilityStatus("jax", true),
+          buildBackendCapabilityStatus("shap", true),
+        ],
+        shap: true,
+      };
       return cached;
     });
   return inflight;
 }
 
-function useCapability(key: keyof CapabilityFlags): boolean {
+function useCapability(key: BooleanCapabilityKey): boolean {
   const [available, setAvailable] = useState<boolean>(cached?.[key] ?? true);
 
   useEffect(() => {
@@ -84,4 +123,30 @@ export function useDeepLearningAvailable(): boolean {
  */
 export function useShapAvailable(): boolean {
   return useCapability("shap");
+}
+
+/**
+ * Multi-level backend capability report for future method/backend/compute
+ * selection surfaces. Existing boolean hooks remain compatibility facades.
+ */
+export function useBackendCapabilityReport(): BackendCapabilityStatus[] {
+  const [report, setReport] = useState<BackendCapabilityStatus[]>(cached?.report ?? []);
+
+  useEffect(() => {
+    if (cached !== null) {
+      setReport(cached.report);
+      return;
+    }
+    let cancelled = false;
+    probeCapabilities().then((flags) => {
+      if (!cancelled) {
+        setReport(flags.report);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return report;
 }

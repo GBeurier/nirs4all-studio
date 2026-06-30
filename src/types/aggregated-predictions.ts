@@ -29,6 +29,7 @@ export interface ChainSummary {
   cv_train_score: number | null;
   cv_fold_count: number;
   cv_scores: Record<string, Record<string, number>> | null;
+  score_maps?: unknown | null;
   cv_source_chain_id?: string | null;
   // Final/refit scores
   final_test_score: number | null;
@@ -65,6 +66,10 @@ export interface TopAggregatedPredictionsResponse {
   generated_at: string;
 }
 
+export type PredictionVector = number[];
+export type PredictionMatrix = number[][];
+export type PredictionArrayPayload = PredictionVector | PredictionMatrix;
+
 /** Individual prediction row for chain drill-down. */
 export interface PartitionPrediction {
   prediction_id: string;
@@ -78,8 +83,14 @@ export interface PartitionPrediction {
   val_score: number | null;
   test_score: number | null;
   train_score: number | null;
-  scores?: Record<string, number> | null;
+  scores?: Record<string, unknown> | null;
   best_params?: Record<string, unknown> | null;
+  branch_path?: unknown | null;
+  source_index?: number | null;
+  source_name?: string | null;
+  target_index?: number | null;
+  target_name?: string | null;
+  result_metadata?: Record<string, unknown> | null;
   metric: string;
   task_type: string;
   n_samples: number | null;
@@ -119,13 +130,19 @@ export interface ChainPartitionDetailResponse {
 /** Response from GET /api/aggregated-predictions/{prediction_id}/arrays */
 export interface PredictionArraysResponse {
   prediction_id: string;
-  y_true: number[] | null;
-  y_pred: number[] | null;
+  y_true: PredictionArrayPayload | null;
+  y_pred: PredictionArrayPayload | null;
   y_proba: number[] | number[][] | null;
   sample_indices: number[] | null;
   weights: number[] | null;
   sample_metadata?: Record<string, unknown[]> | null;
   n_samples: number;
+  branch_path?: unknown | null;
+  source_index?: number | null;
+  source_name?: string | null;
+  target_index?: number | null;
+  target_name?: string | null;
+  result_metadata?: Record<string, unknown> | null;
 }
 
 /** Filters for querying chain summaries. */

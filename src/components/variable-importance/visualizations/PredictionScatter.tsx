@@ -13,6 +13,13 @@ import {
 } from 'recharts';
 import type { TooltipProps } from 'recharts';
 import { getScatterData } from '@/api/shap';
+import {
+  buildShapPredictionScatterPoints,
+  getShapPredictionMaxAbsResidual,
+  getShapPredictionPointStyle,
+  getShapPredictionScatterBounds,
+  toggleShapPredictionSelectedSample,
+} from '@/lib/shapPredictionScatterData';
 import type { ScatterData } from '@/types/shap';
 
 interface PredictionScatterProps {
@@ -50,37 +57,16 @@ export const PredictionScatter = memo(function PredictionScatter({
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
-    return data.y_true.map((yt, idx) => ({
-      yTrue: yt,
-      yPred: data.y_pred[idx],
-      sampleIdx: data.sample_indices[idx],
-      residual: data.residuals[idx],
-      absResidual: Math.abs(data.residuals[idx]),
-    }));
+    return buildShapPredictionScatterPoints(data);
   }, [data]);
 
   const maxAbsRes = useMemo(() => {
-    if (chartPoints.length === 0) return 1;
-    return Math.max(...chartPoints.map((p) => p.absResidual), 1e-9);
+    return getShapPredictionMaxAbsResidual(chartPoints);
   }, [chartPoints]);
 
   const bounds = useMemo(() => {
-    if (chartPoints.length === 0) return { min: 0, max: 1 };
-    const allVals = chartPoints.flatMap((p) => [p.yTrue, p.yPred]);
-    return { min: Math.min(...allVals), max: Math.max(...allVals) };
+    return getShapPredictionScatterBounds(chartPoints);
   }, [chartPoints]);
-
-  const getPointColor = useCallback(
-    (absResidual: number, isSelected: boolean): string => {
-      if (isSelected) return '#f59e0b';
-      const ratio = absResidual / maxAbsRes;
-      if (ratio > 0.7) return '#ef4444';
-      if (ratio > 0.4) return '#f97316';
-      if (ratio > 0.2) return '#84cc16';
-      return '#22c55e';
-    },
-    [maxAbsRes],
-  );
 
   // Click handler: toggle the clicked sample in the selection
   const selectedSamplesRef = useRef(selectedSamples);
@@ -88,10 +74,7 @@ export const PredictionScatter = memo(function PredictionScatter({
   const handlePointClick = useCallback(
     (point: { sampleIdx: number }) => {
       const idx = point.sampleIdx;
-      const set = new Set(selectedSamplesRef.current);
-      if (set.has(idx)) set.delete(idx);
-      else set.add(idx);
-      onSamplesChangeRef.current(Array.from(set).sort((a, b) => a - b));
+      onSamplesChangeRef.current(toggleShapPredictionSelectedSample(selectedSamplesRef.current, idx));
     },
     [],
   );
@@ -190,14 +173,15 @@ export const PredictionScatter = memo(function PredictionScatter({
             >
               {chartPoints.map((entry, index) => {
                 const isSelected = selectedSet.has(entry.sampleIdx);
+                const style = getShapPredictionPointStyle(entry.absResidual, maxAbsRes, isSelected);
                 return (
                   <Cell
                     key={index}
-                    fill={getPointColor(entry.absResidual, isSelected)}
-                    fillOpacity={isSelected ? 1 : 0.7}
-                    stroke={isSelected ? '#f59e0b' : 'none'}
-                    strokeWidth={isSelected ? 2 : 0}
-                    r={isSelected ? 5 : 3}
+                    fill={style.fill}
+                    fillOpacity={style.fillOpacity}
+                    stroke={style.stroke}
+                    strokeWidth={style.strokeWidth}
+                    r={style.radius}
                     cursor="pointer"
                   />
                 );

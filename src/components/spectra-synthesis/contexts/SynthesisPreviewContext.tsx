@@ -9,70 +9,21 @@
  */
 
 import {
-  createContext,
-  useContext,
   useState,
   useCallback,
   useMemo,
   useRef,
   type ReactNode,
 } from "react";
-import { useSynthesisBuilder } from "./SynthesisBuilderContext";
+import { useSynthesisBuilder } from "./useSynthesisBuilderContext";
 import { api } from "@/api/transport";
-
-// ============= Types =============
-
-export interface PreviewStatistics {
-  spectra_mean: number;
-  spectra_std: number;
-  spectra_min: number;
-  spectra_max: number;
-  targets_mean: number;
-  targets_std: number;
-  targets_min: number;
-  targets_max: number;
-  n_wavelengths: number;
-  n_components?: number;
-  class_distribution?: Record<string, number>;
-}
-
-export interface PreviewData {
-  spectra: number[][];
-  wavelengths: number[];
-  targets: number[];
-  target_type: "regression" | "classification";
-  statistics: PreviewStatistics | null;
-  execution_time_ms: number;
-  actual_samples: number;
-}
-
-export type PreviewMode = "realtime" | "on-demand";
-
-interface SynthesisPreviewState {
-  data: PreviewData | null;
-  isLoading: boolean;
-  error: string | null;
-  lastGenerated: Date | null;
-  mode: PreviewMode;
-}
-
-// ============= Context =============
-
-interface SynthesisPreviewContextValue {
-  // State
-  state: SynthesisPreviewState;
-
-  // Actions
-  generatePreview: () => Promise<void>;
-  clearPreview: () => void;
-  setMode: (mode: PreviewMode) => void;
-
-  // Computed
-  hasData: boolean;
-  canGenerate: boolean;
-}
-
-const SynthesisPreviewContext = createContext<SynthesisPreviewContextValue | null>(null);
+import {
+  SynthesisPreviewContext,
+  type PreviewMode,
+  type PreviewStatistics,
+  type SynthesisPreviewContextValue,
+  type SynthesisPreviewState,
+} from "./useSynthesisPreviewContext";
 
 // ============= API Functions =============
 
@@ -240,18 +191,4 @@ export function SynthesisPreviewProvider({
       {children}
     </SynthesisPreviewContext.Provider>
   );
-}
-
-// ============= Hooks =============
-
-export function useSynthesisPreview(): SynthesisPreviewContextValue {
-  const context = useContext(SynthesisPreviewContext);
-  if (!context) {
-    throw new Error("useSynthesisPreview must be used within a SynthesisPreviewProvider");
-  }
-  return context;
-}
-
-export function useSynthesisPreviewOptional(): SynthesisPreviewContextValue | null {
-  return useContext(SynthesisPreviewContext);
 }

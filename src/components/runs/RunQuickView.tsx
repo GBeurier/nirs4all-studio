@@ -12,6 +12,14 @@ import { getScoreDistribution } from "@/api/enrichedRuns";
 import { getAggregatedPredictions } from "@/api/aggregatedPredictions";
 import { collapseStandaloneRefitSummaries } from "@/lib/score-adapters";
 import { ScoreHistogram } from "./ScoreHistogram";
+import {
+  getRunQuickViewAvailablePartitions,
+  getRunQuickViewDefaultSelectedPartitions,
+  getRunQuickViewPartitionStats,
+  RUN_QUICK_VIEW_PARTITION_COLORS,
+  RUN_QUICK_VIEW_PARTITION_LABELS,
+  toggleRunQuickViewPartitionSelection,
+} from "./RunQuickViewData";
 
 interface RunQuickViewProps {
   open: boolean;
@@ -23,24 +31,8 @@ interface RunQuickViewProps {
   workspaceId: string;
 }
 
-const PARTITIONS = ["val", "test", "train", "final"] as const;
-
-const PARTITION_LABELS: Record<string, string> = {
-  val: "Validation",
-  test: "Test",
-  train: "Train",
-  final: "Final",
-};
-
-const PARTITION_COLORS: Record<string, string> = {
-  val: "bg-chart-1/20 text-chart-1 border-chart-1/30",
-  test: "bg-chart-2/20 text-chart-2 border-chart-2/30",
-  train: "bg-chart-3/20 text-chart-3 border-chart-3/30",
-  final: "bg-chart-4/20 text-chart-4 border-chart-4/30",
-};
-
 export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, metric, workspaceId }: RunQuickViewProps) {
-  const [selectedPartitions, setSelectedPartitions] = useState<Set<string>>(new Set(["val", "test"]));
+  const [selectedPartitions, setSelectedPartitions] = useState<Set<string>>(getRunQuickViewDefaultSelectedPartitions);
 
   const { data: distribution } = useQuery({
     queryKey: ["score-distribution", workspaceId, runId, datasetName],
@@ -63,28 +55,18 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
 
   // Only show partition buttons for partitions that have data
   const availablePartitions = useMemo(() => {
-    if (!distribution?.partitions) return ["val", "test"] as string[];
-    return PARTITIONS.filter((p) => distribution.partitions[p]?.n_scores > 0);
+    return getRunQuickViewAvailablePartitions(distribution);
   }, [distribution]);
 
   const togglePartition = (part: string) => {
     setSelectedPartitions((prev) => {
-      const next = new Set(prev);
-      if (next.has(part)) next.delete(part);
-      else next.add(part);
-      return next;
+      return toggleRunQuickViewPartitionSelection(prev, part);
     });
   };
 
   // Summary stats for selected partitions
   const partitionStats = useMemo(() => {
-    if (!distribution?.partitions) return null;
-    const stats: Record<string, { mean: number; min: number; max: number; n: number }> = {};
-    for (const part of availablePartitions) {
-      const pd = distribution.partitions[part];
-      if (pd) stats[part] = { mean: pd.mean, min: pd.min, max: pd.max, n: pd.n_scores };
-    }
-    return Object.keys(stats).length > 0 ? stats : null;
+    return getRunQuickViewPartitionStats(distribution, availablePartitions);
   }, [distribution, availablePartitions]);
 
   return (
@@ -114,11 +96,11 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
                     key={part}
                     variant={isActive ? "default" : "outline"}
                     size="sm"
-                    className={cn("text-xs h-7 gap-1", isActive && PARTITION_COLORS[part])}
+                    className={cn("text-xs h-7 gap-1", isActive && RUN_QUICK_VIEW_PARTITION_COLORS[part])}
                     onClick={() => togglePartition(part)}
                   >
                     {isActive && <Check className="h-3 w-3" />}
-                    {PARTITION_LABELS[part]}
+                    {RUN_QUICK_VIEW_PARTITION_LABELS[part]}
                   </Button>
                 );
               })}
@@ -128,8 +110,8 @@ export function RunQuickView({ open, onOpenChange, runId, runName, datasetName, 
             {partitionStats && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {availablePartitions.filter((p) => selectedPartitions.has(p) && partitionStats[p]).map((part) => (
-                  <div key={part} className={cn("rounded-lg border p-2 text-center", PARTITION_COLORS[part])}>
-                    <p className="text-[10px] uppercase font-medium mb-0.5">{PARTITION_LABELS[part]}</p>
+                  <div key={part} className={cn("rounded-lg border p-2 text-center", RUN_QUICK_VIEW_PARTITION_COLORS[part])}>
+                    <p className="text-[10px] uppercase font-medium mb-0.5">{RUN_QUICK_VIEW_PARTITION_LABELS[part]}</p>
                     <p className="text-lg font-bold font-mono">{partitionStats[part].mean.toFixed(4)}</p>
                     <p className="text-[10px] text-muted-foreground">
                       {partitionStats[part].min.toFixed(3)} – {partitionStats[part].max.toFixed(3)} ({partitionStats[part].n})

@@ -29,13 +29,20 @@ export {
   SelectionModeToggle,
   SelectionActionsBar,
   SelectionOverlay,
+  type SelectionToolType,
+} from './SelectionTools';
+
+export {
   isPointInPolygon,
   isPointInBox,
-  type SelectionToolType,
+  getBoundsFromPoints,
+  getBoundsFromCorners,
+  simplifyPath,
+  pointsToSvgPath,
   type Point,
   type SelectionBounds,
   type SelectionResult,
-} from './SelectionTools';
+} from './selectionGeometry';
 
 // Utility components
 export { SampleDetails } from './SampleDetails';

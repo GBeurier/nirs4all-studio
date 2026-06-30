@@ -18,7 +18,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AlertTriangle, ArrowRight, Layers } from "lucide-react";
-import { useStepShape, useStepDimensionWarnings } from "../../contexts/DatasetBindingContext";
+import { useStepShape, useStepDimensionWarnings } from "../../contexts/useDatasetBindingContext";
 import type { DataShape } from "../../DatasetBinding";
 import type { ShapeWarning, ShapeAtStep } from "@/hooks/useShapePropagation";
 

@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import type { PipelineStep, StepType, StepOption } from "./types";
-import { getStepColor, stepColors } from "./types";
+import { getStepColor, stepColors } from "./stepPresentation";
 import { useStepMetadataCatalog } from "./shared/stepMetadata";
 
 interface StepContextMenuProps {

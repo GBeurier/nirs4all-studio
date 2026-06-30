@@ -210,7 +210,15 @@ def _clear_dataset_cache(dataset_id: str | None = None):
         _dataset_cache.clear()
 
 
-def _get_partition_arrays(dataset, partition: str, *, source: int = 0, want_y: bool = False, want_metadata: bool = False):
+def _get_partition_arrays(
+    dataset,
+    partition: str,
+    *,
+    source: int = 0,
+    target_index: int = 0,
+    want_y: bool = False,
+    want_metadata: bool = False,
+):
     """Load X (and optionally y / metadata) for a partition.
 
     Supports partition="all" by concatenating train and test. Returns
@@ -244,9 +252,19 @@ def _get_partition_arrays(dataset, partition: str, *, source: int = 0, want_y: b
             try:
                 y_p = dataset.y(sel)
                 if y_p is not None and len(y_p) > 0:
-                    y_chunks.append(y_p if y_p.ndim == 1 else y_p[:, 0])
+                    if y_p.ndim == 1:
+                        y_chunks.append(y_p)
+                    elif target_index < y_p.shape[1]:
+                        y_chunks.append(y_p[:, target_index])
+                    else:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"target_index {target_index} is out of range",
+                        )
                 else:
                     y_chunks.append(None)
+            except HTTPException:
+                raise
             except Exception:
                 y_chunks.append(None)
 
@@ -301,6 +319,7 @@ def _build_spectra_response(
     end: int | None,
     partition: str,
     source: int,
+    target_index: int,
     include_y: bool,
     include_metadata: bool,
     max_wavelengths_returned: int | None,
@@ -319,7 +338,12 @@ def _build_spectra_response(
         raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
     X, y_full, meta_full = _get_partition_arrays(
-        dataset, partition, source=source, want_y=include_y, want_metadata=include_metadata,
+        dataset,
+        partition,
+        source=source,
+        target_index=target_index,
+        want_y=include_y,
+        want_metadata=include_metadata,
     )
     if X is None:
         raise HTTPException(
@@ -422,6 +446,7 @@ async def get_spectra(
     end: int | None = Query(None, description="End index (exclusive)"),
     partition: str = Query("train", description="Partition: 'train', 'test', or 'all'"),
     source: int = Query(0, ge=0, description="Source index for multi-source datasets"),
+    target_index: int = Query(0, ge=0, description="Target index for multi-target datasets"),
     include_y: bool = Query(False, description="Whether to include target (y) values"),
     include_metadata: bool = Query(False, description="Whether to include sample metadata"),
     max_wavelengths_returned: int | None = Query(
@@ -455,6 +480,7 @@ async def get_spectra(
             end,
             partition,
             source,
+            target_index,
             include_y,
             include_metadata,
             max_wavelengths_returned,
@@ -471,6 +497,7 @@ async def get_spectrum(
     sample_index: int,
     partition: str = Query("train", description="Partition: 'train', 'test', or 'all'"),
     source: int = Query(0, ge=0, description="Source index for multi-source datasets"),
+    target_index: int = Query(0, ge=0, description="Target index for multi-target datasets"),
 ):
     """
     Get a single spectrum by sample index.
@@ -488,7 +515,12 @@ async def get_spectrum(
             raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
 
         X, y_full, meta_full = _get_partition_arrays(
-            dataset, partition, source=source, want_y=True, want_metadata=True,
+            dataset,
+            partition,
+            source=source,
+            target_index=target_index,
+            want_y=True,
+            want_metadata=True,
         )
         if X is None:
             raise HTTPException(

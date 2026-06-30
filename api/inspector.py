@@ -18,22 +18,39 @@ Phases 1–5 endpoints:
 - /inspector/bias-variance — Bias-variance decomposition (Phase 5)
 - /inspector/learning-curve — Learning curve by training size (Phase 5)
 
-All data is read from the workspace's SQLite store via WorkspaceStore.
+All data is read from the active workspace results repository.
 """
 
 from __future__ import annotations
 
-import json
 import math
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from .inspector_normalization import (
+    _build_available_targets,
+    _extract_model_params_from_expanded_config,
+    _flatten_numeric_params,
+    _is_classification_task,
+    _load_pipeline_metadata_map,
+    _matches_task_type_filter,
+    _merge_variant_params,
+    _normalize_chain_record,
+    _normalize_chain_records,
+    _parse_json_like,
+    _split_preprocessing_steps,
+)
 from .lazy_imports import get_cached
-from .shared.json_safe import sanitize_dict, sanitize_float
+from .results_repository import (
+    ResultsRepository,
+    ResultsRepositoryNotFound,
+    resolve_results_repository,
+)
+from .shared.json_safe import sanitize_float
 from .workspace_manager import workspace_manager
 
 STORE_AVAILABLE = True
@@ -47,6 +64,52 @@ router = APIRouter(prefix="/inspector", tags=["inspector"])
 # ============================================================================
 
 
+class ScoreRef(BaseModel):
+    """Structured score identifier accepted alongside legacy score_column."""
+
+    model_config = ConfigDict(extra="allow")
+
+    key: str | None = None
+    metric: str | None = None
+    protocol: str | None = None
+    partition: str | None = None
+    aggregation: str | None = None
+    legacyScoreColumn: str | None = None
+    legacy_score_column: str | None = None
+
+
+_SCORE_REF_DESCRIPTORS: dict[str, tuple[str, str, str]] = {
+    "cv_val_score": ("cross_validation", "validation", "fold_mean"),
+    "cv_test_score": ("cross_validation", "test", "fold_mean"),
+    "cv_train_score": ("cross_validation", "train", "fold_mean"),
+    "final_test_score": ("final", "test", "final_model"),
+    "final_train_score": ("final", "train", "final_model"),
+}
+
+_SCORE_REF_PROTOCOL_ALIASES = {
+    "cv": "cross_validation",
+    "cross-validation": "cross_validation",
+    "cross_validation": "cross_validation",
+    "final": "final",
+}
+
+_SCORE_REF_PARTITION_ALIASES = {
+    "val": "validation",
+    "valid": "validation",
+    "validation": "validation",
+    "test": "test",
+    "train": "train",
+}
+
+_SCORE_REF_AGGREGATION_ALIASES = {
+    "mean": "fold_mean",
+    "avg": "fold_mean",
+    "fold_mean": "fold_mean",
+    "final": "final_model",
+    "final_model": "final_model",
+}
+
+
 class InspectorDataResponse(BaseModel):
     """Response for /inspector/data."""
 
@@ -57,6 +120,7 @@ class InspectorDataResponse(BaseModel):
     available_datasets: list[str]
     available_runs: list[str]
     available_preprocessings: list[str]
+    available_targets: list[dict[str, Any]] = Field(default_factory=list)
     generated_at: str
 
 
@@ -65,6 +129,7 @@ class ScatterRequest(BaseModel):
 
     chain_ids: list[str]
     partition: str = "val"
+    target_index: int = Field(default=0, ge=0)
 
 
 class ScatterPoint(BaseModel):
@@ -196,188 +261,8 @@ class CandlestickResponse(BaseModel):
 
 # ============================================================================
 # Helpers
-# ============================================================================
-
-
-def _parse_json_like(value: Any) -> Any:
-    """Parse JSON-encoded strings commonly returned by chain summary views."""
-    if not isinstance(value, str):
-        return value
-
-    stripped = value.strip()
-    if not stripped or stripped[0] not in "[{":
-        return value
-
-    try:
-        return json.loads(stripped)
-    except Exception:
-        return value
-
-
-def _split_preprocessing_steps(value: Any) -> list[str]:
-    """Split the serialized preprocessing string into stable step labels."""
-    if value is None:
-        return []
-
-    steps: list[str] = []
-    for segment in str(value).split(" | "):
-        step = segment.strip()
-        if step and step not in steps:
-            steps.append(step)
-    return steps
-
-
-def _extract_model_params_from_expanded_config(
-    expanded_config: Any,
-    model_step_idx: Any,
-) -> dict[str, Any] | None:
-    """Extract model params from a serialized expanded pipeline config."""
-    steps = _parse_json_like(expanded_config)
-    if not isinstance(steps, list):
-        return None
-
-    try:
-        idx = int(model_step_idx) - 1
-    except Exception:
-        return None
-
-    if idx < 0 or idx >= len(steps):
-        return None
-
-    step = steps[idx]
-
-    if isinstance(step, dict) and "model" in step:
-        model_spec = step.get("model")
-        if isinstance(model_spec, dict):
-            params = model_spec.get("params")
-            if isinstance(params, dict):
-                return params
-        return None
-
-    if isinstance(step, dict):
-        params = step.get("params")
-        if isinstance(params, dict):
-            return params
-
-    return None
-
-
-def _merge_variant_params(
-    step_params: dict[str, Any] | None,
-    best_params: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    """Merge static pipeline params with best_params into a single view."""
-    merged: dict[str, Any] = {}
-    if isinstance(step_params, dict):
-        merged.update(step_params)
-    if isinstance(best_params, dict):
-        merged.update(best_params)
-    return merged or None
-
-
-def _load_pipeline_metadata_map(store: Any, pipeline_ids: list[str]) -> dict[str, dict[str, Any]]:
-    """Load pipeline metadata needed to enrich chain summaries.
-
-    Issues a single ``list_pipelines`` query for the whole workspace and
-    keeps only the rows whose ``pipeline_id`` is in *pipeline_ids* — avoiding
-    one DB round-trip per distinct pipeline (the former N+1).
-    """
-    wanted = {pid for pid in pipeline_ids if pid}
-    if not wanted:
-        return {}
-
-    list_pipelines = getattr(store, "list_pipelines", None)
-    if not callable(list_pipelines):
-        return {}
-
-    pipeline_map: dict[str, dict[str, Any]] = {}
-    df = list_pipelines()
-    for row in df.iter_rows(named=True):
-        pipeline_id = str(row.get("pipeline_id") or "")
-        if pipeline_id in wanted:
-            pipeline_map[pipeline_id] = dict(row)
-
-    return pipeline_map
-
-
-def _normalize_chain_record(
-    raw: dict[str, Any],
-    pipeline_map: dict[str, dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Normalize a chain-summary row for frontend consumption."""
-    pipeline_map = pipeline_map or {}
-    record = sanitize_dict(dict(raw))
-    for json_field in ("best_params", "branch_path"):
-        record[json_field] = _parse_json_like(record.get(json_field))
-    pipeline_id = str(record.get("pipeline_id") or "")
-    pipeline = pipeline_map.get(pipeline_id, {})
-    step_params = _extract_model_params_from_expanded_config(
-        pipeline.get("expanded_config"),
-        record.get("model_step_idx"),
-    )
-    best_params = record.get("best_params")
-    best_params = best_params if isinstance(best_params, dict) else None
-    record["best_params"] = best_params
-    record["variant_params"] = _merge_variant_params(step_params, best_params)
-    record["pipeline_name"] = pipeline.get("name")
-    record["preprocessing_steps"] = _split_preprocessing_steps(record.get("preprocessings"))
-    return record
-
-
-def _normalize_chain_records(store: Any, df: Any) -> list[dict[str, Any]]:
-    """Normalize chain rows and enrich them with pipeline-derived metadata."""
-    rows = [dict(row) for row in df.iter_rows(named=True)]
-    pipeline_map = _load_pipeline_metadata_map(
-        store,
-        [str(row.get("pipeline_id") or "") for row in rows],
-    )
-    return [_normalize_chain_record(row, pipeline_map) for row in rows]
-
-
-def _matches_task_type_filter(raw_task_type: Any, expected: str | None) -> bool:
-    """Match broad frontend task filters against backend task variants."""
-    if not expected:
-        return True
-
-    actual = str(raw_task_type or "").strip().lower()
-    if not actual:
-        return False
-
-    expected_norm = expected.strip().lower()
-    if expected_norm == "classification":
-        return "classification" in actual
-    if expected_norm == "regression":
-        return "regression" in actual
-    return actual == expected_norm
-
-
-def _is_classification_task(task_type: Any) -> bool:
-    """Return True for classification-like task types."""
-    return "classification" in str(task_type or "").strip().lower()
-
-
-def _flatten_numeric_params(params: Any, prefix: str = "") -> dict[str, float]:
-    """Flatten numeric hyperparameters, preserving nested keys with dot notation."""
-    flattened: dict[str, float] = {}
-    if not isinstance(params, dict):
-        return flattened
-
-    for key, value in params.items():
-        name = f"{prefix}.{key}" if prefix else str(key)
-        if isinstance(value, dict):
-            flattened.update(_flatten_numeric_params(value, name))
-            continue
-
-        if isinstance(value, (int, float)) and not (
-            isinstance(value, float) and (math.isnan(value) or math.isinf(value))
-        ):
-            flattened[name] = float(value)
-
-    return flattened
-
-
-def _get_store():
-    """Get a WorkspaceStore for the current workspace."""
+def _get_store() -> ResultsRepository:
+    """Get the active results repository for the current workspace."""
     if not STORE_AVAILABLE:
         raise HTTPException(
             status_code=501,
@@ -388,14 +273,16 @@ def _get_store():
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
-    workspace_path = Path(workspace.path)
-    if not (workspace_path / "store.sqlite").exists() and not (workspace_path / "store.duckdb").exists():
+    try:
+        return resolve_results_repository(
+            Path(workspace.path),
+            workspace_store_factory=lambda workspace_path: get_cached("WorkspaceStore")(workspace_path),
+        )
+    except ResultsRepositoryNotFound as exc:
         raise HTTPException(
             status_code=404,
             detail="No store found in workspace. Run a pipeline first.",
-        )
-
-    return get_cached("WorkspaceStore")(workspace_path)
+        ) from exc
 
 
 def _get_arrays(store: Any, prediction_id: str) -> dict[str, Any] | None:
@@ -405,6 +292,103 @@ def _get_arrays(store: Any, prediction_id: str) -> dict[str, Any] | None:
         return get_arrays(prediction_id)
     prediction = store.get_prediction(prediction_id, load_arrays=True)
     return prediction
+
+
+def _normalize_score_ref_part(value: str | None, aliases: dict[str, str]) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    return aliases.get(normalized, normalized)
+
+
+def _score_ref_descriptor(score_ref: ScoreRef | None) -> tuple[str, str, str] | None:
+    if score_ref is None:
+        return None
+    protocol = _normalize_score_ref_part(score_ref.protocol, _SCORE_REF_PROTOCOL_ALIASES)
+    partition = _normalize_score_ref_part(score_ref.partition, _SCORE_REF_PARTITION_ALIASES)
+    aggregation = _normalize_score_ref_part(score_ref.aggregation, _SCORE_REF_AGGREGATION_ALIASES)
+    if protocol is None or partition is None or aggregation is None:
+        return None
+    return protocol, partition, aggregation
+
+
+def _score_ref_legacy_column(score_ref: ScoreRef | None) -> str | None:
+    if score_ref is None:
+        return None
+    legacy = score_ref.legacyScoreColumn or score_ref.legacy_score_column
+    if legacy in _SCORE_REF_DESCRIPTORS:
+        return legacy
+    return None
+
+
+def _resolve_score_column_from_score_ref(score_column: str, score_ref: ScoreRef | None) -> str:
+    """Resolve a structured score_ref to a legacy score column when possible."""
+    if score_ref is None:
+        return score_column
+
+    descriptor = _score_ref_descriptor(score_ref)
+    legacy_column = _score_ref_legacy_column(score_ref)
+
+    if legacy_column is not None and (
+        descriptor is None or _SCORE_REF_DESCRIPTORS[legacy_column] == descriptor
+    ):
+        return legacy_column
+
+    if descriptor is not None:
+        for candidate, candidate_descriptor in _SCORE_REF_DESCRIPTORS.items():
+            if candidate_descriptor == descriptor:
+                return candidate
+
+    return score_column
+
+
+def _parse_score_ref_query_param(score_ref: str | None) -> ScoreRef | None:
+    """Parse a JSON-encoded score_ref query parameter."""
+    if score_ref is None or not score_ref.strip():
+        return None
+    try:
+        return ScoreRef.model_validate_json(score_ref)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Invalid score_ref query parameter") from exc
+
+
+def _has_resolved_score_ref(score_column: str, score_ref: ScoreRef | None) -> bool:
+    if score_ref is None:
+        return False
+    descriptor = _score_ref_descriptor(score_ref)
+    legacy_column = _score_ref_legacy_column(score_ref)
+    if legacy_column is not None and (
+        descriptor is None or _SCORE_REF_DESCRIPTORS[legacy_column] == descriptor
+    ):
+        return True
+    if descriptor is not None:
+        return descriptor in _SCORE_REF_DESCRIPTORS.values()
+    return False
+
+
+def _prediction_partition_from_score_column(score_column: str, fallback: str = "val") -> str:
+    return {
+        "cv_val_score": "val",
+        "cv_test_score": "test",
+        "cv_train_score": "train",
+        "final_test_score": "test",
+        "final_train_score": "train",
+    }.get(score_column, fallback)
+
+
+def _prediction_score_field_from_partition(partition: str) -> str:
+    return {
+        "val": "val_score",
+        "test": "test_score",
+        "train": "train_score",
+    }.get(partition, "val_score")
+
+
+def _prediction_score_field_from_score_column(score_column: str, fallback_partition: str = "val") -> str:
+    partition = _prediction_partition_from_score_column(score_column, fallback_partition)
+    return _prediction_score_field_from_partition(partition)
 
 
 def _coerce_vector(values: Any) -> list[Any] | None:
@@ -427,6 +411,52 @@ def _coerce_vector(values: Any) -> list[Any] | None:
 def _coerce_numeric_vector(values: Any) -> list[float] | None:
     """Coerce values into a flat list of floats."""
     vector = _coerce_vector(values)
+    if vector is None:
+        return None
+
+    numeric: list[float] = []
+    for value in vector:
+        try:
+            numeric.append(float(value))
+        except (TypeError, ValueError):
+            return None
+    return numeric
+
+
+def _coerce_target_vector(values: Any, target_index: int = 0) -> list[Any] | None:
+    """Coerce values into a flat list after selecting a target column."""
+    if values is None or target_index < 0:
+        return None
+
+    try:
+        import numpy as np
+
+        array = np.asarray(values, dtype=object)
+        if array.ndim == 0:
+            return [array.item()]
+        if array.ndim > 1:
+            if target_index >= array.shape[1]:
+                return None
+            array = array[:, target_index]
+        return array.reshape(-1).tolist()
+    except Exception:
+        if isinstance(values, (list, tuple)):
+            if not values:
+                return []
+            if any(isinstance(item, (list, tuple)) for item in values):
+                selected: list[Any] = []
+                for row in values:
+                    if not isinstance(row, (list, tuple)) or target_index >= len(row):
+                        return None
+                    selected.append(row[target_index])
+                return selected
+            return list(values)
+        return None
+
+
+def _coerce_numeric_target_vector(values: Any, target_index: int = 0) -> list[float] | None:
+    """Coerce a selected target column into a flat list of floats."""
+    vector = _coerce_target_vector(values, target_index=target_index)
     if vector is None:
         return None
 
@@ -546,6 +576,7 @@ async def get_inspector_data(
             available_datasets=datasets,
             available_runs=runs,
             available_preprocessings=sorted(prep_steps),
+            available_targets=_build_available_targets(records),
             generated_at=datetime.now(UTC).isoformat(),
         )
     finally:
@@ -599,8 +630,8 @@ async def get_scatter_data(request: ScatterRequest):
                 if arrays is None:
                     continue
 
-                y_true_values = _coerce_numeric_vector(arrays.get("y_true"))
-                y_pred_values = _coerce_numeric_vector(arrays.get("y_pred"))
+                y_true_values = _coerce_numeric_target_vector(arrays.get("y_true"), request.target_index)
+                y_pred_values = _coerce_numeric_target_vector(arrays.get("y_pred"), request.target_index)
                 if not y_true_values or not y_pred_values:
                     continue
 
@@ -1021,6 +1052,7 @@ class FoldStabilityRequest(BaseModel):
 
     chain_ids: list[str]
     score_column: str = "cv_val_score"
+    score_ref: ScoreRef | None = None
     partition: str = "val"
 
 
@@ -1123,6 +1155,7 @@ async def get_branch_comparison(request: BranchComparisonRequest):
 async def get_branch_topology(
     pipeline_id: str = Query(..., description="Pipeline ID to analyze"),
     score_column: str = Query("cv_val_score", description="Score column for metrics"),
+    score_ref: str | None = Query(None, description="JSON-encoded structured score reference"),
 ):
     """Pipeline topology: DAG structure with metrics overlay.
 
@@ -1130,6 +1163,8 @@ async def get_branch_topology(
     the expanded pipeline config into a tree of nodes.
     """
     import numpy as np
+    parsed_score_ref = _parse_score_ref_query_param(score_ref)
+    effective_score_column = _resolve_score_column_from_score_ref(score_column, parsed_score_ref)
     store = _get_store()
     try:
         pipeline = store.get_pipeline(pipeline_id)
@@ -1169,9 +1204,9 @@ async def get_branch_topology(
                         if _stringify_branch_path(c.get("branch_path")) == bp_str
                     ]
                     matching_scores = [
-                        float(c[score_column])
+                        float(c[effective_score_column])
                         for c in matching_chains
-                        if c.get(score_column) is not None
+                        if c.get(effective_score_column) is not None
                     ]
                     mean_score = round(float(np.mean(matching_scores)), 6) if matching_scores else None
 
@@ -1206,9 +1241,9 @@ async def get_branch_topology(
 
             for i, (mc, chains_for_model) in enumerate(model_groups.items()):
                 scores = [
-                    float(c[score_column])
+                    float(c[effective_score_column])
                     for c in chains_for_model
-                    if c.get(score_column) is not None
+                    if c.get(effective_score_column) is not None
                 ]
                 nodes.append(
                     TopologyNode(
@@ -1244,9 +1279,16 @@ async def get_fold_stability(request: FoldStabilityRequest):
     For each chain, retrieves fold-level predictions and extracts
     the score for the requested partition.
     """
+    effective_score_column = _resolve_score_column_from_score_ref(request.score_column, request.score_ref)
+    resolved_score_ref = _has_resolved_score_ref(request.score_column, request.score_ref)
+    effective_partition = (
+        _prediction_partition_from_score_column(effective_score_column, request.partition)
+        if resolved_score_ref
+        else request.partition
+    )
     if not request.chain_ids:
         return FoldStabilityResponse(
-            entries=[], fold_ids=[], score_column=request.score_column, total_chains=0
+            entries=[], fold_ids=[], score_column=effective_score_column, total_chains=0
         )
 
     store = _get_store()
@@ -1254,18 +1296,16 @@ async def get_fold_stability(request: FoldStabilityRequest):
         entries: list[dict] = []
         all_fold_ids: set[str] = set()
 
-        # Map partition to score field
-        score_field_map = {
-            "val": "val_score",
-            "test": "test_score",
-            "train": "train_score",
-        }
-        score_field = score_field_map.get(request.partition, "val_score")
+        score_field = (
+            _prediction_score_field_from_score_column(effective_score_column, request.partition)
+            if resolved_score_ref
+            else _prediction_score_field_from_partition(request.partition)
+        )
 
         for chain_id in request.chain_ids:
             pred_df = store.get_chain_predictions(
                 chain_id=chain_id,
-                partition=request.partition,
+                partition=effective_partition,
             )
             if len(pred_df) == 0:
                 continue
@@ -1304,7 +1344,7 @@ async def get_fold_stability(request: FoldStabilityRequest):
         return FoldStabilityResponse(
             entries=entries,
             fold_ids=sorted(all_fold_ids),
-            score_column=request.score_column,
+            score_column=effective_score_column,
             total_chains=len({e.get("chain_id") for e in entries}),
         )
     finally:
@@ -1322,6 +1362,7 @@ class ConfusionMatrixRequest(BaseModel):
     chain_ids: list[str]
     partition: str = "val"
     normalize: str = "none"  # none, row, column, all
+    target_index: int = Field(default=0, ge=0)
 
 
 class ConfusionMatrixCell(BaseModel):
@@ -1464,8 +1505,8 @@ async def get_confusion_matrix(request: ConfusionMatrixRequest):
                 if arrays is None:
                     continue
 
-                y_true_values = _coerce_vector(arrays.get("y_true"))
-                y_pred_values = _coerce_vector(arrays.get("y_pred"))
+                y_true_values = _coerce_target_vector(arrays.get("y_true"), request.target_index)
+                y_pred_values = _coerce_target_vector(arrays.get("y_pred"), request.target_index)
                 if not y_true_values or not y_pred_values:
                     continue
 
@@ -1826,6 +1867,7 @@ class BiasVarianceRequest(BaseModel):
 
     chain_ids: list[str]
     score_column: str = "cv_val_score"
+    score_ref: ScoreRef | None = None
     group_by: str = "model_class"
 
 
@@ -2058,9 +2100,16 @@ async def get_bias_variance(request: BiasVarianceRequest):
     # only assembles per-sample predictions from the store and shapes the response.
     from nirs4all.pipeline.analysis.model_diagnostics import bias_variance_decomposition
 
+    effective_score_column = _resolve_score_column_from_score_ref(request.score_column, request.score_ref)
+    effective_partition = (
+        _prediction_partition_from_score_column(effective_score_column, "val")
+        if _has_resolved_score_ref(request.score_column, request.score_ref)
+        else "val"
+    )
+
     if not request.chain_ids:
         return BiasVarianceResponse(
-            entries=[], score_column=request.score_column, group_by=request.group_by,
+            entries=[], score_column=effective_score_column, group_by=request.group_by,
             reason="Select at least one chain to compare bias and variance.",
         )
 
@@ -2085,7 +2134,7 @@ async def get_bias_variance(request: BiasVarianceRequest):
         if not groups:
             return BiasVarianceResponse(
                 entries=[],
-                score_column=request.score_column,
+                score_column=effective_score_column,
                 group_by=request.group_by,
                 reason="No eligible chains were found for the requested comparison.",
             )
@@ -2100,7 +2149,7 @@ async def get_bias_variance(request: BiasVarianceRequest):
             for cid in chain_ids:
                 record = records.get(cid, {})
                 dataset_name = str(record.get("dataset_name") or "unknown")
-                pred_df = store.get_chain_predictions(chain_id=cid, partition="val")
+                pred_df = store.get_chain_predictions(chain_id=cid, partition=effective_partition)
                 if len(pred_df) == 0:
                     continue
 
@@ -2148,7 +2197,7 @@ async def get_bias_variance(request: BiasVarianceRequest):
 
         return BiasVarianceResponse(
             entries=entries,
-            score_column=request.score_column,
+            score_column=effective_score_column,
             group_by=request.group_by,
             reason=(
                 None

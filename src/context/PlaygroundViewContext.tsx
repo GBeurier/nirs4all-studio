@@ -12,32 +12,20 @@
  */
 
 import {
-  createContext,
-  useContext,
   useReducer,
   useCallback,
   useMemo,
   type ReactNode,
 } from 'react';
-
-// ============= Types =============
-
-export type ChartType = 'spectra' | 'histogram' | 'folds' | 'pca' | 'repetitions';
-
-export type ViewState = 'visible' | 'hidden' | 'maximized' | 'minimized';
-
-export type LayoutMode = 'auto' | 'horizontal' | 'vertical' | 'grid';
-
-export interface PlaygroundViewState {
-  /** Visibility state for each chart */
-  chartStates: Record<ChartType, ViewState>;
-  /** Currently maximized chart (null if none) */
-  maximizedChart: ChartType | null;
-  /** Currently focused chart for keyboard navigation */
-  focusedChart: ChartType | null;
-  /** Layout mode for the grid */
-  layoutMode: LayoutMode;
-}
+import {
+  ALL_CHARTS,
+  PlaygroundViewContext,
+  type ChartType,
+  type LayoutMode,
+  type PlaygroundViewContextValue,
+  type PlaygroundViewState,
+  type ViewState,
+} from '@/context/usePlaygroundView';
 
 export type PlaygroundViewAction =
   | { type: 'SET_CHART_STATE'; chart: ChartType; state: ViewState }
@@ -51,39 +39,7 @@ export type PlaygroundViewAction =
   | { type: 'HIDE_ALL_CHARTS' }
   | { type: 'RESET_VIEW' };
 
-export interface PlaygroundViewContextValue extends PlaygroundViewState {
-  // Chart visibility
-  setChartState: (chart: ChartType, state: ViewState) => void;
-  toggleChart: (chart: ChartType) => void;
-  isChartVisible: (chart: ChartType) => boolean;
-  isChartMinimized: (chart: ChartType) => boolean;
-
-  // Maximize/minimize
-  maximizeChart: (chart: ChartType | null) => void;
-  minimizeChart: (chart: ChartType) => void;
-  restoreChart: (chart: ChartType) => void;
-  toggleMaximize: (chart: ChartType) => void;
-
-  // Focus
-  setFocusedChart: (chart: ChartType | null) => void;
-
-  // Layout
-  setLayoutMode: (mode: LayoutMode) => void;
-
-  // Bulk operations
-  showAllCharts: () => void;
-  hideAllCharts: () => void;
-  resetView: () => void;
-
-  // Computed values
-  visibleCharts: Set<ChartType>;
-  visibleCount: number;
-  hasMaximized: boolean;
-}
-
 // ============= Initial State =============
-
-const ALL_CHARTS: ChartType[] = ['spectra', 'histogram', 'folds', 'pca', 'repetitions'];
 
 const DEFAULT_VISIBLE_CHARTS: ChartType[] = ['spectra', 'histogram', 'pca'];
 
@@ -252,10 +208,6 @@ function viewReducer(state: PlaygroundViewState, action: PlaygroundViewAction): 
   }
 }
 
-// ============= Context =============
-
-const PlaygroundViewContext = createContext<PlaygroundViewContextValue | null>(null);
-
 // ============= Provider =============
 
 export interface PlaygroundViewProviderProps {
@@ -423,23 +375,3 @@ export function PlaygroundViewProvider({
     </PlaygroundViewContext.Provider>
   );
 }
-
-// ============= Hook =============
-
-export function usePlaygroundView(): PlaygroundViewContextValue {
-  const context = useContext(PlaygroundViewContext);
-  if (!context) {
-    throw new Error('usePlaygroundView must be used within a PlaygroundViewProvider');
-  }
-  return context;
-}
-
-/**
- * Optional hook that returns null if not within provider
- * Useful for components that can work with or without the context
- */
-export function usePlaygroundViewOptional(): PlaygroundViewContextValue | null {
-  return useContext(PlaygroundViewContext);
-}
-
-export { ALL_CHARTS };

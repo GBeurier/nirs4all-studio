@@ -16,6 +16,7 @@ import type {
   CandlestickResponse,
   BranchComparisonRequest,
   BranchComparisonResponse,
+  BranchTopologyRequest,
   BranchTopologyResponse,
   FoldStabilityRequest,
   FoldStabilityResponse,
@@ -143,11 +144,12 @@ export async function getBranchComparisonData(
  * Get branch topology data (pipeline DAG structure).
  */
 export async function getBranchTopologyData(
-  params: { pipeline_id: string; score_column?: string }
+  params: BranchTopologyRequest
 ): Promise<BranchTopologyResponse> {
   const qs = new URLSearchParams();
   qs.set('pipeline_id', params.pipeline_id);
   if (params.score_column) qs.set('score_column', params.score_column);
+  if (params.score_ref) qs.set('score_ref', JSON.stringify(params.score_ref));
   return api.get<BranchTopologyResponse>(`/inspector/branch-topology?${qs}`);
 }
 

@@ -4,12 +4,13 @@ import {
   useNodeRegistryOptional,
   type NodeDefinition,
   type NodeRegistryContextValue,
-} from "../contexts/NodeRegistryContext";
+} from "../contexts/useNodeRegistry";
 import {
   usePipelineEditorPreferencesOptional,
   type TierLevel,
-} from "../contexts/PipelineEditorPreferencesContext";
-import { stepOptions, type PipelineStep, type StepOption, type StepType } from "../types";
+} from "../contexts/usePipelineEditorPreferences";
+import { stepOptions } from "../stepOptions";
+import type { PipelineStep, StepOption, StepType } from "../types";
 import { useDeepLearningAvailable } from "@/hooks/useBackendCapabilities";
 
 export type StepMetadataRegistry = Pick<

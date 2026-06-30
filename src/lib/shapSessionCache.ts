@@ -1,3 +1,9 @@
+import {
+  clientStorageKeys,
+  readClientStorageString,
+  removeClientStorageItem,
+  writeClientStorageString,
+} from '@/lib/clientStorage';
 import type {
   BinnedImportanceData,
   ExplainerType,
@@ -6,7 +12,6 @@ import type {
   ShapTab,
 } from '@/types/shap';
 
-const STORAGE_KEY = 'nirs4all_shap_session';
 const STORAGE_VERSION = 1;
 const SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -43,17 +48,17 @@ function isSessionState(value: unknown): value is ShapSessionState {
 
 export function loadShapSessionState(): ShapSessionState | null {
   try {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
+    const stored = readClientStorageString(clientStorageKeys.shapSession);
     if (!stored) return null;
 
     const parsed = JSON.parse(stored) as unknown;
     if (!isSessionState(parsed)) {
-      sessionStorage.removeItem(STORAGE_KEY);
+      removeClientStorageItem(clientStorageKeys.shapSession);
       return null;
     }
 
     if (Date.now() - parsed.savedAt > SESSION_MAX_AGE_MS) {
-      sessionStorage.removeItem(STORAGE_KEY);
+      removeClientStorageItem(clientStorageKeys.shapSession);
       return null;
     }
 
@@ -71,7 +76,7 @@ export function persistShapSessionState(state: PersistedShapSessionState): void 
       version: STORAGE_VERSION,
     };
 
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    writeClientStorageString(clientStorageKeys.shapSession, JSON.stringify(payload));
   } catch {
     // Ignore session storage failures.
   }
@@ -79,7 +84,7 @@ export function persistShapSessionState(state: PersistedShapSessionState): void 
 
 export function clearShapSessionState(): void {
   try {
-    sessionStorage.removeItem(STORAGE_KEY);
+    removeClientStorageItem(clientStorageKeys.shapSession);
   } catch {
     // Ignore session storage failures.
   }

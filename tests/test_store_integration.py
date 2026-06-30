@@ -9,6 +9,7 @@ Run with: pytest tests/test_store_integration.py -v
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -478,6 +479,46 @@ class TestStoreAdapter:
         assert score_entry["cv_score"] == 0.12
         assert score_entry["model_name"] == "Model A"
 
+    def test_build_dataset_scores_accepts_results_repository(self, mock_polars_df):
+        repository = MagicMock()
+        repository.query_chain_summaries.return_value = mock_polars_df([
+            {
+                "chain_id": "chain-native",
+                "run_id": "run-001",
+                "pipeline_id": "pipe-001",
+                "dataset_name": "native_dataset",
+                "metric": "r2",
+                "task_type": "regression",
+                "model_name": "Native Model",
+                "model_class": "PLSRegression",
+                "cv_val_score": 0.72,
+                "final_test_score": 0.81,
+            },
+        ])
+
+        from api.workspace.services import _build_dataset_scores_payload
+
+        payload = _build_dataset_scores_payload(
+            repository,
+            workspace_id="ws_native",
+            linked_datasets=[{"id": "ds_native", "name": "native_dataset", "path": ""}],
+        )
+
+        repository.query_chain_summaries.assert_called_once_with()
+        assert payload["workspace_id"] == "ws_native"
+        assert payload["datasets"] == [
+            {
+                "dataset_name": "native_dataset",
+                "linked_dataset_id": "ds_native",
+                "metric": "r2",
+                "best_score": 0.81,
+                "cv_score": 0.72,
+                "score_kind": "final",
+                "model_name": "Native Model",
+                "name": "native_dataset",
+            }
+        ]
+
     def test_normalize_run_dataset_entries_backfills_name_and_dataset_name(self):
         from api.workspace.services import _normalize_run_dataset_entries
 
@@ -819,6 +860,269 @@ class TestWorkspaceResultsCaches:
         assert summary_key not in workspace_module._RESULTS_SUMMARY_CACHE
         assert scores_key not in workspace_module._DATASET_SCORES_CACHE
 
+    def test_store_signature_uses_resolved_nested_store_root(self, tmp_path):
+        from api.workspace import _shared as workspace_module
+
+        workspace_dir = tmp_path / "project" / "workspace"
+        workspace_dir.mkdir(parents=True)
+        store_file = workspace_dir / "store.duckdb"
+        store_file.write_bytes(b"store")
+
+        stat = store_file.stat()
+        assert workspace_module._store_signature(tmp_path / "project") == (
+            ("store.duckdb", stat.st_mtime_ns, stat.st_size),
+        )
+
+    def test_storage_status_opens_adapter_at_resolved_store_root(self, tmp_path):
+        from api.workspace import _shared as workspace_module
+
+        workspace_dir = tmp_path / "project" / "workspace"
+        workspace_dir.mkdir(parents=True)
+        (workspace_dir / "store.duckdb").touch()
+        expected_status = {
+            "storage_mode": "legacy",
+            "has_prediction_arrays_table": True,
+            "has_arrays_directory": False,
+            "migration_needed": True,
+        }
+        adapter_cm = MagicMock()
+        adapter_cm.__enter__.return_value.get_store_status.return_value = expected_status
+
+        with (
+            patch.object(workspace_module, "STORE_AVAILABLE", True),
+            patch.object(workspace_module, "StoreAdapter", return_value=adapter_cm) as adapter_cls,
+        ):
+            status = workspace_module._get_storage_status_for_workspace(tmp_path / "project")
+
+        assert status == expected_status
+        adapter_cls.assert_called_once_with(workspace_dir)
+
+
+class TestWorkspaceResultsSummaryEndpoint:
+    def test_results_summary_uses_results_repository_without_store(self, tmp_path, mock_polars_df):
+        from api.workspace import router_discovery
+
+        linked_ws = MagicMock()
+        linked_ws.path = str(tmp_path)
+
+        chain_rows = [
+            {
+                "chain_id": "chain-cv-best",
+                "run_id": "run-001",
+                "pipeline_id": "pipe-001",
+                "dataset_name": "native_dataset",
+                "metric": "r2",
+                "task_type": "regression",
+                "model_name": "Native CV",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "cv_val_score": 0.91,
+                "cv_test_score": 0.88,
+                "cv_train_score": 0.93,
+                "cv_fold_count": 5,
+                "cv_scores": {},
+                "final_test_score": 0.89,
+                "final_train_score": 0.94,
+                "final_scores": {},
+                "best_params": {"n_components": 4},
+                "model_step_idx": 1,
+            },
+            {
+                "chain_id": "chain-final-best",
+                "run_id": "run-002",
+                "pipeline_id": "pipe-002",
+                "dataset_name": "native_dataset",
+                "metric": "r2",
+                "task_type": "regression",
+                "model_name": "Native Final",
+                "model_class": "PLSRegression",
+                "preprocessings": "MSC",
+                "cv_val_score": 0.72,
+                "cv_test_score": 0.70,
+                "cv_train_score": 0.75,
+                "cv_fold_count": 5,
+                "cv_scores": {},
+                "final_test_score": 0.97,
+                "final_train_score": 0.98,
+                "final_scores": {},
+                "best_params": None,
+                "model_step_idx": 1,
+            },
+            {
+                "chain_id": "chain-refit-only",
+                "run_id": "run-003",
+                "pipeline_id": "pipe-003",
+                "dataset_name": "native_dataset",
+                "metric": "r2",
+                "task_type": "regression",
+                "model_name": "Native Refit",
+                "model_class": "PLSRegression",
+                "preprocessings": "SNV",
+                "cv_val_score": None,
+                "cv_test_score": None,
+                "cv_train_score": None,
+                "cv_fold_count": 0,
+                "cv_scores": {},
+                "final_test_score": 0.80,
+                "final_train_score": 0.82,
+                "final_scores": {},
+                "best_params": None,
+                "model_step_idx": 1,
+            },
+        ]
+        repository = MagicMock()
+        repository.query_chain_summaries.return_value = mock_polars_df(chain_rows)
+        repository.query_top_chains.return_value = mock_polars_df([chain_rows[0]])
+        repository.get_pipeline.side_effect = lambda pipeline_id: {"pipeline_id": pipeline_id, "name": f"Pipeline {pipeline_id}"}
+
+        with (
+            patch.object(router_discovery.workspace_manager, "_find_linked_workspace", return_value=linked_ws),
+            patch.object(router_discovery.app_config, "get_datasets", return_value=[{"id": "ds_native", "name": "native_dataset", "path": ""}]),
+            patch.object(router_discovery, "resolve_results_repository", return_value=repository) as resolver,
+        ):
+            payload = asyncio.run(router_discovery.get_workspace_results_summary("ws_native", n=1))
+
+        resolver.assert_called_once()
+        assert resolver.call_args.args[0] == tmp_path
+        assert "workspace_store_factory" in resolver.call_args.kwargs
+        repository.query_chain_summaries.assert_called_once_with()
+        repository.query_top_chains.assert_called_once_with(
+            dataset_name="native_dataset",
+            metric="r2",
+            n=1,
+            score_column="cv_val_score",
+        )
+        repository.close.assert_called_once_with()
+
+        assert payload["workspace_id"] == "ws_native"
+        assert payload["datasets"][0]["linked_dataset_id"] == "ds_native"
+        top_chains = payload["datasets"][0]["top_chains"]
+        assert [chain["chain_id"] for chain in top_chains] == ["chain-cv-best", "chain-refit-only", "chain-final-best"]
+        assert top_chains[0]["avg_val_score"] == 0.91
+        assert top_chains[0]["pipeline_name"] == "Pipeline pipe-001"
+        assert top_chains[1]["is_refit_only"] is True
+        assert top_chains[2]["final_test_score"] == 0.97
+
+    def test_results_summary_returns_empty_when_repository_missing(self, tmp_path):
+        from api.workspace import router_discovery
+
+        linked_ws = MagicMock()
+        linked_ws.path = str(tmp_path)
+
+        with (
+            patch.object(router_discovery.workspace_manager, "_find_linked_workspace", return_value=linked_ws),
+            patch.object(router_discovery.app_config, "get_datasets", return_value=[]),
+            patch.object(
+                router_discovery,
+                "resolve_results_repository",
+                side_effect=router_discovery.ResultsRepositoryNotFound("missing"),
+            ) as resolver,
+        ):
+            payload = asyncio.run(router_discovery.get_workspace_results_summary("ws_missing"))
+
+        resolver.assert_called_once()
+        assert payload == {"workspace_id": "ws_missing", "datasets": []}
+
+
+class TestWorkspaceDatasetScoresEndpoint:
+    def test_dataset_scores_uses_results_repository_without_store(self, tmp_path, mock_polars_df):
+        from api.workspace import router_discovery
+
+        linked_ws = MagicMock()
+        linked_ws.path = str(tmp_path)
+
+        repository = MagicMock()
+        repository.query_chain_summaries.return_value = mock_polars_df([
+            {
+                "chain_id": "chain-native",
+                "run_id": "run-001",
+                "pipeline_id": "pipe-001",
+                "dataset_name": "native_dataset",
+                "metric": "r2",
+                "task_type": "regression",
+                "model_name": "Native Model",
+                "model_class": "PLSRegression",
+                "cv_val_score": 0.72,
+                "final_test_score": 0.81,
+            },
+        ])
+
+        with (
+            patch.object(router_discovery.workspace_manager, "_find_linked_workspace", return_value=linked_ws),
+            patch.object(router_discovery.app_config, "get_datasets", return_value=[{"id": "ds_native", "name": "native_dataset", "path": ""}]),
+            patch.object(router_discovery, "resolve_results_repository", return_value=repository) as resolver,
+        ):
+            payload = asyncio.run(router_discovery.get_workspace_dataset_scores("ws_native"))
+
+        resolver.assert_called_once()
+        assert resolver.call_args.args[0] == tmp_path
+        assert "workspace_store_factory" in resolver.call_args.kwargs
+        repository.query_chain_summaries.assert_called_once_with()
+        repository.close.assert_called_once_with()
+        assert payload["workspace_id"] == "ws_native"
+        assert payload["datasets"][0]["linked_dataset_id"] == "ds_native"
+        assert payload["datasets"][0]["best_score"] == 0.81
+
+    def test_dataset_scores_returns_empty_when_repository_missing(self, tmp_path):
+        from api.workspace import router_discovery
+
+        linked_ws = MagicMock()
+        linked_ws.path = str(tmp_path)
+
+        with (
+            patch.object(router_discovery.workspace_manager, "_find_linked_workspace", return_value=linked_ws),
+            patch.object(router_discovery.app_config, "get_datasets", return_value=[]),
+            patch.object(
+                router_discovery,
+                "resolve_results_repository",
+                side_effect=router_discovery.ResultsRepositoryNotFound("missing"),
+            ) as resolver,
+        ):
+            payload = asyncio.run(router_discovery.get_workspace_dataset_scores("ws_missing"))
+
+        resolver.assert_called_once()
+        assert payload == {"workspace_id": "ws_missing", "datasets": []}
+
+
+class TestWorkspaceServicesStoreResolution:
+    def test_legacy_arrays_row_count_uses_resolved_store_root(self, tmp_path):
+        from api.workspace import services as workspace_services
+
+        class FakeFrame:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def __len__(self):
+                return len(self._rows)
+
+            def row(self, index, named=False):
+                assert named is True
+                return self._rows[index]
+
+        store_paths = []
+
+        class FakeWorkspaceStore:
+            def __init__(self, path):
+                store_paths.append(path)
+
+            def _fetch_pl(self, sql, params=None):
+                if "information_schema.tables" in sql:
+                    return FakeFrame([{"cnt": 1}])
+                return FakeFrame([{"cnt": 7}])
+
+        workspace_dir = tmp_path / "project" / "workspace"
+        workspace_dir.mkdir(parents=True)
+        (workspace_dir / "store.duckdb").touch()
+
+        with (
+            patch.object(workspace_services, "STORE_AVAILABLE", True),
+            patch.object(workspace_services, "get_cached", return_value=FakeWorkspaceStore),
+        ):
+            row_count = workspace_services._get_legacy_arrays_row_count(tmp_path / "project")
+
+        assert row_count == 7
+        assert store_paths == [workspace_dir]
+
 
 # ---------------------------------------------------------------------------
 # WorkspaceScanner DuckDB path tests
@@ -827,6 +1131,159 @@ class TestWorkspaceResultsCaches:
 
 class TestWorkspaceScannerStore:
     """Tests for WorkspaceScanner store-first discovery paths."""
+
+    def _make_native_repository(self, mock_polars_df):
+        chain_rows = [
+            {
+                "chain_id": "run-native::variant-a",
+                "run_id": "run-native",
+                "pipeline_id": "run-native",
+                "dataset_name": "dataset_a",
+                "metric": "rmse",
+                "task_type": "regression",
+                "model_name": "PLS(3)",
+                "model_class": "PLSRegression",
+                "preprocessings": "variant-a",
+                "cv_val_score": 0.12,
+                "cv_test_score": 0.14,
+                "final_test_score": 0.11,
+                "pipeline_status": "completed",
+            },
+            {
+                "chain_id": "run-native::variant-b",
+                "run_id": "run-native",
+                "pipeline_id": "run-native",
+                "dataset_name": "dataset_b",
+                "metric": "rmse",
+                "task_type": "regression",
+                "model_name": "PLS(5)",
+                "model_class": "PLSRegression",
+                "preprocessings": "variant-b",
+                "cv_val_score": 0.20,
+                "cv_test_score": 0.22,
+                "final_test_score": 0.18,
+                "pipeline_status": "completed",
+            },
+            {
+                "chain_id": "run-other::variant-c",
+                "run_id": "run-other",
+                "pipeline_id": "run-other",
+                "dataset_name": "dataset_c",
+                "metric": "rmse",
+                "task_type": "regression",
+                "model_name": "SVR",
+                "model_class": "SVR",
+                "preprocessings": "variant-c",
+                "cv_val_score": 0.30,
+                "cv_test_score": 0.33,
+                "final_test_score": 0.29,
+                "pipeline_status": "completed",
+            },
+        ]
+        prediction_rows_by_chain = {
+            "run-native::variant-a": [
+                {"prediction_id": "pred-a-val", "dataset_name": "dataset_a", "partition": "val"},
+                {"prediction_id": "pred-a-test", "dataset_name": "dataset_a", "partition": "test"},
+            ],
+            "run-native::variant-b": [
+                {"prediction_id": "pred-b-test", "dataset_name": "dataset_b", "partition": "test"},
+            ],
+            "run-other::variant-c": [
+                {"prediction_id": "pred-c-test", "dataset_name": "dataset_c", "partition": "test"},
+            ],
+        }
+
+        repository = MagicMock()
+
+        def query_chain_summaries(**filters):
+            run_id = filters.get("run_id")
+            rows = [row for row in chain_rows if run_id is None or row["run_id"] == run_id]
+            return mock_polars_df(rows)
+
+        def get_chain_predictions(chain_id, partition=None, fold_id=None):
+            rows = prediction_rows_by_chain.get(chain_id, [])
+            if partition is not None:
+                rows = [row for row in rows if row.get("partition") == partition]
+            return mock_polars_df(rows)
+
+        repository.query_chain_summaries.side_effect = query_chain_summaries
+        repository.get_chain_predictions.side_effect = get_chain_predictions
+        repository.get_pipeline.side_effect = lambda pipeline_id: {
+            "pipeline_id": pipeline_id,
+            "name": f"{pipeline_id} display",
+            "status": "completed",
+        }
+        return repository
+
+    def test_results_repository_uses_shared_resolver(self, tmp_path):
+        """WorkspaceScanner should delegate store/native resolution to the shared resolver."""
+        from api.workspace_manager import WorkspaceScanner
+
+        repository = MagicMock()
+
+        with patch("api.workspace_scanner.resolve_results_repository", return_value=repository) as resolver:
+            scanner = WorkspaceScanner(tmp_path)
+
+            assert scanner.results_repository is repository
+            assert scanner.results_repository is repository
+
+        resolver.assert_called_once()
+
+    def test_discover_runs_from_native_results_repository(self, tmp_path, mock_polars_df):
+        """When no store exists, discover_runs() should project native repository summaries."""
+        from api.workspace_manager import WorkspaceScanner
+
+        repository = self._make_native_repository(mock_polars_df)
+        scanner = WorkspaceScanner(tmp_path)
+        scanner._results_repository = repository
+
+        runs = scanner.discover_runs()
+        native_run = next(run for run in runs if run["id"] == "run-native")
+
+        assert native_run["format"] == "native"
+        assert native_run["name"] == "run-native display"
+        assert native_run["results_count"] == 2
+        assert native_run["predictions_count"] == 3
+        assert native_run["datasets"] == [{"name": "dataset_a"}, {"name": "dataset_b"}]
+        assert native_run["summary"]["models"] == ["PLS(3)", "PLS(5)"]
+        assert native_run["summary"]["metrics"] == ["rmse"]
+
+    def test_discover_predictions_from_native_results_repository(self, tmp_path, mock_polars_df):
+        """When no store exists, discover_predictions() should group native predictions by dataset."""
+        from api.workspace_manager import WorkspaceScanner
+
+        repository = self._make_native_repository(mock_polars_df)
+        scanner = WorkspaceScanner(tmp_path)
+        scanner._results_repository = repository
+
+        predictions = scanner.discover_predictions()
+        by_dataset = {prediction["dataset"]: prediction for prediction in predictions}
+
+        assert by_dataset["dataset_a"]["format"] == "native"
+        assert by_dataset["dataset_a"]["prediction_count"] == 2
+        assert by_dataset["dataset_a"]["chains_count"] == 1
+        assert by_dataset["dataset_b"]["prediction_count"] == 1
+        assert by_dataset["dataset_c"]["prediction_count"] == 1
+
+    def test_discover_results_from_native_results_repository_filters_run(self, tmp_path, mock_polars_df):
+        """When no store exists, discover_results(run_id) should project native chains as results."""
+        from api.workspace_manager import WorkspaceScanner
+
+        repository = self._make_native_repository(mock_polars_df)
+        scanner = WorkspaceScanner(tmp_path)
+        scanner._results_repository = repository
+
+        results = scanner.discover_results(run_id="run-native")
+        by_id = {result["id"]: result for result in results}
+
+        assert set(by_id) == {"run-native::variant-a", "run-native::variant-b"}
+        assert by_id["run-native::variant-a"]["format"] == "native"
+        assert by_id["run-native::variant-a"]["dataset"] == "dataset_a"
+        assert by_id["run-native::variant-a"]["pipeline_config"] == "variant-a"
+        assert by_id["run-native::variant-a"]["best_score"] == 0.12
+        assert by_id["run-native::variant-a"]["best_test_score"] == 0.11
+        assert by_id["run-native::variant-a"]["predictions_count"] == 2
+        repository.query_chain_summaries.assert_called_once_with(run_id="run-native")
 
     def test_discover_runs_from_store(self, tmp_path, mock_polars_df, sample_run_rows):
         """When store.duckdb exists, discover_runs() should use the store."""

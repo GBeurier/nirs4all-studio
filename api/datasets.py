@@ -1535,41 +1535,6 @@ async def update_dataset(dataset_id: str, request: UpdateDatasetRequest):
     return {"success": True, "dataset": updated_dataset}
 
 
-@router.delete("/datasets/{dataset_id}")
-async def delete_dataset(dataset_id: str, delete_files: bool = False):
-    """Remove a dataset from the workspace."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
-
-    dataset = _find_dataset_by_id_or_name(workspace.datasets, dataset_id)
-    if not dataset:
-        raise HTTPException(status_code=404, detail="Dataset not found")
-
-    resolved_id = dataset.get("id", dataset_id)
-
-    try:
-        from .spectra import _clear_dataset_cache
-        _clear_dataset_cache(resolved_id)
-    except Exception:
-        pass
-
-    if delete_files:
-        path = Path(dataset.get("path", ""))
-        if path.exists():
-            import shutil
-            if path.is_dir():
-                shutil.rmtree(path)
-            else:
-                path.unlink()
-
-    success = workspace_manager.unlink_dataset(dataset_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Dataset not found in workspace")
-
-    return {"success": True, "message": f"Dataset {dataset_id} removed" + (" (files deleted)" if delete_files else "")}
-
-
 @router.post("/datasets/{dataset_id}/load")
 async def load_dataset(dataset_id: str):
     """Load a dataset into memory. Returns dataset summary."""
@@ -1716,59 +1681,6 @@ async def verify_dataset(dataset_id: str):
         "stored_hash": stored_hash,
         "is_modified": version_status == "modified",
         "verified_at": now,
-    }
-
-
-@router.post("/datasets/{dataset_id}/refresh")
-async def refresh_dataset_version(dataset_id: str):
-    """Accept dataset changes and update stored hash."""
-    workspace = workspace_manager.get_current_workspace()
-    if not workspace:
-        raise HTTPException(status_code=409, detail="No workspace selected")
-
-    dataset_info = _find_dataset_by_id_or_name(workspace.datasets, dataset_id)
-    if not dataset_info:
-        raise HTTPException(status_code=404, detail="Dataset not found")
-
-    resolved_id = dataset_info.get("id", dataset_id)
-    dataset_path = Path(dataset_info.get("path", ""))
-    if not dataset_path.exists():
-        raise HTTPException(status_code=404, detail="Dataset path not found")
-
-    now = datetime.now().isoformat()
-
-    hasher = hashlib.sha256()
-    if dataset_path.is_dir():
-        for f in sorted(dataset_path.rglob("*.csv")):
-            hasher.update(f"{f.name}:{f.stat().st_mtime}".encode())
-    else:
-        hasher.update(f"{dataset_path.name}:{dataset_path.stat().st_mtime}".encode())
-    new_hash = hasher.hexdigest()[:16]
-
-    old_hash = dataset_info.get("hash")
-    old_version = dataset_info.get("version", 0)
-
-    workspace_manager.update_dataset(resolved_id, {
-        "hash": new_hash,
-        "version": old_version + 1,
-        "version_status": "current",
-        "last_verified": now,
-        "last_refreshed": now,
-    })
-
-    try:
-        from .spectra import _clear_dataset_cache
-        _clear_dataset_cache(dataset_id)
-    except Exception:
-        pass
-
-    return {
-        "success": True,
-        "dataset_id": dataset_id,
-        "old_hash": old_hash,
-        "new_hash": new_hash,
-        "version": old_version + 1,
-        "refreshed_at": now,
     }
 
 

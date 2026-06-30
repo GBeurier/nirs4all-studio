@@ -10,7 +10,7 @@
  */
 
 // Main components
-export { FinetuneTab, defaultFinetuneConfig } from "./FinetuneTab";
+export { FinetuneTab } from "./FinetuneTab";
 export { FinetuneEnableToggle } from "./FinetuneEnableToggle";
 export { FinetuneSearchConfig } from "./FinetuneSearchConfig";
 export { FinetuneParamList } from "./FinetuneParamList";
@@ -20,6 +20,7 @@ export { TrialTrainingConfig } from "./TrialTrainingConfig";
 export { BestModelTrainingConfig } from "./BestModelTrainingConfig";
 export { FinetuningBadge } from "./FinetuningBadge";
 export { QuickFinetuneButton } from "./QuickFinetuneButton";
+export { defaultFinetuneConfig } from "./finetuneDefaults";
 
 // Presets and utilities
 export {
