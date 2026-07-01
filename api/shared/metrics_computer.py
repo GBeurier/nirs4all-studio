@@ -80,6 +80,38 @@ FAST_METRICS = AMPLITUDE_METRICS + ENERGY_METRICS + QUALITY_METRICS + ['hf_varia
 ALL_METRICS = AMPLITUDE_METRICS + ENERGY_METRICS + SHAPE_METRICS + NOISE_METRICS + QUALITY_METRICS + CHEMOMETRIC_METRICS
 
 
+def compute_spectral_statistics(X) -> dict[str, Any]:
+    """Compute shared per-wavelength and global spectral statistics.
+
+    The Studio backend exposes these statistics through multiple route shapes.
+    Keep the numerical work here so those routes only adapt the response schema.
+    """
+    import numpy as np
+
+    X_arr = np.asarray(X)
+    percentiles = np.percentile(X_arr, [5, 25, 50, 75, 95], axis=0)
+
+    return {
+        "mean": np.mean(X_arr, axis=0).tolist(),
+        "std": np.std(X_arr, axis=0).tolist(),
+        "min": np.min(X_arr, axis=0).tolist(),
+        "max": np.max(X_arr, axis=0).tolist(),
+        "p5": percentiles[0].tolist(),
+        "p25": percentiles[1].tolist(),
+        "p50": percentiles[2].tolist(),
+        "p75": percentiles[3].tolist(),
+        "p95": percentiles[4].tolist(),
+        "global": {
+            "mean": float(np.mean(X_arr)),
+            "std": float(np.std(X_arr)),
+            "min": float(np.min(X_arr)),
+            "max": float(np.max(X_arr)),
+            "n_samples": X_arr.shape[0],
+            "n_features": X_arr.shape[1],
+        },
+    }
+
+
 class MetricsComputer:
     """Compute per-sample spectral descriptors.
 

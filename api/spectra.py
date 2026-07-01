@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .shared.logger import get_logger
+from .shared.metrics_computer import compute_spectral_statistics
 from .shared.pipeline_service import instantiate_operator
 from .workspace_manager import workspace_manager
 
@@ -640,8 +641,6 @@ async def get_spectra_statistics(
         )
 
     def _build() -> dict[str, Any]:
-        import numpy as np
-
         dataset = _load_dataset(dataset_id)
         if not dataset:
             raise HTTPException(status_code=404, detail="Dataset not found or could not be loaded")
@@ -653,14 +652,7 @@ async def get_spectra_statistics(
                 detail=f"No samples for partition '{partition}' (source={source})",
             )
 
-        # Compute statistics
-        mean = np.mean(X, axis=0).tolist()
-        std = np.std(X, axis=0).tolist()
-        min_vals = np.min(X, axis=0).tolist()
-        max_vals = np.max(X, axis=0).tolist()
-        median = np.median(X, axis=0).tolist()
-        q1 = np.percentile(X, 25, axis=0).tolist()
-        q3 = np.percentile(X, 75, axis=0).tolist()
+        stats = compute_spectral_statistics(X)
 
         # Get wavelengths
         try:
@@ -668,14 +660,14 @@ async def get_spectra_statistics(
         except Exception:
             wavelengths = [str(i) for i in range(X.shape[1])]
 
-        # Global statistics
+        canonical_global = stats["global"]
         global_stats = {
-            "global_mean": float(np.mean(X)),
-            "global_std": float(np.std(X)),
-            "global_min": float(np.min(X)),
-            "global_max": float(np.max(X)),
-            "num_samples": X.shape[0],
-            "num_features": X.shape[1],
+            "global_mean": canonical_global["mean"],
+            "global_std": canonical_global["std"],
+            "global_min": canonical_global["min"],
+            "global_max": canonical_global["max"],
+            "num_samples": canonical_global["n_samples"],
+            "num_features": canonical_global["n_features"],
         }
 
         return {
@@ -684,13 +676,13 @@ async def get_spectra_statistics(
             "source": source,
             "wavelengths": wavelengths,
             "statistics": {
-                "mean": mean,
-                "std": std,
-                "min": min_vals,
-                "max": max_vals,
-                "median": median,
-                "q1": q1,
-                "q3": q3,
+                "mean": stats["mean"],
+                "std": stats["std"],
+                "min": stats["min"],
+                "max": stats["max"],
+                "median": stats["p50"],
+                "q1": stats["p25"],
+                "q3": stats["p75"],
             },
             "global": global_stats,
         }
