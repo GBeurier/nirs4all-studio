@@ -13,10 +13,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .shared.logger import get_logger
+from .shared.preprocessing_runtime import apply_preprocessing_chain
 
 logger = get_logger(__name__)
-
-from .lazy_imports import get_cached
 
 NIRS4ALL_AVAILABLE = True
 
@@ -62,34 +61,6 @@ class ValidateChainRequest(BaseModel):
     chain: list[PreprocessingStep]
 
 
-
-
-def _get_transformer_class(name: str):
-    """Get transformer class by name."""
-    if not NIRS4ALL_AVAILABLE:
-        return None
-
-    # Check nirs4all transforms
-    transforms = get_cached("transforms")
-    transformer_cls = getattr(transforms, name, None) if transforms else None
-    if transformer_cls:
-        return transformer_cls
-
-    # Check sklearn
-    sklearn_map = {
-        "StandardScaler": ("sklearn.preprocessing", "StandardScaler"),
-        "MinMaxScaler": ("sklearn.preprocessing", "MinMaxScaler"),
-        "RobustScaler": ("sklearn.preprocessing", "RobustScaler"),
-    }
-
-    if name in sklearn_map:
-        import importlib
-
-        module_name, class_name = sklearn_map[name]
-        module = importlib.import_module(module_name)
-        return getattr(module, class_name, None)
-
-    return None
 
 
 @router.get("/preprocessing/methods")
@@ -157,25 +128,10 @@ async def apply_preprocessing(request: ApplyPreprocessingRequest):
                 detail=f"Data must be 2D array, got shape {X.shape}",
             )
 
-        # Apply each step in the chain
-        applied_steps = []
-        for step in request.chain:
-            transformer_cls = _get_transformer_class(step.name)
-            if transformer_cls is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unknown preprocessing method: {step.name}",
-                )
-
-            try:
-                transformer = transformer_cls(**step.params)
-                X = transformer.fit_transform(X)
-                applied_steps.append(step.name)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Error applying {step.name}: {str(e)}",
-                )
+        try:
+            X, applied_steps = apply_preprocessing_chain(X, request.chain, strict=True)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
         return {
             "success": True,
@@ -228,25 +184,21 @@ async def preview_preprocessing(request: PreviewPreprocessingRequest):
         X_subset = X[indices]
         X_original = X_subset.copy()
 
-        # Apply preprocessing chain
-        applied_steps = []
-        for step in request.chain:
-            transformer_cls = _get_transformer_class(step.name)
-            if transformer_cls is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unknown preprocessing method: {step.name}",
-                )
-
-            transformer = transformer_cls(**step.params)
-            X_subset = transformer.fit_transform(X_subset)
-            applied_steps.append(step.name)
-
         # Get wavelengths
         try:
             wavelengths = dataset.headers(0)
         except Exception:
             wavelengths = list(range(X.shape[1]))
+
+        try:
+            X_subset, applied_steps = apply_preprocessing_chain(
+                X_subset,
+                request.chain,
+                wavelengths=wavelengths,
+                strict=True,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
         return {
             "success": True,
