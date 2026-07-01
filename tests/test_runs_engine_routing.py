@@ -23,6 +23,7 @@ from __future__ import annotations
 
 # ruff: noqa: I001
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -34,8 +35,26 @@ import nirs4all
 # Import api.runs first: it initialises the api package (lazy_imports) cleanly.
 # Importing api.nirs4all_adapter before it triggers a circular import.
 import api.runs as runs_api
+import api.aggregated_predictions as aggregated_api
 import api.spectra as spectra_api
 import api.nirs4all_adapter as adapter_api
+
+
+class _Frame:
+    def __init__(self, rows):
+        self._rows = rows
+        self.columns = list(rows[0].keys()) if rows else []
+
+    def __len__(self):
+        return len(self._rows)
+
+    def row(self, index, named=False):
+        row = self._rows[index]
+        return dict(row) if named else tuple(row.values())
+
+    def iter_rows(self, named=False):
+        for row in self._rows:
+            yield dict(row) if named else tuple(row.values())
 
 
 # ---------------------------------------------------------------------------
@@ -452,3 +471,172 @@ def test_engine_record_round_trips_through_run_manifest(tmp_path):
     assert reloaded_pipeline.engine == "legacy"
     assert reloaded_pipeline.engine_requested == "dag-ml"
     assert reloaded_pipeline.engine_diagnostics == diagnostics
+
+
+# ---------------------------------------------------------------------------
+# Group E — HTTP run/read + result retrieval stay aligned with RtResult
+# ---------------------------------------------------------------------------
+
+def test_quick_run_route_and_chain_detail_keep_runtime_envelope_semantics(
+    monkeypatch,
+    tmp_path,
+    stub_training_deps,
+):
+    """Route-level parity gate for engine, fallback diagnostics and result views."""
+    rt_diagnostic = {
+        "verb": "run",
+        "cause": "unsupported_shape",
+        "message": "engine='dag-ml' does not support this pipeline shape; ran legacy",
+        "mitigation": "Run on engine='legacy', or adjust the pipeline so dag-ml supports it.",
+    }
+    rt_manifest = {
+        "engine": "legacy",
+        "fingerprints": {"score_set_hash": "sha256:score"},
+        "capabilities": {},
+        "portable_level": None,
+        "files": {"score_set": "score_set.json"},
+    }
+    observed: dict[str, object] = {}
+
+    class RuntimeEnvelopeResult:
+        def to_rt_result(self):  # noqa: ANN201
+            return SimpleNamespace(manifest=rt_manifest, diagnostics=[rt_diagnostic])
+
+        def export(self, model_path):
+            Path(model_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(model_path).write_text("fake n4a model bundle", encoding="utf-8")
+
+    def run_from_runtime(**kwargs):
+        observed["run_kwargs"] = kwargs
+        return RuntimeEnvelopeResult()
+
+    def sync_start_run(run):
+        runs_api._execute_run_job(
+            run.id,
+            SimpleNamespace(id=run.id, cancellation_requested=False),
+            lambda _progress, _message: None,
+        )
+        return SimpleNamespace(id=run.id)
+
+    def ensure_models_dir(workspace_path):
+        models_dir = Path(workspace_path) / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+        return models_dir
+
+    monkeypatch.setattr(runs_api, "_ensure_runs_loaded", lambda: None)
+    monkeypatch.setattr(runs_api, "_runs", {})
+    monkeypatch.setattr(runs_api.workspace_manager, "get_current_workspace", lambda: SimpleNamespace(path=str(tmp_path)))
+    monkeypatch.setattr(aggregated_api.workspace_manager, "get_current_workspace", lambda: SimpleNamespace(path=str(tmp_path)))
+    monkeypatch.setattr(runs_api, "_start_run_job", sync_start_run)
+    monkeypatch.setattr(runs_api, "_open_run_store_repository", lambda _workspace_path: None)
+    monkeypatch.setattr(adapter_api, "ensure_models_dir", ensure_models_dir)
+    stub_training_deps["install"](run_from_runtime)
+
+    app = FastAPI()
+    app.include_router(runs_api.router, prefix="/api")
+    app.include_router(aggregated_api.router, prefix="/api")
+
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/runs/quick",
+            json={
+                "pipeline_id": "pipe-a",
+                "dataset_id": "dataset-a",
+                "name": "RtResult route parity",
+                "engine": "dag-ml",
+                "cv_folds": 2,
+                "inline_pipeline": {
+                    "name": "Pipeline A",
+                    "steps": [{"class": "PLSRegression"}],
+                },
+            },
+        )
+
+        assert created.status_code == 200, created.text
+        run_id = created.json()["id"]
+
+        runtime_metadata = {
+            "source": "rt_result",
+            "run_id": run_id,
+            "engine": "legacy",
+            "engine_requested": "dag-ml",
+            "engine_diagnostics": [rt_diagnostic],
+            "manifest": rt_manifest,
+        }
+
+        class RuntimeResultsRepository:
+            def query_chain_summaries(self, **filters):
+                assert filters.get("chain_id") == "chain-runtime"
+                return _Frame([
+                    {
+                        "run_id": run_id,
+                        "pipeline_id": "pipe-a",
+                        "chain_id": "chain-runtime",
+                        "model_name": "PLSRegression",
+                        "model_class": "PLSRegression",
+                        "preprocessings": "SNV",
+                        "model_step_idx": 0,
+                        "metric": "r2",
+                        "task_type": "regression",
+                        "dataset_name": "dataset-a",
+                        "cv_val_score": 0.91,
+                        "cv_fold_count": 1,
+                        "best_params": {},
+                        "variant_params": {"result_metadata": runtime_metadata},
+                    }
+                ])
+
+            def get_chain_predictions(self, chain_id, partition=None, fold_id=None):
+                assert chain_id == "chain-runtime"
+                assert partition is None
+                assert fold_id is None
+                return _Frame([
+                    {
+                        "prediction_id": "pred-runtime",
+                        "run_id": run_id,
+                        "pipeline_id": "pipe-a",
+                        "chain_id": chain_id,
+                        "dataset_name": "dataset-a",
+                        "model_name": "PLSRegression",
+                        "model_class": "PLSRegression",
+                        "fold_id": "fold-0",
+                        "partition": "test",
+                        "metric": "r2",
+                        "task_type": "regression",
+                        "n_samples": 2,
+                        "scores": {"r2": 0.91},
+                        "result_metadata": runtime_metadata,
+                    }
+                ])
+
+            def get_pipeline(self, pipeline_id):
+                return {"pipeline_id": pipeline_id, "name": "Pipeline A", "dataset_name": "dataset-a"}
+
+            def _fetch_pl(self, _sql, _params=None):
+                return _Frame([])
+
+            def close(self):
+                observed["repository_closed"] = True
+
+        monkeypatch.setattr(
+            aggregated_api,
+            "resolve_results_repository",
+            lambda _workspace_path, *, workspace_store_factory: RuntimeResultsRepository(),
+        )
+
+        run_response = client.get(f"/api/runs/{run_id}")
+        detail_response = client.get("/api/aggregated-predictions/chain/chain-runtime")
+
+    assert observed["run_kwargs"]["engine"] == "dag-ml"
+
+    assert run_response.status_code == 200, run_response.text
+    pipeline_payload = run_response.json()["datasets"][0]["pipelines"][0]
+    assert pipeline_payload["engine"] == "legacy"
+    assert pipeline_payload["engine_requested"] == "dag-ml"
+    assert pipeline_payload["engine_diagnostics"] == [rt_diagnostic]
+
+    assert detail_response.status_code == 200, detail_response.text
+    detail_payload = detail_response.json()
+    assert detail_payload["summary"]["variant_params"]["result_metadata"] == runtime_metadata
+    assert detail_payload["predictions"][0]["result_metadata"] == runtime_metadata
+    assert observed["repository_closed"] is True
