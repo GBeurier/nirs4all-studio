@@ -43,6 +43,7 @@ from .pipeline_canonical import (
 )
 from .run_execution_plan import build_campaign_run_group_execution_plan, build_legacy_run_execution_plan, build_retry_run_execution_plan
 from .run_store_repository import RunStoreRepository
+from .runtime_errors import RtError
 from .shared.json_safe import sanitize_float
 from .shared.logger import get_logger
 from .shared.runtime_grouping import (
@@ -895,12 +896,17 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
     return run
 
 
-def _execution_backend_unavailable_detail(driver: Any, requested_backend: ExecutionBackend) -> str:
+def _execution_backend_unavailable_detail(driver: Any, requested_backend: ExecutionBackend) -> dict[str, Any]:
     capability = getattr(driver, "capability", None)
     rt_error = capability.rt_error("run") if capability is not None else None
     if rt_error is None:
-        return f"Execution backend '{requested_backend}' is not available"
-    return f"Execution backend '{requested_backend}' is not available: {rt_error.message}"
+        rt_error = RtError(
+            verb="run",
+            cause="unavailable_backend",
+            message=f"Execution backend '{requested_backend}' is not available",
+            mitigation="Run on an available execution backend, or configure a driver for this backend.",
+        )
+    return rt_error.to_envelope()
 
 
 def _ensure_execution_driver_available(driver: Any, requested_backend: ExecutionBackend) -> None:
@@ -936,6 +942,7 @@ def _start_run_job(run: Run) -> Job:
         run_id=run.id,
         run_name=run.name,
         requested_backend=run.execution_backend,
+        requested_engine=run.engine,
         total_pipelines=run.total_pipelines or 0,
         dataset_count=len(run.datasets),
         workspace_path=run.workspace_path,
@@ -995,6 +1002,8 @@ def _build_store_run_config(run: Run, total_pipelines: int) -> dict[str, Any]:
         "n_datasets": len(run.datasets),
         "execution_backend": run.execution_backend,
     }
+    if run.engine is not None:
+        config["requested_engine"] = run.engine
     if run.project_id:
         config["project_id"] = run.project_id
     return config

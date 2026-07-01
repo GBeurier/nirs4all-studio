@@ -90,6 +90,7 @@ class ExecutionRequest:
     run_id: str
     run_name: str
     requested_backend: ExecutionBackend = "local-python"
+    requested_engine: str | None = None
     total_pipelines: int = 0
     dataset_count: int = 0
     workspace_path: str | None = None
@@ -106,6 +107,8 @@ class ExecutionRequest:
             "dataset_count": self.dataset_count,
             "has_workspace": self.workspace_path is not None,
         }
+        if self.requested_engine is not None:
+            payload["requested_engine"] = self.requested_engine
         if self.created_at is not None:
             payload["created_at"] = self.created_at
         if self.metadata:
@@ -386,13 +389,17 @@ class UnavailableExecutionDriver:
 
     def cancel_job(self, job_id: str, job_manager: JobManager) -> ExecutionJobCommandResult:
         """Return a structured cancellation refusal for unavailable backends."""
+        rt_error = self.capability.rt_error(verb="cancel")
         return ExecutionJobCommandResult(
             action="cancel",
             job_id=job_id,
             success=False,
             message=_unavailable_execution_backend_message(self.capability),
             backend=self.capability.backend,
-            metadata={"reason": "driver_unavailable"},
+            metadata={
+                "reason": "driver_unavailable",
+                **({"rt_error": rt_error.to_envelope()} if rt_error is not None else {}),
+            },
         )
 
 
