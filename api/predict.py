@@ -105,8 +105,13 @@ def _run_prediction(
 
     # Compute metrics if y_true is available. Route through the library's single
     # metric implementation (nirs4all.core.metrics.eval_multi) instead of a
-    # Studio-side sklearn re-roll, so Studio metrics match the engine's and are
-    # oracle-checkable (B-017 V1; eval_multi already backs evaluation.py).
+    # Studio-side sklearn re-roll, and resolve the task type with the library's
+    # detector (nirs4all.core.task_detection.detect_task_type) rather than
+    # assuming "regression" — so a classification model gets classification
+    # metrics (accuracy/F1/...) instead of meaningless RMSE/R² on its class
+    # labels, and Studio's prediction metrics stay identical to the engine's and
+    # to api/evaluation.py (B-017 deep push-down; eval_multi + detect_task_type
+    # already back evaluation.py).
     metrics = None
     actual_values = None
     if y_true is not None:
@@ -115,8 +120,9 @@ def _run_prediction(
             y_pred_arr = np.asarray(predictions)
             if len(y_true_arr) == len(y_pred_arr) and len(y_true_arr) > 0:
                 actual_values = y_true_arr.tolist()
+                task_type = get_cached("detect_task_type")(y_true_arr).value
                 eval_multi = get_cached("eval_multi")
-                raw_metrics = eval_multi(y_true_arr, y_pred_arr, "regression")
+                raw_metrics = eval_multi(y_true_arr, y_pred_arr, task_type)
                 metrics = {
                     key: sanitize_float(float(value))
                     for key, value in raw_metrics.items()
