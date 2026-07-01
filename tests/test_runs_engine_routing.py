@@ -131,10 +131,12 @@ def test_execute_pipeline_training_passes_requested_engine_to_run(stub_training_
     assert result["engine"] == "dag-ml"
     assert result["engine_requested"] == "dag-ml"
     assert result["engine_diagnostics"] is None
+    assert result["fallback_policy"]["allow_fallback"] is False
+    assert result["fallback_policy"]["mode"] == "refuse_fallback"
 
 
-def test_execute_pipeline_training_omits_engine_kwarg_for_default(stub_training_deps):
-    """engine=None omits the kwarg (byte-identical to the pre-engine call)."""
+def test_execute_pipeline_training_records_library_default_for_default_engine(stub_training_deps):
+    """engine=None omits the kwarg and records the library-selected default."""
     stub_training_deps["install"](lambda **kwargs: SimpleNamespace())
 
     result = runs_api._execute_pipeline_training(
@@ -145,7 +147,7 @@ def test_execute_pipeline_training_omits_engine_kwarg_for_default(stub_training_
     assert "engine" not in stub_training_deps["captured"]
     assert stub_training_deps["count"] == 1
     # The engine that actually ran (the library default) is still recorded.
-    assert result["engine"] == "legacy"
+    assert result["engine"] == "dag-ml"
     assert result["engine_requested"] is None
     assert result["engine_diagnostics"] is None
 
@@ -233,11 +235,88 @@ def test_execute_pipeline_training_handles_structured_rt_error_fallback(
     assert result["engine_requested"] == "dag-ml"
     assert result["engine_diagnostics"] == [diagnostic]
     assert result["fallback_policy"]["allow_fallback"] is True
+    assert result["fallback_policy"]["mode"] == "allow_fallback"
+
+
+def test_execute_pipeline_training_refuses_structured_rt_error_fallback_by_default(
+    stub_training_deps,
+    tmp_path,
+):
+    """Structured dag-ml refusal does not silently rerun legacy without opt-in."""
+    diagnostic = {
+        "verb": "run",
+        "cause": "unsupported_shape",
+        "message": "engine='dag-ml' does not support this pipeline shape",
+        "mitigation": "run this shape on engine='legacy'",
+    }
+    calls: list[dict] = []
+
+    class StructuredRtError(Exception):
+        def to_dict(self):
+            return diagnostic
+
+    def refuse_dagml(**kwargs):
+        calls.append(dict(kwargs))
+        raise StructuredRtError("structured refusal")
+
+    stub_training_deps["install"](refuse_dagml)
+
+    with pytest.raises(StructuredRtError):
+        runs_api._execute_pipeline_training(
+            _pipeline(),
+            "dataset-a",
+            str(tmp_path),
+            "run-1",
+            engine="dag-ml",
+        )
+
+    assert len(calls) == 1
+    assert calls[0]["engine"] == "dag-ml"
+    assert calls[0]["allow_fallback"] is False
+    assert calls[0]["results_path"] == str(tmp_path / "nirs4all_results")
+    assert "workspace_path" not in calls[0]
 
 
 # ---------------------------------------------------------------------------
 # Group B — route / constructor thread the engine onto the Run
 # ---------------------------------------------------------------------------
+
+def test_run_request_models_default_to_refuse_fallback():
+    """Experiment and QuickRun requests require explicit fallback opt-in."""
+    config = runs_api.ExperimentConfig(
+        name="strict experiment",
+        dataset_ids=["dataset-a"],
+        pipeline_ids=["pipe-a"],
+        engine="dag-ml",
+    )
+    quick = runs_api.QuickRunRequest(
+        pipeline_id="pipe-a",
+        dataset_id="dataset-a",
+        engine="dag-ml",
+    )
+
+    assert config.allow_fallback is False
+    assert quick.allow_fallback is False
+
+
+def test_run_request_models_preserve_explicit_fallback_opt_in():
+    config = runs_api.ExperimentConfig(
+        name="compat experiment",
+        dataset_ids=["dataset-a"],
+        pipeline_ids=["pipe-a"],
+        engine="dag-ml",
+        allow_fallback=True,
+    )
+    quick = runs_api.QuickRunRequest(
+        pipeline_id="pipe-a",
+        dataset_id="dataset-a",
+        engine="dag-ml",
+        allow_fallback=True,
+    )
+
+    assert config.allow_fallback is True
+    assert quick.allow_fallback is True
+
 
 def test_create_run_from_config_threads_requested_engine(tmp_path):
     run = runs_api._create_run_from_config(
@@ -253,6 +332,7 @@ def test_create_run_from_config_threads_requested_engine(tmp_path):
     )
 
     assert run.engine == "dag-ml"
+    assert run.allow_fallback is False
 
 
 def test_create_run_from_config_defaults_engine_to_none(tmp_path):
@@ -269,6 +349,25 @@ def test_create_run_from_config_defaults_engine_to_none(tmp_path):
     )
 
     assert run.engine is None
+    assert run.allow_fallback is False
+
+
+def test_create_run_from_config_preserves_explicit_fallback_opt_in(tmp_path):
+    run = runs_api._create_run_from_config(
+        runs_api.ExperimentConfig(
+            name="compat experiment",
+            dataset_ids=["dataset-a"],
+            pipeline_ids=["pipe-a"],
+            engine="dag-ml",
+            allow_fallback=True,
+        ),
+        dataset_infos={"dataset-a": {"name": "Dataset A", "id": "dataset-a"}},
+        pipeline_configs={"pipe-a": {"name": "Pipeline A", "steps": []}},
+        workspace_path=str(tmp_path),
+    )
+
+    assert run.engine == "dag-ml"
+    assert run.allow_fallback is True
 
 
 def test_quick_run_threads_requested_engine(monkeypatch):
@@ -281,6 +380,25 @@ def test_quick_run_threads_requested_engine(monkeypatch):
     )
 
     assert run.engine == "dag-ml"
+    assert run.allow_fallback is False
+
+
+def test_quick_run_preserves_explicit_fallback_opt_in(monkeypatch):
+    monkeypatch.setattr(runs_api.workspace_manager, "get_current_workspace", lambda: None)
+
+    run = runs_api._create_quick_run(
+        runs_api.QuickRunRequest(
+            pipeline_id="pipe-a",
+            dataset_id="dataset-a",
+            engine="dag-ml",
+            allow_fallback=True,
+        ),
+        pipeline_config={"name": "Pipeline A", "steps": []},
+        dataset_info={"name": "Dataset A", "id": "dataset-a"},
+    )
+
+    assert run.engine == "dag-ml"
+    assert run.allow_fallback is True
 
 
 def test_create_run_route_threads_engine_to_started_run(monkeypatch, tmp_path):
@@ -326,8 +444,10 @@ def test_create_run_route_threads_engine_to_started_run(monkeypatch, tmp_path):
 
     assert response.status_code == 200, response.text
     assert response.json()["engine"] == "dag-ml"
+    assert response.json()["allow_fallback"] is False
     assert len(started_runs) == 1
     assert started_runs[0].engine == "dag-ml"
+    assert started_runs[0].allow_fallback is False
 
 
 @pytest.mark.parametrize("engine", ["dag-ml", None])
@@ -474,7 +594,7 @@ def test_execute_run_job_persists_engine_requested_on_training_failure(monkeypat
 def test_execute_run_job_persists_structured_refusal_policy(monkeypatch, tmp_path):
     """Strict runtime refusal stores RtError diagnostics and the refuse policy."""
     run = _single_pipeline_run("dag-ml", tmp_path)
-    run.allow_fallback = False
+    assert run.allow_fallback is False
     diagnostic = {
         "verb": "run",
         "cause": "unsupported_shape",
@@ -744,12 +864,19 @@ def test_quick_run_route_and_chain_detail_keep_runtime_envelope_semantics(
         detail_response = client.get("/api/aggregated-predictions/chain/chain-runtime")
 
     assert observed["run_kwargs"]["engine"] == "dag-ml"
+    assert observed["run_kwargs"]["allow_fallback"] is False
 
     assert run_response.status_code == 200, run_response.text
     pipeline_payload = run_response.json()["datasets"][0]["pipelines"][0]
     assert pipeline_payload["engine"] == "legacy"
     assert pipeline_payload["engine_requested"] == "dag-ml"
     assert pipeline_payload["engine_diagnostics"] == [rt_diagnostic]
+    assert pipeline_payload["fallback_policy"] == {
+        "source": "nirs4all.run.allow_fallback",
+        "engine_requested": "dag-ml",
+        "allow_fallback": False,
+        "mode": "refuse_fallback",
+    }
 
     assert detail_response.status_code == 200, detail_response.text
     detail_payload = detail_response.json()

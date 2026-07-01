@@ -83,6 +83,12 @@ def test_start_run_job_adds_execution_driver_metadata(monkeypatch):
     assert job.config["run_name"] == "Local request"
     assert job.config["execution_backend"] == "local-python"
     assert job.config["execution_request"]["requested_backend"] == "local-python"
+    assert job.config["execution_request"]["fallback_policy"] == {
+        "source": "nirs4all.run.allow_fallback",
+        "engine_requested": None,
+        "allow_fallback": False,
+        "mode": "refuse_fallback",
+    }
     assert job.config["execution_driver"]["backend"] == "local-python"
 
 
@@ -176,6 +182,12 @@ def test_start_run_job_preserves_requested_engine_in_execution_request(monkeypat
     job = runs_api._start_run_job(run)
 
     assert job.config["execution_request"]["requested_engine"] == "dag-ml"
+    assert job.config["execution_request"]["fallback_policy"] == {
+        "source": "nirs4all.run.allow_fallback",
+        "engine_requested": "dag-ml",
+        "allow_fallback": False,
+        "mode": "refuse_fallback",
+    }
 
 
 def test_create_run_route_rejects_unavailable_backend_before_mutating_state(monkeypatch, tmp_path):
@@ -1121,8 +1133,8 @@ def test_build_store_run_config_includes_execution_backend_and_project():
         "fallback_policy": {
             "source": "nirs4all.run.allow_fallback",
             "engine_requested": "dag-ml",
-            "allow_fallback": True,
-            "mode": "allow_fallback",
+            "allow_fallback": False,
+            "mode": "refuse_fallback",
         },
         "project_id": "project-1",
     }
@@ -1158,6 +1170,7 @@ def test_execute_run_job_uses_run_store_repository_for_lifecycle_writes(monkeypa
         id="run-1",
         name="Project run",
         execution_backend="cluster",
+        engine="legacy",
         datasets=[],
         status="queued",
         created_at="2026-06-30T10:00:00",
@@ -1187,11 +1200,12 @@ def test_execute_run_job_uses_run_store_repository_for_lifecycle_writes(monkeypa
                 "n_pipelines": 1,
                 "n_datasets": 0,
                 "execution_backend": "cluster",
+                "requested_engine": "legacy",
                 "fallback_policy": {
                     "source": "nirs4all.run.allow_fallback",
-                    "engine_requested": None,
-                    "allow_fallback": True,
-                    "mode": "allow_fallback",
+                    "engine_requested": "legacy",
+                    "allow_fallback": False,
+                    "mode": "refuse_fallback",
                 },
                 "project_id": "project-1",
             },
@@ -1215,6 +1229,7 @@ def test_execute_run_job_tolerates_run_store_open_failure(monkeypatch, tmp_path,
     run = runs_api.Run(
         id="run-1",
         name="Store unavailable run",
+        engine="legacy",
         datasets=[
             runs_api.DatasetRun(
                 dataset_id="dataset-a",
@@ -1320,6 +1335,7 @@ def test_execute_run_job_tolerates_store_precreation_failure(monkeypatch, tmp_pa
     run = runs_api.Run(
         id="run-1",
         name="Precreate unavailable run",
+        engine="legacy",
         datasets=[
             runs_api.DatasetRun(
                 dataset_id="dataset-a",
@@ -1380,11 +1396,12 @@ def test_execute_run_job_tolerates_store_precreation_failure(monkeypatch, tmp_pa
                 "n_pipelines": 1,
                 "n_datasets": 1,
                 "execution_backend": "local-python",
+                "requested_engine": "legacy",
                 "fallback_policy": {
                     "source": "nirs4all.run.allow_fallback",
-                    "engine_requested": None,
-                    "allow_fallback": True,
-                    "mode": "allow_fallback",
+                    "engine_requested": "legacy",
+                    "allow_fallback": False,
+                    "mode": "refuse_fallback",
                 },
             },
             "datasets": [{"name": "Dataset A"}],
@@ -1422,6 +1439,7 @@ def test_execute_run_job_fails_shared_store_run_when_pipeline_fails(monkeypatch,
     run = runs_api.Run(
         id="run-1",
         name="Failed run",
+        engine="legacy",
         datasets=[
             runs_api.DatasetRun(
                 dataset_id="dataset-a",
@@ -1486,6 +1504,7 @@ def test_execute_run_job_clears_precreated_store_run_when_project_assignment_fai
     run = runs_api.Run(
         id="run-1",
         name="Project assignment failure",
+        engine="legacy",
         datasets=[
             runs_api.DatasetRun(
                 dataset_id="dataset-a",
@@ -1574,6 +1593,7 @@ def test_execute_run_job_uses_run_store_repository_for_cancel_failure(monkeypatc
     run = runs_api.Run(
         id="run-1",
         name="Cancelled run",
+        engine="legacy",
         datasets=[
             runs_api.DatasetRun(
                 dataset_id="dataset-a",

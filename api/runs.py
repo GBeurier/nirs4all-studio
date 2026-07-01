@@ -200,10 +200,10 @@ class Run(BaseModel):
     name: str
     description: str | None = None
     execution_backend: ExecutionBackend = "local-python"
-    # Requested ML engine for the experiment (None = library default "legacy").
+    # Requested ML engine for the experiment (None = library default).
     # The engine that actually ran is recorded per-pipeline on PipelineRun.engine.
     engine: str | None = None
-    allow_fallback: bool = True
+    allow_fallback: bool = False
     datasets: list[DatasetRun]
     status: Literal["queued", "running", "completed", "failed"]
     created_at: str
@@ -233,8 +233,8 @@ class ExperimentConfig(BaseModel):
     dataset_ids: list[str] = Field(..., min_length=1)
     pipeline_ids: list[str] = Field(default_factory=list)  # Can be empty if inline_pipeline is provided
     execution_backend: ExecutionBackend = "local-python"
-    engine: str | None = Field(None, description="ML engine selector: 'legacy' (default) or 'dag-ml'")
-    allow_fallback: bool = Field(True, description="Allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
+    engine: str | None = Field(None, description="ML engine selector: 'legacy' or 'dag-ml'; omitted uses the nirs4all library default.")
+    allow_fallback: bool = Field(False, description="Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
     cv_folds: int = Field(default=5, ge=2, le=50)
     cv_strategy: Literal["kfold", "stratified", "loo", "holdout"] = "kfold"
     test_size: float | None = Field(default=0.2, ge=0.1, le=0.5)
@@ -254,8 +254,8 @@ class QuickRunRequest(BaseModel):
     export_model: bool = Field(True, description="Save trained model")
     cv_folds: int = Field(default=5, ge=2, le=50)
     random_state: int | None = Field(42, description="Random seed")
-    engine: str | None = Field(None, description="ML engine selector: 'legacy' (default) or 'dag-ml'")
-    allow_fallback: bool = Field(True, description="Allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
+    engine: str | None = Field(None, description="ML engine selector: 'legacy' or 'dag-ml'; omitted uses the nirs4all library default.")
+    allow_fallback: bool = Field(False, description="Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
     inline_pipeline: InlinePipeline | None = None
 
@@ -1291,7 +1291,7 @@ def _execute_pipeline_training(
     split_group_by: str | None = None,
     store_run_id: str | None = None,
     engine: str | None = None,
-    allow_fallback: bool = True,
+    allow_fallback: bool = False,
     should_stop: Any | None = None,
 ) -> dict[str, Any]:
     """Execute one pipeline via nirs4all.run() on the current worker thread.
