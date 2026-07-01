@@ -82,4 +82,19 @@ describe("runtime result components", () => {
     });
     container.remove();
   });
+
+  it("disables native export when no native results are attached", async () => {
+    const { container, root } = await render(
+      <NativeResultsExportAffordance hasRefit={true} hasNativeResults={false} nativeArtifactCount={0} />,
+    );
+
+    expect(container.textContent).toContain("Native results not attached");
+    expect(container.textContent).toContain("Native result artifacts are not attached for this run.");
+    expect(container.querySelector("button")?.hasAttribute("disabled")).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
 });

@@ -46,6 +46,16 @@ async function mockRunsApis(page: Page) {
             run_id: RUN_ID,
             name: "Sweep 50 models",
             status: "completed",
+            engine: "legacy",
+            engine_requested: "dag-ml",
+            engine_diagnostics: [
+              {
+                verb: "run",
+                cause: "unsupported_shape",
+                message: "dag-ml refused this branch shape",
+                mitigation: "Simplify the pipeline or opt into legacy fallback explicitly.",
+              },
+            ],
             project_id: null,
             created_at: "2026-02-25T12:00:00Z",
             completed_at: "2026-02-25T12:20:00Z",
@@ -137,6 +147,98 @@ async function mockRunsApis(page: Page) {
           },
         ],
         total: 1,
+      }),
+    });
+  });
+
+  await page.route(`**/api/workspaces/${WORKSPACE_ID}/runs/${RUN_ID}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: RUN_ID,
+        name: "Sweep 50 models",
+        status: "completed",
+        created_at: "2026-02-25T12:00:00Z",
+        completed_at: "2026-02-25T12:20:00Z",
+        engine: "legacy",
+        engine_requested: "dag-ml",
+        engine_diagnostics: [
+          {
+            verb: "run",
+            cause: "unsupported_shape",
+            message: "dag-ml refused this branch shape",
+            mitigation: "Simplify the pipeline or opt into legacy fallback explicitly.",
+          },
+        ],
+        config: {
+          cv_strategy: "kfold",
+          cv_folds: 5,
+          metric: "rmse",
+          random_state: 42,
+          has_refit: true,
+          execution_backend: "local-python",
+        },
+        datasets: [
+          {
+            name: DATASET_NAME,
+            linked_dataset_id: "dataset-ferment",
+            repetition: null,
+            aggregate: null,
+          },
+        ],
+        pipelines: [
+          {
+            pipeline_id: "pipeline-1",
+            run_id: RUN_ID,
+            name: "Mock Pipeline",
+            dataset_name: DATASET_NAME,
+            status: "completed",
+            engine: "legacy",
+            engine_requested: "dag-ml",
+            engine_diagnostics: [
+              {
+                verb: "run",
+                cause: "unsupported_shape",
+                message: "dag-ml refused this branch shape",
+                mitigation: "Simplify the pipeline or opt into legacy fallback explicitly.",
+              },
+            ],
+            created_at: "2026-02-25T12:01:00Z",
+            completed_at: "2026-02-25T12:05:00Z",
+            best_val: 0.33,
+            best_test: 0.35,
+            metric: "rmse",
+            duration_ms: 240000,
+            expanded_config: {
+              pipeline: [
+                { model: { class: "PLSRegression", params: { n_components: 8 } } },
+              ],
+            },
+            generator_choices: null,
+            splitter_class: "KFold",
+            log_count: 2,
+            total_duration_ms: 240000,
+            warning_count: 1,
+            error_count: 0,
+          },
+        ],
+        summary: null,
+        error: null,
+        log_summary: [
+          {
+            pipeline_id: "pipeline-1",
+            pipeline_name: "Mock Pipeline",
+            pipeline_status: "completed",
+            log_count: 2,
+            total_duration_ms: 240000,
+            warning_count: 1,
+            error_count: 0,
+          },
+        ],
+        rerun_ready: true,
+        unresolved_dataset_names: [],
+        results_count: 1,
       }),
     });
   });
@@ -312,6 +414,26 @@ async function mockRunsApis(page: Page) {
 }
 
 test.describe("Runs Redesign", () => {
+  test("surfaces runtime fallback diagnostics in run detail smoke coverage", async ({ page, runsPage }) => {
+    await mockRunsApis(page);
+
+    await runsPage.goto();
+    const runCard = page.getByTestId("run-card").filter({ hasText: "Sweep 50 models" });
+
+    await expect(runCard.getByText("Legacy fallback")).toBeVisible();
+    await runCard.getByRole("button", { name: /^details$/i }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Legacy fallback").first()).toBeVisible();
+
+    await dialog.getByRole("tab", { name: /pipelines/i }).click();
+    await expect(dialog.getByText("Runtime Diagnostics")).toBeVisible();
+    await expect(dialog.getByText("Unsupported Shape")).toBeVisible();
+    await expect(dialog.getByText("dag-ml refused this branch shape")).toBeVisible();
+    await expect(dialog.getByText("Simplify the pipeline or opt into legacy fallback explicitly.")).toBeVisible();
+  });
+
   test("shows best refit info and fold-level details without a separate all-models panel", async ({ page, runsPage }) => {
     await mockRunsApis(page);
 
