@@ -24,7 +24,7 @@ results that do not expose ``RtResult`` / ``RtError`` yet.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -270,11 +270,12 @@ class EngineObservation:
         explicit_diagnostics = _diagnostics_to_envelopes(diagnostics)
         rt_outcome = _rt_result_outcome(result)
         if rt_outcome is not None and rt_outcome.get("engine"):
-            rt_diagnostics = rt_outcome["diagnostics"] or explicit_diagnostics
+            rt_diagnostics = rt_outcome["diagnostics"] or []
+            all_diagnostics = [*explicit_diagnostics, *rt_diagnostics]
             return {
                 "engine": rt_outcome["engine"],
                 "engine_requested": self.requested,
-                "engine_diagnostics": rt_diagnostics or None,
+                "engine_diagnostics": all_diagnostics or None,
                 "runtime_source": rt_outcome["runtime_source"],
                 "runtime_manifest": rt_outcome["runtime_manifest"],
                 "fallback_policy": fallback_policy,
@@ -337,3 +338,81 @@ def observe_engine(requested: str | None) -> Iterator[EngineObservation]:
         warnings.simplefilter("always")
         warnings.showwarning = _record
         yield observation
+
+
+@dataclass(frozen=True)
+class RuntimeRunOutcome:
+    """Result plus Studio runtime metadata for one ``nirs4all.run`` call."""
+
+    result: Any
+    engine_record: dict[str, Any]
+
+
+def run_with_engine_record(
+    run_func: Callable[..., Any],
+    *,
+    run_kwargs: Mapping[str, Any],
+    engine: str | None,
+    allow_fallback: bool = False,
+    workspace_path: str | Path | None = None,
+    legacy_run_kwargs: Mapping[str, Any] | None = None,
+    pass_workspace_path_to_legacy: bool = True,
+    native_results_dirname: str = "nirs4all_results",
+) -> RuntimeRunOutcome:
+    """Run ``nirs4all.run`` with Studio's strict runtime recording policy.
+
+    The dag-ml path is tried without legacy workspace/store kwargs and with
+    ``allow_fallback=False`` so structured refusals are observable. If the caller
+    explicitly allows fallback and the exception carries a structured RtError,
+    the helper reruns legacy and records the refusal diagnostic.
+    """
+
+    fallback_policy = fallback_policy_record(engine, allow_fallback)
+    resolved_engine = resolve_engine(engine)
+
+    def _legacy_kwargs(*, force_legacy: bool = False) -> dict[str, Any]:
+        kwargs = dict(legacy_run_kwargs or run_kwargs)
+        if pass_workspace_path_to_legacy and workspace_path is not None:
+            kwargs.setdefault("workspace_path", str(workspace_path))
+        if force_legacy:
+            kwargs["engine"] = "legacy"
+        else:
+            kwargs.update(engine_run_kwargs(engine))
+        return kwargs
+
+    if resolved_engine == "dag-ml":
+        strict_kwargs = dict(run_kwargs)
+        strict_kwargs.pop("workspace_path", None)
+        strict_kwargs.update(engine_run_kwargs(engine))
+        strict_kwargs["allow_fallback"] = False
+        if workspace_path is not None:
+            strict_kwargs["results_path"] = str(Path(workspace_path) / native_results_dirname)
+
+        with observe_engine(engine) as observation:
+            try:
+                result = run_func(**strict_kwargs)
+            except Exception as exc:
+                rt_error = rt_error_envelope_from_exception(exc)
+                if rt_error is None or not allow_fallback:
+                    raise
+                with observe_engine("legacy") as fallback_observation:
+                    result = run_func(**_legacy_kwargs(force_legacy=True))
+                engine_record = fallback_observation.finalize(
+                    result,
+                    diagnostics=[rt_error],
+                    fallback_policy=fallback_policy,
+                )
+                engine_record["engine_requested"] = engine
+                return RuntimeRunOutcome(result=result, engine_record=engine_record)
+
+        return RuntimeRunOutcome(
+            result=result,
+            engine_record=observation.finalize(result, fallback_policy=fallback_policy),
+        )
+
+    with observe_engine(engine) as observation:
+        result = run_func(**_legacy_kwargs())
+    return RuntimeRunOutcome(
+        result=result,
+        engine_record=observation.finalize(result, fallback_policy=fallback_policy),
+    )

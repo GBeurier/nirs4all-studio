@@ -35,6 +35,7 @@ from .execution_driver import (
     new_execution_job_id,
 )
 from .jobs import Job, JobStatus, JobType, job_manager
+from .runtime_engine import fallback_policy_record, run_with_engine_record
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -98,6 +99,8 @@ class AutoMLRequest(BaseModel):
     include_preprocessing_search: bool = Field(
         False, description="Include preprocessing in search"
     )
+    engine: str | None = Field(None, description="ML engine selector: 'legacy' or 'dag-ml'; omitted uses the nirs4all library default.")
+    allow_fallback: bool = Field(False, description="Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
 
 
 class TrialResult(BaseModel):
@@ -139,6 +142,13 @@ class AutoMLResults(BaseModel):
     all_trials: list[TrialResult]
     model_path: str | None = None
     search_duration_seconds: float
+    engine: str | None = None
+    engine_requested: str | None = None
+    engine_diagnostics: list[dict[str, Any]] | None = None
+    runtime_source: str | None = None
+    runtime_manifest: dict[str, Any] | None = None
+    fallback_policy: dict[str, Any] | None = None
+    native_result_refs: list[dict[str, Any]] | None = None
 
 
 def _as_float(value: Any, default: float = 0.0) -> float:
@@ -267,6 +277,13 @@ def _automl_results_response(
         ],
         model_path=payload.get("model_path"),
         search_duration_seconds=duration,
+        engine=payload.get("engine"),
+        engine_requested=payload.get("engine_requested"),
+        engine_diagnostics=payload.get("engine_diagnostics"),
+        runtime_source=payload.get("runtime_source"),
+        runtime_manifest=payload.get("runtime_manifest"),
+        fallback_policy=payload.get("fallback_policy"),
+        native_result_refs=payload.get("native_result_refs"),
     )
 
 
@@ -294,11 +311,17 @@ def _build_automl_job_config(
         "models": enabled_models,
         "include_preprocessing_search": request.include_preprocessing_search,
         "workspace_path": workspace_path,
+        "engine": request.engine,
+        "allow_fallback": request.allow_fallback,
+        "fallback_policy": fallback_policy_record(request.engine, request.allow_fallback),
     }
     execution_request = AnalysisExecutionRequest(
         job_id=job_id,
         analysis_type="automl",
         dataset_id=request.dataset_id,
+        requested_engine=request.engine,
+        allow_fallback=request.allow_fallback,
+        include_fallback_policy=True,
         workspace_path=workspace_path,
         artifacts=(
             ExecutionArtifactRef(
@@ -319,6 +342,8 @@ def _build_automl_job_config(
             "random_state": request.random_state,
             "include_preprocessing_search": request.include_preprocessing_search,
             "enabled_model_count": len(enabled_models),
+            "requested_engine": request.engine,
+            "allow_fallback": request.allow_fallback,
         },
         metadata={
             "dataset_name": dataset_name,
@@ -873,6 +898,8 @@ def _run_automl_task(
     models_config = config.get("models", [])
     preprocessing_chain = config.get("preprocessing_chain")
     workspace_path = config.get("workspace_path")
+    engine = config.get("engine")
+    allow_fallback = bool(config.get("allow_fallback", False))
 
     progress_callback(5.0, "Building pipeline with generators...")
 
@@ -900,15 +927,23 @@ def _run_automl_task(
 
     # Run pipeline using nirs4all.run()
     try:
-        result = get_cached("nirs4all").run(
-            pipeline=pipeline_steps,
-            dataset=dataset,
-            verbose=0,
-            save_artifacts=True,
-            random_state=random_state,
-            max_generation_count=n_trials,
+        outcome = run_with_engine_record(
+            get_cached("nirs4all").run,
+            run_kwargs={
+                "pipeline": pipeline_steps,
+                "dataset": dataset,
+                "verbose": 0,
+                "save_artifacts": True,
+                "random_state": random_state,
+                "max_generation_count": n_trials,
+            },
+            engine=engine,
+            allow_fallback=allow_fallback,
             workspace_path=workspace_path,
         )
+        result = outcome.result
+        engine_record = outcome.engine_record
+        job_manager.update_job_metrics(job.id, engine_record, append_history=False)
     except Exception as e:
         raise ValueError(f"Pipeline execution failed: {e}")
 
@@ -944,6 +979,7 @@ def _run_automl_task(
                     "trials_completed": idx + 1,
                     "best_score": result.best_score if result.best else None,
                     "best_model": result.best.get("model_name") if result.best else None,
+                    **engine_record,
                 },
             )
             progress = 10.0 + (idx / len(all_predictions)) * 80.0
@@ -997,6 +1033,7 @@ def _run_automl_task(
         "total_trials": len(trials),
         "completed_trials": len(completed_trials),
         "search_duration_seconds": time.time() - start_time,
+        **engine_record,
         **execution_metadata,
     }
     status = JobStatus.CANCELLED.value if getattr(job, "cancellation_requested", False) else JobStatus.COMPLETED.value

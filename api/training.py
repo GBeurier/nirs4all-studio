@@ -30,6 +30,7 @@ from .nirs4all_adapter import (
     ensure_models_dir,
     require_nirs4all,
 )
+from .runtime_engine import fallback_policy_record, run_with_engine_record
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -64,6 +65,8 @@ class TrainingRequest(BaseModel):
     random_state: int | None = Field(42, description="Random seed for reproducibility")
     refit: Any | None = Field(True, description="Refit configuration: True (default refit), False (no refit), or dict with refit_params")
     refit_params: dict[str, Any] | None = Field(None, description="Override parameters for the refit model")
+    engine: str | None = Field(None, description="ML engine selector: 'legacy' or 'dag-ml'; omitted uses the nirs4all library default.")
+    allow_fallback: bool = Field(False, description="Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
 
 
 class TrainingJobResponse(BaseModel):
@@ -92,6 +95,13 @@ class TrainingMetricsResponse(BaseModel):
     val_metrics: dict[str, float] | None = None
     best_metrics: dict[str, float] | None = None
     history: list[dict[str, Any]] = []
+    engine: str | None = None
+    engine_requested: str | None = None
+    engine_diagnostics: list[dict[str, Any]] | None = None
+    runtime_source: str | None = None
+    runtime_manifest: dict[str, Any] | None = None
+    fallback_policy: dict[str, Any] | None = None
+    native_result_refs: list[dict[str, Any]] | None = None
 
 
 class TrainingResultResponse(BaseModel):
@@ -104,6 +114,13 @@ class TrainingResultResponse(BaseModel):
     model_path: str | None = None
     history: list[dict[str, Any]]
     duration_seconds: float
+    engine: str | None = None
+    engine_requested: str | None = None
+    engine_diagnostics: list[dict[str, Any]] | None = None
+    runtime_source: str | None = None
+    runtime_manifest: dict[str, Any] | None = None
+    fallback_policy: dict[str, Any] | None = None
+    native_result_refs: list[dict[str, Any]] | None = None
 
 
 # ============= Training Routes =============
@@ -164,6 +181,9 @@ async def start_training(request: TrainingRequest):
         "random_state": request.random_state,
         "workspace_path": workspace.path,
         "refit": refit_value,
+        "engine": request.engine,
+        "allow_fallback": request.allow_fallback,
+        "fallback_policy": fallback_policy_record(request.engine, request.allow_fallback),
     }
 
     # Create and submit job
@@ -280,6 +300,13 @@ async def get_training_metrics(job_id: str):
         val_metrics=job.metrics.get("val"),
         best_metrics=job.metrics.get("best"),
         history=job.history,
+        engine=job.metrics.get("engine"),
+        engine_requested=job.metrics.get("engine_requested"),
+        engine_diagnostics=job.metrics.get("engine_diagnostics"),
+        runtime_source=job.metrics.get("runtime_source"),
+        runtime_manifest=job.metrics.get("runtime_manifest"),
+        fallback_policy=job.metrics.get("fallback_policy"),
+        native_result_refs=job.metrics.get("native_result_refs"),
     )
 
 
@@ -342,6 +369,13 @@ async def get_training_result(job_id: str):
         model_path=result.get("model_path"),
         history=job.history,
         duration_seconds=job._get_duration() or 0.0,
+        engine=result.get("engine"),
+        engine_requested=result.get("engine_requested"),
+        engine_diagnostics=result.get("engine_diagnostics"),
+        runtime_source=result.get("runtime_source"),
+        runtime_manifest=result.get("runtime_manifest"),
+        fallback_policy=result.get("fallback_policy"),
+        native_result_refs=result.get("native_result_refs"),
     )
 
 
@@ -456,14 +490,21 @@ def _run_training_task(
         "dataset": dataset_config,
         "verbose": config.get("verbose", 1),
         "random_state": config.get("random_state"),
-        "workspace_path": config.get("workspace_path"),
     }
     if "refit" in config:
         run_kwargs["refit"] = config["refit"]
 
     # Run training with nirs4all
     try:
-        result = nirs4all.run(**run_kwargs)
+        outcome = run_with_engine_record(
+            nirs4all.run,
+            run_kwargs=run_kwargs,
+            engine=config.get("engine"),
+            allow_fallback=bool(config.get("allow_fallback", False)),
+            workspace_path=config.get("workspace_path"),
+        )
+        result = outcome.result
+        engine_record = outcome.engine_record
     except Exception as e:
         raise ValueError(f"Training failed: {str(e)}")
 
@@ -494,6 +535,7 @@ def _run_training_task(
                 "model_name": model_name,
                 "metrics": best_metrics,
             },
+            **engine_record,
         },
         append_history=False,
     )
@@ -553,6 +595,7 @@ def _run_training_task(
         "total_variants": n_variants,
         "num_predictions": n_variants,
         "duration_seconds": duration,
+        **engine_record,
     }
 
 

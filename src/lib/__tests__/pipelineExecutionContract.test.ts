@@ -48,6 +48,43 @@ describe("pipelineExecutionContract", () => {
     });
   });
 
+  it("does not add engine fields when no runtime engine is selected", () => {
+    expect(toLegacyPipelineExecutePayload({
+      pipelineId: "pipe-1",
+      datasetId: "dataset-a",
+    })).toEqual({
+      dataset_id: "dataset-a",
+      verbose: 1,
+      export_model: true,
+      model_name: undefined,
+      split_group_by_by_dataset: {},
+      inline_pipeline: null,
+    });
+  });
+
+  it("serializes selected runtime engine and fallback policy", () => {
+    expect(toLegacyPipelineExecutePayload({
+      pipelineId: "pipe-1",
+      datasetId: "dataset-a",
+      engine: "dag-ml",
+      allowFallback: false,
+    })).toMatchObject({
+      dataset_id: "dataset-a",
+      engine: "dag-ml",
+      allow_fallback: false,
+    });
+
+    expect(toLegacyPipelineExecutePayload({
+      pipelineId: "pipe-1",
+      datasetId: "dataset-a",
+      engine: "dag-ml",
+      allowFallback: true,
+    })).toMatchObject({
+      engine: "dag-ml",
+      allow_fallback: true,
+    });
+  });
+
   it("normalizes metric observations from generic execution results", () => {
     const result = normalizePipelineExecutionResult({
       success: true,

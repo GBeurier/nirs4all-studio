@@ -10,6 +10,8 @@ from __future__ import annotations
 import warnings
 from types import SimpleNamespace
 
+import pytest
+
 from api import runtime_engine
 from api.runtime_errors import RtError
 
@@ -200,3 +202,152 @@ def test_finalize_handles_broken_rt_result_gracefully():
         pass
     record = observation.finalize(result=_Result())
     assert record["engine"] == "dag-ml"
+
+
+def test_run_with_engine_record_runs_dagml_strict_with_results_path(tmp_path):
+    calls: list[dict] = []
+
+    class _Result:
+        _dagml_results_dir = tmp_path / "nirs4all_results" / "native-run"
+
+        def to_rt_result(self):  # noqa: ANN201
+            return {"manifest": {"engine": "dag-ml"}, "diagnostics": []}
+
+    def run(**kwargs):  # noqa: ANN003
+        calls.append(dict(kwargs))
+        return _Result()
+
+    outcome = runtime_engine.run_with_engine_record(
+        run,
+        run_kwargs={"pipeline": ["p"], "dataset": "dataset", "workspace_path": "legacy-only"},
+        engine="dag-ml",
+        workspace_path=tmp_path,
+    )
+
+    assert calls == [
+        {
+            "pipeline": ["p"],
+            "dataset": "dataset",
+            "engine": "dag-ml",
+            "allow_fallback": False,
+            "results_path": str(tmp_path / "nirs4all_results"),
+        }
+    ]
+    assert outcome.engine_record["engine"] == "dag-ml"
+    assert outcome.engine_record["engine_requested"] == "dag-ml"
+    assert outcome.engine_record["fallback_policy"]["allow_fallback"] is False
+    assert outcome.engine_record["native_result_refs"][0]["path"] == str(_Result._dagml_results_dir)
+
+
+def test_run_with_engine_record_falls_back_to_legacy_only_when_allowed(tmp_path):
+    calls: list[dict] = []
+    diagnostic = {
+        "verb": "run",
+        "cause": "unsupported_shape",
+        "message": "engine='dag-ml' does not support this pipeline shape",
+    }
+    fallback_diagnostic = {
+        "verb": "run",
+        "cause": "runtime_error",
+        "message": "legacy emitted a secondary runtime diagnostic",
+    }
+
+    class StructuredRtError(Exception):
+        def to_dict(self):  # noqa: ANN201
+            return diagnostic
+
+    class _Result:
+        def to_rt_result(self):  # noqa: ANN201
+            return {"manifest": {"engine": "legacy"}, "diagnostics": [fallback_diagnostic]}
+
+    def run(**kwargs):  # noqa: ANN003
+        calls.append(dict(kwargs))
+        if kwargs.get("engine") == "dag-ml":
+            raise StructuredRtError("refused")
+        return _Result()
+
+    outcome = runtime_engine.run_with_engine_record(
+        run,
+        run_kwargs={"pipeline": ["p"], "dataset": "dataset"},
+        engine="dag-ml",
+        allow_fallback=True,
+        workspace_path=tmp_path,
+    )
+
+    assert calls[0]["engine"] == "dag-ml"
+    assert calls[0]["allow_fallback"] is False
+    assert calls[0]["results_path"] == str(tmp_path / "nirs4all_results")
+    assert "workspace_path" not in calls[0]
+    assert calls[1]["engine"] == "legacy"
+    assert calls[1]["workspace_path"] == str(tmp_path)
+    assert outcome.engine_record["engine"] == "legacy"
+    assert outcome.engine_record["engine_requested"] == "dag-ml"
+    assert outcome.engine_record["engine_diagnostics"] == [diagnostic, fallback_diagnostic]
+    assert outcome.engine_record["fallback_policy"]["allow_fallback"] is True
+
+
+def test_run_with_engine_record_refuses_structured_fallback_by_default(tmp_path):
+    class StructuredRtError(Exception):
+        def to_dict(self):  # noqa: ANN201
+            return {"verb": "run", "cause": "unsupported_shape", "message": "refused"}
+
+    def run(**kwargs):  # noqa: ANN003
+        raise StructuredRtError("refused")
+
+    with pytest.raises(StructuredRtError):
+        runtime_engine.run_with_engine_record(
+            run,
+            run_kwargs={"pipeline": ["p"], "dataset": "dataset"},
+            engine="dag-ml",
+            workspace_path=tmp_path,
+        )
+
+
+def test_run_with_engine_record_legacy_path_preserves_workspace(tmp_path):
+    calls: list[dict] = []
+
+    def run(**kwargs):  # noqa: ANN003
+        calls.append(dict(kwargs))
+        return SimpleNamespace()
+
+    outcome = runtime_engine.run_with_engine_record(
+        run,
+        run_kwargs={"pipeline": ["p"], "dataset": "dataset"},
+        engine="legacy",
+        workspace_path=tmp_path,
+    )
+
+    assert calls == [
+        {
+            "pipeline": ["p"],
+            "dataset": "dataset",
+            "workspace_path": str(tmp_path),
+            "engine": "legacy",
+        }
+    ]
+    assert outcome.engine_record["engine"] == "legacy"
+
+
+def test_run_with_engine_record_legacy_path_can_omit_workspace(tmp_path):
+    calls: list[dict] = []
+
+    def run(**kwargs):  # noqa: ANN003
+        calls.append(dict(kwargs))
+        return SimpleNamespace()
+
+    outcome = runtime_engine.run_with_engine_record(
+        run,
+        run_kwargs={"pipeline": ["p"], "dataset": "dataset"},
+        engine="legacy",
+        workspace_path=tmp_path,
+        pass_workspace_path_to_legacy=False,
+    )
+
+    assert calls == [
+        {
+            "pipeline": ["p"],
+            "dataset": "dataset",
+            "engine": "legacy",
+        }
+    ]
+    assert outcome.engine_record["engine"] == "legacy"
