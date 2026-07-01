@@ -94,5 +94,15 @@ describe("runtime result metadata foundation", () => {
       disabled: true,
       disabledReason: "Native artifacts are missing",
     });
+
+    expect(buildRuntimeNativeResultsAffordance({
+      hasNativeResults: false,
+      nativeArtifactCount: 0,
+    })).toMatchObject({
+      hasNativeResults: false,
+      nativeResultsLabel: "Native results not attached",
+      disabled: true,
+      disabledReason: "Native result artifacts are not attached for this run.",
+    });
   });
 });
