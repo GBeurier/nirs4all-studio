@@ -23,6 +23,7 @@ from ._shared import (
     _has_active_non_maintenance_jobs,
     _invalidate_results_caches,
 )
+from .legacy_migration_report_preview import LegacyMigrationPreviewError, preview_legacy_migration_report
 from .models import (
     CleanCacheRequest,
     CleanCacheResponse,
@@ -32,6 +33,8 @@ from .models import (
     CompactRequest,
     DataLoadingDefaults,
     DatasetStorageInfo,
+    LegacyMigrationReportPreviewRequest,
+    LegacyMigrationReportPreviewResponse,
     MigrationJobResponse,
     MigrationReportResponse,
     MigrationRequest,
@@ -371,6 +374,30 @@ async def migrate_workspace_arrays(request: MigrationRequest):
         raise HTTPException(
             status_code=500, detail=f"Failed to start migration: {str(e)}"
         )
+
+
+@router.post(
+    "/workspace/migrate/report-preview",
+    response_model=LegacyMigrationReportPreviewResponse,
+)
+async def preview_legacy_migration_report_route(request: LegacyMigrationReportPreviewRequest):
+    """Preview offline nirs4all-tools migration reports without writing anything."""
+    try:
+        payload = await asyncio.to_thread(
+            preview_legacy_migration_report,
+            report_path=request.report_path,
+            unsupported_report_path=request.unsupported_report_path,
+            manifest_path=request.manifest_path,
+        )
+        return LegacyMigrationReportPreviewResponse(**payload)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except LegacyMigrationPreviewError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to preview migration report: {str(exc)}")
 
 
 @router.post("/workspace/compact", response_model=CompactReport)

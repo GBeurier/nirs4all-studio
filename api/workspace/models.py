@@ -178,6 +178,64 @@ class MigrationReportResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class LegacyMigrationReportPreviewRequest(BaseModel):
+    """Request to preview nirs4all-tools migration contract files."""
+    report_path: str = Field(..., description="Path to migration-report.json")
+    unsupported_report_path: str | None = Field(None, description="Optional path to unsupported-report.json")
+    manifest_path: str | None = Field(None, description="Optional path to migration-manifest.json")
+
+
+class LegacyMigrationSourceSummaryResponse(BaseModel):
+    """Whitelisted source summary from a legacy migration report."""
+    kinds: list[str] = Field(default_factory=list)
+    row_counts: dict[str, int] = Field(default_factory=dict)
+    bundles: int = 0
+    artifacts: int = 0
+
+
+class LegacyMigrationTargetSummaryResponse(BaseModel):
+    """Whitelisted target summary from a legacy migration report."""
+    path: str | None = None
+
+
+class LegacyMigrationVerificationCheckResponse(BaseModel):
+    """Whitelisted verification check summary."""
+    status: str | None = None
+
+
+class LegacyMigrationVerificationSummaryResponse(BaseModel):
+    """Whitelisted verification summary from a legacy migration report."""
+    ran: bool = False
+    passed: bool | None = None
+    checks: dict[str, LegacyMigrationVerificationCheckResponse] = Field(default_factory=dict)
+    mismatches: int = 0
+
+
+class LegacyMigrationErrorResponse(BaseModel):
+    """Whitelisted error entry from a legacy migration report."""
+    code: str | None = None
+    cause: str | None = None
+    message: str | None = None
+    mitigation: str | None = None
+
+
+class LegacyMigrationReportPreviewResponse(BaseModel):
+    """Read-only summary of nirs4all-tools migration contract files."""
+    status: str
+    source_summary: LegacyMigrationSourceSummaryResponse = Field(default_factory=LegacyMigrationSourceSummaryResponse)
+    target_summary: LegacyMigrationTargetSummaryResponse = Field(default_factory=LegacyMigrationTargetSummaryResponse)
+    target_schema_version_validated: bool = False
+    migrated_counts: dict[str, int] = Field(default_factory=dict)
+    preserved_counts: dict[str, int] = Field(default_factory=dict)
+    unsupported_counts: dict[str, int] = Field(default_factory=dict)
+    verification_summary: LegacyMigrationVerificationSummaryResponse = Field(
+        default_factory=LegacyMigrationVerificationSummaryResponse
+    )
+    errors: list[LegacyMigrationErrorResponse] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    recommended_next_command: str | None = None
+
+
 class CompactRequest(BaseModel):
     dataset_name: str | None = Field(None, description="Dataset name to compact (all if omitted)")
 
