@@ -2411,6 +2411,11 @@ async def retry_run(run_id: str):
         name=retry_plan.name,
         description=retry_plan.description,
         execution_backend=retry_plan.execution_backend,
+        # Preserve the experiment's requested ML engine across the retry so a
+        # dag-ml selection is not silently downgraded to the library default on
+        # re-run (B-017/B-018). Orthogonal to execution_backend; the engine that
+        # actually ran is recorded per-pipeline during execution.
+        engine=old_run.engine,
         datasets=[
             DatasetRun(
                 dataset_id=dataset.dataset_id,
