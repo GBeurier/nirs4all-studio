@@ -17,19 +17,20 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  ChevronDown, ChevronRight, Database, Layers, Box, Clock,
-  CheckCircle2, AlertCircle, Eye, HardDrive, Timer, RefreshCw,
+  ChevronDown, ChevronRight, Database, Layers, Box,
+  Eye, HardDrive, Timer, RefreshCw,
   Target, FolderKanban, Loader2, Trash2,
 } from "lucide-react";
+import {
+  RuntimeEngineBadge,
+  RuntimeStatusIconFrame,
+} from "@/components/runtime";
 import { cn } from "@/lib/utils";
 import { invalidatePredictionRelatedQueries } from "@/lib/prediction-deletion";
 import { buildRunStorageArtifactMetadata } from "@/lib/runs/pageData";
 import type { RunsExecutionJobListIndicators } from "@/lib/runs/pageData";
 import { formatRunProgress, formatRunTokenLabel } from "@/lib/runs/format";
-import {
-  getRuntimeResultStatusDisplay,
-  resolveRuntimeResultStatus,
-} from "@/ui/runtime";
+import { getRuntimeResultStatusDisplay } from "@/ui/runtime";
 import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
 import {
   formatMetricValue,
@@ -86,13 +87,6 @@ function formatExecutionProgress(progress: number | null): string | null {
   if (progress == null || !Number.isFinite(progress)) return null;
   return formatRunProgress(progress);
 }
-
-const statusIcons: Record<string, typeof Clock> = {
-  queued: Clock,
-  running: RefreshCw,
-  completed: CheckCircle2,
-  failed: AlertCircle,
-};
 
 function primaryRefitLabel(metric: string | null, taskType: string | null | undefined): string {
   return getPrimaryContextMetricLabel(metric, "refit", taskType);
@@ -191,9 +185,7 @@ export function RunItem({
   const [expanded, setExpanded] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
-  const status = resolveRuntimeResultStatus(run.status);
   const statusDisplay = getRuntimeResultStatusDisplay(run.status);
-  const StatusIcon = statusIcons[status] || CheckCircle2;
   const canDeleteRun = !statusDisplay.isBusy;
   const storageArtifactMetadata = buildRunStorageArtifactMetadata(run);
   const storageArtifactFields = storageArtifactMetadata.fields;
@@ -254,9 +246,7 @@ export function RunItem({
           <CardHeader className="p-4 pb-2 cursor-pointer hover:bg-muted/20 transition-colors">
             <div className="flex items-start gap-3 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)_auto] lg:items-start">
               <div className="flex items-start gap-3 min-w-0 flex-1">
-                <div className={cn("p-2 rounded-lg shrink-0 relative", statusDisplay.bgClass)}>
-                  <StatusIcon className={cn("h-4 w-4", statusDisplay.colorClass, statusDisplay.iconClass)} />
-                </div>
+                <RuntimeStatusIconFrame status={run.status} className="relative shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     {expanded
@@ -275,6 +265,7 @@ export function RunItem({
                         {run.project_name || "Project"}
                       </Badge>
                     )}
+                    <RuntimeEngineBadge source={run} />
                   </div>
                   <RunSummaryStrip
                     run={run}

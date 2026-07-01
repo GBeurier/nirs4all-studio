@@ -10,3 +10,4 @@
  */
 
 export * from "./statusDisplay";
+export * from "./resultMetadata";

@@ -76,6 +76,9 @@ export interface PipelineRun {
   status: RunStatus;
   progress: number;
   metrics?: RunMetrics;
+  engine?: string | null;
+  engine_requested?: string | null;
+  engine_diagnostics?: Array<Record<string, unknown>> | null;
   val_score?: number | null;
   test_score?: number | null;
   score?: number | null;
@@ -106,6 +109,11 @@ export interface PipelineRun {
   current_branch?: string; // Current branch name
   current_variant?: number; // Current variant index (1-based)
   fold_metrics?: Record<number, RunMetrics>; // Per-fold metrics
+  artifact_refs?: unknown[];
+  artifactRefs?: unknown[];
+  rt_result?: unknown;
+  runtime_result?: unknown;
+  native_results?: unknown;
 }
 
 export interface DatasetRun {
@@ -158,6 +166,7 @@ export interface Run {
   name: string;
   description?: string;
   execution_backend?: RunExecutionBackend;
+  engine?: string | null;
   status: RunStatus;
   format?: RunFormat;
   created_at: string;

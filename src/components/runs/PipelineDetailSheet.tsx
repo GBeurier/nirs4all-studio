@@ -8,17 +8,20 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Progress } from "@/components/ui/progress";
 import {
-  CheckCircle2,
+  RuntimeDiagnosticsList,
+  RuntimeEngineBadge,
+  RuntimeRunStatePresentation,
+  RuntimeStatusBadge,
+  RuntimeStatusIconFrame,
+} from "@/components/runtime";
+import {
   Clock,
   RefreshCw,
   AlertCircle,
-  CircleDashed,
   Database,
   BarChart3,
   Download,
@@ -34,8 +37,7 @@ import {
   Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getRuntimeResultStatusDisplay } from "@/ui/runtime";
-import type { PipelineRun, RunStatus } from "@/types/runs";
+import type { PipelineRun } from "@/types/runs";
 
 interface PipelineDetailSheetProps {
   pipeline: PipelineRun | null;
@@ -43,22 +45,6 @@ interface PipelineDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-const statusIcons = {
-  queued: Clock,
-  running: RefreshCw,
-  completed: CheckCircle2,
-  failed: AlertCircle,
-  partial: CircleDashed,
-};
-
-const StatusIcon = ({ status }: { status: RunStatus }) => {
-  const Icon = statusIcons[status];
-  const statusDisplay = getRuntimeResultStatusDisplay(status);
-  return (
-    <Icon className={cn("h-4 w-4", statusDisplay.colorClass, statusDisplay.iconClass)} />
-  );
-};
 
 // Mock logs for pipeline execution
 const getMockLogs = (pipeline: PipelineRun): string[] => {
@@ -96,7 +82,6 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
   if (!pipeline) return null;
 
   const logs = getMockLogs(pipeline);
-  const statusDisplay = getRuntimeResultStatusDisplay(pipeline.status);
 
   // Build pipeline JSON for display
   const pipelineJson = JSON.stringify({
@@ -122,33 +107,21 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
         <SheetHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={cn("p-2 rounded-lg", statusDisplay.bgClass)}>
-                <StatusIcon status={pipeline.status} />
-              </div>
+              <RuntimeStatusIconFrame status={pipeline.status} />
               <div>
                 <SheetTitle className="text-lg">Pipeline Details</SheetTitle>
                 <SheetDescription className="flex items-center gap-2 mt-1">
                   <span className="text-sm font-medium text-foreground">
                     {pipeline.pipeline_name}
                   </span>
+                  <RuntimeEngineBadge source={pipeline} />
                 </SheetDescription>
               </div>
             </div>
-            <Badge variant={pipeline.status === "completed" ? "default" : "secondary"}>
-              {statusDisplay.label}
-            </Badge>
+            <RuntimeStatusBadge status={pipeline.status} showIcon={false} />
           </div>
 
-          {/* Progress bar for running */}
-          {pipeline.status === "running" && (
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Progress</span>
-                <span className="font-medium">{pipeline.progress}%</span>
-              </div>
-              <Progress value={pipeline.progress} className="h-2" />
-            </div>
-          )}
+          <RuntimeRunStatePresentation status={pipeline.status} progress={pipeline.progress} className="mt-4" />
 
           {/* Dataset link */}
           <div className="mt-4 p-3 rounded-lg bg-muted/30 flex items-center justify-between">
@@ -207,6 +180,8 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
             <TabsContent value="results" className="m-0 space-y-4">
               {pipeline.metrics ? (
                 <>
+                  <RuntimeDiagnosticsList source={pipeline} />
+
                   {/* Metrics Cards - Similar to Predictions page */}
                   <div className="grid grid-cols-2 gap-3">
                     {pipeline.metrics.r2 != null && (

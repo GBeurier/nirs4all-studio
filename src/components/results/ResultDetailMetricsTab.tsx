@@ -1,9 +1,11 @@
 import { TabsContent } from "@/components/ui/tabs";
+import { RuntimeDiagnosticsList } from "@/components/runtime";
 import type { PipelineRun } from "@/types/runs";
 import {
   buildResultArtifactSummary,
   buildResultExecutionTimeRows,
   buildResultMetricCards,
+  buildResultNativeResultsSummary,
   buildResultRelatedLinks,
   buildResultScoreMetricCards,
   getResultEmptyMetricsMessage,
@@ -29,12 +31,15 @@ export function ResultDetailMetricsTab({ pipeline, datasetName, hasMetrics }: Re
   const executionTimeRows = buildResultExecutionTimeRows(pipeline);
   const relatedLinks = buildResultRelatedLinks(pipeline, datasetName);
   const artifactSummary = buildResultArtifactSummary(pipeline);
+  const nativeResultsSummary = buildResultNativeResultsSummary(pipeline);
 
   return (
     <TabsContent value="results" className="m-0 space-y-4">
       {hasMetrics ? (
         <>
           {pipeline.has_refit && <ResultMetricsRefitNotice />}
+
+          <RuntimeDiagnosticsList source={pipeline} />
 
           {scoreMetricCards.length > 0 && <ResultMetricCardGrid cards={scoreMetricCards} />}
 
@@ -44,7 +49,13 @@ export function ResultDetailMetricsTab({ pipeline, datasetName, hasMetrics }: Re
 
           <ResultMetricsArtifactSummary summary={artifactSummary} />
 
-          {pipeline.status === "completed" && <ResultMetricsExportAction hasRefit={pipeline.has_refit} />}
+          {pipeline.status === "completed" && (
+            <ResultMetricsExportAction
+              hasRefit={pipeline.has_refit}
+              hasNativeResults={nativeResultsSummary.hasNativeResults}
+              nativeArtifactCount={nativeResultsSummary.artifactCount}
+            />
+          )}
 
           <ResultMetricsRelatedLinks links={relatedLinks} />
         </>

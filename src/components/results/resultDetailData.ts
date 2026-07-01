@@ -9,6 +9,7 @@ import {
   buildResultArtifactRepositoryProvenanceItems,
   buildResultArtifactSourceScopeGroupItems,
   buildResultArtifactSourceScopeReadModel,
+  formatResultArtifactCountLabel,
   type ResultArtifactRef,
 } from "@/lib/resultArtifacts";
 
@@ -105,6 +106,12 @@ export interface ResultArtifactSummaryData {
   statusItems: ResultArtifactSummaryCountData[];
   groups: ResultArtifactSummaryGroupData[];
   repositoryItems: ResultArtifactRepositoryProvenanceData[];
+}
+
+export interface ResultNativeResultsSummaryData {
+  artifactCount: number;
+  artifactCountLabel: string;
+  hasNativeResults: boolean;
 }
 
 export type ResultLogLineTone = "default" | "info" | "error";
@@ -328,6 +335,25 @@ export function buildResultArtifactSummary(pipeline: PipelineRun): ResultArtifac
     })),
     groups,
     repositoryItems,
+  };
+}
+
+function isNativeResultArtifactRef(ref: ResultArtifactRef): boolean {
+  const source = typeof ref.metadata?.source === "string" ? ref.metadata.source : null;
+  return (
+    ref.source === "result-repository"
+    || ref.source === "cluster-run"
+    || ref.kind === "repository_entry"
+    || source === "native_results"
+  );
+}
+
+export function buildResultNativeResultsSummary(pipeline: PipelineRun): ResultNativeResultsSummaryData {
+  const nativeRefs = buildPipelineRunArtifactRefs(pipeline).filter(isNativeResultArtifactRef);
+  return {
+    artifactCount: nativeRefs.length,
+    artifactCountLabel: formatResultArtifactCountLabel(nativeRefs.length),
+    hasNativeResults: nativeRefs.length > 0,
   };
 }
 

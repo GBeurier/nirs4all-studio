@@ -9,6 +9,9 @@ export interface EnrichedRun {
   run_id: string;
   name: string;
   status: string;
+  engine?: string | null;
+  engine_requested?: string | null;
+  engine_diagnostics?: Array<Record<string, unknown>> | null;
   project_id: string | null;
   project_name?: string | null;
   created_at: string;
@@ -22,8 +25,10 @@ export interface EnrichedRun {
   total_folds: number;
   datasets: EnrichedDatasetRun[];
   error?: string | null;
+  execution_metadata?: Record<string, unknown> | null;
   config?: {
     execution_backend?: RunExecutionBackend;
+    engine?: string | null;
     cv_folds?: number;
     cv_strategy?: string;
     metric?: string;
@@ -153,6 +158,9 @@ export interface WorkspaceRunPipelineDetail {
   dataset_name: string | null;
   dataset_hash?: string | null;
   status: string | null;
+  engine?: string | null;
+  engine_requested?: string | null;
+  engine_diagnostics?: Array<Record<string, unknown>> | null;
   created_at: string;
   completed_at: string | null;
   best_val: number | null;
@@ -207,6 +215,10 @@ export interface WorkspaceRunDetail {
   rerun_ready?: boolean;
   unresolved_dataset_names?: string[];
   results_count?: number;
+  execution_metadata?: Record<string, unknown> | null;
+  engine?: string | null;
+  engine_requested?: string | null;
+  engine_diagnostics?: Array<Record<string, unknown>> | null;
 }
 
 export interface WorkspaceRunPipelineLogsResponse {

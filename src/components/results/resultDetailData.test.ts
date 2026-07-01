@@ -5,6 +5,7 @@ import {
   buildResultHeaderStatus,
   buildResultLogRows,
   buildResultMetricCards,
+  buildResultNativeResultsSummary,
   buildResultPipelineJson,
   buildResultPipelineJsonPayload,
   buildResultQuickFacts,
@@ -224,7 +225,7 @@ describe("resultDetailData", () => {
   });
 
   it("includes repository provenance in artifact summaries", () => {
-    expect(buildResultArtifactSummary({
+    const pipelineWithRepositoryArtifact = {
       ...pipeline({
         metrics: undefined,
         val_score: null,
@@ -245,7 +246,9 @@ describe("resultDetailData", () => {
           source_ref: "manifests/result.json",
         },
       }],
-    } as PipelineRun & { artifact_refs: unknown[] })).toEqual({
+    } as PipelineRun & { artifact_refs: unknown[] };
+
+    expect(buildResultArtifactSummary(pipelineWithRepositoryArtifact)).toEqual({
       totalCount: 1,
       totalCountLabel: "1 artifact",
       kindItems: [
@@ -270,9 +273,15 @@ describe("resultDetailData", () => {
         detailLabels: [
           "Content sha256:1234567890ab...abcdef",
           "Repository repo-1",
-          "Source manifests/result.json",
-        ],
-      }],
+        "Source manifests/result.json",
+      ],
+    }],
+    });
+
+    expect(buildResultNativeResultsSummary(pipelineWithRepositoryArtifact)).toEqual({
+      artifactCount: 1,
+      artifactCountLabel: "1 artifact",
+      hasNativeResults: true,
     });
   });
 
