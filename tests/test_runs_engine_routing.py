@@ -1,0 +1,402 @@
+"""B-011 Studio-bypass parity: prove the run route threads the ML engine.
+
+W14 closes the Studio half of B-011. These tests assert three properties of the
+Studio run path end-to-end, at the altitude each property lives:
+
+1. **Pass the requested engine.** ``POST /runs`` body → ``Run.engine`` →
+   ``_execute_run_job`` → ``_execute_pipeline_training`` → ``nirs4all.run(engine=...)``.
+   A default (``None``) request omits the kwarg entirely (byte-identical to the
+   pre-engine call so the library default applies).
+2. **Persist the actual engine + fallback diagnostics.** The engine that actually
+   ran — including nirs4all's transparent ``dag-ml`` → ``legacy`` fallback — and
+   any ``RtError`` diagnostics are recorded on the ``PipelineRun`` and round-trip
+   through the run manifest. The requested engine persists even when training
+   hard-fails.
+3. **Do not silently bypass the runtime route.** When an engine is requested,
+   ``nirs4all.run`` is actually invoked with it (exactly once); a fallback is
+   recorded, never hidden.
+
+The deep-compute push-down (B-017) is out of scope here (that is W15).
+"""
+
+from __future__ import annotations
+
+# ruff: noqa: I001
+
+from types import SimpleNamespace
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+import nirs4all
+
+# Import api.runs first: it initialises the api package (lazy_imports) cleanly.
+# Importing api.nirs4all_adapter before it triggers a circular import.
+import api.runs as runs_api
+import api.spectra as spectra_api
+import api.nirs4all_adapter as adapter_api
+
+
+# ---------------------------------------------------------------------------
+# Group A — _execute_pipeline_training (real function) passes + records + no bypass
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def stub_training_deps(monkeypatch):
+    """Stub the data/pipeline-prep seams of ``_execute_pipeline_training``.
+
+    Everything except the engine wiring and ``nirs4all.run`` is replaced with a
+    trivial in-memory stub so the test exercises the *real* engine threading
+    (engine kwargs + observe_engine + finalize) without a workspace/dataset.
+
+    Returns a ``calls`` dict the test fills with ``run`` (the fake
+    ``nirs4all.run``); the fixture installs it on the real ``nirs4all`` module so
+    the library's own ``resolve_engine`` is still used.
+    """
+    # A clean engine env so resolve_engine(None) -> the library default "legacy".
+    monkeypatch.delenv("N4A_ENGINE", raising=False)
+
+    monkeypatch.setattr(adapter_api, "build_dataset_config", lambda dataset_id: {"path": dataset_id})
+    monkeypatch.setattr(spectra_api, "_load_dataset", lambda dataset_id: SimpleNamespace(name=dataset_id))
+    monkeypatch.setattr(
+        runs_api,
+        "prepare_pipeline_steps_with_runtime_grouping",
+        lambda steps, dataset, group_by: SimpleNamespace(warnings=[], steps=[{"op": "noop"}]),
+    )
+    monkeypatch.setattr(runs_api, "editor_steps_to_runtime_canonical", lambda steps: [{"op": "noop"}])
+    monkeypatch.setattr(runs_api, "count_runtime_variants", lambda steps: 1)
+    monkeypatch.setattr(runs_api, "contains_generators", lambda steps: False)
+    monkeypatch.setattr(adapter_api, "extract_best_metrics", lambda result: {})
+
+    calls: dict = {"captured": None, "count": 0}
+
+    def install(run_impl):
+        def fake_run(**kwargs):
+            calls["captured"] = kwargs
+            calls["count"] += 1
+            return run_impl(**kwargs)
+
+        monkeypatch.setattr(nirs4all, "run", fake_run)
+
+    calls["install"] = install
+    return calls
+
+
+def _pipeline() -> runs_api.PipelineRun:
+    return runs_api.PipelineRun(
+        id="run-1-dataset-a-pipe-a",
+        pipeline_id="pipe-a",
+        pipeline_name="Pipeline A",
+        model="PLS",
+        preprocessing="SNV",
+        split_strategy="KFold(5)",
+        status="running",
+        config={"name": "Pipeline A", "steps": [{"class": "PLS"}]},
+    )
+
+
+def test_execute_pipeline_training_passes_requested_engine_to_run(stub_training_deps):
+    """engine='dag-ml' is forwarded to nirs4all.run and recorded (no fallback)."""
+    stub_training_deps["install"](lambda **kwargs: SimpleNamespace())
+
+    result = runs_api._execute_pipeline_training(
+        _pipeline(), "dataset-a", None, "run-1", engine="dag-ml",
+    )
+
+    # Property 1: the requested engine reaches the runner.
+    assert stub_training_deps["captured"]["engine"] == "dag-ml"
+    # Property 3: the runner was actually invoked (no silent bypass).
+    assert stub_training_deps["count"] == 1
+    # Property 2: the actual engine + requested engine are recorded.
+    assert result["engine"] == "dag-ml"
+    assert result["engine_requested"] == "dag-ml"
+    assert result["engine_diagnostics"] is None
+
+
+def test_execute_pipeline_training_omits_engine_kwarg_for_default(stub_training_deps):
+    """engine=None omits the kwarg (byte-identical to the pre-engine call)."""
+    stub_training_deps["install"](lambda **kwargs: SimpleNamespace())
+
+    result = runs_api._execute_pipeline_training(
+        _pipeline(), "dataset-a", None, "run-1", engine=None,
+    )
+
+    # No engine kwarg => nirs4all applies its own default, unchanged.
+    assert "engine" not in stub_training_deps["captured"]
+    assert stub_training_deps["count"] == 1
+    # The engine that actually ran (the library default) is still recorded.
+    assert result["engine"] == "legacy"
+    assert result["engine_requested"] is None
+    assert result["engine_diagnostics"] is None
+
+
+@pytest.mark.parametrize(
+    ("warning_text", "expected_cause"),
+    [
+        ("the dag-ml backend is not available (boom); falling back to the legacy engine", "unavailable_backend"),
+        (
+            "engine='dag-ml' does not support this pipeline shape (branch); falling back to the legacy engine",
+            "unsupported_shape",
+        ),
+    ],
+)
+def test_execute_pipeline_training_records_transparent_fallback(
+    stub_training_deps, warning_text, expected_cause,
+):
+    """A transparent dag-ml->legacy fallback is captured, classified, recorded."""
+    import warnings
+
+    def run_with_fallback(**kwargs):
+        warnings.warn(warning_text)
+        return SimpleNamespace()
+
+    stub_training_deps["install"](run_with_fallback)
+
+    result = runs_api._execute_pipeline_training(
+        _pipeline(), "dataset-a", None, "run-1", engine="dag-ml",
+    )
+
+    # No bypass: dag-ml was actually attempted before the library fell back.
+    assert stub_training_deps["captured"]["engine"] == "dag-ml"
+    # The engine that actually ran is the legacy fallback, not the request.
+    assert result["engine"] == "legacy"
+    assert result["engine_requested"] == "dag-ml"
+    diagnostics = result["engine_diagnostics"]
+    assert diagnostics is not None and len(diagnostics) == 1
+    assert diagnostics[0]["cause"] == expected_cause
+    assert diagnostics[0]["verb"] == "run"
+    assert warning_text in diagnostics[0]["message"]
+
+
+# ---------------------------------------------------------------------------
+# Group B — route / constructor thread the engine onto the Run
+# ---------------------------------------------------------------------------
+
+def test_create_run_from_config_threads_requested_engine(tmp_path):
+    run = runs_api._create_run_from_config(
+        runs_api.ExperimentConfig(
+            name="dag-ml experiment",
+            dataset_ids=["dataset-a"],
+            pipeline_ids=["pipe-a"],
+            engine="dag-ml",
+        ),
+        dataset_infos={"dataset-a": {"name": "Dataset A", "id": "dataset-a"}},
+        pipeline_configs={"pipe-a": {"name": "Pipeline A", "steps": []}},
+        workspace_path=str(tmp_path),
+    )
+
+    assert run.engine == "dag-ml"
+
+
+def test_create_run_from_config_defaults_engine_to_none(tmp_path):
+    """No engine selected => Run.engine is None so the library default applies."""
+    run = runs_api._create_run_from_config(
+        runs_api.ExperimentConfig(
+            name="default experiment",
+            dataset_ids=["dataset-a"],
+            pipeline_ids=["pipe-a"],
+        ),
+        dataset_infos={"dataset-a": {"name": "Dataset A", "id": "dataset-a"}},
+        pipeline_configs={"pipe-a": {"name": "Pipeline A", "steps": []}},
+        workspace_path=str(tmp_path),
+    )
+
+    assert run.engine is None
+
+
+def test_quick_run_threads_requested_engine(monkeypatch):
+    monkeypatch.setattr(runs_api.workspace_manager, "get_current_workspace", lambda: None)
+
+    run = runs_api._create_quick_run(
+        runs_api.QuickRunRequest(pipeline_id="pipe-a", dataset_id="dataset-a", engine="dag-ml"),
+        pipeline_config={"name": "Pipeline A", "steps": []},
+        dataset_info={"name": "Dataset A", "id": "dataset-a"},
+    )
+
+    assert run.engine == "dag-ml"
+
+
+def test_create_run_route_threads_engine_to_started_run(monkeypatch, tmp_path):
+    """POST /runs body engine -> Run.engine on the run handed to the job runner."""
+    started_runs: list = []
+
+    monkeypatch.setattr(runs_api, "_ensure_runs_loaded", lambda: None)
+    monkeypatch.setattr(runs_api, "_runs", {})
+    monkeypatch.setattr(runs_api, "_save_run_manifest", lambda run: True)
+    monkeypatch.setattr(runs_api, "_start_run_job", lambda run: started_runs.append(run))
+    monkeypatch.setattr(
+        runs_api.workspace_manager,
+        "get_current_workspace",
+        lambda: SimpleNamespace(path=str(tmp_path)),
+    )
+    monkeypatch.setattr(runs_api, "_load_dataset", lambda dataset_id: SimpleNamespace(name=dataset_id), raising=False)
+    monkeypatch.setattr(spectra_api, "_load_dataset", lambda dataset_id: SimpleNamespace(name=dataset_id))
+    monkeypatch.setattr(
+        runs_api,
+        "prepare_pipeline_steps_with_runtime_grouping",
+        lambda steps, dataset, group_by: SimpleNamespace(warnings=[], steps=steps),
+    )
+
+    import api.pipelines as pipelines_api
+
+    monkeypatch.setattr(pipelines_api, "_load_pipeline", lambda pid: {"name": "Pipeline A", "steps": []})
+
+    app = FastAPI()
+    app.include_router(runs_api.router, prefix="/api")
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/runs",
+            json={
+                "config": {
+                    "name": "dag-ml run",
+                    "dataset_ids": ["dataset-a"],
+                    "pipeline_ids": ["pipe-a"],
+                    "engine": "dag-ml",
+                    "cv_folds": 2,
+                }
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["engine"] == "dag-ml"
+    assert len(started_runs) == 1
+    assert started_runs[0].engine == "dag-ml"
+
+
+# ---------------------------------------------------------------------------
+# Group C — job loop records the engine outcome + persists the request on failure
+# ---------------------------------------------------------------------------
+
+def _single_pipeline_run(engine: str | None, tmp_path) -> runs_api.Run:
+    pipeline = runs_api.PipelineRun(
+        id="run-1-dataset-a-pipe-a",
+        pipeline_id="pipe-a",
+        pipeline_name="Pipeline A",
+        model="PLS",
+        preprocessing="SNV",
+        split_strategy="KFold(5)",
+        status="queued",
+    )
+    return runs_api.Run(
+        id="run-1",
+        name="Engine run",
+        engine=engine,
+        datasets=[
+            runs_api.DatasetRun(dataset_id="dataset-a", dataset_name="Dataset A", pipelines=[pipeline])
+        ],
+        status="queued",
+        created_at="2026-07-01T10:00:00",
+        total_pipelines=1,
+        completed_pipelines=0,
+        workspace_path=str(tmp_path),
+    )
+
+
+def test_execute_run_job_records_engine_outcome_on_pipeline(monkeypatch, tmp_path):
+    """The per-pipeline engine record (actual + requested + diagnostics) is applied."""
+    run = _single_pipeline_run("dag-ml", tmp_path)
+    diagnostics = [{"verb": "run", "cause": "unavailable_backend", "message": "x"}]
+    seen_engine: dict = {}
+
+    def fake_training(pipeline, dataset_id, workspace_path, run_id, split_group_by=None, *, store_run_id=None, engine=None, should_stop=None):
+        seen_engine["engine"] = engine
+        return {
+            "metrics": {},
+            "model_path": None,
+            "logs": [],
+            "variants_tested": 1,
+            "engine": "legacy",
+            "engine_requested": "dag-ml",
+            "engine_diagnostics": diagnostics,
+        }
+
+    monkeypatch.setattr(runs_api, "_runs", {"run-1": run})
+    monkeypatch.setattr(runs_api, "_save_run_manifest", lambda run: None)
+    monkeypatch.setattr(runs_api, "_open_run_store_repository", lambda ws: None)
+    monkeypatch.setattr(runs_api, "_execute_pipeline_training", fake_training)
+
+    result = runs_api._execute_run_job(
+        "run-1", SimpleNamespace(id="job-1", cancellation_requested=False), lambda progress, message: None,
+    )
+
+    assert result["status"] == "completed"
+    # The job loop forwarded the requested engine to the executor.
+    assert seen_engine["engine"] == "dag-ml"
+    pipeline = run.datasets[0].pipelines[0]
+    assert pipeline.engine == "legacy"
+    assert pipeline.engine_requested == "dag-ml"
+    assert pipeline.engine_diagnostics == diagnostics
+
+
+def test_execute_run_job_persists_engine_requested_on_training_failure(monkeypatch, tmp_path):
+    """A hard training failure still persists the requested engine (B-011 fix)."""
+    run = _single_pipeline_run("dag-ml", tmp_path)
+
+    def boom(pipeline, dataset_id, workspace_path, run_id, split_group_by=None, *, store_run_id=None, engine=None, should_stop=None):
+        raise RuntimeError("engine exploded")
+
+    monkeypatch.setattr(runs_api, "_runs", {"run-1": run})
+    monkeypatch.setattr(runs_api, "_save_run_manifest", lambda run: None)
+    monkeypatch.setattr(runs_api, "_open_run_store_repository", lambda ws: None)
+    monkeypatch.setattr(runs_api, "_execute_pipeline_training", boom)
+
+    result = runs_api._execute_run_job(
+        "run-1", SimpleNamespace(id="job-1", cancellation_requested=False), lambda progress, message: None,
+    )
+
+    assert result["status"] == "failed"
+    pipeline = run.datasets[0].pipelines[0]
+    assert pipeline.status == "failed"
+    assert "engine exploded" in (pipeline.error_message or "")
+    # The request is not silently lost just because the run crashed.
+    assert pipeline.engine_requested == "dag-ml"
+
+
+# ---------------------------------------------------------------------------
+# Group D — engine record round-trips through the persisted run manifest
+# ---------------------------------------------------------------------------
+
+def test_engine_record_round_trips_through_run_manifest(tmp_path):
+    """Saved manifest re-reads the engine, requested engine and diagnostics."""
+    import json
+
+    diagnostics = [{"verb": "run", "cause": "unsupported_shape", "message": "branch unsupported"}]
+    pipeline = runs_api.PipelineRun(
+        id="run-1-dataset-a-pipe-a",
+        pipeline_id="pipe-a",
+        pipeline_name="Pipeline A",
+        model="PLS",
+        preprocessing="SNV",
+        split_strategy="KFold(5)",
+        status="completed",
+        engine="legacy",
+        engine_requested="dag-ml",
+        engine_diagnostics=diagnostics,
+    )
+    run = runs_api.Run(
+        id="run-1",
+        name="Engine run",
+        engine="dag-ml",
+        datasets=[
+            runs_api.DatasetRun(dataset_id="dataset-a", dataset_name="Dataset A", pipelines=[pipeline])
+        ],
+        status="completed",
+        created_at="2026-07-01T10:00:00",
+        total_pipelines=1,
+        completed_pipelines=1,
+        workspace_path=str(tmp_path),
+    )
+
+    assert runs_api._save_run_manifest(run) is True
+
+    manifest_path = tmp_path / "runs" / "run-1" / "manifest.json"
+    with open(manifest_path, encoding="utf-8") as fh:
+        data = json.load(fh)
+
+    reloaded = runs_api.Run(**data)
+    assert reloaded.engine == "dag-ml"
+    reloaded_pipeline = reloaded.datasets[0].pipelines[0]
+    assert reloaded_pipeline.engine == "legacy"
+    assert reloaded_pipeline.engine_requested == "dag-ml"
+    assert reloaded_pipeline.engine_diagnostics == diagnostics
