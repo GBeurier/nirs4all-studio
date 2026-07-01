@@ -14,6 +14,7 @@ from typing import Any
 from ..shared.metrics_computer import (
     FAST_METRICS,
     MetricsComputer,
+    compute_spectral_statistics,
     get_available_metrics,
 )
 
@@ -29,22 +30,15 @@ def compute_statistics(X) -> dict[str, Any]:
     Returns:
         Statistics dict
     """
-    import numpy as np
+    stats = compute_spectral_statistics(X)
     return {
-        "mean": np.mean(X, axis=0).tolist(),
-        "std": np.std(X, axis=0).tolist(),
-        "min": np.min(X, axis=0).tolist(),
-        "max": np.max(X, axis=0).tolist(),
-        "p5": np.percentile(X, 5, axis=0).tolist(),
-        "p95": np.percentile(X, 95, axis=0).tolist(),
-        "global": {
-            "mean": float(np.mean(X)),
-            "std": float(np.std(X)),
-            "min": float(np.min(X)),
-            "max": float(np.max(X)),
-            "n_samples": X.shape[0],
-            "n_features": X.shape[1],
-        }
+        "mean": stats["mean"],
+        "std": stats["std"],
+        "min": stats["min"],
+        "max": stats["max"],
+        "p5": stats["p5"],
+        "p95": stats["p95"],
+        "global": stats["global"],
     }
 
 

@@ -7,6 +7,8 @@ Covers:
   ``max_wavelengths_returned`` query param trims the wavelength axis while the
   default keeps the full width.
 - The thread-offloaded ``get_spectra`` path (PERF-03) still returns correct data.
+- The W25 shared spectral-statistics helper backs both spectra and playground
+  statistics response shapes.
 
 ``api.shared`` is imported before ``api.spectra`` so this module is importable
 in isolation despite the pre-existing api.lazy_imports <-> api.shared load-order
@@ -25,6 +27,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import api.shared  # noqa: F401  (import first to satisfy load-order constraint)
 from api import spectra as spectra_module
+from api.playground import charts as charts_module
+from api.shared.metrics_computer import compute_spectral_statistics
 
 
 class _FakeSpectraDataset:
@@ -147,3 +151,120 @@ def test_get_spectra_no_decimation_when_cap_exceeds_width(monkeypatch):
     # Cap larger than the axis -> untouched.
     assert len(data["wavelengths"]) == 5
     assert data["spectra"] == X.tolist()
+
+
+def test_compute_spectral_statistics_canonical_values():
+    X = np.array(
+        [
+            [1.0, 10.0, 100.0],
+            [2.0, 20.0, 200.0],
+            [3.0, 30.0, 300.0],
+        ]
+    )
+
+    stats = compute_spectral_statistics(X)
+
+    np.testing.assert_allclose(stats["mean"], [2.0, 20.0, 200.0])
+    np.testing.assert_allclose(stats["std"], np.std(X, axis=0))
+    np.testing.assert_allclose(stats["min"], [1.0, 10.0, 100.0])
+    np.testing.assert_allclose(stats["max"], [3.0, 30.0, 300.0])
+    np.testing.assert_allclose(stats["p5"], np.percentile(X, 5, axis=0))
+    np.testing.assert_allclose(stats["p25"], np.percentile(X, 25, axis=0))
+    np.testing.assert_allclose(stats["p50"], [2.0, 20.0, 200.0])
+    np.testing.assert_allclose(stats["p75"], np.percentile(X, 75, axis=0))
+    np.testing.assert_allclose(stats["p95"], np.percentile(X, 95, axis=0))
+    assert stats["global"] == {
+        "mean": float(np.mean(X)),
+        "std": float(np.std(X)),
+        "min": float(np.min(X)),
+        "max": float(np.max(X)),
+        "n_samples": 3,
+        "n_features": 3,
+    }
+
+
+def test_playground_statistics_delegates_to_shared_helper(monkeypatch):
+    X = np.arange(6, dtype=float).reshape(2, 3)
+    called = {}
+
+    def fake_compute_spectral_statistics(arg):
+        called["shape"] = arg.shape
+        return {
+            "mean": ["mean"],
+            "std": ["std"],
+            "min": ["min"],
+            "max": ["max"],
+            "p5": ["p5"],
+            "p25": ["p25"],
+            "p50": ["p50"],
+            "p75": ["p75"],
+            "p95": ["p95"],
+            "global": {"n_samples": 2, "n_features": 3},
+        }
+
+    monkeypatch.setattr(charts_module, "compute_spectral_statistics", fake_compute_spectral_statistics)
+
+    data = charts_module.compute_statistics(X)
+
+    assert called["shape"] == (2, 3)
+    assert data == {
+        "mean": ["mean"],
+        "std": ["std"],
+        "min": ["min"],
+        "max": ["max"],
+        "p5": ["p5"],
+        "p95": ["p95"],
+        "global": {"n_samples": 2, "n_features": 3},
+    }
+
+
+def test_get_spectra_statistics_delegates_to_shared_helper(monkeypatch):
+    X = np.arange(6, dtype=float).reshape(2, 3)
+    dataset = _FakeSpectraDataset(X, headers=[1100.0, 1200.0, 1300.0])
+    called = {}
+
+    def fake_compute_spectral_statistics(arg):
+        called["shape"] = arg.shape
+        return {
+            "mean": ["mean"],
+            "std": ["std"],
+            "min": ["min"],
+            "max": ["max"],
+            "p5": ["p5"],
+            "p25": ["q1"],
+            "p50": ["median"],
+            "p75": ["q3"],
+            "p95": ["p95"],
+            "global": {
+                "mean": 1.0,
+                "std": 2.0,
+                "min": 3.0,
+                "max": 4.0,
+                "n_samples": 2,
+                "n_features": 3,
+            },
+        }
+
+    monkeypatch.setattr(spectra_module, "_load_dataset", lambda _id: dataset)
+    monkeypatch.setattr(spectra_module, "compute_spectral_statistics", fake_compute_spectral_statistics)
+
+    data = asyncio.run(spectra_module.get_spectra_statistics("ds", partition="train", source=0))
+
+    assert called["shape"] == (2, 3)
+    assert data["statistics"] == {
+        "mean": ["mean"],
+        "std": ["std"],
+        "min": ["min"],
+        "max": ["max"],
+        "median": ["median"],
+        "q1": ["q1"],
+        "q3": ["q3"],
+    }
+    assert data["global"] == {
+        "global_mean": 1.0,
+        "global_std": 2.0,
+        "global_min": 3.0,
+        "global_max": 4.0,
+        "num_samples": 2,
+        "num_features": 3,
+    }
