@@ -15,7 +15,14 @@ identical to the engine's and to ``api/evaluation.py``.
 
 from __future__ import annotations
 
+import asyncio
+import io
+from types import SimpleNamespace
+
 import numpy as np  # noqa: E402
+import pytest
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.testclient import TestClient
 
 # ``api.predict``'s first import is ``from .lazy_imports import get_cached``,
 # which makes ``lazy_imports`` the entry point of the lazy_imports <-> api.shared
@@ -41,10 +48,13 @@ class _FakeTaskType:
 
 
 class _FakeNirs4all:
-    def __init__(self, y_pred):
+    def __init__(self, y_pred, calls: list[dict[str, object]] | None = None):
         self._y_pred = y_pred
+        self._calls = calls
 
     def predict(self, **kwargs):
+        if self._calls is not None:
+            self._calls.append(dict(kwargs))
         return _FakePredictResult(self._y_pred)
 
 
@@ -215,3 +225,295 @@ def test_run_prediction_without_y_true_has_no_metrics(monkeypatch):
     response = predict_mod._run_prediction("chain123", "chain", np.zeros((3, 10)))
     assert response.metrics is None
     assert response.predictions == y_pred
+
+
+def test_predict_json_returns_runtime_without_forwarding_runtime_kwargs(monkeypatch, tmp_path):
+    calls: list[dict[str, object]] = []
+    workspace = SimpleNamespace(path=str(tmp_path))
+
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key: _FakeNirs4all([1.0, 2.0], calls) if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod.workspace_manager, "get_current_workspace", lambda: workspace
+    )
+
+    response = asyncio.run(
+        predict_mod.predict(
+            predict_mod.PredictRequest(
+                model_id="chain123",
+                model_source="chain",
+                data_source="array",
+                spectra=[[1.0, 2.0], [3.0, 4.0]],
+            )
+        )
+    )
+
+    assert response.predictions == [1.0, 2.0]
+    assert response.runtime["runtime_source"] == "python_oracle"
+    assert response.runtime["engine"] == "legacy"
+    assert calls[0]["chain_id"] == "chain123"
+    assert calls[0]["workspace_path"] == str(tmp_path)
+    assert np.asarray(calls[0]["data"]).tolist() == [[1.0, 2.0], [3.0, 4.0]]
+    assert "engine" not in calls[0]
+    assert "allow_fallback" not in calls[0]
+
+
+def test_predict_json_refuses_dagml_without_fallback(monkeypatch, tmp_path):
+    calls: list[dict[str, object]] = []
+    workspace = SimpleNamespace(path=str(tmp_path))
+
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key: _FakeNirs4all([1.0], calls) if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod.workspace_manager, "get_current_workspace", lambda: workspace
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            predict_mod.predict(
+                predict_mod.PredictRequest(
+                    model_id="chain123",
+                    model_source="chain",
+                    data_source="array",
+                    spectra=[[1.0, 2.0]],
+                    engine="dag-ml",
+                    allow_fallback=False,
+                )
+            )
+        )
+
+    assert exc_info.value.status_code == 501
+    assert exc_info.value.detail["cause"] == "unsupported_capability"
+    assert exc_info.value.detail["unsupported_capability"] == "dagml_predict"
+    assert calls == []
+
+
+def test_predict_json_dagml_fallback_records_python_oracle(monkeypatch, tmp_path):
+    calls: list[dict[str, object]] = []
+    workspace = SimpleNamespace(path=str(tmp_path))
+
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key: _FakeNirs4all([5.0], calls) if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod.workspace_manager, "get_current_workspace", lambda: workspace
+    )
+
+    response = asyncio.run(
+        predict_mod.predict(
+            predict_mod.PredictRequest(
+                model_id="chain123",
+                model_source="chain",
+                data_source="array",
+                spectra=[[1.0, 2.0]],
+                engine="dag-ml",
+                allow_fallback=True,
+            )
+        )
+    )
+
+    assert response.predictions == [5.0]
+    assert response.runtime["engine_requested"] == "dag-ml"
+    assert response.runtime["runtime_source"] == "python_oracle_fallback"
+    assert response.runtime["fallback_policy"]["allow_fallback"] is True
+    assert response.runtime["engine_diagnostics"][0]["unsupported_capability"] == "dagml_predict"
+    assert "engine" not in calls[0]
+    assert "allow_fallback" not in calls[0]
+
+
+def test_predict_file_threads_runtime_policy(monkeypatch, tmp_path):
+    calls: list[dict[str, object]] = []
+    workspace = SimpleNamespace(path=str(tmp_path))
+    upload = UploadFile(
+        filename="spectra.csv",
+        file=io.BytesIO(b"sample_id,w1,w2\ns1,1.0,2.0\ns2,3.0,4.0\n"),
+    )
+
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key: _FakeNirs4all([6.0, 7.0], calls) if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod.workspace_manager, "get_current_workspace", lambda: workspace
+    )
+
+    response = asyncio.run(
+        predict_mod.predict_from_file(
+            model_id="chain123",
+            model_source="chain",
+            engine="dag-ml",
+            allow_fallback=True,
+            file=upload,
+        )
+    )
+
+    assert response.predictions == [6.0, 7.0]
+    assert response.sample_ids == ["s1", "s2"]
+    assert response.runtime["runtime_source"] == "python_oracle_fallback"
+    assert response.runtime["engine_requested"] == "dag-ml"
+    assert np.asarray(calls[0]["data"]).tolist() == [[1.0, 2.0], [3.0, 4.0]]
+    assert "engine" not in calls[0]
+    assert "allow_fallback" not in calls[0]
+
+
+def _predict_test_client() -> TestClient:
+    app = FastAPI()
+    app.include_router(predict_mod.router, prefix="/api")
+    return TestClient(app)
+
+
+def test_predict_json_http_serializes_runtime(monkeypatch, tmp_path):
+    calls: list[dict[str, object]] = []
+    workspace = SimpleNamespace(path=str(tmp_path))
+
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key: _FakeNirs4all([8.0], calls) if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod.workspace_manager, "get_current_workspace", lambda: workspace
+    )
+
+    with _predict_test_client() as client:
+        response = client.post(
+            "/api/predict",
+            json={
+                "model_id": "chain123",
+                "model_source": "chain",
+                "data_source": "array",
+                "spectra": [[1.0, 2.0]],
+                "engine": "dag-ml",
+                "allow_fallback": True,
+            },
+        )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["predictions"] == [8.0]
+    assert payload["runtime"]["runtime_source"] == "python_oracle_fallback"
+    assert payload["runtime"]["engine_requested"] == "dag-ml"
+    assert calls[0]["chain_id"] == "chain123"
+    assert "engine" not in calls[0]
+    assert "allow_fallback" not in calls[0]
+
+
+def test_predict_json_http_bundle_serializes_runtime(monkeypatch, tmp_path):
+    calls: list[dict[str, object]] = []
+    workspace = SimpleNamespace(path=str(tmp_path))
+    bundle_path = tmp_path / "bundle.n4a"
+
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key: _FakeNirs4all([9.0], calls) if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod.workspace_manager, "get_current_workspace", lambda: workspace
+    )
+    monkeypatch.setattr(predict_mod, "_resolve_bundle_path", lambda _model_id: bundle_path)
+
+    with _predict_test_client() as client:
+        response = client.post(
+            "/api/predict",
+            json={
+                "model_id": "bundle",
+                "model_source": "bundle",
+                "data_source": "array",
+                "spectra": [[1.0, 2.0]],
+                "engine": "dag-ml",
+                "allow_fallback": True,
+            },
+        )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["predictions"] == [9.0]
+    assert payload["runtime"]["runtime_source"] == "python_oracle_fallback"
+    assert payload["runtime"]["engine_requested"] == "dag-ml"
+    assert calls[0]["model"] == str(bundle_path)
+    assert "engine" not in calls[0]
+    assert "allow_fallback" not in calls[0]
+
+
+def test_predict_json_http_refuses_dagml_without_fallback(monkeypatch, tmp_path):
+    calls: list[dict[str, object]] = []
+    workspace = SimpleNamespace(path=str(tmp_path))
+
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key: _FakeNirs4all([1.0], calls) if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod.workspace_manager, "get_current_workspace", lambda: workspace
+    )
+
+    with _predict_test_client() as client:
+        response = client.post(
+            "/api/predict",
+            json={
+                "model_id": "chain123",
+                "model_source": "chain",
+                "data_source": "array",
+                "spectra": [[1.0, 2.0]],
+                "engine": "dag-ml",
+                "allow_fallback": False,
+            },
+        )
+
+    payload = response.json()
+    assert response.status_code == 501
+    assert payload["detail"]["cause"] == "unsupported_capability"
+    assert payload["detail"]["unsupported_capability"] == "dagml_predict"
+    assert calls == []
+
+
+def test_predict_file_http_parses_runtime_policy(monkeypatch, tmp_path):
+    calls: list[dict[str, object]] = []
+    workspace = SimpleNamespace(path=str(tmp_path))
+
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key: _FakeNirs4all([6.0, 7.0], calls) if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod.workspace_manager, "get_current_workspace", lambda: workspace
+    )
+
+    with _predict_test_client() as client:
+        response = client.post(
+            "/api/predict/file",
+            data={
+                "model_id": "chain123",
+                "model_source": "chain",
+                "engine": "dag-ml",
+                "allow_fallback": "true",
+            },
+            files={
+                "file": (
+                    "spectra.csv",
+                    b"sample_id,w1,w2\ns1,1.0,2.0\ns2,3.0,4.0\n",
+                    "text/csv",
+                )
+            },
+        )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["sample_ids"] == ["s1", "s2"]
+    assert payload["runtime"]["runtime_source"] == "python_oracle_fallback"
+    assert payload["runtime"]["engine_requested"] == "dag-ml"
+    assert np.asarray(calls[0]["data"]).tolist() == [[1.0, 2.0], [3.0, 4.0]]
+    assert "engine" not in calls[0]
+    assert "allow_fallback" not in calls[0]
