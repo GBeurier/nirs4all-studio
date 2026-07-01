@@ -22,7 +22,7 @@ envelope; until then they are derived from the library's fallback warning.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -107,6 +107,13 @@ def _diagnostics_to_envelopes(diagnostics: Any) -> list[dict[str, Any]]:
     return envelopes
 
 
+def _runtime_field(value: Any, key: str) -> Any:
+    """Read a field from a runtime envelope shaped as JSON or an object."""
+    if isinstance(value, Mapping):
+        return value.get(key)
+    return getattr(value, key, None)
+
+
 def _rt_result_outcome(result: Any) -> dict[str, Any] | None:
     """Read engine + diagnostics from a W7 ``RtResult`` when available.
 
@@ -123,16 +130,13 @@ def _rt_result_outcome(result: Any) -> dict[str, Any] | None:
     except Exception:
         return None
 
-    manifest = getattr(rt_result, "manifest", None)
-    engine: Any = None
-    if isinstance(manifest, dict):
-        engine = manifest.get("engine")
-    elif manifest is not None:
-        engine = getattr(manifest, "engine", None)
+    manifest = _runtime_field(rt_result, "manifest")
+    engine = _runtime_field(manifest, "engine")
+    diagnostics = _runtime_field(rt_result, "diagnostics")
 
     return {
         "engine": engine,
-        "diagnostics": _diagnostics_to_envelopes(getattr(rt_result, "diagnostics", None)),
+        "diagnostics": _diagnostics_to_envelopes(diagnostics),
     }
 
 

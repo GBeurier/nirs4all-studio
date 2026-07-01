@@ -126,6 +126,34 @@ def test_finalize_prefers_w7_rt_result_when_present():
     assert record["engine_diagnostics"][0]["cause"] == "unsupported_shape"
 
 
+def test_finalize_reads_mapping_rt_result_contract():
+    """Studio accepts the JSON/native RtResult shape, not only Python objects."""
+
+    diagnostic = {
+        "verb": "run",
+        "cause": "unavailable_backend",
+        "message": "dag-ml unavailable; ran legacy",
+    }
+
+    class _Result:
+        def to_rt_result(self):  # noqa: ANN201
+            return {
+                "manifest": {
+                    "engine": "legacy",
+                    "fingerprints": {"score_set_hash": "sha256:test"},
+                },
+                "diagnostics": [diagnostic],
+            }
+
+    with runtime_engine.observe_engine("dag-ml") as observation:
+        warnings.warn("the dag-ml backend is not available; falling back to the legacy engine")
+    record = observation.finalize(result=_Result())
+
+    assert record["engine"] == "legacy"
+    assert record["engine_requested"] == "dag-ml"
+    assert record["engine_diagnostics"] == [diagnostic]
+
+
 def test_finalize_handles_broken_rt_result_gracefully():
     class _Result:
         def to_rt_result(self):  # noqa: ANN201
