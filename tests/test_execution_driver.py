@@ -49,8 +49,8 @@ def test_local_python_driver_builds_legacy_job_config_with_metadata():
         "fallback_policy": {
             "source": "nirs4all.run.allow_fallback",
             "engine_requested": None,
-            "allow_fallback": True,
-            "mode": "allow_fallback",
+            "allow_fallback": False,
+            "mode": "refuse_fallback",
         },
         "created_at": "2026-06-30T10:00:00",
         "metadata": {"source": "test"},
@@ -226,8 +226,8 @@ def test_local_python_driver_emits_records_for_injected_repository():
             "fallback_policy": {
                 "source": "nirs4all.run.allow_fallback",
                 "engine_requested": None,
-                "allow_fallback": True,
-                "mode": "allow_fallback",
+                "allow_fallback": False,
+                "mode": "refuse_fallback",
             },
             "metadata": {"source": "unit-test"},
         },
