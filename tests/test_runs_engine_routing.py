@@ -264,6 +264,58 @@ def test_create_run_route_threads_engine_to_started_run(monkeypatch, tmp_path):
     assert started_runs[0].engine == "dag-ml"
 
 
+@pytest.mark.parametrize("engine", ["dag-ml", None])
+def test_retry_run_preserves_requested_engine(monkeypatch, tmp_path, engine):
+    """Retrying a failed run re-runs on the originally requested engine.
+
+    Regression (B-017/B-018): ``retry_run`` built the retried ``Run`` without
+    threading ``engine``, so a ``dag-ml`` experiment was silently downgraded to
+    the library default engine on re-run. The requested engine must survive the
+    retry exactly as the other run-creation routes preserve it.
+    """
+    started_runs: list = []
+
+    failed_pipeline = runs_api.PipelineRun(
+        id="run-old-dataset-a-pipe-a",
+        pipeline_id="pipe-a",
+        pipeline_name="Pipeline A",
+        model="PLS",
+        preprocessing="SNV",
+        split_strategy="KFold(5)",
+        status="failed",
+    )
+    old_run = runs_api.Run(
+        id="run-old",
+        name="Engine run",
+        engine=engine,
+        datasets=[
+            runs_api.DatasetRun(
+                dataset_id="dataset-a", dataset_name="Dataset A", pipelines=[failed_pipeline]
+            )
+        ],
+        status="failed",
+        created_at="2026-07-01T10:00:00",
+        total_pipelines=1,
+        completed_pipelines=0,
+        workspace_path=str(tmp_path),
+    )
+
+    monkeypatch.setattr(runs_api, "_ensure_runs_loaded", lambda: None)
+    monkeypatch.setattr(runs_api, "_runs", {"run-old": old_run})
+    monkeypatch.setattr(runs_api, "_start_run_job", lambda run: started_runs.append(run))
+
+    app = FastAPI()
+    app.include_router(runs_api.router, prefix="/api")
+    with TestClient(app) as client:
+        response = client.post("/api/runs/run-old/retry")
+
+    assert response.status_code == 200, response.text
+    # The retried run carries the original experiment's requested engine.
+    assert response.json()["engine"] == engine
+    assert len(started_runs) == 1
+    assert started_runs[0].engine == engine
+
+
 # ---------------------------------------------------------------------------
 # Group C — job loop records the engine outcome + persists the request on failure
 # ---------------------------------------------------------------------------
