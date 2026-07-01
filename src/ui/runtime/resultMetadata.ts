@@ -114,6 +114,14 @@ function runtimeManifestCandidates(records: readonly Record<string, unknown>[]):
   return uniqueRecords(records.map(record => readRecordField(record, ["manifest"])));
 }
 
+function runtimeConfigCandidates(records: readonly Record<string, unknown>[]): Record<string, unknown>[] {
+  return uniqueRecords(records.map(record => readRecordField(record, ["config"])));
+}
+
+function runtimeFallbackPolicyCandidates(records: readonly Record<string, unknown>[]): Record<string, unknown>[] {
+  return uniqueRecords(records.map(record => readRecordField(record, ["fallback_policy", "fallbackPolicy"])));
+}
+
 function readStringFromCandidates(
   candidates: readonly Record<string, unknown>[],
   keys: readonly string[],
@@ -232,11 +240,17 @@ function resolveRuntimeEngineTone(engine: string | null, isFallback: boolean): R
   return "default";
 }
 
+function normalizeRuntimeEngineToken(value: string): string {
+  return value.trim().toLowerCase().replace(/_/g, "-");
+}
+
 export function buildRuntimeEngineStatus(source: unknown): RuntimeEngineStatusView | null {
   const candidates = runtimeRecordCandidates(source);
   if (candidates.length === 0) return null;
 
   const manifests = runtimeManifestCandidates(candidates);
+  const configs = runtimeConfigCandidates(candidates);
+  const fallbackPolicies = runtimeFallbackPolicyCandidates([...candidates, ...configs]);
   const actualEngine = readStringFromCandidates(candidates, [
     "engine_actual",
     "actual_engine",
@@ -251,13 +265,28 @@ export function buildRuntimeEngineStatus(source: unknown): RuntimeEngineStatusVi
     "requested_engine",
     "engineRequested",
     "requestedEngine",
+  ]) ?? readStringFromCandidates(configs, [
+    "engine_requested",
+    "requested_engine",
+    "engineRequested",
+    "requestedEngine",
+    "engine",
+  ]) ?? readStringFromCandidates(fallbackPolicies, [
+    "engine_requested",
+    "requested_engine",
+    "engineRequested",
+    "requestedEngine",
   ]);
   const engine = actualEngine ?? envelopeEngine ?? directEngine;
 
   if (!engine && !requestedEngine) return null;
 
   const diagnostics = normalizeRuntimeDiagnostics(source);
-  const isFallback = Boolean(engine && requestedEngine && engine !== requestedEngine);
+  const isFallback = Boolean(
+    engine
+    && requestedEngine
+    && normalizeRuntimeEngineToken(engine) !== normalizeRuntimeEngineToken(requestedEngine),
+  );
   const engineLabel = engine ? formatRuntimeTokenLabel(engine) : null;
   const requestedEngineLabel = requestedEngine ? formatRuntimeTokenLabel(requestedEngine) : null;
   const badgeLabel = isFallback

@@ -305,6 +305,8 @@ describe("experimentLaunchPayload", () => {
       selectedGroupingPayload: { d1: null },
       strictCampaignSpecs,
       executionAdapter: CLUSTER_EXPERIMENT_EXECUTION_ADAPTER,
+      runtimeEngine: "dag-ml",
+      allowFallback: true,
       missingIssues: [
         {
           type: "missing_module",
@@ -320,6 +322,8 @@ describe("experimentLaunchPayload", () => {
     expect(plan.currentSubmissionKind).toBe("native_payload");
     expect(plan.legacyConfig).toMatchObject({
       execution_backend: "cluster",
+      engine: "dag-ml",
+      allow_fallback: true,
       dataset_ids: ["d1"],
       pipeline_ids: [],
       inline_pipeline: {
@@ -339,6 +343,8 @@ describe("experimentLaunchPayload", () => {
     ]);
     expect(plan.nativePayload.legacyConfig).toBe(plan.legacyConfig);
     expect(plan.nativePayload.legacyConfig.execution_backend).toBe("cluster");
+    expect(plan.nativePayload.legacyConfig.engine).toBe("dag-ml");
+    expect(plan.nativePayload.legacyConfig.allow_fallback).toBe(true);
     expect(plan.nativePayload.strictCampaignSpecs).toBe(plan.strictCampaignSpecs);
   });
 

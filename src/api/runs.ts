@@ -144,6 +144,8 @@ export interface QuickRunRequest {
   export_model?: boolean;
   cv_folds?: number;
   random_state?: number;
+  engine?: string | null;
+  allow_fallback?: boolean;
   split_group_by_by_dataset?: SplitGroupByByDataset;
   inline_pipeline?: InlinePipelinePayload;
 }

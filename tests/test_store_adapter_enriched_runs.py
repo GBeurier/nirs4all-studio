@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -383,6 +384,66 @@ def test_get_enriched_runs_infers_runtime_config_from_expanded_pipeline():
     assert run_config["cv_folds"] == 4
     assert run_config["random_state"] == 42
     assert run_config["shuffle"] is True
+
+
+def test_get_enriched_runs_exposes_runtime_status_from_config_and_pipelines():
+    diagnostic = {
+        "verb": "run",
+        "cause": "unsupported_shape",
+        "message": "dag-ml does not support this pipeline shape",
+        "mitigation": "Run on engine='legacy'.",
+    }
+    fallback_policy = {
+        "source": "nirs4all.run.allow_fallback",
+        "engine_requested": "dag-ml",
+        "allow_fallback": True,
+        "mode": "allow_fallback",
+    }
+    mock_store = _build_mock_store(
+        run_rows=[
+            {
+                "run_id": "run-runtime-status-001",
+                "name": "Runtime Status Run",
+                "status": "completed",
+                "project_id": None,
+                "created_at": datetime(2026, 4, 18, 10, 0, tzinfo=UTC),
+                "completed_at": datetime(2026, 4, 18, 10, 5, tzinfo=UTC),
+                "datasets": '[{"name":"dataset_a","n_samples":20,"n_features":6}]',
+                "config": json.dumps({
+                    "requested_engine": "dag-ml",
+                    "fallback_policy": fallback_policy,
+                }),
+                "error": None,
+            }
+        ],
+        pipelines_by_run={
+            "run-runtime-status-001": [
+                {
+                    "run_id": "run-runtime-status-001",
+                    "pipeline_id": "pipe-runtime-status-001",
+                    "name": "Runtime fallback pipeline",
+                    "expanded_config": None,
+                    "engine": "legacy",
+                    "engine_requested": "dag-ml",
+                    "engine_diagnostics": json.dumps([diagnostic]),
+                    "fallback_policy": json.dumps(fallback_policy),
+                }
+            ]
+        },
+        chain_rows_by_run={"run-runtime-status-001": []},
+    )
+
+    adapter = _make_adapter(mock_store)
+    result = adapter.get_enriched_runs()
+
+    run = result["runs"][0]
+    assert run["engine"] == "legacy"
+    assert run["engine_requested"] == "dag-ml"
+    assert run["engine_diagnostics"] == [diagnostic]
+    assert run["fallback_policy"] == fallback_policy
+    assert run["allow_fallback"] is True
+    assert run["config"]["requested_engine"] == "dag-ml"
+    assert run["config"]["fallback_policy"] == fallback_policy
 
 
 def test_get_enriched_runs_ignores_repr_style_refit_splitter_when_inferring_cv_config():
