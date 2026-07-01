@@ -34,7 +34,8 @@ import {
   Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PipelineRun, RunStatus, runStatusConfig } from "@/types/runs";
+import { getRuntimeResultStatusDisplay } from "@/ui/runtime";
+import type { PipelineRun, RunStatus } from "@/types/runs";
 
 interface PipelineDetailSheetProps {
   pipeline: PipelineRun | null;
@@ -53,9 +54,9 @@ const statusIcons = {
 
 const StatusIcon = ({ status }: { status: RunStatus }) => {
   const Icon = statusIcons[status];
-  const config = runStatusConfig[status];
+  const statusDisplay = getRuntimeResultStatusDisplay(status);
   return (
-    <Icon className={cn("h-4 w-4", config.color, config.iconClass)} />
+    <Icon className={cn("h-4 w-4", statusDisplay.colorClass, statusDisplay.iconClass)} />
   );
 };
 
@@ -95,6 +96,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
   if (!pipeline) return null;
 
   const logs = getMockLogs(pipeline);
+  const statusDisplay = getRuntimeResultStatusDisplay(pipeline.status);
 
   // Build pipeline JSON for display
   const pipelineJson = JSON.stringify({
@@ -120,7 +122,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
         <SheetHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className={cn("p-2 rounded-lg", runStatusConfig[pipeline.status].bg)}>
+              <div className={cn("p-2 rounded-lg", statusDisplay.bgClass)}>
                 <StatusIcon status={pipeline.status} />
               </div>
               <div>
@@ -133,7 +135,7 @@ export function PipelineDetailSheet({ pipeline, datasetName, open, onOpenChange 
               </div>
             </div>
             <Badge variant={pipeline.status === "completed" ? "default" : "secondary"}>
-              {runStatusConfig[pipeline.status].label}
+              {statusDisplay.label}
             </Badge>
           </div>
 

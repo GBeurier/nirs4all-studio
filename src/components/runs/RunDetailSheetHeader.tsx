@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/sheet";
 import { buildRunStorageArtifactMetadata } from "@/lib/runs/pageData";
 import { cn } from "@/lib/utils";
-import { runStatusConfig, type RunStatus } from "@/types/runs";
+import type { RunStatus } from "@/types/runs";
 import type { EnrichedRun, WorkspaceRunDetail } from "@/types/enriched-runs";
 import { formatDatetime, formatDuration } from "./runDetailUtils";
 import {
@@ -45,7 +45,7 @@ const statusIcons: Record<RunStatus, LucideIcon> = {
 function StatusIcon({ status }: { status: string }) {
   if (!isKnownRunStatus(status)) return null;
   const Icon = statusIcons[status];
-  const config = runStatusConfig[status];
+  const config = getRunStatusConfig(status);
   return <Icon className={cn("h-4 w-4", config.color, config.iconClass)} />;
 }
 
