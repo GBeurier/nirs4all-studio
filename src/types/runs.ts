@@ -112,6 +112,8 @@ export interface PipelineRun {
   fold_metrics?: Record<number, RunMetrics>; // Per-fold metrics
   artifact_refs?: unknown[];
   artifactRefs?: unknown[];
+  native_result_refs?: unknown[] | null;
+  nativeResultRefs?: unknown[] | null;
   rt_result?: unknown;
   runtime_result?: unknown;
   native_results?: unknown;

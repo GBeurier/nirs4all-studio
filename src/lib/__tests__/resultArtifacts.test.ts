@@ -431,6 +431,77 @@ describe("resultArtifacts", () => {
     });
   });
 
+  it("normalizes native_result_refs into native result artifact refs", () => {
+    const refs = buildPipelineRunArtifactRefs({
+      ...pipeline({
+        metrics: undefined,
+        val_score: null,
+        test_score: null,
+        score: null,
+      }),
+      native_result_refs: [
+        {
+          source: "native_results",
+          role: "run_dir",
+          artifact_type: "native_results_dir",
+          run_id: "native-run",
+          path: "/tmp/nirs4all_results/native-run",
+          manifest_path: "/tmp/nirs4all_results/native-run/manifest.json",
+        },
+        {
+          source: "rt_result",
+          role: "model_artifact",
+          artifact_type: "native_artifact_ref",
+          artifact_id: "artifact:model:compat.1:nirs4all:refit:variant:base",
+          uri: "artifacts/model.joblib",
+          backend: "joblib",
+          kind: "model",
+          content_fingerprint: "sha256:model",
+        },
+      ],
+    });
+
+    expect(refs).toHaveLength(2);
+    expect(refs[0]).toMatchObject({
+      id: "native-result:run-pipeline:run_dir:%2Ftmp%2Fnirs4all_results%2Fnative-run",
+      kind: "native_result",
+      role: "run_dir",
+      label: "Native results directory",
+      source: "native-results",
+      scope: "run",
+      status: "available",
+      runId: "run-pipeline",
+      pipelineId: "pipe-1",
+      format: "directory",
+      metadata: {
+        source: "native_results",
+        artifactType: "native_results_dir",
+        nativeRunId: "native-run",
+        path: "/tmp/nirs4all_results/native-run",
+        manifestPath: "/tmp/nirs4all_results/native-run/manifest.json",
+      },
+    });
+    expect(refs[1]).toMatchObject({
+      kind: "model",
+      role: "model_artifact",
+      label: "Native model artifact",
+      source: "native-results",
+      scope: "model",
+      status: "available",
+      artifactId: "artifact:model:compat.1:nirs4all:refit:variant:base",
+      runId: "run-pipeline",
+      pipelineId: "pipe-1",
+      format: "joblib",
+      contentAddress: "sha256:model",
+      metadata: {
+        source: "rt_result",
+        artifactType: "native_artifact_ref",
+        uri: "artifacts/model.joblib",
+        backend: "joblib",
+      },
+    });
+  });
+
   it("projects prediction-record model artifacts without marking aggregated refits as exportable", () => {
     const refs = buildPredictionRecordModelArtifactRefs(prediction({
       id: "pred-final-agg",

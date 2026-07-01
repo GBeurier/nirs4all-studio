@@ -285,6 +285,70 @@ describe("resultDetailData", () => {
     });
   });
 
+  it("surfaces native result refs in detail summaries", () => {
+    const pipelineWithNativeRefs = pipeline({
+      metrics: undefined,
+      val_score: null,
+      test_score: null,
+      score: null,
+      native_result_refs: [
+        {
+          source: "native_results",
+          role: "run_dir",
+          artifact_type: "native_results_dir",
+          run_id: "native-run",
+          path: "/tmp/nirs4all_results/native-run",
+        },
+        {
+          source: "rt_result",
+          role: "model_artifact",
+          artifact_type: "native_artifact_ref",
+          artifact_id: "artifact:model",
+          uri: "artifacts/model.joblib",
+          backend: "joblib",
+          kind: "model",
+        },
+      ],
+    });
+
+    expect(buildResultArtifactSummary(pipelineWithNativeRefs)).toEqual({
+      totalCount: 2,
+      totalCountLabel: "2 artifacts",
+      kindItems: [
+        { id: "kind:model", label: "Model", artifactCountLabel: "1 artifact" },
+        { id: "kind:native_result", label: "Native result", artifactCountLabel: "1 artifact" },
+      ],
+      statusItems: [
+        { id: "status:available", label: "Available", artifactCountLabel: "2 artifacts" },
+      ],
+      groups: [
+        {
+          id: "source-scope:native-results:run",
+          label: "Native results / Run",
+          sourceLabel: "Native results",
+          scopeLabel: "Run",
+          artifactCountLabel: "1 artifact",
+          artifactLabels: ["Native results directory"],
+        },
+        {
+          id: "source-scope:native-results:model",
+          label: "Native results / Model",
+          sourceLabel: "Native results",
+          scopeLabel: "Model",
+          artifactCountLabel: "1 artifact",
+          artifactLabels: ["Native model artifact"],
+        },
+      ],
+      repositoryItems: [],
+    });
+
+    expect(buildResultNativeResultsSummary(pipelineWithNativeRefs)).toEqual({
+      artifactCount: 2,
+      artifactCountLabel: "2 artifacts",
+      hasNativeResults: true,
+    });
+  });
+
   it("prefers real logs and falls back to status-specific generated logs", () => {
     expect(getResultExecutionLogs(pipeline({ logs: ["actual log"] }))).toEqual(["actual log"]);
     expect(getResultExecutionLogs(pipeline({ status: "queued", logs: [] }))).toEqual(["[INFO] Waiting in queue..."]);
