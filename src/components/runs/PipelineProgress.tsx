@@ -13,8 +13,8 @@ import {
 } from "@/lib/run-progress-display";
 import type { GranularProgress } from "@/lib/run-progress";
 import { cn } from "@/lib/utils";
+import { getRuntimeResultStatusDisplay } from "@/ui/runtime";
 import type { PipelineRun } from "@/types/runs";
-import { runStatusConfig } from "@/types/runs";
 
 import { StatusBadge } from "./StatusBadge";
 import { statusIcons } from "./statusIcons";
@@ -33,7 +33,7 @@ export function PipelineProgress({
   granularProgress?: GranularProgress;
 }) {
   const Icon = statusIcons[pipeline.status];
-  const config = runStatusConfig[pipeline.status];
+  const statusDisplay = getRuntimeResultStatusDisplay(pipeline.status);
   const chainLabel = formatPipelineChainLabel(pipeline.preprocessing, pipeline.pipeline_name, pipeline.model);
   const fitCount = getPipelineFitCount(pipeline);
   const foldCount = getPipelineFoldCount(pipeline);
@@ -64,8 +64,8 @@ export function PipelineProgress({
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className={cn("p-2 rounded-lg", config.bg)}>
-              <Icon className={cn("h-4 w-4", config.color, config.iconClass)} />
+            <div className={cn("p-2 rounded-lg", statusDisplay.bgClass)}>
+              <Icon className={cn("h-4 w-4", statusDisplay.colorClass, statusDisplay.iconClass)} />
             </div>
             <div className="min-w-0">
               <h4 className="font-medium">{primarySummary}</h4>
