@@ -23,7 +23,7 @@ from .logger import get_logger
 
 logger = get_logger(__name__)
 
-from ..lazy_imports import get_cached
+from ..lazy_imports import get_cached, is_ml_ready
 
 SCIPY_AVAILABLE = True
 NIRS4ALL_FILTERS_AVAILABLE = True
@@ -80,12 +80,73 @@ FAST_METRICS = AMPLITUDE_METRICS + ENERGY_METRICS + QUALITY_METRICS + ['hf_varia
 ALL_METRICS = AMPLITUDE_METRICS + ENERGY_METRICS + SHAPE_METRICS + NOISE_METRICS + QUALITY_METRICS + CHEMOMETRIC_METRICS
 
 
-def compute_spectral_statistics(X) -> dict[str, Any]:
-    """Compute shared per-wavelength and global spectral statistics.
+def _as_mapping(stats: Any) -> dict[str, Any]:
+    """Return a plain mapping for runtime statistics objects."""
+    if isinstance(stats, dict):
+        return stats
+    if hasattr(stats, "model_dump"):
+        return stats.model_dump()
+    if hasattr(stats, "to_dict"):
+        return stats.to_dict()
+    raise TypeError(f"Unsupported spectral statistics result: {type(stats)!r}")
 
-    The Studio backend exposes these statistics through multiple route shapes.
-    Keep the numerical work here so those routes only adapt the response schema.
-    """
+
+def _as_json_value(value: Any) -> Any:
+    """Convert NumPy-like containers/scalars from the runtime to JSON values."""
+    if hasattr(value, "tolist"):
+        return value.tolist()
+    if hasattr(value, "item"):
+        return value.item()
+    if isinstance(value, tuple):
+        return list(value)
+    return value
+
+
+def _field(stats: dict[str, Any], *names: str) -> Any:
+    for name in names:
+        if name in stats:
+            return _as_json_value(stats[name])
+    raise KeyError(names[0])
+
+
+def _normalize_spectral_statistics(stats: Any, X: Any) -> dict[str, Any]:
+    """Normalize runtime/core statistics to Studio's existing response schema."""
+    mapping = _as_mapping(stats)
+    global_stats = dict(_as_json_value(mapping.get("global", {})) or {})
+
+    shape = getattr(X, "shape", None)
+    if shape is not None and len(shape) >= 2:
+        global_stats.setdefault("n_samples", int(shape[0]))
+        global_stats.setdefault("n_features", int(shape[1]))
+
+    return {
+        "mean": _field(mapping, "mean"),
+        "std": _field(mapping, "std"),
+        "min": _field(mapping, "min"),
+        "max": _field(mapping, "max"),
+        "p5": _field(mapping, "p5", "q05", "percentile_5"),
+        "p25": _field(mapping, "p25", "q1", "percentile_25"),
+        "p50": _field(mapping, "p50", "median", "percentile_50"),
+        "p75": _field(mapping, "p75", "q3", "percentile_75"),
+        "p95": _field(mapping, "p95", "q95", "percentile_95"),
+        "global": {key: _as_json_value(value) for key, value in global_stats.items()},
+    }
+
+
+def _compute_spectral_statistics_runtime(X: Any) -> dict[str, Any] | None:
+    """Compute spectra statistics through the nirs4all core helper when present."""
+    if not is_ml_ready():
+        return None
+
+    helper = get_cached("compute_spectral_statistics", optional=True)
+    if not callable(helper):
+        return None
+
+    return _normalize_spectral_statistics(helper(X), X)
+
+
+def _compute_spectral_statistics_studio(X: Any) -> dict[str, Any]:
+    """Fallback implementation for older nirs4all versions without the helper."""
     import numpy as np
 
     X_arr = np.asarray(X)
@@ -110,6 +171,19 @@ def compute_spectral_statistics(X) -> dict[str, Any]:
             "n_features": X_arr.shape[1],
         },
     }
+
+
+def compute_spectral_statistics(X) -> dict[str, Any]:
+    """Compute shared per-wavelength and global spectral statistics.
+
+    The Studio backend exposes these statistics through multiple route shapes.
+    Prefer the nirs4all core helper so route results follow runtime semantics;
+    keep the local calculation only for older runtimes that do not expose it.
+    """
+    runtime_stats = _compute_spectral_statistics_runtime(X)
+    if runtime_stats is not None:
+        return runtime_stats
+    return _compute_spectral_statistics_studio(X)
 
 
 class MetricsComputer:
