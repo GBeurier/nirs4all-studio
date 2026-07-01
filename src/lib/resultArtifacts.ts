@@ -13,7 +13,8 @@ export type ResultArtifactKind =
   | "benchmark_metrics"
   | "shap_explanation"
   | "optuna_study"
-  | "repository_entry";
+  | "repository_entry"
+  | "native_result";
 
 export type ResultArtifactSource =
   | "pipeline-run"
@@ -23,6 +24,7 @@ export type ResultArtifactSource =
   | "prediction-arrays"
   | "benchmark-export"
   | "result-repository"
+  | "native-results"
   | "cluster-run"
   | "generated";
 
@@ -48,6 +50,7 @@ export const resultArtifactKindOrder = [
   "shap_explanation",
   "optuna_study",
   "repository_entry",
+  "native_result",
 ] as const satisfies readonly ResultArtifactKind[];
 
 export const resultArtifactStatusOrder = [
@@ -65,6 +68,7 @@ export const resultArtifactSourceOrder = [
   "prediction-arrays",
   "benchmark-export",
   "result-repository",
+  "native-results",
   "cluster-run",
   "generated",
 ] as const satisfies readonly ResultArtifactSource[];
@@ -294,6 +298,7 @@ const resultArtifactKindLabels: Record<ResultArtifactKind, string> = {
   shap_explanation: "SHAP explanation",
   optuna_study: "Optuna study",
   repository_entry: "Repository entry",
+  native_result: "Native result",
 };
 
 const resultArtifactStatusLabels: Record<ResultArtifactStatus, string> = {
@@ -311,6 +316,7 @@ const resultArtifactSourceLabels: Record<ResultArtifactSource, string> = {
   "prediction-arrays": "Prediction arrays",
   "benchmark-export": "Benchmark export",
   "result-repository": "Result repository",
+  "native-results": "Native results",
   "cluster-run": "Cluster run",
   generated: "Generated",
 };
@@ -636,6 +642,8 @@ function pipelineMetricKeys(pipeline: PipelineRun): string[] {
 interface PipelineRunArtifactRefsCarrier {
   artifactRefs?: unknown;
   artifact_refs?: unknown;
+  nativeResultRefs?: unknown;
+  native_result_refs?: unknown;
 }
 
 function attachedPipelineRunArtifactPayloads(pipeline: PipelineRun): unknown[] {
@@ -643,6 +651,13 @@ function attachedPipelineRunArtifactPayloads(pipeline: PipelineRun): unknown[] {
   const artifactRefs = Array.isArray(carrier.artifactRefs) ? carrier.artifactRefs : [];
   const artifactRefsSnakeCase = Array.isArray(carrier.artifact_refs) ? carrier.artifact_refs : [];
   return [...artifactRefs, ...artifactRefsSnakeCase];
+}
+
+function nativePipelineRunArtifactPayloads(pipeline: PipelineRun): unknown[] {
+  const carrier = pipeline as PipelineRun & PipelineRunArtifactRefsCarrier;
+  const nativeResultRefs = Array.isArray(carrier.nativeResultRefs) ? carrier.nativeResultRefs : [];
+  const nativeResultRefsSnakeCase = Array.isArray(carrier.native_result_refs) ? carrier.native_result_refs : [];
+  return [...nativeResultRefs, ...nativeResultRefsSnakeCase];
 }
 
 function normalizeAttachedPipelineRunArtifactRef(
@@ -699,6 +714,86 @@ function normalizeAttachedPipelineRunArtifactRef(
 function buildAttachedPipelineRunArtifactRefs(pipeline: PipelineRun): ResultArtifactRef[] {
   return attachedPipelineRunArtifactPayloads(pipeline)
     .map((rawRef, index) => normalizeAttachedPipelineRunArtifactRef(rawRef, index, pipeline))
+    .filter((ref): ref is ResultArtifactRef => ref != null);
+}
+
+function normalizeNativePipelineRunArtifactRef(
+  rawRef: unknown,
+  index: number,
+  pipeline: PipelineRun,
+): ResultArtifactRef | null {
+  if (!isRecord(rawRef)) return null;
+
+  const rawMetadata = isRecord(rawRef.metadata) ? { ...rawRef.metadata } : {};
+  const rawSource = readStringField(rawRef, ["source"]) ?? readStringField(rawMetadata, ["source"]);
+  const artifactType = readStringField(rawRef, ["artifactType", "artifact_type"]) ?? readStringField(rawMetadata, ["artifactType", "artifact_type"]);
+  const artifactId = readStringField(rawRef, ["artifactId", "artifact_id"]) ?? readStringField(rawMetadata, ["artifactId", "artifact_id"]);
+  const contentAddress = readStringField(rawRef, [
+    "contentAddress",
+    "content_address",
+    "contentFingerprint",
+    "content_fingerprint",
+  ]) ?? readStringField(rawMetadata, ["contentAddress", "content_address", "contentFingerprint", "content_fingerprint"]);
+  const path = readStringField(rawRef, ["path"]) ?? readStringField(rawMetadata, ["path"]);
+  const manifestPath = readStringField(rawRef, ["manifestPath", "manifest_path"]) ?? readStringField(rawMetadata, ["manifestPath", "manifest_path"]);
+  const uri = readStringField(rawRef, ["uri"]) ?? readStringField(rawMetadata, ["uri"]);
+  const backend = readStringField(rawRef, ["backend"]) ?? readStringField(rawMetadata, ["backend"]);
+  const nativeRunId = readStringField(rawRef, ["runId", "run_id"]) ?? readStringField(rawMetadata, ["runId", "run_id"]);
+  const role = readStringField(rawRef, ["role"]) ?? artifactType ?? "native-result";
+  const rawKind = readStringField(rawRef, ["kind"]);
+  const kind = enumValue(rawKind, resultArtifactKindOrder) ?? "native_result";
+  const scope = enumValue(rawRef.scope, resultArtifactScopeOrder)
+    ?? (artifactType === "native_results_dir" || role === "run_dir"
+      ? "run"
+      : kind === "model"
+        ? "model"
+        : "run");
+  const hasDurablePointer = !!(artifactId || path || manifestPath || uri || contentAddress);
+  const status = enumValue(rawRef.status, resultArtifactStatusOrder) ?? (hasDurablePointer ? "available" : "virtual");
+  const format = readStringField(rawRef, ["format"]) ?? backend ?? (artifactType === "native_results_dir" ? "directory" : undefined);
+  const label = readStringField(rawRef, ["label", "name"])
+    ?? (artifactType === "native_results_dir" || role === "run_dir"
+      ? "Native results directory"
+      : kind === "native_result"
+        ? "Native result artifact"
+        : `Native ${getResultArtifactKindLabel(kind).toLowerCase()} artifact`);
+  const id = readStringField(rawRef, ["id"]) ?? buildResultArtifactRefId([
+    "native-result",
+    pipeline.id,
+    role,
+    artifactId ?? uri ?? path ?? manifestPath ?? contentAddress ?? index,
+  ]);
+
+  return {
+    id,
+    kind,
+    role,
+    label,
+    source: "native-results",
+    scope,
+    status,
+    artifactId,
+    runId: pipeline.id,
+    pipelineId: pipeline.pipeline_id,
+    format,
+    contentAddress,
+    metadata: definedMetadata({
+      ...rawMetadata,
+      source: rawSource ?? rawMetadata.source ?? "native_result_refs",
+      artifactType,
+      nativeRunId,
+      path,
+      manifestPath,
+      uri,
+      backend,
+      rawKind: rawKind && !enumValue(rawKind, resultArtifactKindOrder) ? rawKind : undefined,
+    }),
+  };
+}
+
+function buildNativePipelineRunArtifactRefs(pipeline: PipelineRun): ResultArtifactRef[] {
+  return nativePipelineRunArtifactPayloads(pipeline)
+    .map((rawRef, index) => normalizeNativePipelineRunArtifactRef(rawRef, index, pipeline))
     .filter((ref): ref is ResultArtifactRef => ref != null);
 }
 
@@ -774,6 +869,7 @@ export function buildPipelineRunArtifactRefs(pipeline: PipelineRun): ResultArtif
   }
 
   refs.push(...buildAttachedPipelineRunArtifactRefs(pipeline));
+  refs.push(...buildNativePipelineRunArtifactRefs(pipeline));
 
   return dedupeResultArtifactRefs(refs);
 }

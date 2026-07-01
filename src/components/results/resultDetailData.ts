@@ -341,10 +341,13 @@ export function buildResultArtifactSummary(pipeline: PipelineRun): ResultArtifac
 function isNativeResultArtifactRef(ref: ResultArtifactRef): boolean {
   const source = typeof ref.metadata?.source === "string" ? ref.metadata.source : null;
   return (
-    ref.source === "result-repository"
+    ref.source === "native-results"
+    || ref.source === "result-repository"
     || ref.source === "cluster-run"
     || ref.kind === "repository_entry"
     || source === "native_results"
+    || source === "native_result_refs"
+    || source === "rt_result"
   );
 }
 
