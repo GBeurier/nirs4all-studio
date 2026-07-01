@@ -17,6 +17,7 @@ from typing import Any
 
 from ..shared.filter_operators import instantiate_filter
 from ..shared.pipeline_service import instantiate_operator
+from ..shared.preprocessing_runtime import apply_preprocessing_chain
 from .models import PlaygroundStep, SamplingOptions
 
 
@@ -70,49 +71,14 @@ def execute_preprocessing(step: PlaygroundStep, X, wavelengths=None, y=None):
     Returns:
         Transformed data
     """
-    import inspect
-
-    import numpy as np
-
-    params = dict(step.params)
-
-    # Resampler: convert n_points to target_wavelengths using current wavelengths
-    if step.name == "Resampler" and wavelengths is not None:
-        wl_arr = np.asarray(wavelengths, dtype=float)
-        n_points = int(params.pop("n_points", X.shape[1]))
-        params["target_wavelengths"] = np.linspace(wl_arr.min(), wl_arr.max(), n_points)
-
-    operator = instantiate_operator(step.name, params, "preprocessing")
-    if operator is None:
-        raise ValueError(f"Unknown preprocessing operator: {step.name}")
-
-    # Build fit_transform kwargs dynamically:
-    # - wavelengths for SpectraTransformerMixin subclasses / Resampler
-    # - y for operators whose fit_transform signature declares it
-    requires_wl = getattr(operator, "_requires_wavelengths", False)
-    needs_wl = requires_wl or step.name == "Resampler"
-
-    ft_kwargs = {}
-    try:
-        sig = inspect.signature(operator.fit_transform)
-        if "y" in sig.parameters and y is not None:
-            ft_kwargs["y"] = y
-    except (TypeError, ValueError):
-        pass
-
-    if needs_wl and wavelengths is not None:
-        ft_kwargs["wavelengths"] = wavelengths
-
-    result = operator.fit_transform(X, **ft_kwargs)
-
-    # Some sklearn transformers (e.g. text/encoder-like operators) return
-    # scipy sparse matrices. The rest of the playground pipeline assumes a
-    # dense numpy array (uses .tolist(), slicing, np.mean, etc.), so densify
-    # eagerly here.
-    if hasattr(result, "toarray") and not isinstance(result, np.ndarray):
-        result = result.toarray()
-
-    return result
+    transformed, _applied_steps = apply_preprocessing_chain(
+        X,
+        [step],
+        wavelengths=wavelengths,
+        y=y,
+        strict=True,
+    )
+    return transformed
 
 
 def execute_augmentation(step: PlaygroundStep, X, y, wavelengths=None, n_augmented_copies: int = 1):
