@@ -5,6 +5,7 @@ import {
   buildPredictionExportRows,
   buildPredictionPreviewRows,
   formatPrediction,
+  formatPredictionValue,
   parsePredictionCsvInput,
   type PredictionResult,
 } from "../PredictDialogData";
@@ -44,6 +45,10 @@ describe("PredictDialogData", () => {
     expect(formatPrediction(-1500.25)).toBe("-1500.3");
   });
 
+  it("formats multi-output prediction values without scalar toFixed assumptions", () => {
+    expect(formatPredictionValue([1.23456, 2000])).toBe("1.2346 | 2000.0");
+  });
+
   it("builds formatted preview rows with signed differences", () => {
     const rows = buildPredictionPreviewRows(
       predictionResult({
@@ -68,6 +73,31 @@ describe("PredictDialogData", () => {
     ]);
     expect(rows[0].differenceValue).toBeCloseTo(1.34567);
     expect(rows[1].differenceValue).toBe(-0.5);
+  });
+
+  it("builds preview rows for multi-output predictions and actuals without scalar differences", () => {
+    const rows = buildPredictionPreviewRows(
+      predictionResult({
+        predictions: [[2, 3.5], [4.25, 5]],
+        actual_values: [[1.25, 3], [4, 5.5]],
+      })
+    );
+
+    expect(rows).toMatchObject([
+      {
+        index: 1,
+        prediction: "2.0000 | 3.5000",
+        actual: "1.2500 | 3.0000",
+        difference: null,
+      },
+      {
+        index: 2,
+        prediction: "4.2500 | 5.0000",
+        actual: "4.0000 | 5.5000",
+        difference: null,
+      },
+    ]);
+    expect(rows[0].differenceValue).toBeNull();
   });
 
   it("builds export rows without actual values", () => {
@@ -104,5 +134,27 @@ describe("PredictDialogData", () => {
     expect(buildPredictionCsv(predictionResult({ predictions: [4] }))).toBe(
       "Index,Prediction\n1,4\n"
     );
+  });
+
+  it("serializes multi-output predictions and actuals to separate CSV columns", () => {
+    expect(
+      buildPredictionCsv(
+        predictionResult({
+          predictions: [[2, 3.5], [4.25, 5]],
+          actual_values: [[1.25, 3], [4, 5.5]],
+        })
+      )
+    ).toBe("Index,Prediction_1,Prediction_2,Actual_1,Actual_2,Difference\n1,2,3.5,1.25,3,\n2,4.25,5,4,5.5,\n");
+  });
+
+  it("keeps CSV columns aligned when actual values are incomplete", () => {
+    expect(
+      buildPredictionCsv(
+        predictionResult({
+          predictions: [[2, 3.5], [4.25, 5]],
+          actual_values: [[1.25, 3]],
+        })
+      )
+    ).toBe("Index,Prediction_1,Prediction_2,Actual_1,Actual_2,Difference\n1,2,3.5,1.25,3,\n2,4.25,5,,,\n");
   });
 });

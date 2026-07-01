@@ -17,6 +17,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .lazy_imports import get_cached
+from .prediction_runtime import (
+    predict_with_runtime_record,
+    prediction_values_to_list,
+    rt_error_http_status,
+)
+from .runtime_errors import RtUnsupportedError
 from .workspace_manager import workspace_manager
 
 NIRS4ALL_AVAILABLE = True
@@ -34,6 +40,8 @@ class PredictBatchRequest(BaseModel):
         default=[],
         description="Preprocessing steps to apply before prediction",
     )
+    engine: str | None = Field(None, description="Prediction engine selector. Omit or use 'legacy' for the Python oracle; 'dag-ml' requires allow_fallback.")
+    allow_fallback: bool = Field(False, description="Explicitly allow unsupported dag-ml prediction requests to run via the Python oracle.")
 
 
 class PredictDatasetRequest(BaseModel):
@@ -46,6 +54,8 @@ class PredictDatasetRequest(BaseModel):
         default=[],
         description="Preprocessing steps to apply before prediction",
     )
+    engine: str | None = Field(None, description="Prediction engine selector. Omit or use 'legacy' for the Python oracle; 'dag-ml' requires allow_fallback.")
+    allow_fallback: bool = Field(False, description="Explicitly allow unsupported dag-ml prediction requests to run via the Python oracle.")
 
 
 class BatchPredictionResult(BaseModel):
@@ -55,6 +65,7 @@ class BatchPredictionResult(BaseModel):
     model_id: str
     num_samples: int
     preprocessing_applied: list[str] = []
+    runtime: dict[str, Any] | None = None
 
 
 router = APIRouter()
@@ -136,10 +147,14 @@ async def predict_batch(request: PredictBatchRequest):
     X = np.array(request.spectra)
 
     try:
-        # Use nirs4all.predict() directly
-        pred_result = get_cached("nirs4all").predict(model=model_path, data=X, verbose=0)
-        predictions = pred_result.predictions if hasattr(pred_result, 'predictions') else []
-        results = predictions.tolist() if hasattr(predictions, 'tolist') else list(predictions)
+        outcome = predict_with_runtime_record(
+            lambda **kwargs: get_cached("nirs4all").predict(**kwargs),
+            predict_kwargs={"model": model_path, "data": X, "verbose": 0},
+            engine=request.engine,
+            allow_fallback=request.allow_fallback,
+        )
+        pred_result = outcome.result
+        results = prediction_values_to_list(pred_result)
 
         # Get preprocessing steps from the bundle if available
         preprocessing_applied = []
@@ -151,7 +166,15 @@ async def predict_batch(request: PredictBatchRequest):
             model_id=request.model_id,
             num_samples=len(request.spectra),
             preprocessing_applied=preprocessing_applied,
+            runtime=outcome.runtime_record,
         )
+    except RtUnsupportedError as e:
+        raise HTTPException(
+            status_code=rt_error_http_status(e.rt_error),
+            detail=e.rt_error.to_envelope(),
+        ) from e
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(
             status_code=404,
@@ -211,10 +234,14 @@ async def predict_dataset(request: PredictDatasetRequest):
         pass
 
     try:
-        # Use nirs4all.predict() directly
-        pred_result = get_cached("nirs4all").predict(model=model_path, data=X, verbose=0)
-        predictions = pred_result.predictions if hasattr(pred_result, 'predictions') else []
-        results = predictions.tolist() if hasattr(predictions, 'tolist') else list(predictions)
+        outcome = predict_with_runtime_record(
+            lambda **kwargs: get_cached("nirs4all").predict(**kwargs),
+            predict_kwargs={"model": model_path, "data": X, "verbose": 0},
+            engine=request.engine,
+            allow_fallback=request.allow_fallback,
+        )
+        pred_result = outcome.result
+        results = prediction_values_to_list(pred_result)
 
         # Get preprocessing steps from the bundle if available
         preprocessing_applied = []
@@ -240,6 +267,7 @@ async def predict_dataset(request: PredictDatasetRequest):
             "predictions": results,
             "preprocessing_applied": preprocessing_applied,
             "metrics": metrics,
+            "runtime": outcome.runtime_record,
         }
 
         # Include actual values if available
@@ -248,6 +276,13 @@ async def predict_dataset(request: PredictDatasetRequest):
 
         return result_data
 
+    except RtUnsupportedError as e:
+        raise HTTPException(
+            status_code=rt_error_http_status(e.rt_error),
+            detail=e.rt_error.to_envelope(),
+        ) from e
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(
             status_code=404,

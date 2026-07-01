@@ -17,7 +17,13 @@ from typing import Any, get_type_hints
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .prediction_runtime import (
+    predict_with_runtime_record,
+    prediction_values,
+    rt_error_http_status,
+)
 from .results_repository import ResultsRepository, ResultsRepositoryNotFound, resolve_results_repository
+from .runtime_errors import RtUnsupportedError
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -99,6 +105,8 @@ class CompareModelsRequest(BaseModel):
 
     model_paths: list[str] = Field(..., min_length=2, description="Paths to .n4a bundles to compare")
     dataset_path: str = Field(..., description="Path to dataset for comparison")
+    engine: str | None = Field(None, description="Prediction engine selector. Omit or use 'legacy' for the Python oracle; 'dag-ml' requires allow_fallback.")
+    allow_fallback: bool = Field(False, description="Explicitly allow unsupported dag-ml prediction requests to run via the Python oracle.")
 
 
 class ModelComparisonResult(BaseModel):
@@ -893,8 +901,7 @@ async def compare_models(request: CompareModelsRequest):
 
     Uses nirs4all.predict() to evaluate each bundle on the dataset.
     """
-    nirs4all = get_cached("nirs4all")
-    if not NIRS4ALL_AVAILABLE or nirs4all is None:
+    if not NIRS4ALL_AVAILABLE:
         raise HTTPException(status_code=503, detail="nirs4all not available")
 
     # Load dataset
@@ -932,9 +939,13 @@ async def compare_models(request: CompareModelsRequest):
             continue
 
         try:
-            # Use nirs4all.predict() to get predictions
-            pred_result = nirs4all.predict(model=str(bundle_path), data=X)
-            y_pred = pred_result.y_pred
+            outcome = predict_with_runtime_record(
+                lambda **kwargs: get_cached("nirs4all").predict(**kwargs),
+                predict_kwargs={"model": str(bundle_path), "data": X},
+                engine=request.engine,
+                allow_fallback=request.allow_fallback,
+            )
+            y_pred = prediction_values(outcome.result)
 
             # Compute metrics
             from nirs4all.core.metrics import eval_multi
@@ -944,6 +955,7 @@ async def compare_models(request: CompareModelsRequest):
                 "model_path": model_path,
                 "model_name": bundle_path.stem,
                 "metrics": metrics,
+                "runtime": outcome.runtime_record,
             })
 
             # Track best model
@@ -952,6 +964,13 @@ async def compare_models(request: CompareModelsRequest):
                 best_score = r2
                 best_model_path = model_path
 
+        except RtUnsupportedError as e:
+            raise HTTPException(
+                status_code=rt_error_http_status(e.rt_error),
+                detail=e.rt_error.to_envelope(),
+            ) from e
+        except HTTPException:
+            raise
         except Exception as e:
             results.append({
                 "model_path": model_path,

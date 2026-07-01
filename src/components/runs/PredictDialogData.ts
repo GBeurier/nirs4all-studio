@@ -1,15 +1,17 @@
 export interface PredictionResult {
-  predictions: number[];
+  predictions: PredictionValue[];
   model_id: string;
   num_samples: number;
   preprocessing_applied: string[];
-  actual_values?: number[];
+  actual_values?: PredictionValue[];
   metrics?: {
     r2?: number;
     rmse?: number;
     mae?: number;
   };
 }
+
+export type PredictionValue = number | number[];
 
 export type PredictInputMode = "paste" | "upload" | "dataset";
 
@@ -23,8 +25,8 @@ export interface PredictionPreviewRow {
 
 export interface PredictionExportRow {
   index: number;
-  prediction: number;
-  actual?: number;
+  prediction: PredictionValue;
+  actual?: PredictionValue;
   difference?: number;
 }
 
@@ -51,6 +53,13 @@ export function formatPrediction(value: number): string {
   return value.toFixed(4);
 }
 
+export function formatPredictionValue(value: PredictionValue): string {
+  if (Array.isArray(value)) {
+    return value.map((item) => formatPrediction(item)).join(" | ");
+  }
+  return formatPrediction(value);
+}
+
 export function hasActualValues(result: PredictionResult): boolean {
   return Boolean(result.actual_values && result.actual_values.length > 0);
 }
@@ -62,13 +71,16 @@ export function buildPredictionPreviewRows(
   const includeActual = hasActualValues(result);
 
   return result.predictions.slice(0, limit).map((prediction, index) => {
-    const actual = includeActual ? result.actual_values![index] : null;
-    const difference = actual !== null ? prediction - actual : null;
+    const actual = includeActual ? result.actual_values![index] ?? null : null;
+    const difference =
+      actual !== null && !Array.isArray(prediction) && !Array.isArray(actual)
+        ? prediction - actual
+        : null;
 
     return {
       index: index + 1,
-      prediction: formatPrediction(prediction),
-      actual: actual !== null ? formatPrediction(actual) : null,
+      prediction: formatPredictionValue(prediction),
+      actual: actual !== null ? formatPredictionValue(actual) : null,
       difference:
         difference !== null
           ? `${difference > 0 ? "+" : ""}${formatPrediction(difference)}`
@@ -97,7 +109,7 @@ export function buildPredictionExportRows(
       index: index + 1,
       prediction,
       actual,
-      difference: prediction - actual,
+      difference: Array.isArray(prediction) || Array.isArray(actual) ? undefined : prediction - actual,
     };
   });
 }
@@ -105,15 +117,64 @@ export function buildPredictionExportRows(
 export function buildPredictionCsv(result: PredictionResult): string {
   const includeActual = hasActualValues(result);
   const rows = buildPredictionExportRows(result);
-  let csv = includeActual ? "Index,Prediction,Actual,Difference\n" : "Index,Prediction\n";
+  const outputCount = getPredictionOutputCount(result.predictions);
+  const actualOutputCount = includeActual
+    ? getPredictionOutputCount(result.actual_values ?? [])
+    : 0;
+  const predictionHeaders =
+    outputCount === 1
+      ? ["Prediction"]
+      : Array.from({ length: outputCount }, (_, index) => `Prediction_${index + 1}`);
+  const actualHeaders =
+    !includeActual
+      ? []
+      : actualOutputCount === 1
+        ? ["Actual", "Difference"]
+        : [
+            ...Array.from(
+              { length: actualOutputCount },
+              (_, index) => `Actual_${index + 1}`
+            ),
+            "Difference",
+          ];
+  const headers = [
+    "Index",
+    ...predictionHeaders,
+    ...actualHeaders,
+  ];
+  let csv = `${headers.join(",")}\n`;
 
   for (const row of rows) {
-    if (includeActual) {
-      csv += `${row.index},${row.prediction},${row.actual},${row.difference}\n`;
-    } else {
-      csv += `${row.index},${row.prediction}\n`;
-    }
+    const predictionCells = predictionValueToCsvCells(row.prediction, outputCount);
+    const actualCells =
+      includeActual
+        ? predictionValueToCsvCells(row.actual, actualOutputCount)
+        : [];
+    const values = [
+      String(row.index),
+      ...predictionCells,
+      ...(includeActual ? [...actualCells, csvValue(row.difference)] : []),
+    ];
+    csv += `${values.join(",")}\n`;
   }
 
   return csv;
+}
+
+function getPredictionOutputCount(predictions: PredictionValue[]): number {
+  return Math.max(
+    1,
+    ...predictions.map((prediction) =>
+      Array.isArray(prediction) ? prediction.length : 1
+    )
+  );
+}
+
+function predictionValueToCsvCells(value: PredictionValue | undefined, outputCount: number): string[] {
+  const values = value === undefined ? [] : Array.isArray(value) ? value : [value];
+  return Array.from({ length: outputCount }, (_, index) => csvValue(values[index]));
+}
+
+function csvValue(value: number | undefined): string {
+  return value === undefined ? "" : String(value);
 }
