@@ -32,6 +32,21 @@ export interface PredictRequest {
   dataset_id?: string;
   partition?: string;
   spectra?: number[][];
+  engine?: string | null;
+  allow_fallback?: boolean;
+}
+
+export interface PredictionRuntimeRecord {
+  verb?: string;
+  backend?: string;
+  oracle?: string;
+  engine?: string | null;
+  engine_requested?: string | null;
+  engine_diagnostics?: Array<Record<string, unknown>> | null;
+  runtime_source?: string | null;
+  runtime_manifest?: Record<string, unknown> | null;
+  fallback_policy?: Record<string, unknown> | null;
+  native_result_refs?: Record<string, unknown> | null;
 }
 
 export interface PredictResponse {
@@ -45,4 +60,5 @@ export interface PredictResponse {
   /** When the request was `partition: "all"`, backend returns per-sample
    *  partition labels ("train"/"val"/"test") so charts can split by partition. */
   partitions?: (string | null)[] | null;
+  runtime?: PredictionRuntimeRecord | null;
 }

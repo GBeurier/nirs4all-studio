@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from .lazy_imports import get_cached
 from .models import _resolve_bundle_path
+from .prediction_runtime import predict_with_runtime_record, rt_error_http_status
+from .runtime_errors import RtUnsupportedError
 from .shared.json_safe import sanitize_float
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
@@ -39,6 +42,14 @@ class PredictRequest(BaseModel):
     dataset_id: str | None = Field(None, description="Dataset ID (when data_source='dataset')")
     partition: str = Field("all", description="Dataset partition (train/test/all)")
     spectra: list[list[float]] | None = Field(None, description="2D spectra array (when data_source='array')")
+    engine: str | None = Field(
+        None,
+        description="Prediction engine selector. Omit or use 'legacy' for the Python oracle.",
+    )
+    allow_fallback: bool = Field(
+        False,
+        description="Allow unsupported dag-ml prediction requests to run via the Python oracle.",
+    )
 
 
 class PredictResponse(BaseModel):
@@ -54,6 +65,7 @@ class PredictResponse(BaseModel):
     # Per-sample partition labels ("train"/"val"/"test"/...) when the request
     # ran across multiple partitions (partition="all"); None otherwise.
     partitions: list[str] | None = None
+    runtime: dict[str, Any] | None = None
 
 
 # ============= Helpers =============
@@ -65,6 +77,8 @@ def _run_prediction(
     X,
     y_true=None,
     partitions: list[str] | None = None,
+    engine: str | None = None,
+    allow_fallback: bool = False,
 ) -> PredictResponse:
     """Execute prediction using nirs4all.predict()."""
     import numpy as np
@@ -78,15 +92,31 @@ def _run_prediction(
 
     try:
         if model_source == "chain":
-            pred_result = nirs4all.predict(
-                chain_id=model_id,
-                data=X,
-                workspace_path=str(workspace_path) if workspace_path else None,
-                verbose=0,
+            outcome = predict_with_runtime_record(
+                nirs4all.predict,
+                predict_kwargs={
+                    "chain_id": model_id,
+                    "data": X,
+                    "workspace_path": str(workspace_path) if workspace_path else None,
+                    "verbose": 0,
+                },
+                engine=engine,
+                allow_fallback=allow_fallback,
             )
         else:
             bundle_path = str(_resolve_bundle_path(model_id))
-            pred_result = nirs4all.predict(model=bundle_path, data=X, verbose=0)
+            outcome = predict_with_runtime_record(
+                nirs4all.predict,
+                predict_kwargs={"model": bundle_path, "data": X, "verbose": 0},
+                engine=engine,
+                allow_fallback=allow_fallback,
+            )
+        pred_result = outcome.result
+    except RtUnsupportedError as e:
+        raise HTTPException(
+            status_code=rt_error_http_status(e.rt_error),
+            detail=e.rt_error.to_envelope(),
+        ) from e
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
     except Exception as e:
@@ -148,6 +178,7 @@ def _run_prediction(
         actual_values=actual_values,
         metrics=metrics,
         partitions=aligned_partitions,
+        runtime=outcome.runtime_record,
     )
 
 
@@ -254,6 +285,8 @@ async def predict(request: PredictRequest):
         X,
         y_true,
         partitions=per_sample_partitions,
+        engine=request.engine,
+        allow_fallback=request.allow_fallback,
     )
 
 
@@ -261,6 +294,8 @@ async def predict(request: PredictRequest):
 async def predict_from_file(
     model_id: str = Form(...),
     model_source: str = Form(...),
+    engine: str | None = Form(None),
+    allow_fallback: bool = Form(False),
     file: UploadFile = File(...),
 ):
     """Run prediction on an uploaded CSV/Excel file.
@@ -314,6 +349,12 @@ async def predict_from_file(
     else:
         sample_ids = list(range(len(df)))
 
-    result = _run_prediction(model_id, model_source, X)
+    result = _run_prediction(
+        model_id,
+        model_source,
+        X,
+        engine=engine,
+        allow_fallback=allow_fallback,
+    )
     result.sample_ids = sample_ids
     return result
