@@ -73,7 +73,7 @@ def stub_training_deps(monkeypatch):
     ``nirs4all.run``); the fixture installs it on the real ``nirs4all`` module so
     the library's own ``resolve_engine`` is still used.
     """
-    # A clean engine env so resolve_engine(None) -> the library default "legacy".
+    # A clean engine env so resolve_engine(None) follows the library default.
     monkeypatch.delenv("N4A_ENGINE", raising=False)
 
     monkeypatch.setattr(adapter_api, "build_dataset_config", lambda dataset_id: {"path": dataset_id})
@@ -115,6 +115,13 @@ def _pipeline() -> runs_api.PipelineRun:
     )
 
 
+class _DagMlRuntimeResult:
+    """Minimal structured runtime envelope used by tests that exercise library defaults."""
+
+    def to_rt_result(self):  # noqa: ANN201
+        return {"manifest": {"engine": "dag-ml"}, "diagnostics": []}
+
+
 def test_execute_pipeline_training_passes_requested_engine_to_run(stub_training_deps):
     """engine='dag-ml' is forwarded to nirs4all.run and recorded (no fallback)."""
     stub_training_deps["install"](lambda **kwargs: SimpleNamespace())
@@ -137,7 +144,7 @@ def test_execute_pipeline_training_passes_requested_engine_to_run(stub_training_
 
 def test_execute_pipeline_training_records_library_default_for_default_engine(stub_training_deps):
     """engine=None omits the kwarg and records the library-selected default."""
-    stub_training_deps["install"](lambda **kwargs: SimpleNamespace())
+    stub_training_deps["install"](lambda **kwargs: _DagMlRuntimeResult())
 
     result = runs_api._execute_pipeline_training(
         _pipeline(), "dataset-a", None, "run-1", engine=None,
