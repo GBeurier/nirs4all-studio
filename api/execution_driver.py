@@ -91,7 +91,7 @@ class ExecutionRequest:
     run_name: str
     requested_backend: ExecutionBackend = "local-python"
     requested_engine: str | None = None
-    allow_fallback: bool = True
+    allow_fallback: bool = False
     total_pipelines: int = 0
     dataset_count: int = 0
     workspace_path: str | None = None
