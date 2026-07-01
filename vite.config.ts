@@ -8,6 +8,12 @@ import path from "path";
 const isElectron = process.env.ELECTRON === "true";
 const isElectronBuild = isElectron && process.env.NODE_ENV === "production";
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "package.json"), "utf-8"));
+const backendProxyTarget = new URL(process.env.NIRS4ALL_E2E_BACKEND_URL || "http://127.0.0.1:8000").origin;
+const backendWsProxyTarget = (() => {
+  const target = new URL(backendProxyTarget);
+  target.protocol = target.protocol === "https:" ? "wss:" : "ws:";
+  return target.origin;
+})();
 
 /** Copy static electron assets needed at runtime to dist-electron during build */
 function copyElectronAssets(): Plugin {
@@ -43,11 +49,11 @@ export default defineConfig(({ mode }) => ({
       ? undefined
       : {
           "/api": {
-            target: "http://127.0.0.1:8000",
+            target: backendProxyTarget,
             changeOrigin: true,
           },
           "/ws": {
-            target: "ws://127.0.0.1:8000",
+            target: backendWsProxyTarget,
             ws: true,
           },
         },

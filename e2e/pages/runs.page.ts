@@ -26,8 +26,8 @@ export class RunsPage extends BasePage {
     super(page);
 
     this.pageTitle = page.getByRole('heading', { name: /runs/i }).first();
-    // Look for "New Run" button in the main content area, not sidebar
-    this.newRunButton = page.locator('main').getByRole('link', { name: /new.*run/i });
+    // Use the primary header action; the empty state can expose a second link.
+    this.newRunButton = page.locator('main').getByRole('link', { name: /new.*run/i }).first();
     this.refreshButton = page.getByRole('button', { name: /refresh/i });
 
     // Content
