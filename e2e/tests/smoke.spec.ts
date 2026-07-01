@@ -1,4 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { resolveE2eRuntimeConfig } from '../fixtures/e2e-env';
+
+const e2eRuntime = resolveE2eRuntimeConfig();
+const backendHealthUrl = `${e2eRuntime.backendUrl}/api/health`;
 
 /**
  * Smoke tests to verify basic application functionality
@@ -21,8 +25,9 @@ test.describe('Smoke Tests', () => {
     await expect.poll(
       async () => {
         try {
-          const response = await page.request.get('http://127.0.0.1:8000/api/health', { timeout: 5000 });
-          return response.ok();
+          const response = await page.request.get(backendHealthUrl, { timeout: 5000 });
+          const data = await response.json().catch(() => ({}));
+          return response.ok() && data.status === 'healthy';
         } catch {
           return false;
         }
@@ -30,7 +35,7 @@ test.describe('Smoke Tests', () => {
       { timeout: 60000, intervals: [1000, 2000, 5000] }
     ).toBe(true);
 
-    const response = await page.request.get('http://127.0.0.1:8000/api/health', { timeout: 10000 });
+    const response = await page.request.get(backendHealthUrl, { timeout: 10000 });
     expect(response.ok()).toBe(true);
     const data = await response.json();
     expect(data.status).toBe('healthy');

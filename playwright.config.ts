@@ -1,4 +1,30 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolveE2eRuntimeConfig } from './e2e/fixtures/e2e-env';
+
+const e2eRuntime = resolveE2eRuntimeConfig();
+
+function buildWebServerEnv(overrides: Record<string, string>): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === 'string') {
+      env[key] = value;
+    }
+  }
+  return { ...env, ...overrides };
+}
+
+const backendWebServerEnv = buildWebServerEnv({
+  NIRS4ALL_CONFIG: e2eRuntime.configDir,
+  NIRS4ALL_E2E: '1',
+  NIRS4ALL_E2E_BACKEND_URL: e2eRuntime.backendUrl,
+  NIRS4ALL_PORT: String(e2eRuntime.backendPort),
+  NIRS4ALL_PORTABLE_ROOT: e2eRuntime.portableRoot,
+  SENTRY_DSN: '',
+});
+const frontendWebServerEnv = buildWebServerEnv({
+  NIRS4ALL_E2E_BACKEND_URL: e2eRuntime.backendUrl,
+  VITE_SENTRY_DSN: '',
+});
 
 /**
  * Playwright E2E Test Configuration for nirs4all_webapp
@@ -28,7 +54,7 @@ export default defineConfig({
   // Global settings
   use: {
     // Default base URL (overridden per project)
-    baseURL: 'http://localhost:5173',
+    baseURL: e2eRuntime.frontendUrl,
 
     // Force English locale for deterministic tests regardless of system language
     locale: 'en-US',
@@ -59,7 +85,7 @@ export default defineConfig({
       timeout: 120000,
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:5173',
+        baseURL: e2eRuntime.frontendUrl,
       },
     },
 
@@ -72,7 +98,7 @@ export default defineConfig({
       dependencies: ['web-chromium-settings'],
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:5173',
+        baseURL: e2eRuntime.frontendUrl,
       },
     },
 
@@ -84,7 +110,7 @@ export default defineConfig({
       dependencies: ['web-chromium-navigation'],
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:5173',
+        baseURL: e2eRuntime.frontendUrl,
       },
     },
 
@@ -95,21 +121,21 @@ export default defineConfig({
       testIgnore: ['**/settings.spec.ts', '**/navigation.spec.ts', '**/smoke.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:5173',
+        baseURL: e2eRuntime.frontendUrl,
       },
     },
     {
       name: 'web-firefox',
       use: {
         ...devices['Desktop Firefox'],
-        baseURL: 'http://localhost:5173',
+        baseURL: e2eRuntime.frontendUrl,
       },
     },
     {
       name: 'web-webkit',
       use: {
         ...devices['Desktop Safari'],
-        baseURL: 'http://localhost:5173',
+        baseURL: e2eRuntime.frontendUrl,
       },
     },
 
@@ -118,7 +144,7 @@ export default defineConfig({
       name: 'desktop-chromium',
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:8000',
+        baseURL: e2eRuntime.backendUrl,
       },
     },
   ],
@@ -127,25 +153,23 @@ export default defineConfig({
   webServer: [
     // Backend API server (always needed)
     {
-      command: process.env.CI
-        ? 'python main.py --no-reload'
-        : process.platform === 'win32'
-          ? '..\\nirs4all\\.venv\\Scripts\\python main.py --no-reload'
-          : '../nirs4all/.venv/bin/python main.py --no-reload',
-      url: 'http://localhost:8000/api/health',
-      reuseExistingServer: !process.env.CI,
+      command: `node scripts/run-python.cjs main.py --no-reload --host ${e2eRuntime.backendHost} --port ${e2eRuntime.backendPort}`,
+      url: `${e2eRuntime.backendUrl}/api/health`,
+      reuseExistingServer: e2eRuntime.reuseExistingServer,
       timeout: 120000,
       stdout: process.env.CI ? 'ignore' : 'pipe',
       stderr: 'pipe',
+      env: backendWebServerEnv,
     },
     // Frontend dev server (for web mode projects)
     {
-      command: 'npm run dev -- --port 5173',
-      url: 'http://localhost:5173',
-      reuseExistingServer: !process.env.CI,
+      command: `npm run dev -- --host ${e2eRuntime.frontendHost} --port ${e2eRuntime.frontendPort} --strictPort`,
+      url: e2eRuntime.frontendUrl,
+      reuseExistingServer: e2eRuntime.reuseExistingServer,
       timeout: 120000,
       stdout: process.env.CI ? 'ignore' : 'pipe',
       stderr: 'pipe',
+      env: frontendWebServerEnv,
     },
   ],
 });
