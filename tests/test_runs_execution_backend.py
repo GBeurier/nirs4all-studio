@@ -152,6 +152,32 @@ def test_start_run_job_adds_campaign_shaped_execution_metadata(monkeypatch):
     }
 
 
+def test_start_run_job_preserves_requested_engine_in_execution_request(monkeypatch):
+    class DummyJobManager:
+        def create_job(self, job_type, config, job_id=None):
+            return SimpleNamespace(id=job_id, config=config)
+
+        def submit_job(self, job, task_fn):
+            return job
+
+    monkeypatch.setattr(runs_api, "job_manager", DummyJobManager())
+    run = runs_api.Run(
+        id="run-1",
+        name="DAG ML request",
+        execution_backend="local-python",
+        engine="dag-ml",
+        datasets=[],
+        status="queued",
+        created_at="2026-06-30T10:00:00",
+        total_pipelines=0,
+        completed_pipelines=0,
+    )
+
+    job = runs_api._start_run_job(run)
+
+    assert job.config["execution_request"]["requested_engine"] == "dag-ml"
+
+
 def test_create_run_route_rejects_unavailable_backend_before_mutating_state(monkeypatch, tmp_path):
     saved_runs = []
     started_runs = []
@@ -183,7 +209,12 @@ def test_create_run_route_rejects_unavailable_backend_before_mutating_state(monk
         )
 
     assert response.status_code == 501
-    assert "Cluster execution" in response.json()["detail"]
+    assert response.json()["detail"] == {
+        "verb": "run",
+        "cause": "unavailable_backend",
+        "message": "Cluster execution is typed but no cluster driver is configured.",
+        "mitigation": "Run on an available execution backend, or configure a driver for this backend.",
+    }
     assert runs_api._runs == {}
     assert saved_runs == []
     assert started_runs == []
@@ -348,6 +379,7 @@ def test_start_run_job_persists_workspace_execution_job_record(monkeypatch, tmp_
         id="run-1",
         name="Workspace run",
         execution_backend="local-python",
+        engine="dag-ml",
         datasets=[],
         status="queued",
         created_at="2026-06-30T10:00:00",
@@ -367,6 +399,7 @@ def test_start_run_job_persists_workspace_execution_job_record(monkeypatch, tmp_
     assert payload["status"] == "running"
     assert payload["request"]["run_id"] == "run-1"
     assert payload["request"]["has_workspace"] is True
+    assert payload["request"]["requested_engine"] == "dag-ml"
 
 
 def test_get_run_execution_job_record_reads_workspace_snapshot(monkeypatch, tmp_path):
@@ -1065,6 +1098,7 @@ def test_build_store_run_config_includes_execution_backend_and_project():
         id="run-1",
         name="Store config",
         execution_backend="cluster",
+        engine="dag-ml",
         datasets=[
             runs_api.DatasetRun(
                 dataset_id="dataset-a",
@@ -1083,6 +1117,7 @@ def test_build_store_run_config_includes_execution_backend_and_project():
         "n_pipelines": 2,
         "n_datasets": 1,
         "execution_backend": "cluster",
+        "requested_engine": "dag-ml",
         "project_id": "project-1",
     }
 
@@ -1753,7 +1788,12 @@ def test_create_run_group_route_rejects_unavailable_backend_before_mutating_stat
         response = client.post("/api/runs/run-groups", json=_native_run_group_payload())
 
     assert response.status_code == 501
-    assert "Cluster execution" in response.json()["detail"]
+    assert response.json()["detail"] == {
+        "verb": "run",
+        "cause": "unavailable_backend",
+        "message": "Cluster execution is typed but no cluster driver is configured.",
+        "mitigation": "Run on an available execution backend, or configure a driver for this backend.",
+    }
     assert runs_api._runs == {}
     assert saved_runs == []
     assert started_runs == []
@@ -1811,6 +1851,7 @@ def test_create_run_group_route_accepts_saved_and_inline_pipelines_and_starts_jo
     )
 
     payload = _native_run_group_payload()
+    payload["legacyConfig"]["engine"] = "dag-ml"
     app = FastAPI()
     app.include_router(runs_api.router, prefix="/api")
     with TestClient(app) as client:
@@ -1821,11 +1862,13 @@ def test_create_run_group_route_accepts_saved_and_inline_pipelines_and_starts_jo
     assert response_payload["name"] == "Native cluster campaign"
     assert response_payload["description"] == "Saved plus inline pipelines"
     assert response_payload["execution_backend"] == "cluster"
+    assert response_payload["engine"] == "dag-ml"
     assert response_payload["cv_folds"] == 2
     assert response_payload["total_pipelines"] == 2
     assert response_payload["completed_pipelines"] == 0
     assert response_payload["project_id"] == "project-1"
     assert len(saved_runs) == 1
+    assert saved_runs[0].engine == "dag-ml"
     assert saved_runs[0].execution_metadata == {
         "campaign_shape": "explicit-run-group",
         "native_payload_version": "studio.native-launch-payload.v1",
@@ -1858,6 +1901,7 @@ def test_create_run_group_route_accepts_saved_and_inline_pipelines_and_starts_jo
 
     expected_metadata = runs_api._build_run_execution_metadata(saved_runs[0])
     assert submitted_requests[0].metadata == expected_metadata
+    assert submitted_requests[0].to_metadata()["requested_engine"] == "dag-ml"
     assert submitted_requests[0].to_metadata()["metadata"] == {
         "kind": "campaign",
         "campaign_shape": "explicit-run-group",
@@ -2151,7 +2195,12 @@ def test_retry_run_route_rejects_unavailable_backend_before_mutating_state(monke
         response = client.post("/api/runs/old-run/retry")
 
     assert response.status_code == 501
-    assert "Cluster execution" in response.json()["detail"]
+    assert response.json()["detail"] == {
+        "verb": "run",
+        "cause": "unavailable_backend",
+        "message": "Cluster execution is typed but no cluster driver is configured.",
+        "mitigation": "Run on an available execution backend, or configure a driver for this backend.",
+    }
     assert runs_api._runs == {"old-run": old_run}
     assert started_runs == []
 
