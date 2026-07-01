@@ -3,6 +3,11 @@ import { Box, Eye, GitBranch, Layers, ListTree, Terminal, Timer } from "lucide-r
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  RuntimeDiagnosticsList,
+  RuntimeEngineBadge,
+  RuntimeStatusBadge,
+} from "@/components/runtime";
 import { formatMetricValue } from "@/lib/scores";
 import type { WorkspaceRunDetail, WorkspaceRunPipelineDetail } from "@/types/enriched-runs";
 import { buildStoredPipelinePreview, formatDatetime, formatDurationMs } from "./runDetailUtils";
@@ -27,11 +32,8 @@ function PipelineCard({
                 {pipeline.dataset_name}
               </Badge>
             )}
-            {pipeline.status && (
-              <Badge variant="outline" className="text-[10px]">
-                {pipeline.status}
-              </Badge>
-            )}
+            {pipeline.status && <RuntimeStatusBadge status={pipeline.status} showIcon={false} className="text-[10px]" />}
+            <RuntimeEngineBadge source={pipeline} />
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
@@ -77,6 +79,8 @@ function PipelineCard({
           </Button>
         </div>
       </div>
+
+      <RuntimeDiagnosticsList source={pipeline} className="border-b px-4 py-3" />
 
       <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_16rem]">
         <div className="space-y-2">

@@ -1,28 +1,26 @@
 import { Link } from "react-router-dom";
 import {
-  AlertCircle,
   Box,
-  CheckCircle2,
-  CircleDashed,
-  Clock,
   Database,
   ExternalLink,
   GitBranch,
-  RefreshCw,
   Wrench,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
-import type { PipelineRun, RunStatus } from "@/types/runs";
 import {
-  buildResultHeaderStatus,
+  RuntimeEngineBadge,
+  RuntimeRunStatePresentation,
+  RuntimeStatusBadge,
+  RuntimeStatusIconFrame,
+} from "@/components/runtime";
+import { useRuntimeResultPresentation } from "@/hooks/useRuntimeResultPresentation";
+import type { PipelineRun } from "@/types/runs";
+import {
   buildResultQuickFacts,
   type ResultQuickFactIcon,
 } from "./resultDetailData";
@@ -32,73 +30,39 @@ interface ResultDetailHeaderProps {
   datasetName: string;
 }
 
-const statusIcons: Record<RunStatus, typeof Clock> = {
-  queued: Clock,
-  running: RefreshCw,
-  completed: CheckCircle2,
-  failed: AlertCircle,
-  partial: CircleDashed,
-};
-
 const quickFactIcons: Record<ResultQuickFactIcon, typeof Box> = {
   model: Box,
   preprocessing: Wrench,
   split: GitBranch,
 };
 
-function ResultDetailStatusIcon({
-  status,
-  colorClass,
-  iconClass,
-}: {
-  status: RunStatus;
-  colorClass: string;
-  iconClass: string;
-}) {
-  const Icon = statusIcons[status];
-  return (
-    <Icon className={cn("h-4 w-4", colorClass, iconClass)} />
-  );
-}
-
 export function ResultDetailHeader({ pipeline, datasetName }: ResultDetailHeaderProps) {
-  const status = buildResultHeaderStatus(pipeline);
+  const runtime = useRuntimeResultPresentation({
+    source: pipeline,
+    status: pipeline.status,
+    progress: pipeline.progress,
+  });
   const quickFacts = buildResultQuickFacts(pipeline);
 
   return (
     <SheetHeader className="flex-shrink-0">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={cn("p-2 rounded-lg", status.bgClass)}>
-            <ResultDetailStatusIcon
-              status={pipeline.status}
-              colorClass={status.colorClass}
-              iconClass={status.iconClass}
-            />
-          </div>
+          <RuntimeStatusIconFrame status={pipeline.status} />
           <div>
             <SheetTitle className="text-lg">Result Details</SheetTitle>
-            <SheetDescription className="flex items-center gap-2 mt-1">
+            <SheetDescription className="mt-1 flex items-center gap-2">
               <span className="text-sm font-medium text-foreground">
                 {pipeline.pipeline_name}
               </span>
+              <RuntimeEngineBadge status={runtime.engine} />
             </SheetDescription>
           </div>
         </div>
-        <Badge variant={status.badgeVariant}>
-          {status.label}
-        </Badge>
+        <RuntimeStatusBadge status={pipeline.status} showIcon={false} />
       </div>
 
-      {status.progress != null && (
-        <div className="mt-4 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Progress</span>
-            <span className="font-medium">{status.progress}%</span>
-          </div>
-          <Progress value={status.progress} className="h-2" />
-        </div>
-      )}
+      <RuntimeRunStatePresentation status={pipeline.status} progress={pipeline.progress} className="mt-4" />
 
       <div className="mt-4 p-3 rounded-lg bg-muted/30 flex items-center justify-between">
         <div className="flex items-center gap-2">

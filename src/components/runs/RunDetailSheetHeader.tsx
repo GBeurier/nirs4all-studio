@@ -1,11 +1,7 @@
 import { Link } from "react-router-dom";
 import {
-  AlertCircle,
   BarChart3,
   Box,
-  CheckCircle2,
-  CircleDashed,
-  Clock,
   Database,
   ExternalLink,
   HardDrive,
@@ -15,39 +11,25 @@ import {
   Terminal,
   type LucideIcon,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  RuntimeEngineBadge,
+  RuntimeStatusBadge,
+  RuntimeStatusIconFrame,
+} from "@/components/runtime";
 import { buildRunStorageArtifactMetadata } from "@/lib/runs/pageData";
 import { cn } from "@/lib/utils";
-import type { RunStatus } from "@/types/runs";
 import type { EnrichedRun, WorkspaceRunDetail } from "@/types/enriched-runs";
 import { formatDatetime, formatDuration } from "./runDetailUtils";
 import {
   getRerunDisabledTitle,
-  getRunStatusConfig,
   getTotalLogCount,
-  isKnownRunStatus,
 } from "./RunDetailSheetDisplay";
-
-const statusIcons: Record<RunStatus, LucideIcon> = {
-  queued: Clock,
-  running: RefreshCw,
-  completed: CheckCircle2,
-  failed: AlertCircle,
-  partial: CircleDashed,
-};
-
-function StatusIcon({ status }: { status: string }) {
-  if (!isKnownRunStatus(status)) return null;
-  const Icon = statusIcons[status];
-  const config = getRunStatusConfig(status);
-  return <Icon className={cn("h-4 w-4", config.color, config.iconClass)} />;
-}
 
 function StatCard({
   icon: Icon,
@@ -90,7 +72,6 @@ export function RunDetailSheetHeader({
   isRerunning: boolean;
   onRerun: () => void;
 }) {
-  const config = getRunStatusConfig(status);
   const storageArtifactMetadata = buildRunStorageArtifactMetadata(run);
   const artifactSizeField = storageArtifactMetadata.fields.find((field) => field.key === "artifact-size");
   const storageArtifactSummary = storageArtifactMetadata.fields
@@ -101,9 +82,7 @@ export function RunDetailSheetHeader({
     <SheetHeader className="flex-shrink-0">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className={cn("rounded-lg p-2", config.bg)}>
-            <StatusIcon status={status} />
-          </div>
+          <RuntimeStatusIconFrame status={status} />
           <div>
             <SheetTitle className="text-lg">{run.name || run.run_id}</SheetTitle>
             <SheetDescription className="mt-1 flex flex-wrap items-center gap-2">
@@ -120,6 +99,7 @@ export function RunDetailSheetHeader({
                   <span className="font-medium">{formatDuration(run.duration_seconds)}</span>
                 </>
               )}
+              <RuntimeEngineBadge source={detail ?? run} />
             </SheetDescription>
           </div>
         </div>
@@ -152,9 +132,7 @@ export function RunDetailSheetHeader({
             )}
             Rerun As Clone
           </Button>
-          <Badge variant={status === "completed" ? "default" : "secondary"}>
-            {config.label}
-          </Badge>
+          <RuntimeStatusBadge status={status} showIcon={false} />
         </div>
       </div>
 

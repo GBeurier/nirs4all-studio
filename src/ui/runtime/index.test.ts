@@ -15,6 +15,9 @@ describe("@/ui/runtime barrel", () => {
     expect(typeof runtimeFoundation.getRuntimeResultStatusProgress).toBe("function");
     expect(typeof runtimeFoundation.buildRuntimeResultStatusView).toBe("function");
     expect(typeof runtimeFoundation.getRuntimeResultEmptyMessage).toBe("function");
+    expect(typeof runtimeFoundation.buildRuntimeEngineStatus).toBe("function");
+    expect(typeof runtimeFoundation.normalizeRuntimeDiagnostics).toBe("function");
+    expect(typeof runtimeFoundation.buildRuntimeNativeResultsAffordance).toBe("function");
   });
 
   it("wires display tokens through the barrel", () => {
