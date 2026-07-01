@@ -91,6 +91,7 @@ class ExecutionRequest:
     run_name: str
     requested_backend: ExecutionBackend = "local-python"
     requested_engine: str | None = None
+    allow_fallback: bool = True
     total_pipelines: int = 0
     dataset_count: int = 0
     workspace_path: str | None = None
@@ -109,6 +110,12 @@ class ExecutionRequest:
         }
         if self.requested_engine is not None:
             payload["requested_engine"] = self.requested_engine
+        payload["fallback_policy"] = {
+            "source": "nirs4all.run.allow_fallback",
+            "engine_requested": self.requested_engine,
+            "allow_fallback": self.allow_fallback,
+            "mode": "allow_fallback" if self.allow_fallback else "refuse_fallback",
+        }
         if self.created_at is not None:
             payload["created_at"] = self.created_at
         if self.metadata:

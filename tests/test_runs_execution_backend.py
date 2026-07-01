@@ -1118,6 +1118,12 @@ def test_build_store_run_config_includes_execution_backend_and_project():
         "n_datasets": 1,
         "execution_backend": "cluster",
         "requested_engine": "dag-ml",
+        "fallback_policy": {
+            "source": "nirs4all.run.allow_fallback",
+            "engine_requested": "dag-ml",
+            "allow_fallback": True,
+            "mode": "allow_fallback",
+        },
         "project_id": "project-1",
     }
 
@@ -1181,6 +1187,12 @@ def test_execute_run_job_uses_run_store_repository_for_lifecycle_writes(monkeypa
                 "n_pipelines": 1,
                 "n_datasets": 0,
                 "execution_backend": "cluster",
+                "fallback_policy": {
+                    "source": "nirs4all.run.allow_fallback",
+                    "engine_requested": None,
+                    "allow_fallback": True,
+                    "mode": "allow_fallback",
+                },
                 "project_id": "project-1",
             },
             "datasets": [],
@@ -1230,6 +1242,7 @@ def test_execute_run_job_tolerates_run_store_open_failure(monkeypatch, tmp_path,
         *,
         store_run_id=None,
         engine=None,
+        allow_fallback=True,
         should_stop=None,
     ):
         training_calls.append(
@@ -1332,6 +1345,7 @@ def test_execute_run_job_tolerates_store_precreation_failure(monkeypatch, tmp_pa
         *,
         store_run_id=None,
         engine=None,
+        allow_fallback=True,
         should_stop=None,
     ):
         training_store_run_ids.append(store_run_id)
@@ -1366,6 +1380,12 @@ def test_execute_run_job_tolerates_store_precreation_failure(monkeypatch, tmp_pa
                 "n_pipelines": 1,
                 "n_datasets": 1,
                 "execution_backend": "local-python",
+                "fallback_policy": {
+                    "source": "nirs4all.run.allow_fallback",
+                    "engine_requested": None,
+                    "allow_fallback": True,
+                    "mode": "allow_fallback",
+                },
             },
             "datasets": [{"name": "Dataset A"}],
         }
@@ -1492,6 +1512,7 @@ def test_execute_run_job_clears_precreated_store_run_when_project_assignment_fai
         *,
         store_run_id=None,
         engine=None,
+        allow_fallback=True,
         should_stop=None,
     ):
         training_store_run_ids.append(store_run_id)

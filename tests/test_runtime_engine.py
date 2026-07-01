@@ -8,6 +8,7 @@ diagnostics, without depending on W7's RtResult envelope being present.
 from __future__ import annotations
 
 import warnings
+from types import SimpleNamespace
 
 from api import runtime_engine
 from api.runtime_errors import RtError
@@ -152,6 +153,42 @@ def test_finalize_reads_mapping_rt_result_contract():
     assert record["engine"] == "legacy"
     assert record["engine_requested"] == "dag-ml"
     assert record["engine_diagnostics"] == [diagnostic]
+
+
+def test_finalize_preserves_rt_manifest_policy_and_native_refs(tmp_path):
+    run_dir = tmp_path / "nirs4all_results" / "native-run"
+    artifact = {
+        "artifact_id": "artifact:model:compat.1:nirs4all:refit:variant:base",
+        "uri": "artifacts/model.joblib",
+        "backend": "joblib",
+        "kind": "model",
+        "content_fingerprint": "sha256:model",
+    }
+    manifest = {
+        "engine": "dag-ml",
+        "fingerprints": {"score_set_hash": "sha256:score"},
+        "files": {"score_set": "score_set.json", "predictions": "predictions.parquet"},
+    }
+    fallback_policy = runtime_engine.fallback_policy_record("dag-ml", True)
+
+    class _Result:
+        _dagml_results_dir = run_dir
+
+        def to_rt_result(self):  # noqa: ANN201
+            return SimpleNamespace(manifest=manifest, diagnostics=[], artifacts=[artifact])
+
+    with runtime_engine.observe_engine("dag-ml") as observation:
+        pass
+
+    record = observation.finalize(_Result(), fallback_policy=fallback_policy)
+
+    assert record["runtime_source"] == "rt_result"
+    assert record["runtime_manifest"] == manifest
+    assert record["fallback_policy"] == fallback_policy
+    assert record["native_result_refs"][0]["path"] == str(run_dir)
+    assert record["native_result_refs"][0]["manifest_path"] == str(run_dir / "manifest.json")
+    assert record["native_result_refs"][1]["artifact_id"] == artifact["artifact_id"]
+    assert record["native_result_refs"][1]["uri"] == "artifacts/model.joblib"
 
 
 def test_finalize_handles_broken_rt_result_gracefully():

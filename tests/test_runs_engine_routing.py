@@ -188,6 +188,53 @@ def test_execute_pipeline_training_records_transparent_fallback(
     assert warning_text in diagnostics[0]["message"]
 
 
+def test_execute_pipeline_training_handles_structured_rt_error_fallback(
+    stub_training_deps,
+    tmp_path,
+):
+    """Studio reruns legacy from structured RtError, not warning-string parsing."""
+    diagnostic = {
+        "verb": "run",
+        "cause": "unsupported_shape",
+        "message": "engine='dag-ml' does not support this pipeline shape",
+        "mitigation": "run this shape on engine='legacy'",
+    }
+    calls: list[dict] = []
+
+    class StructuredRtError(Exception):
+        def to_dict(self):
+            return diagnostic
+
+    def run_with_structured_fallback(**kwargs):
+        calls.append(dict(kwargs))
+        if kwargs.get("engine") == "dag-ml":
+            raise StructuredRtError("structured refusal")
+        return SimpleNamespace()
+
+    stub_training_deps["install"](run_with_structured_fallback)
+
+    result = runs_api._execute_pipeline_training(
+        _pipeline(),
+        "dataset-a",
+        str(tmp_path),
+        "run-1",
+        engine="dag-ml",
+        allow_fallback=True,
+    )
+
+    assert len(calls) == 2
+    assert calls[0]["engine"] == "dag-ml"
+    assert calls[0]["allow_fallback"] is False
+    assert calls[0]["results_path"] == str(tmp_path / "nirs4all_results")
+    assert "workspace_path" not in calls[0]
+    assert calls[1]["engine"] == "legacy"
+    assert calls[1]["workspace_path"] == str(tmp_path)
+    assert result["engine"] == "legacy"
+    assert result["engine_requested"] == "dag-ml"
+    assert result["engine_diagnostics"] == [diagnostic]
+    assert result["fallback_policy"]["allow_fallback"] is True
+
+
 # ---------------------------------------------------------------------------
 # Group B — route / constructor thread the engine onto the Run
 # ---------------------------------------------------------------------------
@@ -370,7 +417,7 @@ def test_execute_run_job_records_engine_outcome_on_pipeline(monkeypatch, tmp_pat
     diagnostics = [{"verb": "run", "cause": "unavailable_backend", "message": "x"}]
     seen_engine: dict = {}
 
-    def fake_training(pipeline, dataset_id, workspace_path, run_id, split_group_by=None, *, store_run_id=None, engine=None, should_stop=None):
+    def fake_training(pipeline, dataset_id, workspace_path, run_id, split_group_by=None, *, store_run_id=None, engine=None, allow_fallback=True, should_stop=None):
         seen_engine["engine"] = engine
         return {
             "metrics": {},
@@ -404,7 +451,7 @@ def test_execute_run_job_persists_engine_requested_on_training_failure(monkeypat
     """A hard training failure still persists the requested engine (B-011 fix)."""
     run = _single_pipeline_run("dag-ml", tmp_path)
 
-    def boom(pipeline, dataset_id, workspace_path, run_id, split_group_by=None, *, store_run_id=None, engine=None, should_stop=None):
+    def boom(pipeline, dataset_id, workspace_path, run_id, split_group_by=None, *, store_run_id=None, engine=None, allow_fallback=True, should_stop=None):
         raise RuntimeError("engine exploded")
 
     monkeypatch.setattr(runs_api, "_runs", {"run-1": run})
@@ -424,6 +471,47 @@ def test_execute_run_job_persists_engine_requested_on_training_failure(monkeypat
     assert pipeline.engine_requested == "dag-ml"
 
 
+def test_execute_run_job_persists_structured_refusal_policy(monkeypatch, tmp_path):
+    """Strict runtime refusal stores RtError diagnostics and the refuse policy."""
+    run = _single_pipeline_run("dag-ml", tmp_path)
+    run.allow_fallback = False
+    diagnostic = {
+        "verb": "run",
+        "cause": "unsupported_shape",
+        "message": "engine='dag-ml' does not support this pipeline shape",
+    }
+
+    class StructuredRtError(Exception):
+        def to_dict(self):
+            return diagnostic
+
+    def refuse(pipeline, dataset_id, workspace_path, run_id, split_group_by=None, *, store_run_id=None, engine=None, allow_fallback=True, should_stop=None):
+        assert allow_fallback is False
+        raise StructuredRtError("structured refusal")
+
+    monkeypatch.setattr(runs_api, "_runs", {"run-1": run})
+    monkeypatch.setattr(runs_api, "_save_run_manifest", lambda run: None)
+    monkeypatch.setattr(runs_api, "_open_run_store_repository", lambda ws: None)
+    monkeypatch.setattr(runs_api, "_execute_pipeline_training", refuse)
+
+    result = runs_api._execute_run_job(
+        "run-1", SimpleNamespace(id="job-1", cancellation_requested=False), lambda progress, message: None,
+    )
+
+    assert result["status"] == "failed"
+    pipeline = run.datasets[0].pipelines[0]
+    assert pipeline.status == "failed"
+    assert pipeline.engine_requested == "dag-ml"
+    assert pipeline.engine_diagnostics == [diagnostic]
+    assert pipeline.runtime_source == "rt_error"
+    assert pipeline.fallback_policy == {
+        "source": "nirs4all.run.allow_fallback",
+        "engine_requested": "dag-ml",
+        "allow_fallback": False,
+        "mode": "refuse_fallback",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Group D — engine record round-trips through the persisted run manifest
 # ---------------------------------------------------------------------------
@@ -433,6 +521,26 @@ def test_engine_record_round_trips_through_run_manifest(tmp_path):
     import json
 
     diagnostics = [{"verb": "run", "cause": "unsupported_shape", "message": "branch unsupported"}]
+    fallback_policy = {
+        "source": "nirs4all.run.allow_fallback",
+        "engine_requested": "dag-ml",
+        "allow_fallback": True,
+        "mode": "allow_fallback",
+    }
+    runtime_manifest = {
+        "engine": "legacy",
+        "fingerprints": {"score_set_hash": None},
+        "files": {},
+    }
+    native_result_refs = [
+        {
+            "source": "native_results",
+            "role": "run_dir",
+            "artifact_type": "native_results_dir",
+            "run_id": "native-run",
+            "path": str(tmp_path / "nirs4all_results" / "native-run"),
+        }
+    ]
     pipeline = runs_api.PipelineRun(
         id="run-1-dataset-a-pipe-a",
         pipeline_id="pipe-a",
@@ -444,6 +552,10 @@ def test_engine_record_round_trips_through_run_manifest(tmp_path):
         engine="legacy",
         engine_requested="dag-ml",
         engine_diagnostics=diagnostics,
+        runtime_source="rt_result",
+        runtime_manifest=runtime_manifest,
+        fallback_policy=fallback_policy,
+        native_result_refs=native_result_refs,
     )
     run = runs_api.Run(
         id="run-1",
@@ -471,6 +583,10 @@ def test_engine_record_round_trips_through_run_manifest(tmp_path):
     assert reloaded_pipeline.engine == "legacy"
     assert reloaded_pipeline.engine_requested == "dag-ml"
     assert reloaded_pipeline.engine_diagnostics == diagnostics
+    assert reloaded_pipeline.runtime_source == "rt_result"
+    assert reloaded_pipeline.runtime_manifest == runtime_manifest
+    assert reloaded_pipeline.fallback_policy == fallback_policy
+    assert reloaded_pipeline.native_result_refs == native_result_refs
 
 
 # ---------------------------------------------------------------------------

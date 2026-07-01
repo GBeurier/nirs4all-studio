@@ -46,6 +46,12 @@ def test_local_python_driver_builds_legacy_job_config_with_metadata():
         "total_pipelines": 3,
         "dataset_count": 2,
         "has_workspace": True,
+        "fallback_policy": {
+            "source": "nirs4all.run.allow_fallback",
+            "engine_requested": None,
+            "allow_fallback": True,
+            "mode": "allow_fallback",
+        },
         "created_at": "2026-06-30T10:00:00",
         "metadata": {"source": "test"},
     }
@@ -217,6 +223,12 @@ def test_local_python_driver_emits_records_for_injected_repository():
             "total_pipelines": 5,
             "dataset_count": 1,
             "has_workspace": False,
+            "fallback_policy": {
+                "source": "nirs4all.run.allow_fallback",
+                "engine_requested": None,
+                "allow_fallback": True,
+                "mode": "allow_fallback",
+            },
             "metadata": {"source": "unit-test"},
         },
         "driver": {
@@ -262,7 +274,9 @@ def test_non_local_requests_resolve_to_unavailable_driver_placeholders(backend):
     assert result["job_id"] == "run-unavailable"
     assert result["success"] is False
     assert result["backend"] == backend
-    assert result["metadata"] == {"reason": "driver_unavailable"}
+    assert result["metadata"]["reason"] == "driver_unavailable"
+    assert result["metadata"]["rt_error"]["cause"] == "unavailable_backend"
+    assert result["metadata"]["rt_error"]["verb"] == "cancel"
 
 
 def test_lists_execution_driver_capabilities_for_every_typed_backend():
