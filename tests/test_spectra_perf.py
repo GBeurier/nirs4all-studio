@@ -22,12 +22,14 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import api.shared  # noqa: F401  (import first to satisfy load-order constraint)
 from api import spectra as spectra_module
 from api.playground import charts as charts_module
+from api.shared import metrics_computer as metrics_module
 from api.shared.metrics_computer import compute_spectral_statistics
 
 
@@ -153,7 +155,9 @@ def test_get_spectra_no_decimation_when_cap_exceeds_width(monkeypatch):
     assert data["spectra"] == X.tolist()
 
 
-def test_compute_spectral_statistics_canonical_values():
+def test_compute_spectral_statistics_canonical_values(monkeypatch):
+    monkeypatch.setattr(metrics_module, "is_ml_ready", lambda: False)
+
     X = np.array(
         [
             [1.0, 10.0, 100.0],
@@ -181,6 +185,68 @@ def test_compute_spectral_statistics_canonical_values():
         "n_samples": 3,
         "n_features": 3,
     }
+
+
+def test_spectra_statistics_route_prefers_runtime_core_helper(monkeypatch):
+    """B-017 parity: route stats come from the runtime/core helper when present."""
+    X = np.arange(6, dtype=float).reshape(2, 3)
+    dataset = _FakeSpectraDataset(X, headers=[1100.0, 1200.0, 1300.0])
+    called = {}
+
+    def fake_runtime_compute(arg):
+        called["shape"] = arg.shape
+        return {
+            "mean": ["rt-mean"],
+            "std": ["rt-std"],
+            "min": ["rt-min"],
+            "max": ["rt-max"],
+            "p5": ["rt-p5"],
+            "q1": ["rt-q1"],
+            "median": ["rt-median"],
+            "q3": ["rt-q3"],
+            "p95": ["rt-p95"],
+            "global": {
+                "mean": 10.0,
+                "std": 11.0,
+                "min": 12.0,
+                "max": 13.0,
+            },
+        }
+
+    def fake_get_cached(key, *, optional=False):
+        assert key == "compute_spectral_statistics"
+        assert optional is True
+        return fake_runtime_compute
+
+    def fail_studio_fallback(_arg):
+        pytest.fail("spectra statistics route bypassed runtime helper")
+
+    monkeypatch.setattr(spectra_module, "_load_dataset", lambda _id: dataset)
+    monkeypatch.setattr(metrics_module, "is_ml_ready", lambda: True)
+    monkeypatch.setattr(metrics_module, "get_cached", fake_get_cached)
+    monkeypatch.setattr(metrics_module, "_compute_spectral_statistics_studio", fail_studio_fallback)
+
+    data = asyncio.run(spectra_module.get_spectra_statistics("ds", partition="train", source=0))
+
+    assert called["shape"] == (2, 3)
+    assert data["statistics"] == {
+        "mean": ["rt-mean"],
+        "std": ["rt-std"],
+        "min": ["rt-min"],
+        "max": ["rt-max"],
+        "median": ["rt-median"],
+        "q1": ["rt-q1"],
+        "q3": ["rt-q3"],
+    }
+    assert data["global"] == {
+        "global_mean": 10.0,
+        "global_std": 11.0,
+        "global_min": 12.0,
+        "global_max": 13.0,
+        "num_samples": 2,
+        "num_features": 3,
+    }
+    assert data["wavelengths"] == [1100.0, 1200.0, 1300.0]
 
 
 def test_playground_statistics_delegates_to_shared_helper(monkeypatch):

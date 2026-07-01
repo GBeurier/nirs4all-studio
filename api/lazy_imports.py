@@ -180,6 +180,11 @@ def _do_load_ml_deps():
         from nirs4all.core.metrics import eval_multi, get_available_metrics
         _cache["eval_multi"] = eval_multi
         _cache["get_available_metrics"] = get_available_metrics
+        try:
+            from nirs4all.core.metrics import compute_spectral_statistics
+            _cache["compute_spectral_statistics"] = compute_spectral_statistics
+        except ImportError:
+            logger.debug("nirs4all core spectral statistics helper not available")
         _yield_gil()
 
         # 7. Operators
