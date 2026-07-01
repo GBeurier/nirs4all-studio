@@ -299,7 +299,8 @@ export function buildRuntimeNativeResultsAffordance(
     ?? (input.hasRefit ? "Export Final Model (.n4a)" : "Export Model (.n4a)");
   const exportDescription = input.exportDescription
     ?? (input.hasRefit ? "Exports the refit model trained on the full dataset" : null);
-  const disabledReason = input.disabledReason ?? null;
+  const disabledReason = input.disabledReason
+    ?? (hasNativeResults ? null : "Native result artifacts are not attached for this run.");
 
   return {
     hasNativeResults,
@@ -309,7 +310,7 @@ export function buildRuntimeNativeResultsAffordance(
       : "Native results not attached",
     exportLabel,
     exportDescription,
-    disabled: input.disabled === true || disabledReason != null,
+    disabled: input.disabled === true || !hasNativeResults || disabledReason != null,
     disabledReason,
   };
 }
