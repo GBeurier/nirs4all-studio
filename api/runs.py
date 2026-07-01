@@ -41,8 +41,10 @@ from .pipeline_canonical import (
     count_runtime_variants,
     editor_steps_to_runtime_canonical,
 )
+from .results_repository import NATIVE_RESULTS_DIRNAME
 from .run_execution_plan import build_campaign_run_group_execution_plan, build_legacy_run_execution_plan, build_retry_run_execution_plan
 from .run_store_repository import RunStoreRepository
+from .runtime_engine import fallback_policy_record, resolve_engine, rt_error_envelope_from_exception
 from .runtime_errors import RtError
 from .shared.json_safe import sanitize_float
 from .shared.logger import get_logger
@@ -154,6 +156,10 @@ class PipelineRun(BaseModel):
     engine: str | None = None
     engine_requested: str | None = None
     engine_diagnostics: list[dict[str, Any]] | None = None
+    runtime_source: str | None = None
+    runtime_manifest: dict[str, Any] | None = None
+    fallback_policy: dict[str, Any] | None = None
+    native_result_refs: list[dict[str, Any]] | None = None
     config: dict | None = None
     logs: list[str] | None = None
     started_at: str | None = None
@@ -197,6 +203,7 @@ class Run(BaseModel):
     # Requested ML engine for the experiment (None = library default "legacy").
     # The engine that actually ran is recorded per-pipeline on PipelineRun.engine.
     engine: str | None = None
+    allow_fallback: bool = True
     datasets: list[DatasetRun]
     status: Literal["queued", "running", "completed", "failed"]
     created_at: str
@@ -227,6 +234,7 @@ class ExperimentConfig(BaseModel):
     pipeline_ids: list[str] = Field(default_factory=list)  # Can be empty if inline_pipeline is provided
     execution_backend: ExecutionBackend = "local-python"
     engine: str | None = Field(None, description="ML engine selector: 'legacy' (default) or 'dag-ml'")
+    allow_fallback: bool = Field(True, description="Allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
     cv_folds: int = Field(default=5, ge=2, le=50)
     cv_strategy: Literal["kfold", "stratified", "loo", "holdout"] = "kfold"
     test_size: float | None = Field(default=0.2, ge=0.1, le=0.5)
@@ -247,6 +255,7 @@ class QuickRunRequest(BaseModel):
     cv_folds: int = Field(default=5, ge=2, le=50)
     random_state: int | None = Field(42, description="Random seed")
     engine: str | None = Field(None, description="ML engine selector: 'legacy' (default) or 'dag-ml'")
+    allow_fallback: bool = Field(True, description="Allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
     inline_pipeline: InlinePipeline | None = None
 
@@ -884,6 +893,7 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
         description=description,
         execution_backend="local-python",
         engine=request.engine,
+        allow_fallback=request.allow_fallback,
         datasets=[dataset_run],
         status="queued",
         created_at=now,
@@ -943,6 +953,7 @@ def _start_run_job(run: Run) -> Job:
         run_name=run.name,
         requested_backend=run.execution_backend,
         requested_engine=run.engine,
+        allow_fallback=run.allow_fallback,
         total_pipelines=run.total_pipelines or 0,
         dataset_count=len(run.datasets),
         workspace_path=run.workspace_path,
@@ -1004,9 +1015,14 @@ def _build_store_run_config(run: Run, total_pipelines: int) -> dict[str, Any]:
     }
     if run.engine is not None:
         config["requested_engine"] = run.engine
+    config["fallback_policy"] = fallback_policy_record(run.engine, run.allow_fallback)
     if run.project_id:
         config["project_id"] = run.project_id
     return config
+
+
+def _prefers_native_runtime(engine: str | None) -> bool:
+    return resolve_engine(engine) == "dag-ml"
 
 
 def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str, Any]:
@@ -1036,7 +1052,8 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
     # one-pipeline runs.
     shared_store_run_id: str | None = None
     run_store_repository: RunStoreRepository | None = None
-    if run.workspace_path:
+    precreate_legacy_store_run = run.workspace_path and not _prefers_native_runtime(run.engine)
+    if precreate_legacy_store_run:
         try:
             run_store_repository = _open_run_store_repository(run.workspace_path)
             dataset_meta = [{"name": d.dataset_name} for d in run.datasets]
@@ -1071,6 +1088,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                 # recorded on success below; the Studio route must never silently
                 # drop the engine request even when training raises (B-011).
                 pipeline.engine_requested = run.engine
+                pipeline.fallback_policy = fallback_policy_record(run.engine, run.allow_fallback)
                 pipeline.logs = [f"[INFO] Starting pipeline: {pipeline.pipeline_name}"]
                 _save_run_manifest(run)
 
@@ -1090,6 +1108,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         dataset.split_group_by,
                         store_run_id=shared_store_run_id,
                         engine=run.engine,
+                        allow_fallback=run.allow_fallback,
                         should_stop=lambda: job.cancellation_requested,
                     )
                     training_succeeded = True
@@ -1116,6 +1135,10 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         pipeline.engine = result.get("engine")
                         pipeline.engine_requested = result.get("engine_requested")
                         pipeline.engine_diagnostics = result.get("engine_diagnostics")
+                        pipeline.runtime_source = result.get("runtime_source")
+                        pipeline.runtime_manifest = result.get("runtime_manifest")
+                        pipeline.fallback_policy = result.get("fallback_policy") or pipeline.fallback_policy
+                        pipeline.native_result_refs = result.get("native_result_refs")
 
                         # Capture store_run_id (from shared pre-created run or single pipeline)
                         result_store_run_id = result.get("store_run_id")
@@ -1166,6 +1189,11 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         pipeline.error_message = str(e)
                         pipeline.logs = pipeline.logs or []
                         pipeline.logs.append(f"[ERROR] {str(e)}")
+                        rt_error = rt_error_envelope_from_exception(e)
+                        if rt_error is not None:
+                            pipeline.engine_diagnostics = [rt_error]
+                            pipeline.runtime_source = "rt_error"
+                            pipeline.fallback_policy = fallback_policy_record(run.engine, run.allow_fallback)
                         if training_succeeded:
                             # The pipeline trained; the failure is in studio
                             # post-processing (metrics shaping, job bookkeeping).
@@ -1263,6 +1291,7 @@ def _execute_pipeline_training(
     split_group_by: str | None = None,
     store_run_id: str | None = None,
     engine: str | None = None,
+    allow_fallback: bool = True,
     should_stop: Any | None = None,
 ) -> dict[str, Any]:
     """Execute one pipeline via nirs4all.run() on the current worker thread.
@@ -1440,31 +1469,84 @@ def _execute_pipeline_training(
         log("[INFO] Executing nirs4all.run() with dataset config...")
         log(f"[INFO] Training {model_name}...")
 
-        run_kwargs = {
+        base_run_kwargs = {
             "pipeline": nirs4all_steps,
             "dataset": dataset_config,
             "verbose": 1,
             "save_artifacts": True,
             "save_charts": False,
             "plots_visible": False,
-            "workspace_path": workspace_path,
         }
         # Thread the requested ML engine (legacy|dag-ml) into the run; absent =>
         # the library default. Orthogonal to the run's execution_backend.
         from .runtime_engine import engine_run_kwargs, observe_engine
 
-        run_kwargs.update(engine_run_kwargs(engine))
-        if store_run_id:
-            run_kwargs["store_run_id"] = store_run_id
-        if should_stop is not None:
-            # Cooperative cancellation: nirs4all polls this at dataset/variant/
-            # refit boundaries and aborts with RunCancelledError.
-            run_kwargs["should_stop"] = should_stop
-        # Observe the call to record which engine actually ran (incl. transparent
-        # dag-ml->legacy fallback) and any RtError diagnostics.
-        with observe_engine(engine) as engine_observation:
-            result = nirs4all.run(**run_kwargs)
-        engine_record = engine_observation.finalize(result)
+        fallback_policy = fallback_policy_record(engine, allow_fallback)
+        resolved_engine = resolve_engine(engine)
+
+        def _legacy_run_kwargs(*, force_legacy: bool = False) -> dict[str, Any]:
+            kwargs = {**base_run_kwargs, "workspace_path": workspace_path}
+            if force_legacy:
+                kwargs["engine"] = "legacy"
+            else:
+                kwargs.update(engine_run_kwargs(engine))
+            if store_run_id:
+                kwargs["store_run_id"] = store_run_id
+            if should_stop is not None:
+                # Cooperative cancellation: nirs4all polls this at dataset/variant/
+                # refit boundaries and aborts with RunCancelledError.
+                kwargs["should_stop"] = should_stop
+            return kwargs
+
+        def _attach_rt_diagnostic(result_obj: Any, exc: BaseException) -> None:
+            if hasattr(exc, "to_dict"):
+                try:
+                    result_obj._rt_diagnostics = [exc]
+                except Exception:
+                    pass
+
+        if resolved_engine == "dag-ml":
+            # Dag-ml does not honor the legacy workspace/store kwargs. Run it
+            # against the runtime envelope in strict mode first; if the caller's
+            # policy permits fallback, rerun legacy explicitly using the
+            # structured RtError as the diagnostic source of truth.
+            run_kwargs = dict(base_run_kwargs)
+            run_kwargs.update(engine_run_kwargs(engine))
+            run_kwargs["allow_fallback"] = False
+            if workspace_path:
+                run_kwargs["results_path"] = str(Path(workspace_path) / NATIVE_RESULTS_DIRNAME)
+
+            with observe_engine(engine) as engine_observation:
+                try:
+                    result = nirs4all.run(**run_kwargs)
+                except Exception as exc:
+                    rt_error = rt_error_envelope_from_exception(exc)
+                    if rt_error is None or not allow_fallback:
+                        raise
+                    log(f"[WARN] {rt_error.get('message', str(exc))}")
+                    with observe_engine("legacy") as fallback_observation:
+                        result = nirs4all.run(**_legacy_run_kwargs(force_legacy=True))
+                    _attach_rt_diagnostic(result, exc)
+                    engine_record = fallback_observation.finalize(
+                        result,
+                        diagnostics=[rt_error],
+                        fallback_policy=fallback_policy,
+                    )
+                    engine_record["engine_requested"] = engine
+                else:
+                    engine_record = engine_observation.finalize(
+                        result,
+                        fallback_policy=fallback_policy,
+                    )
+        else:
+            # Legacy/default path remains store-backed. Warning capture is kept
+            # only for older nirs4all builds that lack RtResult diagnostics.
+            with observe_engine(engine) as engine_observation:
+                result = nirs4all.run(**_legacy_run_kwargs())
+            engine_record = engine_observation.finalize(
+                result,
+                fallback_policy=fallback_policy,
+            )
     finally:
         root_logger.removeHandler(log_handler)
 
@@ -1545,6 +1627,10 @@ def _execute_pipeline_training(
         "engine": engine_record.get("engine"),
         "engine_requested": engine_record.get("engine_requested"),
         "engine_diagnostics": engine_record.get("engine_diagnostics"),
+        "runtime_source": engine_record.get("runtime_source"),
+        "runtime_manifest": engine_record.get("runtime_manifest"),
+        "fallback_policy": engine_record.get("fallback_policy"),
+        "native_result_refs": engine_record.get("native_result_refs"),
     }
 
 
@@ -2105,6 +2191,7 @@ def _create_run_group_from_payload(
         description=config.description or "",
         execution_backend=config.execution_backend,
         engine=config.engine,
+        allow_fallback=config.allow_fallback,
         datasets=_build_dataset_runs_from_execution_plan(execution_plan),
         status="queued",
         created_at=now,
@@ -2172,6 +2259,7 @@ def _create_run_from_config(
         description=config.description or "",
         execution_backend=config.execution_backend,
         engine=config.engine,
+        allow_fallback=config.allow_fallback,
         datasets=_build_dataset_runs_from_execution_plan(execution_plan),
         status="queued",
         created_at=now,
@@ -2425,6 +2513,7 @@ async def retry_run(run_id: str):
         # re-run (B-017/B-018). Orthogonal to execution_backend; the engine that
         # actually ran is recorded per-pipeline during execution.
         engine=old_run.engine,
+        allow_fallback=old_run.allow_fallback,
         datasets=[
             DatasetRun(
                 dataset_id=dataset.dataset_id,

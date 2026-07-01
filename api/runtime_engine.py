@@ -15,8 +15,10 @@ overloaded onto one another.
 
 The module is dependency-light and import-safe without ``nirs4all`` (Phase-1),
 and is forward-compatible with W7's ``RunResult.to_rt_result()`` envelope: when
-that accessor exists, the engine + diagnostics come straight from the structured
-envelope; until then they are derived from the library's fallback warning.
+that accessor exists, the engine, manifest, diagnostics, and native result
+references come straight from the structured envelope. Warning-string fallback
+classification is retained only as a compatibility quarantine for older library
+results that do not expose ``RtResult`` / ``RtError`` yet.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import warnings
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .runtime_errors import RtError, RtErrorCause
@@ -107,6 +110,25 @@ def _diagnostics_to_envelopes(diagnostics: Any) -> list[dict[str, Any]]:
     return envelopes
 
 
+def rt_error_envelope_from_exception(exc: BaseException) -> dict[str, Any] | None:
+    """Return a structured ``RtError`` envelope from an exception when present."""
+    rt_error = getattr(exc, "rt_error", None)
+    if rt_error is not None:
+        if hasattr(rt_error, "to_envelope"):
+            return rt_error.to_envelope()
+        if hasattr(rt_error, "to_dict"):
+            return rt_error.to_dict()
+        if isinstance(rt_error, Mapping):
+            return dict(rt_error)
+
+    if hasattr(exc, "to_envelope"):
+        return exc.to_envelope()  # type: ignore[no-any-return]
+    if hasattr(exc, "to_dict"):
+        payload = exc.to_dict()
+        return dict(payload) if isinstance(payload, Mapping) else None
+    return None
+
+
 def _runtime_field(value: Any, key: str) -> Any:
     """Read a field from a runtime envelope shaped as JSON or an object."""
     if isinstance(value, Mapping):
@@ -114,13 +136,75 @@ def _runtime_field(value: Any, key: str) -> Any:
     return getattr(value, key, None)
 
 
-def _rt_result_outcome(result: Any) -> dict[str, Any] | None:
-    """Read engine + diagnostics from a W7 ``RtResult`` when available.
+def _mapping_or_none(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return None
 
-    Forward-compatible: once ``RunResult.to_rt_result()`` (W7) lands, the engine
-    that actually ran and its diagnostics come straight from the structured
-    envelope. Returns ``None`` when the accessor is absent (today), so the caller
-    falls back to warning-based detection.
+
+def _jsonable_list(value: Any) -> list[Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return None
+
+
+def _native_result_refs(result: Any, artifacts: Any) -> list[dict[str, Any]] | None:
+    """Build durable references to native result outputs without embedding them."""
+    refs: list[dict[str, Any]] = []
+    run_dir = getattr(result, "_dagml_results_dir", None)
+    if run_dir:
+        path = Path(run_dir)
+        refs.append(
+            {
+                "source": "native_results",
+                "role": "run_dir",
+                "artifact_type": "native_results_dir",
+                "run_id": path.name,
+                "path": str(path),
+                "manifest_path": str(path / "manifest.json"),
+            }
+        )
+
+    for artifact in _jsonable_list(artifacts) or []:
+        if not isinstance(artifact, Mapping):
+            continue
+        refs.append(
+            {
+                "source": "rt_result",
+                "role": "model_artifact",
+                "artifact_type": "native_artifact_ref",
+                "artifact_id": artifact.get("artifact_id"),
+                "uri": artifact.get("uri"),
+                "backend": artifact.get("backend"),
+                "kind": artifact.get("kind"),
+                "content_fingerprint": artifact.get("content_fingerprint"),
+            }
+        )
+
+    return refs or None
+
+
+def fallback_policy_record(requested: str | None, allow_fallback: bool) -> dict[str, Any]:
+    """Return the run-record fallback/refusal policy for a runtime call."""
+    return {
+        "source": "nirs4all.run.allow_fallback",
+        "engine_requested": requested,
+        "allow_fallback": allow_fallback,
+        "mode": "allow_fallback" if allow_fallback else "refuse_fallback",
+    }
+
+
+def _rt_result_outcome(result: Any) -> dict[str, Any] | None:
+    """Read runtime outcome data from an ``RtResult`` when available.
+
+    The engine that actually ran, diagnostics, manifest, and native result refs
+    come straight from the structured envelope. Returns ``None`` when the
+    accessor is absent, so callers can use the warning quarantine for old
+    results only.
     """
     to_rt = getattr(result, "to_rt_result", None)
     if not callable(to_rt):
@@ -131,12 +215,17 @@ def _rt_result_outcome(result: Any) -> dict[str, Any] | None:
         return None
 
     manifest = _runtime_field(rt_result, "manifest")
-    engine = _runtime_field(manifest, "engine")
+    manifest_payload = _mapping_or_none(manifest)
+    engine = _runtime_field(manifest_payload or manifest, "engine")
     diagnostics = _runtime_field(rt_result, "diagnostics")
+    artifacts = _runtime_field(rt_result, "artifacts")
 
     return {
+        "runtime_source": "rt_result",
         "engine": engine,
         "diagnostics": _diagnostics_to_envelopes(diagnostics),
+        "runtime_manifest": manifest_payload,
+        "native_result_refs": _native_result_refs(result, artifacts),
     }
 
 
@@ -153,33 +242,53 @@ class EngineObservation:
     resolved: str
     _warnings: list[str] = field(default_factory=list)
 
-    def finalize(self, result: Any = None) -> dict[str, Any]:
+    def finalize(
+        self,
+        result: Any = None,
+        *,
+        diagnostics: Any = None,
+        fallback_policy: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Return the engine record for the run record.
 
         Args:
             result: The ``nirs4all.run`` result, used to read a W7 ``RtResult``
                 envelope when present.
+            diagnostics: Structured ``RtError`` diagnostics captured outside the
+                result envelope, for example from a strict refusal before an
+                allowed Studio fallback reruns legacy.
+            fallback_policy: The explicit fallback/refusal policy in effect for
+                this call.
 
         Returns:
             A dict with ``engine`` (the engine that actually ran, including
             fallback), ``engine_requested`` (the request input; ``None`` =
-            default) and ``engine_diagnostics`` (list of :class:`RtError`
-            envelopes, or ``None``).
+            default), ``engine_diagnostics`` (list of :class:`RtError`
+            envelopes, or ``None``), and runtime metadata preserved from the
+            structured envelope when available.
         """
+        explicit_diagnostics = _diagnostics_to_envelopes(diagnostics)
         rt_outcome = _rt_result_outcome(result)
         if rt_outcome is not None and rt_outcome.get("engine"):
+            rt_diagnostics = rt_outcome["diagnostics"] or explicit_diagnostics
             return {
                 "engine": rt_outcome["engine"],
                 "engine_requested": self.requested,
-                "engine_diagnostics": rt_outcome["diagnostics"] or None,
+                "engine_diagnostics": rt_diagnostics or None,
+                "runtime_source": rt_outcome["runtime_source"],
+                "runtime_manifest": rt_outcome["runtime_manifest"],
+                "fallback_policy": fallback_policy,
+                "native_result_refs": rt_outcome["native_result_refs"],
             }
 
-        diagnostics: list[dict[str, Any]] = []
+        warning_diagnostics: list[dict[str, Any]] = []
         ran = self.resolved
+        runtime_source = "resolved_engine"
         for message in self._warnings:
             if _FALLBACK_FRAGMENT in message:
                 ran = _LEGACY
-                diagnostics.append(
+                runtime_source = "warning_heuristic"
+                warning_diagnostics.append(
                     RtError(
                         verb="run",
                         cause=_cause_for_warning(message),
@@ -187,10 +296,15 @@ class EngineObservation:
                         mitigation=_FALLBACK_MITIGATION,
                     ).to_envelope()
                 )
+        all_diagnostics = [*explicit_diagnostics, *warning_diagnostics]
         return {
             "engine": ran,
             "engine_requested": self.requested,
-            "engine_diagnostics": diagnostics or None,
+            "engine_diagnostics": all_diagnostics or None,
+            "runtime_source": runtime_source,
+            "runtime_manifest": None,
+            "fallback_policy": fallback_policy,
+            "native_result_refs": None,
         }
 
 
