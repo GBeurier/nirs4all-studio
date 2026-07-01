@@ -26,6 +26,10 @@ import { invalidatePredictionRelatedQueries } from "@/lib/prediction-deletion";
 import { buildRunStorageArtifactMetadata } from "@/lib/runs/pageData";
 import type { RunsExecutionJobListIndicators } from "@/lib/runs/pageData";
 import { formatRunProgress, formatRunTokenLabel } from "@/lib/runs/format";
+import {
+  getRuntimeResultStatusDisplay,
+  resolveRuntimeResultStatus,
+} from "@/ui/runtime";
 import { deleteN4AWorkspaceRun } from "@/api/linkedWorkspaces";
 import {
   formatMetricValue,
@@ -33,7 +37,6 @@ import {
   isBetterScore,
   DEFAULT_DATASET_ITEM_REGRESSION_METRICS,
 } from "@/lib/scores";
-import { runStatusConfig } from "@/types/runs";
 import type { EnrichedRun, EnrichedDatasetRun } from "@/types/enriched-runs";
 import { filterParasiticDatasets } from "./datasetFilters";
 import { DatasetResultCard } from "@/components/scores/DatasetResultCard";
@@ -188,10 +191,10 @@ export function RunItem({
   const [expanded, setExpanded] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
-  const status = (run.status || "completed") as keyof typeof runStatusConfig;
-  const config = runStatusConfig[status] || runStatusConfig.completed;
+  const status = resolveRuntimeResultStatus(run.status);
+  const statusDisplay = getRuntimeResultStatusDisplay(run.status);
   const StatusIcon = statusIcons[status] || CheckCircle2;
-  const canDeleteRun = status !== "running" && status !== "queued";
+  const canDeleteRun = !statusDisplay.isBusy;
   const storageArtifactMetadata = buildRunStorageArtifactMetadata(run);
   const storageArtifactFields = storageArtifactMetadata.fields;
   const executionRequestedBackend = formatExecutionTokenLabel(executionJob?.requestedBackend ?? null);
@@ -251,8 +254,8 @@ export function RunItem({
           <CardHeader className="p-4 pb-2 cursor-pointer hover:bg-muted/20 transition-colors">
             <div className="flex items-start gap-3 lg:grid lg:grid-cols-[minmax(0,21rem)_minmax(0,1fr)_auto] lg:items-start">
               <div className="flex items-start gap-3 min-w-0 flex-1">
-                <div className={cn("p-2 rounded-lg shrink-0 relative", config.bg)}>
-                  <StatusIcon className={cn("h-4 w-4", config.color, config.iconClass)} />
+                <div className={cn("p-2 rounded-lg shrink-0 relative", statusDisplay.bgClass)}>
+                  <StatusIcon className={cn("h-4 w-4", statusDisplay.colorClass, statusDisplay.iconClass)} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -424,13 +427,13 @@ export function RunItem({
               />
             ))}
 
-            {datasets.length === 0 && (status === "running" || status === "queued") && (
+            {datasets.length === 0 && statusDisplay.isBusy && (
               <div className="text-sm text-muted-foreground text-center py-3">
                 Waiting for results...
               </div>
             )}
 
-            {datasets.length === 0 && status !== "running" && status !== "queued" && !run.error && (
+            {datasets.length === 0 && !statusDisplay.isBusy && !run.error && (
               <div className="text-sm text-muted-foreground text-center py-3">
                 No dataset results available
               </div>
