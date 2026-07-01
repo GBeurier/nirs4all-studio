@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from .shared.logger import get_logger
 from .shared.metrics_computer import compute_spectral_statistics
-from .shared.pipeline_service import instantiate_operator
+from .shared.preprocessing_runtime import apply_preprocessing_chain
 from .workspace_manager import workspace_manager
 
 logger = get_logger(__name__)
@@ -700,27 +700,11 @@ async def get_spectra_statistics(
 def _apply_preprocessing_chain(X, chain: list[dict[str, Any]]):
     """Apply a chain of preprocessing steps to spectral data.
 
-    Uses shared pipeline_service for operator resolution to avoid duplicating
-    the transformer mapping logic.
+    Legacy wrapper for analysis/evaluation callers. The actual execution
+    delegates to the shared preprocessing runtime helper.
     """
     if not NIRS4ALL_AVAILABLE:
         return X
 
-    for step in chain:
-        name = step.get("name", "")
-        params = step.get("params", {})
-
-        if not name:
-            continue
-
-        try:
-            # Use shared pipeline service for operator resolution
-            transformer = instantiate_operator(name, params, operator_type="preprocessing")
-            if transformer is not None:
-                X = transformer.fit_transform(X)
-            else:
-                logger.warning("Unknown preprocessing step '%s', skipping", name)
-        except Exception as e:
-            logger.warning("Failed to apply preprocessing step '%s': %s", name, e)
-
-    return X
+    transformed, _applied_steps = apply_preprocessing_chain(X, chain, strict=False)
+    return transformed
