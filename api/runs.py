@@ -1056,6 +1056,12 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
 
                 pipeline.status = "running"
                 pipeline.started_at = datetime.now().isoformat()
+                # Persist the requested engine up-front so a hard run failure
+                # still records what the user asked for. The engine that actually
+                # ran (incl. transparent fallback) and its diagnostics are
+                # recorded on success below; the Studio route must never silently
+                # drop the engine request even when training raises (B-011).
+                pipeline.engine_requested = run.engine
                 pipeline.logs = [f"[INFO] Starting pipeline: {pipeline.pipeline_name}"]
                 _save_run_manifest(run)
 
