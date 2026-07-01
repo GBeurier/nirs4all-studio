@@ -11,19 +11,6 @@ import { getPredictionArrays } from "@/api/aggregatedPredictions";
 import type { PredictionArrayPayload } from "@/types/aggregated-predictions";
 import type { PartitionDataset, ViewerPartitionTarget } from "./types";
 
-/**
- * Project a vector-or-matrix prediction payload onto a plottable vector.
- * Viewer targets are per-target predictions, so a multi-column payload (the
- * `(n, 1)` array `tolist()` case, or a multi-target block) is projected to its
- * first column rather than flattened.
- */
-function toPlottableVector(payload: PredictionArrayPayload | null | undefined): number[] {
-  if (!payload || payload.length === 0) return [];
-  return Array.isArray(payload[0])
-    ? (payload as number[][]).map((row) => row[0] ?? NaN)
-    : (payload as number[]);
-}
-
 interface Options {
   partitions: ViewerPartitionTarget[];
   workspaceId?: string;
@@ -35,6 +22,20 @@ interface State {
   data: PartitionDataset[];
   isLoading: boolean;
   error: string | null;
+}
+
+export function coercePredictionVector(payload: PredictionArrayPayload | null | undefined, targetIndex = 0): number[] {
+  if (payload == null) return [];
+  if (payload.length === 0) return [];
+  const first = payload[0];
+  if (typeof first === "number") {
+    return payload as number[];
+  }
+  const matrix = payload as number[][];
+  return matrix.map((row) => {
+    const value = row[targetIndex];
+    return typeof value === "number" ? value : Number.NaN;
+  });
 }
 
 async function fetchOne(
@@ -57,13 +58,17 @@ async function fetchOne(
     };
   }
   const r = await getPredictionArrays(target.predictionId);
+  const targetIndex = r.target_index ?? 0;
+  const yTrue = coercePredictionVector(r.y_true, targetIndex);
+  const yPred = coercePredictionVector(r.y_pred, targetIndex);
   return {
     predictionId: target.predictionId,
     partition: target.partition,
     label: target.label ?? target.partition,
-    yTrue: toPlottableVector(r.y_true),
-    yPred: toPlottableVector(r.y_pred),
-    nSamples: r.n_samples ?? (r.y_true?.length ?? 0),
+    yTrue,
+    yPred,
+    nSamples: r.n_samples ?? yTrue.length,
+    sampleIds: r.sample_indices ?? undefined,
     sampleMetadata: r.sample_metadata ?? null,
   };
 }
