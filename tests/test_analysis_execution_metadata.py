@@ -55,6 +55,7 @@ def test_analysis_execution_request_metadata_tracks_artifacts_without_workspace_
         ],
     }
     assert "workspace_path" not in metadata
+    assert "fallback_policy" not in metadata
 
 
 def test_build_analysis_job_config_preserves_legacy_keys():
@@ -80,6 +81,7 @@ def test_build_analysis_job_config_preserves_legacy_keys():
     assert config["execution_backend"] == "local-python"
     assert config["execution_request"]["job_id"] == "automl_12345678"
     assert config["execution_request"]["analysis_type"] == "automl"
+    assert "fallback_policy" not in config["execution_request"]
     assert config["execution_artifacts"] == [artifact.to_dict()]
 
 
@@ -367,6 +369,12 @@ def test_automl_job_config_attaches_dataset_ref_and_search_parameters():
     assert config["dataset_name"] == "Dataset 1"
     assert config["models"] == [model]
     assert config["execution_request"]["analysis_type"] == "automl"
+    assert config["execution_request"]["fallback_policy"] == {
+        "source": "nirs4all.run.allow_fallback",
+        "engine_requested": None,
+        "allow_fallback": False,
+        "mode": "refuse_fallback",
+    }
     assert config["execution_request"]["parameters"]["n_trials"] == 5
     assert config["execution_request"]["parameters"]["enabled_model_count"] == 1
     assert config["execution_artifacts"] == [

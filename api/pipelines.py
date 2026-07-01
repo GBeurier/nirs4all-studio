@@ -788,6 +788,8 @@ class PipelineRunRequest(BaseModel):
     model_name: str | None = None
     refit: Any | None = True
     refit_params: dict[str, Any] | None = None
+    engine: str | None = Field(None, description="ML engine selector: 'legacy' or 'dag-ml'; omitted uses the nirs4all library default.")
+    allow_fallback: bool = Field(False, description="Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
     inline_pipeline: dict[str, Any] | None = None
 
@@ -881,6 +883,8 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
         "workspace_path": workspace.path,
         "refit": refit_value,
         "split_group_by": runtime_group_by,
+        "engine": request.engine,
+        "allow_fallback": request.allow_fallback,
     }
 
     # Create and submit job
@@ -950,6 +954,8 @@ def _run_pipeline_task(job, progress_callback):
         # Execute using nirs4all.run()
         import nirs4all
 
+        from .runtime_engine import run_with_engine_record
+
         run_kwargs = {
             "pipeline": pipeline_steps,
             "dataset": dataset_path,
@@ -958,7 +964,16 @@ def _run_pipeline_task(job, progress_callback):
         if "refit" in config:
             run_kwargs["refit"] = config["refit"]
 
-        result = nirs4all.run(**run_kwargs)
+        outcome = run_with_engine_record(
+            nirs4all.run,
+            run_kwargs=run_kwargs,
+            engine=config.get("engine"),
+            allow_fallback=bool(config.get("allow_fallback", False)),
+            workspace_path=workspace_path,
+            pass_workspace_path_to_legacy=False,
+        )
+        result = outcome.result
+        engine_record = outcome.engine_record
 
         progress_callback(80, "Extracting results...")
 
@@ -999,14 +1014,26 @@ def _run_pipeline_task(job, progress_callback):
             "top_results": top_results,
             "variants_tested": estimated_variants,
             "model_path": model_path,
+            **engine_record,
         }
 
     except Exception as e:
         import traceback
+
+        from .runtime_engine import (
+            fallback_policy_record,
+            rt_error_envelope_from_exception,
+        )
+
+        rt_error = rt_error_envelope_from_exception(e)
         return {
             "success": False,
             "error": str(e),
             "traceback": traceback.format_exc(),
+            "engine": None,
+            "engine_requested": config.get("engine"),
+            "engine_diagnostics": [rt_error] if rt_error is not None else None,
+            "fallback_policy": fallback_policy_record(config.get("engine"), bool(config.get("allow_fallback", False))),
         }
 
 

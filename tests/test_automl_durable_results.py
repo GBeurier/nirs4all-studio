@@ -64,6 +64,13 @@ def test_get_automl_results_loads_durable_payload_when_job_is_missing(tmp_path, 
         "all_trials": _automl_payload(job_id)["trials"],
         "model_path": "/workspace/models/best.n4a",
         "search_duration_seconds": 12.5,
+        "engine": None,
+        "engine_requested": None,
+        "engine_diagnostics": None,
+        "runtime_source": None,
+        "runtime_manifest": None,
+        "fallback_policy": None,
+        "native_result_refs": None,
     }
 
 

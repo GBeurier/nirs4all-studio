@@ -156,6 +156,9 @@ class AnalysisExecutionRequest:
     analysis_type: AnalysisExecutionType
     dataset_id: str
     requested_backend: ExecutionBackend = "local-python"
+    requested_engine: str | None = None
+    allow_fallback: bool = False
+    include_fallback_policy: bool = False
     workspace_path: str | None = None
     artifacts: Sequence[ExecutionArtifactRef] = field(default_factory=tuple)
     parameters: Mapping[str, Any] = field(default_factory=dict)
@@ -174,6 +177,15 @@ class AnalysisExecutionRequest:
         }
         if self.created_at is not None:
             payload["created_at"] = self.created_at
+        if self.requested_engine is not None:
+            payload["requested_engine"] = self.requested_engine
+        if self.include_fallback_policy or self.requested_engine is not None or self.allow_fallback:
+            payload["fallback_policy"] = {
+                "source": "nirs4all.run.allow_fallback",
+                "engine_requested": self.requested_engine,
+                "allow_fallback": self.allow_fallback,
+                "mode": "allow_fallback" if self.allow_fallback else "refuse_fallback",
+            }
         if self.parameters:
             payload["parameters"] = dict(self.parameters)
         if self.metadata:
