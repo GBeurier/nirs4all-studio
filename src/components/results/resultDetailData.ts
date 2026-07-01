@@ -1,5 +1,8 @@
 import type { PipelineRun, RunStatus } from "@/types/runs";
-import { runStatusConfig } from "@/types/runs";
+import {
+  buildRuntimeResultStatusView,
+  getRuntimeResultEmptyMessage,
+} from "@/ui/runtime";
 import {
   buildPipelineRunArtifactRefs,
   buildResultArtifactPresentationReadModel,
@@ -120,20 +123,22 @@ export function hasResultMetrics(pipeline: PipelineRun): boolean {
 }
 
 export function getResultEmptyMetricsMessage(status: RunStatus): string {
-  if (status === "running") return "Results will appear when training completes";
-  if (status === "queued") return "Waiting to start...";
-  return "No results available";
+  return getRuntimeResultEmptyMessage(status, {
+    queued: "Waiting to start...",
+    running: "Results will appear when training completes",
+    fallback: "No results available",
+  });
 }
 
 export function buildResultHeaderStatus(pipeline: PipelineRun): ResultHeaderStatusData {
-  const config = runStatusConfig[pipeline.status];
+  const status = buildRuntimeResultStatusView(pipeline.status, pipeline.progress);
   return {
-    label: config.label,
-    colorClass: config.color,
-    bgClass: config.bg,
-    iconClass: config.iconClass,
-    badgeVariant: pipeline.status === "completed" ? "default" : "secondary",
-    progress: pipeline.status === "running" ? pipeline.progress : null,
+    label: status.label,
+    colorClass: status.colorClass,
+    bgClass: status.bgClass,
+    iconClass: status.iconClass,
+    badgeVariant: status.badgeVariant,
+    progress: status.progress,
   };
 }
 

@@ -12,7 +12,9 @@
  * (Studio today; the WASM web client later).
  *
  * Domains:
- *   - `score`  metric vocabulary + score value helpers (first extracted slice)
+ *   - `score`    metric vocabulary + score value helpers (first extracted slice)
+ *   - `runtime`  runtime/result status display view models
  */
 
 export * as score from "./score";
+export * as runtime from "./runtime";

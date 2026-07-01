@@ -1,4 +1,11 @@
-import { runStatusConfig, type RunExecutionBackend, type RunStatus } from "@/types/runs";
+import {
+  getRuntimeResultEmptyMessage,
+  getRuntimeResultStatusDisplay,
+  isBusyRuntimeResultStatus,
+  isRuntimeResultStatus,
+  type RuntimeResultStatus,
+} from "@/ui/runtime";
+import type { RunExecutionBackend } from "@/types/runs";
 import type { WorkspaceRunDetail } from "@/types/enriched-runs";
 
 export type RunDetailTab = "overview" | "pipelines" | "logs" | "datasets";
@@ -25,16 +32,22 @@ export function resolveRunStatus(status: string | null | undefined): string {
   return status || "completed";
 }
 
-export function isKnownRunStatus(status: string): status is RunStatus {
-  return status in runStatusConfig;
+export function isKnownRunStatus(status: string): status is RuntimeResultStatus {
+  return isRuntimeResultStatus(status);
 }
 
 export function getRunStatusConfig(status: string) {
-  return isKnownRunStatus(status) ? runStatusConfig[status] : runStatusConfig.completed;
+  const display = getRuntimeResultStatusDisplay(status);
+  return {
+    label: display.label,
+    color: display.colorClass,
+    bg: display.bgClass,
+    iconClass: display.iconClass,
+  };
 }
 
 export function isBusyRunStatus(status: string): boolean {
-  return status === "running" || status === "queued";
+  return isBusyRuntimeResultStatus(status);
 }
 
 export function getTotalLogCount(detail: WorkspaceRunDetail | null | undefined): number {
@@ -61,7 +74,9 @@ export function getRerunDisabledTitle(rerunReady: boolean | undefined): string |
 }
 
 export function getEmptyDatasetsMessage(status: string): string {
-  return isBusyRunStatus(status)
-    ? "Fold-level dataset results will appear here as pipelines complete."
-    : "No dataset results are available for this run.";
+  return getRuntimeResultEmptyMessage(status, {
+    queued: "Fold-level dataset results will appear here as pipelines complete.",
+    running: "Fold-level dataset results will appear here as pipelines complete.",
+    fallback: "No dataset results are available for this run.",
+  });
 }

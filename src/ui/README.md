@@ -29,6 +29,7 @@ slice is `score/`.
 | Domain   | Path          | What it owns |
 |----------|---------------|--------------|
 | `score`  | `src/ui/score`| Metric-key normalization, the static metric catalog + task-type selection rules, and direction-aware score parsing / comparison / formatting. |
+| `runtime`| `src/ui/runtime`| Runtime/result status display tokens, busy-state predicates, progress projection, and status-aware empty-state copy. |
 
 Consume a domain through its barrel, e.g. `import { canonicalMetricKey } from "@/ui/score"`.
 The app-runtime score-map layer (`@/lib/scores`) builds on `@/ui/score`.
