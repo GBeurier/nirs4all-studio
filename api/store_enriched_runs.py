@@ -25,6 +25,7 @@ from .shared.json_safe import sanitize_dict, sanitize_float
 # only inside get_enriched_runs(), so store_adapter is fully initialized by the
 # time this module is first imported.
 from .store_adapter import (  # noqa: E402
+    _aggregate_runtime_fields,
     _apply_synthetic_refit_fallback_inplace,
     _attach_variant_params_inplace,
     _coerce_metric_name,
@@ -381,8 +382,9 @@ class EnrichedRunsBuilder:
         )
 
         run_name = self._derive_run_name(row, pipeline_rows)
+        runtime_fields = _aggregate_runtime_fields(run_cv_config, pipeline_rows)
 
-        return sanitize_dict({
+        payload = {
             "run_id": run_id,
             "name": run_name,
             "status": row.get("status", "unknown"),
@@ -400,7 +402,9 @@ class EnrichedRunsBuilder:
             "error": row.get("error"),
             "config": sanitize_dict(run_cv_config),
             "model_classes": model_classes,
-        })
+        }
+        payload.update(runtime_fields)
+        return sanitize_dict(payload)
 
     def _build_dataset(
         self,

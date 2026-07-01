@@ -10,6 +10,7 @@ Run with: pytest tests/test_store_integration.py -v
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -200,6 +201,64 @@ class TestStoreAdapter:
         pipelines = {pipeline["pipeline_id"]: pipeline for pipeline in result["pipelines"]}
         assert pipelines["pipe-refit"]["splitter_class"] is None
         assert pipelines["pipe-cv"]["splitter_class"] == "KFold"
+
+    def test_get_run_detail_exposes_runtime_status_from_config_and_pipelines(self, mock_polars_df):
+        diagnostic = {
+            "verb": "run",
+            "cause": "unsupported_shape",
+            "message": "dag-ml does not support this pipeline shape",
+            "mitigation": "Run on engine='legacy'.",
+        }
+        fallback_policy = {
+            "source": "nirs4all.run.allow_fallback",
+            "engine_requested": "dag-ml",
+            "allow_fallback": True,
+            "mode": "allow_fallback",
+        }
+        mock_store = MagicMock()
+        mock_store.get_run.return_value = {
+            "run_id": "run-runtime-001",
+            "name": "Runtime Run",
+            "status": "completed",
+            "created_at": datetime(2025, 1, 15, tzinfo=UTC),
+            "completed_at": datetime(2025, 1, 15, tzinfo=UTC),
+            "config": json.dumps({
+                "requested_engine": "dag-ml",
+                "fallback_policy": fallback_policy,
+            }),
+            "datasets": [],
+            "summary": {},
+        }
+        mock_store.list_pipelines.return_value = mock_polars_df([
+            {
+                "pipeline_id": "pipe-runtime-001",
+                "name": "Runtime pipeline",
+                "expanded_config": None,
+                "generator_choices": None,
+                "created_at": datetime(2025, 1, 15, tzinfo=UTC),
+                "completed_at": datetime(2025, 1, 15, tzinfo=UTC),
+                "engine": "legacy",
+                "engine_requested": "dag-ml",
+                "engine_diagnostics": json.dumps([diagnostic]),
+                "fallback_policy": json.dumps(fallback_policy),
+            },
+        ])
+        mock_store.query_chain_summaries.return_value = mock_polars_df([])
+
+        adapter = self._make_adapter(mock_store)
+        result = adapter.get_run_detail("run-runtime-001")
+
+        assert result is not None
+        assert result["engine"] == "legacy"
+        assert result["engine_requested"] == "dag-ml"
+        assert result["engine_diagnostics"] == [diagnostic]
+        assert result["fallback_policy"] == fallback_policy
+        assert result["allow_fallback"] is True
+        assert result["config"]["fallback_policy"] == fallback_policy
+        assert result["pipelines"][0]["engine"] == "legacy"
+        assert result["pipelines"][0]["engine_requested"] == "dag-ml"
+        assert result["pipelines"][0]["engine_diagnostics"] == [diagnostic]
+        assert result["pipelines"][0]["fallback_policy"] == fallback_policy
 
     def test_get_run_detail_not_found(self):
         mock_store = MagicMock()

@@ -18,6 +18,8 @@ export interface BuildExperimentLaunchConfigInput {
   selectedGroupingPayload: Record<string, string | null>;
   missingIssues?: MissingOperatorIssue[];
   executionBackend?: RunExecutionBackend;
+  runtimeEngine?: string | null;
+  allowFallback?: boolean;
 }
 
 export function buildExperimentLaunchConfig({
@@ -28,6 +30,8 @@ export function buildExperimentLaunchConfig({
   selectedGroupingPayload,
   missingIssues = [],
   executionBackend = "local-python",
+  runtimeEngine,
+  allowFallback,
 }: BuildExperimentLaunchConfigInput): ExperimentConfig {
   const issuesByPipelineId = new Map<string, MissingOperatorIssue[]>();
   const issuesByPipelineName = new Map<string, MissingOperatorIssue[]>();
@@ -93,6 +97,13 @@ export function buildExperimentLaunchConfig({
 
   if (executionBackend !== "local-python") {
     config.execution_backend = executionBackend;
+  }
+  const normalizedRuntimeEngine = runtimeEngine?.trim();
+  if (normalizedRuntimeEngine) {
+    config.engine = normalizedRuntimeEngine;
+  }
+  if (allowFallback !== undefined) {
+    config.allow_fallback = allowFallback;
   }
 
   return config;

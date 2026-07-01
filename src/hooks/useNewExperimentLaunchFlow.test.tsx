@@ -207,6 +207,30 @@ describe("useNewExperimentLaunchFlow", () => {
     await mounted.unmount();
   });
 
+  it("threads explicit runtime engine and fallback policy into launch submissions", async () => {
+    apiMocks.runPreflight.mockResolvedValue({ ready: true, issues: [] } satisfies PreflightResult);
+    apiMocks.createRun.mockResolvedValue(run());
+
+    const mounted = await renderHook(() => useNewExperimentLaunchFlow(launchFlowInput({
+      runtimeEngine: "dag-ml",
+      allowFallback: true,
+    })));
+
+    await act(async () => {
+      await mounted.result.current!.handleLaunch();
+    });
+    await flushMutation();
+
+    expect(apiMocks.createRun).toHaveBeenCalledWith(expect.objectContaining({
+      engine: "dag-ml",
+      allow_fallback: true,
+      dataset_ids: ["d1"],
+      pipeline_ids: ["p1"],
+    }));
+
+    await mounted.unmount();
+  });
+
   it("uses the injected execution adapter for preflight requests", async () => {
     const executionAdapter: ExperimentExecutionAdapter = {
       id: "legacy-local",

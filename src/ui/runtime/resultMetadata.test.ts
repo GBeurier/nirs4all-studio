@@ -72,6 +72,40 @@ describe("runtime result metadata foundation", () => {
     });
   });
 
+  it("infers requested runtime from persisted run config fallback policy", () => {
+    expect(buildRuntimeEngineStatus({
+      config: {
+        requested_engine: "dag-ml",
+        fallback_policy: {
+          source: "nirs4all.run.allow_fallback",
+          engine_requested: "dag-ml",
+          allow_fallback: false,
+          mode: "refuse_fallback",
+        },
+      },
+    })).toMatchObject({
+      engine: null,
+      engineLabel: null,
+      requestedEngine: "dag-ml",
+      requestedEngineLabel: "DAG-ML",
+      badgeLabel: "Requested DAG-ML",
+      isFallback: false,
+      tone: "default",
+    });
+  });
+
+  it("treats config.engine as a request selector, not the actual engine", () => {
+    expect(buildRuntimeEngineStatus({
+      config: {
+        engine: "dag-ml",
+      },
+    })).toMatchObject({
+      engine: null,
+      requestedEngine: "dag-ml",
+      badgeLabel: "Requested DAG-ML",
+    });
+  });
+
   it("builds native-results export affordance copy", () => {
     expect(buildRuntimeNativeResultsAffordance({
       hasRefit: true,

@@ -79,6 +79,7 @@ export interface PipelineRun {
   engine?: string | null;
   engine_requested?: string | null;
   engine_diagnostics?: Array<Record<string, unknown>> | null;
+  fallback_policy?: Record<string, unknown> | null;
   val_score?: number | null;
   test_score?: number | null;
   score?: number | null;
@@ -167,6 +168,10 @@ export interface Run {
   description?: string;
   execution_backend?: RunExecutionBackend;
   engine?: string | null;
+  engine_requested?: string | null;
+  engine_diagnostics?: Array<Record<string, unknown>> | null;
+  allow_fallback?: boolean;
+  fallback_policy?: Record<string, unknown> | null;
   status: RunStatus;
   format?: RunFormat;
   created_at: string;
@@ -251,6 +256,8 @@ export interface ExperimentConfig {
   dataset_ids: string[];
   pipeline_ids: string[];
   execution_backend?: RunExecutionBackend;
+  engine?: string | null;
+  allow_fallback?: boolean;
   cv_folds?: number;
   cv_strategy?: "kfold" | "stratified" | "loo" | "holdout";
   test_size?: number;

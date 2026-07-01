@@ -121,6 +121,184 @@ def _parse_json_maybe(value: Any) -> Any:
     return value
 
 
+def _runtime_record(value: Any) -> dict[str, Any] | None:
+    parsed = _parse_json_maybe(value)
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _runtime_list(value: Any) -> list[Any] | None:
+    parsed = _parse_json_maybe(value)
+    return parsed if isinstance(parsed, list) else None
+
+
+def _runtime_string(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _read_runtime_string(records: list[dict[str, Any]], keys: tuple[str, ...]) -> str | None:
+    for record in records:
+        for key in keys:
+            value = _runtime_string(record.get(key))
+            if value is not None:
+                return value
+    return None
+
+
+def _first_runtime_record(records: list[dict[str, Any]], keys: tuple[str, ...]) -> dict[str, Any] | None:
+    for record in records:
+        for key in keys:
+            value = _runtime_record(record.get(key))
+            if value is not None:
+                return value
+    return None
+
+
+def _first_runtime_list(records: list[dict[str, Any]], keys: tuple[str, ...]) -> list[Any] | None:
+    for record in records:
+        for key in keys:
+            value = _runtime_list(record.get(key))
+            if value is not None:
+                return value
+    return None
+
+
+def _normalize_runtime_fields(record: dict[str, Any]) -> dict[str, Any]:
+    """Extract UI runtime fields from one store row/config/metadata record."""
+    root = dict(record)
+    for key in ("engine_diagnostics", "runtime_manifest", "fallback_policy", "native_result_refs", "rt_result", "runtime_result", "execution_metadata", "metadata"):
+        if key in root:
+            root[key] = _parse_json_maybe(root.get(key))
+
+    candidates: list[dict[str, Any]] = [root]
+    for key in ("execution_metadata", "executionMetadata", "metadata"):
+        metadata = _runtime_record(root.get(key))
+        if metadata is not None:
+            candidates.append(metadata)
+
+    for key in ("rt_result", "rtResult", "runtime_result", "runtimeResult", "runtime"):
+        runtime = _runtime_record(root.get(key))
+        if runtime is not None:
+            candidates.append(runtime)
+            result = _runtime_record(runtime.get("result"))
+            if result is not None:
+                candidates.append(result)
+
+    config = _runtime_record(root.get("config"))
+    config_candidates = [config] if config is not None else []
+    policy = _first_runtime_record(candidates + config_candidates, ("fallback_policy", "fallbackPolicy"))
+    policy_candidates = [policy] if policy is not None else []
+    manifest = _first_runtime_record(candidates, ("runtime_manifest", "runtimeManifest", "manifest"))
+
+    engine = (
+        _read_runtime_string(candidates, ("engine_actual", "actual_engine", "engineActual", "actualEngine"))
+        or (_runtime_string(manifest.get("engine")) if manifest is not None else None)
+        or _read_runtime_string(candidates, ("engine",))
+    )
+    engine_requested = (
+        _read_runtime_string(candidates + config_candidates, ("engine_requested", "requested_engine", "engineRequested", "requestedEngine"))
+        or _read_runtime_string(config_candidates, ("engine",))
+        or _read_runtime_string(policy_candidates, ("engine_requested", "requested_engine", "engineRequested", "requestedEngine"))
+    )
+    diagnostics = _first_runtime_list(candidates, ("engine_diagnostics", "engineDiagnostics", "diagnostics", "rt_errors", "rtErrors"))
+    native_result_refs = _first_runtime_list(candidates, ("native_result_refs", "nativeResultRefs", "artifacts"))
+    runtime_source = _read_runtime_string(candidates, ("runtime_source", "runtimeSource", "source"))
+
+    fields: dict[str, Any] = {}
+    if engine is not None:
+        fields["engine"] = engine
+    if engine_requested is not None:
+        fields["engine_requested"] = engine_requested
+    if diagnostics:
+        fields["engine_diagnostics"] = diagnostics
+    if runtime_source is not None:
+        fields["runtime_source"] = runtime_source
+    if manifest is not None:
+        fields["runtime_manifest"] = manifest
+    if policy is not None:
+        fields["fallback_policy"] = policy
+        allow_fallback = policy.get("allow_fallback")
+        if isinstance(allow_fallback, bool):
+            fields["allow_fallback"] = allow_fallback
+    if native_result_refs:
+        fields["native_result_refs"] = native_result_refs
+    return sanitize_dict(fields)
+
+
+def _aggregate_runtime_fields(
+    run_config: dict[str, Any],
+    pipelines: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build run-level runtime status from persisted config plus pipeline rows."""
+    run_runtime = _normalize_runtime_fields({"config": run_config})
+    pipeline_runtimes = [
+        runtime
+        for runtime in (_normalize_runtime_fields(pipeline) for pipeline in pipelines)
+        if runtime
+    ]
+
+    fields = dict(run_runtime)
+    requested = fields.get("engine_requested")
+    for runtime in pipeline_runtimes:
+        requested = requested or runtime.get("engine_requested")
+
+    selected_pipeline_runtime = next(
+        (
+            runtime
+            for runtime in pipeline_runtimes
+            if runtime.get("engine") and requested and runtime.get("engine") != requested
+        ),
+        None,
+    ) or next((runtime for runtime in pipeline_runtimes if runtime.get("engine")), None)
+
+    if selected_pipeline_runtime:
+        for key in ("engine", "runtime_source", "runtime_manifest", "native_result_refs"):
+            if selected_pipeline_runtime.get(key) is not None:
+                fields[key] = selected_pipeline_runtime[key]
+        requested = requested or selected_pipeline_runtime.get("engine_requested")
+        if not fields.get("fallback_policy") and selected_pipeline_runtime.get("fallback_policy"):
+            fields["fallback_policy"] = selected_pipeline_runtime["fallback_policy"]
+        if "allow_fallback" not in fields and "allow_fallback" in selected_pipeline_runtime:
+            fields["allow_fallback"] = selected_pipeline_runtime["allow_fallback"]
+
+    diagnostics: list[Any] = []
+    seen_diagnostics: set[str] = set()
+    for runtime in pipeline_runtimes:
+        for diagnostic in runtime.get("engine_diagnostics") or []:
+            key = json.dumps(diagnostic, sort_keys=True, default=str)
+            if key in seen_diagnostics:
+                continue
+            seen_diagnostics.add(key)
+            diagnostics.append(diagnostic)
+    if diagnostics:
+        fields["engine_diagnostics"] = diagnostics
+    if requested:
+        fields["engine_requested"] = requested
+
+    return sanitize_dict(fields)
+
+
+def _apply_runtime_fields_to_pipelines(
+    pipelines: list[dict[str, Any]],
+    run_runtime: dict[str, Any],
+) -> None:
+    """Fill missing pipeline runtime request/policy hints from the run policy."""
+    inherited_requested = run_runtime.get("engine_requested")
+    inherited_policy = run_runtime.get("fallback_policy")
+    inherited_allow_fallback = run_runtime.get("allow_fallback")
+    for pipeline in pipelines:
+        pipeline_runtime = _normalize_runtime_fields(pipeline)
+        pipeline.update(pipeline_runtime)
+        if inherited_requested is not None and pipeline.get("engine_requested") is None:
+            pipeline["engine_requested"] = inherited_requested
+        if inherited_policy is not None and pipeline.get("fallback_policy") is None:
+            pipeline["fallback_policy"] = inherited_policy
+        if inherited_allow_fallback is not None and pipeline.get("allow_fallback") is None:
+            pipeline["allow_fallback"] = inherited_allow_fallback
+
+
 def _class_name_from_path(class_path: Any) -> str:
     """Return the leaf class/function name from a dotted reference."""
     if not isinstance(class_path, str) or not class_path:
@@ -541,7 +719,7 @@ class StoreAdapter:
         pipelines = []
         for row in pipelines_df.iter_rows(named=True):
             p = sanitize_dict(dict(row))
-            for json_field in ("expanded_config", "generator_choices"):
+            for json_field in ("expanded_config", "generator_choices", "engine_diagnostics", "runtime_manifest", "fallback_policy", "native_result_refs"):
                 p[json_field] = _parse_json_maybe(p.get(json_field))
             for ts_field in ("created_at", "completed_at"):
                 val = p.get(ts_field)
@@ -569,6 +747,9 @@ class StoreAdapter:
             **{k: v for k, v in run_config.items() if v is not None},
         }
         run["config"] = sanitize_dict(merged_run_config)
+        runtime_fields = _aggregate_runtime_fields(run["config"], pipelines)
+        run.update(runtime_fields)
+        _apply_runtime_fields_to_pipelines(pipelines, runtime_fields)
         run["pipelines"] = pipelines
         return run
 

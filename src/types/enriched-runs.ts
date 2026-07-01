@@ -12,6 +12,8 @@ export interface EnrichedRun {
   engine?: string | null;
   engine_requested?: string | null;
   engine_diagnostics?: Array<Record<string, unknown>> | null;
+  allow_fallback?: boolean;
+  fallback_policy?: Record<string, unknown> | null;
   project_id: string | null;
   project_name?: string | null;
   created_at: string;
@@ -29,6 +31,10 @@ export interface EnrichedRun {
   config?: {
     execution_backend?: RunExecutionBackend;
     engine?: string | null;
+    requested_engine?: string | null;
+    engine_requested?: string | null;
+    allow_fallback?: boolean;
+    fallback_policy?: Record<string, unknown> | null;
     cv_folds?: number;
     cv_strategy?: string;
     metric?: string;
@@ -161,6 +167,8 @@ export interface WorkspaceRunPipelineDetail {
   engine?: string | null;
   engine_requested?: string | null;
   engine_diagnostics?: Array<Record<string, unknown>> | null;
+  allow_fallback?: boolean;
+  fallback_policy?: Record<string, unknown> | null;
   created_at: string;
   completed_at: string | null;
   best_val: number | null;
@@ -219,6 +227,8 @@ export interface WorkspaceRunDetail {
   engine?: string | null;
   engine_requested?: string | null;
   engine_diagnostics?: Array<Record<string, unknown>> | null;
+  allow_fallback?: boolean;
+  fallback_policy?: Record<string, unknown> | null;
 }
 
 export interface WorkspaceRunPipelineLogsResponse {
