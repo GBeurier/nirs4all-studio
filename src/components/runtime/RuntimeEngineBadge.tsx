@@ -1,6 +1,7 @@
 import { AlertTriangle, Cpu } from "lucide-react";
+import { RuntimeEngineBadge as SharedRuntimeEngineBadge } from "nirs4all-ui/components";
 
-import { Badge } from "@/components/ui/badge";
+import { badgeVariants } from "@/components/ui/badgeVariants";
 import { cn } from "@/lib/utils";
 import {
   buildRuntimeEngineStatus,
@@ -37,13 +38,11 @@ export function RuntimeEngineBadge({
   ].filter(Boolean).join("\n");
 
   return (
-    <Badge
-      variant="outline"
-      className={cn("gap-1.5 text-[10px]", engineToneClasses[engineStatus.tone], className)}
+    <SharedRuntimeEngineBadge
+      label={engineStatus.badgeLabel}
+      icon={<Icon className="h-3 w-3" />}
+      className={cn(badgeVariants({ variant: "outline" }), "gap-1.5 text-[10px]", engineToneClasses[engineStatus.tone], className)}
       title={title || undefined}
-    >
-      <Icon className="h-3 w-3" />
-      {engineStatus.badgeLabel}
-    </Badge>
+    />
   );
 }
