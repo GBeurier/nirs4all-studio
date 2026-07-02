@@ -116,6 +116,10 @@ export default defineConfig(({ mode }) => ({
   },
   resolve: {
     alias: {
+      "nirs4all-ui/score": path.resolve(__dirname, "../nirs4all-ui/src/score/index.ts"),
+      "nirs4all-ui/runtime": path.resolve(__dirname, "../nirs4all-ui/src/runtime/index.ts"),
+      "nirs4all-ui/components": path.resolve(__dirname, "../nirs4all-ui/src/components/index.ts"),
+      "nirs4all-ui": path.resolve(__dirname, "../nirs4all-ui/src/index.ts"),
       "@": path.resolve(__dirname, "./src"),
     },
   },
