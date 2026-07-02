@@ -179,6 +179,9 @@ jobs:
             gir1.2-gtk-3.0 \
             gir1.2-webkit2-4.1
 
+      - name: Provide nirs4all-ui sibling
+        uses: ./.github/actions/nirs4all-ui-sibling
+
       - name: Install npm dependencies
         run: npm ci
 
@@ -247,6 +250,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+
+      - name: Provide nirs4all-ui sibling
+        uses: ./.github/actions/nirs4all-ui-sibling
 
       - name: Install npm dependencies
         run: npm ci
@@ -352,6 +358,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+
+      - name: Provide nirs4all-ui sibling
+        uses: ./.github/actions/nirs4all-ui-sibling
 
       - name: Install npm dependencies
         run: npm ci
@@ -508,6 +517,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+
+      - name: Provide nirs4all-ui sibling
+        uses: ./.github/actions/nirs4all-ui-sibling
 
       - name: Install npm dependencies
         run: npm ci
@@ -681,6 +693,9 @@ jobs:
           path: build/.python-cache
           key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
 
+      - name: Provide nirs4all-ui sibling
+        uses: ./.github/actions/nirs4all-ui-sibling
+
       - name: Install npm dependencies
         run: npm ci
 
@@ -797,6 +812,9 @@ jobs:
             gir1.2-gtk-3.0 \
             gir1.2-webkit2-4.1
 
+      - name: Provide nirs4all-ui sibling
+        uses: ./.github/actions/nirs4all-ui-sibling
+
       - name: Install npm dependencies
         run: npm ci
 
@@ -896,6 +914,9 @@ jobs:
         with:
           path: build/.python-cache
           key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
+
+      - name: Provide nirs4all-ui sibling
+        uses: ./.github/actions/nirs4all-ui-sibling
 
       - name: Install npm dependencies
         run: npm ci
@@ -1085,6 +1106,9 @@ jobs:
         with:
           path: build/.python-cache
           key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
+
+      - name: Provide nirs4all-ui sibling
+        uses: ./.github/actions/nirs4all-ui-sibling
 
       - name: Install npm dependencies
         run: npm ci
