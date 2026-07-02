@@ -18,6 +18,7 @@ function candidateCommands() {
       command: path.join(projectRoot, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python"),
       prefixArgs: [],
     },
+    { command: "python3.11", prefixArgs: [] },
     { command: "python3", prefixArgs: [] },
     { command: "python", prefixArgs: [] },
   );
