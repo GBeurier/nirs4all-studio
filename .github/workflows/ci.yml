@@ -4,13 +4,14 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'rc/**']
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, 'rc/**']
 
 env:
   NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
+  NIRS4ALL_LIBRARY_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor-python' || 'main' }}
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -89,6 +90,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
+          ref: ${{ env.NIRS4ALL_LIBRARY_REF }}
           path: nirs4all-lib
 
       - name: Install nirs4all from source
