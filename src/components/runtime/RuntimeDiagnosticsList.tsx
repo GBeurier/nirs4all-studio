@@ -58,6 +58,11 @@ function RuntimeDiagnosticRow({ diagnostic }: { diagnostic: RuntimeDiagnosticIte
           {diagnostic.mitigation && (
             <p className="mt-1 text-xs text-muted-foreground">{diagnostic.mitigation}</p>
           )}
+          {diagnostic.unsupportedCapability && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Missing capability: {formatRuntimeTokenLabel(diagnostic.unsupportedCapability)}
+            </p>
+          )}
         </div>
       </div>
     </div>

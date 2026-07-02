@@ -47,6 +47,7 @@ describe("runtime result components", () => {
         cause: "unsupported_shape",
         message: "dag-ml does not support this pipeline shape",
         mitigation: "Use legacy or simplify the pipeline.",
+        unsupported_capability: "branch_execution",
       }],
     };
 
@@ -62,6 +63,7 @@ describe("runtime result components", () => {
     expect(container.textContent).toContain("Legacy fallback");
     expect(container.textContent).toContain("Runtime Diagnostics");
     expect(container.textContent).toContain("Unsupported Shape");
+    expect(container.textContent).toContain("Missing capability: Branch Execution");
     expect(container.textContent).toContain("37%");
     expect(container.textContent).toContain("1 native artifact");
     expect(container.textContent).toContain("Export Final Model (.n4a)");

@@ -8,7 +8,21 @@
 import { useEffect, useState } from "react";
 import { getN4AWorkspacePredictionScatter } from "@/api/linkedWorkspaces";
 import { getPredictionArrays } from "@/api/aggregatedPredictions";
+import type { PredictionArrayPayload } from "@/types/aggregated-predictions";
 import type { PartitionDataset, ViewerPartitionTarget } from "./types";
+
+/**
+ * Project a vector-or-matrix prediction payload onto a plottable vector.
+ * Viewer targets are per-target predictions, so a multi-column payload (the
+ * `(n, 1)` array `tolist()` case, or a multi-target block) is projected to its
+ * first column rather than flattened.
+ */
+function toPlottableVector(payload: PredictionArrayPayload | null | undefined): number[] {
+  if (!payload || payload.length === 0) return [];
+  return Array.isArray(payload[0])
+    ? (payload as number[][]).map((row) => row[0] ?? NaN)
+    : (payload as number[]);
+}
 
 interface Options {
   partitions: ViewerPartitionTarget[];
@@ -47,8 +61,8 @@ async function fetchOne(
     predictionId: target.predictionId,
     partition: target.partition,
     label: target.label ?? target.partition,
-    yTrue: r.y_true ?? [],
-    yPred: r.y_pred ?? [],
+    yTrue: toPlottableVector(r.y_true),
+    yPred: toPlottableVector(r.y_pred),
     nSamples: r.n_samples ?? (r.y_true?.length ?? 0),
     sampleMetadata: r.sample_metadata ?? null,
   };

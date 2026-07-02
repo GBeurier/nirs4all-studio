@@ -41,6 +41,7 @@ describe("runtime result metadata foundation", () => {
         cause: "unsupported_shape",
         message: "dag-ml does not support this pipeline shape",
         mitigation: "Run on engine='legacy'.",
+        unsupportedCapability: null,
         tone: "warning",
       }],
     });
