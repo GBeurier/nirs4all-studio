@@ -118,7 +118,7 @@ def _count_tested_pipeline_variants(result: Any, fallback: int = 1) -> int:
 
 # Add nirs4all to path if needed
 nirs4all_path = Path(__file__).parent.parent.parent / "nirs4all"
-if str(nirs4all_path) not in sys.path:
+if nirs4all_path.exists() and str(nirs4all_path) not in sys.path:
     sys.path.insert(0, str(nirs4all_path))
 
 router = APIRouter(prefix="/runs", tags=["runs"])

@@ -27,8 +27,9 @@ for nirs4all_path in (
     webapp_root.parent / "RC-v1-nirs4all-python",
     webapp_root.parent.parent / "nirs4all",
 ):
-    if nirs4all_path.exists() and str(nirs4all_path) not in sys.path:
-        sys.path.insert(0, str(nirs4all_path))
+    if nirs4all_path.exists():
+        if str(nirs4all_path) not in sys.path:
+            sys.path.insert(0, str(nirs4all_path))
         break
 
 from api.shared.pipeline_service import get_valid_params, normalize_params  # noqa: E402
