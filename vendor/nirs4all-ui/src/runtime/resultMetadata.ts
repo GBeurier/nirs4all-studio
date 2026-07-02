@@ -342,6 +342,20 @@ export function buildRuntimeEngineStatus(source: unknown): RuntimeEngineStatusVi
   };
 }
 
+export function formatRuntimeEngineTitle(status: RuntimeEngineStatusView | null | undefined): string | null {
+  if (!status) return null;
+
+  const lines = [
+    status.engineLabel ? `Engine: ${status.engineLabel}` : null,
+    status.detailLabel,
+    status.diagnostics.length > 0
+      ? `${status.diagnostics.length} diagnostic${status.diagnostics.length === 1 ? "" : "s"}`
+      : null,
+  ].filter((line): line is string => Boolean(line));
+
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 function formatNativeArtifactCount(count: number | null): string {
   if (count == null) return "Native results";
   return `${count} native ${count === 1 ? "artifact" : "artifacts"}`;

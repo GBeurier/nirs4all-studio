@@ -28,21 +28,12 @@ export function RuntimeEngineBadge({
   const engineStatus = status ?? buildRuntimeEngineStatus(source);
   if (!engineStatus) return null;
 
-  const Icon = engineStatus.isFallback ? AlertTriangle : Cpu;
-  const title = [
-    engineStatus.engineLabel ? `Engine: ${engineStatus.engineLabel}` : null,
-    engineStatus.detailLabel,
-    engineStatus.diagnostics.length > 0
-      ? `${engineStatus.diagnostics.length} diagnostic${engineStatus.diagnostics.length === 1 ? "" : "s"}`
-      : null,
-  ].filter(Boolean).join("\n");
-
   return (
     <SharedRuntimeEngineBadge
-      label={engineStatus.badgeLabel}
-      icon={<Icon className="h-3 w-3" />}
+      status={engineStatus}
+      defaultIcon={<Cpu className="h-3 w-3" />}
+      fallbackIcon={<AlertTriangle className="h-3 w-3" />}
       className={cn(badgeVariants({ variant: "outline" }), "gap-1.5 text-[10px]", engineToneClasses[engineStatus.tone], className)}
-      title={title || undefined}
     />
   );
 }
