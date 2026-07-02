@@ -21,10 +21,15 @@ webapp_root = Path(__file__).parent.parent
 if str(webapp_root) not in sys.path:
     sys.path.insert(0, str(webapp_root))
 
-# Also ensure nirs4all library is importable
-nirs4all_path = webapp_root.parent / "nirs4all"
-if nirs4all_path.exists() and str(nirs4all_path) not in sys.path:
-    sys.path.insert(0, str(nirs4all_path))
+# Also ensure nirs4all library is importable from normal and RC worktree layouts.
+for nirs4all_path in (
+    webapp_root.parent / "nirs4all",
+    webapp_root.parent / "RC-v1-nirs4all-python",
+    webapp_root.parent.parent / "nirs4all",
+):
+    if nirs4all_path.exists() and str(nirs4all_path) not in sys.path:
+        sys.path.insert(0, str(nirs4all_path))
+        break
 
 from api.shared.pipeline_service import get_valid_params, normalize_params  # noqa: E402
 
@@ -67,48 +72,55 @@ def _build_defaults(op_def: dict) -> dict:
     return defaults
 
 
-# Operators that require y for fit
-REQUIRES_Y = {"OSC"}
-
-# Operators that cannot be tested with simple fit_transform on random data
-SKIP_FIT_TRANSFORM = {
-    # EPO requires paired samples from different conditions
-    "EPO",
-    # Feature selection operators require y and specific data structure
-    "VarianceThreshold",
-    "SelectKBest", "SelectPercentile", "GenericUnivariateSelect",
-    "SelectFwe", "SelectFpr", "SelectFdr",
-    "SequentialFeatureSelector", "RFE", "RFECV", "SelectFromModel",
-    # CARS/MCUVE/VIP require y and model-based selection
-    "CARS", "MCUVE", "VIP",
-    # Sklearn encoders that require specific input formats
-    "OrdinalEncoder", "OneHotEncoder", "TargetEncoder",
-    "KBinsDiscretizer",
-    # Imputers need NaN data to be meaningful
-    "SimpleImputer", "KNNImputer", "IterativeImputer", "MissingIndicator",
-    # Clustering-based operators
-    "KMeans", "MiniBatchKMeans", "DBSCAN", "AgglomerativeClustering",
-    "SpectralClustering", "Birch", "BisectingKMeans",
-    # Neighbors-based operators (graph transformers)
-    "NearestNeighbors", "KNeighborsTransformer", "RadiusNeighborsTransformer",
-    # Misc sklearn that need specific input
-    "FunctionTransformer", "SplineTransformer",
-    "BernoulliRBM", "RandomTreesEmbedding",
-    # Dictionary learning needs specific data shapes
-    "DictionaryLearning", "MiniBatchDictionaryLearning",
-    # CropTransformer needs wavelengths context
-    "CropTransformer",
-    # Resampler requires target_wavelengths (no default)
-    "Resampler",
-    # PLSSVD requires y
+# Operators that require y for fit.
+REQUIRES_Y = {
+    "OSC",
+    "CARS",
+    "MCUVE",
     "PLSSVD",
-    # TSNE perplexity must be < n_samples
-    "TSNE",
+    "TargetEncoder",
+    "GenericUnivariateSelect",
+    "RFE",
+    "RFECV",
+    "SelectFdr",
+    "SelectFpr",
+    "SelectFromModel",
+    "SelectFwe",
+    "SelectKBest",
+    "SelectPercentile",
+    "SequentialFeatureSelector",
 }
 
-# Operators whose classPath may not be directly importable but work via aliases
-SKIP_RESOLVE = {
-    "MovingAverage",  # alias to SavitzkyGolay (JSON now fixed, but legacyClassPath)
+CATEGORICAL_INPUT_OPS = {"OneHotEncoder", "OrdinalEncoder", "TargetEncoder"}
+NAN_INPUT_OPS = {"KNNImputer", "MissingIndicator", "SimpleImputer"}
+
+# Per-operator execution fixtures keep slow or context-sensitive operators
+# deterministic while still proving that JSON-defined operators run end-to-end.
+FIT_TRANSFORM_PARAM_OVERRIDES = {
+    "Resampler": {"target_wavelengths": np.linspace(1050, 2450, 25)},
+    "CARS": {"n_components": 2, "n_sampling_runs": 3, "cv_folds": 2, "random_state": 42},
+    "MCUVE": {"n_components": 2, "n_iterations": 3, "random_state": 42},
+    "TSNE": {"perplexity": 5, "max_iter": 250, "random_state": 42, "init": "random"},
+    "BernoulliRBM": {"n_components": 8, "n_iter": 2, "random_state": 42},
+    "RandomTreesEmbedding": {"n_estimators": 5, "random_state": 42},
+    "DictionaryLearning": {"n_components": 5, "max_iter": 20, "random_state": 42},
+    "MiniBatchDictionaryLearning": {"n_components": 5, "max_iter": 20, "batch_size": 10, "random_state": 42},
+    "KMeans": {"random_state": 42},
+    "MiniBatchKMeans": {"random_state": 42},
+    "BisectingKMeans": {"random_state": 42},
+    "RFE": {"n_features_to_select": 5},
+    "RFECV": {"cv": 2},
+    "SequentialFeatureSelector": {"cv": 2, "n_features_to_select": 5},
+    # The node definition uses sklearn's legacy "warn" sentinel; fit needs a concrete method.
+    "KBinsDiscretizer": {"quantile_method": "averaged_inverted_cdf"},
+}
+
+FILTER_PARAM_OVERRIDES = {
+    "MetadataFilter": {"column": "sample_type", "values_to_keep": ["calibration"]},
+}
+
+SPLITTER_PARAM_OVERRIDES = {
+    "PredefinedSplit": {"test_fold": [0, 0, -1, 1, 1, -1]},
 }
 
 # Parameters that exist only in the UI and are transformed at runtime
@@ -116,6 +128,59 @@ SKIP_RESOLVE = {
 UI_ONLY_PARAMS = {
     ("Resampler", "n_points"),
 }
+
+
+def _build_fit_transform_fixture(name: str) -> tuple[np.ndarray, np.ndarray | None, dict]:
+    """Return representative X, optional y, and fit kwargs for an operator."""
+    rng = np.random.RandomState(42)
+
+    if name in CATEGORICAL_INPUT_OPS:
+        X = np.array(
+            [
+                ["a", "x"],
+                ["b", "x"],
+                ["a", "y"],
+                ["c", "y"],
+                ["b", "z"],
+                ["c", "z"],
+                ["a", "x"],
+                ["b", "y"],
+                ["c", "z"],
+                ["a", "z"],
+            ],
+            dtype=object,
+        )
+        y = np.array([0, 1, 0, 1, 1, 0, 0, 1, 0, 1])
+        return X, y, {}
+
+    if name in NAN_INPUT_OPS:
+        X = rng.rand(12, 6)
+        X[0, 0] = np.nan
+        X[2, 3] = np.nan
+        X[5, 1] = np.nan
+        return X, None, {}
+
+    n_samples = 40 if name == "TSNE" else 30
+    X = rng.rand(n_samples, 50) + 1.0
+    y = np.arange(n_samples) % 2
+    X[:, 0] = y + 1.0 + rng.normal(scale=0.01, size=n_samples)
+
+    fit_kwargs = {}
+    if name == "Resampler":
+        fit_kwargs["wavelengths"] = np.linspace(1000, 2500, X.shape[1])
+
+    return X, y, fit_kwargs
+
+
+def _assert_result_rows_match_input(name: str, result, n_rows: int) -> None:
+    """Check row preservation for arrays, sparse matrices, and tuple results."""
+    results = result if isinstance(result, tuple) else (result,)
+    assert results, f"{name}: fit_transform returned an empty tuple"
+    for item in results:
+        assert hasattr(item, "shape"), f"{name}: fit_transform returned item without shape: {type(item)!r}"
+        assert item.shape[0] == n_rows, (
+            f"{name}: output rows ({item.shape[0]}) != input rows ({n_rows})"
+        )
 
 
 # ============================================================================
@@ -132,9 +197,6 @@ _preprocessing_ops = _load_definitions("preprocessing")
 )
 def test_preprocessing_resolve(name, op_def):
     """Each preprocessing operator's classPath must resolve to a Python class."""
-    if name in SKIP_RESOLVE:
-        pytest.skip(f"{name} uses alias resolution")
-
     class_path = op_def.get("classPath", "")
     cls = _import_class(class_path)
     assert cls is not None, (
@@ -148,10 +210,7 @@ def test_preprocessing_resolve(name, op_def):
     ids=[name for name, _ in _preprocessing_ops],
 )
 def test_preprocessing_instantiate_and_transform(name, op_def):
-    """Each preprocessing operator must instantiate and fit_transform with defaults."""
-    if name in SKIP_FIT_TRANSFORM:
-        pytest.skip(f"{name} excluded from fit_transform test")
-
+    """Each preprocessing operator must instantiate and fit_transform."""
     class_path = op_def.get("classPath", "")
     cls = _import_class(class_path)
     if cls is None:
@@ -159,22 +218,19 @@ def test_preprocessing_instantiate_and_transform(name, op_def):
 
     defaults = _build_defaults(op_def)
     defaults = normalize_params(name, defaults)
+    defaults.update(FIT_TRANSFORM_PARAM_OVERRIDES.get(name, {}))
     valid = get_valid_params(cls, defaults)
 
     operator = cls(**valid)
 
-    rng = np.random.RandomState(42)
-    X = rng.rand(10, 50) + 1.0  # +1.0 ensures all-positive for log transforms
+    X, y, fit_kwargs = _build_fit_transform_fixture(name)
 
     if name in REQUIRES_Y:
-        y = rng.rand(10) * 10
-        result = operator.fit_transform(X, y)
+        result = operator.fit_transform(X, y, **fit_kwargs)
     else:
-        result = operator.fit_transform(X)
+        result = operator.fit_transform(X, **fit_kwargs)
 
-    assert result.shape[0] == X.shape[0], (
-        f"{name}: output rows ({result.shape[0]}) != input rows ({X.shape[0]})"
-    )
+    _assert_result_rows_match_input(name, result, X.shape[0])
 
 
 @pytest.mark.parametrize(
@@ -184,9 +240,6 @@ def test_preprocessing_instantiate_and_transform(name, op_def):
 )
 def test_preprocessing_params_accepted(name, op_def):
     """Each non-hidden parameter in JSON must be accepted by the operator constructor."""
-    if name in SKIP_RESOLVE:
-        pytest.skip(f"{name} uses alias resolution")
-
     class_path = op_def.get("classPath", "")
     cls = _import_class(class_path)
     if cls is None:
@@ -203,21 +256,23 @@ def test_preprocessing_params_accepted(name, op_def):
         for p in sig.parameters.values()
     )
 
-    if has_kwargs:
-        pytest.skip(f"{name} accepts **kwargs")
-
     # Build raw defaults and normalize them (applies rename mappings like n_pls_components → n_components)
     raw_params = _build_defaults(op_def)
     normalized = normalize_params(name, raw_params)
     normalized_names = set(normalized.keys())
 
-    for param in op_def.get("parameters", []):
+    visible_params = [
+        param
+        for param in op_def.get("parameters", [])
+        if not param.get("isHidden") and (name, param["name"]) not in UI_ONLY_PARAMS
+    ]
+    if has_kwargs:
+        operator = cls(**normalized)
+        assert operator is not None
+        return
+
+    for param in visible_params:
         param_name = param["name"]
-        if param.get("isHidden"):
-            continue
-        # Skip UI-only params that are transformed at runtime
-        if (name, param_name) in UI_ONLY_PARAMS:
-            continue
         # Use normalized name if the param was renamed by normalize_params
         effective_name = param_name
         if param_name not in normalized_names:
@@ -301,9 +356,6 @@ def test_augmentation_instantiate_and_transform(name, op_def):
 
 _filter_ops = _load_definitions("filters")
 
-# Filters that need metadata or specific data patterns
-SKIP_FILTER = {"MetadataFilter"}
-
 
 @pytest.mark.parametrize(
     "name,op_def",
@@ -324,9 +376,6 @@ def test_filter_resolve(name, op_def):
 )
 def test_filter_instantiate(name, op_def):
     """Each filter operator must instantiate with default params."""
-    if name in SKIP_FILTER:
-        pytest.skip(f"{name} needs metadata")
-
     class_path = op_def.get("classPath", "")
     cls = _import_class(class_path)
     if cls is None:
@@ -334,6 +383,7 @@ def test_filter_instantiate(name, op_def):
 
     defaults = _build_defaults(op_def)
     defaults = normalize_params(name, defaults)
+    defaults.update(FILTER_PARAM_OVERRIDES.get(name, {}))
     valid = get_valid_params(cls, defaults)
 
     operator = cls(**valid)
@@ -345,13 +395,6 @@ def test_filter_instantiate(name, op_def):
 # ============================================================================
 
 _splitter_ops = _load_definitions("splitting")
-
-SKIP_SPLITTER = {
-    "GroupKFold", "GroupShuffleSplit", "LeavePGroupsOut",
-    "LeaveOneGroupOut", "StratifiedGroupKFold",
-    # Require positional args with no defaults
-    "LeavePOut", "PredefinedSplit",
-}
 
 
 @pytest.mark.parametrize(
@@ -373,9 +416,6 @@ def test_splitter_resolve(name, op_def):
 )
 def test_splitter_instantiate(name, op_def):
     """Each splitter operator must instantiate with default params."""
-    if name in SKIP_SPLITTER:
-        pytest.skip(f"{name} requires group info")
-
     class_path = op_def.get("classPath", "")
     cls = _import_class(class_path)
     if cls is None:
@@ -383,6 +423,7 @@ def test_splitter_instantiate(name, op_def):
 
     defaults = _build_defaults(op_def)
     defaults = normalize_params(name, defaults)
+    defaults.update(SPLITTER_PARAM_OVERRIDES.get(name, {}))
     valid = get_valid_params(cls, defaults)
 
     operator = cls(**valid)
