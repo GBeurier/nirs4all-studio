@@ -194,8 +194,7 @@ def test_pipeline_execute_task_threads_engine_and_returns_runtime(monkeypatch, t
     assert payload["fallback_policy"]["allow_fallback"] is False
 
 
-@pytest.mark.parametrize("engine", [None, "legacy"])
-def test_pipeline_execute_task_preserves_legacy_workspace_kwargs(monkeypatch, tmp_path, engine):
+def test_pipeline_execute_task_uses_default_engine_contract(monkeypatch, tmp_path):
     calls: list[dict] = []
     _install_fake_nirs4all(monkeypatch, calls)
     _stub_pipeline_task_deps(monkeypatch)
@@ -210,7 +209,36 @@ def test_pipeline_execute_task_preserves_legacy_workspace_kwargs(monkeypatch, tm
             "workspace_path": str(tmp_path),
             "verbose": 0,
             "export_model": False,
-            "engine": engine,
+            "engine": None,
+            "allow_fallback": False,
+        }
+    )
+
+    payload = pipelines_api._run_pipeline_task(job, _progress)
+
+    assert payload["success"] is True
+    assert "workspace_path" not in calls[0]
+    assert calls[0]["results_path"] == str(tmp_path / "nirs4all_results")
+    assert calls[0]["allow_fallback"] is False
+    assert "engine" not in calls[0]
+
+
+def test_pipeline_execute_task_preserves_explicit_legacy_workspace_kwargs(monkeypatch, tmp_path):
+    calls: list[dict] = []
+    _install_fake_nirs4all(monkeypatch, calls)
+    _stub_pipeline_task_deps(monkeypatch)
+
+    job = SimpleNamespace(
+        config={
+            "pipeline_id": "pipe-a",
+            "pipeline_name": "Pipe",
+            "pipeline_steps": [{"id": "m"}],
+            "dataset_id": "dataset-a",
+            "dataset_path": "dataset-path",
+            "workspace_path": str(tmp_path),
+            "verbose": 0,
+            "export_model": False,
+            "engine": "legacy",
             "allow_fallback": False,
         }
     )
@@ -220,10 +248,7 @@ def test_pipeline_execute_task_preserves_legacy_workspace_kwargs(monkeypatch, tm
     assert payload["success"] is True
     assert "workspace_path" not in calls[0]
     assert "results_path" not in calls[0]
-    if engine is None:
-        assert "engine" not in calls[0]
-    else:
-        assert calls[0]["engine"] == "legacy"
+    assert calls[0]["engine"] == "legacy"
 
 
 def test_training_metrics_response_exposes_runtime_fields(monkeypatch):
