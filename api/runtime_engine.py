@@ -50,10 +50,10 @@ _FALLBACK_MITIGATION = (
 def resolve_engine(requested: str | None) -> str:
     """Resolve a requested engine to the engine nirs4all would select.
 
-    Delegates to nirs4all's own resolver so Studio never re-defines the default
-    (``None`` → ``"legacy"``). Degrades to the same default when the library is
-    not importable (Phase-1 / library absent), so the orchestration layer keeps
-    working without ``nirs4all``.
+    Delegates to nirs4all's own resolver so Studio never re-defines the default.
+    Degrades to the legacy engine when the library is not importable (Phase-1 /
+    library absent), so the orchestration layer keeps working without
+    ``nirs4all``.
 
     Args:
         requested: The engine the caller asked for, or ``None`` for the default.

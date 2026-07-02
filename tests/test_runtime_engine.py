@@ -16,9 +16,9 @@ from api import runtime_engine
 from api.runtime_errors import RtError
 
 
-def test_resolve_engine_defaults_to_legacy():
-    assert runtime_engine.resolve_engine(None) == "legacy"
-    assert runtime_engine.resolve_engine("") == "legacy"
+def test_resolve_engine_delegates_default_to_nirs4all():
+    assert runtime_engine.resolve_engine(None) == "dag-ml"
+    assert runtime_engine.resolve_engine("") == "dag-ml"
 
 
 def test_resolve_engine_passes_through_explicit():
@@ -46,7 +46,7 @@ def test_observe_engine_records_default_engine_for_none_request():
     with runtime_engine.observe_engine(None) as observation:
         pass
     record = observation.finalize(result=None)
-    assert record["engine"] == "legacy"
+    assert record["engine"] == "dag-ml"
     assert record["engine_requested"] is None
     assert record["engine_diagnostics"] is None
 
