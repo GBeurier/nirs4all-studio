@@ -12,7 +12,9 @@
 # ── Build arguments ──
 ARG BASE_IMAGE=python:3.11-slim
 ARG INSTALL_GPU=false
-ARG NIRS4ALL_VERSION=0.10.0
+ARG NIRS4ALL_SOURCE_URL=https://github.com/GBeurier/nirs4all/archive/refs/heads/rc/v1-full-refactor-python.tar.gz
+ARG DAG_ML_SOURCE_URL=https://github.com/GBeurier/dag-ml/archive/refs/heads/rc/v1-full-refactor.tar.gz
+ARG DAG_ML_DATA_SOURCE_URL=https://github.com/GBeurier/dag-ml-data/archive/refs/heads/rc/v1-full-refactor.tar.gz
 ARG PYTHON_VERSION=3.11.13
 ARG PYTHON_STANDALONE_TAG=20250828
 
@@ -39,7 +41,9 @@ RUN npm run build
 FROM ${BASE_IMAGE} AS runtime
 
 ARG INSTALL_GPU=false
-ARG NIRS4ALL_VERSION=0.10.0
+ARG NIRS4ALL_SOURCE_URL=https://github.com/GBeurier/nirs4all/archive/refs/heads/rc/v1-full-refactor-python.tar.gz
+ARG DAG_ML_SOURCE_URL=https://github.com/GBeurier/dag-ml/archive/refs/heads/rc/v1-full-refactor.tar.gz
+ARG DAG_ML_DATA_SOURCE_URL=https://github.com/GBeurier/dag-ml-data/archive/refs/heads/rc/v1-full-refactor.tar.gz
 ARG PYTHON_VERSION=3.11.13
 ARG PYTHON_STANDALONE_TAG=20250828
 ENV PATH="/opt/python-build-standalone/python/bin:${PATH}"
@@ -53,11 +57,12 @@ RUN rm -rf /var/lib/apt/lists/* \
     && apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    build-essential \
     tar \
     && rm -rf /var/lib/apt/lists/*
 
 # Ensure Python 3.11+ is available. CUDA Ubuntu 22.04 images ship Python 3.10,
-# which is too old for nirs4all 0.10.0.
+# which is too old for the nirs4all V1 RC runtime.
 # hadolint ignore=DL3013
 RUN set -eux; \
     if command -v python3 >/dev/null 2>&1 && python3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"; then \
@@ -86,9 +91,20 @@ RUN python -m pip install --no-cache-dir -r requirements-cpu.txt && \
         python -m pip install --no-cache-dir -r requirements-gpu.txt; \
     fi
 
-# Install nirs4all
-RUN python -m pip install --no-cache-dir "https://github.com/GBeurier/nirs4all/archive/refs/tags/${NIRS4ALL_VERSION}.tar.gz" && \
-    python -c "import nirs4all; assert nirs4all.__version__ == '${NIRS4ALL_VERSION}', nirs4all.__version__"
+# Install dag-ml runtimes before nirs4all so the Docker image uses the same
+# backend stack as the release-candidate archives.
+RUN set -eux; \
+    curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable; \
+    export PATH="/root/.cargo/bin:${PATH}"; \
+    rustc --version; \
+    cargo --version; \
+    python -m pip install --no-cache-dir \
+        "dag-ml-data @ ${DAG_ML_DATA_SOURCE_URL}#subdirectory=crates/dag-ml-data-py" \
+        "dag-ml @ ${DAG_ML_SOURCE_URL}#subdirectory=crates/dag-ml-py"; \
+    python -m pip install --no-cache-dir "${NIRS4ALL_SOURCE_URL}" && \
+    python -c "import dag_ml, dag_ml_data, nirs4all; print('runtime ok', nirs4all.__version__)"; \
+    apt-get purge -y --auto-remove build-essential; \
+    rm -rf /root/.cargo /root/.rustup /root/.cache/pip /var/lib/apt/lists/*
 
 # Copy backend source
 COPY main.py ./
