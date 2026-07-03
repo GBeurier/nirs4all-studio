@@ -1,10 +1,9 @@
 name: Provide nirs4all-ui sibling
 description: >-
-  Clones GBeurier/nirs4all-ui next to the workspace so the package.json
-  `file:../nirs4all-ui` dependency and the `../nirs4all-ui/src` tsconfig/vite
-  aliases resolve on CI runners the same way they do in the sibling-checkout
-  dev layout. Requires the branch matching the current ref when a ref is known,
-  so RC branches cannot silently validate against nirs4all-ui@main.
+  Clones and builds GBeurier/nirs4all-ui next to the workspace so Studio can
+  verify its vendored `vendor/nirs4all-ui` shim against canonical source and
+  dist artifacts. Requires the branch matching the current ref when a ref is
+  known, so RC branches cannot silently validate against nirs4all-ui@main.
 runs:
   using: composite
   steps:
@@ -25,3 +24,5 @@ runs:
         else
           echo "nirs4all-ui sibling: no GitHub ref provided; using default branch @ $(git -C "$sibling" rev-parse HEAD)"
         fi
+        npm --prefix "$sibling" ci
+        npm --prefix "$sibling" run build
