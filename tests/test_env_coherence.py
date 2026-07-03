@@ -7,7 +7,6 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -134,23 +133,27 @@ class TestCoherencePathNormalization:
         assert data["configured_matches_running"] is True
         assert data["coherent"] is True
 
-    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only: mixed separators")
     @patch("api.system.venv_manager")
-    def test_mixed_separators_on_windows(self, mock_vm):
+    def test_mixed_separators_on_windows(self, mock_vm, monkeypatch):
         """On Windows, forward and back slashes should be equivalent."""
-        mock_vm.python_executable = Path(sys.executable.replace("\\", "/"))
-        mock_vm.venv_path = Path(sys.prefix.replace("\\", "/"))
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr(sys, "executable", r"C:\nirs4all\python\python.exe")
+        monkeypatch.setattr(sys, "prefix", r"C:\nirs4all\python")
+        mock_vm.python_executable = Path("C:/nirs4all/python/python.exe")
+        mock_vm.venv_path = Path("C:/nirs4all/python")
 
         response = client.get("/api/system/env-coherence")
         data = response.json()
         assert data["coherent"] is True
 
-    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only: case insensitivity")
     @patch("api.system.venv_manager")
-    def test_case_insensitive_on_windows(self, mock_vm):
+    def test_case_insensitive_on_windows(self, mock_vm, monkeypatch):
         """On Windows, path comparison should be case-insensitive."""
-        mock_vm.python_executable = Path(sys.executable.upper())
-        mock_vm.venv_path = Path(sys.prefix.upper())
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr(sys, "executable", r"C:\nirs4all\python\python.exe")
+        monkeypatch.setattr(sys, "prefix", r"C:\nirs4all\python")
+        mock_vm.python_executable = Path(r"C:\NIRS4ALL\PYTHON\PYTHON.EXE")
+        mock_vm.venv_path = Path(r"C:\NIRS4ALL\PYTHON")
 
         response = client.get("/api/system/env-coherence")
         data = response.json()

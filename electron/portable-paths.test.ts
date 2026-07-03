@@ -22,15 +22,19 @@ describe("portable path helpers", () => {
     expect(resolvePortableLayout({})).toBeNull();
   });
 
-  it.skipIf(process.platform !== "win32")("derives a stable portable layout from the portable executable", () => {
+  it("derives a stable portable layout from the portable executable", () => {
+    const executablePath = path.resolve("portable", "nirs4all Studio.exe");
+    const portableRoot = path.join(path.dirname(executablePath), ".nirs4all");
+
     const layout = resolvePortableLayout({
-      PORTABLE_EXECUTABLE_FILE: "C:\\portable\\nirs4all Studio.exe",
+      PORTABLE_EXECUTABLE_FILE: executablePath,
     });
 
     expect(layout).not.toBeNull();
-    expect(layout?.portableRoot).toBe(path.join("C:\\portable", ".nirs4all"));
-    expect(layout?.userDataDir).toBe(path.join("C:\\portable", ".nirs4all", "userData"));
-    expect(layout?.configDir).toBe(path.join("C:\\portable", ".nirs4all", "config"));
+    expect(layout?.executablePath).toBe(executablePath);
+    expect(layout?.portableRoot).toBe(portableRoot);
+    expect(layout?.userDataDir).toBe(path.join(portableRoot, "userData"));
+    expect(layout?.configDir).toBe(path.join(portableRoot, "config"));
   });
 
   it("sets electron paths and backend env vars for portable runs", () => {

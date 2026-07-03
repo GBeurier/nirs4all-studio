@@ -45,6 +45,7 @@ def _find_nirs4all_root() -> Path | None:
     """Find the nirs4all library root (CI: nirs4all-lib/, local: sibling dir)."""
     for candidate in [
         _WEBAPP_ROOT / "nirs4all-lib",       # CI checkout
+        _WEBAPP_ROOT.parent / "RC-v1-nirs4all-python",  # RC worktree sibling
         _WEBAPP_ROOT.parent / "nirs4all",     # local workspace sibling
     ]:
         if candidate.is_dir():
