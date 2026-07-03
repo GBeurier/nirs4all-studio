@@ -25,7 +25,7 @@
     "lint:tsc": "tsc --noEmit",
     "lint:nodes": "node scripts/validate-node-registry.cjs",
     "lint:storage": "node scripts/check-client-storage.cjs",
-    "lint:ruff": "ruff check .",
+    "lint:ruff": "ruff check main.py api websocket updater scripts tests",
     "lint:deps": "node scripts/check-dep-sync.cjs",
     "vendor:ui": "node scripts/sync-ui-shim.mjs",
     "check:ui-shim": "node scripts/sync-ui-shim.mjs --check",

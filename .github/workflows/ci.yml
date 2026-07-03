@@ -126,7 +126,7 @@ jobs:
       - name: Lint Python (ruff)
         run: |
           pip install ruff
-          ruff check .
+          npm run lint:ruff
 
       - name: Verify imports
         run: |
