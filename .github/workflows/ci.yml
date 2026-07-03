@@ -12,6 +12,8 @@ env:
   NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
   NIRS4ALL_LIBRARY_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor-python' || 'main' }}
+  DAG_ML_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor' || 'main' }}
+  DAG_ML_DATA_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor' || 'main' }}
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -97,6 +99,26 @@ jobs:
           repository: GBeurier/nirs4all
           ref: ${{ env.NIRS4ALL_LIBRARY_REF }}
           path: nirs4all-lib
+
+      - name: Checkout dag-ml runtime
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/dag-ml
+          ref: ${{ env.DAG_ML_REF }}
+          path: dag-ml
+
+      - name: Checkout dag-ml-data runtime
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/dag-ml-data
+          ref: ${{ env.DAG_ML_DATA_REF }}
+          path: dag-ml-data
+
+      - name: Setup Rust for local dag-ml wheels
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install local dag-ml runtime wheels
+        run: pip install ./dag-ml/crates/dag-ml-py ./dag-ml-data/crates/dag-ml-data-py
 
       - name: Install nirs4all from source
         run: pip install ./nirs4all-lib
