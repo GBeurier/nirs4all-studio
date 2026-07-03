@@ -18,6 +18,10 @@
  *   --local-nirs4all      Install nirs4all from local source instead of PyPI
  *   --local-nirs4all-path <path>
  *                          Local nirs4all source path
+ *   --local-dag-ml-path <path>
+ *                          Optional local dag-ml Python package path
+ *   --local-dag-ml-data-path <path>
+ *                          Optional local dag-ml-data Python package path
  *   --cache-dir <path>    Cache dir for python-build-standalone downloads
  *   --constraints <path>  Optional pip constraints file for the bake step
  *   --help                Show usage
@@ -50,6 +54,10 @@ Options:
   --local-nirs4all      Install nirs4all from local source instead of PyPI
   --local-nirs4all-path <path>
                         Local nirs4all source path
+  --local-dag-ml-path <path>
+                        Optional local dag-ml Python package path
+  --local-dag-ml-data-path <path>
+                        Optional local dag-ml-data Python package path
   --cache-dir <path>    Cache dir for python-build-standalone downloads
   --constraints <path>  Optional pip constraints file for the bake step
   --help                Show this message`);
@@ -65,6 +73,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     skipFrontend: false,
     localNirs4all: false,
     localNirs4allPath: "",
+    localDagMlPath: "",
+    localDagMlDataPath: "",
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
     constraintsFile: "",
   };
@@ -91,6 +101,10 @@ function parseArgs(argv = process.argv.slice(2)) {
       parsed.localNirs4all = true;
     } else if (flag === "--local-nirs4all-path") {
       parsed.localNirs4allPath = path.resolve(inlineValue ?? argv[++i]);
+    } else if (flag === "--local-dag-ml-path") {
+      parsed.localDagMlPath = path.resolve(inlineValue ?? argv[++i]);
+    } else if (flag === "--local-dag-ml-data-path") {
+      parsed.localDagMlDataPath = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--cache-dir") {
       parsed.cacheDir = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--constraints") {
@@ -110,6 +124,8 @@ function resolveBuildConfig(rawOptions, host = { platform: process.platform, arc
     cacheDir: path.resolve(rawOptions.cacheDir),
     constraintsFile: rawOptions.constraintsFile ? path.resolve(rawOptions.constraintsFile) : "",
     localNirs4allPath: rawOptions.localNirs4allPath ? path.resolve(rawOptions.localNirs4allPath) : "",
+    localDagMlPath: rawOptions.localDagMlPath ? path.resolve(rawOptions.localDagMlPath) : "",
+    localDagMlDataPath: rawOptions.localDagMlDataPath ? path.resolve(rawOptions.localDagMlDataPath) : "",
   };
 
   const allowedProfiles = [STANDALONE_V1_PROFILE, LITE_PROFILE];
@@ -380,6 +396,12 @@ async function buildArchiveStandalone(config) {
     }
     if (config.localNirs4allPath) {
       bakeArgs.push("--local-nirs4all-path", config.localNirs4allPath);
+    }
+    if (config.localDagMlPath) {
+      bakeArgs.push("--local-dag-ml-path", config.localDagMlPath);
+    }
+    if (config.localDagMlDataPath) {
+      bakeArgs.push("--local-dag-ml-data-path", config.localDagMlDataPath);
     }
     if (config.constraintsFile) {
       bakeArgs.push("--constraints", config.constraintsFile);

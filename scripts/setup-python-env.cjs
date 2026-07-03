@@ -20,6 +20,9 @@
  *   --build-mode <id>            build_info.json mode value (default: installer)
  *   --local-nirs4all             Install nirs4all from local source instead of PyPI
  *   --local-nirs4all-path <path> Local nirs4all source path (default: ../nirs4all, then ./nirs4all-lib)
+ *   --local-dag-ml-path <path>   Optional local dag-ml Python package path
+ *   --local-dag-ml-data-path <path>
+ *                                Optional local dag-ml-data Python package path
  */
 
 const { spawn, execFile } = require("child_process");
@@ -61,6 +64,8 @@ let outputDir = path.join(projectRoot, "backend-dist");
 let runtimeOnly = false;
 let buildMode = "installer";
 let localNirs4allPath = "";
+let localDagMlPath = "";
+let localDagMlDataPath = "";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--flavor" && args[i + 1]) {
@@ -83,6 +88,10 @@ for (let i = 0; i < args.length; i++) {
     localNirs4all = true;
   } else if (args[i] === "--local-nirs4all-path" && args[i + 1]) {
     localNirs4allPath = path.resolve(args[++i]);
+  } else if (args[i] === "--local-dag-ml-path" && args[i + 1]) {
+    localDagMlPath = path.resolve(args[++i]);
+  } else if (args[i] === "--local-dag-ml-data-path" && args[i + 1]) {
+    localDagMlDataPath = path.resolve(args[++i]);
   }
 }
 
@@ -244,6 +253,35 @@ function getLocalNirs4allCandidates(explicitPath = localNirs4allPath, env = proc
 function resolveLocalNirs4allPath(explicitPath = localNirs4allPath, env = process.env) {
   const candidates = getLocalNirs4allCandidates(explicitPath, env);
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+function resolveRequiredLocalPackagePath(label, explicitPath) {
+  if (!explicitPath) {
+    return null;
+  }
+  const resolvedPath = path.resolve(explicitPath);
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`${label} local source path not found: ${resolvedPath}`);
+  }
+  return resolvedPath;
+}
+
+async function installLocalPythonSource(runtimePython, label, sourcePath, options = {}) {
+  const editable = Boolean(options.editable);
+  console.log(`  Installing ${label} from local source (${editable ? "editable" : "copy"})...`);
+  await runCommandWithRetries(runtimePython, [
+    "-m",
+    "pip",
+    "install",
+    "--prefer-binary",
+    ...(options.noCompile ? ["--no-compile"] : []),
+    ...(options.constraintsFile ? ["-c", options.constraintsFile] : []),
+    ...(editable ? ["-e"] : []),
+    sourcePath,
+  ], {}, {
+    retries: isWindows ? 3 : 1,
+    label: `pip install ${editable ? "-e " : ""}${sourcePath}`,
+  });
 }
 
 function getStandaloneTorchIndexArgs(profileId, platform = process.platform) {
@@ -653,9 +691,33 @@ async function main() {
     });
   }
 
-  // 7. Install nirs4all
+  // 7. Install optional local dag-ml runtimes before nirs4all so the Python
+  // oracle/runtime package resolves against the RC native backend stack.
+  const resolvedLocalDagMlDataPath = resolveRequiredLocalPackagePath("dag-ml-data", localDagMlDataPath);
+  const resolvedLocalDagMlPath = resolveRequiredLocalPackagePath("dag-ml", localDagMlPath);
+  if (resolvedLocalDagMlDataPath || resolvedLocalDagMlPath) {
+    console.log("");
+    console.log("=== Step 5: Install dag-ml runtime packages ===");
+    const editable = !useBundledBasePython;
+    if (resolvedLocalDagMlDataPath) {
+      await installLocalPythonSource(runtimePython, "dag-ml-data", resolvedLocalDagMlDataPath, {
+        constraintsFile,
+        editable,
+        noCompile: useBundledBasePython,
+      });
+    }
+    if (resolvedLocalDagMlPath) {
+      await installLocalPythonSource(runtimePython, "dag-ml", resolvedLocalDagMlPath, {
+        constraintsFile,
+        editable,
+        noCompile: useBundledBasePython,
+      });
+    }
+  }
+
+  // 8. Install nirs4all
   console.log("");
-  console.log("=== Step 5: Install nirs4all ===");
+  console.log("=== Step 6: Install nirs4all ===");
 
   const resolvedLocalNirs4allPath = resolveLocalNirs4allPath();
   if (localNirs4all && resolvedLocalNirs4allPath) {
@@ -665,20 +727,10 @@ async function main() {
     // `import nirs4all` fails on the user's machine. Install a *copy*
     // (non-editable) into the bundled runtime. Editable is kept only for
     // non-bundled dev setups where live-editing the local source is wanted.
-    const editable = !useBundledBasePython;
-    console.log(`  Installing nirs4all from local source (${editable ? "editable" : "copy"})...`);
-    await runCommandWithRetries(runtimePython, [
-      "-m",
-      "pip",
-      "install",
-      "--prefer-binary",
-      ...(useBundledBasePython ? ["--no-compile"] : []),
-      ...(constraintsFile ? ["-c", constraintsFile] : []),
-      ...(editable ? ["-e"] : []),
-      resolvedLocalNirs4allPath,
-    ], {}, {
-      retries: isWindows ? 3 : 1,
-      label: `pip install ${editable ? "-e " : ""}${resolvedLocalNirs4allPath}`,
+    await installLocalPythonSource(runtimePython, "nirs4all", resolvedLocalNirs4allPath, {
+      constraintsFile,
+      editable: !useBundledBasePython,
+      noCompile: useBundledBasePython,
     });
   } else if (localNirs4all) {
     console.log(`  Warning: --local-nirs4all specified but no local source was found. Checked: ${getLocalNirs4allCandidates().join(", ")}`);
