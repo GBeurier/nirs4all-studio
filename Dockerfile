@@ -12,9 +12,9 @@
 # ── Build arguments ──
 ARG BASE_IMAGE=python:3.11-slim
 ARG INSTALL_GPU=false
-ARG NIRS4ALL_SOURCE_URL=https://github.com/GBeurier/nirs4all/archive/5e7a0e4be6a0519c3ecd7d04ea9a3f8da3f0414b.tar.gz
+ARG NIRS4ALL_SOURCE_URL=https://github.com/GBeurier/nirs4all/archive/bf242e4854693ccb048b7f0ffc5f3fdd2380315a.tar.gz
 ARG DAG_ML_SOURCE_URL=https://github.com/GBeurier/dag-ml/archive/a8f6cb3845fcb19f81450b4776094f21978cf2b7.tar.gz
-ARG DAG_ML_DATA_SOURCE_URL=https://github.com/GBeurier/dag-ml-data/archive/95e56a7fa3d82ea00fda7ecfcd950a22ab526d21.tar.gz
+ARG DAG_ML_DATA_SOURCE_URL=https://github.com/GBeurier/dag-ml-data/archive/616f3e5ff715667d537c089a9ba059832f8cc1c9.tar.gz
 ARG PYTHON_VERSION=3.11.13
 ARG PYTHON_STANDALONE_TAG=20250828
 
@@ -41,9 +41,9 @@ RUN npm run build
 FROM ${BASE_IMAGE} AS runtime
 
 ARG INSTALL_GPU=false
-ARG NIRS4ALL_SOURCE_URL=https://github.com/GBeurier/nirs4all/archive/5e7a0e4be6a0519c3ecd7d04ea9a3f8da3f0414b.tar.gz
+ARG NIRS4ALL_SOURCE_URL=https://github.com/GBeurier/nirs4all/archive/bf242e4854693ccb048b7f0ffc5f3fdd2380315a.tar.gz
 ARG DAG_ML_SOURCE_URL=https://github.com/GBeurier/dag-ml/archive/a8f6cb3845fcb19f81450b4776094f21978cf2b7.tar.gz
-ARG DAG_ML_DATA_SOURCE_URL=https://github.com/GBeurier/dag-ml-data/archive/95e56a7fa3d82ea00fda7ecfcd950a22ab526d21.tar.gz
+ARG DAG_ML_DATA_SOURCE_URL=https://github.com/GBeurier/dag-ml-data/archive/616f3e5ff715667d537c089a9ba059832f8cc1c9.tar.gz
 ARG PYTHON_VERSION=3.11.13
 ARG PYTHON_STANDALONE_TAG=20250828
 ENV PATH="/opt/python-build-standalone/python/bin:${PATH}"
