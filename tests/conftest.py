@@ -16,6 +16,19 @@ webapp_root = Path(__file__).parent.parent
 if str(webapp_root) not in sys.path:
     sys.path.insert(0, str(webapp_root))
 
+# Ensure the nirs4all core checkout is importable in every worker. Some focused
+# integration tests monkeypatch nirs4all.run directly, so this cannot depend on
+# another test module having already adjusted sys.path.
+for nirs4all_path in (
+    webapp_root.parent / "nirs4all",
+    webapp_root.parent / "RC-v1-nirs4all-python",
+    webapp_root.parent.parent / "nirs4all",
+):
+    if nirs4all_path.exists():
+        if str(nirs4all_path) not in sys.path:
+            sys.path.insert(0, str(nirs4all_path))
+        break
+
 
 @pytest.fixture(autouse=True)
 def _drain_background_jobs():

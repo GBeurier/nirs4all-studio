@@ -219,8 +219,11 @@ class VenvManager:
                 info.created_at = metadata.get("created_at")
                 info.last_updated = metadata.get("last_updated")
 
-            # Calculate size
-            info.size_bytes = self._get_directory_size(self._venv_path)
+            # Calculate size only for owned runtime roots. In a development
+            # shell without a venv, sys.prefix can be /usr; recursively
+            # scanning the system prefix is slow and can outlive app shutdown.
+            if self._should_compute_runtime_size():
+                info.size_bytes = self._get_directory_size(self._venv_path)
 
         return info
 
@@ -271,6 +274,16 @@ class VenvManager:
         except Exception:
             pass
         return total
+
+    def _should_compute_runtime_size(self) -> bool:
+        """Return True when sys.prefix looks like an app-owned runtime root."""
+        if (self._venv_path / "pyvenv.cfg").exists():
+            return True
+        base_prefix = Path(getattr(sys, "base_prefix", sys.prefix))
+        if self._venv_path != base_prefix:
+            return True
+        runtime_mode = os.environ.get("NIRS4ALL_RUNTIME_MODE", "").strip().lower()
+        return runtime_mode in {"bundled", "portable", "standalone"}
 
     def install_package(
         self,
@@ -549,6 +562,10 @@ class VenvManager:
                     _outdated_packages_cache[fingerprint] = (now, list(outdated))
             else:
                 logger.warning("pip list --outdated failed: %s", result.stderr.strip())
+                if stale_outdated is not None:
+                    return stale_outdated
+                if fingerprint is not None:
+                    _outdated_packages_cache[fingerprint] = (now, [])
         except subprocess.TimeoutExpired as e:
             logger.warning("pip list --outdated timed out after %s seconds", e.timeout)
             if stale_outdated is not None:
