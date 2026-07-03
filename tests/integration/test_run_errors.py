@@ -21,6 +21,22 @@ from fastapi.testclient import TestClient
 from .websocket_utils import RunProgressTracker
 
 
+def _response_debug(response) -> object:
+    try:
+        return response.json()
+    except ValueError:
+        return response.text
+
+
+def _assert_created(response, action: str) -> dict:
+    assert response.status_code in (200, 201), f"{action} failed with {response.status_code}: {_response_debug(response)}"
+    return response.json()
+
+
+def _assert_run_status(status: str, expected: str, tracker: RunProgressTracker) -> None:
+    assert status == expected, f"Expected {expected}, got {status}; history={tracker.status_history}; run={tracker.get_run_details()}"
+
+
 class TestMissingResourceErrors:
     """Test 404 errors for missing resources."""
 
@@ -249,17 +265,14 @@ class TestExecutionFailures:
             "cv_folds": 3,
         })
 
-        if response.status_code not in (200, 201):
-            pytest.skip(f"Quick run creation failed: {response.json()}")
-
-        run_id = response.json()["id"]
+        run_id = _assert_created(response, "Quick run creation")["id"]
 
         # Wait for completion
         tracker = RunProgressTracker(workspace_client, run_id)
         status = tracker.poll_until_complete(timeout=30.0)
 
         # Should fail
-        assert status == "failed", f"Expected failed, got {status}"
+        _assert_run_status(status, "failed", tracker)
 
         # Get run details
         run = tracker.get_run_details()
@@ -284,13 +297,11 @@ class TestExecutionFailures:
             "cv_folds": 3,
         })
 
-        if response.status_code not in (200, 201):
-            pytest.skip(f"Quick run creation failed: {response.json()}")
-
-        run_id = response.json()["id"]
+        run_id = _assert_created(response, "Quick run creation")["id"]
 
         tracker = RunProgressTracker(workspace_client, run_id)
-        tracker.poll_until_complete(timeout=30.0)
+        status = tracker.poll_until_complete(timeout=30.0)
+        _assert_run_status(status, "failed", tracker)
 
         run = tracker.get_run_details()
         pipeline = run["datasets"][0]["pipelines"][0]
@@ -361,10 +372,7 @@ class TestExecutionFailures:
             }
         })
 
-        if response.status_code not in (200, 201):
-            pytest.skip(f"Experiment creation failed: {response.json()}")
-
-        run_id = response.json()["id"]
+        run_id = _assert_created(response, "Experiment creation")["id"]
 
         tracker = RunProgressTracker(client, run_id)
         tracker.poll_until_complete(timeout=60.0)
@@ -460,16 +468,11 @@ class TestRunStateErrors:
             "cv_folds": 3,
         })
 
-        if response.status_code not in (200, 201):
-            pytest.skip(f"Quick run creation failed: {response.json()}")
-
-        run_id = response.json()["id"]
+        run_id = _assert_created(response, "Quick run creation")["id"]
 
         tracker = RunProgressTracker(workspace_client, run_id)
         status = tracker.poll_until_complete(timeout=30.0)
-
-        if status != "completed":
-            pytest.skip("Run did not complete")
+        _assert_run_status(status, "completed", tracker)
 
         # Try to stop completed run
         stop_response = workspace_client.post(f"/api/runs/{run_id}/stop")
@@ -488,16 +491,11 @@ class TestRunStateErrors:
             "cv_folds": 3,
         })
 
-        if response.status_code not in (200, 201):
-            pytest.skip(f"Quick run creation failed: {response.json()}")
-
-        run_id = response.json()["id"]
+        run_id = _assert_created(response, "Quick run creation")["id"]
 
         tracker = RunProgressTracker(workspace_client, run_id)
         status = tracker.poll_until_complete(timeout=30.0)
-
-        if status != "completed":
-            pytest.skip("Run did not complete")
+        _assert_run_status(status, "completed", tracker)
 
         # Try to retry completed run
         retry_response = workspace_client.post(f"/api/runs/{run_id}/retry")
@@ -518,18 +516,14 @@ class TestRunStateErrors:
             "cv_folds": 3,
         })
 
-        if response.status_code not in (200, 201):
-            pytest.skip(f"Quick run creation failed: {response.json()}")
-
-        run_id = response.json()["id"]
+        run_id = _assert_created(response, "Quick run creation")["id"]
 
         # Give it a moment to start
         time.sleep(0.5)
 
         # Check run is still active before attempting delete
         run_check = workspace_client.get(f"/api/runs/{run_id}").json()
-        if run_check["status"] not in ("running", "queued"):
-            pytest.skip(f"Run already terminated ({run_check['status']}), likely nirs4all adapter issue on CI")
+        assert run_check["status"] in ("running", "queued"), f"Expected active run before delete, got: {run_check}"
 
         # Try to delete while running
         delete_response = workspace_client.delete(f"/api/runs/{run_id}")

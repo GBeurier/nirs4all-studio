@@ -5,7 +5,7 @@ The endpoint is a thin, guarded proxy over nirs4all's public
 - degrade gracefully (available=false, empty manifests) when the accessor is
   absent (W7 not landed);
 - pass the accessor output through verbatim (no drift);
-- when the accessor + the dag-ml schema are both present, validate against the
+- in Studio gates, require the accessor + dag-ml schema and validate against the
   controller_manifest contract.
 """
 
@@ -19,6 +19,22 @@ from pathlib import Path
 import pytest
 
 from api import operators
+
+
+def _dagml_controller_manifest_schema_path() -> Path:
+    test_path = Path(__file__).resolve()
+    candidates = [
+        test_path.parents[1] / "dag-ml",
+        test_path.parents[2] / "dag-ml",
+        test_path.parents[3] / "dag-ml",
+        test_path.parents[1] / "../RC-v1-dagml",
+    ]
+    for dagml_root in candidates:
+        schema_path = dagml_root.resolve() / "docs" / "contracts" / "controller_manifest.schema.json"
+        if schema_path.exists():
+            return schema_path
+    checked = ", ".join(str(path.resolve()) for path in candidates)
+    raise AssertionError(f"Studio gate requires dag-ml controller_manifest schema; checked: {checked}")
 
 
 def test_list_manifests_none_when_accessor_unavailable(monkeypatch):
@@ -67,22 +83,14 @@ def test_endpoint_reports_unavailable_on_accessor_failure(monkeypatch):
 
 
 def test_manifests_validate_against_dagml_schema():
-    """When W7 + the dag-ml contract are both present, manifests match the schema."""
+    """Studio gates require W7 + the dag-ml contract and validate manifests."""
     manifests = operators.list_controller_manifests()
-    if manifests is None:
-        pytest.skip("nirs4all.runtime accessor unavailable (W7 not landed)")
+    assert manifests is not None, "Studio gate requires nirs4all.runtime.list_controller_manifests()"
 
-    schema_path = (
-        Path(__file__).resolve().parents[3]
-        / "dag-ml"
-        / "docs"
-        / "contracts"
-        / "controller_manifest.schema.json"
-    )
-    if not schema_path.exists():
-        pytest.skip("dag-ml controller_manifest schema not available")
+    schema_path = _dagml_controller_manifest_schema_path()
 
-    jsonschema = pytest.importorskip("jsonschema")
+    import jsonschema
+
     schema = json.loads(schema_path.read_text())
     for manifest in manifests:
         jsonschema.validate(manifest, schema)
