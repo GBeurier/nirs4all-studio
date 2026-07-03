@@ -34,12 +34,12 @@ env:
   APP_ID: com.nirs4all.webapp
   NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
-  NIRS4ALL_LIBRARY_REF: ${{ vars.NIRS4ALL_LIBRARY_REF || 'rc/v1-full-refactor-python' }}
-  DAG_ML_REF: ${{ vars.DAG_ML_REF || 'rc/v1-full-refactor' }}
-  DAG_ML_DATA_REF: ${{ vars.DAG_ML_DATA_REF || 'rc/v1-full-refactor' }}
-  NIRS4ALL_SOURCE_URL: ${{ vars.NIRS4ALL_SOURCE_URL || 'https://github.com/GBeurier/nirs4all/archive/refs/heads/rc/v1-full-refactor-python.tar.gz' }}
-  DAG_ML_SOURCE_URL: ${{ vars.DAG_ML_SOURCE_URL || 'https://github.com/GBeurier/dag-ml/archive/refs/heads/rc/v1-full-refactor.tar.gz' }}
-  DAG_ML_DATA_SOURCE_URL: ${{ vars.DAG_ML_DATA_SOURCE_URL || 'https://github.com/GBeurier/dag-ml-data/archive/refs/heads/rc/v1-full-refactor.tar.gz' }}
+  NIRS4ALL_LIBRARY_REF: rc/v1-full-refactor-python
+  DAG_ML_REF: rc/v1-full-refactor
+  DAG_ML_DATA_REF: rc/v1-full-refactor
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/refs/heads/rc/v1-full-refactor-python.tar.gz
+  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/refs/heads/rc/v1-full-refactor.tar.gz
+  DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/refs/heads/rc/v1-full-refactor.tar.gz
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -1350,10 +1350,7 @@ jobs:
           - variant: cpu
             dockerfile: Dockerfile
             tag_suffix: ''
-            build_args: |-
-              NIRS4ALL_SOURCE_URL=${{ env.NIRS4ALL_SOURCE_URL }}
-              DAG_ML_SOURCE_URL=${{ env.DAG_ML_SOURCE_URL }}
-              DAG_ML_DATA_SOURCE_URL=${{ env.DAG_ML_DATA_SOURCE_URL }}
+            build_args: ''
             cache_to: type=gha,mode=max,scope=cpu
           - variant: gpu-cuda
             dockerfile: Dockerfile
@@ -1361,9 +1358,6 @@ jobs:
             build_args: |-
               BASE_IMAGE=nvidia/cuda:12.4.1-runtime-ubuntu22.04
               INSTALL_GPU=true
-              NIRS4ALL_SOURCE_URL=${{ env.NIRS4ALL_SOURCE_URL }}
-              DAG_ML_SOURCE_URL=${{ env.DAG_ML_SOURCE_URL }}
-              DAG_ML_DATA_SOURCE_URL=${{ env.DAG_ML_DATA_SOURCE_URL }}
             cache_to: type=gha,mode=min,scope=gpu-cuda,timeout=5m,ignore-error=true
     steps:
       - uses: actions/checkout@v4
@@ -1389,7 +1383,11 @@ jobs:
           tags: |
             ghcr.io/gbeurier/nirs4all-studio:${{ needs.prepare.outputs.version }}${{ matrix.tag_suffix }}
             ghcr.io/gbeurier/nirs4all-studio:latest${{ matrix.tag_suffix }}
-          build-args: ${{ matrix.build_args }}
+          build-args: |
+            ${{ matrix.build_args }}
+            NIRS4ALL_SOURCE_URL=${{ env.NIRS4ALL_SOURCE_URL }}
+            DAG_ML_SOURCE_URL=${{ env.DAG_ML_SOURCE_URL }}
+            DAG_ML_DATA_SOURCE_URL=${{ env.DAG_ML_DATA_SOURCE_URL }}
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: ${{ matrix.cache_to }}
           labels: |
