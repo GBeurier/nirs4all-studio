@@ -54,9 +54,26 @@ if (!python) {
   process.exit(1);
 }
 
+function withEcosystemPythonPath(env) {
+  const siblingRoot = path.dirname(projectRoot);
+  const candidates = [
+    path.join(siblingRoot, "RC-v1-nirs4all-python"),
+    path.join(siblingRoot, "nirs4all"),
+  ].filter((candidate) => fs.existsSync(path.join(candidate, "nirs4all")));
+
+  if (candidates.length === 0) {
+    return env;
+  }
+
+  const current = env.PYTHONPATH ? env.PYTHONPATH.split(path.delimiter) : [];
+  const merged = [...candidates, ...current].filter((entry, index, entries) => entries.indexOf(entry) === index);
+  return { ...env, PYTHONPATH: merged.join(path.delimiter) };
+}
+
 const result = spawnSync(python.command, [...python.prefixArgs, ...passthroughArgs], {
   cwd: projectRoot,
   stdio: "inherit",
+  env: withEcosystemPythonPath(process.env),
   shell: false,
 });
 

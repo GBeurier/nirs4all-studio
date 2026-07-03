@@ -49,8 +49,12 @@ export class SettingsPage extends BasePage {
     this.themeSystemButton = page.getByRole('button', { name: /system/i });
 
     // Toggle groups for zoom and density
-    this.zoomToggleGroup = page.locator('[role="group"]').filter({ hasText: /75%|100%|150%/ });
-    this.densityToggleGroup = page.locator('[role="group"]').filter({ hasText: /compact|comfortable|spacious/i });
+    this.zoomToggleGroup = page.getByRole('radiogroup').filter({
+      has: page.getByRole('radio', { name: '75%' }),
+    });
+    this.densityToggleGroup = page.getByRole('radiogroup').filter({
+      has: page.getByRole('radio', { name: /comfortable/i }),
+    });
 
     // Reduce animations switch
     this.reduceAnimationsSwitch = page.getByRole('switch');
