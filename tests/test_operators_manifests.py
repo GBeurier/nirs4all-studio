@@ -12,6 +12,7 @@ The endpoint is a thin, guarded proxy over nirs4all's public
 from __future__ import annotations
 
 import asyncio
+import builtins
 import json
 from pathlib import Path
 
@@ -20,28 +21,30 @@ import pytest
 from api import operators
 
 
-def _runtime_accessor_available() -> bool:
-    try:
-        import nirs4all.runtime  # noqa: F401
-    except Exception:
-        return False
-    return operators.list_controller_manifests() is not None
+def test_list_manifests_none_when_accessor_unavailable(monkeypatch):
+    real_import = builtins.__import__
 
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "nirs4all.runtime" and "list_controller_manifests" in fromlist:
+            raise ImportError("simulated missing runtime accessor")
+        return real_import(name, globals, locals, fromlist, level)
 
-def test_list_manifests_none_when_accessor_unavailable():
-    if _runtime_accessor_available():
-        pytest.skip("nirs4all.runtime accessor present (W7 landed); see no-drift test")
+    monkeypatch.setattr(builtins, "__import__", fake_import)
     assert operators.list_controller_manifests() is None
 
 
-def test_endpoint_degrades_when_accessor_absent():
-    if _runtime_accessor_available():
-        pytest.skip("nirs4all.runtime accessor present (W7 landed)")
+def test_endpoint_degrades_when_accessor_absent(monkeypatch):
+    monkeypatch.setattr(operators, "list_controller_manifests", lambda: None)
+    monkeypatch.setattr(
+        operators,
+        "_module_version",
+        lambda name: "0.9.1" if name == "nirs4all" else None,
+    )
     response = asyncio.run(operators.get_operator_manifests())
     assert response.available is False
     assert response.manifests == []
     # nirs4all itself is installed in this env, so its version is reported.
-    assert response.runtime.nirs4all_version is not None
+    assert response.runtime.nirs4all_version == "0.9.1"
 
 
 def test_endpoint_passthrough_has_no_drift(monkeypatch):

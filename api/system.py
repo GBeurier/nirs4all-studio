@@ -6,6 +6,7 @@ This module provides FastAPI routes for system health and information.
 
 import importlib
 import json
+import ntpath
 import os
 import platform
 import sys
@@ -254,7 +255,8 @@ CORE_RUNTIME_PACKAGES = ("fastapi", "uvicorn", "nirs4all")
 
 def _norm_path(path_value: str) -> str:
     """Normalize a path for reliable cross-platform equality checks."""
-    return os.path.normcase(os.path.normpath(os.path.realpath(path_value)))
+    path_ops = ntpath if sys.platform == "win32" else os.path
+    return path_ops.normcase(path_ops.normpath(path_ops.realpath(path_value)))
 
 
 def _load_desktop_env_settings() -> dict[str, Any] | None:
