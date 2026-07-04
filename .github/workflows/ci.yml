@@ -40,8 +40,24 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      - name: Pack nirs4all-ui package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd nirs4all-ui-lib
+          npm ci
+          npm run prepublishOnly
+          UI_TGZ=$(npm pack --pack-destination "$RUNNER_TEMP" --json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s)[0].filename))")
+          echo "NIRS4ALL_UI_TGZ=$RUNNER_TEMP/$UI_TGZ" >> "$GITHUB_ENV"
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Install packed nirs4all-ui package
+        run: npm install --no-save "$NIRS4ALL_UI_TGZ"
+
+      - name: Smoke installed nirs4all-ui package
+        run: npm run smoke:nirs4all-ui-package
 
       - name: Lint
         run: npm run lint:eslint
