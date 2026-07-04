@@ -1,13 +1,22 @@
 import { defineConfig } from "vitest/config";
+import fs from "fs";
 import path from "path";
+
+function resolveNirs4allUiSourceRoot(): string {
+  const ciCheckout = path.resolve(__dirname, "nirs4all-ui-lib/src");
+  if (fs.existsSync(ciCheckout)) return ciCheckout;
+  return path.resolve(__dirname, "../nirs4all-ui/src");
+}
+
+const nirs4allUiSourceRoot = resolveNirs4allUiSourceRoot();
 
 export default defineConfig({
   resolve: {
     alias: {
-      "nirs4all-ui/score": path.resolve(__dirname, "../nirs4all-ui/src/score/index.ts"),
-      "nirs4all-ui/runtime": path.resolve(__dirname, "../nirs4all-ui/src/runtime/index.ts"),
-      "nirs4all-ui/components": path.resolve(__dirname, "../nirs4all-ui/src/components/index.ts"),
-      "nirs4all-ui": path.resolve(__dirname, "../nirs4all-ui/src/index.ts"),
+      "nirs4all-ui/score": path.resolve(nirs4allUiSourceRoot, "score/index.ts"),
+      "nirs4all-ui/runtime": path.resolve(nirs4allUiSourceRoot, "runtime/index.ts"),
+      "nirs4all-ui/components": path.resolve(nirs4allUiSourceRoot, "components/index.ts"),
+      "nirs4all-ui": path.resolve(nirs4allUiSourceRoot, "index.ts"),
       "@": path.resolve(__dirname, "./src"),
     },
   },
