@@ -1,4 +1,5 @@
 import { AlertTriangle, Cpu } from "lucide-react";
+import { RuntimeEngineBadge as SharedRuntimeEngineBadge } from "nirs4all-ui/components";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -42,8 +43,12 @@ export function RuntimeEngineBadge({
       className={cn("gap-1.5 text-[10px]", engineToneClasses[engineStatus.tone], className)}
       title={title || undefined}
     >
-      <Icon className="h-3 w-3" />
-      {engineStatus.badgeLabel}
+      <SharedRuntimeEngineBadge
+        status={engineStatus}
+        icon={<Icon className="h-3 w-3" />}
+        className="inline-flex items-center gap-1.5"
+        title={title || undefined}
+      />
     </Badge>
   );
 }

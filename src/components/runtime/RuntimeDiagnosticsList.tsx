@@ -1,4 +1,5 @@
 import { AlertCircle, AlertTriangle, Info } from "lucide-react";
+import { RuntimeDiagnosticList as SharedRuntimeDiagnosticList } from "nirs4all-ui/components";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -84,11 +85,11 @@ export function RuntimeDiagnosticsList({
         <AlertTriangle className="h-4 w-4 text-amber-600" />
         {title}
       </h4>
-      <div className="space-y-2">
-        {items.map((diagnostic) => (
-          <RuntimeDiagnosticRow key={diagnostic.id} diagnostic={diagnostic} />
-        ))}
-      </div>
+      <SharedRuntimeDiagnosticList
+        diagnostics={items}
+        className="space-y-2"
+        renderItem={(diagnostic) => <RuntimeDiagnosticRow diagnostic={diagnostic} />}
+      />
     </div>
   );
 }
