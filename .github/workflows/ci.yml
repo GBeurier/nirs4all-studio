@@ -88,6 +88,23 @@ jobs:
           repository: GBeurier/nirs4all
           path: nirs4all-lib
 
+      - name: Checkout dag-ml bindings
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/dag-ml
+          path: dag-ml-lib
+
+      - name: Checkout dag-ml-data bindings
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/dag-ml-data
+          path: dag-ml-data-lib
+
+      - name: Install dag-ml RC dependencies from source
+        run: |
+          pip install ./dag-ml-lib/crates/dag-ml-py
+          pip install ./dag-ml-data-lib/crates/dag-ml-data-py
+
       - name: Install nirs4all from source
         run: pip install ./nirs4all-lib
 
