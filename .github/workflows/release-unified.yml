@@ -164,6 +164,18 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
+      - name: Checkout nirs4all-ui library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-ui
+          path: nirs4all-ui-lib
+
+      - name: Prepare nirs4all-ui sibling
+        shell: bash
+        run: |
+          rm -rf ../nirs4all-ui
+          cp -R nirs4all-ui-lib ../nirs4all-ui
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -235,6 +247,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Checkout nirs4all-ui library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-ui
+          path: nirs4all-ui-lib
+
+      - name: Prepare nirs4all-ui sibling
+        shell: bash
+        run: |
+          rm -rf ../nirs4all-ui
+          cp -R nirs4all-ui-lib ../nirs4all-ui
 
       - name: Note — building an unsigned Windows installer (no signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_windows_signing != 'true'
@@ -341,6 +365,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Checkout nirs4all-ui library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-ui
+          path: nirs4all-ui-lib
+
+      - name: Prepare nirs4all-ui sibling
+        shell: bash
+        run: |
+          rm -rf ../nirs4all-ui
+          cp -R nirs4all-ui-lib ../nirs4all-ui
 
       - name: Note — building an unsigned macOS DMG (no Apple signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
@@ -498,6 +534,18 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
+      - name: Checkout nirs4all-ui library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-ui
+          path: nirs4all-ui-lib
+
+      - name: Prepare nirs4all-ui sibling
+        shell: bash
+        run: |
+          rm -rf ../nirs4all-ui
+          cp -R nirs4all-ui-lib ../nirs4all-ui
+
       - name: Note — building an unsigned macOS DMG (no Apple signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
         run: |
@@ -652,6 +700,18 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
+      - name: Checkout nirs4all-ui library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-ui
+          path: nirs4all-ui-lib
+
+      - name: Prepare nirs4all-ui sibling
+        shell: bash
+        run: |
+          rm -rf ../nirs4all-ui
+          cp -R nirs4all-ui-lib ../nirs4all-ui
+
       - name: Note — building an unsigned Windows archive (no signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_windows_signing != 'true'
         shell: bash
@@ -762,6 +822,18 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
 
+      - name: Checkout nirs4all-ui library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-ui
+          path: nirs4all-ui-lib
+
+      - name: Prepare nirs4all-ui sibling
+        shell: bash
+        run: |
+          rm -rf ../nirs4all-ui
+          cp -R nirs4all-ui-lib ../nirs4all-ui
+
       - name: Checkout nirs4all library
         uses: actions/checkout@v4
         with:
@@ -868,6 +940,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Checkout nirs4all-ui library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-ui
+          path: nirs4all-ui-lib
+
+      - name: Prepare nirs4all-ui sibling
+        shell: bash
+        run: |
+          rm -rf ../nirs4all-ui
+          cp -R nirs4all-ui-lib ../nirs4all-ui
 
       - name: Note — building an unsigned macOS archive (no Apple signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
@@ -1057,6 +1141,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - name: Checkout nirs4all-ui library
+        uses: actions/checkout@v4
+        with:
+          repository: GBeurier/nirs4all-ui
+          path: nirs4all-ui-lib
+
+      - name: Prepare nirs4all-ui sibling
+        shell: bash
+        run: |
+          rm -rf ../nirs4all-ui
+          cp -R nirs4all-ui-lib ../nirs4all-ui
 
       - name: Note — building an unsigned macOS archive (no Apple signing secrets)
         if: needs.prepare.outputs.is_tag_release == 'true' && needs.prepare.outputs.has_macos_signing != 'true'
