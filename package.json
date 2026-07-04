@@ -28,6 +28,7 @@
     "lint:ruff": "ruff check .",
     "lint:deps": "node scripts/check-dep-sync.cjs",
     "lint:parallel": "concurrently --group --names eslint,tsc,nodes,storage,ruff,deps --prefix-colors blue,cyan,magenta,green,yellow,white npm:lint:eslint npm:lint:tsc npm:lint:nodes npm:lint:storage npm:lint:ruff npm:lint:deps",
+    "smoke:nirs4all-ui-package": "tsc -p tsconfig.nirs4all-ui-package-smoke.json --noEmit && node scripts/smoke-nirs4all-ui-package.mjs",
     "test:frontend": "vitest run",
     "test:backend": "node scripts/run-python.cjs -m pytest tests/ -v --tb=short --timeout=120 -n auto",
     "test:routes": "node scripts/run-python.cjs -m pytest tests/test_route_registry.py -q",

@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "src/ui/index.ts",
+    "src/ui/runtime/index.ts",
+    "src/ui/runtime/resultMetadata.ts",
+    "src/ui/runtime/statusDisplay.ts",
+    "src/ui/score/index.ts",
+    "src/ui/score/metricKeys.ts",
+    "src/ui/score/scoreMetricCatalog.ts",
+    "src/ui/score/scoreValues.ts",
+    "src/components/runtime/RuntimeDiagnosticsList.tsx",
+    "src/components/runtime/RuntimeEngineBadge.tsx",
+    "src/components/runtime/RuntimeStatus.tsx"
+  ]
+}
