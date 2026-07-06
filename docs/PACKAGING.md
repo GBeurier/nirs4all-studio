@@ -161,6 +161,13 @@ The release workflow is `.github/workflows/release-unified.yml`.
 - `skip_all_in_one`
 - `skip_docker`
 
+For an installer-only RC smoke build that does not publish a GitHub Release,
+start the workflow manually with a SemVer prerelease such as `1.0.0-rc.1`, set
+`skip_all_in_one=true`, and keep `skip_docker=true`. Manual dispatch still runs
+the installer jobs and uploads short-lived workflow artifacts, but the `Create
+GitHub Release` step is gated to real tag pushes. Use a SemVer-compatible RC
+version; labels such as `v1-rc` are not accepted by `npm version`.
+
 ### Jobs
 
 | Job | Purpose |

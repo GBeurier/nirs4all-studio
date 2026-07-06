@@ -415,28 +415,26 @@ The `backend.spec` file configures:
 # Build main process (TypeScript → JavaScript)
 npm run build:electron
 
-# Package for distribution
-npm run dist           # Current platform
-npm run dist:linux     # Linux (AppImage, DEB)
-npm run dist:win       # Windows (NSIS, portable)
-npm run dist:mac       # macOS (DMG)
+# Package installer distribution
+npm run release -- --platform win     # Windows (NSIS, portable)
+npm run release -- --platform mac     # macOS (DMG)
+npm run release -- --platform linux   # Linux (AppImage, DEB)
 ```
 
 ### Full Release
 
 ```bash
-# CPU edition
-npm run release -- --flavor cpu
+# Installer path
+npm run release -- --clean --platform win
 
-# GPU edition
-npm run release -- --flavor gpu
+# All-in-one archive path
+npm run release:all-in-one:clean -- --platform win32 --arch x64
 ```
 
 This runs:
-1. `npm run build` (React frontend)
-2. backend runtime/archive preparation inside `scripts/build-release.cjs`
-3. `npm run build:electron` (Electron main process)
-4. electron-builder packaging
+1. backend payload preparation (`scripts/copy-backend-source.cjs` for installers, runtime bake for all-in-one archives)
+2. `npm run build:electron` (Electron renderer and main process)
+3. electron-builder packaging with `electron-builder.installer.yml` or `electron-builder.archive.yml`
 
 ---
 
@@ -449,7 +447,8 @@ This runs:
 | `electron/backend-manager.ts` | Backend lifecycle |
 | `electron/env-manager.ts` | Python environment detection and setup |
 | `electron/logger.ts` | Persistent file logging |
-| `electron-builder.yml` | Packaging configuration |
+| `electron-builder.installer.yml` | Installer and Windows portable packaging configuration |
+| `electron-builder.archive.yml` | All-in-one archive packaging configuration |
 | `backend.spec` | PyInstaller configuration |
 | `vite.config.ts` | Vite + Electron plugin |
 | `build/entitlements.mac.plist` | macOS entitlements |
