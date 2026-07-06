@@ -15,6 +15,8 @@
  *   --skip-backend        Skip building the Python backend (use existing)
  *   --skip-frontend       Skip building the frontend (use existing)
  *   --platform            Target platform: win, mac, linux, or all (default: current)
+ *   --version             SemVer version to stamp into local RC artifacts
+ *                         without mutating package.json/package-lock.json
  */
 
 const { spawn, execSync } = require("child_process");
@@ -33,6 +35,7 @@ let clean = false;
 let skipBackend = false;
 let skipFrontend = false;
 let platform = "";
+let versionOverride = "";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--flavor" && args[i + 1]) {
@@ -49,6 +52,8 @@ for (let i = 0; i < args.length; i++) {
     skipFrontend = true;
   } else if (args[i] === "--platform" && args[i + 1]) {
     platform = args[++i];
+  } else if (args[i] === "--version" && args[i + 1]) {
+    versionOverride = args[++i];
   }
 }
 
@@ -64,25 +69,18 @@ if (!["installer", "standalone"].includes(mode)) {
   process.exit(1);
 }
 
-// Sync version from latest git tag into package.json
-function syncVersionFromGitTag() {
-  try {
-    const tag = execSync("git describe --tags --abbrev=0", { cwd: projectRoot, encoding: "utf-8" }).trim();
-    const version = tag.replace(/^v/, "");
-    if (!/^\d+\.\d+\.\d+/.test(version)) {
-      console.warn(`Warning: git tag '${tag}' is not a valid semver version, skipping version sync.`);
-      return;
-    }
-    const pkgPath = path.join(projectRoot, "package.json");
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-    if (pkg.version !== version) {
-      console.log(`Syncing version from git tag: ${pkg.version} -> ${version}`);
-      pkg.version = version;
-      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-    }
-  } catch {
-    console.warn("Warning: Could not read git tags, using package.json version as-is.");
-  }
+if (platform && !["win", "mac", "linux", "all"].includes(platform)) {
+  console.error(`Error: Invalid platform '${platform}'. Must be 'win', 'mac', 'linux', or 'all'.`);
+  process.exit(1);
+}
+
+function isSemver(value) {
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(value);
+}
+
+if (versionOverride && !isSemver(versionOverride)) {
+  console.error(`Error: Invalid --version '${versionOverride}'. Use SemVer, for example '1.0.0-rc.1'.`);
+  process.exit(1);
 }
 
 function getGitCommitShort() {
@@ -96,20 +94,25 @@ function getGitCommitShort() {
   }
 }
 
-function syncVersionJsonFromPackage() {
+function getPackageVersion() {
   const pkgPath = path.join(projectRoot, "package.json");
-  const versionPath = path.join(projectRoot, "version.json");
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+  return pkg.version;
+}
+
+function syncVersionJson(buildVersion) {
+  const versionPath = path.join(projectRoot, "version.json");
   const versionData = {
-    version: pkg.version,
+    version: buildVersion,
     build_date: new Date().toISOString(),
     commit: getGitCommitShort(),
   };
   fs.writeFileSync(versionPath, `${JSON.stringify(versionData, null, 2)}\n`);
 }
 
-syncVersionFromGitTag();
-syncVersionJsonFromPackage();
+const packageVersion = getPackageVersion();
+const buildVersion = versionOverride || packageVersion;
+syncVersionJson(buildVersion);
 
 console.log("========================================");
 console.log("  nirs4all Release Build");
@@ -119,6 +122,8 @@ console.log("Build configuration:");
 console.log(`  Mode: ${mode}`);
 console.log(`  Flavor: ${flavor.toUpperCase()}`);
 console.log(`  Platform: ${platform || "current"}`);
+console.log(`  Version: ${buildVersion}${versionOverride ? " (override)" : ""}`);
+console.log("  Publish: never");
 console.log("");
 
 function runCommand(command, args, options = {}) {
@@ -129,6 +134,7 @@ function runCommand(command, args, options = {}) {
       stdio: "inherit",
       shell: spawnSpec.shell,
       cwd: projectRoot,
+      env: process.env,
       ...options,
     });
     proc.on("close", (code) => {
@@ -189,7 +195,13 @@ async function main() {
     // Step 2: Build frontend (Vite + Electron)
     if (!skipFrontend) {
       console.log("=== Step 2: Building frontend ===");
-      await runCommand("npm", ["run", "build:electron"]);
+      await runCommand("npm", ["run", "build:electron"], {
+        env: {
+          ...process.env,
+          NIRS4ALL_APP_VERSION: buildVersion,
+          VITE_APP_VERSION: buildVersion,
+        },
+      });
       console.log("");
     } else {
       console.log("=== Step 2: Skipping frontend build ===");
@@ -222,7 +234,19 @@ async function main() {
         break;
     }
 
-    await runCommand("npx", ["electron-builder", "--config", "electron-builder.installer.yml", ...builderArgs]);
+    const electronBuilderArgs = [
+      "electron-builder",
+      "--config",
+      "electron-builder.installer.yml",
+      "--publish",
+      "never",
+      ...builderArgs,
+    ];
+    if (versionOverride) {
+      electronBuilderArgs.push(`--config.extraMetadata.version=${buildVersion}`);
+    }
+
+    await runCommand("npx", electronBuilderArgs);
 
     console.log("");
     console.log("========================================");

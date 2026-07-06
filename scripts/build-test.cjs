@@ -20,11 +20,10 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { resolveSpawnCommand } = require("./spawn-command.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 process.chdir(projectRoot);
-
-const isWindows = process.platform === "win32";
 
 // Parse args
 const args = process.argv.slice(2);
@@ -69,14 +68,77 @@ function getTopLevelYamlList(filePath, key) {
   return values;
 }
 
+function stripYamlScalar(value) {
+  return value.trim().replace(/^["'](.*)["']$/, "$1");
+}
+
+function getTopLevelExtraResourceSources(filePath) {
+  const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+  const values = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    if (!inSection) {
+      if (line.trim() === "extraResources:") {
+        inSection = true;
+      }
+      continue;
+    }
+
+    if (!line.trim() || line.trimStart().startsWith("#")) {
+      continue;
+    }
+
+    if (/^\S/.test(line)) {
+      break;
+    }
+
+    const inlineMatch = line.match(/^\s*-\s+from:\s+(.+)$/);
+    if (inlineMatch) {
+      values.push(stripYamlScalar(inlineMatch[1]));
+    }
+  }
+
+  return values;
+}
+
+function getSectionScalar(filePath, section, key) {
+  const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+  let inSection = false;
+
+  for (const line of lines) {
+    if (!inSection) {
+      if (line.trim() === `${section}:`) {
+        inSection = true;
+      }
+      continue;
+    }
+
+    if (!line.trim() || line.trimStart().startsWith("#")) {
+      continue;
+    }
+
+    if (/^\S/.test(line)) {
+      break;
+    }
+
+    const match = line.match(new RegExp(`^\\s+${key}:\\s+(.+)$`));
+    if (match) {
+      return stripYamlScalar(match[1]);
+    }
+  }
+
+  return "";
+}
+
 function run(label, command, cmdArgs, options = {}) {
   return new Promise((resolve) => {
     const startTime = Date.now();
     process.stdout.write(`  ${label}... `);
-    const useShell = command === "npx" || command === "node";
-    const proc = spawn(command, cmdArgs, {
+    const spawnSpec = resolveSpawnCommand(command, cmdArgs);
+    const proc = spawn(spawnSpec.command, spawnSpec.args, {
       stdio: ["ignore", "pipe", "pipe"],
-      shell: useShell,
+      shell: spawnSpec.shell,
       cwd: projectRoot,
       ...options,
     });
@@ -114,8 +176,8 @@ function runPython(label, code) {
   // Write code to a temp file to avoid shell mangling multiline -c strings on Windows
   const tmpFile = path.join(os.tmpdir(), `nirs4all-test-${Date.now()}.py`);
   fs.writeFileSync(tmpFile, code.trim() + "\n", "utf-8");
-  const pythonCmd = isWindows ? "python" : "python3";
-  return run(label, pythonCmd, [tmpFile]).finally(() => {
+  const pythonRunner = path.join("scripts", "run-python.cjs");
+  return run(label, process.execPath, [pythonRunner, tmpFile]).finally(() => {
     try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
   });
 }
@@ -164,8 +226,9 @@ async function main() {
 
   const requiredRuntimeFiles = ["scripts/python-runtime-config.cjs", "recommended-config.json"];
   for (const configName of ["electron-builder.installer.yml", "electron-builder.archive.yml"]) {
+    const configPath = path.join(projectRoot, configName);
     process.stdout.write(`  ${configName} packages runtime config... `);
-    const packagedFiles = getTopLevelYamlList(path.join(projectRoot, configName), "files");
+    const packagedFiles = getTopLevelYamlList(configPath, "files");
     const missingFiles = requiredRuntimeFiles.filter((item) => !packagedFiles.includes(item));
     if (missingFiles.length === 0) {
       console.log("OK");
@@ -175,6 +238,29 @@ async function main() {
       hasFailure = true;
       results.push({ label: `${configName} runtime config`, ok: false, elapsed: "0" });
     }
+
+    process.stdout.write(`  ${configName} extraResources exist... `);
+    const missingResources = getTopLevelExtraResourceSources(configPath)
+      .filter((item) => !fs.existsSync(path.join(projectRoot, item)));
+    if (missingResources.length === 0) {
+      console.log("OK");
+      results.push({ label: `${configName} extraResources`, ok: true, elapsed: "0" });
+    } else {
+      console.log(`FAIL (missing ${missingResources.join(", ")})`);
+      hasFailure = true;
+      results.push({ label: `${configName} extraResources`, ok: false, elapsed: "0" });
+    }
+  }
+
+  process.stdout.write("  Windows NSIS include exists... ");
+  const nsisInclude = getSectionScalar(path.join(projectRoot, "electron-builder.installer.yml"), "nsis", "include");
+  if (nsisInclude && fs.existsSync(path.join(projectRoot, nsisInclude))) {
+    console.log("OK");
+    results.push({ label: "Windows NSIS include", ok: true, elapsed: "0" });
+  } else {
+    console.log(`FAIL (${nsisInclude || "missing nsis.include"})`);
+    hasFailure = true;
+    results.push({ label: "Windows NSIS include", ok: false, elapsed: "0" });
   }
   console.log("");
 
@@ -246,7 +332,13 @@ assert not hasattr(VenvManager, 'list_packages'), 'Obsolete list_packages still 
 
   // ── Step 5: electron-builder packaging ──
   console.log("Step 5: Electron packaging");
-  const builderArgs = ["electron-builder"];
+  const builderArgs = [
+    "electron-builder",
+    "--config",
+    "electron-builder.installer.yml",
+    "--publish",
+    "never",
+  ];
   if (platform) {
     builderArgs.push(`--${platform}`);
   }

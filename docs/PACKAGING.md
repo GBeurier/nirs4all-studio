@@ -117,8 +117,24 @@ This path packages with `electron-builder.installer.yml`.
 Notes:
 
 - it is the local helper for installer targets
+- it always passes `--publish never`, even though the builder config still
+  declares the GitHub provider used by updater/release metadata
+- add `--version 1.0.0-rc.1` for a local RC artifact without mutating
+  `package.json` or `package-lock.json`; the override is stamped into
+  `version.json`, Electron metadata, and the Vite-rendered app version
 - the published desktop release matrix is no longer split into CPU/GPU installers
 - the old `--mode standalone` option is a legacy path, not the all-in-one bundle workflow
+
+For a Windows installer RC smoke build on a Windows host:
+
+```bash
+npm run release:smoke
+npm run release -- --clean --platform win --version 1.0.0-rc.1
+```
+
+`release:smoke` validates the frontend/backend checks plus the packaging inputs
+that commonly break RC builds early: `extraResources`, the backend runtime
+config entries, and the Windows NSIS include script.
 
 ### All-in-one local builds
 

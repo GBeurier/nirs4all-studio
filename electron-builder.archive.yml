@@ -37,16 +37,12 @@ files:
 extraResources:
   - from: LICENSE
     to: LICENSE
-  - from: LICENSE_FR
-    to: LICENSE_FR
-  - from: README_LICENSE.md
-    to: README_LICENSE.md
-  - from: README_LICENSE_FR.md
-    to: README_LICENSE_FR.md
+  - from: LICENSING.md
+    to: LICENSING.md
+  - from: LICENSING_FR.md
+    to: LICENSING_FR.md
   - from: THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
-  - from: THIRD_PARTY_NOTICES_FR.md
-    to: THIRD_PARTY_NOTICES_FR.md
   - from: LICENSES/
     to: LICENSES/
     filter:
