@@ -51,5 +51,8 @@ Pre-release verification steps for the Python environment management system.
 
 ## Release Artifact Checks
 
+- [ ] Native Windows local RC smoke passes: `npm run release:smoke`
+- [ ] Native Windows local RC installer build passes from PowerShell: `npm run release:windows-rc -- --version 1.0.0-rc.1`
+- [ ] Windows RC output includes both `release/nirs4all Studio-1.0.0-rc.1-win-x64.exe` and `release/nirs4all Studio-1.0.0-rc.1-win-x64-portable.exe`
 - [ ] `env-settings.json` is NOT included in any release artifact
 - [ ] Backend source files are properly copied (verify `backend-dist/main.py` exists)

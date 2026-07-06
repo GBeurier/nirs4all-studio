@@ -46,6 +46,7 @@
     "release:clean": "node scripts/build-release.cjs --clean",
     "release:smoke": "node scripts/build-test.cjs --quick",
     "release:smoke:installer": "node scripts/build-test.cjs --build",
+    "release:windows-rc": "node scripts/build-local-windows-rc.cjs",
     "release:all-in-one": "node scripts/build-archive-standalone.cjs",
     "release:all-in-one:clean": "node scripts/build-archive-standalone.cjs --clean"
   },

@@ -125,16 +125,33 @@ Notes:
 - the published desktop release matrix is no longer split into CPU/GPU installers
 - the old `--mode standalone` option is a legacy path, not the all-in-one bundle workflow
 
-For a Windows installer RC smoke build on a Windows host:
+For a native Windows installer RC build on a Windows host, run from a real
+Windows checkout such as `C:\src\nirs4all\nirs4all-studio`, not from WSL or a
+`\\wsl...` UNC path:
 
-```bash
+```powershell
+cd C:\path\to\nirs4all\nirs4all-studio
+npm install
+npm run release:windows-rc -- --version 1.0.0-rc.1
+```
+
+`release:windows-rc` is a local-only helper. It refuses to run outside native
+Windows, runs `release:smoke`, then runs `release -- --clean --platform win
+--version <semver>` with `--publish never`. It produces the NSIS installer and
+portable executable in `release/` without creating a tag or publishing a GitHub
+Release.
+
+The equivalent lower-level commands are:
+
+```powershell
 npm run release:smoke
 npm run release -- --clean --platform win --version 1.0.0-rc.1
 ```
 
 `release:smoke` validates the frontend/backend checks plus the packaging inputs
 that commonly break RC builds early: `extraResources`, the backend runtime
-config entries, and the Windows NSIS include script.
+config entries, the Windows NSIS include script, the NSIS lifecycle macros, and
+the Windows `nsis`/`portable`/all-in-one ZIP target declarations.
 
 ### All-in-one local builds
 

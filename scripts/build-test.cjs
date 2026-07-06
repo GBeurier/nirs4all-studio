@@ -131,6 +131,56 @@ function getSectionScalar(filePath, section, key) {
   return "";
 }
 
+function getTopLevelSectionLines(filePath, section) {
+  const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+  const sectionLines = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    if (!inSection) {
+      if (line.trim() === `${section}:`) {
+        inSection = true;
+      }
+      continue;
+    }
+
+    if (/^\S/.test(line)) {
+      break;
+    }
+
+    sectionLines.push(line);
+  }
+
+  return sectionLines;
+}
+
+function getPlatformTargetBlocks(filePath, section) {
+  const blocks = [];
+  let current = null;
+
+  for (const line of getTopLevelSectionLines(filePath, section)) {
+    const targetMatch = line.match(/^\s*-\s+target:\s+(.+)$/);
+    if (targetMatch) {
+      current = {
+        target: stripYamlScalar(targetMatch[1]),
+        text: `${line}\n`,
+      };
+      blocks.push(current);
+      continue;
+    }
+
+    if (current) {
+      current.text += `${line}\n`;
+    }
+  }
+
+  return blocks;
+}
+
+function hasX64Arch(targetBlock) {
+  return /(?:^|\n)\s+arch:\s*\n(?:\s*(?:#.*)?\n)*\s*-\s+x64(?:\s|$)/.test(targetBlock.text);
+}
+
 function run(label, command, cmdArgs, options = {}) {
   return new Promise((resolve) => {
     const startTime = Date.now();
@@ -261,6 +311,57 @@ async function main() {
     console.log(`FAIL (${nsisInclude || "missing nsis.include"})`);
     hasFailure = true;
     results.push({ label: "Windows NSIS include", ok: false, elapsed: "0" });
+  }
+
+  process.stdout.write("  Windows installer targets are NSIS + portable x64... ");
+  const installerWinTargets = getPlatformTargetBlocks(path.join(projectRoot, "electron-builder.installer.yml"), "win");
+  const installerTargetFailures = ["nsis", "portable"].filter((target) => {
+    const block = installerWinTargets.find((candidate) => candidate.target === target);
+    return !block || !hasX64Arch(block);
+  });
+  if (installerTargetFailures.length === 0) {
+    console.log("OK");
+    results.push({ label: "Windows installer targets", ok: true, elapsed: "0" });
+  } else {
+    console.log(`FAIL (missing x64 ${installerTargetFailures.join(", ")})`);
+    hasFailure = true;
+    results.push({ label: "Windows installer targets", ok: false, elapsed: "0" });
+  }
+
+  process.stdout.write("  Windows all-in-one archive target is ZIP x64... ");
+  const archiveWinTargets = getPlatformTargetBlocks(path.join(projectRoot, "electron-builder.archive.yml"), "win");
+  const zipBlock = archiveWinTargets.find((candidate) => candidate.target === "zip");
+  if (zipBlock && hasX64Arch(zipBlock)) {
+    console.log("OK");
+    results.push({ label: "Windows all-in-one archive target", ok: true, elapsed: "0" });
+  } else {
+    console.log("FAIL (missing x64 zip)");
+    hasFailure = true;
+    results.push({ label: "Windows all-in-one archive target", ok: false, elapsed: "0" });
+  }
+
+  if (nsisInclude && fs.existsSync(path.join(projectRoot, nsisInclude))) {
+    process.stdout.write("  Windows NSIS include has lifecycle macros... ");
+    const nsisText = fs.readFileSync(path.join(projectRoot, nsisInclude), "utf-8");
+    const missingNsisChecks = [
+      ["customInit", /!macro\s+customInit\b/],
+      ["customUnInit", /!macro\s+customUnInit\b/],
+      ["customUnInstall", /!macro\s+customUnInstall\b/],
+      ["taskkill nirs4all Studio.exe", /taskkill\b[^\n\r]*nirs4all Studio\.exe/i],
+      ["current-user uninstall context", /SetShellVarContext\s+current\b/],
+      ["restore all-users context", /SetShellVarContext\s+all\b/],
+    ]
+      .filter(([, pattern]) => !pattern.test(nsisText))
+      .map(([label]) => label);
+
+    if (missingNsisChecks.length === 0) {
+      console.log("OK");
+      results.push({ label: "Windows NSIS lifecycle macros", ok: true, elapsed: "0" });
+    } else {
+      console.log(`FAIL (missing ${missingNsisChecks.join(", ")})`);
+      hasFailure = true;
+      results.push({ label: "Windows NSIS lifecycle macros", ok: false, elapsed: "0" });
+    }
   }
   console.log("");
 
