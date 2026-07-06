@@ -52,7 +52,12 @@ Pre-release verification steps for the Python environment management system.
 ## Release Artifact Checks
 
 - [ ] Native Windows local RC smoke passes: `npm run release:smoke`
+- [ ] `release:smoke` includes the `nirs4all-ui` package smoke for the local `file:../nirs4all-ui` dependency
 - [ ] Native Windows local RC installer build passes from PowerShell: `npm run release:windows-rc -- --version 1.0.0-rc.1`
+- [ ] Windows RC command runs from a native Windows checkout, not WSL or a `\\wsl...` UNC path
+- [ ] Windows RC build logs show `Publish: never`; no GitHub Release, tag, or upload is created
+- [ ] RC version is stamped locally with `--version` into `version.json`, Electron metadata, and the rendered app version without changing `package.json` or `package-lock.json`
 - [ ] Windows RC output includes both `release/nirs4all Studio-1.0.0-rc.1-win-x64.exe` and `release/nirs4all Studio-1.0.0-rc.1-win-x64-portable.exe`
+- [ ] Windows installer target is NSIS x64 and Windows portable target is x64
 - [ ] `env-settings.json` is NOT included in any release artifact
 - [ ] Backend source files are properly copied (verify `backend-dist/main.py` exists)

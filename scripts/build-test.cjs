@@ -4,10 +4,11 @@
  * Performs in order:
  *   1. TypeScript type-check
  *   2. ESLint
- *   3. Backend source copy (recommended-config.json included)
- *   4. Python backend import sanity (NIRS4ALL_OPTIONAL_DEPS loads from config)
- *   5. Frontend + Electron build (vite)
- *   6. electron-builder dry-run (validates config, no actual packaging)
+ *   3. nirs4all-ui package contract smoke
+ *   4. Backend source copy (recommended-config.json included)
+ *   5. Python backend import sanity (NIRS4ALL_OPTIONAL_DEPS loads from config)
+ *   6. Frontend + Electron build (vite)
+ *   7. electron-builder dry-run (validates config, no actual packaging)
  *
  * Usage:
  *   node scripts/build-test.cjs              # Full verification
@@ -243,6 +244,7 @@ async function main() {
   console.log("Step 1: Static checks");
   await run("TypeScript", "npx", ["tsc", "--noEmit"]);
   await run("ESLint", "npx", ["eslint", "src/", "electron/"]);
+  await run("nirs4all-ui package smoke", "npm", ["run", "smoke:nirs4all-ui-package"]);
   console.log("");
 
   // ── Step 2: Backend source bundle ──
