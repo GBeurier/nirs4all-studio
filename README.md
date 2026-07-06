@@ -435,16 +435,16 @@ Direct scripts are also available: `npm run dev` for Vite, `python -m uvicorn ma
 | `npm run release:all-in-one` | Build a portable all-in-one archive |
 | `npm run release:all-in-one:clean` | Clean and rebuild a portable all-in-one archive |
 
-### Build Modes
+### Release Entry Points
 
-The release build supports two modes via `--mode`:
+Installer and all-in-one builds use separate entry points:
 
-- **`installer`** (default) — Embeds a Python environment with a venv. Supports runtime `pip install` for optional dependencies. Produces platform-native installers (`.exe`, `.dmg`, `.deb`).
-- **`standalone`** — Freezes the backend with PyInstaller into a single executable. Produces portable all-in-one archives. No Python needed on the target machine.
+- **Installer** — `npm run release -- --platform win|mac|linux` packages with `electron-builder.installer.yml` and produces platform-native installers plus the Windows portable executable.
+- **All-in-one** — `npm run release:all-in-one:clean -- --platform win32|linux|darwin --arch x64|arm64` bakes the embedded runtime, packages with `electron-builder.archive.yml`, and produces the portable archive.
 
 ```bash
-node scripts/build-release.cjs --mode installer --flavor cpu
-node scripts/build-release.cjs --mode standalone --flavor gpu
+npm run release -- --clean --platform win
+npm run release:all-in-one:clean -- --platform win32 --arch x64
 ```
 
 ### npm Scripts - Packaging

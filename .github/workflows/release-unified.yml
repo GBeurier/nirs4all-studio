@@ -4,7 +4,7 @@
 #   - All-in-one bundled archives (CPU ZIP on Windows/macOS, tar.gz on Linux)
 #   - Docker images (CPU + GPU-CUDA)
 #
-# Trigger: tag v* or manual dispatch
+# Trigger: semver-like tag push or manual dispatch
 # Phase 3 (CI/CD Hardening) + Phase 4 (Code Signing & macOS)
 name: Release
 
@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build (e.g., 1.2.0)'
+        description: 'SemVer tag/version to build (e.g., 1.0.0-rc.1; v1.0.0-rc.1 is accepted for manual dispatch)'
         required: true
         type: string
       skip_all_in_one:
@@ -24,9 +24,9 @@ on:
         default: false
         type: boolean
       skip_docker:
-        description: 'Skip Docker image builds'
+        description: 'Skip Docker image builds and GHCR pushes (keep checked for installer-only RC smoke builds)'
         required: false
-        default: false
+        default: true
         type: boolean
 
 env:
