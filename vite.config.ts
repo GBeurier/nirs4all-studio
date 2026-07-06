@@ -8,6 +8,7 @@ import path from "path";
 const isElectron = process.env.ELECTRON === "true";
 const isElectronBuild = isElectron && process.env.NODE_ENV === "production";
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "package.json"), "utf-8"));
+const appVersion = process.env.NIRS4ALL_APP_VERSION || process.env.VITE_APP_VERSION || pkg.version;
 
 function resolveNirs4allUiSourceRoot(): string {
   const ciCheckout = path.resolve(__dirname, "nirs4all-ui-lib/src");
@@ -120,7 +121,7 @@ export default defineConfig(({ mode }) => ({
       : []),
   ],
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
   resolve: {
     alias: {
