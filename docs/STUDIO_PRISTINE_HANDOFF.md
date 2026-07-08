@@ -172,8 +172,9 @@ program.
 - Full Inspector rewrite around benchmark/repository/content-addressed results.
 - `nirs4all-ui` package extraction (`LOCK-UI`), beyond the current component
   boundary preparation.
-- Public naming decisions around `nirs4all-lite`, temporary `nirs4all-core`,
-  final core aggregate, runtime packages, and aliases (`LOCK-GOV`).
+- Resolved public naming contract: `nirs4all-core` is the canonical aggregate,
+  `nirs4all-lite` is retired, and no public legacy alias is maintained
+  (`LOCK-GOV`).
 
 ## Merge and tag gate
 
