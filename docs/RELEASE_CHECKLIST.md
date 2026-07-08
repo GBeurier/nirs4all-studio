@@ -53,6 +53,7 @@ Pre-release verification steps for the Python environment management system.
 
 - [ ] Native Windows local RC smoke passes: `npm run release:smoke`
 - [ ] `release:smoke` includes the `nirs4all-ui` package smoke for the local `file:../nirs4all-ui` dependency
+- [ ] `../nirs4all-ui` exists beside `nirs4all-studio`; `release:windows-rc` rebuilds it before smoke/build
 - [ ] Native Windows local RC installer build passes from PowerShell: `npm run release:windows-rc -- --version 1.0.0-rc.1`
 - [ ] Windows RC command runs from a native Windows checkout, not WSL or a `\\wsl...` UNC path
 - [ ] Windows RC build logs show `Publish: never`; no GitHub Release, tag, or upload is created

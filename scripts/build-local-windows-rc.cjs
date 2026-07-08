@@ -7,10 +7,12 @@
  */
 
 const { spawn } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 const { resolveSpawnCommand } = require("./spawn-command.cjs");
 
 const projectRoot = path.join(__dirname, "..");
+const uiSiblingRoot = path.resolve(projectRoot, "..", "nirs4all-ui");
 process.chdir(projectRoot);
 
 function printHelp() {
@@ -84,6 +86,21 @@ function looksLikeWslUncPath(value) {
     || value.includes("\\wsl$\\");
 }
 
+async function prepareNirs4allUiSibling() {
+  const packageJson = path.join(uiSiblingRoot, "package.json");
+  if (!fs.existsSync(packageJson)) {
+    throw new Error(
+      `Missing nirs4all-ui sibling checkout at ${uiSiblingRoot}. `
+      + "Clone https://github.com/GBeurier/nirs4all-ui next to nirs4all-studio before building the Windows RC.",
+    );
+  }
+
+  console.log("Preparing nirs4all-ui sibling package...");
+  await runCommand("npm", ["--prefix", uiSiblingRoot, "ci"]);
+  await runCommand("npm", ["--prefix", uiSiblingRoot, "run", "build"]);
+  console.log("");
+}
+
 async function main() {
   const options = parseArgs();
   if (options.help) {
@@ -118,6 +135,8 @@ async function main() {
   console.log("  Publish: never");
   console.log("");
 
+  await prepareNirs4allUiSibling();
+
   if (!options.skipSmoke) {
     await runCommand("npm", ["run", "release:smoke"]);
     console.log("");
@@ -142,4 +161,5 @@ module.exports = {
   isSemver,
   looksLikeWslUncPath,
   parseArgs,
+  prepareNirs4allUiSibling,
 };
