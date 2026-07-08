@@ -130,16 +130,19 @@ Windows checkout such as `C:\src\nirs4all\nirs4all-studio`, not from WSL or a
 `\\wsl...` UNC path:
 
 ```powershell
+git clone https://github.com/GBeurier/nirs4all-ui C:\path\to\nirs4all\nirs4all-ui
 cd C:\path\to\nirs4all\nirs4all-studio
 npm install
 npm run release:windows-rc -- --version 1.0.0-rc.1
 ```
 
 `release:windows-rc` is a local-only helper. It refuses to run outside native
-Windows, runs `release:smoke`, then runs `release -- --clean --platform win
---version <semver>` with `--publish never`. It produces the NSIS installer and
-portable executable in `release/` without creating a tag or publishing a GitHub
-Release.
+Windows, verifies the sibling `../nirs4all-ui` checkout, runs `npm ci` and
+`npm run build` there so the local `file:../nirs4all-ui` dependency has a
+fresh `dist/`, runs `release:smoke`, then runs `release -- --clean --platform
+win --version <semver>` with `--publish never`. It produces the NSIS installer
+and portable executable in `release/` without creating a tag or publishing a
+GitHub Release.
 
 The equivalent lower-level commands are:
 
@@ -151,7 +154,9 @@ npm run release -- --clean --platform win --version 1.0.0-rc.1
 `release:smoke` validates the frontend/backend checks plus the packaging inputs
 that commonly break RC builds early: `extraResources`, the backend runtime
 config entries, the Windows NSIS include script, the NSIS lifecycle macros, and
-the Windows `nsis`/`portable`/all-in-one ZIP target declarations.
+the Windows `nsis`/`portable`/all-in-one ZIP target declarations. In CI and the
+release workflow, `nirs4all-ui` is packed from the checked-out sibling and
+installed into Studio before every Electron build.
 
 ### All-in-one local builds
 

@@ -241,6 +241,20 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Pack nirs4all-ui package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd nirs4all-ui-lib
+          npm ci
+          npm run prepublishOnly
+          UI_TGZ=$(npm pack --pack-destination "$RUNNER_TEMP" --json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s)[0].filename))")
+          echo "NIRS4ALL_UI_TGZ=$RUNNER_TEMP/$UI_TGZ" >> "$GITHUB_ENV"
+
+      - name: Install packed nirs4all-ui package
+        shell: bash
+        run: npm install --no-save "$NIRS4ALL_UI_TGZ"
+
       - name: Build Electron frontend
         run: npm run build:electron
 
