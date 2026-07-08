@@ -31,9 +31,11 @@ Individual gates: `lint:eslint`, `lint:tsc`, `lint:nodes` (= `validate:nodes`), 
 
 ### Build / release
 - Frontend: `npm run build` (web) / `npm run build:electron` (Electron renderer, relative `./` base).
-- Full release: `node scripts/build-release.cjs --mode {installer|standalone} --flavor {cpu|gpu|gpu-metal}` (or `npm run release`, `npm run release:all-in-one`):
-  - **installer** — embeds a Python venv, allows runtime `pip install`, produces native installers (`.exe`/`.dmg`/`.deb`).
-  - **standalone** — freezes the backend with PyInstaller (`backend.spec`) into a portable archive; no Python needed on the target.
+- Full release path:
+  - `npm run release` / `node scripts/build-release.cjs` builds installer-oriented assets: Electron + backend source, with a writable Python runtime managed outside the app bundle at first launch.
+  - `npm run release:all-in-one` / `node scripts/build-archive-standalone.cjs` builds all-in-one archives with the embedded read-only V1 CPU runtime.
+  - `npm run release:windows-rc -- --version 1.0.0-rc.1` is the native Windows-only local RC installer helper; run it from PowerShell or Windows Terminal in a drive-path checkout, not WSL.
+  - Legacy PyInstaller backend packaging still exists for compatibility/debugging, but it is not the published desktop release path.
 - Docker-isolated CI locally: `npm run ci:docker[:frontend|:backend|:e2e|:lint]`.
 
 ## Architecture
