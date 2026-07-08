@@ -1,0 +1,34 @@
+name: version-guard
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  version-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Ensure package version matches latest semver tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          latest_tag="$(git tag --list '[0-9]*' --sort=-v:refname | head -n 1 || true)"
+          if [[ -z "$latest_tag" ]]; then
+            echo "No numeric semver tags found; package version is $version."
+            exit 0
+          fi
+          if [[ "$version" != "$latest_tag" ]]; then
+            echo "::error::package.json version ($version) must match latest release tag ($latest_tag)."
+            exit 1
+          fi
+          echo "package.json version matches $latest_tag."
