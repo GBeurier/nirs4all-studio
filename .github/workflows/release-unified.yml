@@ -794,7 +794,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 0.10.0
+          ref: 0.10.3
           path: nirs4all-lib
 
       - name: Setup Node.js
@@ -928,7 +928,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 0.10.0
+          ref: 0.10.3
           path: nirs4all-lib
 
       - name: Setup Node.js
@@ -1070,7 +1070,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 0.10.0
+          ref: 0.10.3
           path: nirs4all-lib
 
       - name: Setup Node.js
@@ -1289,7 +1289,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: 0.10.0
+          ref: 0.10.3
           path: nirs4all-lib
 
       - name: Setup Node.js
@@ -1483,7 +1483,7 @@ jobs:
             dockerfile: Dockerfile
             tag_suffix: ''
             build_args: |-
-              NIRS4ALL_VERSION=0.10.0
+              NIRS4ALL_VERSION=0.10.3
             cache_to: type=gha,mode=max,scope=cpu
           - variant: gpu-cuda
             dockerfile: Dockerfile
@@ -1491,7 +1491,7 @@ jobs:
             build_args: |-
               BASE_IMAGE=nvidia/cuda:12.4.1-runtime-ubuntu22.04
               INSTALL_GPU=true
-              NIRS4ALL_VERSION=0.10.0
+              NIRS4ALL_VERSION=0.10.3
             cache_to: type=gha,mode=min,scope=gpu-cuda,timeout=5m,ignore-error=true
     steps:
       - uses: actions/checkout@v4
