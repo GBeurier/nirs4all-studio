@@ -47,6 +47,10 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
+      - name: Disable nirs4all-ui sibling prepare hook
+        shell: bash
+        run: npm pkg delete scripts.prepare --prefix ../nirs4all-ui
+
       - name: Install npm dependencies
         run: npm ci
 
