@@ -112,7 +112,10 @@ def engine_run_kwargs(requested: str | None) -> dict[str, str]:
         ``{"engine": requested}`` when a non-blank engine was requested, else ``{}``.
     """
     if isinstance(requested, str) and requested.strip():
+        normalized = requested.strip()
         if not supports_explicit_run_engine():
+            if normalized == resolve_engine(None):
+                return {}
             raise RtUnsupportedError(
                 RtError(
                     verb="run",
@@ -125,7 +128,7 @@ def engine_run_kwargs(requested: str | None) -> dict[str, str]:
                     unsupported_capability="nirs4all.run.engine",
                 )
             )
-        return {"engine": requested.strip()}
+        return {"engine": normalized}
     return {}
 
 
