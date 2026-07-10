@@ -40,6 +40,22 @@ function makeUserDataDir(): string {
   return dir;
 }
 
+const backendRuntimePackages = {
+  nirs4all: "0.9.3",
+  fastapi: "0.111.0",
+  uvicorn: "0.30.0",
+  pydantic: "2.10.0",
+  "python-multipart": "0.0.20",
+  httpx: "0.27.0",
+  pyyaml: "6.0.2",
+  packaging: "24.2",
+  platformdirs: "4.3.6",
+  "sentry-sdk": "2.25.1",
+  orjson: "3.10.15",
+  msgpack: "1.1.0",
+  "nirs4all-tools": "0.0.5",
+};
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
@@ -280,20 +296,7 @@ describe("EnvManager", () => {
         version: "3.11.7",
         installed: inspectCalls === 1
           ? { nirs4all: "0.9.3" }
-          : {
-              nirs4all: "0.9.3",
-              fastapi: "0.111.0",
-              uvicorn: "0.30.0",
-              pydantic: "2.10.0",
-              "python-multipart": "0.0.20",
-              httpx: "0.27.0",
-              pyyaml: "6.0.2",
-              packaging: "24.2",
-              platformdirs: "4.3.6",
-              "sentry-sdk": "2.25.1",
-              orjson: "3.10.15",
-              msgpack: "1.1.0",
-            },
+          : backendRuntimePackages,
       }));
     });
 
@@ -359,20 +362,7 @@ describe("EnvManager", () => {
       if (command === localPython) {
         callback(null, JSON.stringify({
           version: "3.11.8",
-          installed: {
-            nirs4all: "0.9.3",
-            fastapi: "0.111.0",
-            uvicorn: "0.30.0",
-            pydantic: "2.10.0",
-            "python-multipart": "0.0.20",
-            httpx: "0.27.0",
-            pyyaml: "6.0.2",
-            packaging: "24.2",
-            platformdirs: "4.3.6",
-            "sentry-sdk": "2.25.1",
-            orjson: "3.10.15",
-            msgpack: "1.1.0",
-          },
+          installed: backendRuntimePackages,
         }));
         return;
       }
@@ -421,20 +411,7 @@ describe("EnvManager", () => {
       if (command === condaPython) {
         callback(null, JSON.stringify({
           version: "3.11.7",
-          installed: {
-            nirs4all: "0.9.3",
-            fastapi: "0.111.0",
-            uvicorn: "0.30.0",
-            pydantic: "2.10.0",
-            "python-multipart": "0.0.20",
-            httpx: "0.27.0",
-            pyyaml: "6.0.2",
-            packaging: "24.2",
-            platformdirs: "4.3.6",
-            "sentry-sdk": "2.25.1",
-            orjson: "3.10.15",
-            msgpack: "1.1.0",
-          },
+          installed: backendRuntimePackages,
         }));
         return;
       }
