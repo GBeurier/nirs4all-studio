@@ -348,6 +348,8 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
         type: "conversion",
         message: result.job_id
           ? `Legacy workspace conversion started (${result.job_id})`
+          : result.best_effort
+            ? `Legacy workspace conversion completed with warnings at ${result.output_path}; review the preserved output before linking it manually`
           : result.link_error
             ? `Legacy workspace conversion completed at ${result.output_path}; link the converted workspace manually (${result.link_error})`
             : `Legacy workspace conversion completed at ${result.output_path}`,

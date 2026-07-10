@@ -208,6 +208,8 @@ class LegacyWorkspaceConversionResponse(BaseModel):
     stdout: str = ""
     stderr: str = ""
     success: bool = True
+    best_effort: bool = False
+    activation_skipped: bool = False
     link_converted_workspace: bool = True
     linked_workspace_id: str | None = None
     active_workspace_path: str | None = None
