@@ -25,6 +25,8 @@ export interface PipelineExecutionConfig {
   targetSelection?: PipelineExecutionTargetSelection;
   executionBackend?: "local-python" | "cluster" | "wasm-local";
   engine?: "legacy" | "dag-ml";
+  /** UI-facing selector; projected to the HTTP `engine` field. */
+  runtimeEngine?: string | null;
   allowFallback?: boolean;
   robustness?: PipelineExecutionRobustnessLaunchPayload;
   campaignId?: string;
@@ -190,12 +192,14 @@ export function normalizePipelineExecutionConfig(config: PipelineExecutionConfig
 
 export function toLegacyPipelineExecutePayload(config: PipelineExecutionConfig): LegacyPipelineExecutePayload {
   const normalized = normalizePipelineExecutionConfig(config);
+  const runtimeEngine = normalized.runtimeEngine?.trim();
+  const selectedEngine = runtimeEngine || normalized.engine;
   return {
     dataset_id: normalized.datasetIds[0],
     verbose: normalized.verbose ?? 1,
     export_model: normalized.exportModel ?? true,
     model_name: normalized.modelName,
-    ...(normalized.engine !== undefined ? { engine: normalized.engine } : {}),
+    ...(selectedEngine !== undefined ? { engine: selectedEngine } : {}),
     ...(normalized.allowFallback !== undefined ? { allow_fallback: normalized.allowFallback } : {}),
     split_group_by_by_dataset: normalized.splitGroupByByDataset ?? {},
     inline_pipeline: normalized.inlinePipeline ?? null,

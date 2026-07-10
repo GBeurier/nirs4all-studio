@@ -1,4 +1,5 @@
 export { NativeResultsExportAffordance } from "./NativeResultsExportAffordance";
+export { RuntimeBackendSelector } from "./RuntimeBackendSelector";
 export { RuntimeDiagnosticsList } from "./RuntimeDiagnosticsList";
 export { RuntimeEngineBadge } from "./RuntimeEngineBadge";
 export {
