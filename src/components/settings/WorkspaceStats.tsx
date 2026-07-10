@@ -342,12 +342,15 @@ export function WorkspaceStats({ className, onStatsChange }: WorkspaceStatsProps
       const result = await convertLegacyWorkspace({
         output_path: transitionStatus?.default_output_path ?? undefined,
         verify: true,
+        link_converted_workspace: true,
       });
       setLastAction({
         type: "conversion",
         message: result.job_id
           ? `Legacy workspace conversion started (${result.job_id})`
-          : `Legacy workspace conversion completed at ${result.output_path}`,
+          : result.link_error
+            ? `Legacy workspace conversion completed at ${result.output_path}; link the converted workspace manually (${result.link_error})`
+            : `Legacy workspace conversion completed at ${result.output_path}`,
       });
       await loadStats();
       onStatsChange?.();
