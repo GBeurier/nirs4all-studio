@@ -61,6 +61,7 @@ import { SystemInfo } from "@/components/settings/SystemInfo";
 import { BackendStatus } from "@/components/settings/BackendStatus";
 import { ErrorLogViewer } from "@/components/settings/ErrorLogViewer";
 import { LanguageSelector } from "@/components/settings/LanguageSelector";
+import { RuntimeBackendPreference } from "@/components/settings/RuntimeBackendPreference";
 import { N4AWorkspaceSelector } from "@/components/settings/N4AWorkspaceSelector";
 import { N4AWorkspaceList } from "@/components/settings/N4AWorkspaceList";
 import { WorkspaceDiscoveryPanel } from "@/components/settings/WorkspaceDiscoveryPanel";
@@ -447,6 +448,8 @@ export function AdvancedSettingsTab({
 
       {/* Backend Status - Always visible */}
       <BackendStatus checkInterval={30} />
+
+      <RuntimeBackendPreference />
 
       {/* Config Path Settings */}
       <ConfigPathSettings />
