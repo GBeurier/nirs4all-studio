@@ -404,12 +404,18 @@ async def convert_legacy_workspace(request: LegacyWorkspaceConversionRequest):
             if not result["success"]:
                 _emit_maintenance_failed(job_obj.id, operation, result["stderr"] or "Legacy conversion failed")
                 raise RuntimeError(result["stderr"] or result["stdout"] or "Legacy conversion failed")
+            best_effort = bool(result.get("best_effort"))
             link_payload: dict[str, str | None] = {
                 "linked_workspace_id": None,
                 "active_workspace_path": None,
                 "link_error": None,
             }
-            if request.link_converted_workspace:
+            activation_skipped = False
+            if request.link_converted_workspace and best_effort:
+                activation_skipped = True
+                link_payload["link_error"] = "Conversion completed in best-effort mode; the converted workspace was not activated automatically."
+                _progress(92.0, "Skipping activation for best-effort conversion")
+            elif request.link_converted_workspace:
                 _progress(92.0, "Linking converted workspace")
                 try:
                     link_payload = _link_converted_workspace(output_path)
@@ -422,6 +428,7 @@ async def convert_legacy_workspace(request: LegacyWorkspaceConversionRequest):
                 "output_path": str(output_path),
                 "command": command,
                 "link_converted_workspace": request.link_converted_workspace,
+                "activation_skipped": activation_skipped,
                 **link_payload,
                 **result,
             }

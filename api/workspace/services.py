@@ -26,7 +26,8 @@ from ._shared import MIGRATION_AVAILABLE, PREDICTIONS_AVAILABLE, STORE_AVAILABLE
 
 logger = get_logger(__name__)
 
-_TOOLS_SUCCESS_CODES = {0, 10}
+_TOOLS_BEST_EFFORT_CODES = {10}
+_TOOLS_SUCCESS_CODES = {0, *_TOOLS_BEST_EFFORT_CODES}
 
 
 # ============= Transition-release legacy workspace conversion =============
@@ -147,6 +148,7 @@ def _run_legacy_workspace_converter(command: list[str]) -> dict[str, Any]:
         "stdout": proc.stdout,
         "stderr": proc.stderr,
         "success": proc.returncode in _TOOLS_SUCCESS_CODES,
+        "best_effort": proc.returncode in _TOOLS_BEST_EFFORT_CODES,
     }
 
 

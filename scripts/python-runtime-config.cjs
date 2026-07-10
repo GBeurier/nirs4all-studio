@@ -34,7 +34,7 @@ const BACKEND_COMMON_PACKAGES = Object.freeze([
   "sentry-sdk[fastapi]>=2.0.0",
   "orjson>=3.10.0",
   "msgpack>=1.0.0",
-  "nirs4all-tools>=0.0.5",
+  "nirs4all-tools[duckdb,parquet]>=0.0.5",
 ]);
 
 const LEGACY_FLAVOR_TO_PROFILE = Object.freeze({
