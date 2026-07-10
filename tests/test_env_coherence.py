@@ -57,6 +57,8 @@ class TestCoherenceEndpoint:
         assert "bundled_runtime_available" in data
         assert isinstance(data["missing_core_packages"], list)
         assert isinstance(data["missing_optional_packages"], list)
+        assert "runtime_engine_capabilities" in data
+        assert "supports_explicit_run_engine" in data["runtime_engine_capabilities"]
 
     @patch("api.system.venv_manager")
     def test_runtime_summary_reads_live_electron_settings(self, mock_vm):
