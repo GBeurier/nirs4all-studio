@@ -107,6 +107,10 @@ describe("WorkspaceStats transition release panel", () => {
       stdout: "",
       stderr: "",
       success: true,
+      link_converted_workspace: true,
+      linked_workspace_id: null,
+      active_workspace_path: null,
+      link_error: null,
     });
 
     const onStatsChange = vi.fn();
@@ -131,6 +135,7 @@ describe("WorkspaceStats transition release panel", () => {
     expect(convertLegacyWorkspace).toHaveBeenCalledWith({
       output_path: "/tmp/legacy-workspace-v2",
       verify: true,
+      link_converted_workspace: true,
     });
     expect(onStatsChange).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain("Legacy workspace conversion started (job-1)");

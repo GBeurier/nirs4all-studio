@@ -81,6 +81,21 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def _link_converted_workspace(output_path: Path) -> dict[str, str | None]:
+    """Link and activate a successfully converted workspace."""
+    linked = workspace_manager.link_workspace_internal(
+        str(output_path.resolve()),
+        output_path.name,
+        is_new=True,
+    )
+    activated = workspace_manager.activate_workspace(linked.id) or linked
+    return {
+        "linked_workspace_id": activated.id,
+        "active_workspace_path": activated.path,
+        "link_error": None,
+    }
+
+
 def _run_async_notification(coro: Any) -> None:
     """Run an async notification from sync code safely."""
     if not coro:
@@ -354,6 +369,7 @@ async def convert_legacy_workspace(request: LegacyWorkspaceConversionRequest):
                 command=command,
                 output_path=str(output_path),
                 dry_run=True,
+                link_converted_workspace=False,
                 **result,
             )
 
@@ -368,6 +384,7 @@ async def convert_legacy_workspace(request: LegacyWorkspaceConversionRequest):
             "workspace_path": str(workspace_path),
             "output_path": str(output_path),
             "command": command,
+            "link_converted_workspace": request.link_converted_workspace,
         }
         job = job_manager.create_job(JobType.MAINTENANCE, job_config)
 
@@ -387,8 +404,27 @@ async def convert_legacy_workspace(request: LegacyWorkspaceConversionRequest):
             if not result["success"]:
                 _emit_maintenance_failed(job_obj.id, operation, result["stderr"] or "Legacy conversion failed")
                 raise RuntimeError(result["stderr"] or result["stdout"] or "Legacy conversion failed")
+            link_payload: dict[str, str | None] = {
+                "linked_workspace_id": None,
+                "active_workspace_path": None,
+                "link_error": None,
+            }
+            if request.link_converted_workspace:
+                _progress(92.0, "Linking converted workspace")
+                try:
+                    link_payload = _link_converted_workspace(output_path)
+                except Exception as exc:
+                    link_payload["link_error"] = str(exc)
+                    logger.warning("Legacy workspace conversion succeeded, but linking the converted workspace failed: %s", exc)
             _progress(100.0, "Legacy conversion completed")
-            payload = {"operation": operation, "output_path": str(output_path), "command": command, **result}
+            payload = {
+                "operation": operation,
+                "output_path": str(output_path),
+                "command": command,
+                "link_converted_workspace": request.link_converted_workspace,
+                **link_payload,
+                **result,
+            }
             _emit_maintenance_completed(job_obj.id, operation, payload)
             return payload
 
@@ -398,6 +434,7 @@ async def convert_legacy_workspace(request: LegacyWorkspaceConversionRequest):
             command=command,
             output_path=str(output_path),
             dry_run=False,
+            link_converted_workspace=request.link_converted_workspace,
             success=True,
         )
 
