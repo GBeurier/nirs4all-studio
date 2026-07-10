@@ -31,7 +31,7 @@ export interface WorkspaceStatCard {
 }
 
 export interface WorkspaceActionState {
-  type: "clean" | "backup";
+  type: "clean" | "backup" | "conversion";
   message: string;
 }
 
