@@ -72,6 +72,7 @@ import {
   type PipelineLaunchMode,
 } from "./PipelineExecutionDialogSections";
 import { RuntimeBackendSelector } from "@/components/runtime/RuntimeBackendSelector";
+import { useRuntimeBackendPreference } from "@/lib/runtimeBackendPreference";
 
 // ============================================================================
 // Types
@@ -111,8 +112,12 @@ export function PipelineExecutionDialog({
   const [pendingMissingIssues, setPendingMissingIssues] = useState<MissingOperatorIssue[]>([]);
   const [pendingLaunchMode, setPendingLaunchMode] = useState<PipelineLaunchMode | null>(null);
   const [pendingPrunedInlinePipeline, setPendingPrunedInlinePipeline] = useState<InlinePipelinePayload | null>(null);
-  const [runtimeEngine, setRuntimeEngine] = useState<string | null>(null);
-  const [allowFallback, setAllowFallback] = useState(false);
+  const {
+    runtimeEngine,
+    allowFallback,
+    setRuntimeEngine,
+    setAllowFallback,
+  } = useRuntimeBackendPreference();
 
   // Hooks
   const { datasets, isLoading: isLoadingDatasets } = useDatasetSelection();
@@ -146,8 +151,6 @@ export function PipelineExecutionDialog({
       setPendingMissingIssues([]);
       setPendingLaunchMode(null);
       setPendingPrunedInlinePipeline(null);
-      setRuntimeEngine(null);
-      setAllowFallback(false);
     }
   }, [open, reset, pipelineName]);
 
