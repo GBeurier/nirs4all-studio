@@ -35,6 +35,8 @@ from .models import (
     DatasetStorageInfo,
     LegacyMigrationReportPreviewRequest,
     LegacyMigrationReportPreviewResponse,
+    LegacyWorkspaceConversionRequest,
+    LegacyWorkspaceConversionResponse,
     MigrationJobResponse,
     MigrationReportResponse,
     MigrationRequest,
@@ -46,14 +48,18 @@ from .models import (
     StorageStatusResponse,
     WorkspaceSettingsResponse,
     WorkspaceStatsResponse,
+    WorkspaceTransitionStatusResponse,
 )
 from .services import (
+    _build_legacy_conversion_command,
     _call_migrate_arrays_to_parquet,
     _estimate_migration_duration_seconds,
     _extract_corrupt_files,
     _extract_orphan_counts,
     _get_legacy_arrays_row_count,
+    _inspect_legacy_workspace_transition,
     _invoke_predictions_method,
+    _run_legacy_workspace_converter,
 )
 
 # WebSocket notifications (optional). Imported as a top-level module to match
@@ -294,6 +300,115 @@ async def get_workspace_migration_status():
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get migration status: {str(e)}"
+        )
+
+
+@router.get("/workspace/transition-status", response_model=WorkspaceTransitionStatusResponse)
+async def get_workspace_transition_status():
+    """Detect legacy workspace formats that need transition conversion."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        status = await asyncio.to_thread(
+            _inspect_legacy_workspace_transition,
+            Path(workspace.path),
+        )
+        return WorkspaceTransitionStatusResponse(**status)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get transition status: {str(e)}"
+        )
+
+
+@router.post(
+    "/workspace/legacy-convert",
+    response_model=LegacyWorkspaceConversionResponse,
+)
+async def convert_legacy_workspace(request: LegacyWorkspaceConversionRequest):
+    """Convert the active legacy workspace into a fresh V1 workspace."""
+    try:
+        workspace = workspace_manager.get_current_workspace()
+        if not workspace:
+            raise HTTPException(status_code=409, detail="No workspace selected")
+
+        workspace_path = Path(workspace.path)
+        status = await asyncio.to_thread(_inspect_legacy_workspace_transition, workspace_path)
+        if not bool(status.get("conversion_required")):
+            raise HTTPException(status_code=409, detail="Active workspace does not require legacy conversion")
+
+        output_path = Path(request.output_path) if request.output_path else Path(str(status["default_output_path"]))
+        command = _build_legacy_conversion_command(
+            workspace_path,
+            output_path,
+            verify=request.verify,
+            dry_run=request.dry_run,
+            strict=request.strict,
+        )
+
+        if request.dry_run:
+            result = await asyncio.to_thread(_run_legacy_workspace_converter, command)
+            if not result["success"]:
+                raise HTTPException(status_code=500, detail=result["stderr"] or result["stdout"] or "Legacy conversion dry-run failed")
+            return LegacyWorkspaceConversionResponse(
+                command=command,
+                output_path=str(output_path),
+                dry_run=True,
+                **result,
+            )
+
+        if _has_active_non_maintenance_jobs():
+            raise HTTPException(
+                status_code=409,
+                detail="Another active job is running. Stop active jobs before legacy conversion.",
+            )
+
+        job_config = {
+            "operation": "legacy_workspace_conversion",
+            "workspace_path": str(workspace_path),
+            "output_path": str(output_path),
+            "command": command,
+        }
+        job = job_manager.create_job(JobType.MAINTENANCE, job_config)
+
+        def _run_conversion_task(job_obj: Any, progress_callback: Any) -> dict[str, Any]:
+            operation = "legacy_workspace_conversion"
+
+            def _progress(value: float, message: str) -> None:
+                try:
+                    progress_callback(value, message)
+                except Exception:
+                    pass
+                _emit_maintenance_progress(job_obj.id, value, message)
+
+            _emit_maintenance_started(job_obj.id, operation, job_config)
+            _progress(5.0, "Starting legacy workspace conversion")
+            result = _run_legacy_workspace_converter(command)
+            if not result["success"]:
+                _emit_maintenance_failed(job_obj.id, operation, result["stderr"] or "Legacy conversion failed")
+                raise RuntimeError(result["stderr"] or result["stdout"] or "Legacy conversion failed")
+            _progress(100.0, "Legacy conversion completed")
+            payload = {"operation": operation, "output_path": str(output_path), "command": command, **result}
+            _emit_maintenance_completed(job_obj.id, operation, payload)
+            return payload
+
+        job_manager.submit_job(job, _run_conversion_task)
+        return LegacyWorkspaceConversionResponse(
+            job_id=job.id,
+            command=command,
+            output_path=str(output_path),
+            dry_run=False,
+            success=True,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start legacy conversion: {str(e)}"
         )
 
 

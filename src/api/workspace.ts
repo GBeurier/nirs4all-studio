@@ -25,6 +25,8 @@ import type {
   MigrationStatusResponse,
   MigrationReport,
   MigrationJobResponse,
+  WorkspaceTransitionStatusResponse,
+  LegacyWorkspaceConversionResponse,
   StorageHealthResponse,
   CompactReport,
   CleanDeadLinksReport,
@@ -134,6 +136,25 @@ export async function startMigration(options?: {
   batch_size?: number;
 }): Promise<MigrationJobResponse | MigrationReport> {
   return api.post("/workspace/migrate", options ?? {});
+}
+
+/**
+ * Get transition status for legacy workspace formats.
+ */
+export async function getWorkspaceTransitionStatus(): Promise<WorkspaceTransitionStatusResponse> {
+  return api.get("/workspace/transition-status");
+}
+
+/**
+ * Convert the active legacy workspace into a fresh V1 workspace.
+ */
+export async function convertLegacyWorkspace(options?: {
+  output_path?: string;
+  verify?: boolean;
+  dry_run?: boolean;
+  strict?: boolean;
+}): Promise<LegacyWorkspaceConversionResponse> {
+  return api.post("/workspace/legacy-convert", options ?? {});
 }
 
 /**
