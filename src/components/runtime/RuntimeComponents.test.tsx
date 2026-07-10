@@ -5,12 +5,21 @@
 import type { ReactNode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NativeResultsExportAffordance } from "./NativeResultsExportAffordance";
+import { RuntimeBackendSelector } from "./RuntimeBackendSelector";
 import { RuntimeDiagnosticsList } from "./RuntimeDiagnosticsList";
 import { RuntimeEngineBadge } from "./RuntimeEngineBadge";
 import { RuntimeRunStatePresentation } from "./RuntimeStatus";
+
+const mocks = vi.hoisted(() => ({
+  getRuntimeSummary: vi.fn(),
+}));
+
+vi.mock("@/api/system", () => ({
+  getRuntimeSummary: mocks.getRuntimeSummary,
+}));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
@@ -35,6 +44,7 @@ afterEach(() => {
     container.remove();
   }
   mountedContainers = [];
+  mocks.getRuntimeSummary.mockReset();
 });
 
 describe("runtime result components", () => {
@@ -98,5 +108,73 @@ describe("runtime result components", () => {
       root.unmount();
     });
     container.remove();
+  });
+});
+
+describe("RuntimeBackendSelector", () => {
+  it("clears explicit backend selection when the runtime lacks run(engine=...) support", async () => {
+    mocks.getRuntimeSummary.mockResolvedValue({
+      runtime_engine_capabilities: {
+        supports_explicit_run_engine: false,
+        supported_engines: [],
+        default_engine: "legacy",
+        reason: "unsupported",
+      },
+    });
+    const onRuntimeEngineChange = vi.fn();
+    const onAllowFallbackChange = vi.fn();
+
+    const { root } = await render(
+      <RuntimeBackendSelector
+        runtimeEngine="dag-ml"
+        allowFallback
+        onRuntimeEngineChange={onRuntimeEngineChange}
+        onAllowFallbackChange={onAllowFallbackChange}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onRuntimeEngineChange).toHaveBeenCalledWith(null);
+    expect(onAllowFallbackChange).toHaveBeenCalledWith(false);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("keeps explicit backend selection when the runtime exposes run(engine=...) support", async () => {
+    mocks.getRuntimeSummary.mockResolvedValue({
+      runtime_engine_capabilities: {
+        supports_explicit_run_engine: true,
+        supported_engines: ["legacy", "dag-ml"],
+        default_engine: "legacy",
+        reason: null,
+      },
+    });
+    const onRuntimeEngineChange = vi.fn();
+    const onAllowFallbackChange = vi.fn();
+
+    const { root } = await render(
+      <RuntimeBackendSelector
+        runtimeEngine="dag-ml"
+        allowFallback
+        onRuntimeEngineChange={onRuntimeEngineChange}
+        onAllowFallbackChange={onAllowFallbackChange}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onRuntimeEngineChange).not.toHaveBeenCalled();
+    expect(onAllowFallbackChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
   });
 });

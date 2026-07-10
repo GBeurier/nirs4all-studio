@@ -365,6 +365,14 @@ export interface SystemInfoResponse {
   system: SystemDetails;
   nirs4all_version: string;
   packages: PackageVersions;
+  runtime_engine_capabilities?: RuntimeEngineCapabilities;
+}
+
+export interface RuntimeEngineCapabilities {
+  supports_explicit_run_engine: boolean;
+  supported_engines: string[];
+  default_engine: string;
+  reason?: string | null;
 }
 
 /**
@@ -393,6 +401,7 @@ export interface RuntimeSummaryResponse {
     python: string;
     prefix: string;
   };
+  runtime_engine_capabilities?: RuntimeEngineCapabilities;
   electron_expected_python?: string;
   electron_match?: boolean;
 }
