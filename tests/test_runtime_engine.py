@@ -47,6 +47,7 @@ def test_engine_run_kwargs_preserves_default_when_runtime_lacks_support(monkeypa
     monkeypatch.setattr(runtime_engine, "supports_explicit_run_engine", lambda: False)
 
     assert runtime_engine.engine_run_kwargs(None) == {}
+    assert runtime_engine.engine_run_kwargs("legacy") == {}
 
 
 def test_runtime_engine_capabilities_reports_explicit_support(monkeypatch):
