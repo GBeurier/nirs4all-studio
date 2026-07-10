@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -39,6 +40,41 @@ def test_transition_status_detects_legacy_duckdb(monkeypatch, tmp_path):
     assert payload["conversion_required"] is True
     assert "nirs4all_tools" in payload["conversion_command"]
     assert payload["default_output_path"].endswith("legacy-workspace-v2")
+
+
+def test_transition_status_detects_legacy_sqlite_prediction_arrays(monkeypatch, tmp_path):
+    workspace = tmp_path / "legacy-sqlite"
+    workspace.mkdir()
+    sqlite_path = workspace / "store.sqlite"
+    with sqlite3.connect(sqlite_path) as conn:
+        conn.execute("CREATE TABLE prediction_arrays (prediction_id TEXT PRIMARY KEY, payload TEXT)")
+
+    with _client_with_workspace(monkeypatch, workspace) as client:
+        response = client.get("/api/workspace/transition-status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["format"] == "sqlite-workspace-legacy-arrays"
+    assert payload["conversion_required"] is True
+    assert "prediction_arrays" in payload["message"]
+    assert "nirs4all_tools" in payload["conversion_command"]
+
+
+def test_transition_status_detects_legacy_filesystem_runs(monkeypatch, tmp_path):
+    workspace = tmp_path / "legacy-runs"
+    manifest = workspace / "runs" / "diesel" / "0001_pls" / "manifest.yaml"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text("run_id: 0001_pls\n", encoding="utf-8")
+
+    with _client_with_workspace(monkeypatch, workspace) as client:
+        response = client.get("/api/workspace/transition-status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["format"] == "fs-runs-legacy"
+    assert payload["conversion_required"] is True
+    assert "filesystem run manifests" in payload["message"]
+    assert "nirs4all_tools" in payload["conversion_command"]
 
 
 def test_legacy_conversion_dry_run_omits_verify(monkeypatch, tmp_path):
