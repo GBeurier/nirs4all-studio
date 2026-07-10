@@ -92,9 +92,13 @@ export interface NewExperimentReviewStepPanelProps {
   executionEnvironmentDiagnostics: NewExperimentExecutionEnvironmentDiagnostics;
   experimentDescription: string;
   planFlow: UseNewExperimentPlanFlowResult;
+  runtimeEngine?: string | null;
   selectionFlow: UseNewExperimentSelectionFlowResult;
+  allowFallback?: boolean;
   onExperimentDescriptionChange: (value: string) => void;
   onExperimentNameChange: (value: string) => void;
+  onRuntimeEngineChange?: (value: string | null) => void;
+  onAllowFallbackChange?: (value: boolean) => void;
 }
 
 export function NewExperimentReviewStepPanel({
@@ -102,9 +106,13 @@ export function NewExperimentReviewStepPanel({
   executionEnvironmentDiagnostics,
   experimentDescription,
   planFlow,
+  runtimeEngine,
   selectionFlow,
+  allowFallback,
   onExperimentDescriptionChange,
   onExperimentNameChange,
+  onRuntimeEngineChange,
+  onAllowFallbackChange,
 }: NewExperimentReviewStepPanelProps) {
   return (
     <NewExperimentReviewStep
@@ -116,9 +124,13 @@ export function NewExperimentReviewStepPanel({
       executionEnvironmentDiagnostics={executionEnvironmentDiagnostics}
       experimentDescription={experimentDescription}
       groupingSelection={planFlow.groupingSelection}
+      runtimeEngine={runtimeEngine}
       selectedDatasetIds={selectionFlow.selectedDatasetIds}
+      allowFallback={allowFallback}
       onExperimentDescriptionChange={onExperimentDescriptionChange}
       onExperimentNameChange={onExperimentNameChange}
+      onRuntimeEngineChange={onRuntimeEngineChange}
+      onAllowFallbackChange={onAllowFallbackChange}
     />
   );
 }
