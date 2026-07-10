@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import { Cpu } from "lucide-react";
 
+import { getRuntimeSummary } from "@/api/system";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
@@ -10,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import type { RuntimeEngineCapabilities } from "@/types/settings";
 
 const DEFAULT_RUNTIME_BACKEND = "__default__";
 
@@ -32,8 +35,49 @@ export function RuntimeBackendSelector({
   onRuntimeEngineChange,
   onAllowFallbackChange,
 }: RuntimeBackendSelectorProps) {
+  const [capabilityState, setCapabilityState] = useState<{
+    loaded: boolean;
+    capabilities: RuntimeEngineCapabilities | null;
+  }>({ loaded: false, capabilities: null });
+
+  useEffect(() => {
+    let active = true;
+    void getRuntimeSummary()
+      .then((summary) => {
+        if (active) {
+          setCapabilityState({
+            loaded: true,
+            capabilities: summary.runtime_engine_capabilities ?? null,
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCapabilityState({ loaded: true, capabilities: null });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const selectedValue = runtimeEngine?.trim() || DEFAULT_RUNTIME_BACKEND;
-  const canFallback = selectedValue === "dag-ml";
+  const supportsExplicitEngine =
+    capabilityState.loaded && capabilityState.capabilities?.supports_explicit_run_engine === true;
+  const canFallback = selectedValue === "dag-ml" && supportsExplicitEngine;
+
+  useEffect(() => {
+    if (capabilityState.loaded && !supportsExplicitEngine && runtimeEngine) {
+      onRuntimeEngineChange(null);
+      onAllowFallbackChange(false);
+    }
+  }, [
+    capabilityState.loaded,
+    onAllowFallbackChange,
+    onRuntimeEngineChange,
+    runtimeEngine,
+    supportsExplicitEngine,
+  ]);
 
   return (
     <div className={cn("rounded-lg border bg-muted/20 p-3", compact ? "space-y-3" : "space-y-4", className)}>
@@ -58,8 +102,8 @@ export function RuntimeBackendSelector({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={DEFAULT_RUNTIME_BACKEND}>Library default</SelectItem>
-            <SelectItem value="legacy">Legacy</SelectItem>
-            <SelectItem value="dag-ml">DAG-ML</SelectItem>
+            <SelectItem value="legacy" disabled={!supportsExplicitEngine}>Legacy</SelectItem>
+            <SelectItem value="dag-ml" disabled={!supportsExplicitEngine}>DAG-ML</SelectItem>
           </SelectContent>
         </Select>
 
