@@ -121,6 +121,21 @@ def _get_package_versions() -> dict[str, str]:
     return packages
 
 
+def _get_runtime_engine_capabilities() -> dict[str, Any]:
+    """Return ML-engine selection capabilities for the active nirs4all runtime."""
+    try:
+        from .runtime_engine import runtime_engine_capabilities
+
+        return runtime_engine_capabilities()
+    except Exception:
+        return {
+            "supports_explicit_run_engine": False,
+            "supported_engines": [],
+            "default_engine": "legacy",
+            "reason": "Runtime engine capabilities could not be detected.",
+        }
+
+
 def _load_operator_reference() -> dict[str, Any]:
     """Load the backend's authoritative editor operator registry reference."""
     reference = load_editor_registry_reference()
@@ -184,6 +199,7 @@ async def system_info():
         },
         "nirs4all_version": _get_nirs4all_version(),
         "packages": _get_package_versions(),
+        "runtime_engine_capabilities": _get_runtime_engine_capabilities(),
     }
 
 
@@ -553,6 +569,7 @@ async def check_env_coherence() -> dict[str, Any]:
             "python": vm_python,
             "prefix": vm_prefix,
         },
+        "runtime_engine_capabilities": _get_runtime_engine_capabilities(),
     }
 
     if configured_python:

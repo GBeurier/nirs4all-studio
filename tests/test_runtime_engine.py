@@ -10,8 +10,10 @@ from __future__ import annotations
 import warnings
 from types import SimpleNamespace
 
+import pytest
+
 from api import runtime_engine
-from api.runtime_errors import RtError
+from api.runtime_errors import RtError, RtUnsupportedError
 
 
 def test_resolve_engine_defaults_to_legacy():
@@ -29,6 +31,32 @@ def test_engine_run_kwargs_only_when_requested():
     assert runtime_engine.engine_run_kwargs("") == {}
     assert runtime_engine.engine_run_kwargs("   ") == {}
     assert runtime_engine.engine_run_kwargs("dag-ml") == {"engine": "dag-ml"}
+
+
+def test_engine_run_kwargs_rejects_explicit_engine_when_runtime_lacks_support(monkeypatch):
+    monkeypatch.setattr(runtime_engine, "supports_explicit_run_engine", lambda: False)
+
+    with pytest.raises(RtUnsupportedError) as exc_info:
+        runtime_engine.engine_run_kwargs("dag-ml")
+
+    assert exc_info.value.rt_error.cause == "unsupported_capability"
+    assert exc_info.value.rt_error.unsupported_capability == "nirs4all.run.engine"
+
+
+def test_engine_run_kwargs_preserves_default_when_runtime_lacks_support(monkeypatch):
+    monkeypatch.setattr(runtime_engine, "supports_explicit_run_engine", lambda: False)
+
+    assert runtime_engine.engine_run_kwargs(None) == {}
+
+
+def test_runtime_engine_capabilities_reports_explicit_support(monkeypatch):
+    monkeypatch.setattr(runtime_engine, "supports_explicit_run_engine", lambda: True)
+
+    capabilities = runtime_engine.runtime_engine_capabilities()
+
+    assert capabilities["supports_explicit_run_engine"] is True
+    assert capabilities["supported_engines"] == ["legacy", "dag-ml"]
+    assert capabilities["default_engine"] == "legacy"
 
 
 def test_observe_engine_no_fallback_records_resolved_engine():

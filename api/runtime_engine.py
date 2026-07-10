@@ -23,6 +23,7 @@ results that do not expose ``RtResult`` / ``RtError`` yet.
 
 from __future__ import annotations
 
+import inspect
 import warnings
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -30,7 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .runtime_errors import RtError, RtErrorCause
+from .runtime_errors import RtError, RtErrorCause, RtUnsupportedError
 
 _LEGACY = "legacy"
 
@@ -70,6 +71,34 @@ def resolve_engine(requested: str | None) -> str:
     return _lib_resolve(requested)
 
 
+def supports_explicit_run_engine() -> bool:
+    """Return whether the installed nirs4all runtime accepts ``run(engine=...)``."""
+    try:
+        import nirs4all
+
+        run = getattr(nirs4all, "run", None)
+        if run is None:
+            from nirs4all.api.run import run as api_run
+
+            run = api_run
+        return "engine" in inspect.signature(run).parameters
+    except Exception:
+        return False
+
+
+def runtime_engine_capabilities() -> dict[str, Any]:
+    """Expose Studio's safe ML-engine selection surface for the active runtime."""
+    supports_explicit = supports_explicit_run_engine()
+    return {
+        "supports_explicit_run_engine": supports_explicit,
+        "supported_engines": ["legacy", "dag-ml"] if supports_explicit else [],
+        "default_engine": resolve_engine(None),
+        "reason": None
+        if supports_explicit
+        else "The active nirs4all runtime does not expose nirs4all.run(engine=...).",
+    }
+
+
 def engine_run_kwargs(requested: str | None) -> dict[str, str]:
     """Return the ``engine`` kwarg for :func:`nirs4all.run`, when one is requested.
 
@@ -83,7 +112,20 @@ def engine_run_kwargs(requested: str | None) -> dict[str, str]:
         ``{"engine": requested}`` when a non-blank engine was requested, else ``{}``.
     """
     if isinstance(requested, str) and requested.strip():
-        return {"engine": requested}
+        if not supports_explicit_run_engine():
+            raise RtUnsupportedError(
+                RtError(
+                    verb="run",
+                    cause="unsupported_capability",
+                    message=(
+                        "Explicit ML engine selection requires a nirs4all runtime "
+                        "that supports nirs4all.run(engine=...)."
+                    ),
+                    mitigation="Use the library default runtime backend or update the configured Python runtime.",
+                    unsupported_capability="nirs4all.run.engine",
+                )
+            )
+        return {"engine": requested.strip()}
     return {}
 
 

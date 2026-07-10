@@ -38,6 +38,7 @@ import api.runs as runs_api
 import api.aggregated_predictions as aggregated_api
 import api.spectra as spectra_api
 import api.nirs4all_adapter as adapter_api
+import api.runtime_engine as runtime_engine_api
 
 
 class _Frame:
@@ -75,6 +76,7 @@ def stub_training_deps(monkeypatch):
     """
     # A clean engine env so resolve_engine(None) follows the library default.
     monkeypatch.delenv("N4A_ENGINE", raising=False)
+    monkeypatch.setattr(runtime_engine_api, "supports_explicit_run_engine", lambda: True)
 
     monkeypatch.setattr(adapter_api, "build_dataset_config", lambda dataset_id: {"path": dataset_id})
     monkeypatch.setattr(spectra_api, "_load_dataset", lambda dataset_id: SimpleNamespace(name=dataset_id))
