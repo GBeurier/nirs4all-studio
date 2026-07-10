@@ -71,6 +71,7 @@ import {
   StatusBadge,
   type PipelineLaunchMode,
 } from "./PipelineExecutionDialogSections";
+import { RuntimeBackendSelector } from "@/components/runtime/RuntimeBackendSelector";
 
 // ============================================================================
 // Types
@@ -110,6 +111,8 @@ export function PipelineExecutionDialog({
   const [pendingMissingIssues, setPendingMissingIssues] = useState<MissingOperatorIssue[]>([]);
   const [pendingLaunchMode, setPendingLaunchMode] = useState<PipelineLaunchMode | null>(null);
   const [pendingPrunedInlinePipeline, setPendingPrunedInlinePipeline] = useState<InlinePipelinePayload | null>(null);
+  const [runtimeEngine, setRuntimeEngine] = useState<string | null>(null);
+  const [allowFallback, setAllowFallback] = useState(false);
 
   // Hooks
   const { datasets, isLoading: isLoadingDatasets } = useDatasetSelection();
@@ -143,6 +146,8 @@ export function PipelineExecutionDialog({
       setPendingMissingIssues([]);
       setPendingLaunchMode(null);
       setPendingPrunedInlinePipeline(null);
+      setRuntimeEngine(null);
+      setAllowFallback(false);
     }
   }, [open, reset, pipelineName]);
 
@@ -243,6 +248,8 @@ export function PipelineExecutionDialog({
           selectedExecutionSplitGroupBy,
         ),
         inlinePipeline,
+        runtimeEngine,
+        allowFallback,
       });
       return;
     }
@@ -260,6 +267,8 @@ export function PipelineExecutionDialog({
           selectedExecutionSplitGroupBy,
         ),
         inline_pipeline: inlinePipeline,
+        engine: runtimeEngine,
+        allow_fallback: allowFallback,
       });
 
       queryClient.invalidateQueries({ queryKey: ["runs"] });
@@ -298,6 +307,8 @@ export function PipelineExecutionDialog({
     pipelineName,
     queryClient,
     runName,
+    runtimeEngine,
+    allowFallback,
     selectedDataset,
     selectedExecutionSplitGroupBy,
   ]);
@@ -438,6 +449,15 @@ export function PipelineExecutionDialog({
               isLoading={isLoadingDatasets}
               selectedDataset={selectedDataset}
               onDatasetChange={handleDatasetChange}
+            />
+
+            <RuntimeBackendSelector
+              runtimeEngine={runtimeEngine}
+              allowFallback={allowFallback}
+              disabled={executionInputsDisabled}
+              compact
+              onRuntimeEngineChange={setRuntimeEngine}
+              onAllowFallbackChange={setAllowFallback}
             />
 
             <RuntimeGroupingConflictNotice groupingSelection={groupingSelection} />
