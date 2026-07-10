@@ -788,6 +788,8 @@ class PipelineRunRequest(BaseModel):
     model_name: str | None = None
     refit: Any | None = True
     refit_params: dict[str, Any] | None = None
+    engine: str | None = Field(None, description="ML engine selector: 'legacy' or 'dag-ml'; omitted uses the nirs4all library default.")
+    allow_fallback: bool = False
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
     inline_pipeline: dict[str, Any] | None = None
 
@@ -880,6 +882,8 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
         "model_name": request.model_name or f"model_{pipeline_id}",
         "workspace_path": workspace.path,
         "refit": refit_value,
+        "engine": request.engine,
+        "allow_fallback": request.allow_fallback,
         "split_group_by": runtime_group_by,
     }
 
@@ -916,6 +920,8 @@ def _run_pipeline_task(job, progress_callback):
     dataset_id = config.get("dataset_id")
     workspace_path = config.get("workspace_path")
     split_group_by = config.get("split_group_by")
+    engine = config.get("engine")
+    allow_fallback = bool(config.get("allow_fallback", False))
 
     # Report starting
     progress_callback(5, "Building pipeline...")
@@ -950,15 +956,64 @@ def _run_pipeline_task(job, progress_callback):
         # Execute using nirs4all.run()
         import nirs4all
 
-        run_kwargs = {
+        from .results_repository import NATIVE_RESULTS_DIRNAME
+        from .runtime_engine import (
+            engine_run_kwargs,
+            fallback_policy_record,
+            observe_engine,
+            resolve_engine,
+            rt_error_envelope_from_exception,
+        )
+
+        base_run_kwargs = {
             "pipeline": pipeline_steps,
             "dataset": dataset_path,
             "verbose": config.get("verbose", 1),
         }
         if "refit" in config:
-            run_kwargs["refit"] = config["refit"]
+            base_run_kwargs["refit"] = config["refit"]
 
-        result = nirs4all.run(**run_kwargs)
+        fallback_policy = fallback_policy_record(engine, allow_fallback)
+        resolved_engine = resolve_engine(engine)
+        if resolved_engine == "dag-ml":
+            run_kwargs = dict(base_run_kwargs)
+            run_kwargs.update(engine_run_kwargs(engine))
+            run_kwargs["allow_fallback"] = False
+            if workspace_path:
+                run_kwargs["results_path"] = str(Path(workspace_path) / NATIVE_RESULTS_DIRNAME)
+
+            with observe_engine(engine) as engine_observation:
+                try:
+                    result = nirs4all.run(**run_kwargs)
+                except Exception as exc:
+                    rt_error = rt_error_envelope_from_exception(exc)
+                    if rt_error is None or not allow_fallback:
+                        raise
+                    logger.warning("DAG-ML pipeline execution fell back to legacy: %s", rt_error.get("message", str(exc)))
+                    fallback_kwargs = dict(base_run_kwargs)
+                    fallback_kwargs["engine"] = "legacy"
+                    with observe_engine("legacy") as fallback_observation:
+                        result = nirs4all.run(**fallback_kwargs)
+                    engine_record = fallback_observation.finalize(
+                        result,
+                        diagnostics=[rt_error],
+                        fallback_policy=fallback_policy,
+                    )
+                    engine_record["engine_requested"] = engine
+                else:
+                    engine_record = engine_observation.finalize(
+                        result,
+                        fallback_policy=fallback_policy,
+                    )
+        else:
+            run_kwargs = dict(base_run_kwargs)
+            run_kwargs.update(engine_run_kwargs(engine))
+            with observe_engine(engine) as engine_observation:
+                result = nirs4all.run(**run_kwargs)
+            engine_record = engine_observation.finalize(
+                result,
+                fallback_policy=fallback_policy,
+            )
 
         progress_callback(80, "Extracting results...")
 
@@ -999,6 +1054,13 @@ def _run_pipeline_task(job, progress_callback):
             "top_results": top_results,
             "variants_tested": estimated_variants,
             "model_path": model_path,
+            "engine": engine_record.get("engine"),
+            "engine_requested": engine_record.get("engine_requested"),
+            "engine_diagnostics": engine_record.get("engine_diagnostics"),
+            "runtime_source": engine_record.get("runtime_source"),
+            "runtime_manifest": engine_record.get("runtime_manifest"),
+            "fallback_policy": engine_record.get("fallback_policy"),
+            "native_result_refs": engine_record.get("native_result_refs"),
         }
 
     except Exception as e:

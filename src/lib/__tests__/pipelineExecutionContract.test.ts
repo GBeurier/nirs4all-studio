@@ -48,6 +48,18 @@ describe("pipelineExecutionContract", () => {
     });
   });
 
+  it("projects explicit runtime engine options to the execute payload", () => {
+    expect(toLegacyPipelineExecutePayload({
+      pipelineId: "pipe-1",
+      datasetId: "dataset-a",
+      runtimeEngine: " dag-ml ",
+      allowFallback: true,
+    })).toMatchObject({
+      engine: "dag-ml",
+      allow_fallback: true,
+    });
+  });
+
   it("normalizes metric observations from generic execution results", () => {
     const result = normalizePipelineExecutionResult({
       success: true,

@@ -25,6 +25,8 @@ export default function NewExperiment() {
   const [currentStep, setCurrentStep] = useState<NewExperimentWizardStep>(NEW_EXPERIMENT_FIRST_STEP);
   const [customExperimentName, setCustomExperimentName] = useState("");
   const [experimentDescription, setExperimentDescription] = useState("");
+  const [runtimeEngine, setRuntimeEngine] = useState<string | null>(null);
+  const [allowFallback, setAllowFallback] = useState(false);
 
   const inputData = useNewExperimentInputData();
   const executionEnvironment = useNewExperimentExecutionEnvironment();
@@ -85,6 +87,8 @@ export default function NewExperiment() {
     singlePairSplitSpecResult: planFlow.singlePairSplitSpecResult,
     hasGroupingBlockingError: planFlow.hasGroupingBlockingError,
     executionAdapter: planFlow.executionAdapterResolution.adapter,
+    runtimeEngine,
+    allowFallback,
     launchSubmitters: executionEnvironment.launchSubmitters,
     onGroupingBlockingError: () => setCurrentStep(NEW_EXPERIMENT_RUNTIME_GROUPING_STEP),
     onRunCreated: (runId) => navigate(`/runs/${runId}`),
@@ -101,9 +105,18 @@ export default function NewExperiment() {
       inputData={inputData}
       launchFlow={launchFlow}
       planFlow={planFlow}
+      runtimeEngine={runtimeEngine}
       selectionFlow={selectionFlow}
+      allowFallback={allowFallback}
       onExperimentDescriptionChange={setExperimentDescription}
       onExperimentNameChange={setCustomExperimentName}
+      onRuntimeEngineChange={(value) => {
+        setRuntimeEngine(value);
+        if (value !== "dag-ml") {
+          setAllowFallback(false);
+        }
+      }}
+      onAllowFallbackChange={setAllowFallback}
       onBack={() => setCurrentStep(getPreviousNewExperimentStep)}
       onNext={() => setCurrentStep(getNextNewExperimentStep)}
       onExit={() => navigate("/runs")}

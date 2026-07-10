@@ -24,6 +24,8 @@ export interface PipelineExecutionConfig {
   inlinePipeline?: PipelineExecutionInlinePipeline;
   targetSelection?: PipelineExecutionTargetSelection;
   executionBackend?: "local-python" | "cluster" | "wasm-local";
+  runtimeEngine?: string | null;
+  allowFallback?: boolean;
   campaignId?: string;
 }
 
@@ -82,6 +84,8 @@ export interface LegacyPipelineExecutePayload {
   model_name?: string;
   split_group_by_by_dataset: Record<string, string | null>;
   inline_pipeline: PipelineExecutionInlinePipeline | null;
+  engine?: string;
+  allow_fallback?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -166,6 +170,7 @@ export function normalizePipelineExecutionConfig(config: PipelineExecutionConfig
 
 export function toLegacyPipelineExecutePayload(config: PipelineExecutionConfig): LegacyPipelineExecutePayload {
   const normalized = normalizePipelineExecutionConfig(config);
+  const runtimeEngine = normalized.runtimeEngine?.trim();
   return {
     dataset_id: normalized.datasetIds[0],
     verbose: normalized.verbose ?? 1,
@@ -173,6 +178,8 @@ export function toLegacyPipelineExecutePayload(config: PipelineExecutionConfig):
     model_name: normalized.modelName,
     split_group_by_by_dataset: normalized.splitGroupByByDataset ?? {},
     inline_pipeline: normalized.inlinePipeline ?? null,
+    ...(runtimeEngine ? { engine: runtimeEngine } : {}),
+    ...(normalized.allowFallback !== undefined ? { allow_fallback: normalized.allowFallback } : {}),
   };
 }
 
