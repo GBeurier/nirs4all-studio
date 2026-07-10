@@ -6,8 +6,13 @@ payload builder, and the predictions-maintenance compatibility shims. None of
 these are FastAPI handlers; they are pure helpers invoked from the routers.
 """
 
+import importlib.util
 import inspect
 import json
+import shutil
+import sqlite3
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +25,129 @@ from ..shared.logger import get_logger
 from ._shared import MIGRATION_AVAILABLE, PREDICTIONS_AVAILABLE, STORE_AVAILABLE
 
 logger = get_logger(__name__)
+
+_TOOLS_SUCCESS_CODES = {0, 10}
+
+
+# ============= Transition-release legacy workspace conversion =============
+
+
+def _quote_command_part(value: str) -> str:
+    import shlex
+
+    return shlex.quote(value)
+
+
+def _default_legacy_conversion_output(workspace_path: Path) -> Path:
+    return workspace_path.with_name(f"{workspace_path.name}-workspace-v2")
+
+
+def _sqlite_has_prediction_arrays(sqlite_path: Path) -> bool:
+    uri = f"file:{sqlite_path.as_posix()}?mode=ro"
+    try:
+        with sqlite3.connect(uri, uri=True) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='prediction_arrays'"
+            ).fetchone()
+            return row is not None
+    except sqlite3.DatabaseError:
+        return False
+
+
+def _has_legacy_runs_tree(workspace_path: Path) -> bool:
+    runs_dir = workspace_path / "runs"
+    return runs_dir.is_dir() and any(runs_dir.glob("*/*/manifest.yaml"))
+
+
+def _converter_available() -> bool:
+    return shutil.which("nirs4all-tools") is not None or importlib.util.find_spec("nirs4all_tools") is not None
+
+
+def _build_legacy_conversion_command(
+    workspace_path: Path,
+    output_path: Path,
+    *,
+    verify: bool = True,
+    dry_run: bool = False,
+    strict: bool = False,
+) -> list[str]:
+    command = [
+        sys.executable,
+        "-m",
+        "nirs4all_tools",
+        "legacy",
+        "migrate",
+        str(workspace_path),
+        "--output",
+        str(output_path),
+        "--target",
+        "nirs4all-workspace-v2",
+    ]
+    if verify and not dry_run:
+        command.append("--verify")
+    if dry_run:
+        command.append("--dry-run")
+    if strict:
+        command.append("--strict")
+    return command
+
+
+def _inspect_legacy_workspace_transition(workspace_path: Path) -> dict[str, Any]:
+    output = _default_legacy_conversion_output(workspace_path)
+    command = _build_legacy_conversion_command(workspace_path, output)
+    shell_command = " ".join(_quote_command_part(part) for part in command)
+
+    sqlite_path = workspace_path / "store.sqlite"
+    duckdb_path = workspace_path / "store.duckdb"
+    if duckdb_path.exists() and not sqlite_path.exists():
+        return {
+            "path": str(workspace_path),
+            "format": "duckdb-workspace",
+            "conversion_required": True,
+            "message": "Legacy DuckDB workspace detected. Convert it to the V1 workspace format before switching runtimes.",
+            "conversion_command": shell_command,
+            "default_output_path": str(output),
+            "converter_available": _converter_available(),
+        }
+    if sqlite_path.exists() and _sqlite_has_prediction_arrays(sqlite_path):
+        return {
+            "path": str(workspace_path),
+            "format": "sqlite-workspace-legacy-arrays",
+            "conversion_required": True,
+            "message": "Workspace uses legacy prediction_arrays storage. Convert it to the V1 workspace format before publishing or sharing.",
+            "conversion_command": shell_command,
+            "default_output_path": str(output),
+            "converter_available": _converter_available(),
+        }
+    if _has_legacy_runs_tree(workspace_path):
+        return {
+            "path": str(workspace_path),
+            "format": "fs-runs-legacy",
+            "conversion_required": True,
+            "message": "Legacy filesystem run manifests detected. Convert them into a fresh V1 workspace before opening in new runtimes.",
+            "conversion_command": shell_command,
+            "default_output_path": str(output),
+            "converter_available": _converter_available(),
+        }
+    return {
+        "path": str(workspace_path),
+        "format": "sqlite-workspace-v2" if sqlite_path.exists() else "new-or-empty",
+        "conversion_required": False,
+        "message": "Workspace is compatible with the V1 runtime format.",
+        "conversion_command": None,
+        "default_output_path": None,
+        "converter_available": _converter_available(),
+    }
+
+
+def _run_legacy_workspace_converter(command: list[str]) -> dict[str, Any]:
+    proc = subprocess.run(command, check=False, capture_output=True, text=True)
+    return {
+        "return_code": proc.returncode,
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+        "success": proc.returncode in _TOOLS_SUCCESS_CODES,
+    }
 
 
 # ============= Dataset name → linked-id matching =============

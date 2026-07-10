@@ -178,6 +178,37 @@ class MigrationReportResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class WorkspaceTransitionStatusResponse(BaseModel):
+    """Transition-release diagnosis for legacy workspace conversion."""
+    path: str
+    format: str
+    conversion_required: bool
+    message: str
+    conversion_command: str | None = None
+    default_output_path: str | None = None
+    converter_available: bool = False
+
+
+class LegacyWorkspaceConversionRequest(BaseModel):
+    """Request to convert the active legacy workspace into a fresh V1 workspace."""
+    output_path: str | None = Field(None, description="Fresh output directory. Defaults to a sibling *-workspace-v2 directory.")
+    verify: bool = Field(True, description="Verify converted output after migration")
+    dry_run: bool = Field(False, description="Run converter in dry-run mode")
+    strict: bool = Field(False, description="Abort on first unsupported legacy item")
+
+
+class LegacyWorkspaceConversionResponse(BaseModel):
+    """Response for a legacy workspace conversion request."""
+    job_id: str | None = None
+    command: list[str] = Field(default_factory=list)
+    output_path: str
+    dry_run: bool = False
+    return_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    success: bool = True
+
+
 class CompactRequest(BaseModel):
     dataset_name: str | None = Field(None, description="Dataset name to compact (all if omitted)")
 

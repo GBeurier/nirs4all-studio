@@ -36,6 +36,27 @@ export interface MigrationJobResponse {
   job_id: string;
 }
 
+export interface WorkspaceTransitionStatusResponse {
+  path: string;
+  format: string;
+  conversion_required: boolean;
+  message: string;
+  conversion_command: string | null;
+  default_output_path: string | null;
+  converter_available: boolean;
+}
+
+export interface LegacyWorkspaceConversionResponse {
+  job_id: string | null;
+  command: string[];
+  output_path: string;
+  dry_run: boolean;
+  return_code: number | null;
+  stdout: string;
+  stderr: string;
+  success: boolean;
+}
+
 export interface DatasetStorageInfo {
   name: string;
   prediction_count: number;
