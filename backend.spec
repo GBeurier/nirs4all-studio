@@ -117,6 +117,7 @@ hiddenimports = [
     'orjson',
     'msgpack',
     'sentry_sdk',
+    'nirs4all_tools',
 
     # nirs4all library (optional - will gracefully fail if not installed)
     'nirs4all',
