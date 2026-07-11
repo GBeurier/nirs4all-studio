@@ -156,6 +156,8 @@ class AnalysisExecutionRequest:
     analysis_type: AnalysisExecutionType
     dataset_id: str
     requested_backend: ExecutionBackend = "local-python"
+    requested_engine: str | None = None
+    allow_fallback: bool = False
     workspace_path: str | None = None
     artifacts: Sequence[ExecutionArtifactRef] = field(default_factory=tuple)
     parameters: Mapping[str, Any] = field(default_factory=dict)
@@ -171,6 +173,14 @@ class AnalysisExecutionRequest:
             "requested_backend": self.requested_backend,
             "dataset_id": self.dataset_id,
             "has_workspace": self.workspace_path is not None,
+        }
+        if self.requested_engine is not None:
+            payload["requested_engine"] = self.requested_engine
+        payload["fallback_policy"] = {
+            "source": "nirs4all.run.allow_fallback",
+            "engine_requested": self.requested_engine,
+            "allow_fallback": self.allow_fallback,
+            "mode": "allow_fallback" if self.allow_fallback else "refuse_fallback",
         }
         if self.created_at is not None:
             payload["created_at"] = self.created_at
