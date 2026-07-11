@@ -1,7 +1,7 @@
 {
   "name": "nirs4all-webapp",
   "private": true,
-  "version": "0.9.1",
+  "version": "0.10.0",
   "type": "module",
   "description": "Unified NIRS analysis desktop application",
   "license": "(CECILL-2.1 OR AGPL-3.0-or-later)",
