@@ -43,6 +43,12 @@ def test_analysis_execution_request_metadata_tracks_artifacts_without_workspace_
         "requested_backend": "local-python",
         "dataset_id": "dataset-1",
         "has_workspace": True,
+        "fallback_policy": {
+            "source": "nirs4all.run.allow_fallback",
+            "engine_requested": None,
+            "allow_fallback": False,
+            "mode": "refuse_fallback",
+        },
         "parameters": {"partition": "test"},
         "metadata": {"source": "unit-test"},
         "artifacts": [
@@ -80,6 +86,12 @@ def test_build_analysis_job_config_preserves_legacy_keys():
     assert config["execution_backend"] == "local-python"
     assert config["execution_request"]["job_id"] == "automl_12345678"
     assert config["execution_request"]["analysis_type"] == "automl"
+    assert config["execution_request"]["fallback_policy"] == {
+        "source": "nirs4all.run.allow_fallback",
+        "engine_requested": None,
+        "allow_fallback": False,
+        "mode": "refuse_fallback",
+    }
     assert config["execution_artifacts"] == [artifact.to_dict()]
 
 
@@ -353,6 +365,8 @@ def test_automl_job_config_attaches_dataset_ref_and_search_parameters():
         task_type="regression",
         metric="r2",
         n_trials=5,
+        engine="dag-ml",
+        allow_fallback=True,
     )
     model = {"model_name": "PLSRegression", "enabled": True, "params": []}
 
@@ -366,7 +380,16 @@ def test_automl_job_config_attaches_dataset_ref_and_search_parameters():
 
     assert config["dataset_name"] == "Dataset 1"
     assert config["models"] == [model]
+    assert config["engine"] == "dag-ml"
+    assert config["allow_fallback"] is True
     assert config["execution_request"]["analysis_type"] == "automl"
+    assert config["execution_request"]["requested_engine"] == "dag-ml"
+    assert config["execution_request"]["fallback_policy"] == {
+        "source": "nirs4all.run.allow_fallback",
+        "engine_requested": "dag-ml",
+        "allow_fallback": True,
+        "mode": "allow_fallback",
+    }
     assert config["execution_request"]["parameters"]["n_trials"] == 5
     assert config["execution_request"]["parameters"]["enabled_model_count"] == 1
     assert config["execution_artifacts"] == [
