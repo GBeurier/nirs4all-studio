@@ -3,6 +3,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "./AppSidebar";
 import { BackendStartupBanner } from "./BackendStartupBanner";
 import { FloatingRunWidget } from "./FloatingRunWidget";
+import { LegacyWorkspaceBanner } from "./LegacyWorkspaceBanner";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { useStartupUpdateCheck } from "@/hooks/useStartupUpdateCheck";
 
@@ -18,6 +19,7 @@ export function AppLayout() {
         </div>
         <div className="flex flex-1 flex-col overflow-hidden">
           <BackendStartupBanner />
+          <LegacyWorkspaceBanner />
           <div className="fixed right-4 top-3 z-50">
             <OfflineIndicator />
           </div>
