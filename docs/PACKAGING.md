@@ -119,7 +119,7 @@ Notes:
 - it is the local helper for installer targets
 - it always passes `--publish never`, even though the builder config still
   declares the GitHub provider used by updater/release metadata
-- add `--version 1.0.0-rc.2` for a local RC artifact without mutating
+- add `--version 1.0.0-rc.3` for a local RC artifact without mutating
   `package.json` or `package-lock.json`; the override is stamped into
   `version.json`, Electron metadata, and the Vite-rendered app version
 - the published desktop release matrix is no longer split into CPU/GPU installers
@@ -133,7 +133,7 @@ Windows checkout such as `C:\src\nirs4all\nirs4all-studio`, not from WSL or a
 git clone https://github.com/GBeurier/nirs4all-ui C:\path\to\nirs4all\nirs4all-ui
 cd C:\path\to\nirs4all\nirs4all-studio
 npm install
-npm run release:windows-rc -- --version 1.0.0-rc.2
+npm run release:windows-rc -- --version 1.0.0-rc.3
 ```
 
 `release:windows-rc` is a local-only helper. It refuses to run outside native
@@ -148,7 +148,7 @@ The equivalent lower-level commands are:
 
 ```powershell
 npm run release:smoke
-npm run release -- --clean --platform win --version 1.0.0-rc.2
+npm run release -- --clean --platform win --version 1.0.0-rc.3
 ```
 
 `release:smoke` validates the frontend/backend checks plus the packaging inputs
@@ -200,12 +200,12 @@ The release workflow is `.github/workflows/release-unified.yml`.
 - `skip_docker`
 
 For an installer-only RC smoke build that does not publish a GitHub Release,
-start the workflow manually with a SemVer prerelease such as `1.0.0-rc.2`, set
+start the workflow manually with a SemVer prerelease such as `1.0.0-rc.3`, set
 `skip_all_in_one=true`, and keep `skip_docker=true`. Manual dispatch still runs
 the installer jobs and uploads short-lived workflow artifacts, but the `Create
 GitHub Release` step is gated to real tag pushes. Use a SemVer-compatible RC
 version; labels such as `v1-rc` are not accepted by `npm version`. The current
-prepared artifact set is workflow run `29138360308` for `1.0.0-rc.2`.
+prepared artifact set is workflow run `29141166400` for `1.0.0-rc.3`.
 
 ### Jobs
 
