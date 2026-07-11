@@ -21,7 +21,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
   `nirs4all-tools` converter. Clean conversions can be linked and activated;
   best-effort conversions remain available but are not auto-activated.
 - **Current RC installer artifacts**: A non-publishing `Release` workflow dispatch
-  on `main` produced unsigned installer artifacts for `1.0.0-rc.3`, including
+  on `main` produced unsigned installer artifacts for `1.0.0-rc.4`, including
   Windows x64, without creating a GitHub Release or switching production.
 
 ### Changed
