@@ -880,6 +880,7 @@ jobs:
         # relaunch) is too timing-sensitive under CI load to gate releases; the
         # blocking 'offline all-in-one launch' smoke remains the release gate.
         continue-on-error: true
+        timeout-minutes: 5
         run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform win32
 
       - name: Clean up certificate
@@ -1015,6 +1016,7 @@ jobs:
         # relaunch) is too timing-sensitive under CI load to gate releases; the
         # blocking 'offline all-in-one launch' smoke remains the release gate.
         continue-on-error: true
+        timeout-minutes: 5
         run: xvfb-run -a node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform linux
 
       - name: Generate checksum
@@ -1232,6 +1234,7 @@ jobs:
         # relaunch) is too timing-sensitive under CI load to gate releases; the
         # blocking 'offline all-in-one launch' smoke remains the release gate.
         continue-on-error: true
+        timeout-minutes: 5
         run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Cleanup keychain
@@ -1447,6 +1450,7 @@ jobs:
         # relaunch) is too timing-sensitive under CI load to gate releases; the
         # blocking 'offline all-in-one launch' smoke remains the release gate.
         continue-on-error: true
+        timeout-minutes: 5
         run: node scripts/smoke-self-update.cjs --extracted-root "${{ steps.archive.outputs.extract_root }}" --platform darwin
 
       - name: Cleanup keychain
