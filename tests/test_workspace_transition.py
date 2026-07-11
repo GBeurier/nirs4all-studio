@@ -11,6 +11,23 @@ from types import SimpleNamespace
 os.environ.setdefault("SENTRY_DSN", "")
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+ROOT = Path(__file__).parent.parent
+
+
+def _typescript_interface_fields(interface_name: str) -> set[str]:
+    storage_types = ROOT / "src" / "types" / "storage.ts"
+    text = storage_types.read_text(encoding="utf-8")
+    start = text.index(f"export interface {interface_name} ")
+    body_start = text.index("{", start) + 1
+    body_end = text.index("}", body_start)
+    fields: set[str] = set()
+    for line in text[body_start:body_end].splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("/"):
+            continue
+        fields.add(stripped.split(":", 1)[0].rstrip("?"))
+    return fields
+
 
 def _client_with_workspace(monkeypatch, workspace_path: Path):
     from fastapi.testclient import TestClient
@@ -24,6 +41,22 @@ def _client_with_workspace(monkeypatch, workspace_path: Path):
         lambda: SimpleNamespace(path=str(workspace_path), name="Workspace"),
     )
     return TestClient(app)
+
+
+def test_transition_status_contract_matches_frontend_type():
+    from api.workspace.models import WorkspaceTransitionStatusResponse
+
+    assert _typescript_interface_fields("WorkspaceTransitionStatusResponse") == set(
+        WorkspaceTransitionStatusResponse.model_fields
+    )
+
+
+def test_legacy_conversion_contract_matches_frontend_type():
+    from api.workspace.models import LegacyWorkspaceConversionResponse
+
+    assert _typescript_interface_fields("LegacyWorkspaceConversionResponse") == set(
+        LegacyWorkspaceConversionResponse.model_fields
+    )
 
 
 def test_transition_status_detects_legacy_duckdb(monkeypatch, tmp_path):
