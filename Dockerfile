@@ -57,7 +57,7 @@ RUN rm -rf /var/lib/apt/lists/* \
     && rm -rf /var/lib/apt/lists/*
 
 # Ensure Python 3.11+ is available. CUDA Ubuntu 22.04 images ship Python 3.10,
-# which is too old for nirs4all 0.10.0.
+# which is too old for nirs4all 0.11.0.
 # hadolint ignore=DL3013
 RUN set -eux; \
     if command -v python3 >/dev/null 2>&1 && python3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"; then \

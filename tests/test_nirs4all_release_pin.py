@@ -12,7 +12,7 @@ def test_release_workflows_embed_recommended_nirs4all_version() -> None:
     version = config["nirs4all"]
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
 
-    assert version == "0.10.3"
+    assert version == "0.11.0"
     assert f"ref: {version}" in workflow
     assert f"NIRS4ALL_VERSION={version}" in workflow
     assert "ref: 0.10.0" not in workflow
