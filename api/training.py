@@ -30,6 +30,7 @@ from .nirs4all_adapter import (
     ensure_models_dir,
     require_nirs4all,
 )
+from .runtime_engine import engine_run_kwargs, fallback_policy_record, observe_engine
 from .shared.logger import get_logger
 from .workspace_manager import workspace_manager
 
@@ -64,6 +65,8 @@ class TrainingRequest(BaseModel):
     random_state: int | None = Field(42, description="Random seed for reproducibility")
     refit: Any | None = Field(True, description="Refit configuration: True (default refit), False (no refit), or dict with refit_params")
     refit_params: dict[str, Any] | None = Field(None, description="Override parameters for the refit model")
+    engine: str | None = Field(None, description="Runtime engine for nirs4all.run; None uses the library default")
+    allow_fallback: bool = Field(False, description="Allow dag-ml to fall back to legacy when the runtime refuses a shape")
 
 
 class TrainingJobResponse(BaseModel):
@@ -164,6 +167,8 @@ async def start_training(request: TrainingRequest):
         "random_state": request.random_state,
         "workspace_path": workspace.path,
         "refit": refit_value,
+        "engine": request.engine,
+        "allow_fallback": request.allow_fallback,
     }
 
     # Create and submit job
@@ -460,10 +465,21 @@ def _run_training_task(
     }
     if "refit" in config:
         run_kwargs["refit"] = config["refit"]
+    requested_engine = config.get("engine")
+    allow_fallback = bool(config.get("allow_fallback", False))
+    run_kwargs.update(engine_run_kwargs(requested_engine))
+    if "engine" in run_kwargs:
+        run_kwargs["allow_fallback"] = allow_fallback
+    fallback_policy = fallback_policy_record(requested_engine, allow_fallback)
 
     # Run training with nirs4all
     try:
-        result = nirs4all.run(**run_kwargs)
+        with observe_engine(requested_engine) as engine_observation:
+            result = nirs4all.run(**run_kwargs)
+        engine_record = engine_observation.finalize(
+            result,
+            fallback_policy=fallback_policy,
+        )
     except Exception as e:
         raise ValueError(f"Training failed: {str(e)}")
 
@@ -553,6 +569,7 @@ def _run_training_task(
         "total_variants": n_variants,
         "num_predictions": n_variants,
         "duration_seconds": duration,
+        **engine_record,
     }
 
 
