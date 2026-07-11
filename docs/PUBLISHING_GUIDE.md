@@ -113,11 +113,11 @@ If you need to rebuild without pushing a new tag:
 For an installer-only Windows RC smoke build while production remains held:
 
 1. Run **Actions > Release** on `main`
-2. Set `tag` to the current RC version, for example `1.0.0-rc.2`
+2. Set `tag` to the current RC version, for example `1.0.0-rc.3`
 3. Set `skip_all_in_one=true`
 4. Keep `skip_docker=true`
 
-When the RC tag does not exist as a tag, the workflow stamps that version into the artifacts but checks out the triggering commit. This produces unsigned test artifacts without creating a release tag or publishing a production release. The current prepared RC artifact set is workflow run `29138360308` for `1.0.0-rc.2`.
+When the RC tag does not exist as a tag, the workflow stamps that version into the artifacts but checks out the triggering commit. This produces unsigned test artifacts without creating a release tag or publishing a production release. The current prepared RC artifact set is workflow run `29141166400` for `1.0.0-rc.3`.
 
 ## Local Windows RC installer
 
@@ -125,17 +125,17 @@ For a local installer candidate while the Studio production release remains held
 
 ```powershell
 npm install
-npm run release:windows-rc -- --version 1.0.0-rc.2
+npm run release:windows-rc -- --version 1.0.0-rc.3
 ```
 
 The helper rebuilds the sibling `..\nirs4all-ui` package, runs the quick release smoke unless `--skip-smoke` is passed, stamps the RC version locally, and then builds Windows installer artifacts with publishing disabled. Expected outputs:
 
 ```text
-release/nirs4all Studio-1.0.0-rc.2-win-x64.exe
-release/nirs4all Studio-1.0.0-rc.2-win-x64-portable.exe
+release/nirs4all Studio-1.0.0-rc.3-win-x64.exe
+release/nirs4all Studio-1.0.0-rc.3-win-x64-portable.exe
 ```
 
-Use `npm run release:windows-rc -- --version 1.0.0-rc.2 --skip-smoke` only after `npm run release:smoke` has already passed on the same checkout.
+Use `npm run release:windows-rc -- --version 1.0.0-rc.3 --skip-smoke` only after `npm run release:smoke` has already passed on the same checkout.
 
 ---
 
