@@ -8,8 +8,8 @@ query for each aggregate (predictions sample row, refit predictions, count
 stats, model-class distribution, CV info, artifact sizes). Per-run loops then
 run over the already-materialized in-memory rows.
 
-The response shape is intentionally byte-identical to the previous monolith;
-the only change is *how* the rows are fetched.
+The response shape preserves the previous monolith and additionally threads
+native launch metadata that must survive workspace reloads.
 """
 
 from __future__ import annotations
@@ -19,6 +19,10 @@ import re
 from datetime import datetime
 from typing import Any, Callable
 
+from .robustness_contract import (
+    build_robustness_execution_diagnostic,
+    normalize_robustness_launch_payload,
+)
 from .shared.json_safe import sanitize_dict, sanitize_float
 
 # Imported lazily at module load -- store_adapter imports EnrichedRunsBuilder
@@ -47,6 +51,25 @@ def _grouped_rows(df: Any, key: str) -> dict[str, list[dict[str, Any]]]:
         row_dict = dict(row)
         grouped.setdefault(str(row_dict.get(key) or ""), []).append(row_dict)
     return grouped
+
+
+def _extract_robustness_launch_plan(run_config_data: dict[str, Any]) -> dict[str, Any] | None:
+    raw = run_config_data.get("robustness")
+    if raw is None:
+        return None
+    try:
+        return normalize_robustness_launch_payload(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _robustness_launch_fields(robustness_plan: dict[str, Any] | None) -> dict[str, Any]:
+    if not robustness_plan:
+        return {}
+    return {
+        "robustness_plan": robustness_plan,
+        "robustness_execution": build_robustness_execution_diagnostic(robustness_plan),
+    }
 
 
 class EnrichedRunsBuilder:
@@ -327,6 +350,7 @@ class EnrichedRunsBuilder:
             run_config_data = config_raw
         else:
             run_config_data = {}
+        robustness_plan = _extract_robustness_launch_plan(run_config_data)
 
         datasets_meta_map: dict[str, dict] = {}
         for dm in datasets_meta:
@@ -345,6 +369,7 @@ class EnrichedRunsBuilder:
                 agg_list=agg_list,
                 ds_meta=datasets_meta_map.get(ds_name, {}),
                 run_config_data=run_config_data,
+                robustness_plan=robustness_plan,
                 sample_row=sample_rows.get((str(run_id), ds_name)),
                 refit_predictions_map=refit_by_key.get((str(run_id), ds_name), {}),
             )
@@ -403,6 +428,8 @@ class EnrichedRunsBuilder:
             "config": sanitize_dict(run_cv_config),
             "model_classes": model_classes,
         }
+        if robustness_plan:
+            payload["robustness"] = robustness_plan
         payload.update(runtime_fields)
         return sanitize_dict(payload)
 
@@ -414,6 +441,7 @@ class EnrichedRunsBuilder:
         agg_list: list[dict[str, Any]],
         ds_meta: dict[str, Any],
         run_config_data: dict[str, Any],
+        robustness_plan: dict[str, Any] | None,
         sample_row: dict[str, Any] | None,
         refit_predictions_map: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
@@ -489,6 +517,7 @@ class EnrichedRunsBuilder:
 
         top_5: list[dict[str, Any]] = []
         best_final_score = None
+        robustness_fields = _robustness_launch_fields(robustness_plan)
         for entry in top_5_entries:
             chain_id = entry.get("chain_id", "")
             agg_entry = agg_entry_by_chain_id.get(chain_id, entry)
@@ -541,6 +570,7 @@ class EnrichedRunsBuilder:
                 "final_agg_train_score": final_agg_trs,
                 "final_agg_scores": final_agg_scores,
                 "synthetic_refit": bool(agg_entry.get("synthetic_refit")),
+                **robustness_fields,
             }))
 
         for rchain_id in refit_only_chain_ids:
@@ -586,6 +616,7 @@ class EnrichedRunsBuilder:
                 "final_agg_scores": rfinal_agg_scores,
                 "is_refit_only": True,
                 "synthetic_refit": bool(agg_entry.get("synthetic_refit")),
+                **robustness_fields,
             }))
 
         n_samples = ds_meta.get("n_samples")

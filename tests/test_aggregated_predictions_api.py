@@ -282,6 +282,78 @@ class TestStoreAdapterAggregated:
         assert result["sample_indices"] == [0, 1, 2]
         assert result["y_proba"] is None
 
+    def test_get_prediction_arrays_includes_prediction_context(self):
+        mock_store = MagicMock()
+        mock_store.get_prediction_arrays.return_value = {
+            "y_true": np.array([1.0, 2.0, 3.0]),
+            "y_pred": np.array([1.1, 1.9, 3.1]),
+            "sample_indices": np.array([0, 1, 2]),
+        }
+        mock_store.get_prediction.return_value = {
+            "run_id": "run-001",
+            "pipeline_id": "pipe-001",
+            "chain_id": "chain-001",
+            "dataset_name": "dataset_a",
+            "model_name": "PLS",
+            "result_metadata": {
+                "robustness_evidence": {
+                    "predictor_bundle": "model.n4a",
+                },
+            },
+        }
+
+        adapter = self._make_adapter(mock_store)
+        result = adapter.get_prediction_arrays("pred-001")
+
+        assert result is not None
+        assert result["run_id"] == "run-001"
+        assert result["pipeline_id"] == "pipe-001"
+        assert result["chain_id"] == "chain-001"
+        assert result["dataset_name"] == "dataset_a"
+        assert result["model_name"] == "PLS"
+        assert result["result_metadata"]["robustness_evidence"]["predictor_bundle"] == "model.n4a"
+
+    def test_get_prediction_arrays_fallback_includes_published_spectral_evidence(self):
+        mock_store = MagicMock()
+        mock_store.get_prediction_arrays.return_value = None
+        mock_store.get_prediction.side_effect = [
+            {
+                "run_id": "run-001",
+                "pipeline_id": "pipe-001",
+                "chain_id": "chain-001",
+                "dataset_name": "dataset_a",
+                "model_name": "PLS",
+            },
+            {
+                "run_id": "run-001",
+                "pipeline_id": "pipe-001",
+                "chain_id": "chain-001",
+                "dataset_name": "dataset_a",
+                "model_name": "PLS",
+                "y_true": np.array([1.0, 2.0]),
+                "y_pred": np.array([1.1, 1.9]),
+                "X": np.array([[10.0, 11.0], [20.0, 21.0]]),
+                "sample_indices": np.array([0, 2]),
+                "result_metadata": {
+                    "robustness_evidence": {
+                        "X": "prediction_arrays.X",
+                        "predictor_bundle": "model.n4a",
+                    },
+                },
+            },
+        ]
+
+        adapter = self._make_adapter(mock_store)
+        result = adapter.get_prediction_arrays("pred-001")
+
+        assert result is not None
+        assert result["X"] == [[10.0, 11.0], [20.0, 21.0]]
+        assert result["sample_indices"] == [0, 2]
+        assert result["result_metadata"]["robustness_evidence"] == {
+            "X": "prediction_arrays.X",
+            "predictor_bundle": "model.n4a",
+        }
+
     def test_get_prediction_arrays_not_found(self):
         mock_store = MagicMock()
         mock_store.get_prediction_arrays.return_value = None

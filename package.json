@@ -19,6 +19,7 @@
     "build:electron-dev": "node scripts/build-electron-dev.cjs",
     "build": "vite build",
     "build:electron": "cross-env ELECTRON=true vite build",
+    "prepublishOnly": "npm run lint:tsc",
     "start:desktop": "npm run dev:electron",
     "electron:preview": "cross-env ELECTRON_RUN_AS_NODE= electron .",
     "lint:eslint": "eslint .",

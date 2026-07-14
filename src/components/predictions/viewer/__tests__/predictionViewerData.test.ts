@@ -98,6 +98,62 @@ describe("predictionViewerData", () => {
     expect(buildPredictionViewerCsvExport("scatter", [], { histogramSeries: "both" })).toBeNull();
   });
 
+  it("includes conformal interval bounds in scatter CSV rows when available", () => {
+    const csvExport = buildPredictionViewerCsvExport("scatter", [
+      dataset({
+        conformalCoverage: 0.8,
+        conformalCoverageLabel: "80%",
+        conformalIntervals: [
+          { coverage: 0.8, coverageLabel: "80%", lower: 0.75, upper: 1.75 },
+          { coverage: 0.8, coverageLabel: "80%", lower: 1.25, upper: 2.25 },
+        ],
+        yTrue: [1, 2],
+        yPred: [1.25, 1.75],
+      }),
+    ], { histogramSeries: "both" });
+
+    expect(csvExport).toEqual({
+      columns: [
+        "sample_id",
+        "partition",
+        "y_true",
+        "y_pred",
+        "residual",
+        "conformal_coverage",
+        "conformal_coverage_label",
+        "conformal_lower",
+        "conformal_upper",
+        "conformal_width",
+      ],
+      rows: [
+        {
+          sample_id: 0,
+          partition: "Test",
+          y_true: 1,
+          y_pred: 1.25,
+          residual: -0.25,
+          conformal_coverage: 0.8,
+          conformal_coverage_label: "80%",
+          conformal_lower: 0.75,
+          conformal_upper: 1.75,
+          conformal_width: 1,
+        },
+        {
+          sample_id: 1,
+          partition: "Test",
+          y_true: 2,
+          y_pred: 1.75,
+          residual: 0.25,
+          conformal_coverage: 0.8,
+          conformal_coverage_label: "80%",
+          conformal_lower: 1.25,
+          conformal_upper: 2.25,
+          conformal_width: 1,
+        },
+      ],
+    });
+  });
+
   it("decides when the color legend is visible", () => {
     expect(shouldShowPredictionColorLegend({
       colorMode: "partition",

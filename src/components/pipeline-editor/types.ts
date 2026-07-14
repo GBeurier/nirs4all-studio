@@ -121,6 +121,8 @@ export interface FinetuneConfig {
   eval_mode: "best" | "mean";          // Score evaluation mode
   sample?: "grid" | "random" | "hyperband"; // Sampling strategy
   verbose?: number;       // Verbosity level
+  storage?: string;        // Optuna storage URI for persistent optimizer state
+  study_name?: string;     // Optuna study name for persistent optimizer state
   model_params: FinetuneParamConfig[];
   // Training params to be tuned (ranges): e.g., batch_size from 16 to 256
   train_params?: FinetuneParamConfig[];

@@ -242,6 +242,17 @@ def test_local_python_driver_emits_records_for_injected_repository():
                 "job_type": "training",
                 "scheduler": "job-manager-thread-pool",
                 "runner": "nirs4all.run",
+                "workspace_prediction_publication": {
+                    "destination": "result_metadata.robustness_evidence",
+                    "publisher": "nirs4all-studio.run-driver",
+                    "status": "publisher_configured",
+                    "writes": [
+                        "prediction_arrays.X",
+                        "result_metadata.robustness_evidence.X",
+                        "result_metadata.robustness_evidence.predictor_bundle",
+                        "result_metadata.robustness_evidence.publisher",
+                    ],
+                },
             },
         },
         "metrics": {},

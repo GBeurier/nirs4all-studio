@@ -115,6 +115,15 @@ export interface PipelineRun {
   rt_result?: unknown;
   runtime_result?: unknown;
   native_results?: unknown;
+  tuning_result?: unknown;
+  tuningResult?: unknown;
+  robustness_plan?: unknown;
+  robustnessPlan?: unknown;
+  robustness_execution?: unknown;
+  robustnessExecution?: unknown;
+  robustness?: unknown;
+  robustness_summary?: unknown;
+  robustnessSummary?: unknown;
 }
 
 export interface DatasetRun {
@@ -172,6 +181,7 @@ export interface Run {
   engine_diagnostics?: Array<Record<string, unknown>> | null;
   allow_fallback?: boolean;
   fallback_policy?: Record<string, unknown> | null;
+  robustness?: RunRobustnessLaunchPayload | null;
   status: RunStatus;
   format?: RunFormat;
   created_at: string;
@@ -249,6 +259,13 @@ export const runStatusConfig = {
 
 export type SplitGroupByByDataset = Record<string, string | null>;
 
+export interface RunRobustnessLaunchPayload {
+  mode?: "clean_frozen";
+  scenarios: Array<Record<string, unknown>>;
+  slice_by?: string[];
+  publish_evidence?: Record<string, unknown>;
+}
+
 // Experiment configuration for creating new runs
 export interface ExperimentConfig {
   name: string;
@@ -258,6 +275,7 @@ export interface ExperimentConfig {
   execution_backend?: RunExecutionBackend;
   engine?: string | null;
   allow_fallback?: boolean;
+  robustness?: RunRobustnessLaunchPayload;
   cv_folds?: number;
   cv_strategy?: "kfold" | "stratified" | "loo" | "holdout";
   test_size?: number;

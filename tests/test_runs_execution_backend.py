@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -46,6 +47,454 @@ def test_create_run_from_config_copies_requested_execution_backend(tmp_path):
     )
 
     assert run.execution_backend == "cluster"
+
+
+def test_create_run_from_config_threads_robustness_launch_metadata(tmp_path):
+    run = runs_api._create_run_from_config(
+        runs_api.ExperimentConfig(
+            name="Robustness experiment",
+            dataset_ids=["dataset-a"],
+            pipeline_ids=["pipe-a"],
+            robustness={
+                "mode": "clean_frozen",
+                "scenarios": [
+                    {"kind": "spectral_noise", "severity": 0.2, "distribution": "normal"},
+                ],
+                "publish_evidence": {
+                    "spectral_replay": {
+                        "X": "dataset_partition",
+                        "predictor_bundle": "exported_model_bundle",
+                        "destination": "result_metadata.robustness_evidence",
+                        "fail_closed": True,
+                    },
+                },
+            },
+        ),
+        dataset_infos={"dataset-a": {"name": "Dataset A", "id": "dataset-a"}},
+        pipeline_configs={"pipe-a": {"name": "Pipeline A", "steps": []}},
+        workspace_path=str(tmp_path),
+    )
+
+    assert run.robustness == {
+        "mode": "clean_frozen",
+        "scenarios": [
+            {"kind": "spectral_noise", "severity": 0.2, "distribution": "normal"},
+        ],
+        "publish_evidence": {
+            "spectral_replay": {
+                "X": "dataset_partition",
+                "predictor_bundle": "exported_model_bundle",
+                "destination": "result_metadata.robustness_evidence",
+                "fail_closed": True,
+            },
+        },
+    }
+    assert run.datasets[0].pipelines[0].robustness_plan == run.robustness
+    assert run.datasets[0].pipelines[0].robustness_execution == {
+        "status": "needs_spectral_replay_evidence",
+        "message": "Robustness plan is transported, but no nirs4all RobustnessReport has been computed yet.",
+        "scenario_kinds": ["spectral_noise"],
+        "requires_y_true": True,
+        "requires_predictions": True,
+        "requires_X": True,
+        "requires_predictor": True,
+        "spectral_evidence_publication_requested": True,
+        "blockers": [
+            "Studio has not yet materialized a row-aligned PredictResult or CalibratedRunResult plus y_true for this pipeline.",
+            "At least one spectral scenario requires the original X matrix and a frozen predictor replay surface.",
+        ],
+    }
+    metadata = runs_api._build_run_execution_metadata(run)
+    assert metadata["robustness"] == run.robustness
+    assert metadata["robustness_evidence_publication_handoff"] == {
+        "kind": "robustness_evidence_publication_handoff",
+        "role": "spectral-replay-evidence-publication",
+        "status": "requested",
+        "destination": "result_metadata.robustness_evidence",
+        "fail_closed": True,
+        "x_source_requested": "dataset_partition",
+        "predictor_bundle_requested": "exported_model_bundle",
+        "published_fields": [
+            "prediction_arrays.X",
+            "prediction_arrays.result_metadata.robustness_evidence.X",
+            "prediction_arrays.result_metadata.robustness_evidence.predictor_bundle",
+        ],
+        "alignment_contract": {
+            "mode": "publish_only_when_row_alignment_is_proven",
+            "strategies": [
+                {
+                    "kind": "sample_indices",
+                    "prediction_source": "prediction_arrays.sample_indices",
+                    "requires": "all indices in dataset X bounds",
+                },
+                {
+                    "kind": "full_dataset_length",
+                    "prediction_source": "prediction_arrays.y_true|y_pred",
+                    "requires": "prediction row count equals dataset X row count",
+                },
+                {
+                    "kind": "unique_metadata_identity",
+                    "dataset_source": "dataset.metadata()",
+                    "prediction_source": "prediction_arrays.sample_metadata",
+                    "keys": [
+                        "sample_id",
+                        "physical_sample_id",
+                        "origin_sample_id",
+                        "row_id",
+                        "unit_id",
+                        "observation_id",
+                        "internal_sample_id",
+                    ],
+                    "alias_groups": [
+                        ["sample_id", "sample_ids"],
+                        ["physical_sample_id", "physical_sample_ids"],
+                        ["origin_sample_id", "origin_sample_ids"],
+                        ["row_id", "row_ids"],
+                        ["unit_id", "unit_ids"],
+                        ["observation_id", "observation_ids"],
+                        ["internal_sample_id", "internal_sample_ids"],
+                    ],
+                    "requires": "unique non-null identifiers on both sides",
+                },
+                {
+                    "kind": "relation_manifest_identity",
+                    "dataset_source": "dataset.metadata()",
+                    "prediction_source": "prediction_arrays.result_metadata.relation_*_manifest.materialization_manifest",
+                    "keys": [
+                        "sample_id",
+                        "physical_sample_id",
+                        "origin_sample_id",
+                        "row_id",
+                        "unit_id",
+                        "observation_id",
+                        "internal_sample_id",
+                    ],
+                    "alias_groups": [
+                        ["sample_id", "sample_ids"],
+                        ["physical_sample_id", "physical_sample_ids"],
+                        ["origin_sample_id", "origin_sample_ids"],
+                        ["row_id", "row_ids"],
+                        ["unit_id", "unit_ids"],
+                        ["observation_id", "observation_ids"],
+                        ["internal_sample_id", "internal_sample_ids"],
+                    ],
+                    "requires": "explicit row-aligned identifiers in relation materialization metadata",
+                },
+            ],
+        },
+    }
+
+
+def test_robustness_evidence_publication_trace_is_auditable_not_consumable():
+    trace = runs_api._build_robustness_evidence_publication_trace(
+        {
+            "mode": "clean_frozen",
+            "scenarios": [{"kind": "spectral_shift", "severity": 0.2}],
+            "publish_evidence": {
+                "spectral_replay": {
+                    "X": "dataset_partition",
+                    "predictor_bundle": "exported_model_bundle",
+                    "destination": "result_metadata.robustness_evidence",
+                    "fail_closed": True,
+                },
+            },
+        },
+        dataset_id="dataset-a",
+        model_path="/workspace/models/pipe.n4a",
+    )
+
+    assert trace == {
+        "kind": "robustness_evidence_publication_trace",
+        "role": "spectral-replay-evidence-publication",
+        "status": "partial",
+        "destination": "result_metadata.robustness_evidence",
+        "fail_closed": True,
+        "dataset_id": "dataset-a",
+        "x_source_requested": "dataset_partition",
+        "x_status": "requires_prediction_array_publication",
+        "published_prediction_count": 0,
+        "predictor_bundle_requested": "exported_model_bundle",
+        "predictor_bundle_status": "available",
+        "predictor_bundle_path": "/workspace/models/pipe.n4a",
+    }
+    assert "X" not in trace
+    assert "predictor_bundle" not in trace
+    assert "model_path" not in trace
+
+
+def test_publish_robustness_spectral_replay_evidence_writes_prediction_arrays(tmp_path):
+    class FakeRows:
+        def iter_rows(self, named: bool = False):
+            assert named is True
+            return iter(
+                [
+                    {
+                        "prediction_id": "pred-a",
+                        "dataset_name": "dataset-a",
+                        "model_name": "PLSRegression",
+                        "fold_id": "final",
+                        "partition": "test",
+                        "metric": "rmse",
+                        "val_score": None,
+                        "task_type": "regression",
+                    }
+                ]
+            )
+
+    class FakeArrayStore:
+        def __init__(self):
+            self.saved = []
+
+        def load_single(self, prediction_id, dataset_name=None):
+            assert prediction_id == "pred-a"
+            assert dataset_name == "dataset-a"
+            return {
+                "y_true": np.array([1.0, 3.0]),
+                "y_pred": np.array([1.1, 2.9]),
+                "sample_indices": np.array([0, 2]),
+                "sample_metadata": {"sample_id": ["s0", "s2"]},
+            }
+
+        def save_batch(self, records):
+            self.saved.extend(records)
+
+    class FakeStore:
+        def __init__(self, _workspace_path):
+            self.array_store = FakeArrayStore()
+            stores.append(self)
+
+        def query_predictions(self, run_id=None):
+            assert run_id == "store-run-a"
+            return FakeRows()
+
+        def close(self):
+            self.closed = True
+
+    class FakeDataset:
+        def x(self, _selector=None, *, layout="2d"):
+            assert layout == "2d"
+            return np.array(
+                [
+                    [10.0, 11.0],
+                    [20.0, 21.0],
+                    [30.0, 31.0],
+                ]
+            )
+
+    stores = []
+    summary = runs_api._publish_robustness_spectral_replay_evidence(
+        robustness={
+            "publish_evidence": {
+                "spectral_replay": {
+                    "X": "dataset_partition",
+                    "predictor_bundle": "exported_model_bundle",
+                },
+            },
+        },
+        workspace_path=str(tmp_path),
+        store_run_id="store-run-a",
+        dataset_object=FakeDataset(),
+        model_path="/workspace/models/model.n4a",
+        store_factory=FakeStore,
+    )
+
+    assert summary == {
+        "status": "published",
+        "published_prediction_count": 1,
+    }
+    assert len(stores) == 1
+    assert stores[0].closed is True
+    assert len(stores[0].array_store.saved) == 1
+    saved = stores[0].array_store.saved[0]
+    np.testing.assert_allclose(saved["X"], np.array([[10.0, 11.0], [30.0, 31.0]]))
+    assert saved["result_metadata"] == {
+        "robustness_evidence": {
+            "X": "prediction_arrays.X",
+            "predictor_bundle": "/workspace/models/model.n4a",
+            "publisher": "nirs4all-studio.run-driver",
+        },
+    }
+    trace = runs_api._build_robustness_evidence_publication_trace(
+        {
+            "publish_evidence": {
+                "spectral_replay": {
+                    "X": "dataset_partition",
+                    "predictor_bundle": "exported_model_bundle",
+                },
+            },
+        },
+        dataset_id="dataset-a",
+        model_path="/workspace/models/model.n4a",
+        publication_summary=summary,
+    )
+    assert trace is not None
+    assert trace["status"] == "published"
+    assert trace["x_status"] == "published_to_prediction_arrays"
+    assert trace["published_prediction_count"] == 1
+
+
+def test_publish_robustness_spectral_replay_evidence_uses_full_dataset_without_indices(tmp_path):
+    class FakeRows:
+        def iter_rows(self, named: bool = False):
+            assert named is True
+            return iter(
+                [
+                    {
+                        "prediction_id": "pred-full",
+                        "dataset_name": "dataset-a",
+                        "model_name": "PLSRegression",
+                        "fold_id": "final",
+                        "partition": "test",
+                        "metric": "rmse",
+                        "val_score": None,
+                        "task_type": "regression",
+                    }
+                ]
+            )
+
+    class FakeArrayStore:
+        def __init__(self):
+            self.saved = []
+
+        def load_single(self, prediction_id, dataset_name=None):
+            assert prediction_id == "pred-full"
+            assert dataset_name == "dataset-a"
+            return {
+                "y_true": np.array([1.0, 2.0, 3.0]),
+                "y_pred": np.array([1.1, 1.9, 3.2]),
+            }
+
+        def save_batch(self, records):
+            self.saved.extend(records)
+
+    class FakeStore:
+        def __init__(self, _workspace_path):
+            self.array_store = FakeArrayStore()
+            stores.append(self)
+
+        def query_predictions(self, run_id=None):
+            assert run_id == "store-run-full"
+            return FakeRows()
+
+        def close(self):
+            pass
+
+    class FakeDataset:
+        def x(self, _selector=None, *, layout="2d"):
+            assert layout == "2d"
+            return np.array(
+                [
+                    [10.0, 11.0],
+                    [20.0, 21.0],
+                    [30.0, 31.0],
+                ]
+            )
+
+    stores = []
+    summary = runs_api._publish_robustness_spectral_replay_evidence(
+        robustness={
+            "publish_evidence": {
+                "spectral_replay": {
+                    "X": "dataset_partition",
+                    "predictor_bundle": "exported_model_bundle",
+                },
+            },
+        },
+        workspace_path=str(tmp_path),
+        store_run_id="store-run-full",
+        dataset_object=FakeDataset(),
+        model_path="/workspace/models/model.n4a",
+        store_factory=FakeStore,
+    )
+
+    assert summary == {
+        "status": "published",
+        "published_prediction_count": 1,
+    }
+    saved = stores[0].array_store.saved[0]
+    np.testing.assert_allclose(
+        saved["X"],
+        np.array([[10.0, 11.0], [20.0, 21.0], [30.0, 31.0]]),
+    )
+
+
+def test_select_prediction_x_aligns_by_sample_identity_metadata():
+    X = np.array(
+        [
+            [10.0, 11.0],
+            [20.0, 21.0],
+            [30.0, 31.0],
+        ]
+    )
+
+    selected = runs_api._select_prediction_X(
+        X,
+        {
+            "y_true": np.array([3.0, 1.0]),
+            "sample_metadata": {
+                "sample_id": ["s2", "s0"],
+            },
+        },
+        dataset_metadata={
+            "sample_id": ["s0", "s1", "s2"],
+        },
+    )
+
+    np.testing.assert_allclose(selected, np.array([[30.0, 31.0], [10.0, 11.0]]))
+
+
+def test_select_prediction_x_aligns_by_relation_materialization_manifest():
+    X = np.array(
+        [
+            [10.0, 11.0],
+            [20.0, 21.0],
+            [30.0, 31.0],
+        ]
+    )
+
+    selected = runs_api._select_prediction_X(
+        X,
+        {
+            "y_pred": np.array([3.0, 1.0]),
+            "result_metadata": {
+                "relation_replay_manifest": {
+                    "materialization_manifest": {
+                        "sample_ids": ["s2", "s0"],
+                    },
+                },
+            },
+        },
+        dataset_metadata={
+            "sample_id": ["s0", "s1", "s2"],
+        },
+    )
+
+    np.testing.assert_allclose(selected, np.array([[30.0, 31.0], [10.0, 11.0]]))
+
+
+def test_select_prediction_x_rejects_ambiguous_identity_metadata():
+    X = np.array(
+        [
+            [10.0, 11.0],
+            [20.0, 21.0],
+            [30.0, 31.0],
+        ]
+    )
+
+    selected = runs_api._select_prediction_X(
+        X,
+        {
+            "y_true": np.array([1.0]),
+            "sample_metadata": {
+                "sample_id": ["duplicated"],
+            },
+        },
+        dataset_metadata={
+            "sample_id": ["duplicated", "duplicated", "other"],
+        },
+    )
+
+    assert selected is None
 
 
 def test_start_run_job_adds_execution_driver_metadata(monkeypatch):
@@ -254,6 +703,17 @@ def test_execution_backends_route_lists_capabilities_before_run_id_route():
                     "job_type": "training",
                     "scheduler": "job-manager-thread-pool",
                     "runner": "nirs4all.run",
+                    "workspace_prediction_publication": {
+                        "destination": "result_metadata.robustness_evidence",
+                        "publisher": "nirs4all-studio.run-driver",
+                        "status": "publisher_configured",
+                        "writes": [
+                            "prediction_arrays.X",
+                            "result_metadata.robustness_evidence.X",
+                            "result_metadata.robustness_evidence.predictor_bundle",
+                            "result_metadata.robustness_evidence.publisher",
+                        ],
+                    },
                 },
             },
             {
@@ -398,6 +858,20 @@ def test_start_run_job_persists_workspace_execution_job_record(monkeypatch, tmp_
         total_pipelines=0,
         completed_pipelines=0,
         workspace_path=str(tmp_path),
+        robustness={
+            "mode": "clean_frozen",
+            "scenarios": [
+                {"kind": "spectral_noise", "severity": 0.2, "distribution": "normal"},
+            ],
+            "publish_evidence": {
+                "spectral_replay": {
+                    "X": "dataset_partition",
+                    "predictor_bundle": "exported_model_bundle",
+                    "destination": "result_metadata.robustness_evidence",
+                    "fail_closed": True,
+                },
+            },
+        },
     )
 
     runs_api._start_run_job(run)
@@ -412,6 +886,18 @@ def test_start_run_job_persists_workspace_execution_job_record(monkeypatch, tmp_
     assert payload["request"]["run_id"] == "run-1"
     assert payload["request"]["has_workspace"] is True
     assert payload["request"]["requested_engine"] == "dag-ml"
+    handoff = payload["request"]["metadata"]["robustness_evidence_publication_handoff"]
+    assert handoff["kind"] == "robustness_evidence_publication_handoff"
+    assert handoff["status"] == "requested"
+    assert handoff["fail_closed"] is True
+    assert handoff["destination"] == "result_metadata.robustness_evidence"
+    assert handoff["alignment_contract"]["mode"] == "publish_only_when_row_alignment_is_proven"
+    assert [item["kind"] for item in handoff["alignment_contract"]["strategies"]] == [
+        "sample_indices",
+        "full_dataset_length",
+        "unique_metadata_identity",
+        "relation_manifest_identity",
+    ]
 
 
 def test_get_run_execution_job_record_reads_workspace_snapshot(monkeypatch, tmp_path):
@@ -1257,6 +1743,7 @@ def test_execute_run_job_tolerates_run_store_open_failure(monkeypatch, tmp_path,
         *,
         store_run_id=None,
         engine=None,
+        robustness=None,
         allow_fallback=True,
         should_stop=None,
     ):
@@ -1301,10 +1788,7 @@ def test_execute_run_job_tolerates_run_store_open_failure(monkeypatch, tmp_path,
             "store_run_id": None,
         }
     ]
-    assert any(
-        record.levelname == "WARNING" and "store unavailable" in record.getMessage()
-        for record in caplog.records
-    )
+    assert any(record.levelname == "WARNING" and "store unavailable" in record.getMessage() for record in caplog.records)
 
 
 def test_execute_run_job_tolerates_store_precreation_failure(monkeypatch, tmp_path, caplog):
@@ -1361,6 +1845,7 @@ def test_execute_run_job_tolerates_store_precreation_failure(monkeypatch, tmp_pa
         *,
         store_run_id=None,
         engine=None,
+        robustness=None,
         allow_fallback=True,
         should_stop=None,
     ):
@@ -1531,6 +2016,7 @@ def test_execute_run_job_clears_precreated_store_run_when_project_assignment_fai
         *,
         store_run_id=None,
         engine=None,
+        robustness=None,
         allow_fallback=True,
         should_stop=None,
     ):

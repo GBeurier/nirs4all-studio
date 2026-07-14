@@ -42,6 +42,16 @@ This guide shows you how to export prediction results from nirs4all Studio as CS
    | **Fold**      | Which cross-validation fold the sample belonged to.        |
    | **Split**     | Whether the sample was in the Train or Test set.           |
 
+   If the full-screen prediction viewer is showing native conformal intervals, the CSV export also includes:
+
+   | Column | Description |
+   | ------ | ----------- |
+   | `conformal_coverage` | The selected nominal coverage level for the visible intervals, for example `0.8` or `0.95`. |
+   | `conformal_coverage_label` | Display label for the selected coverage, for example `80%` or `95%`. |
+   | `conformal_lower` | Lower bound of the selected conformal interval for the sample. |
+   | `conformal_upper` | Upper bound of the selected conformal interval for the sample. |
+   | `conformal_width` | Width of the selected interval (`upper - lower`) for the sample. |
+
    :::{tip}
    The **Residual** column is useful for quickly identifying samples where the model struggled. Large absolute residuals point to potential outliers or difficult-to-predict samples.
    :::
@@ -52,6 +62,10 @@ For classification tasks, the columns are slightly different: **Predicted** cont
 
 :::{warning}
 If you export predictions from multiple chains into the same file, make sure each prediction set is clearly identifiable. The export includes **Chain** and **Dataset** columns to help distinguish them.
+:::
+
+:::{important}
+Conformal columns are exported only for intervals that are already materialized by nirs4all and visible in the viewer. Studio does not recalculate conformal bounds or statistical guarantees during export.
 :::
 
 ---

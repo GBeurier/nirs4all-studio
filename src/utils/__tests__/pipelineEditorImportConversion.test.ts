@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildStudioTuningSpacePreview } from "@/components/pipeline-editor/finetuning/tuningSpacePreview";
 import {
   convertChartToEditor,
   convertClassPathToEditor,
@@ -105,6 +106,8 @@ describe("pipelineEditorImportConversion", () => {
         eval_mode: "best",
         sample: "random",
         verbose: 1,
+        storage: "sqlite:///optuna-study.db",
+        study_name: "ridge-study",
         model_params: {
           alpha: ["log_float", 0.001, 10],
         },
@@ -149,6 +152,8 @@ describe("pipelineEditorImportConversion", () => {
       n_trials: 8,
       sample: "random",
       verbose: 1,
+      storage: "sqlite:///optuna-study.db",
+      study_name: "ridge-study",
       model_params: [
         { name: "alpha", type: "log_float", low: 0.001, high: 10 },
       ],
@@ -156,6 +161,21 @@ describe("pipelineEditorImportConversion", () => {
         { name: "epochs", type: "int", low: 10, high: 100 },
       ],
     });
+    const tuningSpacePreview = buildStudioTuningSpacePreview(classModel.finetuneConfig!);
+    expect(tuningSpacePreview.issues).toEqual([]);
+    expect(tuningSpacePreview.preview?.parameters.map((parameter) => ({
+      path: parameter.path,
+      spec: parameter.spec,
+    }))).toEqual([
+      {
+        path: "model.alpha",
+        spec: ["log_float", 0.001, 10],
+      },
+      {
+        path: "train.epochs",
+        spec: ["int", 10, 100],
+      },
+    ]);
     expect(functionModel).toMatchObject({
       type: "model",
       name: "nicon",

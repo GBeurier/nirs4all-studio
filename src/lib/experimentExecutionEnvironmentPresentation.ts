@@ -63,5 +63,15 @@ export function buildNewExperimentExecutionEnvironmentDiagnosticFields(
       label: "Submitters",
       value: configuredSubmitters.length > 0 ? configuredSubmitters.join(", ") : "None",
     },
+    {
+      id: "workspace-prediction-publishers",
+      label: "Prediction publishers",
+      value: formatNativeBackendList(diagnostics.workspacePredictionPublisherBackends),
+    },
+    {
+      id: "workspace-prediction-handoff-only",
+      label: "Prediction handoff-only",
+      value: formatNativeBackendList(diagnostics.workspacePredictionHandoffOnlyBackends),
+    },
   ];
 }

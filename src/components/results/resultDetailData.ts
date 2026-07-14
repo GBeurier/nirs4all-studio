@@ -4,6 +4,43 @@ import {
   getRuntimeResultEmptyMessage,
 } from "@/ui/runtime";
 import {
+  createConformalCoverageOptions,
+  createConformalCoverageStrip,
+  createConformalGuaranteeViewForArtifact,
+  createConformalIntervalSummaryRows,
+  createConformalMetricRows,
+  isCalibratedRunResultArtifact,
+  isConformalMetricSet,
+  type CalibratedRunResultArtifact,
+  type ConformalCoverageOption,
+  type ConformalCoverageStripSegment,
+  type ConformalGuaranteeView,
+  type ConformalIntervalSummaryRow,
+  type ConformalMetricRow,
+  type ConformalMetricSet,
+} from "@/ui/conformal";
+import {
+  createRobustnessGuaranteeView,
+  createRobustnessSummaryCards,
+  getRobustnessSpectralReplay,
+  isRobustnessSummaryArtifact,
+  type RobustnessSummaryArtifact,
+  type RobustnessSummaryCard,
+  type RobustnessSpectralReplay,
+} from "@/ui/robustness";
+import {
+  createTuningSummaryCard,
+  createTuningSummaryTrialRows,
+  createTuningStudySummary,
+  createTuningTrialRows,
+  isTuningResultArtifact,
+  isTuningSummaryArtifact,
+  type TuningResultArtifact,
+  type TuningStudySummary,
+  type TuningSummaryArtifact,
+  type TuningTrialRow,
+} from "@/ui/tuning";
+import {
   buildPipelineRunArtifactRefs,
   buildResultArtifactPresentationReadModel,
   buildResultArtifactRepositoryProvenanceItems,
@@ -114,6 +151,68 @@ export interface ResultNativeResultsSummaryData {
   hasNativeResults: boolean;
 }
 
+export interface ResultConformalSummaryData {
+  coverageStrip: ConformalCoverageStripSegment[];
+  coverages: ConformalCoverageOption[];
+  fingerprint: string | null;
+  guarantee: ConformalGuaranteeView;
+  intervals: ConformalIntervalSummaryRow[];
+  metrics: ConformalMetricRow[];
+  method: string;
+  nPredictions: number;
+  unit: string;
+}
+
+export interface ResultRobustnessSummaryData {
+  fingerprint: string;
+  guarantee: ConformalGuaranteeView;
+  mode: RobustnessSummaryArtifact["mode"];
+  reportVersion: number;
+  sliceBy: string[];
+  spectralReplay: RobustnessSpectralReplay | null;
+  cards: RobustnessSummaryCard[];
+}
+
+export interface ResultRobustnessLaunchScenarioData {
+  distribution: string | null;
+  executionScope: "baseline" | "prediction_replay" | "spectral_replay";
+  kind: string;
+  label: string;
+  requiresSpectralReplay: boolean;
+  severity: number | null;
+}
+
+export interface ResultRobustnessExecutionDiagnosticData {
+  blockers: string[];
+  message: string;
+  requiresPredictor: boolean;
+  requiresPredictions: boolean;
+  requiresSpectra: boolean;
+  requiresTruth: boolean;
+  status: string;
+}
+
+export interface ResultRobustnessLaunchPlanData {
+  execution: ResultRobustnessExecutionDiagnosticData | null;
+  mode: string;
+  scenarioCount: number;
+  scenarios: ResultRobustnessLaunchScenarioData[];
+  sliceBy: string[];
+}
+
+export interface ResultTuningSummaryData {
+  persistence: ResultTuningPersistenceData | null;
+  study: TuningStudySummary;
+  trials: TuningTrialRow[];
+}
+
+export interface ResultTuningPersistenceData {
+  optimizerStateResumeSupported: boolean | null;
+  resume: boolean | null;
+  storageConfigured: boolean | null;
+  studyName: string | null;
+}
+
 export type ResultLogLineTone = "default" | "info" | "error";
 
 export interface ResultLogLineData {
@@ -126,7 +225,11 @@ export function hasResultMetrics(pipeline: PipelineRun): boolean {
   return !!pipeline.metrics
     || pipeline.score != null
     || pipeline.val_score != null
-    || pipeline.test_score != null;
+    || pipeline.test_score != null
+    || buildResultConformalSummary(pipeline) != null
+    || buildResultRobustnessSummary(pipeline) != null
+    || buildResultRobustnessLaunchPlan(pipeline) != null
+    || buildResultTuningSummary(pipeline) != null;
 }
 
 export function getResultEmptyMetricsMessage(status: RunStatus): string {
@@ -355,6 +458,436 @@ export function buildResultNativeResultsSummary(pipeline: PipelineRun): ResultNa
     artifactCountLabel: formatResultArtifactCountLabel(nativeRefs.length),
     hasNativeResults: nativeRefs.length > 0,
   };
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function nestedValue(source: unknown, keys: readonly string[]): unknown {
+  let current: unknown = source;
+  for (const key of keys) {
+    const record = readRecord(current);
+    if (!record) return undefined;
+    current = record[key];
+  }
+  return current;
+}
+
+function collectRobustnessSummaryCandidates(pipeline: PipelineRun): unknown[] {
+  const record = pipeline as PipelineRun & Record<string, unknown>;
+  const directCandidates = [
+    record.robustness_summary,
+    record.robustnessSummary,
+    record.robustness_summary_artifact,
+    record.robustnessSummaryArtifact,
+    nestedValue(record.robustness, ["summary_artifact"]),
+    nestedValue(record.robustness, ["summaryArtifact"]),
+    nestedValue(record.native_results, ["robustness_summary"]),
+    nestedValue(record.native_results, ["robustnessSummary"]),
+  ];
+
+  const artifactCandidates = buildPipelineRunArtifactRefs(pipeline).flatMap(ref => {
+    const metadata = ref.metadata ?? {};
+    return [
+      metadata.robustness_summary,
+      metadata.robustnessSummary,
+      metadata.robustness_summary_artifact,
+      metadata.robustnessSummaryArtifact,
+      metadata.summary_artifact,
+      metadata.summaryArtifact,
+    ];
+  });
+
+  return [...directCandidates, ...artifactCandidates].filter(candidate => candidate != null);
+}
+
+function collectRobustnessLaunchPlanCandidates(pipeline: PipelineRun): unknown[] {
+  const record = pipeline as PipelineRun & Record<string, unknown>;
+  const directCandidates = [
+    record.robustness_plan,
+    record.robustnessPlan,
+    nestedValue(record.robustness, ["launch_plan"]),
+    nestedValue(record.robustness, ["launchPlan"]),
+    record.robustness,
+    nestedValue(record.native_results, ["robustness_plan"]),
+    nestedValue(record.native_results, ["robustnessPlan"]),
+  ];
+
+  const artifactCandidates = buildPipelineRunArtifactRefs(pipeline).flatMap(ref => {
+    const metadata = ref.metadata ?? {};
+    return [
+      metadata.robustness_plan,
+      metadata.robustnessPlan,
+      metadata.robustness_launch_plan,
+      metadata.robustnessLaunchPlan,
+    ];
+  });
+
+  return [...directCandidates, ...artifactCandidates].filter(candidate => candidate != null);
+}
+
+function collectRobustnessExecutionCandidates(pipeline: PipelineRun): unknown[] {
+  const record = pipeline as PipelineRun & Record<string, unknown>;
+  const directCandidates = [
+    record.robustness_execution,
+    record.robustnessExecution,
+    nestedValue(record.robustness, ["execution"]),
+    nestedValue(record.native_results, ["robustness_execution"]),
+    nestedValue(record.native_results, ["robustnessExecution"]),
+  ];
+
+  const artifactCandidates = buildPipelineRunArtifactRefs(pipeline).flatMap(ref => {
+    const metadata = ref.metadata ?? {};
+    return [
+      metadata.robustness_execution,
+      metadata.robustnessExecution,
+    ];
+  });
+
+  return [...directCandidates, ...artifactCandidates].filter(candidate => candidate != null);
+}
+
+function collectConformalResultCandidates(pipeline: PipelineRun): unknown[] {
+  const record = pipeline as PipelineRun & Record<string, unknown>;
+  const directCandidates = [
+    record.calibrated_result,
+    record.calibratedResult,
+    record.conformal_result,
+    record.conformalResult,
+    record.conformal_calibrated_result,
+    record.conformalCalibratedResult,
+    nestedValue(record.conformal, ["calibrated_result"]),
+    nestedValue(record.conformal, ["calibratedResult"]),
+    nestedValue(record.native_results, ["calibrated_result"]),
+    nestedValue(record.native_results, ["calibratedResult"]),
+    nestedValue(record.native_results, ["conformal_result"]),
+    nestedValue(record.native_results, ["conformalResult"]),
+  ];
+
+  const artifactCandidates = buildPipelineRunArtifactRefs(pipeline).flatMap(ref => {
+    const metadata = ref.metadata ?? {};
+    return [
+      metadata.calibrated_result,
+      metadata.calibratedResult,
+      metadata.conformal_result,
+      metadata.conformalResult,
+      metadata.conformal_calibrated_result,
+      metadata.conformalCalibratedResult,
+      metadata.calibrated_result_artifact,
+      metadata.calibratedResultArtifact,
+    ];
+  });
+
+  return [...directCandidates, ...artifactCandidates].filter(candidate => candidate != null);
+}
+
+function collectConformalMetricCandidates(pipeline: PipelineRun, artifact: CalibratedRunResultArtifact): unknown[] {
+  const record = pipeline as PipelineRun & Record<string, unknown>;
+  const artifactMetadata = artifact.metadata;
+  const artifactPayload = artifact.artifact;
+  const directCandidates = [
+    record.conformal_metrics,
+    record.conformalMetrics,
+    record.conformal_metric_sets,
+    record.conformalMetricSets,
+    nestedValue(record.conformal, ["metrics"]),
+    nestedValue(record.conformal, ["metric_sets"]),
+    nestedValue(record.conformal, ["metricSets"]),
+    nestedValue(record.native_results, ["conformal_metrics"]),
+    nestedValue(record.native_results, ["conformalMetrics"]),
+    artifactMetadata.conformal_metrics,
+    artifactMetadata.conformalMetrics,
+    artifactMetadata.conformal_metric_sets,
+    artifactMetadata.conformalMetricSets,
+    artifactMetadata.metric_sets,
+    artifactMetadata.metricSets,
+    artifactPayload.conformal_metrics,
+    artifactPayload.conformalMetrics,
+    artifactPayload.metric_sets,
+    artifactPayload.metricSets,
+  ];
+
+  const artifactCandidates = buildPipelineRunArtifactRefs(pipeline).flatMap(ref => {
+    const metadata = ref.metadata ?? {};
+    return [
+      metadata.conformal_metrics,
+      metadata.conformalMetrics,
+      metadata.conformal_metric_sets,
+      metadata.conformalMetricSets,
+      metadata.metric_sets,
+      metadata.metricSets,
+    ];
+  });
+
+  return [...directCandidates, ...artifactCandidates].filter(candidate => candidate != null);
+}
+
+function extractConformalMetricSets(candidates: readonly unknown[]): ConformalMetricSet[] {
+  const metrics: ConformalMetricSet[] = [];
+  for (const candidate of candidates) {
+    if (isConformalMetricSet(candidate)) {
+      metrics.push(candidate);
+      continue;
+    }
+    if (Array.isArray(candidate)) {
+      metrics.push(...candidate.filter(isConformalMetricSet));
+    }
+  }
+  return metrics;
+}
+
+function collectTuningResultCandidates(pipeline: PipelineRun): unknown[] {
+  const record = pipeline as PipelineRun & Record<string, unknown>;
+  const directCandidates = [
+    record.tuning_result,
+    record.tuningResult,
+    nestedValue(record.tuning, ["result"]),
+    nestedValue(record.tuning, ["summary"]),
+    nestedValue(record.tuning, ["tuning_result"]),
+    nestedValue(record.tuning, ["tuningResult"]),
+    nestedValue(record.tuning, ["tuning_summary"]),
+    nestedValue(record.tuning, ["tuningSummary"]),
+    nestedValue(record.native_results, ["tuning_result"]),
+    nestedValue(record.native_results, ["tuningResult"]),
+    nestedValue(record.native_results, ["tuning_summary"]),
+    nestedValue(record.native_results, ["tuningSummary"]),
+  ];
+
+  const artifactCandidates = buildPipelineRunArtifactRefs(pipeline).flatMap(ref => {
+    const metadata = ref.metadata ?? {};
+    return [
+      metadata.tuning_result,
+      metadata.tuningResult,
+      metadata.tuning_result_artifact,
+      metadata.tuningResultArtifact,
+      metadata.tuning_summary,
+      metadata.tuningSummary,
+      metadata.tuning_summary_artifact,
+      metadata.tuningSummaryArtifact,
+    ];
+  });
+
+  return [...directCandidates, ...artifactCandidates].filter(candidate => candidate != null);
+}
+
+function adaptTuningSummaryArtifact(artifact: TuningSummaryArtifact): ResultTuningSummaryData {
+  const card = createTuningSummaryCard(artifact);
+  const rows = createTuningSummaryTrialRows(artifact).map((row): TuningTrialRow => ({
+    diagnostics: row.diagnostics,
+    isBest: row.value !== null && row.value === card.bestValue,
+    number: row.number,
+    params: {},
+    paramsLabel: "summary artifact",
+    status: row.status,
+    statusLabel: row.statusLabel,
+    tone: row.tone,
+    value: row.value,
+    valueLabel: row.valueLabel,
+  }));
+  const study: TuningStudySummary = {
+    bestParams: card.bestParams,
+    bestValue: card.bestValue,
+    bestValueLabel: card.bestValueLabel,
+    completeTrials: card.completeTrials,
+    direction: card.direction,
+    failedTrials: card.failedTrials,
+    fingerprint: card.fingerprint,
+    metric: card.metric,
+    nTrials: card.nTrials,
+    optimizer: card.optimizer,
+    pruner: card.pruner,
+    prunedTrials: card.prunedTrials,
+    runningTrials: card.runningTrials,
+    sampler: card.sampler,
+    searchSpaceSize: Object.keys(card.bestParams).length,
+    seed: card.seed,
+    studyName: card.studyName,
+  };
+  return {
+    persistence: card.persistence
+      ? {
+          optimizerStateResumeSupported: card.optimizerStateResumeSupported,
+          resume: card.resume,
+          storageConfigured: card.storageConfigured,
+          studyName: card.studyName,
+        }
+      : null,
+    study,
+    trials: rows,
+  };
+}
+
+function tuningPersistenceFromResultArtifact(artifact: TuningResultArtifact): ResultTuningPersistenceData {
+  return {
+    optimizerStateResumeSupported: artifact.tuning.engine === "optuna",
+    resume: artifact.tuning.resume,
+    storageConfigured: artifact.tuning.storage !== null,
+    studyName: artifact.tuning.study_name,
+  };
+}
+
+export function buildResultConformalSummary(pipeline: PipelineRun): ResultConformalSummaryData | null {
+  for (const candidate of collectConformalResultCandidates(pipeline)) {
+    if (!isCalibratedRunResultArtifact(candidate)) continue;
+    const artifact: CalibratedRunResultArtifact = candidate;
+    const coverages = createConformalCoverageOptions(artifact);
+    const intervals = createConformalIntervalSummaryRows(artifact);
+    const metrics = createConformalMetricRows(
+      extractConformalMetricSets(collectConformalMetricCandidates(pipeline, artifact)),
+    );
+    return {
+      coverageStrip: createConformalCoverageStrip(coverages, intervals),
+      coverages,
+      fingerprint: artifact.fingerprint ?? null,
+      guarantee: createConformalGuaranteeViewForArtifact(artifact),
+      intervals,
+      metrics,
+      method: artifact.prediction.method,
+      nPredictions: artifact.prediction.y_pred.length,
+      unit: artifact.prediction.unit,
+    };
+  }
+
+  return null;
+}
+
+export function buildResultTuningSummary(pipeline: PipelineRun): ResultTuningSummaryData | null {
+  for (const candidate of collectTuningResultCandidates(pipeline)) {
+    if (isTuningResultArtifact(candidate)) {
+      return {
+        persistence: tuningPersistenceFromResultArtifact(candidate),
+        study: createTuningStudySummary(candidate),
+        trials: createTuningTrialRows(candidate),
+      };
+    }
+    if (isTuningSummaryArtifact(candidate)) {
+      return adaptTuningSummaryArtifact(candidate);
+    }
+  }
+
+  return null;
+}
+
+export function buildResultRobustnessSummary(pipeline: PipelineRun): ResultRobustnessSummaryData | null {
+  for (const candidate of collectRobustnessSummaryCandidates(pipeline)) {
+    if (!isRobustnessSummaryArtifact(candidate)) continue;
+    return {
+      fingerprint: candidate.fingerprint,
+      guarantee: createRobustnessGuaranteeView(candidate),
+      mode: candidate.mode,
+      reportVersion: candidate.report_version,
+      sliceBy: candidate.slice_by,
+      spectralReplay: getRobustnessSpectralReplay(candidate),
+      cards: createRobustnessSummaryCards(candidate),
+    };
+  }
+
+  return null;
+}
+
+function formatScenarioKind(kind: string): string {
+  return kind.replace(/_/g, " ");
+}
+
+const ROBUSTNESS_SPECTRAL_SCENARIO_KINDS = new Set([
+  "spectral_noise",
+  "spectral_offset",
+  "spectral_scale",
+  "spectral_slope",
+  "spectral_shift",
+]);
+
+function getRobustnessScenarioExecutionScope(
+  kind: string,
+): ResultRobustnessLaunchScenarioData["executionScope"] {
+  if (kind === "observed") return "baseline";
+  if (ROBUSTNESS_SPECTRAL_SCENARIO_KINDS.has(kind)) return "spectral_replay";
+  return "prediction_replay";
+}
+
+function normalizeRobustnessLaunchScenario(value: unknown): ResultRobustnessLaunchScenarioData | null {
+  const record = readRecord(value);
+  if (!record || typeof record.kind !== "string" || record.kind.trim().length === 0) {
+    return null;
+  }
+  const severity = typeof record.severity === "number" && Number.isFinite(record.severity)
+    ? record.severity
+    : null;
+  const distribution = typeof record.distribution === "string" && record.distribution.trim().length > 0
+    ? record.distribution
+    : null;
+  const kind = record.kind.trim();
+  const executionScope = getRobustnessScenarioExecutionScope(kind);
+
+  return {
+    distribution,
+    executionScope,
+    kind,
+    label: formatScenarioKind(kind),
+    requiresSpectralReplay: executionScope === "spectral_replay",
+    severity,
+  };
+}
+
+function normalizeRobustnessSliceBy(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map(item => item.trim());
+}
+
+function normalizeRobustnessExecutionDiagnostic(value: unknown): ResultRobustnessExecutionDiagnosticData | null {
+  const record = readRecord(value);
+  if (!record || typeof record.status !== "string" || record.status.trim().length === 0) {
+    return null;
+  }
+
+  return {
+    blockers: Array.isArray(record.blockers)
+      ? record.blockers.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : [],
+    message: typeof record.message === "string" && record.message.trim().length > 0
+      ? record.message
+      : "Robustness execution status is available.",
+    requiresPredictor: record.requires_predictor === true || record.requiresPredictor === true,
+    requiresPredictions: record.requires_predictions === true || record.requiresPredictions === true,
+    requiresSpectra: record.requires_X === true || record.requiresX === true || record.requiresSpectra === true,
+    requiresTruth: record.requires_y_true === true || record.requiresYTrue === true || record.requiresTruth === true,
+    status: record.status,
+  };
+}
+
+function buildResultRobustnessExecutionDiagnostic(pipeline: PipelineRun): ResultRobustnessExecutionDiagnosticData | null {
+  for (const candidate of collectRobustnessExecutionCandidates(pipeline)) {
+    const diagnostic = normalizeRobustnessExecutionDiagnostic(candidate);
+    if (diagnostic) return diagnostic;
+  }
+  return null;
+}
+
+export function buildResultRobustnessLaunchPlan(pipeline: PipelineRun): ResultRobustnessLaunchPlanData | null {
+  for (const candidate of collectRobustnessLaunchPlanCandidates(pipeline)) {
+    const record = readRecord(candidate);
+    if (!record || !Array.isArray(record.scenarios)) continue;
+
+    const scenarios = record.scenarios
+      .map(normalizeRobustnessLaunchScenario)
+      .filter((scenario): scenario is ResultRobustnessLaunchScenarioData => scenario != null);
+    if (scenarios.length === 0) continue;
+
+    return {
+      execution: buildResultRobustnessExecutionDiagnostic(pipeline),
+      mode: typeof record.mode === "string" && record.mode.trim().length > 0 ? record.mode : "clean_frozen",
+      scenarioCount: scenarios.length,
+      scenarios,
+      sliceBy: normalizeRobustnessSliceBy(record.slice_by ?? record.sliceBy),
+    };
+  }
+
+  return null;
 }
 
 export function getResultExportModelLabel(hasRefit: boolean | undefined): string {

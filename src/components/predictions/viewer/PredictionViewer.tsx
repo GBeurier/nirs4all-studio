@@ -14,6 +14,11 @@ import {
 import { PredictionColorLegend } from "./PredictionColorLegend";
 import { MetricsStrip } from "./MetricsStrip";
 import { PredictionViewerChartArea } from "./PredictionViewerChartArea";
+import {
+  PredictionViewerConformalToolbar,
+  resolvePredictionViewerDefaultConformalCoverage,
+  withPredictionViewerConformalCoverage,
+} from "./PredictionViewerConformalToolbar";
 import { PredictionViewerExportToolbar } from "./PredictionViewerExportToolbar";
 import { PredictionViewerHeader } from "./PredictionViewerHeader";
 import { PredictionViewerKindToolbar } from "./PredictionViewerKindToolbar";
@@ -60,6 +65,9 @@ export function PredictionViewer({
   const [visible, setVisible] = useState<Set<string>>(() =>
     new Set(partitions.map((p) => p.partition)),
   );
+  const [selectedConformalCoverage, setSelectedConformalCoverage] = useState<number | null>(() =>
+    resolvePredictionViewerDefaultConformalCoverage(partitions),
+  );
 
   // Reset kind / visible when viewer opens or when inputs change.
   useEffect(() => {
@@ -71,8 +79,18 @@ export function PredictionViewer({
     setVisible(new Set(partitions.map((p) => p.partition)));
   }, [partitions]);
 
+  useEffect(() => {
+    if (!open) return;
+    setSelectedConformalCoverage(resolvePredictionViewerDefaultConformalCoverage(partitions));
+  }, [open, partitions]);
+
+  const conformalPartitions = useMemo(
+    () => withPredictionViewerConformalCoverage(partitions, selectedConformalCoverage),
+    [partitions, selectedConformalCoverage],
+  );
+
   const { data: allDatasets, isLoading, error } = usePartitionsData({
-    partitions,
+    partitions: conformalPartitions,
     workspaceId,
     enabled: open && partitions.length > 0,
   });
@@ -154,7 +172,7 @@ export function PredictionViewer({
           onKindChange={setKind}
           onTogglePartition={toggleVisible}
           palette={config.palette}
-          partitions={partitions}
+          partitions={conformalPartitions}
           visible={visible}
         />
 
@@ -168,6 +186,13 @@ export function PredictionViewer({
           onExportPng={handleExportPng}
           onResetConfig={resetConfig}
           resolvedMetadataType={coloration.metadataType}
+        />
+
+        <PredictionViewerConformalToolbar
+          datasets={visibleDatasets}
+          onSelectedCoverageChange={setSelectedConformalCoverage}
+          partitions={conformalPartitions}
+          selectedCoverage={selectedConformalCoverage}
         />
 
         {legendVisible && (

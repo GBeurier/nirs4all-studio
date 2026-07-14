@@ -26,6 +26,10 @@
       "nirs4all-ui": ["../nirs4all-ui/src/index.ts"],
       "nirs4all-ui/score": ["../nirs4all-ui/src/score/index.ts"],
       "nirs4all-ui/runtime": ["../nirs4all-ui/src/runtime/index.ts"],
+      "nirs4all-ui/conformal": ["../nirs4all-ui/src/conformal/index.ts"],
+      "nirs4all-ui/robustness": ["../nirs4all-ui/src/robustness/index.ts"],
+      "nirs4all-ui/keywordRegistry": ["../nirs4all-ui/src/keywordRegistry/index.ts"],
+      "nirs4all-ui/tuning": ["../nirs4all-ui/src/tuning/index.ts"],
       "nirs4all-ui/components": ["../nirs4all-ui/src/components/index.ts"],
       "@/*": ["./src/*"]
     }

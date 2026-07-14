@@ -18,6 +18,10 @@ export function castParams(params: Record<string, unknown> | undefined): EditorP
   return castParamRecord(params);
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 export function extractInlineComponentParams(
   step: Record<string, unknown>,
   wrapperKeys: string[],
@@ -135,6 +139,8 @@ export function convertModelStepToEditor(step: Nirs4allModelStep): EditorPipelin
       eval_mode: step.finetune_params.eval_mode as "best" | "mean" || "best",
       sample: step.finetune_params.sample as "grid" | "random" | "hyperband" | undefined,
       verbose: step.finetune_params.verbose as number | undefined,
+      storage: optionalString(step.finetune_params.storage),
+      study_name: optionalString(step.finetune_params.study_name),
       model_params: [],
     };
 

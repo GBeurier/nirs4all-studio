@@ -26,7 +26,26 @@ export interface PipelineExecutionConfig {
   executionBackend?: "local-python" | "cluster" | "wasm-local";
   runtimeEngine?: string | null;
   allowFallback?: boolean;
+  robustness?: PipelineExecutionRobustnessLaunchPayload;
   campaignId?: string;
+}
+
+export interface PipelineExecutionRobustnessLaunchPayload {
+  mode?: "clean_frozen";
+  scenarios: Array<Record<string, unknown>>;
+  slice_by?: string[];
+  publish_evidence?: PipelineExecutionRobustnessEvidencePublicationPayload;
+}
+
+export interface PipelineExecutionRobustnessSpectralReplayEvidencePayload {
+  X: "dataset_partition";
+  predictor_bundle: "exported_model_bundle";
+  destination: "result_metadata.robustness_evidence";
+  fail_closed: boolean;
+}
+
+export interface PipelineExecutionRobustnessEvidencePublicationPayload {
+  spectral_replay?: PipelineExecutionRobustnessSpectralReplayEvidencePayload;
 }
 
 export interface PipelineExecutionArtifact {
@@ -86,6 +105,7 @@ export interface LegacyPipelineExecutePayload {
   inline_pipeline: PipelineExecutionInlinePipeline | null;
   engine?: string;
   allow_fallback?: boolean;
+  robustness?: PipelineExecutionRobustnessLaunchPayload;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -180,6 +200,7 @@ export function toLegacyPipelineExecutePayload(config: PipelineExecutionConfig):
     inline_pipeline: normalized.inlinePipeline ?? null,
     ...(runtimeEngine ? { engine: runtimeEngine } : {}),
     ...(normalized.allowFallback !== undefined ? { allow_fallback: normalized.allowFallback } : {}),
+    ...(normalized.robustness ? { robustness: normalized.robustness } : {}),
   };
 }
 

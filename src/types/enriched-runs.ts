@@ -90,6 +90,14 @@ export interface TopChainResult {
   final_agg_scores?: Record<string, unknown> | null;
   best_params?: Record<string, unknown> | null;
   variant_params?: Record<string, unknown> | null;
+  artifact_refs?: unknown[];
+  artifactRefs?: unknown[];
+  robustness_summary?: unknown;
+  robustnessSummary?: unknown;
+  robustness_plan?: unknown;
+  robustnessPlan?: unknown;
+  robustness_execution?: unknown;
+  robustnessExecution?: unknown;
   is_refit_only?: boolean;
   synthetic_refit?: boolean;
 }
