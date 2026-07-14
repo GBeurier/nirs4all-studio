@@ -73,6 +73,16 @@ import {
 } from "./PipelineExecutionDialogSections";
 import { RuntimeBackendSelector } from "@/components/runtime/RuntimeBackendSelector";
 import { useRuntimeBackendPreference } from "@/lib/runtimeBackendPreference";
+import { useKeywordRegistry } from "@/hooks/useKeywordRegistry";
+import { NativeAssuranceContractCard } from "./NativeAssuranceContractCard";
+import {
+  DEFAULT_ROBUSTNESS_MODE,
+  DEFAULT_ROBUSTNESS_SCENARIO_DRAFT,
+  ROBUSTNESS_EVIDENCE_PUBLICATION_PAYLOAD,
+  RobustnessScenarioDraftCard,
+  buildRobustnessScenarioDraftViewModel,
+} from "./RobustnessScenarioDraftCard";
+import type { RobustnessScenarioDraft } from "@/ui/robustness";
 
 // ============================================================================
 // Types
@@ -112,12 +122,17 @@ export function PipelineExecutionDialog({
   const [pendingMissingIssues, setPendingMissingIssues] = useState<MissingOperatorIssue[]>([]);
   const [pendingLaunchMode, setPendingLaunchMode] = useState<PipelineLaunchMode | null>(null);
   const [pendingPrunedInlinePipeline, setPendingPrunedInlinePipeline] = useState<InlinePipelinePayload | null>(null);
+  const [robustnessMode, setRobustnessMode] = useState<string>(DEFAULT_ROBUSTNESS_MODE);
+  const [robustnessDraft, setRobustnessDraft] = useState<RobustnessScenarioDraft>(DEFAULT_ROBUSTNESS_SCENARIO_DRAFT);
+  const [attachRobustnessDraft, setAttachRobustnessDraft] = useState(false);
+  const [publishRobustnessSpectralEvidence, setPublishRobustnessSpectralEvidence] = useState(false);
   const {
     runtimeEngine,
     allowFallback,
     setRuntimeEngine,
     setAllowFallback,
   } = useRuntimeBackendPreference();
+  const keywordRegistry = useKeywordRegistry({ enabled: open });
 
   // Hooks
   const { datasets, isLoading: isLoadingDatasets } = useDatasetSelection();
@@ -151,6 +166,10 @@ export function PipelineExecutionDialog({
       setPendingMissingIssues([]);
       setPendingLaunchMode(null);
       setPendingPrunedInlinePipeline(null);
+      setRobustnessMode(DEFAULT_ROBUSTNESS_MODE);
+      setRobustnessDraft(DEFAULT_ROBUSTNESS_SCENARIO_DRAFT);
+      setAttachRobustnessDraft(false);
+      setPublishRobustnessSpectralEvidence(false);
     }
   }, [open, reset, pipelineName]);
 
@@ -215,6 +234,36 @@ export function PipelineExecutionDialog({
     [selectedExecutionCampaign],
   );
 
+  const selectedRobustnessLaunchPayload = useMemo(() => {
+    if (!attachRobustnessDraft) {
+      return undefined;
+    }
+    const draftViewModel = buildRobustnessScenarioDraftViewModel(
+      keywordRegistry.data,
+      robustnessDraft,
+      robustnessMode,
+    );
+    if (
+      !draftViewModel.valid
+      || typeof draftViewModel.normalizedDraft.kind !== "string"
+      || draftViewModel.normalizedMode !== DEFAULT_ROBUSTNESS_MODE
+    ) {
+      return undefined;
+    }
+    return {
+      mode: draftViewModel.normalizedMode,
+      scenarios: [draftViewModel.normalizedDraft],
+      ...(publishRobustnessSpectralEvidence ? { publish_evidence: ROBUSTNESS_EVIDENCE_PUBLICATION_PAYLOAD } : {}),
+    };
+  }, [attachRobustnessDraft, keywordRegistry.data, publishRobustnessSpectralEvidence, robustnessDraft, robustnessMode]);
+
+  const handleAttachRobustnessDraftChange = useCallback((attach: boolean) => {
+    setAttachRobustnessDraft(attach);
+    if (!attach) {
+      setPublishRobustnessSpectralEvidence(false);
+    }
+  }, []);
+
   const selectedExecutionSplitGroupBy = getPipelineExecutionSplitGroupBy(selectedExecutionCampaign) ??
     selectedDatasetGroupingState?.selectedGroupBy;
 
@@ -253,6 +302,7 @@ export function PipelineExecutionDialog({
         inlinePipeline,
         runtimeEngine,
         allowFallback,
+        ...(selectedRobustnessLaunchPayload ? { robustness: selectedRobustnessLaunchPayload } : {}),
       });
       return;
     }
@@ -272,6 +322,7 @@ export function PipelineExecutionDialog({
         inline_pipeline: inlinePipeline,
         engine: runtimeEngine,
         allow_fallback: allowFallback,
+        ...(selectedRobustnessLaunchPayload ? { robustness: selectedRobustnessLaunchPayload } : {}),
       });
 
       queryClient.invalidateQueries({ queryKey: ["runs"] });
@@ -314,6 +365,7 @@ export function PipelineExecutionDialog({
     allowFallback,
     selectedDataset,
     selectedExecutionSplitGroupBy,
+    selectedRobustnessLaunchPayload,
   ]);
 
   const handleLaunch = async (mode: PipelineLaunchMode) => {
@@ -461,6 +513,24 @@ export function PipelineExecutionDialog({
               compact
               onRuntimeEngineChange={setRuntimeEngine}
               onAllowFallbackChange={setAllowFallback}
+            />
+
+            <NativeAssuranceContractCard
+              registry={keywordRegistry.data}
+              runtimeEngine={runtimeEngine}
+            />
+
+            <RobustnessScenarioDraftCard
+              attachToLaunch={attachRobustnessDraft}
+              disabled={executionInputsDisabled}
+              mode={robustnessMode}
+              onAttachToLaunchChange={handleAttachRobustnessDraftChange}
+              onChange={setRobustnessDraft}
+              onModeChange={setRobustnessMode}
+              onPublishSpectralEvidenceChange={setPublishRobustnessSpectralEvidence}
+              publishSpectralEvidence={publishRobustnessSpectralEvidence}
+              registry={keywordRegistry.data}
+              value={robustnessDraft}
             />
 
             <RuntimeGroupingConflictNotice groupingSelection={groupingSelection} />

@@ -14,6 +14,10 @@ import {
   getExperimentLaunchPayloadSubmissionBlockMessage,
 } from "../experimentLaunchPayload";
 import type { ExperimentConfig } from "@/types/runs";
+import {
+  WORKSPACE_PREDICTION_PUBLICATION_EFFECTS,
+  WORKSPACE_PREDICTION_PUBLICATION_KEYWORD_IDS,
+} from "@/ui/keywordRegistry";
 
 const legacyConfig: ExperimentConfig = {
   name: "Experiment",
@@ -246,6 +250,41 @@ describe("experimentLaunchPayload", () => {
       sourceRunCount: 1,
       sourceRunIds: ["d1::p1"],
       skippedRunIds: ["missing-run"],
+    });
+  });
+
+  it("copies robustness evidence publication handoff into launch diagnostics", () => {
+    const nativePayload = buildNativeExperimentLaunchPayload({
+      ...legacyConfig,
+      robustness: {
+        mode: "clean_frozen",
+        scenarios: [{ kind: "spectral_noise", severity: 0.05 }],
+        publish_evidence: {
+          spectral_replay: {
+            X: "dataset_partition",
+            predictor_bundle: "exported_model_bundle",
+            destination: "result_metadata.robustness_evidence",
+            fail_closed: true,
+          },
+        },
+      },
+    }, strictCampaignSpecs);
+
+    expect(buildExperimentLaunchPayloadDiagnostics({
+      currentSubmissionKind: "native_payload",
+      strictCampaignPayloadStatus: "ready",
+      strictCampaignPayloadActivation: {
+        status: "ready",
+        canUseStrictPayload: true,
+        message: "Strict campaign payload is ready for native submitters.",
+      },
+      nativePayload,
+    })).toMatchObject({
+      robustnessEvidencePublicationRequested: true,
+      robustnessEvidencePublicationDestination: "result_metadata.robustness_evidence",
+      robustnessEvidencePublicationKeywordIds: WORKSPACE_PREDICTION_PUBLICATION_KEYWORD_IDS,
+      robustnessEvidencePublicationRequiredEffects: WORKSPACE_PREDICTION_PUBLICATION_EFFECTS,
+      robustnessEvidencePublicationConformalArtifactPolicy: "prediction_publisher_does_not_persist_conformal_artifacts",
     });
   });
 

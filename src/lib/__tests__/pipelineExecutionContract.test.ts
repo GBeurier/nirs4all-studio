@@ -60,6 +60,84 @@ describe("pipelineExecutionContract", () => {
     });
   });
 
+  it("preserves native finetuning optimizer persistence in inline execution payloads", () => {
+    expect(toLegacyPipelineExecutePayload({
+      pipelineId: "pipe-1",
+      datasetId: "dataset-a",
+      runtimeEngine: "dag-ml",
+      inlinePipeline: {
+        name: "Native tuning",
+        steps: [
+          {
+            id: "ridge",
+            type: "model",
+            name: "Ridge",
+            params: {},
+            finetuneConfig: {
+              enabled: true,
+              n_trials: 8,
+              approach: "single",
+              eval_mode: "best",
+              storage: "sqlite:///optuna-study.db",
+              study_name: "ridge-study",
+              model_params: [
+                { name: "alpha", type: "log_float", low: 0.001, high: 10 },
+              ],
+            },
+          },
+        ],
+      },
+    })).toMatchObject({
+      engine: "dag-ml",
+      inline_pipeline: {
+        steps: [
+          {
+            finetuneConfig: {
+              storage: "sqlite:///optuna-study.db",
+              study_name: "ridge-study",
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it("projects native robustness launch metadata to the execute payload", () => {
+    expect(toLegacyPipelineExecutePayload({
+      pipelineId: "pipe-1",
+      datasetId: "dataset-a",
+      robustness: {
+        mode: "clean_frozen",
+        scenarios: [
+          { kind: "prediction_noise", severity: 0.1, distribution: "normal" },
+        ],
+        publish_evidence: {
+          spectral_replay: {
+            X: "dataset_partition",
+            predictor_bundle: "exported_model_bundle",
+            destination: "result_metadata.robustness_evidence",
+            fail_closed: true,
+          },
+        },
+      },
+    })).toMatchObject({
+      robustness: {
+        mode: "clean_frozen",
+        scenarios: [
+          { kind: "prediction_noise", severity: 0.1, distribution: "normal" },
+        ],
+        publish_evidence: {
+          spectral_replay: {
+            X: "dataset_partition",
+            predictor_bundle: "exported_model_bundle",
+            destination: "result_metadata.robustness_evidence",
+            fail_closed: true,
+          },
+        },
+      },
+    });
+  });
+
   it("normalizes metric observations from generic execution results", () => {
     const result = normalizePipelineExecutionResult({
       success: true,

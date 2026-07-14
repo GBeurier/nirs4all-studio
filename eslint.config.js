@@ -13,6 +13,7 @@ export default tseslint.config({
     "build/**",
     "dist/**",
     "dist-electron/**",
+    "nirs4all-ui-lib/**",
     "node_modules/**",
     "playwright-report/**",
     "release/**",

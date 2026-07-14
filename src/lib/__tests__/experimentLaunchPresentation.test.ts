@@ -416,6 +416,40 @@ describe("experimentLaunchPresentation", () => {
       value: "WASM local via WASM local execution adapter",
       title: "Native adapter: WASM local execution adapter is selected for this campaign backend.",
     });
+
+    const robustnessNativePayload = buildNativeExperimentLaunchPayload({
+      name: "Experiment",
+      dataset_ids: ["d1"],
+      pipeline_ids: ["p1"],
+      robustness: {
+        mode: "clean_frozen",
+        scenarios: [{ kind: "spectral_noise", severity: 0.05 }],
+        publish_evidence: {
+          spectral_replay: {
+            X: "dataset_partition",
+            predictor_bundle: "exported_model_bundle",
+            destination: "result_metadata.robustness_evidence",
+            fail_closed: true,
+          },
+        },
+      },
+    }, strictCampaignSpecs);
+    expect(buildExperimentLaunchPayloadManifestDetails(launchPayloadPlan({
+      currentSubmissionKind: "native_payload",
+      strictCampaignPayloadStatus: "ready",
+      strictCampaignPayloadActivation: {
+        status: "ready",
+        canUseStrictPayload: true,
+        message: "Strict campaign payload is ready for native submitters.",
+      },
+      strictCampaignSpecs,
+      nativePayload: robustnessNativePayload,
+    }), clusterPreview)).toContainEqual({
+      id: "robustness-evidence-publication",
+      label: "Robustness evidence publication",
+      value: "Requested · 3 keywords · 6 effects",
+      title: "Destination: result_metadata.robustness_evidence · Conformal artifacts: prediction_publisher_does_not_persist_conformal_artifacts",
+    });
   });
 
   it("normalizes optional launch text and dataset badge labels", () => {

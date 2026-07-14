@@ -113,6 +113,62 @@ def _make_adapter(mock_store):
     return adapter
 
 
+def _robustness_summary_artifact() -> dict:
+    return {
+        "format": "nirs4all.robustness.summary",
+        "schema_version": 1,
+        "fingerprint": "robustness:store-chain",
+        "mode": "clean_frozen",
+        "report_version": 1,
+        "slice_by": ["batch"],
+        "summary": [{
+            "bias": 0.0,
+            "conformal_max_abs_coverage_gap": 0.03,
+            "conformal_mean_width_mean": 0.2,
+            "conformal_min_observed_coverage": 0.94,
+            "delta_bias": 0.0,
+            "delta_mae": 0.0,
+            "delta_max_abs_error": 0.0,
+            "delta_rmse": 0.0,
+            "mae": 0.1,
+            "mae_ratio": 1.0,
+            "max_abs_error": 0.3,
+            "n_samples": 12,
+            "rmse": 0.14,
+            "rmse_ratio": 1.0,
+            "scenario": {"kind": "observed"},
+            "scenario_index": 0,
+            "scenario_label": "observed",
+            "severity": 0.0,
+            "worst_slice_key": None,
+            "worst_slice_label": None,
+            "worst_slice_metric": "rmse",
+            "worst_slice_value": None,
+        }],
+    }
+
+
+def _tuning_summary_artifact() -> dict:
+    return {
+        "best_params": {"model.n_components": 2},
+        "best_value": 0.1234,
+        "direction": "minimize",
+        "engine": "optuna",
+        "fingerprint": "tuning:store-chain",
+        "format": "nirs4all.tuning.summary",
+        "metric": "rmse",
+        "n_trials": 2,
+        "optimizer": "optuna",
+        "schema_version": 1,
+        "trial_states": {"COMPLETE": 1, "PRUNED": 1},
+        "trials": [
+            {"number": 0, "state": "PRUNED", "value": None},
+            {"number": 1, "state": "COMPLETE", "value": 0.1234},
+        ],
+        "version": 1,
+    }
+
+
 def test_get_enriched_runs_recovers_from_missing_aggregated_metric():
     mock_store = _build_mock_store(
         run_rows=[
@@ -444,6 +500,273 @@ def test_get_enriched_runs_exposes_runtime_status_from_config_and_pipelines():
     assert run["allow_fallback"] is True
     assert run["config"]["requested_engine"] == "dag-ml"
     assert run["config"]["fallback_policy"] == fallback_policy
+
+
+def test_get_enriched_runs_threads_robustness_launch_plan_from_run_config():
+    robustness = {
+        "mode": "clean_frozen",
+        "scenarios": [
+            {"kind": "spectral_shift", "severity": 1.0},
+        ],
+        "slice_by": ["batch"],
+    }
+    mock_store = _build_mock_store(
+        run_rows=[
+            {
+                "run_id": "run-robustness-001",
+                "name": "Robustness Run",
+                "status": "completed",
+                "project_id": None,
+                "created_at": datetime(2026, 4, 19, 10, 0, tzinfo=UTC),
+                "completed_at": datetime(2026, 4, 19, 10, 5, tzinfo=UTC),
+                "datasets": '[{"name":"dataset_a","n_samples":20,"n_features":6}]',
+                "config": json.dumps({
+                    "robustness": robustness,
+                    "metric": "rmse",
+                }),
+                "error": None,
+            }
+        ],
+        pipelines_by_run={
+            "run-robustness-001": [
+                {
+                    "run_id": "run-robustness-001",
+                    "pipeline_id": "pipe-robustness-001",
+                    "name": "Robustness pipeline",
+                    "expanded_config": None,
+                }
+            ]
+        },
+        chain_rows_by_run={
+            "run-robustness-001": [
+                {
+                    "run_id": "run-robustness-001",
+                    "dataset_name": "dataset_a",
+                    "metric": "rmse",
+                    "task_type": "regression",
+                    "cv_val_score": 0.12,
+                    "cv_test_score": 0.14,
+                    "cv_train_score": 0.1,
+                    "chain_id": "chain-robustness-001",
+                    "pipeline_id": "pipe-robustness-001",
+                    "model_name": "PLSRegression",
+                    "model_class": "PLSRegression",
+                    "preprocessings": "SNV",
+                    "cv_fold_count": 5,
+                    "best_params": None,
+                }
+            ]
+        },
+        sample_rows=[
+            {"run_id": "run-robustness-001", "dataset_name": "dataset_a", "task_type": "regression",
+             "n_samples": 20, "n_features": 6, "metric": "rmse"}
+        ],
+        counts_by_run={"run-robustness-001": 0},
+        fold_counts_by_run={"run-robustness-001": 5},
+        model_counts_by_run={"run-robustness-001": 5},
+        cv_info_by_run={"run-robustness-001": {"fold_count": 5, "metric": "rmse"}},
+        model_classes_by_run={"run-robustness-001": [{"name": "PLSRegression", "count": 1}]},
+    )
+
+    adapter = _make_adapter(mock_store)
+    result = adapter.get_enriched_runs()
+
+    run = result["runs"][0]
+    top_chain = run["datasets"][0]["top_5"][0]
+    assert run["robustness"] == robustness
+    assert top_chain["robustness_plan"] == robustness
+    assert top_chain["robustness_execution"] == {
+        "status": "needs_spectral_replay_evidence",
+        "message": "Robustness plan is transported, but no nirs4all RobustnessReport has been computed yet.",
+        "scenario_kinds": ["spectral_shift"],
+        "requires_y_true": True,
+        "requires_predictions": True,
+        "requires_X": True,
+        "requires_predictor": True,
+        "spectral_evidence_publication_requested": False,
+        "blockers": [
+            "Studio has not yet materialized a row-aligned PredictResult or CalibratedRunResult plus y_true for this pipeline.",
+            "At least one spectral scenario requires the original X matrix and a frozen predictor replay surface.",
+        ],
+    }
+
+
+def test_get_all_chains_for_dataset_attaches_robustness_summary_artifacts():
+    class FakeReport:
+        def summary_artifact(self):
+            return _robustness_summary_artifact()
+
+    mock_store = _build_mock_store(
+        run_rows=[],
+        pipelines_by_run={
+            "run-chain-001": [
+                {
+                    "run_id": "run-chain-001",
+                    "pipeline_id": "pipe-chain-001",
+                    "name": "Chain pipeline",
+                    "expanded_config": None,
+                }
+            ]
+        },
+        chain_rows_by_run={
+            "run-chain-001": [
+                {
+                    "run_id": "run-chain-001",
+                    "dataset_name": "dataset_a",
+                    "metric": "rmse",
+                    "task_type": "regression",
+                    "cv_val_score": 0.12,
+                    "cv_test_score": 0.14,
+                    "cv_train_score": 0.1,
+                    "chain_id": "chain-store-001",
+                    "pipeline_id": "pipe-chain-001",
+                    "model_name": "PLSRegression",
+                    "model_class": "PLSRegression",
+                    "preprocessings": "SNV",
+                    "cv_fold_count": 5,
+                    "best_params": None,
+                }
+            ]
+        },
+    )
+    mock_store.list_robustness_results.side_effect = lambda *, limit, offset: [{
+        "robustness_id": "rob-store-chain",
+        "name": "Store chain robustness",
+        "run_id": "run-chain-001",
+        "pipeline_id": "pipe-chain-001",
+        "chain_id": "chain-store-001",
+        "result_fingerprint": "robustness:store-chain",
+        "mode": "clean_frozen",
+        "scenario_count": 1,
+        "slice_by": '["batch"]',
+        "created_at": "2026-07-13T00:00:00",
+    }]
+    mock_store.load_robustness_result.side_effect = lambda robustness_id: FakeReport()
+
+    adapter = _make_adapter(mock_store)
+    result = adapter.get_all_chains_for_dataset("run-chain-001", "dataset_a")
+
+    chain = result["chains"][0]
+    assert chain["robustness_summary"] == _robustness_summary_artifact()
+    assert chain["artifact_refs"] == [{
+        "id": "robustness-summary:chain-store-001:rob-store-chain",
+        "kind": "repository_entry",
+        "role": "robustness-summary",
+        "label": "Store chain robustness",
+        "source": "result-repository",
+        "scope": "chain",
+        "status": "available",
+        "artifactId": "rob-store-chain",
+        "runId": "run-chain-001",
+        "pipelineId": "pipe-chain-001",
+        "chainId": "chain-store-001",
+        "format": "json",
+        "contentAddress": "robustness:store-chain",
+        "metadata": {
+            "source": "workspace_robustness_results",
+            "robustness_id": "rob-store-chain",
+            "conformal_id": None,
+            "prediction_id": None,
+            "mode": "clean_frozen",
+            "scenario_count": 1,
+            "slice_by": ["batch"],
+            "created_at": "2026-07-13T00:00:00",
+            "robustness_summary_artifact": _robustness_summary_artifact(),
+        },
+    }]
+    assert mock_store.list_robustness_results.call_count == 1
+    assert mock_store.load_robustness_result.call_count == 1
+
+
+def test_get_all_chains_for_dataset_attaches_tuning_summary_artifacts():
+    class FakeResult:
+        def summary_artifact(self):
+            return _tuning_summary_artifact()
+
+    mock_store = _build_mock_store(
+        run_rows=[],
+        pipelines_by_run={
+            "run-chain-001": [
+                {
+                    "run_id": "run-chain-001",
+                    "pipeline_id": "pipe-chain-001",
+                    "name": "Chain pipeline",
+                    "expanded_config": None,
+                }
+            ]
+        },
+        chain_rows_by_run={
+            "run-chain-001": [
+                {
+                    "run_id": "run-chain-001",
+                    "dataset_name": "dataset_a",
+                    "metric": "rmse",
+                    "task_type": "regression",
+                    "cv_val_score": 0.12,
+                    "cv_test_score": 0.14,
+                    "cv_train_score": 0.1,
+                    "chain_id": "chain-store-001",
+                    "pipeline_id": "pipe-chain-001",
+                    "model_name": "PLSRegression",
+                    "model_class": "PLSRegression",
+                    "preprocessings": "SNV",
+                    "cv_fold_count": 5,
+                    "best_params": None,
+                }
+            ]
+        },
+    )
+    mock_store.list_tuning_results.side_effect = lambda *, limit, offset: [{
+        "tuning_id": "tune-store-chain",
+        "name": "Store chain tuning",
+        "run_id": "run-chain-001",
+        "pipeline_id": "pipe-chain-001",
+        "chain_id": "chain-store-001",
+        "result_fingerprint": "tuning:store-chain",
+        "tuning_fingerprint": "tuning-spec:store-chain",
+        "engine": "optuna",
+        "metric": "rmse",
+        "direction": "minimize",
+        "best_value": 0.1234,
+        "n_trials": 2,
+        "created_at": "2026-07-13T00:00:00",
+    }]
+    mock_store.load_tuning_result.side_effect = lambda tuning_id: FakeResult()
+
+    adapter = _make_adapter(mock_store)
+    result = adapter.get_all_chains_for_dataset("run-chain-001", "dataset_a")
+
+    chain = result["chains"][0]
+    assert chain["artifact_refs"] == [{
+        "id": "tuning-summary:chain-store-001:tune-store-chain",
+        "kind": "repository_entry",
+        "role": "tuning-summary",
+        "label": "Store chain tuning",
+        "source": "result-repository",
+        "scope": "chain",
+        "status": "available",
+        "artifactId": "tune-store-chain",
+        "runId": "run-chain-001",
+        "pipelineId": "pipe-chain-001",
+        "chainId": "chain-store-001",
+        "format": "nirs4all.tuning.summary",
+        "contentAddress": "tuning:store-chain",
+        "metadata": {
+            "source": "workspace_tuning_results",
+            "tuning_id": "tune-store-chain",
+            "tuning_fingerprint": "tuning-spec:store-chain",
+            "engine": "optuna",
+            "metric": "rmse",
+            "direction": "minimize",
+            "best_value": 0.1234,
+            "n_trials": 2,
+            "created_at": "2026-07-13T00:00:00",
+            "tuning_summary_artifact": _tuning_summary_artifact(),
+            "tuning_metadata": None,
+        },
+    }]
+    assert mock_store.list_tuning_results.call_count == 1
+    assert mock_store.load_tuning_result.call_count == 1
 
 
 def test_get_enriched_runs_ignores_repr_style_refit_splitter_when_inferring_cv_config():

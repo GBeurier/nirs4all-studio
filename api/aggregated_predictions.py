@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from .results_repository import (
@@ -33,9 +33,15 @@ from .results_repository import (
     native_results_root,
     resolve_results_repository,
 )
+from .robustness_contract import (
+    ROBUSTNESS_SPECTRAL_SCENARIO_KINDS,
+    RobustnessLaunchPayload,
+    normalize_robustness_launch_payload,
+)
 from .shared.json_safe import sanitize_dict, sanitize_float
 from .store_adapter import (
     _apply_synthetic_refit_fallback_inplace,
+    _dataframe_rows,
     _extract_model_params_from_expanded_config,
     _get_workspace_store_cls,
     _mark_refit_only_entries_inplace,
@@ -135,6 +141,8 @@ class ChainSummary(BaseModel):
     pipeline_status: str | None = None
     # Artifact info (enriched from chains table)
     fold_artifacts: dict[str, str] | None = None
+    artifact_refs: list[dict[str, Any]] | None = None
+    robustness_summary: dict[str, Any] | None = None
 
 
 
@@ -238,6 +246,59 @@ class PredictionArraysResponse(BaseModel):
     result_metadata: Any | None = None
 
 
+class PredictionRobustnessReportRequest(BaseModel):
+    """Request to compute a native robustness report from stored prediction arrays."""
+
+    robustness: RobustnessLaunchPayload = Field(
+        default_factory=lambda: RobustnessLaunchPayload(
+            mode="clean_frozen",
+            scenarios=[{"kind": "observed"}],
+        ),
+        description="Native audit-only robustness plan. Spectral scenarios require stored X and a saved predictor_bundle/model_path.",
+    )
+    seed: int | None = Field(default=None, ge=0)
+    name: str = Field(default="Studio robustness report")
+    robustness_id: str | None = None
+
+
+class PredictionRobustnessReportResponse(BaseModel):
+    """Computed and persisted native robustness report summary."""
+
+    robustness_id: str
+    prediction_id: str
+    run_id: str | None = None
+    pipeline_id: str | None = None
+    chain_id: str | None = None
+    summary_artifact: dict[str, Any]
+    report_fingerprint: str
+
+
+class PredictionRobustnessEvidenceRequirement(BaseModel):
+    """One piece of evidence needed before Studio can run a robustness path."""
+
+    id: str
+    label: str
+    present: bool
+    source: str | None = None
+    detail: str | None = None
+
+
+class PredictionRobustnessEvidenceResponse(BaseModel):
+    """Read-only diagnostic for robustness paths available from a stored prediction."""
+
+    prediction_id: str
+    run_id: str | None = None
+    pipeline_id: str | None = None
+    chain_id: str | None = None
+    stored_prediction_scenarios: list[str]
+    spectral_scenarios: list[str]
+    can_compute_stored_prediction_report: bool
+    can_compute_spectral_report: bool
+    status: str
+    requirements: list[PredictionRobustnessEvidenceRequirement]
+    blockers: list[str]
+
+
 class ExportRequest(BaseModel):
     """Bulk export request."""
 
@@ -319,6 +380,467 @@ def _sanitize_cell(value: Any) -> Any:
     return value
 
 
+def _merge_missing_prediction_context(target: dict[str, Any], source: dict[str, Any] | None) -> None:
+    """Copy prediction/pipeline context into an arrays payload without overriding arrays."""
+    if not isinstance(source, dict):
+        return
+    for key in (
+        "run_id",
+        "pipeline_id",
+        "chain_id",
+        "dataset_name",
+        "model_name",
+        "model_class",
+        "partition",
+        "fold_id",
+        "n_samples",
+        "n_features",
+        "branch_path",
+        "source_index",
+        "source_name",
+        "target_index",
+        "target_name",
+        "result_metadata",
+        "metadata",
+        "runtime_manifest",
+        "native_result_refs",
+        "artifact_refs",
+        "model_path",
+        "predictor_bundle",
+        "predictor_path",
+        "model_bundle",
+    ):
+        if key not in target and key in source:
+            target[key] = source.get(key)
+
+
+def _load_prediction_arrays_for_robustness(store: Any, prediction_id: str) -> dict[str, Any]:
+    arrays = None
+    get_arrays = getattr(store, "get_prediction_arrays", None)
+    if callable(get_arrays):
+        arrays = get_arrays(prediction_id)
+    prediction_row = None
+    get_prediction = getattr(store, "get_prediction", None)
+    if callable(get_prediction):
+        try:
+            prediction_row = get_prediction(prediction_id, load_arrays=False)
+        except Exception:
+            prediction_row = None
+    if arrays is None:
+        if callable(get_prediction):
+            arrays = get_prediction(prediction_id, load_arrays=True)
+    if not isinstance(arrays, dict):
+        raise HTTPException(status_code=404, detail=f"No arrays found for prediction {prediction_id}")
+
+    enriched = dict(arrays)
+    _merge_missing_prediction_context(enriched, prediction_row if isinstance(prediction_row, dict) else None)
+
+    chain_id = enriched.get("chain_id")
+    if isinstance(chain_id, str) and chain_id:
+        get_chain = getattr(store, "get_chain", None)
+        if callable(get_chain):
+            try:
+                chain = get_chain(chain_id)
+            except Exception:
+                chain = None
+            if isinstance(chain, dict):
+                _merge_missing_prediction_context(enriched, chain)
+                if "fold_artifacts" not in enriched and "fold_artifacts" in chain:
+                    enriched["fold_artifacts"] = chain.get("fold_artifacts")
+
+    pipeline_id = enriched.get("pipeline_id")
+    if isinstance(pipeline_id, str) and pipeline_id:
+        get_pipeline = getattr(store, "get_pipeline", None)
+        if callable(get_pipeline):
+            try:
+                pipeline = get_pipeline(pipeline_id)
+            except Exception:
+                pipeline = None
+            if isinstance(pipeline, dict):
+                _merge_missing_prediction_context(enriched, pipeline)
+
+    return sanitize_dict(enriched)
+
+
+def _coerce_sample_metadata_for_robustness(arrays: dict[str, Any]) -> Any | None:
+    sample_metadata = arrays.get("sample_metadata")
+    if sample_metadata is not None:
+        return sample_metadata
+    metadata = arrays.get("metadata")
+    return metadata if isinstance(metadata, (dict, list)) else None
+
+
+def _has_non_empty_evidence(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, dict):
+        return bool(value)
+    if isinstance(value, (list, tuple, set)):
+        return len(value) > 0
+    size = getattr(value, "size", None)
+    if isinstance(size, int):
+        return size > 0
+    return True
+
+
+def _first_present_evidence_key(arrays: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        if _has_non_empty_evidence(arrays.get(key)):
+            return key
+    return None
+
+
+def _iter_nested_evidence_records(value: Any, prefix: str, *, depth: int = 0) -> list[tuple[str, dict[str, Any]]]:
+    """Return nested metadata records that may carry published replay evidence."""
+    if depth > 5:
+        return []
+    records: list[tuple[str, dict[str, Any]]] = []
+    if isinstance(value, dict):
+        records.append((prefix, value))
+        for key, child in value.items():
+            child_prefix = f"{prefix}.{key}" if prefix else str(key)
+            records.extend(_iter_nested_evidence_records(child, child_prefix, depth=depth + 1))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            child_prefix = f"{prefix}[{index}]"
+            records.extend(_iter_nested_evidence_records(child, child_prefix, depth=depth + 1))
+    return records
+
+
+def _find_prediction_evidence_value(
+    arrays: dict[str, Any],
+    keys: tuple[str, ...],
+) -> tuple[str | None, Any | None, str | None]:
+    """Find an evidence value from arrays or metadata, preserving a user-facing source path."""
+    for key in keys:
+        value = arrays.get(key)
+        if _has_non_empty_evidence(value):
+            return key, value, f"prediction_arrays.{key}"
+
+    for root_key in (
+        "result_metadata",
+        "metadata",
+        "runtime_manifest",
+        "manifest",
+        "execution_metadata",
+        "native_result_refs",
+        "artifact_refs",
+        "fold_artifacts",
+    ):
+        root_value = arrays.get(root_key)
+        if not _has_non_empty_evidence(root_value):
+            continue
+        for prefix, record in _iter_nested_evidence_records(root_value, f"prediction_arrays.{root_key}"):
+            for key in keys:
+                value = record.get(key)
+                if _has_non_empty_evidence(value):
+                    return key, value, f"{prefix}.{key}"
+
+    return None, None, None
+
+
+_SPECTRAL_ARRAY_EVIDENCE_KEYS = (
+    "X",
+    "x",
+    "spectra",
+    "spectrum",
+    "features",
+    "X_test",
+    "x_test",
+    "spectra_test",
+)
+_PREDICTOR_BUNDLE_EVIDENCE_KEYS = (
+    "predictor_bundle",
+    "model_bundle",
+    "predictor_path",
+    "model_path",
+    "model_uri",
+    "artifact_path",
+)
+_FROZEN_PREDICTOR_EVIDENCE_KEYS = (
+    *_PREDICTOR_BUNDLE_EVIDENCE_KEYS,
+    "frozen_predictor",
+    "predictor",
+    "predictor_artifact",
+    "predictor_ref",
+    "model_artifact",
+    "model_ref",
+    "fold_artifacts",
+)
+_STORED_PREDICTION_ROBUSTNESS_SCENARIOS = [
+    "observed",
+    "prediction_bias",
+    "prediction_noise",
+]
+
+
+def _build_prediction_robustness_evidence(
+    arrays: dict[str, Any],
+    *,
+    prediction_id: str,
+) -> PredictionRobustnessEvidenceResponse:
+    """Build a fail-closed robustness capability diagnostic for one prediction."""
+
+    has_y_true = _has_non_empty_evidence(arrays.get("y_true"))
+    has_y_pred = _has_non_empty_evidence(arrays.get("y_pred"))
+    x_key, _x_value, x_source = _find_prediction_evidence_value(arrays, _SPECTRAL_ARRAY_EVIDENCE_KEYS)
+    predictor_key, _predictor_value, predictor_source = _find_prediction_evidence_value(arrays, _FROZEN_PREDICTOR_EVIDENCE_KEYS)
+    predictor_bundle_key, _predictor_bundle_value, _predictor_bundle_source = _find_prediction_evidence_value(
+        arrays,
+        _PREDICTOR_BUNDLE_EVIDENCE_KEYS,
+    )
+    has_x = x_key is not None
+    has_frozen_predictor = predictor_key is not None
+    has_predictor_bundle = predictor_bundle_key is not None
+
+    requirements = [
+        PredictionRobustnessEvidenceRequirement(
+            id="y_true",
+            label="Stored truth labels",
+            present=has_y_true,
+            source="prediction_arrays.y_true" if has_y_true else None,
+            detail="Required for observed and prediction-space robustness metrics.",
+        ),
+        PredictionRobustnessEvidenceRequirement(
+            id="y_pred",
+            label="Stored predictions",
+            present=has_y_pred,
+            source="prediction_arrays.y_pred" if has_y_pred else None,
+            detail="Required for observed, prediction_bias and prediction_noise reports.",
+        ),
+        PredictionRobustnessEvidenceRequirement(
+            id="spectra",
+            label="Row-aligned spectra / X matrix",
+            present=has_x,
+            source=x_source if x_key else None,
+            detail="Required before Studio can replay spectral/OOD perturbations.",
+        ),
+        PredictionRobustnessEvidenceRequirement(
+            id="frozen_predictor",
+            label="Frozen predictor replay surface",
+            present=has_frozen_predictor,
+            source=predictor_source if predictor_key else None,
+            detail="Required before Studio can score perturbed spectra with the exact stored predictor.",
+        ),
+    ]
+
+    blockers: list[str] = []
+    if not has_y_true:
+        blockers.append("Stored y_true is missing; observed and prediction-space robustness reports cannot be computed.")
+    if not has_y_pred:
+        blockers.append("Stored y_pred is missing; observed and prediction-space robustness reports cannot be computed.")
+    if not has_x:
+        blockers.append("Spectral/OOD scenarios require a row-aligned X/spectra matrix for the selected prediction.")
+    if not has_frozen_predictor:
+        blockers.append("Spectral/OOD scenarios require an explicit frozen predictor replay surface.")
+    elif not has_predictor_bundle:
+        blockers.append("Studio spectral/OOD execution currently supports only saved predictor_bundle/model_path evidence.")
+
+    can_compute_stored_prediction_report = has_y_true and has_y_pred
+    can_compute_spectral_report = can_compute_stored_prediction_report and has_x and has_predictor_bundle
+
+    if not can_compute_stored_prediction_report:
+        status = "missing_prediction_evidence"
+    elif can_compute_spectral_report:
+        status = "ready_for_spectral_replay"
+    elif blockers:
+        status = "ready_for_prediction_space_only"
+    else:
+        status = "ready_for_stored_prediction_report"
+
+    return PredictionRobustnessEvidenceResponse(
+        prediction_id=str(arrays.get("prediction_id") or prediction_id),
+        run_id=arrays.get("run_id"),
+        pipeline_id=arrays.get("pipeline_id"),
+        chain_id=arrays.get("chain_id"),
+        stored_prediction_scenarios=list(_STORED_PREDICTION_ROBUSTNESS_SCENARIOS) if can_compute_stored_prediction_report else [],
+        spectral_scenarios=sorted(ROBUSTNESS_SPECTRAL_SCENARIO_KINDS),
+        can_compute_stored_prediction_report=can_compute_stored_prediction_report,
+        can_compute_spectral_report=can_compute_spectral_report,
+        status=status,
+        requirements=requirements,
+        blockers=blockers,
+    )
+
+
+def _compute_prediction_robustness_report(
+    *,
+    arrays: dict[str, Any],
+    robustness_plan: dict[str, Any],
+    seed: int | None,
+) -> Any:
+    import numpy as np
+    from nirs4all.api.result import PredictResult
+    from nirs4all.api.robustness import robustness
+
+    if arrays.get("y_true") is None or arrays.get("y_pred") is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Robustness report requires stored y_true and y_pred arrays for this prediction.",
+        )
+
+    scenario_kinds = [
+        str(scenario.get("kind"))
+        for scenario in robustness_plan.get("scenarios", [])
+        if isinstance(scenario, dict)
+    ]
+    spectral = sorted(kind for kind in scenario_kinds if kind in ROBUSTNESS_SPECTRAL_SCENARIO_KINDS)
+    x_key, x_matrix, _x_source = _find_prediction_evidence_value(arrays, _SPECTRAL_ARRAY_EVIDENCE_KEYS)
+    predictor_bundle_key, predictor_bundle, _predictor_bundle_source = _find_prediction_evidence_value(
+        arrays,
+        _PREDICTOR_BUNDLE_EVIDENCE_KEYS,
+    )
+    if spectral:
+        if x_matrix is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Spectral scenarios require explicit X/spectra arrays on the stored prediction "
+                    f"({', '.join(spectral)})."
+                ),
+            )
+        if predictor_bundle is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Spectral scenarios require a saved predictor_bundle/model_path on the stored prediction "
+                    f"({', '.join(spectral)})."
+                ),
+            )
+        if not isinstance(predictor_bundle, (str, Path)):
+            raise HTTPException(
+                status_code=400,
+                detail="Stored prediction spectral robustness currently supports only path-like predictor_bundle/model_path evidence.",
+            )
+
+    sample_indices = arrays.get("sample_indices")
+    result = PredictResult(
+        y_pred=np.asarray(arrays["y_pred"], dtype=float),
+        metadata={"sample_metadata": _coerce_sample_metadata_for_robustness(arrays)},
+        sample_indices=np.asarray(sample_indices) if sample_indices is not None else None,
+        model_name=str(arrays.get("model_name") or ""),
+    )
+    try:
+        return robustness(
+            result,
+            y_true=arrays["y_true"],
+            mode=robustness_plan.get("mode", "clean_frozen"),
+            scenarios=robustness_plan.get("scenarios"),
+            slice_by=robustness_plan.get("slice_by"),
+            seed=seed,
+            X=x_matrix if spectral else None,
+            predictor_bundle=predictor_bundle if spectral else None,
+        )
+    except (TypeError, ValueError, NotImplementedError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _save_workspace_robustness_report(
+    *,
+    workspace_path: Path,
+    report: Any,
+    request: PredictionRobustnessReportRequest,
+    robustness_plan: dict[str, Any],
+    arrays: dict[str, Any],
+    prediction_id: str,
+) -> str:
+    from nirs4all.api.robustness import save_workspace_robustness_report
+
+    metadata = sanitize_dict({
+        "source": "nirs4all-studio",
+        "source_endpoint": "aggregated-predictions.robustness-report",
+        "prediction_id": prediction_id,
+        "requested_robustness": robustness_plan,
+        "requested_seed": request.seed,
+        "requested_scenario_kinds": [
+            scenario.get("kind")
+            for scenario in robustness_plan.get("scenarios", [])
+            if isinstance(scenario, dict)
+        ],
+        "stored_prediction_context": {
+            "run_id": arrays.get("run_id"),
+            "pipeline_id": arrays.get("pipeline_id"),
+            "chain_id": arrays.get("chain_id"),
+            "dataset_name": arrays.get("dataset_name"),
+            "model_name": arrays.get("model_name"),
+            "model_class": arrays.get("model_class"),
+            "partition": arrays.get("partition"),
+            "fold_id": arrays.get("fold_id"),
+            "n_samples": arrays.get("n_samples"),
+            "sample_indices_present": arrays.get("sample_indices") is not None,
+            "sample_metadata_present": _coerce_sample_metadata_for_robustness(arrays) is not None,
+        },
+    })
+
+    return save_workspace_robustness_report(
+        workspace_path,
+        report,
+        name=request.name,
+        robustness_id=request.robustness_id,
+        metadata=metadata,
+        run_id=arrays.get("run_id"),
+        pipeline_id=arrays.get("pipeline_id"),
+        chain_id=arrays.get("chain_id"),
+        prediction_id=prediction_id,
+    )
+
+
+def _normalize_prediction_robustness_request(request: PredictionRobustnessReportRequest) -> dict[str, Any]:
+    try:
+        robustness_plan = normalize_robustness_launch_payload(request.robustness)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if robustness_plan is None:
+        raise HTTPException(status_code=400, detail="robustness plan is required")
+
+    return robustness_plan
+
+
+def _load_workspace_robustness_report(workspace_path: Path, robustness_id: str) -> Any:
+    from nirs4all.api.robustness import load_workspace_robustness_report
+
+    try:
+        return load_workspace_robustness_report(workspace_path, robustness_id)
+    except (FileNotFoundError, KeyError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=404, detail=f"Robustness report not found: {robustness_id}") from exc
+
+
+def _safe_export_stem(value: str, *, fallback: str) -> str:
+    stem = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip(".-")
+    return stem or fallback
+
+
+def _robustness_report_export_response(
+    *,
+    robustness_id: str,
+    report: Any,
+    export_format: Literal["json", "markdown", "html"],
+) -> Response:
+    if export_format == "json":
+        body = report.to_json(indent=2)
+        media_type = "application/json"
+        extension = "json"
+    elif export_format == "markdown":
+        body = report.to_markdown()
+        media_type = "text/markdown; charset=utf-8"
+        extension = "md"
+    elif export_format == "html":
+        body = report.to_html()
+        media_type = "text/html; charset=utf-8"
+        extension = "html"
+    else:
+        raise HTTPException(status_code=400, detail="format must be one of: json, markdown, html")
+
+    filename = f"{_safe_export_stem(robustness_id, fallback='robustness-report')}.{extension}"
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def _is_read_only_sql(sql: str) -> bool:
     """Basic guardrail to allow only read-only SQL."""
     normalized = re.sub(r"--.*?$|/\*.*?\*/", " ", sql, flags=re.MULTILINE | re.DOTALL).strip().lower()
@@ -370,6 +892,304 @@ def _enrich_with_fold_artifacts(records: list[dict], store: Any) -> list[dict]:
     for record in records:
         record["fold_artifacts"] = artifacts_map.get(record.get("chain_id", ""))
     return records
+
+
+def _robustness_summary_artifact_ref(payload: dict[str, Any], summary: dict[str, Any]) -> dict[str, Any]:
+    robustness_id = str(payload.get("robustness_id") or payload.get("result_fingerprint") or "robustness")
+    summary_artifact = payload.get("summary_artifact") if isinstance(payload.get("summary_artifact"), dict) else {}
+    fingerprint = payload.get("result_fingerprint") or summary_artifact.get("fingerprint")
+    chain_id = summary.get("chain_id")
+    label_name = payload.get("name")
+    label = str(label_name) if isinstance(label_name, str) and label_name else "Robustness summary"
+    metadata = {
+        "source": "workspace_robustness_results",
+        "robustness_id": robustness_id,
+        "conformal_id": payload.get("conformal_id"),
+        "prediction_id": payload.get("prediction_id"),
+        "mode": payload.get("mode"),
+        "scenario_count": payload.get("scenario_count"),
+        "slice_by": payload.get("slice_by"),
+        "created_at": payload.get("created_at"),
+        "robustness_summary_artifact": summary_artifact,
+    }
+    audit_metadata = payload.get("metadata")
+    if isinstance(audit_metadata, dict):
+        metadata["audit_metadata"] = audit_metadata
+
+    return {
+        "id": f"robustness-summary:{chain_id}:{robustness_id}",
+        "kind": "repository_entry",
+        "role": "robustness-summary",
+        "label": label,
+        "source": "result-repository",
+        "scope": "chain",
+        "status": "available",
+        "artifactId": robustness_id,
+        "runId": payload.get("run_id") or summary.get("run_id"),
+        "pipelineId": payload.get("pipeline_id") or summary.get("pipeline_id"),
+        "chainId": payload.get("chain_id") or chain_id,
+        "format": "json",
+        "contentAddress": fingerprint,
+        "metadata": metadata,
+    }
+
+
+def _tuning_summary_artifact_ref(payload: dict[str, Any], summary: dict[str, Any]) -> dict[str, Any]:
+    tuning_id = str(payload.get("tuning_id") or payload.get("result_fingerprint") or "tuning")
+    summary_artifact = payload.get("summary_artifact") if isinstance(payload.get("summary_artifact"), dict) else {}
+    fingerprint = payload.get("result_fingerprint") or summary_artifact.get("fingerprint")
+    chain_id = summary.get("chain_id")
+    label_name = payload.get("name")
+    label = str(label_name) if isinstance(label_name, str) and label_name else "Tuning summary"
+    metadata = {
+        "source": "workspace_tuning_results",
+        "tuning_id": tuning_id,
+        "tuning_fingerprint": payload.get("tuning_fingerprint"),
+        "engine": payload.get("engine"),
+        "metric": payload.get("metric"),
+        "direction": payload.get("direction"),
+        "best_value": payload.get("best_value"),
+        "n_trials": payload.get("n_trials"),
+        "created_at": payload.get("created_at"),
+        "tuning_summary_artifact": summary_artifact,
+    }
+    tuning_metadata = payload.get("metadata")
+    if isinstance(tuning_metadata, dict):
+        metadata["tuning_metadata"] = tuning_metadata
+
+    return {
+        "id": f"tuning-summary:{chain_id}:{tuning_id}",
+        "kind": "repository_entry",
+        "role": "tuning-summary",
+        "label": label,
+        "source": "result-repository",
+        "scope": "chain",
+        "status": "available",
+        "artifactId": tuning_id,
+        "runId": payload.get("run_id") or summary.get("run_id"),
+        "pipelineId": payload.get("pipeline_id") or summary.get("pipeline_id"),
+        "chainId": payload.get("chain_id") or chain_id,
+        "format": "nirs4all.tuning.summary",
+        "contentAddress": fingerprint,
+        "metadata": metadata,
+    }
+
+
+def _list_robustness_rows(store: Any) -> list[dict[str, Any]]:
+    list_results = getattr(store, "list_robustness_results", None)
+    if not callable(list_results):
+        return []
+
+    try:
+        return [sanitize_dict(row) for row in _dataframe_rows(list_results(limit=200, offset=0))]
+    except Exception:
+        return []
+
+
+def _list_tuning_rows(store: Any) -> list[dict[str, Any]]:
+    list_results = getattr(store, "list_tuning_results", None)
+    if not callable(list_results):
+        return []
+
+    try:
+        return [sanitize_dict(row) for row in _dataframe_rows(list_results(limit=200, offset=0))]
+    except Exception:
+        return []
+
+
+def _matching_robustness_rows_from_rows(
+    store: Any,
+    summary: dict[str, Any],
+    rows: list[dict[str, Any]],
+    summary_cache: dict[str, dict[str, Any] | None] | None = None,
+) -> list[dict[str, Any]]:
+    load_result = getattr(store, "load_robustness_result", None)
+    if not callable(load_result):
+        return []
+
+    run_id = summary.get("run_id")
+    pipeline_id = summary.get("pipeline_id")
+    chain_id = summary.get("chain_id")
+    summary_cache = summary_cache if summary_cache is not None else {}
+    matches: list[dict[str, Any]] = []
+    for row in rows:
+        row_chain_id = row.get("chain_id")
+        row_pipeline_id = row.get("pipeline_id")
+        row_run_id = row.get("run_id")
+        if row_chain_id not in (None, chain_id):
+            continue
+        if row_pipeline_id not in (None, pipeline_id):
+            continue
+        if row_run_id not in (None, run_id):
+            continue
+
+        robustness_id = row.get("robustness_id") or row.get("result_fingerprint")
+        if not isinstance(robustness_id, str) or not robustness_id:
+            continue
+        if robustness_id not in summary_cache:
+            try:
+                report = load_result(robustness_id)
+                summary_artifact = report.summary_artifact()
+            except Exception:
+                summary_cache[robustness_id] = None
+            else:
+                summary_cache[robustness_id] = (
+                    sanitize_dict(summary_artifact)
+                    if isinstance(summary_artifact, dict)
+                    else None
+                )
+        summary_artifact = summary_cache.get(robustness_id)
+        if not isinstance(summary_artifact, dict) or summary_artifact.get("format") != "nirs4all.robustness.summary":
+            continue
+
+        matches.append({
+            "robustness_id": robustness_id,
+            "name": row.get("name") or "",
+            "run_id": row_run_id,
+            "pipeline_id": row_pipeline_id,
+            "chain_id": row_chain_id,
+            "conformal_id": row.get("conformal_id"),
+            "prediction_id": row.get("prediction_id"),
+            "result_fingerprint": row.get("result_fingerprint") or summary_artifact.get("fingerprint"),
+            "mode": row.get("mode") or summary_artifact.get("mode"),
+            "scenario_count": row.get("scenario_count"),
+            "slice_by": _parse_json_maybe(row.get("slice_by")),
+            "created_at": row.get("created_at"),
+            "metadata": _parse_json_maybe(row.get("metadata")),
+            "summary_artifact": summary_artifact,
+        })
+    return matches
+
+
+def _matching_tuning_rows_from_rows(
+    store: Any,
+    summary: dict[str, Any],
+    rows: list[dict[str, Any]],
+    summary_cache: dict[str, dict[str, Any] | None] | None = None,
+) -> list[dict[str, Any]]:
+    load_result = getattr(store, "load_tuning_result", None)
+    if not callable(load_result):
+        return []
+
+    run_id = summary.get("run_id")
+    pipeline_id = summary.get("pipeline_id")
+    chain_id = summary.get("chain_id")
+    summary_cache = summary_cache if summary_cache is not None else {}
+    matches: list[dict[str, Any]] = []
+    for row in rows:
+        row_chain_id = row.get("chain_id")
+        row_pipeline_id = row.get("pipeline_id")
+        row_run_id = row.get("run_id")
+        if row_chain_id not in (None, chain_id):
+            continue
+        if row_pipeline_id not in (None, pipeline_id):
+            continue
+        if row_run_id not in (None, run_id):
+            continue
+
+        tuning_id = row.get("tuning_id") or row.get("result_fingerprint")
+        if not isinstance(tuning_id, str) or not tuning_id:
+            continue
+        if tuning_id not in summary_cache:
+            try:
+                result = load_result(tuning_id)
+                summary_artifact = result.summary_artifact()
+            except Exception:
+                summary_cache[tuning_id] = None
+            else:
+                summary_cache[tuning_id] = (
+                    sanitize_dict(summary_artifact)
+                    if isinstance(summary_artifact, dict)
+                    else None
+                )
+        summary_artifact = summary_cache.get(tuning_id)
+        if not isinstance(summary_artifact, dict) or summary_artifact.get("format") != "nirs4all.tuning.summary":
+            continue
+
+        matches.append({
+            "tuning_id": tuning_id,
+            "name": row.get("name") or "",
+            "run_id": row_run_id,
+            "pipeline_id": row_pipeline_id,
+            "chain_id": row_chain_id,
+            "result_fingerprint": row.get("result_fingerprint") or summary_artifact.get("fingerprint"),
+            "tuning_fingerprint": row.get("tuning_fingerprint"),
+            "engine": row.get("engine") or summary_artifact.get("engine"),
+            "metric": row.get("metric") or summary_artifact.get("metric"),
+            "direction": row.get("direction") or summary_artifact.get("direction"),
+            "best_value": row.get("best_value") if row.get("best_value") is not None else summary_artifact.get("best_value"),
+            "n_trials": row.get("n_trials") if row.get("n_trials") is not None else summary_artifact.get("n_trials"),
+            "created_at": row.get("created_at"),
+            "metadata": _parse_json_maybe(row.get("metadata")),
+            "summary_artifact": summary_artifact,
+        })
+    return matches
+
+
+def _attach_robustness_matches_to_summary(summary: dict[str, Any], matches: list[dict[str, Any]]) -> None:
+    if not matches:
+        return
+
+    refs = list(summary.get("artifact_refs") or [])
+    seen = {ref.get("id") for ref in refs if isinstance(ref, dict)}
+    for match in matches:
+        ref = _robustness_summary_artifact_ref(match, summary)
+        if ref["id"] not in seen:
+            refs.append(ref)
+            seen.add(ref["id"])
+        if summary.get("robustness_summary") is None and isinstance(match.get("summary_artifact"), dict):
+            summary["robustness_summary"] = match["summary_artifact"]
+    summary["artifact_refs"] = refs
+
+
+def _attach_tuning_matches_to_summary(summary: dict[str, Any], matches: list[dict[str, Any]]) -> None:
+    if not matches:
+        return
+
+    refs = list(summary.get("artifact_refs") or [])
+    seen = {ref.get("id") for ref in refs if isinstance(ref, dict)}
+    for match in matches:
+        ref = _tuning_summary_artifact_ref(match, summary)
+        if ref["id"] not in seen:
+            refs.append(ref)
+            seen.add(ref["id"])
+    summary["artifact_refs"] = refs
+
+
+def _matching_robustness_rows(store: Any, summary: dict[str, Any]) -> list[dict[str, Any]]:
+    return _matching_robustness_rows_from_rows(store, summary, _list_robustness_rows(store))
+
+
+def _matching_tuning_rows(store: Any, summary: dict[str, Any]) -> list[dict[str, Any]]:
+    return _matching_tuning_rows_from_rows(store, summary, _list_tuning_rows(store))
+
+
+def _enrich_with_robustness_summary_artifacts(summary: dict[str, Any], store: Any) -> None:
+    _attach_robustness_matches_to_summary(summary, _matching_robustness_rows(store, summary))
+
+
+def _enrich_with_tuning_summary_artifacts(summary: dict[str, Any], store: Any) -> None:
+    _attach_tuning_matches_to_summary(summary, _matching_tuning_rows(store, summary))
+
+
+def _enrich_many_with_robustness_summary_artifacts(summaries: list[dict[str, Any]], store: Any) -> None:
+    rows = _list_robustness_rows(store)
+    if not rows:
+        return
+    summary_cache: dict[str, dict[str, Any] | None] = {}
+    for summary in summaries:
+        matches = _matching_robustness_rows_from_rows(store, summary, rows, summary_cache)
+        _attach_robustness_matches_to_summary(summary, matches)
+
+
+def _enrich_many_with_tuning_summary_artifacts(summaries: list[dict[str, Any]], store: Any) -> None:
+    rows = _list_tuning_rows(store)
+    if not rows:
+        return
+    summary_cache: dict[str, dict[str, Any] | None] = {}
+    for summary in summaries:
+        matches = _matching_tuning_rows_from_rows(store, summary, rows, summary_cache)
+        _attach_tuning_matches_to_summary(summary, matches)
 
 
 def _build_pipeline_metadata_map(store: Any, pipeline_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -682,6 +1502,8 @@ async def get_aggregated_predictions(
             records = [sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
             _mark_refit_only_entries_inplace(records)
             _enrich_with_fold_artifacts(records, store)
+            _enrich_many_with_robustness_summary_artifacts(records, store)
+            _enrich_many_with_tuning_summary_artifacts(records, store)
             for record in records:
                 _apply_synthetic_refit_fallback_inplace(record)
             return ChainSummariesResponse(
@@ -726,6 +1548,8 @@ async def get_top_aggregated_predictions(
             records = [sanitize_dict(dict(row)) for row in df.iter_rows(named=True)]
             _mark_refit_only_entries_inplace(records)
             _enrich_with_fold_artifacts(records, store)
+            _enrich_many_with_robustness_summary_artifacts(records, store)
+            _enrich_many_with_tuning_summary_artifacts(records, store)
             for record in records:
                 _apply_synthetic_refit_fallback_inplace(record)
             return {
@@ -768,6 +1592,8 @@ async def get_chain_detail(
                 summary = sanitize_dict(dict(agg_df.row(0, named=True)))
                 _mark_refit_only_entries_inplace([summary])
                 _enrich_with_fold_artifacts([summary], store)
+                _enrich_with_robustness_summary_artifacts(summary, store)
+                _enrich_with_tuning_summary_artifacts(summary, store)
                 _apply_synthetic_refit_fallback_inplace(summary)
                 pipeline_ids = [summary.get("pipeline_id")] if summary.get("pipeline_id") else []
                 pipeline_map = _build_pipeline_metadata_map(store, pipeline_ids) if pipeline_ids else {}
@@ -958,6 +1784,90 @@ async def get_chain_partition_detail(
         }
     finally:
         store.close()
+
+
+@router.post("/{prediction_id}/robustness-report", response_model=PredictionRobustnessReportResponse)
+async def compute_prediction_robustness_report(
+    prediction_id: str,
+    request: PredictionRobustnessReportRequest,
+):
+    """Compute and persist a native audit-only robustness report for one stored prediction.
+
+    The endpoint only consumes already materialized ``y_true``/``y_pred`` arrays.
+    It does not replay spectra, refit, recalibrate, or synthesize missing truth.
+    """
+
+    robustness_plan = _normalize_prediction_robustness_request(request)
+
+    def _load() -> PredictionRobustnessReportResponse:
+        workspace_path = _get_workspace_path()
+        store = _get_store()
+        try:
+            arrays = _load_prediction_arrays_for_robustness(store, prediction_id)
+            report = _compute_prediction_robustness_report(
+                arrays=arrays,
+                robustness_plan=robustness_plan,
+                seed=request.seed,
+            )
+            robustness_id = _save_workspace_robustness_report(
+                workspace_path=workspace_path,
+                report=report,
+                request=request,
+                robustness_plan=robustness_plan,
+                arrays=arrays,
+                prediction_id=prediction_id,
+            )
+            summary_artifact = report.summary_artifact()
+            return PredictionRobustnessReportResponse(
+                robustness_id=robustness_id,
+                prediction_id=prediction_id,
+                run_id=arrays.get("run_id"),
+                pipeline_id=arrays.get("pipeline_id"),
+                chain_id=arrays.get("chain_id"),
+                summary_artifact=summary_artifact,
+                report_fingerprint=str(summary_artifact.get("fingerprint") or report.fingerprint),
+            )
+        finally:
+            store.close()
+
+    return await asyncio.to_thread(_load)
+
+
+@router.get("/{prediction_id}/robustness-evidence", response_model=PredictionRobustnessEvidenceResponse)
+async def get_prediction_robustness_evidence(prediction_id: str):
+    """Return fail-closed evidence for robustness paths available from one stored prediction."""
+
+    def _load() -> PredictionRobustnessEvidenceResponse:
+        store = _get_store()
+        try:
+            arrays = _load_prediction_arrays_for_robustness(store, prediction_id)
+            return _build_prediction_robustness_evidence(arrays, prediction_id=prediction_id)
+        finally:
+            store.close()
+
+    return await asyncio.to_thread(_load)
+
+
+@router.get("/robustness-reports/{robustness_id}/export")
+async def export_workspace_robustness_report(
+    robustness_id: str,
+    format: Literal["json", "markdown", "html"] = Query(
+        default="json",
+        description="Export format for the verified nirs4all RobustnessReport.",
+    ),
+):
+    """Republish a persisted native robustness report without recomputing it."""
+
+    def _load() -> Response:
+        workspace_path = _get_workspace_path()
+        report = _load_workspace_robustness_report(workspace_path, robustness_id)
+        return _robustness_report_export_response(
+            robustness_id=robustness_id,
+            report=report,
+            export_format=format,
+        )
+
+    return await asyncio.to_thread(_load)
 
 
 @router.get("/{prediction_id}/arrays", response_model=PredictionArraysResponse)

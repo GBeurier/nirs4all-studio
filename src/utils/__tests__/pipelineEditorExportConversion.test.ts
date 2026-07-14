@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
+import { buildStudioTuningSpacePreview } from "@/components/pipeline-editor/finetuning/tuningSpacePreview";
 import {
   buildClassStep,
   convertEditorAugmentationToNirs4all,
@@ -67,7 +68,7 @@ describe("pipelineEditorExportConversion", () => {
   });
 
   it("exports class and function model definitions with tuning metadata", () => {
-    const classModel = convertEditorModelToNirs4all({
+    const classModelStep: EditorPipelineStep = {
       id: "ridge",
       type: "model",
       name: "Ridge",
@@ -80,6 +81,8 @@ describe("pipelineEditorExportConversion", () => {
         eval_mode: "best",
         sample: "random",
         verbose: 1,
+        storage: " sqlite:///optuna-study.db ",
+        study_name: "ridge-study",
         model_params: [{ name: "alpha", type: "log_float", low: 0.001, high: 10 }],
         train_params: [{ name: "epochs", type: "int", low: 10, high: 100 }],
       },
@@ -92,7 +95,8 @@ describe("pipelineEditorExportConversion", () => {
       paramSweeps: {
         solver: { type: "or", choices: ["auto", "svd"] },
       },
-    }, "sklearn.linear_model.Ridge");
+    };
+    const classModel = convertEditorModelToNirs4all(classModelStep, "sklearn.linear_model.Ridge");
 
     const functionModel = convertEditorModelToNirs4all({
       id: "nicon",
@@ -115,6 +119,8 @@ describe("pipelineEditorExportConversion", () => {
         eval_mode: "best",
         sample: "random",
         verbose: 1,
+        storage: "sqlite:///optuna-study.db",
+        study_name: "ridge-study",
         model_params: {
           alpha: { type: "log_float", low: 0.001, high: 10, log: true },
         },
@@ -130,6 +136,22 @@ describe("pipelineEditorExportConversion", () => {
       },
       _grid_: { solver: ["auto", "svd"] },
     });
+    const exportedFinetune = (classModel as Extract<Nirs4allStep, { model: unknown }>).finetune_params;
+    const tuningSpacePreview = buildStudioTuningSpacePreview(classModelStep.finetuneConfig!);
+    expect(tuningSpacePreview.issues).toEqual([]);
+    expect(tuningSpacePreview.preview?.parameters.map((parameter) => ({
+      path: parameter.path,
+      spec: parameter.spec,
+    }))).toEqual([
+      {
+        path: "model.alpha",
+        spec: exportedFinetune?.model_params.alpha,
+      },
+      {
+        path: "train.epochs",
+        spec: exportedFinetune?.train_params?.epochs,
+      },
+    ]);
     expect(functionModel).toEqual({
       model: {
         function: "nirs4all.operators.models.pytorch.nicon.nicon",

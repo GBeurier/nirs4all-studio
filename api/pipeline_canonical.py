@@ -61,6 +61,8 @@ KNOWN_FINETUNE_KEYS = {
     "sample",
     "sampler",
     "verbose",
+    "storage",
+    "study_name",
     "model_params",
     "train_params",
 }
@@ -809,6 +811,10 @@ def _convert_model_step_to_editor(step: dict[str, Any]) -> dict[str, Any]:
             "verbose": finetune_params.get("verbose"),
             "model_params": [],
         }
+        if isinstance(finetune_params.get("storage"), str):
+            finetune_config["storage"] = finetune_params["storage"]
+        if isinstance(finetune_params.get("study_name"), str):
+            finetune_config["study_name"] = finetune_params["study_name"]
 
         sampler_key = None
         sampler_value = None
@@ -1499,6 +1505,10 @@ def _convert_editor_model_to_canonical(step: dict[str, Any]) -> dict[str, Any]:
             not preserve_presence or "verbose" in present_keys
         ):
             finetune_payload["verbose"] = finetune_config.get("verbose")
+        for key in ("storage", "study_name"):
+            value = finetune_config.get(key)
+            if isinstance(value, str) and value.strip():
+                finetune_payload[key] = value.strip()
 
         model_params: dict[str, Any] = {}
         for param in finetune_config.get("model_params") or []:
