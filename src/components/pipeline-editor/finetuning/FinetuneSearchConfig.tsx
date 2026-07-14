@@ -44,6 +44,12 @@ export function FinetuneSearchConfig({
   onUpdate,
 }: FinetuneSearchConfigProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const updateOptionalString = (
+    key: "storage" | "study_name",
+    value: string
+  ) => {
+    onUpdate({ [key]: value.length > 0 ? value : undefined });
+  };
 
   return (
     <div className="space-y-4">
@@ -225,6 +231,54 @@ export function FinetuneSearchConfig({
                 <SelectItem value="mean">Mean Score</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Optimizer persistence */}
+          <div className="space-y-3 rounded-lg border border-border/60 p-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Optimizer Persistence</Label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-64">
+                    Persists Optuna optimizer state through nirs4all using the
+                    canonical finetune_params storage and study_name keywords.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Leave empty for an in-memory study. nirs4all validates the URI
+                and study semantics when the pipeline runs.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground" htmlFor="finetune-storage">
+                Optuna storage URI
+              </Label>
+              <Input
+                id="finetune-storage"
+                value={config.storage ?? ""}
+                onChange={(event) => updateOptionalString("storage", event.target.value)}
+                placeholder="sqlite:///optuna-study.db"
+                className="font-mono"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground" htmlFor="finetune-study-name">
+                Optuna study name
+              </Label>
+              <Input
+                id="finetune-study-name"
+                value={config.study_name ?? ""}
+                onChange={(event) => updateOptionalString("study_name", event.target.value)}
+                placeholder="pls-baseline-v1"
+                className="font-mono"
+              />
+            </div>
           </div>
         </CollapsibleContent>
       </Collapsible>

@@ -150,20 +150,46 @@ export function buildPredictionViewerCsvExport(
   }
 
   const rows: Record<string, unknown>[] = [];
+  const hasConformalIntervals = datasets.some(dataset => dataset.conformalIntervals?.some(interval => interval != null));
   for (const dataset of datasets) {
     const count = Math.min(dataset.yTrue.length, dataset.yPred.length);
     for (let index = 0; index < count; index++) {
+      const interval = dataset.conformalIntervals?.[index];
       rows.push({
         sample_id: dataset.sampleIds?.[index] ?? index,
         partition: dataset.label,
         y_true: dataset.yTrue[index],
         y_pred: dataset.yPred[index],
         residual: dataset.yTrue[index] - dataset.yPred[index],
+        ...(hasConformalIntervals
+          ? {
+              conformal_coverage: interval?.coverage ?? null,
+              conformal_coverage_label: interval?.coverageLabel ?? null,
+              conformal_lower: interval?.lower ?? null,
+              conformal_upper: interval?.upper ?? null,
+              conformal_width: interval != null ? interval.upper - interval.lower : null,
+            }
+          : {}),
       });
     }
   }
   return {
-    columns: ["sample_id", "partition", "y_true", "y_pred", "residual"],
+    columns: [
+      "sample_id",
+      "partition",
+      "y_true",
+      "y_pred",
+      "residual",
+      ...(hasConformalIntervals
+        ? [
+            "conformal_coverage",
+            "conformal_coverage_label",
+            "conformal_lower",
+            "conformal_upper",
+            "conformal_width",
+          ]
+        : []),
+    ],
     rows,
   };
 }

@@ -12,6 +12,7 @@ import { useMemo, useCallback } from "react";
 import { Sparkles, Settings2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
+import { useKeywordRegistry } from "@/hooks/useKeywordRegistry";
 import type { PipelineStep, FinetuneConfig, FinetuneParamConfig } from "../types";
 import { FinetuneEnableToggle } from "./FinetuneEnableToggle";
 import { FinetuneSearchConfig } from "./FinetuneSearchConfig";
@@ -19,6 +20,7 @@ import { FinetuneParamList } from "./FinetuneParamList";
 import { TrainParamsList } from "./TrainParamsList";
 import { TrialTrainingConfig } from "./TrialTrainingConfig";
 import { BestModelTrainingConfig } from "./BestModelTrainingConfig";
+import { FinetuneNativeContractCard } from "./FinetuneNativeContractCard";
 import { getPresetsForModel } from "./presets";
 import { defaultFinetuneConfig } from "./finetuneDefaults";
 
@@ -30,6 +32,7 @@ interface FinetuneTabProps {
 export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
   // Initialize or get existing config
   const config = step.finetuneConfig ?? defaultFinetuneConfig;
+  const keywordRegistry = useKeywordRegistry();
 
   // Get available parameters from step params
   const availableParams = useMemo(
@@ -101,6 +104,13 @@ export function FinetuneTab({ step, onUpdate }: FinetuneTabProps) {
         enabled={config.enabled}
         onToggle={handleToggle}
         paramCount={config.model_params?.length ?? 0}
+      />
+
+      <FinetuneNativeContractCard
+        availableParamCount={availableParams.length}
+        config={config}
+        modelName={step.name}
+        registry={keywordRegistry.data}
       />
 
       {/* Configuration (only shown when enabled) */}

@@ -525,6 +525,8 @@ def test_preview_pipeline_import_normalizes_float_log_aliases():
             {
                 "model": {"class": "sklearn.linear_model.Ridge"},
                 "finetune_params": {
+                    "storage": "sqlite:///optuna-study.db",
+                    "study_name": "ridge-study",
                     "model_params": {
                         "alpha": ["float_log", 1e-4, 1e2],
                         "gamma": {
@@ -628,6 +630,8 @@ def test_editor_to_canonical_exports_edited_finetune_params_from_current_fields(
             {
                 "model": {"class": "sklearn.linear_model.Ridge"},
                 "finetune_params": {
+                    "storage": "sqlite:///optuna-study.db",
+                    "study_name": "ridge-study",
                     "model_params": {
                         "alpha": ["float_log", 1e-4, 1e2],
                         "gamma": {
@@ -656,8 +660,14 @@ def test_editor_to_canonical_exports_edited_finetune_params_from_current_fields(
     }
     params_by_name["alpha"]["high"] = 10
     params_by_name["gamma"]["low"] = 0.02
+    assert preview["steps"][0]["finetuneConfig"]["storage"] == "sqlite:///optuna-study.db"
+    assert preview["steps"][0]["finetuneConfig"]["study_name"] == "ridge-study"
+    assert "storage" not in preview["steps"][0].get("finetuneExtra", {})
+    assert "study_name" not in preview["steps"][0].get("finetuneExtra", {})
 
     exported = editor_to_canonical(preview["steps"])
+    assert exported[0]["finetune_params"]["storage"] == "sqlite:///optuna-study.db"
+    assert exported[0]["finetune_params"]["study_name"] == "ridge-study"
     model_params = exported[0]["finetune_params"]["model_params"]
     assert model_params["alpha"] == {
         "type": "log_float",

@@ -78,6 +78,23 @@ Clicking **View details** (or clicking the row itself) opens a detail panel that
 | **Sort** | Click any column header to sort the sample list. Sorting by absolute residual is useful for finding the worst predictions. |
 | **Scatter plot** | A compact predicted-vs-actual scatter plot is displayed above the table, with the 1:1 diagonal reference line. |
 
+### Conformal intervals
+
+When a native nirs4all run attached a calibrated conformal result to a prediction chain, Studio displays the attached intervals in the prediction detail panel and in the full-screen prediction viewer.
+
+For regression predictions, conformal intervals appear as vertical error bars around each predicted value. The toolbar shows the available coverage levels, such as **80%** or **95%**. Selecting another coverage changes the interval bars and the exported CSV columns for the current viewer.
+
+| Viewer element | Meaning |
+|----------------|---------|
+| **Conformal badge** | A calibrated conformal artifact is attached to the prediction set. |
+| **Coverage buttons** | Materialized coverage levels available in the artifact. Studio does not create missing coverages locally. |
+| **Error bars** | Lower and upper interval bounds produced by nirs4all. |
+| **Warning message** | The intervals cannot be displayed for the current viewer state. Common causes are multiple calibrated partitions open at once, a hidden calibrated partition, or a sample-order mismatch. |
+
+:::{important}
+Studio only visualizes conformal artifacts produced by nirs4all. It does not recompute calibration, infer a guarantee from plotted bounds, or create new interval levels from an existing artifact.
+:::
+
 ---
 
 ## Export formats
@@ -86,7 +103,7 @@ Exported prediction files contain all per-sample data plus summary metadata in t
 
 | Format | Contents |
 |--------|----------|
-| **CSV** | Plain text, comma-delimited. First rows contain metadata comments (model name, dataset, date). Subsequent rows contain Sample, Predicted, Actual, and Residual columns. |
+| **CSV** | Plain text, comma-delimited. First rows contain metadata comments (model name, dataset, date). Subsequent rows contain Sample, Predicted, Actual, and Residual columns. When conformal intervals are visible in the viewer, the CSV also includes `conformal_coverage`, `conformal_lower`, and `conformal_upper`. |
 | **Excel** | Multi-sheet workbook. The first sheet contains summary metrics. The second sheet contains the full per-sample table. |
 
 Exported files are saved to the `exports/` directory inside your active workspace folder.

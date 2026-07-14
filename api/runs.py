@@ -28,7 +28,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Callable, Literal, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -42,6 +42,11 @@ from .pipeline_canonical import (
     editor_steps_to_runtime_canonical,
 )
 from .results_repository import NATIVE_RESULTS_DIRNAME
+from .robustness_contract import (
+    RobustnessLaunchPayload,
+    build_robustness_execution_diagnostic,
+    normalize_robustness_launch_payload,
+)
 from .run_execution_plan import build_campaign_run_group_execution_plan, build_legacy_run_execution_plan, build_retry_run_execution_plan
 from .run_store_repository import RunStoreRepository
 from .runtime_engine import fallback_policy_record, resolve_engine, rt_error_envelope_from_exception
@@ -160,6 +165,10 @@ class PipelineRun(BaseModel):
     runtime_manifest: dict[str, Any] | None = None
     fallback_policy: dict[str, Any] | None = None
     native_result_refs: list[dict[str, Any]] | None = None
+    artifact_refs: list[dict[str, Any]] | None = None
+    robustness_plan: dict[str, Any] | None = None
+    robustness_execution: dict[str, Any] | None = None
+    robustness_summary: dict[str, Any] | None = None
     config: dict | None = None
     logs: list[str] | None = None
     started_at: str | None = None
@@ -204,6 +213,7 @@ class Run(BaseModel):
     # The engine that actually ran is recorded per-pipeline on PipelineRun.engine.
     engine: str | None = None
     allow_fallback: bool = False
+    robustness: dict[str, Any] | None = None
     datasets: list[DatasetRun]
     status: Literal["queued", "running", "completed", "failed"]
     created_at: str
@@ -244,6 +254,7 @@ class ExperimentConfig(BaseModel):
     inline_pipelines: list[InlinePipeline] = Field(default_factory=list)
     project_id: str | None = None  # Project grouping
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
+    robustness: RobustnessLaunchPayload | None = None
 
 
 class QuickRunRequest(BaseModel):
@@ -258,6 +269,7 @@ class QuickRunRequest(BaseModel):
     allow_fallback: bool = Field(False, description="Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
     inline_pipeline: InlinePipeline | None = None
+    robustness: RobustnessLaunchPayload | None = None
 
 
 class PreflightRequest(BaseModel):
@@ -525,6 +537,702 @@ def _load_persisted_runs() -> list[Run]:
                     logger.error("Error loading run %s: %s", run_dir.name, e)
 
     return runs
+
+
+def _open_store_adapter_for_robustness(workspace_path: Path):
+    """Open the Studio StoreAdapter lazily for optional robustness artifacts."""
+    from .store_adapter import StoreAdapter
+
+    return StoreAdapter(workspace_path)
+
+
+def _open_store_adapter_for_tuning(workspace_path: Path):
+    """Open the Studio StoreAdapter lazily for optional tuning artifacts."""
+    from .store_adapter import StoreAdapter
+
+    return StoreAdapter(workspace_path)
+
+
+def _pipeline_identity_values(pipeline: PipelineRun) -> set[str]:
+    return {
+        value
+        for value in (pipeline.id, pipeline.pipeline_id, pipeline.pipeline_name)
+        if isinstance(value, str) and value
+    }
+
+
+def _robustness_summary_artifact_ref(payload: dict[str, Any], pipeline: PipelineRun) -> dict[str, Any]:
+    robustness_id = str(payload.get("robustness_id") or payload.get("result_fingerprint") or "robustness")
+    fingerprint = payload.get("result_fingerprint") or payload.get("summary_artifact", {}).get("fingerprint")
+    label_name = payload.get("name")
+    label = str(label_name) if isinstance(label_name, str) and label_name else "Robustness summary"
+    return {
+        "id": f"robustness-summary:{pipeline.id}:{robustness_id}",
+        "kind": "repository_entry",
+        "role": "robustness-summary",
+        "label": label,
+        "source": "result-repository",
+        "scope": "pipeline",
+        "status": "available",
+        "artifactId": robustness_id,
+        "runId": payload.get("run_id"),
+        "pipelineId": payload.get("pipeline_id") or pipeline.pipeline_id,
+        "chainId": payload.get("chain_id"),
+        "format": "json",
+        "contentAddress": fingerprint,
+        "metadata": {
+            "source": "workspace_robustness_results",
+            "robustness_id": robustness_id,
+            "conformal_id": payload.get("conformal_id"),
+            "prediction_id": payload.get("prediction_id"),
+            "mode": payload.get("mode"),
+            "scenario_count": payload.get("scenario_count"),
+            "slice_by": payload.get("slice_by"),
+            "created_at": payload.get("created_at"),
+            "robustness_summary_artifact": payload.get("summary_artifact"),
+        },
+    }
+
+
+def _tuning_summary_artifact_ref(payload: dict[str, Any], pipeline: PipelineRun) -> dict[str, Any]:
+    tuning_id = str(payload.get("tuning_id") or payload.get("result_fingerprint") or "tuning")
+    fingerprint = payload.get("result_fingerprint") or payload.get("summary_artifact", {}).get("fingerprint")
+    label_name = payload.get("name")
+    label = str(label_name) if isinstance(label_name, str) and label_name else "Tuning summary"
+    return {
+        "id": f"tuning-summary:{pipeline.id}:{tuning_id}",
+        "kind": "repository_entry",
+        "role": "tuning-summary",
+        "label": label,
+        "source": "result-repository",
+        "scope": "pipeline",
+        "status": "available",
+        "artifactId": tuning_id,
+        "runId": payload.get("run_id"),
+        "pipelineId": payload.get("pipeline_id") or pipeline.pipeline_id,
+        "chainId": payload.get("chain_id"),
+        "format": "nirs4all.tuning.summary",
+        "contentAddress": fingerprint,
+        "metadata": {
+            "source": "workspace_tuning_results",
+            "tuning_id": tuning_id,
+            "tuning_fingerprint": payload.get("tuning_fingerprint"),
+            "engine": payload.get("engine"),
+            "metric": payload.get("metric"),
+            "direction": payload.get("direction"),
+            "best_value": payload.get("best_value"),
+            "n_trials": payload.get("n_trials"),
+            "created_at": payload.get("created_at"),
+            "tuning_summary_artifact": payload.get("summary_artifact"),
+            "tuning_metadata": payload.get("metadata"),
+        },
+    }
+
+
+def _append_pipeline_artifact_ref(pipeline: PipelineRun, ref: dict[str, Any]) -> None:
+    existing = list(pipeline.artifact_refs or [])
+    ref_id = ref.get("id")
+    if ref_id is not None and any(item.get("id") == ref_id for item in existing if isinstance(item, dict)):
+        return
+    existing.append(ref)
+    pipeline.artifact_refs = existing
+
+
+def _attach_workspace_robustness_artifacts(run: Run) -> None:
+    """Attach persisted robustness summary artifacts to matching PipelineRun rows.
+
+    The scientific report remains owned and verified by nirs4all's WorkspaceStore.
+    Studio only embeds the lightweight `summary_artifact()` payload for UI cards.
+    """
+    workspace_path = run.workspace_path
+    if workspace_path is None:
+        workspace = workspace_manager.get_current_workspace()
+        workspace_path = workspace.path if workspace else None
+    if workspace_path is None:
+        return
+
+    all_pipelines = [pipeline for dataset in run.datasets for pipeline in dataset.pipelines]
+    if not all_pipelines:
+        return
+
+    run_ids = {value for value in (run.id, run.store_run_id) if isinstance(value, str) and value}
+    pipeline_ids = set().union(*(_pipeline_identity_values(pipeline) for pipeline in all_pipelines))
+
+    try:
+        with _open_store_adapter_for_robustness(Path(workspace_path)) as adapter:
+            artifacts = adapter.list_robustness_summary_artifacts(
+                run_ids=run_ids or None,
+                pipeline_ids=pipeline_ids or None,
+            )
+    except Exception:
+        return
+
+    for artifact in artifacts:
+        artifact_pipeline_id = artifact.get("pipeline_id")
+        for pipeline in all_pipelines:
+            has_pipeline_match = artifact_pipeline_id in _pipeline_identity_values(pipeline)
+            is_run_level = artifact_pipeline_id is None and artifact.get("run_id") in run_ids
+            if not has_pipeline_match and not is_run_level:
+                continue
+            ref = _robustness_summary_artifact_ref(artifact, pipeline)
+            _append_pipeline_artifact_ref(pipeline, ref)
+            if pipeline.robustness_summary is None:
+                summary = artifact.get("summary_artifact")
+                if isinstance(summary, dict):
+                    pipeline.robustness_summary = summary
+            if pipeline.robustness_summary is not None:
+                plan = pipeline.robustness_plan or run.robustness
+                pipeline.robustness_execution = build_robustness_execution_diagnostic(
+                    plan,
+                    has_report=True,
+                )
+
+
+def _attach_workspace_tuning_artifacts(run: Run) -> None:
+    """Attach persisted tuning summary artifacts to matching PipelineRun rows.
+
+    The optimizer result remains owned and verified by nirs4all's WorkspaceStore.
+    Studio only embeds the lightweight `summary_artifact()` payload for UI cards.
+    """
+    workspace_path = run.workspace_path
+    if workspace_path is None:
+        workspace = workspace_manager.get_current_workspace()
+        workspace_path = workspace.path if workspace else None
+    if workspace_path is None:
+        return
+
+    all_pipelines = [pipeline for dataset in run.datasets for pipeline in dataset.pipelines]
+    if not all_pipelines:
+        return
+
+    run_ids = {value for value in (run.id, run.store_run_id) if isinstance(value, str) and value}
+    pipeline_ids = set().union(*(_pipeline_identity_values(pipeline) for pipeline in all_pipelines))
+
+    try:
+        with _open_store_adapter_for_tuning(Path(workspace_path)) as adapter:
+            artifacts = adapter.list_tuning_summary_artifacts(
+                run_ids=run_ids or None,
+                pipeline_ids=pipeline_ids or None,
+            )
+    except Exception:
+        return
+
+    for artifact in artifacts:
+        artifact_pipeline_id = artifact.get("pipeline_id")
+        for pipeline in all_pipelines:
+            has_pipeline_match = artifact_pipeline_id in _pipeline_identity_values(pipeline)
+            is_run_level = artifact_pipeline_id is None and artifact.get("run_id") in run_ids
+            if not has_pipeline_match and not is_run_level:
+                continue
+            _append_pipeline_artifact_ref(pipeline, _tuning_summary_artifact_ref(artifact, pipeline))
+
+
+def _attach_run_robustness_plan(run: Run) -> None:
+    """Expose the run-level robustness launch plan on each pipeline row.
+
+    This is read-only launch metadata. It is intentionally separate from
+    ``robustness_summary`` artifacts, which are produced by nirs4all after an
+    actual robustness report is computed.
+    """
+    if not run.robustness:
+        return
+    for dataset in run.datasets:
+        for pipeline in dataset.pipelines:
+            if pipeline.robustness_plan is None:
+                pipeline.robustness_plan = run.robustness
+            pipeline.robustness_execution = build_robustness_execution_diagnostic(
+                pipeline.robustness_plan,
+                has_report=pipeline.robustness_summary is not None,
+            )
+
+
+def _build_robustness_evidence_publication_trace(
+    robustness: dict[str, Any] | None,
+    *,
+    dataset_id: str,
+    model_path: str | None,
+    publication_summary: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Return auditable driver-side trace for requested evidence publication.
+
+    The trace deliberately avoids proof-key names consumed by Chain Detail
+    (``X``, ``spectra``, ``predictor_bundle``, ``model_path``). It records what
+    the driver could expose without making spectral/OOD replay appear ready
+    until real row-aligned arrays are present in prediction metadata.
+    """
+
+    if not isinstance(robustness, dict):
+        return None
+    publish_evidence = robustness.get("publish_evidence")
+    if not isinstance(publish_evidence, dict):
+        return None
+    spectral_replay = publish_evidence.get("spectral_replay")
+    if not isinstance(spectral_replay, dict):
+        return None
+
+    predictor_available = bool(model_path)
+    published_count = 0
+    if isinstance(publication_summary, dict):
+        try:
+            published_count = max(0, int(publication_summary.get("published_prediction_count") or 0))
+        except (TypeError, ValueError):
+            published_count = 0
+    return {
+        "kind": "robustness_evidence_publication_trace",
+        "role": "spectral-replay-evidence-publication",
+        "status": "published" if published_count > 0 else ("partial" if predictor_available else "requested"),
+        "destination": spectral_replay.get("destination") or "result_metadata.robustness_evidence",
+        "fail_closed": bool(spectral_replay.get("fail_closed", True)),
+        "dataset_id": dataset_id,
+        "x_source_requested": spectral_replay.get("X") or "dataset_partition",
+        "x_status": "published_to_prediction_arrays" if published_count > 0 else "requires_prediction_array_publication",
+        "published_prediction_count": published_count,
+        "predictor_bundle_requested": spectral_replay.get("predictor_bundle") or "exported_model_bundle",
+        "predictor_bundle_status": "available" if predictor_available else "missing",
+        "predictor_bundle_path": model_path,
+    }
+
+
+def _attach_robustness_evidence_publication_trace(
+    pipeline: PipelineRun,
+    robustness: dict[str, Any] | None,
+    *,
+    dataset_id: str,
+    model_path: str | None,
+    publication_summary: dict[str, Any] | None = None,
+) -> None:
+    trace = _build_robustness_evidence_publication_trace(
+        robustness,
+        dataset_id=dataset_id,
+        model_path=model_path,
+        publication_summary=publication_summary,
+    )
+    if trace is None:
+        return
+
+    refs = [
+        ref
+        for ref in (pipeline.native_result_refs or [])
+        if not (
+            isinstance(ref, dict)
+            and ref.get("kind") == "robustness_evidence_publication_trace"
+        )
+    ]
+    refs.append(trace)
+    pipeline.native_result_refs = refs
+
+
+def _has_spectral_replay_publication_request(robustness: dict[str, Any] | None) -> bool:
+    if not isinstance(robustness, dict):
+        return False
+    publish_evidence = robustness.get("publish_evidence")
+    return (
+        isinstance(publish_evidence, dict)
+        and isinstance(publish_evidence.get("spectral_replay"), dict)
+    )
+
+
+def _coerce_dataset_X(dataset_object: Any) -> Any | None:
+    try:
+        X = dataset_object.x({}, layout="2d")
+    except TypeError:
+        try:
+            X = dataset_object.x(layout="2d")
+        except Exception:
+            return None
+    except Exception:
+        return None
+
+    if isinstance(X, list) and X:
+        X = X[0]
+    try:
+        import numpy as np
+
+        X_array = np.asarray(X, dtype=float)
+    except Exception:
+        return None
+    if X_array.ndim != 2 or X_array.shape[0] == 0:
+        return None
+    return X_array
+
+
+_ROBUSTNESS_REPLAY_IDENTITY_KEYS: tuple[tuple[str, ...], ...] = (
+    ("sample_id", "sample_ids"),
+    ("physical_sample_id", "physical_sample_ids"),
+    ("origin_sample_id", "origin_sample_ids"),
+    ("row_id", "row_ids"),
+    ("unit_id", "unit_ids"),
+    ("observation_id", "observation_ids"),
+    ("internal_sample_id", "internal_sample_ids"),
+)
+
+
+def _build_robustness_evidence_publication_handoff(
+    robustness: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Return a backend-facing handoff contract for spectral replay publication."""
+
+    if not _has_spectral_replay_publication_request(robustness):
+        return None
+    assert isinstance(robustness, dict)
+    publish_evidence = robustness.get("publish_evidence")
+    assert isinstance(publish_evidence, dict)
+    spectral_replay = publish_evidence.get("spectral_replay")
+    assert isinstance(spectral_replay, dict)
+
+    identity_keys = [aliases[0] for aliases in _ROBUSTNESS_REPLAY_IDENTITY_KEYS]
+    alias_groups = [list(aliases) for aliases in _ROBUSTNESS_REPLAY_IDENTITY_KEYS]
+    return {
+        "kind": "robustness_evidence_publication_handoff",
+        "role": "spectral-replay-evidence-publication",
+        "status": "requested",
+        "destination": spectral_replay.get("destination") or "result_metadata.robustness_evidence",
+        "fail_closed": bool(spectral_replay.get("fail_closed", True)),
+        "x_source_requested": spectral_replay.get("X") or "dataset_partition",
+        "predictor_bundle_requested": spectral_replay.get("predictor_bundle") or "exported_model_bundle",
+        "published_fields": [
+            "prediction_arrays.X",
+            "prediction_arrays.result_metadata.robustness_evidence.X",
+            "prediction_arrays.result_metadata.robustness_evidence.predictor_bundle",
+        ],
+        "alignment_contract": {
+            "mode": "publish_only_when_row_alignment_is_proven",
+            "strategies": [
+                {
+                    "kind": "sample_indices",
+                    "prediction_source": "prediction_arrays.sample_indices",
+                    "requires": "all indices in dataset X bounds",
+                },
+                {
+                    "kind": "full_dataset_length",
+                    "prediction_source": "prediction_arrays.y_true|y_pred",
+                    "requires": "prediction row count equals dataset X row count",
+                },
+                {
+                    "kind": "unique_metadata_identity",
+                    "dataset_source": "dataset.metadata()",
+                    "prediction_source": "prediction_arrays.sample_metadata",
+                    "keys": identity_keys,
+                    "alias_groups": alias_groups,
+                    "requires": "unique non-null identifiers on both sides",
+                },
+                {
+                    "kind": "relation_manifest_identity",
+                    "dataset_source": "dataset.metadata()",
+                    "prediction_source": "prediction_arrays.result_metadata.relation_*_manifest.materialization_manifest",
+                    "keys": identity_keys,
+                    "alias_groups": alias_groups,
+                    "requires": "explicit row-aligned identifiers in relation materialization metadata",
+                },
+            ],
+        },
+    }
+
+
+def _sequence_or_none(value: Any) -> list[Any] | None:
+    if value is None or isinstance(value, (str, bytes)):
+        return None
+    try:
+        import numpy as np
+
+        if isinstance(value, np.ndarray):
+            if value.ndim == 0:
+                return None
+            return value.reshape(-1).tolist()
+    except Exception:
+        pass
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return None
+
+
+def _prediction_row_count(arrays: dict[str, Any]) -> int | None:
+    for key in ("y_true", "y_pred", "sample_indices"):
+        values = _sequence_or_none(arrays.get(key))
+        if values:
+            return len(values)
+    sample_metadata = arrays.get("sample_metadata")
+    if isinstance(sample_metadata, dict):
+        for value in sample_metadata.values():
+            values = _sequence_or_none(value)
+            if values:
+                return len(values)
+    return None
+
+
+def _dataset_metadata_columns(dataset_object: Any) -> dict[str, list[Any]]:
+    metadata_method = getattr(dataset_object, "metadata", None)
+    if not callable(metadata_method):
+        return {}
+    try:
+        metadata = metadata_method()
+    except Exception:
+        return {}
+    columns = getattr(metadata, "columns", None)
+    if not columns:
+        return {}
+
+    result: dict[str, list[Any]] = {}
+    for column in columns:
+        try:
+            if hasattr(metadata, "get_column"):
+                values = metadata.get_column(column).to_list()
+            elif hasattr(metadata, "__getitem__"):
+                values = list(metadata[column])
+            else:
+                continue
+        except Exception:
+            continue
+        result[str(column)] = values
+    return result
+
+
+def _unique_identity_index(values: list[Any], *, expected_len: int) -> dict[str, int] | None:
+    if len(values) != expected_len:
+        return None
+    index: dict[str, int] = {}
+    for position, value in enumerate(values):
+        if value is None:
+            return None
+        key = str(value)
+        if key in index:
+            return None
+        index[key] = position
+    return index
+
+
+def _mapping_or_empty(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _collect_prediction_identity_columns_from_mapping(
+    payload: dict[str, Any],
+    *,
+    expected_len: int,
+    result: dict[str, list[Any]],
+    depth: int = 0,
+) -> None:
+    """Collect explicit row identity columns from sample/relation metadata."""
+
+    if depth > 2:
+        return
+
+    for aliases in _ROBUSTNESS_REPLAY_IDENTITY_KEYS:
+        canonical = aliases[0]
+        if canonical in result:
+            continue
+        for alias in aliases:
+            values = _sequence_or_none(payload.get(alias))
+            if values is not None and len(values) == expected_len:
+                result[canonical] = values
+                break
+
+    for nested_key in (
+        "row_identity",
+        "sample_identity",
+        "prediction_identity",
+        "materialization_manifest",
+        "relation_replay_manifest",
+        "relation_materialization_manifest",
+    ):
+        nested = payload.get(nested_key)
+        if isinstance(nested, dict):
+            _collect_prediction_identity_columns_from_mapping(
+                nested,
+                expected_len=expected_len,
+                result=result,
+                depth=depth + 1,
+            )
+
+
+def _prediction_identity_columns(arrays: dict[str, Any], *, row_count: int) -> dict[str, list[Any]]:
+    """Return explicit row identity columns published with prediction arrays."""
+
+    result: dict[str, list[Any]] = {}
+    for payload in (
+        _mapping_or_empty(arrays.get("sample_metadata")),
+        _mapping_or_empty(arrays.get("result_metadata")),
+    ):
+        if payload:
+            _collect_prediction_identity_columns_from_mapping(
+                payload,
+                expected_len=row_count,
+                result=result,
+            )
+    return result
+
+
+def _select_prediction_X_by_identity(
+    X: Any,
+    arrays: dict[str, Any],
+    dataset_metadata: dict[str, list[Any]],
+) -> Any | None:
+    row_count = _prediction_row_count(arrays)
+    if not row_count or not dataset_metadata:
+        return None
+    prediction_metadata = _prediction_identity_columns(arrays, row_count=row_count)
+    if not prediction_metadata:
+        return None
+
+    for aliases in _ROBUSTNESS_REPLAY_IDENTITY_KEYS:
+        dataset_key = next((alias for alias in aliases if alias in dataset_metadata), None)
+        prediction_key = aliases[0] if aliases[0] in prediction_metadata else None
+        if dataset_key is None or prediction_key is None:
+            continue
+
+        dataset_values = dataset_metadata.get(dataset_key)
+        prediction_values = prediction_metadata.get(prediction_key)
+        if dataset_values is None or prediction_values is None or len(prediction_values) != row_count:
+            continue
+
+        dataset_index = _unique_identity_index(dataset_values, expected_len=X.shape[0])
+        prediction_index = _unique_identity_index(prediction_values, expected_len=row_count)
+        if dataset_index is None or prediction_index is None:
+            continue
+
+        positions: list[int] = []
+        for value in prediction_values:
+            key = str(value)
+            if key not in dataset_index:
+                positions = []
+                break
+            positions.append(dataset_index[key])
+        if len(positions) == row_count:
+            try:
+                import numpy as np
+
+                return X[np.asarray(positions, dtype=int)]
+            except Exception:
+                return None
+    return None
+
+
+def _select_prediction_X(
+    X: Any,
+    arrays: dict[str, Any],
+    *,
+    dataset_metadata: dict[str, list[Any]] | None = None,
+) -> Any | None:
+    try:
+        import numpy as np
+
+        sample_indices = arrays.get("sample_indices")
+        if sample_indices is not None:
+            indices = np.asarray(sample_indices, dtype=int).reshape(-1)
+            if indices.size > 0 and indices.min() >= 0 and indices.max() < X.shape[0]:
+                return X[indices]
+    except Exception:
+        pass
+
+    try:
+        for key in ("y_true", "y_pred"):
+            values = arrays.get(key)
+            if values is not None and len(values) == X.shape[0]:
+                return X
+    except Exception:
+        pass
+
+    if dataset_metadata:
+        return _select_prediction_X_by_identity(X, arrays, dataset_metadata)
+    return None
+
+
+def _publish_robustness_spectral_replay_evidence(
+    *,
+    robustness: dict[str, Any] | None,
+    workspace_path: str | None,
+    store_run_id: str | None,
+    dataset_object: Any,
+    model_path: str | None,
+    store_factory: Callable[[Path], Any] | None = None,
+) -> dict[str, Any] | None:
+    """Persist row-aligned X and predictor bundle metadata into prediction arrays."""
+
+    if (
+        not _has_spectral_replay_publication_request(robustness)
+        or not workspace_path
+        or not store_run_id
+        or not model_path
+    ):
+        return None
+
+    X = _coerce_dataset_X(dataset_object)
+    if X is None:
+        return {
+            "status": "skipped",
+            "reason": "dataset_X_unavailable",
+            "published_prediction_count": 0,
+        }
+    dataset_metadata = _dataset_metadata_columns(dataset_object)
+
+    if store_factory is None:
+        from nirs4all.pipeline.storage.workspace_store import WorkspaceStore
+
+        store_factory = WorkspaceStore
+
+    records: list[dict[str, Any]] = []
+    store = store_factory(Path(workspace_path))
+    try:
+        rows_df = store.query_predictions(run_id=store_run_id)
+        for row in rows_df.iter_rows(named=True):
+            prediction_id = row.get("prediction_id")
+            dataset_name = row.get("dataset_name")
+            if not prediction_id or not dataset_name:
+                continue
+            arrays = store.array_store.load_single(str(prediction_id), dataset_name=str(dataset_name))
+            if not isinstance(arrays, dict):
+                continue
+            prediction_X = _select_prediction_X(
+                X,
+                arrays,
+                dataset_metadata=dataset_metadata,
+            )
+            if prediction_X is None:
+                continue
+
+            result_metadata = arrays.get("result_metadata") if isinstance(arrays.get("result_metadata"), dict) else {}
+            robustness_evidence = result_metadata.get("robustness_evidence")
+            if not isinstance(robustness_evidence, dict):
+                robustness_evidence = {}
+            robustness_evidence.update({
+                "X": "prediction_arrays.X",
+                "predictor_bundle": model_path,
+                "publisher": "nirs4all-studio.run-driver",
+            })
+            result_metadata = {
+                **result_metadata,
+                "robustness_evidence": robustness_evidence,
+            }
+
+            records.append({
+                "prediction_id": str(prediction_id),
+                "dataset_name": str(dataset_name),
+                "model_name": row.get("model_name") or "",
+                "fold_id": str(row.get("fold_id") or ""),
+                "partition": row.get("partition") or "",
+                "metric": row.get("metric") or "",
+                "val_score": row.get("val_score"),
+                "task_type": row.get("task_type") or "",
+                "y_true": arrays.get("y_true"),
+                "y_pred": arrays.get("y_pred"),
+                "y_proba": arrays.get("y_proba"),
+                "sample_indices": arrays.get("sample_indices"),
+                "weights": arrays.get("weights"),
+                "sample_metadata": arrays.get("sample_metadata"),
+                "X": prediction_X,
+                "result_metadata": result_metadata,
+            })
+
+        if records:
+            store.array_store.save_batch(records)
+        return {
+            "status": "published" if records else "skipped",
+            "published_prediction_count": len(records),
+        }
+    finally:
+        close = getattr(store, "close", None)
+        if callable(close):
+            close()
 
 
 # ============================================================================
@@ -894,6 +1602,7 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
         execution_backend="local-python",
         engine=request.engine,
         allow_fallback=request.allow_fallback,
+        robustness=normalize_robustness_launch_payload(request.robustness),
         datasets=[dataset_run],
         status="queued",
         created_at=now,
@@ -902,6 +1611,7 @@ def _create_quick_run(request: QuickRunRequest, pipeline_config: dict, dataset_i
         completed_pipelines=0,
         workspace_path=workspace.path if workspace else None,
     )
+    _attach_run_robustness_plan(run)
 
     return run
 
@@ -998,6 +1708,11 @@ def _build_run_execution_metadata(run: Run) -> dict[str, Any]:
         metadata["project_id"] = run.project_id
     if run.store_run_id:
         metadata["store_run_id"] = run.store_run_id
+    if run.robustness:
+        metadata["robustness"] = run.robustness
+        handoff = _build_robustness_evidence_publication_handoff(run.robustness)
+        if handoff is not None:
+            metadata["robustness_evidence_publication_handoff"] = handoff
     if run.execution_metadata:
         metadata.update(run.execution_metadata)
     return metadata
@@ -1016,6 +1731,8 @@ def _build_store_run_config(run: Run, total_pipelines: int) -> dict[str, Any]:
     if run.engine is not None:
         config["requested_engine"] = run.engine
     config["fallback_policy"] = fallback_policy_record(run.engine, run.allow_fallback)
+    if run.robustness:
+        config["robustness"] = run.robustness
     if run.project_id:
         config["project_id"] = run.project_id
     return config
@@ -1109,6 +1826,7 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         store_run_id=shared_store_run_id,
                         engine=run.engine,
                         allow_fallback=run.allow_fallback,
+                        robustness=run.robustness,
                         should_stop=lambda: job.cancellation_requested,
                     )
                     training_succeeded = True
@@ -1139,6 +1857,13 @@ def _execute_run_job(run_id: str, job: Job, progress_callback: Any) -> dict[str,
                         pipeline.runtime_manifest = result.get("runtime_manifest")
                         pipeline.fallback_policy = result.get("fallback_policy") or pipeline.fallback_policy
                         pipeline.native_result_refs = result.get("native_result_refs")
+                        _attach_robustness_evidence_publication_trace(
+                            pipeline,
+                            run.robustness,
+                            dataset_id=dataset.dataset_id,
+                            model_path=pipeline.model_path,
+                            publication_summary=result.get("robustness_evidence_publication"),
+                        )
 
                         # Capture store_run_id (from shared pre-created run or single pipeline)
                         result_store_run_id = result.get("store_run_id")
@@ -1292,6 +2017,7 @@ def _execute_pipeline_training(
     store_run_id: str | None = None,
     engine: str | None = None,
     allow_fallback: bool = False,
+    robustness: dict[str, Any] | None = None,
     should_stop: Any | None = None,
 ) -> dict[str, Any]:
     """Execute one pipeline via nirs4all.run() on the current worker thread.
@@ -1618,6 +2344,19 @@ def _execute_pipeline_training(
         except Exception as e:
             log(f"[WARN] Model export failed: {e}")
 
+    robustness_evidence_publication = _publish_robustness_spectral_replay_evidence(
+        robustness=robustness,
+        workspace_path=workspace_path,
+        store_run_id=result_store_run_id,
+        dataset_object=dataset_object,
+        model_path=model_path,
+    )
+    if robustness_evidence_publication and robustness_evidence_publication.get("published_prediction_count"):
+        log(
+            "[INFO] Published robustness spectral/OOD replay evidence for "
+            f"{robustness_evidence_publication['published_prediction_count']} prediction row(s)"
+        )
+
     return {
         "metrics": metrics,
         "model_path": model_path,
@@ -1631,6 +2370,7 @@ def _execute_pipeline_training(
         "runtime_manifest": engine_record.get("runtime_manifest"),
         "fallback_policy": engine_record.get("fallback_policy"),
         "native_result_refs": engine_record.get("native_result_refs"),
+        "robustness_evidence_publication": robustness_evidence_publication,
     }
 
 
@@ -1655,6 +2395,10 @@ async def list_runs(status: str = None):
 
     # Sort by created_at descending (newest first)
     runs.sort(key=lambda r: r.created_at, reverse=True)
+    for run in runs:
+        _attach_run_robustness_plan(run)
+        _attach_workspace_robustness_artifacts(run)
+        _attach_workspace_tuning_artifacts(run)
     return RunListResponse(runs=runs, total=len(runs))
 
 
@@ -1757,6 +2501,9 @@ async def get_run(run_id: str):
     _ensure_runs_loaded()
     if run_id not in _runs:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    _attach_run_robustness_plan(_runs[run_id])
+    _attach_workspace_robustness_artifacts(_runs[run_id])
+    _attach_workspace_tuning_artifacts(_runs[run_id])
     return _runs[run_id]
 
 
@@ -1895,7 +2642,10 @@ async def create_run(request: CreateRunRequest):
             config.dataset_ids,
             config.split_group_by_by_dataset,
         )
+        config.robustness = normalize_robustness_launch_payload(config.robustness)
     except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TypeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Validate that datasets exist
@@ -2089,6 +2839,11 @@ async def create_run_group(payload: NativeExperimentLaunchPayload):
     if not workspace:
         raise HTTPException(status_code=409, detail="No workspace selected")
 
+    try:
+        config.robustness = normalize_robustness_launch_payload(config.robustness)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     _get_available_execution_driver(config.execution_backend)
 
     from .pipelines import _load_pipeline
@@ -2185,13 +2940,14 @@ def _create_run_group_from_payload(
         expand_pipeline_variants=expand_pipeline_variants_for_plan,
     )
 
-    return Run(
+    run = Run(
         id=run_id,
         name=config.name,
         description=config.description or "",
         execution_backend=config.execution_backend,
         engine=config.engine,
         allow_fallback=config.allow_fallback,
+        robustness=normalize_robustness_launch_payload(config.robustness),
         datasets=_build_dataset_runs_from_execution_plan(execution_plan),
         status="queued",
         created_at=now,
@@ -2208,6 +2964,8 @@ def _create_run_group_from_payload(
             "strict_campaign_count": payload.manifest.strictCampaignCount,
         },
     )
+    _attach_run_robustness_plan(run)
+    return run
 
 
 def _create_run_from_config(
@@ -2260,6 +3018,7 @@ def _create_run_from_config(
         execution_backend=config.execution_backend,
         engine=config.engine,
         allow_fallback=config.allow_fallback,
+        robustness=normalize_robustness_launch_payload(config.robustness),
         datasets=_build_dataset_runs_from_execution_plan(execution_plan),
         status="queued",
         created_at=now,
@@ -2269,6 +3028,7 @@ def _create_run_from_config(
         workspace_path=workspace_path,
         project_id=config.project_id,
     )
+    _attach_run_robustness_plan(run)
 
     return run
 
@@ -2409,7 +3169,10 @@ async def quick_run(request: QuickRunRequest):
             [request.dataset_id],
             request.split_group_by_by_dataset,
         )
+        request.robustness = normalize_robustness_launch_payload(request.robustness)
     except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TypeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Load pipeline configuration

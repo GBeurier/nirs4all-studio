@@ -30,6 +30,10 @@ outside this bridge.
 |----------|---------------|--------------|
 | `score`  | `nirs4all-ui/score`| Metric-key normalization, the static metric catalog + task-type selection rules, and direction-aware score parsing / comparison / formatting. |
 | `runtime`| `nirs4all-ui/runtime`| Runtime/result status display tokens, busy-state predicates, progress projection, and status-aware empty-state copy. |
+| `conformal`| `nirs4all-ui/conformal`| Validation and view-model projection for native nirs4all `CalibratedRunResult.to_dict()` payloads, guarantee status, calibration replay provenance and interval summaries. |
+| `robustness`| `nirs4all-ui/robustness`| Validation and compact card view-models for nirs4all robustness `summary.json` artifacts, plus scenario vocabulary/form validation aligned with the Python keyword registry. |
+| `keywordRegistry`| `nirs4all-ui/keywordRegistry`| Metadata-only validation, indexing, form-field projection, optimizer-persistence field grouping, and workspace prediction publication contract projection for the exported nirs4all keyword/effect registry. |
+| `tuning`| `nirs4all-ui/tuning`| Validation and view-model projection for native nirs4all `TuningResult.to_dict()` payloads, lightweight `TuningResult.summary_artifact()` / `nirs4all.tuning.summary` cards, ordered `nirs4all.tuning.ordered_search_space` previews, safe optimizer-persistence flags, and trial rows. |
 
 Consume a domain through its barrel, e.g. `import { canonicalMetricKey } from "@/ui/score"`.
 The app-runtime score-map layer (`@/lib/scores`) builds on `@/ui/score`.

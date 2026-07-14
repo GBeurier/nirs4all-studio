@@ -27,6 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all-ui
+          ref: ${{ github.head_ref || github.ref_name }}
           path: nirs4all-ui-lib
 
       - name: Prepare nirs4all-ui sibling
@@ -63,6 +64,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
+          ref: ${{ github.head_ref || github.ref_name }}
           path: nirs4all-lib
 
       - name: Checkout dag-ml bindings

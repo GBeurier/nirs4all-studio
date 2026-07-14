@@ -45,6 +45,16 @@ export interface ChainSummary {
   pipeline_status: string | null;
   // Artifact info (enriched from chains table)
   fold_artifacts: Record<string, string> | null;
+  artifact_refs?: unknown[];
+  artifactRefs?: unknown[];
+  calibrated_result?: unknown;
+  calibratedResult?: unknown;
+  conformal_result?: unknown;
+  conformalResult?: unknown;
+  tuning_result?: unknown;
+  tuningResult?: unknown;
+  robustness_summary?: unknown;
+  robustnessSummary?: unknown;
 }
 
 /** @deprecated Use ChainSummary instead. */
@@ -144,6 +154,55 @@ export interface PredictionArraysResponse {
   target_name?: string | null;
   result_metadata?: Record<string, unknown> | null;
 }
+
+export interface PredictionRobustnessReportRequest {
+  robustness: {
+    mode: "clean_frozen";
+    scenarios: Array<{
+      kind: string;
+      severity?: number;
+      distribution?: "normal" | "uniform" | null;
+    }>;
+    slice_by?: string[];
+  };
+  seed?: number | null;
+  name?: string;
+  robustness_id?: string | null;
+}
+
+export interface PredictionRobustnessReportResponse {
+  robustness_id: string;
+  prediction_id: string;
+  run_id?: string | null;
+  pipeline_id?: string | null;
+  chain_id?: string | null;
+  summary_artifact: unknown;
+  report_fingerprint: string;
+}
+
+export interface PredictionRobustnessEvidenceRequirement {
+  id: string;
+  label: string;
+  present: boolean;
+  source?: string | null;
+  detail?: string | null;
+}
+
+export interface PredictionRobustnessEvidenceResponse {
+  prediction_id: string;
+  run_id?: string | null;
+  pipeline_id?: string | null;
+  chain_id?: string | null;
+  stored_prediction_scenarios: string[];
+  spectral_scenarios: string[];
+  can_compute_stored_prediction_report: boolean;
+  can_compute_spectral_report: boolean;
+  status: string;
+  requirements: PredictionRobustnessEvidenceRequirement[];
+  blockers: string[];
+}
+
+export type RobustnessReportExportFormat = "json" | "markdown" | "html";
 
 /** Filters for querying chain summaries. */
 export interface AggregatedPredictionFilters {

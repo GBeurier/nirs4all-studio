@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastWarning: vi.fn(),
   useDatasetSelection: vi.fn(),
+  useKeywordRegistry: vi.fn(),
   usePipelineExecution: vi.fn(),
   usePipelineExport: vi.fn(),
   useQuery: vi.fn(),
@@ -62,6 +63,10 @@ vi.mock("@/hooks/usePipelineExecution", () => ({
   useDatasetSelection: mocks.useDatasetSelection,
   usePipelineExecution: mocks.usePipelineExecution,
   usePipelineExport: mocks.usePipelineExport,
+}));
+
+vi.mock("@/hooks/useKeywordRegistry", () => ({
+  useKeywordRegistry: mocks.useKeywordRegistry,
 }));
 
 vi.mock("../MissingNodesConfirmDialog", () => ({
@@ -241,6 +246,17 @@ beforeEach(() => {
     exportPipeline: mocks.exportPipeline,
     isExporting: false,
   });
+  mocks.useKeywordRegistry.mockReturnValue({
+    data: undefined,
+    error: null,
+    isError: false,
+    isLoading: false,
+  });
+  mocks.runPreflight.mockResolvedValue({
+    issues: [],
+    ready: true,
+  });
+  mocks.execute.mockResolvedValue("job-1");
 });
 
 afterEach(() => {
@@ -254,6 +270,9 @@ describe("PipelineExecutionDialog", () => {
 
     expect(view.container.textContent).toContain("Run Name");
     expect(view.container.textContent).toContain("Dataset");
+    expect(view.container.textContent).toContain("Native assurance contract");
+    expect(view.container.textContent).toContain("Robustness scenario draft");
+    expect(view.container.textContent).toContain("Attach this draft to launch metadata");
     expect(getButton(view.container, "Execute Here").disabled).toBe(true);
 
     await act(async () => {
@@ -271,6 +290,113 @@ describe("PipelineExecutionDialog", () => {
 
     expect(view.container.textContent).not.toContain("At least one selected pipeline requires an effective group");
     expect(getButton(view.container, "Execute Here").disabled).toBe(false);
+
+    await view.unmount();
+  });
+
+  it("does not attach robustness draft fields to launch payloads unless explicitly enabled", async () => {
+    const view = await renderDialog();
+
+    await act(async () => {
+      getButton(view.container, "Sample Dataset").click();
+    });
+    await act(async () => {
+      getButton(view.container, "batch").click();
+    });
+
+    const kindSelect = view.container.querySelector<HTMLSelectElement>("select[name='kind']");
+    expect(kindSelect).toBeTruthy();
+
+    await act(async () => {
+      kindSelect!.value = "prediction_noise";
+      kindSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    await act(async () => {
+      getButton(view.container, "Execute Here").click();
+    });
+
+    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    const launchPayload = mocks.execute.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(launchPayload).toMatchObject({
+      allowFallback: false,
+      datasetId: "dataset-1",
+      pipelineId: "pipeline-1",
+      runtimeEngine: null,
+    });
+    expect(launchPayload).not.toHaveProperty("robustness");
+    expect(launchPayload).not.toHaveProperty("robustnessScenarios");
+    expect(launchPayload).not.toHaveProperty("robustness_scenarios");
+
+    await view.unmount();
+  });
+
+  it("attaches a valid robustness draft to launch metadata when enabled", async () => {
+    const view = await renderDialog();
+
+    await act(async () => {
+      getButton(view.container, "Sample Dataset").click();
+    });
+    await act(async () => {
+      getButton(view.container, "batch").click();
+    });
+
+    const modeSelect = view.container.querySelector<HTMLSelectElement>("select[name='mode']");
+    const kindSelect = view.container.querySelector<HTMLSelectElement>("select[name='kind']");
+    const distributionSelect = view.container.querySelector<HTMLSelectElement>("select[name='distribution']");
+    const attachCheckbox = view.container.querySelector<HTMLInputElement>(
+      "input[aria-label='Attach robustness scenario draft to launch metadata']",
+    );
+    const publishEvidenceCheckbox = view.container.querySelector<HTMLInputElement>(
+      "input[aria-label='Publish spectral/OOD replay evidence when available']",
+    );
+    expect(modeSelect).toBeTruthy();
+    expect(kindSelect).toBeTruthy();
+    expect(distributionSelect).toBeTruthy();
+    expect(attachCheckbox).toBeTruthy();
+    expect(publishEvidenceCheckbox).toBeTruthy();
+    expect(publishEvidenceCheckbox?.disabled).toBe(true);
+    expect(modeSelect?.value).toBe("clean_frozen");
+
+    await act(async () => {
+      kindSelect!.value = "prediction_noise";
+      kindSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {
+      distributionSelect!.value = "uniform";
+      distributionSelect!.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {
+      attachCheckbox!.click();
+    });
+    expect(publishEvidenceCheckbox?.disabled).toBe(false);
+    await act(async () => {
+      publishEvidenceCheckbox!.click();
+    });
+    await act(async () => {
+      getButton(view.container, "Execute Here").click();
+    });
+
+    expect(mocks.execute).toHaveBeenCalledTimes(1);
+    const launchPayload = mocks.execute.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(launchPayload.robustness).toEqual({
+      mode: "clean_frozen",
+      scenarios: [
+        {
+          distribution: "uniform",
+          kind: "prediction_noise",
+          severity: 0,
+        },
+      ],
+      publish_evidence: {
+        spectral_replay: {
+          X: "dataset_partition",
+          predictor_bundle: "exported_model_bundle",
+          destination: "result_metadata.robustness_evidence",
+          fail_closed: true,
+        },
+      },
+    });
 
     await view.unmount();
   });
