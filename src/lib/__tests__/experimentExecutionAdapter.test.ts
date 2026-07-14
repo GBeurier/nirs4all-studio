@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { CampaignSinglePairSplitSpecResult } from "../campaignPlan";
 import type { ExperimentConfig } from "@/types/runs";
+import {
+  WORKSPACE_PREDICTION_PUBLICATION_EFFECTS,
+  WORKSPACE_PREDICTION_PUBLICATION_KEYWORD_IDS,
+} from "@/ui/keywordRegistry";
 
 import {
   buildClusterExperimentLaunchSubmission,
@@ -195,6 +199,52 @@ describe("experimentExecutionAdapter", () => {
       sourceRunIds: ["d1::p1"],
       skippedRunIds: ["d2::p1"],
     });
+  });
+
+  it("carries robustness evidence handoff metadata in native payload manifests", () => {
+    const config: ExperimentConfig = {
+      name: "Cluster Robustness Experiment",
+      dataset_ids: ["d1"],
+      pipeline_ids: ["p1"],
+      robustness: {
+        mode: "clean_frozen",
+        scenarios: [{ kind: "spectral_noise", severity: 0.05 }],
+        publish_evidence: {
+          spectral_replay: {
+            X: "dataset_partition",
+            predictor_bundle: "exported_model_bundle",
+            destination: "result_metadata.robustness_evidence",
+            fail_closed: true,
+          },
+        },
+      },
+    };
+
+    const payload = buildNativeExperimentLaunchPayload(config);
+
+    expect(payload.manifest.robustnessEvidencePublicationHandoff).toEqual({
+      kind: "robustness_evidence_publication_handoff",
+      requested: true,
+      destination: "result_metadata.robustness_evidence",
+      failClosed: true,
+      keywordIds: WORKSPACE_PREDICTION_PUBLICATION_KEYWORD_IDS,
+      requiredEffects: WORKSPACE_PREDICTION_PUBLICATION_EFFECTS,
+      conformalArtifactPolicy: "prediction_publisher_does_not_persist_conformal_artifacts",
+      alignmentStrategies: [
+        "sample_indices",
+        "full_dataset_length",
+        "unique_metadata_identity",
+        "relation_manifest_identity",
+      ],
+      publishedFields: [
+        "prediction_arrays.X",
+        "result_metadata.robustness_evidence.X",
+        "result_metadata.robustness_evidence.predictor_bundle",
+      ],
+    });
+    expect(buildClusterExperimentLaunchSubmission(config).nativePayload?.manifest.robustnessEvidencePublicationHandoff).toEqual(
+      payload.manifest.robustnessEvidencePublicationHandoff,
+    );
   });
 
   it("submits legacy run launch submissions through an injected runner", async () => {

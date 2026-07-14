@@ -45,9 +45,14 @@ export {
   FinetuneSearchConfig,
   FinetuneParamList,
   FinetuneParamEditor,
+  FinetuneNativeContractCard,
   FinetuningBadge,
   QuickFinetuneButton,
   defaultFinetuneConfig,
+  buildNativeTuningEditorSummary,
+  buildNativeTuningKeywordRows,
+  type NativeTuningEditorSummary,
+  type NativeTuningKeywordRow,
 } from "./FinetuneConfig";
 
 // Phase 4: Advanced Pipeline Features
@@ -113,6 +118,20 @@ export {
 
 // Phase 6: Integration & Documentation
 export { PipelineExecutionDialog } from "./PipelineExecutionDialog";
+export {
+  NativeAssuranceContractCard,
+  buildNativeAssuranceContractSummary,
+  buildNativeAssuranceKeywordRows,
+  type NativeAssuranceContractSummary,
+  type NativeAssuranceDomain,
+  type NativeAssuranceKeywordRow,
+} from "./NativeAssuranceContractCard";
+export {
+  RobustnessScenarioDraftCard,
+  buildRobustnessScenarioDraftViewModel,
+  type RobustnessScenarioDraftCardProps,
+  type RobustnessScenarioDraftViewModel,
+} from "./RobustnessScenarioDraftCard";
 export {
   HelpTooltip,
   ParameterHelp,

@@ -10,6 +10,14 @@ import { castParamRecord } from "./pipelineValueUtils";
 
 type EditorToNirs4allStepConverter = (step: EditorPipelineStep) => Nirs4allStep;
 
+function optionalNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export function getExportableStepParams(step: EditorPipelineStep): Record<string, unknown> {
   const params = castParamRecord(step.params);
   const hydratedDefaultParams = new Set(
@@ -98,6 +106,14 @@ export function convertEditorModelToNirs4all(
     }
     if (step.finetuneConfig.verbose !== undefined) {
       result.finetune_params.verbose = step.finetuneConfig.verbose;
+    }
+    const storage = optionalNonEmptyString(step.finetuneConfig.storage);
+    if (storage) {
+      result.finetune_params.storage = storage;
+    }
+    const studyName = optionalNonEmptyString(step.finetuneConfig.study_name);
+    if (studyName) {
+      result.finetune_params.study_name = studyName;
     }
 
     if (step.finetuneConfig.train_params && step.finetuneConfig.train_params.length > 0) {

@@ -110,6 +110,28 @@ function formatExperimentLaunchSchemaBindingDetail(
   };
 }
 
+function formatExperimentLaunchRobustnessEvidencePublicationDetail(
+  payloadDiagnostics: ExperimentLaunchPayloadPlan["payloadDiagnostics"],
+): ExperimentLaunchPayloadManifestDetail | null {
+  if (!payloadDiagnostics.robustnessEvidencePublicationRequested) return null;
+
+  const keywordCount = payloadDiagnostics.robustnessEvidencePublicationKeywordIds?.length ?? 0;
+  const effectCount = payloadDiagnostics.robustnessEvidencePublicationRequiredEffects?.length ?? 0;
+  return {
+    id: "robustness-evidence-publication",
+    label: "Robustness evidence publication",
+    value: [
+      "Requested",
+      formatExperimentLaunchCount(keywordCount, "keyword"),
+      formatExperimentLaunchCount(effectCount, "effect"),
+    ].join(" · "),
+    title: [
+      `Destination: ${payloadDiagnostics.robustnessEvidencePublicationDestination ?? "unknown"}`,
+      `Conformal artifacts: ${payloadDiagnostics.robustnessEvidencePublicationConformalArtifactPolicy ?? "not declared"}`,
+    ].join(" · "),
+  };
+}
+
 function formatExperimentLaunchCampaignCardinalityDetail(
   campaignPreview: CampaignPlanPreview,
 ): ExperimentLaunchPayloadManifestDetail {
@@ -242,6 +264,11 @@ export function buildExperimentLaunchPayloadManifestDetails(
       label: "Skipped runs",
       ...skippedRunPreview,
     });
+  }
+
+  const robustnessEvidencePublicationDetail = formatExperimentLaunchRobustnessEvidencePublicationDetail(payloadDiagnostics);
+  if (robustnessEvidencePublicationDetail) {
+    details.push(robustnessEvidencePublicationDetail);
   }
 
   return details;

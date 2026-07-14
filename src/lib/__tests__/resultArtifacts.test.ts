@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildResultArtifactAuditItems,
   buildResultArtifactPresentationReadModel,
   buildResultArtifactRepositoryProvenanceItems,
   buildResultArtifactSourceScopeGroupItems,
   buildResultArtifactSourceScopeReadModel,
   buildAvailableModelArtifactRef,
+  buildAttachedChainSummaryArtifactRefs,
   buildFoldModelArtifactRefs,
   buildPipelineRunArtifactRefs,
   buildPredictionArraysArtifactRef,
@@ -24,6 +26,7 @@ import type { PredictionArraysResponse } from "@/types/aggregated-predictions";
 import type { PredictionRecord } from "@/types/linked-workspaces";
 import type { AvailableModel } from "@/types/predict";
 import type { PipelineRun } from "@/types/runs";
+import type { ChainSummary } from "@/types/aggregated-predictions";
 
 function pipeline(overrides: Partial<PipelineRun> = {}): PipelineRun {
   return {
@@ -330,6 +333,51 @@ describe("resultArtifacts", () => {
     }]);
   });
 
+  it("builds compact audit items from robustness artifact metadata", () => {
+    const refs = [
+      artifactRef({
+        id: "robustness-summary",
+        kind: "repository_entry",
+        label: "Robustness summary",
+        source: "result-repository",
+        scope: "chain",
+        predictionId: "pred-fallback",
+        metadata: {
+          audit_metadata: {
+            prediction_id: "pred-1",
+            requested_robustness: {
+              mode: "clean_frozen",
+              scenarios: [{ kind: "observed" }],
+            },
+            requested_scenario_kinds: ["observed", "prediction_noise"],
+            requested_seed: 123,
+            stored_prediction_context: {
+              run_id: "run-1",
+              pipeline_id: "pipe-1",
+              chain_id: "chain-1",
+              partition: "test",
+              fold_id: "1",
+            },
+          },
+        },
+      }),
+      artifactRef({ id: "model-ref", label: "Model" }),
+    ];
+
+    expect(buildResultArtifactAuditItems(refs)).toEqual([{
+      id: "artifact-audit:robustness-summary",
+      refId: "robustness-summary",
+      label: "Robustness summary audit",
+      detailLabels: [
+        "Mode clean_frozen",
+        "Scenarios observed, prediction_noise",
+        "Seed 123",
+        "Prediction pred-1",
+        "Context run run-1 · pipeline pipe-1 · chain chain-1 · partition test · fold 1",
+      ],
+    }]);
+  });
+
   it("normalizes legacy fold_artifacts into stable fold model refs", () => {
     const refs = buildFoldModelArtifactRefs({
       fold_2: "artifact-fold-2",
@@ -500,6 +548,65 @@ describe("resultArtifacts", () => {
         backend: "joblib",
       },
     });
+  });
+
+  it("includes attached repository artifact refs from chain summary payloads", () => {
+    const summary = {
+      run_id: "run-1",
+      pipeline_id: "pipe-a",
+      chain_id: "chain-a",
+      model_name: "PLS",
+      model_class: "PLSRegression",
+      preprocessings: "SNV",
+      branch_path: null,
+      source_index: null,
+      model_step_idx: 0,
+      metric: "rmse",
+      task_type: "regression",
+      dataset_name: "Maize",
+      best_params: null,
+      cv_val_score: null,
+      cv_test_score: null,
+      cv_train_score: null,
+      cv_fold_count: 0,
+      cv_scores: null,
+      final_test_score: null,
+      final_train_score: null,
+      final_scores: null,
+      pipeline_status: "completed",
+      fold_artifacts: null,
+      artifact_refs: [{
+        id: "robustness-summary",
+        kind: "repository_entry",
+        role: "robustness-summary",
+        label: "Robustness summary",
+        source: "result-repository",
+        scope: "chain",
+        status: "available",
+        contentAddress: "robustness:abc",
+        metadata: {
+          robustness_id: "rob-1",
+        },
+      }],
+    } satisfies ChainSummary;
+
+    expect(buildAttachedChainSummaryArtifactRefs(summary)).toEqual([
+      expect.objectContaining({
+        id: "robustness-summary",
+        kind: "repository_entry",
+        role: "robustness-summary",
+        label: "Robustness summary",
+        source: "result-repository",
+        scope: "chain",
+        status: "available",
+        runId: "run-1",
+        pipelineId: "pipe-a",
+        chainId: "chain-a",
+        datasetName: "Maize",
+        metric: "rmse",
+        contentAddress: "robustness:abc",
+      }),
+    ]);
   });
 
   it("projects prediction-record model artifacts without marking aggregated refits as exportable", () => {

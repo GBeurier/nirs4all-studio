@@ -72,6 +72,22 @@ describe("experimentExecutionEnvironment", () => {
         message: "WASM local execution is typed but no native submitter is configured.",
       },
     ]);
+    expect(buildNewExperimentExecutionEnvironment().workspacePredictionPublicationAvailability).toEqual([
+      {
+        backend: "cluster",
+        status: "not_configured",
+        statusLabel: "Not configured",
+        destination: "result_metadata.robustness_evidence",
+        message: "Cluster execution is typed but no workspace prediction publisher is configured.",
+      },
+      {
+        backend: "wasm-local",
+        status: "not_configured",
+        statusLabel: "Not configured",
+        destination: "result_metadata.robustness_evidence",
+        message: "WASM local execution is typed but no persistent workspace prediction publisher is configured.",
+      },
+    ]);
     expect(buildNewExperimentExecutionEnvironment().diagnostics).toEqual({
       availableAdapterIds: ["legacy-local"],
       availableExecutionBackends: [],
@@ -79,6 +95,8 @@ describe("experimentExecutionEnvironment", () => {
       unconfiguredNativeBackends: ["cluster", "wasm-local"],
       unavailableExecutionBackends: [],
       unavailableNativeBackends: [],
+      workspacePredictionPublisherBackends: [],
+      workspacePredictionHandoffOnlyBackends: [],
       hasClusterSubmitter: false,
       hasWasmLocalSubmitter: false,
     });
@@ -110,6 +128,22 @@ describe("experimentExecutionEnvironment", () => {
         message: "WASM local execution is typed but no native submitter is configured.",
       },
     ]);
+    expect(clusterEnvironment.workspacePredictionPublicationAvailability).toEqual([
+      {
+        backend: "cluster",
+        status: "handoff_only",
+        statusLabel: "Handoff only",
+        destination: "result_metadata.robustness_evidence",
+        message: "Cluster execution submitter is configured. Workspace prediction evidence requests remain handoff-only until a concrete publisher/store is configured.",
+      },
+      {
+        backend: "wasm-local",
+        status: "not_configured",
+        statusLabel: "Not configured",
+        destination: "result_metadata.robustness_evidence",
+        message: "WASM local execution is typed but no native submitter is configured. Workspace prediction publication is not available.",
+      },
+    ]);
     expect(clusterEnvironment.diagnostics).toEqual({
       availableAdapterIds: ["legacy-local", "cluster"],
       availableExecutionBackends: [],
@@ -117,6 +151,8 @@ describe("experimentExecutionEnvironment", () => {
       unconfiguredNativeBackends: ["wasm-local"],
       unavailableExecutionBackends: [],
       unavailableNativeBackends: [],
+      workspacePredictionPublisherBackends: [],
+      workspacePredictionHandoffOnlyBackends: ["cluster"],
       hasClusterSubmitter: true,
       hasWasmLocalSubmitter: false,
     });
@@ -150,6 +186,22 @@ describe("experimentExecutionEnvironment", () => {
         message: "WASM local execution submitter is configured.",
       },
     ]);
+    expect(fullEnvironment.workspacePredictionPublicationAvailability).toEqual([
+      {
+        backend: "cluster",
+        status: "handoff_only",
+        statusLabel: "Handoff only",
+        destination: "result_metadata.robustness_evidence",
+        message: "Cluster execution submitter is configured. Workspace prediction evidence requests remain handoff-only until a concrete publisher/store is configured.",
+      },
+      {
+        backend: "wasm-local",
+        status: "handoff_only",
+        statusLabel: "Handoff only",
+        destination: "result_metadata.robustness_evidence",
+        message: "WASM local execution submitter is configured. Workspace prediction evidence requests remain handoff-only until a concrete publisher/store is configured.",
+      },
+    ]);
     expect(fullEnvironment.diagnostics).toEqual({
       availableAdapterIds: ["legacy-local", "cluster", "wasm-local"],
       availableExecutionBackends: [],
@@ -157,8 +209,91 @@ describe("experimentExecutionEnvironment", () => {
       unconfiguredNativeBackends: [],
       unavailableExecutionBackends: [],
       unavailableNativeBackends: [],
+      workspacePredictionPublisherBackends: [],
+      workspacePredictionHandoffOnlyBackends: ["cluster", "wasm-local"],
       hasClusterSubmitter: true,
       hasWasmLocalSubmitter: true,
+    });
+  });
+
+  it("marks workspace prediction publication configured only for declared publisher backends", () => {
+    const submitClusterRun = vi.fn(async () => ({ id: "cluster-run-1" }) as never);
+    const submitWasmLocalRun = vi.fn(async () => ({ id: "wasm-run-1" }) as never);
+
+    const environment = buildNewExperimentExecutionEnvironment({
+      submitClusterRun,
+      submitWasmLocalRun,
+      workspacePredictionPublicationBackends: ["cluster"],
+    });
+
+    expect(environment.workspacePredictionPublicationAvailability).toEqual([
+      {
+        backend: "cluster",
+        status: "publisher_configured",
+        statusLabel: "Publisher configured",
+        destination: "result_metadata.robustness_evidence",
+        message: "Cluster execution submitter is configured. Workspace prediction evidence publication is configured for result_metadata.robustness_evidence.",
+      },
+      {
+        backend: "wasm-local",
+        status: "handoff_only",
+        statusLabel: "Handoff only",
+        destination: "result_metadata.robustness_evidence",
+        message: "WASM local execution submitter is configured. Workspace prediction evidence requests remain handoff-only until a concrete publisher/store is configured.",
+      },
+    ]);
+    expect(environment.diagnostics).toMatchObject({
+      workspacePredictionPublisherBackends: ["cluster"],
+      workspacePredictionHandoffOnlyBackends: ["wasm-local"],
+    });
+  });
+
+  it("marks workspace prediction publication configured from backend capability metadata", () => {
+    const submitClusterRun = vi.fn(async () => ({ id: "cluster-run-1" }) as never);
+    const clusterPublisherCapabilities: RunExecutionBackendCapability[] = [
+      backendCapabilities[0],
+      {
+        backend: "cluster",
+        label: "Cluster",
+        available: true,
+        mode: "in-process",
+        supports_progress: true,
+        supports_cancellation: true,
+        metadata: {
+          workspace_prediction_publication: {
+            destination: "result_metadata.robustness_evidence",
+            publisher: "nirs4all-cluster.runner",
+            status: "publisher_configured",
+          },
+        },
+      },
+      backendCapabilities[2],
+    ];
+
+    const environment = buildNewExperimentExecutionEnvironment({
+      executionBackendCapabilities: clusterPublisherCapabilities,
+      submitClusterRun,
+    });
+
+    expect(environment.workspacePredictionPublicationAvailability).toEqual([
+      {
+        backend: "cluster",
+        status: "publisher_configured",
+        statusLabel: "Publisher configured",
+        destination: "result_metadata.robustness_evidence",
+        message: "Cluster execution submitter is configured. Workspace prediction evidence publication is configured for result_metadata.robustness_evidence.",
+      },
+      {
+        backend: "wasm-local",
+        status: "backend_unavailable",
+        statusLabel: "Unavailable",
+        destination: "result_metadata.robustness_evidence",
+        message: "Unavailable: WASM local execution is typed but no WASM driver is configured.",
+      },
+    ]);
+    expect(environment.diagnostics).toMatchObject({
+      workspacePredictionPublisherBackends: ["cluster"],
+      workspacePredictionHandoffOnlyBackends: [],
     });
   });
 
@@ -197,6 +332,8 @@ describe("experimentExecutionEnvironment", () => {
       unconfiguredNativeBackends: ["cluster", "wasm-local"],
       unavailableExecutionBackends: ["cluster", "wasm-local"],
       unavailableNativeBackends: ["cluster", "wasm-local"],
+      workspacePredictionPublisherBackends: [],
+      workspacePredictionHandoffOnlyBackends: [],
       hasClusterSubmitter: false,
       hasWasmLocalSubmitter: false,
     });
@@ -228,6 +365,22 @@ describe("experimentExecutionEnvironment", () => {
           message: "WASM local execution submitter is configured.",
         },
       ],
+      workspacePredictionPublicationAvailability: [
+        {
+          backend: "cluster",
+          status: "not_configured",
+          statusLabel: "Not configured",
+          destination: "result_metadata.robustness_evidence",
+          message: "Cluster execution is typed but no native submitter is configured. Workspace prediction publication is not available.",
+        },
+        {
+          backend: "wasm-local",
+          status: "publisher_configured",
+          statusLabel: "Publisher configured",
+          destination: "result_metadata.robustness_evidence",
+          message: "WASM local execution submitter is configured. Workspace prediction evidence publication is configured for result_metadata.robustness_evidence.",
+        },
+      ],
     })).toEqual({
       availableAdapterIds: ["legacy-local", "wasm-local"],
       availableExecutionBackends: ["local-python"],
@@ -235,6 +388,8 @@ describe("experimentExecutionEnvironment", () => {
       unconfiguredNativeBackends: ["cluster"],
       unavailableExecutionBackends: ["cluster", "wasm-local"],
       unavailableNativeBackends: [],
+      workspacePredictionPublisherBackends: ["wasm-local"],
+      workspacePredictionHandoffOnlyBackends: [],
       hasClusterSubmitter: false,
       hasWasmLocalSubmitter: true,
     });
@@ -272,9 +427,11 @@ describe("experimentExecutionEnvironment", () => {
 
     expect(normalizeNewExperimentExecutionEnvironmentOptions({
       executionBackendCapabilities: backendCapabilities,
+      workspacePredictionPublicationBackends: ["cluster", "unknown", "cluster"],
       submitClusterRun,
     })).toEqual({
       executionBackendCapabilities: backendCapabilities,
+      workspacePredictionPublicationBackends: ["cluster"],
       submitClusterRun,
     });
   });

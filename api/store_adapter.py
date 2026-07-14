@@ -68,6 +68,21 @@ def _to_json_compatible(value: Any) -> Any:
     return value
 
 
+def _dataframe_rows(df: Any) -> list[dict[str, Any]]:
+    """Return row dictionaries from the small dataframe surfaces used by nirs4all."""
+    if df is None:
+        return []
+    if isinstance(df, list):
+        return [dict(row) for row in df if isinstance(row, dict)]
+    iter_rows = getattr(df, "iter_rows", None)
+    if callable(iter_rows):
+        return [dict(row) for row in iter_rows(named=True)]
+    to_dicts = getattr(df, "to_dicts", None)
+    if callable(to_dicts):
+        return [dict(row) for row in to_dicts()]
+    return []
+
+
 def _extract_sample_metadata(
     store: Any,
     prediction_id: str,
@@ -775,6 +790,280 @@ class StoreAdapter:
             entries.append(entry)
         return entries
 
+    def list_robustness_summary_artifacts(
+        self,
+        *,
+        run_ids: set[str] | None = None,
+        pipeline_ids: set[str] | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Return verified lightweight robustness summary artifacts for Studio.
+
+        This is a read-only adapter over optional WorkspaceStore robustness APIs.
+        Older nirs4all builds do not provide these methods; in that case Studio
+        simply has no robustness artifacts to attach.
+        """
+        list_results = getattr(self._store, "list_robustness_results", None)
+        load_result = getattr(self._store, "load_robustness_result", None)
+        if not callable(list_results) or not callable(load_result):
+            return []
+
+        try:
+            rows = _dataframe_rows(list_results(limit=limit, offset=0))
+        except Exception:
+            return []
+
+        artifacts: list[dict[str, Any]] = []
+        for row in rows:
+            row = sanitize_dict(row)
+            row_run_id = row.get("run_id")
+            row_pipeline_id = row.get("pipeline_id")
+            if run_ids and row_run_id not in run_ids:
+                continue
+            if pipeline_ids and row_pipeline_id not in pipeline_ids and row_pipeline_id is not None:
+                continue
+
+            robustness_id = row.get("robustness_id") or row.get("result_fingerprint")
+            if not isinstance(robustness_id, str) or not robustness_id:
+                continue
+
+            try:
+                report = load_result(robustness_id)
+                summary = report.summary_artifact()
+            except Exception:
+                continue
+
+            if not isinstance(summary, dict) or summary.get("format") != "nirs4all.robustness.summary":
+                continue
+
+            artifacts.append({
+                "robustness_id": robustness_id,
+                "name": row.get("name") or "",
+                "run_id": row_run_id,
+                "pipeline_id": row_pipeline_id,
+                "chain_id": row.get("chain_id"),
+                "conformal_id": row.get("conformal_id"),
+                "prediction_id": row.get("prediction_id"),
+                "result_fingerprint": row.get("result_fingerprint") or summary.get("fingerprint"),
+                "mode": row.get("mode") or summary.get("mode"),
+                "scenario_count": row.get("scenario_count"),
+                "slice_by": _parse_json_maybe(row.get("slice_by")),
+                "created_at": row.get("created_at"),
+                "summary_artifact": sanitize_dict(summary),
+            })
+        return artifacts
+
+    def list_tuning_summary_artifacts(
+        self,
+        *,
+        run_ids: set[str] | None = None,
+        pipeline_ids: set[str] | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Return verified lightweight tuning summary artifacts for Studio.
+
+        This is a read-only adapter over optional WorkspaceStore tuning APIs.
+        Older nirs4all builds do not provide these methods; in that case Studio
+        simply has no native tuning summaries to attach.
+        """
+        list_results = getattr(self._store, "list_tuning_results", None)
+        load_result = getattr(self._store, "load_tuning_result", None)
+        if not callable(list_results) or not callable(load_result):
+            return []
+
+        try:
+            rows = _dataframe_rows(list_results(limit=limit, offset=0))
+        except Exception:
+            return []
+
+        artifacts: list[dict[str, Any]] = []
+        for row in rows:
+            row = sanitize_dict(row)
+            row_run_id = row.get("run_id")
+            row_pipeline_id = row.get("pipeline_id")
+            if run_ids and row_run_id not in run_ids:
+                continue
+            if pipeline_ids and row_pipeline_id not in pipeline_ids and row_pipeline_id is not None:
+                continue
+
+            tuning_id = row.get("tuning_id") or row.get("result_fingerprint")
+            if not isinstance(tuning_id, str) or not tuning_id:
+                continue
+
+            try:
+                result = load_result(tuning_id)
+                summary = result.summary_artifact()
+            except Exception:
+                continue
+
+            if not isinstance(summary, dict) or summary.get("format") != "nirs4all.tuning.summary":
+                continue
+
+            artifacts.append({
+                "tuning_id": tuning_id,
+                "name": row.get("name") or "",
+                "run_id": row_run_id,
+                "pipeline_id": row_pipeline_id,
+                "chain_id": row.get("chain_id"),
+                "result_fingerprint": row.get("result_fingerprint") or summary.get("fingerprint"),
+                "tuning_fingerprint": row.get("tuning_fingerprint"),
+                "engine": row.get("engine") or summary.get("engine"),
+                "metric": row.get("metric") or summary.get("metric"),
+                "direction": row.get("direction") or summary.get("direction"),
+                "best_value": row.get("best_value") if row.get("best_value") is not None else summary.get("best_value"),
+                "n_trials": row.get("n_trials") if row.get("n_trials") is not None else summary.get("n_trials"),
+                "metadata": _parse_json_maybe(row.get("metadata")),
+                "created_at": row.get("created_at"),
+                "summary_artifact": sanitize_dict(summary),
+            })
+        return artifacts
+
+    def _robustness_summary_artifact_ref_for_chain(
+        self,
+        payload: dict[str, Any],
+        chain: dict[str, Any],
+    ) -> dict[str, Any]:
+        robustness_id = str(payload.get("robustness_id") or payload.get("result_fingerprint") or "robustness")
+        fingerprint = payload.get("result_fingerprint") or payload.get("summary_artifact", {}).get("fingerprint")
+        chain_id = chain.get("chain_id") or payload.get("chain_id") or "chain"
+        label_name = payload.get("name")
+        label = str(label_name) if isinstance(label_name, str) and label_name else "Robustness summary"
+        return {
+            "id": f"robustness-summary:{chain_id}:{robustness_id}",
+            "kind": "repository_entry",
+            "role": "robustness-summary",
+            "label": label,
+            "source": "result-repository",
+            "scope": "chain",
+            "status": "available",
+            "artifactId": robustness_id,
+            "runId": payload.get("run_id"),
+            "pipelineId": payload.get("pipeline_id") or chain.get("pipeline_id"),
+            "chainId": payload.get("chain_id") or chain.get("chain_id"),
+            "format": "json",
+            "contentAddress": fingerprint,
+            "metadata": {
+                "source": "workspace_robustness_results",
+                "robustness_id": robustness_id,
+                "conformal_id": payload.get("conformal_id"),
+                "prediction_id": payload.get("prediction_id"),
+                "mode": payload.get("mode"),
+                "scenario_count": payload.get("scenario_count"),
+                "slice_by": payload.get("slice_by"),
+                "created_at": payload.get("created_at"),
+                "robustness_summary_artifact": payload.get("summary_artifact"),
+            },
+        }
+
+    def _tuning_summary_artifact_ref_for_chain(
+        self,
+        payload: dict[str, Any],
+        chain: dict[str, Any],
+    ) -> dict[str, Any]:
+        tuning_id = str(payload.get("tuning_id") or payload.get("result_fingerprint") or "tuning")
+        fingerprint = payload.get("result_fingerprint") or payload.get("summary_artifact", {}).get("fingerprint")
+        chain_id = chain.get("chain_id") or payload.get("chain_id") or "chain"
+        label_name = payload.get("name")
+        label = str(label_name) if isinstance(label_name, str) and label_name else "Tuning summary"
+        return {
+            "id": f"tuning-summary:{chain_id}:{tuning_id}",
+            "kind": "repository_entry",
+            "role": "tuning-summary",
+            "label": label,
+            "source": "result-repository",
+            "scope": "chain",
+            "status": "available",
+            "artifactId": tuning_id,
+            "runId": payload.get("run_id"),
+            "pipelineId": payload.get("pipeline_id") or chain.get("pipeline_id"),
+            "chainId": payload.get("chain_id") or chain.get("chain_id"),
+            "format": "nirs4all.tuning.summary",
+            "contentAddress": fingerprint,
+            "metadata": {
+                "source": "workspace_tuning_results",
+                "tuning_id": tuning_id,
+                "tuning_fingerprint": payload.get("tuning_fingerprint"),
+                "engine": payload.get("engine"),
+                "metric": payload.get("metric"),
+                "direction": payload.get("direction"),
+                "best_value": payload.get("best_value"),
+                "n_trials": payload.get("n_trials"),
+                "created_at": payload.get("created_at"),
+                "tuning_summary_artifact": payload.get("summary_artifact"),
+                "tuning_metadata": payload.get("metadata"),
+            },
+        }
+
+    def _attach_robustness_summary_artifacts_to_chain_rows(self, rows: list[dict[str, Any]]) -> None:
+        run_ids = {str(row.get("run_id")) for row in rows if row.get("run_id")}
+        pipeline_ids = {str(row.get("pipeline_id")) for row in rows if row.get("pipeline_id")}
+        artifacts = self.list_robustness_summary_artifacts(
+            run_ids=run_ids or None,
+            pipeline_ids=pipeline_ids or None,
+        )
+        if not artifacts:
+            return
+
+        for row in rows:
+            row_run_id = row.get("run_id")
+            row_pipeline_id = row.get("pipeline_id")
+            row_chain_id = row.get("chain_id")
+            refs = list(row.get("artifact_refs") or [])
+            seen = {ref.get("id") for ref in refs if isinstance(ref, dict)}
+            for artifact in artifacts:
+                artifact_run_id = artifact.get("run_id")
+                artifact_pipeline_id = artifact.get("pipeline_id")
+                artifact_chain_id = artifact.get("chain_id")
+                if artifact_run_id not in (None, row_run_id):
+                    continue
+                if artifact_pipeline_id not in (None, row_pipeline_id):
+                    continue
+                if artifact_chain_id not in (None, row_chain_id):
+                    continue
+
+                ref = self._robustness_summary_artifact_ref_for_chain(artifact, row)
+                if ref["id"] not in seen:
+                    refs.append(ref)
+                    seen.add(ref["id"])
+                if row.get("robustness_summary") is None and isinstance(artifact.get("summary_artifact"), dict):
+                    row["robustness_summary"] = artifact["summary_artifact"]
+            if refs:
+                row["artifact_refs"] = refs
+
+    def _attach_tuning_summary_artifacts_to_chain_rows(self, rows: list[dict[str, Any]]) -> None:
+        run_ids = {str(row.get("run_id")) for row in rows if row.get("run_id")}
+        pipeline_ids = {str(row.get("pipeline_id")) for row in rows if row.get("pipeline_id")}
+        artifacts = self.list_tuning_summary_artifacts(
+            run_ids=run_ids or None,
+            pipeline_ids=pipeline_ids or None,
+        )
+        if not artifacts:
+            return
+
+        for row in rows:
+            row_run_id = row.get("run_id")
+            row_pipeline_id = row.get("pipeline_id")
+            row_chain_id = row.get("chain_id")
+            refs = list(row.get("artifact_refs") or [])
+            seen = {ref.get("id") for ref in refs if isinstance(ref, dict)}
+            for artifact in artifacts:
+                artifact_run_id = artifact.get("run_id")
+                artifact_pipeline_id = artifact.get("pipeline_id")
+                artifact_chain_id = artifact.get("chain_id")
+                if artifact_run_id not in (None, row_run_id):
+                    continue
+                if artifact_pipeline_id not in (None, row_pipeline_id):
+                    continue
+                if artifact_chain_id not in (None, row_chain_id):
+                    continue
+
+                ref = self._tuning_summary_artifact_ref_for_chain(artifact, row)
+                if ref["id"] not in seen:
+                    refs.append(ref)
+                    seen.add(ref["id"])
+            if refs:
+                row["artifact_refs"] = refs
+
     def delete_run(self, run_id: str) -> dict[str, Any]:
         """Delete a run with cascade.
 
@@ -1459,6 +1748,14 @@ class StoreAdapter:
         get_arrays = getattr(self._store, "get_prediction_arrays", None)
         arrays = get_arrays(prediction_id) if callable(get_arrays) else None
         prediction_row: dict[str, Any] | None = None
+        get_prediction = getattr(self._store, "get_prediction", None)
+        if callable(get_prediction):
+            try:
+                candidate = get_prediction(prediction_id, load_arrays=False)
+            except Exception:
+                candidate = None
+            if isinstance(candidate, dict):
+                prediction_row = candidate
         if arrays is None:
             prediction_row = self._store.get_prediction(prediction_id, load_arrays=True)
             if not isinstance(prediction_row, dict):
@@ -1467,13 +1764,22 @@ class StoreAdapter:
                 "y_true": prediction_row.get("y_true"),
                 "y_pred": prediction_row.get("y_pred"),
                 "y_proba": prediction_row.get("y_proba"),
+                "X": prediction_row.get("X"),
+                "spectra": prediction_row.get("spectra"),
                 "weights": prediction_row.get("weights"),
                 "sample_indices": prediction_row.get("sample_indices"),
                 "sample_metadata": prediction_row.get("sample_metadata") or prediction_row.get("metadata"),
+                "result_metadata": prediction_row.get("result_metadata"),
             }
 
         result: dict[str, Any] = {"prediction_id": prediction_id}
-        for key in ("y_true", "y_pred", "y_proba", "weights"):
+        for key in ("run_id", "pipeline_id", "chain_id", "dataset_name", "model_name", "model_class", "partition", "fold_id"):
+            value = arrays.get(key)
+            if value is None and prediction_row is not None:
+                value = prediction_row.get(key)
+            if value is not None:
+                result[key] = _to_json_compatible(value)
+        for key in ("y_true", "y_pred", "y_proba", "X", "spectra", "weights"):
             result[key] = _to_json_compatible(arrays.get(key))
 
         result["sample_indices"] = _to_json_compatible(arrays.get("sample_indices"))
@@ -1483,6 +1789,22 @@ class StoreAdapter:
             dataset_name=(prediction_row or {}).get("dataset_name"),
             payload=prediction_row or arrays,
         )
+        for key in (
+            "result_metadata",
+            "metadata",
+            "runtime_manifest",
+            "native_result_refs",
+            "artifact_refs",
+            "model_path",
+            "predictor_bundle",
+            "predictor_path",
+            "model_bundle",
+        ):
+            value = arrays.get(key)
+            if value is None and prediction_row is not None:
+                value = prediction_row.get(key)
+            if value is not None:
+                result[key] = _to_json_compatible(value)
 
         return result
 
@@ -1652,6 +1974,10 @@ class StoreAdapter:
             "synthetic_refit": bool(entry.get("synthetic_refit")),
             "is_refit_only": bool(entry.get("is_refit_only")),
         }
+        if entry.get("artifact_refs") is not None:
+            payload["artifact_refs"] = entry.get("artifact_refs")
+        if entry.get("robustness_summary") is not None:
+            payload["robustness_summary"] = entry.get("robustness_summary")
         _apply_synthetic_refit_fallback_inplace(payload)
         return sanitize_dict(payload)
 
@@ -1671,6 +1997,8 @@ class StoreAdapter:
         pipeline_map = self._get_pipeline_metadata_map(pipeline_ids)
         _attach_variant_params_inplace(rows, pipeline_map)
         _mark_refit_only_entries_inplace(rows)
+        self._attach_robustness_summary_artifacts_to_chain_rows(rows)
+        self._attach_tuning_summary_artifacts_to_chain_rows(rows)
         for row in rows:
             _apply_synthetic_refit_fallback_inplace(row)
         metric = next((r.get("metric") for r in rows if r.get("metric")), "r2")
@@ -1875,6 +2203,9 @@ class StoreAdapter:
                 if pid:
                     needed_pipeline_ids.add(pid)
         pipeline_map = self._get_pipeline_metadata_map(list(needed_pipeline_ids))
+        selected_rows = [entry for _ds, _metric, _task, sel in per_dataset_selection for entry, _is_refit in sel]
+        self._attach_robustness_summary_artifacts_to_chain_rows(selected_rows)
+        self._attach_tuning_summary_artifacts_to_chain_rows(selected_rows)
 
         # Phase 3: serialize selected chains.
         datasets_result: list[dict[str, Any]] = []
@@ -1906,6 +2237,10 @@ class StoreAdapter:
                     "variant_params": chain.get("variant_params"),
                     "synthetic_refit": bool(chain.get("synthetic_refit")),
                 }
+                if chain.get("artifact_refs") is not None:
+                    payload["artifact_refs"] = chain.get("artifact_refs")
+                if chain.get("robustness_summary") is not None:
+                    payload["robustness_summary"] = chain.get("robustness_summary")
                 if is_refit_only:
                     payload["is_refit_only"] = True
                 top_chains.append(sanitize_dict(payload))

@@ -53,6 +53,15 @@ export interface ExperimentLaunchPayloadDiagnostics {
   sourceRunCount: number;
   sourceRunIds: string[];
   skippedRunIds: string[];
+  robustnessEvidencePublicationRequested?: true;
+  robustnessEvidencePublicationDestination?: NonNullable<
+    NativeExperimentLaunchPayload["manifest"]["robustnessEvidencePublicationHandoff"]
+  >["destination"];
+  robustnessEvidencePublicationKeywordIds?: string[];
+  robustnessEvidencePublicationRequiredEffects?: string[];
+  robustnessEvidencePublicationConformalArtifactPolicy?: NonNullable<
+    NativeExperimentLaunchPayload["manifest"]["robustnessEvidencePublicationHandoff"]
+  >["conformalArtifactPolicy"];
 }
 
 export interface ExperimentLaunchPayloadPlan {
@@ -310,6 +319,7 @@ export function buildExperimentLaunchPayloadDiagnostics(
   launchPayloadPlan: BuildExperimentLaunchPayloadDiagnosticsInput,
 ): ExperimentLaunchPayloadDiagnostics {
   const { manifest } = launchPayloadPlan.nativePayload;
+  const robustnessHandoff = manifest.robustnessEvidencePublicationHandoff;
   const nativePayloadRequired = launchPayloadPlan.currentSubmissionKind === "native_payload";
   const canSubmitNativePayload = nativePayloadRequired
     && launchPayloadPlan.strictCampaignPayloadActivation.canUseStrictPayload;
@@ -329,6 +339,15 @@ export function buildExperimentLaunchPayloadDiagnostics(
     sourceRunCount: manifest.sourceRunIds.length,
     sourceRunIds: [...manifest.sourceRunIds],
     skippedRunIds: [...manifest.skippedRunIds],
+    ...(robustnessHandoff
+      ? {
+          robustnessEvidencePublicationRequested: true,
+          robustnessEvidencePublicationDestination: robustnessHandoff.destination,
+          robustnessEvidencePublicationKeywordIds: [...robustnessHandoff.keywordIds],
+          robustnessEvidencePublicationRequiredEffects: [...robustnessHandoff.requiredEffects],
+          robustnessEvidencePublicationConformalArtifactPolicy: robustnessHandoff.conformalArtifactPolicy,
+        }
+      : {}),
   };
 }
 

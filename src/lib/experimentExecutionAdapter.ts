@@ -4,6 +4,11 @@ import type {
 } from "@/lib/campaignPlanPreviewTypes";
 import type { CampaignExecutionBackend } from "@/lib/campaignSpecTypes";
 import type { ExperimentConfig, Run } from "@/types/runs";
+import {
+  WORKSPACE_PREDICTION_PUBLICATION_DESTINATION,
+  WORKSPACE_PREDICTION_PUBLICATION_EFFECTS,
+  WORKSPACE_PREDICTION_PUBLICATION_KEYWORD_IDS,
+} from "@/ui/keywordRegistry";
 
 export type ExperimentExecutionAdapterId = "legacy-local" | "cluster" | "wasm-local";
 export const NATIVE_EXPERIMENT_LAUNCH_PAYLOAD_VERSION = "studio.native-launch-payload.v1" as const;
@@ -26,10 +31,32 @@ export interface NativeExperimentLaunchPayloadManifest {
   legacyExperimentName: string;
   legacyDatasetCount: number;
   legacyPipelineCount: number;
+  robustnessEvidencePublicationHandoff?: NativeRobustnessEvidencePublicationHandoffManifest;
   strictCampaignCount: number;
   skippedRunCount: number;
   sourceRunIds: string[];
   skippedRunIds: string[];
+}
+
+export interface NativeRobustnessEvidencePublicationHandoffManifest {
+  kind: "robustness_evidence_publication_handoff";
+  requested: boolean;
+  destination: "result_metadata.robustness_evidence";
+  failClosed: boolean;
+  keywordIds: typeof WORKSPACE_PREDICTION_PUBLICATION_KEYWORD_IDS;
+  requiredEffects: typeof WORKSPACE_PREDICTION_PUBLICATION_EFFECTS;
+  conformalArtifactPolicy: "prediction_publisher_does_not_persist_conformal_artifacts";
+  alignmentStrategies: Array<
+    "sample_indices"
+    | "full_dataset_length"
+    | "unique_metadata_identity"
+    | "relation_manifest_identity"
+  >;
+  publishedFields: [
+    "prediction_arrays.X",
+    "result_metadata.robustness_evidence.X",
+    "result_metadata.robustness_evidence.predictor_bundle",
+  ];
 }
 
 export interface NativeExperimentLaunchPayload {
@@ -122,15 +149,49 @@ function getNativePayloadLegacyPipelineCount(config: ExperimentConfig): number {
   );
 }
 
+function buildNativeRobustnessEvidencePublicationHandoffManifest(
+  legacyConfig: ExperimentConfig,
+): NativeRobustnessEvidencePublicationHandoffManifest | undefined {
+  const publishEvidence = legacyConfig.robustness?.publish_evidence;
+  const spectralReplay = publishEvidence && typeof publishEvidence === "object"
+    ? (publishEvidence as Record<string, unknown>).spectral_replay
+    : undefined;
+  if (!spectralReplay || typeof spectralReplay !== "object") return undefined;
+
+  const spectralReplayRecord = spectralReplay as Record<string, unknown>;
+  return {
+    kind: "robustness_evidence_publication_handoff",
+    requested: true,
+    destination: WORKSPACE_PREDICTION_PUBLICATION_DESTINATION,
+    failClosed: spectralReplayRecord.fail_closed !== false,
+    keywordIds: WORKSPACE_PREDICTION_PUBLICATION_KEYWORD_IDS,
+    requiredEffects: WORKSPACE_PREDICTION_PUBLICATION_EFFECTS,
+    conformalArtifactPolicy: "prediction_publisher_does_not_persist_conformal_artifacts",
+    alignmentStrategies: [
+      "sample_indices",
+      "full_dataset_length",
+      "unique_metadata_identity",
+      "relation_manifest_identity",
+    ],
+    publishedFields: [
+      "prediction_arrays.X",
+      "result_metadata.robustness_evidence.X",
+      "result_metadata.robustness_evidence.predictor_bundle",
+    ],
+  };
+}
+
 export function buildNativeExperimentLaunchPayloadManifest(
   legacyConfig: ExperimentConfig,
   strictCampaignSpecs: CampaignSinglePairSplitSpecResult,
 ): NativeExperimentLaunchPayloadManifest {
+  const robustnessEvidencePublicationHandoff = buildNativeRobustnessEvidencePublicationHandoffManifest(legacyConfig);
   return {
     version: NATIVE_EXPERIMENT_LAUNCH_PAYLOAD_VERSION,
     legacyExperimentName: legacyConfig.name,
     legacyDatasetCount: legacyConfig.dataset_ids.length,
     legacyPipelineCount: getNativePayloadLegacyPipelineCount(legacyConfig),
+    ...(robustnessEvidencePublicationHandoff ? { robustnessEvidencePublicationHandoff } : {}),
     strictCampaignCount: strictCampaignSpecs.splitSpecs.length,
     skippedRunCount: strictCampaignSpecs.skippedRunIds.length,
     sourceRunIds: strictCampaignSpecs.splitSpecs.map((splitSpec) => splitSpec.sourceRunId),

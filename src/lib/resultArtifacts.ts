@@ -2,6 +2,7 @@ import { foldIdBase, foldLabel } from "@/lib/fold-utils";
 import type { PredictionArraysResponse } from "@/types/aggregated-predictions";
 import type { PredictionRecord } from "@/types/linked-workspaces";
 import type { AvailableModel } from "@/types/predict";
+import type { ChainSummary } from "@/types/aggregated-predictions";
 import type { PipelineRun } from "@/types/runs";
 
 export type ResultArtifactKind =
@@ -181,6 +182,13 @@ export interface ResultArtifactRepositoryProvenanceItem {
   sourceLabel: string;
   contentAddress: string | null;
   contentAddressLabel: string | null;
+  detailLabels: string[];
+}
+
+export interface ResultArtifactAuditItem {
+  id: string;
+  refId: string;
+  label: string;
   detailLabels: string[];
 }
 
@@ -507,6 +515,58 @@ export function buildResultArtifactRepositoryProvenanceItems(
   });
 }
 
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function formatAuditContext(context: Record<string, unknown> | undefined): string | null {
+  if (!context) return null;
+  const parts = [
+    readStringField(context, ["run_id", "runId"]) ? `run ${readStringField(context, ["run_id", "runId"])}` : null,
+    readStringField(context, ["pipeline_id", "pipelineId"]) ? `pipeline ${readStringField(context, ["pipeline_id", "pipelineId"])}` : null,
+    readStringField(context, ["chain_id", "chainId"]) ? `chain ${readStringField(context, ["chain_id", "chainId"])}` : null,
+    readStringField(context, ["partition"]) ? `partition ${readStringField(context, ["partition"])}` : null,
+    readStringField(context, ["fold_id", "foldId"]) ? `fold ${readStringField(context, ["fold_id", "foldId"])}` : null,
+  ].filter((part): part is string => part != null);
+  return parts.length > 0 ? `Context ${parts.join(" · ")}` : null;
+}
+
+function buildRobustnessAuditDetailLabels(ref: ResultArtifactRef, audit: Record<string, unknown>): string[] {
+  const requested = isRecord(audit.requested_robustness) ? audit.requested_robustness : undefined;
+  const context = isRecord(audit.stored_prediction_context) ? audit.stored_prediction_context : undefined;
+  const scenarioKinds = stringArray(audit.requested_scenario_kinds);
+  const seed = audit.requested_seed;
+  const predictionId = readStringField(audit, ["prediction_id", "predictionId"])
+    ?? readStringField(context, ["prediction_id", "predictionId"])
+    ?? ref.predictionId;
+  const mode = readStringField(requested, ["mode"]);
+
+  return [
+    mode ? `Mode ${mode}` : null,
+    scenarioKinds.length > 0 ? `Scenarios ${scenarioKinds.join(", ")}` : null,
+    typeof seed === "number" ? `Seed ${seed}` : seed === null ? "Seed none" : null,
+    predictionId ? `Prediction ${predictionId}` : null,
+    formatAuditContext(context),
+  ].filter((label): label is string => label != null);
+}
+
+export function buildResultArtifactAuditItems(refs: readonly ResultArtifactRef[]): ResultArtifactAuditItem[] {
+  return refs.flatMap((ref) => {
+    const audit = isRecord(ref.metadata?.audit_metadata) ? ref.metadata.audit_metadata : null;
+    if (!audit) return [];
+    const detailLabels = buildRobustnessAuditDetailLabels(ref, audit);
+    if (detailLabels.length === 0) return [];
+    return [{
+      id: buildResultArtifactRefId(["artifact-audit", ref.id]),
+      refId: ref.id,
+      label: `${ref.label} audit`,
+      detailLabels,
+    }];
+  });
+}
+
 function foldIdFromArtifactKey(key: string): string {
   if (key === "fold_final" || key === "final") return "final";
   if (key.startsWith("fold_")) return key.slice("fold_".length);
@@ -646,8 +706,8 @@ interface PipelineRunArtifactRefsCarrier {
   native_result_refs?: unknown;
 }
 
-function attachedPipelineRunArtifactPayloads(pipeline: PipelineRun): unknown[] {
-  const carrier = pipeline as PipelineRun & PipelineRunArtifactRefsCarrier;
+function attachedArtifactPayloads(source: PipelineRunArtifactRefsCarrier): unknown[] {
+  const carrier = source;
   const artifactRefs = Array.isArray(carrier.artifactRefs) ? carrier.artifactRefs : [];
   const artifactRefsSnakeCase = Array.isArray(carrier.artifact_refs) ? carrier.artifact_refs : [];
   return [...artifactRefs, ...artifactRefsSnakeCase];
@@ -660,10 +720,11 @@ function nativePipelineRunArtifactPayloads(pipeline: PipelineRun): unknown[] {
   return [...nativeResultRefs, ...nativeResultRefsSnakeCase];
 }
 
-function normalizeAttachedPipelineRunArtifactRef(
+function normalizeAttachedArtifactRef(
   rawRef: unknown,
   index: number,
-  pipeline: PipelineRun,
+  context: ResultArtifactContext,
+  fallbackId: string,
 ): ResultArtifactRef | null {
   if (!isRecord(rawRef)) return null;
 
@@ -680,7 +741,7 @@ function normalizeAttachedPipelineRunArtifactRef(
   const role = readStringField(rawRef, ["role"]) ?? kind;
   const id = readStringField(rawRef, ["id"]) ?? buildResultArtifactRefId([
     "attached-artifact",
-    pipeline.id,
+    fallbackId,
     source,
     scope,
     kind,
@@ -697,14 +758,14 @@ function normalizeAttachedPipelineRunArtifactRef(
     status,
     artifactId,
     bundlePath: readNullableStringField(rawRef, ["bundlePath", "bundle_path"]),
-    runId: readStringField(rawRef, ["runId", "run_id"]) ?? pipeline.id,
-    pipelineId: readStringField(rawRef, ["pipelineId", "pipeline_id"]) ?? pipeline.pipeline_id,
-    chainId: readNullableStringField(rawRef, ["chainId", "chain_id"]),
+    runId: readStringField(rawRef, ["runId", "run_id"]) ?? context.runId,
+    pipelineId: readStringField(rawRef, ["pipelineId", "pipeline_id"]) ?? context.pipelineId,
+    chainId: readNullableStringField(rawRef, ["chainId", "chain_id"]) ?? context.chainId,
     predictionId: readStringField(rawRef, ["predictionId", "prediction_id"]),
     foldId: readStringField(rawRef, ["foldId", "fold_id"]),
     partition: readStringField(rawRef, ["partition"]),
-    datasetName: readNullableStringField(rawRef, ["datasetName", "dataset_name"]),
-    metric: readNullableStringField(rawRef, ["metric"]),
+    datasetName: readNullableStringField(rawRef, ["datasetName", "dataset_name"]) ?? context.datasetName,
+    metric: readNullableStringField(rawRef, ["metric"]) ?? context.metric,
     format: readStringField(rawRef, ["format"]),
     contentAddress,
     metadata,
@@ -712,8 +773,24 @@ function normalizeAttachedPipelineRunArtifactRef(
 }
 
 function buildAttachedPipelineRunArtifactRefs(pipeline: PipelineRun): ResultArtifactRef[] {
-  return attachedPipelineRunArtifactPayloads(pipeline)
-    .map((rawRef, index) => normalizeAttachedPipelineRunArtifactRef(rawRef, index, pipeline))
+  return attachedArtifactPayloads(pipeline as PipelineRun & PipelineRunArtifactRefsCarrier)
+    .map((rawRef, index) => normalizeAttachedArtifactRef(rawRef, index, {
+      runId: pipeline.id,
+      pipelineId: pipeline.pipeline_id,
+      metric: pipeline.score_metric ?? pipeline.metrics?.score_metric ?? null,
+    }, pipeline.id))
+    .filter((ref): ref is ResultArtifactRef => ref != null);
+}
+
+export function buildAttachedChainSummaryArtifactRefs(summary: ChainSummary): ResultArtifactRef[] {
+  return attachedArtifactPayloads(summary as ChainSummary & PipelineRunArtifactRefsCarrier)
+    .map((rawRef, index) => normalizeAttachedArtifactRef(rawRef, index, {
+      runId: summary.run_id,
+      pipelineId: summary.pipeline_id,
+      chainId: summary.chain_id,
+      datasetName: summary.dataset_name,
+      metric: summary.metric,
+    }, summary.chain_id))
     .filter((ref): ref is ResultArtifactRef => ref != null);
 }
 

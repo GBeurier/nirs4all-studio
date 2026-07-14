@@ -8,6 +8,7 @@ import type {
   CategoricalPalette,
   ContinuousPalette,
 } from "@/lib/playground/colorConfig";
+import type { ConformalPredictionRow } from "@/ui/conformal";
 import { PARTITION_COLORS } from "@/lib/partitionColors";
 
 export type ChartKind = "scatter" | "residuals" | "confusion" | "distribution";
@@ -65,6 +66,10 @@ export interface ViewerPartitionTarget {
    *  - "workspace"  → getN4AWorkspacePredictionScatter(workspaceId, predictionId)
    */
   source: "aggregated" | "workspace";
+  /** Optional conformal rows aligned with this partition's sample order. */
+  conformalRows?: ConformalPredictionRow[];
+  /** Requested conformal coverage to materialize in chart/CSV datasets. */
+  conformalCoverage?: number | null;
 }
 
 export interface ViewerHeader {
@@ -165,6 +170,14 @@ export interface PartitionDataset {
   yTrue: number[];
   yPred: number[];
   nSamples: number;
+  conformalCoverage?: number;
+  conformalCoverageLabel?: string;
+  conformalIntervals?: Array<{
+    coverage: number;
+    coverageLabel: string;
+    lower: number;
+    upper: number;
+  } | null>;
   sampleIds?: Array<string | number>;
   sampleMetadata?: ViewerSampleMetadata | null;
 }

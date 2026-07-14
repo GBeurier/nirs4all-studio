@@ -21,6 +21,7 @@ import type {
   SplitGroupByByDataset,
   RunExecutionBackendsResponse,
 } from "@/types/runs";
+import type { PipelineExecutionRobustnessLaunchPayload } from "@/lib/pipelineExecutionContract";
 import type { NativeExperimentLaunchPayload } from "@/lib/experimentExecutionAdapter";
 
 export interface PredictionRecord {
@@ -148,6 +149,7 @@ export interface QuickRunRequest {
   allow_fallback?: boolean;
   split_group_by_by_dataset?: SplitGroupByByDataset;
   inline_pipeline?: InlinePipelinePayload;
+  robustness?: PipelineExecutionRobustnessLaunchPayload;
 }
 
 export async function quickRun(request: QuickRunRequest): Promise<Run> {

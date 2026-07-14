@@ -11,6 +11,10 @@ import type {
   ChainDetailResponse,
   ChainPartitionDetailResponse,
   PredictionArraysResponse,
+  PredictionRobustnessEvidenceResponse,
+  PredictionRobustnessReportRequest,
+  PredictionRobustnessReportResponse,
+  RobustnessReportExportFormat,
   AggregatedPredictionFilters,
 } from "@/types/aggregated-predictions";
 
@@ -152,6 +156,39 @@ export async function getPredictionArrays(
   predictionId: string
 ): Promise<PredictionArraysResponse> {
   return api.get(`/aggregated-predictions/${predictionId}/arrays`);
+}
+
+/**
+ * Compute and persist a native audit-only robustness report for one stored prediction.
+ */
+export async function computePredictionRobustnessReport(
+  predictionId: string,
+  request: PredictionRobustnessReportRequest,
+): Promise<PredictionRobustnessReportResponse> {
+  return api.post(`/aggregated-predictions/${predictionId}/robustness-report`, request);
+}
+
+/**
+ * Inspect fail-closed evidence for robustness paths available from one stored prediction.
+ */
+export async function getPredictionRobustnessEvidence(
+  predictionId: string,
+): Promise<PredictionRobustnessEvidenceResponse> {
+  return api.get(`/aggregated-predictions/${predictionId}/robustness-evidence`);
+}
+
+/**
+ * Export a persisted native robustness report without recomputing it.
+ */
+export async function exportWorkspaceRobustnessReport(
+  robustnessId: string,
+  format: RobustnessReportExportFormat = "json",
+): Promise<Blob> {
+  const params = new URLSearchParams({ format });
+  return requestBinary(
+    `/aggregated-predictions/robustness-reports/${encodeURIComponent(robustnessId)}/export?${params.toString()}`,
+    "GET",
+  );
 }
 
 /**

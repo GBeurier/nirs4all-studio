@@ -9,6 +9,7 @@
 import { forwardRef, useMemo } from "react";
 import {
   CartesianGrid,
+  ErrorBar,
   ReferenceLine,
   ResponsiveContainer,
   Scatter,
@@ -34,7 +35,11 @@ interface PredictionScatterChartProps {
 
 interface ScatterDot {
   actual: number;
+  conformalCoverageLabel?: string;
+  conformalLower?: number;
+  conformalUpper?: number;
   predicted: number;
+  predictedError?: [number, number];
   fill: string;
   partitionLabel: string;
   sampleIndex: number;
@@ -85,6 +90,24 @@ function linearRegression(xs: number[], ys: number[]): { slope: number; intercep
   return { slope, intercept };
 }
 
+function conformalErrorFields(dataset: PartitionDataset, index: number, predicted: number): Pick<
+  ScatterDot,
+  "conformalCoverageLabel" | "conformalLower" | "conformalUpper" | "predictedError"
+> {
+  const interval = dataset.conformalIntervals?.[index];
+  if (!interval) return {};
+  if (!Number.isFinite(interval.lower) || !Number.isFinite(interval.upper)) return {};
+  const lowerError = predicted - interval.lower;
+  const upperError = interval.upper - predicted;
+  if (lowerError < 0 || upperError < 0) return {};
+  return {
+    conformalCoverageLabel: interval.coverageLabel,
+    conformalLower: interval.lower,
+    conformalUpper: interval.upper,
+    predictedError: [lowerError, upperError],
+  };
+}
+
 export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatterChartProps>(
   function PredictionScatterChart({ datasets, config, variant, compact, className }, ref) {
     const resolved: ChartVariant = variant ?? (compact ? "thumbnail" : "full");
@@ -120,6 +143,7 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
           if (!Number.isFinite(t) || !Number.isFinite(p)) continue;
           pts.push({
             actual: t,
+            ...conformalErrorFields(ds, i, p),
             predicted: p,
             fill: coloration.getPointColor(ds, i),
             partitionLabel: ds.label,
@@ -231,6 +255,14 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
                         <span>{formatTooltipValue(dot.actual)}</span>
                         <span className="text-muted-foreground">Predicted</span>
                         <span>{formatTooltipValue(dot.predicted)}</span>
+                        {dot.conformalCoverageLabel && (
+                          <>
+                            <span className="text-muted-foreground">{dot.conformalCoverageLabel} interval</span>
+                            <span>
+                              {formatTooltipValue(dot.conformalLower)} – {formatTooltipValue(dot.conformalUpper)}
+                            </span>
+                          </>
+                        )}
                         {dot.metadataLabel && (
                           <>
                             <span className="text-muted-foreground">{dot.metadataLabel}</span>
@@ -288,7 +320,18 @@ export const PredictionScatterChart = forwardRef<HTMLDivElement, PredictionScatt
                       fillOpacity={config.pointOpacity}
                     />
                   )}
-                />
+                >
+                  {points.some(point => point.predictedError) && (
+                    <ErrorBar
+                      dataKey="predictedError"
+                      direction="y"
+                      stroke={color}
+                      strokeOpacity={0.55}
+                      strokeWidth={1}
+                      width={4}
+                    />
+                  )}
+                </Scatter>
               );
             })}
           </ScatterChart>
