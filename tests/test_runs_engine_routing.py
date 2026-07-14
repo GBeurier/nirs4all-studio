@@ -61,6 +61,7 @@ class _Frame:
 # Group A — _execute_pipeline_training (real function) passes + records + no bypass
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def stub_training_deps(monkeypatch):
     """Stub the data/pipeline-prep seams of ``_execute_pipeline_training``.
@@ -127,7 +128,11 @@ def test_execute_pipeline_training_passes_requested_engine_to_run(stub_training_
     stub_training_deps["install"](lambda **kwargs: SimpleNamespace())
 
     result = runs_api._execute_pipeline_training(
-        _pipeline(), "dataset-a", None, "run-1", engine="dag-ml",
+        _pipeline(),
+        "dataset-a",
+        None,
+        "run-1",
+        engine="dag-ml",
     )
 
     # Property 1: the requested engine reaches the runner.
@@ -147,7 +152,11 @@ def test_execute_pipeline_training_records_library_default_for_default_engine(st
     stub_training_deps["install"](lambda **kwargs: _DagMlRuntimeResult())
 
     result = runs_api._execute_pipeline_training(
-        _pipeline(), "dataset-a", None, "run-1", engine=None,
+        _pipeline(),
+        "dataset-a",
+        None,
+        "run-1",
+        engine=None,
     )
 
     # No engine kwarg => nirs4all applies its own default, unchanged.
@@ -170,7 +179,9 @@ def test_execute_pipeline_training_records_library_default_for_default_engine(st
     ],
 )
 def test_execute_pipeline_training_records_transparent_fallback(
-    stub_training_deps, warning_text, expected_cause,
+    stub_training_deps,
+    warning_text,
+    expected_cause,
 ):
     """A transparent dag-ml->legacy fallback is captured, classified, recorded."""
     import warnings
@@ -182,7 +193,11 @@ def test_execute_pipeline_training_records_transparent_fallback(
     stub_training_deps["install"](run_with_fallback)
 
     result = runs_api._execute_pipeline_training(
-        _pipeline(), "dataset-a", None, "run-1", engine="dag-ml",
+        _pipeline(),
+        "dataset-a",
+        None,
+        "run-1",
+        engine="dag-ml",
     )
 
     # No bypass: dag-ml was actually attempted before the library fell back.
@@ -287,6 +302,7 @@ def test_execute_pipeline_training_refuses_structured_rt_error_fallback_by_defau
 # ---------------------------------------------------------------------------
 # Group B — route / constructor thread the engine onto the Run
 # ---------------------------------------------------------------------------
+
 
 def test_run_request_models_default_to_refuse_fallback():
     """Experiment and QuickRun requests require explicit fallback opt-in."""
@@ -481,11 +497,7 @@ def test_retry_run_preserves_requested_engine(monkeypatch, tmp_path, engine):
         id="run-old",
         name="Engine run",
         engine=engine,
-        datasets=[
-            runs_api.DatasetRun(
-                dataset_id="dataset-a", dataset_name="Dataset A", pipelines=[failed_pipeline]
-            )
-        ],
+        datasets=[runs_api.DatasetRun(dataset_id="dataset-a", dataset_name="Dataset A", pipelines=[failed_pipeline])],
         status="failed",
         created_at="2026-07-01T10:00:00",
         total_pipelines=1,
@@ -513,6 +525,7 @@ def test_retry_run_preserves_requested_engine(monkeypatch, tmp_path, engine):
 # Group C — job loop records the engine outcome + persists the request on failure
 # ---------------------------------------------------------------------------
 
+
 def _single_pipeline_run(engine: str | None, tmp_path) -> runs_api.Run:
     pipeline = runs_api.PipelineRun(
         id="run-1-dataset-a-pipe-a",
@@ -527,9 +540,7 @@ def _single_pipeline_run(engine: str | None, tmp_path) -> runs_api.Run:
         id="run-1",
         name="Engine run",
         engine=engine,
-        datasets=[
-            runs_api.DatasetRun(dataset_id="dataset-a", dataset_name="Dataset A", pipelines=[pipeline])
-        ],
+        datasets=[runs_api.DatasetRun(dataset_id="dataset-a", dataset_name="Dataset A", pipelines=[pipeline])],
         status="queued",
         created_at="2026-07-01T10:00:00",
         total_pipelines=1,
@@ -544,7 +555,19 @@ def test_execute_run_job_records_engine_outcome_on_pipeline(monkeypatch, tmp_pat
     diagnostics = [{"verb": "run", "cause": "unavailable_backend", "message": "x"}]
     seen_engine: dict = {}
 
-    def fake_training(pipeline, dataset_id, workspace_path, run_id, split_group_by=None, *, store_run_id=None, engine=None, allow_fallback=True, should_stop=None):
+    def fake_training(
+        pipeline,
+        dataset_id,
+        workspace_path,
+        run_id,
+        split_group_by=None,
+        *,
+        store_run_id=None,
+        engine=None,
+        robustness=None,
+        allow_fallback=True,
+        should_stop=None,
+    ):
         seen_engine["engine"] = engine
         return {
             "metrics": {},
@@ -562,7 +585,9 @@ def test_execute_run_job_records_engine_outcome_on_pipeline(monkeypatch, tmp_pat
     monkeypatch.setattr(runs_api, "_execute_pipeline_training", fake_training)
 
     result = runs_api._execute_run_job(
-        "run-1", SimpleNamespace(id="job-1", cancellation_requested=False), lambda progress, message: None,
+        "run-1",
+        SimpleNamespace(id="job-1", cancellation_requested=False),
+        lambda progress, message: None,
     )
 
     assert result["status"] == "completed"
@@ -578,7 +603,19 @@ def test_execute_run_job_persists_engine_requested_on_training_failure(monkeypat
     """A hard training failure still persists the requested engine (B-011 fix)."""
     run = _single_pipeline_run("dag-ml", tmp_path)
 
-    def boom(pipeline, dataset_id, workspace_path, run_id, split_group_by=None, *, store_run_id=None, engine=None, allow_fallback=True, should_stop=None):
+    def boom(
+        pipeline,
+        dataset_id,
+        workspace_path,
+        run_id,
+        split_group_by=None,
+        *,
+        store_run_id=None,
+        engine=None,
+        robustness=None,
+        allow_fallback=True,
+        should_stop=None,
+    ):
         raise RuntimeError("engine exploded")
 
     monkeypatch.setattr(runs_api, "_runs", {"run-1": run})
@@ -587,7 +624,9 @@ def test_execute_run_job_persists_engine_requested_on_training_failure(monkeypat
     monkeypatch.setattr(runs_api, "_execute_pipeline_training", boom)
 
     result = runs_api._execute_run_job(
-        "run-1", SimpleNamespace(id="job-1", cancellation_requested=False), lambda progress, message: None,
+        "run-1",
+        SimpleNamespace(id="job-1", cancellation_requested=False),
+        lambda progress, message: None,
     )
 
     assert result["status"] == "failed"
@@ -612,7 +651,19 @@ def test_execute_run_job_persists_structured_refusal_policy(monkeypatch, tmp_pat
         def to_dict(self):
             return diagnostic
 
-    def refuse(pipeline, dataset_id, workspace_path, run_id, split_group_by=None, *, store_run_id=None, engine=None, allow_fallback=True, should_stop=None):
+    def refuse(
+        pipeline,
+        dataset_id,
+        workspace_path,
+        run_id,
+        split_group_by=None,
+        *,
+        store_run_id=None,
+        engine=None,
+        robustness=None,
+        allow_fallback=True,
+        should_stop=None,
+    ):
         assert allow_fallback is False
         raise StructuredRtError("structured refusal")
 
@@ -622,7 +673,9 @@ def test_execute_run_job_persists_structured_refusal_policy(monkeypatch, tmp_pat
     monkeypatch.setattr(runs_api, "_execute_pipeline_training", refuse)
 
     result = runs_api._execute_run_job(
-        "run-1", SimpleNamespace(id="job-1", cancellation_requested=False), lambda progress, message: None,
+        "run-1",
+        SimpleNamespace(id="job-1", cancellation_requested=False),
+        lambda progress, message: None,
     )
 
     assert result["status"] == "failed"
@@ -642,6 +695,7 @@ def test_execute_run_job_persists_structured_refusal_policy(monkeypatch, tmp_pat
 # ---------------------------------------------------------------------------
 # Group D — engine record round-trips through the persisted run manifest
 # ---------------------------------------------------------------------------
+
 
 def test_engine_record_round_trips_through_run_manifest(tmp_path):
     """Saved manifest re-reads the engine, requested engine and diagnostics."""
@@ -688,9 +742,7 @@ def test_engine_record_round_trips_through_run_manifest(tmp_path):
         id="run-1",
         name="Engine run",
         engine="dag-ml",
-        datasets=[
-            runs_api.DatasetRun(dataset_id="dataset-a", dataset_name="Dataset A", pipelines=[pipeline])
-        ],
+        datasets=[runs_api.DatasetRun(dataset_id="dataset-a", dataset_name="Dataset A", pipelines=[pipeline])],
         status="completed",
         created_at="2026-07-01T10:00:00",
         total_pipelines=1,
@@ -719,6 +771,7 @@ def test_engine_record_round_trips_through_run_manifest(tmp_path):
 # ---------------------------------------------------------------------------
 # Group E — HTTP run/read + result retrieval stay aligned with RtResult
 # ---------------------------------------------------------------------------
+
 
 def test_quick_run_route_and_chain_detail_keep_runtime_envelope_semantics(
     monkeypatch,
@@ -810,47 +863,51 @@ def test_quick_run_route_and_chain_detail_keep_runtime_envelope_semantics(
         class RuntimeResultsRepository:
             def query_chain_summaries(self, **filters):
                 assert filters.get("chain_id") == "chain-runtime"
-                return _Frame([
-                    {
-                        "run_id": run_id,
-                        "pipeline_id": "pipe-a",
-                        "chain_id": "chain-runtime",
-                        "model_name": "PLSRegression",
-                        "model_class": "PLSRegression",
-                        "preprocessings": "SNV",
-                        "model_step_idx": 0,
-                        "metric": "r2",
-                        "task_type": "regression",
-                        "dataset_name": "dataset-a",
-                        "cv_val_score": 0.91,
-                        "cv_fold_count": 1,
-                        "best_params": {},
-                        "variant_params": {"result_metadata": runtime_metadata},
-                    }
-                ])
+                return _Frame(
+                    [
+                        {
+                            "run_id": run_id,
+                            "pipeline_id": "pipe-a",
+                            "chain_id": "chain-runtime",
+                            "model_name": "PLSRegression",
+                            "model_class": "PLSRegression",
+                            "preprocessings": "SNV",
+                            "model_step_idx": 0,
+                            "metric": "r2",
+                            "task_type": "regression",
+                            "dataset_name": "dataset-a",
+                            "cv_val_score": 0.91,
+                            "cv_fold_count": 1,
+                            "best_params": {},
+                            "variant_params": {"result_metadata": runtime_metadata},
+                        }
+                    ]
+                )
 
             def get_chain_predictions(self, chain_id, partition=None, fold_id=None):
                 assert chain_id == "chain-runtime"
                 assert partition is None
                 assert fold_id is None
-                return _Frame([
-                    {
-                        "prediction_id": "pred-runtime",
-                        "run_id": run_id,
-                        "pipeline_id": "pipe-a",
-                        "chain_id": chain_id,
-                        "dataset_name": "dataset-a",
-                        "model_name": "PLSRegression",
-                        "model_class": "PLSRegression",
-                        "fold_id": "fold-0",
-                        "partition": "test",
-                        "metric": "r2",
-                        "task_type": "regression",
-                        "n_samples": 2,
-                        "scores": {"r2": 0.91},
-                        "result_metadata": runtime_metadata,
-                    }
-                ])
+                return _Frame(
+                    [
+                        {
+                            "prediction_id": "pred-runtime",
+                            "run_id": run_id,
+                            "pipeline_id": "pipe-a",
+                            "chain_id": chain_id,
+                            "dataset_name": "dataset-a",
+                            "model_name": "PLSRegression",
+                            "model_class": "PLSRegression",
+                            "fold_id": "fold-0",
+                            "partition": "test",
+                            "metric": "r2",
+                            "task_type": "regression",
+                            "n_samples": 2,
+                            "scores": {"r2": 0.91},
+                            "result_metadata": runtime_metadata,
+                        }
+                    ]
+                )
 
             def get_pipeline(self, pipeline_id):
                 return {"pipeline_id": pipeline_id, "name": "Pipeline A", "dataset_name": "dataset-a"}

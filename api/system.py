@@ -133,6 +133,40 @@ def _load_operator_reference() -> dict[str, Any]:
     return reference
 
 
+def _load_keyword_registry_reference() -> dict[str, Any]:
+    """Load the public nirs4all keyword/effect registry without local synthesis."""
+    try:
+        import nirs4all
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="nirs4all keyword registry is unavailable because nirs4all could not be imported",
+        ) from exc
+
+    get_keyword_registry = getattr(nirs4all, "get_keyword_registry", None)
+    if not callable(get_keyword_registry):
+        raise HTTPException(
+            status_code=503,
+            detail="Installed nirs4all does not expose get_keyword_registry()",
+        )
+
+    try:
+        registry = get_keyword_registry()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="nirs4all keyword registry could not be loaded",
+        ) from exc
+
+    if not isinstance(registry, dict) or not registry.get("entries"):
+        raise HTTPException(
+            status_code=500,
+            detail="nirs4all keyword registry returned an invalid payload",
+        )
+
+    return registry
+
+
 @router.get("/health")
 async def health_check():
     """Health check endpoint with two-phase readiness reporting.
@@ -488,6 +522,12 @@ async def system_operator_availability():
         "checked_count": checked_count,
         "unavailable": unavailable,
     }
+
+
+@router.get("/system/keyword-registry")
+async def system_keyword_registry():
+    """Return the public nirs4all keyword/effect registry for Studio forms."""
+    return _load_keyword_registry_reference()
 
 
 @router.get("/system/paths")

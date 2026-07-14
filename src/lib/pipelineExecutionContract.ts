@@ -26,7 +26,26 @@ export interface PipelineExecutionConfig {
   executionBackend?: "local-python" | "cluster" | "wasm-local";
   engine?: "legacy" | "dag-ml";
   allowFallback?: boolean;
+  robustness?: PipelineExecutionRobustnessLaunchPayload;
   campaignId?: string;
+}
+
+export interface PipelineExecutionRobustnessLaunchPayload {
+  mode?: "clean_frozen";
+  scenarios: Array<Record<string, unknown>>;
+  slice_by?: string[];
+  publish_evidence?: PipelineExecutionRobustnessEvidencePublicationPayload;
+}
+
+export interface PipelineExecutionRobustnessSpectralReplayEvidencePayload {
+  X: "dataset_partition";
+  predictor_bundle: "exported_model_bundle";
+  destination: "result_metadata.robustness_evidence";
+  fail_closed: boolean;
+}
+
+export interface PipelineExecutionRobustnessEvidencePublicationPayload {
+  spectral_replay?: PipelineExecutionRobustnessSpectralReplayEvidencePayload;
 }
 
 export interface PipelineExecutionArtifact {
@@ -86,6 +105,7 @@ export interface LegacyPipelineExecutePayload {
   allow_fallback?: boolean;
   split_group_by_by_dataset: Record<string, string | null>;
   inline_pipeline: PipelineExecutionInlinePipeline | null;
+  robustness?: PipelineExecutionRobustnessLaunchPayload;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -179,6 +199,7 @@ export function toLegacyPipelineExecutePayload(config: PipelineExecutionConfig):
     ...(normalized.allowFallback !== undefined ? { allow_fallback: normalized.allowFallback } : {}),
     split_group_by_by_dataset: normalized.splitGroupByByDataset ?? {},
     inline_pipeline: normalized.inlinePipeline ?? null,
+    ...(normalized.robustness ? { robustness: normalized.robustness } : {}),
   };
 }
 

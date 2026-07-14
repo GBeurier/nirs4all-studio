@@ -37,6 +37,7 @@ These practical guides show you how to accomplish specific tasks in nirs4all Stu
 - {doc}`results/view-scores` — View performance scores by dataset
 - {doc}`results/compare-chains` — Compare pipeline configurations
 - {doc}`results/aggregated-results` — View aggregated results across runs
+- {doc}`results/native-assurance-workflow` — Review native tuning, conformal, and robustness artifacts
 - {doc}`results/export-predictions` — Export predictions to CSV
 - {doc}`results/manage-predictions` — Browse and manage prediction records
 - {doc}`results/export-model` — Export a trained model (.n4a bundle)

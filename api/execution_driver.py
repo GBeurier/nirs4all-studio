@@ -268,6 +268,17 @@ LOCAL_PYTHON_CAPABILITY = ExecutionDriverCapability(
         "job_type": JobType.TRAINING.value,
         "scheduler": "job-manager-thread-pool",
         "runner": "nirs4all.run",
+        "workspace_prediction_publication": {
+            "destination": "result_metadata.robustness_evidence",
+            "publisher": "nirs4all-studio.run-driver",
+            "status": "publisher_configured",
+            "writes": [
+                "prediction_arrays.X",
+                "result_metadata.robustness_evidence.X",
+                "result_metadata.robustness_evidence.predictor_bundle",
+                "result_metadata.robustness_evidence.publisher",
+            ],
+        },
     },
 )
 

@@ -35,6 +35,7 @@ from .pipeline_canonical import (
     filter_comments as filter_canonical_comments,
 )
 from .preset_loader import list_presets, load_preset
+from .robustness_contract import RobustnessLaunchPayload, normalize_robustness_launch_payload
 from .shared.logger import get_logger
 from .shared.runtime_grouping import (
     normalize_split_group_by_mapping,
@@ -52,6 +53,7 @@ NIRS4ALL_AVAILABLE = True  # Assume available, endpoints guard via require_ml_re
 
 class OperatorCategory(StrEnum):
     """Categories for pipeline operators."""
+
     PREPROCESSING = "preprocessing"
     SPLITTING = "splitting"
     MODELS = "models"
@@ -87,6 +89,7 @@ class PipelineValidateRequest(BaseModel):
 
 class PipelineCountRequest(BaseModel):
     """Request model for counting pipeline variants."""
+
     steps: list[dict[str, Any]]
 
 
@@ -147,9 +150,7 @@ def _load_pipeline(pipeline_id: str) -> dict[str, Any]:
         with open(pipeline_file, encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to load pipeline: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to load pipeline: {str(e)}")
 
 
 def _save_pipeline(pipeline: dict[str, Any]) -> None:
@@ -161,9 +162,7 @@ def _save_pipeline(pipeline: dict[str, Any]) -> None:
         with open(pipeline_file, "w", encoding="utf-8") as f:
             json.dump(pipeline, f, indent=2)
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to save pipeline: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to save pipeline: {str(e)}")
 
 
 def _normalize_and_validate_editor_steps(
@@ -214,9 +213,7 @@ async def list_pipelines():
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to list pipelines: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to list pipelines: {str(e)}")
 
 
 @router.get("/pipelines/presets")
@@ -425,9 +422,7 @@ async def create_pipeline(pipeline_data: PipelineCreate):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create pipeline: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to create pipeline: {str(e)}")
 
 
 @router.put("/pipelines/{pipeline_id}")
@@ -459,9 +454,7 @@ async def update_pipeline(pipeline_id: str, update_data: PipelineUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to update pipeline: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to update pipeline: {str(e)}")
 
 
 @router.delete("/pipelines/{pipeline_id}")
@@ -480,9 +473,7 @@ async def delete_pipeline(pipeline_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to delete pipeline: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to delete pipeline: {str(e)}")
 
 
 @router.post("/pipelines/{pipeline_id}/clone")
@@ -509,9 +500,7 @@ async def clone_pipeline(pipeline_id: str, new_name: str | None = None):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to clone pipeline: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to clone pipeline: {str(e)}")
 
 
 async def _validate_pipeline_impl(request: PipelineValidateRequest):
@@ -565,14 +554,16 @@ async def _validate_pipeline_impl(request: PipelineValidateRequest):
         step_errors = [e for e in errors if f"[{i}]" in e or f"Step {i}" in e]
         step_warnings = [w for w in warnings if f"[{i}]" in w or f"Step {i}" in w]
 
-        step_results.append({
-            "index": i,
-            "name": step.get("name", "unknown"),
-            "type": step.get("type", "unknown"),
-            "valid": len(step_errors) == 0,
-            "errors": step_errors,
-            "warnings": step_warnings,
-        })
+        step_results.append(
+            {
+                "index": i,
+                "name": step.get("name", "unknown"),
+                "type": step.get("type", "unknown"),
+                "valid": len(step_errors) == 0,
+                "errors": step_errors,
+                "warnings": step_warnings,
+            }
+        )
 
     return {
         "valid": validation_result.is_valid,
@@ -582,6 +573,7 @@ async def _validate_pipeline_impl(request: PipelineValidateRequest):
         "node_count": validation_result.node_count,
         "generator_count": validation_result.generator_count,
     }
+
 
 # ============= Phase 2: Dynamic Operator Discovery =============
 
@@ -621,10 +613,7 @@ def _annotation_to_type_string(annotation) -> str:
 
 
 @router.post("/pipelines/{pipeline_id}/prepare")
-async def prepare_pipeline_execution(
-    pipeline_id: str,
-    request: PipelineExecuteRequest
-):
+async def prepare_pipeline_execution(pipeline_id: str, request: PipelineExecuteRequest):
     """
     Prepare a pipeline for execution.
 
@@ -640,9 +629,7 @@ async def prepare_pipeline_execution(
     pipeline = _load_pipeline(pipeline_id)
 
     # Validate pipeline
-    validation_result = await _validate_pipeline_impl(
-        PipelineValidateRequest(steps=pipeline.get("steps", []))
-    )
+    validation_result = await _validate_pipeline_impl(PipelineValidateRequest(steps=pipeline.get("steps", [])))
 
     if not validation_result["valid"]:
         return {
@@ -654,6 +641,7 @@ async def prepare_pipeline_execution(
 
     # Check dataset exists
     from .spectra import _load_dataset
+
     dataset = _load_dataset(request.dataset_id)
     if not dataset:
         raise HTTPException(
@@ -664,12 +652,14 @@ async def prepare_pipeline_execution(
     # Build execution summary
     steps_summary = []
     for i, step in enumerate(pipeline.get("steps", [])):
-        steps_summary.append({
-            "index": i,
-            "name": step.get("name", "unknown"),
-            "type": step.get("type", "unknown"),
-            "params": step.get("params", {}),
-        })
+        steps_summary.append(
+            {
+                "index": i,
+                "name": step.get("name", "unknown"),
+                "type": step.get("type", "unknown"),
+                "params": step.get("params", {}),
+            }
+        )
 
     execution_config = {
         "pipeline_id": pipeline_id,
@@ -728,6 +718,7 @@ async def create_pipeline_from_preset(
 
 # ============= Pipeline Variant Counting =============
 
+
 # Implementation function - called by forwarding route defined earlier
 async def _count_variants_impl(request: PipelineCountRequest):
     """
@@ -738,11 +729,7 @@ async def _count_variants_impl(request: PipelineCountRequest):
     """
     _count_combinations = get_cached("count_combinations")
     if not is_ml_ready() or _count_combinations is None:
-        return {
-            "count": 1,
-            "warning": "nirs4all not available, using simple count",
-            "breakdown": {}
-        }
+        return {"count": 1, "warning": "nirs4all not available, using simple count", "breakdown": {}}
 
     try:
         # Convert frontend/editor steps to canonical nirs4all format
@@ -782,6 +769,7 @@ async def _count_variants_impl(request: PipelineCountRequest):
 
 class PipelineRunRequest(BaseModel):
     """Request model for running a pipeline."""
+
     dataset_id: str
     verbose: int = 1
     export_model: bool = True
@@ -792,10 +780,12 @@ class PipelineRunRequest(BaseModel):
     allow_fallback: bool = Field(False, description="Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.")
     split_group_by_by_dataset: dict[str, str | None] = Field(default_factory=dict)
     inline_pipeline: dict[str, Any] | None = None
+    robustness: RobustnessLaunchPayload | None = None
 
 
 class PipelineExportRequest(BaseModel):
     """Request model for exporting pipeline."""
+
     format: str = "python"  # python, yaml, json
     dataset_path: str | None = None
 
@@ -826,7 +816,8 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
             [request.dataset_id],
             request.split_group_by_by_dataset,
         )
-    except ValueError as exc:
+        request.robustness = normalize_robustness_launch_payload(request.robustness)
+    except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Load pipeline
@@ -835,6 +826,7 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
     # Validate dataset exists
     from .nirs4all_adapter import resolve_dataset_path
     from .spectra import _load_dataset
+
     try:
         dataset_path = resolve_dataset_path(request.dataset_id)
     except HTTPException:
@@ -857,10 +849,7 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
     except Exception as exc:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Dataset '{request.dataset_id}' cannot run pipeline "
-                f"'{pipeline.get('name', pipeline_id)}': {exc}"
-            ),
+            detail=(f"Dataset '{request.dataset_id}' cannot run pipeline '{pipeline.get('name', pipeline_id)}': {exc}"),
         ) from exc
 
     # Build refit configuration
@@ -885,6 +874,7 @@ async def execute_pipeline(pipeline_id: str, request: PipelineRunRequest):
         "split_group_by": runtime_group_by,
         "engine": request.engine,
         "allow_fallback": request.allow_fallback,
+        "robustness": request.robustness,
     }
 
     # Create and submit job
@@ -982,15 +972,17 @@ def _run_pipeline_task(job, progress_callback):
 
         # Get top results if available
         top_results = []
-        if hasattr(result, 'top'):
+        if hasattr(result, "top"):
             try:
                 for i, r in enumerate(result.top(5)):
-                    top_results.append({
-                        "rank": i + 1,
-                        "rmse": getattr(r, 'rmse', None),
-                        "r2": getattr(r, 'r2', None),
-                        "config": str(r) if hasattr(r, '__str__') else None,
-                    })
+                    top_results.append(
+                        {
+                            "rank": i + 1,
+                            "rmse": getattr(r, "rmse", None),
+                            "r2": getattr(r, "r2", None),
+                            "config": str(r) if hasattr(r, "__str__") else None,
+                        }
+                    )
             except Exception:
                 pass
 
@@ -1106,9 +1098,7 @@ async def import_pipeline(request: PipelineCanonicalImportRequest):
     primary contract. For compatibility, editor JSON payloads with ``steps``
     are still accepted.
     """
-    imported_steps, imported_name, imported_description = _resolve_import_payload(
-        request
-    )
+    imported_steps, imported_name, imported_description = _resolve_import_payload(request)
 
     # Create pipeline from imported data
     pipeline_data = PipelineCreate(
@@ -1135,6 +1125,7 @@ def _get_samples_dir() -> Path:
     # Try via installed nirs4all package
     try:
         import nirs4all
+
         pkg_path = Path(nirs4all.__file__).parent.parent / "examples" / "pipeline_samples"
         if pkg_path.exists():
             return pkg_path
@@ -1149,10 +1140,10 @@ def _load_sample_file(filepath: Path) -> dict[str, Any]:
 
     suffix = filepath.suffix.lower()
     try:
-        with open(filepath, encoding='utf-8') as f:
-            if suffix == '.json':
+        with open(filepath, encoding="utf-8") as f:
+            if suffix == ".json":
                 return json.load(f)
-            elif suffix in ('.yaml', '.yml'):
+            elif suffix in (".yaml", ".yml"):
                 return yaml.safe_load(f)
             else:
                 raise HTTPException(status_code=400, detail=f"Unsupported format: {suffix}")
@@ -1163,10 +1154,7 @@ def _load_sample_file(filepath: Path) -> dict[str, Any]:
 def _stable_sort_template(value: Any) -> Any:
     """Return a deterministically key-sorted copy of a JSON-like structure."""
     if isinstance(value, dict):
-        return {
-            key: _stable_sort_template(child)
-            for key, child in sorted(value.items(), key=lambda item: item[0])
-        }
+        return {key: _stable_sort_template(child) for key, child in sorted(value.items(), key=lambda item: item[0])}
     if isinstance(value, list):
         return [_stable_sort_template(item) for item in value]
     return value
@@ -1271,13 +1259,15 @@ async def list_pipeline_samples():
             name = filepath.stem
             description = ""
 
-        samples.append({
-            "id": filepath.stem,
-            "filename": filepath.name,
-            "format": filepath.suffix[1:],
-            "name": name,
-            "description": description,
-        })
+        samples.append(
+            {
+                "id": filepath.stem,
+                "filename": filepath.name,
+                "format": filepath.suffix[1:],
+                "name": name,
+                "description": description,
+            }
+        )
 
     return {
         "samples": samples,
@@ -1403,12 +1393,14 @@ async def validate_sample_roundtrip(sample_id: str, editor_steps: list[dict[str,
 
 class ShapePropagationRequest(BaseModel):
     """Request model for shape propagation calculation."""
+
     steps: list[dict[str, Any]]
     input_shape: dict[str, int]  # {samples: N, features: M}
 
 
 class ShapeAtStep(BaseModel):
     """Shape at a specific pipeline step."""
+
     step_id: str
     step_name: str
     input_shape: dict[str, int]
@@ -1418,6 +1410,7 @@ class ShapeAtStep(BaseModel):
 
 class ShapePropagationResponse(BaseModel):
     """Response model for shape propagation calculation."""
+
     shapes: list[ShapeAtStep]
     warnings: list[dict[str, Any]]
     output_shape: dict[str, int]
@@ -1449,20 +1442,20 @@ def _propagate_shape(step: dict[str, Any], input_shape: dict[str, int]) -> tuple
         if param_value is not None and isinstance(param_value, (int, float)):
             max_value = input_shape.get(dim_source, float("inf"))
             if param_value > max_value:
-                warnings.append({
-                    "type": "param_exceeds_dimension",
-                    "step_id": step.get("id", ""),
-                    "step_name": step_name,
-                    "message": f"Parameter '{param_name}' ({int(param_value)}) exceeds {dim_source} ({int(max_value)})",
-                    "param_name": param_name,
-                    "param_value": int(param_value),
-                    "max_value": int(max_value),
-                    "severity": "error" if param_name == "n_components" else "warning",
-                })
+                warnings.append(
+                    {
+                        "type": "param_exceeds_dimension",
+                        "step_id": step.get("id", ""),
+                        "step_name": step_name,
+                        "message": f"Parameter '{param_name}' ({int(param_value)}) exceeds {dim_source} ({int(max_value)})",
+                        "param_name": param_name,
+                        "param_value": int(param_value),
+                        "max_value": int(max_value),
+                        "severity": "error" if param_name == "n_components" else "warning",
+                    }
+                )
 
-    inferred = infer_output_shape(
-        step_name, params, input_shape.get("samples", 0), input_shape.get("features", 0)
-    )
+    inferred = infer_output_shape(step_name, params, input_shape.get("samples", 0), input_shape.get("features", 0))
     if inferred is not None:
         output_shape = {"samples": inferred[0], "features": inferred[1]}
     else:
@@ -1470,13 +1463,15 @@ def _propagate_shape(step: dict[str, Any], input_shape: dict[str, int]) -> tuple
         output_shape = input_shape.copy()
         step_type = step.get("type", "")
         if step_type in ("preprocessing", "model"):
-            warnings.append({
-                "type": "unknown_transform",
-                "step_id": step.get("id", ""),
-                "step_name": step_name,
-                "message": f"Unknown operator '{step_name}' - shape change cannot be predicted",
-                "severity": "warning",
-            })
+            warnings.append(
+                {
+                    "type": "unknown_transform",
+                    "step_id": step.get("id", ""),
+                    "step_name": step_name,
+                    "message": f"Unknown operator '{step_name}' - shape change cannot be predicted",
+                    "severity": "warning",
+                }
+            )
 
     return output_shape, warnings
 
@@ -1503,13 +1498,15 @@ async def propagate_shape(request: ShapePropagationRequest):
         input_shape = current_shape.copy()
         output_shape, step_warnings = _propagate_shape(step, input_shape)
 
-        shapes.append(ShapeAtStep(
-            step_id=step.get("id", ""),
-            step_name=step.get("name", ""),
-            input_shape=input_shape,
-            output_shape=output_shape,
-            warnings=step_warnings,
-        ))
+        shapes.append(
+            ShapeAtStep(
+                step_id=step.get("id", ""),
+                step_name=step.get("name", ""),
+                input_shape=input_shape,
+                output_shape=output_shape,
+                warnings=step_warnings,
+            )
+        )
 
         all_warnings.extend(step_warnings)
         if any(w.get("severity") == "error" for w in step_warnings):
