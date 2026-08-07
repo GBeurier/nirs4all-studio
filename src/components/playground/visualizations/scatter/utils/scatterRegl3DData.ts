@@ -43,6 +43,11 @@ export interface Regl3DViewportSize {
   dpr: number;
 }
 
+export interface Regl3DReadbackCoordinate {
+  x: number;
+  y: number;
+}
+
 export interface Regl3DCameraMatrices {
   projection: Float32Array;
   model: Float32Array;
@@ -243,6 +248,31 @@ export function calculateRegl3DViewportSize(
   };
 }
 
+export function createRegl3DReadbackCoordinate(
+  x: number,
+  y: number,
+  framebufferWidth: number,
+  framebufferHeight: number
+): Regl3DReadbackCoordinate | null {
+  const width = Math.floor(framebufferWidth);
+  const height = Math.floor(framebufferHeight);
+  if (
+    !Number.isFinite(x)
+    || !Number.isFinite(y)
+    || !Number.isFinite(width)
+    || !Number.isFinite(height)
+    || width <= 0
+    || height <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    x: Math.min(width - 1, Math.max(0, Math.floor(x))),
+    y: Math.min(height - 1, Math.max(0, height - Math.floor(y) - 1)),
+  };
+}
+
 export function createRegl3DCameraMatrices(width: number, height: number): Regl3DCameraMatrices {
   return {
     projection: mat4Perspective(Math.PI / 4, width / height, 0.1, 100),
@@ -255,27 +285,51 @@ export function createRegl3DRectPickingPlan(
   y1: number,
   x2: number,
   y2: number,
-  canvasHeight: number,
+  framebufferWidth: number,
+  framebufferHeight: number,
   dpr: number
 ): Regl3DRectPickingPlan | null {
-  const canvasX1 = Math.floor(Math.min(x1, x2) * dpr);
-  const canvasY1 = Math.floor(Math.min(y1, y2) * dpr);
-  const canvasX2 = Math.floor(Math.max(x1, x2) * dpr);
-  const canvasY2 = Math.floor(Math.max(y1, y2) * dpr);
+  const deviceWidth = Math.floor(framebufferWidth);
+  const deviceHeight = Math.floor(framebufferHeight);
+  if (
+    ![x1, y1, x2, y2, dpr].every(Number.isFinite)
+    || !Number.isFinite(deviceWidth)
+    || !Number.isFinite(deviceHeight)
+    || deviceWidth <= 0
+    || deviceHeight <= 0
+    || dpr <= 0
+  ) {
+    return null;
+  }
 
-  const width = canvasX2 - canvasX1;
-  const height = canvasY2 - canvasY1;
+  const rawStartX = Math.floor(Math.min(x1, x2) * dpr);
+  const rawEndX = Math.ceil(Math.max(x1, x2) * dpr) - 1;
+  const rawStartY = deviceHeight - Math.ceil(Math.max(y1, y2) * dpr);
+  const rawEndY = deviceHeight - Math.floor(Math.min(y1, y2) * dpr) - 1;
+  if (
+    rawEndX < 0
+    || rawStartX >= deviceWidth
+    || rawEndY < 0
+    || rawStartY >= deviceHeight
+  ) {
+    return null;
+  }
+
+  const startX = Math.max(0, rawStartX);
+  const endX = Math.min(deviceWidth - 1, rawEndX);
+  const startY = Math.max(0, rawStartY);
+  const endY = Math.min(deviceHeight - 1, rawEndY);
+  const width = endX - startX + 1;
+  const height = endY - startY + 1;
   if (width <= 0 || height <= 0) return null;
 
-  const deviceCanvasHeight = Math.floor(canvasHeight * dpr);
-  const startY = deviceCanvasHeight - canvasY2;
   const stepSize = Math.max(2, Math.floor(Math.min(width, height) / 50));
 
   return {
-    startX: canvasX1,
-    endX: canvasX2,
+    startX,
+    endX,
     startY,
-    endY: startY + height,
+    endY,
     width,
     height,
     stepSize,

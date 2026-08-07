@@ -24,6 +24,7 @@ import {
   calculateRegl2DViewportBounds,
   computeRegl2DPointColors,
   createRegl2DIndexMap,
+  createRegl2DReadbackCoordinate,
   createRegl2DTransform,
   generateRegl2DGridGeometry,
 } from './utils/scatterRegl2DData';
@@ -378,8 +379,8 @@ export function ScatterRegl2D({
       canvas.width = width;
       canvas.height = height;
       pickFbo.resize(width, height);
-      pickFboSizeRef.current = { width, height };
     }
+    pickFboSizeRef.current = { width, height };
 
     const viewportBounds = calculateRegl2DViewportBounds(bounds, width, height, preserveAspectRatio);
     const transform = createRegl2DTransform(viewportBounds);
@@ -449,11 +450,14 @@ export function ScatterRegl2D({
     const pickFbo = pickFboRef.current;
     if (!regl || !pickFbo) return null;
 
-    const { height } = pickFboSizeRef.current;
+    const { width, height } = pickFboSizeRef.current;
+    const coordinate = createRegl2DReadbackCoordinate(x, y, width, height);
+    if (!coordinate) return null;
+
     const pixel = regl.read({
       framebuffer: pickFbo,
-      x: Math.floor(x),
-      y: height - Math.floor(y) - 1,
+      x: coordinate.x,
+      y: coordinate.y,
       width: 1,
       height: 1,
     });
