@@ -30,6 +30,7 @@ interface UpdatesWebappDialogProps {
   canApplyInPlace: boolean;
   changelogEntries?: ChangelogEntry[];
   copy: WebappDialogCopy;
+  installerUrl: string | null;
   isChangelogLoading: boolean;
   onApplyClick: () => void;
   onClose: () => void;
@@ -43,6 +44,7 @@ export function UpdatesWebappDialog({
   canApplyInPlace,
   changelogEntries,
   copy,
+  installerUrl,
   isChangelogLoading,
   onApplyClick,
   onClose,
@@ -175,7 +177,9 @@ export function UpdatesWebappDialog({
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                Webapp updates will be downloaded and extracted. The application will restart to apply the update.
+                {canApplyInPlace
+                  ? "Webapp updates will be downloaded and extracted. The application will restart to apply the update."
+                  : "This installation uses a native installer. Download it, close Studio, then run the installer."}
               </AlertDescription>
             </Alert>
           )}
@@ -213,11 +217,11 @@ export function UpdatesWebappDialog({
             !updateDownload.isDownloading &&
             !updateDownload.applySuccess && (
               <>
-                {status?.webapp?.release_url && (
+                {installerUrl && (
                   <Button variant="outline" asChild>
-                    <a href={status.webapp.release_url} target="_blank" rel="noopener noreferrer">
+                    <a href={installerUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="mr-2 h-4 w-4" />
-                      Manual Download
+                      {canApplyInPlace ? "Manual Download" : "Download Installer"}
                     </a>
                   </Button>
                 )}

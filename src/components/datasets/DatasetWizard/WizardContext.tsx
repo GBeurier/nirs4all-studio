@@ -204,7 +204,7 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
     }
 
     case "SET_DETECTION_RESULTS": {
-      const { files, parsing, hasFoldFile, foldFilePath, metadataColumns, confidence } = action.payload;
+      const { files, parsing, hasFoldFile, foldFilePath, metadataColumns, confidence, perFileOverrides } = action.payload;
       return {
         ...state,
         ...(files !== undefined && { files }),
@@ -213,6 +213,7 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
         ...(foldFilePath !== undefined && { foldFilePath }),
         ...(metadataColumns !== undefined && { metadataColumns }),
         ...(confidence !== undefined && { confidence }),
+        ...(perFileOverrides !== undefined && { perFileOverrides }),
         isLoading: false,
       };
     }

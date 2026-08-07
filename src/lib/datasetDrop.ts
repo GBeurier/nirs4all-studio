@@ -139,6 +139,9 @@ function applyDetectionResult<TFile extends DroppedFileLike>(
   return {
     ...initialState,
     files: result.files,
+    perFileOverrides: Object.fromEntries(
+      result.files.flatMap((file) => file.overrides ? [[file.path, file.overrides]] : []),
+    ),
     detectedParsing: result.parsing_options,
     hasFoldFile: result.has_fold_file,
     foldFilePath: result.fold_file_path,

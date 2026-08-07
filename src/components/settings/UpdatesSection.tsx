@@ -295,6 +295,7 @@ export function UpdatesSection() {
         onApplyClick={() => setApplyConfirmOpen(true)}
         copy={webappDialogCopy}
         status={status}
+        installerUrl={installerUrl}
         updateDownload={updateDownload}
         canApplyInPlace={canApplyInPlace}
         isChangelogLoading={changelogQuery.isLoading}

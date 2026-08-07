@@ -9,7 +9,7 @@
  */
 import { useState, useCallback, useRef, type DragEvent } from "react";
 
-import { useWizard } from "./useWizard";
+import { getDetectedFileOverrides, useWizard } from "./useWizard";
 import { selectFile } from "@/utils/fileDialogs";
 import { detectFilesList } from "@/api/datasets";
 import type { DetectedFile } from "@/types/datasets";
@@ -35,12 +35,19 @@ export function FileMappingStep() {
   const maxSource = getMaxSource(state.files);
   const validation = getFileMappingValidation(state.files);
 
+  const addDetectedFiles = useCallback((files: DetectedFile[]) => {
+    dispatch({ type: "ADD_FILES", payload: files });
+    for (const [path, options] of Object.entries(getDetectedFileOverrides(files))) {
+      dispatch({ type: "SET_FILE_OVERRIDE", payload: { path, options } });
+    }
+  }, [dispatch]);
+
   const addFilesFromPaths = useCallback(async (filePaths: string[]) => {
     if (filePaths.length > 0) {
       try {
         const detected = await detectFilesList(filePaths);
         if (detected.files.length > 0) {
-          dispatch({ type: "ADD_FILES", payload: detected.files });
+          addDetectedFiles(detected.files);
           return;
         }
       } catch {
@@ -52,7 +59,7 @@ export function FileMappingStep() {
       type: "ADD_FILES",
       payload: buildFallbackDetectedFilesFromPaths(filePaths),
     });
-  }, [dispatch]);
+  }, [addDetectedFiles, dispatch]);
 
   const handleAddFiles = async () => {
     try {
@@ -106,7 +113,7 @@ export function FileMappingStep() {
       try {
         const result = await detectFilesList(paths);
         if (result.files.length > 0) {
-          dispatch({ type: "ADD_FILES", payload: result.files });
+          addDetectedFiles(result.files);
           return;
         }
       } catch {
@@ -122,7 +129,7 @@ export function FileMappingStep() {
     if (shouldStoreDroppedFileBlobs(state.fileBlobs, paths)) {
       dispatch({ type: "SET_FILE_BLOBS", payload: mergeFileBlobs(state.fileBlobs, fileList) });
     }
-  }, [dispatch, state.fileBlobs]);
+  }, [addDetectedFiles, dispatch, state.fileBlobs]);
 
   const handleUpdateFile = (index: number, updates: Partial<DetectedFile>) => {
     dispatch({ type: "UPDATE_FILE", payload: { index, updates } });
