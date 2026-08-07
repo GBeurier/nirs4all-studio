@@ -421,6 +421,8 @@ export interface DetectedFile {
   num_rows?: number;
   /** Number of columns in the file (from backend detection) */
   num_columns?: number;
+  /** Parsing options detected specifically for this file. */
+  overrides?: Partial<ParsingOptions>;
 }
 
 /**

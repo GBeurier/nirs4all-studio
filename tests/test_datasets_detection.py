@@ -85,7 +85,14 @@ def test_detect_unified_standard(standard_dataset: Path):
     assert data["parsing_options"]["delimiter"] == ";"
     assert data["parsing_options"]["decimal_separator"] == "."
     assert set(data["confidence"].keys()) >= {"delimiter", "decimal_separator"}
-    assert data["metadata_columns"]  # metadata headers extracted
+    # Wavelengths are data (not headers), while targets and metadata have
+    # semantic headers. These must remain independently configured through
+    # preview and final dataset persistence.
+    assert data["parsing_options"]["has_header"] is False
+    assert data["metadata_columns"] == ["group", "site"]
+    by_name = {f["filename"]: f for f in data["files"]}
+    assert by_name["Ycal.csv"]["overrides"]["has_header"] is True
+    assert by_name["Mcal.csv"]["overrides"]["has_header"] is True
 
 
 def test_detect_files_list_standard(standard_dataset: Path):
@@ -128,7 +135,10 @@ def test_detect_files_list_standard(standard_dataset: Path):
         assert f["num_columns"] is not None
 
     assert data["parsing_options"]["delimiter"] == ";"
-    assert data["metadata_columns"]
+    assert data["metadata_columns"] == ["group", "site"]
+    by_name = {f["filename"]: f for f in data["files"]}
+    assert by_name["Ycal.csv"]["overrides"]["has_header"] is True
+    assert by_name["Mcal.csv"]["overrides"]["has_header"] is True
 
 
 def test_detect_files_list_unknown_file(standard_dataset: Path):
@@ -200,7 +210,10 @@ def test_scan_folder_standard(standard_dataset: Path):
     for f in ds["files"]:
         assert f["confidence"] == 0.9
     assert ds["parsing_options"]["delimiter"] == ";"
-    assert ds["metadata_columns"]
+    assert ds["metadata_columns"] == ["group", "site"]
+    by_name = {f["filename"]: f for f in ds["files"]}
+    assert by_name["Ycal.csv"]["overrides"]["has_header"] is True
+    assert by_name["Mcal.csv"]["overrides"]["has_header"] is True
 
 
 def test_no_private_attribute_access_in_module():
