@@ -106,6 +106,11 @@ interface EnsureBackendPackagesOptions {
   timeoutMs?: number;
 }
 
+function envTimeoutMs(name: string, fallbackMs: number): number {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isInteger(value) && value >= 1000 ? value : fallbackMs;
+}
+
 interface ApplyExistingPythonOptions {
   installCorePackages?: boolean;
 }
@@ -430,12 +435,13 @@ export class EnvManager {
     const pythonPath = this.getBackendTargetPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return false;
 
+    const timeout = envTimeoutMs("NIRS4ALL_BACKEND_RUNTIME_VERIFY_TIMEOUT_MS", 15000);
     const start = Date.now();
     const result = await new Promise<boolean>((resolve) => {
       execFile(
         pythonPath,
         ["-c", "import uvicorn, fastapi"],
-        { timeout: 15000 },
+        { timeout },
         (error) => resolve(!error),
       );
     });
@@ -451,12 +457,13 @@ export class EnvManager {
     const pythonPath = this.getBackendTargetPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return false;
 
+    const timeout = envTimeoutMs("NIRS4ALL_BACKEND_PACKAGE_VERIFY_TIMEOUT_MS", 30000);
     const start = Date.now();
     const result = await new Promise<boolean>((resolve) => {
       execFile(
         pythonPath,
         ["-c", "import uvicorn; import fastapi; import nirs4all"],
-        { timeout: 30000 },
+        { timeout },
         (error) => resolve(!error),
       );
     });
