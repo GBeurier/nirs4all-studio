@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ## [Unreleased]
 
+---
+
+## [0.10.1] — 2026-08-07
+
 ### Added
 
 - **Runtime backend preference**: Studio now exposes a global runtime backend
