@@ -437,7 +437,10 @@ async def cleanup_old_updates_background():
         try:
             result = reconcile_apply(update_manager.get_webapp_version())
             if result and result.get("status") == "failed":
-                logger.error(
+                # `_report_update_failure` emits the single structured Sentry
+                # event. Keep the operational log below error-level capture
+                # so one failed apply does not create a duplicate issue.
+                logger.warning(
                     "Update apply did NOT complete: still on %s (expected %s). See the updater log.",
                     result.get("from_version"), result.get("to_version"),
                 )
