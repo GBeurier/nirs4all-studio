@@ -6,6 +6,9 @@ reconcile it on the next launch by comparing the running version to the staged
 one. These tests lock that success/failure logic.
 """
 
+import asyncio
+import logging
+
 import updater
 
 
@@ -65,3 +68,39 @@ def test_version_advanced_logic():
     assert updater._version_advanced("0.8.2", "0.9.0", "0.8.3") is True  # current >= to
     assert updater._version_advanced("0.8.2", "0.8.2", "0.8.3") is False  # stayed on old
     assert updater._version_advanced("0.8.2", "unknown", "0.8.3") is False
+
+
+def test_failed_apply_is_reported_once_without_duplicate_error_log(monkeypatch, caplog):
+    import main
+    from api import updates as updates_module
+
+    result = {
+        "status": "failed",
+        "from_version": "0.9.1",
+        "to_version": "0.10.0",
+        "update_mode": "directory",
+        "log_tail": "backup failed",
+    }
+
+    class _UpdateManager:
+        @staticmethod
+        def get_webapp_version():
+            return "0.9.1"
+
+    reported = []
+    monkeypatch.setattr(updates_module, "update_manager", _UpdateManager())
+    monkeypatch.setattr(updater, "reconcile_apply", lambda _version: result)
+    monkeypatch.setattr(updater, "cleanup_old_updates", lambda: None)
+    monkeypatch.setattr(main, "_report_update_failure", reported.append)
+
+    with caplog.at_level(logging.WARNING, logger="main"):
+        asyncio.run(main.cleanup_old_updates_background())
+
+    matching_records = [
+        record
+        for record in caplog.records
+        if "Update apply did NOT complete" in record.getMessage()
+    ]
+    assert reported == [result]
+    assert len(matching_records) == 1
+    assert matching_records[0].levelno == logging.WARNING

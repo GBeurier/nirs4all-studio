@@ -37,6 +37,51 @@ APP_NAME = "nirs4all-webapp"
 APP_AUTHOR = "nirs4all"
 
 
+def _path_is_within(path: Path, directory: Path) -> bool:
+    """Return whether *path* resolves to *directory* or one of its children."""
+    try:
+        path.resolve(strict=False).relative_to(directory.resolve(strict=False))
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _external_update_runtime_dir(app_dir: Path, kind: str) -> Path:
+    """Create a deterministic updater directory outside the installed tree."""
+    resolved_app_dir = app_dir.resolve(strict=False)
+    install_id = hashlib.sha256(str(resolved_app_dir).encode("utf-8")).hexdigest()[:12]
+    dirname = f"{APP_NAME}-update-{install_id}"
+    candidates = (
+        Path(tempfile.gettempdir()) / dirname / kind,
+        Path.home() / ".cache" / dirname / kind,
+        resolved_app_dir.parent / f".{dirname}" / kind,
+    )
+
+    errors: list[OSError] = []
+    for candidate in candidates:
+        if _path_is_within(candidate, resolved_app_dir):
+            continue
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except OSError as exc:
+            errors.append(exc)
+
+    detail = f": {errors[-1]}" if errors else ""
+    raise OSError(f"Could not create updater {kind} directory outside {resolved_app_dir}{detail}")
+
+
+def _keep_update_runtime_outside_app(candidate: Path, kind: str) -> Path:
+    """Keep mutable updater state out of trees replaced by directory updates."""
+    if is_portable_mode():
+        return candidate
+
+    app_dir = get_app_directory()
+    if _path_is_within(candidate, app_dir):
+        return _external_update_runtime_dir(app_dir, kind)
+    return candidate
+
+
 def _fallback_user_data_dir() -> Path:
     """Return a writable app data directory without depending on platformdirs."""
     if sys.platform == "win32":
@@ -63,14 +108,15 @@ def _fallback_user_log_dir() -> Path:
 def _get_update_state_dir() -> Path:
     portable_dir = get_portable_backend_data_dir(APP_NAME)
     if portable_dir is not None:
-        portable_dir.mkdir(parents=True, exist_ok=True)
-        return portable_dir
+        app_data = portable_dir
+    else:
+        app_data = (
+            Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+            if platformdirs is not None
+            else _fallback_user_data_dir()
+        )
 
-    app_data = (
-        Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
-        if platformdirs is not None
-        else _fallback_user_data_dir()
-    )
+    app_data = _keep_update_runtime_outside_app(app_data, "state")
     app_data.mkdir(parents=True, exist_ok=True)
     return app_data
 
@@ -78,14 +124,15 @@ def _get_update_state_dir() -> Path:
 def _get_update_log_dir() -> Path:
     portable_dir = get_portable_backend_log_dir(APP_NAME)
     if portable_dir is not None:
-        portable_dir.mkdir(parents=True, exist_ok=True)
-        return portable_dir
+        log_dir = portable_dir
+    else:
+        log_dir = (
+            Path(platformdirs.user_log_dir(APP_NAME, APP_AUTHOR))
+            if platformdirs is not None
+            else _fallback_user_log_dir()
+        )
 
-    log_dir = (
-        Path(platformdirs.user_log_dir(APP_NAME, APP_AUTHOR))
-        if platformdirs is not None
-        else _fallback_user_log_dir()
-    )
+    log_dir = _keep_update_runtime_outside_app(log_dir, "logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     return log_dir
 
@@ -112,6 +159,52 @@ def get_backup_dir() -> Path:
     backup_dir = app_data / "update_backup"
     backup_dir.mkdir(parents=True, exist_ok=True)
     return backup_dir
+
+
+def _paths_overlap(first: Path, second: Path) -> bool:
+    """Return whether either path contains the other."""
+    first = first.resolve()
+    second = second.resolve()
+    return first == second or first in second.parents or second in first.parents
+
+
+def _safe_update_work_dir(app_dir: Path) -> Path:
+    """Return a deterministic update work directory outside the install tree."""
+    app_dir = app_dir.resolve()
+    if app_dir.parent == app_dir:
+        raise ValueError("Cannot update a filesystem root directory in place")
+    return app_dir.parent / f".{app_dir.name}-{APP_NAME}-update"
+
+
+def _resolve_backup_dir(app_dir: Path, preferred_backup_dir: Path) -> Path:
+    """Keep rollback data outside the tree that directory mode replaces."""
+    app_dir = app_dir.resolve()
+    preferred_backup_dir = preferred_backup_dir.resolve()
+    if not _paths_overlap(app_dir, preferred_backup_dir):
+        return preferred_backup_dir
+
+    backup_dir = _safe_update_work_dir(app_dir) / "backup"
+    if _paths_overlap(app_dir, backup_dir):
+        raise ValueError("Unable to place update backup outside the application directory")
+    return backup_dir
+
+
+def _prepare_staging_dir(staging_dir: Path, app_dir: Path, backup_dir: Path) -> Path:
+    """Snapshot nested staging outside ``app_dir`` before that tree is replaced."""
+    staging_dir = staging_dir.resolve()
+    app_dir = app_dir.resolve()
+    if not _paths_overlap(app_dir, staging_dir):
+        return staging_dir
+
+    external_staging = _safe_update_work_dir(app_dir) / "staging"
+    if _paths_overlap(app_dir, external_staging) or _paths_overlap(backup_dir, external_staging):
+        raise ValueError("Unable to place staged update outside the application directory")
+
+    if external_staging.exists():
+        shutil.rmtree(external_staging)
+    external_staging.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(staging_dir, external_staging, symlinks=True)
+    return external_staging
 
 
 def calculate_sha256(file_path: Path) -> str:
@@ -396,9 +489,14 @@ if "%UPDATE_MODE%"=="portable" goto :portable_update
 echo [%DATE% %TIME%] Creating backup... >> "%LOG_FILE%"
 if exist "%BACKUP_DIR%" rmdir /s /q "%BACKUP_DIR%"
 mkdir "%BACKUP_DIR%"
-xcopy /e /i /h /y "%APP_DIR%\\*" "%BACKUP_DIR%\\" >> "%LOG_FILE%" 2>&1
-if !ERRORLEVEL! neq 0 (
-    echo [%DATE% %TIME%] Backup failed, leaving current install untouched >> "%LOG_FILE%"
+robocopy "%APP_DIR%" "%BACKUP_DIR%" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /NFL /NDL /NP >> "%LOG_FILE%" 2>&1
+set "BACKUP_EXIT=!ERRORLEVEL!"
+if !BACKUP_EXIT! GEQ 8 (
+    echo [%DATE% %TIME%] Backup failed with robocopy exit !BACKUP_EXIT!, leaving current install untouched >> "%LOG_FILE%"
+    goto cleanup
+)
+if not exist "%BACKUP_DIR%\\%EXECUTABLE%" (
+    echo [%DATE% %TIME%] Backup validation failed: executable is missing, leaving current install untouched >> "%LOG_FILE%"
     goto cleanup
 )
 
@@ -424,11 +522,16 @@ if !ERRORLEVEL!==0 (
     echo [%DATE% %TIME%] Could not empty app directory after 10 retries, restoring backup... >> "%LOG_FILE%"
     goto restore_backup
 )
-xcopy /e /i /h /y "%STAGING_DIR%\\*" "%APP_DIR%\\" >> "%LOG_FILE%" 2>&1
+robocopy "%STAGING_DIR%" "%APP_DIR%" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /NFL /NDL /NP >> "%LOG_FILE%" 2>&1
+set "INSTALL_EXIT=!ERRORLEVEL!"
+if !INSTALL_EXIT! LSS 8 if not exist "%APP_DIR%\\%EXECUTABLE%" (
+    echo [%DATE% %TIME%] Install validation failed: executable is missing >> "%LOG_FILE%"
+    set "INSTALL_EXIT=16"
+)
 
-if !ERRORLEVEL! neq 0 (
+if !INSTALL_EXIT! GEQ 8 (
     if !COPY_ATTEMPT! lss 10 (
-        echo [%DATE% %TIME%] Copy failed, retrying in 3 seconds... >> "%LOG_FILE%"
+        echo [%DATE% %TIME%] Copy failed with robocopy exit !INSTALL_EXIT!, retrying in 3 seconds... >> "%LOG_FILE%"
         timeout /t 3 /nobreak >NUL
         goto copy_loop
     )
@@ -443,7 +546,10 @@ goto cleanup
 attrib -r -h -s "%APP_DIR%\\*" /s /d >NUL 2>&1
 del /f /s /q "%APP_DIR%\\*" >> "%LOG_FILE%" 2>&1
 for /d %%D in ("%APP_DIR%\\*") do rmdir /s /q "%%D" >> "%LOG_FILE%" 2>&1
-xcopy /e /i /h /y "%BACKUP_DIR%\\*" "%APP_DIR%\\" >> "%LOG_FILE%" 2>&1
+robocopy "%BACKUP_DIR%" "%APP_DIR%" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /NFL /NDL /NP >> "%LOG_FILE%" 2>&1
+set "RESTORE_EXIT=!ERRORLEVEL!"
+if !RESTORE_EXIT! GEQ 8 echo [%DATE% %TIME%] CRITICAL: rollback failed with robocopy exit !RESTORE_EXIT! >> "%LOG_FILE%"
+if not exist "%APP_DIR%\\%EXECUTABLE%" echo [%DATE% %TIME%] CRITICAL: rollback executable is missing >> "%LOG_FILE%"
 goto cleanup
 
 :portable_update
@@ -637,7 +743,9 @@ def create_updater_script(
     if app_dir is None:
         app_dir = get_app_directory()
 
-    backup_dir = get_backup_dir()
+    app_dir = Path(app_dir).resolve()
+    backup_dir = _resolve_backup_dir(app_dir, get_backup_dir())
+    staging_dir = _prepare_staging_dir(Path(staging_dir), app_dir, backup_dir)
     log_dir = _get_update_log_dir()
     log_file = log_dir / "update.log"
     backend_pid_file = os.environ.get("NIRS4ALL_PID_FILE", "")
@@ -660,6 +768,19 @@ def create_updater_script(
     portable = is_portable_mode()
     bundle_mode = sys.platform == "darwin" and app_dir.suffix == ".app"
     update_mode = "portable" if portable else "bundle" if bundle_mode else "directory"
+
+    if update_mode != "portable":
+        unsafe_paths = {
+            "staging": staging_dir,
+            "backup": backup_dir,
+            "log": log_file,
+        }
+        for label, path in unsafe_paths.items():
+            if _path_is_within(path, app_dir):
+                raise ValueError(
+                    f"Updater {label} path must be outside the application directory "
+                    f"for {update_mode} updates: {path}"
+                )
 
     print(f"[Updater] app_dir={app_dir}, executable={executable}, app_pid={app_pid}, portable={portable}, mode={update_mode}")
     print(f"[Updater] staging_dir={staging_dir}, staged_executable={staged_executable_name}, backup_dir={backup_dir}")
@@ -907,13 +1028,25 @@ def cleanup_old_updates() -> None:
     preserved so the user can apply them without re-downloading.
     """
     try:
-        backup_dir = get_backup_dir()
-        update_was_applied = backup_dir.exists() and any(backup_dir.iterdir())
+        preferred_backup_dir = get_backup_dir()
+        backup_dir = _resolve_backup_dir(get_app_directory(), preferred_backup_dir)
+        backup_dirs = {preferred_backup_dir.resolve(), backup_dir.resolve()}
+        update_was_applied = any(path.exists() and any(path.iterdir()) for path in backup_dirs)
 
-        # Always clean backup directory — it's only used during the
-        # update process for rollback and is no longer needed.
-        if backup_dir.exists():
-            shutil.rmtree(backup_dir, ignore_errors=True)
+        # Clean both the current safe location and the legacy location used by
+        # older releases. Backups are only needed until the updated app starts.
+        for path in backup_dirs:
+            if path.exists():
+                shutil.rmtree(path, ignore_errors=True)
+
+        work_dir = _safe_update_work_dir(get_app_directory())
+        external_staging = work_dir / "staging"
+        if external_staging.exists():
+            shutil.rmtree(external_staging, ignore_errors=True)
+        try:
+            work_dir.rmdir()
+        except OSError:
+            pass
 
         # Only clean staging and cache if an update was just applied
         # (indicated by the backup dir having content). This preserves
