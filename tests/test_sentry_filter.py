@@ -80,6 +80,41 @@ def test_backend_before_send_drops_run_worker_pipeline_execution_error():
     assert backend_before_send(event, {}) is None
 
 
+def test_backend_before_send_drops_expected_ml_startup_503():
+    event = {
+        "transaction": "/api/playground/operators",
+        "exception": {
+            "values": [
+                {
+                    "type": "HTTPException",
+                    "value": (
+                        "ML dependencies are still loading. "
+                        "Please wait a moment and retry."
+                    ),
+                }
+            ]
+        },
+    }
+
+    assert backend_before_send(event, {}) is None
+
+
+def test_backend_before_send_keeps_other_ml_http_exceptions():
+    event = {
+        "transaction": "/api/playground/operators",
+        "exception": {
+            "values": [
+                {
+                    "type": "HTTPException",
+                    "value": "ML component 'PipelineRunner' is not available.",
+                }
+            ]
+        },
+    }
+
+    assert backend_before_send(event, {}) == event
+
+
 def test_backend_before_send_keeps_genuine_run_worker_error():
     event = {
         "logger": "api.runs",

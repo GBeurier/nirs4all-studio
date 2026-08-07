@@ -16,6 +16,8 @@ identical to the engine's and to ``api/evaluation.py``.
 from __future__ import annotations
 
 import numpy as np  # noqa: E402
+import pytest  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 
 # ``api.predict``'s first import is ``from .lazy_imports import get_cached``,
 # which makes ``lazy_imports`` the entry point of the lazy_imports <-> api.shared
@@ -46,6 +48,13 @@ class _FakeNirs4all:
 
     def predict(self, **kwargs):
         return _FakePredictResult(self._y_pred)
+
+
+class _FailingNirs4all:
+    def predict(self, **kwargs):
+        raise ValueError(
+            "operands could not be broadcast together with shapes (60,2151) (1,6453)"
+        )
 
 
 def _fake_get_cached_factory(
@@ -215,3 +224,21 @@ def test_run_prediction_without_y_true_has_no_metrics(monkeypatch):
     response = predict_mod._run_prediction("chain123", "chain", np.zeros((3, 10)))
     assert response.metrics is None
     assert response.predictions == y_pred
+
+
+def test_run_prediction_returns_422_for_incompatible_model_data(monkeypatch):
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key, **kwargs: _FailingNirs4all() if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod.workspace_manager, "get_current_workspace", lambda: None
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        predict_mod._run_prediction("chain123", "chain", np.zeros((60, 2151)))
+
+    assert exc_info.value.status_code == 422
+    assert "incompatible" in exc_info.value.detail
+    assert "(60,2151)" in exc_info.value.detail
