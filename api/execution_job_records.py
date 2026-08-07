@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import tempfile
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -11,6 +13,9 @@ from threading import Lock
 from typing import Any, Protocol
 
 from .jobs.manager import Job
+
+_ATOMIC_REPLACE_ATTEMPTS = 5
+_ATOMIC_REPLACE_INITIAL_DELAY_SECONDS = 0.02
 
 
 def _as_mapping(value: Any) -> dict[str, Any]:
@@ -134,13 +139,33 @@ class WorkspaceExecutionJobRecordRepository:
         """Write the latest normalized record snapshot for a job."""
         record_path = self._record_path(record.job_id)
         record_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = record_path.with_suffix(f"{record_path.suffix}.tmp")
 
         with self._lock:
-            with open(tmp_path, "w", encoding="utf-8") as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=record_path.parent,
+                prefix=f".{record_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as f:
+                tmp_path = Path(f.name)
                 json.dump(record.to_dict(), f, indent=2, sort_keys=True)
                 f.write("\n")
-            tmp_path.replace(record_path)
+
+            try:
+                for attempt in range(_ATOMIC_REPLACE_ATTEMPTS):
+                    try:
+                        tmp_path.replace(record_path)
+                        break
+                    except PermissionError:
+                        if attempt == _ATOMIC_REPLACE_ATTEMPTS - 1:
+                            raise
+                        time.sleep(
+                            _ATOMIC_REPLACE_INITIAL_DELAY_SECONDS * (2**attempt)
+                        )
+            finally:
+                tmp_path.unlink(missing_ok=True)
 
     def get(self, job_id: str) -> ExecutionJobRecord | None:
         """Load the latest persisted record for a job, if present."""
