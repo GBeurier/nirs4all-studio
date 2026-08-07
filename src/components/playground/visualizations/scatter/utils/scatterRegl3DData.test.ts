@@ -9,6 +9,7 @@ import {
   computeRegl3DPointColors,
   createRegl3DCameraMatrices,
   createRegl3DIndexMap,
+  createRegl3DReadbackCoordinate,
   createRegl3DRectPickingPlan,
   decodeRegl3DPickPixel,
   generateRegl3DGridGeometry,
@@ -159,18 +160,47 @@ describe('scatterRegl3DData', () => {
   });
 
   it('creates a rectangle picking sampling plan in device pixels', () => {
-    expect(createRegl3DRectPickingPlan(20, 10, 5, 40, 100, 2)).toEqual({
+    expect(createRegl3DRectPickingPlan(20, 10, 5, 40, 200, 200, 2)).toEqual({
       startX: 10,
-      endX: 40,
+      endX: 39,
       startY: 120,
-      endY: 180,
+      endY: 179,
       width: 30,
       height: 60,
       stepSize: 2,
     });
 
-    expect(createRegl3DRectPickingPlan(0, 0, 500, 500, 500, 1)?.stepSize).toBe(10);
-    expect(createRegl3DRectPickingPlan(10, 10, 10, 20, 100, 1)).toBeNull();
+    expect(createRegl3DRectPickingPlan(0, 0, 500, 500, 500, 500, 1)?.stepSize).toBe(10);
+    expect(createRegl3DRectPickingPlan(10, 10, 10, 20, 100, 100, 1)).toBeNull();
+  });
+
+  it('clips rectangle picking plans to valid framebuffer readback offsets', () => {
+    expect(createRegl3DRectPickingPlan(-10, -10, 5, 5, 100, 100, 2)).toEqual({
+      startX: 0,
+      endX: 9,
+      startY: 90,
+      endY: 99,
+      width: 10,
+      height: 10,
+      stepSize: 2,
+    });
+    expect(createRegl3DRectPickingPlan(-20, 10, -10, 20, 100, 100, 1)).toBeNull();
+    expect(createRegl3DRectPickingPlan(10, 110, 20, 120, 100, 100, 1)).toBeNull();
+    expect(createRegl3DRectPickingPlan(10, 10, 20, 20, Number.POSITIVE_INFINITY, 100, 1)).toBeNull();
+  });
+
+  it('converts and clamps point readback coordinates to framebuffer bounds', () => {
+    expect(createRegl3DReadbackCoordinate(12.8, 4.2, 100, 50)).toEqual({ x: 12, y: 45 });
+    expect(createRegl3DReadbackCoordinate(-1, -1, 100, 50)).toEqual({ x: 0, y: 49 });
+    expect(createRegl3DReadbackCoordinate(100, 50, 100, 50)).toEqual({ x: 99, y: 0 });
+  });
+
+  it('rejects point readback when coordinates or framebuffer dimensions are invalid', () => {
+    expect(createRegl3DReadbackCoordinate(Number.NaN, 10, 100, 50)).toBeNull();
+    expect(createRegl3DReadbackCoordinate(10, Number.POSITIVE_INFINITY, 100, 50)).toBeNull();
+    expect(createRegl3DReadbackCoordinate(10, 10, 0, 50)).toBeNull();
+    expect(createRegl3DReadbackCoordinate(10, 10, 100, 0)).toBeNull();
+    expect(createRegl3DReadbackCoordinate(10, 10, 100, Number.POSITIVE_INFINITY)).toBeNull();
   });
 
   it('decodes picking pixels back to sample indices', () => {
