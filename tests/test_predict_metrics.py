@@ -57,6 +57,29 @@ class _FailingNirs4all:
         )
 
 
+class _NativeArchiveResult:
+    y_pred = np.asarray([[1.5], [2.5]], dtype=float)
+    model_name = "MethodsN4MM"
+    preprocessing_steps: list[str] = []
+    metadata = {
+        "sample_ids": ["sample.one", "sample.two"],
+        "conformal_presentation": {
+            "schema_version": 1,
+            "sample_ids": ["sample.one", "sample.two"],
+            "point_predictions": [1.5, 2.5],
+        },
+    }
+
+
+class _NativeArchiveNirs4all:
+    def __init__(self) -> None:
+        self.kwargs: dict | None = None
+
+    def predict(self, **kwargs):
+        self.kwargs = kwargs
+        return _NativeArchiveResult()
+
+
 def _fake_get_cached_factory(
     *,
     y_pred,
@@ -242,3 +265,92 @@ def test_run_prediction_returns_422_for_incompatible_model_data(monkeypatch):
     assert exc_info.value.status_code == 422
     assert "incompatible" in exc_info.value.detail
     assert "(60,2151)" in exc_info.value.detail
+
+
+def test_native_archive_prediction_requires_exact_ids_and_transports_owner_presentation(monkeypatch):
+    native = _NativeArchiveNirs4all()
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key, **kwargs: native if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod,
+        "_resolve_bundle_path",
+        lambda model_id: f"/exports/{model_id}.n4a",
+    )
+    monkeypatch.setattr(
+        predict_mod.workspace_manager, "get_current_workspace", lambda: None
+    )
+
+    response = predict_mod._run_prediction(
+        "portable",
+        "native_archive",
+        np.asarray([[1.0], [2.0]]),
+        sample_ids=["sample.one", "sample.two"],
+    )
+
+    assert native.kwargs is not None
+    assert native.kwargs["model"] == "/exports/portable.n4a"
+    np.testing.assert_allclose(native.kwargs["data"]["X"], [[1.0], [2.0]])
+    assert native.kwargs["data"]["sample_ids"] == ["sample.one", "sample.two"]
+    assert native.kwargs["engine"] == "native"
+    assert native.kwargs["verbose"] == 0
+    assert response.sample_ids == ["sample.one", "sample.two"]
+    assert response.conformal_presentation == _NativeArchiveResult.metadata["conformal_presentation"]
+
+
+@pytest.mark.parametrize("sample_ids", [None, ["same", "same"], ["only-one"], ["", "sample.two"]])
+def test_native_archive_prediction_refuses_missing_or_noncanonical_ids(monkeypatch, sample_ids):
+    native = _NativeArchiveNirs4all()
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key, **kwargs: native if key == "nirs4all" else None,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        predict_mod._run_prediction(
+            "portable",
+            "native_archive",
+            np.asarray([[1.0], [2.0]]),
+            sample_ids=sample_ids,
+        )
+
+    assert error.value.status_code == 422
+    assert native.kwargs is None
+
+
+def test_native_archive_prediction_refuses_misaligned_conformal_presentation(monkeypatch):
+    class MisalignedNative:
+        def predict(self, **_kwargs):
+            result = _NativeArchiveResult()
+            result.metadata = {
+                **result.metadata,
+                "conformal_presentation": {
+                    **result.metadata["conformal_presentation"],
+                    "sample_ids": ["sample.two", "sample.one"],
+                },
+            }
+            return result
+
+    monkeypatch.setattr(
+        predict_mod,
+        "get_cached",
+        lambda key, **kwargs: MisalignedNative() if key == "nirs4all" else None,
+    )
+    monkeypatch.setattr(
+        predict_mod,
+        "_resolve_bundle_path",
+        lambda model_id: f"/exports/{model_id}.n4a",
+    )
+
+    with pytest.raises(HTTPException, match="identities") as error:
+        predict_mod._run_prediction(
+            "portable",
+            "native_archive",
+            np.asarray([[1.0], [2.0]]),
+            sample_ids=["sample.one", "sample.two"],
+        )
+
+    assert error.value.status_code == 422
