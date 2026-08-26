@@ -289,6 +289,30 @@ def _native_prediction_context(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _native_physical_sample_ids(row: dict[str, Any]) -> list[str] | None:
+    """Return persisted physical identities only when their row alignment is explicit.
+
+    The native-results reader preserves these IDs from the DAG-ML prediction
+    block.  Studio must never substitute ``sample_indices``: they are
+    positional convenience values, not an identity authority for conformal
+    interval attachment.
+    """
+    metadata = row.get("metadata")
+    candidate = metadata.get("physical_sample_id") if isinstance(metadata, dict) else None
+    indices = row.get("sample_indices")
+    if not isinstance(candidate, (list, tuple)) or not isinstance(indices, (list, tuple)):
+        return None
+    sample_ids = list(candidate)
+    if (
+        not sample_ids
+        or len(sample_ids) != len(indices)
+        or not all(isinstance(sample_id, str) and sample_id for sample_id in sample_ids)
+        or len(set(sample_ids)) != len(sample_ids)
+    ):
+        return None
+    return sample_ids
+
+
 def _native_identity_candidates(manifest: dict[str, Any], base_config: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Potential identity metadata locations, ordered from most specific to broadest."""
     candidates = list(rows)
@@ -962,6 +986,7 @@ class NativeResultsAdapter:
             "y_proba": row.get("y_proba"),
             "weights": row.get("weights"),
             "sample_indices": row.get("sample_indices"),
+            "sample_ids": _native_physical_sample_ids(row),
             "sample_metadata": row.get("metadata"),
             **_native_prediction_context(row),
         }
