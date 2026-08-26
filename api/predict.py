@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
@@ -34,11 +35,19 @@ class PredictRequest(BaseModel):
     """JSON request for prediction."""
 
     model_id: str = Field(..., description="Chain ID or bundle stem/path")
-    model_source: str = Field(..., description="'chain' or 'bundle'")
-    data_source: str = Field(..., description="'dataset' or 'array'")
+    model_source: Literal["chain", "bundle", "native_archive"] = Field(
+        ..., description="'chain', 'bundle', or 'native_archive'"
+    )
+    data_source: Literal["dataset", "array"] = Field(
+        ..., description="'dataset' or 'array'"
+    )
     dataset_id: str | None = Field(None, description="Dataset ID (when data_source='dataset')")
     partition: str = Field("all", description="Dataset partition (train/test/all)")
     spectra: list[list[float]] | None = Field(None, description="2D spectra array (when data_source='array')")
+    sample_ids: list[str] | None = Field(
+        None,
+        description="Exact stable sample IDs, required for native_archive predictions",
+    )
 
 
 class PredictResponse(BaseModel):
@@ -51,6 +60,7 @@ class PredictResponse(BaseModel):
     actual_values: list[float] | None = None
     metrics: dict[str, float] | None = None
     sample_ids: list[str | int] | None = None
+    conformal_presentation: dict[str, object] | None = None
     # Per-sample partition labels ("train"/"val"/"test"/...) when the request
     # ran across multiple partitions (partition="all"); None otherwise.
     partitions: list[str] | None = None
@@ -65,6 +75,7 @@ def _run_prediction(
     X,
     y_true=None,
     partitions: list[str] | None = None,
+    sample_ids: list[str] | None = None,
 ) -> PredictResponse:
     """Execute prediction using nirs4all.predict()."""
     import numpy as np
@@ -84,17 +95,35 @@ def _run_prediction(
                 workspace_path=str(workspace_path) if workspace_path else None,
                 verbose=0,
             )
-        else:
+        elif model_source == "bundle":
             bundle_path = str(_resolve_bundle_path(model_id))
             pred_result = nirs4all.predict(model=bundle_path, data=X, verbose=0)
+        elif model_source == "native_archive":
+            stable_ids = _require_native_sample_ids(sample_ids, len(X))
+            archive_path = str(_resolve_bundle_path(model_id))
+            pred_result = nirs4all.predict(
+                model=archive_path,
+                data={"X": X, "sample_ids": stable_ids},
+                engine="native",
+                verbose=0,
+            )
+        else:
+            raise HTTPException(status_code=422, detail=f"Unknown model source: {model_source}")
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(
             status_code=422,
             detail=f"Prediction data is incompatible with model '{model_id}': {e}",
         ) from e
     except Exception as e:
+        if model_source == "native_archive":
+            raise HTTPException(
+                status_code=422,
+                detail="Native archive prediction was refused before a result could be produced",
+            ) from e
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
     # Extract predictions
@@ -145,6 +174,37 @@ def _run_prediction(
         elif len(partitions) > len(predictions):
             aligned_partitions = list(partitions[: len(predictions)])
 
+    result_metadata = getattr(pred_result, "metadata", None)
+    native_sample_ids = (
+        result_metadata.get("sample_ids")
+        if isinstance(result_metadata, dict)
+        else None
+    )
+    response_sample_ids = (
+        native_sample_ids
+        if isinstance(native_sample_ids, list)
+        and len(native_sample_ids) == len(predictions)
+        and all(isinstance(value, str) and value for value in native_sample_ids)
+        else None
+    )
+    conformal_presentation = (
+        result_metadata.get("conformal_presentation")
+        if isinstance(result_metadata, dict)
+        and isinstance(result_metadata.get("conformal_presentation"), dict)
+        else None
+    )
+    if conformal_presentation is not None:
+        presentation_sample_ids = conformal_presentation.get("sample_ids")
+        if (
+            response_sample_ids is None
+            or not isinstance(presentation_sample_ids, list)
+            or presentation_sample_ids != response_sample_ids
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Native conformal presentation identities do not exactly match prediction identities",
+            )
+
     return PredictResponse(
         predictions=predictions,
         num_samples=len(predictions),
@@ -152,8 +212,30 @@ def _run_prediction(
         preprocessing_steps=preprocessing_steps,
         actual_values=actual_values,
         metrics=metrics,
+        sample_ids=response_sample_ids,
+        conformal_presentation=conformal_presentation,
         partitions=aligned_partitions,
     )
+
+
+def _require_native_sample_ids(
+    sample_ids: list[str] | None,
+    expected_count: int,
+) -> list[str]:
+    """Require explicit, unique IDs before crossing the native archive boundary."""
+
+    if (
+        not isinstance(sample_ids, list)
+        or len(sample_ids) != expected_count
+        or not sample_ids
+        or not all(isinstance(sample_id, str) and sample_id for sample_id in sample_ids)
+        or len(set(sample_ids)) != len(sample_ids)
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="native_archive prediction requires one unique non-empty string sample_id per spectrum",
+        )
+    return list(sample_ids)
 
 
 # ============= Endpoints =============
@@ -253,12 +335,19 @@ async def predict(request: PredictRequest):
     else:
         raise HTTPException(status_code=400, detail=f"Unknown data_source: {request.data_source}")
 
+    if request.model_source == "native_archive" and request.data_source != "array":
+        raise HTTPException(
+            status_code=422,
+            detail="native_archive prediction currently requires an array cohort with explicit sample_ids",
+        )
+
     return _run_prediction(
         request.model_id,
         request.model_source,
         X,
         y_true,
         partitions=per_sample_partitions,
+        sample_ids=request.sample_ids,
     )
 
 
@@ -319,6 +408,16 @@ async def predict_from_file(
     else:
         sample_ids = list(range(len(df)))
 
-    result = _run_prediction(model_id, model_source, X)
+    if model_source == "native_archive" and not non_numeric:
+        raise HTTPException(
+            status_code=422,
+            detail="native_archive file prediction requires a non-numeric column containing stable sample IDs",
+        )
+    result = _run_prediction(
+        model_id,
+        model_source,
+        X,
+        sample_ids=sample_ids if model_source == "native_archive" else None,
+    )
     result.sample_ids = sample_ids
     return result
