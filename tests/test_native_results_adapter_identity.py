@@ -256,6 +256,7 @@ def test_native_prediction_rows_and_arrays_preserve_source_target_context() -> N
         "y_true": [[1.0, 10.0], [2.0, 20.0]],
         "y_pred": [[1.1, 10.1], [2.1, 20.1]],
         "sample_indices": [4, 5],
+        "metadata": {"physical_sample_id": ["sample:four", "sample:five"]},
         "result_metadata": {
             "target_name": "protein",
             "dimensions": {"target_index": "1"},
@@ -289,6 +290,30 @@ def test_native_prediction_rows_and_arrays_preserve_source_target_context() -> N
     assert arrays["target_name"] == "protein"
     assert arrays["y_true"] == [[1.0, 10.0], [2.0, 20.0]]
     assert arrays["y_pred"] == [[1.1, 10.1], [2.1, 20.1]]
+    assert arrays["sample_ids"] == ["sample:four", "sample:five"]
+
+
+def test_native_prediction_arrays_refuse_malformed_physical_sample_ids() -> None:
+    row = {
+        "config_name": "base",
+        "fold_id": "final",
+        "partition": "test",
+        "model_name": "PLSRegression",
+        "dataset_name": "corn",
+        "metric": "rmse",
+        "task_type": "regression",
+        "y_true": [1.0, 2.0],
+        "y_pred": [1.1, 2.1],
+        "sample_indices": [4, 5],
+        "metadata": {"physical_sample_id": ["sample:four", 5]},
+    }
+    read = {"manifest": {"metric": "rmse", "task_type": "regression"}, "predictions": _FakePredictions([row])}
+    adapter = NativeResultsAdapter.__new__(NativeResultsAdapter)
+    adapter._iter_runs = lambda: [("run-1", read)]  # type: ignore[method-assign]
+
+    arrays = adapter.get_prediction_arrays(_native_prediction_id("run-1", row))
+    assert arrays is not None
+    assert arrays["sample_ids"] is None
 
 
 def _extract_quoted_values(block: str) -> set[str]:

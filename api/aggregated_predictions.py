@@ -235,6 +235,9 @@ class PredictionArraysResponse(BaseModel):
     y_pred: Any | None = None
     y_proba: list[float] | list[list[float]] | None = None
     sample_indices: list[int] | None = None
+    # Stable wire identities are distinct from positional sample_indices.
+    # Conformal interval attachment consumes only these exact strings.
+    sample_ids: list[str] | None = None
     weights: list[float | None] | None = None
     sample_metadata: dict[str, list[Any]] | None = None
     n_samples: int = 0
@@ -1922,6 +1925,12 @@ async def get_prediction_arrays(prediction_id: str):
         y_proba = _to_list(arrays.get("y_proba"))
         weights = _to_list(arrays.get("weights"))
         sample_indices = _to_list(arrays.get("sample_indices"))
+        raw_sample_ids = _to_list(arrays.get("sample_ids"))
+        sample_ids = (
+            raw_sample_ids
+            if isinstance(raw_sample_ids, list) and all(isinstance(value, str) for value in raw_sample_ids)
+            else None
+        )
         sample_metadata = _to_list(arrays.get("sample_metadata"))
 
         if sample_metadata is None:
@@ -1944,7 +1953,7 @@ async def get_prediction_arrays(prediction_id: str):
             weights = None
 
         n_samples = 0
-        for value in (y_true, y_pred, sample_indices, weights, y_proba, sample_metadata):
+        for value in (y_true, y_pred, sample_ids, sample_indices, weights, y_proba, sample_metadata):
             if value is not None:
                 n_samples = len(value) if not isinstance(value, dict) else len(next(iter(value.values()), []))
                 break
@@ -1955,6 +1964,7 @@ async def get_prediction_arrays(prediction_id: str):
             "y_pred": y_pred,
             "y_proba": y_proba,
             "sample_indices": sample_indices,
+            "sample_ids": sample_ids,
             "weights": weights,
             "sample_metadata": sample_metadata,
             "n_samples": n_samples,
