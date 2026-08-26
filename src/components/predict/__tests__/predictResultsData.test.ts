@@ -81,6 +81,101 @@ describe("predictResultsData", () => {
     ]);
   });
 
+  it("attaches the exact native conformal presentation without recomputing bounds", () => {
+    const [dataset] = buildPredictPartitionDatasets({
+      fallbackPartition: "pred",
+      hasActuals: false,
+      result: response({
+        predictions: [1.1, 2.2, 3.3],
+        actual_values: null,
+        conformal_presentation: {
+          schema_version: 1,
+          package_fingerprint: "a".repeat(64),
+          replay_outcome_fingerprint: "b".repeat(64),
+          binding_id: "binding:pls",
+          target_name: "moisture",
+          sample_ids: ["a", "b", "c"],
+          point_predictions: [1.1, 2.2, 3.3],
+          intervals: [
+            {
+              coverage: 0.9,
+              lower: [0.9, null, 3.1],
+              upper: [1.3, null, 3.5],
+              qhat: 0.2,
+            },
+          ],
+          calibration_fingerprint: "c".repeat(64),
+          presentation_fingerprint: "d".repeat(64),
+        },
+      }),
+    });
+
+    expect(dataset.conformalCoverage).toBe(0.9);
+    expect(dataset.conformalCoverageLabel).toBe("90%");
+    expect(dataset.conformalIntervals).toEqual([
+      { coverage: 0.9, coverageLabel: "90%", lower: 0.9, upper: 1.3 },
+      null,
+      { coverage: 0.9, coverageLabel: "90%", lower: 3.1, upper: 3.5 },
+    ]);
+    const rows = buildPredictTableRows(
+      response({
+        predictions: [1.1, 2.2, 3.3],
+        actual_values: null,
+        conformal_presentation: {
+          schema_version: 1,
+          package_fingerprint: "a".repeat(64),
+          replay_outcome_fingerprint: "b".repeat(64),
+          binding_id: "binding:pls",
+          target_name: "moisture",
+          sample_ids: ["a", "b", "c"],
+          point_predictions: [1.1, 2.2, 3.3],
+          intervals: [
+            { coverage: 0.9, lower: [0.9, null, 3.1], upper: [1.3, null, 3.5], qhat: 0.2 },
+          ],
+          calibration_fingerprint: "c".repeat(64),
+          presentation_fingerprint: "d".repeat(64),
+        },
+      }),
+      false,
+    );
+    expect(rows[0]).toMatchObject({
+      conformalCoverageLabel: "90%",
+      conformalLower: 0.9,
+      conformalUpper: 1.3,
+    });
+    expect(rows[1].conformalLower).toBeUndefined();
+    expect(buildPredictTableCsvRows(rows)[0]).toMatchObject({
+      conformal_lower: 0.9,
+      conformal_upper: 1.3,
+    });
+  });
+
+  it("refuses a native conformal presentation with misaligned identities or points", () => {
+    const [dataset] = buildPredictPartitionDatasets({
+      fallbackPartition: "pred",
+      hasActuals: false,
+      result: response({
+        conformal_presentation: {
+          schema_version: 1,
+          package_fingerprint: "a".repeat(64),
+          replay_outcome_fingerprint: "b".repeat(64),
+          binding_id: "binding:pls",
+          target_name: "moisture",
+          sample_ids: ["b", "a", "c"],
+          point_predictions: [1.1, 2.2, 3.3],
+          intervals: [
+            { coverage: 0.9, lower: [0.9, 2.0, 3.1], upper: [1.3, 2.4, 3.5], qhat: 0.2 },
+          ],
+          calibration_fingerprint: "c".repeat(64),
+          presentation_fingerprint: "d".repeat(64),
+        },
+      }),
+    });
+
+    expect(dataset.conformalIntervals).toBeUndefined();
+    expect(dataset.conformalCoverage).toBeUndefined();
+  });
+
   it("derives available and default chart kinds", () => {
     expect(buildPredictAvailableKinds(false, "regression")).toEqual(["distribution"]);
     expect(buildPredictAvailableKinds(true, "regression")).toEqual(["scatter", "residuals", "distribution"]);

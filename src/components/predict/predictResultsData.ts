@@ -71,6 +71,9 @@ export interface PredictTableRow {
   index: string | number;
   partition: string | null;
   predicted: number;
+  conformalCoverageLabel?: string;
+  conformalLower?: number;
+  conformalUpper?: number;
   actual?: number;
   residual?: number;
 }
@@ -78,6 +81,17 @@ export interface PredictTableRow {
 export interface PredictCsvExport {
   columns: string[];
   rows: Record<string, unknown>[];
+}
+
+interface NativeConformalAttachment {
+  coverage: number;
+  coverageLabel: string;
+  intervals: Array<{
+    coverage: number;
+    coverageLabel: string;
+    lower: number;
+    upper: number;
+  } | null>;
 }
 
 const PARTITION_ORDER: Record<string, number> = {
@@ -261,6 +275,7 @@ export function buildPredictPartitionDatasets({
 }): PartitionDataset[] {
   const n = result.predictions.length;
   const perSample = result.partitions ?? null;
+  const conformal = resolveNativeConformalAttachment(result);
 
   if (perSample && perSample.length === n && new Set(perSample.filter(Boolean)).size > 1) {
     const groups = new Map<string, number[]>();
@@ -288,6 +303,11 @@ export function buildPredictPartitionDatasets({
         yPred: indices.map((index) => result.predictions[index]),
         nSamples: indices.length,
         sampleIds: indices.map((index) => result.sample_ids?.[index] ?? index + 1),
+        conformalCoverage: conformal?.coverage,
+        conformalCoverageLabel: conformal?.coverageLabel,
+        conformalIntervals: conformal
+          ? indices.map((index) => conformal.intervals[index])
+          : undefined,
       };
     });
   }
@@ -302,8 +322,71 @@ export function buildPredictPartitionDatasets({
       yPred: result.predictions,
       nSamples: n,
       sampleIds: result.predictions.map((_, index) => result.sample_ids?.[index] ?? index + 1),
+      conformalCoverage: conformal?.coverage,
+      conformalCoverageLabel: conformal?.coverageLabel,
+      conformalIntervals: conformal?.intervals,
     },
   ];
+}
+
+/**
+ * Convert the scalar presentation emitted by DAG-ML into the shared chart view.
+ *
+ * This is deliberately a transport validation, not an interval calculation:
+ * every identity, point prediction, and finite endpoint must already close over
+ * the native response before the chart can display a band.
+ */
+function resolveNativeConformalAttachment(result: PredictResponse): NativeConformalAttachment | null {
+  const presentation = result.conformal_presentation;
+  const sampleIds = result.sample_ids;
+  if (
+    !presentation
+    || presentation.schema_version !== 1
+    || !Array.isArray(sampleIds)
+    || !sampleIds.every((sampleId): sampleId is string => typeof sampleId === "string" && sampleId.length > 0)
+    || sampleIds.length !== result.predictions.length
+    || presentation.sample_ids.length !== sampleIds.length
+    || presentation.point_predictions.length !== result.predictions.length
+    || presentation.sample_ids.some((sampleId, index) => sampleId !== sampleIds[index])
+    || presentation.point_predictions.some((value, index) => !Object.is(value, result.predictions[index]))
+    || presentation.intervals.length === 0
+  ) {
+    return null;
+  }
+
+  const interval = presentation.intervals[0];
+  if (
+    !Number.isFinite(interval.coverage)
+    || interval.coverage <= 0
+    || interval.coverage >= 1
+    || interval.lower.length !== sampleIds.length
+    || interval.upper.length !== sampleIds.length
+  ) {
+    return null;
+  }
+  const coverageLabel = `${Math.round(interval.coverage * 1000) / 10}%`;
+  const intervals: NativeConformalAttachment["intervals"] = [];
+  for (let index = 0; index < sampleIds.length; index++) {
+    const lower = interval.lower[index];
+    const upper = interval.upper[index];
+    const point = result.predictions[index];
+    if (lower === null || upper === null) {
+      if (lower !== null || upper !== null) return null;
+      intervals.push(null);
+      continue;
+    }
+    if (
+      !Number.isFinite(lower)
+      || !Number.isFinite(upper)
+      || !Number.isFinite(point)
+      || lower > point
+      || point > upper
+    ) {
+      return null;
+    }
+    intervals.push({ coverage: interval.coverage, coverageLabel, lower, upper });
+  }
+  return { coverage: interval.coverage, coverageLabel, intervals };
 }
 
 export function getPredictInputLabel(input: PredictionInput | null | undefined, fallback: string): string {
@@ -348,16 +431,27 @@ export function resolvePredictDefaultKind(
 }
 
 export function buildPredictTableRows(result: PredictResponse, hasActuals: boolean): PredictTableRow[] {
-  return result.predictions.map((prediction, index) => ({
-    index: result.sample_ids?.[index] ?? index + 1,
-    partition:
-      result.partitions && result.partitions.length === result.predictions.length
-        ? result.partitions[index]
-        : null,
-    predicted: prediction,
-    actual: hasActuals ? result.actual_values![index] : undefined,
-    residual: hasActuals ? result.actual_values![index] - prediction : undefined,
-  }));
+  const conformal = resolveNativeConformalAttachment(result);
+  return result.predictions.map((prediction, index) => {
+    const interval = conformal?.intervals[index];
+    return {
+      index: result.sample_ids?.[index] ?? index + 1,
+      partition:
+        result.partitions && result.partitions.length === result.predictions.length
+          ? result.partitions[index]
+          : null,
+      predicted: prediction,
+      ...(interval
+        ? {
+            conformalCoverageLabel: interval.coverageLabel,
+            conformalLower: interval.lower,
+            conformalUpper: interval.upper,
+          }
+        : {}),
+      actual: hasActuals ? result.actual_values![index] : undefined,
+      residual: hasActuals ? result.actual_values![index] - prediction : undefined,
+    };
+  });
 }
 
 export function buildPredictMetricEntries(metrics: Record<string, number> | null): PredictMetricEntry[] {
@@ -484,6 +578,8 @@ export function buildPredictTableCsvRows(tableRows: PredictTableRow[]): Record<s
       predicted: row.predicted,
     };
     if (row.partition) record.partition = row.partition;
+    if (row.conformalLower !== undefined) record.conformal_lower = row.conformalLower;
+    if (row.conformalUpper !== undefined) record.conformal_upper = row.conformalUpper;
     if (row.actual !== undefined) record.actual = row.actual;
     if (row.residual !== undefined) record.residual = row.residual;
     return record;
