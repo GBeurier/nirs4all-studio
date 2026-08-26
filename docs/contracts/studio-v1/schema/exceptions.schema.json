@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Studio V1 contract exception ledger",
+  "type": "object",
+  "required": ["contract_version", "exceptions"],
+  "properties": {
+    "contract_version": {"const": "studio-v1"},
+    "exceptions": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"$ref": "#/$defs/exception"},
+      "allOf": [
+        {"contains": {"properties": {"id": {"const": "STU-V1-REDACTION-001"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"id": {"const": "STU-V1-WEBSOCKET-001"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"id": {"const": "STU-V1-OPENAPI-001"}}}, "minContains": 1, "maxContains": 1}
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "exception": {
+      "oneOf": [
+        {"$ref": "#/$defs/redaction_exception"},
+        {"$ref": "#/$defs/websocket_exception"},
+        {"$ref": "#/$defs/openapi_exception"}
+      ]
+    },
+    "base_exception": {
+      "type": "object",
+      "required": ["approval", "category", "id", "justification", "permitted_divergence", "review_trigger", "scope", "version_window"],
+      "properties": {
+        "approval": {"const": "contract-review-required"},
+        "category": {},
+        "id": {},
+        "justification": {"type": "string", "minLength": 20, "maxLength": 360},
+        "permitted_divergence": {},
+        "review_trigger": {},
+        "scope": {},
+        "version_window": {}
+      },
+      "additionalProperties": false
+    },
+    "redaction_exception": {
+      "allOf": [
+        {"$ref": "#/$defs/base_exception"},
+        {
+          "properties": {
+            "category": {"const": "redaction"},
+            "id": {"const": "STU-V1-REDACTION-001"},
+            "permitted_divergence": {"const": null},
+            "review_trigger": {"const": "on_redaction_change"},
+            "scope": {"const": "runtime ASGI response values"},
+            "version_window": {"const": {"first": "studio-v1", "last": "studio-v1"}}
+          }
+        }
+      ]
+    },
+    "websocket_exception": {
+      "allOf": [
+        {"$ref": "#/$defs/base_exception"},
+        {
+          "properties": {
+            "category": {"const": "websocket"},
+            "id": {"const": "STU-V1-WEBSOCKET-001"},
+            "permitted_divergence": {"const": null},
+            "review_trigger": {"const": "on_websocket_change"},
+            "scope": {"const": "docs/contracts/studio-v1/fixtures/websocket.snapshot.json"},
+            "version_window": {"const": {"first": "studio-v1", "last": "studio-v1"}}
+          }
+        }
+      ]
+    },
+    "openapi_exception": {
+      "allOf": [
+        {"$ref": "#/$defs/base_exception"},
+        {
+          "properties": {
+            "category": {"const": "framework_openapi"},
+            "id": {"const": "STU-V1-OPENAPI-001"},
+            "permitted_divergence": {
+              "const": {
+                "component_key_mapping": {
+                  "fastapi-0.139-plus": {"ConfusionMatrixRequest": "api__evaluation__ConfusionMatrixRequest"},
+                  "fastapi-pre-0.139": {"api__evaluation__ConfusionMatrixRequest": "ConfusionMatrixRequest"}
+                },
+                "json_pointers": [
+                  "/components/schemas/ValidationError/properties/input",
+                  "/components/schemas/ValidationError/properties/ctx",
+                  "/components/schemas/Body_predict_from_file_api_predict_file_post/properties/file/format",
+                  "/components/schemas/Body_predict_from_file_api_predict_file_post/properties/file/contentMediaType"
+                ],
+                "variants": ["fastapi-pre-0.139", "fastapi-0.139-plus"]
+              }
+            },
+            "review_trigger": {"const": "on_openapi_framework_change"},
+            "scope": {"const": "scripts/verify-studio-v1-contract.py::_openapi_variant"},
+            "version_window": {"const": {"first": "fastapi-0.115", "last": "fastapi-0.x"}}
+          }
+        }
+      ]
+    }
+  }
+}

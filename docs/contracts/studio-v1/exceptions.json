@@ -1,0 +1,42 @@
+{
+  "contract_version": "studio-v1",
+  "exceptions": [
+    {
+      "approval": "contract-review-required",
+      "category": "redaction",
+      "id": "STU-V1-REDACTION-001",
+      "justification": "Live ASGI responses contain installation-specific path and identifier values, which must be captured as typed placeholders and never committed concretely.",
+      "permitted_divergence": null,
+      "review_trigger": "on_redaction_change",
+      "scope": "runtime ASGI response values",
+      "version_window": {"first": "studio-v1", "last": "studio-v1"}
+    },
+    {
+      "approval": "contract-review-required",
+      "category": "websocket",
+      "id": "STU-V1-WEBSOCKET-001",
+      "justification": "WebSocket behavior is outside OpenAPI and is frozen through separately captured ASGI endpoint frames, channels, subscriptions and emitted payloads.",
+      "permitted_divergence": null,
+      "review_trigger": "on_websocket_change",
+      "scope": "docs/contracts/studio-v1/fixtures/websocket.snapshot.json",
+      "version_window": {"first": "studio-v1", "last": "studio-v1"}
+    },
+    {
+      "approval": "contract-review-required",
+      "category": "framework_openapi",
+      "id": "STU-V1-OPENAPI-001",
+      "justification": "The supported FastAPI generations expose only the listed ValidationError and binary-upload structural differences; both exact OpenAPI representations are retained.",
+      "permitted_divergence": {
+        "component_key_mapping": {
+          "fastapi-0.139-plus": {"ConfusionMatrixRequest": "api__evaluation__ConfusionMatrixRequest"},
+          "fastapi-pre-0.139": {"api__evaluation__ConfusionMatrixRequest": "ConfusionMatrixRequest"}
+        },
+        "json_pointers": ["/components/schemas/ValidationError/properties/input", "/components/schemas/ValidationError/properties/ctx", "/components/schemas/Body_predict_from_file_api_predict_file_post/properties/file/format", "/components/schemas/Body_predict_from_file_api_predict_file_post/properties/file/contentMediaType"],
+        "variants": ["fastapi-pre-0.139", "fastapi-0.139-plus"]
+      },
+      "review_trigger": "on_openapi_framework_change",
+      "scope": "scripts/verify-studio-v1-contract.py::_openapi_variant",
+      "version_window": {"first": "fastapi-0.115", "last": "fastapi-0.x"}
+    }
+  ]
+}
