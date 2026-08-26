@@ -42,6 +42,11 @@ describe("DataInputData", () => {
       ["upload", false],
       ["paste", false],
     ]);
+    expect(buildDataInputSourceTabs(true, "native_archive").map((source) => [source.id, source.disabled])).toEqual([
+      ["dataset", true],
+      ["upload", false],
+      ["paste", true],
+    ]);
   });
 
   it("builds dataset, partition, and file labels", () => {
@@ -94,6 +99,18 @@ describe("DataInputData", () => {
     expect(getDataInputCanSubmit({ ...base, tab: "dataset", datasetId: "d1" })).toBe(true);
     expect(getDataInputCanSubmit({ ...base, tab: "upload", file: { name: "spectra.csv" } as File })).toBe(true);
     expect(getDataInputCanSubmit({ ...base, tab: "paste", pasteText: "1,2,3" })).toBe(true);
+    expect(getDataInputCanSubmit({
+      ...base,
+      modelSource: "native_archive",
+      tab: "dataset",
+      datasetId: "d1",
+    })).toBe(false);
+    expect(getDataInputCanSubmit({
+      ...base,
+      modelSource: "native_archive",
+      tab: "upload",
+      file: { name: "spectra.csv" } as File,
+    })).toBe(true);
   });
 
   it("builds submit configs for dataset, file, and pasted arrays", () => {

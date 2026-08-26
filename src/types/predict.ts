@@ -5,7 +5,7 @@
 export interface AvailableModel {
   id: string;
   name: string;
-  source: "bundle" | "chain";
+  source: "bundle" | "chain" | "native_archive";
   model_class: string;
   dataset_name: string | null;
   metric: string | null;

@@ -43,6 +43,32 @@ export interface ModelSelectorState {
   activeFilterCount: number;
 }
 
+/**
+ * Build the explicit, user-selected Archive V2 model reference.
+ *
+ * Native archives are intentionally not inferred from legacy bundle metadata:
+ * the archive path is selected by the user and the native owner validates it
+ * before any prediction input is consumed.
+ */
+export function buildNativeArchiveModel(archivePath: string): AvailableModel | null {
+  const path = archivePath.trim();
+  if (!path || !path.toLowerCase().endsWith(".n4a")) return null;
+  const name = path.split(/[\\/]/).pop() || path;
+  return {
+    id: path,
+    name,
+    source: "native_archive",
+    model_class: "Native Archive V2",
+    dataset_name: null,
+    metric: null,
+    best_score: null,
+    created_at: null,
+    file_size: null,
+    preprocessing: null,
+    bundle_path: path,
+  };
+}
+
 export function inferTaskKind(model: AvailableModel): TaskKind {
   const metric = (model.prediction_metric || model.metric || "").toLowerCase();
   if (!metric) return "unknown";
