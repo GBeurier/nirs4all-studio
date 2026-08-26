@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Studio V1 physical route snapshot",
+  "type": "object",
+  "required": ["contract_version", "routes"],
+  "properties": {
+    "contract_version": {"const": "studio-v1"},
+    "routes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/route"}
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ordinal": {"type": "integer", "minimum": 0},
+    "route": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["endpoint", "include_in_schema", "kind", "match_ordinal", "methods", "name", "path", "route_class"],
+          "properties": {
+            "endpoint": {"type": "string"}, "include_in_schema": {"type": "boolean"}, "kind": {"const": "http"},
+            "match_ordinal": {"$ref": "#/$defs/ordinal"}, "methods": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+            "name": {"type": ["string", "null"]}, "path": {"type": "string", "pattern": "^/"}, "route_class": {"enum": ["APIRoute", "Route"]}
+          }, "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["endpoint", "kind", "match_ordinal", "name", "path", "route_class"],
+          "properties": {
+            "endpoint": {"type": "string"}, "kind": {"const": "websocket"}, "match_ordinal": {"$ref": "#/$defs/ordinal"},
+            "name": {"type": ["string", "null"]}, "path": {"type": "string", "pattern": "^/"}, "route_class": {"const": "WebSocketRoute"}
+          }, "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "match_ordinal", "name", "path", "route_class"],
+          "properties": {
+            "kind": {"const": "mount"}, "match_ordinal": {"$ref": "#/$defs/ordinal"}, "name": {"type": ["string", "null"]},
+            "path": {"type": "string", "pattern": "^/"}, "route_class": {"const": "Mount"}
+          }, "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "match_ordinal", "name", "path", "route_class"],
+          "properties": {
+            "kind": {"const": "other"}, "match_ordinal": {"$ref": "#/$defs/ordinal"}, "name": {"type": ["string", "null"]},
+            "path": {"type": "string", "pattern": "^/"}, "route_class": {"type": "string"}
+          }, "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

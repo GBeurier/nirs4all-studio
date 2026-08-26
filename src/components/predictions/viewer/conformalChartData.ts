@@ -6,6 +6,22 @@ function resolveCoverage(rows: readonly ConformalPredictionRow[], requestedCover
   return rows[0]?.intervals[0]?.coverage ?? null;
 }
 
+function hasExactSampleIdAlignment(
+  dataset: PartitionDataset,
+  rows: readonly ConformalPredictionRow[],
+  sampleCount: number,
+): boolean {
+  const sampleIds = dataset.sampleIds;
+  if (sampleIds?.length !== sampleCount) return false;
+  // Numeric sample_indices are positional row selectors, not authoritative
+  // wire sample IDs, and must never be coerced into an identity match.
+  return rows.every((row, index) => (
+    typeof sampleIds[index] === "string"
+    && row.sampleId !== null
+    && sampleIds[index] === row.sampleId
+  ));
+}
+
 export function attachConformalIntervalsToSingleDataset(
   datasets: readonly PartitionDataset[],
   rows: readonly ConformalPredictionRow[],
@@ -16,6 +32,7 @@ export function attachConformalIntervalsToSingleDataset(
   const dataset = datasets[0];
   const sampleCount = Math.min(dataset.yTrue.length, dataset.yPred.length);
   if (sampleCount !== rows.length) return [...datasets];
+  if (!hasExactSampleIdAlignment(dataset, rows, sampleCount)) return [...datasets];
 
   const coverage = resolveCoverage(rows, requestedCoverage);
   if (coverage == null) return [...datasets];
