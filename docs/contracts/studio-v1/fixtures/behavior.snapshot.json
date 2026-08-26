@@ -1,0 +1,230 @@
+{
+  "contract_version": "studio-v1",
+  "errors": {
+    "unmanaged_500": {
+      "body": {
+        "detail": "Internal server error"
+      },
+      "content_type": "application/json",
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 500
+    },
+    "validation_422": {
+      "body": {
+        "detail": [
+          {
+            "input": {},
+            "loc": [
+              "body",
+              "pipeline_id"
+            ],
+            "msg": "Field required",
+            "type": "missing"
+          },
+          {
+            "input": {},
+            "loc": [
+              "body",
+              "dataset_id"
+            ],
+            "msg": "Field required",
+            "type": "missing"
+          }
+        ]
+      },
+      "content_type": "application/json",
+      "headers": {
+        "content-type": "application/json"
+      },
+      "status": 422
+    }
+  },
+  "jobs": {
+    "cancellation_endpoints": [
+      {
+        "endpoint": "api.training.stop_training",
+        "match_ordinal": 170,
+        "methods": [
+          "POST"
+        ],
+        "path": "/api/training/{job_id}/stop"
+      },
+      {
+        "endpoint": "api.automl.stop_automl",
+        "match_ordinal": 202,
+        "methods": [
+          "POST"
+        ],
+        "path": "/api/automl/{job_id}/stop"
+      },
+      {
+        "endpoint": "api.runs.cancel_workspace_execution_job_record",
+        "match_ordinal": 212,
+        "methods": [
+          "POST"
+        ],
+        "path": "/api/runs/execution-job-records/{job_id}/cancel"
+      },
+      {
+        "endpoint": "api.runs.stop_run",
+        "match_ordinal": 219,
+        "methods": [
+          "POST"
+        ],
+        "path": "/api/runs/{run_id}/stop"
+      },
+      {
+        "endpoint": "api.updates.app_updates.cancel_download",
+        "match_ordinal": 245,
+        "methods": [
+          "POST"
+        ],
+        "path": "/api/updates/webapp/download-cancel/{job_id}"
+      }
+    ],
+    "declared_statuses": [
+      "cancelled",
+      "completed",
+      "failed",
+      "pending",
+      "running"
+    ],
+    "declared_types": [
+      "analysis",
+      "automl",
+      "evaluation",
+      "export",
+      "maintenance",
+      "prediction",
+      "training",
+      "update_apply",
+      "update_download",
+      "venv_create",
+      "venv_install"
+    ],
+    "transitions": {
+      "completed": {
+        "result_keys": [
+          "outcome"
+        ],
+        "status": "completed"
+      },
+      "failed": {
+        "error": "contract failure",
+        "status": "failed"
+      },
+      "pending_cancel": {
+        "cancel_returned": true,
+        "status": "cancelled"
+      },
+      "running_cancel": {
+        "cancel_returned": true,
+        "cancellation_requested": true,
+        "status": "cancelled"
+      }
+    }
+  },
+  "readiness": {
+    "post_lifespan": {
+      "health": {
+        "body": {
+          "core_ready": true,
+          "message": "nirs4all webapp is running",
+          "ml_loading": false,
+          "ml_ready": false,
+          "ready": true,
+          "status": "healthy"
+        },
+        "content_type": "application/json",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      },
+      "readiness": {
+        "body": {
+          "core_ready": true,
+          "elapsed_seconds": {
+            "$dynamic": "number"
+          },
+          "ml_error": null,
+          "ml_loading": false,
+          "ml_ready": false,
+          "workspace_ready": false
+        },
+        "content_type": "application/json",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    "pre_lifespan": {
+      "health": {
+        "body": {
+          "core_ready": false,
+          "message": "nirs4all webapp is running",
+          "ml_loading": false,
+          "ml_ready": false,
+          "ready": false,
+          "status": "healthy"
+        },
+        "content_type": "application/json",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      },
+      "readiness": {
+        "body": {
+          "core_ready": false,
+          "elapsed_seconds": {
+            "$dynamic": "number"
+          },
+          "ml_error": null,
+          "ml_loading": false,
+          "ml_ready": false,
+          "workspace_ready": false
+        },
+        "content_type": "application/json",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "status": 200
+      }
+    }
+  },
+  "system_paths": {
+    "body": {
+      "paths": {
+        "home_directory": {
+          "$dynamic": "path"
+        },
+        "python_executable": {
+          "$dynamic": "path"
+        },
+        "working_directory": {
+          "$dynamic": "path"
+        }
+      }
+    },
+    "content_type": "application/json",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200
+  },
+  "workspace_paths": {
+    "body": {
+      "pipelines_path": null,
+      "results_path": null
+    },
+    "content_type": "application/json",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "status": 200
+  }
+}

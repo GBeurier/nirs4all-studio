@@ -1,0 +1,110 @@
+# Studio native sidecar (R1)
+
+`sidecar/` owns Studio's future native executable.  It is intentionally a
+separate Cargo package, not a Tauri application and not an Electron switch.
+The only executable is `studio-sidecar`.
+
+## Status and boundary
+
+R1 provides a small local HTTP control surface only:
+
+- `GET /sidecar/v1/health`
+- `GET /sidecar/v1/readiness`
+- `GET /sidecar/v1/capabilities`
+- `POST /sidecar/v1/jobs` (creates a non-scientific, in-memory control record)
+- `GET /sidecar/v1/jobs/{job_id}`
+- `POST /sidecar/v1/jobs/{job_id}/cancel`
+- `GET /sidecar/v1/ws` (only a valid WebSocket Upgrade request receives the
+  explicit unavailable `426`; ordinary HTTP requests receive `400`)
+
+It does **not** launch Python, CPython, Uvicorn, or FastAPI; it has no fallback
+launcher. It contains no scientific calculation, dataset/workspace persistence,
+file I/O API, or reimplementation of nirs4all stores. UI routes remain served
+by the legacy FastAPI process.
+
+`docs/contracts/studio-v1/` remains the frozen legacy FastAPI baseline. R1
+references that snapshot in tests to prevent an accidental parity claim; it
+does not expose `/api/*`, `/ws`, or assert replacement compatibility.
+
+## Build and future Electron launch contract
+
+From this directory:
+
+```sh
+cargo build --release
+./target/release/studio-sidecar --host 127.0.0.1 --port 0
+```
+
+The future Electron integration must launch the binary from its packaged
+resource location, pass a loopback host and an explicit or ephemeral port, and
+wait for the single stdout line beginning `STUDIO_SIDECAR_READY `. The JSON on
+that line has `protocol_version`, `host`, and the bound `port`. Electron and
+electron-builder are deliberately not changed in R1; the Python backend remains
+the default desktop backend.
+
+The binary accepts only `127.0.0.1` or `::1` for `--host`. This is a local
+desktop control process, not a network service.
+
+For a no-server CLI readiness check:
+
+```sh
+cargo run --quiet -- --smoke-readiness
+```
+
+## R1 protocol
+
+Protocol version: `studio-sidecar-r1`.
+
+`GET /sidecar/v1/readiness` includes `sidecar_ready`, `protocol_version`,
+`legacy_contract_baseline`, `legacy_route_parity`, `scientific_execution`,
+`job_execution`, and `uptime_ms`. `legacy_route_parity` is always
+`not_started`; `scientific_execution` and `job_execution` are always
+`unavailable` in R1.
+
+All errors use:
+
+```json
+{"error":{"code":"route_not_found","message":"...","retryable":false,"details":{"path":"..."}}}
+```
+
+Defined codes are `invalid_request` (false), `route_not_found` (false),
+`method_not_allowed` (false), `job_not_found` (false), `job_capacity_exceeded`
+(false), `request_timeout` (false), and `websocket_upgrade_required` (false).
+`details` is an object reserved for machine-readable context. Known routes
+return `405` with an `Allow` header when the method is wrong.
+
+Job IDs are opaque `job-r1-*` identifiers. R1 records are control-plane
+placeholders only, with statuses `pending` and `cancelled`. Cancellation is
+idempotent: cancelling a known job always returns 200 and leaves a cancelled
+job cancelled. It never force-kills or controls a legacy Python job.
+
+Control records are bounded to 64 entries and expire after five minutes.
+Expired records are removed first; when full, the oldest cancelled record is
+removed; a full set of pending records is refused with `429`. The GET response
+always preserves `cancellation_idempotent: true` as a protocol invariant.
+
+The planned WS envelope is explicit even though R1 does not accept upgrades:
+
+```json
+{"protocol_version":"studio-sidecar-r1","channel":"job:<opaque-id>","sequence":1,"timestamp":"RFC3339 UTC","type":"job.cancelled","data":{}}
+```
+
+`channel`, monotonically increasing per-channel `sequence`, and RFC3339 UTC
+`timestamp` are required. `WsFrame::new` fixes the protocol version,
+restricts channels to `job:<opaque-id>` and job lifecycle events, and accepts
+only bounded JSON-object data. This is a scaffold, not a claim of legacy
+WebSocket parity or a live subscription service.
+
+## Coverage and rollback
+
+Covered: local liveness/readiness, capabilities, versioned error envelopes,
+opaque control-job records and idempotent cancellation, plus protocol types.
+Missing: every legacy `/api/*` route, all scientific execution, persistence,
+uploads, authentication, live WebSocket upgrades, job execution, packaging,
+Electron process management, and parity mapping/diffing for the full frozen
+surface.
+
+Rollback is deletion/exclusion of the unused sidecar binary/resource. Because
+R1 changes neither Electron startup nor packaging defaults and exposes no
+legacy route, rollback requires no data migration and leaves the Python/FastAPI
+path untouched.

@@ -1,0 +1,559 @@
+{
+  "contract_version": "studio-v1",
+  "endpoints": [
+    {
+      "endpoint": "main.websocket_endpoint",
+      "match_ordinal": 316,
+      "name": "websocket_endpoint",
+      "path": "/ws"
+    },
+    {
+      "endpoint": "main.job_websocket_endpoint",
+      "match_ordinal": 317,
+      "name": "job_websocket_endpoint",
+      "path": "/ws/job/{job_id}"
+    },
+    {
+      "endpoint": "main.training_websocket_endpoint",
+      "match_ordinal": 318,
+      "name": "training_websocket_endpoint",
+      "path": "/ws/training/{job_id}"
+    }
+  ],
+  "message_types": [
+    "branch_entered",
+    "branch_exited",
+    "connected",
+    "error",
+    "fold_completed",
+    "fold_started",
+    "job_cancelled",
+    "job_completed",
+    "job_failed",
+    "job_metrics",
+    "job_progress",
+    "job_started",
+    "maintenance_completed",
+    "maintenance_failed",
+    "maintenance_progress",
+    "maintenance_started",
+    "ping",
+    "pong",
+    "refit_completed",
+    "refit_failed",
+    "refit_progress",
+    "refit_started",
+    "refit_step",
+    "step_progress",
+    "subscribed",
+    "training_batch",
+    "training_checkpoint",
+    "training_epoch",
+    "unsubscribed",
+    "variant_completed",
+    "variant_started"
+  ],
+  "payload_shapes": {
+    "branch_entered": {
+      "reason": "No reachable legacy producer exists for this declared enum member.",
+      "status": "unreachable"
+    },
+    "branch_exited": {
+      "reason": "No reachable legacy producer exists for this declared enum member.",
+      "status": "unreachable"
+    },
+    "connected": {
+      "channel": "system",
+      "data": {
+        "client_id": {
+          "$dynamic": "identifier"
+        },
+        "message": "Connected to nirs4all WebSocket server"
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "connected"
+    },
+    "error": {
+      "channel": "system",
+      "data": {
+        "error": "Invalid message format: 'unsubscribe' is not a valid MessageType"
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "error"
+    },
+    "fold_completed": {
+      "reason": "No reachable legacy producer exists for this declared enum member.",
+      "status": "unreachable"
+    },
+    "fold_started": {
+      "reason": "No reachable legacy producer exists for this declared enum member.",
+      "status": "unreachable"
+    },
+    "job_cancelled": {
+      "reason": "No reachable legacy producer exists for this declared enum member.",
+      "status": "unreachable"
+    },
+    "job_completed": {
+      "channel": "job:contract-job",
+      "data": {
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "result": {
+          "outcome": "ok"
+        }
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "job_completed"
+    },
+    "job_failed": {
+      "channel": "job:contract-job",
+      "data": {
+        "error": "failed",
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "traceback": null
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "job_failed"
+    },
+    "job_metrics": {
+      "channel": "job:contract-job",
+      "data": {
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "metrics": {
+          "score": 1.0
+        }
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "job_metrics"
+    },
+    "job_progress": {
+      "channel": "job:contract-job",
+      "data": {
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "message": "half",
+        "metrics": {
+          "score": 1.0
+        },
+        "progress": 50
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "job_progress"
+    },
+    "job_started": {
+      "channel": "job:contract-job",
+      "data": {
+        "state": "started"
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "job_started"
+    },
+    "maintenance_completed": {
+      "channel": "job:contract-job",
+      "data": {
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "operation": "cleanup",
+        "report": {
+          "count": 1
+        }
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "maintenance_completed"
+    },
+    "maintenance_failed": {
+      "channel": "job:contract-job",
+      "data": {
+        "error": "failed",
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "operation": "cleanup"
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "maintenance_failed"
+    },
+    "maintenance_progress": {
+      "channel": "job:contract-job",
+      "data": {
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "message": "half",
+        "progress": 50
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "maintenance_progress"
+    },
+    "maintenance_started": {
+      "channel": "job:contract-job",
+      "data": {
+        "details": {
+          "count": 1
+        },
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "operation": "cleanup"
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "maintenance_started"
+    },
+    "ping": {
+      "reason": "Reachable only as an incoming client frame; it produces pong.",
+      "status": "incoming_only"
+    },
+    "pong": {
+      "channel": "system",
+      "data": {
+        "timestamp": {
+          "$dynamic": "rfc3339"
+        }
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "pong"
+    },
+    "refit_completed": {
+      "channel": "job:contract-job",
+      "data": {
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "metrics": {
+          "score": 1.0
+        },
+        "score": 1.0
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "refit_completed"
+    },
+    "refit_failed": {
+      "channel": "job:contract-job",
+      "data": {
+        "error": "failed",
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "traceback": null
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "refit_failed"
+    },
+    "refit_progress": {
+      "channel": "job:contract-job",
+      "data": {
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "message": "half",
+        "progress": 50
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "refit_progress"
+    },
+    "refit_started": {
+      "channel": "job:contract-job",
+      "data": {
+        "description": "refit",
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "total_steps": 2
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "refit_started"
+    },
+    "refit_step": {
+      "channel": "job:contract-job",
+      "data": {
+        "current_step": 1,
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "step_name": "step",
+        "step_type": "preprocessing",
+        "total_steps": 2
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "refit_step"
+    },
+    "step_progress": {
+      "reason": "No reachable legacy producer exists for this declared enum member.",
+      "status": "unreachable"
+    },
+    "subscribed": {
+      "channel": "job:contract-job",
+      "data": {
+        "channel": "job:contract-job"
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "subscribed"
+    },
+    "training_batch": {
+      "reason": "No reachable legacy producer exists for this declared enum member.",
+      "status": "unreachable"
+    },
+    "training_checkpoint": {
+      "reason": "No reachable legacy producer exists for this declared enum member.",
+      "status": "unreachable"
+    },
+    "training_epoch": {
+      "channel": "job:contract-job",
+      "data": {
+        "epoch": 1,
+        "job_id": {
+          "$dynamic": "identifier"
+        },
+        "progress": 50.0,
+        "total_epochs": 2,
+        "train": {
+          "loss": 1.0
+        },
+        "val": null
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "training_epoch"
+    },
+    "unsubscribed": {
+      "channel": "job:contract-job",
+      "data": {
+        "channel": "job:contract-job"
+      },
+      "envelope_keys": [
+        "channel",
+        "data",
+        "timestamp",
+        "type"
+      ],
+      "status": "emitted",
+      "type": "unsubscribed"
+    },
+    "variant_completed": {
+      "reason": "No reachable legacy producer exists for this declared enum member.",
+      "status": "unreachable"
+    },
+    "variant_started": {
+      "reason": "No reachable legacy producer exists for this declared enum member.",
+      "status": "unreachable"
+    }
+  },
+  "protocol": {
+    "incoming": {
+      "ping": {
+        "channel": "system",
+        "data": {},
+        "type": "ping"
+      },
+      "subscribe": {
+        "channel": "system",
+        "data": {
+          "channel": "job:contract-job"
+        },
+        "type": "subscribe"
+      },
+      "unsubscribe": {
+        "channel": "system",
+        "data": {
+          "channel": "job:contract-job"
+        },
+        "type": "unsubscribe"
+      }
+    },
+    "outgoing": {
+      "connected": {
+        "channel": "system",
+        "data": {
+          "client_id": {
+            "$dynamic": "identifier"
+          },
+          "message": "Connected to nirs4all WebSocket server"
+        },
+        "timestamp": {
+          "$dynamic": "rfc3339"
+        },
+        "type": "connected"
+      },
+      "pong": {
+        "channel": "system",
+        "data": {
+          "timestamp": {
+            "$dynamic": "rfc3339"
+          }
+        },
+        "timestamp": {
+          "$dynamic": "rfc3339"
+        },
+        "type": "pong"
+      }
+    },
+    "subscription": {
+      "job_endpoint_auto_subscription": {
+        "channel": "job:contract-job",
+        "data": {
+          "channel": "job:contract-job"
+        },
+        "timestamp": {
+          "$dynamic": "rfc3339"
+        },
+        "type": "subscribed"
+      },
+      "legacy_client_subscribe": {
+        "outcome": "refused",
+        "response": {
+          "channel": "system",
+          "data": {
+            "error": "Invalid message format: 'subscribe' is not a valid MessageType"
+          },
+          "timestamp": {
+            "$dynamic": "rfc3339"
+          },
+          "type": "error"
+        }
+      },
+      "legacy_client_unsubscribe": {
+        "outcome": "refused",
+        "response": {
+          "channel": "system",
+          "data": {
+            "error": "Invalid message format: 'unsubscribe' is not a valid MessageType"
+          },
+          "timestamp": {
+            "$dynamic": "rfc3339"
+          },
+          "type": "error"
+        }
+      },
+      "training_endpoint_auto_subscription": {
+        "channel": "job:contract-job",
+        "data": {
+          "channel": "job:contract-job"
+        },
+        "timestamp": {
+          "$dynamic": "rfc3339"
+        },
+        "type": "subscribed"
+      }
+    }
+  }
+}

@@ -33,6 +33,7 @@
     "test:frontend": "vitest run",
     "test:backend": "node scripts/run-python.cjs -m pytest tests/ -v --tb=short --timeout=120 -n auto",
     "test:routes": "node scripts/run-python.cjs -m pytest tests/test_route_registry.py -q",
+    "test:contract": "node scripts/run-python.cjs scripts/verify-studio-v1-contract.py --check",
     "test:parallel": "concurrently --group --names vitest,pytest --prefix-colors blue,yellow npm:test:frontend npm:test:backend",
     "validate:nodes": "node scripts/validate-node-registry.cjs",
     "test:e2e": "npx playwright test --project=web-chromium",

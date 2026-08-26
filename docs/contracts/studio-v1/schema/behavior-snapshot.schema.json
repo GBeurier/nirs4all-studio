@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Studio V1 behavioral boundary snapshot",
+  "type": "object",
+  "required": ["contract_version", "errors", "jobs", "readiness", "system_paths", "workspace_paths"],
+  "properties": {
+    "contract_version": {"const": "studio-v1"},
+    "errors": {"$ref": "#/$defs/errors"},
+    "jobs": {"$ref": "#/$defs/jobs"},
+    "readiness": {"$ref": "#/$defs/readiness"},
+    "system_paths": {"$ref": "#/$defs/system_paths"},
+    "workspace_paths": {"$ref": "#/$defs/workspace_paths"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "dynamic": {"type": "object", "required": ["$dynamic"], "properties": {"$dynamic": {"enum": ["identifier", "rfc3339", "number", "path", "secret"]}}, "additionalProperties": false},
+    "json_headers": {"type": "object", "required": ["content-type"], "properties": {"content-type": {"const": "application/json"}}, "additionalProperties": false},
+    "response": {"type": "object", "required": ["body", "content_type", "headers", "status"], "properties": {"body": {}, "content_type": {"const": "application/json"}, "headers": {"$ref": "#/$defs/json_headers"}, "status": {"type": "integer", "minimum": 100, "maximum": 599}}, "additionalProperties": false},
+    "unmanaged_error": {"allOf": [{"$ref": "#/$defs/response"}, {"properties": {"body": {"const": {"detail": "Internal server error"}}, "status": {"const": 500}}}]},
+    "validation_error": {"allOf": [{"$ref": "#/$defs/response"}, {"properties": {"body": {"const": {"detail": [{"input": {}, "loc": ["body", "pipeline_id"], "msg": "Field required", "type": "missing"}, {"input": {}, "loc": ["body", "dataset_id"], "msg": "Field required", "type": "missing"}]}}, "status": {"const": 422}}}]},
+    "errors": {"type": "object", "required": ["unmanaged_500", "validation_422"], "properties": {"unmanaged_500": {"$ref": "#/$defs/unmanaged_error"}, "validation_422": {"$ref": "#/$defs/validation_error"}}, "additionalProperties": false},
+    "endpoint": {"type": "object", "required": ["endpoint", "match_ordinal", "methods", "path"], "properties": {"endpoint": {"type": "string"}, "match_ordinal": {"type": "integer", "minimum": 0}, "methods": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}, "path": {"type": "string", "pattern": "^/"}}, "additionalProperties": false},
+    "transitions": {"type": "object", "required": ["completed", "failed", "pending_cancel", "running_cancel"], "properties": {"completed": {"type": "object", "required": ["result_keys", "status"], "properties": {"result_keys": {"const": ["outcome"]}, "status": {"const": "completed"}}, "additionalProperties": false}, "failed": {"type": "object", "required": ["error", "status"], "properties": {"error": {"const": "contract failure"}, "status": {"const": "failed"}}, "additionalProperties": false}, "pending_cancel": {"type": "object", "required": ["cancel_returned", "status"], "properties": {"cancel_returned": {"const": true}, "status": {"const": "cancelled"}}, "additionalProperties": false}, "running_cancel": {"type": "object", "required": ["cancel_returned", "cancellation_requested", "status"], "properties": {"cancel_returned": {"const": true}, "cancellation_requested": {"const": true}, "status": {"const": "cancelled"}}, "additionalProperties": false}}, "additionalProperties": false},
+    "jobs": {"type": "object", "required": ["cancellation_endpoints", "declared_statuses", "declared_types", "transitions"], "properties": {"cancellation_endpoints": {"type": "array", "items": {"$ref": "#/$defs/endpoint"}}, "declared_statuses": {"const": ["cancelled", "completed", "failed", "pending", "running"]}, "declared_types": {"const": ["analysis", "automl", "evaluation", "export", "maintenance", "prediction", "training", "update_apply", "update_download", "venv_create", "venv_install"]}, "transitions": {"$ref": "#/$defs/transitions"}}, "additionalProperties": false},
+    "health_body": {"type": "object", "required": ["core_ready", "message", "ml_loading", "ml_ready", "ready", "status"], "properties": {"core_ready": {"type": "boolean"}, "message": {"const": "nirs4all webapp is running"}, "ml_loading": {"const": false}, "ml_ready": {"const": false}, "ready": {"type": "boolean"}, "status": {"const": "healthy"}}, "additionalProperties": false},
+    "readiness_body": {"type": "object", "required": ["core_ready", "elapsed_seconds", "ml_error", "ml_loading", "ml_ready", "workspace_ready"], "properties": {"core_ready": {"type": "boolean"}, "elapsed_seconds": {"const": {"$dynamic": "number"}}, "ml_error": {"const": null}, "ml_loading": {"const": false}, "ml_ready": {"const": false}, "workspace_ready": {"const": false}}, "additionalProperties": false},
+    "health_response": {"allOf": [{"$ref": "#/$defs/response"}, {"properties": {"body": {"$ref": "#/$defs/health_body"}, "status": {"const": 200}}}]},
+    "readiness_response": {"allOf": [{"$ref": "#/$defs/response"}, {"properties": {"body": {"$ref": "#/$defs/readiness_body"}, "status": {"const": 200}}}]},
+    "phase": {"type": "object", "required": ["health", "readiness"], "properties": {"health": {"$ref": "#/$defs/health_response"}, "readiness": {"$ref": "#/$defs/readiness_response"}}, "additionalProperties": false},
+    "readiness": {"type": "object", "required": ["post_lifespan", "pre_lifespan"], "properties": {"post_lifespan": {"$ref": "#/$defs/phase"}, "pre_lifespan": {"$ref": "#/$defs/phase"}}, "additionalProperties": false},
+    "system_paths": {"allOf": [{"$ref": "#/$defs/response"}, {"properties": {"body": {"type": "object", "required": ["paths"], "properties": {"paths": {"type": "object", "required": ["working_directory", "home_directory", "python_executable"], "properties": {"working_directory": {"const": {"$dynamic": "path"}}, "home_directory": {"const": {"$dynamic": "path"}}, "python_executable": {"const": {"$dynamic": "path"}}}, "additionalProperties": false}}, "additionalProperties": false}, "status": {"const": 200}}}]},
+    "workspace_paths": {"allOf": [{"$ref": "#/$defs/response"}, {"properties": {"body": {"type": "object", "required": ["pipelines_path", "results_path"], "properties": {"pipelines_path": {"const": null}, "results_path": {"const": null}}, "additionalProperties": false}, "status": {"const": 200}}}]}
+  }
+}
