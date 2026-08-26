@@ -1604,6 +1604,20 @@ class WorkspaceScanner:
                     sample_metadata = prediction.get('sample_metadata')
                     if not isinstance(sample_metadata, dict):
                         sample_metadata = prediction.get('metadata')
+                    raw_sample_ids = prediction.get('sample_ids')
+                    sample_ids = (
+                        raw_sample_ids.tolist()
+                        if isinstance(raw_sample_ids, np.ndarray)
+                        else list(raw_sample_ids)
+                        if isinstance(raw_sample_ids, (list, tuple))
+                        else None
+                    )
+                    if not (
+                        isinstance(sample_ids, list)
+                        and len(sample_ids) == len(y_true_list)
+                        and all(isinstance(sample_id, str) for sample_id in sample_ids)
+                    ):
+                        sample_ids = None
 
                     if not y_true_list or not y_pred_list:
                         continue
@@ -1617,6 +1631,7 @@ class WorkspaceScanner:
                         "model_name": prediction.get('model_name', 'unknown'),
                         "dataset_name": prediction.get('dataset_name', 'unknown'),
                         "sample_metadata": sample_metadata if isinstance(sample_metadata, dict) else None,
+                        "sample_ids": sample_ids,
                     }
             except Exception as e:
                 logger.error("Error reading %s: %s", meta_file, e)

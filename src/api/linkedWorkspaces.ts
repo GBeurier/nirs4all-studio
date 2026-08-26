@@ -298,6 +298,8 @@ export interface PredictionScatterResponse {
   partition: string;
   model_name: string;
   dataset_name: string;
+  /** Exact stored sample identities; absence must remain a refusal for conformal attachment. */
+  sample_ids?: string[] | null;
   sample_metadata?: Record<string, unknown[]> | null;
 }
 
