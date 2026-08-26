@@ -637,7 +637,7 @@ describe("useChainDetailPanelState", () => {
 
     await waitFor(() => {
       expect(mounted.result.current!.conformalSummary?.rows).toHaveLength(2);
-      expect(mounted.result.current!.chartDatasets[0]?.conformalCoverage).toBe(0.8);
+      expect(mounted.result.current!.chartDatasets[0]?.sampleIds).toEqual([0, 1]);
     });
 
     expect(mounted.result.current!.conformalSummary).toMatchObject({
@@ -707,10 +707,8 @@ describe("useChainDetailPanelState", () => {
         selected: false,
       }),
     ]));
-    expect(mounted.result.current!.chartDatasets[0]?.conformalIntervals).toEqual([
-      { coverage: 0.8, coverageLabel: "80%", lower: 0, upper: 1 },
-      { coverage: 0.8, coverageLabel: "80%", lower: 1, upper: 2 },
-    ]);
+    expect(mounted.result.current!.chartDatasets[0]?.conformalCoverage).toBeUndefined();
+    expect(mounted.result.current!.chartDatasets[0]?.conformalIntervals).toBeUndefined();
     expect(mounted.result.current!.conformalSummary?.rows[0]).toMatchObject({
       index: 0,
       sampleId: "pred-a",
@@ -728,11 +726,8 @@ describe("useChainDetailPanelState", () => {
       mounted.result.current!.setSelectedConformalCoverage(0.95);
     });
     expect(mounted.result.current!.chartTargets[0]?.conformalCoverage).toBe(0.95);
-    expect(mounted.result.current!.chartDatasets[0]?.conformalCoverage).toBe(0.95);
-    expect(mounted.result.current!.chartDatasets[0]?.conformalIntervals).toEqual([
-      { coverage: 0.95, coverageLabel: "95%", lower: -0.5, upper: 1.5 },
-      { coverage: 0.95, coverageLabel: "95%", lower: 0.5, upper: 2.5 },
-    ]);
+    expect(mounted.result.current!.chartDatasets[0]?.conformalCoverage).toBeUndefined();
+    expect(mounted.result.current!.chartDatasets[0]?.conformalIntervals).toBeUndefined();
 
     await mounted.unmount();
   });
