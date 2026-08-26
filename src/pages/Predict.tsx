@@ -50,7 +50,7 @@ export default function Predict() {
 
   // Deep-link: pre-select model from URL params (e.g., from ModelActionMenu)
   const urlModelId = searchParams.get("model_id");
-  const urlSource = searchParams.get("source") as "chain" | "bundle" | null;
+  const urlSource = searchParams.get("source") as "chain" | "bundle" | "native_archive" | null;
 
   useEffect(() => {
     if (urlModelId && urlSource && !preselected) {

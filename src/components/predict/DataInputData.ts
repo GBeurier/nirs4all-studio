@@ -35,6 +35,7 @@ export interface DataInputPartitionOption {
 
 export interface DataInputCanSubmitInput {
   isModelSelected: boolean;
+  modelSource?: AvailableModel["source"] | null;
   isLoading: boolean;
   tab: DataInputTab;
   datasetId: string;
@@ -114,10 +115,13 @@ const ACCEPTED_DATA_INPUT_EXTENSIONS = [".csv", ".xlsx", ".xls"] as const;
 const MODEL_SCORE_PILL_CLASS = "rounded-full bg-background px-2.5 py-1 font-medium text-foreground";
 const MODEL_METADATA_PILL_CLASS = "rounded-full bg-background px-2.5 py-1 text-muted-foreground";
 
-export function buildDataInputSourceTabs(isModelSelected: boolean): DataInputSourceTab[] {
+export function buildDataInputSourceTabs(
+  isModelSelected: boolean,
+  modelSource?: AvailableModel["source"] | null,
+): DataInputSourceTab[] {
   return DATA_INPUT_SOURCE_DEFINITIONS.map((source) => ({
     ...source,
-    disabled: !isModelSelected,
+    disabled: !isModelSelected || (modelSource === "native_archive" && source.id !== "upload"),
   }));
 }
 
@@ -171,6 +175,7 @@ export function parsePastedSpectra(text: string): number[][] | null {
 
 export function getDataInputCanSubmit(input: DataInputCanSubmitInput): boolean {
   if (!input.isModelSelected || input.isLoading) return false;
+  if (input.modelSource === "native_archive" && input.tab !== "upload") return false;
   if (input.tab === "dataset") return Boolean(input.datasetId);
   if (input.tab === "upload") return Boolean(input.file);
   if (input.tab === "paste") return Boolean(input.pasteText.trim());

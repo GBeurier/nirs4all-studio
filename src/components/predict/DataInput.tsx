@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ClipboardPaste,
@@ -71,18 +71,25 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
   const { data: datasetsData } = useDatasetsQuery();
   const datasets = datasetsData?.datasets ?? [];
   const isModelSelected = model != null;
-  const sourceTabs = buildDataInputSourceTabs(isModelSelected);
+  const sourceTabs = buildDataInputSourceTabs(isModelSelected, model?.source);
   const modelReadModel = buildDataInputModelReadModel(model);
   const datasetReadModel = buildDataInputDatasetReadModel(datasets);
   const fileReadModel = buildDataInputFileReadModel(file);
   const canSubmit = getDataInputCanSubmit({
     isModelSelected,
+    modelSource: model?.source,
     isLoading,
     tab,
     datasetId,
     file,
     pasteText,
   });
+
+  useEffect(() => {
+    if (model?.source === "native_archive") {
+      setTab("upload");
+    }
+  }, [model?.source]);
 
   const handleFileDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -126,7 +133,11 @@ export function DataInput({ model, isLoading, onRunPrediction }: DataInputProps)
         <div>
           <CardTitle>{t("predict.data.title")}</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("predict.data.description")}
+            {model?.source === "native_archive"
+              ? t("predict.data.nativeArchive.description", {
+                  defaultValue: "Native archives require an uploaded CSV or Excel file with a non-numeric stable sample-ID column.",
+                })
+              : t("predict.data.description")}
           </p>
         </div>
 

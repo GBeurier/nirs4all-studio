@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildModelSelectorState,
+  buildNativeArchiveModel,
   formatModelFileSize,
   formatRelativeModelDate,
   getEffectiveScore,
@@ -30,6 +31,17 @@ function model(overrides: Partial<AvailableModel> = {}): AvailableModel {
 }
 
 describe("ModelSelectorData", () => {
+  it("creates an explicit native Archive V2 selection only for .n4a paths", () => {
+    expect(buildNativeArchiveModel("  C:\\models\\native.n4a  ")).toMatchObject({
+      id: "C:\\models\\native.n4a",
+      name: "native.n4a",
+      source: "native_archive",
+      model_class: "Native Archive V2",
+    });
+    expect(buildNativeArchiveModel("model.zip")).toBeNull();
+    expect(buildNativeArchiveModel(" ")).toBeNull();
+  });
+
   it("infers task kind and prefers prediction scores over selection scores", () => {
     const regression = model({ metric: "rmse", best_score: 0.2 });
     const classification = model({
