@@ -632,13 +632,17 @@ async def get_websocket_stats():
 public_path = Path(__file__).parent / "public"
 dist_path = Path(__file__).parent / "dist"
 
-# Serve built files in production
-if dist_path.exists():
-    # Serve static assets (JS, CSS, images)
-    if (dist_path / "assets").exists():
-        app.mount(
-            "/assets", StaticFiles(directory=str(dist_path / "assets")), name="assets"
-        )
+# Keep the physical route table independent of generated frontend output.  A
+# development checkout has no tracked ``dist/`` directory, while a production
+# bundle serves its compiled assets from there.  Mounting the route in both
+# cases is important: API clients and the frozen Studio V1 boundary must see
+# the same matcher order in a clean checkout and in a packaged application.
+# The tracked public directory is a safe empty/fallback static root until a
+# frontend build supplies ``dist/assets``.
+assets_path = dist_path / "assets"
+if not assets_path.is_dir():
+    assets_path = public_path
+app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
 
 # Mount public folder for static assets (always available)
 if public_path.exists():
