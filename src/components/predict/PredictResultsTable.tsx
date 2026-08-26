@@ -27,6 +27,10 @@ export function PredictResultsTable({
   showPartitionColumn,
 }: PredictResultsTableProps) {
   const { t } = useTranslation();
+  const conformalCoverageLabel = rows.find(
+    (row) => row.conformalCoverageLabel,
+  )?.conformalCoverageLabel;
+  const hasConformalBounds = conformalCoverageLabel !== undefined;
 
   return (
     <div className="max-h-[460px] overflow-auto rounded-md border">
@@ -42,6 +46,12 @@ export function PredictResultsTable({
             <TableHead className="text-right">
               {t("predict.results.table.predicted")}
             </TableHead>
+            {hasConformalBounds && (
+              <>
+                <TableHead className="text-right">{conformalCoverageLabel} lower</TableHead>
+                <TableHead className="text-right">{conformalCoverageLabel} upper</TableHead>
+              </>
+            )}
             {hasActuals && (
               <>
                 <TableHead className="text-right">
@@ -66,6 +76,16 @@ export function PredictResultsTable({
               <TableCell className="text-right font-mono text-sm">
                 {formatMetricValue(row.predicted)}
               </TableCell>
+              {hasConformalBounds && (
+                <>
+                  <TableCell className="text-right font-mono text-sm">
+                    {row.conformalLower !== undefined ? formatMetricValue(row.conformalLower) : "–"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-sm">
+                    {row.conformalUpper !== undefined ? formatMetricValue(row.conformalUpper) : "–"}
+                  </TableCell>
+                </>
+              )}
               {hasActuals && (
                 <>
                   <TableCell className="text-right font-mono text-sm">
