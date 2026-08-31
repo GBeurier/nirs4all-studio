@@ -14,7 +14,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use atomicwrites::replace_atomic;
+use atomicwrites::{replace_atomic, AllowOverwrite, AtomicFile};
 use serde_json::{json, Map, Value};
 
 const APP_SETTINGS_FILE: &str = "app_settings.json";
@@ -26,18 +26,35 @@ const CONFIG_REDIRECT_FILE: &str = "config_redirect.txt";
 #[derive(Debug)]
 pub struct AppSettingsStore {
     config_dir: PathBuf,
+    default_config_dir: PathBuf,
+}
+
+#[derive(Debug)]
+pub enum ConfigPathError {
+    DoesNotExist(String),
+    NotDirectory(String),
+    Storage(String),
 }
 
 impl AppSettingsStore {
     #[must_use]
     pub fn from_environment() -> Self {
-        Self::new(resolve_config_dir())
+        Self::with_config_paths(resolve_config_dir(), default_config_dir())
     }
 
     #[must_use]
     pub fn new(config_dir: impl Into<PathBuf>) -> Self {
+        Self::with_config_paths(config_dir, default_config_dir())
+    }
+
+    #[must_use]
+    pub(crate) fn with_config_paths(
+        config_dir: impl Into<PathBuf>,
+        default_config_dir: impl Into<PathBuf>,
+    ) -> Self {
         Self {
             config_dir: config_dir.into(),
+            default_config_dir: default_config_dir.into(),
         }
     }
 
@@ -124,6 +141,59 @@ impl AppSettingsStore {
             self.save(&settings)?;
         }
         Ok(removed)
+    }
+
+    #[must_use]
+    pub fn config_path_response(&self) -> Value {
+        json!({
+            "current_path": display_path(&self.config_dir),
+            "default_path": display_path(&self.default_config_dir),
+            "is_custom": self.config_dir != self.default_config_dir,
+        })
+    }
+
+    pub fn set_config_path(&mut self, path: &str) -> Result<PathBuf, ConfigPathError> {
+        let config_dir = Path::new(path)
+            .canonicalize()
+            .map_err(|_| ConfigPathError::DoesNotExist(path.to_owned()))?;
+        if !config_dir.is_dir() {
+            return Err(ConfigPathError::NotDirectory(path.to_owned()));
+        }
+        fs::create_dir_all(&self.default_config_dir).map_err(|error| {
+            ConfigPathError::Storage(format!(
+                "could not create config directory {}: {error}",
+                self.default_config_dir.display()
+            ))
+        })?;
+        let redirect = self.default_config_dir.join(CONFIG_REDIRECT_FILE);
+        let target = display_path(&config_dir);
+        AtomicFile::new(&redirect, AllowOverwrite)
+            .write(|file| file.write_all(target.as_bytes()))
+            .map_err(|error| {
+                ConfigPathError::Storage(format!("could not write {}: {error}", redirect.display()))
+            })?;
+        self.config_dir.clone_from(&config_dir);
+        Ok(config_dir)
+    }
+
+    pub fn reset_config_path(&mut self) -> Result<PathBuf, ConfigPathError> {
+        let redirect = self.default_config_dir.join(CONFIG_REDIRECT_FILE);
+        if redirect.exists() {
+            fs::remove_file(&redirect).map_err(|error| {
+                ConfigPathError::Storage(format!(
+                    "could not remove {}: {error}",
+                    redirect.display()
+                ))
+            })?;
+        }
+        fs::create_dir_all(&self.default_config_dir).map_err(|error| {
+            ConfigPathError::Storage(format!(
+                "could not create config directory {}: {error}",
+                self.default_config_dir.display()
+            ))
+        })?;
+        self.config_dir = self.default_config_dir.clone();
+        Ok(self.config_dir.clone())
     }
 
     fn load(&self) -> Result<Value, String> {
@@ -222,6 +292,10 @@ fn default_config_dir() -> PathBuf {
 
 fn nonempty_env(name: &str) -> Option<String> {
     env::var(name).ok().filter(|value| !value.trim().is_empty())
+}
+
+fn display_path(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
 }
 
 fn default_settings() -> Value {
@@ -342,6 +416,40 @@ mod tests {
         );
         assert!(store.remove_favourite("pipeline-a").unwrap());
         assert!(!store.remove_favourite("pipeline-a").unwrap());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn redirects_and_resets_the_config_directory_without_losing_app_settings_shape() {
+        let directory = temporary_directory("config-path");
+        let initial = directory.join("initial");
+        let default = directory.join("default");
+        let custom = directory.join("custom");
+        fs::create_dir_all(&initial).unwrap();
+        fs::create_dir_all(&custom).unwrap();
+        let mut store = AppSettingsStore::with_config_paths(&initial, &default);
+
+        let custom = custom.canonicalize().unwrap();
+        assert_eq!(
+            store.set_config_path(&custom.to_string_lossy()).unwrap(),
+            custom
+        );
+        assert_eq!(
+            fs::read_to_string(default.join("config_redirect.txt")).unwrap(),
+            custom.to_string_lossy()
+        );
+        assert_eq!(
+            store.config_path_response()["current_path"],
+            custom.to_string_lossy().as_ref()
+        );
+        store
+            .update_ui_preferences(&json!({"ui_preferences": {"theme": "dark"}}))
+            .unwrap();
+        assert!(custom.join("app_settings.json").exists());
+
+        assert_eq!(store.reset_config_path().unwrap(), default);
+        assert!(!default.join("config_redirect.txt").exists());
+        assert_eq!(store.config_path_response()["is_custom"], false);
         fs::remove_dir_all(directory).unwrap();
     }
 }

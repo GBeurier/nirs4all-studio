@@ -26,6 +26,7 @@ const NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS = new Set([
 const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
   "/app/settings",
   "/app/favorites",
+  "/app/config-path",
 ]);
 
 type ElectronBackendStatus =
