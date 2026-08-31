@@ -35,8 +35,10 @@ R1 provides a small local HTTP control surface only:
   identifiers)
 - `GET` / `POST` / `DELETE /api/app/config-path` (Rust-owned configuration
   directory selection; changes explicitly require restart)
-- `GET /api/workspaces` (Rust-owned linked-workspace catalogue; no filesystem
-  scan, dataset read, or scientific execution)
+- `GET /api/workspaces`, `POST /api/workspaces/:id/activate`, and
+  `DELETE /api/workspaces/:id` (Rust-owned linked-workspace catalogue,
+  activation and unlinking; no filesystem scan, dataset read, or scientific
+  execution)
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
@@ -119,8 +121,10 @@ or writes workspace or dataset contents.
 
 `GET /api/workspaces` reads the linked-workspace records already stored in
 `app_settings.json`. It repairs only absent or duplicate record IDs to retain
-stable UI keys, and returns the legacy list shape. Linking, unlinking,
-activation, pruning, scanning, and all workspace contents remain legacy routes.
+stable UI keys, and returns the legacy list shape. Activation and unlinking are
+also native, atomically updating only that catalogue and never deleting
+workspace files. Linking, pruning, scanning, and all workspace contents remain
+legacy routes until their scanner/store contracts are native.
 
 `ConformalPresentationStore` retains only a validated
 `nirs4all::dag_ml::ConformalPresentationV1`, keyed by its immutable
@@ -176,7 +180,8 @@ Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
 idempotent cancellation, bounded Python plugin-host preflight, the first four
 Rust-owned legacy-compatible system routes, native app preferences/favorites
-and config-path selection, plus the linked-workspace catalogue,
+and config-path selection, plus the linked-workspace catalogue and its native
+activation/unlink mutations,
 all-in-one binary packaging, and Electron's explicit loopback-only lifecycle
 management. Missing: every other legacy `/api/*` route, all scientific
 execution, workspace/dataset persistence, uploads, authentication, live
