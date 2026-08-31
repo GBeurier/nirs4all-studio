@@ -27,6 +27,7 @@ const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
   "/app/settings",
   "/app/favorites",
   "/app/config-path",
+  "/workspaces",
 ]);
 
 type ElectronBackendStatus =

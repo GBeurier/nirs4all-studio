@@ -32,13 +32,15 @@ R1 provides a small local HTTP control surface only:
   identifiers)
 - `GET` / `POST` / `DELETE /api/app/config-path` (Rust-owned configuration
   directory selection; changes explicitly require restart)
+- `GET /api/workspaces` (Rust-owned linked-workspace catalogue; no filesystem
+  scan, dataset read, or scientific execution)
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
 bounded library/plugin host for the routes above. The sidecar contains no
-scientific calculation, dataset/workspace persistence,
-arbitrary file-I/O API, or reimplementation of nirs4all stores. It persists
-only its own app-level preferences and favorite identifiers. All other UI
+scientific calculation, dataset/workspace contents, arbitrary file-I/O API, or
+reimplementation of nirs4all stores. It persists only app-level preferences,
+favorite identifiers, and repaired linked-workspace record IDs. All other UI
 routes remain served by the legacy FastAPI process.
 
 `docs/contracts/studio-v1/` remains the frozen legacy FastAPI baseline. R1
@@ -81,7 +83,7 @@ Protocol version: `studio-sidecar-r1`.
 health and readiness match their frozen post-lifespan responses.
 `scientific_execution` and `job_execution` are always `unavailable` in R1.
 `GET /sidecar/v1/capabilities` therefore reports
-`api_route_coverage: "bootstrap_system_and_app_state"`,
+`api_route_coverage: "bootstrap_system_and_app_catalog"`,
 `legacy_api_routes: false`, and
 `unmigrated_api_routes_require_legacy_backend: true`. These fields make the
 partial migration machine-readable: a caller must not treat the sidecar as
@@ -105,7 +107,12 @@ idempotent, and writes use a synced temporary file followed by rename. The
 sidecar owns the compatible `config_redirect.txt` selector: a custom target
 must already exist, the redirect is stored at the platform-default path, and
 the response always declares `requires_restart: true`. The sidecar never reads
-or writes workspace or dataset state.
+or writes workspace or dataset contents.
+
+`GET /api/workspaces` reads the linked-workspace records already stored in
+`app_settings.json`. It repairs only absent or duplicate record IDs to retain
+stable UI keys, and returns the legacy list shape. Linking, unlinking,
+activation, pruning, scanning, and all workspace contents remain legacy routes.
 
 All-in-one packaging builds the sidecar as
 `resources/backend/native/studio-sidecar` next to the embedded
@@ -153,7 +160,7 @@ Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
 idempotent cancellation, bounded Python plugin-host preflight, the first three
 Rust-owned legacy-compatible system routes, native app preferences/favorites
-and config-path selection,
+and config-path selection, plus the linked-workspace catalogue,
 all-in-one binary packaging, and Electron's explicit loopback-only lifecycle
 management. Missing: every other legacy `/api/*` route, all scientific
 execution, workspace/dataset persistence, uploads, authentication, live

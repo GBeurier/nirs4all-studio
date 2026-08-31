@@ -6,6 +6,7 @@
 //! scope here; this module owns only UI preferences and favourite pipelines.
 
 use std::{
+    collections::HashSet,
     env,
     fs::{self, OpenOptions},
     io::Write,
@@ -141,6 +142,79 @@ impl AppSettingsStore {
             self.save(&settings)?;
         }
         Ok(removed)
+    }
+
+    /// Return the persisted linked-workspace catalogue without scanning a
+    /// workspace or loading its scientific artifacts. Missing or duplicate IDs
+    /// are repaired in place so callers always receive stable unique keys,
+    /// matching the legacy manager's read-time migration.
+    pub fn linked_workspaces_response(&self) -> Result<Value, String> {
+        let mut settings = self.load()?;
+        let (workspaces, active_workspace_id, mutated) = {
+            let root = settings
+                .as_object_mut()
+                .ok_or_else(|| "app settings root must be a JSON object".to_string())?;
+            let workspaces = root
+                .entry("linked_workspaces")
+                .or_insert_with(|| Value::Array(Vec::new()))
+                .as_array_mut()
+                .ok_or_else(|| "stored linked_workspaces must be a JSON array".to_string())?;
+            let mut seen_ids = HashSet::new();
+            let mut response = Vec::with_capacity(workspaces.len());
+            let mut active_workspace_id = None;
+            let mut mutated = false;
+
+            for (index, workspace) in workspaces.iter_mut().enumerate() {
+                let workspace = workspace.as_object_mut().ok_or_else(|| {
+                    "stored linked_workspaces entries must be JSON objects".to_string()
+                })?;
+                let id = workspace
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                    .map(str::to_owned)
+                    .filter(|id| seen_ids.insert(id.clone()))
+                    .unwrap_or_else(|| {
+                        mutated = true;
+                        next_workspace_id(index, &seen_ids)
+                    });
+                if workspace.get("id").and_then(Value::as_str) != Some(&id) {
+                    workspace.insert("id".into(), Value::String(id.clone()));
+                }
+                seen_ids.insert(id.clone());
+                let is_active = workspace
+                    .get("is_active")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if is_active && active_workspace_id.is_none() {
+                    active_workspace_id = Some(id.clone());
+                }
+                let discovered = workspace
+                    .get("discovered")
+                    .filter(|value| value.is_object())
+                    .filter(|value| value.as_object().is_some_and(|items| !items.is_empty()))
+                    .cloned()
+                    .unwrap_or_else(default_discovered);
+                response.push(json!({
+                    "id": id,
+                    "path": workspace.get("path").and_then(Value::as_str).unwrap_or_default(),
+                    "name": workspace.get("name").and_then(Value::as_str).unwrap_or_default(),
+                    "is_active": is_active,
+                    "linked_at": workspace.get("linked_at").and_then(Value::as_str).unwrap_or_default(),
+                    "last_scanned": workspace.get("last_scanned").and_then(Value::as_str),
+                    "discovered": discovered,
+                }));
+            }
+            (response, active_workspace_id, mutated)
+        };
+        if mutated {
+            self.save(&settings)?;
+        }
+        Ok(json!({
+            "workspaces": workspaces,
+            "active_workspace_id": active_workspace_id,
+            "total": workspaces.len(),
+        }))
     }
 
     #[must_use]
@@ -311,6 +385,26 @@ fn default_settings() -> Value {
     })
 }
 
+fn default_discovered() -> Value {
+    json!({
+        "runs_count": 0,
+        "datasets_count": 0,
+        "exports_count": 0,
+        "templates_count": 0,
+    })
+}
+
+fn next_workspace_id(index: usize, seen_ids: &HashSet<String>) -> String {
+    let mut suffix = index.saturating_add(1);
+    loop {
+        let id = format!("ws_r1_{suffix:016x}");
+        if !seen_ids.contains(&id) {
+            return id;
+        }
+        suffix = suffix.saturating_add(1);
+    }
+}
+
 fn favourite_pipelines(settings: &Value) -> Vec<String> {
     settings
         .get("favorite_pipelines")
@@ -344,7 +438,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     use super::AppSettingsStore;
 
@@ -450,6 +544,59 @@ mod tests {
         assert_eq!(store.reset_config_path().unwrap(), default);
         assert!(!default.join("config_redirect.txt").exists());
         assert_eq!(store.config_path_response()["is_custom"], false);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn lists_linked_workspaces_and_repairs_duplicate_ids() {
+        let directory = temporary_directory("linked-workspaces");
+        fs::write(
+            directory.join("app_settings.json"),
+            serde_json::to_string(&json!({
+                "linked_workspaces": [
+                    {"id": "workspace-a", "path": "/workspaces/a", "name": "A", "is_active": false},
+                    {"id": "workspace-a", "path": "/workspaces/b", "name": "B", "is_active": true, "discovered": {}},
+                ],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let store = AppSettingsStore::new(&directory);
+
+        assert_eq!(
+            store.linked_workspaces_response().unwrap(),
+            json!({
+                "workspaces": [
+                    {
+                        "id": "workspace-a",
+                        "path": "/workspaces/a",
+                        "name": "A",
+                        "is_active": false,
+                        "linked_at": "",
+                        "last_scanned": null,
+                        "discovered": {"runs_count": 0, "datasets_count": 0, "exports_count": 0, "templates_count": 0},
+                    },
+                    {
+                        "id": "ws_r1_0000000000000002",
+                        "path": "/workspaces/b",
+                        "name": "B",
+                        "is_active": true,
+                        "linked_at": "",
+                        "last_scanned": null,
+                        "discovered": {"runs_count": 0, "datasets_count": 0, "exports_count": 0, "templates_count": 0},
+                    },
+                ],
+                "active_workspace_id": "ws_r1_0000000000000002",
+                "total": 2,
+            })
+        );
+        let settings: Value =
+            serde_json::from_str(&fs::read_to_string(directory.join("app_settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            settings["linked_workspaces"][1]["id"],
+            "ws_r1_0000000000000002"
+        );
         fs::remove_dir_all(directory).unwrap();
     }
 }
