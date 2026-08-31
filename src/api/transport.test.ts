@@ -552,6 +552,36 @@ describe("API client request handling", () => {
     );
   });
 
+  it("sends native system status to the sidecar without a Python host", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        status: {
+          workspace_loaded: false,
+          workspace: null,
+          nirs4all_available: false,
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.get("/system/status");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/system/status",
+      expect.any(Object),
+    );
+  });
+
   it("sends the frozen native health contract to the sidecar without a Python host", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({

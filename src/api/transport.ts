@@ -32,6 +32,7 @@ const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
   "/app/favorites",
   "/app/config-path",
   "/workspaces",
+  "/system/status",
   "/system/network",
   "/updates/settings",
 ]);

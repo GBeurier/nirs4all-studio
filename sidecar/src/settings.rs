@@ -204,6 +204,35 @@ impl AppSettingsStore {
         }))
     }
 
+    /// Return the active linked-workspace record without scanning or mutating
+    /// either the workspace or the persisted catalogue.
+    pub fn active_linked_workspace_response(&self) -> Result<Option<Value>, String> {
+        let settings = self.load()?;
+        let Some(workspaces) = settings.get("linked_workspaces") else {
+            return Ok(None);
+        };
+        let workspaces = workspaces
+            .as_array()
+            .ok_or_else(|| "stored linked_workspaces must be a JSON array".to_string())?;
+        let Some(workspace) = workspaces.iter().find(|workspace| {
+            workspace
+                .get("is_active")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        }) else {
+            return Ok(None);
+        };
+        let workspace = workspace
+            .as_object()
+            .ok_or_else(|| "stored linked_workspaces entries must be JSON objects".to_string())?;
+        let id = workspace
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .ok_or_else(|| "active linked workspace is missing an id".to_string())?;
+        Ok(Some(linked_workspace_response(workspace, id)))
+    }
+
     /// Mark a persisted linked workspace as active without loading its data or
     /// invoking a Python workspace manager.  This is intentionally limited to
     /// catalogue state; scanning and scientific-store access stay outside this

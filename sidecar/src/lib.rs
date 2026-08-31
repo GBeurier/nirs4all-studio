@@ -425,7 +425,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -548,6 +548,7 @@ pub fn route_request_with_body(
     match (method, path) {
         ("GET", "/api/health") => HttpResponse::json(200, SidecarState::legacy_health_json()),
         ("GET", "/api/system/readiness") => HttpResponse::json(200, state.legacy_readiness_json()),
+        ("GET", "/api/system/status") => system_status_response(state),
         ("GET", "/api/app/settings") => app_settings_response(state),
         ("PUT", "/api/app/settings") => update_app_settings_response(state, body),
         ("GET", "/api/app/favorites") => app_favourites_response(state),
@@ -580,6 +581,7 @@ pub fn route_request_with_body(
             _,
             "/api/health"
             | "/api/system/readiness"
+            | "/api/system/status"
             | "/sidecar/v1/health"
             | "/sidecar/v1/readiness"
             | "/sidecar/v1/capabilities"
@@ -795,6 +797,33 @@ fn app_linked_workspaces_response(state: &SidecarState) -> HttpResponse {
     match state.app_settings.linked_workspaces_response() {
         Ok(workspaces) => HttpResponse::json(200, workspaces.to_string()),
         Err(error) => app_settings_storage_error("get linked workspaces", &error),
+    }
+}
+
+fn system_status_response(state: &SidecarState) -> HttpResponse {
+    match state.app_settings.active_linked_workspace_response() {
+        Ok(active_workspace) => {
+            let workspace = active_workspace.map(|workspace| {
+                json!({
+                    "name": workspace["name"],
+                    "path": workspace["path"],
+                    "datasets_count": workspace["discovered"]["datasets_count"],
+                    "last_accessed": workspace["last_scanned"],
+                })
+            });
+            HttpResponse::json(
+                200,
+                json!({
+                    "status": {
+                        "workspace_loaded": workspace.is_some(),
+                        "workspace": workspace,
+                        "nirs4all_available": state.python_plugin_host.is_some(),
+                    }
+                })
+                .to_string(),
+            )
+        }
+        Err(error) => app_settings_storage_error("get native system status", &error),
     }
 }
 
@@ -2569,6 +2598,7 @@ mod tests {
             capabilities["features"]["linked_workspace_catalog_route"],
             true
         );
+        assert_eq!(capabilities["features"]["system_status_route"], true);
         assert_eq!(capabilities["features"]["legacy_api_routes"], false);
         assert_eq!(
             capabilities["features"]["unmigrated_api_routes_require_legacy_backend"],
@@ -2831,6 +2861,57 @@ mod tests {
                 }],
                 "active_workspace_id": "workspace-a",
                 "total": 1,
+            })
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn system_status_uses_only_the_active_linked_workspace_catalogue() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-system-status-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let mut empty_state = SidecarState::with_app_settings_dir(&directory);
+        let empty = route_request(&mut empty_state, "GET", "/api/system/status");
+        assert_eq!(empty.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&empty.body).unwrap(),
+            json!({
+                "status": {
+                    "workspace_loaded": false,
+                    "workspace": null,
+                    "nirs4all_available": false,
+                }
+            })
+        );
+        fs::write(
+            directory.join("app_settings.json"),
+            r#"{"linked_workspaces":[{"id":"workspace-a","path":"/workspace/a","name":"A","is_active":true,"last_scanned":"2026-08-31T12:00:00","discovered":{"datasets_count":2}}]}"#,
+        )
+        .unwrap();
+        let mut state = SidecarState::with_app_settings_dir(&directory);
+
+        let response = route_request(&mut state, "GET", "/api/system/status");
+        assert_eq!(response.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&response.body).unwrap(),
+            json!({
+                "status": {
+                    "workspace_loaded": true,
+                    "workspace": {
+                        "name": "A",
+                        "path": "/workspace/a",
+                        "datasets_count": 2,
+                        "last_accessed": "2026-08-31T12:00:00",
+                    },
+                    "nirs4all_available": false,
+                }
             })
         );
         fs::remove_dir_all(directory).unwrap();
@@ -3262,6 +3343,7 @@ mod tests {
         for (method, path, allow) in [
             ("POST", "/api/health", "GET"),
             ("DELETE", "/api/system/readiness", "GET"),
+            ("POST", "/api/system/status", "GET"),
             ("POST", "/sidecar/v1/health", "GET"),
             ("DELETE", "/sidecar/v1/readiness", "GET"),
             ("POST", "/sidecar/v1/capabilities", "GET"),

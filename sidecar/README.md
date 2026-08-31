@@ -30,6 +30,8 @@ R1 provides a small local HTTP control surface only:
 - `GET /api/system/network` (Rust-owned offline preference state; it reads the
   established bounded `update_settings.yaml` preference file and never probes
   a host or invokes Python)
+- `GET /api/system/status` (Rust-owned active linked-workspace catalogue state;
+  it does not scan a workspace or load dataset/store contents)
 - `GET /api/updates/version` (Rust-owned version inventory; Electron provides
   the application version and the bounded Python library host reports only the
   installed `nirs4all` version and interpreter facts)
@@ -152,6 +154,12 @@ also native, atomically updating only that catalogue and never deleting
 workspace files. Linking, pruning, scanning, and all workspace contents remain
 legacy routes until their scanner/store contracts are native.
 
+`GET /api/system/status` derives `workspace_loaded` and its workspace summary
+from that same active catalogue record. It does not inspect the linked path:
+the summary is catalogue state, not scan evidence. Its historical
+`nirs4all_available` field reports only that an explicit Python plugin host was
+configured; it neither imports nor executes Python.
+
 `ConformalPresentationStore` retains only a validated
 `nirs4all::dag_ml::ConformalPresentationV1`, keyed by its immutable
 `presentation_fingerprint`, below `conformal-presentations-v1/` in a
@@ -206,7 +214,7 @@ Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
 idempotent cancellation, bounded Python plugin-host preflight, four
 Rust-owned Python-bridge system routes plus native network state, native app preferences/favorites
-and config-path selection, plus the linked-workspace catalogue and its native
+and config-path selection, native system-status catalogue state, plus the linked-workspace catalogue and its native
 activation/unlink mutations,
 all-in-one binary packaging, and Electron's explicit loopback-only lifecycle
 management. Missing: every other legacy `/api/*` route, all scientific
