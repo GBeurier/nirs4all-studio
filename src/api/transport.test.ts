@@ -432,4 +432,39 @@ describe("API client request handling", () => {
       expect.any(Object),
     );
   });
+
+  it("routes only native linked-workspace state mutations to the sidecar", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => jsonResponse({ success: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.post("/workspaces/workspace-a/activate");
+    await api.delete("/workspaces/workspace-a");
+    await api.post("/workspaces/workspace-a/scan");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:43123/api/workspaces/workspace-a/activate",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:43123/api/workspaces/workspace-a",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/scan",
+      expect.any(Object),
+    );
+  });
 });

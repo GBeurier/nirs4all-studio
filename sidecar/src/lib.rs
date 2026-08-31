@@ -399,7 +399,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -565,6 +565,9 @@ pub fn route_request_with_body(
         (_, "/api/app/config-path") => method_not_allowed(method, path, "GET, POST, DELETE"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
         _ if path.starts_with("/api/app/favorites/") => route_app_favourite(state, method, path),
+        _ if path.starts_with("/api/workspaces/") => {
+            route_linked_workspace_state(state, method, path)
+        }
         _ if path.starts_with("/sidecar/v1/jobs/") => route_job(state, method, path),
         _ if path.starts_with(API_PREFIX) => error_response(
             404,
@@ -757,6 +760,54 @@ fn app_linked_workspaces_response(state: &SidecarState) -> HttpResponse {
         Ok(workspaces) => HttpResponse::json(200, workspaces.to_string()),
         Err(error) => app_settings_storage_error("get linked workspaces", &error),
     }
+}
+
+fn route_linked_workspace_state(state: &SidecarState, method: &str, path: &str) -> HttpResponse {
+    let Some(suffix) = path.strip_prefix("/api/workspaces/") else {
+        return linked_workspace_route_not_found(path);
+    };
+    let mut segments = suffix.split('/');
+    let Some(workspace_id) = segments.next().filter(|id| !id.is_empty()) else {
+        return linked_workspace_route_not_found(path);
+    };
+    let action = segments.next();
+    if segments.next().is_some() || action.is_some_and(|action| action != "activate") {
+        return linked_workspace_route_not_found(path);
+    }
+
+    match (method, action) {
+        ("DELETE", None) => match state.app_settings.unlink_linked_workspace(workspace_id) {
+            Ok(true) => HttpResponse::json(
+                200,
+                json!({"success": true, "message": "Workspace unlinked"}).to_string(),
+            ),
+            Ok(false) => {
+                HttpResponse::json(404, json!({"detail": "Workspace not found"}).to_string())
+            }
+            Err(error) => app_settings_storage_error("unlink workspace", &error),
+        },
+        ("POST", Some("activate")) => {
+            match state.app_settings.activate_linked_workspace(workspace_id) {
+                Ok(Some(workspace)) => HttpResponse::json(200, workspace.to_string()),
+                Ok(None) => {
+                    HttpResponse::json(404, json!({"detail": "Workspace not found"}).to_string())
+                }
+                Err(error) => app_settings_storage_error("activate workspace", &error),
+            }
+        }
+        (_, None) => method_not_allowed(method, path, "DELETE"),
+        (_, Some("activate")) => method_not_allowed(method, path, "POST"),
+        _ => linked_workspace_route_not_found(path),
+    }
+}
+
+fn linked_workspace_route_not_found(path: &str) -> HttpResponse {
+    error_response(
+        404,
+        ErrorCode::RouteNotFound,
+        "No native sidecar route matches this path",
+        BTreeMap::from([("path".into(), path.into())]),
+    )
 }
 
 fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
@@ -2131,6 +2182,68 @@ mod tests {
                 "active_workspace_id": "workspace-a",
                 "total": 1,
             })
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn linked_workspace_state_mutations_are_native_and_persisted() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-linked-workspace-state-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join("app_settings.json"),
+            r#"{"linked_workspaces":[{"id":"workspace-a","path":"/workspace/a","name":"A","is_active":true,"linked_at":"2026-08-31T12:00:00","last_scanned":null,"discovered":{"runs_count":1}},{"id":"workspace-b","path":"/workspace/b","name":"B","is_active":false,"linked_at":"2026-08-31T12:01:00","last_scanned":null,"discovered":{"datasets_count":2}}]}"#,
+        )
+        .unwrap();
+        let mut state = SidecarState::with_app_settings_dir(&directory);
+
+        let activated = route_request(&mut state, "POST", "/api/workspaces/workspace-b/activate");
+        assert_eq!(activated.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&activated.body).unwrap()["id"],
+            "workspace-b"
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(&activated.body).unwrap()["is_active"],
+            true
+        );
+        let listed = route_request(&mut state, "GET", "/api/workspaces");
+        assert_eq!(
+            serde_json::from_str::<Value>(&listed.body).unwrap()["active_workspace_id"],
+            "workspace-b"
+        );
+
+        let unlinked = route_request(&mut state, "DELETE", "/api/workspaces/workspace-b");
+        assert_eq!(unlinked.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&unlinked.body).unwrap(),
+            json!({"success": true, "message": "Workspace unlinked"})
+        );
+        let relisted = route_request(&mut state, "GET", "/api/workspaces");
+        let relisted: Value = serde_json::from_str(&relisted.body).unwrap();
+        assert_eq!(relisted["active_workspace_id"], "workspace-a");
+        assert_eq!(relisted["total"], 1);
+
+        let missing = route_request(&mut state, "POST", "/api/workspaces/missing/activate");
+        assert_eq!(missing.status, 404);
+        assert_eq!(
+            serde_json::from_str::<Value>(&missing.body).unwrap(),
+            json!({"detail": "Workspace not found"})
+        );
+        assert_eq!(
+            route_request(&mut state, "GET", "/api/workspaces/workspace-a/activate",).status,
+            405
+        );
+        assert_eq!(
+            route_request(&mut state, "POST", "/api/workspaces/workspace-a").status,
+            405
         );
         fs::remove_dir_all(directory).unwrap();
     }

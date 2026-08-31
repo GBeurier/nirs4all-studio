@@ -189,21 +189,7 @@ impl AppSettingsStore {
                 if is_active && active_workspace_id.is_none() {
                     active_workspace_id = Some(id.clone());
                 }
-                let discovered = workspace
-                    .get("discovered")
-                    .filter(|value| value.is_object())
-                    .filter(|value| value.as_object().is_some_and(|items| !items.is_empty()))
-                    .cloned()
-                    .unwrap_or_else(default_discovered);
-                response.push(json!({
-                    "id": id,
-                    "path": workspace.get("path").and_then(Value::as_str).unwrap_or_default(),
-                    "name": workspace.get("name").and_then(Value::as_str).unwrap_or_default(),
-                    "is_active": is_active,
-                    "linked_at": workspace.get("linked_at").and_then(Value::as_str).unwrap_or_default(),
-                    "last_scanned": workspace.get("last_scanned").and_then(Value::as_str),
-                    "discovered": discovered,
-                }));
+                response.push(linked_workspace_response(workspace, &id));
             }
             (response, active_workspace_id, mutated)
         };
@@ -215,6 +201,87 @@ impl AppSettingsStore {
             "active_workspace_id": active_workspace_id,
             "total": workspaces.len(),
         }))
+    }
+
+    /// Mark a persisted linked workspace as active without loading its data or
+    /// invoking a Python workspace manager.  This is intentionally limited to
+    /// catalogue state; scanning and scientific-store access stay outside this
+    /// settings store until their native contracts are available.
+    pub fn activate_linked_workspace(&self, workspace_id: &str) -> Result<Option<Value>, String> {
+        let mut settings = self.load()?;
+        let root = settings
+            .as_object_mut()
+            .ok_or_else(|| "app settings root must be a JSON object".to_string())?;
+        let workspaces = root
+            .entry("linked_workspaces")
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .ok_or_else(|| "stored linked_workspaces must be a JSON array".to_string())?;
+
+        if !workspaces.iter().any(|workspace| {
+            workspace
+                .get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| id == workspace_id)
+        }) {
+            return Ok(None);
+        }
+
+        let mut activated = None;
+        for workspace in workspaces {
+            let workspace = workspace.as_object_mut().ok_or_else(|| {
+                "stored linked_workspaces entries must be JSON objects".to_string()
+            })?;
+            let is_active = workspace.get("id").and_then(Value::as_str) == Some(workspace_id);
+            workspace.insert("is_active".into(), Value::Bool(is_active));
+            if is_active {
+                activated = Some(linked_workspace_response(workspace, workspace_id));
+            }
+        }
+        self.save(&settings)?;
+        Ok(activated)
+    }
+
+    /// Remove one linked workspace from the local catalogue.  No workspace
+    /// files are deleted.  When the active entry is removed, preserve the
+    /// legacy behaviour by selecting the first remaining workspace.
+    pub fn unlink_linked_workspace(&self, workspace_id: &str) -> Result<bool, String> {
+        let mut settings = self.load()?;
+        let root = settings
+            .as_object_mut()
+            .ok_or_else(|| "app settings root must be a JSON object".to_string())?;
+        let workspaces = root
+            .entry("linked_workspaces")
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .ok_or_else(|| "stored linked_workspaces must be a JSON array".to_string())?;
+        let was_active = workspaces.iter().any(|workspace| {
+            workspace.as_object().is_some_and(|workspace| {
+                workspace.get("id").and_then(Value::as_str) == Some(workspace_id)
+                    && workspace
+                        .get("is_active")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+            })
+        });
+        let original_len = workspaces.len();
+        workspaces.retain(|workspace| {
+            workspace
+                .get("id")
+                .and_then(Value::as_str)
+                .is_none_or(|id| id != workspace_id)
+        });
+        let removed = workspaces.len() != original_len;
+        if !removed {
+            return Ok(false);
+        }
+        if was_active {
+            if let Some(workspace) = workspaces.first_mut().and_then(Value::as_object_mut) {
+                workspace.insert("is_active".into(), Value::Bool(true));
+            }
+        }
+        self.save(&settings)?;
+        Ok(true)
     }
 
     #[must_use]
@@ -382,6 +449,24 @@ fn default_settings() -> Value {
             "density": "comfortable",
             "language": "en",
         },
+    })
+}
+
+fn linked_workspace_response(workspace: &Map<String, Value>, id: &str) -> Value {
+    let discovered = workspace
+        .get("discovered")
+        .filter(|value| value.is_object())
+        .filter(|value| value.as_object().is_some_and(|items| !items.is_empty()))
+        .cloned()
+        .unwrap_or_else(default_discovered);
+    json!({
+        "id": id,
+        "path": workspace.get("path").and_then(Value::as_str).unwrap_or_default(),
+        "name": workspace.get("name").and_then(Value::as_str).unwrap_or_default(),
+        "is_active": workspace.get("is_active").and_then(Value::as_bool).unwrap_or(false),
+        "linked_at": workspace.get("linked_at").and_then(Value::as_str).unwrap_or_default(),
+        "last_scanned": workspace.get("last_scanned").and_then(Value::as_str),
+        "discovered": discovered,
     })
 }
 
@@ -597,6 +682,64 @@ mod tests {
             settings["linked_workspaces"][1]["id"],
             "ws_r1_0000000000000002"
         );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn activates_and_unlinks_linked_workspaces_without_touching_workspace_files() {
+        let directory = temporary_directory("linked-workspace-mutations");
+        fs::write(
+            directory.join("app_settings.json"),
+            serde_json::to_string(&json!({
+                "linked_workspaces": [
+                    {
+                        "id": "workspace-a",
+                        "path": "/workspaces/a",
+                        "name": "A",
+                        "is_active": true,
+                        "linked_at": "2026-08-31T12:00:00",
+                        "last_scanned": null,
+                        "discovered": {"runs_count": 1},
+                    },
+                    {
+                        "id": "workspace-b",
+                        "path": "/workspaces/b",
+                        "name": "B",
+                        "is_active": false,
+                        "linked_at": "2026-08-31T12:01:00",
+                        "last_scanned": "2026-08-31T12:02:00",
+                        "discovered": {"datasets_count": 2},
+                    },
+                ],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let store = AppSettingsStore::new(&directory);
+
+        assert_eq!(store.activate_linked_workspace("missing").unwrap(), None);
+        assert_eq!(
+            store.activate_linked_workspace("workspace-b").unwrap(),
+            Some(json!({
+                "id": "workspace-b",
+                "path": "/workspaces/b",
+                "name": "B",
+                "is_active": true,
+                "linked_at": "2026-08-31T12:01:00",
+                "last_scanned": "2026-08-31T12:02:00",
+                "discovered": {"datasets_count": 2},
+            }))
+        );
+        assert_eq!(
+            store.linked_workspaces_response().unwrap()["active_workspace_id"],
+            "workspace-b"
+        );
+        assert!(store.unlink_linked_workspace("workspace-b").unwrap());
+        assert!(!store.unlink_linked_workspace("workspace-b").unwrap());
+        let listed = store.linked_workspaces_response().unwrap();
+        assert_eq!(listed["active_workspace_id"], "workspace-a");
+        assert_eq!(listed["total"], 1);
+        assert_eq!(listed["workspaces"][0]["is_active"], true);
         fs::remove_dir_all(directory).unwrap();
     }
 }

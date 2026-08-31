@@ -30,6 +30,7 @@ const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
   "/app/config-path",
   "/workspaces",
 ]);
+const NATIVE_SIDECAR_WORKSPACE_STATE_ENDPOINT = /^\/workspaces\/[^/?]+(?:\/(activate))?$/;
 
 type ElectronBackendStatus =
   | "stopped"
@@ -173,9 +174,9 @@ export function resetBackendUrl(): void {
   backendUrlPromise = null;
 }
 
-async function resolveApiRoute(endpoint: string): Promise<ApiRoute> {
+async function resolveApiRoute(endpoint: string, method: string): Promise<ApiRoute> {
   if (
-    !isNativeSidecarEndpoint(endpoint) ||
+    !isNativeSidecarEndpoint(endpoint, method) ||
     !isElectronEnvironment()
   ) {
     return { baseUrl: await getApiBaseUrl(), source: "backend" };
@@ -202,11 +203,22 @@ async function resolveApiRoute(endpoint: string): Promise<ApiRoute> {
   return { baseUrl: await getApiBaseUrl(), source: "backend" };
 }
 
-function isNativeSidecarEndpoint(endpoint: string): boolean {
+function isNativeSidecarEndpoint(endpoint: string, method: string): boolean {
   return (
     NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS.has(endpoint) ||
     NATIVE_SIDECAR_STATE_ENDPOINTS.has(endpoint) ||
-    endpoint.startsWith("/app/favorites/")
+    endpoint.startsWith("/app/favorites/") ||
+    isNativeLinkedWorkspaceStateEndpoint(endpoint, method)
+  );
+}
+
+function isNativeLinkedWorkspaceStateEndpoint(endpoint: string, method: string): boolean {
+  const match = NATIVE_SIDECAR_WORKSPACE_STATE_ENDPOINT.exec(endpoint);
+  if (!match) return false;
+  const normalizedMethod = method.toUpperCase();
+  return (
+    (normalizedMethod === "DELETE" && match[1] === undefined) ||
+    (normalizedMethod === "POST" && match[1] === "activate")
   );
 }
 
@@ -409,7 +421,7 @@ async function fetchWithRetry(
   config: RequestInit,
 ): Promise<Response> {
   let lastError: unknown;
-  let route = await resolveApiRoute(endpoint);
+  let route = await resolveApiRoute(endpoint, config.method ?? "GET");
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const url = `${route.baseUrl}${endpoint}`;
@@ -428,7 +440,7 @@ async function fetchWithRetry(
           error,
         );
         await prepareElectronBackendRetry(endpoint);
-        route = await resolveApiRoute(endpoint);
+        route = await resolveApiRoute(endpoint, config.method ?? "GET");
         continue;
       }
       throw error;
