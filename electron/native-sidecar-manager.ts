@@ -7,6 +7,9 @@ const SIDECAR_PORT_ENV = "NIRS4ALL_NATIVE_SIDECAR_PORT";
 const SIDECAR_ENABLE_PACKAGED_ENV = "NIRS4ALL_ENABLE_NATIVE_SIDECAR";
 const PYTHON_PLUGIN_HOST_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST";
 const PYTHON_PLUGIN_HOST_BUNDLED_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
+const RUNTIME_MODE_ENV = "NIRS4ALL_RUNTIME_MODE";
+const RUNTIME_KIND_ENV = "NIRS4ALL_RUNTIME_KIND";
+const BUILD_INFO_PATH_ENV = "NIRS4ALL_BUILD_INFO_PATH";
 const SIDECAR_READY_PREFIX = "STUDIO_SIDECAR_READY ";
 const SIDECAR_START_TIMEOUT_MS = 15_000;
 const MAX_STARTUP_OUTPUT_BYTES = 8 * 1024;
@@ -43,6 +46,12 @@ export interface NativeSidecarStartOptions {
   allowPackagedResource?: boolean;
   /** Explicit library/plugin interpreter; never an HTTP backend command. */
   pythonPluginHost?: string | null;
+  /** Product runtime metadata for Rust-owned system inventory responses. */
+  runtimeMode?: string | null;
+  /** Distinguishes bundled, managed, custom, and development plugin hosts. */
+  runtimeKind?: string | null;
+  /** Packaged build metadata selected by Electron, never a renderer input. */
+  buildInfoPath?: string | null;
 }
 
 /**
@@ -191,6 +200,12 @@ export class NativeSidecarManager {
       childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
     if (bundledPythonPluginHost)
       childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV] = "true";
+    if (options.runtimeMode?.trim())
+      childEnvironment[RUNTIME_MODE_ENV] = options.runtimeMode.trim();
+    if (options.runtimeKind?.trim())
+      childEnvironment[RUNTIME_KIND_ENV] = options.runtimeKind.trim();
+    if (options.buildInfoPath?.trim())
+      childEnvironment[BUILD_INFO_PATH_ENV] = options.buildInfoPath.trim();
     try {
       child = spawn(
         binaryPath,

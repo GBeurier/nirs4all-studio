@@ -248,6 +248,34 @@ describe("API client request handling", () => {
     );
   });
 
+  it("sends the migrated system-build route to a running native sidecar", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      build: { flavor: "development", gpu_enabled: false },
+      gpu: { cuda_available: false, metal_available: false, backends: {} },
+      runtime_mode: "development",
+      is_frozen: false,
+      summary: { gpu_available: false },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: true,
+      }),
+    });
+
+    await api.get("/system/build");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/system/build",
+      expect.any(Object),
+    );
+  });
+
   it("sends the migrated runtime-coherence route to a running native sidecar", async () => {
     const fetchMock = vi
       .fn()

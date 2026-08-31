@@ -24,6 +24,9 @@ R1 provides a small local HTTP control surface only:
   the configured Python plugin host only to inspect optional imports)
 - `GET /api/system/info` (the same bounded host bridge for the Settings system
   inventory; it does not create or run a job)
+- `GET /api/system/build` (Rust-owned build metadata plus a bounded optional
+  `torch` probe in the configured Python library host; it does not create or
+  run a job)
 - `GET /api/system/env-coherence` (Rust-owned Settings runtime alignment; the
   configured Python is only the explicit library/plugin host, never an HTTP
   backend)
@@ -97,7 +100,9 @@ interpreter with `-I`, bounds it to three seconds, and checks `import nirs4all`.
 `GET /api/system/capabilities` and `GET /api/system/info` use the same bridge
 with a bounded 15-second optional-import probe. `GET /api/system/env-coherence`
 uses a bounded three-second import/runtime probe and reports `python_plugin_host`
-as the runtime kind. All three return their legacy response shapes without
+as the runtime kind. `GET /api/system/build` assembles the product-selected
+build metadata in Rust and uses the same bounded host only to inspect optional
+`torch` GPU availability. All four return their legacy response shapes without
 launching a scientific job. All bridge routes are capability evidence, never
 transparent Python fallback.
 
@@ -169,7 +174,7 @@ WebSocket parity or a live subscription service.
 
 Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
-idempotent cancellation, bounded Python plugin-host preflight, the first three
+idempotent cancellation, bounded Python plugin-host preflight, the first four
 Rust-owned legacy-compatible system routes, native app preferences/favorites
 and config-path selection, plus the linked-workspace catalogue,
 all-in-one binary packaging, and Electron's explicit loopback-only lifecycle

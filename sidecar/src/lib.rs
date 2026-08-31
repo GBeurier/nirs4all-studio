@@ -41,7 +41,9 @@ pub const MAX_WS_DATA_BYTES: usize = 16 * 1024;
 pub const MAX_WS_DATA_KEYS: usize = 16;
 pub const PYTHON_PLUGIN_HOST_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST";
 pub const PYTHON_PLUGIN_HOST_BUNDLED_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
+pub const RUNTIME_MODE_ENV: &str = "NIRS4ALL_RUNTIME_MODE";
 pub const RUNTIME_KIND_ENV: &str = "NIRS4ALL_RUNTIME_KIND";
+pub const BUILD_INFO_PATH_ENV: &str = "NIRS4ALL_BUILD_INFO_PATH";
 pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(3);
 pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration = Duration::from_secs(15);
 pub const MAX_PYTHON_PLUGIN_OUTPUT_BYTES: usize = 8 * 1024;
@@ -283,7 +285,9 @@ pub struct SidecarState {
     job_ttl: Duration,
     python_plugin_host: Option<PathBuf>,
     python_plugin_host_bundled: bool,
+    runtime_mode: String,
     runtime_kind: String,
+    build_info_path: Option<PathBuf>,
     app_settings: AppSettingsStore,
 }
 
@@ -297,7 +301,9 @@ impl Default for SidecarState {
             job_ttl: CONTROL_JOB_TTL,
             python_plugin_host: None,
             python_plugin_host_bundled: false,
+            runtime_mode: "development".into(),
             runtime_kind: "python_plugin_host".into(),
+            build_info_path: None,
             app_settings: AppSettingsStore::from_environment(),
         }
     }
@@ -323,6 +329,10 @@ impl SidecarState {
             .map(PathBuf::from);
         let python_plugin_host_bundled = env::var(PYTHON_PLUGIN_HOST_BUNDLED_ENV)
             .is_ok_and(|value| value.eq_ignore_ascii_case("true"));
+        let runtime_mode = env::var(RUNTIME_MODE_ENV)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "development".into());
         let runtime_kind = env::var(RUNTIME_KIND_ENV)
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -330,7 +340,11 @@ impl SidecarState {
         Self {
             python_plugin_host,
             python_plugin_host_bundled,
+            runtime_mode,
             runtime_kind,
+            build_info_path: env::var_os(BUILD_INFO_PATH_ENV)
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from),
             app_settings: AppSettingsStore::from_environment(),
             ..Self::default()
         }
@@ -385,7 +399,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -522,6 +536,7 @@ pub fn route_request_with_body(
         ("GET", "/sidecar/v1/python/preflight") => python_plugin_preflight_response(state),
         ("GET", "/api/system/capabilities") => python_capabilities_response(state),
         ("GET", "/api/system/info") => python_system_info_response(state),
+        ("GET", "/api/system/build") => python_system_build_response(state),
         ("GET", "/api/system/env-coherence") => python_env_coherence_response(state),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
         ("GET", "/sidecar/v1/ws") => error_response(
@@ -540,6 +555,7 @@ pub fn route_request_with_body(
             | "/sidecar/v1/python/preflight"
             | "/api/system/capabilities"
             | "/api/system/info"
+            | "/api/system/build"
             | "/api/system/env-coherence"
             | "/api/workspaces"
             | "/sidecar/v1/ws",
@@ -783,6 +799,110 @@ fn python_system_info_response(state: &SidecarState) -> HttpResponse {
     }
 }
 
+/// Return build metadata from the Rust-owned launch configuration and a
+/// bounded Python-library probe for optional GPU runtime facts.  The sidecar
+/// owns the HTTP route and response assembly; the configured interpreter is
+/// only a library host for `torch` inspection and never serves HTTP or starts
+/// scientific execution.
+fn python_system_build_response(state: &SidecarState) -> HttpResponse {
+    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+        return error_response(
+            503,
+            ErrorCode::PythonPluginUnavailable,
+            "No Python plugin host is configured for this native sidecar",
+            BTreeMap::from([("reason".into(), "not_configured".into())]),
+        );
+    };
+    match read_python_system_build(python_plugin_host) {
+        Ok(probe) => HttpResponse::json(200, native_system_build_json(state, &probe)),
+        Err(reason) => error_response(
+            503,
+            ErrorCode::PythonPluginPreflightFailed,
+            "The configured Python plugin host could not report build GPU availability",
+            BTreeMap::from([("reason".into(), reason.as_str().into())]),
+        ),
+    }
+}
+
+fn native_system_build_json(state: &SidecarState, probe: &Value) -> String {
+    let gpu = probe
+        .get("gpu")
+        .cloned()
+        .expect("read_python_system_build validates gpu");
+    let is_frozen = probe
+        .get("is_frozen")
+        .and_then(Value::as_bool)
+        .expect("read_python_system_build validates is_frozen");
+    let cuda_available = gpu["cuda_available"]
+        .as_bool()
+        .expect("read_python_system_build validates cuda_available");
+    let metal_available = gpu["metal_available"]
+        .as_bool()
+        .expect("read_python_system_build validates metal_available");
+    let gpu_type = if metal_available {
+        Value::String("metal".into())
+    } else if cuda_available {
+        Value::String("cuda".into())
+    } else {
+        Value::Null
+    };
+    let gpu_device = gpu.get("device_name").cloned().unwrap_or(Value::Null);
+    let build = native_build_info(state);
+    let flavor = build
+        .get("flavor")
+        .cloned()
+        .expect("native_build_info always provides flavor");
+    let gpu_build = build
+        .get("gpu_enabled")
+        .cloned()
+        .expect("native_build_info always provides gpu_enabled");
+
+    json!({
+        "build": build,
+        "gpu": gpu,
+        "runtime_mode": state.runtime_mode.clone(),
+        "is_frozen": is_frozen,
+        "summary": {
+            "flavor": flavor,
+            "gpu_build": gpu_build,
+            "gpu_available": cuda_available || metal_available,
+            "gpu_type": gpu_type,
+            "gpu_device": gpu_device,
+            "runtime_mode": state.runtime_mode.clone(),
+        },
+    })
+    .to_string()
+}
+
+fn native_build_info(state: &SidecarState) -> Value {
+    let mut default = serde_json::Map::new();
+    default.insert("flavor".into(), Value::String("development".into()));
+    default.insert("gpu_enabled".into(), Value::Bool(false));
+    let Some(path) = state.build_info_path.as_deref() else {
+        return Value::Object(default);
+    };
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Value::Object(default);
+    };
+    let Ok(Value::Object(mut build)) = serde_json::from_str::<Value>(&raw) else {
+        return Value::Object(default);
+    };
+
+    let flavor = build
+        .get("flavor")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("development");
+    let gpu_enabled = build
+        .get("gpu_enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(matches!(flavor, "gpu" | "gpu-metal"));
+    default.insert("flavor".into(), Value::String(flavor.into()));
+    default.insert("gpu_enabled".into(), Value::Bool(gpu_enabled));
+    build.extend(default);
+    Value::Object(build)
+}
+
 /// Return Studio's runtime alignment contract from the explicit Python plugin
 /// host. The native sidecar owns this HTTP response; Python only reports its
 /// own interpreter facts and verifies that the library host can import
@@ -958,6 +1078,46 @@ fn read_python_system_info(python_plugin_host: &Path) -> Result<String, PythonPl
         return Err(PythonPluginBridgeFailure::MalformedResponse);
     }
     Ok(output.to_string())
+}
+
+fn read_python_system_build(python_plugin_host: &Path) -> Result<Value, PythonPluginBridgeFailure> {
+    const GPU_BOOLEAN_FIELDS: &[&str] = &[
+        "cuda_available",
+        "mps_available",
+        "metal_available",
+        "torch_cuda_available",
+    ];
+    const GPU_NULLABLE_STRING_FIELDS: &[&str] = &[
+        "device_name",
+        "cuda_version",
+        "driver_version",
+        "torch_version",
+    ];
+    let script = "import json,sys\ngpu={'cuda_available':False,'mps_available':False,'metal_available':False,'device_name':None,'device_count':0,'cuda_version':None,'driver_version':None,'torch_cuda_available':False,'torch_version':None,'detection_source':'python_plugin_no_torch','backends':{}}\ntry:\n import torch\n gpu['detection_source']='python_plugin_torch'\n gpu['torch_version']=str(getattr(torch,'__version__','unknown'))\n gpu['cuda_version']=getattr(getattr(torch,'version',None),'cuda',None)\n cuda=bool(torch.cuda.is_available())\n mps=bool(getattr(getattr(torch,'backends',None),'mps',None) and torch.backends.mps.is_available())\n gpu['cuda_available']=cuda\n gpu['torch_cuda_available']=cuda\n gpu['mps_available']=mps\n gpu['metal_available']=mps\n if cuda:\n  count=int(torch.cuda.device_count()); gpu['device_count']=count\n  device=str(torch.cuda.get_device_name(0)) if count else None\n  gpu['device_name']=device\n  gpu['backends']['pytorch_cuda']={'available':True,'device_name':device,'cuda_version':gpu['cuda_version']}\n if mps: gpu['backends']['pytorch_mps']={'available':True}\nexcept Exception: pass\nprint(json.dumps({'gpu':gpu,'is_frozen':bool(hasattr(sys,'_MEIPASS'))}, separators=(',',':'), sort_keys=True))";
+    let output = run_python_plugin_json(
+        python_plugin_host,
+        script,
+        PYTHON_PLUGIN_CAPABILITIES_TIMEOUT,
+    )?;
+    let gpu = output
+        .get("gpu")
+        .and_then(Value::as_object)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    if GPU_BOOLEAN_FIELDS
+        .iter()
+        .any(|key| !gpu.get(*key).is_some_and(Value::is_boolean))
+        || GPU_NULLABLE_STRING_FIELDS.iter().any(|key| {
+            !gpu.get(*key)
+                .is_some_and(|value| value.is_null() || value.is_string())
+        })
+        || !gpu.get("device_count").is_some_and(Value::is_u64)
+        || !gpu.get("detection_source").is_some_and(Value::is_string)
+        || !gpu.get("backends").is_some_and(Value::is_object)
+        || !output.get("is_frozen").is_some_and(Value::is_boolean)
+    {
+        return Err(PythonPluginBridgeFailure::MalformedResponse);
+    }
+    Ok(output)
 }
 
 fn read_python_env_coherence(
@@ -1715,6 +1875,7 @@ mod tests {
             true
         );
         assert_eq!(capabilities["features"]["system_info_route"], true);
+        assert_eq!(capabilities["features"]["system_build_route"], true);
         assert_eq!(capabilities["features"]["python_plugin_preflight"], false);
         assert_eq!(capabilities["features"]["python_plugin_execution"], false);
 
@@ -1742,6 +1903,9 @@ mod tests {
 
         let unavailable_info = route_request(&mut unconfigured, "GET", "/api/system/info");
         assert_eq!(unavailable_info.status, 503);
+
+        let unavailable_build = route_request(&mut unconfigured, "GET", "/api/system/build");
+        assert_eq!(unavailable_build.status, 503);
 
         let unavailable_runtime =
             route_request(&mut unconfigured, "GET", "/api/system/env-coherence");
@@ -1772,6 +1936,41 @@ mod tests {
             "python_plugin_preflight_failed"
         );
         assert_eq!(failed_body["error"]["details"]["reason"], "spawn_failed");
+    }
+
+    #[test]
+    fn native_build_metadata_is_normalized_without_trusting_an_invalid_file() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-build-info-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let valid = directory.join("build_info.json");
+        fs::write(&valid, r#"{"flavor":"gpu-metal","profile":"gpu"}"#).unwrap();
+        let mut state = SidecarState {
+            runtime_mode: "bundled".into(),
+            build_info_path: Some(valid),
+            ..SidecarState::default()
+        };
+
+        let build = native_build_info(&state);
+        assert_eq!(build["flavor"], "gpu-metal");
+        assert_eq!(build["gpu_enabled"], true);
+        assert_eq!(build["profile"], "gpu");
+
+        let invalid = directory.join("invalid-build-info.json");
+        fs::write(&invalid, "[]").unwrap();
+        state.build_info_path = Some(invalid);
+        let fallback = native_build_info(&state);
+        assert_eq!(
+            fallback,
+            json!({"flavor":"development","gpu_enabled":false})
+        );
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -2086,6 +2285,7 @@ mod tests {
             ("POST", "/sidecar/v1/python/preflight", "GET"),
             ("POST", "/api/system/capabilities", "GET"),
             ("POST", "/api/system/info", "GET"),
+            ("POST", "/api/system/build", "GET"),
             ("POST", "/api/system/env-coherence", "GET"),
             ("GET", "/sidecar/v1/jobs", "POST"),
             ("PUT", "/sidecar/v1/jobs/job-r1-1", "GET"),
