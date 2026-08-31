@@ -27,6 +27,9 @@ R1 provides a small local HTTP control surface only:
 - `GET /api/system/build` (Rust-owned build metadata plus a bounded optional
   `torch` probe in the configured Python library host; it does not create or
   run a job)
+- `GET /api/system/network` (Rust-owned offline preference state; it reads the
+  established bounded `update_settings.yaml` preference file and never probes
+  a host or invokes Python)
 - `GET /api/system/env-coherence` (Rust-owned Settings runtime alignment; the
   configured Python is only the explicit library/plugin host, never an HTTP
   backend)
@@ -105,8 +108,10 @@ uses a bounded three-second import/runtime probe and reports `python_plugin_host
 as the runtime kind. `GET /api/system/build` assembles the product-selected
 build metadata in Rust and uses the same bounded host only to inspect optional
 `torch` GPU availability. All four return their legacy response shapes without
-launching a scientific job. All bridge routes are capability evidence, never
-transparent Python fallback.
+launching a scientific job. `GET /api/system/network` is fully native: it reads
+only the established offline preference and the `NIRS4ALL_OFFLINE` process
+override, matching the legacy route without a network probe. All bridge routes
+are capability evidence, never transparent Python fallback.
 
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the
@@ -178,8 +183,8 @@ WebSocket parity or a live subscription service.
 
 Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
-idempotent cancellation, bounded Python plugin-host preflight, the first four
-Rust-owned legacy-compatible system routes, native app preferences/favorites
+idempotent cancellation, bounded Python plugin-host preflight, four
+Rust-owned Python-bridge system routes plus native network state, native app preferences/favorites
 and config-path selection, plus the linked-workspace catalogue and its native
 activation/unlink mutations,
 all-in-one binary packaging, and Electron's explicit loopback-only lifecycle

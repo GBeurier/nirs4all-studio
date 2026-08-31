@@ -29,6 +29,7 @@ const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
   "/app/favorites",
   "/app/config-path",
   "/workspaces",
+  "/system/network",
 ]);
 const NATIVE_SIDECAR_WORKSPACE_STATE_ENDPOINT = /^\/workspaces\/[^/?]+(?:\/(activate))?$/;
 

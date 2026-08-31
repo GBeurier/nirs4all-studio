@@ -433,6 +433,30 @@ describe("API client request handling", () => {
     );
   });
 
+  it("sends native network state to the sidecar without a Python host", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ online: true, forced: false, mode: "auto", env_forced: false }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.get("/system/network");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/system/network",
+      expect.any(Object),
+    );
+  });
+
   it("routes only native linked-workspace state mutations to the sidecar", async () => {
     const fetchMock = vi.fn().mockImplementation(() => jsonResponse({ success: true }));
     vi.stubGlobal("fetch", fetchMock);
