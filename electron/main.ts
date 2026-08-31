@@ -19,7 +19,8 @@ import {
 
 const portableLayout = applyPortablePathOverrides(app);
 
-const SENTRY_DSN_DEFAULT = "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960";
+const SENTRY_DSN_DEFAULT =
+  "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960";
 const SENTRY_DSN_FROM_ENV = process.env.SENTRY_DSN?.trim() || "";
 type SentryMainModule = typeof import("@sentry/electron/main");
 let SentryMain: SentryMainModule | null = null;
@@ -57,12 +58,15 @@ function sanitizeSentryEvent(event: {
   return event;
 }
 
-function enableMainSentry(consentStatus: TelemetryConsentStatus = getTelemetryConsentStatus(app)): void {
+function enableMainSentry(
+  consentStatus: TelemetryConsentStatus = getTelemetryConsentStatus(app),
+): void {
   const dsn = syncSentryEnvironment(consentStatus);
   if (!dsn || SentryMain) return;
 
   try {
-    const Sentry = require("@sentry/electron/main") as typeof import("@sentry/electron/main");
+    const Sentry =
+      require("@sentry/electron/main") as typeof import("@sentry/electron/main");
     Sentry.init({
       dsn,
       release: `nirs4all-studio@${app.getVersion()}`,
@@ -103,7 +107,10 @@ if (process.platform === "linux" && process.env.WSL_DISTRO_NAME) {
 }
 
 // Disable Autofill CDP domain (not supported in Electron, causes DevTools errors)
-app.commandLine.appendSwitch("disable-features", "Autofill,AutofillServerCommunication");
+app.commandLine.appendSwitch(
+  "disable-features",
+  "Autofill,AutofillServerCommunication",
+);
 
 // Initialize persistent file logging (writes to {userData}/logs/)
 initLogger();
@@ -117,7 +124,11 @@ const backendManager = new BackendManager();
 backendManager.setEnvManager(envManager);
 const nativeSidecarManager = new NativeSidecarManager();
 
-const ACTIVE_BACKEND_STATUSES = new Set<BackendStatus>(["starting", "running", "restarting"]);
+const ACTIVE_BACKEND_STATUSES = new Set<BackendStatus>([
+  "starting",
+  "running",
+  "restarting",
+]);
 
 async function restartBackendAfterTelemetryChange(): Promise<boolean> {
   const status = backendManager.getInfo().status;
@@ -127,23 +138,53 @@ async function restartBackendAfterTelemetryChange(): Promise<boolean> {
     await backendManager.restart();
     return true;
   } catch (error) {
-    console.error("Failed to restart backend after telemetry consent change:", error);
+    console.error(
+      "Failed to restart backend after telemetry consent change:",
+      error,
+    );
     return false;
   }
 }
 
-function startNativeSidecarIfConfigured(): void {
-  void nativeSidecarManager.start()
+function nativeSidecarStartOptions() {
+  return {
+    allowPackagedResource: app.isPackaged,
+    pythonPluginHost: envManager.getConfiguredPythonPath(),
+  };
+}
+
+function startNativeSidecar(): void {
+  void nativeSidecarManager
+    .start(nativeSidecarStartOptions())
     .then((info) => {
       if (info.status === "running") {
-        console.log(`Native Studio sidecar ready at ${info.url} (${info.protocolVersion})`);
+        console.log(
+          `Native Studio sidecar ready at ${info.url} (${info.protocolVersion})`,
+        );
       } else if (info.status === "error") {
-        console.error(`Native Studio sidecar was not started: ${info.error ?? "unknown error"}`);
+        console.error(
+          `Native Studio sidecar was not started: ${info.error ?? "unknown error"}`,
+        );
       }
     })
     .catch((error) => {
       console.error("Native Studio sidecar failed during startup:", error);
     });
+}
+
+async function restartNativeSidecarForPluginHost(): Promise<void> {
+  try {
+    const info = await nativeSidecarManager.restart(
+      nativeSidecarStartOptions(),
+    );
+    if (info.status === "error") {
+      console.error(
+        `Native Studio sidecar was not restarted: ${info.error ?? "unknown error"}`,
+      );
+    }
+  } catch (error) {
+    console.error("Native Studio sidecar failed during restart:", error);
+  }
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -157,11 +198,12 @@ if (!hasSingleInstanceLock) {
 }
 
 app.on("second-instance", () => {
-  const windowToFocus = mainWindow && !mainWindow.isDestroyed()
-    ? mainWindow
-    : splashWindow && !splashWindow.isDestroyed()
-      ? splashWindow
-      : null;
+  const windowToFocus =
+    mainWindow && !mainWindow.isDestroyed()
+      ? mainWindow
+      : splashWindow && !splashWindow.isDestroyed()
+        ? splashWindow
+        : null;
 
   if (!windowToFocus) {
     return;
@@ -184,7 +226,10 @@ const devMode = isDev || app.commandLine.hasSwitch("dev");
 // --offline: forces offline mode for this process and the spawned Python backend.
 // The env var is inherited by backend-manager's spawn calls (they splat process.env),
 // so the Python side reads NIRS4ALL_OFFLINE via api/network_state.py.
-if (app.commandLine.hasSwitch("offline") || process.argv.includes("--offline")) {
+if (
+  app.commandLine.hasSwitch("offline") ||
+  process.argv.includes("--offline")
+) {
   process.env.NIRS4ALL_OFFLINE = "1";
   console.log("[main] --offline flag detected; forcing offline mode");
 }
@@ -220,7 +265,8 @@ function closeSplash(): void {
 }
 
 function getMainWindowIconPath(): string {
-  const iconFileName = process.platform === "win32" ? "nirs4all.ico" : "nirs4all_icon.png";
+  const iconFileName =
+    process.platform === "win32" ? "nirs4all.ico" : "nirs4all_icon.png";
   return isDev
     ? path.join(__dirname, "..", "public", iconFileName)
     : path.join(__dirname, iconFileName);
@@ -297,19 +343,16 @@ ipcMain.handle("dialog:selectFolder", async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle(
-  "dialog:confirmDroppedFolder",
-  async (_, folderName: string) => {
-    if (!mainWindow) return null;
-    // Show folder selection dialog to confirm the dropped folder
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ["openDirectory"],
-      title: `Select the folder "${folderName}" you just dropped`,
-      message: `Please select the folder "${folderName}" to confirm its location`,
-    });
-    return result.canceled ? null : result.filePaths[0];
-  }
-);
+ipcMain.handle("dialog:confirmDroppedFolder", async (_, folderName: string) => {
+  if (!mainWindow) return null;
+  // Show folder selection dialog to confirm the dropped folder
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory"],
+    title: `Select the folder "${folderName}" you just dropped`,
+    message: `Please select the folder "${folderName}" to confirm its location`,
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
 
 ipcMain.handle(
   "dialog:selectFile",
@@ -335,7 +378,7 @@ ipcMain.handle(
 
     if (result.canceled) return null;
     return allowMultiple ? result.filePaths : result.filePaths[0];
-  }
+  },
 );
 
 ipcMain.handle(
@@ -359,7 +402,7 @@ ipcMain.handle(
     });
 
     return result.canceled ? null : result.filePath;
-  }
+  },
 );
 
 // IPC Handlers for system operations
@@ -432,10 +475,14 @@ ipcMain.handle("telemetry:getConsent", () => {
 
 ipcMain.handle("telemetry:setConsent", async (_event, enabled: boolean) => {
   const previousStatus = getTelemetryConsentStatus(app);
-  const status: Exclude<TelemetryConsentStatus, "unset"> = enabled ? "accepted" : "declined";
+  const status: Exclude<TelemetryConsentStatus, "unset"> = enabled
+    ? "accepted"
+    : "declined";
   const record = writeTelemetryConsent(app, status);
   applyTelemetryConsent(status);
-  const shouldRestartBackend = previousStatus !== status && (previousStatus === "accepted" || status === "accepted");
+  const shouldRestartBackend =
+    previousStatus !== status &&
+    (previousStatus === "accepted" || status === "accepted");
   const backendRestarted = shouldRestartBackend
     ? await restartBackendAfterTelemetryChange()
     : false;
@@ -459,26 +506,30 @@ ipcMain.handle("sidecar:getInfo", () => {
   return nativeSidecarManager.getInfo();
 });
 
-ipcMain.handle("backend:restart", async (_event, options?: { skipEnsure?: boolean }) => {
-  try {
-    if (!options?.skipEnsure) {
-      await envManager.ensureBackendPackages();
+ipcMain.handle(
+  "backend:restart",
+  async (_event, options?: { skipEnsure?: boolean }) => {
+    try {
+      if (!options?.skipEnsure) {
+        await envManager.ensureBackendPackages();
+      }
+      await restartNativeSidecarForPluginHost();
+      const port = await backendManager.restart();
+      return { success: true, port };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
-    const port = await backendManager.restart();
-    return { success: true, port };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-});
+  },
+);
 
 ipcMain.handle("backend:getMlStatus", async () => {
   try {
     const response = await fetch(
       `${backendManager.getUrl()}/api/system/readiness`,
-      { signal: AbortSignal.timeout(3000) }
+      { signal: AbortSignal.timeout(3000) },
     );
     if (response.ok) {
       return response.json();
@@ -543,16 +594,21 @@ ipcMain.handle(
 
 ipcMain.handle(
   "env:applyExistingPython",
-  async (_, pythonPath: string, options?: { installCorePackages?: boolean }) => {
+  async (
+    _,
+    pythonPath: string,
+    options?: { installCorePackages?: boolean },
+  ) => {
     return envManager.applyExistingPython(pythonPath, options);
   },
 );
 
 ipcMain.handle("dialog:selectPythonExe", async () => {
   if (!mainWindow) return null;
-  const filters = process.platform === "win32"
-    ? [{ name: "Python Executable", extensions: ["exe"] }]
-    : [{ name: "All Files", extensions: ["*"] }];
+  const filters =
+    process.platform === "win32"
+      ? [{ name: "Python Executable", extensions: ["exe"] }]
+      : [{ name: "All Files", extensions: ["*"] }];
   const result = await dialog.showOpenDialog(mainWindow, {
     title: "Select Python executable",
     properties: ["openFile"],
@@ -591,6 +647,7 @@ ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
     // Always use restart(): stop() is a no-op when no process exists, and it
     // correctly handles stuck starting/error states that start() would skip.
     console.log("Python environment ready, starting backend...");
+    await restartNativeSidecarForPluginHost();
     const port = await backendManager.restart();
     console.log(`Backend started on port ${port}`);
 
@@ -623,16 +680,17 @@ app.whenReady().then(async () => {
   // less obvious backend-start step.
   envManager.validateConfiguredState();
 
-  // The Rust control-plane sidecar is an explicit dual-run diagnostic path.
-  // It does not select routes or fall back to Python; the legacy backend keeps
-  // serving the UI until the corresponding route families are migrated.
-  startNativeSidecarIfConfigured();
+  // Packaged products always start the Rust control plane. It still reports
+  // partial API coverage and never redirects an unmigrated route to Python.
+  startNativeSidecar();
 
   if (isDev) {
     // Dev mode: start backend non-blocking, show window immediately
     try {
       const port = await backendManager.startNonBlocking();
-      console.log(`Backend spawned on port ${port} (health check in background)`);
+      console.log(
+        `Backend spawned on port ${port} (health check in background)`,
+      );
     } catch (error) {
       console.error("Failed to spawn backend:", error);
     }
@@ -646,7 +704,9 @@ app.whenReady().then(async () => {
     console.log("ensureBackendPackages: start (preflight)");
     try {
       await envManager.ensureBackendPackages();
-      console.log(`ensureBackendPackages: preflight ok in ${Date.now() - ensureStart}ms`);
+      console.log(
+        `ensureBackendPackages: preflight ok in ${Date.now() - ensureStart}ms`,
+      );
     } catch (error) {
       backendCanStart = false;
       console.error(
@@ -659,7 +719,9 @@ app.whenReady().then(async () => {
       if (backendCanStart) {
         const backendStart = Date.now();
         const port = await backendManager.startNonBlocking();
-        console.log(`Backend spawned on port ${port} (health check in background) in ${Date.now() - backendStart}ms`);
+        console.log(
+          `Backend spawned on port ${port} (health check in background) in ${Date.now() - backendStart}ms`,
+        );
       }
     } catch (error) {
       console.error("Failed to spawn backend:", error);
@@ -697,13 +759,18 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   // Await backend stop before allowing quit — prevents Electron exiting
   // before taskkill runs. stop() has a 2s force-kill timeout as safety net.
-  Promise.allSettled([backendManager.stop(), nativeSidecarManager.stop()]).finally(() => {
+  Promise.allSettled([
+    backendManager.stop(),
+    nativeSidecarManager.stop(),
+  ]).finally(() => {
     app.quit(); // Re-enters before-quit with isQuitting=true, then proceeds
   });
   // Hard deadline: if stop() never resolves (stuck process, missing exit event),
   // force the quit after 5 seconds so the app doesn't hang indefinitely.
   setTimeout(() => {
-    console.error("before-quit: backend stop did not complete within 5 s, forcing quit");
+    console.error(
+      "before-quit: backend stop did not complete within 5 s, forcing quit",
+    );
     app.exit(0);
   }, 5000);
 });

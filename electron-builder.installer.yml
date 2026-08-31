@@ -39,6 +39,7 @@ extraResources:
       - "api/**/*"
       - "websocket/**/*"
       - "updater/**/*"
+      - "native/**/*"
       - "main.py"
       - "public/**/*"
       - "recommended-config.json"

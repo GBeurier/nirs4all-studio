@@ -9,7 +9,13 @@ import type {
 } from "@/types/pythonRuntime";
 
 /** Backend status types */
-type BackendStatus = "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
+type BackendStatus =
+  | "stopped"
+  | "starting"
+  | "running"
+  | "error"
+  | "restarting"
+  | "setup_required";
 
 interface BackendInfo {
   status: BackendStatus;
@@ -35,6 +41,7 @@ interface NativeSidecarInfo {
   port: number | null;
   protocolVersion: string | null;
   url: string | null;
+  pythonPluginHostConfigured: boolean;
   error?: string;
 }
 
@@ -61,7 +68,7 @@ interface ElectronApi {
    */
   selectFile(
     fileTypes?: string[],
-    allowMultiple?: boolean
+    allowMultiple?: boolean,
   ): Promise<string | string[] | null>;
 
   /**
@@ -72,7 +79,7 @@ interface ElectronApi {
    */
   saveFile(
     defaultFilename?: string,
-    fileTypes?: string[]
+    fileTypes?: string[],
   ): Promise<string | null>;
 
   /**
@@ -155,7 +162,9 @@ interface ElectronApi {
   /**
    * Restart the backend server
    */
-  restartBackend(options?: BackendRestartOptions): Promise<BackendRestartResult>;
+  restartBackend(
+    options?: BackendRestartOptions,
+  ): Promise<BackendRestartResult>;
 
   /**
    * Subscribe to backend status changes
@@ -198,12 +207,16 @@ interface ElectronApi {
     pythonPath: string,
     options?: { installCorePackages?: boolean },
   ): Promise<DesktopEnvActionResult>;
-  startEnvSetup(targetDir?: string): Promise<{ success: boolean; error?: string }>;
-  onEnvSetupProgress(callback: (progress: {
-    percent: number;
-    step: string;
-    detail: string;
-  }) => void): () => void;
+  startEnvSetup(
+    targetDir?: string,
+  ): Promise<{ success: boolean; error?: string }>;
+  onEnvSetupProgress(
+    callback: (progress: {
+      percent: number;
+      step: string;
+      detail: string;
+    }) => void,
+  ): () => void;
   /**
    * Check if the setup wizard should be shown (new install, update, or portable mode)
    */

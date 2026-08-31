@@ -24,15 +24,20 @@ vi.mock("@/hooks/useDatasetQueries", () => ({
     all: ["datasets"],
     list: () => ["datasets", "list"],
     detail: (id: string | null | undefined) => ["datasets", "detail", id],
-    preview: (id: string | null | undefined, n: number) =>
-      ["datasets", "preview", id, n],
+    preview: (id: string | null | undefined, n: number) => [
+      "datasets",
+      "preview",
+      id,
+      n,
+    ],
     linkedWorkspaces: () => ["workspaces", "linked"],
     scores: (wsId: string | null | undefined) => ["workspaces", wsId, "scores"],
   },
 }));
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-  .IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 interface MlStatusPayload {
   core_ready: boolean;
@@ -84,6 +89,14 @@ function createElectronApiMock(
       url: "http://127.0.0.1:8000",
       restartCount: 0,
     }),
+    getNativeSidecarInfo: vi.fn().mockResolvedValue({
+      status: "disabled",
+      host: null,
+      port: null,
+      protocolVersion: null,
+      url: null,
+      pythonPluginHostConfigured: false,
+    }),
     restartBackend: vi.fn().mockResolvedValue({ success: true }),
     onBackendStatusChanged: vi.fn(() => () => undefined),
     getEnvStatus: vi.fn().mockResolvedValue("ready"),
@@ -97,13 +110,21 @@ function createElectronApiMock(
       isCustom: false,
     }),
     detectExistingEnvs: vi.fn().mockResolvedValue([]),
-    inspectExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    inspectExistingEnv: vi
+      .fn()
+      .mockResolvedValue({ success: true, message: "" }),
     useExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
     selectPythonExe: vi.fn().mockResolvedValue(null),
-    inspectExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
-    useExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    inspectExistingPython: vi
+      .fn()
+      .mockResolvedValue({ success: true, message: "" }),
+    useExistingPython: vi
+      .fn()
+      .mockResolvedValue({ success: true, message: "" }),
     applyExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
-    applyExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    applyExistingPython: vi
+      .fn()
+      .mockResolvedValue({ success: true, message: "" }),
     startEnvSetup: vi.fn().mockResolvedValue({ success: true }),
     onEnvSetupProgress: vi.fn(() => () => undefined),
     shouldShowWizard: vi.fn().mockResolvedValue(false),
@@ -145,7 +166,10 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise<void> {
+async function waitFor(
+  assertion: () => void,
+  timeoutMs: number = 1000,
+): Promise<void> {
   const start = Date.now();
   while (true) {
     try {
@@ -171,9 +195,7 @@ async function importProviderModule() {
   };
 }
 
-async function renderProvider(
-  electronApi: ElectronApiMock,
-) {
+async function renderProvider(electronApi: ElectronApiMock) {
   vi.resetModules();
   window.electronApi = electronApi;
 
@@ -193,9 +215,7 @@ async function renderProvider(
   function TestTree({ children }: { children?: ReactNode }) {
     return (
       <QueryClientProvider client={client}>
-        <MlReadinessProvider>
-          {children}
-        </MlReadinessProvider>
+        <MlReadinessProvider>{children}</MlReadinessProvider>
       </QueryClientProvider>
     );
   }
@@ -231,7 +251,8 @@ describe("MlReadinessProvider", () => {
   it("keeps ML readiness latched when a later poll reports false again", async () => {
     vi.useFakeTimers();
 
-    const getMlStatus = vi.fn<() => Promise<MlStatusPayload>>()
+    const getMlStatus = vi
+      .fn<() => Promise<MlStatusPayload>>()
       .mockResolvedValueOnce({
         core_ready: true,
         ml_ready: true,
@@ -254,11 +275,13 @@ describe("MlReadinessProvider", () => {
         workspace_ready: true,
       });
 
-    const view = await renderProvider(createElectronApiMock({
-      getMlStatus,
-      onMlReady: () => () => undefined,
-      onBackendStatusChanged: () => () => undefined,
-    }));
+    const view = await renderProvider(
+      createElectronApiMock({
+        getMlStatus,
+        onMlReady: () => () => undefined,
+        onBackendStatusChanged: () => () => undefined,
+      }),
+    );
 
     await waitFor(() => {
       expect(view.result.current?.coreReady).toBe(true);
@@ -291,24 +314,31 @@ describe("MlReadinessProvider", () => {
 
     const firstPoll = deferred<MlStatusPayload>();
     let mlReadyListener:
-      | ((info: { ready: boolean; error?: string; workspaceReady?: boolean }) => void)
+      | ((info: {
+          ready: boolean;
+          error?: string;
+          workspaceReady?: boolean;
+        }) => void)
       | null = null;
 
-    const getMlStatus = vi.fn<() => Promise<MlStatusPayload>>()
+    const getMlStatus = vi
+      .fn<() => Promise<MlStatusPayload>>()
       .mockReturnValueOnce(firstPoll.promise);
 
-    const view = await renderProvider(createElectronApiMock({
-      getMlStatus,
-      onMlReady: (cb) => {
-        mlReadyListener = cb;
-        return () => {
-          if (mlReadyListener === cb) {
-            mlReadyListener = null;
-          }
-        };
-      },
-      onBackendStatusChanged: () => () => undefined,
-    }));
+    const view = await renderProvider(
+      createElectronApiMock({
+        getMlStatus,
+        onMlReady: (cb) => {
+          mlReadyListener = cb;
+          return () => {
+            if (mlReadyListener === cb) {
+              mlReadyListener = null;
+            }
+          };
+        },
+        onBackendStatusChanged: () => () => undefined,
+      }),
+    );
 
     await act(async () => {
       mlReadyListener?.({ ready: true, workspaceReady: true });

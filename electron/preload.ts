@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 // Use require for electron to avoid Rollup ESM/CJS interop issues
-const { contextBridge, ipcRenderer, webUtils } = require("electron") as typeof import("electron");
+const { contextBridge, ipcRenderer, webUtils } =
+  require("electron") as typeof import("electron");
 
 /**
  * Electron API exposed to the renderer process via contextBridge.
@@ -18,13 +19,13 @@ const electronApi = {
 
   selectFile: (
     fileTypes?: string[],
-    allowMultiple?: boolean
+    allowMultiple?: boolean,
   ): Promise<string | string[] | null> =>
     ipcRenderer.invoke("dialog:selectFile", fileTypes, allowMultiple),
 
   saveFile: (
     defaultFilename?: string,
-    fileTypes?: string[]
+    fileTypes?: string[],
   ): Promise<string | null> =>
     ipcRenderer.invoke("dialog:saveFile", defaultFilename, fileTypes),
 
@@ -40,8 +41,7 @@ const electronApi = {
   getLogPath: (): Promise<string | null> =>
     ipcRenderer.invoke("system:getLogPath"),
 
-  openLogDir: (): Promise<void> =>
-    ipcRenderer.invoke("system:openLogDir"),
+  openLogDir: (): Promise<void> => ipcRenderer.invoke("system:openLogDir"),
 
   /**
    * Telemetry consent
@@ -51,8 +51,11 @@ const electronApi = {
 
   setTelemetryConsent: (
     enabled: boolean,
-  ): Promise<{ status: "accepted" | "declined"; decidedAt: string; backendRestarted?: boolean }> =>
-    ipcRenderer.invoke("telemetry:setConsent", enabled),
+  ): Promise<{
+    status: "accepted" | "declined";
+    decidedAt: string;
+    backendRestarted?: boolean;
+  }> => ipcRenderer.invoke("telemetry:setConsent", enabled),
 
   /**
    * Backend management
@@ -62,7 +65,13 @@ const electronApi = {
   getBackendUrl: (): Promise<string> => ipcRenderer.invoke("backend:getUrl"),
 
   getBackendInfo: (): Promise<{
-    status: "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
+    status:
+      | "stopped"
+      | "starting"
+      | "running"
+      | "error"
+      | "restarting"
+      | "setup_required";
     port: number;
     url: string;
     error?: string;
@@ -75,22 +84,29 @@ const electronApi = {
     port: number | null;
     protocolVersion: string | null;
     url: string | null;
+    pythonPluginHostConfigured: boolean;
     error?: string;
   }> => ipcRenderer.invoke("sidecar:getInfo"),
 
-  restartBackend: (
-    options?: { skipEnsure?: boolean },
-  ): Promise<{ success: boolean; port?: number; error?: string }> =>
+  restartBackend: (options?: {
+    skipEnsure?: boolean;
+  }): Promise<{ success: boolean; port?: number; error?: string }> =>
     ipcRenderer.invoke("backend:restart", options),
 
   onBackendStatusChanged: (
     callback: (info: {
-      status: "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
+      status:
+        | "stopped"
+        | "starting"
+        | "running"
+        | "error"
+        | "restarting"
+        | "setup_required";
       port: number;
       url: string;
       error?: string;
       restartCount: number;
-    }) => void
+    }) => void,
   ) => {
     const handler = (_event: Electron.IpcRendererEvent, info: unknown) =>
       callback(info as Parameters<typeof callback>[0]);
@@ -114,7 +130,13 @@ const electronApi = {
    * - second event: `ready=true, workspaceReady=true` → active workspace restored
    * Pages that depend on dataset/run/prediction lists must wait for the second.
    */
-  onMlReady: (callback: (info: { ready: boolean; error?: string; workspaceReady?: boolean }) => void) => {
+  onMlReady: (
+    callback: (info: {
+      ready: boolean;
+      error?: string;
+      workspaceReady?: boolean;
+    }) => void,
+  ) => {
     const handler = (_event: Electron.IpcRendererEvent, info: unknown) =>
       callback(info as Parameters<typeof callback>[0]);
     ipcRenderer.on("backend:mlReady", handler);
@@ -124,11 +146,9 @@ const electronApi = {
   /**
    * Python environment management
    */
-  getEnvStatus: (): Promise<string> =>
-    ipcRenderer.invoke("env:getStatus"),
+  getEnvStatus: (): Promise<string> => ipcRenderer.invoke("env:getStatus"),
 
-  isEnvReady: (): Promise<boolean> =>
-    ipcRenderer.invoke("env:isReady"),
+  isEnvReady: (): Promise<boolean> => ipcRenderer.invoke("env:isReady"),
 
   getEnvInfo: (): Promise<{
     status: string;
@@ -140,17 +160,21 @@ const electronApi = {
     error?: string;
   }> => ipcRenderer.invoke("env:getInfo"),
 
-  detectExistingEnvs: (): Promise<Array<{
-    path: string;
-    pythonPath: string;
-    pythonVersion: string;
-    hasNirs4all: boolean;
-    hasCorePackages: boolean;
-    envKind: "system" | "venv" | "conda" | "managed" | "bundled";
-    writable: boolean;
-  }>> => ipcRenderer.invoke("env:detectExisting"),
+  detectExistingEnvs: (): Promise<
+    Array<{
+      path: string;
+      pythonPath: string;
+      pythonVersion: string;
+      hasNirs4all: boolean;
+      hasCorePackages: boolean;
+      envKind: "system" | "venv" | "conda" | "managed" | "bundled";
+      writable: boolean;
+    }>
+  > => ipcRenderer.invoke("env:detectExisting"),
 
-  inspectExistingEnv: (envPath: string): Promise<{
+  inspectExistingEnv: (
+    envPath: string,
+  ): Promise<{
     success: boolean;
     message: string;
     info?: {
@@ -171,7 +195,9 @@ const electronApi = {
     };
   }> => ipcRenderer.invoke("env:inspectExisting", envPath),
 
-  inspectExistingPython: (pythonPath: string): Promise<{
+  inspectExistingPython: (
+    pythonPath: string,
+  ): Promise<{
     success: boolean;
     message: string;
     info?: {
@@ -192,7 +218,9 @@ const electronApi = {
     };
   }> => ipcRenderer.invoke("env:inspectExistingPython", pythonPath),
 
-  useExistingEnv: (envPath: string): Promise<{
+  useExistingEnv: (
+    envPath: string,
+  ): Promise<{
     success: boolean;
     message: string;
     info?: {
@@ -216,7 +244,9 @@ const electronApi = {
   selectPythonExe: (): Promise<string | null> =>
     ipcRenderer.invoke("dialog:selectPythonExe"),
 
-  useExistingPython: (pythonPath: string): Promise<{
+  useExistingPython: (
+    pythonPath: string,
+  ): Promise<{
     success: boolean;
     message: string;
     info?: {
@@ -285,7 +315,9 @@ const electronApi = {
     };
   }> => ipcRenderer.invoke("env:applyExistingPython", pythonPath, options),
 
-  startEnvSetup: (targetDir?: string): Promise<{ success: boolean; error?: string }> =>
+  startEnvSetup: (
+    targetDir?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke("env:startSetup", targetDir),
 
   shouldShowWizard: (): Promise<boolean> =>
@@ -300,11 +332,14 @@ const electronApi = {
     version: string;
   } | null> => ipcRenderer.invoke("env:getCurrentEnvSummary"),
 
-  isPortable: (): Promise<boolean> =>
-    ipcRenderer.invoke("env:isPortable"),
+  isPortable: (): Promise<boolean> => ipcRenderer.invoke("env:isPortable"),
 
   onEnvSetupProgress: (
-    callback: (progress: { percent: number; step: string; detail: string }) => void
+    callback: (progress: {
+      percent: number;
+      step: string;
+      detail: string;
+    }) => void,
   ) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: unknown) =>
       callback(progress as Parameters<typeof callback>[0]);
