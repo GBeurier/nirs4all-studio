@@ -279,4 +279,15 @@ fn configured_python_plugin_host_can_import_nirs4all_without_enabling_execution(
         .unwrap()
         .values()
         .all(Value::is_string));
+
+    let runtime = route_request(&mut state, "GET", "/api/system/env-coherence");
+    assert_eq!(runtime.status, 200, "configured Python runtime bridge");
+    let runtime_body: Value = serde_json::from_str(&runtime.body).unwrap();
+    assert_eq!(runtime_body["runtime_kind"], "python_plugin_host");
+    assert_eq!(runtime_body["core_ready"], true);
+    assert_eq!(runtime_body["missing_core_packages"], serde_json::json!([]));
+    assert_eq!(runtime_body["python_match"], true);
+    assert!(runtime_body["runtime"]["python"].is_string());
+    assert!(runtime_body["runtime"]["prefix"].is_string());
+    assert!(runtime_body["runtime"]["version"].is_string());
 }

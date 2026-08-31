@@ -6,6 +6,7 @@ const SIDECAR_PATH_ENV = "NIRS4ALL_NATIVE_SIDECAR_PATH";
 const SIDECAR_PORT_ENV = "NIRS4ALL_NATIVE_SIDECAR_PORT";
 const SIDECAR_ENABLE_PACKAGED_ENV = "NIRS4ALL_ENABLE_NATIVE_SIDECAR";
 const PYTHON_PLUGIN_HOST_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST";
+const PYTHON_PLUGIN_HOST_BUNDLED_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
 const SIDECAR_READY_PREFIX = "STUDIO_SIDECAR_READY ";
 const SIDECAR_START_TIMEOUT_MS = 15_000;
 const MAX_STARTUP_OUTPUT_BYTES = 8 * 1024;
@@ -132,9 +133,12 @@ export class NativeSidecarManager {
     this.protocolVersion = null;
 
     let child: ChildProcess;
-    const pythonPluginHost = process.env[PYTHON_PLUGIN_HOST_ENV]?.trim() || resolveBundledPythonPluginHost();
+    const explicitPythonPluginHost = process.env[PYTHON_PLUGIN_HOST_ENV]?.trim();
+    const bundledPythonPluginHost = explicitPythonPluginHost ? null : resolveBundledPythonPluginHost();
+    const pythonPluginHost = explicitPythonPluginHost || bundledPythonPluginHost;
     const childEnvironment: NodeJS.ProcessEnv = { ...process.env };
     if (pythonPluginHost) childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
+    if (bundledPythonPluginHost) childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV] = "true";
     try {
       child = spawn(binaryPath, ["--host", "127.0.0.1", "--port", port.toString()], {
         env: childEnvironment,
