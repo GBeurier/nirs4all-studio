@@ -29,6 +29,15 @@ interface BackendRestartOptions {
   skipEnsure?: boolean;
 }
 
+interface NativeSidecarInfo {
+  status: "disabled" | "starting" | "running" | "stopped" | "error";
+  host: string | null;
+  port: number | null;
+  protocolVersion: string | null;
+  url: string | null;
+  error?: string;
+}
+
 interface ElectronApi {
   /**
    * Open a native folder picker dialog
@@ -139,6 +148,9 @@ interface ElectronApi {
    * Get full backend information including status
    */
   getBackendInfo(): Promise<BackendInfo>;
+
+  /** Get the explicit native-sidecar diagnostic state. */
+  getNativeSidecarInfo(): Promise<NativeSidecarInfo>;
 
   /**
    * Restart the backend server

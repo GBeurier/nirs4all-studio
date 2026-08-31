@@ -250,4 +250,15 @@ fn configured_python_plugin_host_can_import_nirs4all_without_enabling_execution(
     assert_eq!(body["bridge"], "python-subprocess");
     assert_eq!(body["nirs4all_import"], true);
     assert_eq!(body["scientific_execution"], "unavailable");
+
+    let capabilities = route_request(&mut state, "GET", "/api/system/capabilities");
+    assert_eq!(
+        capabilities.status, 200,
+        "configured Python capabilities bridge"
+    );
+    let capabilities_body: Value = serde_json::from_str(&capabilities.body).unwrap();
+    let values = capabilities_body["capabilities"].as_object().unwrap();
+    assert_eq!(values.len(), 7);
+    assert_eq!(values["nirs4all"], true);
+    assert!(values.values().all(Value::is_boolean));
 }
