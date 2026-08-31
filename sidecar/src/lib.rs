@@ -19,13 +19,18 @@ use std::{
 };
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use serde_json::Value;
+use serde_json::{json, Value};
+
+mod settings;
+
+use settings::AppSettingsStore;
 
 pub const PROTOCOL_VERSION: &str = "studio-sidecar-r1";
 pub const LEGACY_CONTRACT_BASELINE: &str = "studio-v1";
 pub const LEGACY_ROUTE_PARITY: &str = "bootstrap";
 pub const API_PREFIX: &str = "/sidecar/v1";
 pub const MAX_REQUEST_HEADER_BYTES: usize = 8 * 1024;
+pub const MAX_REQUEST_BODY_BYTES: usize = 64 * 1024;
 pub const MAX_REQUEST_HEADERS: usize = 32;
 pub const MAX_CONCURRENT_CONNECTIONS: usize = 32;
 pub const MAX_CONTROL_JOBS: usize = 64;
@@ -278,6 +283,7 @@ pub struct SidecarState {
     python_plugin_host: Option<PathBuf>,
     python_plugin_host_bundled: bool,
     runtime_kind: String,
+    app_settings: AppSettingsStore,
 }
 
 impl Default for SidecarState {
@@ -291,6 +297,7 @@ impl Default for SidecarState {
             python_plugin_host: None,
             python_plugin_host_bundled: false,
             runtime_kind: "python_plugin_host".into(),
+            app_settings: AppSettingsStore::from_environment(),
         }
     }
 }
@@ -323,6 +330,7 @@ impl SidecarState {
             python_plugin_host,
             python_plugin_host_bundled,
             runtime_kind,
+            app_settings: AppSettingsStore::from_environment(),
             ..Self::default()
         }
     }
@@ -331,6 +339,16 @@ impl SidecarState {
     pub fn with_python_plugin_host(path: impl Into<PathBuf>) -> Self {
         Self {
             python_plugin_host: Some(path.into()),
+            ..Self::default()
+        }
+    }
+
+    /// Use an explicit app-settings directory in tests and controlled desktop
+    /// launches.  The store still keeps the legacy `app_settings.json` shape.
+    #[must_use]
+    pub fn with_app_settings_dir(path: impl Into<PathBuf>) -> Self {
+        Self {
+            app_settings: AppSettingsStore::new(path),
             ..Self::default()
         }
     }
@@ -354,7 +372,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_and_settings_only\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_settings\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -461,9 +479,26 @@ impl HttpResponse {
 
 #[must_use]
 pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> HttpResponse {
+    route_request_with_body(state, method, path, &[])
+}
+
+/// Route one local HTTP request, including a bounded JSON request body for
+/// native state routes.  The body-free wrapper remains public for the frozen
+/// R1 contract tests and diagnostics.
+#[must_use]
+pub fn route_request_with_body(
+    state: &mut SidecarState,
+    method: &str,
+    path: &str,
+    body: &[u8],
+) -> HttpResponse {
     match (method, path) {
         ("GET", "/api/health") => HttpResponse::json(200, SidecarState::legacy_health_json()),
         ("GET", "/api/system/readiness") => HttpResponse::json(200, state.legacy_readiness_json()),
+        ("GET", "/api/app/settings") => app_settings_response(state),
+        ("PUT", "/api/app/settings") => update_app_settings_response(state, body),
+        ("GET", "/api/app/favorites") => app_favourites_response(state),
+        ("POST", "/api/app/favorites") => add_app_favourite_response(state, body),
         ("GET", "/sidecar/v1/health") => HttpResponse::json(200, state.health_json()),
         ("GET", "/sidecar/v1/readiness") => HttpResponse::json(200, state.readiness_json()),
         ("GET", "/sidecar/v1/capabilities") => HttpResponse::json(200, state.capabilities_json()),
@@ -491,7 +526,10 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
             | "/api/system/env-coherence"
             | "/sidecar/v1/ws",
         ) => method_not_allowed(method, path, "GET"),
+        (_, "/api/app/settings") => method_not_allowed(method, path, "GET, PUT"),
+        (_, "/api/app/favorites") => method_not_allowed(method, path, "GET, POST"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
+        _ if path.starts_with("/api/app/favorites/") => route_app_favourite(state, method, path),
         _ if path.starts_with("/sidecar/v1/jobs/") => route_job(state, method, path),
         _ if path.starts_with(API_PREFIX) => error_response(
             404,
@@ -512,6 +550,113 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
             ]),
         ),
     }
+}
+
+fn app_settings_response(state: &SidecarState) -> HttpResponse {
+    match state.app_settings.response() {
+        Ok(settings) => HttpResponse::json(200, settings.to_string()),
+        Err(error) => app_settings_storage_error("get app settings", &error),
+    }
+}
+
+fn update_app_settings_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    let request = match app_settings_request_body(body) {
+        Ok(request) => request,
+        Err(response) => return response,
+    };
+    match state.app_settings.update_ui_preferences(&request) {
+        Ok(()) => HttpResponse::json(
+            200,
+            json!({"success": true, "message": "App settings updated"}).to_string(),
+        ),
+        Err(error) => app_settings_storage_error("update app settings", &error),
+    }
+}
+
+fn app_favourites_response(state: &SidecarState) -> HttpResponse {
+    match state.app_settings.favourites_response() {
+        Ok(favourites) => HttpResponse::json(200, favourites.to_string()),
+        Err(error) => app_settings_storage_error("get favorites", &error),
+    }
+}
+
+fn add_app_favourite_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    let request = match app_settings_request_body(body) {
+        Ok(request) => request,
+        Err(response) => return response,
+    };
+    let Some(pipeline_id) = request.get("pipeline_id").and_then(Value::as_str) else {
+        return app_settings_validation_error("request body must contain a string pipeline_id");
+    };
+    match state.app_settings.add_favourite(pipeline_id) {
+        Ok(added) => HttpResponse::json(
+            200,
+            json!({
+                "success": true,
+                "added": added,
+                "message": if added { "Added to favorites" } else { "Already in favorites" },
+            })
+            .to_string(),
+        ),
+        Err(error) => app_settings_storage_error("add favorite", &error),
+    }
+}
+
+fn route_app_favourite(state: &SidecarState, method: &str, path: &str) -> HttpResponse {
+    let Some(pipeline_id) = path.strip_prefix("/api/app/favorites/") else {
+        return error_response(
+            404,
+            ErrorCode::RouteNotFound,
+            "No native sidecar route matches this path",
+            BTreeMap::from([("path".into(), path.into())]),
+        );
+    };
+    if pipeline_id.is_empty() || pipeline_id.contains('/') {
+        return error_response(
+            404,
+            ErrorCode::RouteNotFound,
+            "No native sidecar route matches this path",
+            BTreeMap::from([("path".into(), path.into())]),
+        );
+    }
+    if method != "DELETE" {
+        return method_not_allowed(method, path, "DELETE");
+    }
+    match state.app_settings.remove_favourite(pipeline_id) {
+        Ok(removed) => HttpResponse::json(
+            200,
+            json!({
+                "success": true,
+                "removed": removed,
+                "message": if removed { "Removed from favorites" } else { "Not in favorites" },
+            })
+            .to_string(),
+        ),
+        Err(error) => app_settings_storage_error("remove favorite", &error),
+    }
+}
+
+fn app_settings_request_body(body: &[u8]) -> Result<Value, HttpResponse> {
+    match serde_json::from_slice::<Value>(body) {
+        Ok(request) if request.is_object() => Ok(request),
+        Ok(_) => Err(app_settings_validation_error(
+            "request body must be a JSON object",
+        )),
+        Err(_) => Err(app_settings_validation_error(
+            "request body must be valid JSON",
+        )),
+    }
+}
+
+fn app_settings_validation_error(message: &str) -> HttpResponse {
+    HttpResponse::json(422, json!({"detail": message}).to_string())
+}
+
+fn app_settings_storage_error(operation: &str, error: &str) -> HttpResponse {
+    HttpResponse::json(
+        500,
+        json!({"detail": format!("Failed to {operation}: {error}")}).to_string(),
+    )
 }
 
 fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
@@ -871,7 +1016,7 @@ fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpRe
             ]),
         );
     }
-    route_request(state, &request.method, &request.path)
+    route_request_with_body(state, &request.method, &request.path, &request.body)
 }
 
 fn create_job_response(state: &mut SidecarState) -> HttpResponse {
@@ -1082,6 +1227,12 @@ fn handle_connection_with_limits(
             "Request headers exceed the configured limit",
             BTreeMap::new(),
         ),
+        Err(RequestReadError::BodyTooLarge) => error_response(
+            400,
+            ErrorCode::InvalidRequest,
+            "Request body exceeds the configured limit",
+            BTreeMap::new(),
+        ),
         Err(RequestReadError::Invalid) => error_response(
             400,
             ErrorCode::InvalidRequest,
@@ -1111,6 +1262,7 @@ fn reject_overloaded(mut stream: TcpStream, timeout: Duration) {
 enum RequestReadError {
     Timeout,
     TooLarge,
+    BodyTooLarge,
     Invalid,
     Io(std::io::Error),
 }
@@ -1120,6 +1272,7 @@ struct HttpRequest {
     method: String,
     path: String,
     headers: BTreeMap<String, String>,
+    body: Vec<u8>,
 }
 
 impl HttpRequest {
@@ -1173,14 +1326,62 @@ fn read_http_request(
         if read == 0 {
             return Err(RequestReadError::Invalid);
         }
-        if bytes.len() + read > MAX_REQUEST_HEADER_BYTES {
+        bytes.extend_from_slice(&buffer[..read]);
+        let Some(header_end) = bytes
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .map(|position| position + 4)
+        else {
+            if bytes.len() > MAX_REQUEST_HEADER_BYTES {
+                return Err(RequestReadError::TooLarge);
+            }
+            continue;
+        };
+        if header_end > MAX_REQUEST_HEADER_BYTES {
             return Err(RequestReadError::TooLarge);
         }
-        bytes.extend_from_slice(&buffer[..read]);
-        if bytes.windows(4).any(|window| window == b"\r\n\r\n") {
-            return parse_http_request(&bytes);
+        let mut request = parse_http_request(&bytes[..header_end])?;
+        let content_length = request_content_length(&request.headers)?;
+        if content_length > MAX_REQUEST_BODY_BYTES {
+            return Err(RequestReadError::BodyTooLarge);
         }
+        request.body.extend_from_slice(&bytes[header_end..]);
+        if request.body.len() > content_length {
+            return Err(RequestReadError::Invalid);
+        }
+        while request.body.len() < content_length {
+            let read = match stream.read(&mut buffer) {
+                Ok(read) => read,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                    ) =>
+                {
+                    return Err(RequestReadError::Timeout);
+                }
+                Err(error) => return Err(RequestReadError::Io(error)),
+            };
+            if read == 0 {
+                return Err(RequestReadError::Invalid);
+            }
+            let remaining = content_length - request.body.len();
+            if read > remaining {
+                return Err(RequestReadError::Invalid);
+            }
+            request.body.extend_from_slice(&buffer[..read]);
+        }
+        return Ok(request);
     }
+}
+
+fn request_content_length(headers: &BTreeMap<String, String>) -> Result<usize, RequestReadError> {
+    if headers.contains_key("transfer-encoding") {
+        return Err(RequestReadError::Invalid);
+    }
+    headers.get("content-length").map_or(Ok(0), |value| {
+        value.parse().map_err(|_| RequestReadError::Invalid)
+    })
 }
 
 fn parse_http_request(bytes: &[u8]) -> Result<HttpRequest, RequestReadError> {
@@ -1223,6 +1424,7 @@ fn parse_http_request(bytes: &[u8]) -> Result<HttpRequest, RequestReadError> {
         method: method.to_owned(),
         path: target.split('?').next().unwrap_or(target).to_owned(),
         headers,
+        body: Vec::new(),
     })
 }
 
@@ -1232,6 +1434,7 @@ fn write_response(stream: &mut TcpStream, response: &HttpResponse) -> std::io::R
         202 => "Accepted",
         400 => "Bad Request",
         408 => "Request Timeout",
+        422 => "Unprocessable Content",
         429 => "Too Many Requests",
         404 => "Not Found",
         405 => "Method Not Allowed",
@@ -1390,7 +1593,12 @@ fn valid_json_value(value: &Value, depth: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{net::TcpListener, thread};
+    use std::{
+        fs,
+        net::TcpListener,
+        thread,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     #[test]
     fn readiness_stays_explicitly_non_parity() {
@@ -1409,8 +1617,9 @@ mod tests {
         assert_eq!(capabilities["python_plugin_host"], "unconfigured");
         assert_eq!(
             capabilities["api_route_coverage"],
-            "bootstrap_and_settings_only"
+            "bootstrap_system_and_app_settings"
         );
+        assert_eq!(capabilities["features"]["app_settings_routes"], true);
         assert_eq!(capabilities["features"]["legacy_api_routes"], false);
         assert_eq!(
             capabilities["features"]["unmigrated_api_routes_require_legacy_backend"],
@@ -1474,6 +1683,100 @@ mod tests {
             "python_plugin_preflight_failed"
         );
         assert_eq!(failed_body["error"]["details"]["reason"], "spawn_failed");
+    }
+
+    #[test]
+    fn app_settings_routes_persist_without_a_python_plugin_host() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-routes-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut state = SidecarState::with_app_settings_dir(&directory);
+
+        let initial = route_request(&mut state, "GET", "/api/app/settings");
+        assert_eq!(initial.status, 200);
+        let initial: Value = serde_json::from_str(&initial.body).unwrap();
+        assert_eq!(initial["linked_workspaces_count"], 0);
+        assert_eq!(initial["ui_preferences"]["theme"], "system");
+
+        let updated = route_request_with_body(
+            &mut state,
+            "PUT",
+            "/api/app/settings",
+            br#"{"ui_preferences":{"theme":"dark"}}"#,
+        );
+        assert_eq!(updated.status, 200);
+        let added = route_request_with_body(
+            &mut state,
+            "POST",
+            "/api/app/favorites",
+            br#"{"pipeline_id":"pipeline-a"}"#,
+        );
+        assert_eq!(added.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&added.body).unwrap()["added"],
+            true
+        );
+        let favourites = route_request(&mut state, "GET", "/api/app/favorites");
+        assert_eq!(
+            serde_json::from_str::<Value>(&favourites.body).unwrap(),
+            json!({"favorites": ["pipeline-a"], "count": 1})
+        );
+        let removed = route_request(&mut state, "DELETE", "/api/app/favorites/pipeline-a");
+        assert_eq!(
+            serde_json::from_str::<Value>(&removed.body).unwrap()["removed"],
+            true
+        );
+        assert_eq!(
+            route_request_with_body(&mut state, "PUT", "/api/app/settings", b"[]").status,
+            422
+        );
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn live_http_body_is_routed_to_native_app_settings() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-http-body-{}-{nonce}",
+            std::process::id()
+        ));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let state = Arc::new(Mutex::new(SidecarState::with_app_settings_dir(&directory)));
+        let server_state = Arc::clone(&state);
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            handle_connection_with_limits(stream, &server_state, ServerLimits::default()).unwrap();
+        });
+        let body = r#"{"ui_preferences":{"theme":"dark"}}"#;
+        let mut client = TcpStream::connect(address).unwrap();
+        client
+            .write_all(
+                format!(
+                    "PUT /api/app/settings HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        server.join().unwrap();
+        assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+        let stored: Value =
+            serde_json::from_str(&fs::read_to_string(directory.join("app_settings.json")).unwrap())
+                .unwrap();
+        assert_eq!(stored["ui_preferences"]["theme"], "dark");
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -1618,6 +1921,7 @@ mod tests {
                 ),
                 ("sec-websocket-version".into(), "13".into()),
             ]),
+            body: Vec::new(),
         };
         let response = route_http_request(&mut state, &valid_upgrade);
         assert_eq!(response.status, 426);
@@ -1642,6 +1946,7 @@ mod tests {
                 method: "GET".into(),
                 path: "/sidecar/v1/ws".into(),
                 headers,
+                body: Vec::new(),
             };
             let mut state = SidecarState::default();
             let response = route_http_request(&mut state, &request);

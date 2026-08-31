@@ -296,4 +296,57 @@ describe("API client request handling", () => {
       expect.any(Object),
     );
   });
+
+  it("sends native app settings to the sidecar without requiring a Python plugin host", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        version: "3.0",
+        linked_workspaces_count: 0,
+        favorite_pipelines: [],
+        ui_preferences: { theme: "system" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.get("/app/settings");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/app/settings",
+      expect.any(Object),
+    );
+  });
+
+  it("sends native favourite mutations to the sidecar without a Python host", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ success: true, removed: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.delete("/app/favorites/pipeline-a");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/app/favorites/pipeline-a",
+      expect.any(Object),
+    );
+  });
 });

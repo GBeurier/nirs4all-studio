@@ -27,13 +27,17 @@ R1 provides a small local HTTP control surface only:
 - `GET /api/system/env-coherence` (Rust-owned Settings runtime alignment; the
   configured Python is only the explicit library/plugin host, never an HTTP
   backend)
+- `GET` / `PUT /api/app/settings` (Rust-owned app preferences)
+- `GET` / `POST` / `DELETE /api/app/favorites` (Rust-owned favorite pipeline
+  identifiers)
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
 bounded library/plugin host for the routes above. The sidecar contains no
 scientific calculation, dataset/workspace persistence,
-file I/O API, or reimplementation of nirs4all stores. UI routes remain served
-by the legacy FastAPI process.
+arbitrary file-I/O API, or reimplementation of nirs4all stores. It persists
+only its own app-level preferences and favorite identifiers. All other UI
+routes remain served by the legacy FastAPI process.
 
 `docs/contracts/studio-v1/` remains the frozen legacy FastAPI baseline. R1
 references that snapshot in tests to prevent an accidental parity claim. The
@@ -49,12 +53,12 @@ cargo build --release
 ./target/release/studio-sidecar --host 127.0.0.1 --port 0
 ```
 
-The future Electron integration must launch the binary from its packaged
-resource location, pass a loopback host and an explicit or ephemeral port, and
-wait for the single stdout line beginning `STUDIO_SIDECAR_READY `. The JSON on
-that line has `protocol_version`, `host`, and the bound `port`. Electron and
-electron-builder are deliberately not changed in R1; the Python backend remains
-the default desktop backend.
+Electron launches the packaged binary from its resource location, passes a
+loopback host and an explicit or ephemeral port, and waits for the single stdout
+line beginning `STUDIO_SIDECAR_READY `. The JSON on that line has
+`protocol_version`, `host`, and the bound `port`. For a development binary,
+set `NIRS4ALL_NATIVE_SIDECAR_PATH`. The legacy backend remains responsible for
+every route not explicitly listed above.
 
 The binary accepts only `127.0.0.1` or `::1` for `--host`. This is a local
 desktop control process, not a network service.
@@ -75,7 +79,7 @@ Protocol version: `studio-sidecar-r1`.
 health and readiness match their frozen post-lifespan responses.
 `scientific_execution` and `job_execution` are always `unavailable` in R1.
 `GET /sidecar/v1/capabilities` therefore reports
-`api_route_coverage: "bootstrap_and_settings_only"`,
+`api_route_coverage: "bootstrap_system_and_app_settings"`,
 `legacy_api_routes: false`, and
 `unmigrated_api_routes_require_legacy_backend: true`. These fields make the
 partial migration machine-readable: a caller must not treat the sidecar as
@@ -89,13 +93,20 @@ uses a bounded three-second import/runtime probe and reports `python_plugin_host
 as the runtime kind. All three return their legacy response shapes without
 launching a scientific job. All bridge routes are capability evidence, never
 transparent Python fallback.
+
+App settings are stored in `app_settings.json` using the same precedence as the
+legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the
+portable executable's `.nirs4all/config`, a valid redirect file, then the
+platform configuration directory. The store has a versioned default shape;
+preference updates deep-merge `ui_preferences`, favorite operations are
+idempotent, and writes use a synced temporary file followed by rename. The
+sidecar never reads or writes workspace or dataset state.
+
 All-in-one packaging builds the sidecar as
 `resources/backend/native/studio-sidecar` next to the embedded
-`resources/backend/python-runtime/`. Electron starts that resource only when
-`NIRS4ALL_ENABLE_NATIVE_SIDECAR=1`; a direct development binary still requires
-`NIRS4ALL_NATIVE_SIDECAR_PATH`. Electron passes the matching embedded Python as
-the plugin host for the packaged opt-in path. Neither choice selects Python as
-an HTTP fallback.
+`resources/backend/python-runtime/`. Packaged Electron starts the sidecar and
+passes the matching embedded Python as its explicit plugin host. Neither choice
+selects Python as an HTTP fallback.
 
 All errors use:
 
@@ -136,13 +147,14 @@ WebSocket parity or a live subscription service.
 Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
 idempotent cancellation, bounded Python plugin-host preflight, the first three
-Rust-owned legacy-compatible system routes, all-in-one binary packaging, and
-Electron's explicit loopback-only lifecycle management. Missing: every other
-legacy `/api/*` route, all scientific execution, persistence, uploads,
-authentication, live WebSocket upgrades, job execution, and parity
-mapping/diffing for the full frozen surface.
+Rust-owned legacy-compatible system routes, native app preferences/favorites,
+all-in-one binary packaging, and Electron's explicit loopback-only lifecycle
+management. Missing: every other legacy `/api/*` route, all scientific
+execution, workspace/dataset persistence, uploads, authentication, live
+WebSocket upgrades, job execution, and parity mapping/diffing for the full
+frozen surface.
 
-Rollback is deletion/exclusion of the unused sidecar binary/resource. R1 keeps
-the sidecar disabled unless an explicit environment setting enables it and
-exposes no additional legacy route, so rollback requires no data migration and
-leaves the Python/FastAPI path untouched.
+Rollback is exclusion of the sidecar binary/resource and routing the listed
+routes back to the legacy backend. `app_settings.json` has the legacy-compatible
+shape, so the legacy application can continue to read it; rollback leaves
+workspace and dataset state untouched.
