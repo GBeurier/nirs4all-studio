@@ -1,7 +1,7 @@
 """Integration: Studio DISPLAYS a nirs4all NATIVE results dir via the read-only fallback adapter.
 
 These tests produce a REAL native results directory with a genuine dag-ml run
-(``nirs4all.run([...], dataset, results_path=tmp)`` — NOT mocked: a real manifest.json +
+(``nirs4all.run([...], dataset, engine="dag-ml", results_path=tmp)`` — NOT mocked: a real manifest.json +
 score_set.json + predictions.parquet + artifacts/), then point both:
 
 * the :class:`~api.native_results_adapter.NativeResultsAdapter` directly, and
@@ -84,8 +84,10 @@ def native_results_root(tmp_path: Path) -> Path:
     dataset = _build_regression_dataset()
     pipeline = [KFold(n_splits=3, shuffle=True, random_state=42), {"model": PLSRegression(n_components=5)}]
 
-    # engine defaults to dag-ml; results_path threads natively (no workspace_path → no legacy fallback).
-    result = nirs4all.run(pipeline, dataset, results_path=str(results_root))
+    # The public default is the legacy engine.  Select dag-ml explicitly so this
+    # fixture exercises the native persistence path; an unavailable backend
+    # retains the historical warning-and-legacy fallback and is skipped below.
+    result = nirs4all.run(pipeline, dataset, engine="dag-ml", results_path=str(results_root))
     assert result.num_predictions > 0
 
     if not results_root.is_dir() or not any(results_root.iterdir()):
