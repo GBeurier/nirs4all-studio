@@ -74,6 +74,12 @@ Protocol version: `studio-sidecar-r1`.
 `job_execution`, and `uptime_ms`. `legacy_route_parity` is `bootstrap`: only
 health and readiness match their frozen post-lifespan responses.
 `scientific_execution` and `job_execution` are always `unavailable` in R1.
+`GET /sidecar/v1/capabilities` therefore reports
+`api_route_coverage: "bootstrap_and_settings_only"`,
+`legacy_api_routes: false`, and
+`unmigrated_api_routes_require_legacy_backend: true`. These fields make the
+partial migration machine-readable: a caller must not treat the sidecar as
+full API parity or silently redirect an unmigrated product route to Python.
 The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. `GET /sidecar/v1/python/preflight` launches that product-owned
 interpreter with `-I`, bounds it to three seconds, and checks `import nirs4all`.
