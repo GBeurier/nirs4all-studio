@@ -249,12 +249,6 @@
         "isAdvanced": true
       },
       {
-        "name": "handle_missing",
-        "type": "string",
-        "default": "error",
-        "isAdvanced": true
-      },
-      {
         "name": "sparse_output",
         "type": "bool",
         "default": false,

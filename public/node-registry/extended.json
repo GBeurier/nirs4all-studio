@@ -12174,12 +12174,6 @@
         "default": "C"
       },
       {
-        "name": "handle_missing",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "error"
-      },
-      {
         "name": "sparse_output",
         "type": "bool",
         "isAdvanced": true,
