@@ -39,9 +39,12 @@ It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
 bounded library/plugin host for the routes above. The sidecar contains no
 scientific calculation, dataset/workspace contents, arbitrary file-I/O API, or
-reimplementation of nirs4all stores. It persists only app-level preferences,
-favorite identifiers, and repaired linked-workspace record IDs. All other UI
-routes remain served by the legacy FastAPI process.
+reimplementation of nirs4all stores. It persists app-level preferences,
+favorite identifiers, repaired linked-workspace record IDs, and (through its
+Rust library boundary only) self-validating Core/DAG-ML conformal presentation
+artifacts. No HTTP ingestion route exists for those artifacts until a typed
+Core replay/data adapter is available. All other UI routes remain served by the
+legacy FastAPI process.
 
 `docs/contracts/studio-v1/` remains the frozen legacy FastAPI baseline. R1
 references that snapshot in tests to prevent an accidental parity claim. The
@@ -113,6 +116,14 @@ or writes workspace or dataset contents.
 `app_settings.json`. It repairs only absent or duplicate record IDs to retain
 stable UI keys, and returns the legacy list shape. Linking, unlinking,
 activation, pruning, scanning, and all workspace contents remain legacy routes.
+
+`ConformalPresentationStore` retains only a validated
+`nirs4all::dag_ml::ConformalPresentationV1`, keyed by its immutable
+`presentation_fingerprint`, below `conformal-presentations-v1/` in a
+product-selected configuration directory. It validates every input and every
+read through the published `nirs4all 0.3.22` contract; it neither computes nor
+alters intervals. This is a native persistence primitive, not an execution or
+HTTP API claim.
 
 All-in-one packaging builds the sidecar as
 `resources/backend/native/studio-sidecar` next to the embedded
