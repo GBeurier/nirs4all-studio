@@ -354,7 +354,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":true,\"system_capabilities_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_and_settings_only\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -1407,6 +1407,16 @@ mod tests {
         let mut unconfigured = SidecarState::default();
         let capabilities: Value = serde_json::from_str(&unconfigured.capabilities_json()).unwrap();
         assert_eq!(capabilities["python_plugin_host"], "unconfigured");
+        assert_eq!(
+            capabilities["api_route_coverage"],
+            "bootstrap_and_settings_only"
+        );
+        assert_eq!(capabilities["features"]["legacy_api_routes"], false);
+        assert_eq!(
+            capabilities["features"]["unmigrated_api_routes_require_legacy_backend"],
+            true
+        );
+        assert_eq!(capabilities["features"]["system_info_route"], true);
         assert_eq!(capabilities["features"]["python_plugin_preflight"], false);
         assert_eq!(capabilities["features"]["python_plugin_execution"], false);
 
