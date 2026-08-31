@@ -36,6 +36,8 @@ R1 provides a small local HTTP control surface only:
 - `GET /api/updates/runtime/status` (Rust-owned runtime diagnostics; it reads
   runtime metadata and measures the runtime locally while a bounded Python host
   reports only its installed distributions)
+- `GET` / `PUT /api/updates/settings` (Rust-owned update preferences; it
+  preserves the legacy YAML file and PATCH-compatible update shape)
 - `GET /api/system/env-coherence` (Rust-owned Settings runtime alignment; the
   configured Python is only the explicit library/plugin host, never an HTTP
   backend)
@@ -118,11 +120,13 @@ build metadata in Rust and uses the same bounded host only to inspect optional
 Electron-supplied application version with a bounded `nirs4all` distribution
 inspection. `GET /api/updates/runtime/status` obtains runtime metadata and size
 in Rust, then accepts a bounded (256 KiB) distribution inventory from the
-configured host. These six return their legacy response shapes without
-launching a scientific job. `GET /api/system/network` is fully native: it reads
-only the established offline preference and the `NIRS4ALL_OFFLINE` process
-override, matching the legacy route without a network probe. All bridge routes
-are capability evidence, never transparent Python fallback.
+configured host. `GET` / `PUT /api/updates/settings` are fully native: Rust
+reads and atomically writes the legacy-compatible YAML file, with no network
+probe or Python process. These seven return their legacy response shapes
+without launching a scientific job. `GET /api/system/network` is fully native:
+it reads only the established offline preference and the `NIRS4ALL_OFFLINE`
+process override, matching the legacy route without a network probe. All bridge
+routes are capability evidence, never transparent Python fallback.
 
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the
@@ -134,6 +138,12 @@ sidecar owns the compatible `config_redirect.txt` selector: a custom target
 must already exist, the redirect is stored at the platform-default path, and
 the response always declares `requires_restart: true`. The sidecar never reads
 or writes workspace or dataset contents.
+
+Update preferences remain in the legacy `update_settings.yaml` location. Until
+the network update routes are native, the legacy update manager detects the
+sidecar's atomic replacement of that file and invalidates its cached GitHub
+release when the prerelease setting changed; no restart or Python HTTP fallback
+is required for a native settings update to take effect.
 
 `GET /api/workspaces` reads the linked-workspace records already stored in
 `app_settings.json`. It repairs only absent or duplicate record IDs to retain

@@ -341,6 +341,36 @@ describe("API client request handling", () => {
     );
   });
 
+  it("sends native update settings to a running sidecar without a Python host", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      auto_check: true,
+      check_interval_hours: 24,
+      prerelease_channel: false,
+      github_repo: "GBeurier/nirs4all-studio",
+      pypi_package: "nirs4all",
+      dismissed_versions: [],
+      offline_mode: "auto",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.put("/updates/settings", { offline_mode: "on" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/updates/settings",
+      expect.objectContaining({ method: "PUT" }),
+    );
+  });
+
   it("sends the migrated runtime-coherence route to a running native sidecar", async () => {
     const fetchMock = vi
       .fn()

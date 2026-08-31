@@ -424,6 +424,7 @@ dependencies = [
  "base64",
  "nirs4all",
  "serde_json",
+ "serde_yaml",
 ]
 
 [[package]]

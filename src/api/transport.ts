@@ -33,6 +33,7 @@ const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
   "/app/config-path",
   "/workspaces",
   "/system/network",
+  "/updates/settings",
 ]);
 const NATIVE_SIDECAR_WORKSPACE_STATE_ENDPOINT = /^\/workspaces\/[^/?]+(?:\/(activate))?$/;
 
