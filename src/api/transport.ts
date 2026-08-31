@@ -23,6 +23,7 @@ const NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS = new Set([
   "/system/info",
   "/system/build",
   "/system/env-coherence",
+  "/updates/version",
 ]);
 const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
   "/health",

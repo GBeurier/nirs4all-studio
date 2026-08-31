@@ -170,6 +170,7 @@ function nativeSidecarStartOptions() {
     runtimeMode,
     runtimeKind,
     buildInfoPath: buildInfoCandidates.find((candidate) => fs.existsSync(candidate)) ?? null,
+    appVersion: app.getVersion(),
   };
 }
 

@@ -154,6 +154,7 @@ describe("NativeSidecarManager", () => {
       runtimeMode: "bundled",
       runtimeKind: "bundled",
       buildInfoPath: "/resources/backend/python-runtime/build_info.json",
+      appVersion: "0.9.1",
     });
     expect(childProcessMocks.spawn).toHaveBeenCalledWith(
       path.resolve(process.env.NIRS4ALL_NATIVE_SIDECAR_PATH),
@@ -165,6 +166,7 @@ describe("NativeSidecarManager", () => {
           NIRS4ALL_RUNTIME_KIND: "bundled",
           NIRS4ALL_BUILD_INFO_PATH:
             "/resources/backend/python-runtime/build_info.json",
+          NIRS4ALL_APP_VERSION: "0.9.1",
         }),
         windowsHide: true,
       }),

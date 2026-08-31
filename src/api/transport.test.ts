@@ -276,6 +276,34 @@ describe("API client request handling", () => {
     );
   });
 
+  it("sends the migrated version inventory to a configured native sidecar", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      webapp_version: "0.9.1",
+      nirs4all_version: "0.12.0",
+      python_version: "3.11.9",
+      platform: "Linux",
+      machine: "x86_64",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: true,
+      }),
+    });
+
+    await api.get("/updates/version");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/updates/version",
+      expect.any(Object),
+    );
+  });
+
   it("sends the migrated runtime-coherence route to a running native sidecar", async () => {
     const fetchMock = vi
       .fn()
