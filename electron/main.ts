@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import { BackendManager, type BackendStatus } from "./backend-manager";
 import { EnvManager } from "./env-manager";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
+import { NativeSidecarManager } from "./native-sidecar-manager";
 import { applyPortablePathOverrides } from "./portable-paths";
 import {
   getTelemetryConsentStatus,
@@ -114,6 +115,7 @@ if (SentryMain) console.log("Sentry crash reporting enabled (main process)");
 const envManager = new EnvManager();
 const backendManager = new BackendManager();
 backendManager.setEnvManager(envManager);
+const nativeSidecarManager = new NativeSidecarManager();
 
 const ACTIVE_BACKEND_STATUSES = new Set<BackendStatus>(["starting", "running", "restarting"]);
 
@@ -128,6 +130,20 @@ async function restartBackendAfterTelemetryChange(): Promise<boolean> {
     console.error("Failed to restart backend after telemetry consent change:", error);
     return false;
   }
+}
+
+function startNativeSidecarIfConfigured(): void {
+  void nativeSidecarManager.start()
+    .then((info) => {
+      if (info.status === "running") {
+        console.log(`Native Studio sidecar ready at ${info.url} (${info.protocolVersion})`);
+      } else if (info.status === "error") {
+        console.error(`Native Studio sidecar was not started: ${info.error ?? "unknown error"}`);
+      }
+    })
+    .catch((error) => {
+      console.error("Native Studio sidecar failed during startup:", error);
+    });
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -603,6 +619,11 @@ app.whenReady().then(async () => {
   // less obvious backend-start step.
   envManager.validateConfiguredState();
 
+  // The Rust control-plane sidecar is an explicit dual-run diagnostic path.
+  // It does not select routes or fall back to Python; the legacy backend keeps
+  // serving the UI until the corresponding route families are migrated.
+  startNativeSidecarIfConfigured();
+
   if (isDev) {
     // Dev mode: start backend non-blocking, show window immediately
     try {
@@ -672,7 +693,7 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   // Await backend stop before allowing quit — prevents Electron exiting
   // before taskkill runs. stop() has a 2s force-kill timeout as safety net.
-  backendManager.stop().finally(() => {
+  Promise.allSettled([backendManager.stop(), nativeSidecarManager.stop()]).finally(() => {
     app.quit(); // Re-enters before-quit with isQuitting=true, then proceeds
   });
   // Hard deadline: if stop() never resolves (stuck process, missing exit event),
