@@ -1,0 +1,243 @@
+use std::{
+    collections::BTreeSet,
+    fs,
+    panic::{catch_unwind, AssertUnwindSafe},
+    path::PathBuf,
+    process::Command,
+};
+
+use serde_json::Value;
+use studio_sidecar::{route_request, SidecarState, PROTOCOL_VERSION};
+
+fn studio_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf()
+}
+
+fn read_json(path: PathBuf) -> Value {
+    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+}
+
+fn assert_object_keys(value: &Value, expected: &[&str]) {
+    let keys = value
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(keys, expected.iter().copied().collect());
+}
+
+fn json_at_path<'a>(value: &'a Value, path: &[&str]) -> &'a Value {
+    path.iter().fold(value, |current, segment| {
+        current
+            .get(segment)
+            .unwrap_or_else(|| panic!("missing baseline JSON path segment {segment}"))
+    })
+}
+
+fn assert_known_legacy_response(
+    reference: &Value,
+    baseline: &Value,
+    reference_name: &str,
+    expected_http_path: &str,
+    baseline_path: &[&str],
+) {
+    let declared = &reference["known_legacy_responses"][reference_name];
+    assert_object_keys(declared, &["path", "required_keys", "status"]);
+    assert_eq!(
+        declared["path"], expected_http_path,
+        "{reference_name} path"
+    );
+
+    let expected_keys = declared["required_keys"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{reference_name} required_keys must be an array"));
+    let expected_keys = expected_keys
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .unwrap_or_else(|| panic!("{reference_name} required_keys must contain strings"))
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        expected_keys.len(),
+        declared["required_keys"].as_array().unwrap().len(),
+        "{reference_name} required_keys must not contain duplicates"
+    );
+
+    let response = json_at_path(baseline, baseline_path);
+    assert_eq!(
+        response["status"], declared["status"],
+        "{reference_name} status"
+    );
+    let actual_keys = response["body"]
+        .as_object()
+        .unwrap_or_else(|| panic!("{reference_name} baseline body must be an object"))
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    assert_eq!(actual_keys, expected_keys, "{reference_name} required_keys");
+}
+
+#[test]
+fn r1_fixture_references_the_frozen_studio_v1_snapshot_and_declares_its_difference() {
+    let root = studio_root();
+    let reference_path = root.join("sidecar/fixtures/studio-v1-reference.json");
+    let reference = read_json(reference_path.clone());
+    let baseline = read_json(
+        reference_path
+            .parent()
+            .unwrap()
+            .join(reference["reference_fixture"].as_str().unwrap()),
+    );
+
+    assert_object_keys(
+        &reference,
+        &[
+            "reference_contract",
+            "reference_fixture",
+            "purpose",
+            "known_legacy_responses",
+            "r1_intentional_difference",
+        ],
+    );
+    assert_eq!(reference["reference_contract"], "studio-v1");
+    assert_eq!(
+        reference["reference_fixture"],
+        "../../docs/contracts/studio-v1/fixtures/behavior.snapshot.json"
+    );
+    assert_object_keys(
+        &reference["known_legacy_responses"],
+        &["health_post_lifespan", "readiness_post_lifespan"],
+    );
+    assert_eq!(
+        reference["r1_intentional_difference"]["legacy_route_parity"],
+        "not_started"
+    );
+
+    assert_eq!(baseline["contract_version"], "studio-v1");
+    assert_known_legacy_response(
+        &reference,
+        &baseline,
+        "health_post_lifespan",
+        "/api/health",
+        &["readiness", "post_lifespan", "health"],
+    );
+    assert_known_legacy_response(
+        &reference,
+        &baseline,
+        "readiness_post_lifespan",
+        "/api/system/readiness",
+        &["readiness", "post_lifespan", "readiness"],
+    );
+}
+
+#[test]
+fn legacy_reference_rejects_status_and_required_key_mutations() {
+    let root = studio_root();
+    let reference_path = root.join("sidecar/fixtures/studio-v1-reference.json");
+    let reference = read_json(reference_path.clone());
+    let baseline = read_json(
+        reference_path
+            .parent()
+            .unwrap()
+            .join(reference["reference_fixture"].as_str().unwrap()),
+    );
+
+    let mut wrong_status = reference.clone();
+    wrong_status["known_legacy_responses"]["health_post_lifespan"]["status"] = 201.into();
+    assert!(catch_unwind(AssertUnwindSafe(|| {
+        assert_known_legacy_response(
+            &wrong_status,
+            &baseline,
+            "health_post_lifespan",
+            "/api/health",
+            &["readiness", "post_lifespan", "health"],
+        );
+    }))
+    .is_err());
+
+    let mut wrong_keys = reference;
+    wrong_keys["known_legacy_responses"]["readiness_post_lifespan"]["required_keys"] =
+        serde_json::json!(["core_ready"]);
+    assert!(catch_unwind(AssertUnwindSafe(|| {
+        assert_known_legacy_response(
+            &wrong_keys,
+            &baseline,
+            "readiness_post_lifespan",
+            "/api/system/readiness",
+            &["readiness", "post_lifespan", "readiness"],
+        );
+    }))
+    .is_err());
+}
+
+#[test]
+fn known_legacy_readiness_response_diff_is_intentional_and_bounded() {
+    let root = studio_root();
+    let baseline = read_json(root.join("docs/contracts/studio-v1/fixtures/behavior.snapshot.json"));
+    let mut state = SidecarState::default();
+    let r1: Value =
+        serde_json::from_str(&route_request(&mut state, "GET", "/sidecar/v1/readiness").body)
+            .unwrap();
+
+    let legacy_body = &baseline["readiness"]["post_lifespan"]["readiness"]["body"];
+    assert_object_keys(
+        legacy_body,
+        &[
+            "core_ready",
+            "elapsed_seconds",
+            "ml_error",
+            "ml_loading",
+            "ml_ready",
+            "workspace_ready",
+        ],
+    );
+    assert_object_keys(
+        &r1,
+        &[
+            "job_execution",
+            "legacy_contract_baseline",
+            "legacy_route_parity",
+            "protocol_version",
+            "scientific_execution",
+            "sidecar_ready",
+            "uptime_ms",
+        ],
+    );
+    for field in [
+        "core_ready",
+        "ml_ready",
+        "ml_loading",
+        "ml_error",
+        "workspace_ready",
+    ] {
+        assert!(
+            r1.get(field).is_none(),
+            "R1 must not imitate legacy field {field}"
+        );
+    }
+    assert_eq!(r1["protocol_version"], PROTOCOL_VERSION);
+    assert_eq!(r1["legacy_route_parity"], "not_started");
+    assert_eq!(r1["scientific_execution"], "unavailable");
+    assert!(r1["uptime_ms"].is_u64());
+}
+
+#[test]
+fn cli_smoke_prints_r1_readiness_without_starting_a_server() {
+    let executable = env!("CARGO_BIN_EXE_studio-sidecar");
+    let output = Command::new(executable)
+        .arg("--smoke-readiness")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let readiness: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(readiness["sidecar_ready"], true);
+    assert_eq!(readiness["protocol_version"], PROTOCOL_VERSION);
+    assert_eq!(readiness["scientific_execution"], "unavailable");
+}

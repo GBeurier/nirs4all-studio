@@ -1,0 +1,22 @@
+{
+  "reference_contract": "studio-v1",
+  "reference_fixture": "../../docs/contracts/studio-v1/fixtures/behavior.snapshot.json",
+  "purpose": "Compatibility input for R1 tests only; it does not make the sidecar a legacy-route replacement.",
+  "known_legacy_responses": {
+    "health_post_lifespan": {
+      "path": "/api/health",
+      "status": 200,
+      "required_keys": ["core_ready", "message", "ml_loading", "ml_ready", "ready", "status"]
+    },
+    "readiness_post_lifespan": {
+      "path": "/api/system/readiness",
+      "status": 200,
+      "required_keys": ["core_ready", "elapsed_seconds", "ml_error", "ml_loading", "ml_ready", "workspace_ready"]
+    }
+  },
+  "r1_intentional_difference": {
+    "namespace": "/sidecar/v1",
+    "legacy_route_parity": "not_started",
+    "scientific_execution": "unavailable"
+  }
+}
