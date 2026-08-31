@@ -2,8 +2,9 @@
 //!
 //! The store deliberately preserves the existing `app_settings.json` shape so
 //! a desktop upgrade can move these routes to Rust without requiring a data
-//! migration or a Python process.  Workspace and dataset state are out of
-//! scope here; this module owns only UI preferences and favourite pipelines.
+//! migration or a Python process. It owns UI preferences, favourite pipelines,
+//! and the linked-workspace catalogue only; workspace contents, scans, and
+//! datasets remain outside this module.
 
 use std::{
     collections::HashSet,

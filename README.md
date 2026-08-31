@@ -288,10 +288,10 @@ sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; the explicit preflight verifies
 route enables it. In that explicit dual-run mode, the first UI-backed native
 routes are `/api/system/capabilities`, `/api/system/info`, and
 `/api/system/env-coherence`, plus `/api/app/settings`,
-`/api/app/favorites`, `/api/app/config-path`, and the read-only
-`/api/workspaces` catalogue. They are served by Rust and do not fall back to
-FastAPI after sidecar selection; workspace linking, scanning, and all scientific
-operations remain legacy routes.
+`/api/app/favorites`, `/api/app/config-path`, the `/api/workspaces` catalogue,
+and native workspace activation/unlink mutations. They are served by Rust and
+do not fall back to FastAPI after sidecar selection; workspace linking,
+pruning, scanning, and all scientific operations remain legacy routes.
 
 > **Note**: The webapp can run **without nirs4all installed** for pure UI development. The backend will report missing capabilities but the frontend is fully functional.
 
