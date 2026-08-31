@@ -25,6 +25,7 @@ const NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS = new Set([
   "/system/env-coherence",
 ]);
 const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
+  "/health",
   "/app/settings",
   "/app/favorites",
   "/app/config-path",

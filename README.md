@@ -286,7 +286,7 @@ from an all-in-one package, Electron passes its embedded interpreter to the
 sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; the explicit preflight verifies
 `import nirs4all`, but scientific execution remains unavailable until a Rust-owned
 route enables it. In that explicit dual-run mode, the first UI-backed native
-routes are `/api/system/capabilities`, `/api/system/info`, and
+routes are `/api/health`, `/api/system/capabilities`, `/api/system/info`, and
 `/api/system/env-coherence`, `/api/system/network`, plus `/api/app/settings`,
 `/api/app/favorites`, `/api/app/config-path`, the `/api/workspaces` catalogue,
 and native workspace activation/unlink mutations. They are served by Rust and
