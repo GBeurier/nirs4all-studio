@@ -45,8 +45,9 @@ afterEach(() => {
 });
 
 describe("NativeSidecarManager", () => {
-  it("resolves an explicit binary before an opt-in packaged resource", async () => {
-    const { resolveBundledPythonPluginHost, resolveNativeSidecarPath } = await import("./native-sidecar-manager");
+  it("resolves an explicit binary before a product-enabled packaged resource", async () => {
+    const { resolveBundledPythonPluginHost, resolveNativeSidecarPath } =
+      await import("./native-sidecar-manager");
 
     expect(
       resolveNativeSidecarPath({
@@ -56,23 +57,44 @@ describe("NativeSidecarManager", () => {
         },
         resourcesPath: "/app/resources",
         platform: "linux",
+        allowPackagedResource: true,
       }),
     ).toBe(path.resolve("tools/studio-sidecar"));
     expect(
       resolveNativeSidecarPath({
-        environment: { NIRS4ALL_ENABLE_NATIVE_SIDECAR: "1" },
+        environment: {},
         resourcesPath: "/app/resources",
         platform: "win32",
+        allowPackagedResource: true,
       }),
     ).toBe("/app/resources/backend/native/studio-sidecar.exe");
-    expect(resolveNativeSidecarPath({ environment: {}, resourcesPath: "/app/resources" })).toBeNull();
+    expect(
+      resolveNativeSidecarPath({
+        environment: {},
+        resourcesPath: "/app/resources",
+      }),
+    ).toBeNull();
 
-    const resources = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-sidecar-runtime-"));
+    const resources = fs.mkdtempSync(
+      path.join(os.tmpdir(), "n4a-sidecar-runtime-"),
+    );
     tempDirs.push(resources);
-    const bundledPython = path.join(resources, "backend", "python-runtime", "python", "bin", "python3");
+    const bundledPython = path.join(
+      resources,
+      "backend",
+      "python-runtime",
+      "python",
+      "bin",
+      "python3",
+    );
     fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
     fs.writeFileSync(bundledPython, "placeholder");
-    expect(resolveBundledPythonPluginHost({ resourcesPath: resources, platform: "linux" })).toBe(bundledPython);
+    expect(
+      resolveBundledPythonPluginHost({
+        resourcesPath: resources,
+        platform: "linux",
+      }),
+    ).toBe(bundledPython);
   });
 
   it("stays disabled without an explicit sidecar binary", async () => {
@@ -98,13 +120,17 @@ describe("NativeSidecarManager", () => {
       path.resolve(process.env.NIRS4ALL_NATIVE_SIDECAR_PATH),
       ["--host", "127.0.0.1", "--port", "0"],
       expect.objectContaining({
-        env: expect.objectContaining({ NIRS4ALL_PYTHON_PLUGIN_HOST: "/plugin-host/python" }),
+        env: expect.objectContaining({
+          NIRS4ALL_PYTHON_PLUGIN_HOST: "/plugin-host/python",
+        }),
         windowsHide: true,
       }),
     );
     child.stdout.emit(
       "data",
-      Buffer.from('STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n'),
+      Buffer.from(
+        'STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n',
+      ),
     );
 
     await expect(startup).resolves.toMatchObject({
@@ -113,6 +139,38 @@ describe("NativeSidecarManager", () => {
       port: 43123,
       protocolVersion: "studio-sidecar-r1",
       url: "http://127.0.0.1:43123",
+    });
+  });
+
+  it("passes the selected interpreter only as a Python plugin host", async () => {
+    process.env.NIRS4ALL_NATIVE_SIDECAR_PATH = makeExecutable();
+    const child = makeProcess();
+    childProcessMocks.spawn.mockReturnValue(child);
+    const { NativeSidecarManager } = await import("./native-sidecar-manager");
+    const manager = new NativeSidecarManager();
+
+    const startup = manager.start({
+      pythonPluginHost: "/selected-runtime/python",
+    });
+    expect(childProcessMocks.spawn).toHaveBeenCalledWith(
+      path.resolve(process.env.NIRS4ALL_NATIVE_SIDECAR_PATH),
+      ["--host", "127.0.0.1", "--port", "0"],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          NIRS4ALL_PYTHON_PLUGIN_HOST: "/selected-runtime/python",
+        }),
+        windowsHide: true,
+      }),
+    );
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        'STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n',
+      ),
+    );
+    await expect(startup).resolves.toMatchObject({
+      status: "running",
+      pythonPluginHostConfigured: true,
     });
   });
 
@@ -126,7 +184,9 @@ describe("NativeSidecarManager", () => {
     const startup = manager.start();
     child.stdout.emit(
       "data",
-      Buffer.from('STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"0.0.0.0","port":43123}\n'),
+      Buffer.from(
+        'STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"0.0.0.0","port":43123}\n',
+      ),
     );
 
     await expect(startup).rejects.toThrow("bind exactly to 127.0.0.1");
@@ -144,7 +204,9 @@ describe("NativeSidecarManager", () => {
     const startup = manager.start();
     child.stdout.emit(
       "data",
-      Buffer.from('STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n'),
+      Buffer.from(
+        'STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n',
+      ),
     );
     await startup;
 
@@ -152,6 +214,9 @@ describe("NativeSidecarManager", () => {
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
     child.emit("exit", 0, null);
     await stop;
-    expect(manager.getInfo()).toMatchObject({ status: "stopped", url: "http://127.0.0.1:43123" });
+    expect(manager.getInfo()).toMatchObject({
+      status: "stopped",
+      url: "http://127.0.0.1:43123",
+    });
   });
 });

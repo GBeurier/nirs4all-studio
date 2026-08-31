@@ -18,10 +18,21 @@ const DEFAULT_API_BASE_URL = "/api";
 // Cache for the resolved backend URL in Electron mode
 let resolvedBackendUrl: string | null = null;
 let backendUrlPromise: Promise<string> | null = null;
-const NATIVE_SIDECAR_ROUTE_ENDPOINTS = new Set(["/system/capabilities", "/system/info", "/system/env-coherence"]);
+const NATIVE_SIDECAR_ROUTE_ENDPOINTS = new Set([
+  "/system/capabilities",
+  "/system/info",
+  "/system/env-coherence",
+]);
 
-type ElectronBackendStatus = "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
-type NativeSidecarStatus = "disabled" | "starting" | "running" | "stopped" | "error";
+type ElectronBackendStatus =
+  | "stopped"
+  | "starting"
+  | "running"
+  | "error"
+  | "restarting"
+  | "setup_required";
+type NativeSidecarStatus =
+  "disabled" | "starting" | "running" | "stopped" | "error";
 
 interface ElectronBridgeApi {
   isElectron?: boolean;
@@ -36,6 +47,7 @@ interface ElectronBridgeApi {
   getNativeSidecarInfo?: () => Promise<{
     status: NativeSidecarStatus;
     url: string | null;
+    pythonPluginHostConfigured: boolean;
   }>;
 }
 
@@ -52,7 +64,10 @@ function isElectronEnvironment(): boolean {
   if (typeof window === "undefined") return false;
 
   // Check if electronApi is exposed (preferred method)
-  if ((window as unknown as { electronApi?: ElectronBridgeApi }).electronApi?.isElectron) {
+  if (
+    (window as unknown as { electronApi?: ElectronBridgeApi }).electronApi
+      ?.isElectron
+  ) {
     return true;
   }
 
@@ -70,10 +85,13 @@ function isElectronEnvironment(): boolean {
 async function waitForElectronApi(maxWaitMs: number = 5000): Promise<boolean> {
   const startTime = Date.now();
   while (Date.now() - startTime < maxWaitMs) {
-    if ((window as unknown as { electronApi?: ElectronBridgeApi }).electronApi?.getBackendUrl) {
+    if (
+      (window as unknown as { electronApi?: ElectronBridgeApi }).electronApi
+        ?.getBackendUrl
+    ) {
       return true;
     }
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
   return false;
 }
@@ -82,7 +100,10 @@ function getElectronBridge(): ElectronBridgeApi | null {
   if (typeof window === "undefined") {
     return null;
   }
-  return (window as unknown as { electronApi?: ElectronBridgeApi }).electronApi ?? null;
+  return (
+    (window as unknown as { electronApi?: ElectronBridgeApi }).electronApi ??
+    null
+  );
 }
 
 /**
@@ -112,7 +133,11 @@ export async function getApiBaseUrl(): Promise<string> {
           throw new Error("electronApi not available");
         }
 
-        const electronApi = (window as unknown as { electronApi: { getBackendUrl: () => Promise<string> } }).electronApi;
+        const electronApi = (
+          window as unknown as {
+            electronApi: { getBackendUrl: () => Promise<string> };
+          }
+        ).electronApi;
         const backendUrl = await electronApi.getBackendUrl();
         resolvedBackendUrl = `${backendUrl}/api`;
         logger.info(`Using Electron backend URL: ${resolvedBackendUrl}`);
@@ -142,7 +167,10 @@ export function resetBackendUrl(): void {
 }
 
 async function resolveApiRoute(endpoint: string): Promise<ApiRoute> {
-  if (!NATIVE_SIDECAR_ROUTE_ENDPOINTS.has(endpoint) || !isElectronEnvironment()) {
+  if (
+    !NATIVE_SIDECAR_ROUTE_ENDPOINTS.has(endpoint) ||
+    !isElectronEnvironment()
+  ) {
     return { baseUrl: await getApiBaseUrl(), source: "backend" };
   }
   const sidecar = getElectronBridge()?.getNativeSidecarInfo;
@@ -151,11 +179,18 @@ async function resolveApiRoute(endpoint: string): Promise<ApiRoute> {
   }
   try {
     const info = await sidecar();
-    if (info.status === "running" && info.url) {
+    if (
+      info.status === "running" &&
+      info.url &&
+      info.pythonPluginHostConfigured
+    ) {
       const baseUrl = `${info.url}/api`;
       logger.info(`Using native sidecar route for ${endpoint}: ${baseUrl}`);
       return { baseUrl, source: "native-sidecar" };
     }
+    logger.info(
+      `Native sidecar cannot serve ${endpoint} before its Python plugin host is configured`,
+    );
   } catch (error) {
     logger.warn(`Failed to inspect native sidecar for ${endpoint}`, error);
   }
@@ -167,7 +202,7 @@ export interface ApiError {
   status: number;
 }
 
-export interface RequestOptions extends Omit<RequestInit, 'body'> {
+export interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
@@ -243,10 +278,10 @@ export function formatApiErrorDetail(detail: unknown, status?: number): string {
 
 function isApiError(error: unknown): error is ApiError {
   return Boolean(
-    error
-    && typeof error === "object"
-    && "status" in error
-    && typeof (error as { status?: unknown }).status === "number",
+    error &&
+    typeof error === "object" &&
+    "status" in error &&
+    typeof (error as { status?: unknown }).status === "number",
   );
 }
 
@@ -260,7 +295,10 @@ function isAbortError(error: unknown): boolean {
 async function parseResponseError(response: Response): Promise<ApiError> {
   const errorData = await response.json().catch(() => ({}));
   return {
-    detail: formatApiErrorDetail(errorData.detail ?? errorData, response.status),
+    detail: formatApiErrorDetail(
+      errorData.detail ?? errorData,
+      response.status,
+    ),
     status: response.status,
   };
 }
@@ -295,7 +333,9 @@ function isRetryableElectronNetworkError(error: unknown): boolean {
   return false;
 }
 
-async function waitForElectronBackendToBeReachable(maxWaitMs: number = 8000): Promise<void> {
+async function waitForElectronBackendToBeReachable(
+  maxWaitMs: number = 8000,
+): Promise<void> {
   const bridge = getElectronBridge();
   if (!bridge?.getBackendInfo) {
     return;
@@ -308,7 +348,11 @@ async function waitForElectronBackendToBeReachable(maxWaitMs: number = 8000): Pr
       if (info.status === "running") {
         return;
       }
-      if (info.status === "error" || info.status === "setup_required" || info.status === "stopped") {
+      if (
+        info.status === "error" ||
+        info.status === "setup_required" ||
+        info.status === "stopped"
+      ) {
         return;
       }
     } catch {
@@ -330,15 +374,23 @@ async function prepareElectronBackendRetry(endpoint: string): Promise<void> {
   try {
     const info = await bridge.getBackendInfo();
     if (info.status === "starting" || info.status === "restarting") {
-      logger.warn(`[request] waiting for backend ${info.status} before retrying ${endpoint}`);
+      logger.warn(
+        `[request] waiting for backend ${info.status} before retrying ${endpoint}`,
+      );
       await waitForElectronBackendToBeReachable();
     }
   } catch (error) {
-    logger.warn(`[request] failed to inspect backend status before retrying ${endpoint}`, error);
+    logger.warn(
+      `[request] failed to inspect backend status before retrying ${endpoint}`,
+      error,
+    );
   }
 }
 
-async function fetchWithRetry(endpoint: string, config: RequestInit): Promise<Response> {
+async function fetchWithRetry(
+  endpoint: string,
+  config: RequestInit,
+): Promise<Response> {
   let lastError: unknown;
   let route = await resolveApiRoute(endpoint);
 
@@ -349,8 +401,15 @@ async function fetchWithRetry(endpoint: string, config: RequestInit): Promise<Re
       return await fetch(url, config);
     } catch (error) {
       lastError = error;
-      if (attempt === 0 && route.source === "backend" && isRetryableElectronNetworkError(error)) {
-        logger.warn(`[request] transient Electron network error for ${endpoint}; retrying once`, error);
+      if (
+        attempt === 0 &&
+        route.source === "backend" &&
+        isRetryableElectronNetworkError(error)
+      ) {
+        logger.warn(
+          `[request] transient Electron network error for ${endpoint}; retrying once`,
+          error,
+        );
         await prepareElectronBackendRetry(endpoint);
         route = await resolveApiRoute(endpoint);
         continue;
@@ -365,7 +424,7 @@ async function fetchWithRetry(endpoint: string, config: RequestInit): Promise<Re
 class ApiClient {
   private async request<T>(
     endpoint: string,
-    options: RequestOptions = {}
+    options: RequestOptions = {},
   ): Promise<T> {
     const { body, ...restOptions } = options;
 
@@ -397,7 +456,11 @@ class ApiClient {
   }
 
   // POST request
-  async post<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
+  async post<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: RequestOptions,
+  ): Promise<T> {
     return this.request<T>(endpoint, {
       method: "POST",
       body: data,
@@ -406,7 +469,11 @@ class ApiClient {
   }
 
   // PUT request
-  async put<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
+  async put<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: RequestOptions,
+  ): Promise<T> {
     return this.request<T>(endpoint, { method: "PUT", body: data, ...options });
   }
 
@@ -416,14 +483,18 @@ class ApiClient {
   }
 
   // POST with MessagePack content negotiation (binary response when backend supports it)
-  async postMsgpack<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
+  async postMsgpack<T>(
+    endpoint: string,
+    data?: unknown,
+    options?: RequestOptions,
+  ): Promise<T> {
     const { body: _ignored, ...restOptions } = options || {};
 
     const config: RequestInit = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Accept": "application/x-msgpack, application/json;q=0.9",
+        Accept: "application/x-msgpack, application/json;q=0.9",
         ...options?.headers,
       },
       ...restOptions,
@@ -435,7 +506,10 @@ class ApiClient {
 
       if (!response.ok) {
         const error = await parseResponseError(response);
-        logger.error(`[postMsgpack] ${response.status} ${endpoint}:`, error.detail);
+        logger.error(
+          `[postMsgpack] ${response.status} ${endpoint}:`,
+          error.detail,
+        );
         throw error;
       }
 
@@ -467,7 +541,11 @@ export async function requestForm<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   try {
-    const response = await fetchWithRetry(endpoint, { method: "POST", body: formData, signal });
+    const response = await fetchWithRetry(endpoint, {
+      method: "POST",
+      body: formData,
+      signal,
+    });
 
     if (!response.ok) {
       throw await parseResponseError(response);
@@ -493,7 +571,8 @@ export async function requestBinary(
   try {
     const response = await fetchWithRetry(endpoint, {
       method,
-      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      headers:
+        body !== undefined ? { "Content-Type": "application/json" } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal,
     });

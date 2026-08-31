@@ -24,7 +24,8 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("@/api/system", async () => {
-  const actual = await vi.importActual<typeof import("@/api/system")>("@/api/system");
+  const actual =
+    await vi.importActual<typeof import("@/api/system")>("@/api/system");
   return {
     ...actual,
     getRuntimeSummary: mocks.getRuntimeSummary,
@@ -32,7 +33,8 @@ vi.mock("@/api/system", async () => {
 });
 
 vi.mock("@/api/config", async () => {
-  const actual = await vi.importActual<typeof import("@/api/config")>("@/api/config");
+  const actual =
+    await vi.importActual<typeof import("@/api/config")>("@/api/config");
   return {
     ...actual,
     getConfigDiff: mocks.getConfigDiff,
@@ -41,7 +43,10 @@ vi.mock("@/api/config", async () => {
 });
 
 vi.mock("@/api/dependencies", async () => {
-  const actual = await vi.importActual<typeof import("@/api/dependencies")>("@/api/dependencies");
+  const actual =
+    await vi.importActual<typeof import("@/api/dependencies")>(
+      "@/api/dependencies",
+    );
   return {
     ...actual,
     getDependencies: mocks.getDependencies,
@@ -57,23 +62,40 @@ vi.mock("@/lib/pythonRuntimeSwitch", () => ({
 
 import { PythonEnvPicker } from "../PythonEnvPicker";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-  .IS_REACT_ACT_ENVIRONMENT = true;
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 type RendererElectronApi = NonNullable<Window["electronApi"]>;
 
 interface ElectronApiMock extends RendererElectronApi {
   getEnvInfo: ReturnType<typeof vi.fn<RendererElectronApi["getEnvInfo"]>>;
-  detectExistingEnvs: ReturnType<typeof vi.fn<RendererElectronApi["detectExistingEnvs"]>>;
-  inspectExistingEnv: ReturnType<typeof vi.fn<RendererElectronApi["inspectExistingEnv"]>>;
-  inspectExistingPython: ReturnType<typeof vi.fn<RendererElectronApi["inspectExistingPython"]>>;
-  applyExistingEnv: ReturnType<typeof vi.fn<RendererElectronApi["applyExistingEnv"]>>;
-  applyExistingPython: ReturnType<typeof vi.fn<RendererElectronApi["applyExistingPython"]>>;
-  selectPythonExe: ReturnType<typeof vi.fn<RendererElectronApi["selectPythonExe"]>>;
+  detectExistingEnvs: ReturnType<
+    typeof vi.fn<RendererElectronApi["detectExistingEnvs"]>
+  >;
+  inspectExistingEnv: ReturnType<
+    typeof vi.fn<RendererElectronApi["inspectExistingEnv"]>
+  >;
+  inspectExistingPython: ReturnType<
+    typeof vi.fn<RendererElectronApi["inspectExistingPython"]>
+  >;
+  applyExistingEnv: ReturnType<
+    typeof vi.fn<RendererElectronApi["applyExistingEnv"]>
+  >;
+  applyExistingPython: ReturnType<
+    typeof vi.fn<RendererElectronApi["applyExistingPython"]>
+  >;
+  selectPythonExe: ReturnType<
+    typeof vi.fn<RendererElectronApi["selectPythonExe"]>
+  >;
   selectFolder: ReturnType<typeof vi.fn<RendererElectronApi["selectFolder"]>>;
   startEnvSetup: ReturnType<typeof vi.fn<RendererElectronApi["startEnvSetup"]>>;
-  onEnvSetupProgress: ReturnType<typeof vi.fn<RendererElectronApi["onEnvSetupProgress"]>>;
-  restartBackend: ReturnType<typeof vi.fn<RendererElectronApi["restartBackend"]>>;
+  onEnvSetupProgress: ReturnType<
+    typeof vi.fn<RendererElectronApi["onEnvSetupProgress"]>
+  >;
+  restartBackend: ReturnType<
+    typeof vi.fn<RendererElectronApi["restartBackend"]>
+  >;
 }
 
 function createElectronApi(): ElectronApiMock {
@@ -103,6 +125,14 @@ function createElectronApi(): ElectronApiMock {
       url: "http://127.0.0.1:8000",
       restartCount: 0,
     }),
+    getNativeSidecarInfo: vi.fn().mockResolvedValue({
+      status: "disabled",
+      host: null,
+      port: null,
+      protocolVersion: null,
+      url: null,
+      pythonPluginHostConfigured: false,
+    }),
     onBackendStatusChanged: vi.fn(() => () => undefined),
     getEnvInfo: vi.fn().mockResolvedValue({
       status: "ready",
@@ -125,7 +155,9 @@ function createElectronApi(): ElectronApiMock {
     getEnvStatus: vi.fn().mockResolvedValue("ready"),
     isEnvReady: vi.fn().mockResolvedValue(true),
     useExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
-    useExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    useExistingPython: vi
+      .fn()
+      .mockResolvedValue({ success: true, message: "" }),
     shouldShowWizard: vi.fn().mockResolvedValue(false),
     markWizardComplete: vi.fn().mockResolvedValue(undefined),
     getCurrentEnvSummary: vi.fn().mockResolvedValue(null),
@@ -146,7 +178,10 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function waitFor(assertion: () => void, timeoutMs: number = 1000): Promise<void> {
+async function waitFor(
+  assertion: () => void,
+  timeoutMs: number = 1000,
+): Promise<void> {
   const start = Date.now();
   while (true) {
     try {
@@ -195,8 +230,10 @@ describe("PythonEnvPicker", () => {
     mocks.getRuntimeSummary.mockResolvedValue({
       coherent: false,
       configured_python: "C:\\envs\\configured\\python.exe",
-      running_python: "C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
-      running_prefix: "C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python313",
+      running_python:
+        "C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+      running_prefix:
+        "C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python313",
       runtime_kind: "custom",
       is_bundled_default: false,
       bundled_runtime_available: false,
@@ -207,7 +244,8 @@ describe("PythonEnvPicker", () => {
       python_match: false,
       prefix_match: false,
       runtime: {
-        python: "C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        python:
+          "C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
         prefix: "C:\\Users\\me\\AppData\\Local\\Programs\\Python\\Python313",
         version: "3.13.1",
       },
@@ -225,7 +263,9 @@ describe("PythonEnvPicker", () => {
 
     expect(view.container.textContent).not.toContain("Configured Python");
     expect(view.container.textContent).not.toContain("Configured = Running");
-    expect(view.container.textContent).not.toContain("Configured Python does not match the running backend");
+    expect(view.container.textContent).not.toContain(
+      "Configured Python does not match the running backend",
+    );
 
     await view.unmount();
   });
@@ -292,8 +332,8 @@ describe("PythonEnvPicker", () => {
       expect(view.container.textContent).toContain("settings.pythonEnv.change");
     });
 
-    const changeButton = Array.from(document.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("settings.pythonEnv.change"),
+    const changeButton = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("settings.pythonEnv.change"),
     );
     expect(changeButton).toBeTruthy();
 
@@ -305,8 +345,8 @@ describe("PythonEnvPicker", () => {
       expect(document.body.textContent).toContain("Python 3.13.9");
     });
 
-    const envButton = Array.from(document.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("Python 3.13.9"),
+    const envButton = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Python 3.13.9"),
     );
     expect(envButton).toBeTruthy();
 
@@ -520,7 +560,9 @@ describe("PythonEnvPicker", () => {
       total_packages: 1,
       cached_at: "2026-04-18T08:00:00",
     });
-    mocks.previewRuntimeAlignment.mockResolvedValue(validation.alignmentPreview);
+    mocks.previewRuntimeAlignment.mockResolvedValue(
+      validation.alignmentPreview,
+    );
     mocks.restartBackendForRuntimeSwitch.mockResolvedValue(validation);
     mocks.alignConfig.mockResolvedValue({
       success: true,
@@ -577,7 +619,10 @@ describe("PythonEnvPicker", () => {
         profileAlignmentGuess: null,
       },
     });
-    electronApi.restartBackend.mockResolvedValue({ success: true, port: 39857 });
+    electronApi.restartBackend.mockResolvedValue({
+      success: true,
+      port: 39857,
+    });
 
     const view = await renderComponent(electronApi);
 
@@ -585,8 +630,8 @@ describe("PythonEnvPicker", () => {
       expect(view.container.textContent).toContain("settings.pythonEnv.change");
     });
 
-    const changeButton = Array.from(document.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("settings.pythonEnv.change"),
+    const changeButton = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("settings.pythonEnv.change"),
     );
     expect(changeButton).toBeTruthy();
 
@@ -598,8 +643,8 @@ describe("PythonEnvPicker", () => {
       expect(document.body.textContent).toContain("Python 3.13.9");
     });
 
-    const envButton = Array.from(document.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("Python 3.13.9"),
+    const envButton = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Python 3.13.9"),
     );
     expect(envButton).toBeTruthy();
 
@@ -611,8 +656,8 @@ describe("PythonEnvPicker", () => {
       expect(document.body.textContent).toContain("Use as-is");
     });
 
-    const useAsIsButton = Array.from(document.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("Use as-is"),
+    const useAsIsButton = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Use as-is"),
     );
     expect(useAsIsButton).toBeTruthy();
 
@@ -624,11 +669,13 @@ describe("PythonEnvPicker", () => {
     // click the "Review packages" button in the env card explicitly.
     await waitFor(() => {
       expect(electronApi.applyExistingPython).toHaveBeenCalled();
-      expect(document.body.textContent).not.toContain("Review Runtime After Switch");
+      expect(document.body.textContent).not.toContain(
+        "Review Runtime After Switch",
+      );
     });
 
-    const reviewButton = Array.from(document.querySelectorAll("button")).find((button) =>
-      button.textContent?.trim() === "Review packages",
+    const reviewButton = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent?.trim() === "Review packages",
     );
     expect(reviewButton).toBeTruthy();
 
@@ -637,11 +684,13 @@ describe("PythonEnvPicker", () => {
     });
 
     await waitFor(() => {
-      expect(document.body.textContent).toContain("Review Runtime After Switch");
+      expect(document.body.textContent).toContain(
+        "Review Runtime After Switch",
+      );
     });
 
-    const alignButton = Array.from(document.querySelectorAll("button")).find((button) =>
-      button.textContent?.includes("Align runtime"),
+    const alignButton = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Align runtime"),
     );
     expect(alignButton).toBeTruthy();
 
@@ -650,8 +699,12 @@ describe("PythonEnvPicker", () => {
     });
 
     await waitFor(() => {
-      expect(electronApi.restartBackend).toHaveBeenCalledWith({ skipEnsure: true });
-      expect(document.body.textContent).not.toContain("Review Runtime After Switch");
+      expect(electronApi.restartBackend).toHaveBeenCalledWith({
+        skipEnsure: true,
+      });
+      expect(document.body.textContent).not.toContain(
+        "Review Runtime After Switch",
+      );
     });
 
     expect(mocks.announceBackendRestarted).toHaveBeenCalledTimes(1);

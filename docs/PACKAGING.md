@@ -19,7 +19,7 @@ The project now publishes three desktop distribution families plus Docker:
 
 | Product | Platforms | Published assets | Runtime model |
 |---|---|---|---|
-| Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + backend source; Python environment is writable and managed outside the app bundle |
+| Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + Rust `native/studio-sidecar` + compatibility backend source; Python environment is writable and managed outside the app bundle |
 | Portable Windows | Windows x64 | `-portable.exe` | Electron portable layout with state under `.nirs4all/` next to the executable |
 | All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` on Windows/macOS, `-all-in-one-*.tar.gz` on Linux | Electron + Rust `native/studio-sidecar` + backend source + embedded `python-runtime/python`; the embedded runtime is read-only until the user switches away |
 | Docker | Linux | `ghcr.io/gbeurier/nirs4all-studio:*` | No Electron; FastAPI serves the UI |
@@ -46,7 +46,8 @@ An extracted all-in-one archive is not the same thing as portable mode. Portable
 
 ### Installer / portable builds
 
-Installer-oriented builds package backend source only:
+Installer-oriented builds package the Rust control-plane binary alongside the
+compatibility backend source:
 
 ```text
 resources/
@@ -54,6 +55,8 @@ resources/
     ├── api/
     ├── websocket/
     ├── updater/
+    ├── native/
+    │   └── studio-sidecar
     ├── main.py
     ├── recommended-config.json
     └── version.json
@@ -63,6 +66,13 @@ At runtime, Electron resolves or creates a writable Python environment outside t
 
 - installed app: standard `userData` paths
 - portable Windows app: `.nirs4all/` next to the executable
+
+Electron starts the packaged sidecar on every packaged desktop launch. Before
+the explicit Python library/plugin host is configured, Settings routes retain
+their compatibility-backend transport; after configuration, Electron restarts
+the sidecar with that interpreter only as `NIRS4ALL_PYTHON_PLUGIN_HOST`. The
+sidecar remains the HTTP owner for the migrated routes and never launches
+FastAPI or Uvicorn.
 
 ### All-in-one builds
 
@@ -84,7 +94,7 @@ resources/
         └── studio-sidecar
 ```
 
-When the packaged sidecar is explicitly enabled, Electron gives it the sibling
+Electron starts the packaged sidecar automatically and gives it the sibling
 embedded interpreter only for the bounded `nirs4all` import preflight. The Rust
 sidecar remains the process and HTTP owner; the embedded Python runtime is a
 plugin capability, not a FastAPI/Uvicorn fallback.

@@ -12,7 +12,8 @@ const SIDECAR_START_TIMEOUT_MS = 15_000;
 const MAX_STARTUP_OUTPUT_BYTES = 8 * 1024;
 const electronProcess = process as NodeJS.Process & { resourcesPath?: string };
 
-export type NativeSidecarStatus = "disabled" | "starting" | "running" | "stopped" | "error";
+export type NativeSidecarStatus =
+  "disabled" | "starting" | "running" | "stopped" | "error";
 
 export interface NativeSidecarInfo {
   status: NativeSidecarStatus;
@@ -20,6 +21,7 @@ export interface NativeSidecarInfo {
   port: number | null;
   protocolVersion: string | null;
   url: string | null;
+  pythonPluginHostConfigured: boolean;
   error?: string;
 }
 
@@ -33,23 +35,39 @@ export interface NativeSidecarPathOptions {
   environment?: NodeJS.ProcessEnv;
   resourcesPath?: string;
   platform?: NodeJS.Platform;
+  allowPackagedResource?: boolean;
+}
+
+export interface NativeSidecarStartOptions {
+  /** Start the packaged binary without requiring a diagnostic environment flag. */
+  allowPackagedResource?: boolean;
+  /** Explicit library/plugin interpreter; never an HTTP backend command. */
+  pythonPluginHost?: string | null;
 }
 
 /**
- * Resolve the explicit developer override first, then the packaged resource
- * only when the dual-run flag is set.  The sidecar is never auto-selected as
- * the HTTP backend merely because a binary was bundled with the application.
+ * Resolve the explicit developer override first, then a packaged resource
+ * when the product launch policy permits it. The sidecar is never selected as
+ * a replacement for unmigrated API routes merely because a binary is bundled.
  */
 export function resolveNativeSidecarPath({
   environment = process.env,
   resourcesPath = electronProcess.resourcesPath,
   platform = process.platform,
+  allowPackagedResource,
 }: NativeSidecarPathOptions = {}): string | null {
   const explicitPath = environment[SIDECAR_PATH_ENV]?.trim();
   if (explicitPath) return path.resolve(explicitPath);
-  if (environment[SIDECAR_ENABLE_PACKAGED_ENV] !== "1" || !resourcesPath) return null;
+  const packagedResourceEnabled =
+    allowPackagedResource ?? environment[SIDECAR_ENABLE_PACKAGED_ENV] === "1";
+  if (!packagedResourceEnabled || !resourcesPath) return null;
 
-  return path.join(resourcesPath, "backend", "native", platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar");
+  return path.join(
+    resourcesPath,
+    "backend",
+    "native",
+    platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar",
+  );
 }
 
 /** Resolve an embedded interpreter without treating it as an HTTP backend. */
@@ -59,24 +77,24 @@ export function resolveBundledPythonPluginHost({
 }: Omit<NativeSidecarPathOptions, "environment"> = {}): string | null {
   if (!resourcesPath) return null;
   const runtimeRoot = path.join(resourcesPath, "backend", "python-runtime");
-  const candidates = platform === "win32"
-    ? [
-        path.join(runtimeRoot, "python", "python.exe"),
-        path.join(runtimeRoot, "venv", "Scripts", "python.exe"),
-      ]
-    : [
-        path.join(runtimeRoot, "python", "bin", "python3"),
-        path.join(runtimeRoot, "python", "bin", "python"),
-        path.join(runtimeRoot, "venv", "bin", "python"),
-      ];
+  const candidates =
+    platform === "win32"
+      ? [
+          path.join(runtimeRoot, "python", "python.exe"),
+          path.join(runtimeRoot, "venv", "Scripts", "python.exe"),
+        ]
+      : [
+          path.join(runtimeRoot, "python", "bin", "python3"),
+          path.join(runtimeRoot, "python", "bin", "python"),
+          path.join(runtimeRoot, "venv", "bin", "python"),
+        ];
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
 /**
- * Launches the native Studio sidecar only when an explicit binary path is
- * configured. It deliberately has no Python fallback and does not replace the
- * current FastAPI backend yet: R1/R2 can exercise both processes side by side
- * while route migration proceeds.
+ * Launches the native Studio control plane from an explicit binary in
+ * development or the packaged resource in product builds. It deliberately has
+ * no Python fallback and does not replace unmigrated FastAPI route families.
  */
 export class NativeSidecarManager {
   private process: ChildProcess | null = null;
@@ -84,6 +102,7 @@ export class NativeSidecarManager {
   private host: string | null = null;
   private port: number | null = null;
   private protocolVersion: string | null = null;
+  private pythonPluginHostConfigured = false;
   private lastError: string | null = null;
 
   getInfo(): NativeSidecarInfo {
@@ -92,21 +111,35 @@ export class NativeSidecarManager {
       host: this.host,
       port: this.port,
       protocolVersion: this.protocolVersion,
-      url: this.host !== null && this.port !== null ? `http://${this.host}:${this.port}` : null,
+      pythonPluginHostConfigured: this.pythonPluginHostConfigured,
+      url:
+        this.host !== null && this.port !== null
+          ? `http://${this.host}:${this.port}`
+          : null,
       ...(this.lastError ? { error: this.lastError } : {}),
     };
   }
 
-  async start(): Promise<NativeSidecarInfo> {
-    const configuredPath = resolveNativeSidecarPath();
+  async start(
+    options: NativeSidecarStartOptions = {},
+  ): Promise<NativeSidecarInfo> {
+    const packagedResourceEnabled =
+      options.allowPackagedResource ??
+      process.env[SIDECAR_ENABLE_PACKAGED_ENV] === "1";
+    const configuredPath = resolveNativeSidecarPath({
+      allowPackagedResource: packagedResourceEnabled,
+    });
     if (!configuredPath) {
-      if (process.env[SIDECAR_ENABLE_PACKAGED_ENV] === "1") {
-        return this.failBeforeSpawn("Native sidecar was enabled but Electron has no packaged resources path");
+      if (packagedResourceEnabled) {
+        return this.failBeforeSpawn(
+          "Native sidecar was enabled but Electron has no packaged resources path",
+        );
       }
       this.status = "disabled";
       this.host = null;
       this.port = null;
       this.protocolVersion = null;
+      this.pythonPluginHostConfigured = false;
       this.lastError = null;
       return this.getInfo();
     }
@@ -116,37 +149,61 @@ export class NativeSidecarManager {
 
     const binaryPath = configuredPath;
     if (!fs.existsSync(binaryPath)) {
-      return this.failBeforeSpawn(`${SIDECAR_PATH_ENV} does not exist: ${binaryPath}`);
+      return this.failBeforeSpawn(
+        `${SIDECAR_PATH_ENV} does not exist: ${binaryPath}`,
+      );
     }
 
     const configuredPort = process.env[SIDECAR_PORT_ENV]?.trim() || "0";
     if (!/^\d+$/.test(configuredPort)) {
-      return this.failBeforeSpawn(`Invalid ${SIDECAR_PORT_ENV} value: ${configuredPort}`);
+      return this.failBeforeSpawn(
+        `Invalid ${SIDECAR_PORT_ENV} value: ${configuredPort}`,
+      );
     }
     const port = Number.parseInt(configuredPort, 10);
-    if (port > 65_535) return this.failBeforeSpawn(`Invalid ${SIDECAR_PORT_ENV} value: ${configuredPort}`);
+    if (port > 65_535)
+      return this.failBeforeSpawn(
+        `Invalid ${SIDECAR_PORT_ENV} value: ${configuredPort}`,
+      );
 
     this.status = "starting";
     this.lastError = null;
     this.host = null;
     this.port = null;
     this.protocolVersion = null;
+    this.pythonPluginHostConfigured = false;
 
     let child: ChildProcess;
-    const explicitPythonPluginHost = process.env[PYTHON_PLUGIN_HOST_ENV]?.trim();
-    const bundledPythonPluginHost = explicitPythonPluginHost ? null : resolveBundledPythonPluginHost();
-    const pythonPluginHost = explicitPythonPluginHost || bundledPythonPluginHost;
+    const explicitPythonPluginHost =
+      process.env[PYTHON_PLUGIN_HOST_ENV]?.trim();
+    const selectedPythonPluginHost = options.pythonPluginHost?.trim();
+    const bundledPythonPluginHost =
+      explicitPythonPluginHost || selectedPythonPluginHost
+        ? null
+        : resolveBundledPythonPluginHost();
+    const pythonPluginHost =
+      explicitPythonPluginHost ||
+      selectedPythonPluginHost ||
+      bundledPythonPluginHost;
+    this.pythonPluginHostConfigured = Boolean(pythonPluginHost);
     const childEnvironment: NodeJS.ProcessEnv = { ...process.env };
-    if (pythonPluginHost) childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
-    if (bundledPythonPluginHost) childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV] = "true";
+    if (pythonPluginHost)
+      childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
+    if (bundledPythonPluginHost)
+      childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV] = "true";
     try {
-      child = spawn(binaryPath, ["--host", "127.0.0.1", "--port", port.toString()], {
-        env: childEnvironment,
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-      });
+      child = spawn(
+        binaryPath,
+        ["--host", "127.0.0.1", "--port", port.toString()],
+        {
+          env: childEnvironment,
+          stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
+        },
+      );
     } catch (error) {
-      const startupError = error instanceof Error ? error : new Error(String(error));
+      const startupError =
+        error instanceof Error ? error : new Error(String(error));
       this.lastError = startupError.message;
       this.status = "error";
       throw startupError;
@@ -174,14 +231,22 @@ export class NativeSidecarManager {
       };
 
       const timeout = setTimeout(() => {
-        finish(new Error(`Native sidecar did not report readiness within ${SIDECAR_START_TIMEOUT_MS}ms`));
+        finish(
+          new Error(
+            `Native sidecar did not report readiness within ${SIDECAR_START_TIMEOUT_MS}ms`,
+          ),
+        );
       }, SIDECAR_START_TIMEOUT_MS);
 
       child.stdout?.on("data", (chunk: Buffer) => {
         if (settled) return;
         stdout += chunk.toString("utf8");
         if (Buffer.byteLength(stdout, "utf8") > MAX_STARTUP_OUTPUT_BYTES) {
-          finish(new Error("Native sidecar exceeded the bounded startup output limit"));
+          finish(
+            new Error(
+              "Native sidecar exceeded the bounded startup output limit",
+            ),
+          );
           return;
         }
         const lines = stdout.split(/\r?\n/);
@@ -189,12 +254,17 @@ export class NativeSidecarManager {
         for (const line of lines) {
           if (!line.startsWith(SIDECAR_READY_PREFIX)) continue;
           try {
-            const ready = JSON.parse(line.slice(SIDECAR_READY_PREFIX.length)) as SidecarReadyLine;
+            const ready = JSON.parse(
+              line.slice(SIDECAR_READY_PREFIX.length),
+            ) as SidecarReadyLine;
             this.applyReadyLine(ready);
             finish();
           } catch (error) {
-            const detail = error instanceof Error ? error.message : String(error);
-            finish(new Error(`Invalid native sidecar readiness line: ${detail}`));
+            const detail =
+              error instanceof Error ? error.message : String(error);
+            finish(
+              new Error(`Invalid native sidecar readiness line: ${detail}`),
+            );
           }
           return;
         }
@@ -206,7 +276,11 @@ export class NativeSidecarManager {
       child.once("error", (error) => finish(error));
       child.once("exit", (code, signal) => {
         if (!settled) {
-          finish(new Error(`Native sidecar exited before readiness (code ${code}, signal ${signal ?? "none"})`));
+          finish(
+            new Error(
+              `Native sidecar exited before readiness (code ${code}, signal ${signal ?? "none"})`,
+            ),
+          );
           return;
         }
         if (this.process === child) {
@@ -241,12 +315,20 @@ export class NativeSidecarManager {
     });
   }
 
+  async restart(
+    options: NativeSidecarStartOptions = {},
+  ): Promise<NativeSidecarInfo> {
+    await this.stop();
+    return this.start(options);
+  }
+
   private failBeforeSpawn(message: string): NativeSidecarInfo {
     this.status = "error";
     this.lastError = message;
     this.host = null;
     this.port = null;
     this.protocolVersion = null;
+    this.pythonPluginHostConfigured = false;
     return this.getInfo();
   }
 
@@ -254,7 +336,12 @@ export class NativeSidecarManager {
     if (ready.host !== "127.0.0.1") {
       throw new Error("Native sidecar must bind exactly to 127.0.0.1");
     }
-    if (typeof ready.port !== "number" || !Number.isInteger(ready.port) || ready.port < 1 || ready.port > 65_535) {
+    if (
+      typeof ready.port !== "number" ||
+      !Number.isInteger(ready.port) ||
+      ready.port < 1 ||
+      ready.port > 65_535
+    ) {
       throw new Error("Native sidecar readiness has an invalid port");
     }
     if (typeof ready.protocol_version !== "string" || !ready.protocol_version) {

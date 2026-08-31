@@ -52,6 +52,7 @@ function createElectronApiMock(
       port: null,
       protocolVersion: null,
       url: null,
+      pythonPluginHostConfigured: false,
     }),
     restartBackend: vi.fn().mockResolvedValue({ success: true }),
     onBackendStatusChanged: vi.fn(() => () => undefined),
@@ -66,13 +67,21 @@ function createElectronApiMock(
       isCustom: false,
     }),
     detectExistingEnvs: vi.fn().mockResolvedValue([]),
-    inspectExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    inspectExistingEnv: vi
+      .fn()
+      .mockResolvedValue({ success: true, message: "" }),
     useExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
     selectPythonExe: vi.fn().mockResolvedValue(null),
-    inspectExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
-    useExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    inspectExistingPython: vi
+      .fn()
+      .mockResolvedValue({ success: true, message: "" }),
+    useExistingPython: vi
+      .fn()
+      .mockResolvedValue({ success: true, message: "" }),
     applyExistingEnv: vi.fn().mockResolvedValue({ success: true, message: "" }),
-    applyExistingPython: vi.fn().mockResolvedValue({ success: true, message: "" }),
+    applyExistingPython: vi
+      .fn()
+      .mockResolvedValue({ success: true, message: "" }),
     startEnvSetup: vi.fn().mockResolvedValue({ success: true }),
     onEnvSetupProgress: vi.fn(() => () => undefined),
     shouldShowWizard: vi.fn().mockResolvedValue(false),
@@ -112,26 +121,32 @@ describe("formatApiErrorDetail", () => {
   });
 
   it("passes string details through unchanged", () => {
-    expect(formatApiErrorDetail("Dataset not found", 404)).toBe("Dataset not found");
+    expect(formatApiErrorDetail("Dataset not found", 404)).toBe(
+      "Dataset not found",
+    );
   });
 });
 
 describe("API client request handling", () => {
   it("retries once with a refreshed backend URL after a transient Electron fetch failure", async () => {
-    const fetchMock = vi.fn()
+    const fetchMock = vi
+      .fn()
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockResolvedValueOnce(jsonResponse({
-        schema_version: "1.2",
-        app_version: "0.6.0",
-        nirs4all: "0.9.0",
-        profiles: [],
-        optional: [],
-        fetched_from: "bundled",
-        fetched_at: "2026-04-18T08:00:00",
-      }));
+      .mockResolvedValueOnce(
+        jsonResponse({
+          schema_version: "1.2",
+          app_version: "0.6.0",
+          nirs4all: "0.9.0",
+          profiles: [],
+          optional: [],
+          fetched_from: "bundled",
+          fetched_at: "2026-04-18T08:00:00",
+        }),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
-    const getBackendUrl = vi.fn()
+    const getBackendUrl = vi
+      .fn()
       .mockResolvedValueOnce("http://127.0.0.1:39026")
       .mockResolvedValueOnce("http://127.0.0.1:39027");
     const getBackendInfo = vi.fn().mockResolvedValue({
@@ -163,16 +178,18 @@ describe("API client request handling", () => {
   });
 
   it("adds include_latest=false only when the caller disables latest-version lookup", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
-      profile: "cpu",
-      profile_label: "CPU",
-      packages: [],
-      aligned_count: 0,
-      misaligned_count: 0,
-      missing_count: 0,
-      is_aligned: true,
-      checked_at: "2026-04-18T08:00:00",
-    }));
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        profile: "cpu",
+        profile_label: "CPU",
+        packages: [],
+        aligned_count: 0,
+        misaligned_count: 0,
+        missing_count: 0,
+        is_aligned: true,
+        checked_at: "2026-04-18T08:00:00",
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await getConfigDiff("cpu", false, false);
@@ -184,7 +201,9 @@ describe("API client request handling", () => {
   });
 
   it("sends the migrated capabilities route to a running native sidecar without retrying Python", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ capabilities: { nirs4all: true } }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ capabilities: { nirs4all: true } }));
     vi.stubGlobal("fetch", fetchMock);
     const getNativeSidecarInfo = vi.fn().mockResolvedValue({
       status: "running",
@@ -192,6 +211,7 @@ describe("API client request handling", () => {
       port: 43123,
       protocolVersion: "studio-sidecar-r1",
       url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: true,
     });
     window.electronApi = createElectronApiMock({ getNativeSidecarInfo });
 
@@ -205,7 +225,9 @@ describe("API client request handling", () => {
   });
 
   it("sends the migrated system-info route to a running native sidecar", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ nirs4all_version: "0.12.0" }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ nirs4all_version: "0.12.0" }));
     vi.stubGlobal("fetch", fetchMock);
     window.electronApi = createElectronApiMock({
       getNativeSidecarInfo: vi.fn().mockResolvedValue({
@@ -214,6 +236,7 @@ describe("API client request handling", () => {
         port: 43123,
         protocolVersion: "studio-sidecar-r1",
         url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: true,
       }),
     });
 
@@ -226,7 +249,9 @@ describe("API client request handling", () => {
   });
 
   it("sends the migrated runtime-coherence route to a running native sidecar", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ core_ready: true }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ core_ready: true }));
     vi.stubGlobal("fetch", fetchMock);
     window.electronApi = createElectronApiMock({
       getNativeSidecarInfo: vi.fn().mockResolvedValue({
@@ -235,6 +260,7 @@ describe("API client request handling", () => {
         port: 43123,
         protocolVersion: "studio-sidecar-r1",
         url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: true,
       }),
     });
 
@@ -242,6 +268,31 @@ describe("API client request handling", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:43123/api/system/env-coherence",
+      expect.any(Object),
+    );
+  });
+
+  it("keeps Settings on the compatibility backend until the plugin host is configured", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ capabilities: { nirs4all: true } }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getBackendUrl: vi.fn().mockResolvedValue("http://127.0.0.1:39026"),
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.get("/system/capabilities");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:39026/api/system/capabilities",
       expect.any(Object),
     );
   });

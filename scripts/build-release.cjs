@@ -54,23 +54,32 @@ for (let i = 0; i < args.length; i++) {
 
 // Validate flavor
 if (!["cpu", "cpu-lite", "gpu"].includes(flavor)) {
-  console.error(`Error: Invalid flavor '${flavor}'. Must be 'cpu', 'cpu-lite', or 'gpu'.`);
+  console.error(
+    `Error: Invalid flavor '${flavor}'. Must be 'cpu', 'cpu-lite', or 'gpu'.`,
+  );
   process.exit(1);
 }
 
 // Validate mode
 if (!["installer", "standalone"].includes(mode)) {
-  console.error(`Error: Invalid mode '${mode}'. Must be 'installer' or 'standalone'.`);
+  console.error(
+    `Error: Invalid mode '${mode}'. Must be 'installer' or 'standalone'.`,
+  );
   process.exit(1);
 }
 
 // Sync version from latest git tag into package.json
 function syncVersionFromGitTag() {
   try {
-    const tag = execSync("git describe --tags --abbrev=0", { cwd: projectRoot, encoding: "utf-8" }).trim();
+    const tag = execSync("git describe --tags --abbrev=0", {
+      cwd: projectRoot,
+      encoding: "utf-8",
+    }).trim();
     const version = tag.replace(/^v/, "");
     if (!/^\d+\.\d+\.\d+/.test(version)) {
-      console.warn(`Warning: git tag '${tag}' is not a valid semver version, skipping version sync.`);
+      console.warn(
+        `Warning: git tag '${tag}' is not a valid semver version, skipping version sync.`,
+      );
       return;
     }
     const pkgPath = path.join(projectRoot, "package.json");
@@ -81,7 +90,9 @@ function syncVersionFromGitTag() {
       fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
     }
   } catch {
-    console.warn("Warning: Could not read git tags, using package.json version as-is.");
+    console.warn(
+      "Warning: Could not read git tags, using package.json version as-is.",
+    );
   }
 }
 
@@ -169,22 +180,45 @@ async function main() {
       if (mode === "installer") {
         // Lightweight build: only copy backend source files.
         // Python runtime is downloaded at first launch by env-manager.
-        console.log("=== Step 1: Copying backend source files (lightweight) ===");
-        await runCommand("node", ["scripts/copy-backend-source.cjs", "--clean"]);
+        console.log(
+          "=== Step 1: Copying backend source files (lightweight) ===",
+        );
+        await runCommand("node", [
+          "scripts/copy-backend-source.cjs",
+          "--clean",
+        ]);
       } else {
-        console.log(`=== Step 1: Building Python backend with PyInstaller (${flavor.toUpperCase()}) ===`);
-        await runCommand("node", ["scripts/build-backend.cjs", "--flavor", flavor]);
+        console.log(
+          `=== Step 1: Building Python backend with PyInstaller (${flavor.toUpperCase()}) ===`,
+        );
+        await runCommand("node", [
+          "scripts/build-backend.cjs",
+          "--flavor",
+          flavor,
+        ]);
       }
       console.log("");
     } else {
       console.log("=== Step 1: Skipping backend build ===");
       const backendDistPath = path.join(projectRoot, "backend-dist");
-      if (!fs.existsSync(backendDistPath) || fs.readdirSync(backendDistPath).length === 0) {
-        console.error("Error: backend-dist is empty but --skip-backend was specified");
+      if (
+        !fs.existsSync(backendDistPath) ||
+        fs.readdirSync(backendDistPath).length === 0
+      ) {
+        console.error(
+          "Error: backend-dist is empty but --skip-backend was specified",
+        );
         process.exit(1);
       }
       console.log("");
     }
+
+    // Every desktop artifact ships the Rust control-plane binary. This is
+    // independent of whether the compatibility Python backend is copied or
+    // frozen for the selected release profile.
+    console.log("=== Step 1b: Building native Studio sidecar ===");
+    await runCommand("node", ["scripts/build-native-sidecar.cjs"]);
+    console.log("");
 
     // Step 2: Build frontend (Vite + Electron)
     if (!skipFrontend) {
@@ -193,15 +227,22 @@ async function main() {
       console.log("");
     } else {
       console.log("=== Step 2: Skipping frontend build ===");
-      if (!fs.existsSync(path.join(projectRoot, "dist")) || !fs.existsSync(path.join(projectRoot, "dist-electron"))) {
-        console.error("Error: dist or dist-electron not found but --skip-frontend was specified");
+      if (
+        !fs.existsSync(path.join(projectRoot, "dist")) ||
+        !fs.existsSync(path.join(projectRoot, "dist-electron"))
+      ) {
+        console.error(
+          "Error: dist or dist-electron not found but --skip-frontend was specified",
+        );
         process.exit(1);
       }
       console.log("");
     }
 
     // Step 3: Package installer targets with electron-builder
-    console.log("=== Step 3: Packaging installer targets with electron-builder ===");
+    console.log(
+      "=== Step 3: Packaging installer targets with electron-builder ===",
+    );
 
     const builderArgs = [];
     switch (platform) {
@@ -222,7 +263,12 @@ async function main() {
         break;
     }
 
-    await runCommand("npx", ["electron-builder", "--config", "electron-builder.installer.yml", ...builderArgs]);
+    await runCommand("npx", [
+      "electron-builder",
+      "--config",
+      "electron-builder.installer.yml",
+      ...builderArgs,
+    ]);
 
     console.log("");
     console.log("========================================");
@@ -248,12 +294,20 @@ async function main() {
     // Rename output files to include a flavor suffix (cpu is the default, unsuffixed).
     const flavorSuffix = { gpu: "gpu", "cpu-lite": "lite" }[flavor];
     if (flavorSuffix && fs.existsSync(releasePath)) {
-      console.log(`Renaming output files to include '${flavorSuffix}' flavor...`);
+      console.log(
+        `Renaming output files to include '${flavorSuffix}' flavor...`,
+      );
       const files = fs.readdirSync(releasePath);
       for (const file of files) {
         const filePath = path.join(releasePath, file);
-        if (fs.statSync(filePath).isFile() && !file.includes(`-${flavorSuffix}`)) {
-          const newName = file.replace(/(nirs4all-[\d.]+)/, `$1-${flavorSuffix}`);
+        if (
+          fs.statSync(filePath).isFile() &&
+          !file.includes(`-${flavorSuffix}`)
+        ) {
+          const newName = file.replace(
+            /(nirs4all-[\d.]+)/,
+            `$1-${flavorSuffix}`,
+          );
           if (newName !== file) {
             fs.renameSync(filePath, path.join(releasePath, newName));
             console.log(`  ${file} -> ${newName}`);
