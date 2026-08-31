@@ -235,6 +235,19 @@ fn cli_smoke_prints_r1_readiness_without_starting_a_server() {
     assert_eq!(readiness["scientific_execution"], "unavailable");
 }
 
+fn assert_runtime_status_legacy_shape(body: &Value) {
+    for key in ["runtime", "venv"] {
+        let runtime = body[key].as_object().unwrap();
+        assert!(runtime["path"].is_string());
+        assert!(runtime["exists"].is_boolean());
+        assert!(runtime["is_valid"].is_boolean());
+        assert!(runtime["python_executable"].is_string());
+        assert!(runtime["size_bytes"].is_u64());
+    }
+    assert!(body["packages"].is_array());
+    assert!(body["nirs4all_version"].is_string() || body["nirs4all_version"].is_null());
+}
+
 #[test]
 fn configured_python_plugin_host_can_import_nirs4all_without_enabling_execution() {
     let Ok(python_plugin_host) = std::env::var("NIRS4ALL_TEST_PYTHON_PLUGIN_HOST") else {
@@ -279,6 +292,25 @@ fn configured_python_plugin_host_can_import_nirs4all_without_enabling_execution(
         .unwrap()
         .values()
         .all(Value::is_string));
+
+    let version = route_request(&mut state, "GET", "/api/updates/version");
+    assert_eq!(version.status, 200, "configured Python version bridge");
+    let version_body: Value = serde_json::from_str(&version.body).unwrap();
+    assert!(version_body["webapp_version"].is_string());
+    assert!(version_body["python_version"].is_string());
+    assert!(version_body["platform"].is_string());
+    assert!(version_body["machine"].is_string());
+    assert!(
+        version_body["nirs4all_version"].is_string() || version_body["nirs4all_version"].is_null()
+    );
+
+    let runtime_status = route_request(&mut state, "GET", "/api/updates/runtime/status");
+    assert_eq!(
+        runtime_status.status, 200,
+        "configured Python runtime-status bridge"
+    );
+    let runtime_status_body: Value = serde_json::from_str(&runtime_status.body).unwrap();
+    assert_runtime_status_legacy_shape(&runtime_status_body);
 
     let system_build = route_request(&mut state, "GET", "/api/system/build");
     assert_eq!(

@@ -287,7 +287,8 @@ sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; the explicit preflight verifies
 `import nirs4all`, but scientific execution remains unavailable until a Rust-owned
 route enables it. In that explicit dual-run mode, the first UI-backed native
 routes are `/api/health`, `/api/system/capabilities`, `/api/system/info`, and
-`/api/system/env-coherence`, `/api/system/network`, `/api/updates/version`, plus `/api/app/settings`,
+`/api/system/env-coherence`, `/api/system/network`, `/api/updates/version`,
+`/api/updates/runtime/status`, plus `/api/app/settings`,
 `/api/app/favorites`, `/api/app/config-path`, the `/api/workspaces` catalogue,
 and native workspace activation/unlink mutations. They are served by Rust and
 do not fall back to FastAPI after sidecar selection; workspace linking,

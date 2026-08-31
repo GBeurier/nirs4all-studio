@@ -304,6 +304,43 @@ describe("API client request handling", () => {
     );
   });
 
+  it("sends the migrated runtime status to a configured native sidecar", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      runtime: {
+        path: "/opt/nirs4all/runtime",
+        exists: true,
+        is_valid: true,
+        python_executable: "/opt/nirs4all/runtime/bin/python",
+        python_version: "3.11.9",
+        pip_version: "24.0",
+        created_at: null,
+        last_updated: null,
+        size_bytes: 1024,
+      },
+      venv: {},
+      packages: [],
+      nirs4all_version: "0.12.0",
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: true,
+      }),
+    });
+
+    await api.get("/updates/runtime/status");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/updates/runtime/status",
+      expect.any(Object),
+    );
+  });
+
   it("sends the migrated runtime-coherence route to a running native sidecar", async () => {
     const fetchMock = vi
       .fn()

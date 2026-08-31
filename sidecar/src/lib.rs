@@ -50,9 +50,13 @@ pub const OFFLINE_ENV: &str = "NIRS4ALL_OFFLINE";
 pub const BACKEND_DATA_DIR_ENV: &str = "NIRS4ALL_BACKEND_DATA_DIR";
 pub const UPDATE_SETTINGS_FILE: &str = "update_settings.yaml";
 pub const MAX_UPDATE_SETTINGS_BYTES: u64 = 16 * 1024;
+pub const VENV_METADATA_FILE: &str = "venv_metadata.json";
+pub const MAX_VENV_METADATA_BYTES: u64 = 16 * 1024;
 pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(3);
 pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration = Duration::from_secs(15);
 pub const MAX_PYTHON_PLUGIN_OUTPUT_BYTES: usize = 8 * 1024;
+pub const MAX_PYTHON_PLUGIN_RUNTIME_STATUS_OUTPUT_BYTES: usize = 256 * 1024;
+pub const MAX_PYTHON_PLUGIN_RUNTIME_PACKAGES: usize = 4 * 1024;
 pub const PYTHON_CAPABILITY_MODULES: &[&str] = &[
     "nirs4all",
     "tensorflow",
@@ -405,7 +409,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -546,6 +550,7 @@ pub fn route_request_with_body(
         ("GET", "/api/system/network") => system_network_response(),
         ("GET", "/api/system/env-coherence") => python_env_coherence_response(state),
         ("GET", "/api/updates/version") => python_updates_version_response(state),
+        ("GET", "/api/updates/runtime/status") => python_updates_runtime_status_response(state),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
         ("GET", "/sidecar/v1/ws") => error_response(
             400,
@@ -567,6 +572,7 @@ pub fn route_request_with_body(
             | "/api/system/network"
             | "/api/system/env-coherence"
             | "/api/updates/version"
+            | "/api/updates/runtime/status"
             | "/api/workspaces"
             | "/sidecar/v1/ws",
         ) => method_not_allowed(method, path, "GET"),
@@ -1032,6 +1038,166 @@ fn native_updates_version_json(
     .to_string())
 }
 
+/// Return runtime and installed-package diagnostics through the native HTTP
+/// route. Rust owns response assembly, metadata loading, and optional runtime
+/// size calculation; the Python host only reports its interpreter facts and
+/// installed distributions.
+fn python_updates_runtime_status_response(state: &SidecarState) -> HttpResponse {
+    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+        return error_response(
+            503,
+            ErrorCode::PythonPluginUnavailable,
+            "No Python plugin host is configured for this native sidecar",
+            BTreeMap::from([("reason".into(), "not_configured".into())]),
+        );
+    };
+    match read_python_updates_runtime_status(python_plugin_host)
+        .and_then(|probe| native_updates_runtime_status_json(&probe))
+    {
+        Ok(body) => HttpResponse::json(200, body),
+        Err(reason) => error_response(
+            503,
+            ErrorCode::PythonPluginPreflightFailed,
+            "The configured Python plugin host could not report runtime status",
+            BTreeMap::from([("reason".into(), reason.as_str().into())]),
+        ),
+    }
+}
+
+fn native_updates_runtime_status_json(probe: &Value) -> Result<String, PythonPluginBridgeFailure> {
+    let runtime_path = probe
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let base_prefix = probe
+        .get("base_prefix")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let python_executable = probe
+        .get("python_executable")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let python_version = probe
+        .get("python_version")
+        .and_then(Value::as_str)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let pip_version = nullable_string(probe.get("pip_version"))?;
+    let nirs4all_version = nullable_string(probe.get("nirs4all_version"))?;
+    let packages = probe
+        .get("packages")
+        .and_then(Value::as_array)
+        .filter(|packages| packages.len() <= MAX_PYTHON_PLUGIN_RUNTIME_PACKAGES)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let packages = packages
+        .iter()
+        .map(native_runtime_package_json)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let path = Path::new(runtime_path);
+    let exists = path.is_dir();
+    let is_valid = exists && Path::new(python_executable).is_file();
+    let metadata = native_runtime_metadata(path);
+    let should_measure_size = path.join("pyvenv.cfg").exists()
+        || path != Path::new(base_prefix)
+        || matches!(
+            env::var(RUNTIME_MODE_ENV)
+                .ok()
+                .as_deref()
+                .map(str::to_ascii_lowercase)
+                .as_deref(),
+            Some("bundled" | "portable" | "standalone")
+        );
+    let size_bytes = if is_valid && should_measure_size {
+        runtime_directory_size(path)
+    } else {
+        0
+    };
+    let runtime = json!({
+        "path": runtime_path,
+        "exists": exists,
+        "is_valid": is_valid,
+        "python_executable": python_executable,
+        "python_version": if is_valid { Value::String(python_version.into()) } else { Value::Null },
+        "pip_version": if is_valid { pip_version } else { Value::Null },
+        "created_at": metadata.get("created_at").cloned().unwrap_or(Value::Null),
+        "last_updated": metadata.get("last_updated").cloned().unwrap_or(Value::Null),
+        "size_bytes": size_bytes,
+    });
+    Ok(json!({
+        "runtime": runtime,
+        "venv": runtime,
+        "packages": packages,
+        "nirs4all_version": nirs4all_version,
+    })
+    .to_string())
+}
+
+fn nullable_string(value: Option<&Value>) -> Result<Value, PythonPluginBridgeFailure> {
+    match value {
+        Some(Value::String(value)) => Ok(Value::String(value.clone())),
+        Some(Value::Null) => Ok(Value::Null),
+        _ => Err(PythonPluginBridgeFailure::MalformedResponse),
+    }
+}
+
+fn native_runtime_package_json(package: &Value) -> Result<Value, PythonPluginBridgeFailure> {
+    let package = package
+        .as_object()
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let name = package
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|name| !name.is_empty())
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let version = package
+        .get("version")
+        .and_then(Value::as_str)
+        .filter(|version| !version.is_empty())
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    Ok(json!({"name": name, "version": version, "location": null}))
+}
+
+fn native_runtime_metadata(runtime_path: &Path) -> Value {
+    let metadata_path = runtime_path.join(VENV_METADATA_FILE);
+    let Ok(metadata) = fs::metadata(&metadata_path) else {
+        return json!({});
+    };
+    if metadata.len() > MAX_VENV_METADATA_BYTES {
+        return json!({});
+    }
+    fs::read(&metadata_path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}))
+}
+
+fn runtime_directory_size(runtime_path: &Path) -> u64 {
+    let mut total = 0_u64;
+    let mut pending = vec![runtime_path.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = fs::read_dir(directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                pending.push(entry.path());
+            } else if file_type.is_file() {
+                if let Ok(metadata) = entry.metadata() {
+                    total = total.saturating_add(metadata.len());
+                }
+            }
+        }
+    }
+    total
+}
+
 /// Return build metadata from the Rust-owned launch configuration and a
 /// bounded Python-library probe for optional GPU runtime facts.  The sidecar
 /// owns the HTTP route and response assembly; the configured interpreter is
@@ -1335,6 +1501,29 @@ fn read_python_updates_version(
     Ok(output)
 }
 
+fn read_python_updates_runtime_status(
+    python_plugin_host: &Path,
+) -> Result<Value, PythonPluginBridgeFailure> {
+    let script = "import importlib.metadata as metadata,json,sys\npackages=[]\nfor distribution in metadata.distributions():\n try:\n  name=distribution.metadata.get('Name') or distribution.name; version=distribution.version\n  if name and version: packages.append({'name':str(name),'version':str(version)})\n except Exception: pass\npackages.sort(key=lambda package:package['name'].lower())\ndef version_of(name):\n try: return metadata.version(name)\n except Exception: return None\nprint(json.dumps({'path':sys.prefix,'base_prefix':getattr(sys,'base_prefix',sys.prefix),'python_executable':sys.executable,'python_version':'.'.join(map(str,sys.version_info[:3])),'pip_version':version_of('pip'),'nirs4all_version':version_of('nirs4all'),'packages':packages}, separators=(',',':'), sort_keys=True))";
+    let output = run_python_plugin_json_with_limit(
+        python_plugin_host,
+        script,
+        PYTHON_PLUGIN_CAPABILITIES_TIMEOUT,
+        MAX_PYTHON_PLUGIN_RUNTIME_STATUS_OUTPUT_BYTES,
+    )?;
+    if !["path", "base_prefix", "python_executable", "python_version"]
+        .iter()
+        .all(|key| output.get(*key).is_some_and(Value::is_string))
+        || !["pip_version", "nirs4all_version"]
+            .iter()
+            .all(|key| matches!(output.get(*key), Some(Value::String(_) | Value::Null)))
+        || !output.get("packages").is_some_and(Value::is_array)
+    {
+        return Err(PythonPluginBridgeFailure::MalformedResponse);
+    }
+    Ok(output)
+}
+
 fn read_python_system_build(python_plugin_host: &Path) -> Result<Value, PythonPluginBridgeFailure> {
     const GPU_BOOLEAN_FIELDS: &[&str] = &[
         "cuda_available",
@@ -1440,6 +1629,20 @@ fn run_python_plugin_json(
     script: &str,
     timeout: Duration,
 ) -> Result<Value, PythonPluginBridgeFailure> {
+    run_python_plugin_json_with_limit(
+        python_plugin_host,
+        script,
+        timeout,
+        MAX_PYTHON_PLUGIN_OUTPUT_BYTES,
+    )
+}
+
+fn run_python_plugin_json_with_limit(
+    python_plugin_host: &Path,
+    script: &str,
+    timeout: Duration,
+    output_limit: usize,
+) -> Result<Value, PythonPluginBridgeFailure> {
     let mut child = Command::new(python_plugin_host)
         .args(["-I", "-c", script])
         .stdin(Stdio::null())
@@ -1451,7 +1654,7 @@ fn run_python_plugin_json(
         .stdout
         .take()
         .ok_or(PythonPluginBridgeFailure::OutputReadFailed)?;
-    let reader = std::thread::spawn(move || read_bounded_stdout(stdout));
+    let reader = std::thread::spawn(move || read_bounded_stdout(stdout, output_limit));
     let started_at = Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -1484,8 +1687,11 @@ fn run_python_plugin_json(
     serde_json::from_slice(&stdout).map_err(|_| PythonPluginBridgeFailure::MalformedResponse)
 }
 
-fn read_bounded_stdout(mut stdout: std::process::ChildStdout) -> std::io::Result<(Vec<u8>, bool)> {
-    let mut retained = Vec::with_capacity(MAX_PYTHON_PLUGIN_OUTPUT_BYTES);
+fn read_bounded_stdout(
+    mut stdout: std::process::ChildStdout,
+    output_limit: usize,
+) -> std::io::Result<(Vec<u8>, bool)> {
+    let mut retained = Vec::with_capacity(output_limit);
     let mut buffer = [0_u8; 1024];
     let mut exceeded = false;
     loop {
@@ -1493,7 +1699,7 @@ fn read_bounded_stdout(mut stdout: std::process::ChildStdout) -> std::io::Result
         if read == 0 {
             return Ok((retained, exceeded));
         }
-        let remaining = MAX_PYTHON_PLUGIN_OUTPUT_BYTES.saturating_sub(retained.len());
+        let remaining = output_limit.saturating_sub(retained.len());
         let copied = remaining.min(read);
         retained.extend_from_slice(&buffer[..copied]);
         exceeded |= copied < read;
@@ -2539,6 +2745,69 @@ mod tests {
         );
         assert_eq!(
             route_request(&mut state, "POST", "/api/updates/version").status,
+            405
+        );
+    }
+
+    #[test]
+    fn native_runtime_status_preserves_the_legacy_response_shape() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let runtime = std::env::temp_dir().join(format!(
+            "studio-sidecar-runtime-status-{}-{nonce}",
+            std::process::id()
+        ));
+        let executable = runtime.join("bin/python");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&executable, "placeholder runtime executable").unwrap();
+        fs::write(runtime.join("pyvenv.cfg"), "home = /base\n").unwrap();
+        fs::write(
+            runtime.join(VENV_METADATA_FILE),
+            r#"{"created_at":"2026-08-20T12:00:00","last_updated":"2026-08-30T12:00:00"}"#,
+        )
+        .unwrap();
+
+        let response = native_updates_runtime_status_json(&json!({
+            "path": runtime,
+            "base_prefix": "/base",
+            "python_executable": executable,
+            "python_version": "3.11.9",
+            "pip_version": "24.0",
+            "nirs4all_version": null,
+            "packages": [{"name": "nirs4all", "version": "0.12.0"}],
+        }))
+        .unwrap();
+        let response: Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(response["runtime"], response["venv"]);
+        assert_eq!(
+            response["runtime"]["path"],
+            runtime.to_string_lossy().as_ref()
+        );
+        assert_eq!(
+            response["runtime"]["python_executable"],
+            executable.to_string_lossy().as_ref()
+        );
+        assert_eq!(response["runtime"]["python_version"], "3.11.9");
+        assert_eq!(response["runtime"]["pip_version"], "24.0");
+        assert_eq!(response["runtime"]["created_at"], "2026-08-20T12:00:00");
+        assert_eq!(response["runtime"]["last_updated"], "2026-08-30T12:00:00");
+        assert!(response["runtime"]["size_bytes"].as_u64().unwrap() > 0);
+        assert_eq!(
+            response["packages"],
+            json!([{"name": "nirs4all", "version": "0.12.0", "location": null}])
+        );
+        assert_eq!(response["nirs4all_version"], Value::Null);
+        fs::remove_dir_all(runtime).unwrap();
+
+        let mut state = SidecarState::default();
+        assert_eq!(
+            route_request(&mut state, "GET", "/api/updates/runtime/status").status,
+            503
+        );
+        assert_eq!(
+            route_request(&mut state, "POST", "/api/updates/runtime/status").status,
             405
         );
     }
