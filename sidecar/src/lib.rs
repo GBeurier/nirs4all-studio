@@ -5,9 +5,12 @@
 
 use std::{
     collections::BTreeMap,
+    env,
     fmt::Write as _,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
@@ -30,6 +33,8 @@ pub const CONTROL_JOB_TTL: Duration = Duration::from_secs(5 * 60);
 pub const MAX_WS_CHANNELS: usize = 64;
 pub const MAX_WS_DATA_BYTES: usize = 16 * 1024;
 pub const MAX_WS_DATA_KEYS: usize = 16;
+pub const PYTHON_PLUGIN_HOST_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST";
+pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorCode {
@@ -40,6 +45,8 @@ pub enum ErrorCode {
     JobCapacityExceeded,
     RequestTimeout,
     WebSocketUpgradeRequired,
+    PythonPluginUnavailable,
+    PythonPluginPreflightFailed,
 }
 
 impl ErrorCode {
@@ -53,6 +60,8 @@ impl ErrorCode {
             Self::JobCapacityExceeded => "job_capacity_exceeded",
             Self::RequestTimeout => "request_timeout",
             Self::WebSocketUpgradeRequired => "websocket_upgrade_required",
+            Self::PythonPluginUnavailable => "python_plugin_unavailable",
+            Self::PythonPluginPreflightFailed => "python_plugin_preflight_failed",
         }
     }
 
@@ -241,6 +250,7 @@ pub struct SidecarState {
     jobs: BTreeMap<String, ControlJob>,
     job_limit: usize,
     job_ttl: Duration,
+    python_plugin_host: Option<PathBuf>,
 }
 
 impl Default for SidecarState {
@@ -251,6 +261,7 @@ impl Default for SidecarState {
             jobs: BTreeMap::new(),
             job_limit: MAX_CONTROL_JOBS,
             job_ttl: CONTROL_JOB_TTL,
+            python_plugin_host: None,
         }
     }
 }
@@ -261,6 +272,28 @@ impl SidecarState {
         Self {
             job_limit,
             job_ttl,
+            ..Self::default()
+        }
+    }
+
+    /// Capture the product-owned Python plugin host at sidecar startup. The
+    /// value is only used by the explicit preflight route; it never selects a
+    /// Python HTTP backend or authorizes scientific execution.
+    #[must_use]
+    pub fn from_environment() -> Self {
+        let python_plugin_host = env::var_os(PYTHON_PLUGIN_HOST_ENV)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+        Self {
+            python_plugin_host,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn with_python_plugin_host(path: impl Into<PathBuf>) -> Self {
+        Self {
+            python_plugin_host: Some(path.into()),
             ..Self::default()
         }
     }
@@ -277,6 +310,19 @@ impl SidecarState {
     pub fn health_json(&self) -> String {
         format!(
             "{{\"status\":\"healthy\",\"sidecar_ready\":true,\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"scientific_execution\":\"unavailable\"}}"
+        )
+    }
+
+    #[must_use]
+    pub fn capabilities_json(&self) -> String {
+        let python_plugin_configured = self.python_plugin_host.is_some();
+        format!(
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            if python_plugin_configured {
+                "configured"
+            } else {
+                "unconfigured"
+            },
         )
     }
 
@@ -383,44 +429,111 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
         ("GET", "/api/system/readiness") => HttpResponse::json(200, state.legacy_readiness_json()),
         ("GET", "/sidecar/v1/health") => HttpResponse::json(200, state.health_json()),
         ("GET", "/sidecar/v1/readiness") => HttpResponse::json(200, state.readiness_json()),
-        ("GET", "/sidecar/v1/capabilities") => HttpResponse::json(
-            200,
-            format!(
-                "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":true}}}}"
-            ),
-        ),
+        ("GET", "/sidecar/v1/capabilities") => HttpResponse::json(200, state.capabilities_json()),
+        ("GET", "/sidecar/v1/python/preflight") => python_plugin_preflight_response(state),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
-        (
-            _,
-            "/api/health"
-            | "/api/system/readiness"
-            | "/sidecar/v1/health"
-            | "/sidecar/v1/readiness"
-            | "/sidecar/v1/capabilities",
-        ) => {
-            method_not_allowed(method, path, "GET")
-        }
-        (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
         ("GET", "/sidecar/v1/ws") => error_response(
             400,
             ErrorCode::InvalidRequest,
             "WebSocket endpoint requires a valid Upgrade request",
             BTreeMap::from([("path".into(), path.into())]),
         ),
-        (_, "/sidecar/v1/ws") => method_not_allowed(method, path, "GET"),
+        (
+            _,
+            "/api/health"
+            | "/api/system/readiness"
+            | "/sidecar/v1/health"
+            | "/sidecar/v1/readiness"
+            | "/sidecar/v1/capabilities"
+            | "/sidecar/v1/python/preflight"
+            | "/sidecar/v1/ws",
+        ) => method_not_allowed(method, path, "GET"),
+        (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
         _ if path.starts_with("/sidecar/v1/jobs/") => route_job(state, method, path),
         _ if path.starts_with(API_PREFIX) => error_response(
             404,
             ErrorCode::RouteNotFound,
             "No native sidecar route matches this path",
-            BTreeMap::from([("method".into(), method.into()), ("path".into(), path.into())]),
+            BTreeMap::from([
+                ("method".into(), method.into()),
+                ("path".into(), path.into()),
+            ]),
         ),
         _ => error_response(
             404,
             ErrorCode::RouteNotFound,
             "This native sidecar does not serve this Studio route",
-            BTreeMap::from([("method".into(), method.into()), ("path".into(), path.into())]),
+            BTreeMap::from([
+                ("method".into(), method.into()),
+                ("path".into(), path.into()),
+            ]),
         ),
+    }
+}
+
+fn python_plugin_preflight_response(state: &SidecarState) -> HttpResponse {
+    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+        return error_response(
+            503,
+            ErrorCode::PythonPluginUnavailable,
+            "No Python plugin host is configured for this native sidecar",
+            BTreeMap::from([("reason".into(), "not_configured".into())]),
+        );
+    };
+
+    match preflight_python_plugin_host(python_plugin_host) {
+        Ok(()) => HttpResponse::json(
+            200,
+            "{\"bridge\":\"python-subprocess\",\"python_plugin_host\":\"ready\",\"nirs4all_import\":true,\"scientific_execution\":\"unavailable\"}",
+        ),
+        Err(reason) => error_response(
+            503,
+            ErrorCode::PythonPluginPreflightFailed,
+            "The configured Python plugin host did not pass the nirs4all import preflight",
+            BTreeMap::from([("reason".into(), reason.as_str().into())]),
+        ),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PythonPluginPreflightFailure {
+    SpawnFailed,
+    TimedOut,
+    ImportFailed,
+}
+
+impl PythonPluginPreflightFailure {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::SpawnFailed => "spawn_failed",
+            Self::TimedOut => "timed_out",
+            Self::ImportFailed => "nirs4all_import_failed",
+        }
+    }
+}
+
+fn preflight_python_plugin_host(
+    python_plugin_host: &Path,
+) -> Result<(), PythonPluginPreflightFailure> {
+    let mut child = Command::new(python_plugin_host)
+        .args(["-I", "-c", "import nirs4all"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| PythonPluginPreflightFailure::SpawnFailed)?;
+    let started_at = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => return Ok(()),
+            Ok(Some(_)) | Err(_) => return Err(PythonPluginPreflightFailure::ImportFailed),
+            Ok(None) if started_at.elapsed() >= PYTHON_PLUGIN_PREFLIGHT_TIMEOUT => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(PythonPluginPreflightFailure::TimedOut);
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+        }
     }
 }
 
@@ -599,7 +712,7 @@ pub fn serve(host: &str, port: u16) -> std::io::Result<()> {
         address.ip(),
         address.port()
     );
-    let state = Arc::new(Mutex::new(SidecarState::default()));
+    let state = Arc::new(Mutex::new(SidecarState::from_environment()));
     let limits = ServerLimits::default();
     let connections = Arc::new(ConnectionGate {
         active: AtomicUsize::new(0),
@@ -971,6 +1084,53 @@ mod tests {
     }
 
     #[test]
+    fn python_plugin_preflight_is_explicit_and_never_enables_scientific_execution() {
+        let mut unconfigured = SidecarState::default();
+        let capabilities: Value = serde_json::from_str(&unconfigured.capabilities_json()).unwrap();
+        assert_eq!(capabilities["python_plugin_host"], "unconfigured");
+        assert_eq!(capabilities["features"]["python_plugin_preflight"], false);
+        assert_eq!(capabilities["features"]["python_plugin_execution"], false);
+
+        let unavailable = route_request(&mut unconfigured, "GET", "/sidecar/v1/python/preflight");
+        assert_eq!(unavailable.status, 503);
+        let unavailable_body: Value = serde_json::from_str(&unavailable.body).unwrap();
+        assert_eq!(
+            unavailable_body["error"]["code"],
+            "python_plugin_unavailable"
+        );
+        assert_eq!(
+            unavailable_body["error"]["details"]["reason"],
+            "not_configured"
+        );
+
+        let missing_host = std::env::temp_dir().join(format!(
+            "n4a-sidecar-missing-python-host-{}",
+            std::process::id()
+        ));
+        let mut configured = SidecarState::with_python_plugin_host(missing_host);
+        let configured_capabilities: Value =
+            serde_json::from_str(&configured.capabilities_json()).unwrap();
+        assert_eq!(configured_capabilities["python_plugin_host"], "configured");
+        assert_eq!(
+            configured_capabilities["features"]["python_plugin_preflight"],
+            true
+        );
+        assert_eq!(
+            configured_capabilities["features"]["scientific_execution"],
+            false
+        );
+
+        let failed = route_request(&mut configured, "GET", "/sidecar/v1/python/preflight");
+        assert_eq!(failed.status, 503);
+        let failed_body: Value = serde_json::from_str(&failed.body).unwrap();
+        assert_eq!(
+            failed_body["error"]["code"],
+            "python_plugin_preflight_failed"
+        );
+        assert_eq!(failed_body["error"]["details"]["reason"], "spawn_failed");
+    }
+
+    #[test]
     fn cancellation_is_idempotent_for_an_opaque_control_job() {
         let mut state = SidecarState::default();
         let created = route_request(&mut state, "POST", "/sidecar/v1/jobs");
@@ -1077,6 +1237,7 @@ mod tests {
             ("POST", "/sidecar/v1/health", "GET"),
             ("DELETE", "/sidecar/v1/readiness", "GET"),
             ("POST", "/sidecar/v1/capabilities", "GET"),
+            ("POST", "/sidecar/v1/python/preflight", "GET"),
             ("GET", "/sidecar/v1/jobs", "POST"),
             ("PUT", "/sidecar/v1/jobs/job-r1-1", "GET"),
             ("GET", "/sidecar/v1/jobs/job-r1-1/cancel", "POST"),

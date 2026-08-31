@@ -11,6 +11,8 @@ R1 provides a small local HTTP control surface only:
 - `GET /sidecar/v1/health`
 - `GET /sidecar/v1/readiness`
 - `GET /sidecar/v1/capabilities`
+- `GET /sidecar/v1/python/preflight` (only checks a configured local Python
+  host can `import nirs4all`; it does not run a scientific job)
 - `POST /sidecar/v1/jobs` (creates a non-scientific, in-memory control record)
 - `GET /sidecar/v1/jobs/{job_id}`
 - `POST /sidecar/v1/jobs/{job_id}/cancel`
@@ -63,12 +65,18 @@ Protocol version: `studio-sidecar-r1`.
 `job_execution`, and `uptime_ms`. `legacy_route_parity` is `bootstrap`: only
 health and readiness match their frozen post-lifespan responses.
 `scientific_execution` and `job_execution` are always `unavailable` in R1.
+`GET /sidecar/v1/python/preflight` is the only Python bridge action: it is
+available only when `NIRS4ALL_PYTHON_PLUGIN_HOST` is set, launches that
+product-owned interpreter with `-I`, bounds it to three seconds, and checks
+`import nirs4all`. A successful preflight leaves `scientific_execution`
+unavailable; it is capability evidence, never a transparent Python fallback.
 All-in-one packaging builds the sidecar as
 `resources/backend/native/studio-sidecar` next to the embedded
 `resources/backend/python-runtime/`. Electron starts that resource only when
 `NIRS4ALL_ENABLE_NATIVE_SIDECAR=1`; a direct development binary still requires
-`NIRS4ALL_NATIVE_SIDECAR_PATH`. Neither choice selects Python as an HTTP
-fallback.
+`NIRS4ALL_NATIVE_SIDECAR_PATH`. Electron passes the matching embedded Python as
+the plugin host for the packaged opt-in path. Neither choice selects Python as
+an HTTP fallback.
 
 All errors use:
 
@@ -108,10 +116,11 @@ WebSocket parity or a live subscription service.
 
 Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
-idempotent cancellation, all-in-one binary packaging, and Electron's explicit
-loopback-only lifecycle management. Missing: every other legacy `/api/*` route,
-all scientific execution, persistence, uploads, authentication, live WebSocket
-upgrades, job execution, and parity mapping/diffing for the full frozen surface.
+idempotent cancellation, bounded Python plugin-host preflight, all-in-one binary
+packaging, and Electron's explicit loopback-only lifecycle management. Missing:
+every other legacy `/api/*` route, all scientific execution, persistence,
+uploads, authentication, live WebSocket upgrades, job execution, and parity
+mapping/diffing for the full frozen surface.
 
 Rollback is deletion/exclusion of the unused sidecar binary/resource. R1 keeps
 the sidecar disabled unless an explicit environment setting enables it and

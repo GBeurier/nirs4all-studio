@@ -234,3 +234,20 @@ fn cli_smoke_prints_r1_readiness_without_starting_a_server() {
     assert_eq!(readiness["protocol_version"], PROTOCOL_VERSION);
     assert_eq!(readiness["scientific_execution"], "unavailable");
 }
+
+#[test]
+fn configured_python_plugin_host_can_import_nirs4all_without_enabling_execution() {
+    let Ok(python_plugin_host) = std::env::var("NIRS4ALL_TEST_PYTHON_PLUGIN_HOST") else {
+        return;
+    };
+    let mut state = SidecarState::with_python_plugin_host(python_plugin_host);
+    let response = route_request(&mut state, "GET", "/sidecar/v1/python/preflight");
+    assert_eq!(
+        response.status, 200,
+        "configured Python plugin host preflight"
+    );
+    let body: Value = serde_json::from_str(&response.body).unwrap();
+    assert_eq!(body["bridge"], "python-subprocess");
+    assert_eq!(body["nirs4all_import"], true);
+    assert_eq!(body["scientific_execution"], "unavailable");
+}
