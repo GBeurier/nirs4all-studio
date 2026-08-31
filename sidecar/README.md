@@ -30,6 +30,8 @@ R1 provides a small local HTTP control surface only:
 - `GET` / `PUT /api/app/settings` (Rust-owned app preferences)
 - `GET` / `POST` / `DELETE /api/app/favorites` (Rust-owned favorite pipeline
   identifiers)
+- `GET` / `POST` / `DELETE /api/app/config-path` (Rust-owned configuration
+  directory selection; changes explicitly require restart)
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
@@ -79,7 +81,7 @@ Protocol version: `studio-sidecar-r1`.
 health and readiness match their frozen post-lifespan responses.
 `scientific_execution` and `job_execution` are always `unavailable` in R1.
 `GET /sidecar/v1/capabilities` therefore reports
-`api_route_coverage: "bootstrap_system_and_app_settings"`,
+`api_route_coverage: "bootstrap_system_and_app_state"`,
 `legacy_api_routes: false`, and
 `unmigrated_api_routes_require_legacy_backend: true`. These fields make the
 partial migration machine-readable: a caller must not treat the sidecar as
@@ -100,7 +102,10 @@ portable executable's `.nirs4all/config`, a valid redirect file, then the
 platform configuration directory. The store has a versioned default shape;
 preference updates deep-merge `ui_preferences`, favorite operations are
 idempotent, and writes use a synced temporary file followed by rename. The
-sidecar never reads or writes workspace or dataset state.
+sidecar owns the compatible `config_redirect.txt` selector: a custom target
+must already exist, the redirect is stored at the platform-default path, and
+the response always declares `requires_restart: true`. The sidecar never reads
+or writes workspace or dataset state.
 
 All-in-one packaging builds the sidecar as
 `resources/backend/native/studio-sidecar` next to the embedded
@@ -147,7 +152,8 @@ WebSocket parity or a live subscription service.
 Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
 idempotent cancellation, bounded Python plugin-host preflight, the first three
-Rust-owned legacy-compatible system routes, native app preferences/favorites,
+Rust-owned legacy-compatible system routes, native app preferences/favorites
+and config-path selection,
 all-in-one binary packaging, and Electron's explicit loopback-only lifecycle
 management. Missing: every other legacy `/api/*` route, all scientific
 execution, workspace/dataset persistence, uploads, authentication, live

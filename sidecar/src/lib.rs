@@ -23,7 +23,7 @@ use serde_json::{json, Value};
 
 mod settings;
 
-use settings::AppSettingsStore;
+use settings::{AppSettingsStore, ConfigPathError};
 
 pub const PROTOCOL_VERSION: &str = "studio-sidecar-r1";
 pub const LEGACY_CONTRACT_BASELINE: &str = "studio-v1";
@@ -353,6 +353,18 @@ impl SidecarState {
         }
     }
 
+    #[cfg(test)]
+    #[must_use]
+    pub fn with_app_settings_paths(
+        config_dir: impl Into<PathBuf>,
+        default_config_dir: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            app_settings: AppSettingsStore::with_config_paths(config_dir, default_config_dir),
+            ..Self::default()
+        }
+    }
+
     #[must_use]
     pub fn readiness_json(&self) -> String {
         format!(
@@ -372,7 +384,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_settings\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_state\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -499,6 +511,9 @@ pub fn route_request_with_body(
         ("PUT", "/api/app/settings") => update_app_settings_response(state, body),
         ("GET", "/api/app/favorites") => app_favourites_response(state),
         ("POST", "/api/app/favorites") => add_app_favourite_response(state, body),
+        ("GET", "/api/app/config-path") => app_config_path_response(state),
+        ("POST", "/api/app/config-path") => set_app_config_path_response(state, body),
+        ("DELETE", "/api/app/config-path") => reset_app_config_path_response(state),
         ("GET", "/sidecar/v1/health") => HttpResponse::json(200, state.health_json()),
         ("GET", "/sidecar/v1/readiness") => HttpResponse::json(200, state.readiness_json()),
         ("GET", "/sidecar/v1/capabilities") => HttpResponse::json(200, state.capabilities_json()),
@@ -528,6 +543,7 @@ pub fn route_request_with_body(
         ) => method_not_allowed(method, path, "GET"),
         (_, "/api/app/settings") => method_not_allowed(method, path, "GET, PUT"),
         (_, "/api/app/favorites") => method_not_allowed(method, path, "GET, POST"),
+        (_, "/api/app/config-path") => method_not_allowed(method, path, "GET, POST, DELETE"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
         _ if path.starts_with("/api/app/favorites/") => route_app_favourite(state, method, path),
         _ if path.starts_with("/sidecar/v1/jobs/") => route_job(state, method, path),
@@ -657,6 +673,64 @@ fn app_settings_storage_error(operation: &str, error: &str) -> HttpResponse {
         500,
         json!({"detail": format!("Failed to {operation}: {error}")}).to_string(),
     )
+}
+
+fn app_config_path_response(state: &SidecarState) -> HttpResponse {
+    HttpResponse::json(200, state.app_settings.config_path_response().to_string())
+}
+
+fn set_app_config_path_response(state: &mut SidecarState, body: &[u8]) -> HttpResponse {
+    let request = match app_settings_request_body(body) {
+        Ok(request) => request,
+        Err(response) => return response,
+    };
+    let Some(path) = request.get("path").and_then(Value::as_str) else {
+        return app_settings_validation_error("request body must contain a string path");
+    };
+    match state.app_settings.set_config_path(path) {
+        Ok(config_dir) => HttpResponse::json(
+            200,
+            json!({
+                "success": true,
+                "message": "Config path updated",
+                "current_path": config_dir.to_string_lossy(),
+                "requires_restart": true,
+            })
+            .to_string(),
+        ),
+        Err(ConfigPathError::DoesNotExist(path)) => HttpResponse::json(
+            400,
+            json!({"detail": format!("Config path does not exist: {path}")}).to_string(),
+        ),
+        Err(ConfigPathError::NotDirectory(path)) => HttpResponse::json(
+            400,
+            json!({"detail": format!("Config path is not a directory: {path}")}).to_string(),
+        ),
+        Err(ConfigPathError::Storage(error)) => {
+            app_settings_storage_error("set config path", &error)
+        }
+    }
+}
+
+fn reset_app_config_path_response(state: &mut SidecarState) -> HttpResponse {
+    match state.app_settings.reset_config_path() {
+        Ok(config_dir) => HttpResponse::json(
+            200,
+            json!({
+                "success": true,
+                "message": "Config path reset to default",
+                "current_path": config_dir.to_string_lossy(),
+                "requires_restart": true,
+            })
+            .to_string(),
+        ),
+        Err(ConfigPathError::DoesNotExist(_) | ConfigPathError::NotDirectory(_)) => {
+            unreachable!("reset does not validate a path")
+        }
+        Err(ConfigPathError::Storage(error)) => {
+            app_settings_storage_error("reset config path", &error)
+        }
+    }
 }
 
 fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
@@ -1617,9 +1691,10 @@ mod tests {
         assert_eq!(capabilities["python_plugin_host"], "unconfigured");
         assert_eq!(
             capabilities["api_route_coverage"],
-            "bootstrap_system_and_app_settings"
+            "bootstrap_system_and_app_state"
         );
         assert_eq!(capabilities["features"]["app_settings_routes"], true);
+        assert_eq!(capabilities["features"]["app_config_path_routes"], true);
         assert_eq!(capabilities["features"]["legacy_api_routes"], false);
         assert_eq!(
             capabilities["features"]["unmigrated_api_routes_require_legacy_backend"],
@@ -1736,6 +1811,75 @@ mod tests {
             422
         );
 
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn app_config_path_routes_redirect_and_reset_without_a_python_plugin_host() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-config-path-{}-{nonce}",
+            std::process::id()
+        ));
+        let initial = directory.join("initial");
+        let default = directory.join("default");
+        let custom = directory.join("custom");
+        fs::create_dir_all(&initial).unwrap();
+        fs::create_dir_all(&custom).unwrap();
+        let mut state = SidecarState::with_app_settings_paths(&initial, &default);
+
+        let initial_response = route_request(&mut state, "GET", "/api/app/config-path");
+        assert_eq!(initial_response.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&initial_response.body).unwrap()["is_custom"],
+            true
+        );
+        let custom = custom.canonicalize().unwrap();
+        let request = json!({"path": custom.to_string_lossy()}).to_string();
+        let updated = route_request_with_body(
+            &mut state,
+            "POST",
+            "/api/app/config-path",
+            request.as_bytes(),
+        );
+        assert_eq!(updated.status, 200);
+        assert_eq!(
+            fs::read_to_string(default.join("config_redirect.txt")).unwrap(),
+            custom.to_string_lossy()
+        );
+        assert_eq!(
+            route_request_with_body(
+                &mut state,
+                "POST",
+                "/api/app/config-path",
+                br#"{"path":"missing"}"#,
+            )
+            .status,
+            400
+        );
+        let non_directory = directory.join("not-a-directory");
+        fs::write(&non_directory, "not a directory").unwrap();
+        let non_directory_request = json!({"path": non_directory.to_string_lossy()}).to_string();
+        assert_eq!(
+            route_request_with_body(
+                &mut state,
+                "POST",
+                "/api/app/config-path",
+                non_directory_request.as_bytes(),
+            )
+            .status,
+            400
+        );
+        let reset = route_request(&mut state, "DELETE", "/api/app/config-path");
+        assert_eq!(reset.status, 200);
+        assert!(!default.join("config_redirect.txt").exists());
+        assert_eq!(
+            serde_json::from_str::<Value>(&reset.body).unwrap()["current_path"],
+            default.to_string_lossy().as_ref()
+        );
         fs::remove_dir_all(directory).unwrap();
     }
 
