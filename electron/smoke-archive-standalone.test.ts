@@ -51,6 +51,7 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     runtimeReadyPath: string;
     bundledPythonPath: string;
     bundledPythonCandidates: string[];
+    nativeSidecarPath: string;
   };
   removePathWithRetries(
     targetPath: string,
@@ -111,6 +112,9 @@ describe("smoke-archive-standalone", () => {
     expect(layout.bundledPythonPath).toBe(
       path.join(extractedRoot, "resources", "backend", "python-runtime", "python", "python.exe"),
     );
+    expect(layout.nativeSidecarPath).toBe(
+      path.join(extractedRoot, "resources", "backend", "native", "studio-sidecar.exe"),
+    );
     expect(layout.bundledPythonCandidates).toContain(
       path.join(extractedRoot, "resources", "backend", "python-runtime", "venv", "Scripts", "python.exe"),
     );
@@ -128,6 +132,9 @@ describe("smoke-archive-standalone", () => {
     expect(layout.executablePath).toBe(path.join(appRoot, "nirs4all-webapp"));
     expect(layout.runtimeReadyPath).toBe(
       path.join(appRoot, "resources", "backend", "python-runtime", "RUNTIME_READY.json"),
+    );
+    expect(layout.nativeSidecarPath).toBe(
+      path.join(appRoot, "resources", "backend", "native", "studio-sidecar"),
     );
   });
 
@@ -147,6 +154,9 @@ describe("smoke-archive-standalone", () => {
     );
     expect(layout.bundledPythonPath).toBe(
       path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "python", "bin", "python3"),
+    );
+    expect(layout.nativeSidecarPath).toBe(
+      path.join(appBundle, "Contents", "Resources", "backend", "native", "studio-sidecar"),
     );
     expect(layout.bundledPythonCandidates).toContain(
       path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "venv", "bin", "python"),

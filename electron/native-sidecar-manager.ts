@@ -4,9 +4,11 @@ import path from "node:path";
 
 const SIDECAR_PATH_ENV = "NIRS4ALL_NATIVE_SIDECAR_PATH";
 const SIDECAR_PORT_ENV = "NIRS4ALL_NATIVE_SIDECAR_PORT";
+const SIDECAR_ENABLE_PACKAGED_ENV = "NIRS4ALL_ENABLE_NATIVE_SIDECAR";
 const SIDECAR_READY_PREFIX = "STUDIO_SIDECAR_READY ";
 const SIDECAR_START_TIMEOUT_MS = 15_000;
 const MAX_STARTUP_OUTPUT_BYTES = 8 * 1024;
+const electronProcess = process as NodeJS.Process & { resourcesPath?: string };
 
 export type NativeSidecarStatus = "disabled" | "starting" | "running" | "stopped" | "error";
 
@@ -23,6 +25,29 @@ interface SidecarReadyLine {
   protocol_version: unknown;
   host: unknown;
   port: unknown;
+}
+
+export interface NativeSidecarPathOptions {
+  environment?: NodeJS.ProcessEnv;
+  resourcesPath?: string;
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * Resolve the explicit developer override first, then the packaged resource
+ * only when the dual-run flag is set.  The sidecar is never auto-selected as
+ * the HTTP backend merely because a binary was bundled with the application.
+ */
+export function resolveNativeSidecarPath({
+  environment = process.env,
+  resourcesPath = electronProcess.resourcesPath,
+  platform = process.platform,
+}: NativeSidecarPathOptions = {}): string | null {
+  const explicitPath = environment[SIDECAR_PATH_ENV]?.trim();
+  if (explicitPath) return path.resolve(explicitPath);
+  if (environment[SIDECAR_ENABLE_PACKAGED_ENV] !== "1" || !resourcesPath) return null;
+
+  return path.join(resourcesPath, "backend", "native", platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar");
 }
 
 /**
@@ -51,8 +76,11 @@ export class NativeSidecarManager {
   }
 
   async start(): Promise<NativeSidecarInfo> {
-    const configuredPath = process.env[SIDECAR_PATH_ENV]?.trim();
+    const configuredPath = resolveNativeSidecarPath();
     if (!configuredPath) {
+      if (process.env[SIDECAR_ENABLE_PACKAGED_ENV] === "1") {
+        return this.failBeforeSpawn("Native sidecar was enabled but Electron has no packaged resources path");
+      }
       this.status = "disabled";
       this.host = null;
       this.port = null;
@@ -64,7 +92,7 @@ export class NativeSidecarManager {
       return this.getInfo();
     }
 
-    const binaryPath = path.resolve(configuredPath);
+    const binaryPath = configuredPath;
     if (!fs.existsSync(binaryPath)) {
       return this.failBeforeSpawn(`${SIDECAR_PATH_ENV} does not exist: ${binaryPath}`);
     }
