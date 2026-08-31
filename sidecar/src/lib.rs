@@ -46,6 +46,18 @@ pub const PYTHON_CAPABILITY_MODULES: &[&str] = &[
     "umap",
     "autogluon",
 ];
+pub const PYTHON_INFO_PACKAGES: &[&str] = &[
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "scipy",
+    "matplotlib",
+    "tensorflow",
+    "torch",
+    "fastapi",
+    "uvicorn",
+    "webview",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorCode {
@@ -443,6 +455,7 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
         ("GET", "/sidecar/v1/capabilities") => HttpResponse::json(200, state.capabilities_json()),
         ("GET", "/sidecar/v1/python/preflight") => python_plugin_preflight_response(state),
         ("GET", "/api/system/capabilities") => python_capabilities_response(state),
+        ("GET", "/api/system/info") => python_system_info_response(state),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
         ("GET", "/sidecar/v1/ws") => error_response(
             400,
@@ -459,6 +472,7 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
             | "/sidecar/v1/capabilities"
             | "/sidecar/v1/python/preflight"
             | "/api/system/capabilities"
+            | "/api/system/info"
             | "/sidecar/v1/ws",
         ) => method_not_allowed(method, path, "GET"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
@@ -499,6 +513,26 @@ fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
             503,
             ErrorCode::PythonPluginPreflightFailed,
             "The configured Python plugin host could not report capabilities",
+            BTreeMap::from([("reason".into(), reason.as_str().into())]),
+        ),
+    }
+}
+
+fn python_system_info_response(state: &SidecarState) -> HttpResponse {
+    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+        return error_response(
+            503,
+            ErrorCode::PythonPluginUnavailable,
+            "No Python plugin host is configured for this native sidecar",
+            BTreeMap::from([("reason".into(), "not_configured".into())]),
+        );
+    };
+    match read_python_system_info(python_plugin_host) {
+        Ok(body) => HttpResponse::json(200, body),
+        Err(reason) => error_response(
+            503,
+            ErrorCode::PythonPluginPreflightFailed,
+            "The configured Python plugin host could not report system information",
             BTreeMap::from([("reason".into(), reason.as_str().into())]),
         ),
     }
@@ -618,6 +652,43 @@ fn read_python_capabilities(
         return Err(PythonPluginBridgeFailure::MalformedResponse);
     }
     Ok(serde_json::json!({ "capabilities": capabilities }).to_string())
+}
+
+fn read_python_system_info(python_plugin_host: &Path) -> Result<String, PythonPluginBridgeFailure> {
+    let package_names = serde_json::to_string(PYTHON_INFO_PACKAGES)
+        .map_err(|_| PythonPluginBridgeFailure::ScriptFailed)?;
+    let script = format!(
+        "import json,platform,sys\npackages={{}}\nfor name in {package_names}:\n try:\n  module=__import__(name); packages[name]=str(getattr(module,'__version__','unknown'))\n except ImportError: pass\ntry:\n import nirs4all; nirs4all_version=str(getattr(nirs4all,'__version__','unknown'))\nexcept ImportError: nirs4all_version='not installed'\nprint(json.dumps({{'python':{{'version':sys.version,'platform':sys.platform,'executable':sys.executable}},'system':{{'os':platform.system(),'release':platform.release(),'machine':platform.machine(),'processor':platform.processor()}},'nirs4all_version':nirs4all_version,'packages':packages}}, separators=(',',':'), sort_keys=True))"
+    );
+    let output = run_python_plugin_json(
+        python_plugin_host,
+        &script,
+        PYTHON_PLUGIN_CAPABILITIES_TIMEOUT,
+    )?;
+    let python = output
+        .get("python")
+        .and_then(Value::as_object)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let system = output
+        .get("system")
+        .and_then(Value::as_object)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let packages = output
+        .get("packages")
+        .and_then(Value::as_object)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    if ["version", "platform", "executable"]
+        .iter()
+        .any(|key| !python.get(*key).is_some_and(Value::is_string))
+        || ["os", "release", "machine", "processor"]
+            .iter()
+            .any(|key| !system.get(*key).is_some_and(Value::is_string))
+        || !output.get("nirs4all_version").is_some_and(Value::is_string)
+        || !packages.values().all(Value::is_string)
+    {
+        return Err(PythonPluginBridgeFailure::MalformedResponse);
+    }
+    Ok(output.to_string())
 }
 
 fn run_python_plugin_json(
@@ -1261,6 +1332,9 @@ mod tests {
             "python_plugin_unavailable"
         );
 
+        let unavailable_info = route_request(&mut unconfigured, "GET", "/api/system/info");
+        assert_eq!(unavailable_info.status, 503);
+
         let missing_host = std::env::temp_dir().join(format!(
             "n4a-sidecar-missing-python-host-{}",
             std::process::id()
@@ -1397,6 +1471,7 @@ mod tests {
             ("POST", "/sidecar/v1/capabilities", "GET"),
             ("POST", "/sidecar/v1/python/preflight", "GET"),
             ("POST", "/api/system/capabilities", "GET"),
+            ("POST", "/api/system/info", "GET"),
             ("GET", "/sidecar/v1/jobs", "POST"),
             ("PUT", "/sidecar/v1/jobs/job-r1-1", "GET"),
             ("GET", "/sidecar/v1/jobs/job-r1-1/cancel", "POST"),

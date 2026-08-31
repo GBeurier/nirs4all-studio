@@ -203,4 +203,25 @@ describe("API client request handling", () => {
     );
     expect(getNativeSidecarInfo).toHaveBeenCalledTimes(1);
   });
+
+  it("sends the migrated system-info route to a running native sidecar", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ nirs4all_version: "0.12.0" }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+      }),
+    });
+
+    await api.get("/system/info");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/system/info",
+      expect.any(Object),
+    );
+  });
 });
