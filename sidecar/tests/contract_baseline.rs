@@ -280,6 +280,31 @@ fn configured_python_plugin_host_can_import_nirs4all_without_enabling_execution(
         .values()
         .all(Value::is_string));
 
+    let system_build = route_request(&mut state, "GET", "/api/system/build");
+    assert_eq!(
+        system_build.status, 200,
+        "configured Python build inventory bridge"
+    );
+    let system_build_body: Value = serde_json::from_str(&system_build.body).unwrap();
+    assert!(system_build_body["build"]["flavor"].is_string());
+    assert!(system_build_body["build"]["gpu_enabled"].is_boolean());
+    assert!(system_build_body["gpu"]["cuda_available"].is_boolean());
+    assert!(system_build_body["gpu"]["metal_available"].is_boolean());
+    assert!(system_build_body["gpu"]["backends"].is_object());
+    assert!(system_build_body["runtime_mode"].is_string());
+    assert!(system_build_body["is_frozen"].is_boolean());
+    assert_eq!(
+        system_build_body["summary"]["gpu_available"].as_bool(),
+        Some(
+            system_build_body["gpu"]["cuda_available"]
+                .as_bool()
+                .unwrap()
+                || system_build_body["gpu"]["metal_available"]
+                    .as_bool()
+                    .unwrap(),
+        )
+    );
+
     let runtime = route_request(&mut state, "GET", "/api/system/env-coherence");
     assert_eq!(runtime.status, 200, "configured Python runtime bridge");
     let runtime_body: Value = serde_json::from_str(&runtime.body).unwrap();

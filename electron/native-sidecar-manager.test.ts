@@ -142,7 +142,7 @@ describe("NativeSidecarManager", () => {
     });
   });
 
-  it("passes the selected interpreter only as a Python plugin host", async () => {
+  it("passes the selected interpreter and product runtime metadata to the sidecar", async () => {
     process.env.NIRS4ALL_NATIVE_SIDECAR_PATH = makeExecutable();
     const child = makeProcess();
     childProcessMocks.spawn.mockReturnValue(child);
@@ -151,6 +151,9 @@ describe("NativeSidecarManager", () => {
 
     const startup = manager.start({
       pythonPluginHost: "/selected-runtime/python",
+      runtimeMode: "bundled",
+      runtimeKind: "bundled",
+      buildInfoPath: "/resources/backend/python-runtime/build_info.json",
     });
     expect(childProcessMocks.spawn).toHaveBeenCalledWith(
       path.resolve(process.env.NIRS4ALL_NATIVE_SIDECAR_PATH),
@@ -158,6 +161,10 @@ describe("NativeSidecarManager", () => {
       expect.objectContaining({
         env: expect.objectContaining({
           NIRS4ALL_PYTHON_PLUGIN_HOST: "/selected-runtime/python",
+          NIRS4ALL_RUNTIME_MODE: "bundled",
+          NIRS4ALL_RUNTIME_KIND: "bundled",
+          NIRS4ALL_BUILD_INFO_PATH:
+            "/resources/backend/python-runtime/build_info.json",
         }),
         windowsHide: true,
       }),

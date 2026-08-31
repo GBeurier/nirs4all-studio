@@ -147,9 +147,29 @@ async function restartBackendAfterTelemetryChange(): Promise<boolean> {
 }
 
 function nativeSidecarStartOptions() {
+  const configuredRuntime = envManager.getConfiguredRuntimeMode();
+  const runtimeMode = configuredRuntime === "bundled"
+    ? "bundled"
+    : configuredRuntime === "none"
+      ? (app.isPackaged ? "pyinstaller" : "development")
+      : (app.isPackaged ? "managed" : "development");
+  const runtimeKind = configuredRuntime === "none"
+    ? (app.isPackaged ? "pyinstaller" : "development")
+    : configuredRuntime;
+  const resourceRoot = process.resourcesPath ?? process.cwd();
+  const buildInfoCandidates = app.isPackaged
+    ? [
+        path.join(resourceRoot, "backend", "python-runtime", "build_info.json"),
+        path.join(resourceRoot, "backend", "build_info.json"),
+      ]
+    : [path.join(process.cwd(), "backend-dist", "build_info.json")];
+
   return {
     allowPackagedResource: app.isPackaged,
     pythonPluginHost: envManager.getConfiguredPythonPath(),
+    runtimeMode,
+    runtimeKind,
+    buildInfoPath: buildInfoCandidates.find((candidate) => fs.existsSync(candidate)) ?? null,
   };
 }
 
