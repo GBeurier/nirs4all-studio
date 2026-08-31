@@ -84,6 +84,11 @@ resources/
         └── studio-sidecar
 ```
 
+When the packaged sidecar is explicitly enabled, Electron gives it the sibling
+embedded interpreter only for the bounded `nirs4all` import preflight. The Rust
+sidecar remains the process and HTTP owner; the embedded Python runtime is a
+plugin capability, not a FastAPI/Uvicorn fallback.
+
 While the app is still running on the embedded bundled runtime, package
 installation, runtime creation, snapshot restore, and config alignment
 mutations are disabled. Users may still switch the bundled app to an external

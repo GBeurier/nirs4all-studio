@@ -5,6 +5,7 @@ import path from "node:path";
 const SIDECAR_PATH_ENV = "NIRS4ALL_NATIVE_SIDECAR_PATH";
 const SIDECAR_PORT_ENV = "NIRS4ALL_NATIVE_SIDECAR_PORT";
 const SIDECAR_ENABLE_PACKAGED_ENV = "NIRS4ALL_ENABLE_NATIVE_SIDECAR";
+const PYTHON_PLUGIN_HOST_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST";
 const SIDECAR_READY_PREFIX = "STUDIO_SIDECAR_READY ";
 const SIDECAR_START_TIMEOUT_MS = 15_000;
 const MAX_STARTUP_OUTPUT_BYTES = 8 * 1024;
@@ -48,6 +49,26 @@ export function resolveNativeSidecarPath({
   if (environment[SIDECAR_ENABLE_PACKAGED_ENV] !== "1" || !resourcesPath) return null;
 
   return path.join(resourcesPath, "backend", "native", platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar");
+}
+
+/** Resolve an embedded interpreter without treating it as an HTTP backend. */
+export function resolveBundledPythonPluginHost({
+  resourcesPath = electronProcess.resourcesPath,
+  platform = process.platform,
+}: Omit<NativeSidecarPathOptions, "environment"> = {}): string | null {
+  if (!resourcesPath) return null;
+  const runtimeRoot = path.join(resourcesPath, "backend", "python-runtime");
+  const candidates = platform === "win32"
+    ? [
+        path.join(runtimeRoot, "python", "python.exe"),
+        path.join(runtimeRoot, "venv", "Scripts", "python.exe"),
+      ]
+    : [
+        path.join(runtimeRoot, "python", "bin", "python3"),
+        path.join(runtimeRoot, "python", "bin", "python"),
+        path.join(runtimeRoot, "venv", "bin", "python"),
+      ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
 /**
@@ -111,8 +132,12 @@ export class NativeSidecarManager {
     this.protocolVersion = null;
 
     let child: ChildProcess;
+    const pythonPluginHost = process.env[PYTHON_PLUGIN_HOST_ENV]?.trim() || resolveBundledPythonPluginHost();
+    const childEnvironment: NodeJS.ProcessEnv = { ...process.env };
+    if (pythonPluginHost) childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
     try {
       child = spawn(binaryPath, ["--host", "127.0.0.1", "--port", port.toString()], {
+        env: childEnvironment,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });

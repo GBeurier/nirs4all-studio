@@ -35,6 +35,7 @@ afterEach(() => {
   delete process.env.NIRS4ALL_NATIVE_SIDECAR_PATH;
   delete process.env.NIRS4ALL_NATIVE_SIDECAR_PORT;
   delete process.env.NIRS4ALL_ENABLE_NATIVE_SIDECAR;
+  delete process.env.NIRS4ALL_PYTHON_PLUGIN_HOST;
   childProcessMocks.spawn.mockReset();
   vi.resetModules();
   while (tempDirs.length > 0) {
@@ -45,7 +46,7 @@ afterEach(() => {
 
 describe("NativeSidecarManager", () => {
   it("resolves an explicit binary before an opt-in packaged resource", async () => {
-    const { resolveNativeSidecarPath } = await import("./native-sidecar-manager");
+    const { resolveBundledPythonPluginHost, resolveNativeSidecarPath } = await import("./native-sidecar-manager");
 
     expect(
       resolveNativeSidecarPath({
@@ -65,6 +66,13 @@ describe("NativeSidecarManager", () => {
       }),
     ).toBe("/app/resources/backend/native/studio-sidecar.exe");
     expect(resolveNativeSidecarPath({ environment: {}, resourcesPath: "/app/resources" })).toBeNull();
+
+    const resources = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-sidecar-runtime-"));
+    tempDirs.push(resources);
+    const bundledPython = path.join(resources, "backend", "python-runtime", "python", "bin", "python3");
+    fs.mkdirSync(path.dirname(bundledPython), { recursive: true });
+    fs.writeFileSync(bundledPython, "placeholder");
+    expect(resolveBundledPythonPluginHost({ resourcesPath: resources, platform: "linux" })).toBe(bundledPython);
   });
 
   it("stays disabled without an explicit sidecar binary", async () => {
@@ -79,6 +87,7 @@ describe("NativeSidecarManager", () => {
 
   it("launches only a loopback sidecar and records its readiness contract", async () => {
     process.env.NIRS4ALL_NATIVE_SIDECAR_PATH = makeExecutable();
+    process.env.NIRS4ALL_PYTHON_PLUGIN_HOST = "/plugin-host/python";
     const child = makeProcess();
     childProcessMocks.spawn.mockReturnValue(child);
     const { NativeSidecarManager } = await import("./native-sidecar-manager");
@@ -88,7 +97,10 @@ describe("NativeSidecarManager", () => {
     expect(childProcessMocks.spawn).toHaveBeenCalledWith(
       path.resolve(process.env.NIRS4ALL_NATIVE_SIDECAR_PATH),
       ["--host", "127.0.0.1", "--port", "0"],
-      expect.objectContaining({ windowsHide: true }),
+      expect.objectContaining({
+        env: expect.objectContaining({ NIRS4ALL_PYTHON_PLUGIN_HOST: "/plugin-host/python" }),
+        windowsHide: true,
+      }),
     );
     child.stdout.emit(
       "data",

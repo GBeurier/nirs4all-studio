@@ -280,7 +280,11 @@ port (default `0`, an ephemeral port). In an all-in-one package,
 `NIRS4ALL_ENABLE_NATIVE_SIDECAR=1` selects the bundled
 `resources/backend/native/studio-sidecar` instead. It does not yet route the UI
 through the sidecar, and it never falls back to Python: route ownership changes
-only when a route family is explicitly migrated.
+only when a route family is explicitly migrated. When that opt-in sidecar runs
+from an all-in-one package, Electron passes its embedded interpreter to the
+sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; the explicit preflight verifies
+`import nirs4all`, but scientific execution remains unavailable until a Rust-owned
+route enables it.
 
 > **Note**: The webapp can run **without nirs4all installed** for pure UI development. The backend will report missing capabilities but the frontend is fully functional.
 
