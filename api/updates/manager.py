@@ -193,6 +193,7 @@ class UpdateManager:
         self._settings_path = self._app_data_dir / self.SETTINGS_FILE
         self._cache_path = self._app_data_dir / self.CACHE_FILE
         self._settings: UpdateSettings | None = None
+        self._settings_fingerprint: tuple[int, int, int] | None = None
         self._cache: dict[str, Any] | None = None
         # nirs4all version is probed via a subprocess that imports the full ML
         # stack (~15-20s cold). It is immutable for a process lifetime barring
@@ -214,6 +215,15 @@ class UpdateManager:
                 self._settings = UpdateSettings()
         else:
             self._settings = UpdateSettings()
+        self._settings_fingerprint = self._current_settings_fingerprint()
+
+    def _current_settings_fingerprint(self) -> tuple[int, int, int] | None:
+        """Identify the persisted settings without reading their contents twice."""
+        try:
+            stat = self._settings_path.stat()
+        except OSError:
+            return None
+        return (stat.st_ino, stat.st_mtime_ns, stat.st_size)
 
     def _save_settings(self) -> None:
         """Save settings to file."""
@@ -224,6 +234,7 @@ class UpdateManager:
                 yaml.dump(self._settings.model_dump(), f)
         except Exception as e:
             logger.warning("Could not save update settings: %s", e)
+        self._settings_fingerprint = self._current_settings_fingerprint()
 
     def _load_cache(self) -> None:
         """Load cache from file."""
@@ -253,9 +264,16 @@ class UpdateManager:
 
     @property
     def settings(self) -> UpdateSettings:
-        """Get current settings."""
+        """Get settings, refreshing an atomically replaced native preference file."""
         if self._settings is None:
             self._load_settings()
+        elif self._current_settings_fingerprint() != self._settings_fingerprint:
+            old_prerelease = self._settings.prerelease_channel
+            self._load_settings()
+            if self._settings.prerelease_channel != old_prerelease:
+                cache = self._ensure_cache_loaded()
+                cache.pop("github_release", None)
+                self._save_cache()
         return self._settings
 
     def update_settings(self, new_settings: UpdateSettings) -> None:
@@ -399,6 +417,7 @@ class UpdateManager:
         """
         current_version = self.get_webapp_version()
         info = WebappUpdateInfo(current_version=current_version)
+        settings = self.settings
 
         # Check cache (lazy load on first access)
         cache_key = "github_release"
@@ -406,13 +425,13 @@ class UpdateManager:
         cached = cache.get(cache_key)
         if not force and cache_key in cache:
             cached_at = datetime.fromisoformat(cached.get("cached_at", "2000-01-01"))
-            if datetime.now() - cached_at < timedelta(hours=self.settings.check_interval_hours):
+            if datetime.now() - cached_at < timedelta(hours=settings.check_interval_hours):
                 self._apply_cached_github_release(info, cached)
                 return info
 
         # Fetch from GitHub API
-        repo = self.settings.github_repo
-        include_prereleases = self.settings.prerelease_channel
+        repo = settings.github_repo
+        include_prereleases = settings.prerelease_channel
 
         base = _github_api_base()
         if include_prereleases:
@@ -694,6 +713,7 @@ class UpdateManager:
         # the event loop and stall every other in-flight request.
         current_version = await asyncio.to_thread(self.get_nirs4all_version, force)
         info = Nirs4allUpdateInfo(current_version=current_version)
+        settings = self.settings
 
         # Check cache (lazy load on first access)
         cache_key = "pypi_release"
@@ -701,12 +721,12 @@ class UpdateManager:
         cached = cache.get(cache_key)
         if not force and cache_key in cache:
             cached_at = datetime.fromisoformat(cached.get("cached_at", "2000-01-01"))
-            if datetime.now() - cached_at < timedelta(hours=self.settings.check_interval_hours):
+            if datetime.now() - cached_at < timedelta(hours=settings.check_interval_hours):
                 self._apply_cached_pypi_release(info, cached)
                 return info
 
         # Fetch from PyPI API
-        package = self.settings.pypi_package
+        package = settings.pypi_package
         api_url = f"https://pypi.org/pypi/{package}/json"
 
         try:

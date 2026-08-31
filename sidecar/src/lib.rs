@@ -7,18 +7,19 @@ use std::{
     collections::BTreeMap,
     env,
     fmt::Write as _,
-    fs,
+    fs::{self, OpenOptions},
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{self, Command, Stdio},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use atomicwrites::replace_atomic;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 
@@ -57,6 +58,9 @@ pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration = Duration::from_secs(15)
 pub const MAX_PYTHON_PLUGIN_OUTPUT_BYTES: usize = 8 * 1024;
 pub const MAX_PYTHON_PLUGIN_RUNTIME_STATUS_OUTPUT_BYTES: usize = 256 * 1024;
 pub const MAX_PYTHON_PLUGIN_RUNTIME_PACKAGES: usize = 4 * 1024;
+const DEFAULT_UPDATE_CHECK_INTERVAL_HOURS: i64 = 24;
+const DEFAULT_UPDATE_GITHUB_REPO: &str = "GBeurier/nirs4all-studio";
+const DEFAULT_UPDATE_PYPI_PACKAGE: &str = "nirs4all";
 pub const PYTHON_CAPABILITY_MODULES: &[&str] = &[
     "nirs4all",
     "tensorflow",
@@ -299,6 +303,7 @@ pub struct SidecarState {
     runtime_kind: String,
     build_info_path: Option<PathBuf>,
     app_settings: AppSettingsStore,
+    update_settings: UpdateSettingsStore,
 }
 
 impl Default for SidecarState {
@@ -315,6 +320,7 @@ impl Default for SidecarState {
             runtime_kind: "python_plugin_host".into(),
             build_info_path: None,
             app_settings: AppSettingsStore::from_environment(),
+            update_settings: UpdateSettingsStore::from_environment(),
         }
     }
 }
@@ -356,6 +362,7 @@ impl SidecarState {
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
             app_settings: AppSettingsStore::from_environment(),
+            update_settings: UpdateSettingsStore::from_environment(),
             ..Self::default()
         }
     }
@@ -374,6 +381,15 @@ impl SidecarState {
     pub fn with_app_settings_dir(path: impl Into<PathBuf>) -> Self {
         Self {
             app_settings: AppSettingsStore::new(path),
+            ..Self::default()
+        }
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    pub fn with_update_settings_path(path: impl Into<PathBuf>) -> Self {
+        Self {
+            update_settings: UpdateSettingsStore::new(path),
             ..Self::default()
         }
     }
@@ -409,7 +425,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -551,6 +567,8 @@ pub fn route_request_with_body(
         ("GET", "/api/system/env-coherence") => python_env_coherence_response(state),
         ("GET", "/api/updates/version") => python_updates_version_response(state),
         ("GET", "/api/updates/runtime/status") => python_updates_runtime_status_response(state),
+        ("GET", "/api/updates/settings") => update_settings_response(state),
+        ("PUT", "/api/updates/settings") => save_update_settings_response(state, body),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
         ("GET", "/sidecar/v1/ws") => error_response(
             400,
@@ -576,7 +594,9 @@ pub fn route_request_with_body(
             | "/api/workspaces"
             | "/sidecar/v1/ws",
         ) => method_not_allowed(method, path, "GET"),
-        (_, "/api/app/settings") => method_not_allowed(method, path, "GET, PUT"),
+        (_, "/api/updates/settings" | "/api/app/settings") => {
+            method_not_allowed(method, path, "GET, PUT")
+        }
         (_, "/api/app/favorites") => method_not_allowed(method, path, "GET, POST"),
         (_, "/api/app/config-path") => method_not_allowed(method, path, "GET, POST, DELETE"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
@@ -933,6 +953,225 @@ fn offline_mode_from_update_settings(update_settings_path: Option<&Path>) -> Opt
             _ => None,
         }
     })
+}
+
+/// Persist the legacy update-settings shape without invoking `FastAPI` or a
+/// Python configuration loader.  The file remains YAML so existing Studio
+/// installations retain their preferences when this route becomes native.
+#[derive(Debug)]
+struct UpdateSettingsStore {
+    path: Option<PathBuf>,
+}
+
+impl UpdateSettingsStore {
+    fn from_environment() -> Self {
+        Self {
+            path: native_update_settings_path(),
+        }
+    }
+
+    #[cfg(test)]
+    fn new(path: impl Into<PathBuf>) -> Self {
+        Self {
+            path: Some(path.into()),
+        }
+    }
+
+    fn load(&self) -> Value {
+        let Some(path) = self.path.as_deref() else {
+            return default_update_settings();
+        };
+        let Ok(metadata) = fs::metadata(path) else {
+            return default_update_settings();
+        };
+        if metadata.len() > MAX_UPDATE_SETTINGS_BYTES {
+            return default_update_settings();
+        }
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|contents| serde_yaml::from_str::<Value>(&contents).ok())
+            .and_then(|settings| normalize_update_settings(&settings).ok())
+            .unwrap_or_else(default_update_settings)
+    }
+
+    fn update(&self, request: &Value) -> Result<Value, String> {
+        let current = self.load();
+        let merged = merge_update_settings(&current, request)?;
+        self.save(&merged)?;
+        Ok(merged)
+    }
+
+    fn save(&self, settings: &Value) -> Result<(), String> {
+        let path = self
+            .path
+            .as_deref()
+            .ok_or_else(|| "could not resolve the native update settings path".to_string())?;
+        let parent = path.parent().ok_or_else(|| {
+            format!(
+                "could not resolve a parent directory for {}",
+                path.display()
+            )
+        })?;
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "could not create update settings directory {}: {error}",
+                parent.display()
+            )
+        })?;
+        let encoded = serde_yaml::to_string(settings)
+            .map_err(|error| format!("could not encode update settings: {error}"))?;
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temporary = parent.join(format!(
+            ".{UPDATE_SETTINGS_FILE}.{}-{nonce}.tmp",
+            process::id()
+        ));
+        let write_result = (|| -> Result<(), String> {
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary)
+                .map_err(|error| format!("could not create {}: {error}", temporary.display()))?;
+            file.write_all(encoded.as_bytes())
+                .and_then(|()| file.sync_all())
+                .map_err(|error| format!("could not write {}: {error}", temporary.display()))?;
+            replace_atomic(&temporary, path).map_err(|error| {
+                format!(
+                    "could not atomically replace update settings at {}: {error}",
+                    path.display()
+                )
+            })
+        })();
+        if write_result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        write_result
+    }
+}
+
+fn update_settings_response(state: &SidecarState) -> HttpResponse {
+    HttpResponse::json(200, state.update_settings.load().to_string())
+}
+
+fn save_update_settings_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    let request = match app_settings_request_body(body) {
+        Ok(request) => request,
+        Err(response) => return response,
+    };
+    match state.update_settings.update(&request) {
+        Ok(settings) => HttpResponse::json(200, settings.to_string()),
+        Err(error) if error.starts_with("invalid update setting") => {
+            app_settings_validation_error(&error)
+        }
+        Err(error) => app_settings_storage_error("update update settings", &error),
+    }
+}
+
+fn default_update_settings() -> Value {
+    json!({
+        "auto_check": true,
+        "check_interval_hours": DEFAULT_UPDATE_CHECK_INTERVAL_HOURS,
+        "prerelease_channel": false,
+        "github_repo": DEFAULT_UPDATE_GITHUB_REPO,
+        "pypi_package": DEFAULT_UPDATE_PYPI_PACKAGE,
+        "dismissed_versions": [],
+        "offline_mode": "auto",
+    })
+}
+
+fn merge_update_settings(current: &Value, updates: &Value) -> Result<Value, String> {
+    let mut merged = current
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "invalid update setting storage shape".to_string())?;
+    let updates = updates
+        .as_object()
+        .ok_or_else(|| "invalid update setting request body".to_string())?;
+    for key in [
+        "auto_check",
+        "check_interval_hours",
+        "prerelease_channel",
+        "github_repo",
+        "pypi_package",
+        "dismissed_versions",
+        "offline_mode",
+    ] {
+        if let Some(value) = updates.get(key) {
+            merged.insert(key.into(), value.clone());
+        }
+    }
+    normalize_update_settings(&Value::Object(merged))
+}
+
+fn normalize_update_settings(settings: &Value) -> Result<Value, String> {
+    let settings = settings
+        .as_object()
+        .ok_or_else(|| "invalid update setting storage shape".to_string())?;
+    let defaults = default_update_settings();
+    let default_values = defaults
+        .as_object()
+        .expect("default update settings is a JSON object");
+    let auto_check = update_setting_bool(settings, default_values, "auto_check")?;
+    let check_interval_hours =
+        update_setting_integer(settings, default_values, "check_interval_hours")?;
+    let prerelease_channel = update_setting_bool(settings, default_values, "prerelease_channel")?;
+    let github_repo = update_setting_string(settings, default_values, "github_repo")?;
+    let pypi_package = update_setting_string(settings, default_values, "pypi_package")?;
+    let offline_mode = update_setting_string(settings, default_values, "offline_mode")?;
+    let dismissed_versions = match settings.get("dismissed_versions") {
+        Some(Value::Array(values)) if values.iter().all(Value::is_string) => {
+            Value::Array(values.clone())
+        }
+        Some(_) => return Err("invalid update setting dismissed_versions".into()),
+        None => default_values["dismissed_versions"].clone(),
+    };
+    Ok(json!({
+        "auto_check": auto_check,
+        "check_interval_hours": check_interval_hours,
+        "prerelease_channel": prerelease_channel,
+        "github_repo": github_repo,
+        "pypi_package": pypi_package,
+        "dismissed_versions": dismissed_versions,
+        "offline_mode": offline_mode,
+    }))
+}
+
+fn update_setting_bool(
+    settings: &serde_json::Map<String, Value>,
+    defaults: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<Value, String> {
+    match settings.get(key) {
+        Some(Value::Bool(value)) => Ok(Value::Bool(*value)),
+        Some(_) => Err(format!("invalid update setting {key}")),
+        None => Ok(defaults[key].clone()),
+    }
+}
+
+fn update_setting_integer(
+    settings: &serde_json::Map<String, Value>,
+    defaults: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<Value, String> {
+    match settings.get(key) {
+        Some(Value::Number(value)) if value.as_i64().is_some() => Ok(Value::Number(value.clone())),
+        Some(_) => Err(format!("invalid update setting {key}")),
+        None => Ok(defaults[key].clone()),
+    }
+}
+
+fn update_setting_string(
+    settings: &serde_json::Map<String, Value>,
+    defaults: &serde_json::Map<String, Value>,
+    key: &str,
+) -> Result<Value, String> {
+    match settings.get(key) {
+        Some(Value::String(value)) => Ok(Value::String(value.clone())),
+        Some(_) => Err(format!("invalid update setting {key}")),
+        None => Ok(defaults[key].clone()),
+    }
 }
 
 fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
@@ -2337,6 +2576,7 @@ mod tests {
         );
         assert_eq!(capabilities["features"]["system_info_route"], true);
         assert_eq!(capabilities["features"]["system_build_route"], true);
+        assert_eq!(capabilities["features"]["updates_settings_routes"], true);
         assert_eq!(capabilities["features"]["python_plugin_preflight"], false);
         assert_eq!(capabilities["features"]["python_plugin_execution"], false);
 
@@ -2713,6 +2953,72 @@ mod tests {
             route_request(&mut state, "POST", "/api/system/network").status,
             405
         );
+    }
+
+    #[test]
+    fn native_update_settings_preserve_the_legacy_shape_and_patch_semantics() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-update-settings-{}-{nonce}",
+            std::process::id()
+        ));
+        let settings_path = directory.join(UPDATE_SETTINGS_FILE);
+        let mut state = SidecarState::with_update_settings_path(&settings_path);
+
+        let defaults = route_request(&mut state, "GET", "/api/updates/settings");
+        assert_eq!(defaults.status, 200);
+        let defaults: Value = serde_json::from_str(&defaults.body).unwrap();
+        assert_eq!(defaults["auto_check"], true);
+        assert_eq!(defaults["check_interval_hours"], 24);
+        assert_eq!(defaults["offline_mode"], "auto");
+
+        let updated = route_request_with_body(
+            &mut state,
+            "PUT",
+            "/api/updates/settings",
+            br#"{"offline_mode":"on","dismissed_versions":["1.0.0"],"unknown":true}"#,
+        );
+        assert_eq!(updated.status, 200);
+        let updated: Value = serde_json::from_str(&updated.body).unwrap();
+        assert_eq!(updated["offline_mode"], "on");
+        assert_eq!(updated["dismissed_versions"], json!(["1.0.0"]));
+        assert_eq!(updated["github_repo"], DEFAULT_UPDATE_GITHUB_REPO);
+        assert_eq!(
+            offline_mode_from_update_settings(Some(&settings_path)),
+            Some("on")
+        );
+        let serialized: Value =
+            serde_yaml::from_str(&fs::read_to_string(&settings_path).unwrap()).unwrap();
+        assert_eq!(serialized["offline_mode"], "on");
+
+        let invalid = route_request_with_body(
+            &mut state,
+            "PUT",
+            "/api/updates/settings",
+            br#"{"check_interval_hours":"hourly"}"#,
+        );
+        assert_eq!(invalid.status, 422);
+        let persisted = route_request(&mut state, "GET", "/api/updates/settings");
+        assert_eq!(
+            serde_json::from_str::<Value>(&persisted.body).unwrap()["offline_mode"],
+            "on"
+        );
+
+        let wrong_method = route_request(&mut state, "POST", "/api/updates/settings");
+        assert_eq!(wrong_method.status, 405);
+        assert_eq!(
+            wrong_method
+                .headers
+                .iter()
+                .find(|(name, _)| *name == "Allow")
+                .map(|(_, value)| value.as_str()),
+            Some("GET, PUT")
+        );
+
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
