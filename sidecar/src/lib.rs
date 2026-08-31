@@ -21,6 +21,7 @@ use std::{
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 
+pub mod conformal_store;
 mod settings;
 
 use settings::{AppSettingsStore, ConfigPathError};

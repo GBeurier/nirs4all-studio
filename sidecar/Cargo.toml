@@ -22,4 +22,5 @@ nursery = "warn"
 [dependencies]
 atomicwrites = "0.4.4"
 base64 = "0.22"
+nirs4all = "=0.3.22"
 serde_json = "1.0"
