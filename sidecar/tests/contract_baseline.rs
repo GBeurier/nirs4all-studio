@@ -261,4 +261,22 @@ fn configured_python_plugin_host_can_import_nirs4all_without_enabling_execution(
     assert_eq!(values.len(), 7);
     assert_eq!(values["nirs4all"], true);
     assert!(values.values().all(Value::is_boolean));
+
+    let system_info = route_request(&mut state, "GET", "/api/system/info");
+    assert_eq!(
+        system_info.status, 200,
+        "configured Python system-info bridge"
+    );
+    let system_info_body: Value = serde_json::from_str(&system_info.body).unwrap();
+    assert!(system_info_body["python"]["version"].is_string());
+    assert!(system_info_body["python"]["executable"].is_string());
+    assert!(system_info_body["system"]["os"].is_string());
+    assert!(system_info_body["nirs4all_version"]
+        .as_str()
+        .is_some_and(|value| !value.is_empty()));
+    assert!(system_info_body["packages"]
+        .as_object()
+        .unwrap()
+        .values()
+        .all(Value::is_string));
 }

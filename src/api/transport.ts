@@ -18,7 +18,7 @@ const DEFAULT_API_BASE_URL = "/api";
 // Cache for the resolved backend URL in Electron mode
 let resolvedBackendUrl: string | null = null;
 let backendUrlPromise: Promise<string> | null = null;
-const NATIVE_SIDECAR_ROUTE_ENDPOINTS = new Set(["/system/capabilities"]);
+const NATIVE_SIDECAR_ROUTE_ENDPOINTS = new Set(["/system/capabilities", "/system/info"]);
 
 type ElectronBackendStatus = "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
 type NativeSidecarStatus = "disabled" | "starting" | "running" | "stopped" | "error";

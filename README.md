@@ -285,8 +285,8 @@ from an all-in-one package, Electron passes its embedded interpreter to the
 sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; the explicit preflight verifies
 `import nirs4all`, but scientific execution remains unavailable until a Rust-owned
 route enables it. In that explicit dual-run mode, the first UI-backed native
-route is `/api/system/capabilities`; it is served by Rust and does not fall back
-to FastAPI after sidecar selection.
+routes are `/api/system/capabilities` and `/api/system/info`; they are served by
+Rust and do not fall back to FastAPI after sidecar selection.
 
 > **Note**: The webapp can run **without nirs4all installed** for pure UI development. The backend will report missing capabilities but the frontend is fully functional.
 

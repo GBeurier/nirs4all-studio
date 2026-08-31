@@ -22,6 +22,8 @@ R1 provides a small local HTTP control surface only:
   post-lifespan bootstrap responses only)
 - `GET /api/system/capabilities` (an explicit Rust-owned route which invokes
   the configured Python plugin host only to inspect optional imports)
+- `GET /api/system/info` (the same bounded host bridge for the Settings system
+  inventory; it does not create or run a job)
 
 It does **not** launch Python, CPython, Uvicorn, or FastAPI; it has no fallback
 launcher. It contains no scientific calculation, dataset/workspace persistence,
@@ -70,9 +72,10 @@ health and readiness match their frozen post-lifespan responses.
 The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. `GET /sidecar/v1/python/preflight` launches that product-owned
 interpreter with `-I`, bounds it to three seconds, and checks `import nirs4all`.
-`GET /api/system/capabilities` uses the same bridge with a bounded 15-second
-optional-import probe, returning the legacy response shape without launching a
-scientific job. Both are capability evidence, never transparent Python fallback.
+`GET /api/system/capabilities` and `GET /api/system/info` use the same bridge
+with a bounded 15-second optional-import probe, returning their legacy response
+shapes without launching a scientific job. All bridge routes are capability
+evidence, never transparent Python fallback.
 All-in-one packaging builds the sidecar as
 `resources/backend/native/studio-sidecar` next to the embedded
 `resources/backend/python-runtime/`. Electron starts that resource only when
@@ -119,10 +122,10 @@ WebSocket parity or a live subscription service.
 
 Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
-idempotent cancellation, bounded Python plugin-host preflight, the first
-Rust-owned legacy-compatible capabilities route, all-in-one binary packaging,
-and Electron's explicit loopback-only lifecycle management. Missing: every
-other legacy `/api/*` route, all scientific execution, persistence, uploads,
+idempotent cancellation, bounded Python plugin-host preflight, the first two
+Rust-owned legacy-compatible system routes, all-in-one binary packaging, and
+Electron's explicit loopback-only lifecycle management. Missing: every other
+legacy `/api/*` route, all scientific execution, persistence, uploads,
 authentication, live WebSocket upgrades, job execution, and parity
 mapping/diffing for the full frozen surface.
 
