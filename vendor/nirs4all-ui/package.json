@@ -1,17 +1,25 @@
 {
   "name": "nirs4all-ui",
-  "version": "0.1.0",
-  "description": "Shared React UI components and pure view-model helpers for nirs4all apps.",
+  "version": "0.1.12",
+  "description": "Shared React UI components, visual assets, and pure view-model helpers for nirs4all apps.",
   "type": "module",
   "license": "(CECILL-2.1 OR AGPL-3.0-or-later)",
+  "homepage": "https://gbeurier.github.io/nirs4all-ui/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/GBeurier/nirs4all-ui.git"
   },
   "private": false,
-  "sideEffects": false,
+  "sideEffects": [
+    "**/*.css"
+  ],
   "files": [
+    "assets",
     "dist",
+    "LICENSE",
+    "LICENSES",
+    "LICENSING.md",
+    "THIRD_PARTY_NOTICES.md",
     "README.md"
   ],
   "main": "./dist/index.js",
@@ -29,18 +37,73 @@
       "types": "./dist/runtime/index.d.ts",
       "import": "./dist/runtime/index.js"
     },
+    "./conformal": {
+      "types": "./dist/conformal/index.d.ts",
+      "import": "./dist/conformal/index.js"
+    },
+    "./robustness": {
+      "types": "./dist/robustness/index.d.ts",
+      "import": "./dist/robustness/index.js"
+    },
+    "./keywordRegistry": {
+      "types": "./dist/keywordRegistry/index.d.ts",
+      "import": "./dist/keywordRegistry/index.js"
+    },
+    "./tuning": {
+      "types": "./dist/tuning/index.d.ts",
+      "import": "./dist/tuning/index.js"
+    },
+    "./dataset": {
+      "types": "./dist/dataset/index.d.ts",
+      "import": "./dist/dataset/index.js"
+    },
     "./components": {
       "types": "./dist/components/index.d.ts",
       "import": "./dist/components/index.js"
-    }
+    },
+    "./viz": {
+      "types": "./dist/viz/index.d.ts",
+      "import": "./dist/viz/index.js"
+    },
+    "./dag": {
+      "types": "./dist/dag/index.d.ts",
+      "import": "./dist/dag/index.js"
+    },
+    "./chains": {
+      "types": "./dist/chains/index.d.ts",
+      "import": "./dist/chains/index.js"
+    },
+    "./brand": {
+      "types": "./dist/brand/index.d.ts",
+      "import": "./dist/brand/index.js"
+    },
+    "./styles": {
+      "types": "./dist/styles/index.d.ts",
+      "import": "./dist/styles/index.js"
+    },
+    "./lab": {
+      "types": "./dist/lab/index.d.ts",
+      "import": "./dist/lab/index.js"
+    },
+    "./datasetBuilder": {
+      "types": "./dist/datasetBuilder/index.d.ts",
+      "import": "./dist/datasetBuilder/index.js"
+    },
+    "./assets/*": "./assets/*"
   },
   "scripts": {
+    "brand:generate": "node scripts/generate-brand-assets.mjs",
+    "brand:check": "node scripts/generate-brand-assets.mjs --check",
+    "brand:sync": "node scripts/sync-ecosystem-brands.mjs",
     "build": "tsc -p tsconfig.build.json",
-    "ci": "npm run prepublishOnly && npm run pack:smoke",
+    "ci": "npm run prepublishOnly && npm run pack:smoke && npm run smoke:react-consumers",
     "pack:smoke": "npm pack --dry-run",
+    "smoke:react-consumers": "node scripts/smoke-react-consumers.mjs",
+    "site:build": "vite build --config site/vite.config.ts",
+    "site:dev": "vite --config site/vite.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "prepack": "npm run build",
+    "prepare": "npm run build",
     "prepublishOnly": "npm run typecheck && npm test && npm run build",
     "test:watch": "vitest"
   },
@@ -48,11 +111,13 @@
     "react": ">=18 <20"
   },
   "devDependencies": {
+    "@types/node": "^22.20.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "typescript": "^5.8.3",
+    "vite": "^7.3.6",
     "vitest": "^3.2.4"
   }
 }
