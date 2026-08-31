@@ -18,8 +18,10 @@ const DEFAULT_API_BASE_URL = "/api";
 // Cache for the resolved backend URL in Electron mode
 let resolvedBackendUrl: string | null = null;
 let backendUrlPromise: Promise<string> | null = null;
+const NATIVE_SIDECAR_ROUTE_ENDPOINTS = new Set(["/system/capabilities"]);
 
 type ElectronBackendStatus = "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
+type NativeSidecarStatus = "disabled" | "starting" | "running" | "stopped" | "error";
 
 interface ElectronBridgeApi {
   isElectron?: boolean;
@@ -31,7 +33,16 @@ interface ElectronBridgeApi {
     error?: string;
     restartCount: number;
   }>;
+  getNativeSidecarInfo?: () => Promise<{
+    status: NativeSidecarStatus;
+    url: string | null;
+  }>;
 }
+
+type ApiRoute = {
+  baseUrl: string;
+  source: "backend" | "native-sidecar";
+};
 
 /**
  * Detect if we're running in Electron.
@@ -128,6 +139,27 @@ export async function getApiBaseUrl(): Promise<string> {
 export function resetBackendUrl(): void {
   resolvedBackendUrl = null;
   backendUrlPromise = null;
+}
+
+async function resolveApiRoute(endpoint: string): Promise<ApiRoute> {
+  if (!NATIVE_SIDECAR_ROUTE_ENDPOINTS.has(endpoint) || !isElectronEnvironment()) {
+    return { baseUrl: await getApiBaseUrl(), source: "backend" };
+  }
+  const sidecar = getElectronBridge()?.getNativeSidecarInfo;
+  if (!sidecar) {
+    return { baseUrl: await getApiBaseUrl(), source: "backend" };
+  }
+  try {
+    const info = await sidecar();
+    if (info.status === "running" && info.url) {
+      const baseUrl = `${info.url}/api`;
+      logger.info(`Using native sidecar route for ${endpoint}: ${baseUrl}`);
+      return { baseUrl, source: "native-sidecar" };
+    }
+  } catch (error) {
+    logger.warn(`Failed to inspect native sidecar for ${endpoint}`, error);
+  }
+  return { baseUrl: await getApiBaseUrl(), source: "backend" };
 }
 
 export interface ApiError {
@@ -308,18 +340,19 @@ async function prepareElectronBackendRetry(endpoint: string): Promise<void> {
 
 async function fetchWithRetry(endpoint: string, config: RequestInit): Promise<Response> {
   let lastError: unknown;
+  let route = await resolveApiRoute(endpoint);
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const baseUrl = await getApiBaseUrl();
-    const url = `${baseUrl}${endpoint}`;
+    const url = `${route.baseUrl}${endpoint}`;
 
     try {
       return await fetch(url, config);
     } catch (error) {
       lastError = error;
-      if (attempt === 0 && isRetryableElectronNetworkError(error)) {
+      if (attempt === 0 && route.source === "backend" && isRetryableElectronNetworkError(error)) {
         logger.warn(`[request] transient Electron network error for ${endpoint}; retrying once`, error);
         await prepareElectronBackendRetry(endpoint);
+        route = await resolveApiRoute(endpoint);
         continue;
       }
       throw error;

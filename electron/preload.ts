@@ -69,6 +69,15 @@ const electronApi = {
     restartCount: number;
   }> => ipcRenderer.invoke("backend:getInfo"),
 
+  getNativeSidecarInfo: (): Promise<{
+    status: "disabled" | "starting" | "running" | "stopped" | "error";
+    host: string | null;
+    port: number | null;
+    protocolVersion: string | null;
+    url: string | null;
+    error?: string;
+  }> => ipcRenderer.invoke("sidecar:getInfo"),
+
   restartBackend: (
     options?: { skipEnsure?: boolean },
   ): Promise<{ success: boolean; port?: number; error?: string }> =>

@@ -455,6 +455,10 @@ ipcMain.handle("backend:getInfo", () => {
   return backendManager.getInfo();
 });
 
+ipcMain.handle("sidecar:getInfo", () => {
+  return nativeSidecarManager.getInfo();
+});
+
 ipcMain.handle("backend:restart", async (_event, options?: { skipEnsure?: boolean }) => {
   try {
     if (!options?.skipEnsure) {

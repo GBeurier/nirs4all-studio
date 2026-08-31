@@ -35,6 +35,17 @@ pub const MAX_WS_DATA_BYTES: usize = 16 * 1024;
 pub const MAX_WS_DATA_KEYS: usize = 16;
 pub const PYTHON_PLUGIN_HOST_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST";
 pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(3);
+pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration = Duration::from_secs(15);
+pub const MAX_PYTHON_PLUGIN_OUTPUT_BYTES: usize = 8 * 1024;
+pub const PYTHON_CAPABILITY_MODULES: &[&str] = &[
+    "nirs4all",
+    "tensorflow",
+    "torch",
+    "jax",
+    "shap",
+    "umap",
+    "autogluon",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ErrorCode {
@@ -317,7 +328,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":true,\"system_capabilities_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -431,6 +442,7 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
         ("GET", "/sidecar/v1/readiness") => HttpResponse::json(200, state.readiness_json()),
         ("GET", "/sidecar/v1/capabilities") => HttpResponse::json(200, state.capabilities_json()),
         ("GET", "/sidecar/v1/python/preflight") => python_plugin_preflight_response(state),
+        ("GET", "/api/system/capabilities") => python_capabilities_response(state),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
         ("GET", "/sidecar/v1/ws") => error_response(
             400,
@@ -446,6 +458,7 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
             | "/sidecar/v1/readiness"
             | "/sidecar/v1/capabilities"
             | "/sidecar/v1/python/preflight"
+            | "/api/system/capabilities"
             | "/sidecar/v1/ws",
         ) => method_not_allowed(method, path, "GET"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
@@ -467,6 +480,26 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
                 ("method".into(), method.into()),
                 ("path".into(), path.into()),
             ]),
+        ),
+    }
+}
+
+fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
+    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+        return error_response(
+            503,
+            ErrorCode::PythonPluginUnavailable,
+            "No Python plugin host is configured for this native sidecar",
+            BTreeMap::from([("reason".into(), "not_configured".into())]),
+        );
+    };
+    match read_python_capabilities(python_plugin_host) {
+        Ok(body) => HttpResponse::json(200, body),
+        Err(reason) => error_response(
+            503,
+            ErrorCode::PythonPluginPreflightFailed,
+            "The configured Python plugin host could not report capabilities",
+            BTreeMap::from([("reason".into(), reason.as_str().into())]),
         ),
     }
 }
@@ -534,6 +567,121 @@ fn preflight_python_plugin_host(
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(10)),
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PythonPluginBridgeFailure {
+    SpawnFailed,
+    TimedOut,
+    ScriptFailed,
+    OutputTooLarge,
+    OutputReadFailed,
+    MalformedResponse,
+}
+
+impl PythonPluginBridgeFailure {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::SpawnFailed => "spawn_failed",
+            Self::TimedOut => "timed_out",
+            Self::ScriptFailed => "script_failed",
+            Self::OutputTooLarge => "output_too_large",
+            Self::OutputReadFailed => "output_read_failed",
+            Self::MalformedResponse => "malformed_response",
+        }
+    }
+}
+
+fn read_python_capabilities(
+    python_plugin_host: &Path,
+) -> Result<String, PythonPluginBridgeFailure> {
+    let module_names = serde_json::to_string(PYTHON_CAPABILITY_MODULES)
+        .map_err(|_| PythonPluginBridgeFailure::ScriptFailed)?;
+    let script = format!(
+        "import importlib,json; names={module_names}; capabilities={{}}\nfor name in names:\n try: importlib.import_module(name); capabilities[name]=True\n except Exception: capabilities[name]=False\nprint(json.dumps({{'capabilities':capabilities}}, separators=(',',':'), sort_keys=True))"
+    );
+    let output = run_python_plugin_json(
+        python_plugin_host,
+        &script,
+        PYTHON_PLUGIN_CAPABILITIES_TIMEOUT,
+    )?;
+    let capabilities = output
+        .get("capabilities")
+        .and_then(Value::as_object)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    if capabilities.len() != PYTHON_CAPABILITY_MODULES.len()
+        || PYTHON_CAPABILITY_MODULES
+            .iter()
+            .any(|name| !capabilities.get(*name).is_some_and(Value::is_boolean))
+    {
+        return Err(PythonPluginBridgeFailure::MalformedResponse);
+    }
+    Ok(serde_json::json!({ "capabilities": capabilities }).to_string())
+}
+
+fn run_python_plugin_json(
+    python_plugin_host: &Path,
+    script: &str,
+    timeout: Duration,
+) -> Result<Value, PythonPluginBridgeFailure> {
+    let mut child = Command::new(python_plugin_host)
+        .args(["-I", "-c", script])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| PythonPluginBridgeFailure::SpawnFailed)?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or(PythonPluginBridgeFailure::OutputReadFailed)?;
+    let reader = std::thread::spawn(move || read_bounded_stdout(stdout));
+    let started_at = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                return Err(PythonPluginBridgeFailure::ScriptFailed);
+            }
+            Ok(None) if started_at.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                return Err(PythonPluginBridgeFailure::TimedOut);
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    };
+    let (stdout, exceeded) = reader
+        .join()
+        .map_err(|_| PythonPluginBridgeFailure::OutputReadFailed)?
+        .map_err(|_| PythonPluginBridgeFailure::OutputReadFailed)?;
+    if !status.success() {
+        return Err(PythonPluginBridgeFailure::ScriptFailed);
+    }
+    if exceeded {
+        return Err(PythonPluginBridgeFailure::OutputTooLarge);
+    }
+    serde_json::from_slice(&stdout).map_err(|_| PythonPluginBridgeFailure::MalformedResponse)
+}
+
+fn read_bounded_stdout(mut stdout: std::process::ChildStdout) -> std::io::Result<(Vec<u8>, bool)> {
+    let mut retained = Vec::with_capacity(MAX_PYTHON_PLUGIN_OUTPUT_BYTES);
+    let mut buffer = [0_u8; 1024];
+    let mut exceeded = false;
+    loop {
+        let read = stdout.read(&mut buffer)?;
+        if read == 0 {
+            return Ok((retained, exceeded));
+        }
+        let remaining = MAX_PYTHON_PLUGIN_OUTPUT_BYTES.saturating_sub(retained.len());
+        let copied = remaining.min(read);
+        retained.extend_from_slice(&buffer[..copied]);
+        exceeded |= copied < read;
     }
 }
 
@@ -1103,6 +1251,16 @@ mod tests {
             "not_configured"
         );
 
+        let unavailable_capabilities =
+            route_request(&mut unconfigured, "GET", "/api/system/capabilities");
+        assert_eq!(unavailable_capabilities.status, 503);
+        let unavailable_capabilities_body: Value =
+            serde_json::from_str(&unavailable_capabilities.body).unwrap();
+        assert_eq!(
+            unavailable_capabilities_body["error"]["code"],
+            "python_plugin_unavailable"
+        );
+
         let missing_host = std::env::temp_dir().join(format!(
             "n4a-sidecar-missing-python-host-{}",
             std::process::id()
@@ -1238,6 +1396,7 @@ mod tests {
             ("DELETE", "/sidecar/v1/readiness", "GET"),
             ("POST", "/sidecar/v1/capabilities", "GET"),
             ("POST", "/sidecar/v1/python/preflight", "GET"),
+            ("POST", "/api/system/capabilities", "GET"),
             ("GET", "/sidecar/v1/jobs", "POST"),
             ("PUT", "/sidecar/v1/jobs/job-r1-1", "GET"),
             ("GET", "/sidecar/v1/jobs/job-r1-1/cancel", "POST"),

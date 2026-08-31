@@ -4,7 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { formatApiErrorDetail, resetBackendUrl } from "./transport";
+import { api, formatApiErrorDetail, resetBackendUrl } from "./transport";
 import { getConfigDiff, getRecommendedConfig } from "./config";
 
 function jsonResponse(body: unknown): Response {
@@ -45,6 +45,13 @@ function createElectronApiMock(
       port: 8000,
       url: "http://127.0.0.1:8000",
       restartCount: 0,
+    }),
+    getNativeSidecarInfo: vi.fn().mockResolvedValue({
+      status: "disabled",
+      host: null,
+      port: null,
+      protocolVersion: null,
+      url: null,
     }),
     restartBackend: vi.fn().mockResolvedValue({ success: true }),
     onBackendStatusChanged: vi.fn(() => () => undefined),
@@ -174,5 +181,26 @@ describe("API client request handling", () => {
       "/api/config/diff?profile=cpu&include_latest=false",
       expect.any(Object),
     );
+  });
+
+  it("sends the migrated capabilities route to a running native sidecar without retrying Python", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ capabilities: { nirs4all: true } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const getNativeSidecarInfo = vi.fn().mockResolvedValue({
+      status: "running",
+      host: "127.0.0.1",
+      port: 43123,
+      protocolVersion: "studio-sidecar-r1",
+      url: "http://127.0.0.1:43123",
+    });
+    window.electronApi = createElectronApiMock({ getNativeSidecarInfo });
+
+    await api.get("/system/capabilities");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/system/capabilities",
+      expect.any(Object),
+    );
+    expect(getNativeSidecarInfo).toHaveBeenCalledTimes(1);
   });
 });
