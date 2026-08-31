@@ -384,7 +384,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_state\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -514,6 +514,7 @@ pub fn route_request_with_body(
         ("GET", "/api/app/config-path") => app_config_path_response(state),
         ("POST", "/api/app/config-path") => set_app_config_path_response(state, body),
         ("DELETE", "/api/app/config-path") => reset_app_config_path_response(state),
+        ("GET", "/api/workspaces") => app_linked_workspaces_response(state),
         ("GET", "/sidecar/v1/health") => HttpResponse::json(200, state.health_json()),
         ("GET", "/sidecar/v1/readiness") => HttpResponse::json(200, state.readiness_json()),
         ("GET", "/sidecar/v1/capabilities") => HttpResponse::json(200, state.capabilities_json()),
@@ -539,6 +540,7 @@ pub fn route_request_with_body(
             | "/api/system/capabilities"
             | "/api/system/info"
             | "/api/system/env-coherence"
+            | "/api/workspaces"
             | "/sidecar/v1/ws",
         ) => method_not_allowed(method, path, "GET"),
         (_, "/api/app/settings") => method_not_allowed(method, path, "GET, PUT"),
@@ -730,6 +732,13 @@ fn reset_app_config_path_response(state: &mut SidecarState) -> HttpResponse {
         Err(ConfigPathError::Storage(error)) => {
             app_settings_storage_error("reset config path", &error)
         }
+    }
+}
+
+fn app_linked_workspaces_response(state: &SidecarState) -> HttpResponse {
+    match state.app_settings.linked_workspaces_response() {
+        Ok(workspaces) => HttpResponse::json(200, workspaces.to_string()),
+        Err(error) => app_settings_storage_error("get linked workspaces", &error),
     }
 }
 
@@ -1691,10 +1700,14 @@ mod tests {
         assert_eq!(capabilities["python_plugin_host"], "unconfigured");
         assert_eq!(
             capabilities["api_route_coverage"],
-            "bootstrap_system_and_app_state"
+            "bootstrap_system_and_app_catalog"
         );
         assert_eq!(capabilities["features"]["app_settings_routes"], true);
         assert_eq!(capabilities["features"]["app_config_path_routes"], true);
+        assert_eq!(
+            capabilities["features"]["linked_workspace_catalog_route"],
+            true
+        );
         assert_eq!(capabilities["features"]["legacy_api_routes"], false);
         assert_eq!(
             capabilities["features"]["unmigrated_api_routes_require_legacy_backend"],
@@ -1879,6 +1892,45 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Value>(&reset.body).unwrap()["current_path"],
             default.to_string_lossy().as_ref()
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn linked_workspace_catalog_is_available_without_a_python_plugin_host() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-linked-workspaces-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            directory.join("app_settings.json"),
+            r#"{"linked_workspaces":[{"id":"workspace-a","path":"/workspace/a","name":"A","is_active":true,"linked_at":"2026-08-31T12:00:00","last_scanned":null,"discovered":{"runs_count":1}}]}"#,
+        )
+        .unwrap();
+        let mut state = SidecarState::with_app_settings_dir(&directory);
+
+        let response = route_request(&mut state, "GET", "/api/workspaces");
+        assert_eq!(response.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&response.body).unwrap(),
+            json!({
+                "workspaces": [{
+                    "id": "workspace-a",
+                    "path": "/workspace/a",
+                    "name": "A",
+                    "is_active": true,
+                    "linked_at": "2026-08-31T12:00:00",
+                    "last_scanned": null,
+                    "discovered": {"runs_count": 1},
+                }],
+                "active_workspace_id": "workspace-a",
+                "total": 1,
+            })
         );
         fs::remove_dir_all(directory).unwrap();
     }

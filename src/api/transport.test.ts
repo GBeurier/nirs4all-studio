@@ -380,4 +380,28 @@ describe("API client request handling", () => {
       expect.any(Object),
     );
   });
+
+  it("sends the linked workspace catalogue to the sidecar without a Python host", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ workspaces: [], active_workspace_id: null, total: 0 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.get("/workspaces");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/workspaces",
+      expect.any(Object),
+    );
+  });
 });
