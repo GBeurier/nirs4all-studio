@@ -1,7 +1,7 @@
 {
   "reference_contract": "studio-v1",
   "reference_fixture": "../../docs/contracts/studio-v1/fixtures/behavior.snapshot.json",
-  "purpose": "Compatibility input for R1 tests only; it does not make the sidecar a legacy-route replacement.",
+  "purpose": "Compatibility input for bootstrap health/readiness parity only; it does not make the sidecar a legacy-route replacement.",
   "known_legacy_responses": {
     "health_post_lifespan": {
       "path": "/api/health",
@@ -16,7 +16,7 @@
   },
   "r1_intentional_difference": {
     "namespace": "/sidecar/v1",
-    "legacy_route_parity": "not_started",
+    "legacy_route_parity": "bootstrap",
     "scientific_execution": "unavailable"
   }
 }
