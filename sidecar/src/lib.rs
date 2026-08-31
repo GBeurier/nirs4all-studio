@@ -20,6 +20,7 @@ use serde_json::Value;
 
 pub const PROTOCOL_VERSION: &str = "studio-sidecar-r1";
 pub const LEGACY_CONTRACT_BASELINE: &str = "studio-v1";
+pub const LEGACY_ROUTE_PARITY: &str = "bootstrap";
 pub const API_PREFIX: &str = "/sidecar/v1";
 pub const MAX_REQUEST_HEADER_BYTES: usize = 8 * 1024;
 pub const MAX_REQUEST_HEADERS: usize = 32;
@@ -267,7 +268,7 @@ impl SidecarState {
     #[must_use]
     pub fn readiness_json(&self) -> String {
         format!(
-            "{{\"sidecar_ready\":true,\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"not_started\",\"scientific_execution\":\"unavailable\",\"job_execution\":\"unavailable\",\"uptime_ms\":{}}}",
+            "{{\"sidecar_ready\":true,\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"scientific_execution\":\"unavailable\",\"job_execution\":\"unavailable\",\"uptime_ms\":{}}}",
             self.started_at.elapsed().as_millis()
         )
     }
@@ -276,6 +277,23 @@ impl SidecarState {
     pub fn health_json(&self) -> String {
         format!(
             "{{\"status\":\"healthy\",\"sidecar_ready\":true,\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"scientific_execution\":\"unavailable\"}}"
+        )
+    }
+
+    /// Frozen Studio V1 health response for the native bootstrap control plane.
+    #[must_use]
+    pub const fn legacy_health_json() -> &'static str {
+        "{\"core_ready\":true,\"message\":\"nirs4all webapp is running\",\"ml_loading\":false,\"ml_ready\":false,\"ready\":true,\"status\":\"healthy\"}"
+    }
+
+    /// Frozen Studio V1 post-lifespan readiness response for the native
+    /// bootstrap control plane. Python plugins and scientific execution remain
+    /// unavailable until a later migration wave wires their explicit bridge.
+    #[must_use]
+    pub fn legacy_readiness_json(&self) -> String {
+        format!(
+            "{{\"core_ready\":true,\"elapsed_seconds\":{},\"ml_error\":null,\"ml_loading\":false,\"ml_ready\":false,\"workspace_ready\":false}}",
+            self.started_at.elapsed().as_secs_f64()
         )
     }
 
@@ -361,16 +379,25 @@ impl HttpResponse {
 #[must_use]
 pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> HttpResponse {
     match (method, path) {
+        ("GET", "/api/health") => HttpResponse::json(200, SidecarState::legacy_health_json()),
+        ("GET", "/api/system/readiness") => HttpResponse::json(200, state.legacy_readiness_json()),
         ("GET", "/sidecar/v1/health") => HttpResponse::json(200, state.health_json()),
         ("GET", "/sidecar/v1/readiness") => HttpResponse::json(200, state.readiness_json()),
         ("GET", "/sidecar/v1/capabilities") => HttpResponse::json(
             200,
             format!(
-                "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"not_started\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false}}}}"
+                "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":true}}}}"
             ),
         ),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
-        (_, "/sidecar/v1/health" | "/sidecar/v1/readiness" | "/sidecar/v1/capabilities") => {
+        (
+            _,
+            "/api/health"
+            | "/api/system/readiness"
+            | "/sidecar/v1/health"
+            | "/sidecar/v1/readiness"
+            | "/sidecar/v1/capabilities",
+        ) => {
             method_not_allowed(method, path, "GET")
         }
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
@@ -385,13 +412,13 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
         _ if path.starts_with(API_PREFIX) => error_response(
             404,
             ErrorCode::RouteNotFound,
-            "No R1 sidecar route matches this path",
+            "No native sidecar route matches this path",
             BTreeMap::from([("method".into(), method.into()), ("path".into(), path.into())]),
         ),
         _ => error_response(
             404,
             ErrorCode::RouteNotFound,
-            "This binary does not serve legacy Studio routes",
+            "This native sidecar does not serve this Studio route",
             BTreeMap::from([("method".into(), method.into()), ("path".into(), path.into())]),
         ),
     }
@@ -939,7 +966,7 @@ mod tests {
         let body: Value = serde_json::from_str(&state.readiness_json()).unwrap();
         assert_eq!(body["protocol_version"], PROTOCOL_VERSION);
         assert_eq!(body["legacy_contract_baseline"], LEGACY_CONTRACT_BASELINE);
-        assert_eq!(body["legacy_route_parity"], "not_started");
+        assert_eq!(body["legacy_route_parity"], LEGACY_ROUTE_PARITY);
         assert_eq!(body["scientific_execution"], "unavailable");
     }
 
@@ -966,11 +993,11 @@ mod tests {
     #[test]
     fn errors_have_machine_readable_code_retryability_and_details() {
         let mut state = SidecarState::default();
-        let response = route_request(&mut state, "GET", "/api/health");
+        let response = route_request(&mut state, "GET", "/api/not-a-route");
         assert_eq!(response.status, 404);
         assert_eq!(
             response.body,
-            "{\"error\":{\"code\":\"route_not_found\",\"message\":\"This binary does not serve legacy Studio routes\",\"retryable\":false,\"details\":{\"method\":\"GET\",\"path\":\"/api/health\"}}}"
+            "{\"error\":{\"code\":\"route_not_found\",\"message\":\"This native sidecar does not serve this Studio route\",\"retryable\":false,\"details\":{\"method\":\"GET\",\"path\":\"/api/not-a-route\"}}}"
         );
     }
 
@@ -1045,6 +1072,8 @@ mod tests {
     fn known_routes_reject_wrong_methods_with_405_and_allow_header() {
         let mut state = SidecarState::default();
         for (method, path, allow) in [
+            ("POST", "/api/health", "GET"),
+            ("DELETE", "/api/system/readiness", "GET"),
             ("POST", "/sidecar/v1/health", "GET"),
             ("DELETE", "/sidecar/v1/readiness", "GET"),
             ("POST", "/sidecar/v1/capabilities", "GET"),

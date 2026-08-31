@@ -7,7 +7,7 @@ use std::{
 };
 
 use serde_json::Value;
-use studio_sidecar::{route_request, SidecarState, PROTOCOL_VERSION};
+use studio_sidecar::{route_request, SidecarState, LEGACY_ROUTE_PARITY, PROTOCOL_VERSION};
 
 fn studio_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -116,7 +116,7 @@ fn r1_fixture_references_the_frozen_studio_v1_snapshot_and_declares_its_differen
     );
     assert_eq!(
         reference["r1_intentional_difference"]["legacy_route_parity"],
-        "not_started"
+        LEGACY_ROUTE_PARITY
     );
 
     assert_eq!(baseline["contract_version"], "studio-v1");
@@ -177,15 +177,19 @@ fn legacy_reference_rejects_status_and_required_key_mutations() {
 }
 
 #[test]
-fn known_legacy_readiness_response_diff_is_intentional_and_bounded() {
+fn bootstrap_routes_match_the_frozen_health_and_readiness_contract() {
     let root = studio_root();
     let baseline = read_json(root.join("docs/contracts/studio-v1/fixtures/behavior.snapshot.json"));
     let mut state = SidecarState::default();
-    let r1: Value =
-        serde_json::from_str(&route_request(&mut state, "GET", "/sidecar/v1/readiness").body)
+    let health: Value =
+        serde_json::from_str(&route_request(&mut state, "GET", "/api/health").body).unwrap();
+    let readiness: Value =
+        serde_json::from_str(&route_request(&mut state, "GET", "/api/system/readiness").body)
             .unwrap();
 
+    let legacy_health = &baseline["readiness"]["post_lifespan"]["health"]["body"];
     let legacy_body = &baseline["readiness"]["post_lifespan"]["readiness"]["body"];
+    assert_eq!(health, *legacy_health);
     assert_object_keys(
         legacy_body,
         &[
@@ -198,33 +202,22 @@ fn known_legacy_readiness_response_diff_is_intentional_and_bounded() {
         ],
     );
     assert_object_keys(
-        &r1,
+        &readiness,
         &[
-            "job_execution",
-            "legacy_contract_baseline",
-            "legacy_route_parity",
-            "protocol_version",
-            "scientific_execution",
-            "sidecar_ready",
-            "uptime_ms",
+            "core_ready",
+            "elapsed_seconds",
+            "ml_error",
+            "ml_loading",
+            "ml_ready",
+            "workspace_ready",
         ],
     );
-    for field in [
-        "core_ready",
-        "ml_ready",
-        "ml_loading",
-        "ml_error",
-        "workspace_ready",
-    ] {
-        assert!(
-            r1.get(field).is_none(),
-            "R1 must not imitate legacy field {field}"
-        );
-    }
-    assert_eq!(r1["protocol_version"], PROTOCOL_VERSION);
-    assert_eq!(r1["legacy_route_parity"], "not_started");
-    assert_eq!(r1["scientific_execution"], "unavailable");
-    assert!(r1["uptime_ms"].is_u64());
+    assert_eq!(readiness["core_ready"], true);
+    assert_eq!(readiness["ml_error"], Value::Null);
+    assert_eq!(readiness["ml_loading"], false);
+    assert_eq!(readiness["ml_ready"], false);
+    assert_eq!(readiness["workspace_ready"], false);
+    assert!(readiness["elapsed_seconds"].is_number());
 }
 
 #[test]
