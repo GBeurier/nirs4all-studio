@@ -34,6 +34,7 @@ function makeProcess() {
 afterEach(() => {
   delete process.env.NIRS4ALL_NATIVE_SIDECAR_PATH;
   delete process.env.NIRS4ALL_NATIVE_SIDECAR_PORT;
+  delete process.env.NIRS4ALL_ENABLE_NATIVE_SIDECAR;
   childProcessMocks.spawn.mockReset();
   vi.resetModules();
   while (tempDirs.length > 0) {
@@ -43,6 +44,29 @@ afterEach(() => {
 });
 
 describe("NativeSidecarManager", () => {
+  it("resolves an explicit binary before an opt-in packaged resource", async () => {
+    const { resolveNativeSidecarPath } = await import("./native-sidecar-manager");
+
+    expect(
+      resolveNativeSidecarPath({
+        environment: {
+          NIRS4ALL_NATIVE_SIDECAR_PATH: "tools/studio-sidecar",
+          NIRS4ALL_ENABLE_NATIVE_SIDECAR: "1",
+        },
+        resourcesPath: "/app/resources",
+        platform: "linux",
+      }),
+    ).toBe(path.resolve("tools/studio-sidecar"));
+    expect(
+      resolveNativeSidecarPath({
+        environment: { NIRS4ALL_ENABLE_NATIVE_SIDECAR: "1" },
+        resourcesPath: "/app/resources",
+        platform: "win32",
+      }),
+    ).toBe("/app/resources/backend/native/studio-sidecar.exe");
+    expect(resolveNativeSidecarPath({ environment: {}, resourcesPath: "/app/resources" })).toBeNull();
+  });
+
   it("stays disabled without an explicit sidecar binary", async () => {
     const { NativeSidecarManager } = await import("./native-sidecar-manager");
 

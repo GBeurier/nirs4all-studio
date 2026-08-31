@@ -332,6 +332,14 @@ function ensureBuildInputsExist(config) {
       "backend-dist/ does not contain a baked standalone runtime. Re-run without --skip-backend or bake the runtime first.",
     );
   }
+
+  const nativeSidecarName = config.platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar";
+  const nativeSidecarPath = path.join(backendDistPath, "native", nativeSidecarName);
+  if (!fs.existsSync(nativeSidecarPath)) {
+    throw new Error(
+      "backend-dist/ does not contain the native Studio sidecar. Re-run without --skip-backend or build scripts/build-native-sidecar.cjs.",
+    );
+  }
 }
 
 function ensureFrontendOutputsExist(config) {
@@ -407,6 +415,7 @@ async function buildArchiveStandalone(config) {
       bakeArgs.push("--constraints", config.constraintsFile);
     }
     await runCommand(getNodeCommand(), bakeArgs);
+    await runCommand(getNodeCommand(), [path.join("scripts", "build-native-sidecar.cjs")]);
     console.log("");
   } else {
     console.log("=== Step 1: Reusing existing backend-dist/ ===");

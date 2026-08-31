@@ -276,9 +276,11 @@ The native-backend migration currently has an explicit **dual-run diagnostic**
 mode. Setting `NIRS4ALL_NATIVE_SIDECAR_PATH` to the absolute path of a built
 `studio-sidecar` binary starts the Rust control-plane sidecar on loopback beside
 the existing Python backend; `NIRS4ALL_NATIVE_SIDECAR_PORT` optionally selects a
-port (default `0`, an ephemeral port). It does not yet route the UI through the
-sidecar, and it never falls back to Python: route ownership changes only when a
-route family is explicitly migrated.
+port (default `0`, an ephemeral port). In an all-in-one package,
+`NIRS4ALL_ENABLE_NATIVE_SIDECAR=1` selects the bundled
+`resources/backend/native/studio-sidecar` instead. It does not yet route the UI
+through the sidecar, and it never falls back to Python: route ownership changes
+only when a route family is explicitly migrated.
 
 > **Note**: The webapp can run **without nirs4all installed** for pure UI development. The backend will report missing capabilities but the frontend is fully functional.
 

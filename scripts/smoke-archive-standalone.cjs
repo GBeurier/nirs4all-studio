@@ -166,6 +166,7 @@ function findDirectoryAppRoot(extractedRoot, executableName, maxDepth = 2) {
 }
 
 function resolveLaunchLayout(extractedRoot, platformId, appName) {
+  const nativeSidecarName = platformId === "win32" ? "studio-sidecar.exe" : "studio-sidecar";
   if (platformId === "darwin") {
     const appBundle = findMacAppBundle(extractedRoot, appName);
     const resourcesDir = path.join(appBundle, "Contents", "Resources");
@@ -174,6 +175,7 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
       appRoot: appBundle,
       executablePath: path.join(appBundle, "Contents", "MacOS", appName),
       runtimeReadyPath: path.join(runtimeRoot, "RUNTIME_READY.json"),
+      nativeSidecarPath: path.join(resourcesDir, "backend", "native", nativeSidecarName),
       bundledPythonPath: path.join(runtimeRoot, "python", "bin", "python3"),
       bundledPythonCandidates: [
         path.join(runtimeRoot, "python", "bin", "python3"),
@@ -194,6 +196,7 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
     appRoot,
     executablePath: path.join(appRoot, executableName),
     runtimeReadyPath: path.join(runtimeRoot, "RUNTIME_READY.json"),
+    nativeSidecarPath: path.join(appRoot, "resources", "backend", "native", nativeSidecarName),
     bundledPythonPath:
       platformId === "win32"
         ? path.join(runtimeRoot, "python", "python.exe")
@@ -538,6 +541,7 @@ async function smokeArchiveStandalone(rawConfig) {
   const launchLayout = resolveLaunchLayout(config.extractedRoot, config.platform, config.appName);
   ensurePathExists(launchLayout.executablePath, "Packaged executable");
   ensurePathExists(launchLayout.runtimeReadyPath, "Bundled runtime marker");
+  ensurePathExists(launchLayout.nativeSidecarPath, "Native Studio sidecar");
   const bundledPythonPath = launchLayout.bundledPythonCandidates.find((candidate) => fs.existsSync(candidate))
     ?? launchLayout.bundledPythonPath;
   ensurePathExists(bundledPythonPath, "Bundled Python");
@@ -562,6 +566,7 @@ async function smokeArchiveStandalone(rawConfig) {
   console.log(`Smoke root:     ${config.extractedRoot}`);
   console.log(`Executable:     ${launchLayout.executablePath}`);
   console.log(`Bundled Python: ${bundledPythonPath}`);
+  console.log(`Native sidecar: ${launchLayout.nativeSidecarPath}`);
   console.log(`Sandbox:        ${sandboxRoot}`);
   console.log(`Backend port:   ${port}`);
 

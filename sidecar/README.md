@@ -63,6 +63,12 @@ Protocol version: `studio-sidecar-r1`.
 `job_execution`, and `uptime_ms`. `legacy_route_parity` is `bootstrap`: only
 health and readiness match their frozen post-lifespan responses.
 `scientific_execution` and `job_execution` are always `unavailable` in R1.
+All-in-one packaging builds the sidecar as
+`resources/backend/native/studio-sidecar` next to the embedded
+`resources/backend/python-runtime/`. Electron starts that resource only when
+`NIRS4ALL_ENABLE_NATIVE_SIDECAR=1`; a direct development binary still requires
+`NIRS4ALL_NATIVE_SIDECAR_PATH`. Neither choice selects Python as an HTTP
+fallback.
 
 All errors use:
 
@@ -102,13 +108,12 @@ WebSocket parity or a live subscription service.
 
 Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
-idempotent cancellation, plus protocol types. Missing: every other legacy
-`/api/*` route, all scientific execution, persistence,
-uploads, authentication, live WebSocket upgrades, job execution, packaging,
-Electron process management, and parity mapping/diffing for the full frozen
-surface.
+idempotent cancellation, all-in-one binary packaging, and Electron's explicit
+loopback-only lifecycle management. Missing: every other legacy `/api/*` route,
+all scientific execution, persistence, uploads, authentication, live WebSocket
+upgrades, job execution, and parity mapping/diffing for the full frozen surface.
 
-Rollback is deletion/exclusion of the unused sidecar binary/resource. Because
-R1 changes neither Electron startup nor packaging defaults and exposes no
-legacy route, rollback requires no data migration and leaves the Python/FastAPI
-path untouched.
+Rollback is deletion/exclusion of the unused sidecar binary/resource. R1 keeps
+the sidecar disabled unless an explicit environment setting enables it and
+exposes no additional legacy route, so rollback requires no data migration and
+leaves the Python/FastAPI path untouched.
