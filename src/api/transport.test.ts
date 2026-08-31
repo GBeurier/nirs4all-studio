@@ -457,6 +457,37 @@ describe("API client request handling", () => {
     );
   });
 
+  it("sends the frozen native health contract to the sidecar without a Python host", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        core_ready: true,
+        message: "nirs4all webapp is running",
+        ml_loading: false,
+        ml_ready: false,
+        ready: true,
+        status: "healthy",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.get("/health");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/health",
+      expect.any(Object),
+    );
+  });
+
   it("routes only native linked-workspace state mutations to the sidecar", async () => {
     const fetchMock = vi.fn().mockImplementation(() => jsonResponse({ success: true }));
     vi.stubGlobal("fetch", fetchMock);

@@ -57,7 +57,8 @@ legacy FastAPI process.
 `docs/contracts/studio-v1/` remains the frozen legacy FastAPI baseline. R1
 references that snapshot in tests to prevent an accidental parity claim. The
 sidecar exposes only the frozen post-lifespan health and readiness responses
-under `/api/*`; it does not expose `/ws` or assert replacement compatibility.
+under `/api/*`; Electron routes the UI health check to that native health
+contract. It does not expose `/ws` or assert replacement compatibility.
 
 ## Build and future Electron launch contract
 
