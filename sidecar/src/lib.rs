@@ -7,6 +7,7 @@ use std::{
     collections::BTreeMap,
     env,
     fmt::Write as _,
+    fs,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
@@ -44,6 +45,10 @@ pub const PYTHON_PLUGIN_HOST_BUNDLED_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST_BU
 pub const RUNTIME_MODE_ENV: &str = "NIRS4ALL_RUNTIME_MODE";
 pub const RUNTIME_KIND_ENV: &str = "NIRS4ALL_RUNTIME_KIND";
 pub const BUILD_INFO_PATH_ENV: &str = "NIRS4ALL_BUILD_INFO_PATH";
+pub const OFFLINE_ENV: &str = "NIRS4ALL_OFFLINE";
+pub const BACKEND_DATA_DIR_ENV: &str = "NIRS4ALL_BACKEND_DATA_DIR";
+pub const UPDATE_SETTINGS_FILE: &str = "update_settings.yaml";
+pub const MAX_UPDATE_SETTINGS_BYTES: u64 = 16 * 1024;
 pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(3);
 pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration = Duration::from_secs(15);
 pub const MAX_PYTHON_PLUGIN_OUTPUT_BYTES: usize = 8 * 1024;
@@ -399,7 +404,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -537,6 +542,7 @@ pub fn route_request_with_body(
         ("GET", "/api/system/capabilities") => python_capabilities_response(state),
         ("GET", "/api/system/info") => python_system_info_response(state),
         ("GET", "/api/system/build") => python_system_build_response(state),
+        ("GET", "/api/system/network") => system_network_response(),
         ("GET", "/api/system/env-coherence") => python_env_coherence_response(state),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
         ("GET", "/sidecar/v1/ws") => error_response(
@@ -556,6 +562,7 @@ pub fn route_request_with_body(
             | "/api/system/capabilities"
             | "/api/system/info"
             | "/api/system/build"
+            | "/api/system/network"
             | "/api/system/env-coherence"
             | "/api/workspaces"
             | "/sidecar/v1/ws",
@@ -808,6 +815,115 @@ fn linked_workspace_route_not_found(path: &str) -> HttpResponse {
         "No native sidecar route matches this path",
         BTreeMap::from([("path".into(), path.into())]),
     )
+}
+
+fn system_network_response() -> HttpResponse {
+    HttpResponse::json(
+        200,
+        native_network_state_json(
+            native_update_settings_path().as_deref(),
+            environment_forces_offline(),
+        )
+        .to_string(),
+    )
+}
+
+fn native_network_state_json(update_settings_path: Option<&Path>, env_forced: bool) -> Value {
+    let mode = offline_mode_from_update_settings(update_settings_path).unwrap_or("auto");
+    let forced = env_forced || mode == "on";
+    json!({
+        "online": !forced,
+        "forced": forced,
+        "mode": mode,
+        "env_forced": env_forced,
+    })
+}
+
+fn environment_forces_offline() -> bool {
+    env::var(OFFLINE_ENV).is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
+fn native_update_settings_path() -> Option<PathBuf> {
+    if let Some(path) = env::var_os(BACKEND_DATA_DIR_ENV).filter(|value| !value.is_empty()) {
+        return Some(PathBuf::from(path).join(UPDATE_SETTINGS_FILE));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let base = env::var_os("LOCALAPPDATA").map(PathBuf::from).or_else(|| {
+            env::var_os("USERPROFILE")
+                .map(PathBuf::from)
+                .map(|home| home.join("AppData").join("Local"))
+        })?;
+        // `platformdirs.user_data_dir(appname, appauthor)` uses the author on
+        // Windows, unlike Linux and macOS. Retain the project's documented
+        // fallback location when the optional Python `platformdirs` package
+        // was absent when the existing preference was written.
+        let platformdirs_path = base
+            .join("nirs4all")
+            .join("nirs4all-webapp")
+            .join(UPDATE_SETTINGS_FILE);
+        let fallback_path = base.join("nirs4all-webapp").join(UPDATE_SETTINGS_FILE);
+        return Some(if platformdirs_path.exists() || !fallback_path.exists() {
+            platformdirs_path
+        } else {
+            fallback_path
+        });
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return env::var_os("HOME").map(|home| {
+            PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("nirs4all-webapp")
+                .join(UPDATE_SETTINGS_FILE)
+        });
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        let base = env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))?;
+        Some(base.join("nirs4all-webapp").join(UPDATE_SETTINGS_FILE))
+    }
+}
+
+fn offline_mode_from_update_settings(update_settings_path: Option<&Path>) -> Option<&'static str> {
+    let path = update_settings_path?;
+    if fs::metadata(path).ok()?.len() > MAX_UPDATE_SETTINGS_BYTES {
+        return None;
+    }
+    let settings = fs::read_to_string(path).ok()?;
+    settings.lines().find_map(|line| {
+        let line = line.trim_start();
+        if line.starts_with('#') {
+            return None;
+        }
+        let (key, value) = line.split_once(':')?;
+        if key.trim() != "offline_mode" {
+            return None;
+        }
+        let value = value
+            .split_once('#')
+            .map_or(value, |(value, _)| value)
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'');
+        match value {
+            "auto" => Some("auto"),
+            "on" => Some("on"),
+            "off" => Some("off"),
+            _ => None,
+        }
+    })
 }
 
 fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
@@ -2246,6 +2362,63 @@ mod tests {
             405
         );
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn native_network_state_uses_only_the_legacy_preference_contract() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-network-state-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let settings = directory.join(UPDATE_SETTINGS_FILE);
+
+        fs::write(&settings, "offline_mode: 'on'\n").unwrap();
+        assert_eq!(
+            native_network_state_json(Some(&settings), false),
+            json!({"online": false, "forced": true, "mode": "on", "env_forced": false})
+        );
+        assert_eq!(
+            native_network_state_json(Some(&settings), true),
+            json!({"online": false, "forced": true, "mode": "on", "env_forced": true})
+        );
+
+        fs::write(&settings, "offline_mode: unsupported\n").unwrap();
+        assert_eq!(
+            native_network_state_json(Some(&settings), false),
+            json!({"online": true, "forced": false, "mode": "auto", "env_forced": false})
+        );
+        fs::write(&settings, "offline_mode: off # a user override\n").unwrap();
+        assert_eq!(
+            native_network_state_json(Some(&settings), false)["mode"],
+            "off"
+        );
+        let oversized_settings = usize::try_from(MAX_UPDATE_SETTINGS_BYTES)
+            .expect("the bounded settings size fits every supported platform")
+            + 1;
+        fs::write(&settings, "x".repeat(oversized_settings)).unwrap();
+        assert_eq!(offline_mode_from_update_settings(Some(&settings)), None);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn native_network_route_is_available_without_a_python_plugin_host() {
+        let mut state = SidecarState::default();
+        let response = route_request(&mut state, "GET", "/api/system/network");
+        assert_eq!(response.status, 200);
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        assert!(body["online"].is_boolean());
+        assert!(body["forced"].is_boolean());
+        assert!(matches!(body["mode"].as_str(), Some("auto" | "on" | "off")));
+        assert!(body["env_forced"].is_boolean());
+        assert_eq!(
+            route_request(&mut state, "POST", "/api/system/network").status,
+            405
+        );
     }
 
     #[test]
