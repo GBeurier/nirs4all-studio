@@ -30,6 +30,9 @@ R1 provides a small local HTTP control surface only:
 - `GET /api/system/network` (Rust-owned offline preference state; it reads the
   established bounded `update_settings.yaml` preference file and never probes
   a host or invokes Python)
+- `GET /api/updates/version` (Rust-owned version inventory; Electron provides
+  the application version and the bounded Python library host reports only the
+  installed `nirs4all` version and interpreter facts)
 - `GET /api/system/env-coherence` (Rust-owned Settings runtime alignment; the
   configured Python is only the explicit library/plugin host, never an HTTP
   backend)
@@ -108,11 +111,13 @@ with a bounded 15-second optional-import probe. `GET /api/system/env-coherence`
 uses a bounded three-second import/runtime probe and reports `python_plugin_host`
 as the runtime kind. `GET /api/system/build` assembles the product-selected
 build metadata in Rust and uses the same bounded host only to inspect optional
-`torch` GPU availability. All four return their legacy response shapes without
-launching a scientific job. `GET /api/system/network` is fully native: it reads
-only the established offline preference and the `NIRS4ALL_OFFLINE` process
-override, matching the legacy route without a network probe. All bridge routes
-are capability evidence, never transparent Python fallback.
+`torch` GPU availability. `GET /api/updates/version` combines the
+Electron-supplied application version with a bounded `nirs4all` distribution
+inspection. These five return their legacy response shapes without launching a
+scientific job. `GET /api/system/network` is fully native: it reads only the
+established offline preference and the `NIRS4ALL_OFFLINE` process override,
+matching the legacy route without a network probe. All bridge routes are
+capability evidence, never transparent Python fallback.
 
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the

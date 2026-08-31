@@ -10,6 +10,7 @@ const PYTHON_PLUGIN_HOST_BUNDLED_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
 const RUNTIME_MODE_ENV = "NIRS4ALL_RUNTIME_MODE";
 const RUNTIME_KIND_ENV = "NIRS4ALL_RUNTIME_KIND";
 const BUILD_INFO_PATH_ENV = "NIRS4ALL_BUILD_INFO_PATH";
+const APP_VERSION_ENV = "NIRS4ALL_APP_VERSION";
 const SIDECAR_READY_PREFIX = "STUDIO_SIDECAR_READY ";
 const SIDECAR_START_TIMEOUT_MS = 15_000;
 const MAX_STARTUP_OUTPUT_BYTES = 8 * 1024;
@@ -52,6 +53,8 @@ export interface NativeSidecarStartOptions {
   runtimeKind?: string | null;
   /** Packaged build metadata selected by Electron, never a renderer input. */
   buildInfoPath?: string | null;
+  /** Product version supplied by Electron for Rust-owned version inventory. */
+  appVersion?: string | null;
 }
 
 /**
@@ -206,6 +209,8 @@ export class NativeSidecarManager {
       childEnvironment[RUNTIME_KIND_ENV] = options.runtimeKind.trim();
     if (options.buildInfoPath?.trim())
       childEnvironment[BUILD_INFO_PATH_ENV] = options.buildInfoPath.trim();
+    if (options.appVersion?.trim())
+      childEnvironment[APP_VERSION_ENV] = options.appVersion.trim();
     try {
       child = spawn(
         binaryPath,

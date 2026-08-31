@@ -45,6 +45,7 @@ pub const PYTHON_PLUGIN_HOST_BUNDLED_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST_BU
 pub const RUNTIME_MODE_ENV: &str = "NIRS4ALL_RUNTIME_MODE";
 pub const RUNTIME_KIND_ENV: &str = "NIRS4ALL_RUNTIME_KIND";
 pub const BUILD_INFO_PATH_ENV: &str = "NIRS4ALL_BUILD_INFO_PATH";
+pub const APP_VERSION_ENV: &str = "NIRS4ALL_APP_VERSION";
 pub const OFFLINE_ENV: &str = "NIRS4ALL_OFFLINE";
 pub const BACKEND_DATA_DIR_ENV: &str = "NIRS4ALL_BACKEND_DATA_DIR";
 pub const UPDATE_SETTINGS_FILE: &str = "update_settings.yaml";
@@ -404,7 +405,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -544,6 +545,7 @@ pub fn route_request_with_body(
         ("GET", "/api/system/build") => python_system_build_response(state),
         ("GET", "/api/system/network") => system_network_response(),
         ("GET", "/api/system/env-coherence") => python_env_coherence_response(state),
+        ("GET", "/api/updates/version") => python_updates_version_response(state),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
         ("GET", "/sidecar/v1/ws") => error_response(
             400,
@@ -564,6 +566,7 @@ pub fn route_request_with_body(
             | "/api/system/build"
             | "/api/system/network"
             | "/api/system/env-coherence"
+            | "/api/updates/version"
             | "/api/workspaces"
             | "/sidecar/v1/ws",
         ) => method_not_allowed(method, path, "GET"),
@@ -966,6 +969,69 @@ fn python_system_info_response(state: &SidecarState) -> HttpResponse {
     }
 }
 
+/// Return product version inventory from Rust-owned launch metadata and a
+/// bounded Python-library inspection. The interpreter is never an HTTP
+/// backend: it only supplies the installed nirs4all distribution version.
+fn python_updates_version_response(state: &SidecarState) -> HttpResponse {
+    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+        return error_response(
+            503,
+            ErrorCode::PythonPluginUnavailable,
+            "No Python plugin host is configured for this native sidecar",
+            BTreeMap::from([("reason".into(), "not_configured".into())]),
+        );
+    };
+    match read_python_updates_version(python_plugin_host)
+        .and_then(|probe| native_updates_version_json(&native_app_version(), &probe))
+    {
+        Ok(body) => HttpResponse::json(200, body),
+        Err(reason) => error_response(
+            503,
+            ErrorCode::PythonPluginPreflightFailed,
+            "The configured Python plugin host could not report version inventory",
+            BTreeMap::from([("reason".into(), reason.as_str().into())]),
+        ),
+    }
+}
+
+fn native_app_version() -> String {
+    env::var(APP_VERSION_ENV)
+        .ok()
+        .filter(|version| !version.trim().is_empty())
+        .unwrap_or_else(|| "unknown".into())
+}
+
+fn native_updates_version_json(
+    webapp_version: &str,
+    probe: &Value,
+) -> Result<String, PythonPluginBridgeFailure> {
+    let python_version = probe
+        .get("python_version")
+        .and_then(Value::as_str)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let platform = probe
+        .get("platform")
+        .and_then(Value::as_str)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let machine = probe
+        .get("machine")
+        .and_then(Value::as_str)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let nirs4all_version = probe
+        .get("nirs4all_version")
+        .filter(|value| value.is_string() || value.is_null())
+        .cloned()
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    Ok(json!({
+        "webapp_version": webapp_version,
+        "nirs4all_version": nirs4all_version,
+        "python_version": python_version,
+        "platform": platform,
+        "machine": machine,
+    })
+    .to_string())
+}
+
 /// Return build metadata from the Rust-owned launch configuration and a
 /// bounded Python-library probe for optional GPU runtime facts.  The sidecar
 /// owns the HTTP route and response assembly; the configured interpreter is
@@ -1245,6 +1311,28 @@ fn read_python_system_info(python_plugin_host: &Path) -> Result<String, PythonPl
         return Err(PythonPluginBridgeFailure::MalformedResponse);
     }
     Ok(output.to_string())
+}
+
+fn read_python_updates_version(
+    python_plugin_host: &Path,
+) -> Result<Value, PythonPluginBridgeFailure> {
+    let script = "import json,os,platform,sys\ncwd=os.getcwd(); sys.path=[entry for entry in sys.path if entry not in ('',cwd)]\nversion=None\ntry:\n import nirs4all; version=getattr(nirs4all,'__version__',None)\nexcept Exception: pass\nif not version:\n try:\n  from importlib import metadata; version=metadata.version('nirs4all')\n except Exception: pass\nprint(json.dumps({'nirs4all_version':version,'python_version':sys.version,'platform':platform.system(),'machine':platform.machine()}, separators=(',',':'), sort_keys=True))";
+    let output = run_python_plugin_json(
+        python_plugin_host,
+        script,
+        PYTHON_PLUGIN_CAPABILITIES_TIMEOUT,
+    )?;
+    if !["python_version", "platform", "machine"]
+        .iter()
+        .all(|key| output.get(*key).is_some_and(Value::is_string))
+        || !matches!(
+            output.get("nirs4all_version"),
+            Some(Value::String(_) | Value::Null)
+        )
+    {
+        return Err(PythonPluginBridgeFailure::MalformedResponse);
+    }
+    Ok(output)
 }
 
 fn read_python_system_build(python_plugin_host: &Path) -> Result<Value, PythonPluginBridgeFailure> {
@@ -2417,6 +2505,40 @@ mod tests {
         assert!(body["env_forced"].is_boolean());
         assert_eq!(
             route_request(&mut state, "POST", "/api/system/network").status,
+            405
+        );
+    }
+
+    #[test]
+    fn native_updates_version_preserves_the_legacy_response_shape() {
+        let response = native_updates_version_json(
+            "0.9.1",
+            &json!({
+                "nirs4all_version": "0.12.0",
+                "python_version": "3.11.9 (main, Apr  2 2024, 12:00:00)",
+                "platform": "Linux",
+                "machine": "x86_64",
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&response).unwrap(),
+            json!({
+                "webapp_version": "0.9.1",
+                "nirs4all_version": "0.12.0",
+                "python_version": "3.11.9 (main, Apr  2 2024, 12:00:00)",
+                "platform": "Linux",
+                "machine": "x86_64",
+            })
+        );
+
+        let mut state = SidecarState::default();
+        assert_eq!(
+            route_request(&mut state, "GET", "/api/updates/version").status,
+            503
+        );
+        assert_eq!(
+            route_request(&mut state, "POST", "/api/updates/version").status,
             405
         );
     }
