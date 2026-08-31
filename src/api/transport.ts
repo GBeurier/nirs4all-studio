@@ -18,10 +18,14 @@ const DEFAULT_API_BASE_URL = "/api";
 // Cache for the resolved backend URL in Electron mode
 let resolvedBackendUrl: string | null = null;
 let backendUrlPromise: Promise<string> | null = null;
-const NATIVE_SIDECAR_ROUTE_ENDPOINTS = new Set([
+const NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS = new Set([
   "/system/capabilities",
   "/system/info",
   "/system/env-coherence",
+]);
+const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
+  "/app/settings",
+  "/app/favorites",
 ]);
 
 type ElectronBackendStatus =
@@ -168,7 +172,7 @@ export function resetBackendUrl(): void {
 
 async function resolveApiRoute(endpoint: string): Promise<ApiRoute> {
   if (
-    !NATIVE_SIDECAR_ROUTE_ENDPOINTS.has(endpoint) ||
+    !isNativeSidecarEndpoint(endpoint) ||
     !isElectronEnvironment()
   ) {
     return { baseUrl: await getApiBaseUrl(), source: "backend" };
@@ -182,19 +186,29 @@ async function resolveApiRoute(endpoint: string): Promise<ApiRoute> {
     if (
       info.status === "running" &&
       info.url &&
-      info.pythonPluginHostConfigured
+      (!requiresPythonPluginHost(endpoint) || info.pythonPluginHostConfigured)
     ) {
       const baseUrl = `${info.url}/api`;
       logger.info(`Using native sidecar route for ${endpoint}: ${baseUrl}`);
       return { baseUrl, source: "native-sidecar" };
     }
-    logger.info(
-      `Native sidecar cannot serve ${endpoint} before its Python plugin host is configured`,
-    );
+    logger.info(`Native sidecar cannot serve ${endpoint} in its current state`);
   } catch (error) {
     logger.warn(`Failed to inspect native sidecar for ${endpoint}`, error);
   }
   return { baseUrl: await getApiBaseUrl(), source: "backend" };
+}
+
+function isNativeSidecarEndpoint(endpoint: string): boolean {
+  return (
+    NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS.has(endpoint) ||
+    NATIVE_SIDECAR_STATE_ENDPOINTS.has(endpoint) ||
+    endpoint.startsWith("/app/favorites/")
+  );
+}
+
+function requiresPythonPluginHost(endpoint: string): boolean {
+  return NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS.has(endpoint);
 }
 
 export interface ApiError {
