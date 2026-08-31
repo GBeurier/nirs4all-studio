@@ -24,9 +24,14 @@ R1 provides a small local HTTP control surface only:
   the configured Python plugin host only to inspect optional imports)
 - `GET /api/system/info` (the same bounded host bridge for the Settings system
   inventory; it does not create or run a job)
+- `GET /api/system/env-coherence` (Rust-owned Settings runtime alignment; the
+  configured Python is only the explicit library/plugin host, never an HTTP
+  backend)
 
-It does **not** launch Python, CPython, Uvicorn, or FastAPI; it has no fallback
-launcher. It contains no scientific calculation, dataset/workspace persistence,
+It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
+it has no fallback launcher. An explicitly configured CPython may run only as a
+bounded library/plugin host for the routes above. The sidecar contains no
+scientific calculation, dataset/workspace persistence,
 file I/O API, or reimplementation of nirs4all stores. UI routes remain served
 by the legacy FastAPI process.
 
@@ -73,9 +78,11 @@ The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. `GET /sidecar/v1/python/preflight` launches that product-owned
 interpreter with `-I`, bounds it to three seconds, and checks `import nirs4all`.
 `GET /api/system/capabilities` and `GET /api/system/info` use the same bridge
-with a bounded 15-second optional-import probe, returning their legacy response
-shapes without launching a scientific job. All bridge routes are capability
-evidence, never transparent Python fallback.
+with a bounded 15-second optional-import probe. `GET /api/system/env-coherence`
+uses a bounded three-second import/runtime probe and reports `python_plugin_host`
+as the runtime kind. All three return their legacy response shapes without
+launching a scientific job. All bridge routes are capability evidence, never
+transparent Python fallback.
 All-in-one packaging builds the sidecar as
 `resources/backend/native/studio-sidecar` next to the embedded
 `resources/backend/python-runtime/`. Electron starts that resource only when
@@ -122,7 +129,7 @@ WebSocket parity or a live subscription service.
 
 Covered: local liveness/readiness, frozen bootstrap health/readiness,
 capabilities, versioned error envelopes, opaque control-job records and
-idempotent cancellation, bounded Python plugin-host preflight, the first two
+idempotent cancellation, bounded Python plugin-host preflight, the first three
 Rust-owned legacy-compatible system routes, all-in-one binary packaging, and
 Electron's explicit loopback-only lifecycle management. Missing: every other
 legacy `/api/*` route, all scientific execution, persistence, uploads,

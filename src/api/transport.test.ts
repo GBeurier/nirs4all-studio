@@ -224,4 +224,25 @@ describe("API client request handling", () => {
       expect.any(Object),
     );
   });
+
+  it("sends the migrated runtime-coherence route to a running native sidecar", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ core_ready: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+      }),
+    });
+
+    await api.get("/system/env-coherence");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/system/env-coherence",
+      expect.any(Object),
+    );
+  });
 });

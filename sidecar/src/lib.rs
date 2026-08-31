@@ -34,6 +34,8 @@ pub const MAX_WS_CHANNELS: usize = 64;
 pub const MAX_WS_DATA_BYTES: usize = 16 * 1024;
 pub const MAX_WS_DATA_KEYS: usize = 16;
 pub const PYTHON_PLUGIN_HOST_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST";
+pub const PYTHON_PLUGIN_HOST_BUNDLED_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
+pub const RUNTIME_KIND_ENV: &str = "NIRS4ALL_RUNTIME_KIND";
 pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(3);
 pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration = Duration::from_secs(15);
 pub const MAX_PYTHON_PLUGIN_OUTPUT_BYTES: usize = 8 * 1024;
@@ -274,6 +276,8 @@ pub struct SidecarState {
     job_limit: usize,
     job_ttl: Duration,
     python_plugin_host: Option<PathBuf>,
+    python_plugin_host_bundled: bool,
+    runtime_kind: String,
 }
 
 impl Default for SidecarState {
@@ -285,6 +289,8 @@ impl Default for SidecarState {
             job_limit: MAX_CONTROL_JOBS,
             job_ttl: CONTROL_JOB_TTL,
             python_plugin_host: None,
+            python_plugin_host_bundled: false,
+            runtime_kind: "python_plugin_host".into(),
         }
     }
 }
@@ -307,8 +313,16 @@ impl SidecarState {
         let python_plugin_host = env::var_os(PYTHON_PLUGIN_HOST_ENV)
             .filter(|value| !value.is_empty())
             .map(PathBuf::from);
+        let python_plugin_host_bundled = env::var(PYTHON_PLUGIN_HOST_BUNDLED_ENV)
+            .is_ok_and(|value| value.eq_ignore_ascii_case("true"));
+        let runtime_kind = env::var(RUNTIME_KIND_ENV)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "python_plugin_host".into());
         Self {
             python_plugin_host,
+            python_plugin_host_bundled,
+            runtime_kind,
             ..Self::default()
         }
     }
@@ -340,7 +354,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":true,\"system_capabilities_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":true,\"system_capabilities_route\":true,\"system_env_coherence_route\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -456,6 +470,7 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
         ("GET", "/sidecar/v1/python/preflight") => python_plugin_preflight_response(state),
         ("GET", "/api/system/capabilities") => python_capabilities_response(state),
         ("GET", "/api/system/info") => python_system_info_response(state),
+        ("GET", "/api/system/env-coherence") => python_env_coherence_response(state),
         ("POST", "/sidecar/v1/jobs") => create_job_response(state),
         ("GET", "/sidecar/v1/ws") => error_response(
             400,
@@ -473,6 +488,7 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
             | "/sidecar/v1/python/preflight"
             | "/api/system/capabilities"
             | "/api/system/info"
+            | "/api/system/env-coherence"
             | "/sidecar/v1/ws",
         ) => method_not_allowed(method, path, "GET"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
@@ -533,6 +549,30 @@ fn python_system_info_response(state: &SidecarState) -> HttpResponse {
             503,
             ErrorCode::PythonPluginPreflightFailed,
             "The configured Python plugin host could not report system information",
+            BTreeMap::from([("reason".into(), reason.as_str().into())]),
+        ),
+    }
+}
+
+/// Return Studio's runtime alignment contract from the explicit Python plugin
+/// host. The native sidecar owns this HTTP response; Python only reports its
+/// own interpreter facts and verifies that the library host can import
+/// `nirs4all`.
+fn python_env_coherence_response(state: &SidecarState) -> HttpResponse {
+    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+        return error_response(
+            503,
+            ErrorCode::PythonPluginUnavailable,
+            "No Python plugin host is configured for this native sidecar",
+            BTreeMap::from([("reason".into(), "not_configured".into())]),
+        );
+    };
+    match read_python_env_coherence(python_plugin_host, state) {
+        Ok(body) => HttpResponse::json(200, body),
+        Err(reason) => error_response(
+            503,
+            ErrorCode::PythonPluginPreflightFailed,
+            "The configured Python plugin host could not report runtime coherence",
             BTreeMap::from([("reason".into(), reason.as_str().into())]),
         ),
     }
@@ -689,6 +729,66 @@ fn read_python_system_info(python_plugin_host: &Path) -> Result<String, PythonPl
         return Err(PythonPluginBridgeFailure::MalformedResponse);
     }
     Ok(output.to_string())
+}
+
+fn read_python_env_coherence(
+    python_plugin_host: &Path,
+    state: &SidecarState,
+) -> Result<String, PythonPluginBridgeFailure> {
+    let script = "import json,sys\ntry:\n import nirs4all; nirs4all_import=True\nexcept Exception:\n nirs4all_import=False\nprint(json.dumps({'python':sys.executable,'prefix':sys.prefix,'version':f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}','nirs4all_import':nirs4all_import}, separators=(',',':'), sort_keys=True))";
+    let output =
+        run_python_plugin_json(python_plugin_host, script, PYTHON_PLUGIN_PREFLIGHT_TIMEOUT)?;
+    let runtime_python = output
+        .get("python")
+        .and_then(Value::as_str)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let runtime_prefix = output
+        .get("prefix")
+        .and_then(Value::as_str)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let runtime_version = output
+        .get("version")
+        .and_then(Value::as_str)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let nirs4all_import = output
+        .get("nirs4all_import")
+        .and_then(Value::as_bool)
+        .ok_or(PythonPluginBridgeFailure::MalformedResponse)?;
+    let configured_python = python_plugin_host.to_string_lossy();
+    let configured_matches_running = Path::new(runtime_python) == python_plugin_host;
+    let missing_core_packages = if nirs4all_import {
+        Vec::new()
+    } else {
+        vec!["nirs4all"]
+    };
+
+    Ok(serde_json::json!({
+        "coherent": configured_matches_running,
+        "configured_python": configured_python,
+        "running_python": runtime_python,
+        "running_prefix": runtime_prefix,
+        "runtime_kind": state.runtime_kind,
+        "is_bundled_default": state.python_plugin_host_bundled,
+        "bundled_runtime_available": state.python_plugin_host_bundled,
+        "configured_matches_running": configured_matches_running,
+        "core_ready": nirs4all_import,
+        "missing_core_packages": missing_core_packages,
+        "missing_optional_packages": [],
+        "python_match": configured_matches_running,
+        "prefix_match": true,
+        "runtime": {
+            "python": runtime_python,
+            "prefix": runtime_prefix,
+            "version": runtime_version,
+        },
+        "venv_manager": {
+            "python": runtime_python,
+            "prefix": runtime_prefix,
+        },
+        "electron_expected_python": configured_python,
+        "electron_match": configured_matches_running,
+    })
+    .to_string())
 }
 
 fn run_python_plugin_json(
@@ -1335,6 +1435,10 @@ mod tests {
         let unavailable_info = route_request(&mut unconfigured, "GET", "/api/system/info");
         assert_eq!(unavailable_info.status, 503);
 
+        let unavailable_runtime =
+            route_request(&mut unconfigured, "GET", "/api/system/env-coherence");
+        assert_eq!(unavailable_runtime.status, 503);
+
         let missing_host = std::env::temp_dir().join(format!(
             "n4a-sidecar-missing-python-host-{}",
             std::process::id()
@@ -1472,6 +1576,7 @@ mod tests {
             ("POST", "/sidecar/v1/python/preflight", "GET"),
             ("POST", "/api/system/capabilities", "GET"),
             ("POST", "/api/system/info", "GET"),
+            ("POST", "/api/system/env-coherence", "GET"),
             ("GET", "/sidecar/v1/jobs", "POST"),
             ("PUT", "/sidecar/v1/jobs/job-r1-1", "GET"),
             ("GET", "/sidecar/v1/jobs/job-r1-1/cancel", "POST"),
