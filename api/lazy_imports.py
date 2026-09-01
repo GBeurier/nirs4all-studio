@@ -7,6 +7,7 @@ Provides two-phase startup:
   Heavy pages (Playground, PipelineEditor, Training, etc.) now functional.
 """
 
+import importlib
 import sys
 import threading
 import time
@@ -34,9 +35,52 @@ _ml_load_start_time: float | None = None
 # non-blocking "Loading workspace…" indicator.
 _workspace_ready = False
 _lock = threading.Lock()
+# Importing the top-level package eagerly initializes its public ``api``
+# surface.  Keep that import single-flight: request worker threads may need a
+# public API helper while the background ML loader is still importing the same
+# package, and concurrent submodule imports can otherwise deadlock inside
+# importlib's per-module locks.
+_nirs4all_import_lock = threading.Lock()
 
 # --- Cached imports (populated by background loader) ---
 _cache: dict[str, Any] = {}
+
+
+def get_nirs4all_module(module_name: str = "nirs4all") -> Any:
+    """Import a public nirs4all module through one synchronized boundary.
+
+    Modules are still loaded on demand.  This function merely prevents a
+    request thread from importing ``nirs4all.api.*`` concurrently with the
+    background loader's top-level package import.  Only public nirs4all module
+    names are accepted so Studio keeps a single explicit Python boundary.
+    """
+    if module_name != "nirs4all" and not module_name.startswith("nirs4all."):
+        raise ValueError(f"Expected a nirs4all module name, got {module_name!r}")
+
+    with _nirs4all_import_lock:
+        module = _cache.get(module_name)
+        if module is not None:
+            return module
+
+        if _cache.get("nirs4all") is None:
+            try:
+                import nirs4all
+            except ImportError as exc:
+                from fastapi import HTTPException
+
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"nirs4all public API is not available: {exc}",
+                    headers={"Retry-After": "5"},
+                ) from exc
+            _cache["nirs4all"] = nirs4all
+
+        if module_name == "nirs4all":
+            module = _cache["nirs4all"]
+        else:
+            module = importlib.import_module(module_name)
+            _cache[module_name] = module
+        return module
 
 
 def is_ml_ready() -> bool:
@@ -130,8 +174,9 @@ def _do_load_ml_deps():
         logger.info("Background ML dependency loading started...")
 
         # 1. Core nirs4all package (triggers numpy, sklearn, scipy)
-        import nirs4all
-        _cache["nirs4all"] = nirs4all
+        with _nirs4all_import_lock:
+            import nirs4all
+            _cache["nirs4all"] = nirs4all
         _yield_gil()
 
         # 2. CONTROLLER_REGISTRY (heaviest single import — all model backends)

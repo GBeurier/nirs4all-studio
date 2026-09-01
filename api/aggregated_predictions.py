@@ -672,8 +672,11 @@ def _compute_prediction_robustness_report(
     seed: int | None,
 ) -> Any:
     import numpy as np
-    from nirs4all.api.result import PredictResult
-    from nirs4all.api.robustness import robustness
+
+    from .lazy_imports import get_nirs4all_module
+
+    result_api = get_nirs4all_module("nirs4all.api.result")
+    robustness_api = get_nirs4all_module("nirs4all.api.robustness")
 
     if arrays.get("y_true") is None or arrays.get("y_pred") is None:
         raise HTTPException(
@@ -716,14 +719,14 @@ def _compute_prediction_robustness_report(
             )
 
     sample_indices = arrays.get("sample_indices")
-    result = PredictResult(
+    result = result_api.PredictResult(
         y_pred=np.asarray(arrays["y_pred"], dtype=float),
         metadata={"sample_metadata": _coerce_sample_metadata_for_robustness(arrays)},
         sample_indices=np.asarray(sample_indices) if sample_indices is not None else None,
         model_name=str(arrays.get("model_name") or ""),
     )
     try:
-        return robustness(
+        return robustness_api.robustness(
             result,
             y_true=arrays["y_true"],
             mode=robustness_plan.get("mode", "clean_frozen"),
@@ -746,7 +749,9 @@ def _save_workspace_robustness_report(
     arrays: dict[str, Any],
     prediction_id: str,
 ) -> str:
-    from nirs4all.api.robustness import save_workspace_robustness_report
+    from .lazy_imports import get_nirs4all_module
+
+    robustness_api = get_nirs4all_module("nirs4all.api.robustness")
 
     metadata = sanitize_dict({
         "source": "nirs4all-studio",
@@ -774,7 +779,7 @@ def _save_workspace_robustness_report(
         },
     })
 
-    return save_workspace_robustness_report(
+    return robustness_api.save_workspace_robustness_report(
         workspace_path,
         report,
         name=request.name,
@@ -799,10 +804,12 @@ def _normalize_prediction_robustness_request(request: PredictionRobustnessReport
 
 
 def _load_workspace_robustness_report(workspace_path: Path, robustness_id: str) -> Any:
-    from nirs4all.api.robustness import load_workspace_robustness_report
+    from .lazy_imports import get_nirs4all_module
+
+    robustness_api = get_nirs4all_module("nirs4all.api.robustness")
 
     try:
-        return load_workspace_robustness_report(workspace_path, robustness_id)
+        return robustness_api.load_workspace_robustness_report(workspace_path, robustness_id)
     except (FileNotFoundError, KeyError, ValueError, TypeError) as exc:
         raise HTTPException(status_code=404, detail=f"Robustness report not found: {robustness_id}") from exc
 
