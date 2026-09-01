@@ -794,7 +794,6 @@ describe("API client request handling", () => {
     await api.get("/workspaces/workspace-a/results?dataset=corn");
     await api.get("/workspaces/workspace-a/results?template_id=template-a");
     await api.get("/workspaces/workspace-a/results?limit=10&offset=10");
-    await api.get("/workspaces/workspace-a/results/summary");
     await api.get("/workspaces/workspace-a/results/");
     await api.post("/workspaces/workspace-a/results");
 
@@ -803,15 +802,107 @@ describe("API client request handling", () => {
       "http://127.0.0.1:43123/api/workspaces/workspace-a/results",
       expect.any(Object),
     );
-    for (let index = 2; index <= 8; index += 1) {
+    for (let index = 2; index <= 7; index += 1) {
       expect(fetchMock.mock.calls[index - 1]?.[0]).toMatch(
         /^http:\/\/127\.0\.0\.1:8000\/api\/workspaces\/workspace-a\/results/,
       );
     }
     expect(fetchMock).toHaveBeenNthCalledWith(
-      8,
+      7,
       "http://127.0.0.1:8000/api/workspaces/workspace-a/results",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("routes only the bare GET results summary to the native sidecar", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        jsonResponse({ workspace_id: "workspace-a", datasets: [] }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.get("/workspaces/workspace-a/results/summary");
+    await api.get("/workspaces/workspace-a/results/summary?n=10");
+    await api.get("/workspaces/workspace-a/results/summary/");
+    await api.get("/workspaces/workspace-a/results/dataset-scores");
+    await api.get("/workspaces/workspace-a/results/datasets/corn/chains");
+    await api.post("/workspaces/workspace-a/results/summary");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:43123/api/workspaces/workspace-a/results/summary",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/results/summary?n=10",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/results/summary/",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/results/dataset-scores",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/results/datasets/corn/chains",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/results/summary",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("does not retry a native results-summary incompatibility through FastAPI", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          detail: "Workspace has no compatible native WorkspaceStore v5",
+          code: "workspace_store_unavailable",
+        },
+        409,
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await expect(
+      api.get("/workspaces/workspace-a/results/summary"),
+    ).rejects.toMatchObject({
+      detail: "Workspace has no compatible native WorkspaceStore v5",
+      status: 409,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/workspaces/workspace-a/results/summary",
+      expect.any(Object),
     );
   });
 
