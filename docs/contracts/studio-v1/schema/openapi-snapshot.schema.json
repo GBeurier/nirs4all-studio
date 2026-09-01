@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Studio V1 OpenAPI snapshot",
+  "type": "object",
+  "required": ["contract_version", "openapi_variants"],
+  "properties": {
+    "contract_version": {"const": "studio-v1"},
+    "openapi_variants": {
+      "type": "object",
+      "required": ["fastapi-pre-0.139", "fastapi-0.139-plus"],
+      "properties": {
+        "fastapi-pre-0.139": {"$ref": "#/$defs/openapi_document"},
+        "fastapi-0.139-plus": {"$ref": "#/$defs/openapi_document"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "openapi_document": {
+      "type": "object",
+      "required": ["info", "openapi", "paths"],
+      "properties": {
+        "components": {"type": "object"},
+        "externalDocs": {"type": "object"},
+        "info": {"type": "object"},
+        "jsonSchemaDialect": {"type": "string"},
+        "openapi": {"type": "string", "pattern": "^3\\."},
+        "paths": {"type": "object"},
+        "security": {"type": "array"},
+        "servers": {"type": "array"},
+        "summary": {"type": "string"},
+        "tags": {"type": "array"},
+        "webhooks": {"type": "object"}
+      },
+      "patternProperties": {"^x-": {}},
+      "additionalProperties": false
+    }
+  }
+}

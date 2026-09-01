@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Studio V1 WebSocket protocol snapshot",
+  "type": "object",
+  "required": ["contract_version", "endpoints", "message_types", "payload_shapes", "protocol"],
+  "properties": {
+    "contract_version": {"const": "studio-v1"},
+    "endpoints": {"type": "array", "items": {"$ref": "#/$defs/endpoint"}},
+    "message_types": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/message_type"}},
+    "payload_shapes": {"type": "object", "propertyNames": {"$ref": "#/$defs/message_type"}, "additionalProperties": {"$ref": "#/$defs/payload"}},
+    "protocol": {"$ref": "#/$defs/protocol"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "message_type": {"enum": ["branch_entered", "branch_exited", "connected", "error", "fold_completed", "fold_started", "job_cancelled", "job_completed", "job_failed", "job_metrics", "job_progress", "job_started", "maintenance_completed", "maintenance_failed", "maintenance_progress", "maintenance_started", "ping", "pong", "refit_completed", "refit_failed", "refit_progress", "refit_started", "refit_step", "step_progress", "subscribed", "training_batch", "training_checkpoint", "training_epoch", "unsubscribed", "variant_completed", "variant_started"]},
+    "dynamic": {"type": "object", "required": ["$dynamic"], "properties": {"$dynamic": {"enum": ["identifier", "rfc3339", "number", "path", "secret"]}}, "additionalProperties": false},
+    "channel": {"enum": ["system", "job:contract-job"]},
+    "frame": {"type": "object", "required": ["channel", "data", "timestamp", "type"], "properties": {"channel": {"$ref": "#/$defs/channel"}, "data": {"type": "object"}, "timestamp": {"$ref": "#/$defs/dynamic"}, "type": {"$ref": "#/$defs/message_type"}}, "additionalProperties": false},
+    "endpoint": {"type": "object", "required": ["endpoint", "match_ordinal", "name", "path"], "properties": {"endpoint": {"type": "string"}, "match_ordinal": {"type": "integer", "minimum": 0}, "name": {"type": "string"}, "path": {"type": "string", "pattern": "^/"}}, "additionalProperties": false},
+    "payload": {"oneOf": [
+      {"type": "object", "required": ["channel", "data", "envelope_keys", "status", "type"], "properties": {"channel": {"$ref": "#/$defs/channel"}, "data": {"type": "object"}, "envelope_keys": {"const": ["channel", "data", "timestamp", "type"]}, "status": {"const": "emitted"}, "type": {"$ref": "#/$defs/message_type"}}, "additionalProperties": false},
+      {"type": "object", "required": ["reason", "status"], "properties": {"reason": {"type": "string"}, "status": {"enum": ["incoming_only", "unreachable"]}}, "additionalProperties": false}
+    ]},
+    "incoming": {"type": "object", "required": ["channel", "data", "type"], "properties": {"channel": {"$ref": "#/$defs/channel"}, "data": {"type": "object"}, "type": {"enum": ["ping", "subscribe", "unsubscribe"]}}, "additionalProperties": false},
+    "refused": {"type": "object", "required": ["outcome", "response"], "properties": {"outcome": {"const": "refused"}, "response": {"$ref": "#/$defs/frame"}}, "additionalProperties": false},
+    "protocol": {"type": "object", "required": ["incoming", "outgoing", "subscription"], "properties": {
+      "incoming": {"type": "object", "required": ["ping", "subscribe", "unsubscribe"], "properties": {"ping": {"$ref": "#/$defs/incoming"}, "subscribe": {"$ref": "#/$defs/incoming"}, "unsubscribe": {"$ref": "#/$defs/incoming"}}, "additionalProperties": false},
+      "outgoing": {"type": "object", "required": ["connected", "pong"], "properties": {"connected": {"$ref": "#/$defs/frame"}, "pong": {"$ref": "#/$defs/frame"}}, "additionalProperties": false},
+      "subscription": {"type": "object", "required": ["job_endpoint_auto_subscription", "training_endpoint_auto_subscription", "legacy_client_subscribe", "legacy_client_unsubscribe"], "properties": {"job_endpoint_auto_subscription": {"$ref": "#/$defs/frame"}, "training_endpoint_auto_subscription": {"$ref": "#/$defs/frame"}, "legacy_client_subscribe": {"$ref": "#/$defs/refused"}, "legacy_client_unsubscribe": {"$ref": "#/$defs/refused"}}, "additionalProperties": false}
+    }, "additionalProperties": false}
+  }
+}
