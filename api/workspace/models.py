@@ -253,6 +253,10 @@ class LegacyWorkspaceConversionRequest(BaseModel):
     verify: bool = Field(True, description="Verify converted output after migration")
     dry_run: bool = Field(False, description="Run converter in dry-run mode")
     strict: bool = Field(False, description="Abort on first unsupported legacy item")
+    link_converted_workspace: bool = Field(
+        True,
+        description="Link and activate the converted workspace after a successful conversion",
+    )
 
 
 class LegacyWorkspaceConversionResponse(BaseModel):
@@ -265,6 +269,12 @@ class LegacyWorkspaceConversionResponse(BaseModel):
     stdout: str = ""
     stderr: str = ""
     success: bool = True
+    best_effort: bool = False
+    activation_skipped: bool = False
+    link_converted_workspace: bool = True
+    linked_workspace_id: str | None = None
+    active_workspace_path: str | None = None
+    link_error: str | None = None
 
 
 class CompactRequest(BaseModel):

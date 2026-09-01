@@ -56,6 +56,10 @@ class DetectedFile(BaseModel):
     confidence: float = 0.0
     num_rows: int | None = None
     num_columns: int | None = None
+    overrides: dict[str, Any] | None = Field(
+        None,
+        description="Auto-detected parsing overrides for this file",
+    )
 
 
 class DetectFilesRequest(BaseModel):
@@ -294,6 +298,54 @@ def _detect_parsing_options(
     return parsing_options, confidence, warnings
 
 
+_FILE_OVERRIDE_KEYS = ("delimiter", "decimal_separator", "has_header", "encoding")
+
+
+def _detect_file_parsing_options(
+    detected_file: DetectedFile,
+) -> tuple[dict[str, Any], list[str]]:
+    """Detect the parsing options needed to read one non-spectral file."""
+    file_path = Path(detected_file.path)
+    if not _is_detectable_format(file_path):
+        return {}, []
+
+    try:
+        result = get_cached("detect_file_parameters")(str(file_path))
+        return {
+            "delimiter": result.delimiter,
+            "decimal_separator": result.decimal_separator,
+            "has_header": result.has_header,
+            "encoding": result.encoding,
+        }, list(result.warnings or [])
+    except Exception as e:
+        return {}, [f"CSV auto-detection failed for {detected_file.filename}: {e}"]
+
+
+def _set_non_spectral_file_overrides(
+    files: list[DetectedFile],
+    parsing_options: dict[str, Any],
+) -> list[str]:
+    """Keep target and metadata parsing independent from spectral headers."""
+    warnings: list[str] = []
+    for detected_file in files:
+        if detected_file.type not in {"Y", "metadata"}:
+            continue
+
+        file_options, file_warnings = _detect_file_parsing_options(detected_file)
+        warnings.extend(file_warnings)
+        if not file_options:
+            continue
+
+        overrides = {
+            key: value
+            for key, value in file_options.items()
+            if key in _FILE_OVERRIDE_KEYS and parsing_options.get(key) != value
+        }
+        detected_file.overrides = overrides or None
+
+    return warnings
+
+
 def _extract_metadata_columns(
     metadata_files: list[DetectedFile],
     parsing_options: dict[str, Any],
@@ -305,11 +357,13 @@ def _extract_metadata_columns(
     if not metadata_files:
         return [], []
     try:
+        metadata_file = metadata_files[0]
+        effective_options = {**parsing_options, **(metadata_file.overrides or {})}
         _, _, _, headers, _ = get_cached("load_file")(
-            str(metadata_files[0].path),
-            delimiter=parsing_options.get("delimiter", ";"),
-            decimal_separator=parsing_options.get("decimal_separator", "."),
-            has_header=parsing_options.get("has_header", True),
+            str(metadata_file.path),
+            delimiter=effective_options.get("delimiter", ";"),
+            decimal_separator=effective_options.get("decimal_separator", "."),
+            has_header=effective_options.get("has_header", True),
             data_type="metadata",
             na_policy="ignore",
         )
@@ -329,6 +383,8 @@ def _finalize_detection_metadata(
     """
     x_files = [f for f in files if f.type == "X"]
     parsing_options, confidence, warnings = _detect_parsing_options(x_files)
+
+    warnings.extend(_set_non_spectral_file_overrides(files, parsing_options))
 
     metadata_files = [f for f in files if f.type == "metadata"]
     metadata_columns, meta_warnings = _extract_metadata_columns(metadata_files, parsing_options)

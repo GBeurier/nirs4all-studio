@@ -129,7 +129,24 @@ describe("datasetDrop", () => {
   });
 
   it("builds a wizard state from standard folder detection", async () => {
-    const detectUnified = vi.fn().mockResolvedValue(detectionResponse());
+    const response = detectionResponse({
+      files: [
+        ...detectionResponse().files,
+        {
+          path: "/data/ds/M.csv",
+          filename: "M.csv",
+          type: "metadata",
+          split: "train",
+          source: null,
+          format: "csv",
+          size_bytes: 100,
+          confidence: 0.9,
+          detected: true,
+          overrides: { has_header: true },
+        },
+      ],
+    });
+    const detectUnified = vi.fn().mockResolvedValue(response);
 
     await expect(
       resolveDatasetDrop(
@@ -148,6 +165,9 @@ describe("datasetDrop", () => {
         basePath: "/data/ds",
         skipToStep: "files",
         detectedParsing: { delimiter: "," },
+        perFileOverrides: {
+          "/data/ds/M.csv": { has_header: true },
+        },
         hasFoldFile: true,
         foldFilePath: "/data/ds/folds.csv",
         metadataColumns: ["batch"],

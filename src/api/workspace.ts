@@ -153,6 +153,7 @@ export async function convertLegacyWorkspace(options?: {
   verify?: boolean;
   dry_run?: boolean;
   strict?: boolean;
+  link_converted_workspace?: boolean;
 }): Promise<LegacyWorkspaceConversionResponse> {
   return api.post("/workspace/legacy-convert", options ?? {});
 }
