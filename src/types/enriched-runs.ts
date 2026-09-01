@@ -12,8 +12,11 @@ export interface EnrichedRun {
   engine?: string | null;
   engine_requested?: string | null;
   engine_diagnostics?: Array<Record<string, unknown>> | null;
+  runtime_source?: string | null;
+  runtime_manifest?: Record<string, unknown> | null;
   allow_fallback?: boolean;
   fallback_policy?: Record<string, unknown> | null;
+  native_result_refs?: unknown[] | null;
   project_id: string | null;
   project_name?: string | null;
   created_at: string;
@@ -175,8 +178,11 @@ export interface WorkspaceRunPipelineDetail {
   engine?: string | null;
   engine_requested?: string | null;
   engine_diagnostics?: Array<Record<string, unknown>> | null;
+  runtime_source?: string | null;
+  runtime_manifest?: Record<string, unknown> | null;
   allow_fallback?: boolean;
   fallback_policy?: Record<string, unknown> | null;
+  native_result_refs?: unknown[] | null;
   created_at: string;
   completed_at: string | null;
   best_val: number | null;
@@ -231,12 +237,16 @@ export interface WorkspaceRunDetail {
   rerun_ready?: boolean;
   unresolved_dataset_names?: string[];
   results_count?: number;
+  results?: Array<Record<string, unknown>>;
   execution_metadata?: Record<string, unknown> | null;
   engine?: string | null;
   engine_requested?: string | null;
   engine_diagnostics?: Array<Record<string, unknown>> | null;
+  runtime_source?: string | null;
+  runtime_manifest?: Record<string, unknown> | null;
   allow_fallback?: boolean;
   fallback_policy?: Record<string, unknown> | null;
+  native_result_refs?: unknown[] | null;
 }
 
 export interface WorkspaceRunPipelineLogsResponse {

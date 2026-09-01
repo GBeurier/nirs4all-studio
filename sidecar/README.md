@@ -62,18 +62,21 @@ projection internally, with an exact owner golden and the same immutable
 fail-closed rules. It intentionally does not register or select
 `GET /api/workspaces/:id/runs/:run_id`. The byte-identical owner
 `studio_run_detail_http_v1` contract (SHA-256
-`5661f99609e747bd581ecfd2be11306daadf004358cb494939978ca985f49e15`)
+`773ee2bd36e154a9090c8e2978c1f7703eebff68e02c0e3c2dab2ca30eeb0a8d`)
 explicitly sets `cutover.route_selection` to `forbidden`. Its owner oracle
-publishes splitter metadata, but the portable Store projection only carries
-`expanded_config`; reproducing the library-owned splitter extractor in Studio
-would cross the scientific boundary. The Store projection also omits the
-pipeline runtime columns used by the FastAPI adapter, while the contract marks
-both dataset-link and runtime policies `not_yet_published`. Finally, the
-legacy-manifest branch is `not_covered`, and the renderer transport has no
-versioned per-workspace Store-v5 preselection proof. Until those owner inputs
-and policies are published and exact differential goldens pass, the entire
-run-detail request stays on FastAPI. A native incompatibility must eventually
-return `409` with no retry, but no native run-detail request is selected today.
+publishes both splitter metadata and the optional pipeline runtime values with
+column provenance before the consumer boundary. The Studio-owned
+`studio_run_detail_composition_v1` contract (SHA-256
+`512a6f1d3aefc0362ff4f2f7aa2b94a4c833fb146063901f76de51844fb339ca`)
+freezes splitter presentation, runtime aggregation/propagation,
+linked-dataset mapping, and `rerun_ready`;
+Rust and FastAPI consume one differential golden without re-parsing
+`expanded_config`. The Store-v5 response branch is therefore proven, but the
+legacy-manifest branch remains `not_covered` and the renderer transport has no
+versioned per-workspace Store-v5 preselection proof. The entire run-detail
+request consequently stays on FastAPI. A native incompatibility must
+eventually return `409` with no retry, but no native run-detail request is
+selected today.
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a

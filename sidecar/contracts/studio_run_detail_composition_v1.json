@@ -1,0 +1,91 @@
+{
+  "schema_id": "nirs4all.studio-run-detail-composition.v1",
+  "schema_version": 1,
+  "owner_input": {
+    "contract": "nirs4all.studio-run-detail-http.v1",
+    "contract_sha256": "773ee2bd36e154a9090c8e2978c1f7703eebff68e02c0e3c2dab2ca30eeb0a8d",
+    "owner_commit": "3ed4f347e66ea20ad3db348e36e68a80ed382d97",
+    "required_source_branch": "store_v5",
+    "splitter_materialization": "owner_output_only_consumer_must_not_parse_expanded_config",
+    "ordered_arrays": ["run_detail.pipelines", "pipeline_splitters", "pipeline_runtime"],
+    "alignment_key": "pipeline_id",
+    "runtime_provenance_values": ["stored_column", "absent_in_store_v5"],
+    "malformed_or_misaligned_input": "reject"
+  },
+  "splitter_policy": {
+    "first_non_null_splitter": "first_in_owner_pipeline_order",
+    "reference_leaf_normalization": "trim_then_object_repr_path_then_final_dot_component_then_lowercase_without_leading_underscore",
+    "strategy_vocabulary": {
+      "kfold": "kfold",
+      "stratifiedkfold": "stratified_kfold",
+      "groupkfold": "group_kfold",
+      "stratifiedgroupkfold": "stratified_group_kfold",
+      "repeatedkfold": "repeated_kfold",
+      "repeatedstratifiedkfold": "repeated_stratified_kfold",
+      "leaveoneout": "loo",
+      "leavepout": "leave_p_out",
+      "shufflesplit": "shuffle_split",
+      "stratifiedshufflesplit": "stratified_shuffle_split",
+      "groupshufflesplit": "group_shuffle_split",
+      "timeseriessplit": "time_series_split",
+      "holdout": "holdout"
+    },
+    "unknown_strategy": "splitter_class_or_reference",
+    "run_config_fields": {
+      "cv_strategy": "mapped_reference_or_splitter_class_or_reference",
+      "splitter_class": "splitter_class_or_reference",
+      "cv_folds": "n_splits",
+      "random_state": "random_state",
+      "shuffle": "shuffle",
+      "test_size": "test_size",
+      "group_by": "group_by"
+    },
+    "run_config_merge": "non_null_inferred_then_non_null_stored_wins",
+    "pipeline_splitter_class": "own_splitter_class_or_reference_or_null"
+  },
+  "dataset_policy": {
+    "normalization": "object_entries_preserved_and_string_entries_trimmed_into_name_and_dataset_name",
+    "store_name_priority": ["dataset_name", "name", "dataset"],
+    "match_key": "unicode_alphanumeric_lowercase_else_underscore",
+    "linked_record_order": "preserved",
+    "matching_priority": [
+      "exact_casefolded_name_or_exact_match_key_first_match",
+      "longest_linked_path_basename_match_key_prefix",
+      "longest_linked_name_match_key_prefix"
+    ],
+    "valid_existing_linked_dataset_id": "preserve",
+    "unresolved_dataset_names": "ordered_string_of_name_or_empty_for_entries_without_linked_dataset_id"
+  },
+  "runtime_policy": {
+    "run_seed": "stored_run_config_requested_engine_and_fallback_policy",
+    "requested_engine_aliases": ["engine_requested", "requested_engine", "engineRequested", "requestedEngine"],
+    "actual_engine_aliases": ["engine_actual", "actual_engine", "engineActual", "actualEngine", "runtime_manifest.engine", "engine"],
+    "diagnostics_aliases": ["engine_diagnostics", "engineDiagnostics", "diagnostics", "rt_errors", "rtErrors"],
+    "manifest_aliases": ["runtime_manifest", "runtimeManifest", "manifest"],
+    "fallback_policy_aliases": ["fallback_policy", "fallbackPolicy"],
+    "native_result_ref_aliases": ["native_result_refs", "nativeResultRefs", "artifacts"],
+    "nested_carriers": ["execution_metadata", "executionMetadata", "metadata", "rt_result", "rtResult", "runtime_result", "runtimeResult", "runtime", "runtime.result"],
+    "selected_pipeline": "first_actual_engine_different_from_requested_else_first_actual_engine",
+    "run_field_copy": ["engine", "runtime_source", "runtime_manifest", "native_result_refs"],
+    "diagnostics": "owner_pipeline_order_deduplicated_by_canonical_json",
+    "allow_fallback": "boolean_fallback_policy.allow_fallback_only",
+    "pipeline_propagation": ["engine_requested", "fallback_policy", "allow_fallback"],
+    "absent_runtime_column": "omit_raw_pipeline_field_before_normalization",
+    "stored_null_runtime_column": "preserve_null_raw_pipeline_field"
+  },
+  "response_policy": {
+    "start": "deep_clone_owner_output.run_detail",
+    "results": "deep_clone_owner_output.results",
+    "results_count": "owner_output.results_count_equal_to_results_length",
+    "rerun_ready": "unresolved_dataset_names_is_empty_and_pipeline_count_is_greater_than_zero",
+    "writes_or_cache": "forbidden",
+    "fallback_after_native_selection": "none"
+  },
+  "cutover": {
+    "store_branch_composition_proven": true,
+    "route_selection": "forbidden",
+    "blocked_on": ["studio_workspace_manifest_run_detail_v1_or_preselection_proof"],
+    "legacy_manifest_branch_proven": false,
+    "fallback_after_native_selection": "none"
+  }
+}
