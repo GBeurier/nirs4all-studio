@@ -45,6 +45,17 @@ interface NativeSidecarInfo {
   error?: string;
 }
 
+interface WorkspaceRunDetailPreselection {
+  schema_id: "nirs4all.studio-run-detail-preselection-decision.v1";
+  workspace_id: string;
+  target: "native-sidecar" | "scientific-plugin" | "reject";
+  verified_store_v5: boolean;
+  store_schema_version: 5 | null;
+  reason: string;
+  fallback_after_native_selection: "none";
+  status: number;
+}
+
 interface ControlPlaneInfo extends NativeSidecarInfo {
   role: "control-plane";
   ready: boolean;
@@ -184,6 +195,11 @@ interface ElectronApi {
 
   /** Get the explicit native-sidecar diagnostic state. */
   getNativeSidecarInfo(): Promise<NativeSidecarInfo>;
+
+  /** Select one linked-workspace run-detail target before its HTTP request. */
+  preselectWorkspaceRunDetail(
+    workspaceId: string,
+  ): Promise<WorkspaceRunDetailPreselection>;
 
   /** Read the mandatory Rust control-plane state without starting Python. */
   getControlPlaneInfo(): Promise<ControlPlaneInfo>;

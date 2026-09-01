@@ -23,6 +23,7 @@ nursery = "warn"
 atomicwrites = "0.4.4"
 base64 = "0.22"
 nirs4all = "=0.3.22"
+percent-encoding = "2.3"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde_json = "1.0"
 serde_yaml = "0.9"

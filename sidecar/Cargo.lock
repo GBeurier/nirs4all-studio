@@ -653,6 +653,7 @@ dependencies = [
  "atomicwrites",
  "base64",
  "nirs4all",
+ "percent-encoding",
  "rusqlite",
  "serde_json",
  "serde_yaml",

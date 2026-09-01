@@ -13,6 +13,8 @@ R1 provides a small local HTTP control surface only:
 - `GET /sidecar/v1/capabilities`
 - `GET /sidecar/v1/python/preflight` (only checks a configured local Python
   host can `import nirs4all`; it does not run a scientific job)
+- `GET /sidecar/v1/workspaces/:id/run-detail-preselection` (read-only Store-v5
+  eligibility proof; it cannot select the unregistered run-detail target)
 - `POST /sidecar/v1/jobs` (creates a non-scientific, in-memory control record)
 - `GET /sidecar/v1/jobs/{job_id}`
 - `POST /sidecar/v1/jobs/{job_id}/cancel`
@@ -71,12 +73,27 @@ column provenance before the consumer boundary. The Studio-owned
 freezes splitter presentation, runtime aggregation/propagation,
 linked-dataset mapping, and `rerun_ready`;
 Rust and FastAPI consume one differential golden without re-parsing
-`expanded_config`. The Store-v5 response branch is therefore proven, but the
-legacy-manifest branch remains `not_covered` and the renderer transport has no
-versioned per-workspace Store-v5 preselection proof. The entire run-detail
-request consequently stays on FastAPI. A native incompatibility must
-eventually return `409` with no retry, but no native run-detail request is
-selected today.
+`expanded_config`. The Store-v5 composition fixture and FastAPI differential
+are therefore proven. The versioned `studio_run_detail_preselection_v1`
+contract (SHA-256
+`0067c85d4c542a3d210664dcd1628820dcc1713e1f82171f88d9f8292d702044`)
+now also resolves each linked workspace ID through the native
+catalogue and verifies the exact Store v5 schema, projection columns,
+immutable read, and journal policy once per request without caching. Missing
+stores and old schemas select FastAPI before the target request; busy,
+unreadable, or incomplete v5 stores reject without a target request.
+
+Run-detail cutover nevertheless remains fail-closed. The current Rust reader
+publishes `studio_run_detail_v1`, while the composition boundary requires the
+owner-produced `studio_run_detail_http_inputs_v1` envelope (including
+materialized splitter rows, runtime provenance, and result rows). Splitters
+are not persisted as Store-v5 columns, and the consumer is forbidden to
+recover them by parsing `expanded_config`. Until a library-owned materializer
+boundary publishes that exact envelope, verified Store-v5 preselection returns
+`409` with reason
+`studio_run_detail_http_inputs_v1_materializer_unavailable`, the native target
+route is unregistered, and the renderer continues to route the entire
+run-detail request to FastAPI.
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
