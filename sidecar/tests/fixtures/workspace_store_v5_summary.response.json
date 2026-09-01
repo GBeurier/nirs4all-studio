@@ -7,9 +7,9 @@
       "task_type": "regression",
       "top_chains": [
         {
-          "chain_id": "75e7687a-a539-57f8-9fd7-d7ae069e24a2",
+          "chain_id": "de4cc8ac-d115-52ab-b925-a9f66bc753d7",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "097546d2-3303-5c8b-b0d4-68a03b131429",
+          "pipeline_id": "3b03611c-f6e6-5ed7-9c9c-cd1f24dc8e6f",
           "pipeline_name": "Pipeline unknown-6",
           "model_name": "unknown-6",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -43,9 +43,9 @@
           "synthetic_refit": true
         },
         {
-          "chain_id": "fc628df8-c880-5297-bca5-a8e24fee3932",
+          "chain_id": "fa1a1e3d-3efe-5fda-b74e-34f5cd6c6a05",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "baf8e5b3-46a2-5efd-85e6-2e85ca7b575e",
+          "pipeline_id": "ba0eb3ba-d7ec-5e41-971b-dd5f5a58c481",
           "pipeline_name": "Pipeline unknown-5",
           "model_name": "unknown-5",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -79,9 +79,9 @@
           "synthetic_refit": true
         },
         {
-          "chain_id": "f96f4a01-51e3-5652-8a13-3958a644e565",
+          "chain_id": "2fd21c14-e185-5281-93f1-6380c0076e79",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "ed697635-b18b-5476-967a-cc737165566a",
+          "pipeline_id": "75e7687a-a539-57f8-9fd7-d7ae069e24a2",
           "pipeline_name": "Pipeline unknown-4",
           "model_name": "unknown-4",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -115,9 +115,9 @@
           "synthetic_refit": true
         },
         {
-          "chain_id": "8a861b40-7f14-575e-99f1-d61e0e6da3ac",
+          "chain_id": "78b3ac5b-3174-5b54-a6eb-1c8f9bb0bd91",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "3443d401-4a6f-561e-bf6a-47544b4877ec",
+          "pipeline_id": "fc628df8-c880-5297-bca5-a8e24fee3932",
           "pipeline_name": "Pipeline unknown-3",
           "model_name": "unknown-3",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -151,9 +151,9 @@
           "synthetic_refit": true
         },
         {
-          "chain_id": "f20f449f-0584-55e4-bc76-4b6e113b1fa1",
+          "chain_id": "1e87f08c-d0fc-5263-962b-521244a5e8fb",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "4900ffb7-04d6-53f6-8808-344d4a51d28b",
+          "pipeline_id": "f96f4a01-51e3-5652-8a13-3958a644e565",
           "pipeline_name": "Pipeline unknown-2",
           "model_name": "unknown-2",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -379,9 +379,45 @@
           "synthetic_refit": true
         },
         {
-          "chain_id": "c6e4f353-632c-51ff-b63e-a32c09bb2821",
+          "chain_id": "50ec2439-18a4-5645-abfd-d904620aed06",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "ecf0562c-8195-54cd-9c23-cf1dedf9f664",
+          "pipeline_id": "b32c0a00-5080-51e6-9910-1fcc0ba37156",
+          "pipeline_name": "Pipeline r2-refit-only-second",
+          "model_name": "r2-refit-only-second",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": null,
+          "avg_test_score": null,
+          "avg_train_score": null,
+          "fold_count": 0,
+          "scores": {},
+          "cv_source_chain_id": null,
+          "final_test_score": 0.76,
+          "final_train_score": 0.79,
+          "final_scores": {
+            "test": {
+              "r2": 0.76
+            },
+            "train": {
+              "r2": 0.79
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": false,
+          "is_refit_only": true
+        },
+        {
+          "chain_id": "aa99f6e8-da27-5fff-9ec2-77da38bf8049",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "ed749cf2-90b5-514c-9ab1-5cdb3752c894",
           "pipeline_name": "Pipeline r2-refit-only",
           "model_name": "r2-refit-only",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -467,9 +503,9 @@
       "task_type": "regression",
       "top_chains": [
         {
-          "chain_id": "aa99f6e8-da27-5fff-9ec2-77da38bf8049",
+          "chain_id": "b1505e5c-2f54-5159-81ee-79ee7310954a",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "ed749cf2-90b5-514c-9ab1-5cdb3752c894",
+          "pipeline_id": "6f6a3d11-390a-54a3-bbe8-43443616ddc5",
           "pipeline_name": "Pipeline rmse-best",
           "model_name": "rmse-best",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -503,45 +539,9 @@
           "synthetic_refit": true
         },
         {
-          "chain_id": "6f6a3d11-390a-54a3-bbe8-43443616ddc5",
+          "chain_id": "83dee3c4-3d1c-5934-92b4-83725735a8a2",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "202b0a89-b75d-59d7-959c-e6f9f386624e",
-          "pipeline_name": "Pipeline rmse-tie-a",
-          "model_name": "rmse-tie-a",
-          "model_class": "sklearn.cross_decomposition.PLSRegression",
-          "preprocessings": "SNV",
-          "avg_val_score": 0.12,
-          "avg_test_score": 0.14,
-          "avg_train_score": 0.09,
-          "fold_count": 1,
-          "scores": {
-            "val": {
-              "rmse": 0.12
-            }
-          },
-          "cv_source_chain_id": null,
-          "final_test_score": 0.14,
-          "final_train_score": 0.09,
-          "final_scores": {
-            "val": {
-              "rmse": 0.12
-            }
-          },
-          "final_agg_test_score": null,
-          "final_agg_train_score": null,
-          "final_agg_scores": {},
-          "best_params": null,
-          "variant_params": {
-            "n_components": 2,
-            "scale": true,
-            "shared": "pipeline"
-          },
-          "synthetic_refit": true
-        },
-        {
-          "chain_id": "b32c0a00-5080-51e6-9910-1fcc0ba37156",
-          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "4451e359-5880-5b26-982e-b87ced494214",
+          "pipeline_id": "668b4973-30df-5d48-a778-dbaddf2fcebf",
           "pipeline_name": "Pipeline rmse-tie-z",
           "model_name": "rmse-tie-z",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -575,9 +575,45 @@
           "synthetic_refit": true
         },
         {
-          "chain_id": "668b4973-30df-5d48-a778-dbaddf2fcebf",
+          "chain_id": "cab2dba7-ae2f-517f-bb79-8aa805bc82cc",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "f1d5819b-932f-504f-9fb7-748a7b1a9977",
+          "pipeline_id": "62a235d2-e6c0-5458-baa4-11820f541260",
+          "pipeline_name": "Pipeline rmse-tie-a",
+          "model_name": "rmse-tie-a",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.12,
+          "avg_test_score": 0.14,
+          "avg_train_score": 0.09,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "rmse": 0.12
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.14,
+          "final_train_score": 0.09,
+          "final_scores": {
+            "val": {
+              "rmse": 0.12
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "ca1a6969-7694-5cdc-b97f-9cb093d81b56",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "1ba52ac9-2ddd-5262-864f-e4af97219585",
           "pipeline_name": "Pipeline rmse-fourth",
           "model_name": "rmse-fourth",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -611,9 +647,9 @@
           "synthetic_refit": true
         },
         {
-          "chain_id": "62a235d2-e6c0-5458-baa4-11820f541260",
+          "chain_id": "db0194f6-5c91-5b31-bbe5-c6de8bdffd55",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "461f3001-dba7-5e1b-919f-8c2e31c3017f",
+          "pipeline_id": "d129f7f4-70e5-5125-a60b-e2a0fe3c4170",
           "pipeline_name": "Pipeline rmse-fifth",
           "model_name": "rmse-fifth",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -647,9 +683,9 @@
           "synthetic_refit": true
         },
         {
-          "chain_id": "621a9d30-3b0b-5ec0-83da-42bd52e457b9",
+          "chain_id": "c3fe4ea4-3cba-52b9-b6f5-80327b8d84e7",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "fb64e7ff-f8fb-5f76-8439-224a34e07836",
+          "pipeline_id": "f20f449f-0584-55e4-bc76-4b6e113b1fa1",
           "pipeline_name": "Pipeline rmse-refit-only",
           "model_name": "rmse-refit-only",
           "model_class": "sklearn.cross_decomposition.PLSRegression",
@@ -683,9 +719,9 @@
           "is_refit_only": true
         },
         {
-          "chain_id": "1ba52ac9-2ddd-5262-864f-e4af97219585",
+          "chain_id": "621a9d30-3b0b-5ec0-83da-42bd52e457b9",
           "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
-          "pipeline_id": "6258a51a-8308-5416-8ef6-7d290c9c5b1b",
+          "pipeline_id": "fb64e7ff-f8fb-5f76-8439-224a34e07836",
           "pipeline_name": "Pipeline rmse-best-final-outside-top5",
           "model_name": "rmse-best-final-outside-top5",
           "model_class": "sklearn.cross_decomposition.PLSRegression",

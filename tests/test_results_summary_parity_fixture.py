@@ -52,6 +52,7 @@ def test_committed_store_fixture_replays_exact_results_summary_oracle(tmp_path: 
         "r2-third",
         "r2-fourth",
         "r2-fifth",
+        "r2-refit-only-second",
         "r2-refit-only",
         "r2-best-final-outside-top5",
     ]
@@ -61,6 +62,7 @@ def test_committed_store_fixture_replays_exact_results_summary_oracle(tmp_path: 
         "scale": True,
         "shared": "best",
     }
+    assert r2["top_chains"][-3]["is_refit_only"] is True
     assert r2["top_chains"][-2]["is_refit_only"] is True
     assert r2["top_chains"][-1]["final_test_score"] == 0.99
 
@@ -68,8 +70,8 @@ def test_committed_store_fixture_replays_exact_results_summary_oracle(tmp_path: 
     assert rmse["linked_dataset_id"] == "dataset-rmse-folder"
     assert [chain["model_name"] for chain in rmse["top_chains"][:5]] == [
         "rmse-best",
-        "rmse-tie-a",
         "rmse-tie-z",
+        "rmse-tie-a",
         "rmse-fourth",
         "rmse-fifth",
     ]
@@ -81,8 +83,16 @@ def test_committed_store_fixture_replays_exact_results_summary_oracle(tmp_path: 
     database_uri = f"file:{database_copy}?mode=ro"
     with sqlite3.connect(database_uri, uri=True) as connection:
         null_rows = connection.execute("SELECT model_name, cv_val_score FROM v_chain_summary WHERE model_name LIKE '%null-cv'").fetchall()
+        final_ties = connection.execute(
+            "SELECT model_name, chain_id FROM chains WHERE model_name LIKE 'r2-best-final%' ORDER BY chain_id ASC"
+        ).fetchall()
     assert len(null_rows) == 2
     assert all(row[1] is None for row in null_rows)
+    assert final_ties == [
+        ("r2-best-final-outside-top5", "175ec185-ffb5-5788-9e51-f6185a2e582c"),
+        ("r2-best-final-tie", "3cb8e83e-ae7f-51bd-a20f-fdcfda63a82d"),
+    ]
+    assert r2["top_chains"][-1]["chain_id"] == final_ties[0][1]
 
     # The public summary policy applies its higher-is-better default to every
     # ranking stage for an unknown metric.
@@ -96,6 +106,6 @@ def test_committed_store_fixture_replays_exact_results_summary_oracle(tmp_path: 
         "unknown-2",
     ]
 
-    # SQL ties follow the owner-defined chain_id ascending tie breaker.
+    # Top-CV SQL ties follow the owner-defined chain_id ascending tie breaker.
     rmse_ties = rmse["top_chains"][1:3]
     assert rmse_ties[0]["chain_id"] < rmse_ties[1]["chain_id"]

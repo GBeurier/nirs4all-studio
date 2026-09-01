@@ -225,8 +225,10 @@ def _populate(store: WorkspaceStore) -> None:
     _add_chain(store, run_id, label="r2-fourth", dataset_name="R2 Exact", metric="r2", cv_val=0.85, cv_test=0.84, cv_train=0.91)
     _add_chain(store, run_id, label="r2-fifth", dataset_name="R2 Exact", metric="r2", cv_val=0.80, cv_test=0.79, cv_train=0.88)
     _add_chain(store, run_id, label="r2-best-final-outside-top5", dataset_name="R2 Exact", metric="r2", cv_val=0.10, cv_test=0.11, cv_train=0.20, final_test=0.99, final_train=1.0)
+    _add_chain(store, run_id, label="r2-best-final-tie", dataset_name="R2 Exact", metric="r2", cv_val=0.09, cv_test=0.10, cv_train=0.19, final_test=0.99, final_train=1.0)
     _add_chain(store, run_id, label="r2-null-cv", dataset_name="R2 Exact", metric="r2")
     _add_chain(store, run_id, label="r2-refit-only", dataset_name="R2 Exact", metric="r2", final_test=0.77, final_train=0.80, final_agg_test=0.78)
+    _add_chain(store, run_id, label="r2-refit-only-second", dataset_name="R2 Exact", metric="r2", final_test=0.76, final_train=0.79)
 
     # Lower-is-better RMSE. Folder-prefix dataset linking is exercised by the
     # stored dataset name starting with the linked path's folder name.
@@ -253,7 +255,7 @@ def _populate(store: WorkspaceStore) -> None:
             cv_train=score,
         )
 
-    store.complete_run(run_id, {"pipelines": 22})
+    store.complete_run(run_id, {"pipelines": 24})
 
 
 def generate(output_dir: Path) -> dict:
