@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **nirs4all Studio** (npm package name `nirs4all-webapp`) — a desktop/web app for Near-Infrared Spectroscopy analysis. React 19 + Vite + TypeScript provides the renderer (`src/`), the Rust sidecar is the packaged product backend (`sidecar/`), and Electron is the desktop shell (`electron/`). FastAPI (`api/` + `main.py`) is retained only for web development and explicit process-wide diagnostics. Scientific Python runs as a bounded library/plugin host behind Rust.
 
-**The cardinal rule (see `AGENTS.md`):** Rust owns product HTTP routing, request validation, jobs, WebSockets, scheduler/control, workspace/UI state, and adapters. It NEVER reimplements NIRS / data / ML logic; that belongs to `nirs4all`, invoked through a bounded Rust-to-CPython stdio host. Python must not own a product port or silently become a route fallback. The product starts with the Python host absent; scientific capabilities then remain unavailable while Rust stays active.
+**The cardinal rule (see `AGENTS.md`):** Rust owns product HTTP routing, request validation, jobs, WebSockets, scheduler/control, workspace/UI state, and adapters. It NEVER reimplements NIRS / data / ML logic; that belongs to `nirs4all`, invoked through a bounded Rust-to-CPython stdio host. Python must not own a product port or silently become a route fallback. If the configured Python host is absent or invalid, Rust remains active and scientific capabilities stay unavailable.
 
 ## Commands
 
@@ -65,7 +65,7 @@ The pipeline editor's palette of "nodes" (preprocessing / model / splitting / y-
 When you add or change a node, regenerate the artifacts and then run `validate:nodes`.
 
 ### Electron shell (`electron/`)
-`main.ts` freezes one renderer policy; `native-sidecar-lifecycle.ts` starts/verifies Rust; `renderer-transport-selection.ts` preselects each request/connection; `preload.ts` exposes IPC; `backend-manager.ts` manages only the optional diagnostic FastAPI process; and `env-manager.ts` provisions the embedded CPython library host. Electron `*.test.ts` files run under Vitest. Packaging configs: `electron-builder.installer.yml`, `electron-builder.archive.yml`.
+`main.ts` freezes one renderer policy; `native-session-lifecycle.ts` starts/verifies Rust; `renderer-transport-selection.ts` preselects each request/connection; `preload.ts` exposes IPC; `backend-manager.ts` manages only the optional diagnostic FastAPI process; and `env-manager.ts` provisions the embedded CPython library host. Electron `*.test.ts` files run under Vitest. Packaging configs: `electron-builder.installer.yml`, `electron-builder.archive.yml`.
 
 ## Conventions worth knowing
 - **Backend runtime deps have one source of truth:** `BACKEND_COMMON_PACKAGES` in `scripts/python-runtime-config.cjs`. `requirements.txt`, `requirements-cpu.txt`, and `backend.spec` hiddenimports must all agree with it — `npm run lint:deps` fails the gate on drift (`nirs4all` and `pyinstaller` are excluded from the set).
