@@ -40,13 +40,14 @@
     "pipeline_runner_construction": "forbidden",
     "consumer_parse_expanded_config": "forbidden",
     "status": "available_and_qualified",
-    "route_registration": "exact_store_v5_and_configured_preflighted_host_only"
+    "route_surface_registration": "always_registered_native_fail_closed",
+    "target_activation": "exact_store_v5_and_configured_preflighted_host_only"
   },
   "bridge_bounds": {
     "isolated_mode": "-I",
     "request_transport": "strict_json_stdin",
     "input_bytes": 8192,
-    "preflight_timeout_ms": 3000,
+    "preflight_timeout_ms": 15000,
     "request_timeout_ms": 15000,
     "stdout_bytes": 4194304,
     "stderr_bytes": 65536,
@@ -89,7 +90,7 @@
     "owner_http_contract": "nirs4all.studio-run-detail-http.v1",
     "owner_http_contract_sha256": "8230963eeb317ccacf5fa83a29fec730a830ebbb81ead9d16629251a1993ab1e",
     "legacy_branch": "not_reimplemented_native_selected_scientific_plugin_before_target_request",
-    "route_status": "conditionally_registered",
+    "route_status": "registered_with_per_request_fail_closed_activation",
     "blocked_on": null
   }
 }

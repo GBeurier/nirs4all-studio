@@ -80,7 +80,7 @@ Rust and FastAPI consume one differential golden without re-parsing
 `expanded_config`. The Store-v5 composition fixture and FastAPI differential
 are therefore proven. The versioned `studio_run_detail_preselection_v1`
 contract (SHA-256
-`7adf737f2025d4491fae30194b65aa7c5d48fe55a6c5c3341a4d8dc17a344adc`)
+`42b076b3cc31c167ac4366eaabb394876d84c40a044991217e2f2823a57b92c4`)
 now also resolves each linked workspace ID through the native
 catalogue and verifies the exact Store v5 schema, projection columns,
 immutable read, and journal policy once per request without caching. Missing
@@ -89,8 +89,10 @@ unreadable, or incomplete v5 stores reject without a target request.
 
 Exact Store v5 now selects the native run-detail target only when the explicit
 CPython library host is configured and preflights the exact owner callable.
-Each preflight and target uses a fresh isolated (`-I`) process, strict JSON
-stdin, a 3/15 second deadline, 8 KiB input, 4 MiB stdout, and 64 KiB stderr
+The route surface is always registered but remains fail-closed; static
+capabilities distinguish that surface from host configuration and never claim
+scientific Python execution. Each preflight and target uses a fresh isolated
+(`-I`) process, strict JSON stdin, a 15 second deadline, 8 KiB input, 4 MiB stdout, and 64 KiB stderr
 bounds. Rust validates the exact seven-field owner envelope, composes the HTTP
 response, and never exposes stderr or the resolved workspace path. Missing or
 old stores select the transitional scientific plugin before the target HTTP

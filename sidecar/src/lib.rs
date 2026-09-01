@@ -475,7 +475,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":{python_plugin_configured},\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{python_plugin_configured}}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -3182,15 +3182,23 @@ mod tests {
             capabilities["api_route_coverage"],
             "bootstrap_system_and_app_catalog"
         );
-        assert_eq!(capabilities["features"]["app_settings_routes"], true);
-        assert_eq!(capabilities["features"]["app_config_path_routes"], true);
+        for feature in [
+            "app_settings_routes",
+            "app_config_path_routes",
+            "linked_workspace_catalog_route",
+            "workspace_store_v5_run_summary_route",
+        ] {
+            assert_eq!(capabilities["features"][feature], true);
+        }
+        for feature in [
+            "workspace_store_v5_run_detail_route",
+            "run_detail_owner_preflight_per_request",
+        ] {
+            assert_eq!(capabilities["features"][feature], true);
+        }
         assert_eq!(
-            capabilities["features"]["linked_workspace_catalog_route"],
-            true
-        );
-        assert_eq!(
-            capabilities["features"]["workspace_store_v5_run_summary_route"],
-            true
+            capabilities["features"]["run_detail_owner_host_configured"],
+            false
         );
         assert_eq!(
             capabilities["features"]["workspace_store_v5_pipeline_summary_route"],
@@ -3256,10 +3264,15 @@ mod tests {
             configured_capabilities["features"]["python_plugin_preflight"],
             true
         );
-        assert_eq!(
-            configured_capabilities["features"]["scientific_execution"],
-            false
-        );
+        for feature in ["scientific_execution", "python_plugin_execution"] {
+            assert_eq!(configured_capabilities["features"][feature], false);
+        }
+        for feature in [
+            "workspace_store_v5_run_detail_route",
+            "run_detail_owner_host_configured",
+        ] {
+            assert_eq!(configured_capabilities["features"][feature], true);
+        }
 
         let failed = route_request(&mut configured, "GET", "/sidecar/v1/python/preflight");
         assert_eq!(failed.status, 503);

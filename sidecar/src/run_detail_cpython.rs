@@ -17,7 +17,7 @@ use std::{
 
 use serde_json::{json, Value};
 
-pub const RUN_DETAIL_OWNER_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(3);
+pub const RUN_DETAIL_OWNER_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(15);
 pub const RUN_DETAIL_OWNER_TIMEOUT: Duration = Duration::from_secs(15);
 pub const MAX_RUN_DETAIL_OWNER_INPUT_BYTES: usize = 8 * 1024;
 pub const MAX_RUN_DETAIL_OWNER_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
