@@ -15,7 +15,6 @@ pub const STUDIO_RUN_DETAIL_PRESELECTION_CONTRACT: &str =
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RunDetailTarget {
     NativeSidecar,
-    ScientificPlugin,
     Reject,
 }
 
@@ -35,7 +34,6 @@ impl RunDetailPreselection {
             "workspace_id": workspace_id,
             "target": match self.target {
                 RunDetailTarget::NativeSidecar => "native-sidecar",
-                RunDetailTarget::ScientificPlugin => "scientific-plugin",
                 RunDetailTarget::Reject => "reject",
             },
             "verified_store_v5": self.verified_store_v5,
@@ -77,16 +75,16 @@ pub fn preselect_run_detail(
             },
         },
         Err(WorkspaceStoreReadError::StoreNotFound) => RunDetailPreselection {
-            target: RunDetailTarget::ScientificPlugin,
+            target: RunDetailTarget::Reject,
             verified_store_v5: false,
-            reason: "legacy_manifest_or_store_absent",
-            status: 200,
+            reason: "legacy_manifest_or_store_absent_rust_only",
+            status: 501,
         },
         Err(WorkspaceStoreReadError::SchemaVersion { .. }) => RunDetailPreselection {
-            target: RunDetailTarget::ScientificPlugin,
+            target: RunDetailTarget::Reject,
             verified_store_v5: false,
-            reason: "legacy_store_schema",
-            status: 200,
+            reason: "legacy_store_schema_rust_only",
+            status: 501,
         },
         Err(
             WorkspaceStoreReadError::LiveJournal(_) | WorkspaceStoreReadError::ChangedDuringRead,

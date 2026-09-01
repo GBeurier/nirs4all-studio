@@ -115,6 +115,14 @@ fn contract_freezes_per_request_preselection_and_no_native_fallback() {
         true
     );
     assert_eq!(
+        contract["decisions"]["scientific-plugin"]["implicit_selection"],
+        "forbidden"
+    );
+    assert_eq!(
+        contract["transport"]["sidecar_unavailable_before_selection"],
+        "reject_503"
+    );
+    assert_eq!(
         contract["transport"]["fallback_after_native_selection"],
         "none"
     );
@@ -155,7 +163,7 @@ fn contract_freezes_per_request_preselection_and_no_native_fallback() {
 }
 
 #[test]
-fn exact_store_v5_is_verified_but_blocked_legacy_is_python_and_busy_is_rejected() {
+fn exact_store_v5_is_verified_but_legacy_and_busy_are_rejected() {
     let root = test_directory();
     let config = root.join("config");
     let native = root.join("native");
@@ -207,9 +215,13 @@ fn exact_store_v5_is_verified_but_blocked_legacy_is_python_and_busy_is_rejected(
             &mut state,
             &format!("/sidecar/v1/workspaces/{workspace_id}/run-detail-preselection"),
         );
-        assert_eq!(status, 200);
-        assert_eq!(body["target"], "scientific-plugin");
+        assert_eq!(status, 501);
+        assert_eq!(body["target"], "reject");
         assert_eq!(body["verified_store_v5"], false);
+        assert!(body["reason"]
+            .as_str()
+            .expect("reason must be a string")
+            .ends_with("_rust_only"));
     }
 
     let (busy_status, busy_body) = json_response(

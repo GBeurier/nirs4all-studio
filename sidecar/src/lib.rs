@@ -541,7 +541,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"durable_execution_job_record_reads\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"durable_execution_job_record_reads\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -3604,6 +3604,8 @@ mod tests {
             "renderer_transport_selection",
             "renderer_http_transport",
             "renderer_websocket_transport",
+            "renderer_rust_only_default",
+            "unmigrated_renderer_routes_fail_closed",
         ] {
             assert_eq!(capabilities["features"][feature], true, "{feature}");
         }
@@ -3611,13 +3613,11 @@ mod tests {
             "legacy_api_routes",
             "scientific_execution",
             "python_plugin_execution",
+            "implicit_python_http_fallback",
+            "unmigrated_api_routes_require_legacy_backend",
         ] {
             assert_eq!(capabilities["features"][feature], false, "{feature}");
         }
-        assert_eq!(
-            capabilities["features"]["unmigrated_api_routes_require_legacy_backend"],
-            true
-        );
         assert_eq!(
             capabilities["features"]["run_detail_owner_host_configured"],
             configured

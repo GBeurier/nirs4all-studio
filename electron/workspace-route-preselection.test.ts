@@ -35,7 +35,7 @@ describe("workspace run-detail route preselection", () => {
     );
   });
 
-  it("selects the scientific plugin before HTTP when the sidecar is unavailable", async () => {
+  it("rejects before HTTP when the native sidecar is unavailable", async () => {
     const request = vi.fn();
     const decision = await preselectWorkspaceRunDetail(
       "workspace-a",
@@ -43,9 +43,56 @@ describe("workspace run-detail route preselection", () => {
       request,
     );
 
-    expect(decision.target).toBe("scientific-plugin");
+    expect(decision.target).toBe("reject");
     expect(decision.reason).toBe("native_sidecar_unavailable");
+    expect(decision.status).toBe(503);
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("selects legacy run detail only in explicit session-wide diagnostic mode", async () => {
+    const request = vi.fn();
+    const info = vi.fn(() => ({
+      status: "running" as const,
+      url: "http://127.0.0.1:43123",
+    }));
+
+    await expect(preselectWorkspaceRunDetail(
+      "workspace-a",
+      info,
+      request,
+      { pythonHttpDiagnosticEnabled: true },
+    )).resolves.toMatchObject({
+      target: "scientific-plugin",
+      reason: "explicit_python_http_diagnostic_mode",
+      fallback_after_native_selection: "none",
+    });
+    expect(info).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("converts a legacy sidecar decision into a Rust-only refusal", async () => {
+    const request = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        schema_id: "nirs4all.studio-run-detail-preselection-decision.v1",
+        workspace_id: "workspace-a",
+        target: "scientific-plugin",
+        verified_store_v5: false,
+        store_schema_version: null,
+        reason: "legacy_manifest_or_store_absent",
+        fallback_after_native_selection: "none",
+      }), { status: 200 }),
+    );
+
+    await expect(preselectWorkspaceRunDetail(
+      "workspace-a",
+      () => ({ status: "running", url: "http://127.0.0.1:43123" }),
+      request,
+    )).resolves.toMatchObject({
+      target: "reject",
+      reason: "workspace_not_native_qualified_rust_only",
+      status: 501,
+    });
+    expect(request).toHaveBeenCalledOnce();
   });
 
   it("rejects an unreachable or malformed native verifier instead of guessing", async () => {

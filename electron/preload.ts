@@ -76,6 +76,8 @@ const electronApi = {
     url: string;
     error?: string;
     restartCount: number;
+    httpMode?: "rust-only" | "python-http-diagnostic";
+    activationSource?: "default" | "explicit-cli" | "explicit-dev-env";
   }> => ipcRenderer.invoke("backend:getInfo"),
 
   getNativeSidecarInfo: (): Promise<{
@@ -146,6 +148,8 @@ const electronApi = {
     url: string | null;
     error?: string;
     restartCount: number;
+    httpMode?: "rust-only" | "python-http-diagnostic";
+    activationSource?: "default" | "explicit-cli" | "explicit-dev-env";
   }> => ipcRenderer.invoke("scientific:getInfo"),
 
   getScientificPluginUrl: (): Promise<string> =>
@@ -215,6 +219,7 @@ const electronApi = {
   getScientificReadiness: (): Promise<{
     scientific_status: string;
     scientific_requested: boolean;
+    python_http_mode?: "rust-only" | "python-http-diagnostic";
     ml_ready: boolean;
     ml_loading: boolean;
     ml_error: string | null;

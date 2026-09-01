@@ -24,6 +24,31 @@ fn strings(value: &Value) -> BTreeSet<&str> {
         .collect()
 }
 
+fn assert_renderer_rust_only_contract(renderer: &Value) {
+    assert_eq!(
+        renderer["selection"]["default_session_owner"],
+        "native-sidecar"
+    );
+    assert_eq!(
+        renderer["selection"]["unmigrated_before_native_selection"],
+        "reject"
+    );
+    assert_eq!(renderer["selection"]["unmigrated_status"], 501);
+    assert_eq!(
+        renderer["selection"]["implicit_python_http_acquisition"],
+        "forbidden"
+    );
+    assert_eq!(renderer["python_http_diagnostic"]["default"], false);
+    assert_eq!(
+        renderer["python_http_diagnostic"]["activation"],
+        "explicit_process_wide_only"
+    );
+    assert_eq!(
+        renderer["python_http_diagnostic"]["per_route_fallback"],
+        "forbidden"
+    );
+}
+
 #[test]
 fn native_job_lifecycle_contract_is_fail_closed_and_complete() {
     let root = studio_root();
@@ -119,6 +144,8 @@ fn websocket_cutover_contract_is_anchored_to_the_frozen_studio_v1_oracle() {
         })
         .collect::<BTreeSet<_>>();
     assert_eq!(contract_endpoints, oracle_endpoints);
+
+    assert_renderer_rust_only_contract(&renderer);
 
     let required_events = strings(&contract["legacy_websocket"]["required_emitted_job_events"]);
     for event in required_events {

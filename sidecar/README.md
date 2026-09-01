@@ -190,9 +190,13 @@ health and readiness match their frozen post-lifespan responses.
 `GET /sidecar/v1/capabilities` therefore reports
 `api_route_coverage: "bootstrap_system_and_app_catalog"`,
 `legacy_api_routes: false`, and
-`unmigrated_api_routes_require_legacy_backend: true`. These fields make the
-partial migration machine-readable: a caller must not treat the sidecar as
-full API parity or silently redirect an unmigrated product route to Python.
+`renderer_rust_only_default: true`,
+`unmigrated_renderer_routes_fail_closed: true`, and
+`implicit_python_http_fallback: false`. The retained compatibility backend is
+not required or selected by the normal renderer (`unmigrated_api_routes_require_legacy_backend`
+is `false`). These fields make the partial migration machine-readable: a
+caller must not treat the sidecar as full API parity or silently redirect an
+unmigrated product route to Python.
 The capability object separately advertises
 `native_job_status_routes: true`, `native_job_cancellation_routes: true`,
 `native_scientific_submission_routes: true`,

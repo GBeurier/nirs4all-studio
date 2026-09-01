@@ -65,7 +65,7 @@ function createElectronApiMock(
       target: "scientific-plugin",
       verified_store_v5: false,
       store_schema_version: null,
-      reason: "legacy_manifest_or_store_absent",
+      reason: "explicit_python_http_diagnostic_mode",
       fallback_after_native_selection: "none",
       status: 200,
     }),
@@ -151,12 +151,14 @@ function createElectronApiMock(
         kind: request.kind,
         method: request.kind === "http" ? request.method.toUpperCase() : null,
         path: request.path,
-        surface: native ? "test-native" : "unmigrated",
+        surface: native ? "test-native" : "python-http-diagnostic",
         target: native ? "native-sidecar" : "scientific-plugin",
         base_url: native ? info.url : null,
         renderer_transport: native,
         scientific_execution: false,
-        reason: native ? "test_native_preflight" : "test_unmigrated",
+        reason: native
+          ? "test_native_preflight"
+          : "explicit_python_http_diagnostic_mode",
         fallback_after_native_selection: "none",
         status: 200,
       };
@@ -227,12 +229,18 @@ function rendererSelection(
     kind: "http" as const,
     method,
     path,
-    surface: "test-surface",
+    surface: target === "scientific-plugin"
+      ? "python-http-diagnostic"
+      : "test-surface",
     target,
     base_url: target === "native-sidecar" ? "http://127.0.0.1:43123" : null,
     renderer_transport: target === "native-sidecar",
     scientific_execution: false as const,
-    reason: target === "reject" ? "native_capability_mismatch" : "test_selection",
+    reason: target === "reject"
+      ? "native_capability_mismatch"
+      : target === "scientific-plugin"
+        ? "explicit_python_http_diagnostic_mode"
+        : "test_selection",
     fallback_after_native_selection: "none" as const,
     status: target === "reject" ? 503 : 200,
   };
@@ -277,6 +285,9 @@ describe("API client request handling", () => {
         protocol_version: "studio-sidecar-r1",
         features: {
           renderer_transport_selection: true,
+          renderer_rust_only_default: true,
+          implicit_python_http_fallback: false,
+          unmigrated_renderer_routes_fail_closed: true,
           renderer_http_transport: true,
           scientific_submission_transport: true,
           scientific_execution: false,
@@ -343,7 +354,116 @@ describe("API client request handling", () => {
     expect(acquire).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the Electron scientific plugin cannot start", async () => {
+  it("keeps an unknown native job on Rust and never consults Python ownership", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        protocol_version: "studio-sidecar-r1",
+        features: {
+          renderer_transport_selection: true,
+          renderer_rust_only_default: true,
+          implicit_python_http_fallback: false,
+          unmigrated_renderer_routes_fail_closed: true,
+          renderer_http_transport: true,
+          native_job_status_routes: true,
+          scientific_execution: false,
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        detail: "Unknown native job 'job-missing'",
+      }, 404));
+    const acquire = vi.fn();
+    const inspectSidecar = vi.fn(() => ({
+      status: "running" as const,
+      url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: false,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl: acquire,
+      preselectRendererTransport: vi.fn((request: RendererTransportRequest) =>
+        preselectRendererTransport(request, inspectSidecar, fetchMock)),
+    });
+
+    await expect(api.get("/training/job-missing")).rejects.toMatchObject({
+      detail: "Unknown native job 'job-missing'",
+      status: 404,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unmigrated route in Rust-only mode before fetch or Python acquisition", async () => {
+    const fetchMock = vi.fn();
+    const acquire = vi.fn();
+    const inspectSidecar = vi.fn(() => ({
+      status: "running" as const,
+      url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: true,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl: acquire,
+      preselectRendererTransport: vi.fn((request: RendererTransportRequest) =>
+        preselectRendererTransport(request, inspectSidecar, fetchMock)),
+    });
+
+    await expect(api.get("/datasets")).rejects.toMatchObject({
+      detail: expect.stringContaining("route_not_native_qualified_rust_only"),
+      status: 501,
+      code: "STUDIO_NATIVE_ROUTE_UNAVAILABLE",
+    });
+    expect(inspectSidecar).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("acquires FastAPI only after an explicit diagnostic session decision", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ datasets: [] }));
+    const acquire = vi.fn().mockResolvedValue("http://127.0.0.1:39026");
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl: acquire,
+      preselectRendererTransport: vi.fn((request: RendererTransportRequest) =>
+        preselectRendererTransport(
+          request,
+          vi.fn(),
+          vi.fn(),
+          { pythonHttpDiagnosticEnabled: true },
+        )),
+    });
+
+    await api.get("/datasets");
+
+    expect(acquire).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:39026/api/datasets",
+      expect.any(Object),
+    );
+  });
+
+  it("refuses an implicit Python target even if IPC returns one", async () => {
+    const fetchMock = vi.fn();
+    const acquire = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl: acquire,
+      preselectRendererTransport: vi.fn().mockResolvedValue({
+        ...rendererSelection("GET", "/datasets", "scientific-plugin"),
+        surface: "unmigrated",
+        reason: "route_not_native_qualified",
+      }),
+    });
+
+    await expect(api.get("/datasets")).rejects.toMatchObject({
+      code: "STUDIO_INVALID_PYTHON_HTTP_SELECTION",
+      status: 500,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the explicitly selected diagnostic backend cannot start", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     window.electronApi = createElectronApiMock({
@@ -359,7 +479,7 @@ describe("API client request handling", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("retries once with a refreshed backend URL after a transient Electron fetch failure", async () => {
+  it("retries the same explicit diagnostic owner after a transient fetch failure", async () => {
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
@@ -1040,7 +1160,7 @@ describe("API client request handling", () => {
     );
   });
 
-  it("selects the legacy run-detail branch before its target HTTP request", async () => {
+  it("selects explicit diagnostic run-detail ownership before its target HTTP request", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({ detail: "Run 'missing-run' not found" }, 404),
     );
@@ -1059,7 +1179,7 @@ describe("API client request handling", () => {
       target: "scientific-plugin",
       verified_store_v5: false,
       store_schema_version: null,
-      reason: "legacy_manifest_or_store_absent",
+      reason: "explicit_python_http_diagnostic_mode",
       fallback_after_native_selection: "none",
       status: 200,
     });

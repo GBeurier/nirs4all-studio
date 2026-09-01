@@ -63,23 +63,25 @@
       "currently_reachable": true
     },
     "scientific-plugin": {
-      "condition": "store_sqlite_absent_or_schema_version_not_5",
+      "condition": "explicit_process_wide_python_http_diagnostic_mode_before_sidecar_probe",
       "verified_store_v5": false,
-      "meaning": "legacy_manifest_or_legacy_store_branch",
-      "selected_before_target_http": true
+      "meaning": "transitional_r2_diagnostic_session_owner",
+      "selected_before_target_http": true,
+      "sidecar_probe_count": 0,
+      "implicit_selection": "forbidden"
     },
     "reject": {
-      "condition": "workspace_missing_or_store_present_but_unreadable_busy_changed_projection_incomplete_or_owner_host_unconfigured_or_preflight_failed",
+      "condition": "workspace_missing_or_legacy_store_or_store_present_but_unreadable_busy_changed_projection_incomplete_or_owner_host_unconfigured_or_preflight_failed",
       "verified_store_v5": "boolean_preserved_from_store_preflight",
       "target_request_count": 0,
-      "http_status": [404, 409, 500]
+      "http_status": [404, 409, 500, 501, 503]
     }
   },
   "transport": {
     "native_route_requires_running_sidecar": true,
     "native_route_requires_configured_preflighted_python_library_host": true,
-    "sidecar_unavailable_before_selection": "scientific-plugin",
-    "scientific_plugin_acquired_only_after_decision": true,
+    "sidecar_unavailable_before_selection": "reject_503",
+    "scientific_plugin_acquired_only_after_explicit_process_wide_decision": true,
     "fallback_after_native_selection": "none",
     "native_network_retry": "none",
     "native_http_error_retry": "none"
@@ -89,7 +91,7 @@
     "composition_contract_sha256": "9090e2e0c68b3bf1dcc9ce0fcb99eb8ee69ab26f845c68cce56d8518aa4210f0",
     "owner_http_contract": "nirs4all.studio-run-detail-http.v1",
     "owner_http_contract_sha256": "8230963eeb317ccacf5fa83a29fec730a830ebbb81ead9d16629251a1993ab1e",
-    "legacy_branch": "not_reimplemented_native_selected_scientific_plugin_before_target_request",
+    "legacy_branch": "not_reimplemented_native_reject_501_in_rust_only_session",
     "route_status": "registered_with_per_request_fail_closed_activation",
     "blocked_on": null
   }

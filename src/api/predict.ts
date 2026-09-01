@@ -2,7 +2,7 @@
  * Predict API client functions.
  */
 
-import { api, getApiBaseUrl } from "./transport";
+import { api, requestForm } from "./transport";
 import type {
   AvailableModelsResponse,
   PredictRequest,
@@ -48,16 +48,9 @@ export async function runPredictionWithFile(
     formData.append("allow_fallback", String(options.allowFallback));
   }
 
-  const baseUrl = await getApiBaseUrl();
-  const response = await fetch(`${baseUrl}/predict/file`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
+  try {
+    return await requestForm<PredictResponse>("/predict/file", formData);
+  } catch (error) {
     throw new Error(predictionErrorMessage(error));
   }
-
-  return response.json();
 }

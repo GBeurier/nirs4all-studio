@@ -58,6 +58,31 @@ describe("ScientificPluginLifecycle", () => {
     expect(backend.start).not.toHaveBeenCalled();
   });
 
+  it("refuses before preparation or spawn when HTTP diagnostic mode is disabled", async () => {
+    const { backend } = makeBackend();
+    const prepare = vi.fn(async () => undefined);
+    const authorize = vi.fn(() => {
+      throw Object.assign(new Error("Rust-only Studio session"), {
+        code: "STUDIO_PYTHON_HTTP_DIAGNOSTIC_DISABLED",
+        status: 501,
+      });
+    });
+    const lifecycle = new ScientificPluginLifecycle(
+      backend,
+      prepare,
+      authorize,
+    );
+
+    await expect(lifecycle.getUrl()).rejects.toMatchObject({
+      code: "STUDIO_PYTHON_HTTP_DIAGNOSTIC_DISABLED",
+      status: 501,
+    });
+    expect(authorize).toHaveBeenCalledOnce();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(backend.start).not.toHaveBeenCalled();
+    expect(lifecycle.getInfo().requested).toBe(false);
+  });
+
   it("single-flights concurrent lazy acquisitions and waits for readiness", async () => {
     const { backend } = makeBackend();
     const prepare = vi.fn(async () => undefined);

@@ -70,13 +70,20 @@ At runtime, Electron resolves or creates a writable Python environment outside t
 - portable Windows app: `.nirs4all/` next to the executable
 
 Electron starts the packaged sidecar on every packaged desktop launch. Before
-the explicit Python library/plugin host is configured, Settings routes retain
-their compatibility/scientific-plugin transport. Changing the interpreter
-stops only that optional process; it never restarts the Rust sidecar. A running
-sidecar whose original plugin-host path became stale reports the optional host
-as unavailable until the next application launch, so route selection occurs
-before acquiring the compatibility process. The sidecar remains the HTTP owner
-for migrated routes and never launches FastAPI or Uvicorn.
+the explicit Python library/plugin host is configured, routes requiring that
+bounded stdio host refuse; they do not select FastAPI. Changing the interpreter
+stops only a diagnostic HTTP process if one was explicitly active; it never
+restarts the Rust sidecar. A running sidecar whose original plugin-host path
+became stale reports the optional host as unavailable until the next
+application launch. The sidecar remains the product HTTP owner and never
+launches FastAPI or Uvicorn.
+
+FastAPI source is retained in the R2 packages solely for an explicit diagnostic
+session selected with `--enable-python-http-diagnostic`. Packaged products are
+Rust-only by default and ignore environment-based diagnostic activation. The
+mode is process-wide, visible over backend/scientific IPC state, and cannot be
+selected as a per-request fallback. Physical removal of the retained FastAPI,
+PyInstaller, and requirements surfaces is the R3 DROP step.
 
 Packaged startup verifies the sidecar size and SHA-256 from
 `STUDIO_RUNTIME_CONTRACT.json` before spawning it. A missing or altered sidecar

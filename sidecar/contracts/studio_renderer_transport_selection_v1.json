@@ -16,10 +16,22 @@
   },
   "targets": ["native-sidecar", "scientific-plugin", "reject"],
   "selection": {
+    "default_session_owner": "native-sidecar",
     "native_qualified_unavailable_or_mismatch": "reject",
-    "unmigrated_before_native_selection": "scientific-plugin",
+    "unmigrated_before_native_selection": "reject",
+    "unmigrated_status": 501,
     "fallback_after_native_selection": "none",
-    "fastapi_or_uvicorn_acquire_after_native_candidate": "forbidden"
+    "fastapi_or_uvicorn_acquire_after_native_candidate": "forbidden",
+    "implicit_python_http_acquisition": "forbidden"
+  },
+  "python_http_diagnostic": {
+    "default": false,
+    "activation": "explicit_process_wide_only",
+    "packaged_activation": "--enable-python-http-diagnostic",
+    "development_environment_activation": "NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1",
+    "packaged_environment_activation": "forbidden",
+    "renderer_session_owner": "scientific-plugin",
+    "per_route_fallback": "forbidden"
   },
   "http": {
     "exact": [

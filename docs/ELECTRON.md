@@ -30,16 +30,19 @@ nirs4all-webapp uses Electron as the desktop shell, replacing the previous PyWeb
 Electron now starts the Rust `studio-sidecar` control plane and creates the
 window without launching Uvicorn. `electron/native-session-lifecycle.ts` owns
 that dependency-free session start. `electron/scientific-plugin-lifecycle.ts`
-owns the optional Python compatibility/scientific process: the first legacy
-HTTP or WebSocket request acquires it through a single shared blocking start
-and receives a URL only after readiness succeeds.
+owns the transitional Python HTTP diagnostic process, but its activation is
+denied before preparation/spawn in the default Rust-only policy.
 
 Native route selection happens before dispatch. A request selected for the
-sidecar is never retried through FastAPI. An unmigrated route explicitly
-acquires the scientific plugin; failure is returned to the caller rather than
-silently changing backend. Control-plane and scientific readiness are exposed
-separately over IPC. Restarting or changing the Python interpreter stops only
-the optional process and leaves the Rust control plane running.
+sidecar is never retried through FastAPI. An unmigrated route returns a typed
+fail-closed refusal without acquiring Python. For R2 diagnosis only, the
+visible `--enable-python-http-diagnostic` switch assigns the entire renderer
+session to FastAPI; development also accepts the exact opt-in environment value
+`NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1`. Packaged builds ignore that
+environment variable. This session-wide selection preserves job ownership and
+never acts as fallback. Control-plane and diagnostic readiness are exposed
+separately over IPC. The Rust sidecar can still invoke the bounded CPython stdio
+library/plugin host independently of this HTTP policy.
 
 The later backend-manager examples in this guide describe the implementation
 of that optional compatibility process. They are not the application startup
