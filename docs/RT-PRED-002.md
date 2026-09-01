@@ -17,6 +17,9 @@ advertises `native_archive_v2_prediction=true`. The route does not require or
 acquire the explicit CPython plugin host. Query or method drift is refused as a
 native contract mismatch, and the client validates response identity, order,
 shape, finiteness, fallback state, and workspace/archive provenance.
+It reads at most 2 MiB of raw response bytes before JSON parsing, regardless of
+whether `Content-Length` is present or truthful. The executor identity must be
+the closed `nirs4all-core@0.3.23+libn4m-abi-2.2:<sha256>` form.
 
 This slice deliberately does not add file upload, dataset parsing, archive
 discovery, fitting, or a FastAPI path. Those remain owned by their existing

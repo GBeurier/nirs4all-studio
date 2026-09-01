@@ -7,11 +7,11 @@ import {
 import type { ArchiveV2ArrayPredictionRequest } from "@/types/archiveV2Prediction";
 
 const transport = vi.hoisted(() => ({
-  post: vi.fn(),
+  postBoundedJson: vi.fn(),
 }));
 
 vi.mock("./transport", () => ({
-  api: { post: transport.post },
+  api: { postBoundedJson: transport.postBoundedJson },
 }));
 
 const request: ArchiveV2ArrayPredictionRequest = {
@@ -60,20 +60,21 @@ function response(): Record<string, unknown> {
 }
 
 beforeEach(() => {
-  transport.post.mockReset();
+  transport.postBoundedJson.mockReset();
 });
 
 describe("native Archive V2 array prediction client", () => {
   it("posts the frozen array-only request and returns the aligned response", async () => {
-    transport.post.mockResolvedValue(response());
+    transport.postBoundedJson.mockResolvedValue(response());
 
     await expect(predictPersistedArchiveV2Array(request)).resolves.toEqual(
       response(),
     );
-    expect(transport.post).toHaveBeenCalledOnce();
-    expect(transport.post).toHaveBeenCalledWith(
+    expect(transport.postBoundedJson).toHaveBeenCalledOnce();
+    expect(transport.postBoundedJson).toHaveBeenCalledWith(
       ARCHIVE_V2_ARRAY_PREDICTION_ENDPOINT,
       request,
+      2 * 1024 * 1024,
     );
   });
 
@@ -93,7 +94,7 @@ describe("native Archive V2 array prediction client", () => {
     await expect(predictPersistedArchiveV2Array(dataset)).rejects.toThrow(
       "Invalid native Archive V2 array prediction request",
     );
-    expect(transport.post).not.toHaveBeenCalled();
+    expect(transport.postBoundedJson).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -110,8 +111,21 @@ describe("native Archive V2 array prediction client", () => {
         },
       },
     ],
+    [
+      "executor identity",
+      {
+        provenance: {
+          executor: `nirs4all-core@0.3.24+libn4m-abi-2.2:${"b".repeat(64)}`,
+          archive_ref: request.archive.ref,
+          workspace_id: request.workspace_id,
+        },
+      },
+    ],
   ])("refuses %s response drift", async (_label, override) => {
-    transport.post.mockResolvedValue({ ...response(), ...override });
+    transport.postBoundedJson.mockResolvedValue({
+      ...response(),
+      ...override,
+    });
 
     await expect(predictPersistedArchiveV2Array(request)).rejects.toThrow(
       "Invalid native Archive V2 array prediction response",
@@ -119,7 +133,7 @@ describe("native Archive V2 array prediction client", () => {
   });
 
   it("refuses non-finite or incorrectly shaped response matrices", async () => {
-    transport.post.mockResolvedValue({
+    transport.postBoundedJson.mockResolvedValue({
       ...response(),
       values: [
         [Number.NaN, 13.2],
@@ -130,7 +144,7 @@ describe("native Archive V2 array prediction client", () => {
       "Invalid native Archive V2 array prediction response",
     );
 
-    transport.post.mockResolvedValue({
+    transport.postBoundedJson.mockResolvedValue({
       ...response(),
       values: [[1.6], [2.5]],
     });
