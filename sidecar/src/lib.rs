@@ -24,9 +24,11 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 
 pub mod conformal_store;
+mod results_summary;
 mod settings;
 pub mod workspace_store;
 
+use results_summary::read_results_summary;
 pub use settings::DatasetLinkIdentity;
 use settings::{AppSettingsStore, ConfigPathError};
 use workspace_store::{
@@ -446,7 +448,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -624,6 +626,9 @@ pub fn route_request_with_body(
         (_, "/api/app/config-path") => method_not_allowed(method, path, "GET, POST, DELETE"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
         _ if workspace_runs_path(path) => route_workspace_run_summaries(state, method, path),
+        _ if workspace_results_summary_path(path) => {
+            route_workspace_results_summary(state, method, path)
+        }
         _ if workspace_results_path(path) => {
             route_workspace_pipeline_summaries(state, method, path)
         }
@@ -874,6 +879,23 @@ fn workspace_results_path(path: &str) -> bool {
     )
 }
 
+fn workspace_results_summary_path(path: &str) -> bool {
+    let Some(suffix) = path.strip_prefix("/api/workspaces/") else {
+        return false;
+    };
+    let mut segments = suffix.split('/');
+    matches!(
+        (
+            segments.next(),
+            segments.next(),
+            segments.next(),
+            segments.next()
+        ),
+        (Some(workspace_id), Some("results"), Some("summary"), None)
+            if !workspace_id.is_empty()
+    )
+}
+
 fn route_workspace_run_summaries(state: &SidecarState, method: &str, path: &str) -> HttpResponse {
     if method != "GET" {
         return method_not_allowed(method, path, "GET");
@@ -951,6 +973,34 @@ fn route_workspace_pipeline_summaries(
                 .to_string(),
             )
         }
+        Err(error) => workspace_store_read_error_response(&error),
+    }
+}
+
+fn route_workspace_results_summary(state: &SidecarState, method: &str, path: &str) -> HttpResponse {
+    if method != "GET" {
+        return method_not_allowed(method, path, "GET");
+    }
+    let Some(workspace_id) = path
+        .strip_prefix("/api/workspaces/")
+        .and_then(|suffix| suffix.strip_suffix("/results/summary"))
+        .filter(|workspace_id| !workspace_id.is_empty())
+    else {
+        return linked_workspace_route_not_found(path);
+    };
+    let workspace_path = match state.app_settings.linked_workspace_path(workspace_id) {
+        Ok(Some(workspace_path)) => workspace_path,
+        Ok(None) => {
+            return HttpResponse::json(404, json!({"detail": "Workspace not found"}).to_string());
+        }
+        Err(error) => return app_settings_storage_error("resolve linked workspace", &error),
+    };
+    let linked_datasets = match state.app_settings.dataset_links() {
+        Ok(linked_datasets) => linked_datasets,
+        Err(error) => return app_settings_storage_error("read dataset links", &error),
+    };
+    match read_results_summary(&workspace_path, workspace_id, &linked_datasets) {
+        Ok(payload) => HttpResponse::json(200, payload.to_string()),
         Err(error) => workspace_store_read_error_response(&error),
     }
 }
@@ -2160,7 +2210,9 @@ fn read_bounded_stdout(
 
 fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpResponse {
     if request.query.is_some()
-        && (workspace_runs_path(&request.path) || workspace_results_path(&request.path))
+        && (workspace_runs_path(&request.path)
+            || workspace_results_path(&request.path)
+            || workspace_results_summary_path(&request.path))
     {
         return error_response(
             404,
@@ -2843,6 +2895,14 @@ mod tests {
             capabilities["features"]["workspace_store_v5_run_summary_route"],
             true
         );
+        assert_eq!(
+            capabilities["features"]["workspace_store_v5_pipeline_summary_route"],
+            true
+        );
+        assert_eq!(
+            capabilities["features"]["workspace_store_v5_results_summary_route"],
+            true
+        );
         assert_eq!(capabilities["features"]["system_status_route"], true);
         assert_eq!(capabilities["features"]["legacy_api_routes"], false);
         assert_eq!(
@@ -3213,6 +3273,86 @@ mod tests {
         );
         assert_workspace_not_found(&mut state, "/api/workspaces/missing/runs");
         assert_workspace_not_found(&mut state, "/api/workspaces/missing/results");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn results_summary_route_matches_the_python_oracle_and_fails_closed() {
+        let directory = test_directory("workspace-results-summary-route");
+        let settings_directory = directory.join("config");
+        let workspace = directory.join("workspace");
+        let empty_workspace = directory.join("empty-workspace");
+        let busy_workspace = directory.join("busy-workspace");
+        fs::create_dir_all(&settings_directory).unwrap();
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&empty_workspace).unwrap();
+        fs::create_dir_all(&busy_workspace).unwrap();
+        fs::write(
+            workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5_summary.sqlite"),
+        )
+        .unwrap();
+        fs::write(
+            busy_workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5_summary.sqlite"),
+        )
+        .unwrap();
+        fs::write(busy_workspace.join("store.sqlite-wal"), b"active writer").unwrap();
+        fs::write(
+            settings_directory.join("dataset_links.json"),
+            include_str!("../tests/fixtures/workspace_store_v5_summary_dataset_links.json"),
+        )
+        .unwrap();
+        fs::write(
+            settings_directory.join("app_settings.json"),
+            json!({
+                "linked_workspaces": [
+                    linked_workspace_record("workspace-summary-v5", &workspace, true, 1),
+                    linked_workspace_record("workspace-empty", &empty_workspace, false, 0),
+                    linked_workspace_record("workspace-busy", &busy_workspace, false, 1),
+                ],
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut state = SidecarState::with_app_settings_dir(&settings_directory);
+
+        let response = route_request(
+            &mut state,
+            "GET",
+            "/api/workspaces/workspace-summary-v5/results/summary",
+        );
+        assert_eq!(response.status, 200);
+        let actual: Value = serde_json::from_str(&response.body).unwrap();
+        let expected: Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/workspace_store_v5_summary.response.json"
+        ))
+        .unwrap();
+        assert_eq!(actual, expected);
+        assert!(!workspace.join("store.sqlite-wal").exists());
+        assert!(!workspace.join("store.sqlite-shm").exists());
+        assert_eq!(
+            route_request(
+                &mut state,
+                "POST",
+                "/api/workspaces/workspace-summary-v5/results/summary",
+            )
+            .status,
+            405
+        );
+        assert_route_code(
+            &mut state,
+            "/api/workspaces/workspace-empty/results/summary",
+            409,
+            "workspace_store_unavailable",
+        );
+        assert_route_code(
+            &mut state,
+            "/api/workspaces/workspace-busy/results/summary",
+            409,
+            "workspace_store_busy",
+        );
+        assert_workspace_not_found(&mut state, "/api/workspaces/missing/results/summary");
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -3722,6 +3862,7 @@ mod tests {
         for target in [
             "/api/workspaces/workspace-a/runs?source=unified",
             "/api/workspaces/workspace-a/results?limit=1",
+            "/api/workspaces/workspace-a/results/summary?n=1",
         ] {
             let raw = format!("GET {target} HTTP/1.1\r\nHost: localhost\r\n\r\n");
             let request = parse_http_request(raw.as_bytes()).unwrap();
