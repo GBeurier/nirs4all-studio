@@ -10,7 +10,9 @@ import { BackendManager, type BackendStatus } from "./backend-manager";
 import { EnvManager } from "./env-manager";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { NativeSidecarManager } from "./native-sidecar-manager";
+import { startNativeSession } from "./native-session-lifecycle";
 import { applyPortablePathOverrides } from "./portable-paths";
+import { ScientificPluginLifecycle } from "./scientific-plugin-lifecycle";
 import {
   getTelemetryConsentStatus,
   writeTelemetryConsent,
@@ -123,6 +125,21 @@ const envManager = new EnvManager();
 const backendManager = new BackendManager();
 backendManager.setEnvManager(envManager);
 const nativeSidecarManager = new NativeSidecarManager();
+let nativePythonPluginHostStale = false;
+
+async function prepareScientificPlugin(): Promise<void> {
+  // Development has an explicit repo-local venv fallback. Packaged runtimes
+  // are repaired only when the user has configured one; a bundled standalone
+  // backend remains usable without creating a Python environment first.
+  if (process.env.VITE_DEV_SERVER_URL === undefined && envManager.isReady()) {
+    await envManager.ensureBackendPackages();
+  }
+}
+
+const scientificPlugin = new ScientificPluginLifecycle(
+  backendManager,
+  prepareScientificPlugin,
+);
 
 const ACTIVE_BACKEND_STATUSES = new Set<BackendStatus>([
   "starting",
@@ -135,7 +152,7 @@ async function restartBackendAfterTelemetryChange(): Promise<boolean> {
   if (!ACTIVE_BACKEND_STATUSES.has(status)) return false;
 
   try {
-    await backendManager.restart();
+    await scientificPlugin.restart(true);
     return true;
   } catch (error) {
     console.error(
@@ -179,6 +196,7 @@ function startNativeSidecar(): void {
     .start(nativeSidecarStartOptions())
     .then((info) => {
       if (info.status === "running") {
+        nativePythonPluginHostStale = false;
         console.log(
           `Native Studio sidecar ready at ${info.url} (${info.protocolVersion})`,
         );
@@ -193,19 +211,28 @@ function startNativeSidecar(): void {
     });
 }
 
-async function restartNativeSidecarForPluginHost(): Promise<void> {
-  try {
-    const info = await nativeSidecarManager.restart(
-      nativeSidecarStartOptions(),
-    );
-    if (info.status === "error") {
-      console.error(
-        `Native Studio sidecar was not restarted: ${info.error ?? "unknown error"}`,
-      );
-    }
-  } catch (error) {
-    console.error("Native Studio sidecar failed during restart:", error);
+function getNativeSidecarInfo() {
+  const info = nativeSidecarManager.getInfo();
+  return nativePythonPluginHostStale
+    ? { ...info, pythonPluginHostConfigured: false }
+    : info;
+}
+
+async function applyPythonRuntimeChange<T extends { success: boolean }>(
+  change: () => Promise<T>,
+): Promise<T> {
+  // Interpreter changes stop only the optional scientific process. The Rust
+  // control plane remains available throughout the operation.
+  await scientificPlugin.stop();
+  const result = await change();
+  if (result.success) {
+    // The running sidecar was launched with the previous plugin-host path.
+    // Mark that optional capability unavailable until the next app launch so
+    // route selection happens before (not after) choosing the compatibility
+    // plugin. Never restart the Rust control plane to rebind Python.
+    nativePythonPluginHostStale = true;
   }
+  return result;
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -511,12 +538,12 @@ ipcMain.handle("telemetry:setConsent", async (_event, enabled: boolean) => {
 });
 
 // IPC Handlers for backend management
-ipcMain.handle("backend:getPort", () => {
-  return backendManager.getPort();
+ipcMain.handle("backend:getPort", async () => {
+  return scientificPlugin.ensureRunning();
 });
 
-ipcMain.handle("backend:getUrl", () => {
-  return backendManager.getUrl();
+ipcMain.handle("backend:getUrl", async () => {
+  return scientificPlugin.getUrl();
 });
 
 ipcMain.handle("backend:getInfo", () => {
@@ -524,54 +551,88 @@ ipcMain.handle("backend:getInfo", () => {
 });
 
 ipcMain.handle("sidecar:getInfo", () => {
-  return nativeSidecarManager.getInfo();
+  return getNativeSidecarInfo();
 });
 
-ipcMain.handle(
-  "backend:restart",
-  async (_event, options?: { skipEnsure?: boolean }) => {
-    try {
-      if (!options?.skipEnsure) {
-        await envManager.ensureBackendPackages();
-      }
-      await restartNativeSidecarForPluginHost();
-      const port = await backendManager.restart();
-      return { success: true, port };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  },
-);
+ipcMain.handle("control:getInfo", () => {
+  const info = getNativeSidecarInfo();
+  return {
+    ...info,
+    role: "control-plane" as const,
+    ready: info.status === "running",
+  };
+});
 
-ipcMain.handle("backend:getMlStatus", async () => {
+ipcMain.handle("scientific:getInfo", () => scientificPlugin.getInfo());
+ipcMain.handle("scientific:getUrl", () => scientificPlugin.getUrl());
+
+async function restartScientificPlugin(options?: { skipEnsure?: boolean }) {
   try {
-    const response = await fetch(
-      `${backendManager.getUrl()}/api/system/readiness`,
-      { signal: AbortSignal.timeout(3000) },
-    );
-    if (response.ok) {
-      return response.json();
-    }
+    const port = await scientificPlugin.restart(!!options?.skipEnsure);
+    return { success: true, port };
+  } catch (error) {
     return {
-      core_ready: false,
-      ml_ready: false,
-      ml_loading: true,
-      ml_error: null,
-      workspace_ready: false,
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
     };
-  } catch {
+  }
+}
+
+ipcMain.handle("backend:restart", (_event, options) =>
+  restartScientificPlugin(options));
+ipcMain.handle("scientific:restart", (_event, options) =>
+  restartScientificPlugin(options));
+
+async function getScientificReadiness() {
+  const plugin = scientificPlugin.getInfo();
+  if (!plugin.ready || !plugin.url) {
     return {
+      scientific_status: plugin.status,
+      scientific_requested: plugin.requested,
       core_ready: false,
       ml_ready: false,
-      ml_loading: true,
-      ml_error: null,
+      ml_loading:
+        plugin.status === "starting" || plugin.status === "restarting",
+      ml_error: plugin.error ?? null,
       workspace_ready: false,
     };
   }
-});
+  try {
+    const response = await fetch(
+      `${plugin.url}/api/system/readiness`,
+      { signal: AbortSignal.timeout(3000) },
+    );
+    if (response.ok) {
+      return {
+        ...(await response.json() as Record<string, unknown>),
+        scientific_status: plugin.status,
+        scientific_requested: plugin.requested,
+      };
+    }
+    return {
+      scientific_status: plugin.status,
+      scientific_requested: plugin.requested,
+      core_ready: false,
+      ml_ready: false,
+      ml_loading: false,
+      ml_error: `Scientific readiness probe failed (${response.status})`,
+      workspace_ready: false,
+    };
+  } catch (error) {
+    return {
+      scientific_status: plugin.status,
+      scientific_requested: plugin.requested,
+      core_ready: false,
+      ml_ready: false,
+      ml_loading: false,
+      ml_error: error instanceof Error ? error.message : String(error),
+      workspace_ready: false,
+    };
+  }
+}
+
+ipcMain.handle("backend:getMlStatus", getScientificReadiness);
+ipcMain.handle("scientific:getReadiness", getScientificReadiness);
 
 // IPC Handlers for Python environment management
 ipcMain.handle("env:getStatus", () => {
@@ -599,17 +660,19 @@ ipcMain.handle("env:inspectExistingPython", async (_, pythonPath: string) => {
 });
 
 ipcMain.handle("env:useExisting", async (_, envPath: string) => {
-  return envManager.useExistingEnv(envPath);
+  return applyPythonRuntimeChange(() => envManager.useExistingEnv(envPath));
 });
 
 ipcMain.handle("env:useExistingPython", async (_, pythonPath: string) => {
-  return envManager.useExistingPython(pythonPath);
+  return applyPythonRuntimeChange(() =>
+    envManager.useExistingPython(pythonPath));
 });
 
 ipcMain.handle(
   "env:applyExisting",
   async (_, envPath: string, options?: { installCorePackages?: boolean }) => {
-    return envManager.applyExistingEnv(envPath, options);
+    return applyPythonRuntimeChange(() =>
+      envManager.applyExistingEnv(envPath, options));
   },
 );
 
@@ -620,7 +683,8 @@ ipcMain.handle(
     pythonPath: string,
     options?: { installCorePackages?: boolean },
   ) => {
-    return envManager.applyExistingPython(pythonPath, options);
+    return applyPythonRuntimeChange(() =>
+      envManager.applyExistingPython(pythonPath, options));
   },
 );
 
@@ -656,6 +720,7 @@ ipcMain.handle("env:isPortable", () => {
 
 ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
   try {
+    await scientificPlugin.stop();
     await envManager.setup((percent, step, detail) => {
       // Broadcast progress to all renderer windows
       const windows = BrowserWindow.getAllWindows();
@@ -663,14 +728,11 @@ ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
         win.webContents.send("env:setupProgress", { percent, step, detail });
       }
     }, targetDir);
+    nativePythonPluginHostStale = true;
 
-    // Python env is ready — restart the backend to pick up the new environment.
-    // Always use restart(): stop() is a no-op when no process exists, and it
-    // correctly handles stuck starting/error states that start() would skip.
-    console.log("Python environment ready, starting backend...");
-    await restartNativeSidecarForPluginHost();
-    const port = await backendManager.restart();
-    console.log(`Backend started on port ${port}`);
+    // Runtime setup configures the optional scientific plugin. It stays
+    // inactive until a FastAPI route or WebSocket explicitly acquires it.
+    console.log("Python environment ready; scientific plugin remains inactive");
 
     return { success: true };
   } catch (error) {
@@ -703,59 +765,13 @@ app.whenReady().then(async () => {
 
   // Packaged products always start the Rust control plane. It still reports
   // partial API coverage and never redirects an unmigrated route to Python.
-  startNativeSidecar();
-
-  if (isDev) {
-    // Dev mode: start backend non-blocking, show window immediately
-    try {
-      const port = await backendManager.startNonBlocking();
-      console.log(
-        `Backend spawned on port ${port} (health check in background)`,
-      );
-    } catch (error) {
-      console.error("Failed to spawn backend:", error);
-    }
-    await createWindow();
-  } else if (envManager.isReady()) {
-    // Verify and repair the runtime before the backend starts. Starting first
-    // can leave FastAPI serving degraded endpoints while nirs4all is missing,
-    // which then floods Sentry with avoidable 503/ImportError groups.
-    let backendCanStart = true;
-    const ensureStart = Date.now();
-    console.log("ensureBackendPackages: start (preflight)");
-    try {
-      await envManager.ensureBackendPackages();
-      console.log(
-        `ensureBackendPackages: preflight ok in ${Date.now() - ensureStart}ms`,
-      );
-    } catch (error) {
-      backendCanStart = false;
-      console.error(
-        `ensureBackendPackages preflight failed after ${Date.now() - ensureStart}ms:`,
-        error,
-      );
-    }
-
-    try {
-      if (backendCanStart) {
-        const backendStart = Date.now();
-        const port = await backendManager.startNonBlocking();
-        console.log(
-          `Backend spawned on port ${port} (health check in background) in ${Date.now() - backendStart}ms`,
-        );
-      }
-    } catch (error) {
-      console.error("Failed to spawn backend:", error);
-    }
-    const windowStart = Date.now();
-    console.log("createWindow: start");
-    await createWindow();
-    console.log(`createWindow: done in ${Date.now() - windowStart}ms`);
-  } else {
-    // No Python env: show window immediately (it will display the setup screen)
-    console.log("Python environment not found, showing setup screen...");
-    await createWindow();
-  }
+  // Creating a native session has no Python dependency. Compatibility and
+  // scientific routes acquire Uvicorn explicitly through IPC when needed.
+  console.log("Creating native session with scientific plugin inactive");
+  await startNativeSession({
+    startControlPlane: startNativeSidecar,
+    createWindow,
+  });
 
   app.on("activate", () => {
     // macOS: re-create window when dock icon is clicked
@@ -781,7 +797,7 @@ app.on("before-quit", (event) => {
   // Await backend stop before allowing quit — prevents Electron exiting
   // before taskkill runs. stop() has a 2s force-kill timeout as safety net.
   Promise.allSettled([
-    backendManager.stop(),
+    scientificPlugin.stop(),
     nativeSidecarManager.stop(),
   ]).finally(() => {
     app.quit(); // Re-enters before-quit with isQuitting=true, then proceeds

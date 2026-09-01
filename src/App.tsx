@@ -23,7 +23,6 @@ import VariableImportance from "@/pages/VariableImportance";
 import Settings from "@/pages/Settings";
 import SetupWizard from "@/pages/SetupWizard";
 import NotFound from "@/pages/NotFound";
-import EnvSetup from "@/components/setup/EnvSetup";
 import { TelemetryConsentDialog } from "@/components/privacy/TelemetryConsentDialog";
 import { TRANSFER_ENABLED } from "@/lib/featureFlags";
 import { useShapAvailable } from "@/hooks/useBackendCapabilities";
@@ -31,7 +30,6 @@ import { useShapAvailable } from "@/hooks/useBackendCapabilities";
 const electronApi = (window as unknown as {
   electronApi?: {
     isElectron: boolean;
-    shouldShowWizard: () => Promise<boolean>;
   };
 }).electronApi;
 
@@ -280,53 +278,21 @@ function ShapleyRoute() {
 }
 
 function App() {
-  // In Electron mode, decide whether to show the setup wizard.
-  // The wizard is shown when: env not ready, new install/update, or portable mode.
-  const [showWizard, setShowWizard] = useState<boolean | null>(null);
-  const { coreReady } = useMlReadiness();
+  const { controlReady } = useMlReadiness();
   const isElectron = !!electronApi?.isElectron;
   const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
 
   useEffect(() => {
-    if (!isElectron || !electronApi) {
-      // Web mode: no env check needed, backend managed externally
-      setShowWizard(false);
-      return;
-    }
-    electronApi.shouldShowWizard().then(setShowWizard);
-  }, [isElectron]);
-
-  useEffect(() => {
-    if (coreReady) {
+    if (controlReady) {
       setHasConnectedOnce(true);
     }
-  }, [coreReady]);
-
-  // Loading state while checking
-  if (showWizard === null) {
-    return (
-      <>
-        <BackendConnectingScreen />
-        <TelemetryConsentDialog />
-      </>
-    );
-  }
-
-  // Show setup wizard (env selection + profile configuration)
-  if (showWizard) {
-    return (
-      <>
-        <EnvSetup onComplete={() => setShowWizard(false)} />
-        <TelemetryConsentDialog />
-      </>
-    );
-  }
+  }, [controlReady]);
 
   // Backend not yet reachable — show connecting screen
   // (only in Electron; in web mode, Vite proxy handles backend connectivity)
   // After the first successful connection, keep the app chrome mounted and let
   // BackendStartupBanner communicate transient backend restarts/non-ready states.
-  if (isElectron && !coreReady && !hasConnectedOnce) {
+  if (isElectron && !controlReady && !hasConnectedOnce) {
     return (
       <>
         <BackendConnectingScreen />

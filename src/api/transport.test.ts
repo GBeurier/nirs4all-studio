@@ -40,6 +40,7 @@ function createElectronApiMock(
     getWindowSize: vi.fn().mockResolvedValue({ width: 1024, height: 768 }),
     getBackendPort: vi.fn().mockResolvedValue(8000),
     getBackendUrl: vi.fn().mockResolvedValue("http://127.0.0.1:8000"),
+    getScientificPluginUrl: vi.fn().mockResolvedValue("http://127.0.0.1:8000"),
     getBackendInfo: vi.fn().mockResolvedValue({
       status: "running",
       port: 8000,
@@ -54,8 +55,38 @@ function createElectronApiMock(
       url: null,
       pythonPluginHostConfigured: false,
     }),
+    getControlPlaneInfo: vi.fn().mockResolvedValue({
+      role: "control-plane",
+      ready: true,
+      status: "running",
+      host: "127.0.0.1",
+      port: 43123,
+      protocolVersion: "studio-sidecar-r1",
+      url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: false,
+    }),
+    getScientificPluginInfo: vi.fn().mockResolvedValue({
+      role: "scientific-plugin",
+      ready: true,
+      requested: true,
+      status: "running",
+      port: 8000,
+      url: "http://127.0.0.1:8000",
+      restartCount: 0,
+    }),
+    getScientificReadiness: vi.fn().mockResolvedValue({
+      scientific_status: "running",
+      scientific_requested: true,
+      core_ready: true,
+      ml_ready: true,
+      ml_loading: false,
+      ml_error: null,
+      workspace_ready: true,
+    }),
     restartBackend: vi.fn().mockResolvedValue({ success: true }),
+    restartScientificPlugin: vi.fn().mockResolvedValue({ success: true }),
     onBackendStatusChanged: vi.fn(() => () => undefined),
+    onScientificPluginStatusChanged: vi.fn(() => () => undefined),
     getEnvStatus: vi.fn().mockResolvedValue("ready"),
     isEnvReady: vi.fn().mockResolvedValue(true),
     getEnvInfo: vi.fn().mockResolvedValue({
@@ -128,6 +159,22 @@ describe("formatApiErrorDetail", () => {
 });
 
 describe("API client request handling", () => {
+  it("fails closed when the Electron scientific plugin cannot start", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl: vi.fn().mockRejectedValue(
+        new Error("Python runtime is not configured"),
+      ),
+    });
+
+    await expect(api.get("/config/recommended")).rejects.toEqual({
+      detail: "Python runtime is not configured",
+      status: 0,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("retries once with a refreshed backend URL after a transient Electron fetch failure", async () => {
     const fetchMock = vi
       .fn()
@@ -145,7 +192,7 @@ describe("API client request handling", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const getBackendUrl = vi
+    const getScientificPluginUrl = vi
       .fn()
       .mockResolvedValueOnce("http://127.0.0.1:39026")
       .mockResolvedValueOnce("http://127.0.0.1:39027");
@@ -156,14 +203,14 @@ describe("API client request handling", () => {
       restartCount: 3,
     });
     window.electronApi = createElectronApiMock({
-      getBackendUrl,
+      getScientificPluginUrl,
       getBackendInfo,
     });
 
     const result = await getRecommendedConfig();
 
     expect(result.fetched_from).toBe("bundled");
-    expect(getBackendUrl).toHaveBeenCalledTimes(2);
+    expect(getScientificPluginUrl).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "http://127.0.0.1:39026/api/config/recommended",
@@ -213,7 +260,13 @@ describe("API client request handling", () => {
       url: "http://127.0.0.1:43123",
       pythonPluginHostConfigured: true,
     });
-    window.electronApi = createElectronApiMock({ getNativeSidecarInfo });
+    const getScientificPluginUrl = vi.fn().mockResolvedValue(
+      "http://127.0.0.1:39026",
+    );
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo,
+      getScientificPluginUrl,
+    });
 
     await api.get("/system/capabilities");
 
@@ -222,6 +275,33 @@ describe("API client request handling", () => {
       expect.any(Object),
     );
     expect(getNativeSidecarInfo).toHaveBeenCalledTimes(1);
+    expect(getScientificPluginUrl).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to Python after selecting a native route", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+    const getScientificPluginUrl = vi.fn().mockResolvedValue(
+      "http://127.0.0.1:39026",
+    );
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl,
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: true,
+      }),
+    });
+
+    await expect(api.get("/system/capabilities")).rejects.toEqual({
+      detail: "Failed to fetch",
+      status: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getScientificPluginUrl).not.toHaveBeenCalled();
   });
 
   it("sends the migrated system-info route to a running native sidecar", async () => {
@@ -401,7 +481,7 @@ describe("API client request handling", () => {
       .mockResolvedValue(jsonResponse({ capabilities: { nirs4all: true } }));
     vi.stubGlobal("fetch", fetchMock);
     window.electronApi = createElectronApiMock({
-      getBackendUrl: vi.fn().mockResolvedValue("http://127.0.0.1:39026"),
+      getScientificPluginUrl: vi.fn().mockResolvedValue("http://127.0.0.1:39026"),
       getNativeSidecarInfo: vi.fn().mockResolvedValue({
         status: "running",
         host: "127.0.0.1",

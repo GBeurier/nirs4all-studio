@@ -88,10 +88,47 @@ const electronApi = {
     error?: string;
   }> => ipcRenderer.invoke("sidecar:getInfo"),
 
+  getControlPlaneInfo: (): Promise<{
+    role: "control-plane";
+    ready: boolean;
+    status: "disabled" | "starting" | "running" | "stopped" | "error";
+    host: string | null;
+    port: number | null;
+    protocolVersion: string | null;
+    url: string | null;
+    pythonPluginHostConfigured: boolean;
+    error?: string;
+  }> => ipcRenderer.invoke("control:getInfo"),
+
+  getScientificPluginInfo: (): Promise<{
+    role: "scientific-plugin";
+    ready: boolean;
+    requested: boolean;
+    status:
+      | "stopped"
+      | "starting"
+      | "running"
+      | "error"
+      | "restarting"
+      | "setup_required";
+    port: number | null;
+    url: string | null;
+    error?: string;
+    restartCount: number;
+  }> => ipcRenderer.invoke("scientific:getInfo"),
+
+  getScientificPluginUrl: (): Promise<string> =>
+    ipcRenderer.invoke("scientific:getUrl"),
+
   restartBackend: (options?: {
     skipEnsure?: boolean;
   }): Promise<{ success: boolean; port?: number; error?: string }> =>
     ipcRenderer.invoke("backend:restart", options),
+
+  restartScientificPlugin: (options?: {
+    skipEnsure?: boolean;
+  }): Promise<{ success: boolean; port?: number; error?: string }> =>
+    ipcRenderer.invoke("scientific:restart", options),
 
   onBackendStatusChanged: (
     callback: (info: {
@@ -115,6 +152,27 @@ const electronApi = {
     return () => ipcRenderer.removeListener("backend:statusChanged", handler);
   },
 
+  onScientificPluginStatusChanged: (
+    callback: (info: {
+      status:
+        | "stopped"
+        | "starting"
+        | "running"
+        | "error"
+        | "restarting"
+        | "setup_required";
+      port: number;
+      url: string;
+      error?: string;
+      restartCount: number;
+    }) => void,
+  ) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: unknown) =>
+      callback(info as Parameters<typeof callback>[0]);
+    ipcRenderer.on("backend:statusChanged", handler);
+    return () => ipcRenderer.removeListener("backend:statusChanged", handler);
+  },
+
   /** Check ML readiness status */
   getMlStatus: (): Promise<{
     ml_ready: boolean;
@@ -122,6 +180,16 @@ const electronApi = {
     ml_error: string | null;
     core_ready: boolean;
   }> => ipcRenderer.invoke("backend:getMlStatus"),
+
+  getScientificReadiness: (): Promise<{
+    scientific_status: string;
+    scientific_requested: boolean;
+    ml_ready: boolean;
+    ml_loading: boolean;
+    ml_error: string | null;
+    core_ready: boolean;
+    workspace_ready?: boolean;
+  }> => ipcRenderer.invoke("scientific:getReadiness"),
 
   /**
    * Listen for ML ready notification.

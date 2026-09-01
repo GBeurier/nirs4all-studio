@@ -45,6 +45,32 @@ interface NativeSidecarInfo {
   error?: string;
 }
 
+interface ControlPlaneInfo extends NativeSidecarInfo {
+  role: "control-plane";
+  ready: boolean;
+}
+
+interface ScientificPluginInfo {
+  role: "scientific-plugin";
+  status: BackendStatus;
+  ready: boolean;
+  requested: boolean;
+  port: number | null;
+  url: string | null;
+  error?: string;
+  restartCount: number;
+}
+
+interface ScientificReadiness {
+  scientific_status: string;
+  scientific_requested: boolean;
+  core_ready: boolean;
+  ml_ready: boolean;
+  ml_loading: boolean;
+  ml_error: string | null;
+  workspace_ready?: boolean;
+}
+
 interface ElectronApi {
   /**
    * Open a native folder picker dialog
@@ -159,10 +185,26 @@ interface ElectronApi {
   /** Get the explicit native-sidecar diagnostic state. */
   getNativeSidecarInfo(): Promise<NativeSidecarInfo>;
 
+  /** Read the mandatory Rust control-plane state without starting Python. */
+  getControlPlaneInfo(): Promise<ControlPlaneInfo>;
+
+  /** Inspect the optional scientific/FastAPI plugin without activating it. */
+  getScientificPluginInfo(): Promise<ScientificPluginInfo>;
+
+  /** Lazily start the scientific plugin, wait for readiness, and return its URL. */
+  getScientificPluginUrl(): Promise<string>;
+
+  /** Inspect scientific readiness without activating the plugin. */
+  getScientificReadiness(): Promise<ScientificReadiness>;
+
   /**
    * Restart the backend server
    */
   restartBackend(
+    options?: BackendRestartOptions,
+  ): Promise<BackendRestartResult>;
+
+  restartScientificPlugin(
     options?: BackendRestartOptions,
   ): Promise<BackendRestartResult>;
 
@@ -172,6 +214,10 @@ interface ElectronApi {
    * @returns Cleanup function to unsubscribe
    */
   onBackendStatusChanged(callback: (info: BackendInfo) => void): () => void;
+
+  onScientificPluginStatusChanged(
+    callback: (info: BackendInfo) => void,
+  ): () => void;
 
   /**
    * Python environment management
