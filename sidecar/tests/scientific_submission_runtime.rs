@@ -14,7 +14,8 @@ use studio_sidecar::{
     execution_job_records::read_execution_job_record,
     job_http::{
         JobExecutorError, NativeJobRuntime, ScientificExecutionRequest,
-        ScientificExecutorSelection, ScientificJobExecutor, ScientificSubmissionPreflight,
+        ScientificExecutorSelection, ScientificJobExecutor, ScientificJobTerminal,
+        ScientificSubmissionPreflight,
     },
     route_request, route_request_with_body, SidecarState, MAX_REQUEST_BODY_BYTES,
 };
@@ -25,6 +26,94 @@ struct RecordingScientificExecutor {
     submissions: AtomicUsize,
     cancellations: AtomicUsize,
     workspace_paths: Mutex<Vec<PathBuf>>,
+}
+
+#[derive(Debug, Default)]
+struct CompletingScientificExecutor;
+
+impl ScientificJobExecutor for CompletingScientificExecutor {
+    fn is_selected(&self) -> bool {
+        true
+    }
+
+    fn preflight_submission(
+        &self,
+        _request: &ScientificSubmissionPreflight,
+    ) -> Result<ScientificExecutorSelection, JobExecutorError> {
+        Ok(ScientificExecutorSelection {
+            execution_backend: "dag-ml-core".into(),
+            execution_mode: Some("bounded-library-host".into()),
+        })
+    }
+
+    fn submit_scientific(
+        &self,
+        request: &ScientificExecutionRequest,
+        terminal: Arc<dyn ScientificJobTerminal>,
+    ) -> Result<(), JobExecutorError> {
+        terminal
+            .complete(
+                &request.job_id,
+                json!({
+                    "schema": "nirs4all.studio-scientific-job-result.v1",
+                    "job_id": request.job_id,
+                    "engine": "dag-ml",
+                    "result": {
+                        "model": "pls_regression",
+                        "task_type": "regression",
+                        "metric": "rmse",
+                        "validation_score": 0.25,
+                        "training_score": 0.125,
+                        "prediction_count": 8
+                    }
+                }),
+            )
+            .map_err(|_| JobExecutorError::SubmissionRefused)
+    }
+
+    fn request_cooperative_cancel(&self, _job_id: &str) -> Result<(), JobExecutorError> {
+        Err(JobExecutorError::CancellationRefused)
+    }
+}
+
+#[derive(Debug, Default)]
+struct ImmediateCancelAckExecutor {
+    terminal: Mutex<Option<Arc<dyn ScientificJobTerminal>>>,
+}
+
+impl ScientificJobExecutor for ImmediateCancelAckExecutor {
+    fn is_selected(&self) -> bool {
+        true
+    }
+
+    fn preflight_submission(
+        &self,
+        _request: &ScientificSubmissionPreflight,
+    ) -> Result<ScientificExecutorSelection, JobExecutorError> {
+        Ok(ScientificExecutorSelection {
+            execution_backend: "dag-ml-core".into(),
+            execution_mode: Some("bounded-library-host".into()),
+        })
+    }
+
+    fn submit_scientific(
+        &self,
+        _request: &ScientificExecutionRequest,
+        terminal: Arc<dyn ScientificJobTerminal>,
+    ) -> Result<(), JobExecutorError> {
+        self.terminal.lock().unwrap().replace(terminal);
+        Ok(())
+    }
+
+    fn request_cooperative_cancel(&self, job_id: &str) -> Result<(), JobExecutorError> {
+        self.terminal
+            .lock()
+            .unwrap()
+            .as_ref()
+            .ok_or(JobExecutorError::CancellationRefused)?
+            .acknowledge_cancel(job_id)
+            .map_err(|_| JobExecutorError::CancellationRefused)
+    }
 }
 
 impl ScientificJobExecutor for RecordingScientificExecutor {
@@ -50,6 +139,7 @@ impl ScientificJobExecutor for RecordingScientificExecutor {
     fn submit_scientific(
         &self,
         request: &ScientificExecutionRequest,
+        _terminal: Arc<dyn ScientificJobTerminal>,
     ) -> Result<(), JobExecutorError> {
         assert!(request.job_id.starts_with("run_native_"));
         assert_eq!(request.requested_backend, "cluster");
@@ -361,6 +451,75 @@ fn selected_submission_registers_publishes_persists_and_submits_once() {
         "cancelled"
     );
     assert_eq!(fs::read_dir(job_directory).unwrap().count(), 1);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn terminal_callback_completes_publishes_and_persists_under_rust_ownership() {
+    let root = test_directory("terminal");
+    let config = root.join("config");
+    let workspace = root.join("workspace");
+    configure_active_workspace(&config, &workspace);
+    let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(
+        CompletingScientificExecutor,
+    )));
+    let mut state =
+        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
+
+    let response = route_request_with_body(
+        &mut state,
+        "POST",
+        "/api/runs/run-groups",
+        &serde_json::to_vec(&valid_payload()).unwrap(),
+    );
+    assert_eq!(response.status, 202);
+    let job_id = body(&response)["job_id"].as_str().unwrap().to_owned();
+    let snapshot = runtime.get_at(&job_id, Instant::now()).unwrap();
+    assert_eq!(snapshot.status.as_str(), "completed");
+    assert_eq!(runtime.published_event_count(), 2);
+    assert_eq!(runtime.durable_write_count(), 2);
+    let record = read_execution_job_record(&workspace, &job_id).unwrap();
+    assert_eq!(record["status"], "completed");
+    assert_eq!(record["execution_backend"], "dag-ml-core");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn immediate_worker_cancel_ack_cannot_race_ahead_of_rust_intent() {
+    let root = test_directory("cancel-race");
+    let config = root.join("config");
+    let workspace = root.join("workspace");
+    configure_active_workspace(&config, &workspace);
+    let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(
+        ImmediateCancelAckExecutor::default(),
+    )));
+    let mut state =
+        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
+    let response = route_request_with_body(
+        &mut state,
+        "POST",
+        "/api/runs/run-groups",
+        &serde_json::to_vec(&valid_payload()).unwrap(),
+    );
+    assert_eq!(response.status, 202);
+    let job_id = body(&response)["job_id"].as_str().unwrap().to_owned();
+
+    let cancel = route_request(&mut state, "POST", &format!("/api/runs/{job_id}/stop"));
+    assert_eq!(cancel.status, 200);
+    assert_eq!(
+        runtime
+            .get_at(&job_id, Instant::now())
+            .unwrap()
+            .status
+            .as_str(),
+        "cancelled"
+    );
+    assert_eq!(runtime.published_event_count(), 2);
+    assert_eq!(runtime.durable_write_count(), 2);
+    assert_eq!(
+        read_execution_job_record(&workspace, &job_id).unwrap()["status"],
+        "cancelled"
+    );
     fs::remove_dir_all(root).unwrap();
 }
 
