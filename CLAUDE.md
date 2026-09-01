@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**nirs4all Studio** (npm package name `nirs4all-webapp`) — a desktop/web app for Near-Infrared Spectroscopy analysis. React 19 + Vite + TypeScript frontend (`src/`), FastAPI backend (`api/` + `main.py`), Electron shell (`electron/`). It is a UI on top of the **`nirs4all`** Python library, which lives in the sibling checkout `../nirs4all`.
+**nirs4all Studio** (npm package name `nirs4all-webapp`) — a desktop/web app for Near-Infrared Spectroscopy analysis. React 19 + Vite + TypeScript provides the renderer (`src/`), the Rust sidecar is the packaged product backend (`sidecar/`), and Electron is the desktop shell (`electron/`). FastAPI (`api/` + `main.py`) is retained only for web development and explicit process-wide diagnostics. Scientific Python runs as a bounded library/plugin host behind Rust.
 
-**The cardinal rule (see `AGENTS.md`):** the backend is a *thin orchestration layer* — HTTP routing, request validation, file uploads, the job queue, WebSockets, workspace/UI state, and adapters. It NEVER reimplements NIRS / data / ML logic; that belongs to `nirs4all`. If something looks missing, it almost certainly already exists in `nirs4all` — check there before adding it here. The app must also run with `nirs4all` absent (imports are guarded), so the UI works for pure frontend development.
+**The cardinal rule (see `AGENTS.md`):** Rust owns product HTTP routing, request validation, jobs, WebSockets, scheduler/control, workspace/UI state, and adapters. It NEVER reimplements NIRS / data / ML logic; that belongs to `nirs4all`, invoked through a bounded Rust-to-CPython stdio host. Python must not own a product port or silently become a route fallback. The product starts with the Python host absent; scientific capabilities then remain unavailable while Rust stays active.
 
 ## Commands
 
@@ -14,8 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Dev
 - **Frontend (web):** `npm run dev` — Vite at http://localhost:5173. In web mode it proxies `/api` and `/ws` to `127.0.0.1:8000`.
-- **Backend:** `python main.py` — uvicorn at `127.0.0.1:8000` (flags: `--port`, `--host`, `--no-reload`; auto-reload is on by default unless `NIRS4ALL_DESKTOP=true`). Use the project `.venv`; at startup the backend resolves the sibling `../nirs4all` onto `sys.path` (and the launcher resolves `../nirs4all/.venv`).
-- **Desktop (Electron):** `npm run dev:electron` (alias `npm run start:desktop`) — pre-builds the electron entry, runs Vite with `ELECTRON=true`, and launches Electron, which **spawns and manages the Python backend itself** — you do not start the backend separately in this mode.
+- **Transitional web backend:** `python main.py` — uvicorn at `127.0.0.1:8000` for browser development. It is not the packaged desktop default.
+- **Desktop (Electron):** `npm run dev:electron` (alias `npm run start:desktop`) — starts the Rust sidecar and refuses unmigrated routes without spawning Uvicorn. For an explicit whole-session diagnostic only, pass `--enable-python-http-diagnostic`; development may instead set exactly `NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1`. Packaged builds ignore the environment variable.
 
 ### Green gate (run before reporting work complete)
 - `npm run lint:parallel` — eslint + `tsc --noEmit` + node-registry validation + ruff + backend dep-sync.
@@ -38,14 +38,18 @@ Individual gates: `lint:eslint`, `lint:tsc`, `lint:nodes` (= `validate:nodes`), 
 
 ## Architecture
 
-### The nirs4all boundary + two-phase startup
+### Rust product boundary and transitional Python backend
+
+The packaged desktop resolves renderer HTTP and WebSocket routes in Electron before dispatch. Native-qualified routes target the Rust sidecar; unmigrated routes return a typed refusal. The visible diagnostic switch assigns the entire renderer session to FastAPI and is never a per-route retry. Independently, the sidecar may invoke selected `nirs4all` callables in fresh, bounded isolated CPython processes over JSON stdio.
+
+The following two-phase startup applies only to the transitional web/diagnostic backend:
 `api/lazy_imports.py` defers all `nirs4all` imports so the server boots fast and runs even when the library is missing:
 - **Phase 1 (core_ready):** FastAPI up, workspace restored, basic endpoints work; all routers are registered but ML imports are deferred.
 - **Phase 2 (ml_ready):** `nirs4all` (controllers, `PipelineConfigs`, `SpectroDataset`, metrics, operators/models, …) is loaded in a background thread; heavy pages (Playground, PipelineEditor, Training) become functional.
 
 Routes needing the library call `require_ml_ready()` / `get_cached(key)`; `/api/health` blocks the UI until `startup_complete`. `api/nirs4all_adapter.py` and `api/store_adapter.py` are the translation layers to the library and its SQLite+Parquet workspace store.
 
-### Backend (`api/`, `main.py`, `websocket/`)
+### Transitional web/diagnostic backend (`api/`, `main.py`, `websocket/`)
 `main.py` builds the FastAPI app and mounts one router per domain. Routers are flat modules in `api/` (e.g. `datasets`, `pipelines`, `training`, `predict`, `predictions`, `runs`, `models`, `shap`, `synthesis`, `transfer`, `inspector`, `evaluation`, `analysis`, `automl`, `spectra`, `preprocessing`, `recommended_config`, `playground`, `workspace`, `updates`, `system`). Sub-packages: `api/shared/` (logger, sentry, gpu_detection, metrics, dataset_config, json_safe, runtime_paths, …), `api/jobs/` (background job manager), `api/playground/`, `api/workspace/` (split routers), `api/updates/` (auto-updater). Real-time training/progress is pushed over `websocket/manager.py` (`ws_manager`).
 
 ### Frontend (`src/`)
@@ -61,7 +65,7 @@ The pipeline editor's palette of "nodes" (preprocessing / model / splitting / y-
 When you add or change a node, regenerate the artifacts and then run `validate:nodes`.
 
 ### Electron shell (`electron/`)
-`main.ts` (window/app lifecycle, splash) · `preload.ts` (contextBridge IPC; types in `src/types/electron.d.ts`) · `backend-manager.ts` (spawns/monitors the Python backend, sets `NIRS4ALL_DESKTOP`) · `env-manager.ts` + `setup-python-env` (detect/provision the embedded Python env) · `portable-paths.ts` · `logger.ts` (rotating file logs under the OS app-data dir). Electron `*.test.ts` files run under Vitest. Packaging configs: `electron-builder.installer.yml`, `electron-builder.archive.yml`.
+`main.ts` freezes one renderer policy; `native-sidecar-lifecycle.ts` starts/verifies Rust; `renderer-transport-selection.ts` preselects each request/connection; `preload.ts` exposes IPC; `backend-manager.ts` manages only the optional diagnostic FastAPI process; and `env-manager.ts` provisions the embedded CPython library host. Electron `*.test.ts` files run under Vitest. Packaging configs: `electron-builder.installer.yml`, `electron-builder.archive.yml`.
 
 ## Conventions worth knowing
 - **Backend runtime deps have one source of truth:** `BACKEND_COMMON_PACKAGES` in `scripts/python-runtime-config.cjs`. `requirements.txt`, `requirements-cpu.txt`, and `backend.spec` hiddenimports must all agree with it — `npm run lint:deps` fails the gate on drift (`nirs4all` and `pyinstaller` are excluded from the set).
