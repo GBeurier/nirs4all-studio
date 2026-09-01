@@ -776,6 +776,35 @@ describe("API client request handling", () => {
     );
   });
 
+  it("keeps run detail on FastAPI while the owner contract forbids cutover", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ detail: "Run 'missing-run' not found" }, 404),
+    );
+    const getNativeSidecarInfo = vi.fn().mockResolvedValue({
+      status: "running",
+      host: "127.0.0.1",
+      port: 43123,
+      protocolVersion: "studio-sidecar-r1",
+      url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: false,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({ getNativeSidecarInfo });
+
+    await expect(
+      api.get("/workspaces/workspace-a/runs/missing-run"),
+    ).rejects.toMatchObject({
+      detail: "Run 'missing-run' not found",
+      status: 404,
+    });
+    expect(getNativeSidecarInfo).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/missing-run",
+      expect.any(Object),
+    );
+  });
+
   it("routes only the bare Store v5 pipeline-summary endpoint to the native sidecar", async () => {
     const fetchMock = vi
       .fn()

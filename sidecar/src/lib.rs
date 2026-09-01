@@ -3331,6 +3331,21 @@ mod tests {
     }
 
     #[test]
+    fn run_detail_route_remains_unregistered_while_cutover_is_forbidden() {
+        let mut state = SidecarState::default();
+        let response = route_request(
+            &mut state,
+            "GET",
+            "/api/workspaces/workspace-a/runs/run-detail-001",
+        );
+        assert_eq!(response.status, 404);
+        assert_eq!(
+            serde_json::from_str::<Value>(&response.body).unwrap()["error"]["code"],
+            "route_not_found"
+        );
+    }
+
+    #[test]
     fn results_summary_route_matches_the_python_oracle_and_fails_closed() {
         let directory = test_directory("workspace-results-summary-route");
         let settings_directory = directory.join("config");

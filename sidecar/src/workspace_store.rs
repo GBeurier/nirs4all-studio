@@ -28,6 +28,8 @@ pub const WORKSPACE_STORE_READ_CONTRACT: &str =
     include_str!("../contracts/workspace_store_read_v1.json");
 pub const WORKSPACE_STORE_RESULTS_SUMMARY_CONTRACT: &str =
     include_str!("../contracts/workspace_store_results_summary_v1.json");
+pub const STUDIO_RUN_DETAIL_HTTP_CONTRACT: &str =
+    include_str!("../contracts/studio_run_detail_http_v1.json");
 
 const CONTRACT_SCHEMA_ID: &str = "nirs4all.workspace-store-read.v1";
 const CONTRACT_SCHEMA_VERSION: i64 = 1;
@@ -470,6 +472,7 @@ pub fn read_run_detail_projection(
     run_id: &str,
 ) -> Result<Option<Value>, WorkspaceStoreReadError> {
     validate_contract()?;
+    validate_run_detail_http_contract()?;
     if run_id.is_empty() || run_id.trim() != run_id || run_id.contains('\0') {
         return Err(WorkspaceStoreReadError::InvalidRunId);
     }
@@ -920,6 +923,163 @@ fn validate_run_detail_cutover_policy(projection: &Value) -> Result<(), Workspac
     {
         return Err(WorkspaceStoreReadError::Contract(
             "run-detail projection scope or fail-closed cutover policy differs from v1".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_run_detail_http_contract() -> Result<(), WorkspaceStoreReadError> {
+    let contract: Value = serde_json::from_str(STUDIO_RUN_DETAIL_HTTP_CONTRACT)
+        .map_err(|error| WorkspaceStoreReadError::Contract(error.to_string()))?;
+    validate_run_detail_http_contract_value(&contract)
+}
+
+fn validate_run_detail_http_contract_value(
+    contract: &Value,
+) -> Result<(), WorkspaceStoreReadError> {
+    validate_run_detail_http_owner_inputs(contract)?;
+    validate_run_detail_http_cutover(contract)
+}
+
+fn validate_run_detail_http_owner_inputs(contract: &Value) -> Result<(), WorkspaceStoreReadError> {
+    let expected_request = json!({
+        "method": "GET",
+        "path_suffix": "/runs/{run_id}",
+        "query_string": "absent",
+    });
+    let expected_read_dependency = json!({
+        "schema_id": CONTRACT_SCHEMA_ID,
+        "schema_version": CONTRACT_SCHEMA_VERSION,
+        "projection": "studio_run_detail_v1",
+    });
+    let expected_splitter_dependency = json!({
+        "callable": "nirs4all.pipeline.analysis.splitter_config.extract_splitter_config",
+        "input": "pipeline.expanded_config",
+        "selection": "first_recognized_splitter_step",
+        "output_fields": [
+            "splitter_class",
+            "reference",
+            "n_splits",
+            "shuffle",
+            "random_state",
+            "test_size",
+            "group_by",
+        ],
+    });
+    let expected_owner_oracle = json!({
+        "callable": "nirs4all.pipeline.storage.studio_run_detail_http_inputs_v1",
+        "scope": "store_v5_owner_inputs_only",
+        "open_mode": "delegated_to_workspace_store_read_studio_run_detail_v1",
+        "writes_or_cache": "forbidden",
+        "not_found": "null",
+    });
+    let expected_owner_fields = json!([
+        "source_branch",
+        "run_detail",
+        "pipeline_splitters",
+        "results",
+        "results_count",
+    ]);
+    let expected_pipeline_splitters = json!({
+        "ordering": "run_detail.pipelines_order",
+        "entry_fields": ["pipeline_id", "splitter"],
+        "splitter": "splitter_config_output_or_null",
+    });
+    let expected_results_mapping = json!({
+        "id": "pipeline.pipeline_id",
+        "run_id": "pipeline.run_id",
+        "dataset": "pipeline.dataset_name",
+        "pipeline_config": "pipeline.name",
+        "pipeline_config_id": "pipeline.pipeline_id",
+        "created_at": "pipeline.created_at_or_empty_string",
+        "best_score": "pipeline.best_val",
+        "best_test_score": "pipeline.best_test",
+        "metric": "pipeline.metric",
+        "status": "pipeline.status",
+        "duration_ms": "pipeline.duration_ms",
+        "format": "store",
+    });
+
+    if contract.get("schema_id").and_then(Value::as_str)
+        != Some("nirs4all.studio-run-detail-http.v1")
+        || contract.get("schema_version").and_then(Value::as_i64) != Some(1)
+        || contract
+            .get("workspace_store_schema_version")
+            .and_then(Value::as_i64)
+            != Some(WORKSPACE_STORE_SCHEMA_VERSION)
+        || contract.get("request") != Some(&expected_request)
+        || contract.pointer("/dependencies/workspace_store_read") != Some(&expected_read_dependency)
+        || contract.pointer("/dependencies/splitter_config") != Some(&expected_splitter_dependency)
+        || contract.get("owner_oracle") != Some(&expected_owner_oracle)
+        || contract.pointer("/owner_output/fields") != Some(&expected_owner_fields)
+        || contract.pointer("/owner_output/pipeline_splitters")
+            != Some(&expected_pipeline_splitters)
+        || contract.pointer("/owner_output/results/mapping") != Some(&expected_results_mapping)
+    {
+        return Err(WorkspaceStoreReadError::Contract(
+            "run-detail HTTP owner inputs differ from v1".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_run_detail_http_cutover(contract: &Value) -> Result<(), WorkspaceStoreReadError> {
+    let expected_dataset_composition = json!({
+        "owner": "studio_linked_dataset_configuration",
+        "required_input": "ordered_linked_dataset_records_with_id_name_path",
+        "required_outputs": [
+            "datasets.name_and_dataset_name_normalization",
+            "datasets.linked_dataset_id",
+            "unresolved_dataset_names",
+        ],
+        "policy_contract": "not_yet_published",
+    });
+    let expected_runtime_composition = json!({
+        "owner": "studio_http_adapter",
+        "required_outputs": [
+            "engine",
+            "engine_requested",
+            "engine_diagnostics",
+            "runtime_source",
+            "runtime_manifest",
+            "fallback_policy",
+            "allow_fallback",
+            "native_result_refs",
+            "pipeline_runtime_propagation",
+        ],
+        "policy_contract": "not_yet_published",
+    });
+    let expected_legacy_branch = json!({
+        "owner": "workspace_manifest_scanner",
+        "status": "not_covered",
+        "required_contract": "studio_workspace_manifest_run_detail_v1",
+        "must_not_be_reconstructed_from_store_v5": true,
+    });
+    let expected_cutover = json!({
+        "route_selection": "forbidden",
+        "blocked_on": [
+            "studio_dataset_link_composition_v1",
+            "studio_runtime_field_composition_v1",
+            "studio_ui_splitter_strategy_vocabulary_v1",
+            "studio_workspace_manifest_run_detail_v1_or_preselection_proof",
+        ],
+        "store_owner_inputs_complete": true,
+        "complete_http_response_proven": false,
+        "legacy_manifest_branch_proven": false,
+        "fallback_after_native_selection": "none",
+        "incompatible_store_http_status": 409,
+    });
+
+    if contract.pointer("/http_composition/store_branch/dataset_composition")
+        != Some(&expected_dataset_composition)
+        || contract.pointer("/http_composition/store_branch/runtime_composition")
+            != Some(&expected_runtime_composition)
+        || contract.pointer("/http_composition/legacy_manifest_branch")
+            != Some(&expected_legacy_branch)
+        || contract.get("cutover") != Some(&expected_cutover)
+    {
+        return Err(WorkspaceStoreReadError::Contract(
+            "run-detail HTTP ownership or fail-closed cutover differs from v1".into(),
         ));
     }
     Ok(())
@@ -1923,13 +2083,14 @@ mod tests {
     };
 
     use rusqlite::{params, Connection};
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     use super::{
         parse_python_json, read_pipeline_summaries, read_ranked_chains,
         read_results_summary_source, read_run_detail_projection, read_run_summaries,
-        ChainScoreDirection, WorkspaceStoreReadError, DEFAULT_PIPELINE_SUMMARIES_LIMIT,
-        DEFAULT_RUN_SUMMARIES_LIMIT,
+        validate_run_detail_http_contract_value, ChainScoreDirection, WorkspaceStoreReadError,
+        DEFAULT_PIPELINE_SUMMARIES_LIMIT, DEFAULT_RUN_SUMMARIES_LIMIT,
+        STUDIO_RUN_DETAIL_HTTP_CONTRACT,
     };
 
     const PYTHON_WRITTEN_STORE: &[u8] =
@@ -1950,6 +2111,38 @@ mod tests {
                 "label": "NaN Infinity",
             })
         );
+    }
+
+    #[test]
+    fn consumes_the_run_detail_http_contract_only_as_a_fail_closed_manifest() {
+        let contract: Value = serde_json::from_str(STUDIO_RUN_DETAIL_HTTP_CONTRACT).unwrap();
+        validate_run_detail_http_contract_value(&contract).unwrap();
+        assert_eq!(contract["cutover"]["route_selection"], "forbidden");
+        assert_eq!(
+            contract["http_composition"]["store_branch"]["runtime_composition"]["policy_contract"],
+            "not_yet_published"
+        );
+        assert_eq!(
+            contract["http_composition"]["legacy_manifest_branch"]["status"],
+            "not_covered"
+        );
+
+        let mut incorrectly_enabled = contract.clone();
+        incorrectly_enabled["cutover"]["route_selection"] = json!("native");
+        assert!(matches!(
+            validate_run_detail_http_contract_value(&incorrectly_enabled),
+            Err(WorkspaceStoreReadError::Contract(detail))
+                if detail.contains("fail-closed cutover")
+        ));
+
+        let mut replaced_owner_splitter = contract;
+        replaced_owner_splitter["dependencies"]["splitter_config"]["callable"] =
+            json!("studio_sidecar.reimplemented_splitter");
+        assert!(matches!(
+            validate_run_detail_http_contract_value(&replaced_owner_splitter),
+            Err(WorkspaceStoreReadError::Contract(detail))
+                if detail.contains("owner inputs")
+        ));
     }
 
     fn fixture_workspace(name: &str) -> PathBuf {
