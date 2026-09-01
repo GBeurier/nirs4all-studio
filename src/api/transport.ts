@@ -37,6 +37,8 @@ const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
   "/updates/settings",
 ]);
 const NATIVE_SIDECAR_WORKSPACE_STATE_ENDPOINT = /^\/workspaces\/[^/?]+(?:\/(activate))?$/;
+const NATIVE_SIDECAR_WORKSPACE_RUN_SUMMARIES_ENDPOINT =
+  /^\/workspaces\/[^/?]+\/runs$/;
 
 type ElectronBackendStatus =
   | "stopped"
@@ -214,7 +216,8 @@ function isNativeSidecarEndpoint(endpoint: string, method: string): boolean {
     NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS.has(endpoint) ||
     NATIVE_SIDECAR_STATE_ENDPOINTS.has(endpoint) ||
     endpoint.startsWith("/app/favorites/") ||
-    isNativeLinkedWorkspaceStateEndpoint(endpoint, method)
+    isNativeLinkedWorkspaceStateEndpoint(endpoint, method) ||
+    isNativeWorkspaceRunSummariesEndpoint(endpoint, method)
   );
 }
 
@@ -225,6 +228,13 @@ function isNativeLinkedWorkspaceStateEndpoint(endpoint: string, method: string):
   return (
     (normalizedMethod === "DELETE" && match[1] === undefined) ||
     (normalizedMethod === "POST" && match[1] === "activate")
+  );
+}
+
+function isNativeWorkspaceRunSummariesEndpoint(endpoint: string, method: string): boolean {
+  return (
+    method.toUpperCase() === "GET" &&
+    NATIVE_SIDECAR_WORKSPACE_RUN_SUMMARIES_ENDPOINT.test(endpoint)
   );
 }
 

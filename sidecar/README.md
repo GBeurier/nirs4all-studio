@@ -164,9 +164,13 @@ workspace only. It uses the published contract's `store.sqlite` location and
 the exact run-summary SQL projection through SQLite immutable read-only mode;
 it does not open a writer, create WAL/SHM files, read arrays or artifacts, or
 fall back to CPython. A missing, live, or incompatible store returns an
-explicit native compatibility error. Electron deliberately continues routing
-the UI scanner endpoint to FastAPI: legacy manifest/Parquet scans and the full
-results-repository surface have not yet reached parity.
+explicit native compatibility error. The bundled SQLite reader supports local
+volumes; Windows UNC/device paths are rejected until the packaging build and a
+real share test prove URI-authority support. Electron routes only the bare, bounded
+run-summary request to this reader and does not retry a native incompatibility
+through FastAPI. Explicit `source`/`refresh` scanner queries, the enriched Runs
+page, legacy manifest/Parquet scans, and the full results-repository surface
+remain FastAPI routes until their public contracts reach parity.
 
 `GET /api/system/status` derives `workspace_loaded` and its workspace summary
 from that same active catalogue record. It does not inspect the linked path:

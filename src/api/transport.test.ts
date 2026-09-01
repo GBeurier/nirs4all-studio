@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, formatApiErrorDetail, resetBackendUrl } from "./transport";
 import { getConfigDiff, getRecommendedConfig } from "./config";
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "Content-Type": "application/json" },
   });
 }
@@ -644,6 +644,122 @@ describe("API client request handling", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
       "http://127.0.0.1:8000/api/workspaces/workspace-a/scan",
+      expect.any(Object),
+    );
+  });
+
+  it("routes only the Store v5 run-summary endpoint to the native sidecar", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        jsonResponse({ workspace_id: "workspace-a", runs: [], total: 0 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await api.get("/workspaces/workspace-a/runs");
+    await api.get("/workspaces/workspace-a/runs?source=unified");
+    await api.get("/workspaces/workspace-a/runs/enriched");
+    await api.get("/workspaces/workspace-a/runs/run-a");
+    await api.get("/workspaces/workspace-a/runs?refresh=true");
+    await api.post("/workspaces/workspace-a/runs");
+    await api.get("/workspaces/workspace-a/runs?unexpected=true");
+    await api.get("/workspaces/workspace-a/runs/");
+    await api.post("/workspaces/workspace-a/runs/run-a/rerun");
+    await api.delete("/workspaces/workspace-a/runs/run-a");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:43123/api/workspaces/workspace-a/runs",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs?source=unified",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/enriched",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/run-a",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs?refresh=true",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs?unexpected=true",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      8,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      9,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/run-a/rerun",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      10,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/run-a",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("does not retry a native Store incompatibility through FastAPI", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          detail: "Workspace has no compatible native WorkspaceStore v5",
+          code: "workspace_store_unavailable",
+        },
+        409,
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+    });
+
+    await expect(
+      api.get("/workspaces/workspace-a/runs"),
+    ).rejects.toMatchObject({
+      detail: "Workspace has no compatible native WorkspaceStore v5",
+      status: 409,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/workspaces/workspace-a/runs",
       expect.any(Object),
     );
   });
