@@ -335,6 +335,60 @@ describe("API client request handling", () => {
     expect(acquire).not.toHaveBeenCalled();
   });
 
+  it("uses the preflighted native Archive V2 prediction route without acquiring Python", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        protocol_version: "studio-sidecar-r1",
+        features: {
+          renderer_transport_selection: true,
+          renderer_rust_only_default: true,
+          implicit_python_http_fallback: false,
+          unmigrated_renderer_routes_fail_closed: true,
+          renderer_http_transport: true,
+          native_archive_v2_prediction: true,
+          scientific_execution: false,
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({ predictions: [[1.25]] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const acquire = vi.fn();
+    const inspectSidecar = vi.fn(() => ({
+      status: "running" as const,
+      url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: false,
+    }));
+    const preselect = vi.fn((request: RendererTransportRequest) =>
+      preselectRendererTransport(request, inspectSidecar, fetchMock));
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl: acquire,
+      getNativeSidecarInfo: inspectSidecar,
+      preselectRendererTransport: preselect,
+    });
+    const body = {
+      schema_version: 1,
+      operation: "archive_v2_predict",
+      workspace_id: "workspace-a",
+    };
+
+    await api.post("/predict/archive-v2", body);
+
+    expect(preselect).toHaveBeenCalledWith({
+      kind: "http",
+      method: "POST",
+      path: "/predict/archive-v2",
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:43123/api/predict/archive-v2",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    );
+    expect(inspectSidecar).toHaveBeenCalledOnce();
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
   it("does not issue, retry, or acquire Python after renderer preflight rejects", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

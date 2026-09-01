@@ -19,6 +19,7 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
       renderer_http_transport: true,
       renderer_websocket_transport: true,
       scientific_submission_transport: true,
+      native_archive_v2_prediction: true,
       scientific_execution: false,
       native_job_status_routes: true,
       native_job_cancellation_routes: true,
@@ -57,6 +58,40 @@ describe("renderer transport preselection", () => {
       "http://127.0.0.1:43123/sidecar/v1/capabilities",
       { method: "GET", cache: "no-store" },
     );
+  });
+
+  it("selects Archive V2 prediction without acquiring the explicit Python host", async () => {
+    const request = vi.fn().mockResolvedValue(capabilityResponse());
+    const withoutPythonHost = () => ({
+      status: "running" as const,
+      url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: false,
+    });
+
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "POST", path: "/predict/archive-v2" },
+      withoutPythonHost,
+      request,
+    )).resolves.toMatchObject({
+      surface: "archive-v2-prediction",
+      target: "native-sidecar",
+      base_url: "http://127.0.0.1:43123",
+      reason: "native_capability_preflight_passed",
+      status: 200,
+    });
+
+    const refused = vi.fn().mockResolvedValue(
+      capabilityResponse({ native_archive_v2_prediction: false }),
+    );
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "POST", path: "/predict/archive-v2" },
+      withoutPythonHost,
+      refused,
+    )).resolves.toMatchObject({
+      target: "reject",
+      reason: "native_capability_mismatch",
+      status: 503,
+    });
   });
 
   it("rejects a native candidate before target request when sidecar or capability is unavailable", async () => {
@@ -207,6 +242,24 @@ describe("renderer transport preselection", () => {
     });
     await expect(preselectRendererTransport(
       { kind: "http", method: "GET", path: "/runs/run-groups" },
+      running,
+      request,
+    )).resolves.toMatchObject({
+      target: "reject",
+      reason: "native_route_contract_mismatch",
+      status: 400,
+    });
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/predict/archive-v2" },
+      running,
+      request,
+    )).resolves.toMatchObject({
+      target: "reject",
+      reason: "native_route_contract_mismatch",
+      status: 400,
+    });
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "POST", path: "/predict/archive-v2?debug=true" },
       running,
       request,
     )).resolves.toMatchObject({
