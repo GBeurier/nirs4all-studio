@@ -546,6 +546,78 @@ async function fetchWithRetry(
   throw lastError instanceof Error ? lastError : new Error("Network error");
 }
 
+function boundedJsonResponseError(detail: string): ApiError {
+  return {
+    detail,
+    status: 502,
+    code: "STUDIO_BOUNDED_JSON_RESPONSE_INVALID",
+  };
+}
+
+async function parseBoundedJsonResponse(
+  response: Response,
+  maximumBytes: number,
+): Promise<unknown> {
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0) {
+    throw new RangeError("Bounded JSON response limit must be a safe integer");
+  }
+
+  const contentLength = response.headers.get("content-length");
+  if (contentLength !== null) {
+    const normalized = contentLength.trim();
+    if (!/^\d+$/.test(normalized)) {
+      throw boundedJsonResponseError(
+        "Bounded JSON response has an invalid Content-Length",
+      );
+    }
+    const declaredBytes = Number(normalized);
+    if (
+      !Number.isSafeInteger(declaredBytes) ||
+      declaredBytes > maximumBytes
+    ) {
+      throw boundedJsonResponseError(
+        `Bounded JSON response exceeds the ${maximumBytes}-byte limit`,
+      );
+    }
+  }
+
+  const reader = response.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  if (reader) {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maximumBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          // The size violation remains authoritative if cancellation fails.
+        }
+        throw boundedJsonResponseError(
+          `Bounded JSON response exceeds the ${maximumBytes}-byte limit`,
+        );
+      }
+      chunks.push(value);
+    }
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw boundedJsonResponseError("Bounded JSON response is not valid JSON");
+  }
+}
+
 class ApiClient {
   private async request<T>(
     endpoint: string,
@@ -591,6 +663,51 @@ class ApiClient {
       body: data,
       ...options,
     });
+  }
+
+  async postBoundedJson<T>(
+    endpoint: string,
+    data: unknown,
+    maximumResponseBytes: number,
+    options?: RequestOptions,
+  ): Promise<T> {
+    const { body: _ignored, ...restOptions } = options || {};
+    const config: RequestInit = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+      },
+      ...restOptions,
+      body: JSON.stringify(data),
+    };
+
+    try {
+      const response = await fetchWithRetry(endpoint, config);
+      if (!response.ok) {
+        const errorData = await parseBoundedJsonResponse(
+          response,
+          maximumResponseBytes,
+        ).catch(() => ({}));
+        const errorRecord =
+          errorData && typeof errorData === "object"
+            ? (errorData as Record<string, unknown>)
+            : {};
+        throw {
+          detail: formatApiErrorDetail(
+            errorRecord.detail ?? errorData,
+            response.status,
+          ),
+          status: response.status,
+        } satisfies ApiError;
+      }
+      return (await parseBoundedJsonResponse(
+        response,
+        maximumResponseBytes,
+      )) as T;
+    } catch (error) {
+      throw toApiError(error);
+    }
   }
 
   // PUT request

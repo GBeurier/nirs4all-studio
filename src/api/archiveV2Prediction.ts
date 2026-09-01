@@ -6,6 +6,7 @@ import type {
 
 export const ARCHIVE_V2_ARRAY_PREDICTION_ENDPOINT =
   "/predict/archive-v2" as const;
+export const MAX_ARCHIVE_V2_PREDICTION_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_SAMPLES = 128;
@@ -17,6 +18,8 @@ const MAX_ARCHIVE_REF_BYTES = 240;
 const MAX_EXECUTOR_BYTES = 256;
 const SHA256 = /^[a-f0-9]{64}$/;
 const IDENTIFIER = /^[A-Za-z0-9._:-]+$/;
+const CORE_METHODS_EXECUTOR =
+  /^nirs4all-core@0\.3\.23\+libn4m-abi-2\.2:[a-f0-9]{64}$/;
 const encoder = new TextEncoder();
 
 type JsonRecord = Record<string, unknown>;
@@ -190,6 +193,7 @@ function parseResponse(
     typeof value.provenance.executor !== "string" ||
     value.provenance.executor.length === 0 ||
     byteLength(value.provenance.executor) > MAX_EXECUTOR_BYTES ||
+    !CORE_METHODS_EXECUTOR.test(value.provenance.executor) ||
     value.provenance.archive_ref !== request.archive.ref ||
     value.provenance.workspace_id !== request.workspace_id
   ) {
@@ -207,9 +211,10 @@ export async function predictPersistedArchiveV2Array(
   request: ArchiveV2ArrayPredictionRequest,
 ): Promise<ArchiveV2ArrayPredictionResponse> {
   assertRequest(request);
-  const response = await api.post<unknown>(
+  const response = await api.postBoundedJson<unknown>(
     ARCHIVE_V2_ARRAY_PREDICTION_ENDPOINT,
     request,
+    MAX_ARCHIVE_V2_PREDICTION_RESPONSE_BYTES,
   );
   return parseResponse(response, request);
 }

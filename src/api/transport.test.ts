@@ -18,6 +18,14 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+const MAX_BOUNDED_JSON_BYTES = 2 * 1024 * 1024;
+
+function jsonWithExactBytes(size: number): string {
+  const empty = JSON.stringify({ padding: "" });
+  if (size < empty.length) throw new RangeError("JSON size is too small");
+  return JSON.stringify({ padding: "x".repeat(size - empty.length) });
+}
+
 type RendererElectronApi = NonNullable<Window["electronApi"]>;
 
 function createElectronApiMock(
@@ -246,6 +254,19 @@ function rendererSelection(
   };
 }
 
+function installNativeArchiveResponse(response: Response) {
+  const fetchMock = vi.fn().mockResolvedValue(response);
+  const acquire = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+  window.electronApi = createElectronApiMock({
+    getScientificPluginUrl: acquire,
+    preselectRendererTransport: vi.fn().mockResolvedValue(
+      rendererSelection("POST", "/predict/archive-v2", "native-sidecar"),
+    ),
+  });
+  return { fetchMock, acquire };
+}
+
 beforeEach(() => {
   resetBackendUrl();
 });
@@ -387,6 +408,125 @@ describe("API client request handling", () => {
     );
     expect(inspectSidecar).toHaveBeenCalledOnce();
     expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("accepts valid JSON at the exact raw response-byte cap", async () => {
+    const body = jsonWithExactBytes(MAX_BOUNDED_JSON_BYTES);
+    expect(new TextEncoder().encode(body)).toHaveLength(
+      MAX_BOUNDED_JSON_BYTES,
+    );
+    const { fetchMock, acquire } = installNativeArchiveResponse(
+      new Response(body, {
+        headers: { "Content-Length": String(MAX_BOUNDED_JSON_BYTES) },
+      }),
+    );
+
+    const result = await api.postBoundedJson<{ padding: string }>(
+      "/predict/archive-v2",
+      { request: true },
+      MAX_BOUNDED_JSON_BYTES,
+    );
+
+    expect(result.padding).toHaveLength(
+      MAX_BOUNDED_JSON_BYTES - JSON.stringify({ padding: "" }).length,
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("refuses cap-plus-one raw bytes even when the excess is JSON whitespace", async () => {
+    const body = `${jsonWithExactBytes(MAX_BOUNDED_JSON_BYTES)} `;
+    expect(new TextEncoder().encode(body)).toHaveLength(
+      MAX_BOUNDED_JSON_BYTES + 1,
+    );
+    installNativeArchiveResponse(
+      new Response(body, {
+        headers: { "Content-Length": String(MAX_BOUNDED_JSON_BYTES + 1) },
+      }),
+    );
+
+    await expect(
+      api.postBoundedJson(
+        "/predict/archive-v2",
+        {},
+        MAX_BOUNDED_JSON_BYTES,
+      ),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: "STUDIO_BOUNDED_JSON_RESPONSE_INVALID",
+      detail: expect.stringContaining("exceeds"),
+    });
+  });
+
+  it("does not trust a false lower Content-Length", async () => {
+    const body = `${jsonWithExactBytes(MAX_BOUNDED_JSON_BYTES)} `;
+    installNativeArchiveResponse(
+      new Response(body, { headers: { "Content-Length": "2" } }),
+    );
+
+    await expect(
+      api.postBoundedJson(
+        "/predict/archive-v2",
+        {},
+        MAX_BOUNDED_JSON_BYTES,
+      ),
+    ).rejects.toMatchObject({
+      status: 502,
+      detail: expect.stringContaining("exceeds"),
+    });
+  });
+
+  it("bounds a missing Content-Length while still accepting a small body", async () => {
+    installNativeArchiveResponse(new Response(JSON.stringify({ ok: true })));
+    await expect(
+      api.postBoundedJson(
+        "/predict/archive-v2",
+        {},
+        MAX_BOUNDED_JSON_BYTES,
+      ),
+    ).resolves.toEqual({ ok: true });
+
+    installNativeArchiveResponse(
+      new Response(`${jsonWithExactBytes(MAX_BOUNDED_JSON_BYTES)} `),
+    );
+    await expect(
+      api.postBoundedJson(
+        "/predict/archive-v2",
+        {},
+        MAX_BOUNDED_JSON_BYTES,
+      ),
+    ).rejects.toMatchObject({
+      status: 502,
+      detail: expect.stringContaining("exceeds"),
+    });
+  });
+
+  it("refuses hostile Content-Length syntax and invalid JSON", async () => {
+    installNativeArchiveResponse(
+      new Response("{}", { headers: { "Content-Length": "unknown" } }),
+    );
+    await expect(
+      api.postBoundedJson(
+        "/predict/archive-v2",
+        {},
+        MAX_BOUNDED_JSON_BYTES,
+      ),
+    ).rejects.toMatchObject({
+      status: 502,
+      detail: expect.stringContaining("invalid Content-Length"),
+    });
+
+    installNativeArchiveResponse(new Response("{not-json"));
+    await expect(
+      api.postBoundedJson(
+        "/predict/archive-v2",
+        {},
+        MAX_BOUNDED_JSON_BYTES,
+      ),
+    ).rejects.toMatchObject({
+      status: 502,
+      detail: expect.stringContaining("not valid JSON"),
+    });
   });
 
   it("does not issue, retry, or acquire Python after renderer preflight rejects", async () => {
