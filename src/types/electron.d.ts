@@ -56,6 +56,25 @@ interface WorkspaceRunDetailPreselection {
   status: number;
 }
 
+type RendererTransportRequest =
+  | { kind: "http"; method: string; path: string }
+  | { kind: "websocket"; path: string };
+
+interface RendererTransportSelection {
+  schema_id: "nirs4all.studio-renderer-transport-selection-decision.v1";
+  kind: "http" | "websocket";
+  method: string | null;
+  path: string;
+  surface: string;
+  target: "native-sidecar" | "scientific-plugin" | "reject";
+  base_url: string | null;
+  renderer_transport: boolean;
+  scientific_execution: false;
+  reason: string;
+  fallback_after_native_selection: "none";
+  status: number;
+}
+
 interface ControlPlaneInfo extends NativeSidecarInfo {
   role: "control-plane";
   ready: boolean;
@@ -195,6 +214,11 @@ interface ElectronApi {
 
   /** Get the explicit native-sidecar diagnostic state. */
   getNativeSidecarInfo(): Promise<NativeSidecarInfo>;
+
+  /** Select a renderer HTTP/WS transport before acquiring either runtime. */
+  preselectRendererTransport(
+    request: RendererTransportRequest,
+  ): Promise<RendererTransportSelection>;
 
   /** Select one linked-workspace run-detail target before its HTTP request. */
   preselectWorkspaceRunDetail(

@@ -103,6 +103,8 @@ fn native_job_lifecycle_contract_is_fail_closed_and_complete() {
 fn websocket_cutover_contract_is_anchored_to_the_frozen_studio_v1_oracle() {
     let root = studio_root();
     let contract = read_json(root.join("sidecar/contracts/studio_job_lifecycle_v1.json"));
+    let renderer =
+        read_json(root.join("sidecar/contracts/studio_renderer_transport_selection_v1.json"));
     let oracle = read_json(root.join("docs/contracts/studio-v1/fixtures/websocket.snapshot.json"));
 
     let contract_endpoints = strings(&contract["legacy_websocket"]["endpoints"]);
@@ -143,7 +145,11 @@ fn websocket_cutover_contract_is_anchored_to_the_frozen_studio_v1_oracle() {
     );
     assert_eq!(
         contract["cutover"]["route_selection"],
-        "submission_transport_only_no_product_execution"
+        "electron_renderer_preflight_per_request_or_connection"
+    );
+    assert_eq!(
+        contract["cutover"]["renderer_transport_contract"],
+        "studio_renderer_transport_selection_v1"
     );
     assert_eq!(
         contract["cutover"]["sidecar_http_registration"],
@@ -151,7 +157,7 @@ fn websocket_cutover_contract_is_anchored_to_the_frozen_studio_v1_oracle() {
     );
     assert_eq!(
         contract["cutover"]["scientific_submission_route_selection"],
-        "registered_transport_default_unselected_executor"
+        "renderer_selected_native_transport_default_unselected_executor"
     );
     assert_eq!(
         contract["cutover"]["scientific_submission_contract"],
@@ -164,6 +170,18 @@ fn websocket_cutover_contract_is_anchored_to_the_frozen_studio_v1_oracle() {
     );
     assert_eq!(
         contract["cutover"]["fallback_after_native_selection"],
+        "none"
+    );
+    assert_eq!(
+        renderer["schema_id"],
+        "nirs4all.studio-renderer-transport-selection.v1"
+    );
+    assert_eq!(
+        renderer["capability_distinction"]["scientific_execution"],
+        false
+    );
+    assert_eq!(
+        renderer["selection"]["fallback_after_native_selection"],
         "none"
     );
 }

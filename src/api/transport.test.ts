@@ -6,6 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api, formatApiErrorDetail, resetBackendUrl } from "./transport";
 import { getConfigDiff, getRecommendedConfig } from "./config";
+import {
+  preselectRendererTransport,
+  type RendererTransportRequest,
+} from "../../electron/renderer-transport-selection";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -19,7 +23,7 @@ type RendererElectronApi = NonNullable<Window["electronApi"]>;
 function createElectronApiMock(
   overrides: Partial<RendererElectronApi> = {},
 ): RendererElectronApi {
-  return {
+  const electronApi = {
     selectFolder: vi.fn().mockResolvedValue(null),
     confirmDroppedFolder: vi.fn().mockResolvedValue(null),
     selectFile: vi.fn().mockResolvedValue(null),
@@ -133,6 +137,104 @@ function createElectronApiMock(
     isElectron: true,
     getPathForFile: vi.fn(() => ""),
     ...overrides,
+  } as RendererElectronApi;
+  if (!overrides.preselectRendererTransport) {
+    electronApi.preselectRendererTransport = vi.fn(async (request) => {
+      const info = await electronApi.getNativeSidecarInfo();
+      const candidatePath = request.kind === "http" ? request.path : "";
+      const candidateMethod = request.kind === "http" ? request.method : "";
+      const native = info.status === "running" && Boolean(info.url) &&
+        mockNativeCandidate(candidatePath, candidateMethod) &&
+        (!mockRequiresPythonHost(candidatePath) || info.pythonPluginHostConfigured);
+      return {
+        schema_id: "nirs4all.studio-renderer-transport-selection-decision.v1",
+        kind: request.kind,
+        method: request.kind === "http" ? request.method.toUpperCase() : null,
+        path: request.path,
+        surface: native ? "test-native" : "unmigrated",
+        target: native ? "native-sidecar" : "scientific-plugin",
+        base_url: native ? info.url : null,
+        renderer_transport: native,
+        scientific_execution: false,
+        reason: native ? "test_native_preflight" : "test_unmigrated",
+        fallback_after_native_selection: "none",
+        status: 200,
+      };
+    });
+  }
+  return electronApi;
+}
+
+function mockRequiresPythonHost(path: string): boolean {
+  return [
+    "/system/capabilities",
+    "/system/info",
+    "/system/build",
+    "/system/env-coherence",
+    "/updates/version",
+    "/updates/runtime/status",
+  ].includes(path);
+}
+
+function mockNativeCandidate(path: string, method: string): boolean {
+  if ([
+    "/health",
+    "/app/settings",
+    "/app/favorites",
+    "/app/config-path",
+    "/workspaces",
+    "/system/status",
+    "/system/network",
+    "/updates/settings",
+    "/system/capabilities",
+    "/system/info",
+    "/system/build",
+    "/system/env-coherence",
+    "/updates/version",
+    "/updates/runtime/status",
+  ].includes(path) ||
+    path.startsWith("/app/favorites/") ||
+    ((method === "POST" || method === "DELETE") &&
+      /^\/workspaces\/[^/?]+(?:\/activate)?$/.test(path))) return true;
+  if (method !== "GET") return false;
+  if (/^\/workspaces\/[^/?]+\/results(?:\/summary)?$/.test(path)) return true;
+  const runs = /^\/workspaces\/[^/?]+\/runs(?:\?([^#]+))?$/.exec(path);
+  if (!runs) return false;
+  if (runs[1] === undefined) return true;
+  const seen = new Set<string>();
+  for (const parameter of runs[1].split("&")) {
+    const [name, value, extra] = parameter.split("=");
+    if (extra !== undefined || seen.has(name)) return false;
+    if (
+      (name === "source" && ["unified", "manifests", "parquet"].includes(value)) ||
+      (name === "refresh" && ["true", "false"].includes(value))
+    ) {
+      seen.add(name);
+    } else {
+      return false;
+    }
+  }
+  return seen.size > 0;
+}
+
+function rendererSelection(
+  method: string,
+  path: string,
+  target: "native-sidecar" | "scientific-plugin" | "reject",
+) {
+  return {
+    schema_id: "nirs4all.studio-renderer-transport-selection-decision.v1" as const,
+    kind: "http" as const,
+    method,
+    path,
+    surface: "test-surface",
+    target,
+    base_url: target === "native-sidecar" ? "http://127.0.0.1:43123" : null,
+    renderer_transport: target === "native-sidecar",
+    scientific_execution: false as const,
+    reason: target === "reject" ? "native_capability_mismatch" : "test_selection",
+    fallback_after_native_selection: "none" as const,
+    status: target === "reject" ? 503 : 200,
   };
 }
 
@@ -169,6 +271,78 @@ describe("formatApiErrorDetail", () => {
 });
 
 describe("API client request handling", () => {
+  it("uses the preflighted native scientific submission transport without acquiring Python", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        protocol_version: "studio-sidecar-r1",
+        features: {
+          renderer_transport_selection: true,
+          renderer_http_transport: true,
+          scientific_submission_transport: true,
+          scientific_execution: false,
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        job_id: "job-1",
+        status: "running",
+        scientific_execution: false,
+      }, 202));
+    vi.stubGlobal("fetch", fetchMock);
+    const acquire = vi.fn();
+    const inspectSidecar = vi.fn(() => ({
+      status: "running" as const,
+      url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: false,
+    }));
+    const preselect = vi.fn((request: RendererTransportRequest) =>
+      preselectRendererTransport(request, inspectSidecar, fetchMock));
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl: acquire,
+      getNativeSidecarInfo: inspectSidecar,
+      preselectRendererTransport: preselect,
+    });
+
+    await api.post("/runs/run-groups", { engine: "dag-ml" });
+
+    expect(preselect).toHaveBeenCalledWith({
+      kind: "http",
+      method: "POST",
+      path: "/runs/run-groups",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:43123/sidecar/v1/capabilities",
+      { method: "GET", cache: "no-store" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:43123/api/runs/run-groups",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(inspectSidecar).toHaveBeenCalledOnce();
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("does not issue, retry, or acquire Python after renderer preflight rejects", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const acquire = vi.fn();
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl: acquire,
+      preselectRendererTransport: vi.fn().mockResolvedValue(
+        rendererSelection("GET", "/training/job-1", "reject"),
+      ),
+    });
+
+    await expect(api.get("/training/job-1")).rejects.toMatchObject({
+      detail: expect.stringContaining("native_capability_mismatch"),
+      status: 503,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
   it("fails closed when the Electron scientific plugin cannot start", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
