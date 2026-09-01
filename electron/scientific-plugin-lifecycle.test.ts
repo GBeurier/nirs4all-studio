@@ -88,6 +88,30 @@ describe("ScientificPluginLifecycle", () => {
     expect(lifecycle.getInfo().url).toBeNull();
   });
 
+  it("does not retry a missing Python host until runtime selection changes", async () => {
+    const { backend } = makeBackend();
+    const prepare = vi.fn().mockRejectedValueOnce(
+      new Error("Python plugin host is not configured"),
+    ).mockResolvedValue(undefined);
+    const lifecycle = new ScientificPluginLifecycle(backend, prepare);
+
+    await expect(lifecycle.getUrl()).rejects.toThrow(
+      "Python plugin host is not configured",
+    );
+    await expect(lifecycle.getUrl()).rejects.toThrow(
+      "Python plugin host is not configured",
+    );
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(backend.start).not.toHaveBeenCalled();
+
+    lifecycle.clearFailure();
+    await expect(lifecycle.getUrl()).resolves.toBe(
+      "http://127.0.0.1:43123",
+    );
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(backend.start).toHaveBeenCalledTimes(1);
+  });
+
   it("restarts only the scientific backend", async () => {
     const { backend } = makeBackend();
     const prepare = vi.fn(async () => undefined);

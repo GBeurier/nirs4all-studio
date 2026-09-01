@@ -35,6 +35,7 @@ const {
   STANDALONE_V1_PROFILE,
 } = require("./python-runtime-config.cjs");
 const { resolveSpawnCommand } = require("./spawn-command.cjs");
+const { verifyRuntimeContract } = require("./native-runtime-contract.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 const isWindows = process.platform === "win32";
@@ -333,13 +334,11 @@ function ensureBuildInputsExist(config) {
     );
   }
 
-  const nativeSidecarName = config.platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar";
-  const nativeSidecarPath = path.join(backendDistPath, "native", nativeSidecarName);
-  if (!fs.existsSync(nativeSidecarPath)) {
-    throw new Error(
-      "backend-dist/ does not contain the native Studio sidecar. Re-run without --skip-backend or build scripts/build-native-sidecar.cjs.",
-    );
-  }
+  verifyRuntimeContract({
+    backendRoot: backendDistPath,
+    platform: config.platform,
+    arch: config.arch,
+  });
 }
 
 function ensureFrontendOutputsExist(config) {
@@ -416,6 +415,11 @@ async function buildArchiveStandalone(config) {
     }
     await runCommand(getNodeCommand(), bakeArgs);
     await runCommand(getNodeCommand(), [path.join("scripts", "build-native-sidecar.cjs")]);
+    verifyRuntimeContract({
+      backendRoot: path.join(projectRoot, "backend-dist"),
+      platform: config.platform,
+      arch: config.arch,
+    });
     console.log("");
   } else {
     console.log("=== Step 1: Reusing existing backend-dist/ ===");

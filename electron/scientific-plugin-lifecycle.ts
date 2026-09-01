@@ -28,6 +28,7 @@ export interface ScientificPluginInfo {
  */
 export class ScientificPluginLifecycle {
   private activationPromise: Promise<number> | null = null;
+  private activationError: Error | null = null;
   private requested = false;
 
   constructor(
@@ -54,6 +55,7 @@ export class ScientificPluginLifecycle {
     const info = this.backend.getInfo();
     if (info.status === "running") return info.port;
     if (this.activationPromise) return this.activationPromise;
+    if (this.activationError) throw this.activationError;
 
     this.requested = true;
     this.activationPromise = (async () => {
@@ -70,6 +72,10 @@ export class ScientificPluginLifecycle {
 
     try {
       return await this.activationPromise;
+    } catch (error) {
+      this.activationError =
+        error instanceof Error ? error : new Error(String(error));
+      throw this.activationError;
     } finally {
       this.activationPromise = null;
     }
@@ -86,6 +92,7 @@ export class ScientificPluginLifecycle {
 
   async restart(skipPrepare = false): Promise<number> {
     this.requested = true;
+    this.activationError = null;
     if (!skipPrepare) await this.prepare();
     const port = await this.backend.restart();
     const info = this.backend.getInfo();
@@ -97,5 +104,10 @@ export class ScientificPluginLifecycle {
 
   async stop(): Promise<void> {
     await this.backend.stop();
+  }
+
+  /** Allow a newly selected interpreter to satisfy a later explicit acquire. */
+  clearFailure(): void {
+    this.activationError = null;
   }
 }

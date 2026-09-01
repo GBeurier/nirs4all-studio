@@ -47,6 +47,7 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
   };
   resolveLaunchLayout(extractedRoot: string, platformId: string, appName: string): {
     appRoot: string;
+    backendRoot: string;
     executablePath: string;
     runtimeReadyPath: string;
     bundledPythonPath: string;
@@ -186,7 +187,8 @@ describe("smoke-archive-standalone", () => {
     const env = smokeModule.buildSandboxEnv("linux", sandboxRoot, 43123);
 
     expect(env.NIRS4ALL_OFFLINE).toBe("1");
-    expect(env.NIRS4ALL_BACKEND_PORT).toBe("43123");
+    expect(env.NIRS4ALL_NATIVE_SIDECAR_PORT).toBe("43123");
+    expect(env.NIRS4ALL_BACKEND_PORT).toBeUndefined();
     expect(env.HOME).toBe(path.join(sandboxRoot, "home"));
     expect(env.XDG_CACHE_HOME).toBe(path.join(sandboxRoot, "home", ".cache"));
     expect(env.XDG_DATA_HOME).toBe(path.join(sandboxRoot, "home", ".local", "share"));

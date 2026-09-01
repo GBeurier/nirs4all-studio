@@ -237,6 +237,7 @@ jobs:
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           test -x backend-dist/native/studio-sidecar
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform linux --arch x64
           backend-dist/native/studio-sidecar --smoke-readiness
 
       - name: Package with electron-builder
@@ -249,6 +250,8 @@ jobs:
           SIDECAR="$(find release -type f -path '*/resources/backend/native/studio-sidecar' -print -quit)"
           test -n "$SIDECAR"
           test -x "$SIDECAR"
+          BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform linux --arch x64
           "$SIDECAR" --smoke-readiness
 
       - name: Generate checksums
@@ -331,6 +334,8 @@ jobs:
           if (-not (Test-Path -LiteralPath $sidecar -PathType Leaf)) {
             throw "Native Studio sidecar not found: $sidecar"
           }
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform win32 --arch x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -363,6 +368,9 @@ jobs:
           if (-not $sidecar) {
             throw "Packaged native Studio sidecar not found under release/"
           }
+          $backendRoot = Split-Path -Parent (Split-Path -Parent $sidecar.FullName)
+          node scripts/native-runtime-contract.cjs --backend-root $backendRoot --platform win32 --arch x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar.FullName --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -466,6 +474,7 @@ jobs:
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-apple-darwin
           test -x backend-dist/native/studio-sidecar
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform darwin --arch x64
           if [ "$(uname -m)" = "x86_64" ]; then
             backend-dist/native/studio-sidecar --smoke-readiness
           else
@@ -513,6 +522,8 @@ jobs:
           SIDECAR="$(find release -type f -path '*/Contents/Resources/backend/native/studio-sidecar' -print -quit)"
           test -n "$SIDECAR"
           test -x "$SIDECAR"
+          BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform darwin --arch x64
           if [ "$(uname -m)" = "x86_64" ]; then
             "$SIDECAR" --smoke-readiness
           else
@@ -653,6 +664,7 @@ jobs:
         run: |
           node scripts/build-native-sidecar.cjs --target aarch64-apple-darwin
           test -x backend-dist/native/studio-sidecar
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform darwin --arch arm64
           if [ "$(uname -m)" = "arm64" ]; then
             backend-dist/native/studio-sidecar --smoke-readiness
           else
@@ -697,6 +709,8 @@ jobs:
           SIDECAR="$(find release -type f -path '*/Contents/Resources/backend/native/studio-sidecar' -print -quit)"
           test -n "$SIDECAR"
           test -x "$SIDECAR"
+          BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform darwin --arch arm64
           if [ "$(uname -m)" = "arm64" ]; then
             "$SIDECAR" --smoke-readiness
           else

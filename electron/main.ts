@@ -133,7 +133,12 @@ async function prepareScientificPlugin(): Promise<void> {
   // Development has an explicit repo-local venv fallback. Packaged runtimes
   // are repaired only when the user has configured one; a bundled standalone
   // backend remains usable without creating a Python environment first.
-  if (process.env.VITE_DEV_SERVER_URL === undefined && envManager.isReady()) {
+  if (process.env.VITE_DEV_SERVER_URL === undefined) {
+    if (!envManager.isReady()) {
+      throw new Error(
+        "Python library/plugin host is not configured; the Rust product backend remains active",
+      );
+    }
     await envManager.ensureBackendPackages();
   }
 }
@@ -193,24 +198,25 @@ function nativeSidecarStartOptions() {
   };
 }
 
-function startNativeSidecar(): void {
-  void nativeSidecarManager
-    .start(nativeSidecarStartOptions())
-    .then((info) => {
-      if (info.status === "running") {
-        nativePythonPluginHostStale = false;
-        console.log(
-          `Native Studio sidecar ready at ${info.url} (${info.protocolVersion})`,
-        );
-      } else if (info.status === "error") {
-        console.error(
-          `Native Studio sidecar was not started: ${info.error ?? "unknown error"}`,
-        );
-      }
-    })
-    .catch((error) => {
-      console.error("Native Studio sidecar failed during startup:", error);
-    });
+async function startNativeSidecar(): Promise<void> {
+  const info = await nativeSidecarManager.start(nativeSidecarStartOptions());
+  if (info.status === "running") {
+    nativePythonPluginHostStale = false;
+    console.log(
+      `Native Studio sidecar ready at ${info.url} (${info.protocolVersion})`,
+    );
+    if (info.pythonPluginHostError) {
+      console.error(
+        `Bundled Python plugin host disabled: ${info.pythonPluginHostError}`,
+      );
+    }
+    return;
+  }
+  if (app.isPackaged || info.status === "error") {
+    throw new Error(
+      info.error ?? "Packaged native Studio sidecar did not become ready",
+    );
+  }
 }
 
 function getNativeSidecarInfo() {
@@ -233,6 +239,7 @@ async function applyPythonRuntimeChange<T extends { success: boolean }>(
     // route selection happens before (not after) choosing the compatibility
     // plugin. Never restart the Rust control plane to rebind Python.
     nativePythonPluginHostStale = true;
+    scientificPlugin.clearFailure();
   }
   return result;
 }
@@ -741,6 +748,7 @@ ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
       }
     }, targetDir);
     nativePythonPluginHostStale = true;
+    scientificPlugin.clearFailure();
 
     // Runtime setup configures the optional scientific plugin. It stays
     // inactive until a FastAPI route or WebSocket explicitly acquires it.
@@ -791,6 +799,14 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+}).catch((error) => {
+  const detail = error instanceof Error ? error.message : String(error);
+  console.error("Native Studio startup failed closed:", detail);
+  dialog.showErrorBox(
+    "nirs4all Studio could not start",
+    `The packaged Rust backend did not pass readiness checks.\n\n${detail}`,
+  );
+  app.quit();
 });
 
 app.on("window-all-closed", () => {

@@ -14,4 +14,17 @@ describe("startNativeSession", () => {
     expect(events).toEqual(["control", "window"]);
     expect(startUvicorn).not.toHaveBeenCalled();
   });
+
+  it("does not create the product window when the Rust backend fails closed", async () => {
+    const createWindow = vi.fn(async () => undefined);
+    await expect(
+      startNativeSession({
+        startControlPlane: async () => {
+          throw new Error("packaged sidecar integrity mismatch");
+        },
+        createWindow,
+      }),
+    ).rejects.toThrow("packaged sidecar integrity mismatch");
+    expect(createWindow).not.toHaveBeenCalled();
+  });
 });
