@@ -8,6 +8,7 @@ const SIDECAR_PORT_ENV = "NIRS4ALL_NATIVE_SIDECAR_PORT";
 const SIDECAR_ENABLE_PACKAGED_ENV = "NIRS4ALL_ENABLE_NATIVE_SIDECAR";
 const PYTHON_PLUGIN_HOST_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST";
 const PYTHON_PLUGIN_HOST_BUNDLED_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
+const SCIENTIFIC_EXECUTOR_ENV = "NIRS4ALL_SCIENTIFIC_EXECUTOR";
 const RUNTIME_MODE_ENV = "NIRS4ALL_RUNTIME_MODE";
 const RUNTIME_KIND_ENV = "NIRS4ALL_RUNTIME_KIND";
 const BUILD_INFO_PATH_ENV = "NIRS4ALL_BUILD_INFO_PATH";
@@ -242,8 +243,14 @@ export class NativeSidecarManager {
       bundledPythonPluginHost;
     this.pythonPluginHostConfigured = Boolean(pythonPluginHost);
     const childEnvironment: NodeJS.ProcessEnv = { ...process.env };
-    if (pythonPluginHost)
+    delete childEnvironment[SCIENTIFIC_EXECUTOR_ENV];
+    if (pythonPluginHost) {
       childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
+      childEnvironment[SCIENTIFIC_EXECUTOR_ENV] = "cpython-stdio-v1";
+    } else {
+      delete childEnvironment[PYTHON_PLUGIN_HOST_ENV];
+      delete childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV];
+    }
     if (bundledPythonPluginHost)
       childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV] = "true";
     if (options.runtimeMode?.trim())

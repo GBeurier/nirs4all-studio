@@ -107,6 +107,13 @@ pub trait ScientificJobExecutor: Debug + Send + Sync {
     /// Whether this executor was explicitly selected and preflighted.
     fn is_selected(&self) -> bool;
 
+    /// Stable machine-readable reason for refusing selection. Implementations
+    /// may re-check an acquired runtime identity, but must not retry a failed
+    /// acquisition implicitly.
+    fn unavailability_reason(&self) -> &'static str {
+        "executor_not_selected"
+    }
+
     /// Preflight one already validated submission and return the bounded
     /// execution identity which will be persisted by Rust.
     ///
@@ -265,6 +272,13 @@ impl NativeJobRuntime {
     #[must_use]
     pub fn execution_selected(&self) -> bool {
         self.executor.is_selected()
+    }
+
+    /// Explain why submission cannot be selected without parsing its body or
+    /// touching workspace state.
+    #[must_use]
+    pub fn execution_unavailability_reason(&self) -> Option<&'static str> {
+        (!self.executor.is_selected()).then(|| self.executor.unavailability_reason())
     }
 
     /// Number of successfully published lifecycle events since launch.

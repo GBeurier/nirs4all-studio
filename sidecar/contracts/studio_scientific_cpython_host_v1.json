@@ -1,0 +1,19 @@
+{
+  "schema": "nirs4all.studio-scientific-cpython-host.v1",
+  "transport": "fresh-process-json-stdio",
+  "product_owner": "studio-sidecar-rust",
+  "python_role": "library-plugin-host-only",
+  "required_implementation": "cpython",
+  "minimum_python_version": "3.11",
+  "required_callable": "nirs4all.studio_scientific_job_v1",
+  "maximum_stdout_bytes": 8192,
+  "maximum_stderr_bytes": 65536,
+  "preflight_timeout_ms": 3000,
+  "network_ownership": "forbidden",
+  "network_bind_self_test": "required",
+  "http_backend": "forbidden",
+  "scheduler_owner": "studio-sidecar-rust",
+  "store_owner": "studio-sidecar-rust",
+  "scientific_execution_capability": false,
+  "reason": "the current nirs4all library does not expose the closed Studio job callable"
+}
