@@ -118,7 +118,7 @@ def test_fastapi_oracle_matches_the_native_composition_golden() -> None:
 def test_preselection_contract_keeps_legacy_branch_before_target_http() -> None:
     contract_path = CONTRACTS / "studio_run_detail_preselection_v1.json"
     assert hashlib.sha256(contract_path.read_bytes()).hexdigest() == (
-        "7adf737f2025d4491fae30194b65aa7c5d48fe55a6c5c3341a4d8dc17a344adc"
+        "42b076b3cc31c167ac4366eaabb394876d84c40a044991217e2f2823a57b92c4"
     )
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
 
@@ -143,7 +143,7 @@ def test_preselection_contract_keeps_legacy_branch_before_target_http() -> None:
         "isolated_mode": "-I",
         "request_transport": "strict_json_stdin",
         "input_bytes": 8192,
-        "preflight_timeout_ms": 3000,
+        "preflight_timeout_ms": 15000,
         "request_timeout_ms": 15000,
         "stdout_bytes": 4 * 1024 * 1024,
         "stderr_bytes": 64 * 1024,
