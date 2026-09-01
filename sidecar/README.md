@@ -60,12 +60,20 @@ R1 provides a small local HTTP control surface only:
 The sidecar also consumes the published `studio_run_detail_v1` Store-owned
 projection internally, with an exact owner golden and the same immutable
 fail-closed rules. It intentionally does not register or select
-`GET /api/workspaces/:id/runs/:run_id`: the owner contract marks that projection
-as an incomplete HTTP response. Exact cutover still requires versioned inputs
-for Studio's linked-dataset mapping, CV/runtime inference, rerun readiness, and
-result-repository/filesystem result discovery. The legacy-manifest branch is
-also outside the projection. Until those composition contracts exist and pass
-differential goldens, the entire run-detail request stays on FastAPI.
+`GET /api/workspaces/:id/runs/:run_id`. The byte-identical owner
+`studio_run_detail_http_v1` contract (SHA-256
+`5661f99609e747bd581ecfd2be11306daadf004358cb494939978ca985f49e15`)
+explicitly sets `cutover.route_selection` to `forbidden`. Its owner oracle
+publishes splitter metadata, but the portable Store projection only carries
+`expanded_config`; reproducing the library-owned splitter extractor in Studio
+would cross the scientific boundary. The Store projection also omits the
+pipeline runtime columns used by the FastAPI adapter, while the contract marks
+both dataset-link and runtime policies `not_yet_published`. Finally, the
+legacy-manifest branch is `not_covered`, and the renderer transport has no
+versioned per-workspace Store-v5 preselection proof. Until those owner inputs
+and policies are published and exact differential goldens pass, the entire
+run-detail request stays on FastAPI. A native incompatibility must eventually
+return `409` with no retry, but no native run-detail request is selected today.
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
