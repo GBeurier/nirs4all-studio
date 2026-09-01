@@ -342,10 +342,22 @@
       "route_class": "APIRoute"
     },
     {
-      "endpoint": "api.workspace.router_maintenance.compact_workspace_storage",
+      "endpoint": "api.workspace.router_maintenance.preview_legacy_migration_report_route",
       "include_in_schema": true,
       "kind": "http",
       "match_ordinal": 28,
+      "methods": [
+        "POST"
+      ],
+      "name": "preview_legacy_migration_report_route",
+      "path": "/api/workspace/migrate/report-preview",
+      "route_class": "APIRoute"
+    },
+    {
+      "endpoint": "api.workspace.router_maintenance.compact_workspace_storage",
+      "include_in_schema": true,
+      "kind": "http",
+      "match_ordinal": 29,
       "methods": [
         "POST"
       ],
@@ -357,7 +369,7 @@
       "endpoint": "api.workspace.router_maintenance.clean_workspace_dead_links",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 29,
+      "match_ordinal": 30,
       "methods": [
         "POST"
       ],
@@ -369,7 +381,7 @@
       "endpoint": "api.workspace.router_maintenance.remove_bottom_predictions",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 30,
+      "match_ordinal": 31,
       "methods": [
         "POST"
       ],
@@ -381,7 +393,7 @@
       "endpoint": "api.workspace.router_maintenance.get_workspace_storage_health",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 31,
+      "match_ordinal": 32,
       "methods": [
         "GET"
       ],
@@ -393,7 +405,7 @@
       "endpoint": "api.workspace.router_maintenance.clean_cache",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 32,
+      "match_ordinal": 33,
       "methods": [
         "POST"
       ],
@@ -405,7 +417,7 @@
       "endpoint": "api.workspace.router_maintenance.get_workspace_settings",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 33,
+      "match_ordinal": 34,
       "methods": [
         "GET"
       ],
@@ -417,7 +429,7 @@
       "endpoint": "api.workspace.router_maintenance.update_workspace_settings",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 34,
+      "match_ordinal": 35,
       "methods": [
         "PUT"
       ],
@@ -429,7 +441,7 @@
       "endpoint": "api.workspace.router_maintenance.get_data_loading_defaults",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 35,
+      "match_ordinal": 36,
       "methods": [
         "GET"
       ],
@@ -441,7 +453,7 @@
       "endpoint": "api.workspace.router_maintenance.update_data_loading_defaults",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 36,
+      "match_ordinal": 37,
       "methods": [
         "PUT"
       ],
@@ -453,7 +465,7 @@
       "endpoint": "api.workspace.router_workspaces.get_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 37,
+      "match_ordinal": 38,
       "methods": [
         "GET"
       ],
@@ -465,7 +477,7 @@
       "endpoint": "api.workspace.router_workspaces.select_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 38,
+      "match_ordinal": 39,
       "methods": [
         "POST"
       ],
@@ -477,7 +489,7 @@
       "endpoint": "api.workspace.router_workspaces.reload_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 39,
+      "match_ordinal": 40,
       "methods": [
         "POST"
       ],
@@ -489,7 +501,7 @@
       "endpoint": "api.workspace.router_workspaces.get_workspace_paths",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 40,
+      "match_ordinal": 41,
       "methods": [
         "GET"
       ],
@@ -501,7 +513,7 @@
       "endpoint": "api.workspace.router_workspaces.create_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 41,
+      "match_ordinal": 42,
       "methods": [
         "POST"
       ],
@@ -513,7 +525,7 @@
       "endpoint": "api.workspace.router_workspaces.list_workspaces",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 42,
+      "match_ordinal": 43,
       "methods": [
         "GET"
       ],
@@ -525,7 +537,7 @@
       "endpoint": "api.workspace.router_workspaces.get_recent_workspaces",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 43,
+      "match_ordinal": 44,
       "methods": [
         "GET"
       ],
@@ -537,7 +549,7 @@
       "endpoint": "api.workspace.router_workspaces.export_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 44,
+      "match_ordinal": 45,
       "methods": [
         "POST"
       ],
@@ -549,7 +561,7 @@
       "endpoint": "api.workspace.router_workspaces.remove_workspace_from_list",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 45,
+      "match_ordinal": 46,
       "methods": [
         "DELETE"
       ],
@@ -561,7 +573,7 @@
       "endpoint": "api.workspace.router_workspaces.import_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 46,
+      "match_ordinal": 47,
       "methods": [
         "POST"
       ],
@@ -573,7 +585,7 @@
       "endpoint": "api.workspace.router_workspaces.get_workspace_info",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 47,
+      "match_ordinal": 48,
       "methods": [
         "GET"
       ],
@@ -585,7 +597,7 @@
       "endpoint": "api.workspace.router_workspaces.update_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 48,
+      "match_ordinal": 49,
       "methods": [
         "PUT"
       ],
@@ -597,7 +609,7 @@
       "endpoint": "api.workspace.router_discovery.list_linked_workspaces",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 49,
+      "match_ordinal": 50,
       "methods": [
         "GET"
       ],
@@ -609,7 +621,7 @@
       "endpoint": "api.workspace.router_discovery.link_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 50,
+      "match_ordinal": 51,
       "methods": [
         "POST"
       ],
@@ -621,7 +633,7 @@
       "endpoint": "api.workspace.router_discovery.unlink_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 51,
+      "match_ordinal": 52,
       "methods": [
         "DELETE"
       ],
@@ -633,7 +645,7 @@
       "endpoint": "api.workspace.router_discovery.prune_workspaces",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 52,
+      "match_ordinal": 53,
       "methods": [
         "POST"
       ],
@@ -645,7 +657,7 @@
       "endpoint": "api.workspace.router_discovery.activate_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 53,
+      "match_ordinal": 54,
       "methods": [
         "POST"
       ],
@@ -657,7 +669,7 @@
       "endpoint": "api.workspace.router_discovery.scan_workspace",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 54,
+      "match_ordinal": 55,
       "methods": [
         "POST"
       ],
@@ -669,7 +681,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_runs",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 55,
+      "match_ordinal": 56,
       "methods": [
         "GET"
       ],
@@ -681,7 +693,7 @@
       "endpoint": "api.workspace.router_discovery.get_enriched_workspace_runs",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 56,
+      "match_ordinal": 57,
       "methods": [
         "GET"
       ],
@@ -693,7 +705,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_run_detail",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 57,
+      "match_ordinal": 58,
       "methods": [
         "GET"
       ],
@@ -705,7 +717,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_run_pipeline_logs",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 58,
+      "match_ordinal": 59,
       "methods": [
         "GET"
       ],
@@ -717,7 +729,7 @@
       "endpoint": "api.workspace.router_discovery.rerun_workspace_run",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 59,
+      "match_ordinal": 60,
       "methods": [
         "POST"
       ],
@@ -729,7 +741,7 @@
       "endpoint": "api.workspace.router_discovery.delete_workspace_run",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 60,
+      "match_ordinal": 61,
       "methods": [
         "DELETE"
       ],
@@ -741,7 +753,7 @@
       "endpoint": "api.workspace.router_discovery.get_all_chains_for_dataset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 61,
+      "match_ordinal": 62,
       "methods": [
         "GET"
       ],
@@ -753,7 +765,7 @@
       "endpoint": "api.workspace.router_discovery.get_score_distribution",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 62,
+      "match_ordinal": 63,
       "methods": [
         "GET"
       ],
@@ -765,7 +777,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_results_summary",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 63,
+      "match_ordinal": 64,
       "methods": [
         "GET"
       ],
@@ -777,7 +789,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_dataset_scores",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 64,
+      "match_ordinal": 65,
       "methods": [
         "GET"
       ],
@@ -789,7 +801,7 @@
       "endpoint": "api.workspace.router_discovery.get_all_chains_for_results_dataset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 65,
+      "match_ordinal": 66,
       "methods": [
         "GET"
       ],
@@ -801,7 +813,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_results",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 66,
+      "match_ordinal": 67,
       "methods": [
         "GET"
       ],
@@ -813,7 +825,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_discovered_datasets",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 67,
+      "match_ordinal": 68,
       "methods": [
         "GET"
       ],
@@ -825,7 +837,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_predictions",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 68,
+      "match_ordinal": 69,
       "methods": [
         "GET"
       ],
@@ -837,7 +849,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_predictions_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 69,
+      "match_ordinal": 70,
       "methods": [
         "GET"
       ],
@@ -849,7 +861,7 @@
       "endpoint": "api.workspace.router_discovery.delete_workspace_dataset_predictions",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 70,
+      "match_ordinal": 71,
       "methods": [
         "DELETE"
       ],
@@ -861,7 +873,7 @@
       "endpoint": "api.workspace.router_discovery.delete_workspace_chain_predictions",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 71,
+      "match_ordinal": 72,
       "methods": [
         "DELETE"
       ],
@@ -873,7 +885,7 @@
       "endpoint": "api.workspace.router_discovery.delete_workspace_prediction_group",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 72,
+      "match_ordinal": 73,
       "methods": [
         "DELETE"
       ],
@@ -885,7 +897,7 @@
       "endpoint": "api.workspace.router_discovery.delete_workspace_prediction",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 73,
+      "match_ordinal": 74,
       "methods": [
         "DELETE"
       ],
@@ -897,7 +909,7 @@
       "endpoint": "api.workspace.router_discovery.get_prediction_scatter_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 74,
+      "match_ordinal": 75,
       "methods": [
         "GET"
       ],
@@ -909,7 +921,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_predictions_summary",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 75,
+      "match_ordinal": 76,
       "methods": [
         "GET"
       ],
@@ -921,7 +933,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_exports",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 76,
+      "match_ordinal": 77,
       "methods": [
         "GET"
       ],
@@ -933,7 +945,7 @@
       "endpoint": "api.workspace.router_discovery.get_workspace_templates",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 77,
+      "match_ordinal": 78,
       "methods": [
         "GET"
       ],
@@ -945,7 +957,7 @@
       "endpoint": "api.workspace.router_settings.get_app_settings",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 78,
+      "match_ordinal": 79,
       "methods": [
         "GET"
       ],
@@ -957,7 +969,7 @@
       "endpoint": "api.workspace.router_settings.update_app_settings",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 79,
+      "match_ordinal": 80,
       "methods": [
         "PUT"
       ],
@@ -969,7 +981,7 @@
       "endpoint": "api.workspace.router_settings.get_favorite_pipelines",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 80,
+      "match_ordinal": 81,
       "methods": [
         "GET"
       ],
@@ -981,7 +993,7 @@
       "endpoint": "api.workspace.router_settings.add_favorite_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 81,
+      "match_ordinal": 82,
       "methods": [
         "POST"
       ],
@@ -993,7 +1005,7 @@
       "endpoint": "api.workspace.router_settings.remove_favorite_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 82,
+      "match_ordinal": 83,
       "methods": [
         "DELETE"
       ],
@@ -1005,7 +1017,7 @@
       "endpoint": "api.workspace.router_settings.get_config_path",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 83,
+      "match_ordinal": 84,
       "methods": [
         "GET"
       ],
@@ -1017,7 +1029,7 @@
       "endpoint": "api.workspace.router_settings.set_config_path",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 84,
+      "match_ordinal": 85,
       "methods": [
         "POST"
       ],
@@ -1029,7 +1041,7 @@
       "endpoint": "api.workspace.router_settings.reset_config_path",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 85,
+      "match_ordinal": 86,
       "methods": [
         "DELETE"
       ],
@@ -1041,7 +1053,7 @@
       "endpoint": "api.datasets.datasets_debug",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 86,
+      "match_ordinal": 87,
       "methods": [
         "GET"
       ],
@@ -1053,7 +1065,7 @@
       "endpoint": "api.datasets.detect_unified",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 87,
+      "match_ordinal": 88,
       "methods": [
         "POST"
       ],
@@ -1065,7 +1077,7 @@
       "endpoint": "api.datasets.detect_files_list",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 88,
+      "match_ordinal": 89,
       "methods": [
         "POST"
       ],
@@ -1077,7 +1089,7 @@
       "endpoint": "api.datasets.auto_detect_file",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 89,
+      "match_ordinal": 90,
       "methods": [
         "POST"
       ],
@@ -1089,7 +1101,7 @@
       "endpoint": "api.datasets.detect_format",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 90,
+      "match_ordinal": 91,
       "methods": [
         "POST"
       ],
@@ -1101,7 +1113,7 @@
       "endpoint": "api.datasets.validate_files",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 91,
+      "match_ordinal": 92,
       "methods": [
         "POST"
       ],
@@ -1113,7 +1125,7 @@
       "endpoint": "api.datasets.preview_dataset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 92,
+      "match_ordinal": 93,
       "methods": [
         "POST"
       ],
@@ -1125,7 +1137,7 @@
       "endpoint": "api.datasets.preview_dataset_upload",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 93,
+      "match_ordinal": 94,
       "methods": [
         "POST"
       ],
@@ -1137,7 +1149,7 @@
       "endpoint": "api.datasets.preview_dataset_by_id",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 94,
+      "match_ordinal": 95,
       "methods": [
         "GET"
       ],
@@ -1149,7 +1161,7 @@
       "endpoint": "api.datasets.get_synthetic_presets",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 95,
+      "match_ordinal": 96,
       "methods": [
         "GET"
       ],
@@ -1161,7 +1173,7 @@
       "endpoint": "api.datasets.generate_synthetic_dataset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 96,
+      "match_ordinal": 97,
       "methods": [
         "POST"
       ],
@@ -1173,7 +1185,7 @@
       "endpoint": "api.datasets.get_dataset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 97,
+      "match_ordinal": 98,
       "methods": [
         "GET"
       ],
@@ -1185,7 +1197,7 @@
       "endpoint": "api.datasets.update_dataset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 98,
+      "match_ordinal": 99,
       "methods": [
         "PUT"
       ],
@@ -1197,7 +1209,7 @@
       "endpoint": "api.datasets.load_dataset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 99,
+      "match_ordinal": 100,
       "methods": [
         "POST"
       ],
@@ -1209,7 +1221,7 @@
       "endpoint": "api.datasets.get_dataset_stats",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 100,
+      "match_ordinal": 101,
       "methods": [
         "GET"
       ],
@@ -1221,7 +1233,7 @@
       "endpoint": "api.datasets.verify_dataset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 101,
+      "match_ordinal": 102,
       "methods": [
         "POST"
       ],
@@ -1233,7 +1245,7 @@
       "endpoint": "api.datasets.scan_folder",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 102,
+      "match_ordinal": 103,
       "methods": [
         "POST"
       ],
@@ -1245,7 +1257,7 @@
       "endpoint": "api.pipelines.list_pipelines",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 103,
+      "match_ordinal": 104,
       "methods": [
         "GET"
       ],
@@ -1257,7 +1269,7 @@
       "endpoint": "api.pipelines.get_pipeline_presets",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 104,
+      "match_ordinal": 105,
       "methods": [
         "GET"
       ],
@@ -1269,7 +1281,7 @@
       "endpoint": "api.pipelines.validate_pipeline_forward",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 105,
+      "match_ordinal": 106,
       "methods": [
         "POST"
       ],
@@ -1281,7 +1293,7 @@
       "endpoint": "api.pipelines.count_variants_forward",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 106,
+      "match_ordinal": 107,
       "methods": [
         "POST"
       ],
@@ -1293,7 +1305,7 @@
       "endpoint": "api.pipelines.preview_pipeline_import",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 107,
+      "match_ordinal": 108,
       "methods": [
         "POST"
       ],
@@ -1305,7 +1317,7 @@
       "endpoint": "api.pipelines.render_canonical_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 108,
+      "match_ordinal": 109,
       "methods": [
         "POST"
       ],
@@ -1317,7 +1329,7 @@
       "endpoint": "api.pipelines.get_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 109,
+      "match_ordinal": 110,
       "methods": [
         "GET"
       ],
@@ -1329,7 +1341,7 @@
       "endpoint": "api.pipelines.create_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 110,
+      "match_ordinal": 111,
       "methods": [
         "POST"
       ],
@@ -1341,7 +1353,7 @@
       "endpoint": "api.pipelines.update_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 111,
+      "match_ordinal": 112,
       "methods": [
         "PUT"
       ],
@@ -1353,7 +1365,7 @@
       "endpoint": "api.pipelines.delete_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 112,
+      "match_ordinal": 113,
       "methods": [
         "DELETE"
       ],
@@ -1365,7 +1377,7 @@
       "endpoint": "api.pipelines.clone_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 113,
+      "match_ordinal": 114,
       "methods": [
         "POST"
       ],
@@ -1377,7 +1389,7 @@
       "endpoint": "api.pipelines.prepare_pipeline_execution",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 114,
+      "match_ordinal": 115,
       "methods": [
         "POST"
       ],
@@ -1389,7 +1401,7 @@
       "endpoint": "api.pipelines.create_pipeline_from_preset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 115,
+      "match_ordinal": 116,
       "methods": [
         "POST"
       ],
@@ -1401,7 +1413,7 @@
       "endpoint": "api.pipelines.execute_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 116,
+      "match_ordinal": 117,
       "methods": [
         "POST"
       ],
@@ -1413,7 +1425,7 @@
       "endpoint": "api.pipelines.export_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 117,
+      "match_ordinal": 118,
       "methods": [
         "POST"
       ],
@@ -1425,7 +1437,7 @@
       "endpoint": "api.pipelines.import_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 118,
+      "match_ordinal": 119,
       "methods": [
         "POST"
       ],
@@ -1437,7 +1449,7 @@
       "endpoint": "api.pipelines.list_pipeline_samples",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 119,
+      "match_ordinal": 120,
       "methods": [
         "GET"
       ],
@@ -1449,7 +1461,7 @@
       "endpoint": "api.pipelines.get_pipeline_sample",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 120,
+      "match_ordinal": 121,
       "methods": [
         "GET"
       ],
@@ -1461,7 +1473,7 @@
       "endpoint": "api.pipelines.validate_sample_roundtrip",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 121,
+      "match_ordinal": 122,
       "methods": [
         "POST"
       ],
@@ -1473,7 +1485,7 @@
       "endpoint": "api.pipelines.propagate_shape",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 122,
+      "match_ordinal": 123,
       "methods": [
         "POST"
       ],
@@ -1485,7 +1497,7 @@
       "endpoint": "api.aggregated_predictions.get_aggregated_predictions",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 123,
+      "match_ordinal": 124,
       "methods": [
         "GET"
       ],
@@ -1497,7 +1509,7 @@
       "endpoint": "api.aggregated_predictions.get_top_aggregated_predictions",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 124,
+      "match_ordinal": 125,
       "methods": [
         "GET"
       ],
@@ -1509,7 +1521,7 @@
       "endpoint": "api.aggregated_predictions.get_chain_detail",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 125,
+      "match_ordinal": 126,
       "methods": [
         "GET"
       ],
@@ -1521,7 +1533,7 @@
       "endpoint": "api.aggregated_predictions.get_chain_pipeline_steps",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 126,
+      "match_ordinal": 127,
       "methods": [
         "GET"
       ],
@@ -1533,7 +1545,7 @@
       "endpoint": "api.aggregated_predictions.get_run_pipeline_steps",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 127,
+      "match_ordinal": 128,
       "methods": [
         "GET"
       ],
@@ -1545,7 +1557,7 @@
       "endpoint": "api.aggregated_predictions.get_chain_partition_detail",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 128,
+      "match_ordinal": 129,
       "methods": [
         "GET"
       ],
@@ -1557,7 +1569,7 @@
       "endpoint": "api.aggregated_predictions.compute_prediction_robustness_report",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 129,
+      "match_ordinal": 130,
       "methods": [
         "POST"
       ],
@@ -1569,7 +1581,7 @@
       "endpoint": "api.aggregated_predictions.get_prediction_robustness_evidence",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 130,
+      "match_ordinal": 131,
       "methods": [
         "GET"
       ],
@@ -1581,7 +1593,7 @@
       "endpoint": "api.aggregated_predictions.export_workspace_robustness_report",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 131,
+      "match_ordinal": 132,
       "methods": [
         "GET"
       ],
@@ -1593,7 +1605,7 @@
       "endpoint": "api.aggregated_predictions.get_prediction_arrays",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 132,
+      "match_ordinal": 133,
       "methods": [
         "GET"
       ],
@@ -1605,7 +1617,7 @@
       "endpoint": "api.aggregated_predictions.export_dataset_parquet",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 133,
+      "match_ordinal": 134,
       "methods": [
         "GET"
       ],
@@ -1617,7 +1629,7 @@
       "endpoint": "api.aggregated_predictions.export_datasets",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 134,
+      "match_ordinal": 135,
       "methods": [
         "POST"
       ],
@@ -1629,7 +1641,7 @@
       "endpoint": "api.aggregated_predictions.query_predictions_metadata",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 135,
+      "match_ordinal": 136,
       "methods": [
         "POST"
       ],
@@ -1641,7 +1653,7 @@
       "endpoint": "api.predict.predict",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 136,
+      "match_ordinal": 137,
       "methods": [
         "POST"
       ],
@@ -1653,7 +1665,7 @@
       "endpoint": "api.predict.predict_from_file",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 137,
+      "match_ordinal": 138,
       "methods": [
         "POST"
       ],
@@ -1665,7 +1677,7 @@
       "endpoint": "api.predictions.predict_batch",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 138,
+      "match_ordinal": 139,
       "methods": [
         "POST"
       ],
@@ -1677,7 +1689,7 @@
       "endpoint": "api.predictions.predict_dataset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 139,
+      "match_ordinal": 140,
       "methods": [
         "POST"
       ],
@@ -1689,7 +1701,7 @@
       "endpoint": "api.system.health_check",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 140,
+      "match_ordinal": 141,
       "methods": [
         "GET"
       ],
@@ -1701,7 +1713,7 @@
       "endpoint": "api.system.system_readiness",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 141,
+      "match_ordinal": 142,
       "methods": [
         "GET"
       ],
@@ -1713,7 +1725,7 @@
       "endpoint": "api.system.system_info",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 142,
+      "match_ordinal": 143,
       "methods": [
         "GET"
       ],
@@ -1725,7 +1737,7 @@
       "endpoint": "api.system.system_status",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 143,
+      "match_ordinal": 144,
       "methods": [
         "GET"
       ],
@@ -1737,7 +1749,7 @@
       "endpoint": "api.system.system_build",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 144,
+      "match_ordinal": 145,
       "methods": [
         "GET"
       ],
@@ -1749,7 +1761,7 @@
       "endpoint": "api.system.system_capabilities",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 145,
+      "match_ordinal": 146,
       "methods": [
         "GET"
       ],
@@ -1761,7 +1773,7 @@
       "endpoint": "api.system.system_operator_availability",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 146,
+      "match_ordinal": 147,
       "methods": [
         "GET"
       ],
@@ -1773,7 +1785,7 @@
       "endpoint": "api.system.system_keyword_registry",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 147,
+      "match_ordinal": 148,
       "methods": [
         "GET"
       ],
@@ -1785,7 +1797,7 @@
       "endpoint": "api.system.system_paths",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 148,
+      "match_ordinal": 149,
       "methods": [
         "GET"
       ],
@@ -1797,7 +1809,7 @@
       "endpoint": "api.system.check_env_coherence",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 149,
+      "match_ordinal": 150,
       "methods": [
         "GET"
       ],
@@ -1809,7 +1821,7 @@
       "endpoint": "api.system.get_errors",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 150,
+      "match_ordinal": 151,
       "methods": [
         "GET"
       ],
@@ -1821,7 +1833,7 @@
       "endpoint": "api.system.delete_errors",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 151,
+      "match_ordinal": 152,
       "methods": [
         "DELETE"
       ],
@@ -1833,7 +1845,7 @@
       "endpoint": "api.system.open_folder",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 152,
+      "match_ordinal": 153,
       "methods": [
         "POST"
       ],
@@ -1845,7 +1857,7 @@
       "endpoint": "api.network_state.get_network_state",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 153,
+      "match_ordinal": 154,
       "methods": [
         "GET"
       ],
@@ -1857,7 +1869,7 @@
       "endpoint": "api.spectra.get_spectra",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 154,
+      "match_ordinal": 155,
       "methods": [
         "GET"
       ],
@@ -1869,7 +1881,7 @@
       "endpoint": "api.spectra.get_spectrum",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 155,
+      "match_ordinal": 156,
       "methods": [
         "GET"
       ],
@@ -1881,7 +1893,7 @@
       "endpoint": "api.spectra.get_processed_spectra",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 156,
+      "match_ordinal": 157,
       "methods": [
         "POST"
       ],
@@ -1893,7 +1905,7 @@
       "endpoint": "api.spectra.get_spectra_statistics",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 157,
+      "match_ordinal": 158,
       "methods": [
         "GET"
       ],
@@ -1905,7 +1917,7 @@
       "endpoint": "api.preprocessing.list_preprocessing_methods",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 158,
+      "match_ordinal": 159,
       "methods": [
         "GET"
       ],
@@ -1917,7 +1929,7 @@
       "endpoint": "api.preprocessing.get_preprocessing_method",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 159,
+      "match_ordinal": 160,
       "methods": [
         "GET"
       ],
@@ -1929,7 +1941,7 @@
       "endpoint": "api.preprocessing.apply_preprocessing",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 160,
+      "match_ordinal": 161,
       "methods": [
         "POST"
       ],
@@ -1941,7 +1953,7 @@
       "endpoint": "api.preprocessing.preview_preprocessing",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 161,
+      "match_ordinal": 162,
       "methods": [
         "POST"
       ],
@@ -1953,7 +1965,7 @@
       "endpoint": "api.preprocessing.validate_preprocessing_chain",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 162,
+      "match_ordinal": 163,
       "methods": [
         "POST"
       ],
@@ -1965,7 +1977,7 @@
       "endpoint": "api.preprocessing.get_preprocessing_presets",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 163,
+      "match_ordinal": 164,
       "methods": [
         "GET"
       ],
@@ -1977,7 +1989,7 @@
       "endpoint": "api.preprocessing.discover_preprocessing_methods",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 164,
+      "match_ordinal": 165,
       "methods": [
         "GET"
       ],
@@ -1989,7 +2001,7 @@
       "endpoint": "api.preprocessing.get_method_schema",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 165,
+      "match_ordinal": 166,
       "methods": [
         "GET"
       ],
@@ -2001,7 +2013,7 @@
       "endpoint": "api.preprocessing.suggest_preprocessing_chain",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 166,
+      "match_ordinal": 167,
       "methods": [
         "POST"
       ],
@@ -2013,7 +2025,7 @@
       "endpoint": "api.training.start_training",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 167,
+      "match_ordinal": 168,
       "methods": [
         "POST"
       ],
@@ -2025,7 +2037,7 @@
       "endpoint": "api.training.get_training_status",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 168,
+      "match_ordinal": 169,
       "methods": [
         "GET"
       ],
@@ -2037,7 +2049,7 @@
       "endpoint": "api.training.stop_training",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 169,
+      "match_ordinal": 170,
       "methods": [
         "POST"
       ],
@@ -2049,7 +2061,7 @@
       "endpoint": "api.training.get_training_metrics",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 170,
+      "match_ordinal": 171,
       "methods": [
         "GET"
       ],
@@ -2061,7 +2073,7 @@
       "endpoint": "api.training.get_training_history",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 171,
+      "match_ordinal": 172,
       "methods": [
         "GET"
       ],
@@ -2073,7 +2085,7 @@
       "endpoint": "api.training.get_training_result",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 172,
+      "match_ordinal": 173,
       "methods": [
         "GET"
       ],
@@ -2085,7 +2097,7 @@
       "endpoint": "api.training.list_training_jobs",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 173,
+      "match_ordinal": 174,
       "methods": [
         "GET"
       ],
@@ -2097,7 +2109,7 @@
       "endpoint": "api.models.list_models",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 174,
+      "match_ordinal": 175,
       "methods": [
         "GET"
       ],
@@ -2109,7 +2121,7 @@
       "endpoint": "api.models.get_model_params",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 175,
+      "match_ordinal": 176,
       "methods": [
         "GET"
       ],
@@ -2121,7 +2133,7 @@
       "endpoint": "api.models.list_trained_models",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 176,
+      "match_ordinal": 177,
       "methods": [
         "GET"
       ],
@@ -2133,7 +2145,7 @@
       "endpoint": "api.models.list_available_models",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 177,
+      "match_ordinal": 178,
       "methods": [
         "GET"
       ],
@@ -2145,7 +2157,7 @@
       "endpoint": "api.models.get_bundle_summary",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 178,
+      "match_ordinal": 179,
       "methods": [
         "GET"
       ],
@@ -2157,7 +2169,7 @@
       "endpoint": "api.models.delete_trained_model",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 179,
+      "match_ordinal": 180,
       "methods": [
         "DELETE"
       ],
@@ -2169,7 +2181,7 @@
       "endpoint": "api.models.compare_models",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 180,
+      "match_ordinal": 181,
       "methods": [
         "POST"
       ],
@@ -2181,7 +2193,7 @@
       "endpoint": "api.models.instantiate_model",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 181,
+      "match_ordinal": 182,
       "methods": [
         "POST"
       ],
@@ -2193,7 +2205,7 @@
       "endpoint": "api.analysis.compute_pca",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 182,
+      "match_ordinal": 183,
       "methods": [
         "POST"
       ],
@@ -2205,7 +2217,7 @@
       "endpoint": "api.analysis.get_pca_loadings",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 183,
+      "match_ordinal": 184,
       "methods": [
         "POST"
       ],
@@ -2217,7 +2229,7 @@
       "endpoint": "api.analysis.get_scree_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 184,
+      "match_ordinal": 185,
       "methods": [
         "POST"
       ],
@@ -2229,7 +2241,7 @@
       "endpoint": "api.analysis.compute_tsne",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 185,
+      "match_ordinal": 186,
       "methods": [
         "POST"
       ],
@@ -2241,7 +2253,7 @@
       "endpoint": "api.analysis.compute_umap_endpoint",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 186,
+      "match_ordinal": 187,
       "methods": [
         "POST"
       ],
@@ -2253,7 +2265,7 @@
       "endpoint": "api.analysis.feature_importance",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 187,
+      "match_ordinal": 188,
       "methods": [
         "POST"
       ],
@@ -2265,7 +2277,7 @@
       "endpoint": "api.analysis.correlation_matrix",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 188,
+      "match_ordinal": 189,
       "methods": [
         "POST"
       ],
@@ -2277,7 +2289,7 @@
       "endpoint": "api.analysis.select_features",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 189,
+      "match_ordinal": 190,
       "methods": [
         "POST"
       ],
@@ -2289,7 +2301,7 @@
       "endpoint": "api.analysis.important_wavelengths",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 190,
+      "match_ordinal": 191,
       "methods": [
         "POST"
       ],
@@ -2301,7 +2313,7 @@
       "endpoint": "api.analysis.list_analysis_methods",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 191,
+      "match_ordinal": 192,
       "methods": [
         "GET"
       ],
@@ -2313,7 +2325,7 @@
       "endpoint": "api.evaluation.evaluate_model",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 192,
+      "match_ordinal": 193,
       "methods": [
         "POST"
       ],
@@ -2325,7 +2337,7 @@
       "endpoint": "api.evaluation.confusion_matrix",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 193,
+      "match_ordinal": 194,
       "methods": [
         "POST"
       ],
@@ -2337,7 +2349,7 @@
       "endpoint": "api.evaluation.residual_analysis",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 194,
+      "match_ordinal": 195,
       "methods": [
         "POST"
       ],
@@ -2349,7 +2361,7 @@
       "endpoint": "api.evaluation.cross_validate",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 195,
+      "match_ordinal": 196,
       "methods": [
         "POST"
       ],
@@ -2361,7 +2373,7 @@
       "endpoint": "api.evaluation.generate_report",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 196,
+      "match_ordinal": 197,
       "methods": [
         "POST"
       ],
@@ -2373,7 +2385,7 @@
       "endpoint": "api.evaluation.list_available_metrics",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 197,
+      "match_ordinal": 198,
       "methods": [
         "GET"
       ],
@@ -2385,7 +2397,7 @@
       "endpoint": "api.evaluation.list_available_scoring",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 198,
+      "match_ordinal": 199,
       "methods": [
         "GET"
       ],
@@ -2397,7 +2409,7 @@
       "endpoint": "api.automl.start_automl",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 199,
+      "match_ordinal": 200,
       "methods": [
         "POST"
       ],
@@ -2409,7 +2421,7 @@
       "endpoint": "api.automl.get_automl_status",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 200,
+      "match_ordinal": 201,
       "methods": [
         "GET"
       ],
@@ -2421,7 +2433,7 @@
       "endpoint": "api.automl.stop_automl",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 201,
+      "match_ordinal": 202,
       "methods": [
         "POST"
       ],
@@ -2433,7 +2445,7 @@
       "endpoint": "api.automl.get_automl_results",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 202,
+      "match_ordinal": 203,
       "methods": [
         "GET"
       ],
@@ -2445,7 +2457,7 @@
       "endpoint": "api.automl.get_automl_trials",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 203,
+      "match_ordinal": 204,
       "methods": [
         "GET"
       ],
@@ -2457,7 +2469,7 @@
       "endpoint": "api.automl.list_automl_jobs",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 204,
+      "match_ordinal": 205,
       "methods": [
         "GET"
       ],
@@ -2469,7 +2481,7 @@
       "endpoint": "api.automl.list_available_models",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 205,
+      "match_ordinal": 206,
       "methods": [
         "GET"
       ],
@@ -2481,7 +2493,7 @@
       "endpoint": "api.runs.list_runs",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 206,
+      "match_ordinal": 207,
       "methods": [
         "GET"
       ],
@@ -2493,7 +2505,7 @@
       "endpoint": "api.runs.get_run_stats",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 207,
+      "match_ordinal": 208,
       "methods": [
         "GET"
       ],
@@ -2505,7 +2517,7 @@
       "endpoint": "api.runs.list_run_execution_backends",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 208,
+      "match_ordinal": 209,
       "methods": [
         "GET"
       ],
@@ -2517,7 +2529,7 @@
       "endpoint": "api.runs.list_run_execution_job_records",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 209,
+      "match_ordinal": 210,
       "methods": [
         "GET"
       ],
@@ -2529,7 +2541,7 @@
       "endpoint": "api.runs.get_workspace_execution_job_record",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 210,
+      "match_ordinal": 211,
       "methods": [
         "GET"
       ],
@@ -2541,7 +2553,7 @@
       "endpoint": "api.runs.cancel_workspace_execution_job_record",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 211,
+      "match_ordinal": 212,
       "methods": [
         "POST"
       ],
@@ -2553,7 +2565,7 @@
       "endpoint": "api.runs.get_run",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 212,
+      "match_ordinal": 213,
       "methods": [
         "GET"
       ],
@@ -2565,7 +2577,7 @@
       "endpoint": "api.runs.get_run_execution_job_record",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 213,
+      "match_ordinal": 214,
       "methods": [
         "GET"
       ],
@@ -2577,7 +2589,7 @@
       "endpoint": "api.runs.run_preflight",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 214,
+      "match_ordinal": 215,
       "methods": [
         "POST"
       ],
@@ -2589,7 +2601,7 @@
       "endpoint": "api.runs.create_run",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 215,
+      "match_ordinal": 216,
       "methods": [
         "POST"
       ],
@@ -2601,7 +2613,7 @@
       "endpoint": "api.runs.create_run_group",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 216,
+      "match_ordinal": 217,
       "methods": [
         "POST"
       ],
@@ -2613,7 +2625,7 @@
       "endpoint": "api.runs.quick_run",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 217,
+      "match_ordinal": 218,
       "methods": [
         "POST"
       ],
@@ -2625,7 +2637,7 @@
       "endpoint": "api.runs.stop_run",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 218,
+      "match_ordinal": 219,
       "methods": [
         "POST"
       ],
@@ -2637,7 +2649,7 @@
       "endpoint": "api.runs.retry_run",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 219,
+      "match_ordinal": 220,
       "methods": [
         "POST"
       ],
@@ -2649,7 +2661,7 @@
       "endpoint": "api.runs.delete_run",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 220,
+      "match_ordinal": 221,
       "methods": [
         "DELETE"
       ],
@@ -2661,7 +2673,7 @@
       "endpoint": "api.runs.get_pipeline_logs",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 221,
+      "match_ordinal": 222,
       "methods": [
         "GET"
       ],
@@ -2673,7 +2685,7 @@
       "endpoint": "api.playground.routes.execute_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 222,
+      "match_ordinal": 223,
       "methods": [
         "POST"
       ],
@@ -2685,7 +2697,7 @@
       "endpoint": "api.playground.routes.execute_dataset_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 223,
+      "match_ordinal": 224,
       "methods": [
         "POST"
       ],
@@ -2697,7 +2709,7 @@
       "endpoint": "api.playground.routes.get_metadata_columns",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 224,
+      "match_ordinal": 225,
       "methods": [
         "GET"
       ],
@@ -2709,7 +2721,7 @@
       "endpoint": "api.playground.routes.compute_pca_chart",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 225,
+      "match_ordinal": 226,
       "methods": [
         "POST"
       ],
@@ -2721,7 +2733,7 @@
       "endpoint": "api.playground.routes.compute_repetitions_chart",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 226,
+      "match_ordinal": 227,
       "methods": [
         "POST"
       ],
@@ -2733,7 +2745,7 @@
       "endpoint": "api.playground.routes.list_operators",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 227,
+      "match_ordinal": 228,
       "methods": [
         "GET"
       ],
@@ -2745,7 +2757,7 @@
       "endpoint": "api.playground.routes.validate_pipeline",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 228,
+      "match_ordinal": 229,
       "methods": [
         "POST"
       ],
@@ -2757,7 +2769,7 @@
       "endpoint": "api.playground.routes.get_presets",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 229,
+      "match_ordinal": 230,
       "methods": [
         "GET"
       ],
@@ -2769,7 +2781,7 @@
       "endpoint": "api.playground.routes.get_capabilities",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 230,
+      "match_ordinal": 231,
       "methods": [
         "GET"
       ],
@@ -2781,7 +2793,7 @@
       "endpoint": "api.playground.routes.compute_diff",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 231,
+      "match_ordinal": 232,
       "methods": [
         "POST"
       ],
@@ -2793,7 +2805,7 @@
       "endpoint": "api.playground.routes.compute_repetition_variance",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 232,
+      "match_ordinal": 233,
       "methods": [
         "POST"
       ],
@@ -2805,7 +2817,7 @@
       "endpoint": "api.updates.app_updates.get_update_status",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 233,
+      "match_ordinal": 234,
       "methods": [
         "GET"
       ],
@@ -2817,7 +2829,7 @@
       "endpoint": "api.updates.app_updates.check_for_updates",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 234,
+      "match_ordinal": 235,
       "methods": [
         "POST"
       ],
@@ -2829,7 +2841,7 @@
       "endpoint": "api.updates.app_updates.get_webapp_changelog",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 235,
+      "match_ordinal": 236,
       "methods": [
         "GET"
       ],
@@ -2841,7 +2853,7 @@
       "endpoint": "api.updates.app_updates.get_update_settings",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 236,
+      "match_ordinal": 237,
       "methods": [
         "GET"
       ],
@@ -2853,7 +2865,7 @@
       "endpoint": "api.updates.app_updates.update_settings",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 237,
+      "match_ordinal": 238,
       "methods": [
         "PUT"
       ],
@@ -2865,7 +2877,7 @@
       "endpoint": "api.updates.app_updates.get_runtime_status",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 238,
+      "match_ordinal": 239,
       "methods": [
         "GET"
       ],
@@ -2877,7 +2889,7 @@
       "endpoint": "api.updates.app_updates.get_runtime_status",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 239,
+      "match_ordinal": 240,
       "methods": [
         "GET"
       ],
@@ -2889,7 +2901,7 @@
       "endpoint": "api.updates.app_updates.install_nirs4all",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 240,
+      "match_ordinal": 241,
       "methods": [
         "POST"
       ],
@@ -2901,7 +2913,7 @@
       "endpoint": "api.updates.app_updates.get_webapp_download_info",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 241,
+      "match_ordinal": 242,
       "methods": [
         "GET"
       ],
@@ -2913,7 +2925,7 @@
       "endpoint": "api.updates.app_updates.start_webapp_download",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 242,
+      "match_ordinal": 243,
       "methods": [
         "POST"
       ],
@@ -2925,7 +2937,7 @@
       "endpoint": "api.updates.app_updates.get_download_status",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 243,
+      "match_ordinal": 244,
       "methods": [
         "GET"
       ],
@@ -2937,7 +2949,7 @@
       "endpoint": "api.updates.app_updates.cancel_download",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 244,
+      "match_ordinal": 245,
       "methods": [
         "POST"
       ],
@@ -2949,7 +2961,7 @@
       "endpoint": "api.updates.app_updates.apply_webapp_update",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 245,
+      "match_ordinal": 246,
       "methods": [
         "POST"
       ],
@@ -2961,7 +2973,7 @@
       "endpoint": "api.updates.app_updates.get_staged_update_info",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 246,
+      "match_ordinal": 247,
       "methods": [
         "GET"
       ],
@@ -2973,7 +2985,7 @@
       "endpoint": "api.updates.app_updates.cancel_staged_update",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 247,
+      "match_ordinal": 248,
       "methods": [
         "DELETE"
       ],
@@ -2985,7 +2997,7 @@
       "endpoint": "api.updates.app_updates.cleanup_updates",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 248,
+      "match_ordinal": 249,
       "methods": [
         "POST"
       ],
@@ -2997,7 +3009,7 @@
       "endpoint": "api.updates.app_updates.get_last_apply_result",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 249,
+      "match_ordinal": 250,
       "methods": [
         "GET"
       ],
@@ -3009,7 +3021,7 @@
       "endpoint": "api.updates.app_updates.dismiss_last_apply_result",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 250,
+      "match_ordinal": 251,
       "methods": [
         "DELETE"
       ],
@@ -3021,7 +3033,7 @@
       "endpoint": "api.updates.app_updates.restart_webapp",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 251,
+      "match_ordinal": 252,
       "methods": [
         "POST"
       ],
@@ -3033,7 +3045,7 @@
       "endpoint": "api.updates.app_updates.get_versions",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 252,
+      "match_ordinal": 253,
       "methods": [
         "GET"
       ],
@@ -3045,7 +3057,7 @@
       "endpoint": "api.updates.dependencies.get_dependencies",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 253,
+      "match_ordinal": 254,
       "methods": [
         "GET"
       ],
@@ -3057,7 +3069,7 @@
       "endpoint": "api.updates.dependencies.install_dependency",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 254,
+      "match_ordinal": 255,
       "methods": [
         "POST"
       ],
@@ -3069,7 +3081,7 @@
       "endpoint": "api.updates.dependencies.uninstall_dependency",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 255,
+      "match_ordinal": 256,
       "methods": [
         "POST"
       ],
@@ -3081,7 +3093,7 @@
       "endpoint": "api.updates.dependencies.revert_dependency",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 256,
+      "match_ordinal": 257,
       "methods": [
         "POST"
       ],
@@ -3093,7 +3105,7 @@
       "endpoint": "api.updates.dependencies.update_dependency",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 257,
+      "match_ordinal": 258,
       "methods": [
         "POST"
       ],
@@ -3105,7 +3117,7 @@
       "endpoint": "api.updates.dependencies.refresh_dependencies",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 258,
+      "match_ordinal": 259,
       "methods": [
         "POST"
       ],
@@ -3117,7 +3129,7 @@
       "endpoint": "api.updates.snapshots.get_runtime_path",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 259,
+      "match_ordinal": 260,
       "methods": [
         "GET"
       ],
@@ -3129,7 +3141,7 @@
       "endpoint": "api.updates.snapshots.get_runtime_path",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 260,
+      "match_ordinal": 261,
       "methods": [
         "GET"
       ],
@@ -3141,7 +3153,7 @@
       "endpoint": "api.updates.snapshots.list_snapshots",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 261,
+      "match_ordinal": 262,
       "methods": [
         "GET"
       ],
@@ -3153,7 +3165,7 @@
       "endpoint": "api.updates.snapshots.list_snapshots",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 262,
+      "match_ordinal": 263,
       "methods": [
         "GET"
       ],
@@ -3165,7 +3177,7 @@
       "endpoint": "api.updates.snapshots.create_snapshot",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 263,
+      "match_ordinal": 264,
       "methods": [
         "POST"
       ],
@@ -3177,7 +3189,7 @@
       "endpoint": "api.updates.snapshots.create_snapshot",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 264,
+      "match_ordinal": 265,
       "methods": [
         "POST"
       ],
@@ -3189,7 +3201,7 @@
       "endpoint": "api.updates.snapshots.restore_snapshot",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 265,
+      "match_ordinal": 266,
       "methods": [
         "POST"
       ],
@@ -3201,7 +3213,7 @@
       "endpoint": "api.updates.snapshots.restore_snapshot",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 266,
+      "match_ordinal": 267,
       "methods": [
         "POST"
       ],
@@ -3213,7 +3225,7 @@
       "endpoint": "api.updates.snapshots.delete_snapshot",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 267,
+      "match_ordinal": 268,
       "methods": [
         "DELETE"
       ],
@@ -3225,7 +3237,7 @@
       "endpoint": "api.updates.snapshots.delete_snapshot",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 268,
+      "match_ordinal": 269,
       "methods": [
         "DELETE"
       ],
@@ -3237,7 +3249,7 @@
       "endpoint": "api.synthesis.generate_preview",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 269,
+      "match_ordinal": 270,
       "methods": [
         "POST"
       ],
@@ -3249,7 +3261,7 @@
       "endpoint": "api.synthesis.generate_dataset",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 270,
+      "match_ordinal": 271,
       "methods": [
         "POST"
       ],
@@ -3261,7 +3273,7 @@
       "endpoint": "api.synthesis.list_components",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 271,
+      "match_ordinal": 272,
       "methods": [
         "GET"
       ],
@@ -3273,7 +3285,7 @@
       "endpoint": "api.synthesis.validate_config",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 272,
+      "match_ordinal": 273,
       "methods": [
         "POST"
       ],
@@ -3285,7 +3297,7 @@
       "endpoint": "api.synthesis.get_status",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 273,
+      "match_ordinal": 274,
       "methods": [
         "GET"
       ],
@@ -3297,7 +3309,7 @@
       "endpoint": "api.transfer.compute_transfer_analysis",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 274,
+      "match_ordinal": 275,
       "methods": [
         "POST"
       ],
@@ -3309,7 +3321,7 @@
       "endpoint": "api.transfer.get_transfer_presets",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 275,
+      "match_ordinal": 276,
       "methods": [
         "GET"
       ],
@@ -3321,7 +3333,7 @@
       "endpoint": "api.transfer.get_preprocessing_options",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 276,
+      "match_ordinal": 277,
       "methods": [
         "GET"
       ],
@@ -3333,7 +3345,7 @@
       "endpoint": "api.shap.get_shap_config",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 277,
+      "match_ordinal": 278,
       "methods": [
         "GET"
       ],
@@ -3345,7 +3357,7 @@
       "endpoint": "api.shap.get_available_models",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 278,
+      "match_ordinal": 279,
       "methods": [
         "GET"
       ],
@@ -3357,7 +3369,7 @@
       "endpoint": "api.shap.compute_shap_explanation",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 279,
+      "match_ordinal": 280,
       "methods": [
         "POST"
       ],
@@ -3369,7 +3381,7 @@
       "endpoint": "api.shap.get_shap_status",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 280,
+      "match_ordinal": 281,
       "methods": [
         "GET"
       ],
@@ -3381,7 +3393,7 @@
       "endpoint": "api.shap.get_shap_results",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 281,
+      "match_ordinal": 282,
       "methods": [
         "GET"
       ],
@@ -3393,7 +3405,7 @@
       "endpoint": "api.shap.get_spectral_importance",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 282,
+      "match_ordinal": 283,
       "methods": [
         "GET"
       ],
@@ -3405,7 +3417,7 @@
       "endpoint": "api.shap.get_spectral_detail",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 283,
+      "match_ordinal": 284,
       "methods": [
         "GET"
       ],
@@ -3417,7 +3429,7 @@
       "endpoint": "api.shap.get_prediction_scatter",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 284,
+      "match_ordinal": 285,
       "methods": [
         "GET"
       ],
@@ -3429,7 +3441,7 @@
       "endpoint": "api.shap.rebin_shap_results",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 285,
+      "match_ordinal": 286,
       "methods": [
         "POST"
       ],
@@ -3441,7 +3453,7 @@
       "endpoint": "api.shap.get_beeswarm_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 286,
+      "match_ordinal": 287,
       "methods": [
         "GET"
       ],
@@ -3453,7 +3465,7 @@
       "endpoint": "api.shap.get_sample_explanation",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 287,
+      "match_ordinal": 288,
       "methods": [
         "GET"
       ],
@@ -3465,7 +3477,7 @@
       "endpoint": "api.projects.list_projects",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 288,
+      "match_ordinal": 289,
       "methods": [
         "GET"
       ],
@@ -3477,7 +3489,7 @@
       "endpoint": "api.projects.create_project",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 289,
+      "match_ordinal": 290,
       "methods": [
         "POST"
       ],
@@ -3489,7 +3501,7 @@
       "endpoint": "api.projects.update_project",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 290,
+      "match_ordinal": 291,
       "methods": [
         "PUT"
       ],
@@ -3501,7 +3513,7 @@
       "endpoint": "api.projects.delete_project",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 291,
+      "match_ordinal": 292,
       "methods": [
         "DELETE"
       ],
@@ -3513,7 +3525,7 @@
       "endpoint": "api.inspector.get_inspector_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 292,
+      "match_ordinal": 293,
       "methods": [
         "GET"
       ],
@@ -3525,7 +3537,7 @@
       "endpoint": "api.inspector.get_scatter_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 293,
+      "match_ordinal": 294,
       "methods": [
         "POST"
       ],
@@ -3537,7 +3549,7 @@
       "endpoint": "api.inspector.get_histogram_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 294,
+      "match_ordinal": 295,
       "methods": [
         "GET"
       ],
@@ -3549,7 +3561,7 @@
       "endpoint": "api.inspector.get_rankings_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 295,
+      "match_ordinal": 296,
       "methods": [
         "GET"
       ],
@@ -3561,7 +3573,7 @@
       "endpoint": "api.inspector.get_heatmap_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 296,
+      "match_ordinal": 297,
       "methods": [
         "POST"
       ],
@@ -3573,7 +3585,7 @@
       "endpoint": "api.inspector.get_candlestick_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 297,
+      "match_ordinal": 298,
       "methods": [
         "POST"
       ],
@@ -3585,7 +3597,7 @@
       "endpoint": "api.inspector.get_branch_comparison",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 298,
+      "match_ordinal": 299,
       "methods": [
         "POST"
       ],
@@ -3597,7 +3609,7 @@
       "endpoint": "api.inspector.get_branch_topology",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 299,
+      "match_ordinal": 300,
       "methods": [
         "GET"
       ],
@@ -3609,7 +3621,7 @@
       "endpoint": "api.inspector.get_fold_stability",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 300,
+      "match_ordinal": 301,
       "methods": [
         "POST"
       ],
@@ -3621,7 +3633,7 @@
       "endpoint": "api.inspector.get_confusion_matrix",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 301,
+      "match_ordinal": 302,
       "methods": [
         "POST"
       ],
@@ -3633,7 +3645,7 @@
       "endpoint": "api.inspector.get_robustness_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 302,
+      "match_ordinal": 303,
       "methods": [
         "POST"
       ],
@@ -3645,7 +3657,7 @@
       "endpoint": "api.inspector.get_metric_correlation",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 303,
+      "match_ordinal": 304,
       "methods": [
         "POST"
       ],
@@ -3657,7 +3669,7 @@
       "endpoint": "api.inspector.get_preprocessing_impact",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 304,
+      "match_ordinal": 305,
       "methods": [
         "POST"
       ],
@@ -3669,7 +3681,7 @@
       "endpoint": "api.inspector.get_hyperparameter_data",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 305,
+      "match_ordinal": 306,
       "methods": [
         "POST"
       ],
@@ -3681,7 +3693,7 @@
       "endpoint": "api.inspector.get_bias_variance",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 306,
+      "match_ordinal": 307,
       "methods": [
         "POST"
       ],
@@ -3693,7 +3705,7 @@
       "endpoint": "api.inspector.get_learning_curve",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 307,
+      "match_ordinal": 308,
       "methods": [
         "POST"
       ],
@@ -3705,7 +3717,7 @@
       "endpoint": "api.recommended_config.get_recommended_config",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 308,
+      "match_ordinal": 309,
       "methods": [
         "GET"
       ],
@@ -3717,7 +3729,7 @@
       "endpoint": "api.recommended_config.compare_config",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 309,
+      "match_ordinal": 310,
       "methods": [
         "GET"
       ],
@@ -3729,7 +3741,7 @@
       "endpoint": "api.recommended_config.align_config",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 310,
+      "match_ordinal": 311,
       "methods": [
         "POST"
       ],
@@ -3741,7 +3753,7 @@
       "endpoint": "api.recommended_config.get_setup_status",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 311,
+      "match_ordinal": 312,
       "methods": [
         "GET"
       ],
@@ -3753,7 +3765,7 @@
       "endpoint": "api.recommended_config.complete_setup",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 312,
+      "match_ordinal": 313,
       "methods": [
         "POST"
       ],
@@ -3765,7 +3777,7 @@
       "endpoint": "api.recommended_config.detect_gpu",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 313,
+      "match_ordinal": 314,
       "methods": [
         "GET"
       ],
@@ -3777,7 +3789,7 @@
       "endpoint": "api.recommended_config.skip_setup",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 314,
+      "match_ordinal": 315,
       "methods": [
         "POST"
       ],
@@ -3789,7 +3801,7 @@
       "endpoint": "api.operators.get_operator_manifests",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 315,
+      "match_ordinal": 316,
       "methods": [
         "GET"
       ],
@@ -3800,7 +3812,7 @@
     {
       "endpoint": "main.websocket_endpoint",
       "kind": "websocket",
-      "match_ordinal": 316,
+      "match_ordinal": 317,
       "name": "websocket_endpoint",
       "path": "/ws",
       "route_class": "WebSocketRoute"
@@ -3808,7 +3820,7 @@
     {
       "endpoint": "main.job_websocket_endpoint",
       "kind": "websocket",
-      "match_ordinal": 317,
+      "match_ordinal": 318,
       "name": "job_websocket_endpoint",
       "path": "/ws/job/{job_id}",
       "route_class": "WebSocketRoute"
@@ -3816,7 +3828,7 @@
     {
       "endpoint": "main.training_websocket_endpoint",
       "kind": "websocket",
-      "match_ordinal": 318,
+      "match_ordinal": 319,
       "name": "training_websocket_endpoint",
       "path": "/ws/training/{job_id}",
       "route_class": "WebSocketRoute"
@@ -3825,7 +3837,7 @@
       "endpoint": "main.get_websocket_stats",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 319,
+      "match_ordinal": 320,
       "methods": [
         "GET"
       ],
@@ -3835,14 +3847,14 @@
     },
     {
       "kind": "mount",
-      "match_ordinal": 320,
+      "match_ordinal": 321,
       "name": "assets",
       "path": "/assets",
       "route_class": "Mount"
     },
     {
       "kind": "mount",
-      "match_ordinal": 321,
+      "match_ordinal": 322,
       "name": "public",
       "path": "/public",
       "route_class": "Mount"
@@ -3851,7 +3863,7 @@
       "endpoint": "main.serve_app_icon_svg",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 322,
+      "match_ordinal": 323,
       "methods": [
         "GET"
       ],
@@ -3863,7 +3875,7 @@
       "endpoint": "main.serve_favicon_ico",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 323,
+      "match_ordinal": 324,
       "methods": [
         "GET"
       ],
@@ -3875,7 +3887,7 @@
       "endpoint": "main.serve_spa",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 324,
+      "match_ordinal": 325,
       "methods": [
         "GET"
       ],
@@ -3887,7 +3899,7 @@
       "endpoint": "main.serve_spa_routes",
       "include_in_schema": true,
       "kind": "http",
-      "match_ordinal": 325,
+      "match_ordinal": 326,
       "methods": [
         "GET"
       ],
