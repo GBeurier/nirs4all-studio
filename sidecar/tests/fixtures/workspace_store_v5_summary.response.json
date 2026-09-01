@@ -1,0 +1,729 @@
+{
+  "workspace_id": "workspace-summary-v5",
+  "datasets": [
+    {
+      "dataset_name": "Mystery Score Batch",
+      "metric": "custom_gain",
+      "task_type": "regression",
+      "top_chains": [
+        {
+          "chain_id": "75e7687a-a539-57f8-9fd7-d7ae069e24a2",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "097546d2-3303-5c8b-b0d4-68a03b131429",
+          "pipeline_name": "Pipeline unknown-6",
+          "model_name": "unknown-6",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.6,
+          "avg_test_score": 0.6,
+          "avg_train_score": 0.6,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "custom_gain": 0.6
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.6,
+          "final_train_score": 0.6,
+          "final_scores": {
+            "val": {
+              "custom_gain": 0.6
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "fc628df8-c880-5297-bca5-a8e24fee3932",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "baf8e5b3-46a2-5efd-85e6-2e85ca7b575e",
+          "pipeline_name": "Pipeline unknown-5",
+          "model_name": "unknown-5",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.5,
+          "avg_test_score": 0.5,
+          "avg_train_score": 0.5,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "custom_gain": 0.5
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.5,
+          "final_train_score": 0.5,
+          "final_scores": {
+            "val": {
+              "custom_gain": 0.5
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "f96f4a01-51e3-5652-8a13-3958a644e565",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "ed697635-b18b-5476-967a-cc737165566a",
+          "pipeline_name": "Pipeline unknown-4",
+          "model_name": "unknown-4",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.4,
+          "avg_test_score": 0.4,
+          "avg_train_score": 0.4,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "custom_gain": 0.4
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.4,
+          "final_train_score": 0.4,
+          "final_scores": {
+            "val": {
+              "custom_gain": 0.4
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "8a861b40-7f14-575e-99f1-d61e0e6da3ac",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "3443d401-4a6f-561e-bf6a-47544b4877ec",
+          "pipeline_name": "Pipeline unknown-3",
+          "model_name": "unknown-3",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.3,
+          "avg_test_score": 0.3,
+          "avg_train_score": 0.3,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "custom_gain": 0.3
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.3,
+          "final_train_score": 0.3,
+          "final_scores": {
+            "val": {
+              "custom_gain": 0.3
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "f20f449f-0584-55e4-bc76-4b6e113b1fa1",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "4900ffb7-04d6-53f6-8808-344d4a51d28b",
+          "pipeline_name": "Pipeline unknown-2",
+          "model_name": "unknown-2",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.2,
+          "avg_test_score": 0.2,
+          "avg_train_score": 0.2,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "custom_gain": 0.2
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.2,
+          "final_train_score": 0.2,
+          "final_scores": {
+            "val": {
+              "custom_gain": 0.2
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        }
+      ],
+      "name": "Mystery Score Batch",
+      "linked_dataset_id": "dataset-unknown-prefix"
+    },
+    {
+      "dataset_name": "R2 Exact",
+      "metric": "r2",
+      "task_type": "regression",
+      "top_chains": [
+        {
+          "chain_id": "162ad4cd-c8b2-5e09-b268-3d71e85d1c3b",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "ba236f70-269a-5e54-a477-908fd2eb8c63",
+          "pipeline_name": "Pipeline r2-tie-z",
+          "model_name": "r2-tie-z",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.95,
+          "avg_test_score": 0.94,
+          "avg_train_score": 0.98,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "r2": 0.95
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.94,
+          "final_train_score": 0.98,
+          "final_scores": {
+            "val": {
+              "r2": 0.95
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": {
+            "n_components": 7,
+            "shared": "best"
+          },
+          "variant_params": {
+            "n_components": 7,
+            "scale": true,
+            "shared": "best"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "1e48ca7d-bd46-5e9c-8648-89b8021a4014",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "33e12548-d07a-5813-b66d-49fdb10b8477",
+          "pipeline_name": "Pipeline r2-tie-a",
+          "model_name": "r2-tie-a",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.95,
+          "avg_test_score": 0.93,
+          "avg_train_score": 0.97,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "r2": 0.95
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.93,
+          "final_train_score": 0.97,
+          "final_scores": {
+            "val": {
+              "r2": 0.95
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "7d638e72-7da5-54b3-a701-079376b16216",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "8d50c8cb-d87e-5eb8-a879-f5e3c74a0144",
+          "pipeline_name": "Pipeline r2-third",
+          "model_name": "r2-third",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.9,
+          "avg_test_score": 0.89,
+          "avg_train_score": 0.94,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "r2": 0.9
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.89,
+          "final_train_score": 0.94,
+          "final_scores": {
+            "val": {
+              "r2": 0.9
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "75921c6b-1ddd-58a1-aeb6-13482e1e9acf",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "fbe7bdd0-4c90-51a7-8638-8dfd8df5c751",
+          "pipeline_name": "Pipeline r2-fourth",
+          "model_name": "r2-fourth",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.85,
+          "avg_test_score": 0.84,
+          "avg_train_score": 0.91,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "r2": 0.85
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.84,
+          "final_train_score": 0.91,
+          "final_scores": {
+            "val": {
+              "r2": 0.85
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "6d014875-b874-5119-a87d-057297a8361b",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "dbc61ec8-ce5d-5d60-ae9b-c972c58283c5",
+          "pipeline_name": "Pipeline r2-fifth",
+          "model_name": "r2-fifth",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.8,
+          "avg_test_score": 0.79,
+          "avg_train_score": 0.88,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "r2": 0.8
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.79,
+          "final_train_score": 0.88,
+          "final_scores": {
+            "val": {
+              "r2": 0.8
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "c6e4f353-632c-51ff-b63e-a32c09bb2821",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "ecf0562c-8195-54cd-9c23-cf1dedf9f664",
+          "pipeline_name": "Pipeline r2-refit-only",
+          "model_name": "r2-refit-only",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": null,
+          "avg_test_score": null,
+          "avg_train_score": null,
+          "fold_count": 0,
+          "scores": {},
+          "cv_source_chain_id": null,
+          "final_test_score": 0.77,
+          "final_train_score": 0.8,
+          "final_scores": {
+            "test": {
+              "r2": 0.77
+            },
+            "train": {
+              "r2": 0.8
+            }
+          },
+          "final_agg_test_score": 0.78,
+          "final_agg_train_score": 0.8,
+          "final_agg_scores": {
+            "test": {
+              "r2": 0.78
+            }
+          },
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": false,
+          "is_refit_only": true
+        },
+        {
+          "chain_id": "175ec185-ffb5-5788-9e51-f6185a2e582c",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "2ebf11c9-588c-5b4d-b6c6-d121783f2281",
+          "pipeline_name": "Pipeline r2-best-final-outside-top5",
+          "model_name": "r2-best-final-outside-top5",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.1,
+          "avg_test_score": 0.11,
+          "avg_train_score": 0.2,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "r2": 0.1
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.99,
+          "final_train_score": 1.0,
+          "final_scores": {
+            "test": {
+              "r2": 0.99
+            },
+            "train": {
+              "r2": 1.0
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": false
+        }
+      ],
+      "name": "R2 Exact",
+      "linked_dataset_id": "dataset-r2-exact"
+    },
+    {
+      "dataset_name": "spectra_rmse_augmented",
+      "metric": "rmse",
+      "task_type": "regression",
+      "top_chains": [
+        {
+          "chain_id": "aa99f6e8-da27-5fff-9ec2-77da38bf8049",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "ed749cf2-90b5-514c-9ab1-5cdb3752c894",
+          "pipeline_name": "Pipeline rmse-best",
+          "model_name": "rmse-best",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.1,
+          "avg_test_score": 0.11,
+          "avg_train_score": 0.08,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "rmse": 0.1
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.11,
+          "final_train_score": 0.08,
+          "final_scores": {
+            "val": {
+              "rmse": 0.1
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "6f6a3d11-390a-54a3-bbe8-43443616ddc5",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "202b0a89-b75d-59d7-959c-e6f9f386624e",
+          "pipeline_name": "Pipeline rmse-tie-a",
+          "model_name": "rmse-tie-a",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.12,
+          "avg_test_score": 0.14,
+          "avg_train_score": 0.09,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "rmse": 0.12
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.14,
+          "final_train_score": 0.09,
+          "final_scores": {
+            "val": {
+              "rmse": 0.12
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "b32c0a00-5080-51e6-9910-1fcc0ba37156",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "4451e359-5880-5b26-982e-b87ced494214",
+          "pipeline_name": "Pipeline rmse-tie-z",
+          "model_name": "rmse-tie-z",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.12,
+          "avg_test_score": 0.13,
+          "avg_train_score": 0.1,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "rmse": 0.12
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.13,
+          "final_train_score": 0.1,
+          "final_scores": {
+            "val": {
+              "rmse": 0.12
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "668b4973-30df-5d48-a778-dbaddf2fcebf",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "f1d5819b-932f-504f-9fb7-748a7b1a9977",
+          "pipeline_name": "Pipeline rmse-fourth",
+          "model_name": "rmse-fourth",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.2,
+          "avg_test_score": 0.21,
+          "avg_train_score": 0.18,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "rmse": 0.2
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.21,
+          "final_train_score": 0.18,
+          "final_scores": {
+            "val": {
+              "rmse": 0.2
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "62a235d2-e6c0-5458-baa4-11820f541260",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "461f3001-dba7-5e1b-919f-8c2e31c3017f",
+          "pipeline_name": "Pipeline rmse-fifth",
+          "model_name": "rmse-fifth",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.3,
+          "avg_test_score": 0.31,
+          "avg_train_score": 0.28,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "rmse": 0.3
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.31,
+          "final_train_score": 0.28,
+          "final_scores": {
+            "val": {
+              "rmse": 0.3
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": true
+        },
+        {
+          "chain_id": "621a9d30-3b0b-5ec0-83da-42bd52e457b9",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "fb64e7ff-f8fb-5f76-8439-224a34e07836",
+          "pipeline_name": "Pipeline rmse-refit-only",
+          "model_name": "rmse-refit-only",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": null,
+          "avg_test_score": null,
+          "avg_train_score": null,
+          "fold_count": 0,
+          "scores": {},
+          "cv_source_chain_id": null,
+          "final_test_score": 0.4,
+          "final_train_score": 0.35,
+          "final_scores": {
+            "test": {
+              "rmse": 0.4
+            },
+            "train": {
+              "rmse": 0.35
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": false,
+          "is_refit_only": true
+        },
+        {
+          "chain_id": "1ba52ac9-2ddd-5262-864f-e4af97219585",
+          "run_id": "f05394c6-8351-5439-95c4-1ba413489727",
+          "pipeline_id": "6258a51a-8308-5416-8ef6-7d290c9c5b1b",
+          "pipeline_name": "Pipeline rmse-best-final-outside-top5",
+          "model_name": "rmse-best-final-outside-top5",
+          "model_class": "sklearn.cross_decomposition.PLSRegression",
+          "preprocessings": "SNV",
+          "avg_val_score": 0.9,
+          "avg_test_score": 0.91,
+          "avg_train_score": 0.88,
+          "fold_count": 1,
+          "scores": {
+            "val": {
+              "rmse": 0.9
+            }
+          },
+          "cv_source_chain_id": null,
+          "final_test_score": 0.05,
+          "final_train_score": 0.04,
+          "final_scores": {
+            "test": {
+              "rmse": 0.05
+            },
+            "train": {
+              "rmse": 0.04
+            }
+          },
+          "final_agg_test_score": null,
+          "final_agg_train_score": null,
+          "final_agg_scores": {},
+          "best_params": null,
+          "variant_params": {
+            "n_components": 2,
+            "scale": true,
+            "shared": "pipeline"
+          },
+          "synthetic_refit": false
+        }
+      ],
+      "name": "spectra_rmse_augmented",
+      "linked_dataset_id": "dataset-rmse-folder"
+    }
+  ]
+}

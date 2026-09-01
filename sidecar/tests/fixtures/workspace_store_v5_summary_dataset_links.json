@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "schema_version": 1,
+  "datasets": [
+    {
+      "id": "dataset-r2-exact",
+      "name": "r2 exact",
+      "path": "/fixture-data/r2-exact.csv",
+      "linked_at": "2026-09-01T00:00:00"
+    },
+    {
+      "id": "dataset-rmse-folder",
+      "name": "RMSE friendly name",
+      "path": "/fixture-data/spectra_rmse",
+      "linked_at": "2026-09-01T00:00:00"
+    },
+    {
+      "id": "dataset-unknown-prefix",
+      "name": "Mystery Score",
+      "path": "/fixture-data/not-the-prefix",
+      "linked_at": "2026-09-01T00:00:00"
+    }
+  ],
+  "groups": [],
+  "last_updated": "2026-09-01T00:00:00"
+}
