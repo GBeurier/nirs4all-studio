@@ -193,6 +193,7 @@ impl ScientificJobExecutor for UnselectedScientificJobExecutor {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScientificSubmissionPreflight {
+    pub job_id: String,
     pub workspace_id: String,
     pub workspace_path: PathBuf,
     pub requested_backend: String,
@@ -203,6 +204,9 @@ pub struct ScientificSubmissionPreflight {
 pub struct ScientificExecutorSelection {
     pub execution_backend: String,
     pub execution_mode: Option<String>,
+    /// Fully resolved path-free worker payload. The original Studio request
+    /// remains the only request persisted in the durable record.
+    pub prepared_payload: Value,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -346,6 +350,7 @@ impl NativeJobRuntime {
         let workspace_path = preflight_execution_job_record_write(workspace_path, &job_id)
             .map_err(NativeJobRuntimeError::Persistence)?;
         let preflight = ScientificSubmissionPreflight {
+            job_id: job_id.clone(),
             workspace_id: workspace_id.into(),
             workspace_path: workspace_path.clone(),
             requested_backend: submission.requested_backend().into(),
@@ -389,7 +394,7 @@ impl NativeJobRuntime {
             workspace_id: workspace_id.into(),
             workspace_path,
             requested_backend: submission.requested_backend().into(),
-            payload: submission.payload().clone(),
+            payload: selection.prepared_payload.clone(),
         };
         let terminal: Arc<dyn ScientificJobTerminal> = Arc::new(self.clone());
         if let Err(error) = self
@@ -552,7 +557,7 @@ impl NativeJobRuntime {
         now: Instant,
     ) -> Result<JobSnapshot, NativeJobRuntimeError> {
         ensure_event_data_bounded(&json!({"job_id": id, "result": result}))?;
-        self.mutate(|registry| registry.complete_at(id, result, timestamp, now))
+        self.mutate_terminal(|registry| registry.complete_at(id, result, timestamp, now))
     }
 
     /// Fail a job and publish the exact legacy failure event.
@@ -574,7 +579,7 @@ impl NativeJobRuntime {
             "error": error,
             "traceback": traceback,
         }))?;
-        self.mutate(|registry| registry.fail_at(id, error, traceback, timestamp, now))
+        self.mutate_terminal(|registry| registry.fail_at(id, error, traceback, timestamp, now))
     }
 
     /// Request pending or cooperative running cancellation.
@@ -628,7 +633,7 @@ impl NativeJobRuntime {
         timestamp: &str,
         now: Instant,
     ) -> Result<JobSnapshot, NativeJobRuntimeError> {
-        self.mutate(|registry| registry.acknowledge_cancel_at(id, timestamp, now))
+        self.mutate_terminal(|registry| registry.acknowledge_cancel_at(id, timestamp, now))
     }
 
     fn mutate(
@@ -644,6 +649,24 @@ impl NativeJobRuntime {
         let snapshot = self.publish(mutation)?;
         self.persist_if_durable(&snapshot)?;
         Ok(snapshot)
+    }
+
+    fn mutate_terminal(
+        &self,
+        operation: impl FnOnce(&mut JobRegistry) -> Result<JobMutation, JobLifecycleError>,
+    ) -> Result<JobSnapshot, NativeJobRuntimeError> {
+        let mut registry = self
+            .registry
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut candidate = registry.clone();
+        let mutation = operation(&mut candidate)?;
+        // Commit durable terminal state first. A worker callback can therefore never
+        // leave the record stale after the authoritative registry is terminal.
+        self.persist_if_durable(&mutation.job)?;
+        *registry = candidate;
+        drop(registry);
+        self.publish(mutation)
     }
 
     fn publish(&self, mutation: JobMutation) -> Result<JobSnapshot, NativeJobRuntimeError> {
@@ -715,6 +738,7 @@ fn validate_executor_selection(
             .execution_mode
             .as_deref()
             .is_some_and(|value| !valid(value))
+        || !selection.prepared_payload.is_object()
     {
         return Err(JobExecutorError::InvalidCapability);
     }

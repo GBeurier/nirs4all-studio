@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: CECILL-2.1 OR AGPL-3.0-or-later
+[package]
+name = "nirs4all-io"
+description = "Dataset-assembly bridge facade: resolve + file IO + tabular loaders + relational join + assemble + targets. Turns any input into a pipeline-ready dataset."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
+[dependencies]
+nirs4all-io-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+glob = "0.3"
+indexmap.workspace = true
+csv.workspace = true
+regex.workspace = true
+flate2 = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+arrow-array = "59.0.0"
+arrow-schema = "59.0.0"
+parquet = { version = "59.0.0", default-features = false, features = ["arrow", "snap", "zstd"] }
+cap-std = "3"
+same-file = "1"
+
+[dev-dependencies]
+serde_json.workspace = true
+tempfile = "3"

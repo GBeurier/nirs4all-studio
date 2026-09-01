@@ -23,8 +23,10 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::job_http::{
-    JobExecutorError, ScientificExecutionRequest, ScientificJobExecutor, ScientificJobTerminal,
+    JobExecutorError, ScientificExecutionRequest, ScientificExecutorSelection,
+    ScientificJobExecutor, ScientificJobTerminal, ScientificSubmissionPreflight,
 };
+use crate::scientific_request_resolver::ScientificRequestResolver;
 
 pub const SCIENTIFIC_CPYTHON_HOST_CONTRACT: &str =
     include_str!("../contracts/studio_scientific_cpython_host_v1.json");
@@ -35,8 +37,18 @@ pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_HOST_BYTES: u64 = 64 * 1024 * 1024;
+pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "0.10.3";
+pub const SCIENTIFIC_DISTRIBUTION_RECORD_SHA256: &str =
+    "444d14c05d6a47b504e3f75a7a74891bdc2d60020d9d659e44c8b1406df7aa21";
+pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
+    "67667f329c5d416c26d1e42614bc6b3d0d2ad2bd9e2786f0262ffe7fd3d4e991";
+pub const SCIENTIFIC_WHEEL_SHA256: &str =
+    "0aa170685d821c217011d00f6373853d993f340f1e70499d3f560fd92e40b86a";
+pub const SCIENTIFIC_SOURCE_COMMIT: &str = "5ebb0788c392e8e1e3e3538a8ab872d724d97a64";
+pub const SCIENTIFIC_CALLABLE_SHA256: &str =
+    "b861e555a5f210d8df22b1f3cd5f9cef3b6ee20cacd5e5d37b3bca8ae9c41e2a";
 
-const PREFLIGHT_SCRIPT: &str = r#"import hashlib,inspect,json,socket,sys
+const PREFLIGHT_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,socket,sys
 SCHEMA="nirs4all.studio-scientific-cpython-host.v1"
 def deny_product_network(event,args):
     if event == "socket.bind":
@@ -47,6 +59,7 @@ sys.addaudithook(deny_product_network)
 probe=socket.socket()
 bind_denied=False
 try:
+    distribution_error=None
     probe.bind(("127.0.0.1",0))
 except RuntimeError:
     bind_denied=True
@@ -58,14 +71,36 @@ try:
     ready=callable(target)
     callable_path=inspect.getsourcefile(target) if ready else None
     callable_sha256=hashlib.sha256(open(callable_path,"rb").read()).hexdigest() if callable_path else None
-except Exception:
+    distribution=importlib.metadata.distribution("nirs4all")
+    distribution_version=distribution.version
+    record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
+    record_path=distribution.locate_file(record_entry) if record_entry else None
+    record_bytes=open(record_path,"rb").read() if record_path else b""
+    record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
+    manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
+    distribution_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest() if manifest_bytes else None
+    distribution_files_verified=bool(record_rows)
+    if distribution_files_verified:
+        for relative,encoded,size in record_rows:
+            algorithm,expected=encoded.split("=",1)
+            member=distribution.locate_file(relative)
+            payload=open(member,"rb").read()
+            actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
+            if actual != expected or (size and len(payload) != int(size)):
+                distribution_files_verified=False
+                break
+except Exception as error:
     ready=False
     callable_path=None
     callable_sha256=None
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied},separators=(",",":"),sort_keys=True))
+    distribution_version=None
+    distribution_manifest_sha256=None
+    distribution_files_verified=False
+    distribution_error=type(error).__name__
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"0aa170685d821c217011d00f6373853d993f340f1e70499d3f560fd92e40b86a","source_commit":"5ebb0788c392e8e1e3e3538a8ab872d724d97a64"},separators=(",",":"),sort_keys=True))
 "#;
 
-const EXECUTION_SCRIPT: &str = r#"import hashlib,inspect,json,os,socket,sys
+const EXECUTION_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,os,socket,sys
 def deny_product_network(event,args):
     if event == "socket.bind":
         raise RuntimeError("CPython library host cannot own a listening socket")
@@ -76,6 +111,22 @@ raw=sys.stdin.buffer.read(65537)
 if len(raw)>65536:
     raise RuntimeError("scientific request exceeds stdin budget")
 request=json.loads(raw)
+distribution=importlib.metadata.distribution("nirs4all")
+if distribution.version != "0.10.3":
+    raise RuntimeError("scientific distribution version changed")
+record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
+record_path=distribution.locate_file(record_entry) if record_entry else None
+record_bytes=open(record_path,"rb").read() if record_path else b""
+record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
+manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
+if hashlib.sha256(manifest_bytes).hexdigest() != "67667f329c5d416c26d1e42614bc6b3d0d2ad2bd9e2786f0262ffe7fd3d4e991":
+    raise RuntimeError("scientific distribution identity changed")
+for relative,encoded,size in record_rows:
+    algorithm,expected=encoded.split("=",1)
+    payload=open(distribution.locate_file(relative),"rb").read()
+    actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
+    if actual != expected or (size and len(payload) != int(size)):
+        raise RuntimeError("scientific distribution member changed")
 import nirs4all
 target=getattr(nirs4all,"studio_scientific_job_v1",None)
 if not callable(target):
@@ -108,7 +159,10 @@ pub enum ScientificCpythonUnavailable {
     NetworkGuardFailed,
     CallableUnavailable,
     CallableTampered,
+    DistributionTampered,
     RequestResolverUnavailable,
+    PlatformKillTreeUnqualified,
+    TerminalCallbackFailed,
     InvalidRequest,
     Cancelled,
 }
@@ -133,14 +187,17 @@ impl ScientificCpythonUnavailable {
             Self::NetworkGuardFailed => "python_host_network_guard_failed",
             Self::CallableUnavailable => "scientific_callable_unavailable",
             Self::CallableTampered => "scientific_callable_tampered",
+            Self::DistributionTampered => "scientific_distribution_tampered",
             Self::RequestResolverUnavailable => "scientific_request_resolver_unavailable",
+            Self::PlatformKillTreeUnqualified => "scientific_platform_kill_tree_unqualified",
+            Self::TerminalCallbackFailed => "scientific_terminal_callback_failed",
             Self::InvalidRequest => "scientific_request_invalid",
             Self::Cancelled => "scientific_execution_cancelled",
         }
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct HostIdentity {
     canonical_path: PathBuf,
     size: u64,
@@ -149,21 +206,31 @@ struct HostIdentity {
 
 /// Sticky acquisition record for an explicitly selected `CPython` stdio host.
 ///
-/// The execution and Rust-owned terminal callback bridge are implemented. The
-/// product remains unselected because its saved run-group payload cannot yet
-/// be resolved by an authoritative Rust IO/pipeline adapter into the callable's
-/// path-free matrix contract.
+/// Selection requires the exact attested distribution and callable, a Unix
+/// process-group kill tree, and the Rust-owned saved-run resolver that prepares
+/// the callable's path-free matrix contract before any job mutation.
 #[derive(Debug)]
 pub struct CpythonScientificJobExecutor {
     identity: Option<HostIdentity>,
     callable_identity: Option<HostIdentity>,
     acquisition: ScientificCpythonUnavailable,
+    resolver: ScientificRequestResolver,
     running: Arc<Mutex<BTreeMap<String, Arc<AtomicBool>>>>,
+    terminal_callback_failed: Arc<AtomicBool>,
 }
 
 impl CpythonScientificJobExecutor {
     #[must_use]
     pub fn acquire(path: impl AsRef<Path>) -> Self {
+        let config_dir = std::env::var_os("NIRS4ALL_CONFIG")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        Self::acquire_with_config_dir(path, config_dir)
+    }
+
+    #[must_use]
+    pub fn acquire_with_config_dir(path: impl AsRef<Path>, config_dir: impl Into<PathBuf>) -> Self {
+        let resolver = ScientificRequestResolver::new(config_dir);
         match acquire_host(path.as_ref()) {
             Ok((identity, callable_identity)) => {
                 let callable_ready = callable_identity.is_some();
@@ -175,20 +242,31 @@ impl CpythonScientificJobExecutor {
                     } else {
                         ScientificCpythonUnavailable::CallableUnavailable
                     },
+                    resolver,
                     running: Arc::new(Mutex::new(BTreeMap::new())),
+                    terminal_callback_failed: Arc::new(AtomicBool::new(false)),
                 }
             }
             Err(error) => Self {
                 identity: None,
                 callable_identity: None,
                 acquisition: error,
+                resolver,
                 running: Arc::new(Mutex::new(BTreeMap::new())),
+                terminal_callback_failed: Arc::new(AtomicBool::new(false)),
             },
         }
     }
 
     #[must_use]
     pub fn unavailable_reason(&self) -> &'static str {
+        #[cfg(not(unix))]
+        {
+            return ScientificCpythonUnavailable::PlatformKillTreeUnqualified.reason();
+        }
+        if self.terminal_callback_failed.load(Ordering::Acquire) {
+            return ScientificCpythonUnavailable::TerminalCallbackFailed.reason();
+        }
         if let Some(identity) = &self.identity {
             if verify_identity(identity).is_err() {
                 return ScientificCpythonUnavailable::HostTampered.reason();
@@ -199,17 +277,52 @@ impl CpythonScientificJobExecutor {
                 return ScientificCpythonUnavailable::CallableTampered.reason();
             }
         }
+        if self.callable_identity.is_some() && !self.resolver.is_configured() {
+            return ScientificCpythonUnavailable::RequestResolverUnavailable.reason();
+        }
         self.acquisition.reason()
     }
 }
 
 impl ScientificJobExecutor for CpythonScientificJobExecutor {
     fn is_selected(&self) -> bool {
-        false
+        cfg!(unix)
+            && self.identity.is_some()
+            && self.callable_identity.is_some()
+            && self.resolver.is_configured()
+            && !self.terminal_callback_failed.load(Ordering::Acquire)
     }
 
     fn unavailability_reason(&self) -> &'static str {
         self.unavailable_reason()
+    }
+
+    fn preflight_submission(
+        &self,
+        request: &ScientificSubmissionPreflight,
+    ) -> Result<ScientificExecutorSelection, JobExecutorError> {
+        if !self.is_selected() {
+            return Err(JobExecutorError::PreflightRefused);
+        }
+        let (Some(host), Some(callable)) = (&self.identity, &self.callable_identity) else {
+            return Err(JobExecutorError::PreflightRefused);
+        };
+        let (current_host, current_callable) =
+            acquire_host(&host.canonical_path).map_err(|_| JobExecutorError::PreflightRefused)?;
+        if &current_host != host || current_callable.as_ref() != Some(callable) {
+            return Err(JobExecutorError::PreflightRefused);
+        }
+        let payload = self
+            .resolver
+            .resolve(request)
+            .map_err(|_| JobExecutorError::PreflightRefused)?;
+        validate_scientific_request(&payload, &request.job_id)
+            .map_err(|_| JobExecutorError::PreflightRefused)?;
+        Ok(ScientificExecutorSelection {
+            execution_backend: "dag-ml-core".into(),
+            execution_mode: Some("bounded-cpython-stdio".into()),
+            prepared_payload: payload,
+        })
     }
 
     fn submit_scientific(
@@ -241,22 +354,22 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         let host = host.clone();
         let callable = callable.clone();
         let running = Arc::clone(&self.running);
+        let terminal_callback_failed = Arc::clone(&self.terminal_callback_failed);
         std::thread::spawn(move || {
             let outcome = run_scientific_process(&host, &callable, &encoded, &cancelled);
             running
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .remove(&job_id);
-            match outcome {
-                Ok(result) => {
-                    let _ = terminal.complete(&job_id, result);
-                }
+            let callback = match outcome {
+                Ok(result) => terminal.complete(&job_id, result),
                 Err(ScientificCpythonUnavailable::Cancelled) => {
-                    let _ = terminal.acknowledge_cancel(&job_id);
+                    terminal.acknowledge_cancel(&job_id)
                 }
-                Err(error) => {
-                    let _ = terminal.fail(&job_id, error.reason());
-                }
+                Err(error) => terminal.fail(&job_id, error.reason()),
+            };
+            if callback.is_err() {
+                terminal_callback_failed.store(true, Ordering::Release);
             }
         });
         Ok(())
@@ -288,14 +401,32 @@ fn acquire_host(
     let object = response
         .as_object()
         .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-    if object.len() != 10
+    if object.len() != 17
         || object.get("schema").and_then(Value::as_str)
             != Some("nirs4all.studio-scientific-cpython-host.v1")
         || object.get("callable").and_then(Value::as_str)
             != Some("nirs4all.studio_scientific_job_v1")
         || object.get("network_ownership").and_then(Value::as_str) != Some("forbidden")
+        || !object.get("distribution_error").is_some_and(Value::is_null)
     {
         return Err(ScientificCpythonUnavailable::MalformedResponse);
+    }
+    if object.get("distribution").and_then(Value::as_str) != Some("nirs4all")
+        || object.get("distribution_version").and_then(Value::as_str)
+            != Some(SCIENTIFIC_DISTRIBUTION_VERSION)
+        || object
+            .get("distribution_manifest_sha256")
+            .and_then(Value::as_str)
+            != Some(SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256)
+        || object
+            .get("distribution_files_verified")
+            .and_then(Value::as_bool)
+            != Some(true)
+        || object.get("selected_wheel_sha256").and_then(Value::as_str)
+            != Some(SCIENTIFIC_WHEEL_SHA256)
+        || object.get("source_commit").and_then(Value::as_str) != Some(SCIENTIFIC_SOURCE_COMMIT)
+    {
+        return Err(ScientificCpythonUnavailable::DistributionTampered);
     }
     if object.get("implementation").and_then(Value::as_str) != Some("cpython") {
         return Err(ScientificCpythonUnavailable::NotCpython);
@@ -335,6 +466,9 @@ fn acquire_host(
             .get("callable_sha256")
             .and_then(Value::as_str)
             .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
+        if expected_digest != SCIENTIFIC_CALLABLE_SHA256 {
+            return Err(ScientificCpythonUnavailable::CallableTampered);
+        }
         let callable_identity =
             host_identity_with_limit(Path::new(callable_path), MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)?;
         if hex_digest(&callable_identity.sha256) != expected_digest {
@@ -437,16 +571,30 @@ fn run_process(
     stdout_limit: usize,
     stderr_limit: usize,
 ) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
-    let mut child = Command::new(path)
+    let scratch = ScratchDirectory::create()?;
+    let mut command = Command::new(path);
+    command
         .args(["-I", "-c", script])
+        .env_clear()
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .env("PYTHONNOUSERSITE", "1")
+        .env("TMPDIR", &scratch.path)
+        .env("TMP", &scratch.path)
+        .env("TEMP", &scratch.path)
+        .current_dir(&scratch.path)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let mut child = command
         .spawn()
         .map_err(|_| ScientificCpythonUnavailable::SpawnFailed)?;
     let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
-        let _ = child.kill();
-        let _ = child.wait();
+        let _ = terminate_worker(&mut child);
         return Err(ScientificCpythonUnavailable::OutputReadFailed);
     };
     let stdout_reader = std::thread::spawn(move || read_bounded(stdout, stdout_limit));
@@ -456,14 +604,12 @@ fn run_process(
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if started_at.elapsed() >= timeout => {
-                let _ = child.kill();
-                let _ = child.wait();
+                let _ = terminate_worker(&mut child);
                 return Err(ScientificCpythonUnavailable::TimedOut);
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(10)),
             Err(_) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                let _ = terminate_worker(&mut child);
                 return Err(ScientificCpythonUnavailable::ProcessFailed);
             }
         }
@@ -586,19 +732,17 @@ fn run_scientific_process_with_timeout(
     if !status.success() {
         return Err(ScientificCpythonUnavailable::ProcessFailed);
     }
-    if fs::read_dir(&scratch.path)
-        .map_err(|_| ScientificCpythonUnavailable::ProcessFailed)?
-        .next()
-        .is_some()
-    {
-        return Err(ScientificCpythonUnavailable::ProcessFailed);
-    }
     let response: Value = serde_json::from_slice(&stdout)
         .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
     validate_scientific_response(&response)?;
     if response.get("job_id").and_then(Value::as_str) != Some(&expected_job_id) {
         return Err(ScientificCpythonUnavailable::MalformedResponse);
     }
+    // Dag-ML may use an internal temporary file. It is permitted only because
+    // cwd and every standard temporary-directory variable point at this
+    // Rust-created 0700 directory. Successful execution includes synchronous
+    // removal and verification; Drop remains the error-path fallback.
+    scratch.cleanup()?;
     Ok(response)
 }
 
@@ -671,13 +815,34 @@ impl ScratchDirectory {
                 "nirs4all-studio-host-{}-{nonce}-{attempt}",
                 std::process::id()
             ));
-            match fs::create_dir(&path) {
+            #[cfg(unix)]
+            let created = {
+                use std::os::unix::fs::DirBuilderExt;
+                let mut builder = fs::DirBuilder::new();
+                builder.mode(0o700).create(&path)
+            };
+            #[cfg(not(unix))]
+            let created = fs::create_dir(&path);
+            match created {
                 Ok(()) => return Ok(Self { path }),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(_) => return Err(ScientificCpythonUnavailable::SpawnFailed),
             }
         }
         Err(ScientificCpythonUnavailable::SpawnFailed)
+    }
+
+    fn cleanup(&self) -> Result<(), ScientificCpythonUnavailable> {
+        let metadata = fs::symlink_metadata(&self.path)
+            .map_err(|_| ScientificCpythonUnavailable::ProcessFailed)?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(ScientificCpythonUnavailable::ProcessFailed);
+        }
+        fs::remove_dir_all(&self.path).map_err(|_| ScientificCpythonUnavailable::ProcessFailed)?;
+        if self.path.exists() {
+            return Err(ScientificCpythonUnavailable::ProcessFailed);
+        }
+        Ok(())
     }
 }
 
@@ -986,8 +1151,14 @@ mod tests {
         path
     }
 
+    fn attested_unready_host_response(implementation: &str) -> String {
+        format!(
+            r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
+        )
+    }
+
     #[test]
-    fn contract_is_honest_about_the_current_non_capability() {
+    fn contract_is_honest_about_the_bounded_platform_capability() {
         let contract: Value = serde_json::from_str(SCIENTIFIC_CPYTHON_HOST_CONTRACT).unwrap();
         assert_eq!(
             contract["schema"],
@@ -997,13 +1168,43 @@ mod tests {
         assert_eq!(contract["python_role"], "library-plugin-host-only");
         assert_eq!(contract["required_implementation"], "cpython");
         assert_eq!(contract["minimum_python_version"], "3.11");
+        assert_eq!(contract["selected_source_commit"], SCIENTIFIC_SOURCE_COMMIT);
+        assert_eq!(contract["selected_wheel_sha256"], SCIENTIFIC_WHEEL_SHA256);
+        assert_eq!(
+            contract["selected_distribution_record_sha256"],
+            SCIENTIFIC_DISTRIBUTION_RECORD_SHA256
+        );
+        assert_eq!(
+            contract["selected_installed_manifest_sha256"],
+            SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256
+        );
+        assert_eq!(
+            contract["selected_callable_sha256"],
+            SCIENTIFIC_CALLABLE_SHA256
+        );
         assert_eq!(contract["network_ownership"], "forbidden");
         assert_eq!(contract["network_bind_self_test"], "required");
         assert_eq!(contract["http_backend"], "forbidden");
         assert_eq!(contract["terminal_callback_owner"], "studio-sidecar-rust");
         assert_eq!(contract["execution_bridge_implemented"], true);
-        assert_eq!(contract["studio_payload_resolver_implemented"], false);
-        assert_eq!(contract["scientific_execution_capability"], false);
+        assert_eq!(contract["studio_payload_resolver_implemented"], true);
+        assert_eq!(
+            contract["scientific_execution_capability"],
+            "unix_only_with_exact_host_callable_io_and_saved_slice_preflight"
+        );
+        assert_eq!(contract["windows_capability"], false);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn worker_scratch_is_created_with_private_unix_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let scratch = ScratchDirectory::create().unwrap();
+        assert_eq!(
+            fs::metadata(&scratch.path).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
     }
 
     #[test]
@@ -1067,8 +1268,8 @@ mod tests {
         let missing = root.join("missing-python");
         let unavailable = CpythonScientificJobExecutor::acquire(&missing);
         assert_eq!(unavailable.unavailable_reason(), "python_host_unavailable");
-        let valid_json = r#"printf '%s' '{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"implementation":"cpython","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","version":[3,11,0]}'"#;
-        let host = shell_host(&root, "python-host", valid_json);
+        let valid_json = attested_unready_host_response("cpython");
+        let host = shell_host(&root, "python-host", &valid_json);
         fs::rename(&host, &missing).unwrap();
         assert_eq!(unavailable.unavailable_reason(), "python_host_unavailable");
 
@@ -1091,11 +1292,7 @@ mod tests {
             CpythonScientificJobExecutor::acquire(&malformed).unavailable_reason(),
             "python_host_malformed_response"
         );
-        let impostor = shell_host(
-            &root,
-            "impostor",
-            r#"printf '%s' '{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"implementation":"pypy","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","version":[3,11,0]}'"#,
-        );
+        let impostor = shell_host(&root, "impostor", &attested_unready_host_response("pypy"));
         assert_eq!(
             CpythonScientificJobExecutor::acquire(&impostor).unavailable_reason(),
             "python_host_not_cpython"
@@ -1211,13 +1408,18 @@ mod tests {
         if supported_available {
             assert!(matches!(
                 acquired.unavailable_reason(),
-                "scientific_callable_unavailable" | "scientific_request_resolver_unavailable"
+                "scientific_callable_unavailable"
+                    | "scientific_request_resolver_unavailable"
+                    | "scientific_distribution_tampered"
+                    | "python_host_malformed_response"
             ));
         } else {
             assert!(matches!(
                 acquired.unavailable_reason(),
                 "scientific_callable_unavailable"
                     | "scientific_request_resolver_unavailable"
+                    | "scientific_distribution_tampered"
+                    | "python_host_malformed_response"
                     | "python_host_version_unsupported"
             ));
         }

@@ -33,6 +33,7 @@ pub mod run_detail;
 pub mod run_detail_cpython;
 pub mod run_detail_preselection;
 pub mod scientific_cpython;
+pub mod scientific_request_resolver;
 pub mod scientific_submission;
 mod settings;
 pub mod websocket_transport;
@@ -435,18 +436,25 @@ impl SidecarState {
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "python_plugin_host".into());
+        let app_settings = AppSettingsStore::from_environment();
         let native_jobs = if env::var(SCIENTIFIC_EXECUTOR_ENV).as_deref()
             == Ok(scientific_cpython::SCIENTIFIC_CPYTHON_EXECUTOR_ID)
         {
             python_plugin_host.as_ref().map_or_else(
                 || {
                     Arc::new(NativeJobRuntime::with_executor(Arc::new(
-                        scientific_cpython::CpythonScientificJobExecutor::acquire(Path::new("")),
+                        scientific_cpython::CpythonScientificJobExecutor::acquire_with_config_dir(
+                            Path::new(""),
+                            app_settings.config_dir(),
+                        ),
                     )))
                 },
                 |path| {
                     Arc::new(NativeJobRuntime::with_executor(Arc::new(
-                        scientific_cpython::CpythonScientificJobExecutor::acquire(path),
+                        scientific_cpython::CpythonScientificJobExecutor::acquire_with_config_dir(
+                            path,
+                            app_settings.config_dir(),
+                        ),
                     )))
                 },
             )
@@ -462,7 +470,7 @@ impl SidecarState {
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
             native_jobs,
-            app_settings: AppSettingsStore::from_environment(),
+            app_settings,
             update_settings: UpdateSettingsStore::from_environment(),
             ..Self::default()
         }
@@ -524,24 +532,35 @@ impl SidecarState {
 
     #[must_use]
     pub fn readiness_json(&self) -> String {
+        let scientific_execution = if self.native_jobs.execution_selected() {
+            "available"
+        } else {
+            "unavailable"
+        };
         format!(
-            "{{\"sidecar_ready\":true,\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"scientific_execution\":\"unavailable\",\"job_execution\":\"unavailable\",\"uptime_ms\":{}}}",
+            "{{\"sidecar_ready\":true,\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"scientific_execution\":\"{scientific_execution}\",\"job_execution\":\"{scientific_execution}\",\"uptime_ms\":{}}}",
             self.started_at.elapsed().as_millis()
         )
     }
 
     #[must_use]
     pub fn health_json(&self) -> String {
+        let scientific_execution = if self.native_jobs.execution_selected() {
+            "available"
+        } else {
+            "unavailable"
+        };
         format!(
-            "{{\"status\":\"healthy\",\"sidecar_ready\":true,\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"scientific_execution\":\"unavailable\"}}"
+            "{{\"status\":\"healthy\",\"sidecar_ready\":true,\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"scientific_execution\":\"{scientific_execution}\"}}"
         )
     }
 
     #[must_use]
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
+        let scientific_execution = self.native_jobs.execution_selected();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"durable_execution_job_record_reads\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
             if python_plugin_configured {
                 "configured"
             } else {

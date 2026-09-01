@@ -191,7 +191,10 @@ Protocol version: `studio-sidecar-r1`.
 `legacy_contract_baseline`, `legacy_route_parity`, `scientific_execution`,
 `job_execution`, and `uptime_ms`. `legacy_route_parity` is `bootstrap`: only
 health and readiness match their frozen post-lifespan responses.
-`scientific_execution` and `job_execution` are always `unavailable` in R1.
+`scientific_execution` and `job_execution` are `available` only when the
+explicit bounded executor, exact callable, native IO adapter, Unix process-tree
+termination, and saved-input resolver all preflight successfully; otherwise
+they remain `unavailable`.
 `GET /sidecar/v1/capabilities` therefore reports
 `api_route_coverage: "bootstrap_system_and_app_catalog"`,
 `legacy_api_routes: false`, and
@@ -205,7 +208,7 @@ unmigrated product route to Python.
 The capability object separately advertises
 `native_job_status_routes: true`, `native_job_cancellation_routes: true`,
 `native_scientific_submission_routes: true`,
-`scientific_submission_transport: true`, `scientific_execution: false`, and
+`scientific_submission_transport: true`, a dynamic `scientific_execution`, and
 `durable_execution_job_record_reads: true`.
 The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. `GET /sidecar/v1/python/preflight` launches that product-owned
@@ -246,15 +249,29 @@ worker is killed on cancellation or the 120-second deadline. Its terminal
 callback returns only complete/fail/cancel acknowledgement to the Rust runtime,
 which owns registry transitions, WebSocket events, and durable records.
 
-Product selection nevertheless remains intentionally false. The current
-run-group payload contains saved dataset and pipeline identifiers, not the
-resolved matrices required by the callable, and Studio has no selected native
-IO/pipeline resolver for those identities. The stable refusal is
-`scientific_request_resolver_unavailable`; no workspace path, manifest, or
-opaque saved payload is passed to Python. Missing, changed, timed-out,
-malformed, or oversized hosts likewise produce a typed 503 before the request
-body, workspace catalogue, job registry, event stream, or durable store is
-touched. There is no legacy or FastAPI fallback.
+The selected resolver reads `dataset_links.json` schema v2 and the exact saved
+pipeline under the active workspace through confined, bounded handles. Its
+first slice accepts one train-only, single-source numeric regression dataset
+and exactly an explicit `KFold` plus `PLSRegression` pipeline. It delegates
+tabular assembly to the selected `nirs4all-io` role-tagged facade, then sends
+only bounded inline `X`/`y`, PLS, and KFold values to the fresh worker. Grouping,
+test partitions, branches, generators/HPO, categorical targets, multiple
+datasets/sources/pipelines, folds, and aggregation fail during preflight before
+registry, event, or durable mutation. The durable record retains the original
+Studio request rather than the resolved matrices. Windows remains unavailable
+until reliable process-tree termination is qualified. Missing, changed,
+timed-out, malformed, or oversized hosts likewise fail closed. There is no
+legacy or FastAPI fallback.
+
+The selected IO commit `fce1e1f7a573d59c280010b65b073b039049d6cc`
+is not currently reachable from its configured upstream remote. Studio therefore
+contains a transient minimal, immutable snapshot of only `nirs4all-io` and
+`nirs4all-io-core`, their required compile-time assets, and upstream licence and
+notice files under `sidecar/vendor/nirs4all-io-fce/`. Run
+`sidecar/scripts/verify-vendored-io.sh` offline to reject missing, added, or
+changed files. This snapshot must be replaced by an exact published package or
+remotely fetchable git revision before LOCK-RELEASE; local/sibling worktree paths
+are forbidden.
 
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the

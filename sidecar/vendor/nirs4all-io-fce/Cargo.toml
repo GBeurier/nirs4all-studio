@@ -1,0 +1,28 @@
+# Packaging-only workspace for the immutable minimal upstream snapshot.
+# Files below upstream/ are byte-for-byte copies and must never be edited.
+[workspace]
+resolver = "2"
+members = [
+    "upstream/crates/nirs4all-io-core",
+    "upstream/crates/nirs4all-io",
+]
+
+[workspace.package]
+version = "0.1.6"
+edition = "2021"
+license = "CECILL-2.1 OR AGPL-3.0-or-later"
+authors = ["Gregory Beurier <gregory.beurier@cirad.fr>"]
+repository = "https://github.com/GBeurier/nirs4all-io"
+homepage = "https://github.com/GBeurier/nirs4all-io"
+readme = "upstream/README.md"
+
+[workspace.dependencies]
+nirs4all-io-core = { path = "upstream/crates/nirs4all-io-core", version = "0.1.6" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order", "float_roundtrip"] }
+thiserror = "2.0"
+sha2 = "0.10"
+regex = "1.10"
+toml = "0.8"
+indexmap = { version = "2.2", features = ["serde"] }
+csv = "1.3"

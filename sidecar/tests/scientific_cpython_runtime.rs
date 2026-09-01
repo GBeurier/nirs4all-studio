@@ -10,6 +10,7 @@ use std::{
 
 use serde_json::{json, Value};
 use studio_sidecar::{
+    execution_job_records::read_execution_job_record,
     job_http::{
         NativeJobRuntime, NativeJobRuntimeError, ScientificExecutionRequest, ScientificJobExecutor,
         ScientificJobTerminal,
@@ -22,6 +23,29 @@ use studio_sidecar::{
 #[derive(Debug)]
 struct ChannelTerminal {
     sender: Mutex<mpsc::SyncSender<Result<Value, String>>>,
+}
+
+#[derive(Debug)]
+struct RejectingTerminal;
+
+impl ScientificJobTerminal for RejectingTerminal {
+    fn complete(&self, _job_id: &str, _result: Value) -> Result<(), NativeJobRuntimeError> {
+        Err(NativeJobRuntimeError::Executor(
+            studio_sidecar::job_http::JobExecutorError::SubmissionRefused,
+        ))
+    }
+
+    fn fail(&self, _job_id: &str, _reason: &str) -> Result<(), NativeJobRuntimeError> {
+        Err(NativeJobRuntimeError::Executor(
+            studio_sidecar::job_http::JobExecutorError::SubmissionRefused,
+        ))
+    }
+
+    fn acknowledge_cancel(&self, _job_id: &str) -> Result<(), NativeJobRuntimeError> {
+        Err(NativeJobRuntimeError::Executor(
+            studio_sidecar::job_http::JobExecutorError::SubmissionRefused,
+        ))
+    }
 }
 
 impl ScientificJobTerminal for ChannelTerminal {
@@ -61,6 +85,17 @@ fn shell_host(root: &Path, name: &str, body: &str) -> PathBuf {
     fs::set_permissions(&path, permissions).unwrap();
     std::thread::sleep(std::time::Duration::from_millis(10));
     path
+}
+
+fn configured_resolver(root: &Path) -> PathBuf {
+    let config = root.join("config");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("dataset_links.json"),
+        br#"{"version":"1.0","schema_version":2,"datasets":[],"groups":[]}"#,
+    )
+    .unwrap();
+    config
 }
 
 fn refusal(root: &Path, host: &Path) -> (Value, Arc<NativeJobRuntime>) {
@@ -132,14 +167,17 @@ fn acquired_host_tamper_is_typed_before_body_or_workspace_access() {
     );
     assert_eq!(response.status, 503);
     let body: Value = serde_json::from_str(&response.body).unwrap();
-    assert_eq!(body["error"]["details"]["reason"], "python_host_tampered");
+    assert_eq!(
+        body["error"]["details"]["reason"],
+        "python_host_malformed_response"
+    );
     assert_eq!(runtime.published_event_count(), 0);
     assert_eq!(runtime.durable_write_count(), 0);
     fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
-fn current_protocol_callable_is_not_claimed_as_scientific_execution() {
+fn unattested_callable_cannot_select_scientific_execution() {
     let root = test_directory("honesty");
     fs::create_dir_all(&root).unwrap();
     let callable = root.join("studio_scientific.py");
@@ -161,20 +199,78 @@ fn current_protocol_callable_is_not_claimed_as_scientific_execution() {
             digest
         ),
     );
-    let (body, runtime) = refusal(&root, &host);
+    let config = root.join("config");
+    fs::create_dir_all(config.join("app_settings.json")).unwrap();
+    let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(
+        CpythonScientificJobExecutor::acquire_with_config_dir(&host, &config),
+    )));
+    let mut state =
+        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
+    let response = route_request_with_body(
+        &mut state,
+        "POST",
+        "/api/runs/run-groups",
+        b"not-json-must-not-be-parsed",
+    );
+    assert_eq!(response.status, 503);
+    let body: Value = serde_json::from_str(&response.body).unwrap();
     assert_eq!(
-        body,
-        json!({
-            "error": {
-                "code": "scientific_executor_unavailable",
-                "message": "The bounded scientific executor is unavailable",
-                "retryable": false,
-                "details": {"reason": "scientific_request_resolver_unavailable"}
-            }
-        })
+        body["error"]["details"]["reason"],
+        "python_host_malformed_response"
     );
     assert_eq!(runtime.published_event_count(), 0);
     assert_eq!(runtime.durable_write_count(), 0);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn terminal_callback_failure_is_observed_and_disables_future_selection() {
+    let Some(python) = std::env::var_os("N4A_STUDIO_REAL_PYTHON").map(PathBuf::from) else {
+        return;
+    };
+    let root = test_directory("terminal-callback");
+    fs::create_dir_all(&root).unwrap();
+    let config = configured_resolver(&root);
+    let executor = CpythonScientificJobExecutor::acquire_with_config_dir(&python, &config);
+    assert!(executor.is_selected(), "{}", executor.unavailable_reason());
+    let request = ScientificExecutionRequest {
+        job_id: "run_native_callback_failure".into(),
+        workspace_id: "workspace-a".into(),
+        workspace_path: root.clone(),
+        requested_backend: "local-python".into(),
+        payload: json!({
+            "schema": "nirs4all.studio-scientific-job.v1",
+            "operation": "run",
+            "job_id": "run_native_callback_failure",
+            "engine": "dag-ml",
+            "allow_fallback": false,
+            "dataset": {
+                "name": "dataset-a",
+                "task_type": "regression",
+                "X": [[0.0], [1.0], [2.0], [3.0]],
+                "y": [0.0, 1.0, 2.0, 3.0]
+            },
+            "pipeline": {
+                "kind": "pls_regression",
+                "n_components": 1,
+                "scale": true,
+                "cross_validation": {"kind": "kfold", "n_splits": 2, "shuffle": false}
+            },
+            "options": {"name": "pipeline-a", "random_state": 42}
+        }),
+    };
+    executor
+        .submit_scientific(&request, Arc::new(RejectingTerminal))
+        .unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    while executor.is_selected() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(!executor.is_selected());
+    assert_eq!(
+        executor.unavailable_reason(),
+        "scientific_terminal_callback_failed"
+    );
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -183,12 +279,10 @@ fn selected_wheel_executes_closed_path_free_request_through_real_stdio_host() {
     let Some(python) = std::env::var_os("N4A_STUDIO_REAL_PYTHON").map(PathBuf::from) else {
         return;
     };
-    let executor = CpythonScientificJobExecutor::acquire(&python);
-    assert!(!executor.is_selected());
-    assert_eq!(
-        executor.unavailable_reason(),
-        "scientific_request_resolver_unavailable"
-    );
+    let root = test_directory("real-wheel");
+    let config = configured_resolver(&root);
+    let executor = CpythonScientificJobExecutor::acquire_with_config_dir(&python, &config);
+    assert!(executor.is_selected(), "{}", executor.unavailable_reason());
     let job_id = "run_native_real_wheel";
     let request = ScientificExecutionRequest {
         job_id: job_id.into(),
@@ -239,4 +333,181 @@ fn selected_wheel_executes_closed_path_free_request_through_real_stdio_host() {
     assert!(result["result"]["prediction_count"]
         .as_u64()
         .is_some_and(|count| count > 0));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn selected_wheel_resolves_saved_route_and_persists_only_the_original_request() {
+    let Some(python) = std::env::var_os("N4A_STUDIO_REAL_PYTHON").map(PathBuf::from) else {
+        return;
+    };
+    let root = test_directory("saved-route");
+    let config = root.join("config");
+    let workspace = root.join("workspace");
+    let dataset = root.join("dataset");
+    fs::create_dir_all(&config).unwrap();
+    fs::create_dir_all(workspace.join("runs")).unwrap();
+    fs::create_dir_all(workspace.join("pipelines")).unwrap();
+    fs::create_dir_all(&dataset).unwrap();
+    fs::write(
+        config.join("app_settings.json"),
+        serde_json::to_vec(&json!({
+            "version": "3.0",
+            "linked_workspaces": [{
+                "id": "workspace-a",
+                "path": workspace,
+                "name": "Workspace A",
+                "is_active": true,
+                "linked_at": "2026-09-01T12:00:00Z",
+                "last_scanned": null,
+                "discovered": {"runs_count": 0}
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        dataset.join("x.csv"),
+        "1000,1001\n1,2\n2,3\n3,4\n4,5\n5,6\n6,7\n7,8\n8,9\n",
+    )
+    .unwrap();
+    fs::write(
+        dataset.join("y.csv"),
+        "protein\n1.1\n2.2\n3.4\n4.8\n5.3\n6.7\n7.9\n8.6\n",
+    )
+    .unwrap();
+    fs::write(
+        config.join("dataset_links.json"),
+        serde_json::to_vec(&json!({
+            "version": "1.0",
+            "schema_version": 2,
+            "datasets": [{
+                "id": "dataset-a",
+                "name": "Dataset A",
+                "path": dataset,
+                "config": {
+                    "delimiter": ",",
+                    "decimal_separator": ".",
+                    "has_header": true,
+                    "header_unit": "cm-1",
+                    "signal_type": "auto",
+                    "task_type": "regression",
+                    "files": [
+                        {"path": "x.csv", "type": "X", "split": "train"},
+                        {"path": "y.csv", "type": "Y", "split": "train"}
+                    ],
+                    "targets": [{"column": "protein", "type": "regression", "is_default": true}],
+                    "target_selection": {
+                        "selected_targets": ["protein"],
+                        "default_target": "protein",
+                        "task_by_target": {"protein": "regression"}
+                    },
+                    "default_target": "protein"
+                }
+            }],
+            "groups": []
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        workspace.join("pipelines/pipeline-a.json"),
+        serde_json::to_vec(&json!({
+            "id": "pipeline-a",
+            "name": "PLS",
+            "taskType": "regression",
+            "steps": [
+                {"id": "cv", "type": "splitting", "name": "KFold", "params": {"n_splits": 2, "shuffle": true, "random_state": 42}},
+                {"id": "model", "type": "model", "name": "PLSRegression", "params": {"n_components": 1, "scale": true}}
+            ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let executor = CpythonScientificJobExecutor::acquire_with_config_dir(&python, &config);
+    assert!(executor.is_selected(), "{}", executor.unavailable_reason());
+    let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(executor)));
+    let mut state =
+        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
+    let original_request = json!({
+        "legacyConfig": {
+            "name": "Native saved campaign",
+            "dataset_ids": ["dataset-a"],
+            "pipeline_ids": ["pipeline-a"],
+            "execution_backend": "local-python",
+            "engine": "dag-ml",
+            "allow_fallback": false,
+            "split_group_by_by_dataset": {}
+        },
+        "manifest": {
+            "version": "studio.native-launch-payload.v1",
+            "legacyExperimentName": "Native saved campaign",
+            "legacyDatasetCount": 1,
+            "legacyPipelineCount": 1,
+            "strictCampaignCount": 1,
+            "skippedRunCount": 0,
+            "sourceRunIds": ["dataset-a::pipeline-a"],
+            "skippedRunIds": []
+        },
+        "strictCampaignSpecs": {
+            "splitSpecs": [{
+                "id": "single-pair:dataset-a::pipeline-a",
+                "sourceRunId": "dataset-a::pipeline-a",
+                "sourceDatasetId": "dataset-a",
+                "sourcePipelineId": "pipeline-a",
+                "campaign": {
+                    "name": "Native saved campaign / Dataset A / Pipeline A",
+                    "mode": "paired_by_index",
+                    "executionBackend": "local-python",
+                    "datasets": [{"id": "dataset-a", "name": "Dataset A", "splitGroupBy": null}],
+                    "pipelines": [{"id": "pipeline-a", "name": "Pipeline A", "source": "saved"}],
+                    "runMatrix": [{
+                        "id": "dataset-a::pipeline-a",
+                        "datasetId": "dataset-a",
+                        "pipelineId": "pipeline-a",
+                        "datasetIndex": 0,
+                        "pipelineIndex": 0,
+                        "splitGroupBy": null
+                    }]
+                }
+            }],
+            "skippedRunIds": []
+        }
+    });
+    let response = route_request_with_body(
+        &mut state,
+        "POST",
+        "/api/runs/run-groups",
+        &serde_json::to_vec(&original_request).unwrap(),
+    );
+    assert_eq!(response.status, 202, "{}", response.body);
+    let response: Value = serde_json::from_str(&response.body).unwrap();
+    let job_id = response["job_id"].as_str().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    loop {
+        let snapshot = runtime.get_at(job_id, std::time::Instant::now()).unwrap();
+        if snapshot.status.as_str() != "running" {
+            assert_eq!(
+                snapshot.status.as_str(),
+                "completed",
+                "{:?}",
+                snapshot.error
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "scientific route timed out"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let record = read_execution_job_record(&workspace, job_id).unwrap();
+    assert_eq!(record["status"], "completed");
+    assert_eq!(record["request"], original_request);
+    assert!(!record["request"].to_string().contains("\"X\""));
+    assert!(!record["request"].to_string().contains("\"y\""));
+    assert_eq!(runtime.published_event_count(), 2);
+    assert_eq!(runtime.durable_write_count(), 2);
+    fs::remove_dir_all(root).unwrap();
 }
