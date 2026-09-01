@@ -1,0 +1,16 @@
+{
+  "calibration": {
+    "method": "none",
+    "note": "scores are uncalibrated (C5)"
+  },
+  "overall_score": 0.857,
+  "structure": {
+    "alternatives": [],
+    "ambiguous": false,
+    "evidence": [
+      "Xcal/Ycal present"
+    ],
+    "score": 0.9,
+    "value": "train_test_folder"
+  }
+}

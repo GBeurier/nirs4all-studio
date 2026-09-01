@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# Self-contained OFFLINE build of the nirs4all-io Rust core into a STATICLIB,
+# then compile the C shim (n4io.c) and link the staticlib by exact path. No
+# prebuilt nirs4all-io-capi cdylib, no N4IO_CAPI_DIR — the package vendors and
+# compiles its own staticlib (see ../configure, N4IO_R_VENDOR=1). The committed
+# C ABI header lives next to the shim (src/nirs4all_io.h), copied by ./configure.
+#
+# This mirrors the CRAN "Using Rust" / rextendr Makevars pattern: every cargo
+# invocation runs with a BUILD-LOCAL CARGO_HOME and CARGO_TARGET_DIR (never the
+# user's ~/.cargo / ~/.rustup, per CRAN Policy), and a post-link `rust_clean`
+# rule wipes all Rust build scratch out of the package source so R CMD check
+# --as-cran never scans third-party build artefacts.
+#
+# macOS CRAN farm PATH: cargo lives in ~/.cargo/bin but the macOS check builders
+# run R CMD INSTALL with a PATH that EXCLUDES it (the Linux/Windows farms have
+# cargo on PATH; the macOS ones do not), so the `command -v cargo` guard below
+# fails there and the install errors with "Installation failed" on every macOS
+# flavor while Linux/Windows stay OK. Append the standard rustup bin dir so cargo
+# is found on the macOS farm too; CRAN's "Using Rust" guidance notes the personal
+# ~/.cargo/bin is "often not on the path" and scripts must look for it. Exported so
+# every recipe shell (the guard AND the cargo build) sees it.
+export PATH := $(PATH):$(HOME)/.cargo/bin
+
+TARGET_DIR = $(CURDIR)/rust/target
+LIBDIR = $(TARGET_DIR)/release
+STATLIB = $(LIBDIR)/libnirs4all_io_capi.a
+# Reference the staticlib by EXACT PATH, not `-L$(LIBDIR) -lnirs4all_io_capi`:
+# the configure-generated vendored capi crate emits the STATICLIB only (its
+# [lib] crate-type is reduced to ["staticlib"]), but referencing it by exact .a
+# path also guards against any stray .so and forces the static link, baking every
+# n4io_* symbol into nirs4allio.so (self-contained, no runtime rpath needed).
+PKG_LIBS = $(STATLIB)
+PKG_CPPFLAGS = -I$(CURDIR)
+
+# Build-local cargo state. CRAN Policy forbids writing to the user's HOME at
+# install time; the cargo registry/cache (~/.cargo) and target dir must both
+# live INSIDE the package build tree and be removed afterwards. CARGO_HOME holds
+# the registry index + git db; pointing it here keeps cargo off ~/.cargo. The
+# rust/vendor tree is extracted from vendor.tar.xz so the build is fully OFFLINE
+# and never reaches the network either.
+CARGOTMP = $(CURDIR)/.cargo
+
+# `all` links the SHLIB, THEN runs rust_clean (which depends on $(SHLIB), so it
+# is sequenced last). rust_clean removes the whole target/ + CARGOTMP + the
+# extracted vendor/ so nothing Rust-related is left in the installed source for
+# R CMD check to scan.
+all: $(SHLIB) rust_clean
+
+.PHONY: all rust_clean clean C_clean $(STATLIB)
+
+$(SHLIB): $(STATLIB)
+
+$(STATLIB):
+	@if ! command -v cargo >/dev/null; then \
+		echo "Cargo is required to build nirs4allio. Install Rust from https://rustup.rs."; \
+		exit 1; \
+	fi
+	# Report the toolchain version to the install log (stderr) BEFORE compiling.
+	# R CMD check --as-cran scans the lines preceding the first "Compiling" for a
+	# `rustc <ver>` / `cargo <ver>` line; without it the "Rust compilation" check
+	# emits the "No rustc version reported prior to compilation" WARNING.
+	@rustc --version >&2 || true
+	@cargo --version >&2 || true
+	# Self-contained vendored build: extract the cargo-vendored crates.io deps
+	# (shipped compressed to dodge R's tarball dotfile stripping), then build the
+	# capi STATICLIB OFFLINE against them. The crates.io source replacement is
+	# passed INLINE via --config (resolves `vendor` against rust/, and ships NO
+	# hidden .cargo/ dir that would trip R CMD check). If vendor.tar.xz is absent
+	# (raw in-repo dev), fall back to an ONLINE build.
+	#
+	# CARGO_HOME=$(CARGOTMP) keeps cargo's registry/cache out of ~/.cargo (CRAN
+	# Policy). CARGO_TARGET_DIR is the in-package target/ that rust_clean wipes.
+	# `-j 2` bounds Cargo's parallelism as required by CRAN's "Using Rust" policy
+	# (https://cran.r-project.org/web/packages/using_rust.html); without it Cargo
+	# defaults to every logical CPU on the build machine.
+	export CARGO_HOME="$(CARGOTMP)" && \
+	export CARGO_TARGET_DIR="$(TARGET_DIR)" && \
+	if [ -f rust/vendor.tar.xz ]; then \
+		[ -d rust/vendor ] || ( echo "extracting rust/vendor.tar.xz"; cd rust && tar xJf vendor.tar.xz ); \
+		cd rust && cargo build -p nirs4all-io-capi --release -j 2 --offline \
+			--config 'source.crates-io.replace-with="vendored-sources"' \
+			--config 'source.vendored-sources.directory="vendor"'; \
+	else \
+		cd rust && cargo build -p nirs4all-io-capi --release -j 2; \
+	fi
+
+# Post-link cleanup. Runs AFTER $(SHLIB) has linked $(STATLIB) into the package
+# .so, so the whole Rust scratch can go: the entire target/ (build-script scratch,
+# .fingerprint/deps/incremental), the build-local CARGO_HOME, and the extracted
+# vendor/ tree. This is what stops R CMD check --as-cran from scanning third-party
+# build artefacts the package compiles but does not author. The committed inputs
+# (rust/vendored/, rust/vendor.tar.xz, rust/Cargo.toml) are NOT touched. Skipped
+# when NOT_CRAN=true (dev inner loop keeps the cache for incremental rebuilds).
+rust_clean: $(SHLIB)
+	@if [ "$(NOT_CRAN)" != "true" ]; then \
+		rm -Rf "$(TARGET_DIR)" "$(CARGOTMP)" "$(CURDIR)/rust/vendor"; \
+	fi
+
+C_clean:
+	rm -Rf $(SHLIB) $(OBJECTS) $(STATLIB) $(TARGET_DIR) $(CARGOTMP) $(CURDIR)/rust/vendor
+
+clean: C_clean

@@ -1,0 +1,46 @@
+{
+  "name": "config",
+  "params": {
+    "na": {
+      "fill": {
+        "per_column": true
+      },
+      "policy": "auto"
+    }
+  },
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "x",
+      "input": "X.csv",
+      "params": {
+        "na": {
+          "fill": {
+            "per_column": true
+          },
+          "policy": "auto"
+        }
+      },
+      "role": "features"
+    },
+    {
+      "id": "y",
+      "input": "Y.csv",
+      "join": {
+        "cardinality": "1:1",
+        "coverage": "complete",
+        "left": "y",
+        "right": "x"
+      },
+      "params": {
+        "na": {
+          "fill": {
+            "per_column": true
+          },
+          "policy": "auto"
+        }
+      },
+      "role": "targets"
+    }
+  ]
+}

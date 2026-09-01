@@ -1,0 +1,158 @@
+{
+  "aggregate": null,
+  "assembled_schema_version": 2,
+  "blocks": {
+    "test": {
+      "feature_headers": [
+        [
+          "1000"
+        ]
+      ],
+      "header_units": [
+        "text"
+      ],
+      "metadata_columns": [
+        "sample_id",
+        "observation_id",
+        "repetition_id",
+        "group_id",
+        "set"
+      ],
+      "n_samples": 1,
+      "processings": [
+        []
+      ],
+      "signal_types": [
+        null
+      ],
+      "source_ids": [
+        "data"
+      ],
+      "weights_header": null,
+      "x": [
+        [
+          [
+            2.0
+          ]
+        ]
+      ],
+      "x_shapes": [
+        [
+          1,
+          1
+        ]
+      ],
+      "y": [
+        [
+          20.0
+        ]
+      ],
+      "y_categorical": {},
+      "y_headers": [
+        "target"
+      ],
+      "y_shape": [
+        1,
+        1
+      ]
+    },
+    "train": {
+      "feature_headers": [
+        [
+          "1000"
+        ]
+      ],
+      "header_units": [
+        "text"
+      ],
+      "metadata_columns": [
+        "sample_id",
+        "observation_id",
+        "repetition_id",
+        "group_id",
+        "set"
+      ],
+      "n_samples": 2,
+      "processings": [
+        []
+      ],
+      "signal_types": [
+        null
+      ],
+      "source_ids": [
+        "data"
+      ],
+      "weights_header": null,
+      "x": [
+        [
+          [
+            1.0
+          ],
+          [
+            3.0
+          ]
+        ]
+      ],
+      "x_shapes": [
+        [
+          2,
+          1
+        ]
+      ],
+      "y": [
+        [
+          10.0
+        ],
+        [
+          30.0
+        ]
+      ],
+      "y_categorical": {},
+      "y_headers": [
+        "target"
+      ],
+      "y_shape": [
+        2,
+        1
+      ]
+    }
+  },
+  "fold_provenance": [
+    {
+      "train_observation_ids": [
+        "O0",
+        "O2"
+      ],
+      "validation_observation_ids": [
+        "O1"
+      ]
+    }
+  ],
+  "folds": [
+    [
+      [
+        0,
+        2
+      ],
+      [
+        1
+      ]
+    ]
+  ],
+  "identity": {
+    "provenance": {
+      "group_id": "group_id",
+      "observation_id": "observation_id",
+      "repetition_id": "repetition_id",
+      "sample_id": "sample_id",
+      "source_ids": [
+        "data"
+      ]
+    }
+  },
+  "n_sources": 1,
+  "name": "xlg-identity",
+  "repetition": "repetition_id",
+  "signal_type": "auto",
+  "task_type": "auto"
+}

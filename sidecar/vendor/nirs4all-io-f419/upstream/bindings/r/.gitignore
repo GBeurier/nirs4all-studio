@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# Self-contained Rust tree is populated by ./configure (N4IO_R_VENDOR=1) and the
+# R-universe .prepare hook — never committed. The CRAN/R-universe source tarball
+# bundles it (R CMD build runs after configure); a raw checkout regenerates it.
+src/rust/vendored/
+src/rust/vendor/
+src/rust/vendor.tar.xz
+src/rust/.cargo/
+src/rust/Cargo.toml
+src/rust/Cargo.lock
+src/rust/target/
+# Committed C ABI header is copied from the capi crate by ./configure.
+src/nirs4all_io.h
+# Compiled R artefacts (must never be committed; CRAN compiles from source).
+src/*.o
+src/*.so
+src/*.dll
+src/*.dylib
+src/*.a

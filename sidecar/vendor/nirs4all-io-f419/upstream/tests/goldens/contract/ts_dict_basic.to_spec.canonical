@@ -1,0 +1,70 @@
+{
+  "folds": {
+    "inline": [
+      {
+        "train": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "val": [
+          4,
+          5
+        ]
+      }
+    ]
+  },
+  "name": "basic",
+  "params": {
+    "na": {
+      "fill": {
+        "per_column": true
+      },
+      "policy": "auto"
+    }
+  },
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "x",
+      "input": [
+        "nir.csv",
+        "mir.csv"
+      ],
+      "key": "id",
+      "merge": "concat_features",
+      "params": {
+        "na": {
+          "fill": {
+            "per_column": true
+          },
+          "policy": "auto"
+        }
+      },
+      "role": "features"
+    },
+    {
+      "id": "y",
+      "input": "y.csv",
+      "join": {
+        "cardinality": "1:1",
+        "coverage": "complete",
+        "left": "y",
+        "left_on": "id",
+        "right": "x",
+        "right_on": "id"
+      },
+      "params": {
+        "na": {
+          "fill": {
+            "per_column": true
+          },
+          "policy": "auto"
+        }
+      },
+      "role": "targets"
+    }
+  ],
+  "task_type": "regression"
+}

@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+name: Octave binding
+on:
+  push:
+    branches: [main, 'rc/**']
+  pull_request:
+    branches: [main, 'rc/**']
+  workflow_dispatch: {}
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Octave
+        run: |
+          # octave / octave-dev live in the `universe` component; enable it
+          # explicitly so the runner's apt index can resolve them (the default
+          # `apt-get update` on the hosted image does not refresh universe).
+          # NOTE: on Ubuntu 24.04 (noble) the dev package providing mkoctfile is
+          # `octave-dev` — the old `liboctave-dev` name no longer exists.
+          sudo add-apt-repository -y universe
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends octave octave-dev
+      - name: Build mex + smoke
+        run: bash bindings/matlab/build_and_test.sh

@@ -13,7 +13,7 @@ use std::{
 };
 
 use cap_std::{ambient_authority, fs::Dir};
-use nirs4all_io::core::materialize::Matrix;
+use nirs4all_io::{core::materialize::Matrix, RoleTaggedReadLimits};
 use serde_json::{json, Map, Value};
 
 use crate::job_http::ScientificSubmissionPreflight;
@@ -22,6 +22,10 @@ const DATASET_LINKS_FILE: &str = "dataset_links.json";
 const MAX_DATASET_LINKS_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_PIPELINE_BYTES: u64 = 256 * 1024;
 const MAX_DATASETS: usize = 256;
+const MAX_DATASET_FILE_BYTES: u64 = 1024 * 1024;
+const MAX_DATASET_TOTAL_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_DATASET_RECORD_BYTES: u64 = 128 * 1024;
+const MAX_DATASET_FIELD_BYTES: u64 = 64 * 1024;
 const MIN_SAMPLES: usize = 4;
 const MAX_SAMPLES: usize = 128;
 const MAX_FEATURES: usize = 256;
@@ -78,10 +82,21 @@ impl ScientificRequestResolver {
         let pipeline = read_pipeline(&preflight.workspace_path, &identities.pipeline_id)?;
         let pipeline = resolve_pipeline(&pipeline, &identities.pipeline_id)?;
         let dataset = resolve_dataset(&dataset, &identities.dataset_id)?;
-        let assembled = nirs4all_io::load_role_tagged_assembled(
+        let read_limits = RoleTaggedReadLimits::new(
+            MAX_DATASET_FILE_BYTES,
+            MAX_DATASET_TOTAL_BYTES,
+            MAX_DATASET_RECORD_BYTES,
+            MAX_DATASET_FIELD_BYTES,
+            MAX_SAMPLES as u64,
+            MAX_FEATURES as u64,
+            MAX_CELLS as u64,
+        )
+        .map_err(|_| ScientificResolveError::DatasetAssembly)?;
+        let assembled = nirs4all_io::load_role_tagged_assembled_with_limits(
             &dataset.config,
             &dataset.root,
             Some(&identities.dataset_id),
+            read_limits,
         )
         .map_err(|_| ScientificResolveError::DatasetAssembly)?;
         let (x, y) = project_train_regression(&assembled)?;

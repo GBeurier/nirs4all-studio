@@ -1,0 +1,226 @@
+{
+  "alignment": [],
+  "assignments": [],
+  "axis": null,
+  "calibration": {
+    "method": "none",
+    "note": "scores are uncalibrated (C5)"
+  },
+  "columns": [
+    {
+      "column_roles": [
+        {
+          "col": "1000",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1005",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1010",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1015",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1020",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1025",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1030",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1035",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1040",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1045",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1050",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "1055",
+          "evidence": [
+            "numeric column"
+          ],
+          "role": "features",
+          "score": 0.55
+        },
+        {
+          "col": "protein",
+          "evidence": [
+            "last numeric column (likely target)"
+          ],
+          "role": "targets",
+          "score": 0.6
+        }
+      ],
+      "ref": "data.csv"
+    }
+  ],
+  "dropped_rows": [],
+  "identity": null,
+  "input": {
+    "kind": "directory",
+    "ref": "<CORPUS>/corpus/single_combined"
+  },
+  "overall_score": 0.833,
+  "params": {
+    "data.csv": {
+      "delimiter": {
+        "score": 0.63,
+        "value": ";"
+      },
+      "has_header": {
+        "score": 0.7,
+        "value": false
+      }
+    }
+  },
+  "recommendations": [
+    "review the resolved_spec; pass it (or plan.accept()) to load()"
+  ],
+  "resolved_spec": {
+    "name": "data",
+    "params": {
+      "na": {
+        "fill": {
+          "per_column": true
+        },
+        "policy": "auto"
+      }
+    },
+    "schema_version": 1,
+    "sources": [
+      {
+        "columns": [
+          {
+            "role": "features",
+            "select": [
+              "1000",
+              "1005",
+              "1010",
+              "1015",
+              "1020",
+              "1025",
+              "1030",
+              "1035",
+              "1040",
+              "1045",
+              "1050",
+              "1055"
+            ]
+          },
+          {
+            "role": "targets",
+            "select": [
+              "protein"
+            ]
+          }
+        ],
+        "id": "data",
+        "input": "<CORPUS>/corpus/single_combined/data.csv",
+        "params": {
+          "delimiter": ";",
+          "has_header": true,
+          "na": {
+            "fill": {
+              "per_column": true
+            },
+            "policy": "auto"
+          }
+        },
+        "role": "mixed"
+      }
+    ]
+  },
+  "signal_type": {
+    "alternatives": [],
+    "ambiguous": false,
+    "evidence": [
+      "range [0.400, 1.300], mean 0.850 -> absorbance (100%)"
+    ],
+    "score": 1.0,
+    "value": "absorbance"
+  },
+  "structure": {
+    "alternatives": [],
+    "ambiguous": false,
+    "evidence": [
+      "one tabular file; column roles inferred"
+    ],
+    "score": 0.7,
+    "value": "single_combined"
+  },
+  "task_type": {
+    "alternatives": [],
+    "ambiguous": false,
+    "evidence": [
+      "target 'protein' value distribution"
+    ],
+    "score": 0.8,
+    "value": "regression"
+  },
+  "warnings": [
+    "unassigned files: ['data.csv']"
+  ]
+}

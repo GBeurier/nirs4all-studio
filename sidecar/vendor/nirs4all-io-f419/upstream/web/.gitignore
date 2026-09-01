@@ -1,0 +1,7 @@
+# dist/ is the generated single-file standalone (make-standalone.mjs).
+dist/
+
+# pkg/ (wasm-pack output) is intentionally VENDORED here, not ignored: the
+# GitHub Pages deploy serves it statically, and the formats bundle needs
+# emscripten to rebuild (so it is not cheap to regenerate in CI). Refresh with
+# ./build-wasm.sh and commit the result.

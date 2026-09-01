@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+[build-system]
+requires = ["maturin>=1.5,<2"]
+build-backend = "maturin"
+
+[project]
+name = "nirs4all-io"
+description = "Dataset-assembly bridge for the nirs4all ecosystem (Rust core, pyo3 binding)."
+requires-python = ">=3.11"
+license = { text = "CeCILL-2.1 OR AGPL-3.0-or-later" }
+dynamic = ["version"]
+# numpy/pandas back the SpectroDataset adapter (full-array reconstruction). They
+# are NOT nirs4all — the import-boundary test still holds. nirs4all itself is a
+# lazy, call-time import inside the adapter only.
+dependencies = ["numpy>=1.23", "pandas>=1.5"]
+
+[tool.maturin]
+# Mixed layout: the Rust extension is `nirs4all_io._native`; the Python package
+# under `python/nirs4all_io` wraps it and adds the lazy SpectroDataset adapter.
+module-name = "nirs4all_io._native"
+python-source = "python"

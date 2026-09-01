@@ -144,6 +144,7 @@ sys.stdout.buffer.write(encoded)
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ScientificCpythonUnavailable {
     HostUnavailable,
+    HostSymlinkUnsupported,
     HostTooLarge,
     HostTampered,
     SpawnFailed,
@@ -172,6 +173,7 @@ impl ScientificCpythonUnavailable {
     pub const fn reason(self) -> &'static str {
         match self {
             Self::HostUnavailable => "python_host_unavailable",
+            Self::HostSymlinkUnsupported => "python_host_symlink_unsupported",
             Self::HostTooLarge => "python_host_too_large",
             Self::HostTampered => "python_host_tampered",
             Self::SpawnFailed => "python_host_spawn_failed",
@@ -487,6 +489,11 @@ fn acquire_host(
 }
 
 fn host_identity(path: &Path) -> Result<HostIdentity, ScientificCpythonUnavailable> {
+    let metadata =
+        fs::symlink_metadata(path).map_err(|_| ScientificCpythonUnavailable::HostUnavailable)?;
+    if metadata.file_type().is_symlink() {
+        return Err(ScientificCpythonUnavailable::HostSymlinkUnsupported);
+    }
     host_identity_with_limit(path, MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)
 }
 

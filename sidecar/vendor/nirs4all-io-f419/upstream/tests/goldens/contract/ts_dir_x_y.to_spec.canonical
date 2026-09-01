@@ -1,0 +1,48 @@
+{
+  "name": "x_y_separate",
+  "params": {
+    "na": {
+      "fill": {
+        "per_column": true
+      },
+      "policy": "auto"
+    }
+  },
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "train_x",
+      "input": "X.csv",
+      "params": {
+        "na": {
+          "fill": {
+            "per_column": true
+          },
+          "policy": "auto"
+        }
+      },
+      "partition": "train",
+      "role": "features"
+    },
+    {
+      "id": "train_y",
+      "input": "Y.csv",
+      "join": {
+        "cardinality": "1:1",
+        "coverage": "complete",
+        "left": "train_y",
+        "right": "train_x"
+      },
+      "params": {
+        "na": {
+          "fill": {
+            "per_column": true
+          },
+          "policy": "auto"
+        }
+      },
+      "partition": "train",
+      "role": "targets"
+    }
+  ]
+}

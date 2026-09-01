@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# Windows (Rtools45 / mingw-w64, UCRT) self-contained OFFLINE build. Compile the
+# nirs4all-io Rust core into a STATICLIB with the x86_64-pc-windows-gnu toolchain
+# (so its ABI matches Rtools' mingw gcc, which performs the final link of the
+# Rust archive into nirs4allio.dll), then compile the C shim (n4io.c) and link
+# the staticlib by exact path. No prebuilt cdylib, no N4IO_CAPI_DIR.
+#
+# Same CRAN-compliant shape as src/Makevars: build-local CARGO_HOME +
+# CARGO_TARGET_DIR (never %USERPROFILE%\.cargo), version echoed to the log before
+# compiling, post-link rust_clean wipes all Rust scratch from the package source.
+#
+# WINDOWS MAX_PATH (260). R CMD check installs into
+# <pkg>.Rcheck/00_pkg_src/<pkg>/src, then cargo adds target/<triple>/release/build/
+# paths below it. On CRAN's Windows builders that can exceed MAX_PATH before the
+# Rust staticlib is archived. Relocate cargo scratch to the short Rtools /tmp mount
+# exactly like the other Rust-backed R packages.
+TARGET ?= $(subst 64,x86_64,$(subst 32,i686,$(WIN)))-pc-windows-gnu
+# Use a native Windows path when cygpath is available; cargo.exe accepts it and it
+# avoids both MAX_PATH pressure and MSYS path-conversion surprises.
+SHORT_TMP := $(shell command -v cygpath >/dev/null 2>&1 && cygpath -m /tmp 2>/dev/null || echo /tmp)
+TARGET_DIR = $(SHORT_TMP)/n4io
+CARGOTMP = $(SHORT_TMP)/n4io-ch
+LIBDIR = $(TARGET_DIR)/$(TARGET)/release
+STATLIB = $(LIBDIR)/libnirs4all_io_capi.a
+PKG_CPPFLAGS = -I$(CURDIR)
+# Reference the staticlib by EXACT PATH (not -lnirs4all_io_capi): the
+# configure-generated vendored capi crate emits the STATICLIB only (its [lib]
+# crate-type is reduced to ["staticlib"]), so the explicit .a path forces the
+# static link and all symbols land inside nirs4allio.dll (Windows has no rpath,
+# so a self-contained DLL is what we want).
+#
+# Building the staticlib ONLY (no cdylib in the crate-type) is also what keeps
+# the Windows build alive: rustc only emits `native-static-libs` and never drives
+# a final link for a staticlib (it just `ar`-archives), so the empty
+# CARGO_TARGET_..._LINKER on the CRAN Windows runner (CARGO_LINKER is unset there)
+# is never consumed. A cdylib crate-type would force a link with that empty
+# linker and fail with "couldn't extract file stem from specified linker".
+#
+# R's gcc driver — not rustc — drives the C-shim link of nirs4allio.dll, so it
+# does NOT auto-append the Rust-std native system libs. Add the exact
+# `rustc --print native-static-libs` set for x86_64-pc-windows-gnu
+# (kernel32 ntdll userenv ws2_32 dbghelp) plus -lgcc for the panic_unwind
+# EH/personality + __chkstk refs. Rtools45's mingw ships NO separate libgcc_eh.a
+# — the unwinder (_Unwind_*), __gcc_personality_seh0, and __chkstk are all merged
+# into libgcc.a, so -lgcc (not -lgcc_eh) resolves them. System libs MUST come
+# AFTER the archive (mingw ld is order-sensitive).
+PKG_LIBS = $(STATLIB) \
+  -lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp -lgcc
+
+# Build-local cargo registry/cache (CRAN Policy: no writes to %USERPROFILE%\.cargo
+# at install time). On Windows cargo also defaults CARGO_HOME to
+# %USERPROFILE%\.cargo, so this redirect matters here too. Keep it beside the
+# relocated target dir so both paths stay short.
+
+all: $(SHLIB) rust_clean
+
+.PHONY: all rust_clean clean C_clean $(STATLIB)
+
+$(SHLIB): $(STATLIB)
+
+$(STATLIB):
+	@if ! command -v cargo >/dev/null; then \
+		echo "Cargo is required to build nirs4allio. Install Rust from https://rustup.rs."; \
+		exit 1; \
+	fi
+	# `rustc` links the x86_64-pc-windows-gnu CDYLIB against `-lgcc_eh`, but
+	# Rtools' GCC ships no `libgcc_eh.a`. We build the STATICLIB only (`ar`
+	# archiving, no linker invoked), so that cdylib link never happens — but keep
+	# the canonical empty-libgcc_eh.a shim on LIBRARY_PATH defensively in case a
+	# transitive build-script link probes for it. See
+	# https://github.com/r-windows/rtools-packages/blob/2407b23f1e0925bbb20a4162c963600105236318/mingw-w64-gcc/PKGBUILD#L313-L316
+	mkdir -p $(TARGET_DIR)/libgcc_mock
+	touch $(TARGET_DIR)/libgcc_mock/libgcc_eh.a
+	# Report the toolchain version to the install log (stderr) BEFORE compiling, so
+	# the R CMD check --as-cran "Rust compilation" check finds a `rustc <ver>` line
+	# (otherwise it WARNs "No rustc version reported prior to compilation").
+	@rustc --version >&2 || true
+	@cargo --version >&2 || true
+	# Self-contained vendored OFFLINE build of the staticlib for the gnu target.
+	# Source replacement passed INLINE via --config (no hidden .cargo/ dir).
+	# Rtools provides tar/xz. CARGO_HOME=$(CARGOTMP) keeps cargo off
+	# %USERPROFILE%\.cargo (CRAN Policy) and, like CARGO_TARGET_DIR, lives under the
+	# short temp path to dodge MAX_PATH. CARGO_LINKER (Rtools mingw linker) comes
+	# from Makevars.ucrt on R >= 4.2 when set; CARGO_TARGET_..._LINKER +
+	# LIBRARY_PATH wire in the linker and the gcc_eh shim defensively (unused for a
+	# staticlib build, which performs no link). `-j 2` bounds Cargo's parallelism
+	# (CRAN policy). NB: $(TARGET_DIR) is already absolute, so LIBRARY_PATH appends
+	# it directly (no $(CURDIR)/ prefix, which would double the path).
+	export CARGO_HOME="$(CARGOTMP)" && \
+	export CARGO_TARGET_DIR="$(TARGET_DIR)" && \
+	$(if $(strip $(CARGO_LINKER)),export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER="$(CARGO_LINKER)" && )\
+	export LIBRARY_PATH="$${LIBRARY_PATH};$(TARGET_DIR)/libgcc_mock" && \
+	if [ -f rust/vendor.tar.xz ]; then \
+		[ -d rust/vendor ] || ( echo "extracting rust/vendor.tar.xz"; cd rust && tar xJf vendor.tar.xz ); \
+		cd rust && cargo build -p nirs4all-io-capi --release -j 2 --target $(TARGET) --offline \
+			--config 'source.crates-io.replace-with="vendored-sources"' \
+			--config 'source.vendored-sources.directory="vendor"'; \
+	else \
+		cd rust && cargo build -p nirs4all-io-capi --release -j 2 --target $(TARGET); \
+	fi
+
+# Post-link cleanup — see src/Makevars. Runs after $(SHLIB) links $(STATLIB),
+# wiping the relocated target/, the build-local CARGO_HOME and the extracted
+# vendor/ so R CMD check does not scan third-party build artefacts. Skipped when
+# NOT_CRAN=true.
+rust_clean: $(SHLIB)
+	@if [ "$(NOT_CRAN)" != "true" ]; then \
+		rm -Rf "$(TARGET_DIR)" "$(CARGOTMP)" "$(CURDIR)/rust/vendor"; \
+	fi
+
+C_clean:
+	rm -Rf $(SHLIB) $(OBJECTS) $(STATLIB) $(TARGET_DIR) $(CARGOTMP) $(CURDIR)/rust/vendor
+
+clean: C_clean

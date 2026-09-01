@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# IO-XLG-001 — all six bindings must materialize the same identity-rich fixture
+# through the Rust core. Missing runtimes are unavailable, never a green skip.
+name: Cross-binding qualification
+on:
+  push:
+    branches: [main, 'rc/**']
+  pull_request:
+    branches: [main, 'rc/**']
+  workflow_dispatch: {}
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: r-lib/actions/setup-r@v2
+      - uses: actions/setup-python@v6.0.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install binding toolchains
+        run: |
+          python -m pip install maturin
+          cargo install --locked wasm-bindgen-cli --version 0.2.122
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends octave octave-dev
+          curl -fsSL https://cran.r-project.org/src/contrib/Archive/jsonlite/jsonlite_1.8.9.tar.gz -o /tmp/jsonlite_1.8.9.tar.gz
+          echo "89f130e0e1163328c01decd54e7712b5ebf3d0a667da0052833722cb9a6e90b0  /tmp/jsonlite_1.8.9.tar.gz" | sha256sum -c -
+          R CMD INSTALL /tmp/jsonlite_1.8.9.tar.gz
+      - name: Strict six-surface qualification
+        env:
+          N4IO_PYTHON: python
+        run: bash tests/cross_binding/verify.sh --output io-xlg-001-report.json
+      - uses: actions/upload-artifact@v7.0.0
+        if: always()
+        with:
+          name: io-xlg-001-report
+          path: io-xlg-001-report.json
+          if-no-files-found: error

@@ -1,0 +1,65 @@
+{
+  "name": "xlg-identity",
+  "sample_index": {
+    "by": "id",
+    "key": "sample_id",
+    "observation_id": "observation_id",
+    "repetition_id": "repetition_id",
+    "group_id": "group_id"
+  },
+  "sources": [
+    {
+      "id": "data",
+      "role": "mixed",
+      "input": "identity.csv",
+      "columns": [
+        {
+          "role": "features",
+          "select": [
+            "sample_id",
+            "observation_id",
+            "repetition_id",
+            "group_id",
+            "1000"
+          ]
+        },
+        {
+          "role": "targets",
+          "select": [
+            "target"
+          ]
+        },
+        {
+          "role": "metadata",
+          "select": [
+            "set"
+          ]
+        }
+      ]
+    }
+  ],
+  "partitions": {
+    "by": "column",
+    "column": "set",
+    "train_values": [
+      "cal"
+    ],
+    "test_values": [
+      "val"
+    ]
+  },
+  "folds": {
+    "inline": [
+      {
+        "train": [
+          0,
+          2
+        ],
+        "val": [
+          1
+        ]
+      }
+    ]
+  },
+  "repetition": "repetition_id"
+}

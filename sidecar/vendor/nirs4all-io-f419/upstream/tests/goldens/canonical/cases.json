@@ -1,0 +1,12 @@
+{
+  "nested_unsorted_keys": {"b": 1, "a": 2, "c": {"z": 1, "y": 2, "nested": {"q": 3, "p": 4}}},
+  "empty_containers": {"arr": [], "obj": {}, "filled": [1, 2, 3]},
+  "floats_and_ints": {"schema_version": 1, "unit_float": 1.0, "score": 0.95, "rounded": 0.857, "zero": 0.0, "neg": -3.5},
+  "booleans_and_null": {"ambiguous": false, "strict": true, "value": null, "list": [true, false, null]},
+  "unicode_strings": {"name": "café—é", "greek": "αβγ", "emoji_free_dash": "a–b"},
+  "arrays_of_objects": [{"role": "features", "select": "0:6"}, {"role": "targets", "select": [-1]}],
+  "spec_like": {"schema_version": 1, "name": "dataset", "sources": [{"id": "x", "role": "features", "input": "X.csv"}, {"id": "y", "role": "targets", "input": "Y.csv", "join": {"right": "x", "cardinality": "1:1", "coverage": "complete"}}]},
+  "plan_like": {"structure": {"value": "train_test_folder", "score": 0.9, "evidence": ["Xcal/Ycal present"], "alternatives": [], "ambiguous": false}, "overall_score": 0.857, "calibration": {"method": "none", "note": "scores are uncalibrated (C5)"}},
+  "contract_domain_floats": {"zero": 0.0, "neg_zero": -0.0, "min_score": 0.001, "half": 0.5, "rounded3": 0.857, "score": 0.95, "one": 1.0, "onehalf": 1.5, "hundred": 100.0, "wl_lo": 1000.0, "wl_mid": 2500.0, "wl_hi": 25000.0, "long_decimal": 0.123, "neg": -3.5, "thresh": 0.95},
+  "special_chars": {"line_sep": "a b", "para_sep": "c d", "tab": "x\ty", "quote": "a\"b", "backslash": "a\\b", "regex_like": "^\\d+$", "fwd_slash": "a/b", "newline": "p\nq"}
+}

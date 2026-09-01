@@ -1,0 +1,12 @@
+{
+  "comment": "Cross-language contract corpus (story 6.4/7.4). Each case runs `op` on `input` and the canonicalized, path-normalized output is frozen as <name>.<op>.canonical. Input forms: {spec:{...}} (dict to to_spec), {dir:rel} (directory), {files:[rel]} (file list), {config_file:rel} (json/yaml config). Paths are relative to this directory; the resolved absolute prefix is normalized to <CORPUS>. Append-only.",
+  "cases": [
+    {"name": "ts_dict_basic", "op": "to_spec", "input": {"spec": {"name": "basic", "task_type": "regression", "sources": [{"id": "x", "role": "features", "input": ["nir.csv", "mir.csv"], "merge": "concat_features", "key": "id"}, {"id": "y", "role": "targets", "input": "y.csv", "join": {"to": "x", "on": "id", "how": "1:1", "coverage": "complete"}}], "folds": {"inline": [{"train": [0, 1, 2, 3], "val": [4, 5]}]}}}},
+    {"name": "ts_config_json", "op": "to_spec", "input": {"config_file": "corpus/config.json"}},
+    {"name": "ts_dir_train_test", "op": "to_spec", "input": {"dir": "corpus/train_test"}},
+    {"name": "ts_dir_x_y", "op": "to_spec", "input": {"dir": "corpus/x_y_separate"}},
+    {"name": "inf_single_combined", "op": "infer", "input": {"dir": "corpus/single_combined"}},
+    {"name": "inf_train_test", "op": "infer", "input": {"dir": "corpus/train_test"}},
+    {"name": "inf_x_y_separate", "op": "infer", "input": {"dir": "corpus/x_y_separate"}}
+  ]
+}

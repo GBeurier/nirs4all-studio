@@ -1,0 +1,12 @@
+[
+  {
+    "role": "features",
+    "select": "0:6"
+  },
+  {
+    "role": "targets",
+    "select": [
+      -1
+    ]
+  }
+]

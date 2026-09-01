@@ -2,7 +2,7 @@
 
 use std::{
     fs,
-    os::unix::fs::PermissionsExt,
+    os::unix::fs::{symlink, PermissionsExt},
     path::{Path, PathBuf},
     sync::{mpsc, Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -141,6 +141,28 @@ fn absent_malformed_and_oversized_hosts_are_typed_before_mutation() {
         assert_eq!(runtime.published_event_count(), 0);
         assert_eq!(runtime.durable_write_count(), 0);
     }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn copied_interpreter_files_are_inspected_but_venv_symlinks_are_unsupported() {
+    let root = test_directory("copied-host");
+    let source = shell_host(&root, "source-python", "printf nope");
+    let copied = root.join("embedded-python-copy");
+    fs::copy(&source, &copied).unwrap();
+    let copied_executor = CpythonScientificJobExecutor::acquire(&copied);
+    assert_eq!(
+        copied_executor.unavailable_reason(),
+        "python_host_malformed_response"
+    );
+
+    let venv_link = root.join("venv-python");
+    symlink(&copied, &venv_link).unwrap();
+    let linked_executor = CpythonScientificJobExecutor::acquire(&venv_link);
+    assert_eq!(
+        linked_executor.unavailable_reason(),
+        "python_host_symlink_unsupported"
+    );
     fs::remove_dir_all(root).unwrap();
 }
 

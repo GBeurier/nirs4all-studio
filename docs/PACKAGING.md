@@ -115,7 +115,10 @@ resources/
 ```
 
 Electron starts the packaged sidecar automatically and gives it the sibling
-embedded interpreter only for the bounded `nirs4all` import preflight. The Rust
+embedded interpreter only for the bounded `nirs4all` import preflight. The
+interpreter must be copied into the payload as a regular executable; a Unix
+virtual-environment symlink is intentionally unsupported by the native host
+attestation and fails closed. The Rust
 sidecar remains the process and HTTP owner; the embedded Python runtime is a
 plugin capability, not a FastAPI/Uvicorn fallback.
 

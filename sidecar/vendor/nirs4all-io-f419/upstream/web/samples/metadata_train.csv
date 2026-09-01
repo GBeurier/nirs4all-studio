@@ -1,0 +1,7 @@
+sample_id;cultivar;replicate;site
+tr_001;A;1;north
+tr_002;A;2;north
+tr_003;B;1;south
+tr_004;B;2;south
+tr_005;A;3;north
+tr_006;B;3;south
