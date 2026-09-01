@@ -1,0 +1,129 @@
+{
+  "schema_id": "nirs4all.studio-scientific-submission.v1",
+  "schema_version": 1,
+  "route": {
+    "method": "POST",
+    "path": "/api/runs/run-groups",
+    "query_string": "absent",
+    "maximum_body_bytes": 65536,
+    "content": "strict_json_object"
+  },
+  "ownership": {
+    "request_validation": "studio_sidecar_rust",
+    "workspace_preflight": "studio_sidecar_rust",
+    "job_registry": "studio_sidecar_rust",
+    "job_transitions": "studio_sidecar_rust",
+    "websocket_events": "studio_sidecar_rust",
+    "durable_execution_record": "studio_sidecar_rust",
+    "scientific_execution": "explicit_injected_executor_only",
+    "fastapi_or_uvicorn": "forbidden",
+    "fallback_after_native_selection": "none"
+  },
+  "selection": {
+    "product_default": "unselected",
+    "unselected_http_status": 503,
+    "unselected_before": [
+      "request_body_parse",
+      "workspace_read",
+      "workspace_write",
+      "job_registry_mutation",
+      "executor_preflight",
+      "executor_submit"
+    ],
+    "submission_transport_capability": true,
+    "scientific_execution_capability": false
+  },
+  "payload": {
+    "root_fields": ["legacyConfig", "manifest", "strictCampaignSpecs"],
+    "unknown_contract_fields": "reject",
+    "opaque_scientific_fields": [
+      "inline_pipeline.steps",
+      "inline_pipelines[].steps",
+      "campaign.pipelines[].steps",
+      "campaign.pipelines[].graph",
+      "campaign.datasets[].schema",
+      "campaign.datasets[].schemaRef",
+      "legacyConfig.robustness.scenarios[]",
+      "legacyConfig.robustness.publish_evidence"
+    ],
+    "opaque_scientific_fields_policy": "bounded_json_transport_only_never_interpreted_by_rust",
+    "engine": "dag-ml_required",
+    "allow_fallback": false,
+    "skipped_run_ids": "forbidden",
+    "maximum_split_specs": 64,
+    "maximum_collection_items": 256,
+    "maximum_string_bytes": 4096,
+    "maximum_nesting_depth": 16,
+    "non_finite_numbers": "reject",
+    "identities": "nonempty_bounded_no_control_characters"
+  },
+  "workspace": {
+    "active_linked_workspace": "required",
+    "existing_directory": "required",
+    "runs_directory": "required",
+    "symlink_or_escape": "reject"
+  },
+  "accepted_submission": {
+    "job_type": "training",
+    "initial_public_status": "running",
+    "registry_insertions": 1,
+    "job_started_events": 1,
+    "initial_durable_writes": 1,
+    "executor_submit_calls": 1,
+    "durable_path": "runs/{job_id}/execution_job_record.json",
+    "http_status": 202,
+    "response_fields": [
+      "id",
+      "job_id",
+      "name",
+      "status",
+      "type",
+      "created_at",
+      "requested_backend",
+      "execution_backend",
+      "submission_transport",
+      "workspace_id"
+    ]
+  },
+  "refusals": {
+    "unselected_executor": {
+      "status": 503,
+      "body": {"detail": "Scientific job executor is not selected; submission was not accepted"}
+    },
+    "oversized_body": {
+      "status": 413,
+      "body": {"detail": "Scientific submission body exceeds 65536 bytes"}
+    },
+    "malformed_json": {
+      "status": 400,
+      "body": {"detail": "Scientific submission body must be valid JSON"}
+    },
+    "invalid_or_unsupported_shape": {
+      "status": 422,
+      "body": {"detail": "typed_closed_contract_reason"}
+    },
+    "missing_active_workspace": {
+      "status": 409,
+      "body": {"detail": "No workspace selected"}
+    },
+    "unsafe_workspace_or_persistence": {
+      "status": 409,
+      "body": {"detail": "Native execution job record cannot be persisted safely"}
+    },
+    "executor_preflight": {
+      "status": 503,
+      "body": {"detail": "Scientific job executor preflight failed"}
+    },
+    "executor_submission": {
+      "status": 503,
+      "body": {"detail": "Scientific job executor refused submission"}
+    },
+    "method": "http_405_allow_post",
+    "query_string": "http_404_native_route_not_found"
+  },
+  "cancellation": {
+    "running": "cooperative_executor_request_then_rust_acknowledgement",
+    "persistence": "each_public_state_transition",
+    "legacy_terminal_event": "job_failed"
+  }
+}

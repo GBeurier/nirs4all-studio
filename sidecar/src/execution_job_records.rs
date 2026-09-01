@@ -3,11 +3,12 @@
 use std::{
     collections::BTreeSet,
     fs::{self, File},
-    io::Read,
+    io::{Read, Write},
     path::Path,
     time::SystemTime,
 };
 
+use atomicwrites::{AllowOverwrite, AtomicFile};
 use serde_json::{json, Map, Value};
 
 pub const MAX_EXECUTION_JOB_RECORD_BYTES: u64 = 256 * 1024;
@@ -56,6 +57,17 @@ pub enum ExecutionJobRecordReadError {
     Read,
     InvalidJson,
     InvalidShape,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ExecutionJobRecordWriteError {
+    WorkspaceUnavailable,
+    InvalidIdentifier,
+    SymlinkOrEscape,
+    TargetAlreadyExists,
+    TooLarge,
+    InvalidShape,
+    Write,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -140,7 +152,7 @@ pub fn read_execution_job_record(
     let capacity =
         usize::try_from(before.len).map_err(|_| ExecutionJobRecordReadError::TooLarge)?;
     let mut bytes = Vec::with_capacity(capacity);
-    file.by_ref()
+    Read::by_ref(&mut file)
         .take(MAX_EXECUTION_JOB_RECORD_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| ExecutionJobRecordReadError::Read)?;
@@ -153,6 +165,129 @@ pub fn read_execution_job_record(
     let payload: Value =
         serde_json::from_slice(&bytes).map_err(|_| ExecutionJobRecordReadError::InvalidJson)?;
     normalize_record(&payload, job_id)
+}
+
+/// Validate a future durable-record target without creating a directory or
+/// file. This is the workspace preflight required before an executor is called.
+///
+/// # Errors
+///
+/// Rejects missing/non-directory workspace roots and runs directories,
+/// symlinks, escapes, malformed identifiers, and an already occupied job path.
+pub fn preflight_execution_job_record_write(
+    workspace_path: &Path,
+    job_id: &str,
+) -> Result<std::path::PathBuf, ExecutionJobRecordWriteError> {
+    let workspace = safe_workspace_for_write(workspace_path)?;
+    if !valid_identifier(job_id) {
+        return Err(ExecutionJobRecordWriteError::InvalidIdentifier);
+    }
+    let runs = workspace.join("runs");
+    safe_existing_directory(&runs, &workspace)?;
+    let job_directory = runs.join(job_id);
+    match fs::symlink_metadata(&job_directory) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            Err(ExecutionJobRecordWriteError::SymlinkOrEscape)
+        }
+        Ok(_) => Err(ExecutionJobRecordWriteError::TargetAlreadyExists),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(workspace),
+        Err(_) => Err(ExecutionJobRecordWriteError::Write),
+    }
+}
+
+/// Atomically persist one normalized execution record.
+///
+/// The workspace must be preflighted. Existing regular snapshots may be
+/// replaced for later lifecycle transitions; symlinks and workspace escapes
+/// are always rejected.
+///
+/// # Errors
+///
+/// Refuses unsafe paths, incompatible record shapes, oversized serialized
+/// payloads, and every filesystem failure.
+pub fn write_execution_job_record(
+    workspace_path: &Path,
+    job_id: &str,
+    record: &Value,
+) -> Result<(), ExecutionJobRecordWriteError> {
+    validate_contract().map_err(|_| ExecutionJobRecordWriteError::InvalidShape)?;
+    let workspace = safe_workspace_for_write(workspace_path)?;
+    if !valid_identifier(job_id) {
+        return Err(ExecutionJobRecordWriteError::InvalidIdentifier);
+    }
+    normalize_record(record, job_id).map_err(|_| ExecutionJobRecordWriteError::InvalidShape)?;
+    let runs = workspace.join("runs");
+    safe_existing_directory(&runs, &workspace)?;
+    let job_directory = runs.join(job_id);
+    match fs::symlink_metadata(&job_directory) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err(ExecutionJobRecordWriteError::SymlinkOrEscape);
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir(&job_directory).map_err(|_| ExecutionJobRecordWriteError::Write)?;
+        }
+        Err(_) => return Err(ExecutionJobRecordWriteError::Write),
+    }
+    safe_existing_directory(&job_directory, &workspace)?;
+    let path = job_directory.join("execution_job_record.json");
+    if let Ok(metadata) = fs::symlink_metadata(&path) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(ExecutionJobRecordWriteError::SymlinkOrEscape);
+        }
+        let canonical = path
+            .canonicalize()
+            .map_err(|_| ExecutionJobRecordWriteError::Write)?;
+        if !canonical.starts_with(&workspace) {
+            return Err(ExecutionJobRecordWriteError::SymlinkOrEscape);
+        }
+    }
+    let mut encoded =
+        serde_json::to_vec(record).map_err(|_| ExecutionJobRecordWriteError::InvalidShape)?;
+    encoded.push(b'\n');
+    if encoded.len() as u64 > MAX_EXECUTION_JOB_RECORD_BYTES {
+        return Err(ExecutionJobRecordWriteError::TooLarge);
+    }
+    AtomicFile::new(&path, AllowOverwrite)
+        .write(|file| file.write_all(&encoded).and_then(|()| file.sync_all()))
+        .map_err(|_| ExecutionJobRecordWriteError::Write)
+}
+
+fn safe_workspace_for_write(
+    workspace_path: &Path,
+) -> Result<std::path::PathBuf, ExecutionJobRecordWriteError> {
+    let metadata = fs::symlink_metadata(workspace_path)
+        .map_err(|_| ExecutionJobRecordWriteError::WorkspaceUnavailable)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(ExecutionJobRecordWriteError::SymlinkOrEscape);
+    }
+    workspace_path
+        .canonicalize()
+        .map_err(|_| ExecutionJobRecordWriteError::WorkspaceUnavailable)
+}
+
+fn safe_existing_directory(
+    directory: &Path,
+    workspace: &Path,
+) -> Result<(), ExecutionJobRecordWriteError> {
+    let metadata = fs::symlink_metadata(directory).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            ExecutionJobRecordWriteError::WorkspaceUnavailable
+        } else {
+            ExecutionJobRecordWriteError::Write
+        }
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(ExecutionJobRecordWriteError::SymlinkOrEscape);
+    }
+    let canonical = directory
+        .canonicalize()
+        .map_err(|_| ExecutionJobRecordWriteError::Write)?;
+    if !canonical.starts_with(workspace) {
+        return Err(ExecutionJobRecordWriteError::SymlinkOrEscape);
+    }
+    Ok(())
 }
 
 #[must_use]
@@ -442,6 +577,57 @@ mod tests {
             Err(ExecutionJobRecordReadError::InvalidShape)
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn atomically_writes_a_reader_compatible_record() {
+        let root = workspace();
+        fs::create_dir(root.join("runs")).unwrap();
+        assert_eq!(
+            preflight_execution_job_record_write(&root, "job-1").unwrap(),
+            root.canonicalize().unwrap()
+        );
+        let expected = record("job-1");
+        write_execution_job_record(&root, "job-1", &expected).unwrap();
+        let actual = read_execution_job_record(&root, "job-1").unwrap();
+        assert_eq!(actual["job_id"], "job-1");
+        assert_eq!(actual["status"], "running");
+        assert_eq!(fs::read_dir(root.join("runs/job-1")).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn durable_writer_refuses_symlinked_directories_and_snapshots() {
+        use std::os::unix::fs::symlink;
+
+        let root = workspace();
+        fs::create_dir(root.join("runs")).unwrap();
+        let outside_directory = root.with_extension("outside-directory");
+        fs::create_dir_all(&outside_directory).unwrap();
+        symlink(&outside_directory, root.join("runs/job-1")).unwrap();
+        assert_eq!(
+            preflight_execution_job_record_write(&root, "job-1"),
+            Err(ExecutionJobRecordWriteError::SymlinkOrEscape)
+        );
+        fs::remove_file(root.join("runs/job-1")).unwrap();
+
+        fs::create_dir(root.join("runs/job-1")).unwrap();
+        let outside_file = root.with_extension("outside-record.json");
+        fs::write(&outside_file, b"outside must not change").unwrap();
+        symlink(
+            &outside_file,
+            root.join("runs/job-1/execution_job_record.json"),
+        )
+        .unwrap();
+        assert_eq!(
+            write_execution_job_record(&root, "job-1", &record("job-1")),
+            Err(ExecutionJobRecordWriteError::SymlinkOrEscape)
+        );
+        assert_eq!(fs::read(&outside_file).unwrap(), b"outside must not change");
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(outside_directory).unwrap();
+        fs::remove_file(outside_file).unwrap();
     }
 
     #[cfg(unix)]

@@ -5,15 +5,23 @@
 //! record reads remain a `WorkspaceStore` concern and are deliberately excluded.
 
 use std::{
+    collections::BTreeMap,
     fmt::Debug,
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde_json::{json, Value};
 
 use crate::{
+    execution_job_records::{
+        preflight_execution_job_record_write, write_execution_job_record,
+        ExecutionJobRecordWriteError,
+    },
     job_lifecycle::{JobLifecycleError, JobMutation, JobRegistry, JobSnapshot, JobStatus, JobType},
+    scientific_submission::ValidatedScientificSubmission,
     websocket_transport::{
         rfc3339_now, LegacyEnvelopeError, WebSocketConnectionManager, MAX_CLIENT_MESSAGE_BYTES,
     },
@@ -99,6 +107,32 @@ pub trait ScientificJobExecutor: Debug + Send + Sync {
     /// Whether this executor was explicitly selected and preflighted.
     fn is_selected(&self) -> bool;
 
+    /// Preflight one already validated submission and return the bounded
+    /// execution identity which will be persisted by Rust.
+    ///
+    /// # Errors
+    ///
+    /// Returns an explicit capability or preflight refusal.
+    fn preflight_submission(
+        &self,
+        _request: &ScientificSubmissionPreflight,
+    ) -> Result<ScientificExecutorSelection, JobExecutorError> {
+        Err(JobExecutorError::SubmissionRefused)
+    }
+
+    /// Accept one job only after Rust registered, started, published, and
+    /// durably persisted it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an explicit submission refusal.
+    fn submit_scientific(
+        &self,
+        _request: &ScientificExecutionRequest,
+    ) -> Result<(), JobExecutorError> {
+        Err(JobExecutorError::SubmissionRefused)
+    }
+
     /// Ask a running executor to observe cooperative cancellation.
     ///
     /// # Errors
@@ -121,10 +155,46 @@ impl ScientificJobExecutor for UnselectedScientificJobExecutor {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScientificSubmissionPreflight {
+    pub workspace_id: String,
+    pub workspace_path: PathBuf,
+    pub requested_backend: String,
+    pub payload: Value,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScientificExecutorSelection {
+    pub execution_backend: String,
+    pub execution_mode: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScientificExecutionRequest {
+    pub job_id: String,
+    pub workspace_id: String,
+    pub workspace_path: PathBuf,
+    pub requested_backend: String,
+    pub payload: Value,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ScientificSubmissionReceipt {
+    pub job_id: String,
+    pub run_name: String,
+    pub created_at: String,
+    pub requested_backend: String,
+    pub execution_backend: String,
+    pub workspace_id: String,
+}
+
 /// Failure at the explicit executor boundary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JobExecutorError {
     Unselected,
+    InvalidCapability,
+    PreflightRefused,
+    SubmissionRefused,
     CancellationRefused,
 }
 
@@ -133,6 +203,7 @@ pub enum JobExecutorError {
 pub enum NativeJobRuntimeError {
     Lifecycle(JobLifecycleError),
     Executor(JobExecutorError),
+    Persistence(ExecutionJobRecordWriteError),
     WebSocket(LegacyEnvelopeError),
 }
 
@@ -148,6 +219,19 @@ pub struct NativeJobRuntime {
     registry: Mutex<JobRegistry>,
     websocket: Arc<WebSocketConnectionManager>,
     executor: Arc<dyn ScientificJobExecutor>,
+    durable_jobs: Mutex<BTreeMap<String, DurableScientificJob>>,
+    next_submission_id: AtomicU64,
+    published_events: AtomicU64,
+    durable_writes: AtomicU64,
+}
+
+#[derive(Clone, Debug)]
+struct DurableScientificJob {
+    workspace_path: PathBuf,
+    requested_backend: String,
+    execution_backend: String,
+    execution_mode: Option<String>,
+    request: Value,
 }
 
 impl Default for NativeJobRuntime {
@@ -164,6 +248,10 @@ impl NativeJobRuntime {
             registry: Mutex::new(JobRegistry::default()),
             websocket: Arc::new(WebSocketConnectionManager::new()),
             executor,
+            durable_jobs: Mutex::new(BTreeMap::new()),
+            next_submission_id: AtomicU64::new(1),
+            published_events: AtomicU64::new(0),
+            durable_writes: AtomicU64::new(0),
         }
     }
 
@@ -177,6 +265,107 @@ impl NativeJobRuntime {
     #[must_use]
     pub fn execution_selected(&self) -> bool {
         self.executor.is_selected()
+    }
+
+    /// Number of successfully published lifecycle events since launch.
+    #[must_use]
+    pub fn published_event_count(&self) -> u64 {
+        self.published_events.load(Ordering::Relaxed)
+    }
+
+    /// Number of successful atomic durable-record replacements since launch.
+    #[must_use]
+    pub fn durable_write_count(&self) -> u64 {
+        self.durable_writes.load(Ordering::Relaxed)
+    }
+
+    /// Preflight, register, publish, persist, and submit one validated
+    /// scientific job through the explicitly injected executor.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an unselected/invalid executor, unsafe workspace, lifecycle or
+    /// WebSocket failure, durable-write failure, and executor refusal.
+    pub fn submit_scientific_at(
+        &self,
+        submission: &ValidatedScientificSubmission,
+        workspace_id: &str,
+        workspace_path: &Path,
+        timestamp: &str,
+        now: Instant,
+    ) -> Result<ScientificSubmissionReceipt, NativeJobRuntimeError> {
+        if !self.executor.is_selected() {
+            return Err(NativeJobRuntimeError::Executor(
+                JobExecutorError::Unselected,
+            ));
+        }
+        let job_id = self.next_scientific_job_id();
+        let workspace_path = preflight_execution_job_record_write(workspace_path, &job_id)
+            .map_err(NativeJobRuntimeError::Persistence)?;
+        let preflight = ScientificSubmissionPreflight {
+            workspace_id: workspace_id.into(),
+            workspace_path: workspace_path.clone(),
+            requested_backend: submission.requested_backend().into(),
+            payload: submission.payload().clone(),
+        };
+        let selection = self
+            .executor
+            .preflight_submission(&preflight)
+            .map_err(NativeJobRuntimeError::Executor)?;
+        validate_executor_selection(&selection).map_err(NativeJobRuntimeError::Executor)?;
+        let config = json!({
+            "run_id": job_id,
+            "run_name": submission.run_name(),
+            "requested_backend": submission.requested_backend(),
+            "execution_backend": selection.execution_backend,
+            "submission_transport": "studio-sidecar-rust",
+        });
+        self.register_with_id_at(&job_id, JobType::Training, config, timestamp, now)?;
+        self.durable_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(
+                job_id.clone(),
+                DurableScientificJob {
+                    workspace_path: workspace_path.clone(),
+                    requested_backend: submission.requested_backend().into(),
+                    execution_backend: selection.execution_backend.clone(),
+                    execution_mode: selection.execution_mode.clone(),
+                    request: submission.payload().clone(),
+                },
+            );
+        if let Err(error) = self.start_at(&job_id, timestamp, now) {
+            self.durable_jobs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .remove(&job_id);
+            return Err(error);
+        }
+        let execution_request = ScientificExecutionRequest {
+            job_id: job_id.clone(),
+            workspace_id: workspace_id.into(),
+            workspace_path,
+            requested_backend: submission.requested_backend().into(),
+            payload: submission.payload().clone(),
+        };
+        if let Err(error) = self.executor.submit_scientific(&execution_request) {
+            let _ = self.fail_at(
+                &job_id,
+                "Scientific executor refused the registered submission",
+                None,
+                timestamp,
+                now,
+            );
+            return Err(NativeJobRuntimeError::Executor(error));
+        }
+        Ok(ScientificSubmissionReceipt {
+            job_id,
+            run_name: submission.run_name().into(),
+            created_at: timestamp.into(),
+            requested_backend: submission.requested_backend().into(),
+            execution_backend: selection.execution_backend,
+            workspace_id: workspace_id.into(),
+        })
     }
 
     /// Register a caller-owned job only after explicit executor selection.
@@ -359,6 +548,7 @@ impl NativeJobRuntime {
         let snapshot = registry
             .get_at(id, now)
             .ok_or(JobLifecycleError::JobNotFound)?;
+        let persist_terminal_cancellation = snapshot.status == JobStatus::Pending;
         if snapshot.status == JobStatus::Running {
             drop(registry);
             self.executor
@@ -371,7 +561,11 @@ impl NativeJobRuntime {
         }
         let mutation = registry.request_cancel_at(id, timestamp, now)?;
         drop(registry);
-        self.publish(mutation)
+        let snapshot = self.publish(mutation)?;
+        if persist_terminal_cancellation {
+            self.persist_if_durable(&snapshot)?;
+        }
+        Ok(snapshot)
     }
 
     /// Acknowledge a worker's cooperative cancellation and publish once.
@@ -398,7 +592,9 @@ impl NativeJobRuntime {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner),
         )?;
-        self.publish(mutation)
+        let snapshot = self.publish(mutation)?;
+        self.persist_if_durable(&snapshot)?;
+        Ok(snapshot)
     }
 
     fn publish(&self, mutation: JobMutation) -> Result<JobSnapshot, NativeJobRuntimeError> {
@@ -406,9 +602,82 @@ impl NativeJobRuntime {
             self.websocket
                 .broadcast_legacy(&event.legacy_json())
                 .map_err(NativeJobRuntimeError::WebSocket)?;
+            self.published_events.fetch_add(1, Ordering::Relaxed);
         }
         Ok(mutation.job)
     }
+
+    fn next_scientific_job_id(&self) -> String {
+        let sequence = self.next_submission_id.fetch_add(1, Ordering::Relaxed);
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        format!("run_native_{}_{}_{}", std::process::id(), nonce, sequence)
+    }
+
+    fn persist_if_durable(&self, snapshot: &JobSnapshot) -> Result<(), NativeJobRuntimeError> {
+        let context = self
+            .durable_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&snapshot.id)
+            .cloned();
+        let Some(context) = context else {
+            return Ok(());
+        };
+        let record = durable_record(snapshot, &context);
+        write_execution_job_record(&context.workspace_path, &snapshot.id, &record)
+            .map_err(NativeJobRuntimeError::Persistence)?;
+        self.durable_writes.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+fn validate_executor_selection(
+    selection: &ScientificExecutorSelection,
+) -> Result<(), JobExecutorError> {
+    let valid = |value: &str| {
+        !value.is_empty()
+            && value.len() <= 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    };
+    if !valid(&selection.execution_backend)
+        || selection
+            .execution_mode
+            .as_deref()
+            .is_some_and(|value| !valid(value))
+    {
+        return Err(JobExecutorError::InvalidCapability);
+    }
+    Ok(())
+}
+
+fn durable_record(snapshot: &JobSnapshot, context: &DurableScientificJob) -> Value {
+    json!({
+        "job_id": snapshot.id,
+        "job_type": snapshot.job_type.as_str(),
+        "requested_backend": context.requested_backend,
+        "execution_backend": context.execution_backend,
+        "execution_mode": context.execution_mode,
+        "status": snapshot.status.as_str(),
+        "progress": snapshot.progress,
+        "progress_message": snapshot.progress_message,
+        "progress_unavailable": false,
+        "created_at": snapshot.created_at,
+        "started_at": snapshot.started_at,
+        "completed_at": snapshot.completed_at,
+        "request": context.request,
+        "driver": {
+            "backend": context.execution_backend,
+            "mode": context.execution_mode,
+            "submission_transport": "studio-sidecar-rust"
+        },
+        "metrics": snapshot.metrics,
+        "error": snapshot.error,
+    })
 }
 
 fn ensure_event_data_bounded(data: &Value) -> Result<(), NativeJobRuntimeError> {
@@ -710,12 +979,17 @@ fn cancellation_failure(job_id: &str, error: &NativeJobRuntimeError) -> HttpResp
             409,
             "Scientific job executor is not selected; cancellation was not requested",
         ),
+        NativeJobRuntimeError::Executor(
+            JobExecutorError::InvalidCapability
+            | JobExecutorError::PreflightRefused
+            | JobExecutorError::SubmissionRefused,
+        ) => legacy_detail(503, "Scientific job executor is unavailable"),
         NativeJobRuntimeError::Executor(JobExecutorError::CancellationRefused) => {
             legacy_detail(503, "Scientific job executor refused cancellation")
         }
-        NativeJobRuntimeError::Lifecycle(_) | NativeJobRuntimeError::WebSocket(_) => {
-            legacy_detail(500, "Failed to cancel job")
-        }
+        NativeJobRuntimeError::Lifecycle(_)
+        | NativeJobRuntimeError::Persistence(_)
+        | NativeJobRuntimeError::WebSocket(_) => legacy_detail(500, "Failed to cancel job"),
     }
 }
 
