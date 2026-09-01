@@ -194,6 +194,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -228,10 +233,23 @@ jobs:
       - name: Copy backend source files
         run: node scripts/copy-backend-source.cjs --clean
 
+      - name: Build and smoke native sidecar
+        run: |
+          node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
+          test -x backend-dist/native/studio-sidecar
+          backend-dist/native/studio-sidecar --smoke-readiness
+
       - name: Package with electron-builder
         run: npx electron-builder --config electron-builder.installer.yml --linux --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify packaged native sidecar
+        run: |
+          SIDECAR="$(find release -type f -path '*/resources/backend/native/studio-sidecar' -print -quit)"
+          test -n "$SIDECAR"
+          test -x "$SIDECAR"
+          "$SIDECAR" --smoke-readiness
 
       - name: Generate checksums
         run: |
@@ -275,6 +293,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
       - name: Provide nirs4all-ui sibling
         uses: ./.github/actions/nirs4all-ui-sibling
 
@@ -299,6 +322,18 @@ jobs:
       - name: Copy backend source files
         run: node scripts/copy-backend-source.cjs --clean
 
+      - name: Build and smoke native sidecar
+        shell: pwsh
+        run: |
+          node scripts/build-native-sidecar.cjs --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sidecar = "backend-dist/native/studio-sidecar.exe"
+          if (-not (Test-Path -LiteralPath $sidecar -PathType Leaf)) {
+            throw "Native Studio sidecar not found: $sidecar"
+          }
+          & $sidecar --smoke-readiness
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # ── Windows Code Signing (Phase 4 — P4-3) ──
       - name: Import code signing certificate
         if: needs.prepare.outputs.has_windows_signing == 'true'
@@ -316,6 +351,20 @@ jobs:
         run: npx electron-builder --config electron-builder.installer.yml --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Payload execution is independent of Authenticode. The existing
+      # secret-backed signature verification below remains authoritative.
+      - name: Verify packaged native sidecar
+        shell: pwsh
+        run: |
+          $sidecar = Get-ChildItem -Path release -Filter studio-sidecar.exe -File -Recurse |
+            Where-Object { $_.FullName -match '[\\/]resources[\\/]backend[\\/]native[\\/]studio-sidecar\.exe$' } |
+            Select-Object -First 1
+          if (-not $sidecar) {
+            throw "Packaged native Studio sidecar not found under release/"
+          }
+          & $sidecar.FullName --smoke-readiness
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify Authenticode signature
         if: needs.prepare.outputs.has_windows_signing == 'true'
@@ -383,6 +432,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
       - name: Provide nirs4all-ui sibling
         uses: ./.github/actions/nirs4all-ui-sibling
 
@@ -407,6 +461,16 @@ jobs:
 
       - name: Copy backend source files
         run: node scripts/copy-backend-source.cjs --clean
+
+      - name: Build and smoke native sidecar
+        run: |
+          node scripts/build-native-sidecar.cjs --target x86_64-apple-darwin
+          test -x backend-dist/native/studio-sidecar
+          if [ "$(uname -m)" = "x86_64" ]; then
+            backend-dist/native/studio-sidecar --smoke-readiness
+          else
+            echo "Skipping x86_64 sidecar execution on $(uname -m); packaging checks still apply."
+          fi
 
       # ── macOS Code Signing (Phase 4 — P4-1) ──
       - name: Import Apple Developer certificate
@@ -441,6 +505,19 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # This validates the unpacked payload only. The existing secret-backed
+      # DMG notarization, stapling, and signature checks remain authoritative.
+      - name: Verify packaged native sidecar
+        run: |
+          SIDECAR="$(find release -type f -path '*/Contents/Resources/backend/native/studio-sidecar' -print -quit)"
+          test -n "$SIDECAR"
+          test -x "$SIDECAR"
+          if [ "$(uname -m)" = "x86_64" ]; then
+            "$SIDECAR" --smoke-readiness
+          else
+            echo "Skipping packaged x86_64 sidecar execution on $(uname -m)."
+          fi
 
       # ── macOS Notarization (Phase 4 — P4-2) ──
       - name: Notarize macOS DMG
@@ -542,6 +619,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
       - name: Provide nirs4all-ui sibling
         uses: ./.github/actions/nirs4all-ui-sibling
 
@@ -566,6 +648,16 @@ jobs:
 
       - name: Copy backend source files
         run: node scripts/copy-backend-source.cjs --clean
+
+      - name: Build and smoke native sidecar
+        run: |
+          node scripts/build-native-sidecar.cjs --target aarch64-apple-darwin
+          test -x backend-dist/native/studio-sidecar
+          if [ "$(uname -m)" = "arm64" ]; then
+            backend-dist/native/studio-sidecar --smoke-readiness
+          else
+            echo "Skipping arm64 sidecar execution on $(uname -m); packaging checks still apply."
+          fi
 
       # ── macOS Code Signing (Phase 4 — P4-1) ──
       - name: Import Apple Developer certificate
@@ -597,6 +689,19 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # This validates the unpacked payload only. The existing secret-backed
+      # DMG notarization, stapling, and signature checks remain authoritative.
+      - name: Verify packaged native sidecar
+        run: |
+          SIDECAR="$(find release -type f -path '*/Contents/Resources/backend/native/studio-sidecar' -print -quit)"
+          test -n "$SIDECAR"
+          test -x "$SIDECAR"
+          if [ "$(uname -m)" = "arm64" ]; then
+            "$SIDECAR" --smoke-readiness
+          else
+            echo "Skipping packaged arm64 sidecar execution on $(uname -m)."
+          fi
 
       # ── macOS Notarization (Phase 4 — P4-2) ──
       - name: Notarize macOS DMG

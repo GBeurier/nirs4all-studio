@@ -203,6 +203,12 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: x86_64-unknown-linux-gnu
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -219,11 +225,24 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Check native sidecar
+        run: |
+          cargo fmt --manifest-path sidecar/Cargo.toml -- --check
+          cargo clippy --manifest-path sidecar/Cargo.toml --all-targets -- -D warnings
+          cargo test --manifest-path sidecar/Cargo.toml
+          npm run test:native-sidecar
+
       - name: Build Electron frontend
         run: npm run build:electron
 
       - name: Copy backend source files
         run: node scripts/copy-backend-source.cjs --clean
+
+      - name: Build and smoke native sidecar
+        run: |
+          node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
+          test -x backend-dist/native/studio-sidecar
+          backend-dist/native/studio-sidecar --smoke-readiness
 
       - name: Verify backend source
         run: |
@@ -233,7 +252,9 @@ jobs:
 
       - name: Test electron-builder (dry-run)
         run: |
-          npx electron-builder --linux --dir
+          npx electron-builder --config electron-builder.installer.yml --linux --dir
+          test -x release/linux-unpacked/resources/backend/native/studio-sidecar
+          release/linux-unpacked/resources/backend/native/studio-sidecar --smoke-readiness
           echo "Electron build test passed"
 
   # ═══════════════════════════════════════════════════════════════════════════
