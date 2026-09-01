@@ -2,21 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 
 import { preselectWorkspaceRunDetail } from "./workspace-route-preselection";
 
-const verifiedButBlockedDecision = {
+const nativeDecision = {
   schema_id: "nirs4all.studio-run-detail-preselection-decision.v1" as const,
   workspace_id: "workspace-a",
-  target: "reject" as const,
+  target: "native-sidecar" as const,
   verified_store_v5: true,
   store_schema_version: 5 as const,
-  reason: "studio_run_detail_http_inputs_v1_materializer_unavailable",
+  reason: "store_v5_owner_materializer_ready",
   fallback_after_native_selection: "none" as const,
 };
 
 describe("workspace run-detail route preselection", () => {
-  it("verifies Store v5 but rejects cutover without owner HTTP inputs", async () => {
+  it("selects native only after Store v5 and owner host preflight", async () => {
     const request = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(verifiedButBlockedDecision), {
-        status: 409,
+      new Response(JSON.stringify(nativeDecision), {
+        status: 200,
         headers: { "content-type": "application/json" },
       }),
     );
@@ -27,7 +27,7 @@ describe("workspace run-detail route preselection", () => {
         () => ({ status: "running", url: "http://127.0.0.1:43123" }),
         request,
       ),
-    ).resolves.toEqual({ ...verifiedButBlockedDecision, status: 409 });
+    ).resolves.toEqual({ ...nativeDecision, status: 200 });
     expect(request).toHaveBeenCalledOnce();
     expect(request).toHaveBeenCalledWith(
       "http://127.0.0.1:43123/sidecar/v1/workspaces/workspace-a/run-detail-preselection",

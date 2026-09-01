@@ -994,28 +994,9 @@ fn validate_run_detail_http_owner_inputs(contract: &Value) -> Result<(), Workspa
         "schema_version": CONTRACT_SCHEMA_VERSION,
         "projection": "studio_run_detail_v1",
     });
-    let expected_splitter_dependency = json!({
-        "callable": "nirs4all.pipeline.analysis.splitter_config.extract_splitter_config",
-        "input": "pipeline.expanded_config",
-        "selection": "first_recognized_splitter_step",
-        "output_fields": [
-            "splitter_class",
-            "reference",
-            "n_splits",
-            "shuffle",
-            "random_state",
-            "test_size",
-            "group_by",
-        ],
-    });
+    let expected_splitter_dependency = expected_run_detail_splitter_dependency();
     let expected_runtime_dependency = expected_run_detail_runtime_dependency();
-    let expected_owner_oracle = json!({
-        "callable": "nirs4all.pipeline.storage.studio_run_detail_http_inputs_v1",
-        "scope": "store_v5_owner_inputs_only",
-        "open_mode": "composed_immutable_reads_guarded_by_before_after_database_stamp",
-        "writes_or_cache": "forbidden",
-        "not_found": "null",
-    });
+    let expected_owner_oracle = expected_run_detail_owner_oracle();
     let expected_owner_fields = json!([
         "source_branch",
         "run_detail",
@@ -1030,7 +1011,9 @@ fn validate_run_detail_http_owner_inputs(contract: &Value) -> Result<(), Workspa
         "entry_fields": ["pipeline_id", "splitter"],
         "splitter": "splitter_config_output_or_null",
         "materialization": "derived_by_owner_oracle_before_consumer_boundary",
+        "materialization_time": "immutable_owner_read",
         "consumer_reimplementation": "forbidden",
+        "consumer_expanded_config_access": "forbidden",
     });
     let (expected_pipeline_runtime, expected_runtime_provenance) =
         expected_run_detail_runtime_outputs();
@@ -1074,6 +1057,47 @@ fn validate_run_detail_http_owner_inputs(contract: &Value) -> Result<(), Workspa
         ));
     }
     Ok(())
+}
+
+fn expected_run_detail_splitter_dependency() -> Value {
+    json!({
+        "callable": "nirs4all.pipeline.analysis.splitter_config.extract_splitter_config",
+        "input": "pipeline.expanded_config",
+        "write_boundary": "WorkspaceStore.begin_pipeline",
+        "persisted_source": "pipelines.expanded_config",
+        "store_v5_splitter_column": "absent_by_design",
+        "historical_compatibility": "derive_or_null_from_existing_expanded_config",
+        "schema_migration": "none_required_for_owner_projection",
+        "consumer_expanded_config_access": "forbidden",
+        "selection": "first_recognized_splitter_step",
+        "output_fields": [
+            "splitter_class",
+            "reference",
+            "n_splits",
+            "shuffle",
+            "random_state",
+            "test_size",
+            "group_by",
+        ],
+    })
+}
+
+fn expected_run_detail_owner_oracle() -> Value {
+    json!({
+        "callable": "nirs4all.pipeline.storage.studio_run_detail_http_inputs_v1",
+        "signature": "(workspace_path: str | Path, run_id: str) -> dict[str, Any] | None",
+        "inputs": ["workspace_path", "run_id"],
+        "native_abi": "none_python_callable_only",
+        "bounded_cpython_subprocess": "supported",
+        "framework_requirements": {
+            "fastapi": "none",
+            "pipeline_runner_construction": "forbidden",
+        },
+        "scope": "store_v5_owner_inputs_only",
+        "open_mode": "composed_immutable_reads_guarded_by_before_after_database_stamp",
+        "writes_or_cache": "forbidden",
+        "not_found": "null",
+    })
 }
 
 fn expected_run_detail_runtime_dependency() -> Value {

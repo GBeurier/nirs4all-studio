@@ -4,6 +4,7 @@ use std::path::Path;
 
 use serde_json::{json, Value};
 
+use crate::run_detail_cpython::preflight_run_detail_owner;
 use crate::workspace_store::{
     preflight_run_detail_projection, WorkspaceStoreReadError, WORKSPACE_STORE_SCHEMA_VERSION,
 };
@@ -50,13 +51,30 @@ impl RunDetailPreselection {
 }
 
 #[must_use]
-pub fn preselect_run_detail(workspace_path: &Path) -> RunDetailPreselection {
+pub fn preselect_run_detail(
+    workspace_path: &Path,
+    python_plugin_host: Option<&Path>,
+) -> RunDetailPreselection {
     match preflight_run_detail_projection(workspace_path) {
-        Ok(()) => RunDetailPreselection {
-            target: RunDetailTarget::Reject,
-            verified_store_v5: true,
-            reason: "studio_run_detail_http_inputs_v1_materializer_unavailable",
-            status: 409,
+        Ok(()) => match python_plugin_host {
+            Some(host) if preflight_run_detail_owner(host).is_ok() => RunDetailPreselection {
+                target: RunDetailTarget::NativeSidecar,
+                verified_store_v5: true,
+                reason: "store_v5_owner_materializer_ready",
+                status: 200,
+            },
+            Some(_) => RunDetailPreselection {
+                target: RunDetailTarget::Reject,
+                verified_store_v5: true,
+                reason: "studio_run_detail_owner_preflight_failed",
+                status: 503,
+            },
+            None => RunDetailPreselection {
+                target: RunDetailTarget::Reject,
+                verified_store_v5: true,
+                reason: "python_plugin_host_unconfigured",
+                status: 503,
+            },
         },
         Err(WorkspaceStoreReadError::StoreNotFound) => RunDetailPreselection {
             target: RunDetailTarget::ScientificPlugin,

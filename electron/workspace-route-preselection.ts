@@ -64,9 +64,11 @@ function isDecision(value: unknown): value is Omit<WorkspaceRunDetailPreselectio
 /**
  * Resolve one run-detail target without activating the scientific plugin.
  * The sidecar's Rust reader owns ID→path resolution and exact Store-v5
- * verification. This function does not cache the decision. Until the owner
- * HTTP-input materializer exists, an exact Store-v5 result is still `reject`,
- * so no native target request can escape this boundary.
+ * verification and exact owner-callable preflight. This function does not
+ * cache the decision or expose the resolved filesystem path. Exact Store v5
+ * selects the native target only when the bounded CPython library host is
+ * configured and ready; legacy storage selects the scientific plugin before
+ * the target request.
  */
 export async function preselectWorkspaceRunDetail(
   workspaceId: string,
