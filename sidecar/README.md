@@ -36,6 +36,14 @@ transport, and registered read/cancel aliases for native jobs:
   `GET /api/runs/:run_id/execution-job-record` read the active workspace's
   bounded immutable `execution_job_record.json` snapshot and enrich known runs
   only through Store v5. They never query the in-memory job registry.
+- `POST /api/runs/run-groups` is a closed, bounded Rust submission transport.
+  The product default refuses with `503` before parsing the body or reading a
+  workspace because no scientific executor is selected. An explicitly
+  injected executor is preflighted only after strict payload and active
+  workspace validation; Rust then owns the job registry, the single initial
+  `job_started` publication, cooperative cancellation, and atomic
+  `execution_job_record.json` persistence. This route never selects a Python
+  HTTP server or retry fallback.
 - `GET /api/health` and `GET /api/system/readiness` (the frozen
   post-lifespan bootstrap responses only)
 - `GET /api/system/capabilities` (an explicit Rust-owned route which invokes
@@ -112,12 +120,15 @@ request; a native selection never falls back. Splitters remain owner-produced:
 the Rust consumer neither parses nor receives permission to interpret
 `expanded_config`.
 
-The in-memory native job adapter remains deliberately separate from the
-durable run-record surface. `GET /api/runs/execution-job-records/:job_id` and
+The in-memory native job adapter remains deliberately separate from general
+durable run-record reads. `GET /api/runs/execution-job-records/:job_id` and
 `GET /api/runs/:run_id/execution-job-record` use the dedicated
 `studio_execution_job_record_v1` bounded reader plus Store v5 run identity.
 The tested mapping table in `job_http.rs` prevents those reads from being
-confused with the three polling and five cancellation aliases.
+confused with the three polling and five cancellation aliases. Jobs accepted
+through the explicit run-group transport are the narrow exception: the same
+Rust runtime persists their state transitions through the dedicated writer,
+and the reader remains the authoritative bounded projection.
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
@@ -137,9 +148,10 @@ sidecar exposes only the frozen post-lifespan health and readiness responses
 under `/api/*`; Electron routes the UI health check to that native health
 contract. It does not route the renderer to `/ws` or assert full replacement
 compatibility. The native job aliases may be selected only for already-native
-jobs. Product route selection and scientific submission stay forbidden until
-a Core or bounded CPython library executor is explicitly selected and
-preflighted; renderer WebSocket selection remains a separate gate.
+jobs. Product scientific execution stays forbidden until a Core or bounded
+CPython library executor is configured. The submission route itself is
+registered and fail-closed; renderer WebSocket selection remains a separate
+gate.
 
 ## Build and future Electron launch contract
 
@@ -183,7 +195,8 @@ partial migration machine-readable: a caller must not treat the sidecar as
 full API parity or silently redirect an unmigrated product route to Python.
 The capability object separately advertises
 `native_job_status_routes: true`, `native_job_cancellation_routes: true`,
-`native_scientific_submission_routes: false`, and
+`native_scientific_submission_routes: true`,
+`scientific_submission_transport: true`, `scientific_execution: false`, and
 `durable_execution_job_record_reads: true`.
 The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. `GET /sidecar/v1/python/preflight` launches that product-owned

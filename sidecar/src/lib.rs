@@ -32,6 +32,7 @@ mod results_summary;
 pub mod run_detail;
 pub mod run_detail_cpython;
 pub mod run_detail_preselection;
+pub mod scientific_submission;
 mod settings;
 pub mod websocket_transport;
 pub mod workspace_store;
@@ -45,6 +46,10 @@ use results_summary::read_results_summary;
 use run_detail::compose_store_run_detail;
 use run_detail_cpython::{materialize_run_detail_owner, RunDetailOwnerBridgeFailure};
 use run_detail_preselection::preselect_run_detail;
+use scientific_submission::{
+    validate_scientific_submission, ScientificSubmissionValidationError,
+    SCIENTIFIC_SUBMISSION_ROUTE,
+};
 pub use settings::DatasetLinkIdentity;
 use settings::{AppSettingsStore, ConfigPathError};
 use websocket_transport::{
@@ -385,6 +390,20 @@ impl SidecarState {
         }
     }
 
+    /// Configure both the Rust job runtime and app-settings catalogue for a
+    /// controlled native scientific-submission launch.
+    #[must_use]
+    pub fn with_native_jobs_and_app_settings_dir(
+        native_jobs: Arc<NativeJobRuntime>,
+        app_settings_dir: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            native_jobs,
+            app_settings: AppSettingsStore::new(app_settings_dir),
+            ..Self::default()
+        }
+    }
+
     #[must_use]
     pub fn with_job_limits(job_limit: usize, job_ttl: Duration) -> Self {
         Self {
@@ -499,7 +518,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":false,\"durable_execution_job_record_reads\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"durable_execution_job_record_reads\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -613,12 +632,19 @@ pub fn route_request(state: &mut SidecarState, method: &str, path: &str) -> Http
 /// native state routes.  The body-free wrapper remains public for the frozen
 /// R1 contract tests and diagnostics.
 #[must_use]
+#[expect(
+    clippy::too_many_lines,
+    reason = "the explicit route table is intentionally kept in one auditable match"
+)]
 pub fn route_request_with_body(
     state: &mut SidecarState,
     method: &str,
     path: &str,
     body: &[u8],
 ) -> HttpResponse {
+    if let Some(response) = route_scientific_submission_match(state, method, path, body) {
+        return response;
+    }
     match (method, path) {
         ("GET", "/api/health") => HttpResponse::json(200, SidecarState::legacy_health_json()),
         ("GET", "/api/system/readiness") => HttpResponse::json(200, state.legacy_readiness_json()),
@@ -717,6 +743,21 @@ pub fn route_request_with_body(
             ]),
         ),
     }
+}
+
+fn route_scientific_submission_match(
+    state: &SidecarState,
+    method: &str,
+    path: &str,
+    body: &[u8],
+) -> Option<HttpResponse> {
+    (path == SCIENTIFIC_SUBMISSION_ROUTE).then(|| {
+        if method == "POST" {
+            scientific_submission_response(state, body)
+        } else {
+            method_not_allowed(method, path, "POST")
+        }
+    })
 }
 
 fn app_settings_response(state: &SidecarState) -> HttpResponse {
@@ -2559,7 +2600,8 @@ fn read_bounded_stdout(
 fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpResponse {
     if request.query.is_some()
         && (is_native_job_http_path(&request.path)
-            || match_durable_execution_job_record_route(&request.path).is_some())
+            || match_durable_execution_job_record_route(&request.path).is_some()
+            || request.path == SCIENTIFIC_SUBMISSION_ROUTE)
     {
         return error_response(
             404,
@@ -2648,6 +2690,139 @@ fn route_job(state: &mut SidecarState, method: &str, path: &str) -> HttpResponse
         ),
         (_, false) => method_not_allowed(method, path, "GET"),
         (_, true) => method_not_allowed(method, path, "POST"),
+    }
+}
+
+fn scientific_submission_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    // Product default must refuse before even parsing the body or reading the
+    // linked-workspace catalogue. This prevents hidden scientific or storage
+    // work when no executor was explicitly selected.
+    if !state.native_jobs.execution_selected() {
+        return HttpResponse::json(
+            503,
+            json!({
+                "detail": "Scientific job executor is not selected; submission was not accepted"
+            })
+            .to_string(),
+        );
+    }
+    let submission = match validate_scientific_submission(body) {
+        Ok(submission) => submission,
+        Err(error) => return scientific_submission_validation_error(&error),
+    };
+    let active = match state.app_settings.active_linked_workspace_response() {
+        Ok(Some(active)) => active,
+        Ok(None) => {
+            return HttpResponse::json(409, json!({"detail": "No workspace selected"}).to_string())
+        }
+        Err(_) => {
+            return HttpResponse::json(
+                409,
+                json!({"detail": "Active linked workspace is unavailable"}).to_string(),
+            );
+        }
+    };
+    let Some(workspace_id) = active.get("id").and_then(Value::as_str) else {
+        return HttpResponse::json(
+            409,
+            json!({"detail": "Active linked workspace identity is invalid"}).to_string(),
+        );
+    };
+    let Some(workspace_path) = active.get("path").and_then(Value::as_str) else {
+        return HttpResponse::json(
+            409,
+            json!({"detail": "Active linked workspace path is invalid"}).to_string(),
+        );
+    };
+    let timestamp = websocket_transport::rfc3339_now();
+    scientific_submission_runtime_response(state.native_jobs.submit_scientific_at(
+        &submission,
+        workspace_id,
+        Path::new(workspace_path),
+        &timestamp,
+        Instant::now(),
+    ))
+}
+
+fn scientific_submission_runtime_response(
+    result: Result<job_http::ScientificSubmissionReceipt, job_http::NativeJobRuntimeError>,
+) -> HttpResponse {
+    match result {
+        Ok(receipt) => HttpResponse::json(
+            202,
+            json!({
+                "id": receipt.job_id,
+                "job_id": receipt.job_id,
+                "name": receipt.run_name,
+                "status": "running",
+                "type": "training",
+                "created_at": receipt.created_at,
+                "requested_backend": receipt.requested_backend,
+                "execution_backend": receipt.execution_backend,
+                "submission_transport": "studio-sidecar-rust",
+                "workspace_id": receipt.workspace_id,
+            })
+            .to_string(),
+        ),
+        Err(job_http::NativeJobRuntimeError::Executor(job_http::JobExecutorError::Unselected)) => {
+            HttpResponse::json(
+                503,
+                json!({
+                    "detail": "Scientific job executor is not selected; submission was not accepted"
+                })
+                .to_string(),
+            )
+        }
+        Err(job_http::NativeJobRuntimeError::Executor(
+            job_http::JobExecutorError::InvalidCapability
+            | job_http::JobExecutorError::PreflightRefused,
+        )) => HttpResponse::json(
+            503,
+            json!({"detail": "Scientific job executor preflight failed"}).to_string(),
+        ),
+        Err(job_http::NativeJobRuntimeError::Executor(
+            job_http::JobExecutorError::SubmissionRefused,
+        )) => HttpResponse::json(
+            503,
+            json!({"detail": "Scientific job executor refused submission"}).to_string(),
+        ),
+        Err(job_http::NativeJobRuntimeError::Executor(
+            job_http::JobExecutorError::CancellationRefused,
+        )) => HttpResponse::json(
+            500,
+            json!({"detail": "Scientific executor returned an invalid submission error"})
+                .to_string(),
+        ),
+        Err(job_http::NativeJobRuntimeError::Persistence(_)) => HttpResponse::json(
+            409,
+            json!({"detail": "Native execution job record cannot be persisted safely"}).to_string(),
+        ),
+        Err(
+            job_http::NativeJobRuntimeError::Lifecycle(_)
+            | job_http::NativeJobRuntimeError::WebSocket(_),
+        ) => HttpResponse::json(
+            500,
+            json!({"detail": "Native scientific job registration failed"}).to_string(),
+        ),
+    }
+}
+
+fn scientific_submission_validation_error(
+    error: &ScientificSubmissionValidationError,
+) -> HttpResponse {
+    match error {
+        ScientificSubmissionValidationError::BodyTooLarge => HttpResponse::json(
+            413,
+            json!({"detail": "Scientific submission body exceeds 65536 bytes"}).to_string(),
+        ),
+        ScientificSubmissionValidationError::InvalidJson => HttpResponse::json(
+            400,
+            json!({"detail": "Scientific submission body must be valid JSON"}).to_string(),
+        ),
+        ScientificSubmissionValidationError::InvalidShape(detail)
+        | ScientificSubmissionValidationError::Unsupported(detail) => {
+            HttpResponse::json(422, json!({"detail": detail}).to_string())
+        }
     }
 }
 
@@ -2860,12 +3035,7 @@ fn handle_connection_with_limits_and_websocket(
             "Request headers exceed the configured limit",
             BTreeMap::new(),
         ),
-        Err(RequestReadError::BodyTooLarge) => error_response(
-            400,
-            ErrorCode::InvalidRequest,
-            "Request body exceeds the configured limit",
-            BTreeMap::new(),
-        ),
+        Err(RequestReadError::BodyTooLarge { path }) => request_body_too_large_response(&path),
         Err(RequestReadError::Invalid) => error_response(
             400,
             ErrorCode::InvalidRequest,
@@ -2875,6 +3045,19 @@ fn handle_connection_with_limits_and_websocket(
         Err(RequestReadError::Io(error)) => return Err(error),
     };
     write_response(&mut stream, &response)
+}
+
+fn request_body_too_large_response(path: &str) -> HttpResponse {
+    if path == SCIENTIFIC_SUBMISSION_ROUTE {
+        scientific_submission_validation_error(&ScientificSubmissionValidationError::BodyTooLarge)
+    } else {
+        error_response(
+            400,
+            ErrorCode::InvalidRequest,
+            "Request body exceeds the configured limit",
+            BTreeMap::new(),
+        )
+    }
 }
 
 fn reject_overloaded(mut stream: TcpStream, timeout: Duration) {
@@ -2895,7 +3078,7 @@ fn reject_overloaded(mut stream: TcpStream, timeout: Duration) {
 enum RequestReadError {
     Timeout,
     TooLarge,
-    BodyTooLarge,
+    BodyTooLarge { path: String },
     Invalid,
     Io(std::io::Error),
 }
@@ -2977,7 +3160,7 @@ fn read_http_request(
         let mut request = parse_http_request(&bytes[..header_end])?;
         let content_length = request_content_length(&request.headers)?;
         if content_length > MAX_REQUEST_BODY_BYTES {
-            return Err(RequestReadError::BodyTooLarge);
+            return Err(RequestReadError::BodyTooLarge { path: request.path });
         }
         request.body.extend_from_slice(&bytes[header_end..]);
         if request.body.len() > content_length {
@@ -3328,6 +3511,29 @@ mod tests {
         assert_eq!(body["scientific_execution"], "unavailable");
     }
 
+    #[test]
+    fn scientific_submission_transport_rejects_query_and_network_body_overflow_exactly() {
+        let runtime = Arc::new(job_http::NativeJobRuntime::with_executor(Arc::new(
+            SelectedTestJobExecutor,
+        )));
+        let mut state = SidecarState::with_native_jobs(runtime);
+        let raw = b"POST /api/runs/run-groups?retry=true HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n";
+        let request = parse_http_request(raw).unwrap();
+        let query = route_http_request(&mut state, &request);
+        assert_eq!(query.status, 404);
+        assert_eq!(
+            serde_json::from_str::<Value>(&query.body).unwrap()["error"]["code"],
+            "route_not_found"
+        );
+
+        let oversized = request_body_too_large_response(SCIENTIFIC_SUBMISSION_ROUTE);
+        assert_eq!(oversized.status, 413);
+        assert_eq!(
+            serde_json::from_str::<Value>(&oversized.body).unwrap(),
+            json!({"detail": "Scientific submission body exceeds 65536 bytes"})
+        );
+    }
+
     fn assert_python_plugin_capabilities(state: &SidecarState, configured: bool) {
         let capabilities: Value = serde_json::from_str(&state.capabilities_json()).unwrap();
         assert_eq!(
@@ -3357,13 +3563,14 @@ mod tests {
             "updates_settings_routes",
             "native_job_status_routes",
             "native_job_cancellation_routes",
+            "native_scientific_submission_routes",
+            "scientific_submission_transport",
             "durable_execution_job_record_reads",
         ] {
             assert_eq!(capabilities["features"][feature], true, "{feature}");
         }
         for feature in [
             "legacy_api_routes",
-            "native_scientific_submission_routes",
             "scientific_execution",
             "python_plugin_execution",
         ] {

@@ -128,9 +128,12 @@
     "events_after_terminal": "forbidden"
   },
   "cutover": {
-    "route_selection": "forbidden",
-    "sidecar_http_registration": "native_for_three_status_five_cancellation_and_two_durable_read_aliases",
-    "scientific_submission_route_selection": "forbidden_until_executor_selected_and_preflighted",
+    "route_selection": "submission_transport_only_no_product_execution",
+    "sidecar_http_registration": "native_for_one_scientific_submission_three_status_five_cancellation_and_two_durable_read_aliases",
+    "scientific_submission_route_selection": "registered_transport_default_unselected_executor",
+    "scientific_submission_contract": "studio_scientific_submission_v1",
+    "submission_transport_capability": true,
+    "scientific_execution_capability": false,
     "blocked_on": [
       "websocket_differential_parity",
       "renderer_native_websocket_selection",

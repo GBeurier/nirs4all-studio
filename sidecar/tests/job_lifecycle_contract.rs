@@ -141,14 +141,26 @@ fn websocket_cutover_contract_is_anchored_to_the_frozen_studio_v1_oracle() {
         contract["native_internal_stream"]["protocol_version"],
         PROTOCOL_VERSION
     );
-    assert_eq!(contract["cutover"]["route_selection"], "forbidden");
+    assert_eq!(
+        contract["cutover"]["route_selection"],
+        "submission_transport_only_no_product_execution"
+    );
     assert_eq!(
         contract["cutover"]["sidecar_http_registration"],
-        "native_for_three_status_five_cancellation_and_two_durable_read_aliases"
+        "native_for_one_scientific_submission_three_status_five_cancellation_and_two_durable_read_aliases"
     );
     assert_eq!(
         contract["cutover"]["scientific_submission_route_selection"],
-        "forbidden_until_executor_selected_and_preflighted"
+        "registered_transport_default_unselected_executor"
+    );
+    assert_eq!(
+        contract["cutover"]["scientific_submission_contract"],
+        "studio_scientific_submission_v1"
+    );
+    assert_eq!(contract["cutover"]["submission_transport_capability"], true);
+    assert_eq!(
+        contract["cutover"]["scientific_execution_capability"],
+        false
     );
     assert_eq!(
         contract["cutover"]["fallback_after_native_selection"],
