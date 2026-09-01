@@ -16,7 +16,6 @@ import type {
   RuntimeSummaryResponse,
 } from "@/types/settings";
 import type { OperatorCapabilityEntry } from "@/lib/operatorCapability";
-import type { KeywordRegistryDocument } from "@/ui/keywordRegistry";
 
 /**
  * Get system and environment information
@@ -70,7 +69,7 @@ export async function getOperatorAvailability(): Promise<OperatorAvailabilityRes
 /**
  * Get the public nirs4all keyword/effect registry used by Studio forms.
  */
-export async function getKeywordRegistry(): Promise<KeywordRegistryDocument> {
+export async function getKeywordRegistry(): Promise<unknown> {
   return api.get("/system/keyword-registry");
 }
 

@@ -302,6 +302,8 @@ export interface PredictionScatterResponse {
   partition: string;
   model_name: string;
   dataset_name: string;
+  /** Stable persisted sample identities; never inferred from positional indices. */
+  sample_ids?: string[] | null;
   sample_metadata?: Record<string, unknown[]> | null;
 }
 

@@ -64,7 +64,7 @@ async function fetchOne(
       yTrue: r.y_true ?? [],
       yPred: r.y_pred ?? [],
       nSamples: r.n_samples ?? 0,
-      sampleIds: r.sample_indices ?? undefined,
+      sampleIds: r.sample_ids ?? undefined,
       sampleMetadata: r.sample_metadata ?? null,
     });
   }
@@ -79,7 +79,7 @@ async function fetchOne(
     yTrue,
     yPred,
     nSamples: r.n_samples ?? yTrue.length,
-    sampleIds: r.sample_indices ?? undefined,
+    sampleIds: r.sample_ids ?? undefined,
     sampleMetadata: r.sample_metadata ?? null,
   });
 }

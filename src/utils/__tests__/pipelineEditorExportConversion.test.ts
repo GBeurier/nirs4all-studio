@@ -22,6 +22,13 @@ function canonicalStepFromEditor(step: EditorPipelineStep): Nirs4allStep {
   return step.name;
 }
 
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
 describe("pipelineEditorExportConversion", () => {
   it("filters only hydrated default params that still match registry defaults", () => {
     const params = getExportableStepParams({
@@ -137,6 +144,8 @@ describe("pipelineEditorExportConversion", () => {
       _grid_: { solver: ["auto", "svd"] },
     });
     const exportedFinetune = (classModel as Extract<Nirs4allStep, { model: unknown }>).finetune_params;
+    const exportedModelParams = requireRecord(exportedFinetune?.model_params, "model_params");
+    const exportedTrainParams = requireRecord(exportedFinetune?.train_params, "train_params");
     const tuningSpacePreview = buildStudioTuningSpacePreview(classModelStep.finetuneConfig!);
     expect(tuningSpacePreview.issues).toEqual([]);
     expect(tuningSpacePreview.preview?.parameters.map((parameter) => ({
@@ -145,11 +154,11 @@ describe("pipelineEditorExportConversion", () => {
     }))).toEqual([
       {
         path: "model.alpha",
-        spec: exportedFinetune?.model_params.alpha,
+        spec: exportedModelParams.alpha,
       },
       {
         path: "train.epochs",
-        spec: exportedFinetune?.train_params?.epochs,
+        spec: exportedTrainParams.epochs,
       },
     ]);
     expect(functionModel).toEqual({

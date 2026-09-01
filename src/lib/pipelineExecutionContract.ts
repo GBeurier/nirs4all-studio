@@ -190,10 +190,18 @@ export function normalizePipelineExecutionConfig(config: PipelineExecutionConfig
   };
 }
 
+function normalizePipelineExecutionEngine(
+  value: string | null | undefined,
+): LegacyPipelineExecutePayload["engine"] {
+  const normalized = value?.trim();
+  if (!normalized) return undefined;
+  if (normalized === "legacy" || normalized === "dag-ml") return normalized;
+  throw new Error(`Unsupported pipeline execution engine: ${normalized}`);
+}
+
 export function toLegacyPipelineExecutePayload(config: PipelineExecutionConfig): LegacyPipelineExecutePayload {
   const normalized = normalizePipelineExecutionConfig(config);
-  const runtimeEngine = normalized.runtimeEngine?.trim();
-  const selectedEngine = runtimeEngine || normalized.engine;
+  const selectedEngine = normalizePipelineExecutionEngine(normalized.runtimeEngine) ?? normalized.engine;
   return {
     dataset_id: normalized.datasetIds[0],
     verbose: normalized.verbose ?? 1,

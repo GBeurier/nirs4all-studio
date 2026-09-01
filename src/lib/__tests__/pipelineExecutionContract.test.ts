@@ -77,12 +77,20 @@ describe("pipelineExecutionContract", () => {
     expect(toLegacyPipelineExecutePayload({
       pipelineId: "pipe-1",
       datasetId: "dataset-a",
-      engine: "dag-ml",
+      runtimeEngine: " dag-ml ",
       allowFallback: true,
     })).toMatchObject({
       engine: "dag-ml",
       allow_fallback: true,
     });
+  });
+
+  it("rejects unsupported runtime engines before transport", () => {
+    expect(() => toLegacyPipelineExecutePayload({
+      pipelineId: "pipe-1",
+      datasetId: "dataset-a",
+      runtimeEngine: "future-engine",
+    })).toThrow("Unsupported pipeline execution engine: future-engine");
   });
 
   it("preserves native finetuning optimizer persistence in inline execution payloads", () => {

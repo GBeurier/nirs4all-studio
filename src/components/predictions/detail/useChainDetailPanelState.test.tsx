@@ -282,6 +282,13 @@ function robustnessSummaryArtifact(scenarioLabel: string = "observed", severity:
     report_version: 1,
     schema_version: 1,
     slice_by: [],
+    spectral_replay: {
+      all_predictions: false,
+      predictor_bundle: "models/spectral-model.n4a",
+      route: "nirs4all.predict",
+      sample_ids_forwarded: true,
+      source: "predictor_bundle",
+    },
     summary: [{
       bias: 0,
       conformal_max_abs_coverage_gap: null,
@@ -1022,6 +1029,11 @@ describe("useChainDetailPanelState", () => {
       },
       mode: "clean_frozen",
       reportVersion: 1,
+      spectralReplay: {
+        predictor_bundle: "models/spectral-model.n4a",
+        route: "nirs4all.predict",
+        sample_ids_forwarded: true,
+      },
       cards: [expect.objectContaining({
         scenarioLabel: "observed",
         nSamples: 2,

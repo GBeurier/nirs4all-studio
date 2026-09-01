@@ -126,7 +126,7 @@ describe("PredictionViewer conformal integration", () => {
       y_true: [0.4],
       y_pred: [0.5],
       n_samples: 1,
-      sample_indices: ["sample-a"],
+      sample_ids: ["sample-a"],
       sample_metadata: null,
     });
 
@@ -161,7 +161,7 @@ describe("PredictionViewer conformal integration", () => {
       y_true: [0.4],
       y_pred: [0.5],
       n_samples: 1,
-      sample_indices: ["sample-a"],
+      sample_ids: ["sample-a"],
       sample_metadata: null,
     });
 
