@@ -323,8 +323,7 @@ pub fn read_run_summaries(
     }
     let offset =
         i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
-    let database =
-        workspace_store_path(workspace_path).ok_or(WorkspaceStoreReadError::StoreNotFound)?;
+    let database = canonical_workspace_store_path(workspace_path)?;
     let before = file_stamp(&database)?;
     refuse_live_journals(&database)?;
     let uri = immutable_read_only_uri(&database)?;
@@ -366,8 +365,7 @@ pub fn read_pipeline_summaries(
     }
     let offset =
         i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
-    let database =
-        workspace_store_path(workspace_path).ok_or(WorkspaceStoreReadError::StoreNotFound)?;
+    let database = canonical_workspace_store_path(workspace_path)?;
     let before = file_stamp(&database)?;
     refuse_live_journals(&database)?;
     let uri = immutable_read_only_uri(&database)?;
@@ -419,8 +417,7 @@ pub fn read_ranked_chains(
     }
     let offset =
         i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
-    let database =
-        workspace_store_path(workspace_path).ok_or(WorkspaceStoreReadError::StoreNotFound)?;
+    let database = canonical_workspace_store_path(workspace_path)?;
     let before = file_stamp(&database)?;
     refuse_live_journals(&database)?;
     let uri = immutable_read_only_uri(&database)?;
@@ -481,6 +478,12 @@ fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
             .pointer("/store/compatibility")
             .and_then(Value::as_str)
             != Some("exact_schema_version")
+        || contract
+            .pointer("/store/path_support")
+            .and_then(Value::as_str)
+            != Some("local_filesystem_only")
+        || contract.pointer("/store/unsupported_paths")
+            != Some(&json!(["windows_unc", "windows_device_namespace"]))
         || contract
             .pointer("/store/writer_lock_required")
             .and_then(Value::as_bool)
@@ -641,7 +644,7 @@ fn validate_ranked_chain_contract(contract: &Value) -> Result<(), WorkspaceStore
         json!({"name": "final_agg_test_score", "column": "final_agg_test_score", "type": "number", "nullable": true, "finite": true}),
         json!({"name": "final_agg_train_score", "column": "final_agg_train_score", "type": "number", "nullable": true, "finite": true}),
         json!({"name": "final_agg_scores", "column": "final_agg_scores", "type": "json_object", "default": {}}),
-        json!({"name": "best_params", "column": "best_params", "type": "json_object", "nullable": true}),
+        json!({"name": "best_params", "column": "best_params", "type": "json_object", "nullable": true, "empty_object": "null"}),
     ];
     if projection
         .get("fields")
@@ -678,6 +681,15 @@ fn workspace_store_path(workspace_path: &Path) -> Option<PathBuf> {
             let database = candidate.join(STORE_FILENAME);
             database.exists().then_some(database)
         })
+}
+
+fn canonical_workspace_store_path(
+    workspace_path: &Path,
+) -> Result<PathBuf, WorkspaceStoreReadError> {
+    workspace_store_path(workspace_path)
+        .ok_or(WorkspaceStoreReadError::StoreNotFound)?
+        .canonicalize()
+        .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))
 }
 
 fn file_stamp(path: &Path) -> Result<FileStamp, WorkspaceStoreReadError> {
@@ -1349,6 +1361,30 @@ mod tests {
         ));
         drop(writer);
         fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_a_symlink_whose_canonical_store_has_an_active_wal() {
+        use std::os::unix::fs::symlink;
+
+        let target = fixture_workspace("workspace-store-symlink-target-wal");
+        let link_workspace = fixture_workspace("workspace-store-symlink-link-wal");
+        fs::remove_file(link_workspace.join("store.sqlite")).unwrap();
+        symlink(
+            target.join("store.sqlite"),
+            link_workspace.join("store.sqlite"),
+        )
+        .unwrap();
+        let target_wal = target.join("store.sqlite-wal");
+        fs::write(&target_wal, b"active canonical writer").unwrap();
+
+        assert!(matches!(
+            read_run_summaries(&link_workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0),
+            Err(WorkspaceStoreReadError::LiveJournal(path)) if path == target_wal
+        ));
+        fs::remove_dir_all(link_workspace).unwrap();
+        fs::remove_dir_all(target).unwrap();
     }
 
     #[cfg(windows)]
