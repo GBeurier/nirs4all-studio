@@ -1,0 +1,23 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/nirs4all-core.git",
+  "commit": "45e1f53f63a9469d36842d6a5ee23b78f97650a6",
+  "repository_tree": "3a4461956b6fe57235b8d6424261989503a1c20c",
+  "included_crate_trees": {
+    "nirs4all": "1cdfaecd9e31c0c2d048de896d7f1f70a56d1e5f"
+  },
+  "selected_crate_package": {
+    "name": "nirs4all",
+    "version": "0.3.23",
+    "files": 29,
+    "sha256": "b568171171396d44e55b71d06ba4edfae7b29b6868a7900966088f95d34625fa"
+  },
+  "snapshot_policy": "The complete selected upstream Git tree is copied byte-for-byte under upstream/: workspace manifests and lockfile, every binding and source tree, tests, fixtures, scripts, documentation, assets, notices, and licence texts.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 211
+  },
+  "verification": "../../scripts/verify-vendored-core.sh",
+  "release_gate": "Replace this transient snapshot with exact published nirs4all 0.3.23 before LOCK-RELEASE."
+}

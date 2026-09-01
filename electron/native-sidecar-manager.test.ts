@@ -66,6 +66,11 @@ function writePackagedContract(
           "python-runtime/python/bin/python3",
         ),
       },
+      methods_library: {
+        mode: "unavailable",
+        member: null,
+        abi: { major: 2, minor: 2 },
+      },
     }),
   );
 }

@@ -1,0 +1,297 @@
+{
+    "schema_version": 1,
+    "profile": "nirs4all.archive_workspace.v1",
+    "archive_id": "workspace:legacy-import",
+    "persistence_kind": "workspace_snapshot",
+    "writer": {
+        "product_aggregate_owner": "nirs4all-core",
+        "canonical_writer_id": "nirs4all-core.archive_workspace_writer.v1"
+    },
+    "reader_dispatch": {
+        "archive_v1": {
+            "accepted_versions": [
+                1
+            ],
+            "future_versions": "refuse",
+            "dispatch_before_extraction": true
+        },
+        "legacy_n4a": {
+            "form": "historical_n4a_zip",
+            "manifest_member": "manifest.json",
+            "reader_id": "nirs4all.pipeline.bundle.loader.BundleLoader",
+            "maximum_bundle_format_version": "1.0",
+            "migration_direction": "legacy_to_v1_copy_on_write_only"
+        }
+    },
+    "physical_profile": {
+        "container": "zip",
+        "manifest_member": "manifest.json",
+        "regular_files_only": true,
+        "limits": {
+            "max_entries": 256,
+            "max_total_uncompressed_bytes": 536870912,
+            "max_member_uncompressed_bytes": 134217728,
+            "max_compression_ratio": 100
+        }
+    },
+    "replay": {
+        "portable_predictor_package": {
+            "owner": "dag-ml",
+            "schema_id": "https://github.com/GBeurier/dag-ml/schemas/portable_predictor_package.v1.schema.json",
+            "schema_version": 1,
+            "member_path": "dagml/package.json",
+            "raw_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "semantic_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "semantic_profile": "dagml_tcv1"
+        },
+        "training_artifacts": {
+            "graph": {
+                "owner": "dag-ml",
+                "schema_id": "https://github.com/GBeurier/dag-ml/schemas/graph_spec.v1.schema.json",
+                "schema_version": 1,
+                "member_path": "dagml/graph.json",
+                "raw_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+                "semantic_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "semantic_profile": "dagml_historical_serde_json_v1"
+            },
+            "execution_bundle": {
+                "owner": "dag-ml",
+            "schema_id": "https://github.com/GBeurier/dag-ml/schemas/execution_bundle.v2.schema.json",
+            "schema_version": 2,
+            "producer_port_required": true,
+                "member_path": "dagml/bundle.json",
+                "raw_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+                "semantic_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "semantic_profile": "dagml_tcv1"
+            },
+            "training_outcome": {
+                "owner": "dag-ml",
+            "schema_id": "https://github.com/GBeurier/dag-ml/schemas/training_outcome.v2.schema.json",
+            "schema_version": 2,
+            "producer_port_required": true,
+                "member_path": "dagml/outcome.json",
+                "raw_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+                "semantic_fingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "semantic_profile": "dagml_tcv1"
+            },
+            "prediction_cache_payload_set": {
+                "owner": "dag-ml",
+            "schema_id": "https://github.com/GBeurier/dag-ml/schemas/prediction_cache_payload_set.v2.schema.json",
+            "schema_version": 2,
+            "producer_port_required": true,
+                "member_path": "dagml/cache.json",
+                "raw_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+                "semantic_fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "semantic_profile": "dagml_historical_serde_json_v1"
+            },
+            "score_set": {
+                "owner": "dag-ml",
+            "schema_id": "https://github.com/GBeurier/dag-ml/schemas/score_set.v2.schema.json",
+            "schema_version": 2,
+            "producer_port_required": true,
+                "member_path": "dagml/scores.json",
+                "raw_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+                "semantic_fingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "semantic_profile": "dagml_historical_serde_json_v1"
+            }
+        },
+        "future_artifacts": []
+    },
+    "payloads": {
+        "methods": {
+            "n4mm": [],
+            "n4mopt": []
+        },
+        "n4d_aggregate_reference": {
+            "kind": "n4d_aggregate_reference",
+            "owner": "nirs4all-core",
+            "interpretation": "aggregate_reference_not_n4d_format_claim",
+            "member_path": "data/cohort.aggregate-ref",
+            "raw_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+            "semantic_fingerprint": null,
+            "semantic_profile": "none"
+        },
+        "conformal": null,
+        "robustness": null,
+        "host_artifacts": [
+            {
+                "artifact_id": "artifact:sklearn",
+                "host_state": "host_sidecar",
+                "serialization_backend": "joblib",
+                "load_policy": "host_opt_in",
+                "controller_id": "sklearn-controller",
+                "controller_version": "1.0",
+                "plugin_id": "nirs4all-python",
+                "plugin_version": "1.0",
+                "runtime_id": "cpython-311",
+                "abi_id": "python-abi3",
+                "capability_id": "plugin:sklearn",
+                "member_path": "artifacts/model.joblib",
+                "raw_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+                "semantic_fingerprint": null,
+                "semantic_profile": "host_opaque"
+            }
+        ]
+    },
+    "member_inventory": [
+        {
+            "path": "dagml/package.json",
+            "regular_file": true,
+            "raw_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "semantic_profile": "dagml_tcv1"
+        },
+        {
+            "path": "dagml/graph.json",
+            "regular_file": true,
+            "raw_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "semantic_profile": "dagml_historical_serde_json_v1"
+        },
+        {
+            "path": "dagml/bundle.json",
+            "regular_file": true,
+            "raw_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "semantic_profile": "dagml_tcv1"
+        },
+        {
+            "path": "dagml/outcome.json",
+            "regular_file": true,
+            "raw_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "semantic_profile": "dagml_tcv1"
+        },
+        {
+            "path": "dagml/cache.json",
+            "regular_file": true,
+            "raw_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "semantic_profile": "dagml_historical_serde_json_v1"
+        },
+        {
+            "path": "dagml/scores.json",
+            "regular_file": true,
+            "raw_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "semantic_profile": "dagml_historical_serde_json_v1"
+        },
+        {
+            "path": "data/cohort.aggregate-ref",
+            "regular_file": true,
+            "raw_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": null,
+            "semantic_profile": "none"
+        },
+        {
+            "path": "artifacts/model.joblib",
+            "regular_file": true,
+            "raw_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": null,
+            "semantic_profile": "host_opaque"
+        },
+        {
+            "path": "workspace/store.sqlite",
+            "regular_file": true,
+            "raw_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": null,
+            "semantic_profile": "none"
+        },
+        {
+            "path": "workspace/runs/run-a/predictions.parquet",
+            "regular_file": true,
+            "raw_sha256": "1212121212121212121212121212121212121212121212121212121212121212",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": null,
+            "semantic_profile": "none"
+        },
+        {
+            "path": "workspace/runs/run-a/artifacts/weights.bin",
+            "regular_file": true,
+            "raw_sha256": "1313131313131313131313131313131313131313131313131313131313131313",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": null,
+            "semantic_profile": "host_opaque"
+        },
+        {
+            "path": "workspace/runs/run-b/scores.parquet",
+            "regular_file": true,
+            "raw_sha256": "1414141414141414141414141414141414141414141414141414141414141414",
+            "uncompressed_size_bytes": 100,
+            "semantic_fingerprint": null,
+            "semantic_profile": "none"
+        }
+    ],
+    "migration_provenance": {
+        "source_raw_sha256": "1a0f2806c2e5baab3ed95e2ac6a2e0a975af1dc9b6da35c0c103b5375b0e5ede",
+        "legacy_format": "historical_n4a_zip",
+        "legacy_format_version": "1.0",
+        "tool_id": "nirs4all-tools-import",
+        "tool_version": "1.0",
+        "copy_on_write": true,
+        "source_retained": true
+    },
+    "security": {
+        "integrity_profile": "sha256_raw_member_inventory_v1",
+        "signature": null
+    },
+    "workspace": {
+        "layout": "sqlite_parquet_artifacts_v1",
+        "snapshot_protocol": {
+            "checkpoint_id": "checkpoint:1",
+            "transaction_id": "transaction:1",
+            "run_ids": [
+                "run:a",
+                "run:b"
+            ],
+            "inventory_complete": true
+        },
+        "payload_inventory": [
+            {
+                "kind": "sqlite",
+                "run_id": null,
+                "member_path": "workspace/store.sqlite",
+                "raw_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+                "semantic_fingerprint": null,
+                "semantic_profile": "none"
+            },
+            {
+                "kind": "parquet",
+                "run_id": "run:a",
+                "member_path": "workspace/runs/run-a/predictions.parquet",
+                "raw_sha256": "1212121212121212121212121212121212121212121212121212121212121212",
+                "semantic_fingerprint": null,
+                "semantic_profile": "none"
+            },
+            {
+                "kind": "artifact",
+                "run_id": "run:a",
+                "member_path": "workspace/runs/run-a/artifacts/weights.bin",
+                "raw_sha256": "1313131313131313131313131313131313131313131313131313131313131313",
+                "semantic_fingerprint": null,
+                "semantic_profile": "host_opaque"
+            },
+            {
+                "kind": "parquet",
+                "run_id": "run:b",
+                "member_path": "workspace/runs/run-b/scores.parquet",
+                "raw_sha256": "1414141414141414141414141414141414141414141414141414141414141414",
+                "semantic_fingerprint": null,
+                "semantic_profile": "none"
+            }
+        ],
+        "exclusions": [
+            "workspace/.session.lock",
+            "workspace/live-session/**"
+        ]
+    }
+}

@@ -1,0 +1,223 @@
+# Build, R CMD check --as-cran, and (on a release tag) attach the `nirs4all` R
+# source tarball to the GitHub Release.
+#
+# The nirs4all-core R binding is PURE R (NeedsCompilation: no): it has no Rust /
+# C shim, so there is NOTHING to vendor or compile (unlike nirs4all-io /
+# nirs4all-methods, whose R packages build a native libn4m / Rust staticlib).
+# The tarball is therefore directly CRAN-submittable on the R side.
+#
+# Naming: the R package is `nirs4all` (there is no "full" nirs4all on CRAN/
+# R-universe, so this aggregate owns the `nirs4all` R package).
+#
+# Imports are just jsonlite + yaml. The ecosystem bindings (nirs4allformats,
+# nirs4allio, nirs4alldatasets, n4m, dagml, dagmldata) are SUGGESTS only and resolved
+# from the R-universe via DESCRIPTION's Additional_repositories — so
+# nirs4all-datasets (nirs4alldatasets) stays optional, never a hard dependency.
+# Because those upstreams are not on mainstream CRAN yet, the natural release
+# channel is R-universe until they land on CRAN; see bindings/r/cran-comments.md.
+#
+# CRAN submission itself is the irreducible manual web-form step at
+# https://cran.r-project.org/submit.html — this workflow produces + validates the
+# tarball; the maintainer downloads it from the Release and submits. R-universe
+# builds straight from Git.
+#
+# Triggers
+# --------
+# - workflow_dispatch  -> on-demand R CMD check + tarball build.
+# - push tag v[0-9]*.[0-9]*.[0-9]* -> check -> build-tarball -> attach to the
+#   matching Release (gated on a non-pre-release tag).
+name: release-r
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: R CMD check / ${{ matrix.cfg.label }}
+    runs-on: ${{ matrix.cfg.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg:
+          - label: linux-release
+            runs_on: ubuntu-22.04
+            r_version: "release"
+          - label: macos-arm64-release
+            runs_on: macos-14
+            r_version: "release"
+          - label: windows-release
+            runs_on: windows-2022
+            r_version: "release"
+    env:
+      R_KEEP_PKG_SOURCE: yes
+      # The Suggests (ecosystem bindings) live on the R-universe, not mainstream
+      # CRAN; install the ones that exist there but do not fail the check when an
+      # upstream is not yet published — they are optional, exercised via
+      # requireNamespace().
+      _R_CHECK_FORCE_SUGGESTS_: "false"
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.cfg.r_version }}
+          use-public-rspm: true
+
+      # nirs4all (core aggregate) is PURE R: its only hard deps are jsonlite + yaml.
+      # The ecosystem packages (nirs4allformats/io/datasets, n4m, dagml, dagmldata) are
+      # Suggests served from R-universe (Additional_repositories); they are NOT built
+      # for every CI R version (e.g. nirs4alldatasets/dagmldata are absent for R-devel),
+      # so pak (setup-r-dependencies@v2) cannot solve them and fails the whole job even
+      # with dependencies:"hard". Install the hard deps + rcmdcheck directly from RSPM
+      # (pak-free); the check below tolerates the missing Suggests via
+      # _R_CHECK_FORCE_SUGGESTS_=false (-> NOTE, not ERROR), exactly as CRAN does.
+      - name: Install hard deps (jsonlite, yaml, curl) + rcmdcheck — pak-free
+        shell: Rscript {0}
+        run: install.packages(c("jsonlite", "yaml", "curl", "rcmdcheck"))
+
+      - name: R CMD check --as-cran
+        uses: r-lib/actions/check-r-package@v2
+        env:
+          _R_CHECK_FORCE_SUGGESTS_: false
+        with:
+          working-directory: bindings/r
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"error"'
+          upload-snapshots: true
+
+      - name: Upload check artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: rcheck-${{ matrix.cfg.label }}
+          path: bindings/r.Rcheck/
+
+  strict-r-parity:
+    name: Strict R parity / Python oracle
+    runs-on: ubuntu-22.04
+    env:
+      R_LIBS_USER: /tmp/nirs4all-core-r-library
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: "3.11"
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+          use-public-rspm: true
+
+      - name: Read pinned nirs4all-methods ref
+        id: methods-pin
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import tomllib
+
+          upstreams = tomllib.loads(Path("compat/upstreams.toml").read_text())["upstream"]
+          methods = [item for item in upstreams if item.get("key") == "methods"]
+          if len(methods) != 1:
+              raise SystemExit("compat/upstreams.toml must contain exactly one methods upstream")
+          ref = methods[0].get("ref")
+          if not isinstance(ref, str) or not ref.strip():
+              raise SystemExit("compat/upstreams.toml methods upstream must define a non-empty ref")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"ref={ref.strip()}\n")
+
+      - uses: actions/checkout@v7.0.0
+        with:
+          repository: GBeurier/nirs4all-methods
+          path: nirs4all-methods
+          ref: ${{ steps.methods-pin.outputs.ref }}
+
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake gcc-12 g++-12 ninja-build
+      - name: Install hard deps (jsonlite, yaml)
+        shell: Rscript {0}
+        run: install.packages(c("jsonlite", "yaml"))
+      - run: cmake --preset dev-release
+        working-directory: nirs4all-methods
+      - run: cmake --build --preset dev-release --target n4m_c --parallel
+        working-directory: nirs4all-methods
+      - run: mkdir -p "$R_LIBS_USER"
+      - name: Run strict R parity against the Python oracle
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+          NIRS4ALL_CORE_REQUIRE_METHODS_PARITY: "1"
+        run: make test-r-parity
+
+  build-tarball:
+    name: Build R source tarball
+    needs:
+      - check
+      - strict-r-parity
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+          use-public-rspm: true
+
+      - name: Install R Imports (jsonlite, yaml)
+        shell: Rscript {0}
+        run: install.packages(c("jsonlite", "yaml"))
+
+      - name: Validate tag matches the DESCRIPTION version
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          set -euo pipefail
+          DESC_VER=$(sed -nE 's/^Version:[[:space:]]+([0-9.]+).*/\1/p' bindings/r/DESCRIPTION | head -n1)
+          echo "DESCRIPTION=$DESC_VER  tag=$GITHUB_REF_NAME"
+          # A final release tag (vX.Y.Z) must match the DESCRIPTION Version. R
+          # uses an X.Y.Z.9000 spelling for pre-releases, which are not attached
+          # below, so only the production-tag case is enforced here.
+          if [[ "${GITHUB_REF_NAME}" != *-* ]] && [ "$DESC_VER" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "::error::DESCRIPTION Version ($DESC_VER) != tag (${GITHUB_REF_NAME#v}). Run scripts/bump_version.sh and re-tag."
+            exit 1
+          fi
+
+      - name: R CMD build (produces nirs4all_<version>.tar.gz)
+        run: |
+          set -euo pipefail
+          R CMD build bindings/r
+          mkdir -p dist-r
+          mv nirs4all_*.tar.gz dist-r/
+          ls -la dist-r/
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: nirs4all-r-tarball
+          path: dist-r/nirs4all_*.tar.gz
+          if-no-files-found: error
+          retention-days: 90
+
+  publish-release-asset:
+    name: Attach R tarball to GitHub Release
+    needs: build-tarball
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: nirs4all-r-tarball
+          path: dist-r/
+
+      - name: Upload to the matching Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-r/*.tar.gz
+          fail_on_unmatched_files: true

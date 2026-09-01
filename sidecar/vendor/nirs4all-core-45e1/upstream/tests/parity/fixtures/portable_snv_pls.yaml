@@ -1,0 +1,10 @@
+name: portable_snv_pls
+description: nirs4all PipelineConfigs syntax for the portable SNV plus PLS baseline.
+random_state: 42
+pipeline:
+  - class: nirs4all.operators.transforms.StandardNormalVariate
+  - model:
+      class: sklearn.cross_decomposition.PLSRegression
+      params:
+        n_components: 4
+    name: PLS-4

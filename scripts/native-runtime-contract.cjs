@@ -30,10 +30,17 @@ function bundledPythonRelativePath(platform) {
     : path.join("python-runtime", "python", "bin", "python3");
 }
 
+function bundledMethodsRelativePath(platform) {
+  if (platform === "win32") return path.join("native", "n4m.dll");
+  if (platform === "darwin") return path.join("native", "libn4m.dylib");
+  return path.join("native", "libn4m.so");
+}
+
 function createRuntimeContract({
   backendRoot,
   platform = process.platform,
   arch = process.arch,
+  methodsLibraryPath = null,
 }) {
   const sidecarName = platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar";
   const sidecarRelativePath = path.join("native", sidecarName);
@@ -65,6 +72,35 @@ function createRuntimeContract({
       member: describeFile(pythonPath, pythonRelativePath),
     };
   }
+  const methodsRelativePath = bundledMethodsRelativePath(platform);
+  const methodsPath = path.join(backendRoot, methodsRelativePath);
+  if (
+    methodsLibraryPath !== null &&
+    path.resolve(methodsLibraryPath) !== path.resolve(methodsPath)
+  ) {
+    throw new Error("Native Methods stage path is outside the frozen packaged location");
+  }
+  if (methodsLibraryPath !== null) {
+    const methodsStat = fs.lstatSync(methodsPath);
+    if (
+      methodsStat.isSymbolicLink() ||
+      !methodsStat.isFile() ||
+      fs.realpathSync.native(methodsPath) !== path.resolve(methodsPath)
+    ) {
+      throw new Error("Native Methods stage must be a canonical non-symlink file");
+    }
+  }
+  const methodsLibrary = methodsLibraryPath !== null
+    ? {
+        mode: "bundled-required",
+        member: describeFile(methodsPath, methodsRelativePath),
+        abi: { major: 2, minor: 2 },
+      }
+    : {
+        mode: "unavailable",
+        member: null,
+        abi: { major: 2, minor: 2 },
+      };
 
   return {
     schema: CONTRACT_SCHEMA,
@@ -74,6 +110,7 @@ function createRuntimeContract({
     python_role: "library-plugin-host-only",
     sidecar: describeFile(sidecarPath, sidecarRelativePath),
     python_plugin_host: pythonPluginHost,
+    methods_library: methodsLibrary,
   };
 }
 
@@ -108,7 +145,7 @@ function hasValidPlatformSignature(filePath, platform) {
   return false;
 }
 
-function assertMember(backendRoot, label, member, platform) {
+function assertMember(backendRoot, label, member, platform, allowPlatformSignature = true) {
   if (
     !member ||
     typeof member.path !== "string" ||
@@ -131,10 +168,14 @@ function assertMember(backendRoot, label, member, platform) {
   if (!fs.existsSync(memberPath)) {
     throw new Error(`${label} not found: ${memberPath}`);
   }
+  const metadata = fs.lstatSync(memberPath);
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    throw new Error(`${label} must be a regular non-symlink packaged member`);
+  }
   const actual = describeFile(memberPath, member.path);
   if (
     (actual.size !== member.size || actual.sha256 !== member.sha256) &&
-    !hasValidPlatformSignature(memberPath, platform)
+    !(allowPlatformSignature && hasValidPlatformSignature(memberPath, platform))
   ) {
     throw new Error(`${label} integrity mismatch: ${memberPath}`);
   }
@@ -198,7 +239,33 @@ function verifyRuntimeContract({
     throw new Error("External Python plugin-host policy must not select a member");
   }
 
-  return { contract, contractPath, sidecarPath, pythonPluginHostPath };
+  const methods = contract.methods_library;
+  if (
+    !methods ||
+    !["unavailable", "bundled-required"].includes(methods.mode) ||
+    methods.abi?.major !== 2 ||
+    methods.abi?.minor !== 2
+  ) {
+    throw new Error("Invalid native Methods policy in packaged runtime contract");
+  }
+  let methodsLibraryPath = null;
+  if (methods.mode === "bundled-required") {
+    const expectedMethods = bundledMethodsRelativePath(platform);
+    if (path.normalize(methods.member?.path ?? "") !== expectedMethods) {
+      throw new Error("Packaged runtime contract selects an unexpected native Methods library");
+    }
+    methodsLibraryPath = assertMember(
+      backendRoot,
+      "Bundled native Methods library",
+      methods.member,
+      platform,
+      false,
+    );
+  } else if (methods.member !== null) {
+    throw new Error("Unavailable native Methods policy must not select a member");
+  }
+
+  return { contract, contractPath, sidecarPath, pythonPluginHostPath, methodsLibraryPath };
 }
 
 function parseVerifyArgs(argv = process.argv.slice(2)) {
@@ -250,6 +317,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  bundledMethodsRelativePath,
   CONTRACT_FILE,
   CONTRACT_SCHEMA,
   bundledPythonRelativePath,

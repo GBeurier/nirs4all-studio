@@ -2824,7 +2824,8 @@ fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpRe
     if request.query.is_some()
         && (is_native_job_http_path(&request.path)
             || match_durable_execution_job_record_route(&request.path).is_some()
-            || request.path == SCIENTIFIC_SUBMISSION_ROUTE)
+            || request.path == SCIENTIFIC_SUBMISSION_ROUTE
+            || request.path == ARCHIVE_V2_PREDICTION_ROUTE)
     {
         return error_response(
             404,
@@ -5294,6 +5295,17 @@ mod tests {
         assert_eq!(method.status, 405);
         let near_match = route_request(&mut state, "POST", "/api/predict/archive-v2/");
         assert_eq!(near_match.status, 404);
+
+        let query = parse_http_request(
+            b"POST /api/predict/archive-v2?retry=true HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n",
+        )
+        .unwrap();
+        let query = route_http_request(&mut state, &query);
+        assert_eq!(query.status, 404);
+        assert_eq!(
+            serde_json::from_str::<Value>(&query.body).unwrap()["error"]["code"],
+            "route_not_found"
+        );
     }
 
     #[test]
@@ -5365,6 +5377,98 @@ mod tests {
         assert_eq!(response["sample_ids"], json!(["s1", "s2"]));
         assert_eq!(response["target_names"], json!(["protein", "moisture"]));
         assert_eq!(response["values"], json!([[1.5, 13.0], [2.5, 15.0]]));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires N4A_RT_PRED_ARCHIVE_V2, N4A_RT_PRED_METHODS_LIBRARY and N4A_RT_PRED_METHODS_SHA256"]
+    fn archive_v2_real_core_route_predicts_multitarget_without_python_or_fallback() {
+        let source_archive = PathBuf::from(
+            std::env::var("N4A_RT_PRED_ARCHIVE_V2")
+                .expect("N4A_RT_PRED_ARCHIVE_V2 must name the Core Archive V2 witness"),
+        );
+        let methods_path = PathBuf::from(
+            std::env::var("N4A_RT_PRED_METHODS_LIBRARY")
+                .expect("N4A_RT_PRED_METHODS_LIBRARY must name the packaged libn4m witness"),
+        );
+        let methods_sha256 = std::env::var("N4A_RT_PRED_METHODS_SHA256")
+            .expect("N4A_RT_PRED_METHODS_SHA256 must attest the libn4m witness");
+        let methods_size = fs::metadata(&methods_path).unwrap().len();
+        let root = test_directory("archive-v2-real-core-route");
+        let config = root.join("config");
+        let workspace = root.join("workspace");
+        let archive = workspace.join("exports/models/model-a.n4a");
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(archive.parent().unwrap()).unwrap();
+        fs::copy(source_archive, &archive).unwrap();
+        fs::write(
+            config.join("app_settings.json"),
+            json!({
+                "linked_workspaces": [linked_workspace_record("workspace-a", &workspace, true, 0)]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let archive_bytes = fs::read(&archive).unwrap();
+        let archive_sha256 = format!("{:x}", Sha256::digest(&archive_bytes));
+        let executor = archive_v2_prediction::CoreArchiveV2PredictionExecutor::acquire(
+            archive_v2_prediction::PackagedMethodsLibraryIdentity {
+                path: methods_path,
+                size: methods_size,
+                sha256: methods_sha256,
+                abi_major: 2,
+                abi_minor: 2,
+            },
+        )
+        .expect("the exact ABI 2.2 libn4m witness must preflight");
+        let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
+            Arc::new(executor),
+            &config,
+        );
+        let body = json!({
+            "schema_version": 1,
+            "operation": "archive_v2_predict",
+            "workspace_id": "workspace-a",
+            "archive": {"ref": "models/model-a.n4a", "sha256": archive_sha256},
+            "input": {
+                "kind": "array",
+                "sample_ids": ["predict.0", "predict.1"],
+                "x": [[1.5, 0.5], [3.5, 1.5]],
+                "expected_target_names": ["protein", "moisture"]
+            },
+            "execution": {"engine": "core_rust_methods", "allow_fallback": false}
+        })
+        .to_string();
+
+        let response = route_request_with_body(
+            &mut state,
+            "POST",
+            ARCHIVE_V2_PREDICTION_ROUTE,
+            body.as_bytes(),
+        );
+
+        assert_eq!(response.status, 200, "{}", response.body);
+        let response: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(response["engine"], "core_rust_methods");
+        assert_eq!(response["fallback_used"], false);
+        assert_eq!(response["sample_ids"], json!(["predict.0", "predict.1"]));
+        assert_eq!(response["target_names"], json!(["protein", "moisture"]));
+        let expected = [
+            [1.636_363_636_363_636_5, 13.272_727_272_727_273],
+            [2.499_999_999_999_999_6, 15.0],
+        ];
+        for (actual_row, expected_row) in
+            response["values"].as_array().unwrap().iter().zip(expected)
+        {
+            for (actual, expected) in actual_row.as_array().unwrap().iter().zip(expected_row) {
+                assert!((actual.as_f64().unwrap() - expected).abs() <= 1.0e-9);
+            }
+        }
+        assert_eq!(
+            serde_json::from_str::<Value>(&state.capabilities_json()).unwrap()["features"]
+                ["native_archive_v2_prediction"],
+            true
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }
