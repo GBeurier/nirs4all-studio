@@ -24,6 +24,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use percent_encoding::percent_decode_str;
 use serde_json::{json, Value};
 
+mod archive_v2_prediction;
 pub mod conformal_store;
 pub mod execution_job_records;
 pub mod job_http;
@@ -39,6 +40,10 @@ mod settings;
 pub mod websocket_transport;
 pub mod workspace_store;
 
+use archive_v2_prediction::{
+    parse_request as parse_archive_v2_prediction_request, ArchiveV2PredictionError,
+    ArchiveV2PredictionRuntime, ARCHIVE_V2_PREDICTION_ROUTE,
+};
 use execution_job_records::{
     compose_execution_job_record_response, match_durable_execution_job_record_route,
     read_execution_job_record, DurableExecutionJobRecordRoute, ExecutionJobRecordReadError,
@@ -145,6 +150,14 @@ pub enum ErrorCode {
     PythonPluginUnavailable,
     PythonPluginPreflightFailed,
     ScientificExecutorUnavailable,
+    ArchiveV2PredictionUnavailable,
+    ArchiveV2PredictionInvalid,
+    ArchiveV2PredictionWorkspaceUnavailable,
+    ArchiveV2PredictionArchiveNotFound,
+    ArchiveV2PredictionArchiveUnsafe,
+    ArchiveV2PredictionArchiveTooLarge,
+    ArchiveV2PredictionDigestMismatch,
+    ArchiveV2PredictionExecutionFailed,
 }
 
 impl ErrorCode {
@@ -161,6 +174,16 @@ impl ErrorCode {
             Self::PythonPluginUnavailable => "python_plugin_unavailable",
             Self::PythonPluginPreflightFailed => "python_plugin_preflight_failed",
             Self::ScientificExecutorUnavailable => "scientific_executor_unavailable",
+            Self::ArchiveV2PredictionUnavailable => "archive_v2_prediction_unavailable",
+            Self::ArchiveV2PredictionInvalid => "archive_v2_prediction_invalid",
+            Self::ArchiveV2PredictionWorkspaceUnavailable => {
+                "archive_v2_prediction_workspace_unavailable"
+            }
+            Self::ArchiveV2PredictionArchiveNotFound => "archive_v2_prediction_archive_not_found",
+            Self::ArchiveV2PredictionArchiveUnsafe => "archive_v2_prediction_archive_unsafe",
+            Self::ArchiveV2PredictionArchiveTooLarge => "archive_v2_prediction_archive_too_large",
+            Self::ArchiveV2PredictionDigestMismatch => "archive_v2_prediction_digest_mismatch",
+            Self::ArchiveV2PredictionExecutionFailed => "archive_v2_prediction_execution_failed",
         }
     }
 
@@ -357,6 +380,7 @@ pub struct SidecarState {
     app_settings: AppSettingsStore,
     update_settings: UpdateSettingsStore,
     native_jobs: Arc<NativeJobRuntime>,
+    archive_v2_prediction: ArchiveV2PredictionRuntime,
 }
 
 impl Default for SidecarState {
@@ -375,6 +399,7 @@ impl Default for SidecarState {
             app_settings: AppSettingsStore::from_environment(),
             update_settings: UpdateSettingsStore::from_environment(),
             native_jobs: Arc::new(NativeJobRuntime::default()),
+            archive_v2_prediction: ArchiveV2PredictionRuntime::default(),
         }
     }
 }
@@ -511,6 +536,19 @@ impl SidecarState {
 
     #[cfg(test)]
     #[must_use]
+    fn with_archive_v2_prediction_executor_and_app_settings_dir(
+        executor: Arc<dyn archive_v2_prediction::ArchiveV2PredictionExecutor>,
+        app_settings_dir: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            archive_v2_prediction: ArchiveV2PredictionRuntime::with_executor(executor),
+            app_settings: AppSettingsStore::new(app_settings_dir),
+            ..Self::default()
+        }
+    }
+
+    #[cfg(test)]
+    #[must_use]
     pub fn with_update_settings_path(path: impl Into<PathBuf>) -> Self {
         Self {
             update_settings: UpdateSettingsStore::new(path),
@@ -560,12 +598,13 @@ impl SidecarState {
         let python_plugin_configured = self.python_plugin_host.is_some();
         let scientific_execution = self.native_jobs.execution_selected();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
                 "unconfigured"
             },
+            self.archive_v2_prediction.is_selected(),
         )
     }
 
@@ -684,6 +723,9 @@ pub fn route_request_with_body(
     path: &str,
     body: &[u8],
 ) -> HttpResponse {
+    if let Some(response) = route_archive_v2_prediction_match(state, method, path, body) {
+        return response;
+    }
     if let Some(response) = route_scientific_submission_match(state, method, path, body) {
         return response;
     }
@@ -785,6 +827,145 @@ pub fn route_request_with_body(
             ]),
         ),
     }
+}
+
+fn route_archive_v2_prediction_match(
+    state: &SidecarState,
+    method: &str,
+    path: &str,
+    body: &[u8],
+) -> Option<HttpResponse> {
+    (path == ARCHIVE_V2_PREDICTION_ROUTE).then(|| {
+        if method != "POST" {
+            return method_not_allowed(method, path, "POST");
+        }
+        archive_v2_prediction_response(state, body)
+    })
+}
+
+fn archive_v2_prediction_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    // The product default refuses before JSON parsing or persisted workspace
+    // resolution. Phase one cannot produce predictions without the selected
+    // Core/libn4m executor planned for the integration phase.
+    if !state.archive_v2_prediction.is_selected() {
+        return archive_v2_prediction_error_response(
+            &ArchiveV2PredictionError::ExecutorUnavailable,
+        );
+    }
+    let request = match parse_archive_v2_prediction_request(body) {
+        Ok(request) => request,
+        Err(error) => return archive_v2_prediction_error_response(&error),
+    };
+    let Ok(Some(workspace_path)) = state
+        .app_settings
+        .linked_workspace_path(&request.workspace_id)
+    else {
+        return archive_v2_prediction_error_response(
+            &ArchiveV2PredictionError::WorkspaceUnavailable,
+        );
+    };
+    match state
+        .archive_v2_prediction
+        .execute(request, &workspace_path)
+    {
+        Ok(response) => HttpResponse::json(200, response),
+        Err(error) => archive_v2_prediction_error_response(&error),
+    }
+}
+
+fn archive_v2_prediction_error_response(error: &ArchiveV2PredictionError) -> HttpResponse {
+    let (status, code, message, reason) = match error {
+        ArchiveV2PredictionError::ExecutorUnavailable => (
+            503,
+            ErrorCode::ArchiveV2PredictionUnavailable,
+            "Native Archive V2 prediction is unavailable",
+            "executor_not_selected",
+        ),
+        ArchiveV2PredictionError::BodyTooLarge => (
+            413,
+            ErrorCode::ArchiveV2PredictionInvalid,
+            "Archive V2 prediction request exceeds 65536 bytes",
+            "body_too_large",
+        ),
+        ArchiveV2PredictionError::InvalidJson => (
+            400,
+            ErrorCode::ArchiveV2PredictionInvalid,
+            "Archive V2 prediction request must be valid JSON",
+            "invalid_json",
+        ),
+        ArchiveV2PredictionError::InvalidShape(detail) => (
+            422,
+            ErrorCode::ArchiveV2PredictionInvalid,
+            *detail,
+            "invalid_shape",
+        ),
+        ArchiveV2PredictionError::Unsupported(detail) => (
+            422,
+            ErrorCode::ArchiveV2PredictionInvalid,
+            *detail,
+            "unsupported_contract",
+        ),
+        ArchiveV2PredictionError::WorkspaceUnavailable => (
+            409,
+            ErrorCode::ArchiveV2PredictionWorkspaceUnavailable,
+            "Persisted linked workspace is unavailable",
+            "workspace_unavailable",
+        ),
+        ArchiveV2PredictionError::WorkspaceUnsafe => (
+            422,
+            ErrorCode::ArchiveV2PredictionWorkspaceUnavailable,
+            "Persisted linked workspace path is unsafe",
+            "workspace_unsafe",
+        ),
+        ArchiveV2PredictionError::ArchiveNotFound => (
+            404,
+            ErrorCode::ArchiveV2PredictionArchiveNotFound,
+            "Referenced workspace export does not exist",
+            "archive_not_found",
+        ),
+        ArchiveV2PredictionError::ArchiveUnsafe => (
+            422,
+            ErrorCode::ArchiveV2PredictionArchiveUnsafe,
+            "Referenced workspace export is unsafe",
+            "archive_unsafe",
+        ),
+        ArchiveV2PredictionError::ArchiveTooLarge => (
+            413,
+            ErrorCode::ArchiveV2PredictionArchiveTooLarge,
+            "Referenced workspace export exceeds 67108864 bytes",
+            "archive_too_large",
+        ),
+        ArchiveV2PredictionError::ArchiveDigestMismatch => (
+            422,
+            ErrorCode::ArchiveV2PredictionDigestMismatch,
+            "Referenced workspace export SHA-256 differs from the request",
+            "archive_digest_mismatch",
+        ),
+        ArchiveV2PredictionError::ExecutionFailed => (
+            500,
+            ErrorCode::ArchiveV2PredictionExecutionFailed,
+            "Native Archive V2 executor failed",
+            "executor_failed",
+        ),
+        ArchiveV2PredictionError::InvalidExecutorOutput => (
+            500,
+            ErrorCode::ArchiveV2PredictionExecutionFailed,
+            "Native Archive V2 executor returned an invalid closed response",
+            "invalid_executor_output",
+        ),
+        ArchiveV2PredictionError::ResponseTooLarge => (
+            500,
+            ErrorCode::ArchiveV2PredictionExecutionFailed,
+            "Native Archive V2 response exceeds 2097152 bytes",
+            "response_too_large",
+        ),
+    };
+    error_response(
+        status,
+        code,
+        message,
+        BTreeMap::from([("reason".into(), reason.into())]),
+    )
 }
 
 fn route_scientific_submission_match(
@@ -3104,6 +3285,8 @@ fn handle_connection_with_limits_and_websocket(
 fn request_body_too_large_response(path: &str) -> HttpResponse {
     if path == SCIENTIFIC_SUBMISSION_ROUTE {
         scientific_submission_validation_error(&ScientificSubmissionValidationError::BodyTooLarge)
+    } else if path == ARCHIVE_V2_PREDICTION_ROUTE {
+        archive_v2_prediction_error_response(&ArchiveV2PredictionError::BodyTooLarge)
     } else {
         error_response(
             400,
@@ -3469,6 +3652,7 @@ fn valid_json_value(value: &Value, depth: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
     use std::{
         fs,
         net::TcpListener,
@@ -3489,6 +3673,32 @@ mod tests {
             _job_id: &str,
         ) -> Result<(), job_http::JobExecutorError> {
             Ok(())
+        }
+    }
+
+    #[derive(Debug)]
+    struct SelectedArchiveV2TestExecutor;
+
+    impl archive_v2_prediction::ArchiveV2PredictionExecutor for SelectedArchiveV2TestExecutor {
+        fn is_selected(&self) -> bool {
+            true
+        }
+
+        fn execute(
+            &self,
+            request: &archive_v2_prediction::ResolvedArchiveV2PredictionRequest,
+        ) -> Result<
+            archive_v2_prediction::ArchiveV2PredictionOutput,
+            archive_v2_prediction::ArchiveV2PredictionExecutorError,
+        > {
+            assert_eq!(request.archive_bytes, b"fake-archive-v2");
+            Ok(archive_v2_prediction::ArchiveV2PredictionOutput {
+                archive_id: "archive-a".into(),
+                sample_ids: request.request.sample_ids.clone(),
+                target_names: request.request.expected_target_names.clone(),
+                values: vec![vec![1.5, 13.0], vec![2.5, 15.0]],
+                provenance_executor: "fake-core-route-unit-only".into(),
+            })
         }
     }
 
@@ -5059,5 +5269,102 @@ mod tests {
         assert!(gate.try_acquire().is_none());
         drop(permit);
         assert!(gate.try_acquire().is_some());
+    }
+
+    #[test]
+    fn archive_v2_prediction_product_default_is_typed_unavailable_before_parsing() {
+        let mut state = SidecarState::default();
+        let response = route_request_with_body(
+            &mut state,
+            "POST",
+            ARCHIVE_V2_PREDICTION_ROUTE,
+            b"not-json-and-must-not-be-parsed",
+        );
+        assert_eq!(response.status, 503);
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(body["error"]["code"], "archive_v2_prediction_unavailable");
+        assert_eq!(body["error"]["details"]["reason"], "executor_not_selected");
+        assert_eq!(
+            serde_json::from_str::<Value>(&state.capabilities_json()).unwrap()["features"]
+                ["native_archive_v2_prediction"],
+            false
+        );
+
+        let method = route_request(&mut state, "GET", ARCHIVE_V2_PREDICTION_ROUTE);
+        assert_eq!(method.status, 405);
+        let near_match = route_request(&mut state, "POST", "/api/predict/archive-v2/");
+        assert_eq!(near_match.status, 404);
+    }
+
+    #[test]
+    fn archive_v2_route_preserves_legacy_predict_refusals_byte_for_byte() {
+        let mut state = SidecarState::default();
+        let predict = route_request_with_body(&mut state, "POST", "/api/predict", b"{}");
+        let predict_file = route_request_with_body(&mut state, "POST", "/api/predict/file", b"{}");
+
+        assert_eq!(predict.status, 404);
+        assert_eq!(
+            predict.body,
+            "{\"error\":{\"code\":\"route_not_found\",\"message\":\"This native sidecar does not serve this Studio route\",\"retryable\":false,\"details\":{\"method\":\"POST\",\"path\":\"/api/predict\"}}}"
+        );
+        assert_eq!(predict_file.status, 404);
+        assert_eq!(
+            predict_file.body,
+            "{\"error\":{\"code\":\"route_not_found\",\"message\":\"This native sidecar does not serve this Studio route\",\"retryable\":false,\"details\":{\"method\":\"POST\",\"path\":\"/api/predict/file\"}}}"
+        );
+    }
+
+    #[test]
+    fn archive_v2_fake_route_uses_persisted_workspace_and_exact_export_ref() {
+        let root = test_directory("archive-v2-fake-route");
+        let config = root.join("config");
+        let workspace = root.join("workspace");
+        let archive = workspace.join("exports/models/model-a.n4a");
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(archive.parent().unwrap()).unwrap();
+        fs::write(&archive, b"fake-archive-v2").unwrap();
+        fs::write(
+            config.join("app_settings.json"),
+            json!({
+                "linked_workspaces": [linked_workspace_record("workspace-a", &workspace, true, 0)]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let digest = format!("{:x}", Sha256::digest(b"fake-archive-v2"));
+        let body = json!({
+            "schema_version": 1,
+            "operation": "archive_v2_predict",
+            "workspace_id": "workspace-a",
+            "archive": {"ref": "models/model-a.n4a", "sha256": digest},
+            "input": {
+                "kind": "array",
+                "sample_ids": ["s1", "s2"],
+                "x": [[1.0, 2.0], [3.0, 4.0]],
+                "expected_target_names": ["protein", "moisture"]
+            },
+            "execution": {"engine": "core_rust_methods", "allow_fallback": false}
+        })
+        .to_string();
+        let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
+            Arc::new(SelectedArchiveV2TestExecutor),
+            &config,
+        );
+
+        let response = route_request_with_body(
+            &mut state,
+            "POST",
+            ARCHIVE_V2_PREDICTION_ROUTE,
+            body.as_bytes(),
+        );
+
+        assert_eq!(response.status, 200);
+        let response: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(response["engine"], "core_rust_methods");
+        assert_eq!(response["fallback_used"], false);
+        assert_eq!(response["sample_ids"], json!(["s1", "s2"]));
+        assert_eq!(response["target_names"], json!(["protein", "moisture"]));
+        assert_eq!(response["values"], json!([[1.5, 13.0], [2.5, 15.0]]));
+        fs::remove_dir_all(root).unwrap();
     }
 }

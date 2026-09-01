@@ -1,0 +1,89 @@
+{
+  "schema": "nirs4all.studio-archive-v2-prediction-contract.v1",
+  "route": {
+    "method": "POST",
+    "path": "/api/predict/archive-v2",
+    "owner": "studio-sidecar-rust",
+    "product_default": "typed_503_executor_not_selected",
+    "success_capability": false
+  },
+  "request": {
+    "additional_properties": false,
+    "fields": {
+      "schema_version": 1,
+      "operation": "archive_v2_predict",
+      "workspace_id": "required_identifier_max_256_bytes",
+      "archive": {
+        "additional_properties": false,
+        "ref": "required_relative_n4a_path_under_workspace_exports_max_240_bytes",
+        "sha256": "required_lowercase_sha256"
+      },
+      "input": {
+        "additional_properties": false,
+        "kind": "array",
+        "sample_ids": "required_unique_string_array_1_to_128_each_max_256_bytes",
+        "x": "required_finite_rectangular_number_array_max_128x256_and_16384_cells",
+        "expected_target_names": "required_unique_string_array_1_to_64_each_max_256_bytes"
+      },
+      "execution": {
+        "additional_properties": false,
+        "engine": "core_rust_methods",
+        "allow_fallback": false
+      }
+    },
+    "maximum_encoded_bytes": 65536
+  },
+  "archive_resolution": {
+    "workspace_source": "persisted_linked_workspace_id",
+    "path": "workspace/exports/<archive.ref>",
+    "directory_scan": false,
+    "absolute_ref": "refused",
+    "parent_component": "refused",
+    "symlink_component": "refused",
+    "read_handle": "single_capability_rooted_handle",
+    "maximum_bytes": 67108864,
+    "sha256": "computed_from_the_bounded_bytes_read_from_that_handle"
+  },
+  "future_success_response": {
+    "additional_properties": false,
+    "fields": [
+      "schema_version",
+      "operation",
+      "archive_id",
+      "archive_sha256",
+      "engine",
+      "fallback_used",
+      "sample_ids",
+      "target_names",
+      "values",
+      "provenance"
+    ],
+    "schema_version": 1,
+    "operation": "archive_v2_predict",
+    "engine": "core_rust_methods",
+    "fallback_used": false,
+    "maximum_encoded_bytes": 2097152
+  },
+  "executor_boundary": {
+    "selected_by_default": false,
+    "phase_one_fake_scope": "rust_unit_tests_only",
+    "python_http_owner": false,
+    "fastapi_fallback": false,
+    "dag_ml_envelope": false,
+    "pending_integration": "selected nirs4all-core Archive V2 matrix replay plus selected libn4m"
+  },
+  "typed_errors": [
+    "archive_v2_prediction_unavailable",
+    "archive_v2_prediction_invalid",
+    "archive_v2_prediction_workspace_unavailable",
+    "archive_v2_prediction_archive_not_found",
+    "archive_v2_prediction_archive_unsafe",
+    "archive_v2_prediction_archive_too_large",
+    "archive_v2_prediction_digest_mismatch",
+    "archive_v2_prediction_execution_failed"
+  ],
+  "legacy_routes_unchanged": [
+    "POST /api/predict",
+    "POST /api/predict/file"
+  ]
+}
