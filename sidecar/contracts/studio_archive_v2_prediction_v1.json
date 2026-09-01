@@ -4,8 +4,17 @@
     "method": "POST",
     "path": "/api/predict/archive-v2",
     "owner": "studio-sidecar-rust",
-    "product_default": "typed_503_executor_not_selected",
-    "success_capability": false
+    "selection": "conditional_on_attested_packaged_closure",
+    "without_attested_packaged_closure": {
+      "status": 503,
+      "capability": false,
+      "error": "archive_v2_prediction_unavailable"
+    },
+    "with_attested_packaged_closure": {
+      "preflight": "required_before_selection",
+      "success_status": 200,
+      "capability": true
+    }
   },
   "request": {
     "additional_properties": false,
@@ -44,7 +53,7 @@
     "maximum_bytes": 67108864,
     "sha256": "computed_from_the_bounded_bytes_read_from_that_handle"
   },
-  "future_success_response": {
+  "success_response": {
     "additional_properties": false,
     "fields": [
       "schema_version",
@@ -65,8 +74,7 @@
     "maximum_encoded_bytes": 2097152
   },
   "executor_boundary": {
-    "selected_by_default": false,
-    "phase_one_fake_scope": "rust_unit_tests_only",
+    "selection": "packaged_runtime_contract_plus_successful_core_preflight",
     "python_http_owner": false,
     "fastapi_fallback": false,
     "dag_ml_envelope": false,
@@ -74,7 +82,7 @@
     "libn4m_identity": "product-owned absolute non-symlink path plus size plus SHA-256 plus ABI 2.2; never request-controlled",
     "core_preflight": "preflight_methods_archive_v2_library snapshots the attested bytes and checks the real ABI before capability selection",
     "build_stage": "NIRS4ALL_BUILD_METHODS_LIBRARY plus NIRS4ALL_BUILD_METHODS_SHA256, both build-time-only; absent means unavailable",
-    "pending_integration": "release builders must provide one attested per-platform libn4m closure"
+    "release_builder_blocker": "each platform builder must provide and qualify one attested libn4m closure"
   },
   "typed_errors": [
     "archive_v2_prediction_unavailable",
