@@ -52,12 +52,17 @@ R1 provides a small local HTTP control surface only:
   `DELETE /api/workspaces/:id` (Rust-owned linked-workspace catalogue,
   activation and unlinking; no filesystem scan, dataset read, or scientific
   execution)
+- `GET /api/workspaces/:id/runs` for a linked workspace with the published
+  `WorkspaceStore` v5 `store.sqlite` projection. The reader is strict,
+  immutable, and read-only; it refuses active SQLite journals, other schema
+  versions, and incomplete projections.
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
 bounded library/plugin host for the routes above. The sidecar contains no
-scientific calculation, dataset/workspace contents, arbitrary file-I/O API, or
-reimplementation of nirs4all stores. It persists app-level preferences,
+scientific calculation, arbitrary file-I/O API, or reimplementation of
+nirs4all stores. Apart from the published, bounded `WorkspaceStore` v5
+run-summary reader, it does not inspect dataset/workspace contents. It persists app-level preferences,
 favorite identifiers, repaired linked-workspace record IDs, and (through its
 Rust library boundary only) self-validating Core/DAG-ML conformal presentation
 artifacts. No HTTP ingestion route exists for those artifacts until a typed
@@ -153,6 +158,15 @@ stable UI keys, and returns the legacy list shape. Activation and unlinking are
 also native, atomically updating only that catalogue and never deleting
 workspace files. Linking, pruning, scanning, and all workspace contents remain
 legacy routes until their scanner/store contracts are native.
+
+The native `GET /api/workspaces/:id/runs` reader is available for a Store v5
+workspace only. It uses the published contract's `store.sqlite` location and
+the exact run-summary SQL projection through SQLite immutable read-only mode;
+it does not open a writer, create WAL/SHM files, read arrays or artifacts, or
+fall back to CPython. A missing, live, or incompatible store returns an
+explicit native compatibility error. Electron deliberately continues routing
+the UI scanner endpoint to FastAPI: legacy manifest/Parquet scans and the full
+results-repository surface have not yet reached parity.
 
 `GET /api/system/status` derives `workspace_loaded` and its workspace summary
 from that same active catalogue record. It does not inspect the linked path:

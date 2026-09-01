@@ -25,8 +25,12 @@ use serde_json::{json, Value};
 
 pub mod conformal_store;
 mod settings;
+mod workspace_store;
 
 use settings::{AppSettingsStore, ConfigPathError};
+use workspace_store::{
+    read_run_summaries, WorkspaceStoreReadError, WorkspaceStoreRunSummary, MAX_RUN_SUMMARIES,
+};
 
 pub const PROTOCOL_VERSION: &str = "studio-sidecar-r1";
 pub const LEGACY_CONTRACT_BASELINE: &str = "studio-v1";
@@ -425,7 +429,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -602,6 +606,7 @@ pub fn route_request_with_body(
         (_, "/api/app/favorites") => method_not_allowed(method, path, "GET, POST"),
         (_, "/api/app/config-path") => method_not_allowed(method, path, "GET, POST, DELETE"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
+        _ if workspace_runs_path(path) => route_workspace_run_summaries(state, method, path),
         _ if path.starts_with("/api/app/favorites/") => route_app_favourite(state, method, path),
         _ if path.starts_with("/api/workspaces/") => {
             route_linked_workspace_state(state, method, path)
@@ -824,6 +829,88 @@ fn system_status_response(state: &SidecarState) -> HttpResponse {
             )
         }
         Err(error) => app_settings_storage_error("get native system status", &error),
+    }
+}
+
+fn workspace_runs_path(path: &str) -> bool {
+    let Some(suffix) = path.strip_prefix("/api/workspaces/") else {
+        return false;
+    };
+    let mut segments = suffix.split('/');
+    matches!(
+        (segments.next(), segments.next(), segments.next()),
+        (Some(workspace_id), Some("runs"), None) if !workspace_id.is_empty()
+    )
+}
+
+fn route_workspace_run_summaries(state: &SidecarState, method: &str, path: &str) -> HttpResponse {
+    if method != "GET" {
+        return method_not_allowed(method, path, "GET");
+    }
+    let Some(workspace_id) = path
+        .strip_prefix("/api/workspaces/")
+        .and_then(|suffix| suffix.strip_suffix("/runs"))
+        .filter(|workspace_id| !workspace_id.is_empty())
+    else {
+        return linked_workspace_route_not_found(path);
+    };
+    let workspace_path = match state.app_settings.linked_workspace_path(workspace_id) {
+        Ok(Some(workspace_path)) => workspace_path,
+        Ok(None) => {
+            return HttpResponse::json(404, json!({"detail": "Workspace not found"}).to_string());
+        }
+        Err(error) => return app_settings_storage_error("resolve linked workspace", &error),
+    };
+    match read_run_summaries(&workspace_path, MAX_RUN_SUMMARIES, 0) {
+        Ok(runs) => {
+            let runs = runs
+                .iter()
+                .map(WorkspaceStoreRunSummary::response)
+                .collect::<Vec<_>>();
+            let total = runs.len();
+            HttpResponse::json(
+                200,
+                json!({"workspace_id": workspace_id, "runs": runs, "total": total}).to_string(),
+            )
+        }
+        Err(error) => workspace_store_read_error_response(&error),
+    }
+}
+
+fn workspace_store_read_error_response(error: &WorkspaceStoreReadError) -> HttpResponse {
+    match error {
+        WorkspaceStoreReadError::StoreNotFound => HttpResponse::json(
+            409,
+            json!({
+                "detail": "Workspace has no compatible native WorkspaceStore v5",
+                "code": "workspace_store_unavailable",
+            })
+            .to_string(),
+        ),
+        WorkspaceStoreReadError::SchemaVersion { expected, actual } => HttpResponse::json(
+            409,
+            json!({
+                "detail": format!("WorkspaceStore schema v{actual} is unsupported; exact v{expected} is required"),
+                "code": "workspace_store_schema_incompatible",
+            })
+            .to_string(),
+        ),
+        WorkspaceStoreReadError::MissingColumns(_) => HttpResponse::json(
+            409,
+            json!({
+                "detail": "WorkspaceStore v5 does not provide the native run-summary projection",
+                "code": "workspace_store_projection_incompatible",
+            })
+            .to_string(),
+        ),
+        _ => HttpResponse::json(
+            500,
+            json!({
+                "detail": "Native WorkspaceStore run-summary read failed",
+                "code": "workspace_store_read_failed",
+            })
+            .to_string(),
+        ),
     }
 }
 
@@ -2598,6 +2685,10 @@ mod tests {
             capabilities["features"]["linked_workspace_catalog_route"],
             true
         );
+        assert_eq!(
+            capabilities["features"]["workspace_store_v5_run_summary_route"],
+            true
+        );
         assert_eq!(capabilities["features"]["system_status_route"], true);
         assert_eq!(capabilities["features"]["legacy_api_routes"], false);
         assert_eq!(
@@ -2862,6 +2953,94 @@ mod tests {
                 "active_workspace_id": "workspace-a",
                 "total": 1,
             })
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn workspace_run_summary_route_reads_the_python_written_v5_store_without_a_python_host() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-workspace-run-summary-{}-{nonce}",
+            std::process::id()
+        ));
+        let settings_directory = directory.join("config");
+        let workspace = directory.join("workspace");
+        let empty_workspace = directory.join("empty-workspace");
+        fs::create_dir_all(&settings_directory).unwrap();
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(&empty_workspace).unwrap();
+        fs::write(
+            workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5.sqlite"),
+        )
+        .unwrap();
+        fs::write(
+            settings_directory.join("app_settings.json"),
+            json!({
+                "linked_workspaces": [{
+                    "id": "workspace-a",
+                    "path": workspace.to_string_lossy(),
+                    "name": "A",
+                    "is_active": true,
+                    "linked_at": "2026-09-01T10:00:00",
+                    "last_scanned": null,
+                    "discovered": {"runs_count": 1},
+                }, {
+                    "id": "workspace-empty",
+                    "path": empty_workspace.to_string_lossy(),
+                    "name": "Empty",
+                    "is_active": false,
+                    "linked_at": "2026-09-01T10:00:00",
+                    "last_scanned": null,
+                    "discovered": {"runs_count": 0},
+                }],
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut state = SidecarState::with_app_settings_dir(&settings_directory);
+
+        let response = route_request(&mut state, "GET", "/api/workspaces/workspace-a/runs");
+        assert_eq!(response.status, 200);
+        let payload: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(payload["workspace_id"], "workspace-a");
+        assert_eq!(payload["total"], 1);
+        assert_eq!(
+            payload["runs"][0]["id"],
+            "12345678-1234-5678-1234-567812345678"
+        );
+        assert_eq!(payload["runs"][0]["name"], "native scanner parity");
+        assert_eq!(payload["runs"][0]["status"], "completed");
+        assert_eq!(payload["runs"][0]["format"], "store");
+        assert_eq!(
+            payload["runs"][0]["datasets"],
+            json!([{"name": "corn", "samples": 42}])
+        );
+        assert_eq!(
+            payload["runs"][0]["summary"],
+            json!({"total_results": 3, "best_score": 0.12})
+        );
+        assert!(!workspace.join("store.sqlite-wal").exists());
+        assert!(!workspace.join("store.sqlite-shm").exists());
+        assert_eq!(
+            route_request(&mut state, "POST", "/api/workspaces/workspace-a/runs").status,
+            405
+        );
+        let unavailable = route_request(&mut state, "GET", "/api/workspaces/workspace-empty/runs");
+        assert_eq!(unavailable.status, 409);
+        assert_eq!(
+            serde_json::from_str::<Value>(&unavailable.body).unwrap()["code"],
+            "workspace_store_unavailable"
+        );
+        let missing = route_request(&mut state, "GET", "/api/workspaces/missing/runs");
+        assert_eq!(missing.status, 404);
+        assert_eq!(
+            serde_json::from_str::<Value>(&missing.body).unwrap(),
+            json!({"detail": "Workspace not found"})
         );
         fs::remove_dir_all(directory).unwrap();
     }

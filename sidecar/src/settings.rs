@@ -233,6 +233,35 @@ impl AppSettingsStore {
         Ok(Some(linked_workspace_response(workspace, id)))
     }
 
+    /// Resolve a linked workspace's persisted path without inspecting its
+    /// contents. Native readers perform their own bounded format preflight.
+    pub fn linked_workspace_path(&self, workspace_id: &str) -> Result<Option<PathBuf>, String> {
+        let settings = self.load()?;
+        let Some(workspaces) = settings.get("linked_workspaces") else {
+            return Ok(None);
+        };
+        let workspaces = workspaces
+            .as_array()
+            .ok_or_else(|| "stored linked_workspaces must be a JSON array".to_string())?;
+        let Some(workspace) = workspaces.iter().find(|workspace| {
+            workspace
+                .get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| id == workspace_id)
+        }) else {
+            return Ok(None);
+        };
+        let workspace = workspace
+            .as_object()
+            .ok_or_else(|| "stored linked_workspaces entries must be JSON objects".to_string())?;
+        let path = workspace
+            .get("path")
+            .and_then(Value::as_str)
+            .filter(|path| !path.trim().is_empty())
+            .ok_or_else(|| "linked workspace is missing a path".to_string())?;
+        Ok(Some(PathBuf::from(path)))
+    }
+
     /// Mark a persisted linked workspace as active without loading its data or
     /// invoking a Python workspace manager.  This is intentionally limited to
     /// catalogue state; scanning and scientific-store access stay outside this
