@@ -39,6 +39,8 @@ const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
 const NATIVE_SIDECAR_WORKSPACE_STATE_ENDPOINT = /^\/workspaces\/[^/?]+(?:\/(activate))?$/;
 const NATIVE_SIDECAR_WORKSPACE_RUN_SUMMARIES_ENDPOINT =
   /^\/workspaces\/[^/?]+\/runs$/;
+const NATIVE_SIDECAR_WORKSPACE_PIPELINE_SUMMARIES_ENDPOINT =
+  /^\/workspaces\/[^/?]+\/results$/;
 
 type ElectronBackendStatus =
   | "stopped"
@@ -217,7 +219,8 @@ function isNativeSidecarEndpoint(endpoint: string, method: string): boolean {
     NATIVE_SIDECAR_STATE_ENDPOINTS.has(endpoint) ||
     endpoint.startsWith("/app/favorites/") ||
     isNativeLinkedWorkspaceStateEndpoint(endpoint, method) ||
-    isNativeWorkspaceRunSummariesEndpoint(endpoint, method)
+    isNativeWorkspaceRunSummariesEndpoint(endpoint, method) ||
+    isNativeWorkspacePipelineSummariesEndpoint(endpoint, method)
   );
 }
 
@@ -235,6 +238,13 @@ function isNativeWorkspaceRunSummariesEndpoint(endpoint: string, method: string)
   return (
     method.toUpperCase() === "GET" &&
     NATIVE_SIDECAR_WORKSPACE_RUN_SUMMARIES_ENDPOINT.test(endpoint)
+  );
+}
+
+function isNativeWorkspacePipelineSummariesEndpoint(endpoint: string, method: string): boolean {
+  return (
+    method.toUpperCase() === "GET" &&
+    NATIVE_SIDECAR_WORKSPACE_PIPELINE_SUMMARIES_ENDPOINT.test(endpoint)
   );
 }
 

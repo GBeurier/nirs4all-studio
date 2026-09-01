@@ -159,18 +159,22 @@ also native, atomically updating only that catalogue and never deleting
 workspace files. Linking, pruning, scanning, and all workspace contents remain
 legacy routes until their scanner/store contracts are native.
 
-The native `GET /api/workspaces/:id/runs` reader is available for a Store v5
-workspace only. It uses the published contract's `store.sqlite` location and
-the exact run-summary SQL projection through SQLite immutable read-only mode;
+The native `GET /api/workspaces/:id/runs` and bare
+`GET /api/workspaces/:id/results` readers are available for a Store v5
+workspace only. They use the published contract's `store.sqlite` location and
+exact run- and pipeline-summary SQL projections through SQLite immutable
+read-only mode;
 it does not open a writer, create WAL/SHM files, read arrays or artifacts, or
 fall back to CPython. A missing, live, or incompatible store returns an
 explicit native compatibility error. The bundled SQLite reader supports local
 volumes; Windows UNC/device paths are rejected until the packaging build and a
-real share test prove URI-authority support. Electron routes only the bare, bounded
-run-summary request to this reader and does not retry a native incompatibility
-through FastAPI. Explicit `source`/`refresh` scanner queries, the enriched Runs
-page, legacy manifest/Parquet scans, and the full results-repository surface
-remain FastAPI routes until their public contracts reach parity.
+real share test prove URI-authority support. Electron routes only the bare,
+bounded run-summary and filter-free pipeline-summary requests to this reader
+and does not retry a native incompatibility through FastAPI. Explicit
+`source`/`refresh` scanner queries, filtered pipeline-result requests, the real
+Results summary page, enriched Runs, legacy manifest/Parquet scans, and the full
+chain/results repository surface remain FastAPI routes until their public
+contracts reach parity.
 
 `GET /api/system/status` derives `workspace_loaded` and its workspace summary
 from that same active catalogue record. It does not inspect the linked path:

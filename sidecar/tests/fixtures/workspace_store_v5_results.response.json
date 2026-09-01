@@ -1,0 +1,37 @@
+{
+  "workspace_id": "workspace-a",
+  "results": [
+    {
+      "id": "87654321-4321-6789-4321-678943216789",
+      "run_id": "12345678-1234-5678-1234-567812345678",
+      "dataset": "corn",
+      "pipeline_config": "0001_pls",
+      "pipeline_config_id": "87654321-4321-6789-4321-678943216789",
+      "created_at": "2026-09-01T08:00:00",
+      "best_score": 0.12,
+      "best_test_score": 0.15,
+      "metric": "rmsecv",
+      "status": "completed",
+      "duration_ms": 1234,
+      "format": "store"
+    },
+    {
+      "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "run_id": "12345678-1234-5678-1234-567812345678",
+      "dataset": "corn",
+      "pipeline_config": "0002_pending",
+      "pipeline_config_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "created_at": "2026-09-01T08:01:00",
+      "best_score": null,
+      "best_test_score": null,
+      "metric": null,
+      "status": "running",
+      "duration_ms": null,
+      "format": "store"
+    }
+  ],
+  "total": 2,
+  "limit": 100,
+  "offset": 0,
+  "has_more": false
+}

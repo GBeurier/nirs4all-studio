@@ -20,6 +20,8 @@ use url::Url;
 pub const WORKSPACE_STORE_SCHEMA_VERSION: i64 = 5;
 pub const MAX_RUN_SUMMARIES: u16 = 500;
 pub const DEFAULT_RUN_SUMMARIES_LIMIT: u16 = 100;
+pub const MAX_PIPELINE_SUMMARIES: u16 = 500;
+pub const DEFAULT_PIPELINE_SUMMARIES_LIMIT: u16 = 100;
 pub const WORKSPACE_STORE_READ_CONTRACT: &str =
     include_str!("../contracts/workspace_store_read_v1.json");
 
@@ -27,6 +29,8 @@ const CONTRACT_SCHEMA_ID: &str = "nirs4all.workspace-store-read.v1";
 const CONTRACT_SCHEMA_VERSION: i64 = 1;
 const STORE_FILENAME: &str = "store.sqlite";
 const RUN_SUMMARY_QUERY: &str = "SELECT run_id, name, status, created_at, completed_at, datasets, summary, error FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?";
+const PIPELINE_SUMMARY_QUERY: &str = "SELECT pipeline_id AS id, run_id, name AS pipeline_config, pipeline_id AS pipeline_config_id, dataset_name AS dataset, created_at, best_val AS best_score, best_test AS best_test_score, metric, status, duration_ms FROM pipelines ORDER BY CASE WHEN best_val IS NULL THEN 1 ELSE 0 END ASC, best_val DESC, created_at DESC, pipeline_id ASC LIMIT ? OFFSET ?";
+const PIPELINE_SUMMARY_COUNT_QUERY: &str = "SELECT COUNT(*) FROM pipelines";
 const RUN_COLUMNS: [&str; 8] = [
     "run_id",
     "name",
@@ -36,6 +40,18 @@ const RUN_COLUMNS: [&str; 8] = [
     "datasets",
     "summary",
     "error",
+];
+const PIPELINE_COLUMNS: [&str; 10] = [
+    "pipeline_id",
+    "run_id",
+    "name",
+    "dataset_name",
+    "created_at",
+    "best_val",
+    "best_test",
+    "metric",
+    "status",
+    "duration_ms",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +83,47 @@ impl WorkspaceStoreRunSummary {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkspaceStorePipelineSummary {
+    id: String,
+    run_id: String,
+    pipeline_config: String,
+    pipeline_config_id: String,
+    dataset: String,
+    created_at: String,
+    best_score: Option<f64>,
+    best_test_score: Option<f64>,
+    metric: Option<String>,
+    status: Option<String>,
+    duration_ms: Option<i64>,
+}
+
+impl WorkspaceStorePipelineSummary {
+    #[must_use]
+    pub fn response(&self) -> Value {
+        json!({
+            "id": self.id,
+            "run_id": self.run_id,
+            "dataset": self.dataset,
+            "pipeline_config": self.pipeline_config,
+            "pipeline_config_id": self.pipeline_config_id,
+            "created_at": self.created_at,
+            "best_score": self.best_score,
+            "best_test_score": self.best_test_score,
+            "metric": self.metric,
+            "status": self.status,
+            "duration_ms": self.duration_ms,
+            "format": "store",
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkspaceStorePipelineSummaryPage {
+    pub results: Vec<WorkspaceStorePipelineSummary>,
+    pub total: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceStoreReadError {
     Contract(String),
@@ -80,7 +137,10 @@ pub enum WorkspaceStoreReadError {
         expected: i64,
         actual: i64,
     },
-    MissingColumns(Vec<String>),
+    MissingColumns {
+        table: &'static str,
+        columns: Vec<String>,
+    },
     LimitOutOfRange(u16),
     OffsetOutOfRange(u64),
     Query(String),
@@ -109,20 +169,20 @@ impl fmt::Display for WorkspaceStoreReadError {
                 formatter,
                 "WorkspaceStore schema version {actual} is incompatible; exact version {expected} is required"
             ),
-            Self::MissingColumns(columns) => write!(
+            Self::MissingColumns { table, columns } => write!(
                 formatter,
-                "WorkspaceStore runs table is missing required columns: {}",
+                "WorkspaceStore {table} table is missing required columns: {}",
                 columns.join(", ")
             ),
             Self::LimitOutOfRange(limit) => write!(
                 formatter,
-                "WorkspaceStore run-summary limit {limit} is outside 1..={MAX_RUN_SUMMARIES}"
+                "WorkspaceStore summary limit {limit} is outside 1..={MAX_RUN_SUMMARIES}"
             ),
             Self::OffsetOutOfRange(offset) => write!(
                 formatter,
-                "WorkspaceStore run-summary offset {offset} exceeds SQLite integer range"
+                "WorkspaceStore summary offset {offset} exceeds SQLite integer range"
             ),
-            Self::Query(detail) => write!(formatter, "WorkspaceStore run-summary query failed: {detail}"),
+            Self::Query(detail) => write!(formatter, "WorkspaceStore summary query failed: {detail}"),
             Self::ChangedDuringRead => write!(formatter, "WorkspaceStore changed while being read"),
         }
     }
@@ -167,6 +227,44 @@ pub fn read_run_summaries(
     .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
     validate_database(&connection)?;
     let result = query_run_summaries(&connection, i64::from(limit), offset);
+    drop(connection);
+    refuse_live_journals(&database)?;
+    if file_stamp(&database)? != before {
+        return Err(WorkspaceStoreReadError::ChangedDuringRead);
+    }
+    result
+}
+
+/// Return the public Store v5 pipeline-summary page for a linked workspace.
+///
+/// This deliberately implements only the filter-free, bounded projection.
+/// Scanner filters, chain rankings, and repository fallbacks remain outside
+/// this contract and must not be reconstructed from private schema knowledge.
+pub fn read_pipeline_summaries(
+    workspace_path: &Path,
+    limit: u16,
+    offset: u64,
+) -> Result<WorkspaceStorePipelineSummaryPage, WorkspaceStoreReadError> {
+    validate_contract()?;
+    if limit == 0 || limit > MAX_PIPELINE_SUMMARIES {
+        return Err(WorkspaceStoreReadError::LimitOutOfRange(limit));
+    }
+    let offset =
+        i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
+    let database =
+        workspace_store_path(workspace_path).ok_or(WorkspaceStoreReadError::StoreNotFound)?;
+    let before = file_stamp(&database)?;
+    refuse_live_journals(&database)?;
+    let uri = immutable_read_only_uri(&database)?;
+    let connection = Connection::open_with_flags(
+        uri,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    validate_database(&connection)?;
+    let result = query_pipeline_summaries(&connection, i64::from(limit), offset);
     drop(connection);
     refuse_live_journals(&database)?;
     if file_stamp(&database)? != before {
@@ -255,6 +353,58 @@ fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
     if fields.len() != RUN_COLUMNS.len() || fields.as_slice() != expected_fields.as_slice() {
         return Err(WorkspaceStoreReadError::Contract(
             "run-summary field columns differ from v1".into(),
+        ));
+    }
+    validate_pipeline_contract(&contract, &expected_parameters)
+}
+
+fn validate_pipeline_contract(
+    contract: &Value,
+    expected_parameters: &[Value],
+) -> Result<(), WorkspaceStoreReadError> {
+    let pipeline_projection = contract
+        .pointer("/projections/studio_pipeline_summary")
+        .ok_or_else(|| {
+            WorkspaceStoreReadError::Contract("studio_pipeline_summary is missing".into())
+        })?;
+    if pipeline_projection.get("query").and_then(Value::as_str) != Some(PIPELINE_SUMMARY_QUERY)
+        || pipeline_projection
+            .get("count_query")
+            .and_then(Value::as_str)
+            != Some(PIPELINE_SUMMARY_COUNT_QUERY)
+        || pipeline_projection.get("response_constants") != Some(&json!({"format": "store"}))
+        || pipeline_projection
+            .get("parameters")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            != Some(expected_parameters)
+    {
+        return Err(WorkspaceStoreReadError::Contract(
+            "pipeline-summary query, count, constants, or bounds differ from v1".into(),
+        ));
+    }
+    let pipeline_fields = pipeline_projection
+        .get("fields")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            WorkspaceStoreReadError::Contract("pipeline-summary fields are missing".into())
+        })?;
+    let expected_pipeline_fields = [
+        json!({"name": "id", "column": "pipeline_id", "type": "string", "required": true}),
+        json!({"name": "run_id", "column": "run_id", "type": "string", "required": true}),
+        json!({"name": "pipeline_config", "column": "name", "type": "string", "required": true}),
+        json!({"name": "pipeline_config_id", "column": "pipeline_id", "type": "string", "required": true}),
+        json!({"name": "dataset", "column": "dataset_name", "type": "string", "required": true}),
+        json!({"name": "created_at", "column": "created_at", "type": "timestamp", "serialization": "iso8601", "default": ""}),
+        json!({"name": "best_score", "column": "best_val", "type": "number", "nullable": true}),
+        json!({"name": "best_test_score", "column": "best_test", "type": "number", "nullable": true}),
+        json!({"name": "metric", "column": "metric", "type": "string", "nullable": true}),
+        json!({"name": "status", "column": "status", "type": "string", "nullable": true}),
+        json!({"name": "duration_ms", "column": "duration_ms", "type": "integer", "nullable": true}),
+    ];
+    if pipeline_fields.as_slice() != expected_pipeline_fields.as_slice() {
+        return Err(WorkspaceStoreReadError::Contract(
+            "pipeline-summary fields differ from v1".into(),
         ));
     }
     Ok(())
@@ -369,15 +519,24 @@ fn validate_database(connection: &Connection) -> Result<(), WorkspaceStoreReadEr
             actual: version,
         });
     }
+    validate_table_columns(connection, "runs", &RUN_COLUMNS)?;
+    validate_table_columns(connection, "pipelines", &PIPELINE_COLUMNS)
+}
+
+fn validate_table_columns(
+    connection: &Connection,
+    table: &'static str,
+    required: &[&str],
+) -> Result<(), WorkspaceStoreReadError> {
     let mut statement = connection
-        .prepare("PRAGMA table_info(runs)")
+        .prepare(&format!("PRAGMA table_info({table})"))
         .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
     let columns = statement
         .query_map([], |row| row.get::<_, String>(1))
         .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?
         .collect::<Result<BTreeSet<_>, _>>()
         .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
-    let missing = RUN_COLUMNS
+    let missing = required
         .iter()
         .filter(|column| !columns.contains(**column))
         .map(|column| (*column).to_owned())
@@ -385,7 +544,10 @@ fn validate_database(connection: &Connection) -> Result<(), WorkspaceStoreReadEr
     if missing.is_empty() {
         Ok(())
     } else {
-        Err(WorkspaceStoreReadError::MissingColumns(missing))
+        Err(WorkspaceStoreReadError::MissingColumns {
+            table,
+            columns: missing,
+        })
     }
 }
 
@@ -404,6 +566,29 @@ fn query_run_summaries(
         .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))
 }
 
+fn query_pipeline_summaries(
+    connection: &Connection,
+    limit: i64,
+    offset: i64,
+) -> Result<WorkspaceStorePipelineSummaryPage, WorkspaceStoreReadError> {
+    let total = connection
+        .query_row(PIPELINE_SUMMARY_COUNT_QUERY, [], |row| row.get::<_, i64>(0))
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let total = usize::try_from(total).map_err(|_| {
+        WorkspaceStoreReadError::Query("pipeline-summary count is outside usize range".into())
+    })?;
+    let mut statement = connection
+        .prepare(PIPELINE_SUMMARY_QUERY)
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let rows = statement
+        .query_map([limit, offset], row_to_pipeline_summary)
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let results = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    Ok(WorkspaceStorePipelineSummaryPage { results, total })
+}
+
 fn row_to_run_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceStoreRunSummary> {
     Ok(WorkspaceStoreRunSummary {
         id: required_text(row, 0, "run_id")?,
@@ -414,6 +599,22 @@ fn row_to_run_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceStoreRunSummar
         datasets: json_or_default(optional_text(row, 5)?, json!([])),
         summary: json_or_default(optional_text(row, 6)?, json!({})),
         error: optional_text(row, 7)?,
+    })
+}
+
+fn row_to_pipeline_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceStorePipelineSummary> {
+    Ok(WorkspaceStorePipelineSummary {
+        id: required_text(row, 0, "pipeline_id")?,
+        run_id: required_text(row, 1, "run_id")?,
+        pipeline_config: required_text(row, 2, "name")?,
+        pipeline_config_id: required_text(row, 3, "pipeline_id")?,
+        dataset: required_text(row, 4, "dataset_name")?,
+        created_at: iso8601_timestamp(optional_text(row, 5)?),
+        best_score: optional_finite_f64(row, 6, "best_val")?,
+        best_test_score: optional_finite_f64(row, 7, "best_test")?,
+        metric: optional_text(row, 8)?,
+        status: optional_text(row, 9)?,
+        duration_ms: row.get(10)?,
     })
 }
 
@@ -429,6 +630,22 @@ fn required_text(row: &Row<'_>, index: usize, field: &'static str) -> rusqlite::
 
 fn optional_text(row: &Row<'_>, index: usize) -> rusqlite::Result<Option<String>> {
     row.get(index)
+}
+
+fn optional_finite_f64(
+    row: &Row<'_>,
+    index: usize,
+    field: &'static str,
+) -> rusqlite::Result<Option<f64>> {
+    let value = row.get::<_, Option<f64>>(index)?;
+    if value.is_some_and(|number| !number.is_finite()) {
+        return Err(rusqlite::Error::FromSqlConversionFailure(
+            index,
+            rusqlite::types::Type::Real,
+            format!("`{field}` is not finite").into(),
+        ));
+    }
+    Ok(value)
 }
 
 fn iso8601_timestamp(raw: Option<String>) -> String {
@@ -456,7 +673,10 @@ mod tests {
     use rusqlite::Connection;
     use serde_json::json;
 
-    use super::{read_run_summaries, WorkspaceStoreReadError, DEFAULT_RUN_SUMMARIES_LIMIT};
+    use super::{
+        read_pipeline_summaries, read_run_summaries, WorkspaceStoreReadError,
+        DEFAULT_PIPELINE_SUMMARIES_LIMIT, DEFAULT_RUN_SUMMARIES_LIMIT,
+    };
 
     const PYTHON_WRITTEN_STORE: &[u8] =
         include_bytes!("../tests/fixtures/workspace_store_v5.sqlite");
@@ -517,6 +737,47 @@ mod tests {
     }
 
     #[test]
+    fn reads_pipeline_summaries_with_nulls_and_score_ordering() {
+        let workspace = fixture_workspace("workspace-store-pipelines-v5");
+        let connection = Connection::open(workspace.join("store.sqlite")).unwrap();
+        connection
+            .execute(
+                "UPDATE pipelines SET status = NULL WHERE pipeline_id = ?",
+                ["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+            )
+            .unwrap();
+        drop(connection);
+
+        let page =
+            read_pipeline_summaries(&workspace, DEFAULT_PIPELINE_SUMMARIES_LIMIT, 0).unwrap();
+
+        assert_eq!(page.total, 2);
+        assert_eq!(page.results.len(), 2);
+        assert_eq!(
+            page.results[0].response(),
+            json!({
+                "id": "87654321-4321-6789-4321-678943216789",
+                "run_id": "12345678-1234-5678-1234-567812345678",
+                "dataset": "corn",
+                "pipeline_config": "0001_pls",
+                "pipeline_config_id": "87654321-4321-6789-4321-678943216789",
+                "created_at": "2026-09-01T08:00:00",
+                "best_score": 0.12,
+                "best_test_score": 0.15,
+                "metric": "rmsecv",
+                "status": "completed",
+                "duration_ms": 1234,
+                "format": "store",
+            })
+        );
+        assert_eq!(page.results[1].response()["best_score"], json!(null));
+        assert_eq!(page.results[1].response()["best_test_score"], json!(null));
+        assert_eq!(page.results[1].response()["metric"], json!(null));
+        assert_eq!(page.results[1].response()["status"], json!(null));
+        fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[test]
     fn refuses_non_v5_or_out_of_range_requests() {
         let workspace = fixture_workspace("workspace-store-v4");
         let connection = Connection::open(workspace.join("store.sqlite")).unwrap();
@@ -573,7 +834,8 @@ mod tests {
 
         assert!(matches!(
             read_run_summaries(&workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0),
-            Err(WorkspaceStoreReadError::MissingColumns(columns)) if columns.contains(&"name".into())
+            Err(WorkspaceStoreReadError::MissingColumns { table: "runs", columns })
+                if columns.contains(&"name".into())
         ));
         fs::remove_dir_all(workspace).unwrap();
     }
