@@ -169,12 +169,12 @@ fall back to CPython. A missing, live, or incompatible store returns an
 explicit native compatibility error. The bundled SQLite reader supports local
 volumes; Windows UNC/device paths are rejected until the packaging build and a
 real share test prove URI-authority support. Electron routes only the bare,
-bounded run-summary and filter-free pipeline-summary requests to this reader
-and does not retry a native incompatibility through FastAPI. Explicit
-`source`/`refresh` scanner queries, filtered pipeline-result requests, the real
-Results summary page, enriched Runs, legacy manifest/Parquet scans, and the full
-chain/results repository surface remain FastAPI routes until their public
-contracts reach parity.
+bounded run-summary, the contract allowlisted `source`/`refresh` run-discovery
+queries, and filter-free pipeline-summary requests to this reader, and does not
+retry a native incompatibility through FastAPI. Scan mutations, filtered
+pipeline-result requests, enriched Runs, run detail, and the full chain/results
+repository surface remain FastAPI routes until their public contracts reach
+parity.
 
 `GET /api/system/status` derives `workspace_loaded` and its workspace summary
 from that same active catalogue record. It does not inspect the linked path:
