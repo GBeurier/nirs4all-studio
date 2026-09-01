@@ -27,6 +27,7 @@ pub mod conformal_store;
 mod settings;
 pub mod workspace_store;
 
+pub use settings::DatasetLinkIdentity;
 use settings::{AppSettingsStore, ConfigPathError};
 use workspace_store::{
     read_pipeline_summaries, read_run_summaries, WorkspaceStorePipelineSummary,
@@ -47,6 +48,20 @@ pub const CONTROL_JOB_TTL: Duration = Duration::from_secs(5 * 60);
 pub const MAX_WS_CHANNELS: usize = 64;
 pub const MAX_WS_DATA_BYTES: usize = 16 * 1024;
 pub const MAX_WS_DATA_KEYS: usize = 16;
+
+/// Load the minimal read-only dataset-link catalogue from a Studio config
+/// directory.
+///
+/// # Errors
+///
+/// Returns an error when the file cannot be read safely or exceeds its bounded
+/// size. Missing and malformed JSON use the legacy empty-catalogue default.
+pub fn read_dataset_links(
+    config_dir: impl Into<PathBuf>,
+) -> Result<Vec<DatasetLinkIdentity>, String> {
+    AppSettingsStore::new(config_dir).dataset_links()
+}
+
 pub const PYTHON_PLUGIN_HOST_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST";
 pub const PYTHON_PLUGIN_HOST_BUNDLED_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
 pub const RUNTIME_MODE_ENV: &str = "NIRS4ALL_RUNTIME_MODE";

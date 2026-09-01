@@ -10,7 +10,7 @@ use std::{
     collections::HashSet,
     env,
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process,
     time::{SystemTime, UNIX_EPOCH},
@@ -20,6 +20,8 @@ use atomicwrites::{replace_atomic, AllowOverwrite, AtomicFile};
 use serde_json::{json, Map, Value};
 
 const APP_SETTINGS_FILE: &str = "app_settings.json";
+const DATASET_LINKS_FILE: &str = "dataset_links.json";
+const MAX_DATASET_LINKS_BYTES: u64 = 2 * 1024 * 1024;
 const CONFIG_ENV: &str = "NIRS4ALL_CONFIG";
 const PORTABLE_ROOT_ENV: &str = "NIRS4ALL_PORTABLE_ROOT";
 const PORTABLE_EXE_ENV: &str = "NIRS4ALL_PORTABLE_EXE";
@@ -29,6 +31,16 @@ const CONFIG_REDIRECT_FILE: &str = "config_redirect.txt";
 pub struct AppSettingsStore {
     config_dir: PathBuf,
     default_config_dir: PathBuf,
+}
+
+/// The only dataset-link fields used to associate a Store result with the
+/// global Studio dataset catalogue. Scientific loader configuration remains
+/// owned by nirs4all and is deliberately not exposed here.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DatasetLinkIdentity {
+    pub id: String,
+    pub name: String,
+    pub path: String,
 }
 
 #[derive(Debug)]
@@ -260,6 +272,67 @@ impl AppSettingsStore {
             .filter(|path| !path.trim().is_empty())
             .ok_or_else(|| "linked workspace is missing a path".to_string())?;
         Ok(Some(PathBuf::from(path)))
+    }
+
+    /// Load the minimal, read-only dataset catalogue used by native result
+    /// projections. Missing or malformed JSON has the same effective default
+    /// as the legacy `AppConfig` loader: no linked datasets. The bounded reader
+    /// rejects an oversized file instead of parsing a prefix or allocating
+    /// without limit.
+    pub fn dataset_links(&self) -> Result<Vec<DatasetLinkIdentity>, String> {
+        let path = self.config_dir.join(DATASET_LINKS_FILE);
+        let mut file = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(format!("could not read {}: {error}", path.display())),
+        };
+        let capacity = usize::try_from(MAX_DATASET_LINKS_BYTES)
+            .unwrap_or(usize::MAX)
+            .saturating_add(1);
+        let mut encoded = Vec::with_capacity(capacity.min(64 * 1024));
+        Read::by_ref(&mut file)
+            .take(MAX_DATASET_LINKS_BYTES.saturating_add(1))
+            .read_to_end(&mut encoded)
+            .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+        if u64::try_from(encoded.len()).unwrap_or(u64::MAX) > MAX_DATASET_LINKS_BYTES {
+            return Err(format!(
+                "{} exceeds the {} byte dataset-links limit",
+                path.display(),
+                MAX_DATASET_LINKS_BYTES
+            ));
+        }
+
+        let Ok(root) = serde_json::from_slice::<Value>(&encoded) else {
+            return Ok(Vec::new());
+        };
+        let Some(datasets) = root.get("datasets").and_then(Value::as_array) else {
+            return Ok(Vec::new());
+        };
+        if datasets.iter().any(|dataset| !dataset.is_object()) {
+            return Ok(Vec::new());
+        }
+
+        Ok(datasets
+            .iter()
+            .filter_map(Value::as_object)
+            .map(|dataset| DatasetLinkIdentity {
+                id: dataset
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                name: dataset
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                path: dataset
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+            })
+            .collect())
     }
 
     /// Mark a persisted linked workspace as active without loading its data or
@@ -584,7 +657,7 @@ mod tests {
 
     use serde_json::{json, Value};
 
-    use super::AppSettingsStore;
+    use super::{AppSettingsStore, DatasetLinkIdentity, MAX_DATASET_LINKS_BYTES};
 
     fn temporary_directory(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
@@ -654,6 +727,86 @@ mod tests {
         );
         assert!(store.remove_favourite("pipeline-a").unwrap());
         assert!(!store.remove_favourite("pipeline-a").unwrap());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn reads_only_dataset_link_identity_fields_without_rewriting_the_catalogue() {
+        let directory = temporary_directory("dataset-links");
+        let path = directory.join("dataset_links.json");
+        let encoded = serde_json::to_vec_pretty(&json!({
+            "version": "1.0",
+            "schema_version": 1,
+            "datasets": [
+                {
+                    "id": "dataset-a",
+                    "name": "Dataset A",
+                    "path": "/datasets/a",
+                    "config": {"na_policy": "Drop"},
+                    "stats": {"samples": 12},
+                },
+                {"id": "dataset-b", "name": "Dataset B"},
+                {"id": 42, "name": null, "path": ["not", "a", "path"]},
+            ],
+        }))
+        .unwrap();
+        fs::write(&path, &encoded).unwrap();
+        let store = AppSettingsStore::new(&directory);
+
+        assert_eq!(
+            store.dataset_links().unwrap(),
+            vec![
+                DatasetLinkIdentity {
+                    id: "dataset-a".into(),
+                    name: "Dataset A".into(),
+                    path: "/datasets/a".into(),
+                },
+                DatasetLinkIdentity {
+                    id: "dataset-b".into(),
+                    name: "Dataset B".into(),
+                    path: String::new(),
+                },
+                DatasetLinkIdentity {
+                    id: String::new(),
+                    name: String::new(),
+                    path: String::new(),
+                },
+            ]
+        );
+        assert_eq!(fs::read(path).unwrap(), encoded);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn dataset_links_use_the_empty_legacy_default_for_missing_or_malformed_json() {
+        let directory = temporary_directory("dataset-links-default");
+        let path = directory.join("dataset_links.json");
+        let store = AppSettingsStore::new(&directory);
+
+        assert!(store.dataset_links().unwrap().is_empty());
+        for malformed in [
+            b"not-json".as_slice(),
+            br"[]".as_slice(),
+            br#"{"datasets": null}"#.as_slice(),
+            br#"{"datasets": [{"id": "valid"}, 7]}"#.as_slice(),
+        ] {
+            fs::write(&path, malformed).unwrap();
+            assert!(store.dataset_links().unwrap().is_empty());
+        }
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn rejects_oversized_dataset_links_without_parsing_a_prefix() {
+        let directory = temporary_directory("dataset-links-size");
+        let path = directory.join("dataset_links.json");
+        let oversized_len = usize::try_from(MAX_DATASET_LINKS_BYTES).unwrap() + 1;
+        fs::write(&path, vec![b' '; oversized_len]).unwrap();
+        let store = AppSettingsStore::new(&directory);
+
+        let error = store.dataset_links().unwrap_err();
+        assert!(error.contains("exceeds the"));
+        assert!(error.contains("dataset-links limit"));
         fs::remove_dir_all(directory).unwrap();
     }
 
