@@ -136,6 +136,7 @@ pub trait ScientificJobExecutor: Debug + Send + Sync {
     fn submit_scientific(
         &self,
         _request: &ScientificExecutionRequest,
+        _terminal: Arc<dyn ScientificJobTerminal>,
     ) -> Result<(), JobExecutorError> {
         Err(JobExecutorError::SubmissionRefused)
     }
@@ -146,6 +147,34 @@ pub trait ScientificJobExecutor: Debug + Send + Sync {
     ///
     /// Returns an executor-specific refusal without mutating registry state.
     fn request_cooperative_cancel(&self, job_id: &str) -> Result<(), JobExecutorError>;
+}
+
+/// Rust-owned terminal callback handed to a bounded scientific worker.
+///
+/// Implementations may report only the scientific outcome. Registry state,
+/// WebSocket publication, cancellation acknowledgement, and durable storage
+/// remain owned by [`NativeJobRuntime`].
+pub trait ScientificJobTerminal: Debug + Send + Sync {
+    /// Publish and persist a validated scientific result as completed.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Rust lifecycle, event, or durable-write failure.
+    fn complete(&self, job_id: &str, result: Value) -> Result<(), NativeJobRuntimeError>;
+
+    /// Publish and persist a bounded worker failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Rust lifecycle, event, or durable-write failure.
+    fn fail(&self, job_id: &str, reason: &str) -> Result<(), NativeJobRuntimeError>;
+
+    /// Publish and persist acknowledgement of Rust's cancellation request.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Rust lifecycle, event, or durable-write failure.
+    fn acknowledge_cancel(&self, job_id: &str) -> Result<(), NativeJobRuntimeError>;
 }
 
 /// Default executor used until Core or a bounded `CPython` plugin is selected.
@@ -221,15 +250,15 @@ impl From<JobLifecycleError> for NativeJobRuntimeError {
 }
 
 /// Thread-safe registry, event broadcaster, and bounded execution seam.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct NativeJobRuntime {
-    registry: Mutex<JobRegistry>,
+    registry: Arc<Mutex<JobRegistry>>,
     websocket: Arc<WebSocketConnectionManager>,
     executor: Arc<dyn ScientificJobExecutor>,
-    durable_jobs: Mutex<BTreeMap<String, DurableScientificJob>>,
-    next_submission_id: AtomicU64,
-    published_events: AtomicU64,
-    durable_writes: AtomicU64,
+    durable_jobs: Arc<Mutex<BTreeMap<String, DurableScientificJob>>>,
+    next_submission_id: Arc<AtomicU64>,
+    published_events: Arc<AtomicU64>,
+    durable_writes: Arc<AtomicU64>,
 }
 
 #[derive(Clone, Debug)]
@@ -252,13 +281,13 @@ impl NativeJobRuntime {
     #[must_use]
     pub fn with_executor(executor: Arc<dyn ScientificJobExecutor>) -> Self {
         Self {
-            registry: Mutex::new(JobRegistry::default()),
+            registry: Arc::new(Mutex::new(JobRegistry::default())),
             websocket: Arc::new(WebSocketConnectionManager::new()),
             executor,
-            durable_jobs: Mutex::new(BTreeMap::new()),
-            next_submission_id: AtomicU64::new(1),
-            published_events: AtomicU64::new(0),
-            durable_writes: AtomicU64::new(0),
+            durable_jobs: Arc::new(Mutex::new(BTreeMap::new())),
+            next_submission_id: Arc::new(AtomicU64::new(1)),
+            published_events: Arc::new(AtomicU64::new(0)),
+            durable_writes: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -362,7 +391,11 @@ impl NativeJobRuntime {
             requested_backend: submission.requested_backend().into(),
             payload: submission.payload().clone(),
         };
-        if let Err(error) = self.executor.submit_scientific(&execution_request) {
+        let terminal: Arc<dyn ScientificJobTerminal> = Arc::new(self.clone());
+        if let Err(error) = self
+            .executor
+            .submit_scientific(&execution_request, terminal)
+        {
             let _ = self.fail_at(
                 &job_id,
                 "Scientific executor refused the registered submission",
@@ -564,14 +597,16 @@ impl NativeJobRuntime {
             .ok_or(JobLifecycleError::JobNotFound)?;
         let persist_terminal_cancellation = snapshot.status == JobStatus::Pending;
         if snapshot.status == JobStatus::Running {
+            // Record Rust's cancellation intent before notifying the worker.
+            // A fresh process may observe its kill token immediately and call
+            // back from another thread; the acknowledgement must never race
+            // ahead of the authoritative lifecycle flag.
+            let mutation = registry.request_cancel_at(id, timestamp, now)?;
             drop(registry);
             self.executor
                 .request_cooperative_cancel(id)
                 .map_err(NativeJobRuntimeError::Executor)?;
-            registry = self
-                .registry
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            return self.publish(mutation);
         }
         let mutation = registry.request_cancel_at(id, timestamp, now)?;
         drop(registry);
@@ -644,6 +679,23 @@ impl NativeJobRuntime {
         write_execution_job_record(&context.workspace_path, &snapshot.id, &record)
             .map_err(NativeJobRuntimeError::Persistence)?;
         self.durable_writes.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+impl ScientificJobTerminal for NativeJobRuntime {
+    fn complete(&self, job_id: &str, result: Value) -> Result<(), NativeJobRuntimeError> {
+        self.complete_at(job_id, result, &rfc3339_now(), Instant::now())?;
+        Ok(())
+    }
+
+    fn fail(&self, job_id: &str, reason: &str) -> Result<(), NativeJobRuntimeError> {
+        self.fail_at(job_id, reason, None, &rfc3339_now(), Instant::now())?;
+        Ok(())
+    }
+
+    fn acknowledge_cancel(&self, job_id: &str) -> Result<(), NativeJobRuntimeError> {
+        self.acknowledge_cancel_at(job_id, &rfc3339_now(), Instant::now())?;
         Ok(())
     }
 }
