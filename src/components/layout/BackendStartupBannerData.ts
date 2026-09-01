@@ -33,6 +33,7 @@ export interface BackendStartupBannerReadModel {
 
 export interface BackendStartupBannerState {
   coreReady: boolean;
+  scientificRequested: boolean;
   mlReady: boolean;
   workspaceReady: boolean;
   datasetsPrimed: boolean;
@@ -59,13 +60,14 @@ export function isWorkspaceStartupPhase({
 }
 
 export function canSettleStartupBanner(state: BackendStartupBannerState): boolean {
+  if (state.coreReady && !state.scientificRequested) return true;
   return !isWorkspaceStartupPhase(state);
 }
 
 export function buildBackendStartupBannerReadModel(
   state: BackendStartupBannerState,
 ): BackendStartupBannerReadModel {
-  const workspacePhase = isWorkspaceStartupPhase(state);
+  const workspacePhase = state.scientificRequested && isWorkspaceStartupPhase(state);
   const workspaceDone = !workspacePhase;
   const hasMlError = Boolean(state.mlError);
 
@@ -100,7 +102,7 @@ function getStartupTitle({
   if (!coreReady) {
     return {
       key: "layout.backendStartup.connectingTitle",
-      defaultValue: "Connecting to backend...",
+      defaultValue: "Connecting to control plane...",
     };
   }
   if (mlError) {
@@ -130,7 +132,7 @@ function getStartupDescription({
     return {
       key: "layout.backendStartup.connectingDescription",
       defaultValue:
-        "The backend is still starting. Cached content may appear first, but actions stay limited until the API responds.",
+        "The native Rust control plane is still starting.",
       error: null,
     };
   }
@@ -175,16 +177,16 @@ function getStartupSteps(
     {
       label: {
         key: "layout.backendStartup.apiLabel",
-        defaultValue: "API",
+        defaultValue: "Control plane",
       },
       detail: state.coreReady
         ? {
             key: "layout.backendStartup.apiReady",
-            defaultValue: "Connected",
+            defaultValue: "Rust sidecar ready",
           }
         : {
             key: "layout.backendStartup.apiLoading",
-            defaultValue: "Starting FastAPI",
+            defaultValue: "Starting Rust sidecar",
           },
       state: state.coreReady ? "done" : "loading",
     },

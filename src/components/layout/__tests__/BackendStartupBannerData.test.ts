@@ -11,6 +11,7 @@ function startupState(
 ): BackendStartupBannerState {
   return {
     coreReady: false,
+    scientificRequested: true,
     mlReady: false,
     workspaceReady: false,
     datasetsPrimed: false,
@@ -31,7 +32,7 @@ describe("BackendStartupBannerData", () => {
       canSettle: false,
       title: {
         key: "layout.backendStartup.connectingTitle",
-        defaultValue: "Connecting to backend...",
+        defaultValue: "Connecting to control plane...",
       },
       description: {
         key: "layout.backendStartup.connectingDescription",
@@ -47,7 +48,7 @@ describe("BackendStartupBannerData", () => {
       },
     });
     expect(model.steps.map((step) => [step.label.defaultValue, step.state])).toEqual([
-      ["API", "loading"],
+      ["Control plane", "loading"],
       ["ML Engine", "waiting"],
       ["Workspace", "waiting"],
     ]);

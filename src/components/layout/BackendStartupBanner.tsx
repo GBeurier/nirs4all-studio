@@ -74,8 +74,14 @@ function translateText(t: ReturnType<typeof useTranslation>["t"], text: StartupT
 
 export function BackendStartupBanner() {
   const { t } = useTranslation();
-  const { coreReady, mlReady, workspaceReady, datasetsPrimed, mlError } =
-    useMlReadiness();
+  const {
+    controlReady,
+    scientificRequested,
+    mlReady,
+    workspaceReady,
+    datasetsPrimed,
+    mlError,
+  } = useMlReadiness();
 
   // Live fetch counters for the two queries that drive the Datasets landing
   // page. React Query increments these as soon as a fetch starts and
@@ -100,7 +106,8 @@ export function BackendStartupBanner() {
   useEffect(() => {
     if (hasSettled) return;
     if (canSettleStartupBanner({
-      coreReady,
+      coreReady: controlReady,
+      scientificRequested,
       mlReady,
       workspaceReady,
       datasetsPrimed,
@@ -112,7 +119,8 @@ export function BackendStartupBanner() {
     }
   }, [
     hasSettled,
-    coreReady,
+    controlReady,
+    scientificRequested,
     mlReady,
     workspaceReady,
     datasetsPrimed,
@@ -126,7 +134,8 @@ export function BackendStartupBanner() {
   }
 
   const model = buildBackendStartupBannerReadModel({
-    coreReady,
+    coreReady: controlReady,
+    scientificRequested,
     mlReady,
     workspaceReady,
     datasetsPrimed,

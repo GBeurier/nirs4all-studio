@@ -97,7 +97,7 @@ function isElectronEnvironment(): boolean {
 async function waitForElectronApi(maxWaitMs: number = 5000): Promise<boolean> {
   const startTime = Date.now();
   while (Date.now() - startTime < maxWaitMs) {
-    if ((window as unknown as { electronApi?: { getBackendUrl?: () => Promise<string> } }).electronApi?.getBackendUrl) {
+    if ((window as unknown as { electronApi?: { getScientificPluginUrl?: () => Promise<string> } }).electronApi?.getScientificPluginUrl) {
       return true;
     }
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -115,15 +115,19 @@ export async function getWebSocketBaseUrl(): Promise<string> {
   if (typeof window === 'undefined') return 'ws://localhost';
 
   if (isElectronEnvironment()) {
+    const apiAvailable = await waitForElectronApi();
+    if (!apiAvailable) {
+      throw new Error('Scientific plugin IPC is unavailable for WebSocket connection');
+    }
+    const electronApi = (window as unknown as {
+      electronApi: { getScientificPluginUrl: () => Promise<string> };
+    }).electronApi;
     try {
-      const apiAvailable = await waitForElectronApi();
-      if (apiAvailable) {
-        const electronApi = (window as unknown as { electronApi: { getBackendUrl: () => Promise<string> } }).electronApi;
-        const backendUrl = await electronApi.getBackendUrl();
-        return toWebSocketBaseUrl(backendUrl);
-      }
+      const backendUrl = await electronApi.getScientificPluginUrl();
+      return toWebSocketBaseUrl(backendUrl);
     } catch (error) {
-      logger.error('Failed to resolve Electron backend WebSocket URL:', error);
+      logger.error('Failed to acquire scientific plugin WebSocket URL:', error);
+      throw error;
     }
   }
 

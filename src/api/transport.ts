@@ -57,6 +57,7 @@ type NativeSidecarStatus =
 interface ElectronBridgeApi {
   isElectron?: boolean;
   getBackendUrl?: () => Promise<string>;
+  getScientificPluginUrl?: () => Promise<string>;
   getBackendInfo?: () => Promise<{
     status: ElectronBackendStatus;
     port: number;
@@ -107,7 +108,7 @@ async function waitForElectronApi(maxWaitMs: number = 5000): Promise<boolean> {
   while (Date.now() - startTime < maxWaitMs) {
     if (
       (window as unknown as { electronApi?: ElectronBridgeApi }).electronApi
-        ?.getBackendUrl
+        ?.getScientificPluginUrl
     ) {
       return true;
     }
@@ -153,20 +154,18 @@ export async function getApiBaseUrl(): Promise<string> {
           throw new Error("electronApi not available");
         }
 
-        const electronApi = (
-          window as unknown as {
-            electronApi: { getBackendUrl: () => Promise<string> };
-          }
-        ).electronApi;
-        const backendUrl = await electronApi.getBackendUrl();
+        const electronApi = getElectronBridge();
+        if (!electronApi?.getScientificPluginUrl) {
+          throw new Error("Scientific plugin IPC is unavailable");
+        }
+        const backendUrl = await electronApi.getScientificPluginUrl();
         resolvedBackendUrl = `${backendUrl}/api`;
-        logger.info(`Using Electron backend URL: ${resolvedBackendUrl}`);
+        logger.info(`Using Electron scientific plugin URL: ${resolvedBackendUrl}`);
         return resolvedBackendUrl;
       } catch (error) {
-        logger.error("Failed to get backend URL from Electron:", error);
-        // Fallback to default - may not work but provides better error messages
-        resolvedBackendUrl = DEFAULT_API_BASE_URL;
-        return resolvedBackendUrl;
+        logger.error("Failed to acquire Electron scientific plugin:", error);
+        backendUrlPromise = null;
+        throw error;
       }
     })();
     return backendUrlPromise;

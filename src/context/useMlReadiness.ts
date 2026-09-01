@@ -1,6 +1,20 @@
 import { createContext, useContext } from "react";
 
 export interface MlReadiness {
+  /** Mandatory Rust desktop control plane. */
+  controlReady: boolean;
+  controlStatus: "disabled" | "starting" | "running" | "stopped" | "error";
+  controlError: string | null;
+  /** Optional Python/FastAPI scientific compatibility plugin. */
+  scientificStatus:
+    | "stopped"
+    | "starting"
+    | "running"
+    | "error"
+    | "restarting"
+    | "setup_required";
+  scientificRequested: boolean;
+  /** Compatibility alias for controlReady in Electron. */
   coreReady: boolean;
   mlReady: boolean;
   mlLoading: boolean;
@@ -25,6 +39,11 @@ export interface MlReadiness {
 }
 
 export const MlReadinessContext = createContext<MlReadiness>({
+  controlReady: false,
+  controlStatus: "starting",
+  controlError: null,
+  scientificStatus: "stopped",
+  scientificRequested: false,
   coreReady: false,
   mlReady: false,
   mlLoading: true,
