@@ -6,7 +6,8 @@ The only executable is `studio-sidecar`.
 
 ## Status and boundary
 
-R1 provides a small local HTTP control surface only:
+R1 provides a small local HTTP control surface plus an unselected native
+WebSocket transport:
 
 - `GET /sidecar/v1/health`
 - `GET /sidecar/v1/readiness`
@@ -20,6 +21,9 @@ R1 provides a small local HTTP control surface only:
 - `POST /sidecar/v1/jobs/{job_id}/cancel`
 - `GET /sidecar/v1/ws` (only a valid WebSocket Upgrade request receives the
   explicit unavailable `426`; ordinary HTTP requests receive `400`)
+- `GET /ws`, `GET /ws/job/:job_id`, and `GET /ws/training/:job_id` accept
+  bounded RFC 6455 upgrades on the sidecar port. Electron does not select them
+  yet; the two job-specific aliases auto-subscribe to `job:<job_id>`.
 - `GET /api/health` and `GET /api/system/readiness` (the frozen
   post-lifespan bootstrap responses only)
 - `GET /api/system/capabilities` (an explicit Rust-owned route which invokes
@@ -111,7 +115,9 @@ legacy FastAPI process.
 references that snapshot in tests to prevent an accidental parity claim. The
 sidecar exposes only the frozen post-lifespan health and readiness responses
 under `/api/*`; Electron routes the UI health check to that native health
-contract. It does not expose `/ws` or assert replacement compatibility.
+contract. It does not route the renderer to `/ws` or assert full replacement
+compatibility. The native aliases are transport evidence only until the job
+registry, HTTP state, differential, and renderer selection gates are closed.
 
 ## Build and future Electron launch contract
 
@@ -256,7 +262,7 @@ Expired records are removed first; when full, the oldest cancelled record is
 removed; a full set of pending records is refused with `429`. The GET response
 always preserves `cancellation_idempotent: true` as a protocol invariant.
 
-The planned WS envelope is explicit even though R1 does not accept upgrades:
+The internal WS envelope remains explicit and unexposed:
 
 ```json
 {"protocol_version":"studio-sidecar-r1","channel":"job:<opaque-id>","sequence":1,"timestamp":"RFC3339 UTC","type":"job.cancelled","data":{}}
@@ -265,8 +271,14 @@ The planned WS envelope is explicit even though R1 does not accept upgrades:
 `channel`, monotonically increasing per-channel `sequence`, and RFC3339 UTC
 `timestamp` are required. `WsFrame::new` fixes the protocol version,
 restricts channels to `job:<opaque-id>` and job lifecycle events, and accepts
-only bounded JSON-object data. This is a scaffold, not a claim of legacy
-WebSocket parity or a live subscription service.
+only bounded JSON-object data. The live renderer-facing transport deliberately
+removes those internal `protocol_version` and `sequence` fields and emits the
+exact four-key Studio V1 envelope: `type`, `channel`, `data`, `timestamp`.
+It accepts JSON `ping`, emits `pong`, preserves the frozen refusal of dynamic
+`subscribe`/`unsubscribe`, and auto-subscribes the two job aliases. Each slow
+connection has a 64-message queue and is dropped on saturation; no replay is
+promised, and authoritative reconnect recovery remains the future HTTP job
+state route.
 
 `contracts/studio_job_lifecycle_v1.json` freezes the R2 cutover target without
 changing that R1 capability claim. It separates the sequenced native internal
@@ -276,10 +288,12 @@ shapes to `docs/contracts/studio-v1/fixtures/websocket.snapshot.json`. In
 particular, the legacy manager publishes cancellation as `job_failed` with
 `"Job was cancelled"`; the declared `job_cancelled` enum member remains
 unreachable unless a reviewed compatibility exception changes the frozen
-contract. Route selection remains forbidden until the native scientific job
-registry, real WebSocket upgrade/connection manager, legacy endpoint mapping,
-HTTP state parity, renderer selection, and differential gate all exist. Once a
-request is selected native, neither Uvicorn nor FastAPI may be retried.
+contract. The bounded registry and real RFC 6455 connection manager now exist,
+but are not yet wired to scientific execution or the HTTP job routes. Route
+selection remains forbidden until that wiring, HTTP state parity, renderer
+selection, cancellation delivery, and the HTTP/WebSocket differential gate all
+exist. Once a request is selected native, neither Uvicorn nor FastAPI may be
+retried.
 
 ## Coverage and rollback
 
@@ -290,10 +304,11 @@ Rust-owned Python-bridge system routes plus native network state, native app pre
 and config-path selection, native system-status catalogue state, plus the linked-workspace catalogue and its native
 activation/unlink mutations,
 all-in-one binary packaging, and Electron's explicit loopback-only lifecycle
-management. Missing: every other legacy `/api/*` route, all scientific
-execution, workspace/dataset persistence, uploads, authentication, live
-WebSocket upgrades, job execution, and parity mapping/diffing for the full
-frozen surface.
+management, plus bounded RFC 6455 upgrades and exact legacy endpoint aliases on
+the unselected sidecar port. Missing: every other legacy `/api/*` route, all
+scientific execution, workspace/dataset persistence, uploads, authentication,
+job execution/HTTP state wiring, renderer WebSocket selection, and parity
+mapping/diffing for the full frozen surface.
 
 Rollback is exclusion of the sidecar binary/resource and routing the listed
 routes back to the legacy backend. `app_settings.json` has the legacy-compatible

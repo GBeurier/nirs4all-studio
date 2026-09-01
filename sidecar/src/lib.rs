@@ -30,12 +30,16 @@ mod results_summary;
 pub mod run_detail;
 pub mod run_detail_preselection;
 mod settings;
+pub mod websocket_transport;
 pub mod workspace_store;
 
 use results_summary::read_results_summary;
 use run_detail_preselection::preselect_run_detail;
 pub use settings::DatasetLinkIdentity;
 use settings::{AppSettingsStore, ConfigPathError};
+use websocket_transport::{
+    handle_websocket_connection, LegacyWebSocketEndpoint, WebSocketConnectionManager,
+};
 use workspace_store::{
     read_pipeline_summaries, read_run_summaries, WorkspaceStorePipelineSummary,
     WorkspaceStoreReadError, WorkspaceStoreRunSummary, DEFAULT_PIPELINE_SUMMARIES_LIMIT,
@@ -453,7 +457,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":false,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":false,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -2500,6 +2504,7 @@ pub fn serve(host: &str, port: u16) -> std::io::Result<()> {
         address.port()
     );
     let state = Arc::new(Mutex::new(SidecarState::from_environment()));
+    let websocket_manager = Arc::new(WebSocketConnectionManager::new());
     let limits = ServerLimits::default();
     let connections = Arc::new(ConnectionGate {
         active: AtomicUsize::new(0),
@@ -2513,9 +2518,15 @@ pub fn serve(host: &str, port: u16) -> std::io::Result<()> {
                     continue;
                 };
                 let state = Arc::clone(&state);
+                let websocket_manager = Arc::clone(&websocket_manager);
                 std::thread::spawn(move || {
                     let _permit = permit;
-                    if let Err(error) = handle_connection_with_limits(stream, &state, limits) {
+                    if let Err(error) = handle_connection_with_limits_and_websocket(
+                        stream,
+                        &state,
+                        &websocket_manager,
+                        limits,
+                    ) {
                         eprintln!("studio-sidecar connection error: {error}");
                     }
                 });
@@ -2526,15 +2537,48 @@ pub fn serve(host: &str, port: u16) -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn handle_connection_with_limits(
+    stream: TcpStream,
+    state: &Arc<Mutex<SidecarState>>,
+    limits: ServerLimits,
+) -> std::io::Result<()> {
+    handle_connection_with_limits_and_websocket(
+        stream,
+        state,
+        &WebSocketConnectionManager::new(),
+        limits,
+    )
+}
+
+fn handle_connection_with_limits_and_websocket(
     mut stream: TcpStream,
     state: &Arc<Mutex<SidecarState>>,
+    websocket_manager: &WebSocketConnectionManager,
     limits: ServerLimits,
 ) -> std::io::Result<()> {
     stream.set_read_timeout(Some(limits.read_timeout))?;
     stream.set_write_timeout(Some(limits.write_timeout))?;
     let response = match read_http_request(&mut stream, limits.header_timeout) {
         Ok(request) => {
+            if request.method == "GET" {
+                if let Some(endpoint) =
+                    LegacyWebSocketEndpoint::parse(&request.path, request.query.as_deref())
+                {
+                    if request.is_websocket_upgrade() {
+                        let websocket_key = request
+                            .headers
+                            .get("sec-websocket-key")
+                            .expect("validated WebSocket request must retain its key");
+                        return handle_websocket_connection(
+                            stream,
+                            websocket_key,
+                            &endpoint,
+                            websocket_manager,
+                        );
+                    }
+                }
+            }
             let mut state = state.lock().expect("sidecar state mutex poisoned");
             route_http_request(&mut state, &request)
         }
@@ -4099,6 +4143,41 @@ mod tests {
             assert!(response.contains("\"code\":\"invalid_request\""));
             assert!(response.contains("\"retryable\":false"));
         }
+    }
+
+    #[test]
+    fn legacy_job_websocket_upgrade_is_live_through_the_http_accept_path() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let state = Arc::new(Mutex::new(SidecarState::default()));
+        let manager = Arc::new(WebSocketConnectionManager::new());
+        let server_manager = Arc::clone(&manager);
+        let server = thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            handle_connection_with_limits_and_websocket(
+                stream,
+                &state,
+                &server_manager,
+                ServerLimits::default(),
+            )
+            .unwrap();
+        });
+
+        let stream = TcpStream::connect(address).unwrap();
+        let (mut client, response) =
+            tungstenite::client(format!("ws://{address}/ws/job/opaque-1"), stream).unwrap();
+        assert_eq!(response.status(), 101);
+        let connected: Value =
+            serde_json::from_str(client.read().unwrap().into_text().unwrap().as_str()).unwrap();
+        assert_eq!(connected["type"], "connected");
+        assert_eq!(connected["data"]["client_id"], "job-opaque-1");
+        let subscribed: Value =
+            serde_json::from_str(client.read().unwrap().into_text().unwrap().as_str()).unwrap();
+        assert_eq!(subscribed["type"], "subscribed");
+        assert_eq!(subscribed["channel"], "job:opaque-1");
+        client.close(None).unwrap();
+        server.join().unwrap();
+        assert_eq!(manager.connection_count(), 0);
     }
 
     #[test]
