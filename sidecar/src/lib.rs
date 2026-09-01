@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 
 pub mod conformal_store;
 mod settings;
-mod workspace_store;
+pub mod workspace_store;
 
 use settings::{AppSettingsStore, ConfigPathError};
 use workspace_store::{

@@ -13,7 +13,7 @@ use std::{
     time::SystemTime,
 };
 
-use rusqlite::{Connection, OpenFlags, Row};
+use rusqlite::{params, Connection, OpenFlags, Row};
 use serde_json::{json, Value};
 use url::Url;
 
@@ -22,6 +22,8 @@ pub const MAX_RUN_SUMMARIES: u16 = 500;
 pub const DEFAULT_RUN_SUMMARIES_LIMIT: u16 = 100;
 pub const MAX_PIPELINE_SUMMARIES: u16 = 500;
 pub const DEFAULT_PIPELINE_SUMMARIES_LIMIT: u16 = 100;
+pub const MAX_RANKED_CHAINS: u16 = 100;
+pub const DEFAULT_RANKED_CHAINS_LIMIT: u16 = 5;
 pub const WORKSPACE_STORE_READ_CONTRACT: &str =
     include_str!("../contracts/workspace_store_read_v1.json");
 
@@ -31,6 +33,9 @@ const STORE_FILENAME: &str = "store.sqlite";
 const RUN_SUMMARY_QUERY: &str = "SELECT run_id, name, status, created_at, completed_at, datasets, summary, error FROM runs ORDER BY created_at DESC LIMIT ? OFFSET ?";
 const PIPELINE_SUMMARY_QUERY: &str = "SELECT pipeline_id AS id, run_id, name AS pipeline_config, pipeline_id AS pipeline_config_id, dataset_name AS dataset, created_at, best_val AS best_score, best_test AS best_test_score, metric, status, duration_ms FROM pipelines ORDER BY CASE WHEN best_val IS NULL THEN 1 ELSE 0 END ASC, best_val DESC, created_at DESC, pipeline_id ASC LIMIT ? OFFSET ?";
 const PIPELINE_SUMMARY_COUNT_QUERY: &str = "SELECT COUNT(*) FROM pipelines";
+const RANKED_CHAIN_ASCENDING_QUERY: &str = "SELECT c.chain_id, c.pipeline_id, p.run_id, p.name AS pipeline_name, c.dataset_name, c.metric, c.task_type, c.model_name, c.model_class, c.preprocessings, c.cv_val_score, c.cv_test_score, c.cv_train_score, c.cv_fold_count, c.cv_scores, c.final_test_score, c.final_train_score, c.final_scores, c.final_agg_test_score, c.final_agg_train_score, c.final_agg_scores, c.best_params FROM chains AS c JOIN pipelines AS p ON p.pipeline_id = c.pipeline_id WHERE c.dataset_name = ? AND c.metric = ? AND EXISTS (SELECT 1 FROM predictions AS pr WHERE pr.chain_id = c.chain_id) ORDER BY (c.cv_val_score IS NULL) ASC, c.cv_val_score ASC, c.chain_id ASC LIMIT ? OFFSET ?";
+const RANKED_CHAIN_DESCENDING_QUERY: &str = "SELECT c.chain_id, c.pipeline_id, p.run_id, p.name AS pipeline_name, c.dataset_name, c.metric, c.task_type, c.model_name, c.model_class, c.preprocessings, c.cv_val_score, c.cv_test_score, c.cv_train_score, c.cv_fold_count, c.cv_scores, c.final_test_score, c.final_train_score, c.final_scores, c.final_agg_test_score, c.final_agg_train_score, c.final_agg_scores, c.best_params FROM chains AS c JOIN pipelines AS p ON p.pipeline_id = c.pipeline_id WHERE c.dataset_name = ? AND c.metric = ? AND EXISTS (SELECT 1 FROM predictions AS pr WHERE pr.chain_id = c.chain_id) ORDER BY (c.cv_val_score IS NULL) ASC, c.cv_val_score DESC, c.chain_id ASC LIMIT ? OFFSET ?";
+const RANKED_CHAIN_COUNT_QUERY: &str = "SELECT COUNT(*) FROM chains AS c JOIN pipelines AS p ON p.pipeline_id = c.pipeline_id WHERE c.dataset_name = ? AND c.metric = ? AND EXISTS (SELECT 1 FROM predictions AS pr WHERE pr.chain_id = c.chain_id)";
 const RUN_COLUMNS: [&str; 8] = [
     "run_id",
     "name",
@@ -53,6 +58,29 @@ const PIPELINE_COLUMNS: [&str; 10] = [
     "status",
     "duration_ms",
 ];
+const CHAIN_RANKING_COLUMNS: [&str; 20] = [
+    "chain_id",
+    "pipeline_id",
+    "dataset_name",
+    "metric",
+    "task_type",
+    "model_name",
+    "model_class",
+    "preprocessings",
+    "cv_val_score",
+    "cv_test_score",
+    "cv_train_score",
+    "cv_fold_count",
+    "cv_scores",
+    "final_test_score",
+    "final_train_score",
+    "final_scores",
+    "final_agg_test_score",
+    "final_agg_train_score",
+    "final_agg_scores",
+    "best_params",
+];
+const PREDICTION_RANKING_COLUMNS: [&str; 1] = ["chain_id"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceStoreRunSummary {
@@ -124,6 +152,74 @@ pub struct WorkspaceStorePipelineSummaryPage {
     pub total: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChainScoreDirection {
+    Ascending,
+    Descending,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkspaceStoreRankedChain {
+    chain_id: String,
+    pipeline_id: String,
+    run_id: String,
+    pipeline_name: Option<String>,
+    dataset_name: String,
+    metric: String,
+    task_type: Option<String>,
+    model_name: Option<String>,
+    model_class: Option<String>,
+    preprocessings: String,
+    cv_val_score: Option<f64>,
+    cv_test_score: Option<f64>,
+    cv_train_score: Option<f64>,
+    cv_fold_count: i64,
+    cv_scores: Value,
+    final_test_score: Option<f64>,
+    final_train_score: Option<f64>,
+    final_scores: Value,
+    final_agg_test_score: Option<f64>,
+    final_agg_train_score: Option<f64>,
+    final_agg_scores: Value,
+    best_params: Option<Value>,
+}
+
+impl WorkspaceStoreRankedChain {
+    #[must_use]
+    pub fn response(&self) -> Value {
+        json!({
+            "chain_id": self.chain_id,
+            "pipeline_id": self.pipeline_id,
+            "run_id": self.run_id,
+            "pipeline_name": self.pipeline_name,
+            "dataset_name": self.dataset_name,
+            "metric": self.metric,
+            "task_type": self.task_type,
+            "model_name": self.model_name,
+            "model_class": self.model_class,
+            "preprocessings": self.preprocessings,
+            "cv_val_score": self.cv_val_score,
+            "cv_test_score": self.cv_test_score,
+            "cv_train_score": self.cv_train_score,
+            "cv_fold_count": self.cv_fold_count,
+            "cv_scores": self.cv_scores,
+            "final_test_score": self.final_test_score,
+            "final_train_score": self.final_train_score,
+            "final_scores": self.final_scores,
+            "final_agg_test_score": self.final_agg_test_score,
+            "final_agg_train_score": self.final_agg_train_score,
+            "final_agg_scores": self.final_agg_scores,
+            "best_params": self.best_params,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WorkspaceStoreRankedChainPage {
+    pub results: Vec<WorkspaceStoreRankedChain>,
+    pub total: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceStoreReadError {
     Contract(String),
@@ -142,6 +238,8 @@ pub enum WorkspaceStoreReadError {
         columns: Vec<String>,
     },
     LimitOutOfRange(u16),
+    RankedChainLimitOutOfRange(u16),
+    EmptyRankedChainFilter(&'static str),
     OffsetOutOfRange(u64),
     Query(String),
     ChangedDuringRead,
@@ -178,6 +276,13 @@ impl fmt::Display for WorkspaceStoreReadError {
                 formatter,
                 "WorkspaceStore summary limit {limit} is outside 1..={MAX_RUN_SUMMARIES}"
             ),
+            Self::RankedChainLimitOutOfRange(limit) => write!(
+                formatter,
+                "WorkspaceStore ranked-chain limit {limit} is outside 1..={MAX_RANKED_CHAINS}"
+            ),
+            Self::EmptyRankedChainFilter(field) => {
+                write!(formatter, "WorkspaceStore ranked-chain `{field}` must not be empty")
+            }
             Self::OffsetOutOfRange(offset) => write!(
                 formatter,
                 "WorkspaceStore summary offset {offset} exceeds SQLite integer range"
@@ -202,6 +307,11 @@ struct FileStamp {
 /// A caller must treat [`WorkspaceStoreReadError::SchemaVersion`] as a
 /// fail-closed compatibility result, rather than falling back to a private
 /// schema reconstruction.
+///
+/// # Errors
+///
+/// Returns [`WorkspaceStoreReadError`] when the contract, location, immutable
+/// snapshot, schema, bounds, or projected values fail validation.
 pub fn read_run_summaries(
     workspace_path: &Path,
     limit: u16,
@@ -240,6 +350,11 @@ pub fn read_run_summaries(
 /// This deliberately implements only the filter-free, bounded projection.
 /// Scanner filters, chain rankings, and repository fallbacks remain outside
 /// this contract and must not be reconstructed from private schema knowledge.
+///
+/// # Errors
+///
+/// Returns [`WorkspaceStoreReadError`] when the contract, location, immutable
+/// snapshot, schema, bounds, or projected values fail validation.
 pub fn read_pipeline_summaries(
     workspace_path: &Path,
     limit: u16,
@@ -265,6 +380,68 @@ pub fn read_pipeline_summaries(
     .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
     validate_database(&connection)?;
     let result = query_pipeline_summaries(&connection, i64::from(limit), offset);
+    drop(connection);
+    refuse_live_journals(&database)?;
+    if file_stamp(&database)? != before {
+        return Err(WorkspaceStoreReadError::ChangedDuringRead);
+    }
+    result
+}
+
+/// Return one deterministic page from the public Store v5 chain-ranking primitive.
+///
+/// Metric direction is deliberately explicit. This reader does not infer metric
+/// semantics and does not implement Studio's higher-level results-summary policy.
+///
+/// # Errors
+///
+/// Returns [`WorkspaceStoreReadError`] when filters or bounds are invalid, or
+/// when the contract, immutable snapshot, schema, or row values fail validation.
+pub fn read_ranked_chains(
+    workspace_path: &Path,
+    dataset_name: &str,
+    metric: &str,
+    direction: ChainScoreDirection,
+    limit: u16,
+    offset: u64,
+) -> Result<WorkspaceStoreRankedChainPage, WorkspaceStoreReadError> {
+    validate_contract()?;
+    if dataset_name.is_empty() {
+        return Err(WorkspaceStoreReadError::EmptyRankedChainFilter(
+            "dataset_name",
+        ));
+    }
+    if metric.is_empty() {
+        return Err(WorkspaceStoreReadError::EmptyRankedChainFilter("metric"));
+    }
+    if limit == 0 || limit > MAX_RANKED_CHAINS {
+        return Err(WorkspaceStoreReadError::RankedChainLimitOutOfRange(limit));
+    }
+    let offset =
+        i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
+    let database =
+        workspace_store_path(workspace_path).ok_or(WorkspaceStoreReadError::StoreNotFound)?;
+    let before = file_stamp(&database)?;
+    refuse_live_journals(&database)?;
+    let uri = immutable_read_only_uri(&database)?;
+    let connection = Connection::open_with_flags(
+        uri,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    validate_database(&connection)?;
+    validate_table_columns(&connection, "chains", &CHAIN_RANKING_COLUMNS)?;
+    validate_table_columns(&connection, "predictions", &PREDICTION_RANKING_COLUMNS)?;
+    let result = query_ranked_chains(
+        &connection,
+        dataset_name,
+        metric,
+        direction,
+        i64::from(limit),
+        offset,
+    );
     drop(connection);
     refuse_live_journals(&database)?;
     if file_stamp(&database)? != before {
@@ -355,7 +532,8 @@ fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
             "run-summary field columns differ from v1".into(),
         ));
     }
-    validate_pipeline_contract(&contract, &expected_parameters)
+    validate_pipeline_contract(&contract, &expected_parameters)?;
+    validate_ranked_chain_contract(&contract)
 }
 
 fn validate_pipeline_contract(
@@ -405,6 +583,81 @@ fn validate_pipeline_contract(
     if pipeline_fields.as_slice() != expected_pipeline_fields.as_slice() {
         return Err(WorkspaceStoreReadError::Contract(
             "pipeline-summary fields differ from v1".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_ranked_chain_contract(contract: &Value) -> Result<(), WorkspaceStoreReadError> {
+    let projection = contract
+        .pointer("/projections/studio_chain_ranked_v1")
+        .ok_or_else(|| {
+            WorkspaceStoreReadError::Contract("studio_chain_ranked_v1 is missing".into())
+        })?;
+    let expected_parameters = [
+        json!({"name": "dataset_name", "type": "string", "minimum_length": 1}),
+        json!({"name": "metric", "type": "string", "minimum_length": 1}),
+        json!({"name": "direction", "type": "string", "enum": ["asc", "desc"], "required": true}),
+        json!({"name": "limit", "type": "integer", "minimum": 1, "maximum": MAX_RANKED_CHAINS, "default": DEFAULT_RANKED_CHAINS_LIMIT}),
+        json!({"name": "offset", "type": "integer", "minimum": 0, "default": 0}),
+    ];
+    if projection.get("source_tables") != Some(&json!(["chains", "pipelines", "predictions"]))
+        || projection.get("eligibility").and_then(Value::as_str)
+            != Some("at_least_one_prediction_for_chain")
+        || projection.get("ascending_query").and_then(Value::as_str)
+            != Some(RANKED_CHAIN_ASCENDING_QUERY)
+        || projection.get("descending_query").and_then(Value::as_str)
+            != Some(RANKED_CHAIN_DESCENDING_QUERY)
+        || projection.get("count_query").and_then(Value::as_str) != Some(RANKED_CHAIN_COUNT_QUERY)
+        || projection
+            .get("parameters")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            != Some(expected_parameters.as_slice())
+    {
+        return Err(WorkspaceStoreReadError::Contract(
+            "ranked-chain sources, queries, eligibility, or bounds differ from v1".into(),
+        ));
+    }
+    let expected_fields = [
+        json!({"name": "chain_id", "column": "chain_id", "type": "string", "required": true}),
+        json!({"name": "pipeline_id", "column": "pipeline_id", "type": "string", "required": true}),
+        json!({"name": "run_id", "column": "run_id", "type": "string", "required": true}),
+        json!({"name": "pipeline_name", "column": "name", "type": "string", "nullable": true}),
+        json!({"name": "dataset_name", "column": "dataset_name", "type": "string", "required": true}),
+        json!({"name": "metric", "column": "metric", "type": "string", "required": true}),
+        json!({"name": "task_type", "column": "task_type", "type": "string", "nullable": true}),
+        json!({"name": "model_name", "column": "model_name", "type": "string", "nullable": true}),
+        json!({"name": "model_class", "column": "model_class", "type": "string", "nullable": true}),
+        json!({"name": "preprocessings", "column": "preprocessings", "type": "string", "default": ""}),
+        json!({"name": "cv_val_score", "column": "cv_val_score", "type": "number", "nullable": true, "finite": true}),
+        json!({"name": "cv_test_score", "column": "cv_test_score", "type": "number", "nullable": true, "finite": true}),
+        json!({"name": "cv_train_score", "column": "cv_train_score", "type": "number", "nullable": true, "finite": true}),
+        json!({"name": "cv_fold_count", "column": "cv_fold_count", "type": "integer", "minimum": 0, "default": 0}),
+        json!({"name": "cv_scores", "column": "cv_scores", "type": "json_object", "default": {}}),
+        json!({"name": "final_test_score", "column": "final_test_score", "type": "number", "nullable": true, "finite": true}),
+        json!({"name": "final_train_score", "column": "final_train_score", "type": "number", "nullable": true, "finite": true}),
+        json!({"name": "final_scores", "column": "final_scores", "type": "json_object", "default": {}}),
+        json!({"name": "final_agg_test_score", "column": "final_agg_test_score", "type": "number", "nullable": true, "finite": true}),
+        json!({"name": "final_agg_train_score", "column": "final_agg_train_score", "type": "number", "nullable": true, "finite": true}),
+        json!({"name": "final_agg_scores", "column": "final_agg_scores", "type": "json_object", "default": {}}),
+        json!({"name": "best_params", "column": "best_params", "type": "json_object", "nullable": true}),
+    ];
+    if projection
+        .get("fields")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        != Some(expected_fields.as_slice())
+        || projection.get("excluded_computed_fields")
+            != Some(&json!([
+                "variant_params",
+                "synthetic_refit",
+                "cv_source_chain_id",
+                "is_refit_only"
+            ]))
+    {
+        return Err(WorkspaceStoreReadError::Contract(
+            "ranked-chain fields or exclusions differ from v1".into(),
         ));
     }
     Ok(())
@@ -589,6 +842,43 @@ fn query_pipeline_summaries(
     Ok(WorkspaceStorePipelineSummaryPage { results, total })
 }
 
+fn query_ranked_chains(
+    connection: &Connection,
+    dataset_name: &str,
+    metric: &str,
+    direction: ChainScoreDirection,
+    limit: i64,
+    offset: i64,
+) -> Result<WorkspaceStoreRankedChainPage, WorkspaceStoreReadError> {
+    let total = connection
+        .query_row(
+            RANKED_CHAIN_COUNT_QUERY,
+            params![dataset_name, metric],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let total = usize::try_from(total).map_err(|_| {
+        WorkspaceStoreReadError::Query("ranked-chain count is outside usize range".into())
+    })?;
+    let query = match direction {
+        ChainScoreDirection::Ascending => RANKED_CHAIN_ASCENDING_QUERY,
+        ChainScoreDirection::Descending => RANKED_CHAIN_DESCENDING_QUERY,
+    };
+    let mut statement = connection
+        .prepare(query)
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let rows = statement
+        .query_map(
+            params![dataset_name, metric, limit, offset],
+            row_to_ranked_chain,
+        )
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let results = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    Ok(WorkspaceStoreRankedChainPage { results, total })
+}
+
 fn row_to_run_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceStoreRunSummary> {
     Ok(WorkspaceStoreRunSummary {
         id: required_text(row, 0, "run_id")?,
@@ -615,6 +905,33 @@ fn row_to_pipeline_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceStorePipe
         metric: optional_text(row, 8)?,
         status: optional_text(row, 9)?,
         duration_ms: row.get(10)?,
+    })
+}
+
+fn row_to_ranked_chain(row: &Row<'_>) -> rusqlite::Result<WorkspaceStoreRankedChain> {
+    Ok(WorkspaceStoreRankedChain {
+        chain_id: required_text(row, 0, "chain_id")?,
+        pipeline_id: required_text(row, 1, "pipeline_id")?,
+        run_id: required_text(row, 2, "run_id")?,
+        pipeline_name: optional_text(row, 3)?,
+        dataset_name: required_text(row, 4, "dataset_name")?,
+        metric: required_text(row, 5, "metric")?,
+        task_type: optional_text(row, 6)?,
+        model_name: optional_text(row, 7)?,
+        model_class: optional_text(row, 8)?,
+        preprocessings: optional_text(row, 9)?.unwrap_or_default(),
+        cv_val_score: optional_finite_f64(row, 10, "cv_val_score")?,
+        cv_test_score: optional_finite_f64(row, 11, "cv_test_score")?,
+        cv_train_score: optional_finite_f64(row, 12, "cv_train_score")?,
+        cv_fold_count: nonnegative_i64_or_default(row, 13, "cv_fold_count")?,
+        cv_scores: json_object_or_default(optional_text(row, 14)?),
+        final_test_score: optional_finite_f64(row, 15, "final_test_score")?,
+        final_train_score: optional_finite_f64(row, 16, "final_train_score")?,
+        final_scores: json_object_or_default(optional_text(row, 17)?),
+        final_agg_test_score: optional_finite_f64(row, 18, "final_agg_test_score")?,
+        final_agg_train_score: optional_finite_f64(row, 19, "final_agg_train_score")?,
+        final_agg_scores: json_object_or_default(optional_text(row, 20)?),
+        best_params: nonempty_json_object(optional_text(row, 21)?),
     })
 }
 
@@ -648,6 +965,22 @@ fn optional_finite_f64(
     Ok(value)
 }
 
+fn nonnegative_i64_or_default(
+    row: &Row<'_>,
+    index: usize,
+    field: &'static str,
+) -> rusqlite::Result<i64> {
+    let value = row.get::<_, Option<i64>>(index)?.unwrap_or_default();
+    if value < 0 {
+        return Err(rusqlite::Error::FromSqlConversionFailure(
+            index,
+            rusqlite::types::Type::Integer,
+            format!("`{field}` is negative").into(),
+        ));
+    }
+    Ok(value)
+}
+
 fn iso8601_timestamp(raw: Option<String>) -> String {
     let mut value = raw.unwrap_or_default();
     if value.as_bytes().get(10) == Some(&b' ') {
@@ -661,21 +994,32 @@ fn json_or_default(raw: Option<String>, default: Value) -> Value {
         .unwrap_or(default)
 }
 
+fn json_object_or_default(raw: Option<String>) -> Value {
+    raw.and_then(|value| serde_json::from_str::<Value>(&value).ok())
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}))
+}
+
+fn nonempty_json_object(raw: Option<String>) -> Option<Value> {
+    raw.and_then(|value| serde_json::from_str::<Value>(&value).ok())
+        .filter(|value| value.as_object().is_some_and(|object| !object.is_empty()))
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
         collections::BTreeSet,
         fs,
-        path::PathBuf,
+        path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use rusqlite::Connection;
+    use rusqlite::{params, Connection};
     use serde_json::json;
 
     use super::{
-        read_pipeline_summaries, read_run_summaries, WorkspaceStoreReadError,
-        DEFAULT_PIPELINE_SUMMARIES_LIMIT, DEFAULT_RUN_SUMMARIES_LIMIT,
+        read_pipeline_summaries, read_ranked_chains, read_run_summaries, ChainScoreDirection,
+        WorkspaceStoreReadError, DEFAULT_PIPELINE_SUMMARIES_LIMIT, DEFAULT_RUN_SUMMARIES_LIMIT,
     };
 
     const PYTHON_WRITTEN_STORE: &[u8] =
@@ -693,6 +1037,46 @@ mod tests {
         fs::create_dir_all(&workspace).unwrap();
         fs::write(workspace.join("store.sqlite"), PYTHON_WRITTEN_STORE).unwrap();
         workspace
+    }
+
+    fn populate_ranked_chains(workspace: &Path) {
+        let connection = Connection::open(workspace.join("store.sqlite")).unwrap();
+        let pipeline_id = "87654321-4321-6789-4321-678943216789";
+        for (chain_id, score, metric, cv_scores, best_params) in [
+            ("chain-a", Some(0.5), "rmse", Some("{}"), Some("{}")),
+            (
+                "chain-b",
+                Some(0.1),
+                "rmse",
+                Some("{\"rmse\":0.1}"),
+                Some("{\"n_components\":4}"),
+            ),
+            ("chain-c", None, "rmse", Some("not-json"), Some("[]")),
+            ("chain-no-prediction", Some(0.01), "rmse", None, None),
+            ("chain-z", Some(0.5), "rmse", None, None),
+            ("chain-other-metric", Some(0.99), "r2", None, None),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO chains (chain_id, pipeline_id, steps, model_step_idx, model_class, dataset_name, metric, cv_val_score, cv_fold_count, cv_scores, best_params) VALUES (?, ?, '[]', 1, 'PLSRegression', 'corn', ?, ?, 2, ?, ?)",
+                    params![chain_id, pipeline_id, metric, score, cv_scores, best_params],
+                )
+                .unwrap();
+        }
+        for chain_id in [
+            "chain-a",
+            "chain-b",
+            "chain-c",
+            "chain-z",
+            "chain-other-metric",
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO predictions (prediction_id, pipeline_id, chain_id, dataset_name, model_name, model_class, fold_id, partition, metric, task_type) VALUES (?, ?, ?, 'corn', 'PLS', 'PLSRegression', 'fold_0', 'val', 'rmse', 'regression')",
+                    params![format!("prediction-{chain_id}"), pipeline_id, chain_id],
+                )
+                .unwrap();
+        }
     }
 
     #[test]
@@ -774,6 +1158,112 @@ mod tests {
         assert_eq!(page.results[1].response()["best_test_score"], json!(null));
         assert_eq!(page.results[1].response()["metric"], json!(null));
         assert_eq!(page.results[1].response()["status"], json!(null));
+        fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[test]
+    fn reads_ranked_chains_with_explicit_direction_stable_pages_and_json_defaults() {
+        let workspace = fixture_workspace("workspace-store-ranked-chains-v5");
+        populate_ranked_chains(&workspace);
+
+        let ascending = read_ranked_chains(
+            &workspace,
+            "corn",
+            "rmse",
+            ChainScoreDirection::Ascending,
+            100,
+            0,
+        )
+        .unwrap();
+        let descending = read_ranked_chains(
+            &workspace,
+            "corn",
+            "rmse",
+            ChainScoreDirection::Descending,
+            100,
+            0,
+        )
+        .unwrap();
+        let second_page = read_ranked_chains(
+            &workspace,
+            "corn",
+            "rmse",
+            ChainScoreDirection::Ascending,
+            2,
+            2,
+        )
+        .unwrap();
+
+        assert_eq!(ascending.total, 4);
+        assert_eq!(
+            ascending
+                .results
+                .iter()
+                .map(|chain| chain.chain_id.as_str())
+                .collect::<Vec<_>>(),
+            ["chain-b", "chain-a", "chain-z", "chain-c"]
+        );
+        assert_eq!(
+            descending
+                .results
+                .iter()
+                .map(|chain| chain.chain_id.as_str())
+                .collect::<Vec<_>>(),
+            ["chain-a", "chain-z", "chain-b", "chain-c"]
+        );
+        assert_eq!(
+            second_page
+                .results
+                .iter()
+                .map(|chain| chain.chain_id.as_str())
+                .collect::<Vec<_>>(),
+            ["chain-z", "chain-c"]
+        );
+        assert_eq!(
+            ascending.results[0].response()["cv_scores"],
+            json!({"rmse": 0.1})
+        );
+        assert_eq!(
+            ascending.results[0].response()["best_params"],
+            json!({"n_components": 4})
+        );
+        assert_eq!(ascending.results[1].response()["best_params"], json!(null));
+        assert_eq!(ascending.results[3].response()["cv_scores"], json!({}));
+        assert_eq!(ascending.results[3].response()["best_params"], json!(null));
+        fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[test]
+    fn ranked_chain_reader_rejects_implicit_filters_and_unbounded_pages() {
+        let workspace = fixture_workspace("workspace-store-ranked-chain-bounds-v5");
+        assert!(matches!(
+            read_ranked_chains(&workspace, "", "rmse", ChainScoreDirection::Ascending, 5, 0,),
+            Err(WorkspaceStoreReadError::EmptyRankedChainFilter(
+                "dataset_name"
+            ))
+        ));
+        assert!(matches!(
+            read_ranked_chains(
+                &workspace,
+                "corn",
+                "",
+                ChainScoreDirection::Descending,
+                5,
+                0,
+            ),
+            Err(WorkspaceStoreReadError::EmptyRankedChainFilter("metric"))
+        ));
+        assert!(matches!(
+            read_ranked_chains(
+                &workspace,
+                "corn",
+                "rmse",
+                ChainScoreDirection::Ascending,
+                101,
+                0,
+            ),
+            Err(WorkspaceStoreReadError::RankedChainLimitOutOfRange(101))
+        ));
         fs::remove_dir_all(workspace).unwrap();
     }
 
