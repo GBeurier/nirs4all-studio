@@ -64,6 +64,7 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["GET /updates/settings", { name: "updates-settings", capability: "updates_settings_routes" }],
   ["PUT /updates/settings", { name: "updates-settings", capability: "updates_settings_routes" }],
   ["POST /runs/run-groups", { name: "scientific-submission", capability: "scientific_submission_transport" }],
+  ["POST /predict/archive-v2", { name: "archive-v2-prediction", capability: "native_archive_v2_prediction" }],
 ]);
 
 const pythonHostRoutes = new Map<string, NativeSurface>([
