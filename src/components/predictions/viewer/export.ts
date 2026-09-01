@@ -27,7 +27,7 @@ export function sanitizeFilename(value: string | null | undefined): string {
 }
 
 /** Render the rows as CSV and download them as a file. */
-export function exportRowsCsv<T extends Record<string, unknown>>(
+export function exportRowsCsv<T extends object>(
   rows: T[],
   header: (keyof T)[],
   filename: string,

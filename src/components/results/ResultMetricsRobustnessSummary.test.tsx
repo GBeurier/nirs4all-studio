@@ -72,6 +72,8 @@ function summary(): ResultRobustnessSummaryData {
     }],
     fingerprint: "robustness:abcdef1234567890",
     guarantee: {
+      calibrationReplayLabel: "unknown replay source",
+      calibrationReplaySource: null,
       coverageLabel: "80%",
       effectiveEngine: "nirs4all.conformal.v1",
       invalidationReasons: ["prediction fingerprint changed"],
@@ -82,6 +84,8 @@ function summary(): ResultRobustnessSummaryData {
       scope: "finite_sample_marginal_exchangeability",
       status: "invalidated",
       tone: "error",
+      tuningCalibrationLabel: "unknown tuning calibration source",
+      tuningCalibrationSource: null,
       unit: "physical_sample",
     },
     mode: "clean_frozen",
