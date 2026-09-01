@@ -26,6 +26,8 @@ pub const MAX_RANKED_CHAINS: u16 = 100;
 pub const DEFAULT_RANKED_CHAINS_LIMIT: u16 = 5;
 pub const WORKSPACE_STORE_READ_CONTRACT: &str =
     include_str!("../contracts/workspace_store_read_v1.json");
+pub const WORKSPACE_STORE_RESULTS_SUMMARY_CONTRACT: &str =
+    include_str!("../contracts/workspace_store_results_summary_v1.json");
 
 const CONTRACT_SCHEMA_ID: &str = "nirs4all.workspace-store-read.v1";
 const CONTRACT_SCHEMA_VERSION: i64 = 1;
@@ -36,6 +38,9 @@ const PIPELINE_SUMMARY_COUNT_QUERY: &str = "SELECT COUNT(*) FROM pipelines";
 const RANKED_CHAIN_ASCENDING_QUERY: &str = "SELECT c.chain_id, c.pipeline_id, p.run_id, p.name AS pipeline_name, c.dataset_name, c.metric, c.task_type, c.model_name, c.model_class, c.preprocessings, c.cv_val_score, c.cv_test_score, c.cv_train_score, c.cv_fold_count, c.cv_scores, c.final_test_score, c.final_train_score, c.final_scores, c.final_agg_test_score, c.final_agg_train_score, c.final_agg_scores, c.best_params FROM chains AS c JOIN pipelines AS p ON p.pipeline_id = c.pipeline_id WHERE c.dataset_name = ? AND c.metric = ? AND EXISTS (SELECT 1 FROM predictions AS pr WHERE pr.chain_id = c.chain_id) ORDER BY (c.cv_val_score IS NULL) ASC, c.cv_val_score ASC, c.chain_id ASC LIMIT ? OFFSET ?";
 const RANKED_CHAIN_DESCENDING_QUERY: &str = "SELECT c.chain_id, c.pipeline_id, p.run_id, p.name AS pipeline_name, c.dataset_name, c.metric, c.task_type, c.model_name, c.model_class, c.preprocessings, c.cv_val_score, c.cv_test_score, c.cv_train_score, c.cv_fold_count, c.cv_scores, c.final_test_score, c.final_train_score, c.final_scores, c.final_agg_test_score, c.final_agg_train_score, c.final_agg_scores, c.best_params FROM chains AS c JOIN pipelines AS p ON p.pipeline_id = c.pipeline_id WHERE c.dataset_name = ? AND c.metric = ? AND EXISTS (SELECT 1 FROM predictions AS pr WHERE pr.chain_id = c.chain_id) ORDER BY (c.cv_val_score IS NULL) ASC, c.cv_val_score DESC, c.chain_id ASC LIMIT ? OFFSET ?";
 const RANKED_CHAIN_COUNT_QUERY: &str = "SELECT COUNT(*) FROM chains AS c JOIN pipelines AS p ON p.pipeline_id = c.pipeline_id WHERE c.dataset_name = ? AND c.metric = ? AND EXISTS (SELECT 1 FROM predictions AS pr WHERE pr.chain_id = c.chain_id)";
+const RESULTS_SUMMARY_PAGE_QUERY: &str = "SELECT c.chain_id, c.pipeline_id, p.run_id, p.name AS pipeline_name, p.expanded_config, c.model_step_idx, c.dataset_name, c.metric, c.task_type, c.model_name, c.model_class, c.preprocessings, c.cv_val_score, c.cv_test_score, c.cv_train_score, c.cv_fold_count, c.cv_scores, c.final_test_score, c.final_train_score, c.final_scores, c.final_agg_test_score, c.final_agg_train_score, c.final_agg_scores, c.best_params FROM chains AS c JOIN pipelines AS p ON p.pipeline_id = c.pipeline_id WHERE EXISTS (SELECT 1 FROM predictions AS pr WHERE pr.chain_id = c.chain_id) ORDER BY c.chain_id ASC LIMIT ? OFFSET ?";
+const RESULTS_SUMMARY_COUNT_QUERY: &str = "SELECT COUNT(*) FROM chains AS c JOIN pipelines AS p ON p.pipeline_id = c.pipeline_id WHERE EXISTS (SELECT 1 FROM predictions AS pr WHERE pr.chain_id = c.chain_id)";
+const RESULTS_SUMMARY_PAGE_SIZE: i64 = 500;
 const RUN_COLUMNS: [&str; 8] = [
     "run_id",
     "name",
@@ -81,6 +86,36 @@ const CHAIN_RANKING_COLUMNS: [&str; 20] = [
     "best_params",
 ];
 const PREDICTION_RANKING_COLUMNS: [&str; 1] = ["chain_id"];
+const RESULTS_SUMMARY_CHAIN_COLUMNS: [&str; 21] = [
+    "chain_id",
+    "pipeline_id",
+    "model_step_idx",
+    "dataset_name",
+    "metric",
+    "task_type",
+    "model_name",
+    "model_class",
+    "preprocessings",
+    "cv_val_score",
+    "cv_test_score",
+    "cv_train_score",
+    "cv_fold_count",
+    "cv_scores",
+    "final_test_score",
+    "final_train_score",
+    "final_scores",
+    "final_agg_test_score",
+    "final_agg_train_score",
+    "final_agg_scores",
+    "best_params",
+];
+const RESULTS_SUMMARY_PIPELINE_COLUMNS: [&str; 5] = [
+    "pipeline_id",
+    "run_id",
+    "name",
+    "expanded_config",
+    "created_at",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceStoreRunSummary {
@@ -218,6 +253,38 @@ impl WorkspaceStoreRankedChain {
 pub struct WorkspaceStoreRankedChainPage {
     pub results: Vec<WorkspaceStoreRankedChain>,
     pub total: usize,
+}
+
+/// One owner-projected row used by the native Studio results-summary policy.
+///
+/// The fields are crate-visible so the policy module can consume this public
+/// projection without issuing any Studio-owned SQL against Store internals.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct WorkspaceStoreResultsSummarySourceRow {
+    pub chain_id: String,
+    pub pipeline_id: String,
+    pub run_id: String,
+    pub pipeline_name: String,
+    pub expanded_config: Option<Vec<Value>>,
+    pub model_step_idx: i64,
+    pub dataset_name: String,
+    pub metric: Option<String>,
+    pub task_type: Option<String>,
+    pub model_name: Option<String>,
+    pub model_class: String,
+    pub preprocessings: String,
+    pub cv_val_score: Option<f64>,
+    pub cv_test_score: Option<f64>,
+    pub cv_train_score: Option<f64>,
+    pub cv_fold_count: i64,
+    pub cv_scores: Value,
+    pub final_test_score: Option<f64>,
+    pub final_train_score: Option<f64>,
+    pub final_scores: Value,
+    pub final_agg_test_score: Option<f64>,
+    pub final_agg_train_score: Option<f64>,
+    pub final_agg_scores: Value,
+    pub best_params: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -447,6 +514,45 @@ pub fn read_ranked_chains(
     result
 }
 
+/// Read every results-summary source row from one immutable Store v5 snapshot.
+///
+/// The owner contract fixes a 500-row page primitive, but all pages are read
+/// through the same `SQLite` connection before the file stamp is rechecked. This
+/// prevents a Studio policy layer from combining independently observed pages.
+///
+/// # Errors
+///
+/// Returns [`WorkspaceStoreReadError`] when the contract, immutable snapshot,
+/// schema, required projection columns, or any source row is incompatible.
+pub(crate) fn read_results_summary_source(
+    workspace_path: &Path,
+) -> Result<Vec<WorkspaceStoreResultsSummarySourceRow>, WorkspaceStoreReadError> {
+    validate_contract()?;
+    validate_results_summary_contract()?;
+    let database = canonical_workspace_store_path(workspace_path)?;
+    let before = file_stamp(&database)?;
+    refuse_live_journals(&database)?;
+    let uri = immutable_read_only_uri(&database)?;
+    let connection = Connection::open_with_flags(
+        uri,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    validate_database(&connection)?;
+    validate_table_columns(&connection, "chains", &RESULTS_SUMMARY_CHAIN_COLUMNS)?;
+    validate_table_columns(&connection, "pipelines", &RESULTS_SUMMARY_PIPELINE_COLUMNS)?;
+    validate_table_columns(&connection, "predictions", &PREDICTION_RANKING_COLUMNS)?;
+    let result = query_results_summary_source(&connection);
+    drop(connection);
+    refuse_live_journals(&database)?;
+    if file_stamp(&database)? != before {
+        return Err(WorkspaceStoreReadError::ChangedDuringRead);
+    }
+    result
+}
+
 fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
     let contract: Value = serde_json::from_str(WORKSPACE_STORE_READ_CONTRACT)
         .map_err(|error| WorkspaceStoreReadError::Contract(error.to_string()))?;
@@ -537,6 +643,197 @@ fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
     }
     validate_pipeline_contract(&contract, &expected_parameters)?;
     validate_ranked_chain_contract(&contract)
+}
+
+fn validate_results_summary_contract() -> Result<(), WorkspaceStoreReadError> {
+    let contract: Value = serde_json::from_str(WORKSPACE_STORE_RESULTS_SUMMARY_CONTRACT)
+        .map_err(|error| WorkspaceStoreReadError::Contract(error.to_string()))?;
+    let expected_request = json!({
+        "surface": "studio_results_summary",
+        "method": "GET",
+        "path_suffix": "/results/summary",
+        "query_string": "absent",
+        "top_n": 5,
+        "supported_top_n": [5],
+    });
+    let expected_dependency = json!({
+        "schema_id": "nirs4all.workspace-store-read.v1",
+        "schema_version": 1,
+        "projection": "studio_chain_ranked_v1",
+    });
+    let source = contract
+        .get("source_projection")
+        .ok_or_else(|| WorkspaceStoreReadError::Contract("source_projection is missing".into()))?;
+    let expected_parameters = [
+        json!({"name": "limit", "type": "integer", "minimum": 1, "maximum": 500, "default": 500}),
+        json!({"name": "offset", "type": "integer", "minimum": 0, "default": 0}),
+    ];
+    if contract.get("schema_id").and_then(Value::as_str)
+        != Some("nirs4all.workspace-store-results-summary.v1")
+        || contract.get("schema_version").and_then(Value::as_i64) != Some(1)
+        || contract
+            .get("workspace_store_schema_version")
+            .and_then(Value::as_i64)
+            != Some(WORKSPACE_STORE_SCHEMA_VERSION)
+        || contract.pointer("/dependencies/workspace_store_read") != Some(&expected_dependency)
+        || contract.get("request") != Some(&expected_request)
+        || source.get("source_tables") != Some(&json!(["chains", "pipelines", "predictions"]))
+        || source.get("eligibility").and_then(Value::as_str)
+            != Some("at_least_one_prediction_for_chain")
+        || source.get("page_query").and_then(Value::as_str) != Some(RESULTS_SUMMARY_PAGE_QUERY)
+        || source.get("count_query").and_then(Value::as_str) != Some(RESULTS_SUMMARY_COUNT_QUERY)
+        || source
+            .get("parameters")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            != Some(expected_parameters.as_slice())
+        || source.get("snapshot").and_then(Value::as_str)
+            != Some("all_pages_must_be_read_from_one_immutable_database_snapshot")
+    {
+        return Err(WorkspaceStoreReadError::Contract(
+            "results-summary dispatch, dependency, source query, or snapshot differs from v1"
+                .into(),
+        ));
+    }
+
+    validate_results_summary_fields(source)?;
+    validate_results_summary_policy(&contract)
+}
+
+fn validate_results_summary_fields(source: &Value) -> Result<(), WorkspaceStoreReadError> {
+    let expected_fields = [
+        ("chain_id", "chain_id"),
+        ("pipeline_id", "pipeline_id"),
+        ("run_id", "run_id"),
+        ("pipeline_name", "name"),
+        ("expanded_config", "expanded_config"),
+        ("model_step_idx", "model_step_idx"),
+        ("dataset_name", "dataset_name"),
+        ("metric", "metric"),
+        ("task_type", "task_type"),
+        ("model_name", "model_name"),
+        ("model_class", "model_class"),
+        ("preprocessings", "preprocessings"),
+        ("cv_val_score", "cv_val_score"),
+        ("cv_test_score", "cv_test_score"),
+        ("cv_train_score", "cv_train_score"),
+        ("cv_fold_count", "cv_fold_count"),
+        ("cv_scores", "cv_scores"),
+        ("final_test_score", "final_test_score"),
+        ("final_train_score", "final_train_score"),
+        ("final_scores", "final_scores"),
+        ("final_agg_test_score", "final_agg_test_score"),
+        ("final_agg_train_score", "final_agg_train_score"),
+        ("final_agg_scores", "final_agg_scores"),
+        ("best_params", "best_params"),
+    ];
+    let fields = source
+        .get("fields")
+        .and_then(Value::as_array)
+        .ok_or_else(|| WorkspaceStoreReadError::Contract("source fields are missing".into()))?;
+    if fields.len() != expected_fields.len()
+        || !fields
+            .iter()
+            .zip(expected_fields)
+            .all(|(field, (name, column))| {
+                field.get("name").and_then(Value::as_str) == Some(name)
+                    && field.get("column").and_then(Value::as_str) == Some(column)
+            })
+    {
+        return Err(WorkspaceStoreReadError::Contract(
+            "results-summary source fields differ from v1".into(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_results_summary_policy(contract: &Value) -> Result<(), WorkspaceStoreReadError> {
+    let expected_normalization = json!({
+        "dataset_grouping": "ignore_empty_dataset_name_then_group_exact_string_and_emit_groups_in_lexicographic_order",
+        "source_order": "chain_id_ascending",
+        "metric": "first_truthy_metric_in_source_order_or_r2",
+        "task_type": "first_truthy_task_type_in_source_order_or_null",
+        "finite_score": "finite_number_or_null",
+        "json_object": "parse_json_string_then_require_object_else_empty_object",
+        "optional_json_object": "parse_json_string_then_require_nonempty_object_else_null",
+    });
+    let expected_synthetic_refit = json!({
+        "mark_refit_only_before_synthesis": true,
+        "meaningful_final": "final_test_score_is_not_null_or_final_train_score_is_not_null_or_final_scores_is_nonempty_json_object",
+        "has_cv_payload": "cv_val_score_is_not_null_or_cv_test_score_is_not_null_or_cv_train_score_is_not_null_or_cv_fold_count_is_truthy_or_cv_scores_is_nonempty_json_object",
+        "refit_only_marker": "meaningful_final_and_not_has_cv_payload",
+        "when": "not_meaningful_final_and_has_cv_payload",
+        "assignments": {
+            "final_test_score": "finite_cv_test_score_or_null",
+            "final_train_score": "finite_cv_train_score_or_null",
+            "final_scores": "nonempty_cv_scores_else_partition_metric_object_from_finite_cv_val_test_train_scores",
+            "synthetic_refit": true,
+        },
+        "otherwise": "preserve_final_fields_and_booleanize_existing_synthetic_refit",
+    });
+    let expected_selection = json!({
+        "cv_candidates": "cv_fold_count_greater_than_zero",
+        "refit_only_candidates": "cv_fold_count_is_zero_and_finite_final_test_score_is_not_null",
+        "best_final_candidate": "finite_final_test_score_is_not_null",
+        "best_final_comparison": "strict_summary_comparison_so_first_source_row_wins_ties",
+        "top_cv": {
+            "primary": "query_workspace_store_read_studio_chain_ranked_v1_with_dataset_metric_top_n_5_and_contract_metric_direction_then_merge_by_chain_id_with_source_row",
+            "accept": "cv_fold_count_is_truthy_or_cv_val_score_is_not_null",
+            "deduplicate": "chain_key",
+            "fallback_when_fewer_than_top_n": "stable_sort_cv_candidates_by_cv_val_score_using_summary_comparison_with_missing_score_worst_then_append_unseen_until_top_n",
+        },
+        "append_order": ["top_cv", "all_refit_only_in_source_order", "best_final_if_not_already_selected"],
+        "final_deduplication": "nonempty_chain_id_first_occurrence_wins",
+        "omit_dataset_when": "selection_is_empty",
+    });
+    if contract.get("normalization") != Some(&expected_normalization)
+        || contract.get("synthetic_refit") != Some(&expected_synthetic_refit)
+        || contract.get("selection") != Some(&expected_selection)
+        || contract
+            .pointer("/metric_direction/normalization")
+            .and_then(Value::as_str)
+            != Some("trim_then_lowercase")
+        || contract.pointer("/metric_direction/lower_is_better")
+            != Some(&json!([
+                "rmse", "rmsecv", "rmsep", "mae", "mse", "mape", "bias", "sep"
+            ]))
+        || contract
+            .pointer("/metric_direction/all_other_metrics")
+            .and_then(Value::as_str)
+            != Some("higher_is_better")
+        || contract.pointer("/metric_direction/applies_to")
+            != Some(&json!([
+                "top_cv_ranking",
+                "top_cv_fallback",
+                "best_final_comparison"
+            ]))
+        || contract
+            .pointer("/normalization/source_order")
+            .and_then(Value::as_str)
+            != Some("chain_id_ascending")
+        || contract.pointer("/selection/append_order")
+            != Some(&json!([
+                "top_cv",
+                "all_refit_only_in_source_order",
+                "best_final_if_not_already_selected"
+            ]))
+        || contract
+            .pointer("/selection/final_deduplication")
+            .and_then(Value::as_str)
+            != Some("nonempty_chain_id_first_occurrence_wins")
+        || contract.pointer("/serialization/schema_v5_constants")
+            != Some(&json!({"cv_source_chain_id": null}))
+        || contract.pointer("/serialization/conditional_field")
+            != Some(
+                &json!({"is_refit_only": "include_with_true_value_only_when_selected_as_refit_only"}),
+            )
+    {
+        return Err(WorkspaceStoreReadError::Contract(
+            "results-summary direction, selection, or serialization policy differs from v1".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_pipeline_contract(
@@ -891,6 +1188,47 @@ fn query_ranked_chains(
     Ok(WorkspaceStoreRankedChainPage { results, total })
 }
 
+fn query_results_summary_source(
+    connection: &Connection,
+) -> Result<Vec<WorkspaceStoreResultsSummarySourceRow>, WorkspaceStoreReadError> {
+    let total = connection
+        .query_row(RESULTS_SUMMARY_COUNT_QUERY, [], |row| row.get::<_, i64>(0))
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let total = usize::try_from(total).map_err(|_| {
+        WorkspaceStoreReadError::Query("results-summary count is outside usize range".into())
+    })?;
+    let mut results = Vec::with_capacity(total);
+    let mut offset = 0_i64;
+    while results.len() < total {
+        let mut statement = connection
+            .prepare(RESULTS_SUMMARY_PAGE_QUERY)
+            .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+        let rows = statement
+            .query_map(
+                [RESULTS_SUMMARY_PAGE_SIZE, offset],
+                row_to_results_summary_source,
+            )
+            .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+        if rows.is_empty() {
+            return Err(WorkspaceStoreReadError::ChangedDuringRead);
+        }
+        offset = offset
+            .checked_add(i64::try_from(rows.len()).map_err(|_| {
+                WorkspaceStoreReadError::Query("results-summary page is too large".into())
+            })?)
+            .ok_or_else(|| {
+                WorkspaceStoreReadError::Query("results-summary offset overflowed".into())
+            })?;
+        results.extend(rows);
+    }
+    if results.len() != total {
+        return Err(WorkspaceStoreReadError::ChangedDuringRead);
+    }
+    Ok(results)
+}
+
 fn row_to_run_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceStoreRunSummary> {
     Ok(WorkspaceStoreRunSummary {
         id: required_text(row, 0, "run_id")?,
@@ -947,6 +1285,37 @@ fn row_to_ranked_chain(row: &Row<'_>) -> rusqlite::Result<WorkspaceStoreRankedCh
     })
 }
 
+fn row_to_results_summary_source(
+    row: &Row<'_>,
+) -> rusqlite::Result<WorkspaceStoreResultsSummarySourceRow> {
+    Ok(WorkspaceStoreResultsSummarySourceRow {
+        chain_id: required_text(row, 0, "chain_id")?,
+        pipeline_id: required_text(row, 1, "pipeline_id")?,
+        run_id: required_text(row, 2, "run_id")?,
+        pipeline_name: required_text(row, 3, "name")?,
+        expanded_config: json_array_or_none(optional_text(row, 4)?),
+        model_step_idx: row.get(5)?,
+        dataset_name: required_text(row, 6, "dataset_name")?,
+        metric: optional_text(row, 7)?,
+        task_type: optional_text(row, 8)?,
+        model_name: optional_text(row, 9)?,
+        model_class: required_text(row, 10, "model_class")?,
+        preprocessings: optional_text(row, 11)?.unwrap_or_default(),
+        cv_val_score: optional_finite_or_null_f64(row, 12)?,
+        cv_test_score: optional_finite_or_null_f64(row, 13)?,
+        cv_train_score: optional_finite_or_null_f64(row, 14)?,
+        cv_fold_count: nonnegative_i64_or_default(row, 15, "cv_fold_count")?,
+        cv_scores: json_object_or_default(optional_text(row, 16)?),
+        final_test_score: optional_finite_or_null_f64(row, 17)?,
+        final_train_score: optional_finite_or_null_f64(row, 18)?,
+        final_scores: json_object_or_default(optional_text(row, 19)?),
+        final_agg_test_score: optional_finite_or_null_f64(row, 20)?,
+        final_agg_train_score: optional_finite_or_null_f64(row, 21)?,
+        final_agg_scores: json_object_or_default(optional_text(row, 22)?),
+        best_params: nonempty_json_object(optional_text(row, 23)?),
+    })
+}
+
 fn required_text(row: &Row<'_>, index: usize, field: &'static str) -> rusqlite::Result<String> {
     optional_text(row, index)?.ok_or_else(|| {
         rusqlite::Error::FromSqlConversionFailure(
@@ -975,6 +1344,12 @@ fn optional_finite_f64(
         ));
     }
     Ok(value)
+}
+
+fn optional_finite_or_null_f64(row: &Row<'_>, index: usize) -> rusqlite::Result<Option<f64>> {
+    Ok(row
+        .get::<_, Option<f64>>(index)?
+        .filter(|number| number.is_finite()))
 }
 
 fn nonnegative_i64_or_default(
@@ -1017,6 +1392,11 @@ fn nonempty_json_object(raw: Option<String>) -> Option<Value> {
         .filter(|value| value.as_object().is_some_and(|object| !object.is_empty()))
 }
 
+fn json_array_or_none(raw: Option<String>) -> Option<Vec<Value>> {
+    raw.and_then(|value| serde_json::from_str::<Value>(&value).ok())
+        .and_then(|value| value.as_array().cloned())
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -1030,8 +1410,9 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        read_pipeline_summaries, read_ranked_chains, read_run_summaries, ChainScoreDirection,
-        WorkspaceStoreReadError, DEFAULT_PIPELINE_SUMMARIES_LIMIT, DEFAULT_RUN_SUMMARIES_LIMIT,
+        read_pipeline_summaries, read_ranked_chains, read_results_summary_source,
+        read_run_summaries, ChainScoreDirection, WorkspaceStoreReadError,
+        DEFAULT_PIPELINE_SUMMARIES_LIMIT, DEFAULT_RUN_SUMMARIES_LIMIT,
     };
 
     const PYTHON_WRITTEN_STORE: &[u8] =
@@ -1242,6 +1623,38 @@ mod tests {
         assert_eq!(ascending.results[1].response()["best_params"], json!(null));
         assert_eq!(ascending.results[3].response()["cv_scores"], json!({}));
         assert_eq!(ascending.results[3].response()["best_params"], json!(null));
+        fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[test]
+    fn results_summary_source_reads_more_than_one_page_in_chain_id_order() {
+        let workspace = fixture_workspace("workspace-store-results-summary-pages-v5");
+        let mut connection = Connection::open(workspace.join("store.sqlite")).unwrap();
+        let transaction = connection.transaction().unwrap();
+        let pipeline_id = "87654321-4321-6789-4321-678943216789";
+        for index in 0..=500 {
+            let chain_id = format!("page-chain-{index:04}");
+            transaction
+                .execute(
+                    "INSERT INTO chains (chain_id, pipeline_id, steps, model_step_idx, model_class, dataset_name, metric, cv_val_score, cv_fold_count) VALUES (?, ?, '[]', 1, 'PLSRegression', 'corn', 'r2', ?, 1)",
+                    params![chain_id, pipeline_id, f64::from(index) / 1000.0],
+                )
+                .unwrap();
+            transaction
+                .execute(
+                    "INSERT INTO predictions (prediction_id, pipeline_id, chain_id, dataset_name, model_name, model_class, fold_id, partition, metric, task_type) VALUES (?, ?, ?, 'corn', 'PLS', 'PLSRegression', 'fold_0', 'val', 'r2', 'regression')",
+                    params![format!("page-prediction-{index:04}"), pipeline_id, chain_id],
+                )
+                .unwrap();
+        }
+        transaction.commit().unwrap();
+        drop(connection);
+
+        let rows = read_results_summary_source(&workspace).unwrap();
+
+        assert_eq!(rows.len(), 501);
+        assert_eq!(rows.first().unwrap().chain_id, "page-chain-0000");
+        assert_eq!(rows.last().unwrap().chain_id, "page-chain-0500");
         fs::remove_dir_all(workspace).unwrap();
     }
 
