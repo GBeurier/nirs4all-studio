@@ -1,0 +1,68 @@
+{
+  "schema_id": "nirs4all.studio-execution-job-record.v1",
+  "schema_version": 1,
+  "ownership": {
+    "http_and_workspace_selection": "studio_sidecar_rust",
+    "durable_snapshot": "workspace_runs_directory",
+    "run_identity": "workspace_store_v5",
+    "python_or_fastapi": "forbidden_after_native_selection",
+    "fallback_after_native_selection": "none"
+  },
+  "request": {
+    "method": "GET",
+    "paths": [
+      "/api/runs/execution-job-records/{job_id}",
+      "/api/runs/{run_id}/execution-job-record"
+    ],
+    "query_string": "absent",
+    "active_linked_workspace": "required",
+    "identifier": "one_ascii_segment_max_256"
+  },
+  "snapshot": {
+    "relative_path": "runs/{job_id}/execution_job_record.json",
+    "maximum_bytes": 262144,
+    "read_mode": "bounded_read_only",
+    "symlink_or_workspace_escape": "reject",
+    "changed_during_read": "reject",
+    "unknown_fields": "reject",
+    "payload_job_id_mismatch": "reject"
+  },
+  "fields": {
+    "required_strings": [
+      "job_id",
+      "job_type",
+      "requested_backend",
+      "execution_backend",
+      "status",
+      "created_at"
+    ],
+    "nullable_strings": [
+      "execution_mode",
+      "started_at",
+      "completed_at",
+      "error"
+    ],
+    "objects_with_empty_default": ["request", "driver", "metrics"],
+    "progress": "finite_number_or_status_fallback_when_absent_or_null",
+    "progress_message": "string_or_progress_unavailable_when_absent_or_null",
+    "progress_unavailable": "explicit_boolean_or_missing_progress_or_message"
+  },
+  "response": {
+    "known_run": {
+      "run_id": "store_run_id",
+      "run_name": "store_run_name",
+      "run_status": "store_run_status",
+      "is_orphaned": false
+    },
+    "orphaned_job_lookup": {
+      "run_id": "record_job_id",
+      "run_name": "request.run_name_or_record_job_id",
+      "run_status": "orphaned",
+      "is_orphaned": true
+    },
+    "run_lookup_without_store_run": "http_404",
+    "missing_snapshot": "http_404",
+    "incompatible_or_busy_store": "http_409",
+    "invalid_snapshot": "http_409"
+  }
+}
