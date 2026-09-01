@@ -270,17 +270,24 @@ npm run dev:electron
 npm run electron:preview
 ```
 
-The Electron main process automatically spawns the Python backend and manages its lifecycle.
+Electron starts the Rust control-plane sidecar and creates the desktop window
+without starting Python. A route that still belongs to the compatibility or
+scientific surface acquires the bundled/configured Python process lazily,
+single-flight, and waits for its readiness before returning a URL. WebSocket
+acquisition follows the same rule. Changing or restarting that scientific
+runtime never restarts the Rust control plane.
 
-The native-backend migration currently has an explicit **dual-run diagnostic**
+The native-backend migration currently has an explicit **hybrid transition**
 mode. Setting `NIRS4ALL_NATIVE_SIDECAR_PATH` to the absolute path of a built
-`studio-sidecar` binary starts the Rust control-plane sidecar on loopback beside
-the existing Python backend; `NIRS4ALL_NATIVE_SIDECAR_PORT` optionally selects a
-port (default `0`, an ephemeral port). In an all-in-one package,
+`studio-sidecar` binary starts the Rust control-plane sidecar on loopback;
+`NIRS4ALL_NATIVE_SIDECAR_PORT` optionally selects a port (default `0`, an
+ephemeral port). The Python compatibility/scientific process is not started at
+session creation. In an all-in-one package,
 `NIRS4ALL_ENABLE_NATIVE_SIDECAR=1` selects the bundled
 `resources/backend/native/studio-sidecar` instead. It routes only explicitly
-migrated UI calls through the sidecar and never falls back to Python for those
-calls; every other route family remains owned by FastAPI until it is migrated.
+migrated UI calls through the sidecar and never falls back to Python after a
+native route is selected; every other route family explicitly acquires FastAPI
+until it is migrated.
 When that opt-in sidecar runs
 from an all-in-one package, Electron passes its embedded interpreter to the
 sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; the explicit preflight verifies
