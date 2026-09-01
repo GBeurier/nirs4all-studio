@@ -1377,24 +1377,74 @@ fn iso8601_timestamp(raw: Option<String>) -> String {
 }
 
 fn json_or_default(raw: Option<String>, default: Value) -> Value {
-    raw.and_then(|value| serde_json::from_str(&value).ok())
+    raw.and_then(|value| parse_python_json(&value))
         .unwrap_or(default)
 }
 
 fn json_object_or_default(raw: Option<String>) -> Value {
-    raw.and_then(|value| serde_json::from_str::<Value>(&value).ok())
+    raw.and_then(|value| parse_python_json(&value))
         .filter(Value::is_object)
         .unwrap_or_else(|| json!({}))
 }
 
 fn nonempty_json_object(raw: Option<String>) -> Option<Value> {
-    raw.and_then(|value| serde_json::from_str::<Value>(&value).ok())
+    raw.and_then(|value| parse_python_json(&value))
         .filter(|value| value.as_object().is_some_and(|object| !object.is_empty()))
 }
 
 fn json_array_or_none(raw: Option<String>) -> Option<Vec<Value>> {
-    raw.and_then(|value| serde_json::from_str::<Value>(&value).ok())
+    raw.and_then(|value| parse_python_json(&value))
         .and_then(|value| value.as_array().cloned())
+}
+
+/// Python's standard JSON encoder emits bare NaN and infinities by default.
+/// The owner summary policy accepts those documents and recursively sanitizes
+/// the non-finite leaves to null, so normalize only bare value tokens before
+/// handing the document to strict `serde_json`.
+fn parse_python_json(raw: &str) -> Option<Value> {
+    if let Ok(value) = serde_json::from_str(raw) {
+        return Some(value);
+    }
+    let mut normalized = String::with_capacity(raw.len());
+    let mut index = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut replaced = false;
+    while index < raw.len() {
+        let character = raw[index..].chars().next()?;
+        if in_string {
+            normalized.push(character);
+            index += character.len_utf8();
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        if character == '"' {
+            in_string = true;
+            normalized.push(character);
+            index += 1;
+            continue;
+        }
+        let token = ["-Infinity", "Infinity", "NaN"]
+            .into_iter()
+            .find(|token| raw[index..].starts_with(token));
+        if let Some(token) = token {
+            normalized.push_str("null");
+            index += token.len();
+            replaced = true;
+        } else {
+            normalized.push(character);
+            index += character.len_utf8();
+        }
+    }
+    replaced
+        .then(|| serde_json::from_str(&normalized).ok())
+        .flatten()
 }
 
 #[cfg(test)]
@@ -1410,13 +1460,30 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        read_pipeline_summaries, read_ranked_chains, read_results_summary_source,
-        read_run_summaries, ChainScoreDirection, WorkspaceStoreReadError,
-        DEFAULT_PIPELINE_SUMMARIES_LIMIT, DEFAULT_RUN_SUMMARIES_LIMIT,
+        parse_python_json, read_pipeline_summaries, read_ranked_chains,
+        read_results_summary_source, read_run_summaries, ChainScoreDirection,
+        WorkspaceStoreReadError, DEFAULT_PIPELINE_SUMMARIES_LIMIT, DEFAULT_RUN_SUMMARIES_LIMIT,
     };
 
     const PYTHON_WRITTEN_STORE: &[u8] =
         include_bytes!("../tests/fixtures/workspace_store_v5.sqlite");
+
+    #[test]
+    fn parses_python_nonfinite_json_without_losing_finite_siblings_or_strings() {
+        let parsed = parse_python_json(
+            r#"{"val":{"r2":NaN},"test":{"r2":0.8},"limits":[Infinity,-Infinity],"label":"NaN Infinity"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            parsed,
+            json!({
+                "val": {"r2": null},
+                "test": {"r2": 0.8},
+                "limits": [null, null],
+                "label": "NaN Infinity",
+            })
+        );
+    }
 
     fn fixture_workspace(name: &str) -> PathBuf {
         let nonce = SystemTime::now()

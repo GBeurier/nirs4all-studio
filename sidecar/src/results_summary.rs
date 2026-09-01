@@ -95,7 +95,7 @@ fn build_results_summary(
         }
         let top_chains = selected
             .into_iter()
-            .map(|index| serialize_chain(&rows[index]))
+            .map(|(index, is_refit_only)| serialize_chain(&rows[index], is_refit_only))
             .collect::<Vec<_>>();
         datasets.push(json!({
             "dataset_name": dataset_name,
@@ -154,7 +154,7 @@ fn synthetic_final_scores(row: &WorkspaceStoreResultsSummarySourceRow) -> Value 
     Value::Object(scores)
 }
 
-fn select_rows(rows: &[SummaryRow], metric: &str, higher_is_better: bool) -> Vec<usize> {
+fn select_rows(rows: &[SummaryRow], metric: &str, higher_is_better: bool) -> Vec<(usize, bool)> {
     let cv_rows = rows
         .iter()
         .enumerate()
@@ -255,10 +255,7 @@ fn select_rows(rows: &[SummaryRow], metric: &str, higher_is_better: bool) -> Vec
         if !chain_id.is_empty() && !seen_chain_ids.insert(chain_id.clone()) {
             continue;
         }
-        // Refit-only is intrinsic and was frozen before synthesis. The explicit
-        // append marker is kept here to mirror the policy's conditional field.
-        debug_assert!(!mark_refit_only || rows[index].is_refit_only);
-        selected.push(index);
+        selected.push((index, mark_refit_only || rows[index].is_refit_only));
     }
     selected
 }
@@ -303,7 +300,7 @@ fn chain_key(row: &WorkspaceStoreResultsSummarySourceRow) -> String {
     .expect("results-summary chain fallback key is JSON serializable")
 }
 
-fn serialize_chain(row: &SummaryRow) -> Value {
+fn serialize_chain(row: &SummaryRow, is_refit_only: bool) -> Value {
     let best_params = row.source.best_params.clone();
     let variant_params = merge_variant_params(
         extract_model_params(
@@ -336,7 +333,7 @@ fn serialize_chain(row: &SummaryRow) -> Value {
         "variant_params": variant_params,
         "synthetic_refit": row.synthetic_refit,
     });
-    if row.is_refit_only {
+    if is_refit_only {
         payload
             .as_object_mut()
             .expect("chain payload is an object")
@@ -484,10 +481,11 @@ fn dataset_match_key(value: &str) -> String {
 mod tests {
     use std::{fs, path::PathBuf, time::SystemTime};
 
-    use serde_json::Value;
+    use serde_json::{json, Value};
 
-    use super::read_results_summary;
+    use super::{build_results_summary, read_results_summary};
     use crate::settings::DatasetLinkIdentity;
+    use crate::workspace_store::WorkspaceStoreResultsSummarySourceRow;
 
     const PYTHON_WRITTEN_STORE: &[u8] =
         include_bytes!("../tests/fixtures/workspace_store_v5_summary.sqlite");
@@ -518,6 +516,42 @@ mod tests {
         assert!(!workspace.join("store.sqlite-wal").exists());
         assert!(!workspace.join("store.sqlite-shm").exists());
         fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[test]
+    fn marks_a_fold_zero_final_candidate_when_cv_payload_prevents_intrinsic_marker() {
+        let source = WorkspaceStoreResultsSummarySourceRow {
+            chain_id: "mixed-payload".into(),
+            pipeline_id: "pipeline".into(),
+            run_id: "run".into(),
+            pipeline_name: "Pipeline".into(),
+            expanded_config: None,
+            model_step_idx: 0,
+            dataset_name: "dataset".into(),
+            metric: Some("r2".into()),
+            task_type: None,
+            model_name: None,
+            model_class: "Model".into(),
+            preprocessings: String::new(),
+            cv_val_score: None,
+            cv_test_score: Some(0.7),
+            cv_train_score: None,
+            cv_fold_count: 0,
+            cv_scores: json!({"test": {"r2": 0.7}}),
+            final_test_score: Some(0.8),
+            final_train_score: None,
+            final_scores: json!({"test": {"r2": 0.8}}),
+            final_agg_test_score: None,
+            final_agg_train_score: None,
+            final_agg_scores: json!({}),
+            best_params: None,
+        };
+
+        let summary = build_results_summary(vec![source], "workspace", &[]);
+        assert_eq!(
+            summary["datasets"][0]["top_chains"][0]["is_refit_only"],
+            true
+        );
     }
 
     fn fixture_workspace() -> PathBuf {
