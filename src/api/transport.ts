@@ -38,7 +38,7 @@ const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
 ]);
 const NATIVE_SIDECAR_WORKSPACE_STATE_ENDPOINT = /^\/workspaces\/[^/?]+(?:\/(activate))?$/;
 const NATIVE_SIDECAR_WORKSPACE_RUN_SUMMARIES_ENDPOINT =
-  /^\/workspaces\/[^/?]+\/runs$/;
+  /^\/workspaces\/[^/?]+\/runs(?:\?([^#]+))?$/;
 const NATIVE_SIDECAR_WORKSPACE_PIPELINE_SUMMARIES_ENDPOINT =
   /^\/workspaces\/[^/?]+\/results$/;
 const NATIVE_SIDECAR_WORKSPACE_RESULTS_SUMMARY_ENDPOINT =
@@ -238,10 +238,28 @@ function isNativeLinkedWorkspaceStateEndpoint(endpoint: string, method: string):
 }
 
 function isNativeWorkspaceRunSummariesEndpoint(endpoint: string, method: string): boolean {
-  return (
-    method.toUpperCase() === "GET" &&
-    NATIVE_SIDECAR_WORKSPACE_RUN_SUMMARIES_ENDPOINT.test(endpoint)
-  );
+  if (method.toUpperCase() !== "GET") return false;
+  const match = NATIVE_SIDECAR_WORKSPACE_RUN_SUMMARIES_ENDPOINT.exec(endpoint);
+  if (!match) return false;
+  const query = match[1];
+  if (query === undefined) return true;
+
+  const seen = new Set<string>();
+  for (const parameter of query.split("&")) {
+    const parts = parameter.split("=");
+    if (parts.length !== 2) return false;
+    const [name, value] = parts;
+    if (seen.has(name)) return false;
+    if (
+      (name === "source" && ["unified", "manifests", "parquet"].includes(value)) ||
+      (name === "refresh" && ["true", "false"].includes(value))
+    ) {
+      seen.add(name);
+      continue;
+    }
+    return false;
+  }
+  return seen.size > 0;
 }
 
 function isNativeWorkspacePipelineSummariesEndpoint(endpoint: string, method: string): boolean {
