@@ -85,6 +85,22 @@ Electron bundles Chromium, providing:
 
 ## Architecture
 
+The authoritative packaged path is:
+
+```text
+renderer request/connection
+  -> Electron process-wide policy and per-target preselection
+     -> native-qualified: Rust studio-sidecar HTTP/WS listener
+     -> unmigrated: typed refusal before fetch/spawn/retry
+
+Rust may invoke bounded nirs4all library callables through fresh isolated
+CPython JSON-stdio processes. CPython never owns the product listener.
+```
+
+The detailed `backend-manager.ts` diagram below documents only the optional
+whole-session FastAPI diagnostic selected with
+`--enable-python-http-diagnostic`; it is not the default desktop architecture.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         Electron Application                             │
@@ -96,7 +112,7 @@ Electron bundles Chromium, providing:
 │  │  ├── BrowserWindow creation                                        │ │
 │  │  ├── App lifecycle (ready, quit, activate)                         │ │
 │  │  ├── IPC handlers (file dialogs, system info)                      │ │
-│  │  └── Backend lifecycle (via backend-manager.ts)                    │ │
+│  │  └── Optional diagnostic lifecycle (via backend-manager.ts)         │ │
 │  │                                                                    │ │
 │  │  electron/backend-manager.ts                                       │ │
 │  │  ├── spawn() - Start Python backend subprocess                     │ │
@@ -136,7 +152,7 @@ Electron bundles Chromium, providing:
                                │ HTTP/WebSocket (localhost:PORT)
                                ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    Python Backend (Subprocess)                           │
+│              Optional Python HTTP Diagnostic (Subprocess)                │
 │                                                                          │
 │  FastAPI + Uvicorn                                                       │
 │  ├── /api/health          - Health check (used by backend-manager)       │
@@ -350,17 +366,19 @@ npm run doctor
 ### Development Mode
 
 ```bash
-# Terminal 1: Python backend
-python main.py --no-reload
-
-# Terminal 2: Electron + Vite dev mode
+# Rust-only Electron + Vite dev mode
 npm run start:desktop
 ```
 
 In development mode:
 - Vite serves the React app with HMR
-- Python backend runs directly (no PyInstaller)
+- Electron starts the Rust sidecar and refuses unmigrated renderer routes
 - Electron loads from `http://localhost:5173`
+
+For a deliberate whole-session FastAPI diagnostic, set
+`NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1` before `npm run start:desktop`.
+For browser-only web development, run `python main.py --no-reload` beside
+`npm run dev`; this does not describe the packaged desktop product.
 
 ### Production Preview
 
@@ -532,7 +550,7 @@ ipcMain.handle('channel', async (event, ...args) => {
 
 ## Crash Reporting (Sentry)
 
-nirs4all Studio supports automatic crash reporting via [Sentry](https://sentry.io/). When enabled, errors from all three layers (Electron main, React renderer, Python backend) are reported to your Sentry project.
+nirs4all Studio supports automatic crash reporting via [Sentry](https://sentry.io/). When enabled, errors from Electron main and the React renderer are reported. The transitional web/diagnostic Python backend also reports when it is explicitly running.
 
 ### Setup
 
@@ -562,7 +580,7 @@ VITE_SENTRY_DSN=https://your-key@o123456.ingest.sentry.io/1234567
 |-------|---------|-------------|
 | **Electron main** | `@sentry/electron` | Captures uncaught exceptions, unhandled rejections, native crashes |
 | **React renderer** | `@sentry/react` | ErrorBoundary for React errors, browser error tracking, performance |
-| **Python backend** | `sentry-sdk[fastapi]` | FastAPI integration, captures unhandled exceptions |
+| **Python diagnostic/web backend** | `sentry-sdk[fastapi]` | Captures FastAPI exceptions only while that optional process is explicitly running |
 
 - All three layers send events to the same Sentry project
 - When `SENTRY_DSN` is not set, Sentry is completely disabled (zero overhead)
@@ -573,7 +591,7 @@ VITE_SENTRY_DSN=https://your-key@o123456.ingest.sentry.io/1234567
 - Uncaught JavaScript exceptions (main + renderer)
 - Unhandled promise rejections
 - React rendering errors (via ErrorBoundary)
-- Python backend unhandled exceptions
+- Explicit Python diagnostic/web backend unhandled exceptions
 - App version, OS, and platform metadata
 - Performance traces (sampled at 10%)
 

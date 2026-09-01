@@ -100,12 +100,14 @@ Rust and FastAPI consume one differential golden without re-parsing
 `expanded_config`. The Store-v5 composition fixture and FastAPI differential
 are therefore proven. The versioned `studio_run_detail_preselection_v1`
 contract (SHA-256
-`42b076b3cc31c167ac4366eaabb394876d84c40a044991217e2f2823a57b92c4`)
+`7532847cd58a5b19788abc1b26118421d0c1d31abcb13035e616732a20b3e5f4`)
 now also resolves each linked workspace ID through the native
 catalogue and verifies the exact Store v5 schema, projection columns,
 immutable read, and journal policy once per request without caching. Missing
-stores and old schemas select the transitional scientific plugin before the target request; busy,
-unreadable, or incomplete v5 stores reject without a target request.
+stores and old schemas reject with typed 501 in the default Rust-only session;
+busy, unreadable, or incomplete v5 stores reject without a target request. An
+explicit process-wide Python HTTP diagnostic session is selected before this
+probe and therefore never acts as a per-store fallback.
 
 Exact Store v5 now selects the native run-detail target only when the explicit
 CPython library host is configured and preflights the exact owner callable.
@@ -115,8 +117,9 @@ scientific Python execution. Each preflight and target uses a fresh isolated
 (`-I`) process, strict JSON stdin, a 15 second deadline, 8 KiB input, 4 MiB stdout, and 64 KiB stderr
 bounds. Rust validates the exact seven-field owner envelope, composes the HTTP
 response, and never exposes stderr or the resolved workspace path. Missing or
-old stores select the transitional scientific plugin before the target HTTP
-request; a native selection never falls back. Splitters remain owner-produced:
+old stores reject before the target HTTP request in the default session; an
+explicit diagnostic session owns all renderer routes before probing. A native
+selection never falls back. Splitters remain owner-produced:
 the Rust consumer neither parses nor receives permission to interpret
 `expanded_config`.
 
@@ -139,8 +142,10 @@ projection readers, it does not inspect dataset/workspace contents. It persists 
 favorite identifiers, repaired linked-workspace record IDs, and (through its
 Rust library boundary only) self-validating Core/DAG-ML conformal presentation
 artifacts. No HTTP ingestion route exists for those artifacts until a typed
-Core replay/data adapter is available. All other UI routes remain served by the
-legacy FastAPI process.
+Core replay/data adapter is available. All other UI routes fail closed before
+fetch in the default product session. The transitional FastAPI process can own
+the whole renderer session only after the visible diagnostic opt-in; it is
+never an implicit fallback.
 
 `docs/contracts/studio-v1/` remains the frozen legacy FastAPI baseline. R1
 references that snapshot in tests to prevent an accidental parity claim. The
@@ -166,8 +171,8 @@ Electron launches the packaged binary from its resource location, passes a
 loopback host and an explicit or ephemeral port, and waits for the single stdout
 line beginning `STUDIO_SIDECAR_READY `. The JSON on that line has
 `protocol_version`, `host`, and the bound `port`. For a development binary,
-set `NIRS4ALL_NATIVE_SIDECAR_PATH`. The legacy backend remains responsible for
-every route not explicitly listed above.
+set `NIRS4ALL_NATIVE_SIDECAR_PATH`. Every route not explicitly listed above
+returns a typed refusal in the default product session.
 
 The binary accepts only `127.0.0.1` or `::1` for `--host`. This is a local
 desktop control process, not a network service.
@@ -278,9 +283,11 @@ real share test prove URI-authority support. Electron routes only the bounded
 run-summary query shapes (bare or with the contract-allowlisted `source` and
 `refresh` values) and filter-free pipeline-summary requests to this reader, and
 does not retry a native incompatibility through FastAPI. Scan mutations,
-filtered pipeline-result requests, enriched Runs, run detail including legacy
-manifest discovery, and the full chain/results repository surface remain
-FastAPI routes until their public contracts reach parity.
+filtered pipeline-result requests, enriched Runs, legacy-manifest discovery,
+and the full chain/results repository surface remain unmigrated and fail
+closed by default until their public contracts reach parity. They are
+available only when the whole renderer was explicitly assigned to the
+diagnostic FastAPI owner before dispatch.
 
 `GET /api/system/status` derives `workspace_loaded` and its workspace summary
 from that same active catalogue record. It does not inspect the linked path:
@@ -356,8 +363,9 @@ contract. The bounded registry, HTTP state/cancellation adapters, and real RFC
 6455 connection manager share one Rust runtime. Pending cancellation becomes
 terminal immediately and emits one `job_failed`; running cancellation stays
 cooperative until the selected worker acknowledges it. Scientific submission
-and product/renderer transport selection remain forbidden. Once one of these
-eight requests is selected native, neither Uvicorn nor FastAPI may be retried.
+transport remains fail-closed until an executor is selected. Product renderer
+transport selection is mandatory and Rust-owned. Once one of these eight
+requests is selected native, neither Uvicorn nor FastAPI may be retried.
 
 ## Coverage and rollback
 
@@ -372,10 +380,13 @@ management, plus bounded RFC 6455 upgrades, three native job-state reads, five
 cancellation aliases, and two immutable durable execution-record reads on the
 sidecar port. Missing: every other legacy `/api/*` route, all
 scientific execution, workspace/dataset persistence, uploads, authentication,
-scientific job submission/executor selection, renderer WebSocket selection, and parity
-mapping/diffing for the full frozen surface.
+scientific executor selection, the dynamic `/ws` subscription surface, and
+parity mapping/diffing for the full frozen surface. Missing renderer routes are
+typed refusals in the default product, not implicit Python acquisitions.
 
-Rollback is exclusion of the sidecar binary/resource and routing the listed
-routes back to the legacy backend. `app_settings.json` has the legacy-compatible
-shape, so the legacy application can continue to read it; rollback leaves
-workspace and dataset state untouched.
+The transitional R2 diagnostic rollback is an explicit whole-session launch
+with `--enable-python-http-diagnostic`; it is never selected per route. A
+future release rollback may exclude the sidecar binary/resource only through a
+separately governed product profile. `app_settings.json` retains the
+legacy-compatible shape, and rollback leaves workspace and dataset state
+untouched.

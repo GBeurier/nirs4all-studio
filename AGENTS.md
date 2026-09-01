@@ -2,14 +2,14 @@
 
 ## Project Structure & Module Organization
 
-`src/` contains the React/TypeScript app: `pages/`, `components/`, `hooks/`, `context/`, `lib/`, `data/nodes/`, `locales/`, and `assets/`. `api/`, `websocket/`, and `main.py` provide the FastAPI backend. `electron/` contains the desktop shell, `public/` stores static assets and node-registry data, and `scripts/` holds build helpers. Backend tests live in `tests/`; frontend unit tests live beside source as `*.test.ts(x)` or under `__tests__/`; Playwright specs are in `e2e/tests/`. Treat `dist/`, `backend-dist/`, `storybook-static/`, `test-results/`, and `playwright-report/` as generated output.
+`src/` contains the React/TypeScript app. `sidecar/` is the Rust product backend. `api/`, `websocket/`, and `main.py` retain the transitional FastAPI web-development and explicit diagnostic backend; they are not the packaged renderer default. `electron/` contains the desktop shell, `public/` stores static assets and node-registry data, and `scripts/` holds build helpers. Backend tests live in `tests/`; frontend unit tests live beside source as `*.test.ts(x)` or under `__tests__/`; Playwright specs are in `e2e/tests/`. Treat `dist/`, `backend-dist/`, `storybook-static/`, `test-results/`, and `playwright-report/` as generated output.
 
 ## Build, Test, and Development Commands
 
 Use Node 24 from `.nvmrc` when possible; `package.json` requires Node >=20 and npm >=10. Install JavaScript dependencies with `npm install`. For Python, create `.venv` and install `pip install -r requirements-cpu.txt` or the GPU requirements file.
 
 - `npm run dev`: start the Vite frontend.
-- `python main.py --no-reload`: start the FastAPI backend.
+- `python main.py --no-reload`: start the transitional FastAPI backend for web development only.
 - `npm run start:desktop`: launch Electron desktop mode.
 - `npm run build` / `npm run build:electron`: create web or Electron frontend builds.
 - `npm run lint:parallel`: run ESLint, TypeScript, node-registry validation, Ruff, and Python syntax checks.
@@ -30,4 +30,4 @@ Recent history uses Conventional Commit style, for example `fix(packaging): ...`
 
 ## Architecture & Configuration Notes
 
-The backend is a thin orchestration layer for HTTP routes, jobs, WebSockets, workspace state, and UI-facing adapters. Do not reimplement scientific computation that belongs in the `nirs4all` Python library. Do not commit secrets, workspace data, or generated artifacts.
+The packaged product backend is the Rust sidecar: Rust owns HTTP routes, jobs, WebSockets, scheduler/control, workspace state, and UI-facing adapters. CPython is a bounded library/plugin host invoked Rust-to-Python over stdio; it never owns a product port. FastAPI is reachable only through the visible `--enable-python-http-diagnostic` session-wide opt-in (or the exact development-only environment opt-in), never as per-route fallback. Do not reimplement scientific computation that belongs in `nirs4all`. Do not commit secrets, workspace data, or generated artifacts.

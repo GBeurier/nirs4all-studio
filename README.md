@@ -285,21 +285,17 @@ ignore that environment variable. Session-wide ownership keeps job creation,
 status, cancellation, and WebSockets on one backend. The FastAPI files remain
 packaged transitionally until their R3 physical removal.
 
-The native-backend migration currently has an explicit **hybrid transition**
-mode. Setting `NIRS4ALL_NATIVE_SIDECAR_PATH` to the absolute path of a built
-`studio-sidecar` binary starts the Rust control-plane sidecar on loopback;
-`NIRS4ALL_NATIVE_SIDECAR_PORT` optionally selects a port (default `0`, an
-ephemeral port). The Python compatibility/scientific process is not started at
-session creation. In an all-in-one package,
-`NIRS4ALL_ENABLE_NATIVE_SIDECAR=1` selects the bundled
-`resources/backend/native/studio-sidecar` instead. It routes only explicitly
-migrated UI calls through the sidecar and never falls back to Python after a
-native route is selected; every other route family refuses in Rust-only mode.
-When that opt-in sidecar runs
-from an all-in-one package, Electron passes its embedded interpreter to the
+The native sidecar is the packaged product backend, not an opt-in hybrid. For
+development, `NIRS4ALL_NATIVE_SIDECAR_PATH` may point to a specific built
+`studio-sidecar` binary and `NIRS4ALL_NATIVE_SIDECAR_PORT` may select its
+loopback port (default `0`, an ephemeral port). Packaged Electron instead
+verifies and starts the bundled content-addressed
+`resources/backend/native/studio-sidecar`. It routes only explicitly migrated
+UI calls through Rust; every other route family refuses before fetch in the
+normal session. Electron passes the selected embedded interpreter to the
 sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; the explicit preflight verifies
 `import nirs4all`, but scientific execution remains unavailable until a Rust-owned
-route enables it. In that explicit dual-run mode, the first UI-backed native
+route enables it. The first UI-backed native
 routes are `/api/health`, `/api/system/capabilities`, `/api/system/info`, and
 `/api/system/env-coherence`, `/api/system/network`, `/api/updates/version`,
 `/api/updates/runtime/status`, `/api/updates/settings`, plus `/api/app/settings`,
