@@ -10,6 +10,7 @@ The source of truth is:
 - `scripts/build-release.cjs`
 - `scripts/build-archive-standalone.cjs`
 - `scripts/bake-standalone-backend.cjs`
+- `scripts/native-runtime-contract.cjs`
 
 Legacy PyInstaller-based backend packaging still exists in the repository for compatibility and debugging, but it is no longer the published desktop release path.
 
@@ -56,7 +57,8 @@ resources/
     ├── websocket/
     ├── updater/
     ├── native/
-    │   └── studio-sidecar
+    │   ├── studio-sidecar
+    │   └── STUDIO_RUNTIME_CONTRACT.json
     ├── main.py
     ├── recommended-config.json
     └── version.json
@@ -76,6 +78,14 @@ as unavailable until the next application launch, so route selection occurs
 before acquiring the compatibility process. The sidecar remains the HTTP owner
 for migrated routes and never launches FastAPI or Uvicorn.
 
+Packaged startup verifies the sidecar size and SHA-256 from
+`STUDIO_RUNTIME_CONTRACT.json` before spawning it. A missing or altered sidecar
+fails product startup before the renderer window is created; it is never
+replaced by the Python compatibility backend. On signed Windows/macOS release
+payloads, a valid Authenticode/code-signature verification is accepted when the
+signing step has necessarily changed the pre-signing byte hash; tampering then
+invalidates that platform signature and remains fail-closed.
+
 ### All-in-one builds
 
 All-in-one bundles embed the runtime directly in the packaged app:
@@ -89,17 +99,29 @@ resources/
     ├── main.py
     ├── recommended-config.json
     ├── version.json
-    └── python-runtime/
-        ├── python/
-        └── RUNTIME_READY.json
+    ├── python-runtime/
+    │   ├── python/
+    │   └── RUNTIME_READY.json
     └── native/
-        └── studio-sidecar
+        ├── studio-sidecar
+        └── STUDIO_RUNTIME_CONTRACT.json
 ```
 
 Electron starts the packaged sidecar automatically and gives it the sibling
 embedded interpreter only for the bounded `nirs4all` import preflight. The Rust
 sidecar remains the process and HTTP owner; the embedded Python runtime is a
 plugin capability, not a FastAPI/Uvicorn fallback.
+
+The same content contract pins the bundled interpreter. If that interpreter is
+missing or altered after packaging, the Rust sidecar still owns the product
+port and reports the Python plugin host unavailable. It does not acquire,
+restart, or fall back to Uvicorn. Archive creation and the release smoke are
+stricter: they reject such an incomplete bundle before publication.
+
+Linux CI executes the unpacked installer directly. The release workflow also
+verifies the same manifest for Windows x64 and macOS x64/arm64 payloads on their
+matching runners; archive jobs additionally execute the full extracted-bundle
+smoke on each target OS.
 
 While the app is still running on the embedded bundled runtime, package
 installation, runtime creation, snapshot restore, and config alignment

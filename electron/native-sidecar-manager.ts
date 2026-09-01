@@ -1,6 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { verifyPackagedRuntimeContract } from "./packaged-runtime-contract";
 
 const SIDECAR_PATH_ENV = "NIRS4ALL_NATIVE_SIDECAR_PATH";
 const SIDECAR_PORT_ENV = "NIRS4ALL_NATIVE_SIDECAR_PORT";
@@ -26,6 +27,7 @@ export interface NativeSidecarInfo {
   protocolVersion: string | null;
   url: string | null;
   pythonPluginHostConfigured: boolean;
+  pythonPluginHostError?: string;
   error?: string;
 }
 
@@ -55,6 +57,10 @@ export interface NativeSidecarStartOptions {
   buildInfoPath?: string | null;
   /** Product version supplied by Electron for Rust-owned version inventory. */
   appVersion?: string | null;
+  /** Testable packaged-resource location; defaults to Electron resourcesPath. */
+  resourcesPath?: string;
+  platform?: NodeJS.Platform;
+  arch?: string;
 }
 
 /**
@@ -115,6 +121,7 @@ export class NativeSidecarManager {
   private port: number | null = null;
   private protocolVersion: string | null = null;
   private pythonPluginHostConfigured = false;
+  private pythonPluginHostError: string | null = null;
   private lastError: string | null = null;
 
   getInfo(): NativeSidecarInfo {
@@ -129,6 +136,9 @@ export class NativeSidecarManager {
           ? `http://${this.host}:${this.port}`
           : null,
       ...(this.lastError ? { error: this.lastError } : {}),
+      ...(this.pythonPluginHostError
+        ? { pythonPluginHostError: this.pythonPluginHostError }
+        : {}),
     };
   }
 
@@ -138,8 +148,10 @@ export class NativeSidecarManager {
     const packagedResourceEnabled =
       options.allowPackagedResource ??
       process.env[SIDECAR_ENABLE_PACKAGED_ENV] === "1";
-    const configuredPath = resolveNativeSidecarPath({
+    let configuredPath = resolveNativeSidecarPath({
       allowPackagedResource: packagedResourceEnabled,
+      resourcesPath: options.resourcesPath,
+      platform: options.platform,
     });
     if (!configuredPath) {
       if (packagedResourceEnabled) {
@@ -152,6 +164,7 @@ export class NativeSidecarManager {
       this.port = null;
       this.protocolVersion = null;
       this.pythonPluginHostConfigured = false;
+      this.pythonPluginHostError = null;
       this.lastError = null;
       return this.getInfo();
     }
@@ -159,6 +172,31 @@ export class NativeSidecarManager {
       return this.getInfo();
     }
 
+    const explicitSidecar = process.env[SIDECAR_PATH_ENV]?.trim();
+    let verifiedBundledPython: string | null = null;
+    this.pythonPluginHostError = null;
+    if (packagedResourceEnabled && !explicitSidecar) {
+      const resourcesPath = options.resourcesPath ?? electronProcess.resourcesPath;
+      if (!resourcesPath) {
+        return this.failBeforeSpawn(
+          "Native sidecar was enabled but Electron has no packaged resources path",
+        );
+      }
+      try {
+        const verified = verifyPackagedRuntimeContract({
+          resourcesPath,
+          platform: options.platform,
+          arch: options.arch,
+        });
+        configuredPath = verified.sidecarPath;
+        verifiedBundledPython = verified.pythonPluginHostPath;
+        this.pythonPluginHostError = verified.pythonPluginHostError;
+      } catch (error) {
+        return this.failBeforeSpawn(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
     const binaryPath = configuredPath;
     if (!fs.existsSync(binaryPath)) {
       return this.failBeforeSpawn(
@@ -192,7 +230,12 @@ export class NativeSidecarManager {
     const bundledPythonPluginHost =
       explicitPythonPluginHost || selectedPythonPluginHost
         ? null
-        : resolveBundledPythonPluginHost();
+        : packagedResourceEnabled && !explicitSidecar
+          ? verifiedBundledPython
+          : resolveBundledPythonPluginHost({
+              resourcesPath: options.resourcesPath,
+              platform: options.platform,
+            });
     const pythonPluginHost =
       explicitPythonPluginHost ||
       selectedPythonPluginHost ||
@@ -349,6 +392,7 @@ export class NativeSidecarManager {
     this.port = null;
     this.protocolVersion = null;
     this.pythonPluginHostConfigured = false;
+    this.pythonPluginHostError = null;
     return this.getInfo();
   }
 

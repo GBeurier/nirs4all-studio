@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -31,11 +32,50 @@ function makeProcess() {
   return process;
 }
 
+function writePackagedContract(
+  resourcesPath: string,
+  sidecarPath: string,
+  pythonPath: string,
+): void {
+  const describe = (filePath: string, memberPath: string) => {
+    const content = fs.readFileSync(filePath);
+    return {
+      path: memberPath,
+      size: content.length,
+      sha256: createHash("sha256").update(content).digest("hex"),
+    };
+  };
+  fs.writeFileSync(
+    path.join(
+      resourcesPath,
+      "backend",
+      "native",
+      "STUDIO_RUNTIME_CONTRACT.json",
+    ),
+    JSON.stringify({
+      schema: "nirs4all.studio-packaged-runtime.v1",
+      platform: "linux",
+      arch: process.arch,
+      product_backend: "rust-sidecar",
+      python_role: "library-plugin-host-only",
+      sidecar: describe(sidecarPath, "native/studio-sidecar"),
+      python_plugin_host: {
+        mode: "bundled-required",
+        member: describe(
+          pythonPath,
+          "python-runtime/python/bin/python3",
+        ),
+      },
+    }),
+  );
+}
+
 afterEach(() => {
   delete process.env.NIRS4ALL_NATIVE_SIDECAR_PATH;
   delete process.env.NIRS4ALL_NATIVE_SIDECAR_PORT;
   delete process.env.NIRS4ALL_ENABLE_NATIVE_SIDECAR;
   delete process.env.NIRS4ALL_PYTHON_PLUGIN_HOST;
+  delete process.env.NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED;
   childProcessMocks.spawn.mockReset();
   vi.resetModules();
   while (tempDirs.length > 0) {
@@ -105,6 +145,86 @@ describe("NativeSidecarManager", () => {
       url: null,
     });
     expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  });
+
+  it("refuses a packaged sidecar without its content contract", async () => {
+    const resourcesPath = fs.mkdtempSync(
+      path.join(os.tmpdir(), "n4a-packaged-sidecar-missing-contract-"),
+    );
+    tempDirs.push(resourcesPath);
+    const sidecarPath = path.join(
+      resourcesPath,
+      "backend",
+      "native",
+      "studio-sidecar",
+    );
+    fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
+    fs.writeFileSync(sidecarPath, "unverified");
+    const { NativeSidecarManager } = await import("./native-sidecar-manager");
+
+    await expect(
+      new NativeSidecarManager().start({
+        allowPackagedResource: true,
+        resourcesPath,
+        platform: "linux",
+        arch: process.arch,
+      }),
+    ).resolves.toMatchObject({
+      status: "error",
+      error: expect.stringContaining("Packaged runtime contract not found"),
+    });
+    expect(childProcessMocks.spawn).not.toHaveBeenCalled();
+  });
+
+  it("keeps Rust selected when the bundled Python plugin host disappears", async () => {
+    const resourcesPath = fs.mkdtempSync(
+      path.join(os.tmpdir(), "n4a-packaged-sidecar-no-python-"),
+    );
+    tempDirs.push(resourcesPath);
+    const sidecarPath = path.join(resourcesPath, "backend", "native", "studio-sidecar");
+    const pythonPath = path.join(
+      resourcesPath,
+      "backend",
+      "python-runtime",
+      "python",
+      "bin",
+      "python3",
+    );
+    fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
+    fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+    fs.writeFileSync(sidecarPath, "verified-rust-sidecar");
+    fs.writeFileSync(pythonPath, "verified-python-host");
+    writePackagedContract(resourcesPath, sidecarPath, pythonPath);
+    fs.rmSync(pythonPath);
+
+    const child = makeProcess();
+    childProcessMocks.spawn.mockReturnValue(child);
+    const { NativeSidecarManager } = await import("./native-sidecar-manager");
+    const manager = new NativeSidecarManager();
+    const startup = manager.start({
+      allowPackagedResource: true,
+      resourcesPath,
+      platform: "linux",
+      arch: process.arch,
+    });
+    const spawnOptions = childProcessMocks.spawn.mock.calls[0]?.[2] as {
+      env: NodeJS.ProcessEnv;
+    };
+    expect(childProcessMocks.spawn.mock.calls[0]?.[0]).toBe(sidecarPath);
+    expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST).toBeUndefined();
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        'STUDIO_SIDECAR_READY {"protocol_version":"studio-sidecar-r1","host":"127.0.0.1","port":43123}\n',
+      ),
+    );
+    await expect(startup).resolves.toMatchObject({
+      status: "running",
+      pythonPluginHostConfigured: false,
+      pythonPluginHostError: expect.stringContaining(
+        "Bundled Python plugin host not found",
+      ),
+    });
   });
 
   it("launches only a loopback sidecar and records its readiness contract", async () => {

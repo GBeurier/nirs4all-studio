@@ -1,5 +1,5 @@
 export interface NativeSessionDependencies {
-  startControlPlane(): void;
+  startControlPlane(): Promise<void> | void;
   createWindow(): Promise<void>;
 }
 
@@ -7,6 +7,6 @@ export interface NativeSessionDependencies {
 export async function startNativeSession(
   dependencies: NativeSessionDependencies,
 ): Promise<void> {
-  dependencies.startControlPlane();
+  await dependencies.startControlPlane();
   await dependencies.createWindow();
 }

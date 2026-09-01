@@ -2,8 +2,8 @@
 /**
  * Build the Rust Studio control-plane binary into the packaged backend tree.
  *
- * The binary remains opt-in at runtime.  Keeping it next to the bundled Python
- * runtime gives the Rust process and a future explicit Python plugin host one
+ * Packaged products select this binary as their default backend. Keeping it
+ * next to the optional Python library/plugin host gives both processes one
  * product-owned resource layout, without reviving a Python HTTP backend.
  *
  * Usage:
@@ -13,25 +13,30 @@
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const { writeRuntimeContract } = require("./native-runtime-contract.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 
-const TARGET_PLATFORMS = Object.freeze({
-  "x86_64-unknown-linux-gnu": "linux",
-  "x86_64-pc-windows-msvc": "win32",
-  "x86_64-apple-darwin": "darwin",
-  "aarch64-apple-darwin": "darwin",
+const TARGETS = Object.freeze({
+  "x86_64-unknown-linux-gnu": { platform: "linux", arch: "x64" },
+  "x86_64-pc-windows-msvc": { platform: "win32", arch: "x64" },
+  "x86_64-apple-darwin": { platform: "darwin", arch: "x64" },
+  "aarch64-apple-darwin": { platform: "darwin", arch: "arm64" },
 });
 
 function getNativeSidecarPaths(
   root = projectRoot,
   platform = process.platform,
   targetTriple = null,
+  cargoTargetDir = null,
 ) {
   const executableName = platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar";
+  const targetRoot = cargoTargetDir
+    ? path.resolve(cargoTargetDir)
+    : path.join(root, "sidecar", "target");
   const targetReleaseDir = targetTriple
-    ? path.join(root, "sidecar", "target", targetTriple, "release")
-    : path.join(root, "sidecar", "target", "release");
+    ? path.join(targetRoot, targetTriple, "release")
+    : path.join(targetRoot, "release");
   return {
     manifestPath: path.join(root, "sidecar", "Cargo.toml"),
     builtBinaryPath: path.join(targetReleaseDir, executableName),
@@ -58,7 +63,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     }
     throw new Error(`Unknown argument: ${argument}`);
   }
-  if (targetTriple !== null && !TARGET_PLATFORMS[targetTriple]) {
+  if (targetTriple !== null && !TARGETS[targetTriple]) {
     throw new Error(`Unsupported native sidecar target: ${targetTriple}`);
   }
   return { targetTriple };
@@ -83,14 +88,21 @@ async function buildNativeSidecar({
   cargo = "cargo",
   platform = process.platform,
   targetTriple = null,
+  cargoTargetDir = process.env.CARGO_TARGET_DIR || null,
 } = {}) {
-  const targetPlatform = targetTriple ? TARGET_PLATFORMS[targetTriple] : platform;
+  const target = targetTriple ? TARGETS[targetTriple] : null;
+  const targetPlatform = target?.platform ?? platform;
   if (targetTriple && platform !== targetPlatform) {
     throw new Error(
       `Native sidecar target ${targetTriple} is for ${targetPlatform}, not ${platform}`,
     );
   }
-  const paths = getNativeSidecarPaths(root, targetPlatform, targetTriple);
+  const paths = getNativeSidecarPaths(
+    root,
+    targetPlatform,
+    targetTriple,
+    cargoTargetDir,
+  );
   const cargoArgs = ["build", "--manifest-path", paths.manifestPath, "--release"];
   if (targetTriple) cargoArgs.push("--target", targetTriple);
   await run(cargo, cargoArgs, root);
@@ -103,6 +115,13 @@ async function buildNativeSidecar({
   if (platform !== "win32") {
     fs.chmodSync(paths.packagedBinaryPath, 0o755);
   }
+  const backendRoot = path.join(root, "backend-dist");
+  const contract = writeRuntimeContract({
+    backendRoot,
+    platform: targetPlatform,
+    arch: target?.arch ?? process.arch,
+  });
+  paths.runtimeContractPath = contract.contractPath;
   return paths.packagedBinaryPath;
 }
 
