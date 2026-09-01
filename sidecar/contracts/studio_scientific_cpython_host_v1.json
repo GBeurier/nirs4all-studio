@@ -6,14 +6,21 @@
   "required_implementation": "cpython",
   "minimum_python_version": "3.11",
   "required_callable": "nirs4all.studio_scientific_job_v1",
+  "maximum_stdin_bytes": 65536,
   "maximum_stdout_bytes": 8192,
   "maximum_stderr_bytes": 65536,
-  "preflight_timeout_ms": 3000,
+  "preflight_timeout_ms": 5000,
+  "execution_timeout_ms": 120000,
+  "host_identity": "canonical_path_size_sha256_sticky_reverified",
+  "callable_identity": "canonical_path_size_sha256_sticky_reverified_in_rust_and_child",
   "network_ownership": "forbidden",
   "network_bind_self_test": "required",
   "http_backend": "forbidden",
   "scheduler_owner": "studio-sidecar-rust",
   "store_owner": "studio-sidecar-rust",
+  "terminal_callback_owner": "studio-sidecar-rust",
+  "execution_bridge_implemented": true,
+  "studio_payload_resolver_implemented": false,
   "scientific_execution_capability": false,
-  "reason": "the current nirs4all library does not expose the closed Studio job callable"
+  "reason": "the current Studio payload contains saved dataset and pipeline identities but no Rust-resolved path-free matrices descriptor"
 }

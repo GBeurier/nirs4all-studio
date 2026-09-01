@@ -230,21 +230,31 @@ routes are capability evidence, never transparent Python fallback.
 Electron explicitly selects the bounded scientific-host acquisition candidate
 with `NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1` only when it also supplies
 `NIRS4ALL_PYTHON_PLUGIN_HOST`. The sidecar fingerprints that executable with
-SHA-256 and runs one fresh, isolated JSON-stdio preflight under a three-second,
-8 KiB stdout, and 64 KiB stderr budget. The acquisition result is sticky for
-the process lifetime; a changed runtime requires a new sidecar. The response
-must identify CPython 3.11 or newer with `-I` isolation active and pass a real
-negative bind self-test. A Python audit hook rejects `socket.bind`, so this
-host cannot become the HTTP/WS product backend. The closed contract is
+SHA-256 and runs one fresh, isolated JSON-stdio preflight under a five-second,
+8 KiB stdout, and 64 KiB stderr budget. It also fingerprints the exact source
+file behind `nirs4all.studio_scientific_job_v1`; both identities are sticky and
+reverified before execution, including a child-side callable check. The
+response must identify CPython 3.11 or newer with `-I` isolation active and
+pass a real negative bind self-test. A Python audit hook rejects `socket.bind`,
+so this host cannot become the HTTP/WS product backend. The closed contract is
 `contracts/studio_scientific_cpython_host_v1.json`.
 
-The current nirs4all library has no callable that accepts the closed Studio
-run-group payload while leaving job identity, persistence, events,
-cancellation, scheduling, and terminal-state ownership in Rust. Consequently
-this candidate intentionally reports `scientific_execution: false`: missing,
-changed, timed-out, malformed, or oversized hosts produce a typed 503 before
-the request body, workspace catalogue, job registry, event stream, or durable
-store is touched. There is no legacy or FastAPI fallback.
+The fresh-process execution bridge accepts only the callable's already-resolved
+path-free matrix request (64 KiB stdin), validates its exact PLS/KFold shape in
+Rust, and validates the exact 8 KiB result. Stderr is bounded to 64 KiB and the
+worker is killed on cancellation or the 120-second deadline. Its terminal
+callback returns only complete/fail/cancel acknowledgement to the Rust runtime,
+which owns registry transitions, WebSocket events, and durable records.
+
+Product selection nevertheless remains intentionally false. The current
+run-group payload contains saved dataset and pipeline identifiers, not the
+resolved matrices required by the callable, and Studio has no selected native
+IO/pipeline resolver for those identities. The stable refusal is
+`scientific_request_resolver_unavailable`; no workspace path, manifest, or
+opaque saved payload is passed to Python. Missing, changed, timed-out,
+malformed, or oversized hosts likewise produce a typed 503 before the request
+body, workspace catalogue, job registry, event stream, or durable store is
+touched. There is no legacy or FastAPI fallback.
 
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the
