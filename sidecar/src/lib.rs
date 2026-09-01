@@ -32,6 +32,7 @@ mod results_summary;
 pub mod run_detail;
 pub mod run_detail_cpython;
 pub mod run_detail_preselection;
+pub mod scientific_cpython;
 pub mod scientific_submission;
 mod settings;
 pub mod websocket_transport;
@@ -90,6 +91,7 @@ pub fn read_dataset_links(
 
 pub const PYTHON_PLUGIN_HOST_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST";
 pub const PYTHON_PLUGIN_HOST_BUNDLED_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
+pub const SCIENTIFIC_EXECUTOR_ENV: &str = "NIRS4ALL_SCIENTIFIC_EXECUTOR";
 pub const RUNTIME_MODE_ENV: &str = "NIRS4ALL_RUNTIME_MODE";
 pub const RUNTIME_KIND_ENV: &str = "NIRS4ALL_RUNTIME_KIND";
 pub const BUILD_INFO_PATH_ENV: &str = "NIRS4ALL_BUILD_INFO_PATH";
@@ -141,6 +143,7 @@ pub enum ErrorCode {
     WebSocketUpgradeRequired,
     PythonPluginUnavailable,
     PythonPluginPreflightFailed,
+    ScientificExecutorUnavailable,
 }
 
 impl ErrorCode {
@@ -156,6 +159,7 @@ impl ErrorCode {
             Self::WebSocketUpgradeRequired => "websocket_upgrade_required",
             Self::PythonPluginUnavailable => "python_plugin_unavailable",
             Self::PythonPluginPreflightFailed => "python_plugin_preflight_failed",
+            Self::ScientificExecutorUnavailable => "scientific_executor_unavailable",
         }
     }
 
@@ -431,6 +435,24 @@ impl SidecarState {
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "python_plugin_host".into());
+        let native_jobs = if env::var(SCIENTIFIC_EXECUTOR_ENV).as_deref()
+            == Ok(scientific_cpython::SCIENTIFIC_CPYTHON_EXECUTOR_ID)
+        {
+            python_plugin_host.as_ref().map_or_else(
+                || {
+                    Arc::new(NativeJobRuntime::with_executor(Arc::new(
+                        scientific_cpython::CpythonScientificJobExecutor::acquire(Path::new("")),
+                    )))
+                },
+                |path| {
+                    Arc::new(NativeJobRuntime::with_executor(Arc::new(
+                        scientific_cpython::CpythonScientificJobExecutor::acquire(path),
+                    )))
+                },
+            )
+        } else {
+            Arc::new(NativeJobRuntime::default())
+        };
         Self {
             python_plugin_host,
             python_plugin_host_bundled,
@@ -439,6 +461,7 @@ impl SidecarState {
             build_info_path: env::var_os(BUILD_INFO_PATH_ENV)
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
+            native_jobs,
             app_settings: AppSettingsStore::from_environment(),
             update_settings: UpdateSettingsStore::from_environment(),
             ..Self::default()
@@ -2698,6 +2721,18 @@ fn scientific_submission_response(state: &SidecarState, body: &[u8]) -> HttpResp
     // linked-workspace catalogue. This prevents hidden scientific or storage
     // work when no executor was explicitly selected.
     if !state.native_jobs.execution_selected() {
+        let reason = state
+            .native_jobs
+            .execution_unavailability_reason()
+            .unwrap_or("executor_not_selected");
+        if reason != "executor_not_selected" {
+            return error_response(
+                503,
+                ErrorCode::ScientificExecutorUnavailable,
+                "The bounded scientific executor is unavailable",
+                BTreeMap::from([("reason".into(), reason.into())]),
+            );
+        }
         return HttpResponse::json(
             503,
             json!({

@@ -76,6 +76,7 @@ afterEach(() => {
   delete process.env.NIRS4ALL_ENABLE_NATIVE_SIDECAR;
   delete process.env.NIRS4ALL_PYTHON_PLUGIN_HOST;
   delete process.env.NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED;
+  delete process.env.NIRS4ALL_SCIENTIFIC_EXECUTOR;
   childProcessMocks.spawn.mockReset();
   vi.resetModules();
   while (tempDirs.length > 0) {
@@ -212,6 +213,7 @@ describe("NativeSidecarManager", () => {
     };
     expect(childProcessMocks.spawn.mock.calls[0]?.[0]).toBe(sidecarPath);
     expect(spawnOptions.env.NIRS4ALL_PYTHON_PLUGIN_HOST).toBeUndefined();
+    expect(spawnOptions.env.NIRS4ALL_SCIENTIFIC_EXECUTOR).toBeUndefined();
     child.stdout.emit(
       "data",
       Buffer.from(
@@ -242,6 +244,7 @@ describe("NativeSidecarManager", () => {
       expect.objectContaining({
         env: expect.objectContaining({
           NIRS4ALL_PYTHON_PLUGIN_HOST: "/plugin-host/python",
+          NIRS4ALL_SCIENTIFIC_EXECUTOR: "cpython-stdio-v1",
         }),
         windowsHide: true,
       }),
@@ -282,6 +285,7 @@ describe("NativeSidecarManager", () => {
       expect.objectContaining({
         env: expect.objectContaining({
           NIRS4ALL_PYTHON_PLUGIN_HOST: "/selected-runtime/python",
+          NIRS4ALL_SCIENTIFIC_EXECUTOR: "cpython-stdio-v1",
           NIRS4ALL_RUNTIME_MODE: "bundled",
           NIRS4ALL_RUNTIME_KIND: "bundled",
           NIRS4ALL_BUILD_INFO_PATH:
