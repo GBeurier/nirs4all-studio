@@ -1,11 +1,13 @@
-//! Closed phase-one contract for native Archive V2 prediction.
+//! Closed product contract for native Archive V2 prediction.
 //!
 //! This module validates the array-only request, resolves one persisted
 //! workspace export without scanning, reads and hashes the archive from one
-//! bounded handle, and defines the native executor seam.  It deliberately
-//! contains no archive parser or numerical implementation.  Product state
-//! installs the unselected executor until the reviewed Core/libn4m helper is
-//! integrated.
+//! bounded handle, and executes replay through the immutable Core snapshot and
+//! its native Methods boundary. It deliberately contains no independent
+//! archive parser or numerical implementation. Product state selects this
+//! executor only when the packaged runtime contract attests a per-platform
+//! libn4m closure and Core preflight succeeds; otherwise the capability remains
+//! unavailable.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -1147,14 +1149,33 @@ mod tests {
     }
 
     #[test]
-    fn frozen_contract_records_caps_and_unselected_product_default() {
+    fn frozen_contract_records_caps_and_conditional_product_selection() {
         let contract: Value = serde_json::from_str(include_str!(
             "../contracts/studio_archive_v2_prediction_v1.json"
         ))
         .unwrap();
 
         assert_eq!(contract["route"]["path"], ARCHIVE_V2_PREDICTION_ROUTE);
-        assert_eq!(contract["route"]["success_capability"], false);
+        assert_eq!(
+            contract["route"]["selection"],
+            "conditional_on_attested_packaged_closure"
+        );
+        assert_eq!(
+            contract["route"]["without_attested_packaged_closure"]["status"],
+            503
+        );
+        assert_eq!(
+            contract["route"]["without_attested_packaged_closure"]["capability"],
+            false
+        );
+        assert_eq!(
+            contract["route"]["with_attested_packaged_closure"]["success_status"],
+            200
+        );
+        assert_eq!(
+            contract["route"]["with_attested_packaged_closure"]["capability"],
+            true
+        );
         assert_eq!(
             contract["request"]["maximum_encoded_bytes"],
             MAX_PREDICTION_BODY_BYTES
@@ -1164,10 +1185,13 @@ mod tests {
             MAX_ARCHIVE_BYTES
         );
         assert_eq!(
-            contract["future_success_response"]["maximum_encoded_bytes"],
+            contract["success_response"]["maximum_encoded_bytes"],
             MAX_PREDICTION_RESPONSE_BYTES
         );
-        assert_eq!(contract["executor_boundary"]["selected_by_default"], false);
+        assert_eq!(
+            contract["executor_boundary"]["selection"],
+            "packaged_runtime_contract_plus_successful_core_preflight"
+        );
         assert_eq!(contract["executor_boundary"]["python_http_owner"], false);
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
     }

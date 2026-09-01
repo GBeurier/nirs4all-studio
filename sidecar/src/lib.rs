@@ -844,9 +844,9 @@ fn route_archive_v2_prediction_match(
 }
 
 fn archive_v2_prediction_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
-    // The product default refuses before JSON parsing or persisted workspace
-    // resolution. Phase one cannot produce predictions without the selected
-    // Core/libn4m executor planned for the integration phase.
+    // A runtime without an attested packaged libn4m closure refuses before JSON
+    // parsing or persisted workspace resolution. A successfully preflighted
+    // closure selects the Core-backed executor during product-state creation.
     if !state.archive_v2_prediction.is_selected() {
         return archive_v2_prediction_error_response(
             &ArchiveV2PredictionError::ExecutorUnavailable,
