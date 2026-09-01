@@ -25,6 +25,26 @@ nirs4all-webapp uses Electron as the desktop shell, replacing the previous PyWeb
 - **Mature Packaging**: electron-builder for multi-OS distribution
 - **Auto-Updates**: Built-in electron-updater support
 
+### Current native-session lifecycle
+
+Electron now starts the Rust `studio-sidecar` control plane and creates the
+window without launching Uvicorn. `electron/native-session-lifecycle.ts` owns
+that dependency-free session start. `electron/scientific-plugin-lifecycle.ts`
+owns the optional Python compatibility/scientific process: the first legacy
+HTTP or WebSocket request acquires it through a single shared blocking start
+and receives a URL only after readiness succeeds.
+
+Native route selection happens before dispatch. A request selected for the
+sidecar is never retried through FastAPI. An unmigrated route explicitly
+acquires the scientific plugin; failure is returned to the caller rather than
+silently changing backend. Control-plane and scientific readiness are exposed
+separately over IPC. Restarting or changing the Python interpreter stops only
+the optional process and leaves the Rust control plane running.
+
+The later backend-manager examples in this guide describe the implementation
+of that optional compatibility process. They are not the application startup
+sequence and must not be used to reintroduce eager Uvicorn startup.
+
 ---
 
 ## Why Electron?

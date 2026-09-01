@@ -69,10 +69,12 @@ At runtime, Electron resolves or creates a writable Python environment outside t
 
 Electron starts the packaged sidecar on every packaged desktop launch. Before
 the explicit Python library/plugin host is configured, Settings routes retain
-their compatibility-backend transport; after configuration, Electron restarts
-the sidecar with that interpreter only as `NIRS4ALL_PYTHON_PLUGIN_HOST`. The
-sidecar remains the HTTP owner for the migrated routes and never launches
-FastAPI or Uvicorn.
+their compatibility/scientific-plugin transport. Changing the interpreter
+stops only that optional process; it never restarts the Rust sidecar. A running
+sidecar whose original plugin-host path became stale reports the optional host
+as unavailable until the next application launch, so route selection occurs
+before acquiring the compatibility process. The sidecar remains the HTTP owner
+for migrated routes and never launches FastAPI or Uvicorn.
 
 ### All-in-one builds
 
