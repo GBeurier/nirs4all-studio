@@ -29,7 +29,9 @@ mod workspace_store;
 
 use settings::{AppSettingsStore, ConfigPathError};
 use workspace_store::{
-    read_run_summaries, WorkspaceStoreReadError, WorkspaceStoreRunSummary, MAX_RUN_SUMMARIES,
+    read_pipeline_summaries, read_run_summaries, WorkspaceStorePipelineSummary,
+    WorkspaceStoreReadError, WorkspaceStoreRunSummary, DEFAULT_PIPELINE_SUMMARIES_LIMIT,
+    MAX_RUN_SUMMARIES,
 };
 
 pub const PROTOCOL_VERSION: &str = "studio-sidecar-r1";
@@ -607,6 +609,9 @@ pub fn route_request_with_body(
         (_, "/api/app/config-path") => method_not_allowed(method, path, "GET, POST, DELETE"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
         _ if workspace_runs_path(path) => route_workspace_run_summaries(state, method, path),
+        _ if workspace_results_path(path) => {
+            route_workspace_pipeline_summaries(state, method, path)
+        }
         _ if path.starts_with("/api/app/favorites/") => route_app_favourite(state, method, path),
         _ if path.starts_with("/api/workspaces/") => {
             route_linked_workspace_state(state, method, path)
@@ -843,6 +848,17 @@ fn workspace_runs_path(path: &str) -> bool {
     )
 }
 
+fn workspace_results_path(path: &str) -> bool {
+    let Some(suffix) = path.strip_prefix("/api/workspaces/") else {
+        return false;
+    };
+    let mut segments = suffix.split('/');
+    matches!(
+        (segments.next(), segments.next(), segments.next()),
+        (Some(workspace_id), Some("results"), None) if !workspace_id.is_empty()
+    )
+}
+
 fn route_workspace_run_summaries(state: &SidecarState, method: &str, path: &str) -> HttpResponse {
     if method != "GET" {
         return method_not_allowed(method, path, "GET");
@@ -877,6 +893,53 @@ fn route_workspace_run_summaries(state: &SidecarState, method: &str, path: &str)
     }
 }
 
+fn route_workspace_pipeline_summaries(
+    state: &SidecarState,
+    method: &str,
+    path: &str,
+) -> HttpResponse {
+    if method != "GET" {
+        return method_not_allowed(method, path, "GET");
+    }
+    let Some(workspace_id) = path
+        .strip_prefix("/api/workspaces/")
+        .and_then(|suffix| suffix.strip_suffix("/results"))
+        .filter(|workspace_id| !workspace_id.is_empty())
+    else {
+        return linked_workspace_route_not_found(path);
+    };
+    let workspace_path = match state.app_settings.linked_workspace_path(workspace_id) {
+        Ok(Some(workspace_path)) => workspace_path,
+        Ok(None) => {
+            return HttpResponse::json(404, json!({"detail": "Workspace not found"}).to_string());
+        }
+        Err(error) => return app_settings_storage_error("resolve linked workspace", &error),
+    };
+    match read_pipeline_summaries(&workspace_path, DEFAULT_PIPELINE_SUMMARIES_LIMIT, 0) {
+        Ok(page) => {
+            let results = page
+                .results
+                .iter()
+                .map(WorkspaceStorePipelineSummary::response)
+                .collect::<Vec<_>>();
+            let limit = usize::from(DEFAULT_PIPELINE_SUMMARIES_LIMIT);
+            HttpResponse::json(
+                200,
+                json!({
+                    "workspace_id": workspace_id,
+                    "results": results,
+                    "total": page.total,
+                    "limit": limit,
+                    "offset": 0,
+                    "has_more": limit < page.total,
+                })
+                .to_string(),
+            )
+        }
+        Err(error) => workspace_store_read_error_response(&error),
+    }
+}
+
 fn workspace_store_read_error_response(error: &WorkspaceStoreReadError) -> HttpResponse {
     match error {
         WorkspaceStoreReadError::StoreNotFound => HttpResponse::json(
@@ -895,10 +958,10 @@ fn workspace_store_read_error_response(error: &WorkspaceStoreReadError) -> HttpR
             })
             .to_string(),
         ),
-        WorkspaceStoreReadError::MissingColumns(_) => HttpResponse::json(
+        WorkspaceStoreReadError::MissingColumns { .. } => HttpResponse::json(
             409,
             json!({
-                "detail": "WorkspaceStore v5 does not provide the native run-summary projection",
+                "detail": "WorkspaceStore v5 does not provide the required native summary projections",
                 "code": "workspace_store_projection_incompatible",
             })
             .to_string(),
@@ -2081,6 +2144,16 @@ fn read_bounded_stdout(
 }
 
 fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpResponse {
+    if request.query.is_some()
+        && (workspace_runs_path(&request.path) || workspace_results_path(&request.path))
+    {
+        return error_response(
+            404,
+            ErrorCode::RouteNotFound,
+            "This native WorkspaceStore projection accepts only a bare request path",
+            BTreeMap::from([("path".into(), request.path.clone())]),
+        );
+    }
     if request.path == "/sidecar/v1/ws" && request.method == "GET" {
         if !request.is_websocket_upgrade() {
             return route_request(state, &request.method, &request.path);
@@ -2350,6 +2423,7 @@ enum RequestReadError {
 struct HttpRequest {
     method: String,
     path: String,
+    query: Option<String>,
     headers: BTreeMap<String, String>,
     body: Vec<u8>,
 }
@@ -2499,9 +2573,14 @@ fn parse_http_request(bytes: &[u8]) -> Result<HttpRequest, RequestReadError> {
         }
         headers.insert(name.to_ascii_lowercase(), value.trim().to_owned());
     }
+    let (path, query) = target.split_once('?').map_or_else(
+        || (target.to_owned(), None),
+        |(path, query)| (path.to_owned(), Some(query.to_owned())),
+    );
     Ok(HttpRequest {
         method: method.to_owned(),
-        path: target.split('?').next().unwrap_or(target).to_owned(),
+        path,
+        query,
         headers,
         body: Vec::new(),
     })
@@ -2700,6 +2779,24 @@ mod tests {
             "last_scanned": null,
             "discovered": {"runs_count": runs_count},
         })
+    }
+
+    fn assert_route_code(state: &mut SidecarState, path: &str, status: u16, code: &str) {
+        let response = route_request(state, "GET", path);
+        assert_eq!(response.status, status);
+        assert_eq!(
+            serde_json::from_str::<Value>(&response.body).unwrap()["code"],
+            code
+        );
+    }
+
+    fn assert_workspace_not_found(state: &mut SidecarState, path: &str) {
+        let response = route_request(state, "GET", path);
+        assert_eq!(response.status, 404);
+        assert_eq!(
+            serde_json::from_str::<Value>(&response.body).unwrap(),
+            json!({"detail": "Workspace not found"})
+        );
     }
 
     #[test]
@@ -3000,7 +3097,7 @@ mod tests {
     }
 
     #[test]
-    fn workspace_run_summary_route_reads_the_python_written_v5_store_without_a_python_host() {
+    fn workspace_summary_routes_read_the_python_written_v5_store_without_a_python_host() {
         let directory = test_directory("workspace-run-summary");
         let settings_directory = directory.join("config");
         let workspace = directory.join("workspace");
@@ -3056,34 +3153,51 @@ mod tests {
         assert_eq!(payload, expected);
         assert!(!workspace.join("store.sqlite-wal").exists());
         assert!(!workspace.join("store.sqlite-shm").exists());
+        let results_response =
+            route_request(&mut state, "GET", "/api/workspaces/workspace-a/results");
+        assert_eq!(results_response.status, 200);
+        let results_payload: Value = serde_json::from_str(&results_response.body).unwrap();
+        let expected_results: Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/workspace_store_v5_results.response.json"
+        ))
+        .unwrap();
+        assert_eq!(results_payload, expected_results);
+        assert!(!workspace.join("store.sqlite-wal").exists());
+        assert!(!workspace.join("store.sqlite-shm").exists());
         assert_eq!(
             route_request(&mut state, "POST", "/api/workspaces/workspace-a/runs").status,
             405
         );
-        let unavailable = route_request(&mut state, "GET", "/api/workspaces/workspace-empty/runs");
-        assert_eq!(unavailable.status, 409);
         assert_eq!(
-            serde_json::from_str::<Value>(&unavailable.body).unwrap()["code"],
-            "workspace_store_unavailable"
+            route_request(&mut state, "POST", "/api/workspaces/workspace-a/results").status,
+            405
         );
-        let busy = route_request(&mut state, "GET", "/api/workspaces/workspace-busy/runs");
-        assert_eq!(busy.status, 409);
-        assert_eq!(
-            serde_json::from_str::<Value>(&busy.body).unwrap()["code"],
-            "workspace_store_busy"
+        assert_route_code(
+            &mut state,
+            "/api/workspaces/workspace-empty/runs",
+            409,
+            "workspace_store_unavailable",
         );
-        let incompatible = route_request(&mut state, "GET", "/api/workspaces/workspace-v4/runs");
-        assert_eq!(incompatible.status, 409);
-        assert_eq!(
-            serde_json::from_str::<Value>(&incompatible.body).unwrap()["code"],
-            "workspace_store_schema_incompatible"
+        assert_route_code(
+            &mut state,
+            "/api/workspaces/workspace-busy/runs",
+            409,
+            "workspace_store_busy",
         );
-        let missing = route_request(&mut state, "GET", "/api/workspaces/missing/runs");
-        assert_eq!(missing.status, 404);
-        assert_eq!(
-            serde_json::from_str::<Value>(&missing.body).unwrap(),
-            json!({"detail": "Workspace not found"})
+        assert_route_code(
+            &mut state,
+            "/api/workspaces/workspace-busy/results",
+            409,
+            "workspace_store_busy",
         );
+        assert_route_code(
+            &mut state,
+            "/api/workspaces/workspace-v4/runs",
+            409,
+            "workspace_store_schema_incompatible",
+        );
+        assert_workspace_not_found(&mut state, "/api/workspaces/missing/runs");
+        assert_workspace_not_found(&mut state, "/api/workspaces/missing/results");
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -3588,6 +3702,25 @@ mod tests {
     }
 
     #[test]
+    fn native_workspace_store_routes_reject_queries_before_routing() {
+        let mut state = SidecarState::default();
+        for target in [
+            "/api/workspaces/workspace-a/runs?source=unified",
+            "/api/workspaces/workspace-a/results?limit=1",
+        ] {
+            let raw = format!("GET {target} HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            let request = parse_http_request(raw.as_bytes()).unwrap();
+            assert!(request.query.is_some());
+            let response = route_http_request(&mut state, &request);
+            assert_eq!(response.status, 404);
+            assert_eq!(
+                serde_json::from_str::<Value>(&response.body).unwrap()["error"]["code"],
+                "route_not_found"
+            );
+        }
+    }
+
+    #[test]
     fn websocket_426_requires_a_valid_upgrade_and_is_not_retryable() {
         let mut state = SidecarState::default();
         let ordinary = route_request(&mut state, "GET", "/sidecar/v1/ws");
@@ -3595,6 +3728,7 @@ mod tests {
         let valid_upgrade = HttpRequest {
             method: "GET".into(),
             path: "/sidecar/v1/ws".into(),
+            query: None,
             headers: BTreeMap::from([
                 ("upgrade".into(), "websocket".into()),
                 ("connection".into(), "keep-alive, Upgrade".into()),
@@ -3628,6 +3762,7 @@ mod tests {
             let request = HttpRequest {
                 method: "GET".into(),
                 path: "/sidecar/v1/ws".into(),
+                query: None,
                 headers,
                 body: Vec::new(),
             };

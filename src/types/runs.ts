@@ -322,8 +322,12 @@ export interface Result {
   schema_version?: string;
   generator_choices?: Array<Record<string, unknown>>;
   best_score?: number | null;
+  best_test_score?: number | null;
   best_model?: string;
-  metric?: string;
+  metric?: string | null;
+  status?: string | null;
+  duration_ms?: number | null;
+  format?: string;
   task_type?: string;
   n_samples?: number;
   n_features?: number;

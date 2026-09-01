@@ -123,8 +123,12 @@ export interface WorkspaceResultRow {
   pipeline_config_id: string;
   created_at?: string;
   best_score?: number | null;
+  best_test_score?: number | null;
   best_model?: string;
-  metric?: string;
+  metric?: string | null;
+  status?: string | null;
+  duration_ms?: number | null;
+  format?: string;
   predictions_count?: number;
   artifact_count?: number;
   manifest_path?: string;
