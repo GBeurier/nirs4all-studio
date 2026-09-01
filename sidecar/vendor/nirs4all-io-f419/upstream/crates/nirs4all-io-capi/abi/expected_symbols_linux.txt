@@ -1,0 +1,10 @@
+n4io_abi_version
+n4io_check_abi_compatibility
+n4io_context_create
+n4io_context_destroy
+n4io_context_last_error
+n4io_infer
+n4io_load_summary
+n4io_string_free
+n4io_to_spec
+n4io_validate

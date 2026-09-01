@@ -1,0 +1,4 @@
+sample_id;observation_id;repetition_id;group_id;set;1000;target
+S0;O0;R0;G0;cal;1.0;10.0
+S1;O1;R1;G1;val;2.0;20.0
+S2;O2;R2;G2;cal;3.0;30.0

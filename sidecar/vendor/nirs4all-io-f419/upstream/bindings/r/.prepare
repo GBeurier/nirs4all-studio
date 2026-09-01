@@ -1,0 +1,19 @@
+#!/bin/sh
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# R-universe pre-build hook.
+#
+# R-universe's build backend clones the WHOLE repo and runs this script from the
+# package directory BEFORE `R CMD build`, while the full tree — including the
+# top-level `crates/` core at ../../crates — is still on disk. That is the only
+# window in which the out-of-tree nirs4all-io{,-core,-capi} crates are reachable,
+# so we vendor them here (exactly the step the CRAN CI runs).
+#
+# `N4IO_R_VENDOR=1 ./configure` copies the core crates into src/rust/vendored/,
+# emits a self-contained src/rust/Cargo.toml, copies the committed C ABI header,
+# and `cargo vendor`s every crates.io transitive dep into src/rust/vendor.tar.xz
+# with an offline source-replacement config. `R CMD build` then bundles those
+# inputs into the source tarball, so every later step (the tarball's own
+# configure on install) builds a self-contained, OFFLINE staticlib with no
+# external crates/ and no network.
+set -e
+N4IO_R_VENDOR=1 ./configure

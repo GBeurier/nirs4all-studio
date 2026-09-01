@@ -1,0 +1,100 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# Source archive + SBOM + provenance + checksums for every release tag.
+#
+# Mirrors nirs4all-formats' release-source.yml: a reproducible git-archive
+# source tarball + zip, a CycloneDX SBOM (syft), a SHA256SUMS manifest, and
+# keyless Sigstore build-provenance attestations (actions/attest-*), all
+# attached to the matching GitHub Release.
+#
+# Keyless attestation (OIDC, id-token: write) avoids any private-key custody.
+#
+# Trigger: tag push v*.*.* (the publish-to-Release step is gated on a non-rc
+# tag), or workflow_dispatch for a dry run (build artifacts, no Release upload).
+name: release-source
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write       # attach assets to the Release
+  id-token: write       # keyless Sigstore provenance (OIDC)
+  attestations: write   # actions/attest-* records
+
+jobs:
+  source-release:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need the tag object for git archive
+
+      - name: Resolve version + reproducible epoch
+        id: meta
+        run: |
+          # Single source of truth: the workspace version in the root Cargo.toml
+          # ([workspace.package] version). scripts/bump_version.sh keeps every
+          # binding manifest in sync with it.
+          VER=$(sed -nE '/^\[workspace\.package\]/,/^\[/{s/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p}' Cargo.toml | head -n1)
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          echo "epoch=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
+          echo "prefix=nirs4all-io-$VER" >> "$GITHUB_OUTPUT"
+          echo "resolved version: $VER"
+
+      - name: Build reproducible source archives (tar.gz + zip)
+        env:
+          PREFIX: ${{ steps.meta.outputs.prefix }}
+          TZ: UTC   # byte-reproducible zip regardless of runner timezone
+        run: |
+          mkdir -p dist
+          git archive --format=tar --prefix="${PREFIX}/" HEAD -o dist/src.tar
+          gzip -9 -n -c dist/src.tar > "dist/${PREFIX}-src.tar.gz"   # -n: no name/mtime in gzip header
+          git archive --format=zip  --prefix="${PREFIX}/" HEAD -o "dist/${PREFIX}-src.zip"
+          rm -f dist/src.tar
+          ls -la dist/
+
+      - name: Generate CycloneDX SBOM (syft)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: dist/${{ steps.meta.outputs.prefix }}.cdx.json
+          # Do NOT let the action auto-attach its own default-named SBOM to the
+          # Release (it would duplicate our dist/<prefix>.cdx.json). We attach it.
+          upload-release-assets: false
+
+      - name: SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest build provenance for the artifacts
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/${{ steps.meta.outputs.prefix }}-src.tar.gz
+            dist/${{ steps.meta.outputs.prefix }}-src.zip
+            dist/${{ steps.meta.outputs.prefix }}.cdx.json
+
+      - name: Upload assets to the matching Release
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/${{ steps.meta.outputs.prefix }}-src.tar.gz
+            dist/${{ steps.meta.outputs.prefix }}-src.zip
+            dist/${{ steps.meta.outputs.prefix }}.cdx.json
+            dist/SHA256SUMS
+          fail_on_unmatched_files: true
+
+      - name: Upload artifacts (always, for dry runs / inspection)
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-release-${{ steps.meta.outputs.ver }}
+          path: dist/

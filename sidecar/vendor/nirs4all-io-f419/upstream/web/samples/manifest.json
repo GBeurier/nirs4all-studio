@@ -1,0 +1,10 @@
+{
+  "files": [
+    { "name": "X_train.csv" },
+    { "name": "y_train.csv" },
+    { "name": "metadata_train.csv" },
+    { "name": "X_test.csv" },
+    { "name": "y_test.csv" },
+    { "name": "metadata_test.csv" }
+  ]
+}

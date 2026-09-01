@@ -1,0 +1,11 @@
+# R >= 4.2 on Windows uses the UCRT toolchain (Rtools42+). For the
+# x86_64-pc-windows-gnu target cargo does not locate Rtools' linker where it
+# expects, and CARGO_LINKER is otherwise UNSET on the CRAN Windows builder.
+# Exporting an empty CARGO_TARGET_*_LINKER then makes cargo fail to link the
+# build scripts ("couldn't extract file stem from specified linker"), which broke
+# the win-builder install. Point CARGO_LINKER at the Rtools mingw gcc and let
+# Makevars.win wire it into CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER. Mirrors the
+# canonical extendr / rextendr Windows setup (and nirs4allformats).
+CARGO_LINKER = x86_64-w64-mingw32.static.posix-gcc.exe
+
+include Makevars.win

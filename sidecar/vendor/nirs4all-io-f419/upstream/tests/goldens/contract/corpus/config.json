@@ -1,0 +1,6 @@
+{
+  "sources": [
+    {"id": "x", "role": "features", "input": "X.csv"},
+    {"id": "y", "role": "targets", "input": "Y.csv", "join": {"to": "x", "how": "1:1"}}
+  ]
+}

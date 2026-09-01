@@ -1,0 +1,10 @@
+{
+  "ambiguous": false,
+  "list": [
+    true,
+    false,
+    null
+  ],
+  "strict": true,
+  "value": null
+}

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# GNU ld version script for libnirs4all_io_capi. Exports only the public
+# `n4io_*` C ABI under the versioned node N4IO_1; everything else is local.
+# Wired by build.rs as `-Wl,--version-script=...` on Linux cdylib builds.
+# macOS/Windows rely on Rust's default `#[no_mangle]`-only export, asserted
+# in CI (.github/workflows/abi-check.yml). Additive symbols stay under this
+# node with an ABI-minor bump; never repurpose an existing symbol.
+N4IO_1 {
+  global:
+    n4io_*;
+  local:
+    *;
+};

@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: CECILL-2.1 OR AGPL-3.0-or-later
+[package]
+name = "nirs4all-io-capi"
+description = "Stable C ABI (n4io_ prefix) over the nirs4all-io facade: infer / to_spec / validate JSON surface, status/error model, opaque handles."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+nirs4all-io.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+cbindgen = "0.27"

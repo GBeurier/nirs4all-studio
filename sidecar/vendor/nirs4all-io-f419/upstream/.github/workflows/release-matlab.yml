@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# MATLAB / Octave binding package for every release tag.
+#
+# The bindings/matlab tree (the +nirs4all_io classdef package, build.m, the MEX
+# source n4io.c, and the smoke test) is a SOURCE distribution: users download
+# the zip, run build.m to compile the n4io MEX against their own MATLAB or
+# Octave (and the prebuilt nirs4all-io-capi cdylib), then use the +nirs4all_io
+# package. The same archive serves MATLAB and Octave. It is attached to the
+# GitHub Release so users can download it without cloning the repo.
+#
+# Trigger: tag push v*.*.* (attach gated on a non-rc tag), or workflow_dispatch
+# for a dry run (build the artifact, no Release upload).
+name: release-matlab
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # attach the asset to the Release
+
+jobs:
+  matlab-package:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: meta
+        run: |
+          # Single source of truth: [workspace.package] version in root Cargo.toml.
+          VER=$(sed -nE '/^\[workspace\.package\]/,/^\[/{s/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p}' Cargo.toml | head -n1)
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          # matlab-octave: the same +nirs4all_io package + build.m serve BOTH
+          # MATLAB and Octave (build_and_test.sh drives the Octave path). The
+          # name makes the package discoverable to both audiences.
+          echo "prefix=nirs4all-io-matlab-octave-$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Build the MATLAB/Octave package (deterministic git archive)
+        run: |
+          mkdir -p dist
+          # Archive only the bindings/matlab subtree under a clean top-level dir.
+          git archive --format=zip \
+            --prefix="${{ steps.meta.outputs.prefix }}/" \
+            HEAD:bindings/matlab \
+            -o "dist/${{ steps.meta.outputs.prefix }}.zip"
+          unzip -l "dist/${{ steps.meta.outputs.prefix }}.zip" | tail -3
+
+      - name: Upload to the matching Release
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ steps.meta.outputs.prefix }}.zip
+          fail_on_unmatched_files: true
+
+      - name: Upload artifact (always, for dry runs / inspection)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.prefix }}
+          path: dist/

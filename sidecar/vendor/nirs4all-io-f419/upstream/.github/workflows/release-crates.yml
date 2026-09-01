@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# Publish the Rust workspace crates to crates.io for every release tag.
+#
+# crates.io is IMMUTABLE (a version can only be yanked, never replaced), so this
+# only publishes on a non-pre-release vX.Y.Z tag, and a workflow_dispatch dry-run
+# (cargo publish --dry-run) is the way to validate first.
+#
+# Crates are published leaf-first (core -> facade -> capi -> cli): each crate's
+# path+version deps resolve to the just-published crates.io version of the one
+# before it, with a short wait for the sparse index to catch up. Re-runs tolerate
+# "already uploaded" so a partial run can be resumed.
+#
+# Needs the CARGO_REGISTRY_TOKEN secret (a crates.io API token with publish-new +
+# publish-update scope; the crate NAMES must be free / owned by the publisher).
+# The four crate names (nirs4all-io-core / nirs4all-io / nirs4all-io-capi /
+# nirs4all-io-cli) are verified free on crates.io.
+name: release-crates
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'cargo publish --dry-run only (no upload)'
+        required: false
+        default: 'true'
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-crates:
+    runs-on: ubuntu-latest
+    # Production tags only (non pre-release); dispatch may dry-run any time.
+    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish workspace crates (leaf-first) to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          DRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run != 'false') && '1' || '' }}
+        run: |
+          set -euo pipefail
+          publish() {
+            crate="$1"
+            echo "::group::publish ${crate} (dry=${DRY:-0})"
+            if [ -n "${DRY}" ]; then
+              cargo publish -p "${crate}" --dry-run --allow-dirty
+            else
+              # crates.io is immutable: tolerate an already-uploaded version on
+              # a resumed run, but fail on any other error.
+              if ! cargo publish -p "${crate}" 2>&1 | tee /tmp/pub.log; then
+                grep -qiE 'already (exists|uploaded)|is already being published|crate version .* is already' /tmp/pub.log \
+                  || { echo "::error::publish ${crate} failed"; exit 1; }
+              fi
+              # Let the sparse index catch up before the next crate resolves it.
+              sleep 30
+            fi
+            echo "::endgroup::"
+          }
+          publish nirs4all-io-core
+          publish nirs4all-io
+          publish nirs4all-io-capi
+          publish nirs4all-io-cli

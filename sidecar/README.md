@@ -250,7 +250,10 @@ callback returns only complete/fail/cancel acknowledgement to the Rust runtime,
 which owns registry transitions, WebSocket events, and durable records.
 
 The selected resolver reads `dataset_links.json` schema v2 and the exact saved
-pipeline under the active workspace through confined, bounded handles. Its
+pipeline under the active workspace through confined, bounded handles. Dataset
+sources are capped during the role-tagged read at 1 MiB per file, 2 MiB total,
+128 KiB per decoded record, 64 KiB per decoded field, 128 data rows, 256
+columns, and 16,384 cells. Its
 first slice accepts one train-only, single-source numeric regression dataset
 and exactly an explicit `KFold` plus `PLSRegression` pipeline. It delegates
 tabular assembly to the selected `nirs4all-io` role-tagged facade, then sends
@@ -263,13 +266,14 @@ until reliable process-tree termination is qualified. Missing, changed,
 timed-out, malformed, or oversized hosts likewise fail closed. There is no
 legacy or FastAPI fallback.
 
-The selected IO commit `fce1e1f7a573d59c280010b65b073b039049d6cc`
+The selected IO commit `f41967d53b355b10951b5658af1dddb6bd926e3d`
 is not currently reachable from its configured upstream remote. Studio therefore
-contains a transient minimal, immutable snapshot of only `nirs4all-io` and
-`nirs4all-io-core`, their required compile-time assets, and upstream licence and
-notice files under `sidecar/vendor/nirs4all-io-fce/`. Run
-`sidecar/scripts/verify-vendored-io.sh` offline to reject missing, added, or
-changed files. This snapshot must be replaced by an exact published package or
+contains a transient complete, immutable source snapshot, including every
+crate, test, fixture, binding, script, document, asset, and upstream licence and
+notice file under `sidecar/vendor/nirs4all-io-f419/`. Run
+`sidecar/scripts/verify-vendored-io.sh` to reject missing, added, or changed
+files, and `sidecar/scripts/test-vendored-io.sh` for the locked offline Rust
+gate. This snapshot must be replaced by an exact published package or
 remotely fetchable git revision before LOCK-RELEASE; local/sibling worktree paths
 are forbidden.
 

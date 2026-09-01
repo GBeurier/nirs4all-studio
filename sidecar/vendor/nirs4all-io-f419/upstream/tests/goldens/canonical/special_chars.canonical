@@ -1,0 +1,10 @@
+{
+  "backslash": "a\\b",
+  "fwd_slash": "a/b",
+  "line_sep": "a b",
+  "newline": "p\nq",
+  "para_sep": "c d",
+  "quote": "a\"b",
+  "regex_like": "^\\d+$",
+  "tab": "x\ty"
+}

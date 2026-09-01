@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+name: Deploy web demo to GitHub Pages
+
+# Publishes the browser dataset builder (web/) to
+# https://gbeurier.github.io/nirs4all-io/. The WASM bundles (web/pkg/, built
+# from this repo's bindings/wasm for `io` and from nirs4all-formats for
+# `formats`) are vendored in the repo, so this workflow only uploads the static
+# directory — no Rust/emscripten build step is needed.
+
+on:
+  push:
+    branches: [main, feat/rust-rewrite-phase2]
+    paths:
+      - 'web/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4

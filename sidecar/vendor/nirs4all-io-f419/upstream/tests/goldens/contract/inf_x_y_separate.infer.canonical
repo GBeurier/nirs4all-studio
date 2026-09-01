@@ -1,0 +1,152 @@
+{
+  "alignment": [],
+  "assignments": [
+    {
+      "evidence": [
+        "filename matches bare:x"
+      ],
+      "partition": "train",
+      "ref": "X.csv",
+      "role": "features",
+      "score": 0.75,
+      "source_index": 0
+    },
+    {
+      "evidence": [
+        "filename matches bare:y"
+      ],
+      "partition": "train",
+      "ref": "Y.csv",
+      "role": "targets",
+      "score": 0.75,
+      "source_index": 0
+    }
+  ],
+  "axis": {
+    "n": 12,
+    "range": [
+      1000.0,
+      1055.0
+    ],
+    "score": 0.8,
+    "unit": "nm"
+  },
+  "calibration": {
+    "method": "none",
+    "note": "scores are uncalibrated (C5)"
+  },
+  "columns": [],
+  "dropped_rows": [],
+  "identity": null,
+  "input": {
+    "kind": "directory",
+    "ref": "<CORPUS>/corpus/x_y_separate"
+  },
+  "overall_score": 0.883,
+  "params": {
+    "X.csv": {
+      "delimiter": {
+        "score": 0.62,
+        "value": ";"
+      },
+      "has_header": {
+        "score": 0.85,
+        "value": true
+      }
+    },
+    "Y.csv": {
+      "delimiter": {
+        "score": 0.01,
+        "value": ","
+      },
+      "has_header": {
+        "score": 1.0,
+        "value": true
+      }
+    }
+  },
+  "recommendations": [
+    "review the resolved_spec; pass it (or plan.accept()) to load()"
+  ],
+  "resolved_spec": {
+    "name": "dataset",
+    "params": {
+      "na": {
+        "fill": {
+          "per_column": true
+        },
+        "policy": "auto"
+      }
+    },
+    "schema_version": 1,
+    "sources": [
+      {
+        "id": "train_x",
+        "input": "<CORPUS>/corpus/x_y_separate/X.csv",
+        "params": {
+          "delimiter": ";",
+          "has_header": true,
+          "header_unit": "nm",
+          "na": {
+            "fill": {
+              "per_column": true
+            },
+            "policy": "auto"
+          }
+        },
+        "partition": "train",
+        "role": "features"
+      },
+      {
+        "id": "train_y",
+        "input": "<CORPUS>/corpus/x_y_separate/Y.csv",
+        "join": {
+          "cardinality": "1:1",
+          "coverage": "complete",
+          "left": "train_y",
+          "right": "train_x"
+        },
+        "params": {
+          "delimiter": ",",
+          "has_header": true,
+          "na": {
+            "fill": {
+              "per_column": true
+            },
+            "policy": "auto"
+          }
+        },
+        "partition": "train",
+        "role": "targets"
+      }
+    ]
+  },
+  "signal_type": {
+    "alternatives": [],
+    "ambiguous": false,
+    "evidence": [
+      "range [0.400, 1.300], mean 0.850 -> absorbance (100%)"
+    ],
+    "score": 1.0,
+    "value": "absorbance"
+  },
+  "structure": {
+    "alternatives": [],
+    "ambiguous": false,
+    "evidence": [
+      "matched 2 file(s) via conventions"
+    ],
+    "score": 0.85,
+    "value": "x_y_separate"
+  },
+  "task_type": {
+    "alternatives": [],
+    "ambiguous": false,
+    "evidence": [
+      "target source 'train_y' value distribution"
+    ],
+    "score": 0.8,
+    "value": "regression"
+  },
+  "warnings": []
+}

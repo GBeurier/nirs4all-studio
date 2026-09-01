@@ -1,0 +1,17 @@
+{
+  "half": 0.5,
+  "hundred": 100.0,
+  "long_decimal": 0.123,
+  "min_score": 0.001,
+  "neg": -3.5,
+  "neg_zero": -0.0,
+  "one": 1.0,
+  "onehalf": 1.5,
+  "rounded3": 0.857,
+  "score": 0.95,
+  "thresh": 0.95,
+  "wl_hi": 25000.0,
+  "wl_lo": 1000.0,
+  "wl_mid": 2500.0,
+  "zero": 0.0
+}

@@ -293,8 +293,10 @@ verifies and starts the bundled content-addressed
 `resources/backend/native/studio-sidecar`. It routes only explicitly migrated
 UI calls through Rust; every other route family refuses before fetch in the
 normal session. Electron passes the selected embedded interpreter to the
-sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; the explicit preflight verifies
-the interpreter and scientific callable identities. The bounded stdio worker,
+sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; this must be a copied regular
+executable in the embedded payload. A Unix venv-style interpreter symlink is
+unsupported and fails closed before request or job mutation. The explicit
+preflight verifies the interpreter and scientific callable identities. The bounded stdio worker,
 Rust-owned terminal callback, and native saved-input resolver are implemented.
 On qualified Unix launches, the resolver accepts only one train-only numeric
 regression dataset and an explicit saved KFold + PLS pipeline, delegates

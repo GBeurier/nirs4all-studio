@@ -1,0 +1,24 @@
+{
+  "name": "nirs4all-formats-wasm",
+  "type": "module",
+  "collaborators": [
+    "G. Beurier <beurier@cirad.fr>"
+  ],
+  "description": "WebAssembly bindings for nirs4all-formats.",
+  "version": "0.1.0-alpha.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GBeurier/nirs4all-formats"
+  },
+  "files": [
+    "nirs4all_formats_wasm_bg.wasm",
+    "nirs4all_formats_wasm.js",
+    "nirs4all_formats_wasm.d.ts"
+  ],
+  "main": "nirs4all_formats_wasm.js",
+  "types": "nirs4all_formats_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

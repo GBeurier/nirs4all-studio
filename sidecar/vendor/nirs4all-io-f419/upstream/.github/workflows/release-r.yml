@@ -1,0 +1,207 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# Build, R CMD check --as-cran, and (on a release tag) attach the nirs4allio R
+# package source tarball.
+#
+# The nirs4allio R binding is a thin C SHIM (bindings/r/src/n4io.c) over the
+# stable n4io_* C ABI, now built SELF-CONTAINED: bindings/r/configure
+# (N4IO_R_VENDOR=1) vendors the workspace Rust core (nirs4all-io{,-core,-capi})
+# into bindings/r/src/rust/vendored/, emits a self-contained src/rust/Cargo.toml,
+# copies the committed C ABI header, and `cargo vendor`s every crates.io
+# transitive dep into src/rust/vendor.tar.xz with an offline source-replacement
+# config. src/Makevars(.win) then extracts that and builds the capi STATICLIB
+# OFFLINE (`cargo build -p nirs4all-io-capi --release --offline`), linking it into
+# nirs4allio.{so,dll}. No prebuilt libnirs4all_io_capi, no N4IO_CAPI_DIR, no
+# network at install — so the tarball is CRAN-submittable.
+#
+# CRAN submission itself is the irreducible manual web-form step at
+# https://cran.r-project.org/submit.html — this workflow produces + validates the
+# self-contained tarball; the maintainer downloads it from the Release and
+# submits. R-universe builds straight from Git via the .prepare hook (which runs
+# the same N4IO_R_VENDOR=1 ./configure before R CMD build).
+#
+# Triggers
+# --------
+# - workflow_dispatch        -> on-demand R CMD check + tarball build.
+# - push tag v[0-9]*.[0-9]*.[0-9]* -> check -> build-tarball -> attach the CRAN
+#   tarball to the matching Release (publish-release-asset, gated on a non-rc tag).
+
+name: release-r
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # =========================================================================
+  # R CMD check --as-cran across the same OS/R matrix CRAN itself uses, against
+  # the self-contained vendored tarball (no prebuilt cdylib).
+  # =========================================================================
+  check:
+    name: R CMD check / ${{ matrix.cfg.label }}
+    runs-on: ${{ matrix.cfg.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cfg:
+          - label: linux-release
+            runs_on: ubuntu-22.04
+            r_version: "release"
+          - label: linux-devel
+            runs_on: ubuntu-22.04
+            r_version: "devel"
+          - label: macos-arm64-release
+            runs_on: macos-14
+            r_version: "release"
+          - label: windows-release
+            runs_on: windows-2022
+            r_version: "release"
+    env:
+      R_KEEP_PKG_SOURCE: yes
+      # NB: N4IO_R_VENDOR is intentionally NOT a job-wide env. It must be set
+      # ONLY for the pre-vendor step below (which runs in the checkout, where
+      # crates/ exists). Setting it job-wide would make ./configure re-vendor
+      # during the tarball INSTALL too — but the unpacked tarball has no crates/,
+      # so it would fail. The bundled src/rust/vendored/ + vendor.tar.xz are used
+      # at check time instead (the real CRAN scenario).
+      #
+      # The build is offline; disable the incoming-feasibility URL check.
+      _R_CHECK_CRAN_INCOMING_REMOTE_: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # On Windows the package compiles the Rust core for the gnu ABI
+      # (x86_64-pc-windows-gnu) so Rtools' mingw gcc can link the staticlib into
+      # nirs4allio.dll; see src/Makevars.win. dtolnay/rust-toolchain installs
+      # only the MSVC host std on windows-2022, and the install build is offline
+      # (vendored), so the gnu std must be added explicitly here or
+      # `cargo build --target x86_64-pc-windows-gnu` fails with "can't find crate
+      # for `std`".
+      - name: Add the gnu Rust target (Windows staticlib ABI)
+        if: runner.os == 'Windows'
+        run: rustup target add x86_64-pc-windows-gnu
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.cfg.r_version }}
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: bindings/r
+          extra-packages: |
+            any::rcmdcheck
+            any::jsonlite
+
+      # Populate bindings/r/src/rust/vendored/ + vendor.tar.xz from the in-repo
+      # crates/ (gitignored, absent at checkout). N4IO_R_VENDOR=1 is scoped to
+      # THIS step, where crates/ is reachable; the build then bundles the vendored
+      # tree into the tarball and the check installs from that bundled copy (no
+      # re-vendor at install time). shell: bash so it runs on the Windows runner
+      # (Rtools provides bash + tar/xz; the package ships src/Makevars.win for the
+      # actual Windows compile).
+      - name: Vendor the Rust core into the R package
+        shell: bash
+        run: cd bindings/r && N4IO_R_VENDOR=1 ./configure
+
+      - name: R CMD check --as-cran
+        uses: r-lib/actions/check-r-package@v2
+        env:
+          CARGO_NET_OFFLINE: "true"   # the INSTALL build is offline from the bundle
+        with:
+          working-directory: bindings/r
+          # check-r-package interpolates these into rcmdcheck::rcmdcheck(args = ...,
+          # error_on = ...) as literal R code, so they must be valid R syntax.
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"error"'
+          upload-snapshots: true
+
+      - name: Upload check artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rcheck-${{ matrix.cfg.label }}
+          path: bindings/r.Rcheck/
+
+  # =========================================================================
+  # Build the self-contained source tarball that the maintainer uploads to CRAN
+  # (and that is attached to the GitHub Release).
+  # =========================================================================
+  build-tarball:
+    name: Build R source tarball
+    needs: check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+          use-public-rspm: true
+
+      - name: Install R Imports (jsonlite)
+        shell: Rscript {0}
+        run: install.packages("jsonlite")
+
+      # ./configure (N4IO_R_VENDOR=1) vendors the workspace core crates +
+      # cargo-vendors every crates.io dep into src/rust/, so the source tarball is
+      # self-contained (no external crates/; CRAN's farm compiles offline).
+      - name: Vendor the Rust core into bindings/r/src/rust (self-contained tarball)
+        working-directory: bindings/r
+        env:
+          N4IO_R_VENDOR: "1"
+        run: ./configure
+
+      - name: R CMD build (produces nirs4allio_<version>.tar.gz)
+        run: |
+          set -euo pipefail
+          R CMD build bindings/r
+          mkdir -p dist-r
+          mv nirs4allio_*.tar.gz dist-r/
+          ls -la dist-r/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nirs4allio-cran-tarball
+          path: dist-r/nirs4allio_*.tar.gz
+          if-no-files-found: error
+          retention-days: 90
+
+  # =========================================================================
+  # Attach the tarball to the GitHub Release on non-pre-release tags. The
+  # maintainer then downloads from the Release and submits via the CRAN web
+  # form at https://cran.r-project.org/submit.html.
+  # =========================================================================
+  publish-release-asset:
+    name: Attach R tarball to GitHub Release
+    needs: build-tarball
+    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nirs4allio-cran-tarball
+          path: dist-r/
+
+      - name: Upload to the matching Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-r/*.tar.gz
+          fail_on_unmatched_files: true

@@ -1,0 +1,212 @@
+{
+  "oracle": "nirs4all-studio/api/shared/dataset_config.py::build_nirs4all_config@cdb9f46de1643ab170934481cd9471e54ed3701c",
+  "oracle_source_sha256": "c5a4a4d37b498ffb17c42dce74e37db9b964fc30892aa3d6a7b0a27e836c2a62",
+  "generated_at": "2026-09-01",
+  "cases": [
+    {
+      "name": "single-source-1",
+      "files": [
+        {
+          "path": "X.csv",
+          "type": "X",
+          "split": "train",
+          "source": 1
+        },
+        {
+          "path": "Y.csv",
+          "type": "Y",
+          "split": "train",
+          "source": null
+        }
+      ],
+      "parsing": {
+        "delimiter": ";",
+        "decimal_separator": ".",
+        "has_header": true,
+        "header_unit": "cm-1",
+        "signal_type": "auto"
+      },
+      "aggregation": null,
+      "folds": null,
+      "task_type": "regression",
+      "expected_legacy_config": {
+        "global_params": {
+          "delimiter": ";",
+          "decimal_separator": ".",
+          "has_header": true
+        },
+        "train_x": "X.csv",
+        "train_x_params": {
+          "header_unit": "cm-1"
+        },
+        "train_y": "Y.csv",
+        "task_type": "regression"
+      }
+    },
+    {
+      "name": "labels-gaps-duplicates",
+      "files": [
+        {
+          "path": "X-a.csv",
+          "type": "X",
+          "split": "train",
+          "source": 1
+        },
+        {
+          "path": "X-b.csv",
+          "type": "X",
+          "split": "train",
+          "source": 3
+        },
+        {
+          "path": "X-c.csv",
+          "type": "X",
+          "split": "train",
+          "source": 1
+        },
+        {
+          "path": "Y.csv",
+          "type": "Y",
+          "split": "train",
+          "source": null
+        }
+      ],
+      "parsing": {
+        "delimiter": ";",
+        "decimal_separator": ".",
+        "has_header": true,
+        "header_unit": "nm",
+        "signal_type": "absorbance"
+      },
+      "aggregation": null,
+      "folds": null,
+      "task_type": "regression",
+      "expected_legacy_config": {
+        "global_params": {
+          "delimiter": ";",
+          "decimal_separator": ".",
+          "has_header": true
+        },
+        "train_x": [
+          "X-a.csv",
+          "X-b.csv",
+          "X-c.csv"
+        ],
+        "train_x_params": {
+          "header_unit": "nm",
+          "signal_type": "absorbance"
+        },
+        "train_y": "Y.csv",
+        "task_type": "regression"
+      }
+    },
+    {
+      "name": "partial-na-override",
+      "files": [
+        {
+          "path": "X.csv",
+          "type": "X",
+          "split": "train",
+          "source": 0,
+          "overrides": {
+            "na_fill_config": {
+              "method": "median"
+            }
+          }
+        },
+        {
+          "path": "Y.csv",
+          "type": "Y",
+          "split": "train",
+          "source": null
+        }
+      ],
+      "parsing": {
+        "delimiter": ";",
+        "decimal_separator": ".",
+        "has_header": true,
+        "header_unit": "cm-1",
+        "signal_type": "auto",
+        "na_policy": "replace",
+        "na_fill_config": {
+          "method": "mean"
+        }
+      },
+      "aggregation": null,
+      "folds": null,
+      "task_type": "regression",
+      "expected_legacy_config": {
+        "global_params": {
+          "delimiter": ";",
+          "decimal_separator": ".",
+          "has_header": true,
+          "na_policy": "replace",
+          "na_fill_config": {
+            "method": "mean"
+          }
+        },
+        "train_x": "X.csv",
+        "train_x_params": {
+          "header_unit": "cm-1",
+          "na_fill_config": {
+            "method": "median"
+          }
+        },
+        "train_y": "Y.csv",
+        "task_type": "regression"
+      }
+    },
+    {
+      "name": "fold-and-aggregation",
+      "files": [
+        {
+          "path": "X.csv",
+          "type": "X",
+          "split": "train",
+          "source": null
+        },
+        {
+          "path": "Y.csv",
+          "type": "Y",
+          "split": "train",
+          "source": null
+        }
+      ],
+      "parsing": {
+        "delimiter": ",",
+        "decimal_separator": ".",
+        "has_header": true,
+        "header_unit": "cm-1",
+        "signal_type": "auto"
+      },
+      "aggregation": {
+        "enabled": true,
+        "column": "sample_id",
+        "method": "median"
+      },
+      "folds": {
+        "source": "file",
+        "file": "folds.json"
+      },
+      "task_type": "regression",
+      "expected_legacy_config": {
+        "global_params": {
+          "delimiter": ",",
+          "decimal_separator": ".",
+          "has_header": true
+        },
+        "train_x": "X.csv",
+        "train_x_params": {
+          "header_unit": "cm-1"
+        },
+        "train_y": "Y.csv",
+        "aggregate": "sample_id",
+        "repetition": "sample_id",
+        "aggregate_method": "median",
+        "folds": "folds.json",
+        "task_type": "regression"
+      }
+    }
+  ]
+}
+

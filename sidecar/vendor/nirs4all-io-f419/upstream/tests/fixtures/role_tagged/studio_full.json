@@ -1,0 +1,252 @@
+{
+  "oracle": "nirs4all-studio/api/shared/dataset_config.py::build_nirs4all_config_from_stored@cdb9f46de1643ab170934481cd9471e54ed3701c",
+  "config": {
+    "delimiter": ";",
+    "decimal_separator": ".",
+    "has_header": true,
+    "header_unit": "cm-1",
+    "signal_type": "auto",
+    "na_policy": "replace",
+    "na_fill_config": {
+      "method": "mean",
+      "per_column": true
+    },
+    "global_params": {
+      "delimiter": ";",
+      "decimal_separator": ".",
+      "has_header": true,
+      "header_unit": "cm-1",
+      "signal_type": "auto",
+      "na_policy": "replace",
+      "na_fill_config": {
+        "method": "mean",
+        "per_column": true
+      }
+    },
+    "files": [
+      {
+        "path": "/data/X_train.csv",
+        "type": "X",
+        "split": "train",
+        "source": 1
+      },
+      {
+        "path": "/data/Y_train.csv",
+        "type": "Y",
+        "split": "train",
+        "source": null,
+        "overrides": {
+          "delimiter": ",",
+          "decimal_separator": "."
+        }
+      },
+      {
+        "path": "/data/X_test.csv",
+        "type": "X",
+        "split": "test",
+        "source": 1
+      },
+      {
+        "path": "/data/Y_test.csv",
+        "type": "Y",
+        "split": "test",
+        "source": null,
+        "overrides": {
+          "delimiter": ",",
+          "decimal_separator": "."
+        }
+      }
+    ],
+    "targets": [
+      {
+        "column": "protein",
+        "type": "regression",
+        "is_default": true
+      },
+      {
+        "column": "moisture",
+        "type": "regression",
+        "is_default": false
+      }
+    ],
+    "target_selection": {
+      "selected_targets": ["protein", "moisture"],
+      "default_target": "protein",
+      "task_by_target": {
+        "protein": "regression",
+        "moisture": "regression"
+      }
+    },
+    "default_target": "protein",
+    "task_type": "regression",
+    "aggregation": {
+      "enabled": true,
+      "column": "sample_id",
+      "method": "median"
+    },
+    "folds": {
+      "source": "file",
+      "file": "/data/folds.json"
+    }
+  },
+  "studio_legacy_config": {
+    "global_params": {
+      "delimiter": ";",
+      "decimal_separator": ".",
+      "has_header": true,
+      "na_policy": "replace",
+      "na_fill_config": {
+        "method": "mean",
+        "per_column": true
+      }
+    },
+    "train_x": "/data/X_train.csv",
+    "train_x_params": {
+      "header_unit": "cm-1"
+    },
+    "train_y": "/data/Y_train.csv",
+    "train_y_params": {
+      "delimiter": ",",
+      "decimal_separator": "."
+    },
+    "test_x": "/data/X_test.csv",
+    "test_x_params": {
+      "header_unit": "cm-1"
+    },
+    "test_y": "/data/Y_test.csv",
+    "test_y_params": {
+      "delimiter": ",",
+      "decimal_separator": "."
+    },
+    "aggregate": "sample_id",
+    "repetition": "sample_id",
+    "aggregate_method": "median",
+    "folds": "/data/folds.json",
+    "task_type": "regression"
+  },
+  "expected_dataset_spec": {
+    "schema_version": 1,
+    "task_type": "regression",
+    "sample_index": {
+      "by": "row",
+      "repetition_id": "sample_id"
+    },
+    "sources": [
+      {
+        "id": "train_x",
+        "role": "features",
+        "input": "/data/X_train.csv",
+        "partition": "train",
+        "params": {
+          "header_unit": "cm-1",
+          "na": {
+            "policy": "auto",
+            "fill": {
+              "per_column": true
+            }
+          }
+        }
+      },
+      {
+        "id": "train_y",
+        "role": "mixed",
+        "input": "/data/Y_train.csv",
+        "partition": "train",
+        "columns": [
+          {
+            "role": "targets",
+            "select": ["protein", "moisture"]
+          },
+          {
+            "role": "ignore",
+            "select": "rest"
+          }
+        ],
+        "join": {
+          "left": "train_y",
+          "right": "train_x",
+          "cardinality": "1:1",
+          "coverage": "complete"
+        },
+        "params": {
+          "delimiter": ",",
+          "decimal_separator": ".",
+          "na": {
+            "policy": "auto",
+            "fill": {
+              "per_column": true
+            }
+          }
+        }
+      },
+      {
+        "id": "test_x",
+        "role": "features",
+        "input": "/data/X_test.csv",
+        "partition": "test",
+        "params": {
+          "header_unit": "cm-1",
+          "na": {
+            "policy": "auto",
+            "fill": {
+              "per_column": true
+            }
+          }
+        }
+      },
+      {
+        "id": "test_y",
+        "role": "mixed",
+        "input": "/data/Y_test.csv",
+        "partition": "test",
+        "columns": [
+          {
+            "role": "targets",
+            "select": ["protein", "moisture"]
+          },
+          {
+            "role": "ignore",
+            "select": "rest"
+          }
+        ],
+        "join": {
+          "left": "test_y",
+          "right": "test_x",
+          "cardinality": "1:1",
+          "coverage": "complete"
+        },
+        "params": {
+          "delimiter": ",",
+          "decimal_separator": ".",
+          "na": {
+            "policy": "auto",
+            "fill": {
+              "per_column": true
+            }
+          }
+        }
+      }
+    ],
+    "folds": {
+      "file": "/data/folds.json"
+    },
+    "aggregate": {
+      "by": "sample_id",
+      "method": "median"
+    },
+    "repetition": "sample_id",
+    "params": {
+      "delimiter": ";",
+      "decimal_separator": ".",
+      "has_header": true,
+      "header_unit": "cm-1",
+      "na": {
+        "policy": "replace",
+        "fill": {
+          "method": "mean",
+          "per_column": true
+        }
+      }
+    }
+  }
+}

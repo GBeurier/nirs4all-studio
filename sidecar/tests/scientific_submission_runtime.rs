@@ -291,6 +291,111 @@ fn valid_payload() -> Value {
     })
 }
 
+fn local_python_payload() -> Value {
+    let mut payload = valid_payload();
+    payload["legacyConfig"]["execution_backend"] = json!("local-python");
+    payload["legacyConfig"]["split_group_by_by_dataset"] = json!({});
+    payload["strictCampaignSpecs"]["splitSpecs"][0]["campaign"]["executionBackend"] =
+        json!("local-python");
+    payload["strictCampaignSpecs"]["splitSpecs"][0]["campaign"]["datasets"][0]["splitGroupBy"] =
+        Value::Null;
+    payload["strictCampaignSpecs"]["splitSpecs"][0]["campaign"]["runMatrix"][0]["splitGroupBy"] =
+        Value::Null;
+    payload
+}
+
+fn assert_dataset_preflight_refused(name: &str, x_bytes: &[u8], sparse_len: Option<u64>) {
+    let root = test_directory(name);
+    let config = root.join("config");
+    let workspace = root.join("workspace");
+    let dataset = root.join("dataset");
+    configure_active_workspace(&config, &workspace);
+    fs::create_dir_all(workspace.join("pipelines")).unwrap();
+    fs::create_dir_all(&dataset).unwrap();
+    let x_path = dataset.join("x.csv");
+    fs::write(&x_path, x_bytes).unwrap();
+    if let Some(length) = sparse_len {
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&x_path)
+            .unwrap()
+            .set_len(length)
+            .unwrap();
+    }
+    fs::write(
+        dataset.join("y.csv"),
+        "protein\n1.1\n2.2\n3.4\n4.8\n5.3\n6.7\n",
+    )
+    .unwrap();
+    fs::write(
+        workspace.join("pipelines/pipeline-a.json"),
+        serde_json::to_vec(&json!({
+            "id": "pipeline-a",
+            "name": "PLS",
+            "taskType": "regression",
+            "steps": [
+                {"id": "cv", "type": "splitting", "name": "KFold", "params": {"n_splits": 3, "shuffle": true, "random_state": 42}},
+                {"id": "model", "type": "model", "name": "PLSRegression", "params": {"n_components": 2, "scale": true}}
+            ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        config.join("dataset_links.json"),
+        serde_json::to_vec(&json!({
+            "version": "1.0",
+            "schema_version": 2,
+            "datasets": [{
+                "id": "dataset-a",
+                "name": "Dataset A",
+                "path": dataset,
+                "config": {
+                    "delimiter": ",",
+                    "decimal_separator": ".",
+                    "has_header": true,
+                    "header_unit": "cm-1",
+                    "signal_type": "auto",
+                    "task_type": "regression",
+                    "files": [
+                        {"path": "x.csv", "type": "X", "split": "train"},
+                        {"path": "y.csv", "type": "Y", "split": "train"}
+                    ],
+                    "targets": [{"column": "protein", "type": "regression", "is_default": true}],
+                    "target_selection": {
+                        "selected_targets": ["protein"],
+                        "default_target": "protein",
+                        "task_by_target": {"protein": "regression"}
+                    },
+                    "default_target": "protein"
+                }
+            }],
+            "groups": []
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(
+        ResolvingExecutor {
+            resolver: ScientificRequestResolver::new(&config),
+        },
+    )));
+    let mut state =
+        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
+    let response = route_request_with_body(
+        &mut state,
+        "POST",
+        "/api/runs/run-groups",
+        &serde_json::to_vec(&local_python_payload()).unwrap(),
+    );
+    assert_eq!(response.status, 503, "{name}: {}", response.body);
+    assert_eq!(runtime.published_event_count(), 0, "{name}");
+    assert_eq!(runtime.durable_write_count(), 0, "{name}");
+    assert_eq!(fs::read_dir(workspace.join("runs")).unwrap().count(), 0);
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn body(response: &studio_sidecar::HttpResponse) -> Value {
     serde_json::from_str(&response.body).unwrap()
 }
@@ -429,6 +534,37 @@ fn resolver_id_mismatch_is_refused_before_registry_events_or_durable_mutation() 
     assert_eq!(runtime.durable_write_count(), 0);
     assert_eq!(fs::read_dir(workspace.join("runs")).unwrap().count(), 0);
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn resolver_resource_caps_refuse_before_registry_events_or_durable_mutation() {
+    assert_dataset_preflight_refused("file-cap-plus-one", b"x\n1\n", Some(1024 * 1024 + 1));
+
+    let mut long_field = b"x\n".to_vec();
+    long_field.extend(std::iter::repeat_n(b'1', 64 * 1024 + 1));
+    long_field.push(b'\n');
+    assert_dataset_preflight_refused("field-cap-plus-one", &long_field, None);
+
+    let field = "1".repeat(64 * 1024);
+    let long_record = format!("a,b,c\n{field},{field},1\n");
+    assert_dataset_preflight_refused("record-cap-plus-one", long_record.as_bytes(), None);
+
+    let rows = format!("x\n{}", "1\n".repeat(129));
+    assert_dataset_preflight_refused("row-cap-plus-one", rows.as_bytes(), None);
+
+    let columns = format!(
+        "{}\n{}\n",
+        vec!["x"; 257].join(","),
+        vec!["1"; 257].join(",")
+    );
+    assert_dataset_preflight_refused("column-cap-plus-one", columns.as_bytes(), None);
+
+    let cells = format!(
+        "{}\n{}1\n",
+        vec!["x"; 256].join(","),
+        format!("{}\n", vec!["1"; 256].join(",")).repeat(64)
+    );
+    assert_dataset_preflight_refused("cell-cap-plus-one", cells.as_bytes(), None);
 }
 
 #[test]

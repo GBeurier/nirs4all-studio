@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+name: R binding
+on:
+  push:
+    branches: [main, 'rc/**']
+  pull_request:
+    branches: [main, 'rc/**']
+  workflow_dispatch: {}
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: r-lib/actions/setup-r@v2
+      - name: Build capi + install R package + smoke
+        run: bash bindings/r/build_and_test.sh

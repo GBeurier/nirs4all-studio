@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: CECILL-2.1 OR AGPL-3.0-or-later
+[package]
+name = "nirs4all-io-cli"
+description = "Command-line front end for nirs4all-io: infer / to-spec / validate / load / emit-dag-ml-data."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
+[[bin]]
+name = "nirs4all-io"
+path = "src/main.rs"
+
+[dependencies]
+nirs4all-io.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
