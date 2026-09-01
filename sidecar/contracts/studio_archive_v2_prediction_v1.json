@@ -40,7 +40,7 @@
     "absolute_ref": "refused",
     "parent_component": "refused",
     "symlink_component": "refused",
-    "read_handle": "single_capability_rooted_handle",
+    "read_handle": "single_capability_rooted_handle_with_pre_open_post_identity_checks",
     "maximum_bytes": 67108864,
     "sha256": "computed_from_the_bounded_bytes_read_from_that_handle"
   },
@@ -70,7 +70,11 @@
     "python_http_owner": false,
     "fastapi_fallback": false,
     "dag_ml_envelope": false,
-    "pending_integration": "selected nirs4all-core Archive V2 matrix replay plus selected libn4m"
+    "core": "immutable nirs4all-core 45e1f53f snapshot exposing nirs4all 0.3.23",
+    "libn4m_identity": "product-owned absolute non-symlink path plus size plus SHA-256 plus ABI 2.2; never request-controlled",
+    "core_preflight": "preflight_methods_archive_v2_library snapshots the attested bytes and checks the real ABI before capability selection",
+    "build_stage": "NIRS4ALL_BUILD_METHODS_LIBRARY plus NIRS4ALL_BUILD_METHODS_SHA256, both build-time-only; absent means unavailable",
+    "pending_integration": "release builders must provide one attested per-platform libn4m closure"
   },
   "typed_errors": [
     "archive_v2_prediction_unavailable",

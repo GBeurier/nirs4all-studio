@@ -25,6 +25,11 @@ interface PackagedRuntimeContract {
     mode: string;
     member: ContractMember | null;
   };
+  methods_library: {
+    mode: string;
+    member: ContractMember | null;
+    abi: { major: number; minor: number };
+  };
 }
 
 export interface VerifiedPackagedRuntime {
@@ -32,6 +37,8 @@ export interface VerifiedPackagedRuntime {
   sidecarPath: string;
   pythonPluginHostPath: string | null;
   pythonPluginHostError: string | null;
+  methodsLibraryPath: string | null;
+  methodsLibraryError: string | null;
 }
 
 function hashFile(filePath: string): string {
@@ -45,6 +52,7 @@ function validateMember(
   label: string,
   member: ContractMember | null | undefined,
   platform: NodeJS.Platform,
+  allowPlatformSignature = true,
 ): string {
   if (
     !member ||
@@ -68,11 +76,12 @@ function validateMember(
   if (!fs.existsSync(memberPath)) {
     throw new Error(`${label} not found: ${memberPath}`);
   }
-  const stat = fs.statSync(memberPath);
+  const stat = fs.lstatSync(memberPath);
   if (
+    stat.isSymbolicLink() ||
     !stat.isFile() ||
     ((stat.size !== member.size || hashFile(memberPath) !== member.sha256) &&
-      !hasValidPlatformSignature(memberPath, platform))
+      !(allowPlatformSignature && hasValidPlatformSignature(memberPath, platform)))
   ) {
     throw new Error(`${label} integrity mismatch: ${memberPath}`);
   }
@@ -163,6 +172,48 @@ export function verifyPackagedRuntimeContract({
     platform,
   );
 
+  const methods = contract.methods_library;
+  if (
+    !methods ||
+    !["unavailable", "bundled-required"].includes(methods.mode) ||
+    methods.abi?.major !== 2 ||
+    methods.abi?.minor !== 2
+  ) {
+    throw new Error("Invalid native Methods policy in packaged runtime contract");
+  }
+  let methodsLibraryPath: string | null = null;
+  let methodsLibraryError: string | null = null;
+  if (methods.mode === "unavailable") {
+    if (methods.member !== null) {
+      throw new Error("Unavailable native Methods policy must not select a member");
+    }
+  } else {
+    const expectedMethods = path.join(
+      "native",
+      platform === "win32"
+        ? "n4m.dll"
+        : platform === "darwin"
+          ? "libn4m.dylib"
+          : "libn4m.so",
+    );
+    try {
+      if (path.normalize(methods.member?.path ?? "") !== expectedMethods) {
+        throw new Error(
+          "Packaged runtime contract selects an unexpected native Methods library",
+        );
+      }
+      methodsLibraryPath = validateMember(
+        backendRoot,
+        "Bundled native Methods library",
+        methods.member,
+        platform,
+        false,
+      );
+    } catch (error) {
+      methodsLibraryError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   const plugin = contract.python_plugin_host;
   if (!plugin || !["external-explicit", "bundled-required"].includes(plugin.mode)) {
     throw new Error("Invalid Python plugin-host policy in packaged runtime contract");
@@ -176,6 +227,8 @@ export function verifyPackagedRuntimeContract({
       sidecarPath,
       pythonPluginHostPath: null,
       pythonPluginHostError: null,
+      methodsLibraryPath,
+      methodsLibraryError,
     };
   }
 
@@ -198,6 +251,8 @@ export function verifyPackagedRuntimeContract({
         platform,
       ),
       pythonPluginHostError: null,
+      methodsLibraryPath,
+      methodsLibraryError,
     };
   } catch (error) {
     return {
@@ -206,6 +261,8 @@ export function verifyPackagedRuntimeContract({
       pythonPluginHostPath: null,
       pythonPluginHostError:
         error instanceof Error ? error.message : String(error),
+      methodsLibraryPath,
+      methodsLibraryError,
     };
   }
 }

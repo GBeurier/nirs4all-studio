@@ -1,0 +1,75 @@
+# Publish the `nirs4all` crate to crates.io for every release tag.
+#
+# nirs4all-core ships a SINGLE crate (bindings/rust/nirs4all, package `nirs4all`)
+# — a thin libloading shim that delegates numerical work to libn4m at runtime.
+# There is no "full" nirs4all on crates.io, so this aggregate owns the
+# `nirs4all` crate in Rust.
+#
+# It is published with DEFAULT features only, i.e. WITHOUT the off-by-default
+# `datasets` feature, so the crate never bundles the optional nirs4all-datasets
+# surface.
+#
+# crates.io is IMMUTABLE (a version can only be yanked, never replaced), so this
+# only publishes on a non-pre-release vX.Y.Z tag; a workflow_dispatch dry-run
+# (cargo publish --dry-run) is the way to validate first. A resumed run tolerates
+# an "already uploaded" version.
+#
+# Needs the CARGO_REGISTRY_TOKEN secret (a crates.io API token with publish-new +
+# publish-update scope; the crate name `nirs4all` must be free / owned by the
+# publisher).
+name: release-crates
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'cargo publish --dry-run only (no upload)'
+        required: false
+        default: 'true'
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish-crates:
+    runs-on: ubuntu-latest
+    # Production tags only (non pre-release); dispatch may dry-run any time.
+    if: ${{ github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')) }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate tag matches the crate version
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          set -euo pipefail
+          CRATE_VER=$(sed -nE '/^\[package\]/,/^\[/{s/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p}' \
+                      bindings/rust/nirs4all/Cargo.toml | head -n1)
+          echo "crate=$CRATE_VER  tag=$GITHUB_REF_NAME"
+          if [ "$CRATE_VER" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "::error::crate version ($CRATE_VER) != tag (${GITHUB_REF_NAME#v}). Run scripts/bump_version.sh and re-tag."
+            exit 1
+          fi
+
+      - name: Publish the nirs4all crate to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          DRY: ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run != 'false') && '1' || '' }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DRY}" ]; then
+            cargo publish -p nirs4all --dry-run
+          else
+            # crates.io is immutable: tolerate an already-uploaded version on a
+            # resumed run, but fail on any other error.
+            if ! cargo publish -p nirs4all 2>&1 | tee /tmp/pub.log; then
+              grep -qiE 'already (exists|uploaded)|is already being published|crate version .* is already' /tmp/pub.log \
+                || { echo "::error::publish nirs4all failed"; exit 1; }
+            fi
+          fi

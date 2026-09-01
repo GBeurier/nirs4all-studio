@@ -1,0 +1,30 @@
+Package: nirs4all
+Title: Portable 'nirs4all' Aggregate Binding
+Version: 0.3.23
+Authors@R: c(
+    person("Gregory", "Beurier", email = "gregory.beurier@cirad.fr", role = c("aut", "cre")),
+    person("nirs4all", "contributors", role = c("ctb", "cph")))
+Description: Provides the R package surface for the 'nirs4all-core' aggregate.
+    It records the formats, IO, datasets, methods, 'dag-ml', and 'dag-ml-data'
+    domains, lazily reaches R upstream packages when they exist, and delegates
+    the portable methods subset at run time. Domains without an R binding remain
+    metadata-only; no parsing, numerical, or pipeline logic is reimplemented.
+License: CeCILL-2.1 | AGPL (>= 3)
+URL: https://nirs4all.org, https://github.com/GBeurier/nirs4all-core
+BugReports: https://github.com/GBeurier/nirs4all-core/issues
+Depends: R (>= 4.1)
+Imports:
+    jsonlite,
+    yaml
+Suggests:
+    nirs4allformats,
+    nirs4allio,
+    nirs4alldatasets,
+    n4m,
+    dagml,
+    dagmldata
+Additional_repositories: https://gbeurier.r-universe.dev
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.0
+NeedsCompilation: no

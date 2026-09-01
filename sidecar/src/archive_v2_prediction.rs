@@ -8,7 +8,7 @@
 //! integrated.
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     fs,
     io::Read,
@@ -16,9 +16,17 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(unix)]
+use cap_std::fs::MetadataExt as CapMetadataExt;
 use cap_std::{ambient_authority, fs::Dir};
+use nirs4all::{
+    dag_ml::RunId, load_archive_v2_bytes, predict_methods_archive_v2_matrix,
+    preflight_methods_archive_v2_library, MethodsArchiveMatrixPredictRequest,
+};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt as StdMetadataExt;
 
 pub const ARCHIVE_V2_PREDICTION_ROUTE: &str = "/api/predict/archive-v2";
 pub const MAX_PREDICTION_BODY_BYTES: usize = 64 * 1024;
@@ -31,6 +39,11 @@ const MAX_TARGETS: usize = 64;
 const MAX_ID_BYTES: usize = 256;
 const MAX_ARCHIVE_REF_BYTES: usize = 240;
 const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
+const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
+const METHODS_ABI_MAJOR: u32 = 2;
+const METHODS_ABI_MINOR: u32 = 2;
+const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ArchiveV2PredictionRequest {
@@ -55,6 +68,109 @@ pub struct ArchiveV2PredictionOutput {
     pub target_names: Vec<String>,
     pub values: Vec<Vec<f64>>,
     pub provenance_executor: String,
+}
+
+/// Product-owned identity of the one native Methods library selected by a
+/// packaged runtime closure. None of these values are accepted from HTTP.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PackagedMethodsLibraryIdentity {
+    pub path: PathBuf,
+    pub size: u64,
+    pub sha256: String,
+    pub abi_major: u32,
+    pub abi_minor: u32,
+}
+
+/// Core-backed executor for callback-free Archive V2 matrix replay.
+#[derive(Debug)]
+pub struct CoreArchiveV2PredictionExecutor {
+    methods: PackagedMethodsLibraryIdentity,
+}
+
+impl CoreArchiveV2PredictionExecutor {
+    /// Acquire one exact packaged libn4m identity before advertising the
+    /// capability. The packaged contract fixes ABI 2.2 and this preflight
+    /// attests its exact bytes. Core snapshots and re-attests those bytes, then
+    /// the n4m binding performs the ABI compatibility call during execution.
+    pub fn acquire(
+        methods: PackagedMethodsLibraryIdentity,
+    ) -> Result<Self, ArchiveV2PredictionExecutorError> {
+        if methods.abi_major != METHODS_ABI_MAJOR || methods.abi_minor != METHODS_ABI_MINOR {
+            return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
+        }
+        attest_regular_file(
+            &methods.path,
+            methods.size,
+            &methods.sha256,
+            MAX_METHODS_LIBRARY_BYTES,
+        )
+        .map_err(|()| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        preflight_methods_archive_v2_library(&methods.path, &methods.sha256)
+            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        Ok(Self { methods })
+    }
+}
+
+impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
+    fn is_selected(&self) -> bool {
+        true
+    }
+
+    fn execute(
+        &self,
+        resolved: &ResolvedArchiveV2PredictionRequest,
+    ) -> Result<ArchiveV2PredictionOutput, ArchiveV2PredictionExecutorError> {
+        let archive = load_archive_v2_bytes(&resolved.archive_bytes)
+            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        if archive.reference().archive_sha256() != resolved.request.archive_sha256 {
+            return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
+        }
+        let identity = &resolved.request.archive_sha256[..16];
+        let outcome = predict_methods_archive_v2_matrix(
+            &archive,
+            MethodsArchiveMatrixPredictRequest {
+                sample_ids: resolved.request.sample_ids.clone(),
+                x: resolved.request.x.clone(),
+                expected_target_names: resolved.request.expected_target_names.clone(),
+                methods_library_path: self.methods.path.clone(),
+                methods_library_sha256: self.methods.sha256.clone(),
+                request_id: format!("request:studio.archive-v2:{identity}"),
+                outcome_id: format!("outcome:studio.archive-v2:{identity}"),
+                run_id: RunId::new(format!("run:studio.archive-v2:{identity}"))
+                    .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?,
+                warnings: Vec::new(),
+                diagnostics: BTreeMap::from([(
+                    "contract".into(),
+                    Value::String("nirs4all.studio-archive-v2-prediction-contract.v1".into()),
+                )]),
+            },
+        )
+        .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let output = outcome
+            .outputs
+            .into_iter()
+            .next()
+            .ok_or(ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let prediction = output
+            .predictions
+            .into_iter()
+            .next()
+            .ok_or(ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        Ok(ArchiveV2PredictionOutput {
+            archive_id: archive.reference().archive_id().to_owned(),
+            sample_ids: prediction
+                .sample_ids
+                .into_iter()
+                .map(|sample_id| sample_id.as_str().to_owned())
+                .collect(),
+            target_names: prediction.target_names,
+            values: prediction.values,
+            provenance_executor: format!(
+                "nirs4all-core@0.3.23+libn4m-abi-{}.{}:{}",
+                self.methods.abi_major, self.methods.abi_minor, self.methods.sha256
+            ),
+        })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -118,9 +234,16 @@ pub struct ArchiveV2PredictionRuntime {
 
 impl Default for ArchiveV2PredictionRuntime {
     fn default() -> Self {
-        Self {
-            executor: Arc::new(UnselectedArchiveV2PredictionExecutor),
-        }
+        packaged_methods_library_identity()
+            .and_then(|identity| CoreArchiveV2PredictionExecutor::acquire(identity).ok())
+            .map_or_else(
+                || Self {
+                    executor: Arc::new(UnselectedArchiveV2PredictionExecutor),
+                },
+                |executor| Self {
+                    executor: Arc::new(executor),
+                },
+            )
     }
 }
 
@@ -161,6 +284,81 @@ impl ArchiveV2PredictionRuntime {
             .execute(&resolved)
             .map_err(|_| ArchiveV2PredictionError::ExecutionFailed)?;
         project_response(&resolved.request, &output)
+    }
+}
+
+fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdentity> {
+    let executable = std::env::current_exe().ok()?;
+    let native_directory = executable.parent()?;
+    let backend_root = native_directory.parent()?;
+    let contract_path = native_directory.join(PACKAGED_RUNTIME_CONTRACT);
+    let metadata = fs::symlink_metadata(&contract_path).ok()?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() > MAX_RUNTIME_CONTRACT_BYTES
+    {
+        return None;
+    }
+    let mut contract_file = fs::File::open(&contract_path).ok()?;
+    let opened = contract_file.metadata().ok()?;
+    if !opened.is_file() || opened.len() != metadata.len() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    contract_file
+        .by_ref()
+        .take(MAX_RUNTIME_CONTRACT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if u64::try_from(bytes.len()).ok()? > MAX_RUNTIME_CONTRACT_BYTES {
+        return None;
+    }
+    let contract: Value = serde_json::from_slice(&bytes).ok()?;
+    let root = contract.as_object()?;
+    if root.get("schema").and_then(Value::as_str) != Some("nirs4all.studio-packaged-runtime.v1")
+        || root.get("product_backend").and_then(Value::as_str) != Some("rust-sidecar")
+    {
+        return None;
+    }
+    let methods = root.get("methods_library")?.as_object()?;
+    if methods.len() != 3 || methods.get("mode").and_then(Value::as_str) != Some("bundled-required")
+    {
+        return None;
+    }
+    let member = methods.get("member")?.as_object()?;
+    if member.len() != 3 {
+        return None;
+    }
+    let expected_relative = packaged_methods_library_relative_path();
+    let member_path = member.get("path")?.as_str()?;
+    if member_path != expected_relative {
+        return None;
+    }
+    let abi = methods.get("abi")?.as_object()?;
+    if abi.len() != 2 {
+        return None;
+    }
+    Some(PackagedMethodsLibraryIdentity {
+        path: backend_root.join(Path::new(member_path)),
+        size: member.get("size")?.as_u64()?,
+        sha256: member.get("sha256")?.as_str()?.to_owned(),
+        abi_major: u32::try_from(abi.get("major")?.as_u64()?).ok()?,
+        abi_minor: u32::try_from(abi.get("minor")?.as_u64()?).ok()?,
+    })
+}
+
+const fn packaged_methods_library_relative_path() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "native/n4m.dll"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "native/libn4m.dylib"
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        "native/libn4m.so"
     }
 }
 
@@ -398,35 +596,97 @@ fn valid_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-fn canonical_workspace(path: &Path) -> Result<PathBuf, ArchiveV2PredictionError> {
+#[cfg(unix)]
+fn stable_std_cap_identity(
+    std_metadata: &fs::Metadata,
+    cap_metadata: &cap_std::fs::Metadata,
+) -> bool {
+    std_metadata.dev() == cap_metadata.dev() && std_metadata.ino() == cap_metadata.ino()
+}
+
+#[cfg(not(unix))]
+fn stable_std_cap_identity(
+    std_metadata: &fs::Metadata,
+    cap_metadata: &cap_std::fs::Metadata,
+) -> bool {
+    std_metadata.file_type().is_file() == cap_metadata.file_type().is_file()
+        && std_metadata.file_type().is_dir() == cap_metadata.file_type().is_dir()
+        && std_metadata.len() == cap_metadata.len()
+}
+
+#[cfg(unix)]
+fn stable_cap_identity(left: &cap_std::fs::Metadata, right: &cap_std::fs::Metadata) -> bool {
+    left.dev() == right.dev() && left.ino() == right.ino()
+}
+
+#[cfg(not(unix))]
+fn stable_cap_identity(left: &cap_std::fs::Metadata, right: &cap_std::fs::Metadata) -> bool {
+    left.file_type().is_file() == right.file_type().is_file()
+        && left.file_type().is_dir() == right.file_type().is_dir()
+        && left.len() == right.len()
+}
+
+fn open_workspace(path: &Path) -> Result<Dir, ArchiveV2PredictionError> {
     if !path.is_absolute() {
         return Err(ArchiveV2PredictionError::WorkspaceUnsafe);
     }
-    let metadata =
+    let before =
         fs::symlink_metadata(path).map_err(|_| ArchiveV2PredictionError::WorkspaceUnavailable)?;
-    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+    if before.file_type().is_symlink() || !before.is_dir() {
         return Err(ArchiveV2PredictionError::WorkspaceUnsafe);
     }
-    path.canonicalize()
-        .map_err(|_| ArchiveV2PredictionError::WorkspaceUnavailable)
+    let opened = Dir::open_ambient_dir(path, ambient_authority())
+        .map_err(|_| ArchiveV2PredictionError::WorkspaceUnavailable)?;
+    let opened_metadata = opened
+        .dir_metadata()
+        .map_err(|_| ArchiveV2PredictionError::WorkspaceUnsafe)?;
+    let after =
+        fs::symlink_metadata(path).map_err(|_| ArchiveV2PredictionError::WorkspaceUnsafe)?;
+    if after.file_type().is_symlink()
+        || !after.is_dir()
+        || !stable_std_cap_identity(&before, &opened_metadata)
+        || !stable_std_cap_identity(&after, &opened_metadata)
+    {
+        return Err(ArchiveV2PredictionError::WorkspaceUnsafe);
+    }
+    Ok(opened)
+}
+
+fn open_child_directory(
+    directory: &Dir,
+    component: &Path,
+) -> Result<Dir, ArchiveV2PredictionError> {
+    let before = directory
+        .symlink_metadata(component)
+        .map_err(|_| ArchiveV2PredictionError::ArchiveNotFound)?;
+    if before.file_type().is_symlink() || !before.is_dir() {
+        return Err(ArchiveV2PredictionError::ArchiveUnsafe);
+    }
+    let opened = directory
+        .open_dir(component)
+        .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?;
+    let opened_metadata = opened
+        .dir_metadata()
+        .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?;
+    let after = directory
+        .symlink_metadata(component)
+        .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?;
+    if after.file_type().is_symlink()
+        || !after.is_dir()
+        || !stable_cap_identity(&before, &opened_metadata)
+        || !stable_cap_identity(&after, &opened_metadata)
+    {
+        return Err(ArchiveV2PredictionError::ArchiveUnsafe);
+    }
+    Ok(opened)
 }
 
 fn read_archive(
     workspace_path: &Path,
     request: &ArchiveV2PredictionRequest,
 ) -> Result<Vec<u8>, ArchiveV2PredictionError> {
-    let workspace = canonical_workspace(workspace_path)?;
-    let workspace = Dir::open_ambient_dir(&workspace, ambient_authority())
-        .map_err(|_| ArchiveV2PredictionError::WorkspaceUnavailable)?;
-    let exports_metadata = workspace
-        .symlink_metadata("exports")
-        .map_err(|_| ArchiveV2PredictionError::ArchiveNotFound)?;
-    if exports_metadata.file_type().is_symlink() || !exports_metadata.is_dir() {
-        return Err(ArchiveV2PredictionError::ArchiveUnsafe);
-    }
-    let mut directory = workspace
-        .open_dir("exports")
-        .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?;
+    let workspace = open_workspace(workspace_path)?;
+    let mut directory = open_child_directory(&workspace, Path::new("exports"))?;
     let components = Path::new(&request.archive_ref)
         .components()
         .map(|component| match component {
@@ -438,23 +698,15 @@ fn read_archive(
         .split_last()
         .ok_or(ArchiveV2PredictionError::ArchiveUnsafe)?;
     for parent in parents {
-        let metadata = directory
-            .symlink_metadata(parent)
-            .map_err(|_| ArchiveV2PredictionError::ArchiveNotFound)?;
-        if metadata.file_type().is_symlink() || !metadata.is_dir() {
-            return Err(ArchiveV2PredictionError::ArchiveUnsafe);
-        }
-        directory = directory
-            .open_dir(parent)
-            .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?;
+        directory = open_child_directory(&directory, Path::new(parent))?;
     }
-    let metadata = directory
+    let before = directory
         .symlink_metadata(file_name)
         .map_err(|_| ArchiveV2PredictionError::ArchiveNotFound)?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
+    if before.file_type().is_symlink() || !before.is_file() {
         return Err(ArchiveV2PredictionError::ArchiveUnsafe);
     }
-    if metadata.len() > MAX_ARCHIVE_BYTES {
+    if before.len() > MAX_ARCHIVE_BYTES {
         return Err(ArchiveV2PredictionError::ArchiveTooLarge);
     }
     let mut file = directory
@@ -465,6 +717,16 @@ fn read_archive(
         .metadata()
         .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?;
     if !opened.is_file() {
+        return Err(ArchiveV2PredictionError::ArchiveUnsafe);
+    }
+    let after_open = directory
+        .symlink_metadata(file_name)
+        .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?;
+    if after_open.file_type().is_symlink()
+        || !after_open.is_file()
+        || !stable_std_cap_identity(&opened, &before)
+        || !stable_std_cap_identity(&opened, &after_open)
+    {
         return Err(ArchiveV2PredictionError::ArchiveUnsafe);
     }
     if opened.len() > MAX_ARCHIVE_BYTES {
@@ -478,11 +740,17 @@ fn read_archive(
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAX_ARCHIVE_BYTES {
         return Err(ArchiveV2PredictionError::ArchiveTooLarge);
     }
-    if file
+    let after_read = file
         .metadata()
-        .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?
-        .len()
-        != opened.len()
+        .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?;
+    let final_path = directory
+        .symlink_metadata(file_name)
+        .map_err(|_| ArchiveV2PredictionError::ArchiveUnsafe)?;
+    if final_path.file_type().is_symlink()
+        || !final_path.is_file()
+        || after_read.len() != opened.len()
+        || !stable_std_cap_identity(&after_read, &final_path)
+        || !stable_std_cap_identity(&opened, &final_path)
     {
         return Err(ArchiveV2PredictionError::ArchiveUnsafe);
     }
@@ -491,6 +759,76 @@ fn read_archive(
         return Err(ArchiveV2PredictionError::ArchiveDigestMismatch);
     }
     Ok(bytes)
+}
+
+fn attest_regular_file(
+    path: &Path,
+    expected_size: u64,
+    expected_sha256: &str,
+    maximum: u64,
+) -> Result<(), ()> {
+    if !path.is_absolute() || !valid_sha256(expected_sha256) {
+        return Err(());
+    }
+    let before = fs::symlink_metadata(path).map_err(|_| ())?;
+    if before.file_type().is_symlink()
+        || !before.is_file()
+        || before.len() != expected_size
+        || before.len() > maximum
+    {
+        return Err(());
+    }
+    let mut file = fs::File::open(path).map_err(|_| ())?;
+    let opened = file.metadata().map_err(|_| ())?;
+    let after_open = fs::symlink_metadata(path).map_err(|_| ())?;
+    #[cfg(unix)]
+    if before.dev() != opened.dev()
+        || before.ino() != opened.ino()
+        || after_open.dev() != opened.dev()
+        || after_open.ino() != opened.ino()
+    {
+        return Err(());
+    }
+    if after_open.file_type().is_symlink()
+        || !after_open.is_file()
+        || opened.len() > maximum
+        || after_open.len() != opened.len()
+    {
+        return Err(());
+    }
+    let mut bytes_read = 0_u64;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 16 * 1024];
+    loop {
+        let count = file.read(&mut buffer).map_err(|_| ())?;
+        if count == 0 {
+            break;
+        }
+        bytes_read = bytes_read.saturating_add(u64::try_from(count).map_err(|_| ())?);
+        if bytes_read > maximum {
+            return Err(());
+        }
+        hasher.update(&buffer[..count]);
+    }
+    let after_read = file.metadata().map_err(|_| ())?;
+    let final_path = fs::symlink_metadata(path).map_err(|_| ())?;
+    #[cfg(unix)]
+    if final_path.dev() != opened.dev()
+        || final_path.ino() != opened.ino()
+        || after_read.dev() != opened.dev()
+        || after_read.ino() != opened.ino()
+    {
+        return Err(());
+    }
+    if final_path.file_type().is_symlink()
+        || !final_path.is_file()
+        || after_read.len() != bytes_read
+        || final_path.len() != bytes_read
+        || format!("{:x}", hasher.finalize()) != expected_sha256
+    {
+        return Err(());
+    }
+    Ok(())
 }
 
 fn project_response(
@@ -777,6 +1115,35 @@ mod tests {
             Err(ArchiveV2PredictionError::ArchiveTooLarge)
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn inode_identity_gate_detects_same_size_path_replacement() {
+        let root = root("inode-swap");
+        fs::create_dir_all(root.join("exports")).unwrap();
+        fs::write(root.join("exports/before.n4a"), b"same-size-a").unwrap();
+        fs::write(root.join("exports/after.n4a"), b"same-size-b").unwrap();
+        let directory = Dir::open_ambient_dir(root.join("exports"), ambient_authority()).unwrap();
+        let before = directory.symlink_metadata("before.n4a").unwrap();
+        let opened_after = directory.open("after.n4a").unwrap().into_std();
+        let opened_after = opened_after.metadata().unwrap();
+
+        assert!(!stable_std_cap_identity(&opened_after, &before));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn concrete_executor_refuses_wrong_packaged_abi_before_selection() {
+        let error = CoreArchiveV2PredictionExecutor::acquire(PackagedMethodsLibraryIdentity {
+            path: PathBuf::from("/must-not-open-libn4m"),
+            size: 0,
+            sha256: "0".repeat(64),
+            abi_major: METHODS_ABI_MAJOR,
+            abi_minor: METHODS_ABI_MINOR + 1,
+        })
+        .unwrap_err();
+        assert_eq!(error, ArchiveV2PredictionExecutorError::ExecutionFailed);
     }
 
     #[test]

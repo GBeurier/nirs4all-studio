@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
@@ -17,6 +18,12 @@ const buildNativeSidecar = require("../scripts/build-native-sidecar.cjs") as {
     builtBinaryPath: string;
     packagedBinaryPath: string;
   };
+  stagePackagedMethodsLibrary(options: {
+    backendRoot: string;
+    platform: NodeJS.Platform;
+    sourcePath: string | null;
+    expectedSha256: string | null;
+  }): string | null;
 };
 const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
   parseVerifyArgs(argv?: string[]): {
@@ -31,12 +38,22 @@ const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
   }): {
     sidecarPath: string;
     pythonPluginHostPath: string | null;
+    methodsLibraryPath: string | null;
   };
   writeRuntimeContract(options: {
     backendRoot: string;
     platform: string;
     arch: string;
-  }): { contractPath: string };
+    methodsLibraryPath?: string;
+  }): {
+    contractPath: string;
+    contract: {
+      methods_library: {
+        mode: string;
+        abi: { major: number; minor: number };
+      };
+    };
+  };
 };
 
 describe("build-native-sidecar", () => {
@@ -100,7 +117,102 @@ describe("build-native-sidecar", () => {
           platform: "linux",
           arch: "x64",
         }),
-      ).toMatchObject({ sidecarPath, pythonPluginHostPath: pythonPath });
+      ).toMatchObject({
+        sidecarPath,
+        pythonPluginHostPath: pythonPath,
+        methodsLibraryPath: null,
+      });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("attests an explicitly staged ABI 2.2 native Methods closure", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-methods-contract-"));
+    try {
+      const backendRoot = path.join(root, "backend-dist");
+      const sidecarPath = path.join(backendRoot, "native", "studio-sidecar");
+      const methodsPath = path.join(backendRoot, "native", "libn4m.so");
+      fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
+      fs.writeFileSync(sidecarPath, "rust-sidecar");
+      fs.writeFileSync(methodsPath, "libn4m-abi-2.2");
+
+      const written = runtimeContract.writeRuntimeContract({
+        backendRoot,
+        platform: "linux",
+        arch: "x64",
+        methodsLibraryPath: methodsPath,
+      });
+      expect(written.contract.methods_library).toMatchObject({
+        mode: "bundled-required",
+        abi: { major: 2, minor: 2 },
+      });
+      expect(
+        runtimeContract.verifyRuntimeContract({
+          backendRoot,
+          platform: "linux",
+          arch: "x64",
+        }),
+      ).toMatchObject({ methodsLibraryPath: methodsPath });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("stages native Methods only from an explicit build-time SHA identity", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-methods-stage-"));
+    try {
+      const backendRoot = path.join(root, "backend-dist");
+      const sourcePath = path.join(root, "libn4m-source.so");
+      const bytes = Buffer.from("libn4m-abi-2.2");
+      fs.writeFileSync(sourcePath, bytes);
+      const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
+
+      expect(
+        buildNativeSidecar.stagePackagedMethodsLibrary({
+          backendRoot,
+          platform: "linux",
+          sourcePath,
+          expectedSha256,
+        }),
+      ).toBe(path.join(backendRoot, "native", "libn4m.so"));
+      expect(() =>
+        buildNativeSidecar.stagePackagedMethodsLibrary({
+          backendRoot,
+          platform: "linux",
+          sourcePath,
+          expectedSha256: "0".repeat(64),
+        }),
+      ).toThrow("SHA-256 mismatch");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a symlink at the native Methods packaged destination", () => {
+    if (process.platform === "win32") return;
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-methods-symlink-"));
+    try {
+      const backendRoot = path.join(root, "backend-dist");
+      const sourcePath = path.join(root, "libn4m-source.so");
+      const outsidePath = path.join(root, "outside.so");
+      const stagedPath = path.join(backendRoot, "native", "libn4m.so");
+      const bytes = Buffer.from("libn4m-abi-2.2");
+      fs.writeFileSync(sourcePath, bytes);
+      fs.writeFileSync(outsidePath, "must-not-change");
+      fs.mkdirSync(path.dirname(stagedPath), { recursive: true });
+      fs.symlinkSync(outsidePath, stagedPath);
+      const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
+
+      expect(() =>
+        buildNativeSidecar.stagePackagedMethodsLibrary({
+          backendRoot,
+          platform: "linux",
+          sourcePath,
+          expectedSha256,
+        }),
+      ).toThrow("must not be a symlink");
+      expect(fs.readFileSync(outsidePath, "utf8")).toBe("must-not-change");
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

@@ -1,0 +1,191 @@
+{
+    "schema_version": 1,
+    "cases": [
+        {
+            "id": "future_v2_is_not_accepted",
+            "mutation": [
+                "schema_version"
+            ],
+            "value": 2,
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "implementation_status_is_not_wire",
+            "mutation": [
+                "writer",
+                "implementation_status"
+            ],
+            "value": "deferred",
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "external_reference_is_never_a_v1_host_state",
+            "mutation": [
+                "payloads",
+                "host_artifacts",
+                0,
+                "host_state"
+            ],
+            "value": "external_reference",
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "unsafe_joblib_needs_explicit_opt_in",
+            "mutation": [
+                "payloads",
+                "host_artifacts",
+                0,
+                "load_policy"
+            ],
+            "value": "native_portable",
+            "expected_error": "unsafe_host_load_refusal"
+        },
+        {
+            "id": "windows_separator_is_refused",
+            "mutation": [
+                "member_inventory",
+                0,
+                "path"
+            ],
+            "value": "dagml\\package.json",
+            "expected_error": "member_path_refusal"
+        },
+        {
+            "id": "dotdot_path_is_refused",
+            "mutation": [
+                "member_inventory",
+                0,
+                "path"
+            ],
+            "value": "dagml/../package.json",
+            "expected_error": "member_path_refusal"
+        },
+        {
+            "id": "inventory_hash_must_match_reference",
+            "mutation": [
+                "member_inventory",
+                0,
+                "raw_sha256"
+            ],
+            "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "expected_error": "member_integrity_refusal"
+        },
+        {
+            "id": "bounded_member_metadata_is_enforced",
+            "mutation": [
+                "member_inventory",
+                0,
+                "uncompressed_size_bytes"
+            ],
+            "value": 134217729,
+            "expected_error": "budget_refusal"
+        },
+        {
+            "id": "legacy_import_retains_source",
+            "mutation": [
+                "migration_provenance",
+                "source_retained"
+            ],
+            "value": false,
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "legacy_source_hash_matches_fixture",
+            "mutation": [
+                "migration_provenance",
+                "source_raw_sha256"
+            ],
+            "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "expected_error": "migration_refusal"
+        },
+        {
+            "id": "workspace_lock_is_not_snapshotted",
+            "mutation": [
+                "workspace",
+                "exclusions",
+                0
+            ],
+            "value": "workspace/store.sqlite",
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "sqlite_wal_is_never_snapshotted",
+            "mutations": [{"operation": "append", "mutation": ["member_inventory"], "value": {"path": "workspace/runs/run-a/store.sqlite-wal", "regular_file": true, "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "uncompressed_size_bytes": 1, "semantic_fingerprint": null, "semantic_profile": "none"}}, {"operation": "append", "mutation": ["workspace", "payload_inventory"], "value": {"kind": "ordinary", "run_id": "run:a", "member_path": "workspace/runs/run-a/store.sqlite-wal", "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "semantic_fingerprint": null, "semantic_profile": "none"}}],
+            "expected_error": "workspace_refusal"
+        },
+        {
+            "id": "sqlite_shm_is_never_snapshotted",
+            "mutations": [{"operation": "append", "mutation": ["member_inventory"], "value": {"path": "workspace/runs/run-a/store.sqlite-shm", "regular_file": true, "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "uncompressed_size_bytes": 1, "semantic_fingerprint": null, "semantic_profile": "none"}}, {"operation": "append", "mutation": ["workspace", "payload_inventory"], "value": {"kind": "ordinary", "run_id": "run:a", "member_path": "workspace/runs/run-a/store.sqlite-shm", "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "semantic_fingerprint": null, "semantic_profile": "none"}}],
+            "expected_error": "workspace_refusal"
+        },
+        {
+            "id": "sqlite_rollback_journal_is_never_snapshotted",
+            "mutations": [{"operation": "append", "mutation": ["member_inventory"], "value": {"path": "workspace/runs/run-a/store.sqlite-journal", "regular_file": true, "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "uncompressed_size_bytes": 1, "semantic_fingerprint": null, "semantic_profile": "none"}}, {"operation": "append", "mutation": ["workspace", "payload_inventory"], "value": {"kind": "ordinary", "run_id": "run:a", "member_path": "workspace/runs/run-a/store.sqlite-journal", "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "semantic_fingerprint": null, "semantic_profile": "none"}}],
+            "expected_error": "workspace_refusal"
+        },
+        {
+            "id": "sqlite_statement_journal_is_never_snapshotted",
+            "mutations": [{"operation": "append", "mutation": ["member_inventory"], "value": {"path": "workspace/runs/run-a/store.sqlite-stmtjrnl", "regular_file": true, "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "uncompressed_size_bytes": 1, "semantic_fingerprint": null, "semantic_profile": "none"}}, {"operation": "append", "mutation": ["workspace", "payload_inventory"], "value": {"kind": "ordinary", "run_id": "run:a", "member_path": "workspace/runs/run-a/store.sqlite-stmtjrnl", "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "semantic_fingerprint": null, "semantic_profile": "none"}}],
+            "expected_error": "workspace_refusal"
+        },
+        {
+            "id": "sqlite_super_journal_is_never_snapshotted",
+            "mutations": [{"operation": "append", "mutation": ["member_inventory"], "value": {"path": "workspace/runs/run-a/store.sqlite-mjA1B2C39FF", "regular_file": true, "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "uncompressed_size_bytes": 1, "semantic_fingerprint": null, "semantic_profile": "none"}}, {"operation": "append", "mutation": ["workspace", "payload_inventory"], "value": {"kind": "ordinary", "run_id": "run:a", "member_path": "workspace/runs/run-a/store.sqlite-mjA1B2C39FF", "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "semantic_fingerprint": null, "semantic_profile": "none"}}],
+            "expected_error": "workspace_refusal"
+        },
+        {
+            "id": "sqlite_temp_file_is_never_snapshotted",
+            "mutations": [{"operation": "append", "mutation": ["member_inventory"], "value": {"path": "workspace/runs/run-a/etilqs_abcdef", "regular_file": true, "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "uncompressed_size_bytes": 1, "semantic_fingerprint": null, "semantic_profile": "none"}}, {"operation": "append", "mutation": ["workspace", "payload_inventory"], "value": {"kind": "ordinary", "run_id": "run:a", "member_path": "workspace/runs/run-a/etilqs_abcdef", "raw_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "semantic_fingerprint": null, "semantic_profile": "none"}}],
+            "expected_error": "workspace_refusal"
+        },
+        {
+            "id": "runtime_execution_bundle_must_be_v2",
+            "mutation": ["replay", "training_artifacts", "execution_bundle", "schema_version"],
+            "value": 1,
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "runtime_training_outcome_must_be_v2",
+            "mutation": ["replay", "training_artifacts", "training_outcome", "schema_version"],
+            "value": 1,
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "runtime_prediction_cache_payload_set_must_be_v2",
+            "mutation": ["replay", "training_artifacts", "prediction_cache_payload_set", "schema_version"],
+            "value": 1,
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "runtime_score_set_must_be_v2",
+            "mutation": ["replay", "training_artifacts", "score_set", "schema_version"],
+            "value": 1,
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "runtime_v2_references_require_producer_port",
+            "mutations": [{"operation": "remove", "mutation": ["replay", "training_artifacts", "execution_bundle", "producer_port_required"]}],
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "portable_package_schema_is_not_arbitrary",
+            "base": "portable_split_conformal.json",
+            "mutation": [
+                "replay",
+                "portable_predictor_package",
+                "schema_id"
+            ],
+            "value": "https://example.invalid/future.json",
+            "expected_error": "schema_refusal"
+        },
+        {
+            "id": "archive_cannot_embed_workspace",
+            "base": "portable_split_conformal.json",
+            "mutation": [
+                "workspace"
+            ],
+            "value": {},
+            "expected_error": "schema_refusal"
+        }
+    ]
+}

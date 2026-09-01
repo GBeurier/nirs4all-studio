@@ -1,0 +1,21 @@
+name: portable_methods_pipeline
+description: >-
+  nirs4all PipelineConfigs syntax restricted to operators owned by the portable
+  methods stack: Kennard-Stone split, SNV, Savitzky-Golay, and PLS
+  n_components sweep.
+random_state: 42
+pipeline:
+  - class: nirs4all.operators.splitters.KennardStoneSplitter
+    params:
+      test_size: 0.3
+  - class: nirs4all.operators.transforms.StandardNormalVariate
+  - class: nirs4all.operators.transforms.SavitzkyGolay
+    params:
+      window_length: 11
+      polyorder: 2
+      deriv: 0
+  - model:
+      class: sklearn.cross_decomposition.PLSRegression
+    _range_: [2, 11, 2]
+    param: n_components
+    name: PLS-sweep

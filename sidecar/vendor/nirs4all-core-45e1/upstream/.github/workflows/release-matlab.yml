@@ -1,0 +1,128 @@
+# MATLAB / Octave binding package for every release tag.
+#
+# The bindings/matlab tree (the +nirs4all classdef package + the portable
+# execution facade + smoke test) is a SOURCE distribution: the SAME archive
+# serves MATLAB and Octave. scripts/build-matlab-package.sh assembles it as
+# nirs4all-matlab-octave-<version>.zip (version read from the Rust-crate SoT).
+# It is attached to the GitHub Release so users can download it without cloning.
+# Release upload is blocked by strict MATLAB/Octave parity against the Python
+# oracle and the pinned nirs4all-methods ref from compat/upstreams.toml.
+#
+# Naming: the package is `nirs4all` (there is no "full" nirs4all in MATLAB/
+# Octave, so this aggregate owns the `nirs4all` package here).
+#
+# Trigger: tag push v*.*.* (attach gated on a non-pre-release tag), or
+# workflow_dispatch for a dry run (build the artifact, no Release upload).
+name: release-matlab
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # attach the asset to the Release
+
+jobs:
+  strict-matlab-parity:
+    name: Strict MATLAB/Octave parity / Python oracle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: "3.11"
+
+      - name: Read pinned nirs4all-methods ref
+        id: methods-pin
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import tomllib
+
+          upstreams = tomllib.loads(Path("compat/upstreams.toml").read_text())["upstream"]
+          methods = [item for item in upstreams if item.get("key") == "methods"]
+          if len(methods) != 1:
+              raise SystemExit("compat/upstreams.toml must contain exactly one methods upstream")
+          ref = methods[0].get("ref")
+          if not isinstance(ref, str) or not ref.strip():
+              raise SystemExit("compat/upstreams.toml methods upstream must define a non-empty ref")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"ref={ref.strip()}\n")
+
+      - uses: actions/checkout@v7.0.0
+        with:
+          repository: GBeurier/nirs4all-methods
+          path: nirs4all-methods
+          ref: ${{ steps.methods-pin.outputs.ref }}
+
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake gcc-12 g++-12 ninja-build octave octave-dev
+      - run: cmake --preset dev-release
+        working-directory: nirs4all-methods
+      - run: cmake --build --preset dev-release --target n4m_c --parallel
+        working-directory: nirs4all-methods
+      - run: octave --quiet --eval "cd bindings/matlab; build_mex"
+        working-directory: nirs4all-methods
+        env:
+          N4M_INCLUDE_DIR: ${{ github.workspace }}/nirs4all-methods/cpp/include
+          N4M_GENERATED_DIR: ${{ github.workspace }}/nirs4all-methods/build/dev-release/generated
+          N4M_LIB_DIR: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+          LD_LIBRARY_PATH: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+      - name: Run strict MATLAB/Octave parity against the Python oracle
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+          NIRS4ALL_METHODS_MATLAB_PATH: ${{ github.workspace }}/nirs4all-methods/bindings/matlab
+          OCTAVE_PATH: ${{ github.workspace }}/nirs4all-methods/bindings/matlab
+          NIRS4ALL_CORE_REQUIRE_METHODS_PARITY: "1"
+        run: make test-matlab-parity
+
+  matlab-package:
+    needs: strict-matlab-parity
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Install packaging tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zip
+
+      - name: Resolve version
+        id: meta
+        run: |
+          set -euo pipefail
+          # Single source of truth: the Rust crate [package] version (the same
+          # value scripts/build-matlab-package.sh reads).
+          VER=$(sed -nE '/^\[package\]/,/^\[/{s/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p}' \
+                bindings/rust/nirs4all/Cargo.toml | head -n1)
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          echo "archive=nirs4all-matlab-octave-$VER.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag matches the resolved version
+        if: ${{ github.event_name == 'push' && !contains(github.ref_name, '-') }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.meta.outputs.ver }}" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "::error::version (${{ steps.meta.outputs.ver }}) != tag (${GITHUB_REF_NAME#v}). Run scripts/bump_version.sh and re-tag."
+            exit 1
+          fi
+
+      - name: Build the MATLAB/Octave package
+        run: scripts/build-matlab-package.sh dist/matlab
+
+      - name: Upload to the matching Release
+        if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/matlab/${{ steps.meta.outputs.archive }}
+          fail_on_unmatched_files: true
+
+      - name: Upload artifact (always, for dry runs / inspection)
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ${{ steps.meta.outputs.archive }}
+          path: dist/matlab/

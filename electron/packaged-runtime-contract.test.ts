@@ -56,6 +56,11 @@ function makeResources(): {
           sha256: digest(python),
         },
       },
+      methods_library: {
+        mode: "unavailable",
+        member: null,
+        abi: { major: 2, minor: 2 },
+      },
     }),
   );
   return { resourcesPath, sidecarPath, pythonPath };
@@ -108,6 +113,49 @@ describe("packaged runtime contract", () => {
       pythonPluginHostError: expect.stringContaining(
         "Bundled Python plugin host not found",
       ),
+    });
+  });
+
+  it("selects native Methods only while its exact packaged SHA remains valid", () => {
+    const fixture = makeResources();
+    const backendRoot = path.join(fixture.resourcesPath, "backend");
+    const contractPath = path.join(
+      backendRoot,
+      "native",
+      "STUDIO_RUNTIME_CONTRACT.json",
+    );
+    const methodsPath = path.join(backendRoot, "native", "libn4m.so");
+    const methods = Buffer.from("libn4m-abi-2.2");
+    fs.writeFileSync(methodsPath, methods);
+    const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
+    contract.methods_library = {
+      mode: "bundled-required",
+      member: {
+        path: "native/libn4m.so",
+        size: methods.length,
+        sha256: digest(methods),
+      },
+      abi: { major: 2, minor: 2 },
+    };
+    fs.writeFileSync(contractPath, JSON.stringify(contract));
+
+    expect(
+      verifyPackagedRuntimeContract({
+        resourcesPath: fixture.resourcesPath,
+        platform: "linux",
+      }),
+    ).toMatchObject({ methodsLibraryPath: methodsPath, methodsLibraryError: null });
+
+    fs.appendFileSync(methodsPath, "tampered");
+    expect(
+      verifyPackagedRuntimeContract({
+        resourcesPath: fixture.resourcesPath,
+        platform: "linux",
+      }),
+    ).toMatchObject({
+      sidecarPath: fixture.sidecarPath,
+      methodsLibraryPath: null,
+      methodsLibraryError: expect.stringContaining("integrity mismatch"),
     });
   });
 });

@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["bindings/rust/nirs4all", "bindings/python-native", "bindings/wasm-native"]
+
+[workspace.package]
+edition = "2021"
+license = "CECILL-2.1 OR AGPL-3.0-or-later"
+repository = "https://github.com/GBeurier/nirs4all-core"
