@@ -24,6 +24,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
 
 pub mod conformal_store;
+pub mod job_lifecycle;
 mod results_summary;
 pub mod run_detail;
 mod settings;
