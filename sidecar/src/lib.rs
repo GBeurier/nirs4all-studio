@@ -868,6 +868,32 @@ fn workspace_runs_path(path: &str) -> bool {
     )
 }
 
+fn workspace_run_discovery_query_supported(query: Option<&str>) -> bool {
+    let Some(query) = query else {
+        return true;
+    };
+    if query.is_empty() {
+        return false;
+    }
+    let mut source_seen = false;
+    let mut refresh_seen = false;
+    for parameter in query.split('&') {
+        let Some((name, value)) = parameter.split_once('=') else {
+            return false;
+        };
+        match name {
+            "source" if !source_seen && matches!(value, "unified" | "manifests" | "parquet") => {
+                source_seen = true;
+            }
+            "refresh" if !refresh_seen && matches!(value, "true" | "false") => {
+                refresh_seen = true;
+            }
+            _ => return false,
+        }
+    }
+    source_seen || refresh_seen
+}
+
 fn workspace_results_path(path: &str) -> bool {
     let Some(suffix) = path.strip_prefix("/api/workspaces/") else {
         return false;
@@ -2209,10 +2235,18 @@ fn read_bounded_stdout(
 }
 
 fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpResponse {
+    if workspace_runs_path(&request.path)
+        && !workspace_run_discovery_query_supported(request.query.as_deref())
+    {
+        return error_response(
+            404,
+            ErrorCode::RouteNotFound,
+            "This native WorkspaceStore run discovery query is outside the explicit allowlist",
+            BTreeMap::from([("path".into(), request.path.clone())]),
+        );
+    }
     if request.query.is_some()
-        && (workspace_runs_path(&request.path)
-            || workspace_results_path(&request.path)
-            || workspace_results_summary_path(&request.path))
+        && (workspace_results_path(&request.path) || workspace_results_summary_path(&request.path))
     {
         return error_response(
             404,
@@ -2866,6 +2900,28 @@ mod tests {
         );
     }
 
+    fn assert_run_discovery_queries_match_oracle(state: &mut SidecarState, expected: &Value) {
+        for target in [
+            "/api/workspaces/workspace-a/runs?source=unified",
+            "/api/workspaces/workspace-a/runs?source=manifests",
+            "/api/workspaces/workspace-a/runs?source=parquet",
+            "/api/workspaces/workspace-a/runs?refresh=true",
+            "/api/workspaces/workspace-a/runs?refresh=false",
+            "/api/workspaces/workspace-a/runs?source=unified&refresh=true",
+            "/api/workspaces/workspace-a/runs?refresh=false&source=parquet",
+        ] {
+            let raw = format!("GET {target} HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            let request = parse_http_request(raw.as_bytes()).unwrap();
+            let response = route_http_request(state, &request);
+            assert_eq!(response.status, 200, "{target}");
+            assert_eq!(
+                serde_json::from_str::<Value>(&response.body).unwrap(),
+                *expected,
+                "{target}",
+            );
+        }
+    }
+
     #[test]
     fn readiness_stays_explicitly_non_parity() {
         let state = SidecarState::default();
@@ -3217,7 +3273,6 @@ mod tests {
         )
         .unwrap();
         let mut state = SidecarState::with_app_settings_dir(&settings_directory);
-
         let response = route_request(&mut state, "GET", "/api/workspaces/workspace-a/runs");
         assert_eq!(response.status, 200);
         let payload: Value = serde_json::from_str(&response.body).unwrap();
@@ -3226,6 +3281,7 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(payload, expected);
+        assert_run_discovery_queries_match_oracle(&mut state, &expected);
         assert!(!workspace.join("store.sqlite-wal").exists());
         assert!(!workspace.join("store.sqlite-shm").exists());
         let results_response =
@@ -3237,8 +3293,6 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(results_payload, expected_results);
-        assert!(!workspace.join("store.sqlite-wal").exists());
-        assert!(!workspace.join("store.sqlite-shm").exists());
         assert_eq!(
             route_request(&mut state, "POST", "/api/workspaces/workspace-a/runs").status,
             405
@@ -3857,10 +3911,13 @@ mod tests {
     }
 
     #[test]
-    fn native_workspace_store_routes_reject_queries_before_routing() {
+    fn native_workspace_store_routes_reject_queries_outside_the_public_policy() {
         let mut state = SidecarState::default();
         for target in [
-            "/api/workspaces/workspace-a/runs?source=unified",
+            "/api/workspaces/workspace-a/runs?source=unknown",
+            "/api/workspaces/workspace-a/runs?refresh=yes",
+            "/api/workspaces/workspace-a/runs?source=unified&source=parquet",
+            "/api/workspaces/workspace-a/runs?unexpected=true",
             "/api/workspaces/workspace-a/results?limit=1",
             "/api/workspaces/workspace-a/results/summary?n=1",
         ] {

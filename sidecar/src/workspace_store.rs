@@ -641,8 +641,58 @@ fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
             "run-summary field columns differ from v1".into(),
         ));
     }
+    validate_run_discovery_contract(&contract)?;
     validate_pipeline_contract(&contract, &expected_parameters)?;
     validate_ranked_chain_contract(&contract)
+}
+
+fn validate_run_discovery_contract(contract: &Value) -> Result<(), WorkspaceStoreReadError> {
+    let expected = json!({
+        "source_projection": "studio_run_summary",
+        "http": {
+            "method": "GET",
+            "path_suffix": "/runs",
+            "query_mode": "explicit_allowlist",
+            "query_absent_allowed": true,
+            "unknown_parameters": "reject",
+            "duplicate_parameters": "reject",
+            "parameter_order": "any",
+            "parameters": [
+                {
+                    "name": "source",
+                    "type": "string",
+                    "enum": ["unified", "manifests", "parquet"],
+                    "default": "unified",
+                },
+                {
+                    "name": "refresh",
+                    "type": "string",
+                    "enum": ["true", "false"],
+                    "default": "false",
+                },
+            ],
+        },
+        "store_semantics": {
+            "source": "accepted_for_store_parity_but_does_not_switch_away_from_workspace_store",
+            "refresh": "every_native_request_is_an_uncached_immutable_read",
+            "limit": 500,
+            "offset": 0,
+            "ordering": "studio_run_summary",
+            "fallback_after_native_selection": "none",
+        },
+        "response": {
+            "workspace_id": "requested_workspace_id",
+            "runs": "studio_run_summary_rows",
+            "total": "returned_row_count",
+        },
+        "incompatible_store_http_status": 409,
+    });
+    if contract.pointer("/projections/studio_run_discovery_query_v1") != Some(&expected) {
+        return Err(WorkspaceStoreReadError::Contract(
+            "run-discovery query policy differs from v1".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_results_summary_contract() -> Result<(), WorkspaceStoreReadError> {

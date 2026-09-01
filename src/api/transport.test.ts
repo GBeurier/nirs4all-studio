@@ -671,8 +671,10 @@ describe("API client request handling", () => {
     await api.get("/workspaces/workspace-a/runs/enriched");
     await api.get("/workspaces/workspace-a/runs/run-a");
     await api.get("/workspaces/workspace-a/runs?refresh=true");
+    await api.get("/workspaces/workspace-a/runs?refresh=false&source=parquet");
     await api.post("/workspaces/workspace-a/runs");
     await api.get("/workspaces/workspace-a/runs?unexpected=true");
+    await api.get("/workspaces/workspace-a/runs?source=unified&source=parquet");
     await api.get("/workspaces/workspace-a/runs/");
     await api.post("/workspaces/workspace-a/runs/run-a/rerun");
     await api.delete("/workspaces/workspace-a/runs/run-a");
@@ -684,7 +686,7 @@ describe("API client request handling", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs?source=unified",
+      "http://127.0.0.1:43123/api/workspaces/workspace-a/runs?source=unified",
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -699,31 +701,41 @@ describe("API client request handling", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       5,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs?refresh=true",
+      "http://127.0.0.1:43123/api/workspaces/workspace-a/runs?refresh=true",
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       6,
+      "http://127.0.0.1:43123/api/workspaces/workspace-a/runs?refresh=false&source=parquet",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
       "http://127.0.0.1:8000/api/workspaces/workspace-a/runs",
       expect.objectContaining({ method: "POST" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      7,
+      8,
       "http://127.0.0.1:8000/api/workspaces/workspace-a/runs?unexpected=true",
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      8,
+      9,
+      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs?source=unified&source=parquet",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      10,
       "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/",
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      9,
+      11,
       "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/run-a/rerun",
       expect.objectContaining({ method: "POST" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      10,
+      12,
       "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/run-a",
       expect.objectContaining({ method: "DELETE" }),
     );
@@ -752,14 +764,14 @@ describe("API client request handling", () => {
     });
 
     await expect(
-      api.get("/workspaces/workspace-a/runs"),
+      api.get("/workspaces/workspace-a/runs?source=unified"),
     ).rejects.toMatchObject({
       detail: "Workspace has no compatible native WorkspaceStore v5",
       status: 409,
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:43123/api/workspaces/workspace-a/runs",
+      "http://127.0.0.1:43123/api/workspaces/workspace-a/runs?source=unified",
       expect.any(Object),
     );
   });
