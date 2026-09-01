@@ -3223,11 +3223,16 @@ mod tests {
         assert_eq!(body["scientific_execution"], "unavailable");
     }
 
-    #[test]
-    fn python_plugin_preflight_is_explicit_and_never_enables_scientific_execution() {
-        let mut unconfigured = SidecarState::default();
-        let capabilities: Value = serde_json::from_str(&unconfigured.capabilities_json()).unwrap();
-        assert_eq!(capabilities["python_plugin_host"], "unconfigured");
+    fn assert_python_plugin_capabilities(state: &SidecarState, configured: bool) {
+        let capabilities: Value = serde_json::from_str(&state.capabilities_json()).unwrap();
+        assert_eq!(
+            capabilities["python_plugin_host"],
+            if configured {
+                "configured"
+            } else {
+                "unconfigured"
+            }
+        );
         assert_eq!(
             capabilities["api_route_coverage"],
             "bootstrap_system_and_app_catalog"
@@ -3237,51 +3242,46 @@ mod tests {
             "app_config_path_routes",
             "linked_workspace_catalog_route",
             "workspace_store_v5_run_summary_route",
-        ] {
-            assert_eq!(capabilities["features"][feature], true);
-        }
-        for feature in [
             "workspace_store_v5_run_detail_route",
             "run_detail_owner_preflight_per_request",
+            "workspace_store_v5_pipeline_summary_route",
+            "workspace_store_v5_results_summary_route",
+            "system_status_route",
+            "system_info_route",
+            "system_build_route",
+            "updates_settings_routes",
+            "native_job_status_routes",
+            "native_job_cancellation_routes",
         ] {
-            assert_eq!(capabilities["features"][feature], true);
+            assert_eq!(capabilities["features"][feature], true, "{feature}");
         }
-        assert_eq!(
-            capabilities["features"]["run_detail_owner_host_configured"],
-            false
-        );
-        assert_eq!(
-            capabilities["features"]["workspace_store_v5_pipeline_summary_route"],
-            true
-        );
-        assert_eq!(
-            capabilities["features"]["workspace_store_v5_results_summary_route"],
-            true
-        );
-        assert_eq!(capabilities["features"]["system_status_route"], true);
-        assert_eq!(capabilities["features"]["legacy_api_routes"], false);
-        assert_eq!(capabilities["features"]["native_job_status_routes"], true);
-        assert_eq!(
-            capabilities["features"]["native_job_cancellation_routes"],
-            true
-        );
-        assert_eq!(
-            capabilities["features"]["native_scientific_submission_routes"],
-            false
-        );
-        assert_eq!(
-            capabilities["features"]["durable_execution_job_record_reads"],
-            false
-        );
+        for feature in [
+            "legacy_api_routes",
+            "native_scientific_submission_routes",
+            "durable_execution_job_record_reads",
+            "scientific_execution",
+            "python_plugin_execution",
+        ] {
+            assert_eq!(capabilities["features"][feature], false, "{feature}");
+        }
         assert_eq!(
             capabilities["features"]["unmigrated_api_routes_require_legacy_backend"],
             true
         );
-        assert_eq!(capabilities["features"]["system_info_route"], true);
-        assert_eq!(capabilities["features"]["system_build_route"], true);
-        assert_eq!(capabilities["features"]["updates_settings_routes"], true);
-        assert_eq!(capabilities["features"]["python_plugin_preflight"], false);
-        assert_eq!(capabilities["features"]["python_plugin_execution"], false);
+        assert_eq!(
+            capabilities["features"]["run_detail_owner_host_configured"],
+            configured
+        );
+        assert_eq!(
+            capabilities["features"]["python_plugin_preflight"],
+            configured
+        );
+    }
+
+    #[test]
+    fn python_plugin_preflight_is_explicit_and_never_enables_scientific_execution() {
+        let mut unconfigured = SidecarState::default();
+        assert_python_plugin_capabilities(&unconfigured, false);
 
         let unavailable = route_request(&mut unconfigured, "GET", "/sidecar/v1/python/preflight");
         assert_eq!(unavailable.status, 503);
@@ -3320,22 +3320,7 @@ mod tests {
             std::process::id()
         ));
         let mut configured = SidecarState::with_python_plugin_host(missing_host);
-        let configured_capabilities: Value =
-            serde_json::from_str(&configured.capabilities_json()).unwrap();
-        assert_eq!(configured_capabilities["python_plugin_host"], "configured");
-        assert_eq!(
-            configured_capabilities["features"]["python_plugin_preflight"],
-            true
-        );
-        for feature in ["scientific_execution", "python_plugin_execution"] {
-            assert_eq!(configured_capabilities["features"][feature], false);
-        }
-        for feature in [
-            "workspace_store_v5_run_detail_route",
-            "run_detail_owner_host_configured",
-        ] {
-            assert_eq!(configured_capabilities["features"][feature], true);
-        }
+        assert_python_plugin_capabilities(&configured, true);
 
         let failed = route_request(&mut configured, "GET", "/sidecar/v1/python/preflight");
         assert_eq!(failed.status, 503);
