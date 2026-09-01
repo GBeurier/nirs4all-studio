@@ -193,7 +193,7 @@
             "properties": {
               "allow_fallback": {
                 "default": false,
-                "description": "Allow dag-ml to fall back to legacy when the runtime refuses a shape",
+                "description": "Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.",
                 "title": "Allow Fallback",
                 "type": "boolean"
               },
@@ -219,7 +219,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Runtime ML engine for nirs4all.run (None uses the library default)",
+                "description": "ML engine selector: 'legacy' or 'dag-ml'; omitted uses the nirs4all library default.",
                 "title": "Engine"
               },
               "include_preprocessing_search": {
@@ -349,6 +349,55 @@
                 "title": "Best Score",
                 "type": "number"
               },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine"
+              },
+              "engine_diagnostics": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Diagnostics"
+              },
+              "engine_requested": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Requested"
+              },
+              "fallback_policy": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fallback Policy"
+              },
               "job_id": {
                 "title": "Job Id",
                 "type": "string"
@@ -363,6 +412,44 @@
                   }
                 ],
                 "title": "Model Path"
+              },
+              "native_result_refs": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Native Result Refs"
+              },
+              "runtime_manifest": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Manifest"
+              },
+              "runtime_source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Source"
               },
               "search_duration_seconds": {
                 "title": "Search Duration Seconds",
@@ -616,6 +703,18 @@
                 },
                 "title": "Preprocessing Applied",
                 "type": "array"
+              },
+              "runtime": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime"
               }
             },
             "required": [
@@ -806,6 +905,22 @@
           },
           "Body_predict_from_file_api_predict_file_post": {
             "properties": {
+              "allow_fallback": {
+                "default": false,
+                "title": "Allow Fallback",
+                "type": "boolean"
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine"
+              },
               "file": {
                 "contentMediaType": "application/octet-stream",
                 "title": "File",
@@ -1702,10 +1817,28 @@
           "CompareModelsRequest": {
             "description": "Request for comparing multiple models (.n4a bundles).",
             "properties": {
+              "allow_fallback": {
+                "default": false,
+                "description": "Explicitly allow unsupported dag-ml prediction requests to run via the Python oracle.",
+                "title": "Allow Fallback",
+                "type": "boolean"
+              },
               "dataset_path": {
                 "description": "Path to dataset for comparison",
                 "title": "Dataset Path",
                 "type": "string"
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Prediction engine selector. Omit or use 'legacy' for the Python oracle; 'dag-ml' requires allow_fallback.",
+                "title": "Engine"
               },
               "model_paths": {
                 "description": "Paths to .n4a bundles to compare",
@@ -2915,19 +3048,6 @@
                   }
                 ],
                 "title": "Num Rows"
-              },
-              "overrides": {
-                "anyOf": [
-                  {
-                    "additionalProperties": true,
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Auto-detected parsing overrides for this file",
-                "title": "Overrides"
               },
               "path": {
                 "title": "Path",
@@ -4861,6 +4981,272 @@
             "title": "LearningCurveRequest",
             "type": "object"
           },
+          "LegacyMigrationErrorResponse": {
+            "description": "Whitelisted error entry from a legacy migration report.",
+            "properties": {
+              "cause": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cause"
+              },
+              "code": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Code"
+              },
+              "message": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Message"
+              },
+              "mitigation": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mitigation"
+              }
+            },
+            "title": "LegacyMigrationErrorResponse",
+            "type": "object"
+          },
+          "LegacyMigrationReportPreviewRequest": {
+            "description": "Request to preview nirs4all-tools migration contract files.",
+            "properties": {
+              "manifest_path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Optional path to migration-manifest.json",
+                "title": "Manifest Path"
+              },
+              "report_path": {
+                "description": "Path to migration-report.json",
+                "title": "Report Path",
+                "type": "string"
+              },
+              "unsupported_report_path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Optional path to unsupported-report.json",
+                "title": "Unsupported Report Path"
+              }
+            },
+            "required": [
+              "report_path"
+            ],
+            "title": "LegacyMigrationReportPreviewRequest",
+            "type": "object"
+          },
+          "LegacyMigrationReportPreviewResponse": {
+            "description": "Read-only summary of nirs4all-tools migration contract files.",
+            "properties": {
+              "errors": {
+                "items": {
+                  "$ref": "#/components/schemas/LegacyMigrationErrorResponse"
+                },
+                "title": "Errors",
+                "type": "array"
+              },
+              "migrated_counts": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "title": "Migrated Counts",
+                "type": "object"
+              },
+              "preserved_counts": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "title": "Preserved Counts",
+                "type": "object"
+              },
+              "recommended_next_command": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Recommended Next Command"
+              },
+              "source_summary": {
+                "$ref": "#/components/schemas/LegacyMigrationSourceSummaryResponse"
+              },
+              "status": {
+                "title": "Status",
+                "type": "string"
+              },
+              "target_schema_version_validated": {
+                "default": false,
+                "title": "Target Schema Version Validated",
+                "type": "boolean"
+              },
+              "target_summary": {
+                "$ref": "#/components/schemas/LegacyMigrationTargetSummaryResponse"
+              },
+              "unsupported_counts": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "title": "Unsupported Counts",
+                "type": "object"
+              },
+              "verification_summary": {
+                "$ref": "#/components/schemas/LegacyMigrationVerificationSummaryResponse"
+              },
+              "warnings": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Warnings",
+                "type": "array"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "title": "LegacyMigrationReportPreviewResponse",
+            "type": "object"
+          },
+          "LegacyMigrationSourceSummaryResponse": {
+            "description": "Whitelisted source summary from a legacy migration report.",
+            "properties": {
+              "artifacts": {
+                "default": 0,
+                "title": "Artifacts",
+                "type": "integer"
+              },
+              "bundles": {
+                "default": 0,
+                "title": "Bundles",
+                "type": "integer"
+              },
+              "kinds": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Kinds",
+                "type": "array"
+              },
+              "row_counts": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "title": "Row Counts",
+                "type": "object"
+              }
+            },
+            "title": "LegacyMigrationSourceSummaryResponse",
+            "type": "object"
+          },
+          "LegacyMigrationTargetSummaryResponse": {
+            "description": "Whitelisted target summary from a legacy migration report.",
+            "properties": {
+              "path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Path"
+              }
+            },
+            "title": "LegacyMigrationTargetSummaryResponse",
+            "type": "object"
+          },
+          "LegacyMigrationVerificationCheckResponse": {
+            "description": "Whitelisted verification check summary.",
+            "properties": {
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            "title": "LegacyMigrationVerificationCheckResponse",
+            "type": "object"
+          },
+          "LegacyMigrationVerificationSummaryResponse": {
+            "description": "Whitelisted verification summary from a legacy migration report.",
+            "properties": {
+              "checks": {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/LegacyMigrationVerificationCheckResponse"
+                },
+                "title": "Checks",
+                "type": "object"
+              },
+              "mismatches": {
+                "default": 0,
+                "title": "Mismatches",
+                "type": "integer"
+              },
+              "passed": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Passed"
+              },
+              "ran": {
+                "default": false,
+                "title": "Ran",
+                "type": "boolean"
+              }
+            },
+            "title": "LegacyMigrationVerificationSummaryResponse",
+            "type": "object"
+          },
           "LegacyWorkspaceConversionRequest": {
             "description": "Request to convert the active legacy workspace into a fresh V1 workspace.",
             "properties": {
@@ -4868,12 +5254,6 @@
                 "default": false,
                 "description": "Run converter in dry-run mode",
                 "title": "Dry Run",
-                "type": "boolean"
-              },
-              "link_converted_workspace": {
-                "default": true,
-                "description": "Link and activate the converted workspace after a successful conversion",
-                "title": "Link Converted Workspace",
                 "type": "boolean"
               },
               "output_path": {
@@ -4907,27 +5287,6 @@
           "LegacyWorkspaceConversionResponse": {
             "description": "Response for a legacy workspace conversion request.",
             "properties": {
-              "activation_skipped": {
-                "default": false,
-                "title": "Activation Skipped",
-                "type": "boolean"
-              },
-              "active_workspace_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Active Workspace Path"
-              },
-              "best_effort": {
-                "default": false,
-                "title": "Best Effort",
-                "type": "boolean"
-              },
               "command": {
                 "items": {
                   "type": "string"
@@ -4950,33 +5309,6 @@
                   }
                 ],
                 "title": "Job Id"
-              },
-              "link_converted_workspace": {
-                "default": true,
-                "title": "Link Converted Workspace",
-                "type": "boolean"
-              },
-              "link_error": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Link Error"
-              },
-              "linked_workspace_id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Linked Workspace Id"
               },
               "output_path": {
                 "title": "Output Path",
@@ -7034,6 +7366,7 @@
             "properties": {
               "allow_fallback": {
                 "default": false,
+                "description": "Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.",
                 "title": "Allow Fallback",
                 "type": "boolean"
               },
@@ -7358,6 +7691,24 @@
           "PredictBatchRequest": {
             "description": "Request for batch prediction.",
             "properties": {
+              "allow_fallback": {
+                "default": false,
+                "description": "Explicitly allow unsupported dag-ml prediction requests to run via the Python oracle.",
+                "title": "Allow Fallback",
+                "type": "boolean"
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Prediction engine selector. Omit or use 'legacy' for the Python oracle; 'dag-ml' requires allow_fallback.",
+                "title": "Engine"
+              },
               "model_id": {
                 "description": "ID of the trained model to use",
                 "title": "Model Id",
@@ -7395,10 +7746,28 @@
           "PredictDatasetRequest": {
             "description": "Request for predicting on a dataset.",
             "properties": {
+              "allow_fallback": {
+                "default": false,
+                "description": "Explicitly allow unsupported dag-ml prediction requests to run via the Python oracle.",
+                "title": "Allow Fallback",
+                "type": "boolean"
+              },
               "dataset_id": {
                 "description": "ID of the dataset to predict on",
                 "title": "Dataset Id",
                 "type": "string"
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Prediction engine selector. Omit or use 'legacy' for the Python oracle; 'dag-ml' requires allow_fallback.",
+                "title": "Engine"
               },
               "model_id": {
                 "description": "ID of the trained model to use",
@@ -7432,6 +7801,12 @@
           "PredictRequest": {
             "description": "JSON request for prediction.",
             "properties": {
+              "allow_fallback": {
+                "default": false,
+                "description": "Allow unsupported dag-ml prediction requests to run via the Python oracle.",
+                "title": "Allow Fallback",
+                "type": "boolean"
+              },
               "data_source": {
                 "description": "'dataset' or 'array'",
                 "title": "Data Source",
@@ -7448,6 +7823,18 @@
                 ],
                 "description": "Dataset ID (when data_source='dataset')",
                 "title": "Dataset Id"
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Prediction engine selector. Omit or use 'legacy' for the Python oracle.",
+                "title": "Engine"
               },
               "model_id": {
                 "description": "Chain ID or bundle stem/path",
@@ -7559,6 +7946,18 @@
                 },
                 "title": "Preprocessing Steps",
                 "type": "array"
+              },
+              "runtime": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime"
               },
               "sample_ids": {
                 "anyOf": [
@@ -11294,6 +11693,55 @@
                 "title": "Current Epoch",
                 "type": "integer"
               },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine"
+              },
+              "engine_diagnostics": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Diagnostics"
+              },
+              "engine_requested": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Requested"
+              },
+              "fallback_policy": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fallback Policy"
+              },
               "history": {
                 "default": [],
                 "items": {
@@ -11306,6 +11754,44 @@
               "job_id": {
                 "title": "Job Id",
                 "type": "string"
+              },
+              "native_result_refs": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Native Result Refs"
+              },
+              "runtime_manifest": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Manifest"
+              },
+              "runtime_source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Source"
               },
               "total_epochs": {
                 "title": "Total Epochs",
@@ -11347,7 +11833,7 @@
             "properties": {
               "allow_fallback": {
                 "default": false,
-                "description": "Allow dag-ml to fall back to legacy when the runtime refuses a shape",
+                "description": "Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.",
                 "title": "Allow Fallback",
                 "type": "boolean"
               },
@@ -11365,7 +11851,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Runtime engine for nirs4all.run; None uses the library default",
+                "description": "ML engine selector: 'legacy' or 'dag-ml'; omitted uses the nirs4all library default.",
                 "title": "Engine"
               },
               "partition": {
@@ -11452,6 +11938,55 @@
                 "title": "Duration Seconds",
                 "type": "number"
               },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine"
+              },
+              "engine_diagnostics": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Diagnostics"
+              },
+              "engine_requested": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Requested"
+              },
+              "fallback_policy": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fallback Policy"
+              },
               "final_metrics": {
                 "additionalProperties": {
                   "type": "number"
@@ -11481,6 +12016,44 @@
                   }
                 ],
                 "title": "Model Path"
+              },
+              "native_result_refs": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Native Result Refs"
+              },
+              "runtime_manifest": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Manifest"
+              },
+              "runtime_source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Source"
               },
               "status": {
                 "title": "Status",
@@ -24049,6 +24622,48 @@
             ]
           }
         },
+        "/api/workspace/migrate/report-preview": {
+          "post": {
+            "description": "Preview offline nirs4all-tools migration reports without writing anything.",
+            "operationId": "preview_legacy_migration_report_route_api_workspace_migrate_report_preview_post",
+            "requestBody": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/LegacyMigrationReportPreviewRequest"
+                  }
+                }
+              },
+              "required": true
+            },
+            "responses": {
+              "200": {
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/LegacyMigrationReportPreviewResponse"
+                    }
+                  }
+                },
+                "description": "Successful Response"
+              },
+              "422": {
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/HTTPValidationError"
+                    }
+                  }
+                },
+                "description": "Validation Error"
+              }
+            },
+            "summary": "Preview Legacy Migration Report Route",
+            "tags": [
+              "workspace"
+            ]
+          }
+        },
         "/api/workspace/migrate/status": {
           "get": {
             "description": "Get migration status and rough migration estimate.",
@@ -26313,7 +26928,7 @@
             "properties": {
               "allow_fallback": {
                 "default": false,
-                "description": "Allow dag-ml to fall back to legacy when the runtime refuses a shape",
+                "description": "Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.",
                 "title": "Allow Fallback",
                 "type": "boolean"
               },
@@ -26339,7 +26954,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Runtime ML engine for nirs4all.run (None uses the library default)",
+                "description": "ML engine selector: 'legacy' or 'dag-ml'; omitted uses the nirs4all library default.",
                 "title": "Engine"
               },
               "include_preprocessing_search": {
@@ -26469,6 +27084,55 @@
                 "title": "Best Score",
                 "type": "number"
               },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine"
+              },
+              "engine_diagnostics": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Diagnostics"
+              },
+              "engine_requested": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Requested"
+              },
+              "fallback_policy": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fallback Policy"
+              },
               "job_id": {
                 "title": "Job Id",
                 "type": "string"
@@ -26483,6 +27147,44 @@
                   }
                 ],
                 "title": "Model Path"
+              },
+              "native_result_refs": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Native Result Refs"
+              },
+              "runtime_manifest": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Manifest"
+              },
+              "runtime_source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Source"
               },
               "search_duration_seconds": {
                 "title": "Search Duration Seconds",
@@ -26736,6 +27438,18 @@
                 },
                 "title": "Preprocessing Applied",
                 "type": "array"
+              },
+              "runtime": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime"
               }
             },
             "required": [
@@ -26926,6 +27640,22 @@
           },
           "Body_predict_from_file_api_predict_file_post": {
             "properties": {
+              "allow_fallback": {
+                "default": false,
+                "title": "Allow Fallback",
+                "type": "boolean"
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine"
+              },
               "file": {
                 "format": "binary",
                 "title": "File",
@@ -27822,10 +28552,28 @@
           "CompareModelsRequest": {
             "description": "Request for comparing multiple models (.n4a bundles).",
             "properties": {
+              "allow_fallback": {
+                "default": false,
+                "description": "Explicitly allow unsupported dag-ml prediction requests to run via the Python oracle.",
+                "title": "Allow Fallback",
+                "type": "boolean"
+              },
               "dataset_path": {
                 "description": "Path to dataset for comparison",
                 "title": "Dataset Path",
                 "type": "string"
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Prediction engine selector. Omit or use 'legacy' for the Python oracle; 'dag-ml' requires allow_fallback.",
+                "title": "Engine"
               },
               "model_paths": {
                 "description": "Paths to .n4a bundles to compare",
@@ -29083,19 +29831,6 @@
                   }
                 ],
                 "title": "Num Rows"
-              },
-              "overrides": {
-                "anyOf": [
-                  {
-                    "additionalProperties": true,
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Auto-detected parsing overrides for this file",
-                "title": "Overrides"
               },
               "path": {
                 "title": "Path",
@@ -31029,6 +31764,272 @@
             "title": "LearningCurveRequest",
             "type": "object"
           },
+          "LegacyMigrationErrorResponse": {
+            "description": "Whitelisted error entry from a legacy migration report.",
+            "properties": {
+              "cause": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Cause"
+              },
+              "code": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Code"
+              },
+              "message": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Message"
+              },
+              "mitigation": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Mitigation"
+              }
+            },
+            "title": "LegacyMigrationErrorResponse",
+            "type": "object"
+          },
+          "LegacyMigrationReportPreviewRequest": {
+            "description": "Request to preview nirs4all-tools migration contract files.",
+            "properties": {
+              "manifest_path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Optional path to migration-manifest.json",
+                "title": "Manifest Path"
+              },
+              "report_path": {
+                "description": "Path to migration-report.json",
+                "title": "Report Path",
+                "type": "string"
+              },
+              "unsupported_report_path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Optional path to unsupported-report.json",
+                "title": "Unsupported Report Path"
+              }
+            },
+            "required": [
+              "report_path"
+            ],
+            "title": "LegacyMigrationReportPreviewRequest",
+            "type": "object"
+          },
+          "LegacyMigrationReportPreviewResponse": {
+            "description": "Read-only summary of nirs4all-tools migration contract files.",
+            "properties": {
+              "errors": {
+                "items": {
+                  "$ref": "#/components/schemas/LegacyMigrationErrorResponse"
+                },
+                "title": "Errors",
+                "type": "array"
+              },
+              "migrated_counts": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "title": "Migrated Counts",
+                "type": "object"
+              },
+              "preserved_counts": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "title": "Preserved Counts",
+                "type": "object"
+              },
+              "recommended_next_command": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Recommended Next Command"
+              },
+              "source_summary": {
+                "$ref": "#/components/schemas/LegacyMigrationSourceSummaryResponse"
+              },
+              "status": {
+                "title": "Status",
+                "type": "string"
+              },
+              "target_schema_version_validated": {
+                "default": false,
+                "title": "Target Schema Version Validated",
+                "type": "boolean"
+              },
+              "target_summary": {
+                "$ref": "#/components/schemas/LegacyMigrationTargetSummaryResponse"
+              },
+              "unsupported_counts": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "title": "Unsupported Counts",
+                "type": "object"
+              },
+              "verification_summary": {
+                "$ref": "#/components/schemas/LegacyMigrationVerificationSummaryResponse"
+              },
+              "warnings": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Warnings",
+                "type": "array"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "title": "LegacyMigrationReportPreviewResponse",
+            "type": "object"
+          },
+          "LegacyMigrationSourceSummaryResponse": {
+            "description": "Whitelisted source summary from a legacy migration report.",
+            "properties": {
+              "artifacts": {
+                "default": 0,
+                "title": "Artifacts",
+                "type": "integer"
+              },
+              "bundles": {
+                "default": 0,
+                "title": "Bundles",
+                "type": "integer"
+              },
+              "kinds": {
+                "items": {
+                  "type": "string"
+                },
+                "title": "Kinds",
+                "type": "array"
+              },
+              "row_counts": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "title": "Row Counts",
+                "type": "object"
+              }
+            },
+            "title": "LegacyMigrationSourceSummaryResponse",
+            "type": "object"
+          },
+          "LegacyMigrationTargetSummaryResponse": {
+            "description": "Whitelisted target summary from a legacy migration report.",
+            "properties": {
+              "path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Path"
+              }
+            },
+            "title": "LegacyMigrationTargetSummaryResponse",
+            "type": "object"
+          },
+          "LegacyMigrationVerificationCheckResponse": {
+            "description": "Whitelisted verification check summary.",
+            "properties": {
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            "title": "LegacyMigrationVerificationCheckResponse",
+            "type": "object"
+          },
+          "LegacyMigrationVerificationSummaryResponse": {
+            "description": "Whitelisted verification summary from a legacy migration report.",
+            "properties": {
+              "checks": {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/LegacyMigrationVerificationCheckResponse"
+                },
+                "title": "Checks",
+                "type": "object"
+              },
+              "mismatches": {
+                "default": 0,
+                "title": "Mismatches",
+                "type": "integer"
+              },
+              "passed": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Passed"
+              },
+              "ran": {
+                "default": false,
+                "title": "Ran",
+                "type": "boolean"
+              }
+            },
+            "title": "LegacyMigrationVerificationSummaryResponse",
+            "type": "object"
+          },
           "LegacyWorkspaceConversionRequest": {
             "description": "Request to convert the active legacy workspace into a fresh V1 workspace.",
             "properties": {
@@ -31036,12 +32037,6 @@
                 "default": false,
                 "description": "Run converter in dry-run mode",
                 "title": "Dry Run",
-                "type": "boolean"
-              },
-              "link_converted_workspace": {
-                "default": true,
-                "description": "Link and activate the converted workspace after a successful conversion",
-                "title": "Link Converted Workspace",
                 "type": "boolean"
               },
               "output_path": {
@@ -31075,27 +32070,6 @@
           "LegacyWorkspaceConversionResponse": {
             "description": "Response for a legacy workspace conversion request.",
             "properties": {
-              "activation_skipped": {
-                "default": false,
-                "title": "Activation Skipped",
-                "type": "boolean"
-              },
-              "active_workspace_path": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Active Workspace Path"
-              },
-              "best_effort": {
-                "default": false,
-                "title": "Best Effort",
-                "type": "boolean"
-              },
               "command": {
                 "items": {
                   "type": "string"
@@ -31118,33 +32092,6 @@
                   }
                 ],
                 "title": "Job Id"
-              },
-              "link_converted_workspace": {
-                "default": true,
-                "title": "Link Converted Workspace",
-                "type": "boolean"
-              },
-              "link_error": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Link Error"
-              },
-              "linked_workspace_id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Linked Workspace Id"
               },
               "output_path": {
                 "title": "Output Path",
@@ -33202,6 +34149,7 @@
             "properties": {
               "allow_fallback": {
                 "default": false,
+                "description": "Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.",
                 "title": "Allow Fallback",
                 "type": "boolean"
               },
@@ -33526,6 +34474,24 @@
           "PredictBatchRequest": {
             "description": "Request for batch prediction.",
             "properties": {
+              "allow_fallback": {
+                "default": false,
+                "description": "Explicitly allow unsupported dag-ml prediction requests to run via the Python oracle.",
+                "title": "Allow Fallback",
+                "type": "boolean"
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Prediction engine selector. Omit or use 'legacy' for the Python oracle; 'dag-ml' requires allow_fallback.",
+                "title": "Engine"
+              },
               "model_id": {
                 "description": "ID of the trained model to use",
                 "title": "Model Id",
@@ -33563,10 +34529,28 @@
           "PredictDatasetRequest": {
             "description": "Request for predicting on a dataset.",
             "properties": {
+              "allow_fallback": {
+                "default": false,
+                "description": "Explicitly allow unsupported dag-ml prediction requests to run via the Python oracle.",
+                "title": "Allow Fallback",
+                "type": "boolean"
+              },
               "dataset_id": {
                 "description": "ID of the dataset to predict on",
                 "title": "Dataset Id",
                 "type": "string"
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Prediction engine selector. Omit or use 'legacy' for the Python oracle; 'dag-ml' requires allow_fallback.",
+                "title": "Engine"
               },
               "model_id": {
                 "description": "ID of the trained model to use",
@@ -33600,6 +34584,12 @@
           "PredictRequest": {
             "description": "JSON request for prediction.",
             "properties": {
+              "allow_fallback": {
+                "default": false,
+                "description": "Allow unsupported dag-ml prediction requests to run via the Python oracle.",
+                "title": "Allow Fallback",
+                "type": "boolean"
+              },
               "data_source": {
                 "description": "'dataset' or 'array'",
                 "title": "Data Source",
@@ -33616,6 +34606,18 @@
                 ],
                 "description": "Dataset ID (when data_source='dataset')",
                 "title": "Dataset Id"
+              },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Prediction engine selector. Omit or use 'legacy' for the Python oracle.",
+                "title": "Engine"
               },
               "model_id": {
                 "description": "Chain ID or bundle stem/path",
@@ -33727,6 +34729,18 @@
                 },
                 "title": "Preprocessing Steps",
                 "type": "array"
+              },
+              "runtime": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime"
               },
               "sample_ids": {
                 "anyOf": [
@@ -37462,6 +38476,55 @@
                 "title": "Current Epoch",
                 "type": "integer"
               },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine"
+              },
+              "engine_diagnostics": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Diagnostics"
+              },
+              "engine_requested": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Requested"
+              },
+              "fallback_policy": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fallback Policy"
+              },
               "history": {
                 "default": [],
                 "items": {
@@ -37474,6 +38537,44 @@
               "job_id": {
                 "title": "Job Id",
                 "type": "string"
+              },
+              "native_result_refs": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Native Result Refs"
+              },
+              "runtime_manifest": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Manifest"
+              },
+              "runtime_source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Source"
               },
               "total_epochs": {
                 "title": "Total Epochs",
@@ -37515,7 +38616,7 @@
             "properties": {
               "allow_fallback": {
                 "default": false,
-                "description": "Allow dag-ml to fall back to legacy when the runtime refuses a shape",
+                "description": "Explicitly allow dag-ml to fall back to legacy when structured RtError says it cannot run.",
                 "title": "Allow Fallback",
                 "type": "boolean"
               },
@@ -37533,7 +38634,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Runtime engine for nirs4all.run; None uses the library default",
+                "description": "ML engine selector: 'legacy' or 'dag-ml'; omitted uses the nirs4all library default.",
                 "title": "Engine"
               },
               "partition": {
@@ -37620,6 +38721,55 @@
                 "title": "Duration Seconds",
                 "type": "number"
               },
+              "engine": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine"
+              },
+              "engine_diagnostics": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Diagnostics"
+              },
+              "engine_requested": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Engine Requested"
+              },
+              "fallback_policy": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fallback Policy"
+              },
               "final_metrics": {
                 "additionalProperties": {
                   "type": "number"
@@ -37649,6 +38799,44 @@
                   }
                 ],
                 "title": "Model Path"
+              },
+              "native_result_refs": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Native Result Refs"
+              },
+              "runtime_manifest": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Manifest"
+              },
+              "runtime_source": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime Source"
               },
               "status": {
                 "title": "Status",
@@ -50157,6 +51345,48 @@
               }
             },
             "summary": "Migrate Workspace Arrays",
+            "tags": [
+              "workspace"
+            ]
+          }
+        },
+        "/api/workspace/migrate/report-preview": {
+          "post": {
+            "description": "Preview offline nirs4all-tools migration reports without writing anything.",
+            "operationId": "preview_legacy_migration_report_route_api_workspace_migrate_report_preview_post",
+            "requestBody": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/LegacyMigrationReportPreviewRequest"
+                  }
+                }
+              },
+              "required": true
+            },
+            "responses": {
+              "200": {
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/LegacyMigrationReportPreviewResponse"
+                    }
+                  }
+                },
+                "description": "Successful Response"
+              },
+              "422": {
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/HTTPValidationError"
+                    }
+                  }
+                },
+                "description": "Validation Error"
+              }
+            },
+            "summary": "Preview Legacy Migration Report Route",
             "tags": [
               "workspace"
             ]

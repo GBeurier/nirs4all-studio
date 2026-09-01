@@ -3,19 +3,19 @@
   "endpoints": [
     {
       "endpoint": "main.websocket_endpoint",
-      "match_ordinal": 316,
+      "match_ordinal": 317,
       "name": "websocket_endpoint",
       "path": "/ws"
     },
     {
       "endpoint": "main.job_websocket_endpoint",
-      "match_ordinal": 317,
+      "match_ordinal": 318,
       "name": "job_websocket_endpoint",
       "path": "/ws/job/{job_id}"
     },
     {
       "endpoint": "main.training_websocket_endpoint",
-      "match_ordinal": 318,
+      "match_ordinal": 319,
       "name": "training_websocket_endpoint",
       "path": "/ws/training/{job_id}"
     }
