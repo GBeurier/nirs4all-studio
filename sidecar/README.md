@@ -57,12 +57,22 @@ R1 provides a small local HTTP control surface only:
   immutable, and read-only; it refuses active SQLite journals, other schema
   versions, and incomplete projections.
 
+The sidecar also consumes the published `studio_run_detail_v1` Store-owned
+projection internally, with an exact owner golden and the same immutable
+fail-closed rules. It intentionally does not register or select
+`GET /api/workspaces/:id/runs/:run_id`: the owner contract marks that projection
+as an incomplete HTTP response. Exact cutover still requires versioned inputs
+for Studio's linked-dataset mapping, CV/runtime inference, rerun readiness, and
+result-repository/filesystem result discovery. The legacy-manifest branch is
+also outside the projection. Until those composition contracts exist and pass
+differential goldens, the entire run-detail request stays on FastAPI.
+
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
 bounded library/plugin host for the routes above. The sidecar contains no
 scientific calculation, arbitrary file-I/O API, or reimplementation of
 nirs4all stores. Apart from the published, bounded `WorkspaceStore` v5
-run-summary reader, it does not inspect dataset/workspace contents. It persists app-level preferences,
+projection readers, it does not inspect dataset/workspace contents. It persists app-level preferences,
 favorite identifiers, repaired linked-workspace record IDs, and (through its
 Rust library boundary only) self-validating Core/DAG-ML conformal presentation
 artifacts. No HTTP ingestion route exists for those artifacts until a typed
@@ -168,13 +178,13 @@ it does not open a writer, create WAL/SHM files, read arrays or artifacts, or
 fall back to CPython. A missing, live, or incompatible store returns an
 explicit native compatibility error. The bundled SQLite reader supports local
 volumes; Windows UNC/device paths are rejected until the packaging build and a
-real share test prove URI-authority support. Electron routes only the bare,
-bounded run-summary, the contract allowlisted `source`/`refresh` run-discovery
-queries, and filter-free pipeline-summary requests to this reader, and does not
-retry a native incompatibility through FastAPI. Scan mutations, filtered
-pipeline-result requests, enriched Runs, run detail, and the full chain/results
-repository surface remain FastAPI routes until their public contracts reach
-parity.
+real share test prove URI-authority support. Electron routes only the bounded
+run-summary query shapes (bare or with the contract-allowlisted `source` and
+`refresh` values) and filter-free pipeline-summary requests to this reader, and
+does not retry a native incompatibility through FastAPI. Scan mutations,
+filtered pipeline-result requests, enriched Runs, run detail including legacy
+manifest discovery, and the full chain/results repository surface remain
+FastAPI routes until their public contracts reach parity.
 
 `GET /api/system/status` derives `workspace_loaded` and its workspace summary
 from that same active catalogue record. It does not inspect the linked path:
