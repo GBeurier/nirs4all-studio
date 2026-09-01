@@ -52,6 +52,15 @@ export interface WizardInitialState {
   fileBlobs?: Map<string, File>;
 }
 
+/** Extract backend-provided parsing overrides into the persisted wizard state. */
+export function getDetectedFileOverrides(
+  files: DetectedFile[],
+): Record<string, Partial<ParsingOptions>> {
+  return Object.fromEntries(
+    files.flatMap((file) => file.overrides ? [[file.path, file.overrides]] : []),
+  );
+}
+
 export type WizardAction =
   | { type: "SET_STEP"; payload: WizardStep }
   | { type: "SET_SOURCE_TYPE"; payload: WizardSourceType }
@@ -82,6 +91,7 @@ export type WizardAction =
         foldFilePath?: string | null;
         metadataColumns?: string[];
         confidence?: DetectionConfidence;
+        perFileOverrides?: Record<string, Partial<ParsingOptions>>;
       };
     }
   | { type: "SET_MULTI_SOURCE"; payload: MultiSourceConfig | null }

@@ -3049,6 +3049,19 @@
                 ],
                 "title": "Num Rows"
               },
+              "overrides": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Auto-detected parsing overrides for this file",
+                "title": "Overrides"
+              },
               "path": {
                 "title": "Path",
                 "type": "string"
@@ -5256,6 +5269,12 @@
                 "title": "Dry Run",
                 "type": "boolean"
               },
+              "link_converted_workspace": {
+                "default": true,
+                "description": "Link and activate the converted workspace after a successful conversion",
+                "title": "Link Converted Workspace",
+                "type": "boolean"
+              },
               "output_path": {
                 "anyOf": [
                   {
@@ -5287,6 +5306,27 @@
           "LegacyWorkspaceConversionResponse": {
             "description": "Response for a legacy workspace conversion request.",
             "properties": {
+              "activation_skipped": {
+                "default": false,
+                "title": "Activation Skipped",
+                "type": "boolean"
+              },
+              "active_workspace_path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Active Workspace Path"
+              },
+              "best_effort": {
+                "default": false,
+                "title": "Best Effort",
+                "type": "boolean"
+              },
               "command": {
                 "items": {
                   "type": "string"
@@ -5309,6 +5349,33 @@
                   }
                 ],
                 "title": "Job Id"
+              },
+              "link_converted_workspace": {
+                "default": true,
+                "title": "Link Converted Workspace",
+                "type": "boolean"
+              },
+              "link_error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Link Error"
+              },
+              "linked_workspace_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Linked Workspace Id"
               },
               "output_path": {
                 "title": "Output Path",
@@ -29832,6 +29899,19 @@
                 ],
                 "title": "Num Rows"
               },
+              "overrides": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Auto-detected parsing overrides for this file",
+                "title": "Overrides"
+              },
               "path": {
                 "title": "Path",
                 "type": "string"
@@ -32039,6 +32119,12 @@
                 "title": "Dry Run",
                 "type": "boolean"
               },
+              "link_converted_workspace": {
+                "default": true,
+                "description": "Link and activate the converted workspace after a successful conversion",
+                "title": "Link Converted Workspace",
+                "type": "boolean"
+              },
               "output_path": {
                 "anyOf": [
                   {
@@ -32070,6 +32156,27 @@
           "LegacyWorkspaceConversionResponse": {
             "description": "Response for a legacy workspace conversion request.",
             "properties": {
+              "activation_skipped": {
+                "default": false,
+                "title": "Activation Skipped",
+                "type": "boolean"
+              },
+              "active_workspace_path": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Active Workspace Path"
+              },
+              "best_effort": {
+                "default": false,
+                "title": "Best Effort",
+                "type": "boolean"
+              },
               "command": {
                 "items": {
                   "type": "string"
@@ -32092,6 +32199,33 @@
                   }
                 ],
                 "title": "Job Id"
+              },
+              "link_converted_workspace": {
+                "default": true,
+                "title": "Link Converted Workspace",
+                "type": "boolean"
+              },
+              "link_error": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Link Error"
+              },
+              "linked_workspace_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Linked Workspace Id"
               },
               "output_path": {
                 "title": "Output Path",

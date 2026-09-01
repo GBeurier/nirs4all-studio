@@ -18,7 +18,7 @@ import {
   Eye,
   Check,
 } from "lucide-react";
-import { useWizard, STEP_ORDER } from "./useWizard";
+import { getDetectedFileOverrides, useWizard, STEP_ORDER } from "./useWizard";
 import { SourceStep } from "./SourceStep";
 import { FileMappingStep } from "./FileMappingStep";
 import { ParsingStep } from "./ParsingStep";
@@ -438,6 +438,7 @@ export function WizardContent({ onAdd, onClose, onScanFolder, submitLabel = "Add
               foldFilePath: result.fold_file_path,
               metadataColumns: result.metadata_columns,
               confidence: result.confidence,
+              perFileOverrides: getDetectedFileOverrides(result.files),
             },
           });
         } catch (error) {

@@ -55,6 +55,12 @@ export interface LegacyWorkspaceConversionResponse {
   stdout: string;
   stderr: string;
   success: boolean;
+  best_effort: boolean;
+  activation_skipped: boolean;
+  link_converted_workspace: boolean;
+  linked_workspace_id: string | null;
+  active_workspace_path: string | null;
+  link_error: string | null;
 }
 
 export interface DatasetStorageInfo {

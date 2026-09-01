@@ -66,6 +66,135 @@ def test_legacy_conversion_dry_run_omits_verify(monkeypatch, tmp_path):
     assert "--verify" not in seen["command"]
 
 
+def test_legacy_conversion_links_converted_workspace_after_success(monkeypatch, tmp_path):
+    workspace = tmp_path / "legacy"
+    workspace.mkdir()
+    (workspace / "store.duckdb").touch()
+    output = tmp_path / "legacy-workspace-v2"
+    completed: dict[str, object] = {}
+    linked_paths: list[Path] = []
+
+    from api.workspace import router_maintenance
+
+    class InlineJobManager:
+        def create_job(self, job_type, config, job_id=None):
+            return SimpleNamespace(id=job_id or "maintenance_1", type=job_type, config=config, result=None)
+
+        def submit_job(self, job, task_fn):
+            job.result = task_fn(job, lambda _progress, _message="": True)
+            return job
+
+    def fake_converter(command: list[str]) -> dict:
+        assert "--verify" in command
+        return {
+            "return_code": 0,
+            "stdout": "ok",
+            "stderr": "",
+            "success": True,
+            "best_effort": False,
+        }
+
+    def fake_link(path: Path) -> dict[str, str | None]:
+        linked_paths.append(path)
+        return {
+            "linked_workspace_id": "ws-converted",
+            "active_workspace_path": str(path),
+            "link_error": None,
+        }
+
+    monkeypatch.setattr(router_maintenance, "job_manager", InlineJobManager())
+    monkeypatch.setattr(router_maintenance, "_has_active_non_maintenance_jobs", lambda: False)
+    monkeypatch.setattr(router_maintenance, "_run_legacy_workspace_converter", fake_converter)
+    monkeypatch.setattr(router_maintenance, "_link_converted_workspace", fake_link)
+    monkeypatch.setattr(router_maintenance, "_emit_maintenance_started", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(router_maintenance, "_emit_maintenance_progress", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(router_maintenance, "_emit_maintenance_failed", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        router_maintenance,
+        "_emit_maintenance_completed",
+        lambda _job_id, _operation, payload: completed.update(payload),
+    )
+
+    with _client_with_workspace(monkeypatch, workspace) as client:
+        response = client.post(
+            "/api/workspace/legacy-convert",
+            json={"output_path": str(output), "verify": True},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["job_id"] == "maintenance_1"
+    assert payload["link_converted_workspace"] is True
+    assert linked_paths == [output]
+    assert completed["linked_workspace_id"] == "ws-converted"
+    assert completed["active_workspace_path"] == str(output)
+    assert completed["link_error"] is None
+
+
+def test_legacy_conversion_best_effort_does_not_activate_workspace(monkeypatch, tmp_path):
+    workspace = tmp_path / "legacy"
+    workspace.mkdir()
+    (workspace / "store.duckdb").touch()
+    output = tmp_path / "legacy-workspace-v2"
+    completed: dict[str, object] = {}
+    linked_paths: list[Path] = []
+
+    from api.workspace import router_maintenance
+
+    class InlineJobManager:
+        def create_job(self, job_type, config, job_id=None):
+            return SimpleNamespace(id=job_id or "maintenance_1", type=job_type, config=config, result=None)
+
+        def submit_job(self, job, task_fn):
+            job.result = task_fn(job, lambda _progress, _message="": True)
+            return job
+
+    def fake_converter(command: list[str]) -> dict:
+        assert "--verify" in command
+        return {
+            "return_code": 10,
+            "stdout": "opaque legacy assets preserved",
+            "stderr": "",
+            "success": True,
+            "best_effort": True,
+        }
+
+    def fake_link(path: Path) -> dict[str, str | None]:
+        linked_paths.append(path)
+        return {
+            "linked_workspace_id": "ws-converted",
+            "active_workspace_path": str(path),
+            "link_error": None,
+        }
+
+    monkeypatch.setattr(router_maintenance, "job_manager", InlineJobManager())
+    monkeypatch.setattr(router_maintenance, "_has_active_non_maintenance_jobs", lambda: False)
+    monkeypatch.setattr(router_maintenance, "_run_legacy_workspace_converter", fake_converter)
+    monkeypatch.setattr(router_maintenance, "_link_converted_workspace", fake_link)
+    monkeypatch.setattr(router_maintenance, "_emit_maintenance_started", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(router_maintenance, "_emit_maintenance_progress", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(router_maintenance, "_emit_maintenance_failed", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        router_maintenance,
+        "_emit_maintenance_completed",
+        lambda _job_id, _operation, payload: completed.update(payload),
+    )
+
+    with _client_with_workspace(monkeypatch, workspace) as client:
+        response = client.post(
+            "/api/workspace/legacy-convert",
+            json={"output_path": str(output), "verify": True},
+        )
+
+    assert response.status_code == 200
+    assert linked_paths == []
+    assert completed["best_effort"] is True
+    assert completed["activation_skipped"] is True
+    assert completed["linked_workspace_id"] is None
+    assert completed["active_workspace_path"] is None
+    assert "best-effort" in str(completed["link_error"])
+
+
 def test_legacy_conversion_refuses_v1_workspace(monkeypatch, tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()

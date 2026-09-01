@@ -9,7 +9,7 @@
  */
 import { useRef } from "react";
 import { Folder, File, FolderSearch, Info } from "lucide-react";
-import { useWizard } from "./useWizard";
+import { getDetectedFileOverrides, useWizard } from "./useWizard";
 import { selectFolder, selectFile, isDesktop } from "@/utils/fileDialogs";
 import { detectUnified, detectFilesList } from "@/api/datasets";
 import type { WizardSourceType } from "@/types/datasets";
@@ -127,6 +127,7 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
               foldFilePath: result.fold_file_path,
               metadataColumns: result.metadata_columns,
               confidence: result.confidence,
+              perFileOverrides: getDetectedFileOverrides(result.files),
             },
           });
         } catch (e) {
@@ -174,9 +175,17 @@ export function SourceStep({ onScanFolder }: SourceStepProps) {
             const detectionResult = await detectFilesList(filePaths);
             if (detectionResult.files && detectionResult.files.length > 0) {
               dispatch({ type: "SET_FILES", payload: detectionResult.files });
-              if (detectionResult.parsing_options) {
-                dispatch({ type: "SET_PARSING", payload: detectionResult.parsing_options });
-              }
+              dispatch({
+                type: "SET_DETECTION_RESULTS",
+                payload: {
+                  parsing: detectionResult.parsing_options,
+                  hasFoldFile: detectionResult.has_fold_file,
+                  foldFilePath: detectionResult.fold_file_path,
+                  metadataColumns: detectionResult.metadata_columns,
+                  confidence: detectionResult.confidence,
+                  perFileOverrides: getDetectedFileOverrides(detectionResult.files),
+                },
+              });
             } else {
               // Fallback: create files with format detection only
               dispatch({ type: "SET_FILES", payload: buildFallbackDetectedFilesFromPaths(filePaths) });
