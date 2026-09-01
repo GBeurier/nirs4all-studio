@@ -5,6 +5,9 @@
  * The binary remains opt-in at runtime.  Keeping it next to the bundled Python
  * runtime gives the Rust process and a future explicit Python plugin host one
  * product-owned resource layout, without reviving a Python HTTP backend.
+ *
+ * Usage:
+ *   node scripts/build-native-sidecar.cjs [--target <rust-target-triple>]
  */
 
 const { spawn } = require("child_process");
@@ -13,13 +16,52 @@ const path = require("path");
 
 const projectRoot = path.join(__dirname, "..");
 
-function getNativeSidecarPaths(root = projectRoot, platform = process.platform) {
+const TARGET_PLATFORMS = Object.freeze({
+  "x86_64-unknown-linux-gnu": "linux",
+  "x86_64-pc-windows-msvc": "win32",
+  "x86_64-apple-darwin": "darwin",
+  "aarch64-apple-darwin": "darwin",
+});
+
+function getNativeSidecarPaths(
+  root = projectRoot,
+  platform = process.platform,
+  targetTriple = null,
+) {
   const executableName = platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar";
+  const targetReleaseDir = targetTriple
+    ? path.join(root, "sidecar", "target", targetTriple, "release")
+    : path.join(root, "sidecar", "target", "release");
   return {
     manifestPath: path.join(root, "sidecar", "Cargo.toml"),
-    builtBinaryPath: path.join(root, "sidecar", "target", "release", executableName),
+    builtBinaryPath: path.join(targetReleaseDir, executableName),
     packagedBinaryPath: path.join(root, "backend-dist", "native", executableName),
   };
+}
+
+function parseArgs(argv = process.argv.slice(2)) {
+  let targetTriple = null;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--target") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error("--target requires a Rust target triple");
+      }
+      targetTriple = value;
+      index += 1;
+      continue;
+    }
+    if (argument.startsWith("--target=")) {
+      targetTriple = argument.slice("--target=".length);
+      continue;
+    }
+    throw new Error(`Unknown argument: ${argument}`);
+  }
+  if (targetTriple !== null && !TARGET_PLATFORMS[targetTriple]) {
+    throw new Error(`Unsupported native sidecar target: ${targetTriple}`);
+  }
+  return { targetTriple };
 }
 
 function run(command, args, cwd) {
@@ -36,9 +78,22 @@ function run(command, args, cwd) {
   });
 }
 
-async function buildNativeSidecar({ root = projectRoot, cargo = "cargo", platform = process.platform } = {}) {
-  const paths = getNativeSidecarPaths(root, platform);
-  await run(cargo, ["build", "--manifest-path", paths.manifestPath, "--release"], root);
+async function buildNativeSidecar({
+  root = projectRoot,
+  cargo = "cargo",
+  platform = process.platform,
+  targetTriple = null,
+} = {}) {
+  const targetPlatform = targetTriple ? TARGET_PLATFORMS[targetTriple] : platform;
+  if (targetTriple && platform !== targetPlatform) {
+    throw new Error(
+      `Native sidecar target ${targetTriple} is for ${targetPlatform}, not ${platform}`,
+    );
+  }
+  const paths = getNativeSidecarPaths(root, targetPlatform, targetTriple);
+  const cargoArgs = ["build", "--manifest-path", paths.manifestPath, "--release"];
+  if (targetTriple) cargoArgs.push("--target", targetTriple);
+  await run(cargo, cargoArgs, root);
   if (!fs.existsSync(paths.builtBinaryPath)) {
     throw new Error(`Native sidecar build did not produce ${paths.builtBinaryPath}`);
   }
@@ -52,7 +107,14 @@ async function buildNativeSidecar({ root = projectRoot, cargo = "cargo", platfor
 }
 
 if (require.main === module) {
-  buildNativeSidecar()
+  let options;
+  try {
+    options = parseArgs();
+  } catch (error) {
+    console.error(`Native sidecar build configuration failed: ${error.message}`);
+    process.exit(1);
+  }
+  buildNativeSidecar(options)
     .then((binaryPath) => console.log(`Native Studio sidecar packaged at ${binaryPath}`))
     .catch((error) => {
       console.error(`Native sidecar build failed: ${error.message}`);
@@ -63,4 +125,5 @@ if (require.main === module) {
 module.exports = {
   buildNativeSidecar,
   getNativeSidecarPaths,
+  parseArgs,
 };
