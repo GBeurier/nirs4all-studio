@@ -25,6 +25,7 @@ use percent_encoding::percent_decode_str;
 use serde_json::{json, Value};
 
 pub mod conformal_store;
+pub mod job_http;
 pub mod job_lifecycle;
 mod results_summary;
 pub mod run_detail;
@@ -34,6 +35,7 @@ mod settings;
 pub mod websocket_transport;
 pub mod workspace_store;
 
+use job_http::{is_native_job_http_path, route_native_job_request, NativeJobRuntime};
 use results_summary::read_results_summary;
 use run_detail::compose_store_run_detail;
 use run_detail_cpython::{materialize_run_detail_owner, RunDetailOwnerBridgeFailure};
@@ -339,6 +341,7 @@ pub struct SidecarState {
     build_info_path: Option<PathBuf>,
     app_settings: AppSettingsStore,
     update_settings: UpdateSettingsStore,
+    native_jobs: Arc<NativeJobRuntime>,
 }
 
 impl Default for SidecarState {
@@ -356,11 +359,27 @@ impl Default for SidecarState {
             build_info_path: None,
             app_settings: AppSettingsStore::from_environment(),
             update_settings: UpdateSettingsStore::from_environment(),
+            native_jobs: Arc::new(NativeJobRuntime::default()),
         }
     }
 }
 
 impl SidecarState {
+    /// Share the native job runtime with execution adapters and tests.
+    #[must_use]
+    pub fn native_jobs(&self) -> Arc<NativeJobRuntime> {
+        Arc::clone(&self.native_jobs)
+    }
+
+    /// Install an explicit native job runtime for a controlled launch.
+    #[must_use]
+    pub fn with_native_jobs(native_jobs: Arc<NativeJobRuntime>) -> Self {
+        Self {
+            native_jobs,
+            ..Self::default()
+        }
+    }
+
     #[must_use]
     pub fn with_job_limits(job_limit: usize, job_ttl: Duration) -> Self {
         Self {
@@ -475,7 +494,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":false,\"durable_execution_job_record_reads\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -666,6 +685,9 @@ pub fn route_request_with_body(
         _ if path.starts_with("/api/app/favorites/") => route_app_favourite(state, method, path),
         _ if path.starts_with("/api/workspaces/") => {
             route_linked_workspace_state(state, method, path)
+        }
+        _ if is_native_job_http_path(path) => {
+            route_native_job_request(&state.native_jobs, method, path)
         }
         _ if path.starts_with("/sidecar/v1/jobs/") => route_job(state, method, path),
         _ if path.starts_with(API_PREFIX) => error_response(
@@ -2433,6 +2455,14 @@ fn read_bounded_stdout(
 }
 
 fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpResponse {
+    if request.query.is_some() && is_native_job_http_path(&request.path) {
+        return error_response(
+            404,
+            ErrorCode::RouteNotFound,
+            "Native job routes accept only a bare request path",
+            BTreeMap::from([("path".into(), request.path.clone())]),
+        );
+    }
     if workspace_runs_path(&request.path)
         && !workspace_run_discovery_query_supported(request.query.as_deref())
     {
@@ -2631,7 +2661,11 @@ pub fn serve(host: &str, port: u16) -> std::io::Result<()> {
         address.port()
     );
     let state = Arc::new(Mutex::new(SidecarState::from_environment()));
-    let websocket_manager = Arc::new(WebSocketConnectionManager::new());
+    let websocket_manager = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .native_jobs
+        .websocket_manager();
     let limits = ServerLimits::default();
     let connections = Arc::new(ConnectionGate {
         active: AtomicUsize::new(0),
@@ -3100,6 +3134,22 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    #[derive(Debug)]
+    struct SelectedTestJobExecutor;
+
+    impl job_http::ScientificJobExecutor for SelectedTestJobExecutor {
+        fn is_selected(&self) -> bool {
+            true
+        }
+
+        fn request_cooperative_cancel(
+            &self,
+            _job_id: &str,
+        ) -> Result<(), job_http::JobExecutorError> {
+            Ok(())
+        }
+    }
+
     fn test_directory(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -3210,6 +3260,19 @@ mod tests {
         );
         assert_eq!(capabilities["features"]["system_status_route"], true);
         assert_eq!(capabilities["features"]["legacy_api_routes"], false);
+        assert_eq!(capabilities["features"]["native_job_status_routes"], true);
+        assert_eq!(
+            capabilities["features"]["native_job_cancellation_routes"],
+            true
+        );
+        assert_eq!(
+            capabilities["features"]["native_scientific_submission_routes"],
+            false
+        );
+        assert_eq!(
+            capabilities["features"]["durable_execution_job_record_reads"],
+            false
+        );
         assert_eq!(
             capabilities["features"]["unmigrated_api_routes_require_legacy_backend"],
             true
@@ -4203,6 +4266,36 @@ mod tests {
     }
 
     #[test]
+    fn native_job_aliases_reject_queries_and_unselected_submission_paths() {
+        let mut state = SidecarState::default();
+        for target in [
+            "/api/training/opaque?refresh=true",
+            "/api/automl/opaque?wait=true",
+            "/api/updates/webapp/download-status/opaque?poll=1",
+            "/api/training/opaque/stop?force=true",
+        ] {
+            let raw = format!("GET {target} HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            let request = parse_http_request(raw.as_bytes()).unwrap();
+            let response = route_http_request(&mut state, &request);
+            assert_eq!(response.status, 404, "{target}");
+            assert_eq!(
+                serde_json::from_str::<Value>(&response.body).unwrap()["error"]["code"],
+                "route_not_found"
+            );
+        }
+        for (method, path) in [
+            ("POST", "/api/training/start"),
+            ("GET", "/api/training/jobs"),
+            ("GET", "/api/automl/jobs"),
+            ("GET", "/api/runs/execution-job-records/opaque"),
+            ("GET", "/api/runs/run-1/execution-job-record"),
+        ] {
+            let response = route_request(&mut state, method, path);
+            assert_eq!(response.status, 404, "{method} {path}");
+        }
+    }
+
+    #[test]
     fn websocket_426_requires_a_valid_upgrade_and_is_not_retryable() {
         let mut state = SidecarState::default();
         let ordinary = route_request(&mut state, "GET", "/sidecar/v1/ws");
@@ -4318,6 +4411,101 @@ mod tests {
         client.close(None).unwrap();
         server.join().unwrap();
         assert_eq!(manager.connection_count(), 0);
+    }
+
+    #[test]
+    fn live_http_cancellation_publishes_one_exact_failure_on_the_shared_job_socket() {
+        let runtime = Arc::new(job_http::NativeJobRuntime::with_executor(Arc::new(
+            SelectedTestJobExecutor,
+        )));
+        runtime
+            .register_with_id_at(
+                "pending-live",
+                job_lifecycle::JobType::Training,
+                json!({"folds": 5}),
+                "2026-09-01T12:00:00Z",
+                Instant::now(),
+            )
+            .unwrap();
+        let manager = runtime.websocket_manager();
+        let state = Arc::new(Mutex::new(SidecarState::with_native_jobs(Arc::clone(
+            &runtime,
+        ))));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server_state = Arc::clone(&state);
+        let server_manager = Arc::clone(&manager);
+        let server = thread::spawn(move || {
+            let (websocket_stream, _) = listener.accept().unwrap();
+            let websocket_state = Arc::clone(&server_state);
+            let websocket_manager = Arc::clone(&server_manager);
+            let websocket = thread::spawn(move || {
+                handle_connection_with_limits_and_websocket(
+                    websocket_stream,
+                    &websocket_state,
+                    &websocket_manager,
+                    ServerLimits::default(),
+                )
+                .unwrap();
+            });
+            let (http_stream, _) = listener.accept().unwrap();
+            handle_connection_with_limits_and_websocket(
+                http_stream,
+                &server_state,
+                &server_manager,
+                ServerLimits::default(),
+            )
+            .unwrap();
+            websocket.join().unwrap();
+        });
+
+        let stream = TcpStream::connect(address).unwrap();
+        let (mut websocket, response) =
+            tungstenite::client(format!("ws://{address}/ws/job/pending-live"), stream).unwrap();
+        assert_eq!(response.status(), 101);
+        let _: Value =
+            serde_json::from_str(websocket.read().unwrap().into_text().unwrap().as_str()).unwrap();
+        let _: Value =
+            serde_json::from_str(websocket.read().unwrap().into_text().unwrap().as_str()).unwrap();
+
+        let mut http = TcpStream::connect(address).unwrap();
+        http.write_all(
+            b"POST /api/training/pending-live/stop HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\n\r\n",
+        )
+        .unwrap();
+        let mut http_response = String::new();
+        http.read_to_string(&mut http_response).unwrap();
+        assert!(http_response.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert!(http_response.contains("\"status\":\"cancelled\""));
+
+        let terminal: Value =
+            serde_json::from_str(websocket.read().unwrap().into_text().unwrap().as_str()).unwrap();
+        assert_eq!(terminal["type"], "job_failed");
+        assert_ne!(terminal["type"], "job_cancelled");
+        assert_eq!(terminal["channel"], "job:pending-live");
+        assert_eq!(terminal["data"]["error"], "Job was cancelled");
+        assert_eq!(
+            terminal
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from(["type", "channel", "data", "timestamp"])
+        );
+        assert!(terminal.get("sequence").is_none());
+        assert!(terminal.get("protocol_version").is_none());
+
+        websocket.close(None).unwrap();
+        server.join().unwrap();
+        assert_eq!(manager.connection_count(), 0);
+        assert_eq!(
+            runtime
+                .get_at("pending-live", Instant::now())
+                .unwrap()
+                .status,
+            job_lifecycle::JobStatus::Cancelled
+        );
     }
 
     #[test]

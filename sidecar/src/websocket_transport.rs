@@ -395,7 +395,7 @@ fn looks_like_rfc3339(value: &str) -> bool {
         && value.ends_with('Z')
 }
 
-fn rfc3339_now() -> String {
+pub(crate) fn rfc3339_now() -> String {
     let duration = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default();

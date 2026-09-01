@@ -6,8 +6,8 @@ The only executable is `studio-sidecar`.
 
 ## Status and boundary
 
-R1 provides a small local HTTP control surface plus an unselected native
-WebSocket transport:
+R1 provides a small local HTTP control surface, a bounded native WebSocket
+transport, and registered read/cancel aliases for native jobs:
 
 - `GET /sidecar/v1/health`
 - `GET /sidecar/v1/readiness`
@@ -24,6 +24,14 @@ WebSocket transport:
 - `GET /ws`, `GET /ws/job/:job_id`, and `GET /ws/training/:job_id` accept
   bounded RFC 6455 upgrades on the sidecar port. Electron does not select them
   yet; the two job-specific aliases auto-subscribe to `job:<job_id>`.
+- `GET /api/training/:job_id`, `GET /api/automl/:job_id`, and
+  `GET /api/updates/webapp/download-status/:job_id` read authoritative native
+  job state in the frozen legacy response shapes.
+- `POST /api/training/:job_id/stop`, `POST /api/automl/:job_id/stop`,
+  `POST /api/runs/execution-job-records/:job_id/cancel`,
+  `POST /api/runs/:run_id/stop`, and
+  `POST /api/updates/webapp/download-cancel/:job_id` share the same native
+  cooperative-cancellation state and event stream.
 - `GET /api/health` and `GET /api/system/readiness` (the frozen
   post-lifespan bootstrap responses only)
 - `GET /api/system/capabilities` (an explicit Rust-owned route which invokes
@@ -100,6 +108,13 @@ request; a native selection never falls back. Splitters remain owner-produced:
 the Rust consumer neither parses nor receives permission to interpret
 `expanded_config`.
 
+The native job adapter is deliberately narrower than the durable run-record
+surface. `GET /api/runs/execution-job-records/:job_id` and
+`GET /api/runs/:run_id/execution-job-record` remain unselected because their
+owner is the WorkspaceStore contract, not the in-memory job registry. The
+tested mapping table in `job_http.rs` prevents those reads from being confused
+with the five cancellation aliases.
+
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
 bounded library/plugin host for the routes above. The sidecar contains no
@@ -117,8 +132,10 @@ references that snapshot in tests to prevent an accidental parity claim. The
 sidecar exposes only the frozen post-lifespan health and readiness responses
 under `/api/*`; Electron routes the UI health check to that native health
 contract. It does not route the renderer to `/ws` or assert full replacement
-compatibility. The native aliases are transport evidence only until the job
-registry, HTTP state, differential, and renderer selection gates are closed.
+compatibility. The native job aliases may be selected only for already-native
+jobs. Product route selection and scientific submission stay forbidden until
+a Core or bounded CPython library executor is explicitly selected and
+preflighted; renderer WebSocket selection remains a separate gate.
 
 ## Build and future Electron launch contract
 
@@ -160,6 +177,10 @@ health and readiness match their frozen post-lifespan responses.
 `unmigrated_api_routes_require_legacy_backend: true`. These fields make the
 partial migration machine-readable: a caller must not treat the sidecar as
 full API parity or silently redirect an unmigrated product route to Python.
+The capability object separately advertises
+`native_job_status_routes: true`, `native_job_cancellation_routes: true`,
+`native_scientific_submission_routes: false`, and
+`durable_execution_job_record_reads: false`.
 The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. `GET /sidecar/v1/python/preflight` launches that product-owned
 interpreter with `-I`, bounds it to three seconds, and checks `import nirs4all`.
@@ -241,7 +262,7 @@ All-in-one packaging builds the sidecar as
 passes the matching embedded Python as its explicit plugin host. Neither choice
 selects Python as an HTTP fallback.
 
-All errors use:
+Sidecar control routes use:
 
 ```json
 {"error":{"code":"route_not_found","message":"...","retryable":false,"details":{"path":"..."}}}
@@ -252,6 +273,8 @@ Defined codes are `invalid_request` (false), `route_not_found` (false),
 (false), `request_timeout` (false), and `websocket_upgrade_required` (false).
 `details` is an object reserved for machine-readable context. Known routes
 return `405` with an `Allow` header when the method is wrong.
+The eight frozen `/api/*` job aliases retain the legacy FastAPI `detail`
+error shape so existing renderer error handling does not change.
 
 Job IDs are opaque `job-r1-*` identifiers. R1 records are control-plane
 placeholders only, with statuses `pending` and `cancelled`. Cancellation is
@@ -278,23 +301,23 @@ exact four-key Studio V1 envelope: `type`, `channel`, `data`, `timestamp`.
 It accepts JSON `ping`, emits `pong`, preserves the frozen refusal of dynamic
 `subscribe`/`unsubscribe`, and auto-subscribes the two job aliases. Each slow
 connection has a 64-message queue and is dropped on saturation; no replay is
-promised, and authoritative reconnect recovery remains the future HTTP job
-state route.
+promised; reconnect recovery reads one of the three authoritative native HTTP
+job-state aliases.
 
-`contracts/studio_job_lifecycle_v1.json` freezes the R2 cutover target without
-changing that R1 capability claim. It separates the sequenced native internal
+`contracts/studio_job_lifecycle_v1.json` freezes the selective R2 cutover. It
+separates the sequenced native internal
 stream from the renderer-facing Studio V1 envelope, records the five-state job
 lifecycle and cooperative cancellation semantics, and anchors emitted event
 shapes to `docs/contracts/studio-v1/fixtures/websocket.snapshot.json`. In
 particular, the legacy manager publishes cancellation as `job_failed` with
 `"Job was cancelled"`; the declared `job_cancelled` enum member remains
 unreachable unless a reviewed compatibility exception changes the frozen
-contract. The bounded registry and real RFC 6455 connection manager now exist,
-but are not yet wired to scientific execution or the HTTP job routes. Route
-selection remains forbidden until that wiring, HTTP state parity, renderer
-selection, cancellation delivery, and the HTTP/WebSocket differential gate all
-exist. Once a request is selected native, neither Uvicorn nor FastAPI may be
-retried.
+contract. The bounded registry, HTTP state/cancellation adapters, and real RFC
+6455 connection manager share one Rust runtime. Pending cancellation becomes
+terminal immediately and emits one `job_failed`; running cancellation stays
+cooperative until the selected worker acknowledges it. Scientific submission
+and product/renderer transport selection remain forbidden. Once one of these
+eight requests is selected native, neither Uvicorn nor FastAPI may be retried.
 
 ## Coverage and rollback
 
@@ -305,10 +328,11 @@ Rust-owned Python-bridge system routes plus native network state, native app pre
 and config-path selection, native system-status catalogue state, plus the linked-workspace catalogue and its native
 activation/unlink mutations,
 all-in-one binary packaging, and Electron's explicit loopback-only lifecycle
-management, plus bounded RFC 6455 upgrades and exact legacy endpoint aliases on
-the unselected sidecar port. Missing: every other legacy `/api/*` route, all
+management, plus bounded RFC 6455 upgrades, three native job-state reads, and
+five cancellation aliases on the sidecar port. Missing: every other legacy `/api/*` route, all
 scientific execution, workspace/dataset persistence, uploads, authentication,
-job execution/HTTP state wiring, renderer WebSocket selection, and parity
+scientific job submission/executor selection, durable execution-record reads,
+renderer WebSocket selection, and parity
 mapping/diffing for the full frozen surface.
 
 Rollback is exclusion of the sidecar binary/resource and routing the listed

@@ -143,6 +143,14 @@ fn websocket_cutover_contract_is_anchored_to_the_frozen_studio_v1_oracle() {
     );
     assert_eq!(contract["cutover"]["route_selection"], "forbidden");
     assert_eq!(
+        contract["cutover"]["sidecar_http_registration"],
+        "native_for_three_status_and_five_cancellation_aliases_only"
+    );
+    assert_eq!(
+        contract["cutover"]["scientific_submission_route_selection"],
+        "forbidden_until_executor_selected_and_preflighted"
+    );
+    assert_eq!(
         contract["cutover"]["fallback_after_native_selection"],
         "none"
     );
