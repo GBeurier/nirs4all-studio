@@ -505,13 +505,14 @@ impl JobRegistry {
     /// # Errors
     ///
     /// Rejects missing/non-running jobs, non-finite progress, oversized text,
-    /// malformed metrics, and malformed timestamps.
+    /// and malformed timestamps. Like the legacy progress callback, this does
+    /// not mutate metrics and publishes the complete metrics snapshot already
+    /// stored on the job.
     pub fn progress_at(
         &mut self,
         id: &str,
         progress: f64,
         message: impl Into<String>,
-        metrics: Value,
         timestamp: &str,
         now: Instant,
     ) -> Result<JobMutation, JobLifecycleError> {
@@ -519,13 +520,11 @@ impl JobRegistry {
         if !progress.is_finite() {
             return Err(JobLifecycleError::InvalidProgress);
         }
-        validate_json_object(&metrics, "metrics")?;
         let message = message.into();
         validate_text(&message, "progress_message")?;
         let record = self.running_record(id, "progress")?;
         record.snapshot.progress = progress.clamp(0.0, 100.0);
         record.snapshot.progress_message.clone_from(&message);
-        record.snapshot.metrics = metrics.clone();
         let snapshot = record.snapshot_at(now);
         let event = record.next_event(
             LegacyJobEventType::Progress,
@@ -533,7 +532,7 @@ impl JobRegistry {
                 ("job_id".into(), Value::String(id.into())),
                 ("progress".into(), value_from_finite(snapshot.progress)),
                 ("message".into(), Value::String(message)),
-                ("metrics".into(), metrics),
+                ("metrics".into(), snapshot.metrics.clone()),
             ])),
             timestamp,
         );
@@ -543,7 +542,10 @@ impl JobRegistry {
         })
     }
 
-    /// Replace metrics on a pending or running job and emit `job_metrics`.
+    /// Shallow-merge metrics on a pending or running job and emit `job_metrics`.
+    /// Existing keys are retained unless the incoming object supplies the same
+    /// key, matching legacy `job.metrics.update(metrics)` behavior. The event
+    /// and returned state both expose the complete merged object.
     ///
     /// # Errors
     ///
@@ -557,14 +559,31 @@ impl JobRegistry {
     ) -> Result<JobMutation, JobLifecycleError> {
         validate_timestamp(timestamp)?;
         validate_json_object(&metrics, "metrics")?;
+        let Value::Object(incoming) = metrics else {
+            return Err(JobLifecycleError::InvalidJsonObject("metrics"));
+        };
+        let mut merged = self
+            .jobs
+            .get(id)
+            .ok_or(JobLifecycleError::JobNotFound)?
+            .snapshot
+            .metrics
+            .clone();
+        let Value::Object(merged_object) = &mut merged else {
+            return Err(JobLifecycleError::InvalidJsonObject("metrics"));
+        };
+        for (key, value) in incoming {
+            merged_object.insert(key, value);
+        }
+        validate_json_object(&merged, "metrics")?;
         let record = self.active_record(id, "metrics")?;
-        record.snapshot.metrics = metrics.clone();
+        record.snapshot.metrics.clone_from(&merged);
         let snapshot = record.snapshot_at(now);
         let event = record.next_event(
             LegacyJobEventType::Metrics,
             Value::Object(Map::from_iter([
                 ("job_id".into(), Value::String(id.into())),
-                ("metrics".into(), metrics),
+                ("metrics".into(), merged),
             ])),
             timestamp,
         );

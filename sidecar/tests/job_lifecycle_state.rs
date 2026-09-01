@@ -145,7 +145,6 @@ fn happy_path_emits_exact_legacy_shapes_in_strict_sequence() {
             "contract-job",
             50.0,
             "half",
-            json!({"score": 1.0}),
             UPDATED,
             base + Duration::from_secs(2),
         )
@@ -157,7 +156,7 @@ fn happy_path_emits_exact_legacy_shapes_in_strict_sequence() {
             "job_id": "contract-job",
             "progress": 50.0,
             "message": "half",
-            "metrics": {"score": 1.0},
+            "metrics": {},
         })
     );
 
@@ -198,6 +197,42 @@ fn happy_path_emits_exact_legacy_shapes_in_strict_sequence() {
 }
 
 #[test]
+fn metrics_are_shallow_merged_and_progress_preserves_the_complete_snapshot() {
+    let base = Instant::now();
+    let mut registry = JobRegistry::default();
+    create_training(&mut registry, base, "metrics-merge");
+    registry.start_at("metrics-merge", STARTED, base).unwrap();
+
+    registry
+        .metrics_at(
+            "metrics-merge",
+            json!({"kept": 1, "replaced": "old"}),
+            UPDATED,
+            base,
+        )
+        .unwrap();
+    let merged = registry
+        .metrics_at(
+            "metrics-merge",
+            json!({"replaced": "new", "added": true}),
+            UPDATED,
+            base,
+        )
+        .unwrap();
+    let expected = json!({"kept": 1, "replaced": "new", "added": true});
+    assert_eq!(merged.job.metrics, expected);
+    assert_eq!(event_json(&merged)["data"]["metrics"], expected);
+    assert_eq!(merged.event.as_ref().unwrap().sequence(), 3);
+
+    let progress = registry
+        .progress_at("metrics-merge", 25.0, "quarter", UPDATED, base)
+        .unwrap();
+    assert_eq!(progress.job.metrics, expected);
+    assert_eq!(event_json(&progress)["data"]["metrics"], expected);
+    assert_eq!(progress.event.as_ref().unwrap().sequence(), 4);
+}
+
+#[test]
 fn transitions_are_strict_and_terminal_jobs_are_immutable() {
     let base = Instant::now();
     let mut registry = JobRegistry::default();
@@ -210,7 +245,7 @@ fn transitions_are_strict_and_terminal_jobs_are_immutable() {
         })
     );
     assert_eq!(
-        registry.progress_at("strict", 1.0, "", json!({}), UPDATED, base),
+        registry.progress_at("strict", 1.0, "", UPDATED, base),
         Err(JobLifecycleError::InvalidTransition {
             from: JobStatus::Pending,
             operation: "progress",
@@ -232,7 +267,7 @@ fn transitions_are_strict_and_terminal_jobs_are_immutable() {
         Err(JobLifecycleError::TerminalState(JobStatus::Failed))
     );
     assert_eq!(
-        registry.progress_at("strict", 10.0, "late", json!({}), UPDATED, base),
+        registry.progress_at("strict", 10.0, "late", UPDATED, base),
         Err(JobLifecycleError::TerminalState(JobStatus::Failed))
     );
     assert_eq!(
@@ -322,26 +357,26 @@ fn finite_progress_is_clamped_and_may_move_backwards() {
     create_training(&mut registry, base, "progress");
     registry.start_at("progress", STARTED, base).unwrap();
     let high = registry
-        .progress_at("progress", 125.0, "high", json!({}), UPDATED, base)
+        .progress_at("progress", 125.0, "high", UPDATED, base)
         .unwrap()
         .job
         .progress;
     assert!((high - 100.0).abs() < f64::EPSILON);
     let backwards = registry
-        .progress_at("progress", 10.0, "back", json!({}), UPDATED, base)
+        .progress_at("progress", 10.0, "back", UPDATED, base)
         .unwrap()
         .job
         .progress;
     assert!((backwards - 10.0).abs() < f64::EPSILON);
     let low = registry
-        .progress_at("progress", -5.0, "low", json!({}), UPDATED, base)
+        .progress_at("progress", -5.0, "low", UPDATED, base)
         .unwrap()
         .job
         .progress;
     assert!(low.abs() < f64::EPSILON);
     for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         assert_eq!(
-            registry.progress_at("progress", invalid, "bad", json!({}), UPDATED, base),
+            registry.progress_at("progress", invalid, "bad", UPDATED, base),
             Err(JobLifecycleError::InvalidProgress)
         );
     }
