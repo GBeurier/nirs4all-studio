@@ -866,7 +866,7 @@ describe("API client request handling", () => {
     );
   });
 
-  it("keeps run detail on FastAPI while owner HTTP-input materialization is unavailable", async () => {
+  it("selects the legacy run-detail branch before its target HTTP request", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({ detail: "Run 'missing-run' not found" }, 404),
     );
@@ -879,7 +879,16 @@ describe("API client request handling", () => {
       pythonPluginHostConfigured: false,
     });
     vi.stubGlobal("fetch", fetchMock);
-    const preselectWorkspaceRunDetail = vi.fn();
+    const preselectWorkspaceRunDetail = vi.fn().mockResolvedValue({
+      schema_id: "nirs4all.studio-run-detail-preselection-decision.v1",
+      workspace_id: "workspace-a",
+      target: "scientific-plugin",
+      verified_store_v5: false,
+      store_schema_version: null,
+      reason: "legacy_manifest_or_store_absent",
+      fallback_after_native_selection: "none",
+      status: 200,
+    });
     window.electronApi = createElectronApiMock({
       getNativeSidecarInfo,
       preselectWorkspaceRunDetail,
@@ -891,13 +900,80 @@ describe("API client request handling", () => {
       detail: "Run 'missing-run' not found",
       status: 404,
     });
-    expect(preselectWorkspaceRunDetail).not.toHaveBeenCalled();
+    expect(preselectWorkspaceRunDetail).toHaveBeenCalledOnce();
+    expect(preselectWorkspaceRunDetail).toHaveBeenCalledWith("workspace-a");
     expect(getNativeSidecarInfo).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/missing-run",
       expect.any(Object),
     );
+  });
+
+  it("routes an exact Store-v5 run detail to the preflighted native sidecar", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ run_id: "run-a" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const getScientificPluginUrl = vi.fn();
+    const preselectWorkspaceRunDetail = vi.fn().mockResolvedValue({
+      schema_id: "nirs4all.studio-run-detail-preselection-decision.v1",
+      workspace_id: "workspace-a",
+      target: "native-sidecar",
+      verified_store_v5: true,
+      store_schema_version: 5,
+      reason: "store_v5_owner_materializer_ready",
+      fallback_after_native_selection: "none",
+      status: 200,
+    });
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl,
+      preselectWorkspaceRunDetail,
+      getNativeSidecarInfo: vi.fn().mockResolvedValue({
+        status: "running",
+        host: "127.0.0.1",
+        port: 43123,
+        protocolVersion: "studio-sidecar-r1",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: true,
+      }),
+    });
+
+    await api.get("/workspaces/workspace-a/runs/run-a");
+
+    expect(preselectWorkspaceRunDetail).toHaveBeenCalledWith("workspace-a");
+    expect(getScientificPluginUrl).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:43123/api/workspaces/workspace-a/runs/run-a",
+      expect.any(Object),
+    );
+  });
+
+  it("does not send a target request or fall back after native preselection rejects", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const getScientificPluginUrl = vi.fn();
+    window.electronApi = createElectronApiMock({
+      getScientificPluginUrl,
+      preselectWorkspaceRunDetail: vi.fn().mockResolvedValue({
+        schema_id: "nirs4all.studio-run-detail-preselection-decision.v1",
+        workspace_id: "workspace-a",
+        target: "reject",
+        verified_store_v5: true,
+        store_schema_version: 5,
+        reason: "studio_run_detail_owner_preflight_failed",
+        fallback_after_native_selection: "none",
+        status: 503,
+      }),
+    });
+
+    await expect(
+      api.get("/workspaces/workspace-a/runs/run-a"),
+    ).rejects.toMatchObject({
+      detail: expect.stringContaining("studio_run_detail_owner_preflight_failed"),
+      status: 503,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getScientificPluginUrl).not.toHaveBeenCalled();
   });
 
   it("routes only the bare Store v5 pipeline-summary endpoint to the native sidecar", async () => {

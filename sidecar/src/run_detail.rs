@@ -121,8 +121,8 @@ fn validate_contracts() -> Result<(), RunDetailCompositionError> {
         .map_err(|error| RunDetailCompositionError::invalid(error.to_string()))?;
     let expected_owner = json!({
         "contract": "nirs4all.studio-run-detail-http.v1",
-        "contract_sha256": "773ee2bd36e154a9090c8e2978c1f7703eebff68e02c0e3c2dab2ca30eeb0a8d",
-        "owner_commit": "3ed4f347e66ea20ad3db348e36e68a80ed382d97",
+        "contract_sha256": "8230963eeb317ccacf5fa83a29fec730a830ebbb81ead9d16629251a1993ab1e",
+        "owner_commit": "f3d83a98e00847fc7bcb1904033a4316f3408a18",
         "required_source_branch": "store_v5",
         "splitter_materialization": "owner_output_only_consumer_must_not_parse_expanded_config",
         "ordered_arrays": ["run_detail.pipelines", "pipeline_splitters", "pipeline_runtime"],
@@ -132,9 +132,9 @@ fn validate_contracts() -> Result<(), RunDetailCompositionError> {
     });
     let expected_cutover = json!({
         "store_branch_composition_proven": true,
-        "route_selection": "forbidden",
-        "blocked_on": ["studio_workspace_manifest_run_detail_v1_or_preselection_proof"],
-        "legacy_manifest_branch_proven": false,
+        "route_selection": "per_request_store_v5_and_owner_host_preflight",
+        "blocked_on": [],
+        "legacy_manifest_branch_proven": "selected_scientific_plugin_before_target_http",
         "fallback_after_native_selection": "none",
     });
     if contract.get("schema_id").and_then(Value::as_str)
@@ -1141,13 +1141,17 @@ mod tests {
     }
 
     #[test]
-    fn contract_keeps_the_route_forbidden_on_the_unproven_manifest_branch() {
+    fn contract_allows_only_preselected_store_v5_and_keeps_legacy_external() {
         let contract: Value = serde_json::from_str(STUDIO_RUN_DETAIL_COMPOSITION_CONTRACT).unwrap();
         assert_eq!(contract["cutover"]["store_branch_composition_proven"], true);
-        assert_eq!(contract["cutover"]["route_selection"], "forbidden");
         assert_eq!(
-            contract["cutover"]["blocked_on"],
-            json!(["studio_workspace_manifest_run_detail_v1_or_preselection_proof"])
+            contract["cutover"]["route_selection"],
+            "per_request_store_v5_and_owner_host_preflight"
+        );
+        assert_eq!(contract["cutover"]["blocked_on"], json!([]));
+        assert_eq!(
+            contract["cutover"]["legacy_manifest_branch_proven"],
+            "selected_scientific_plugin_before_target_http"
         );
     }
 

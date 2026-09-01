@@ -68,36 +68,35 @@ projection internally, with an exact owner golden and the same immutable
 fail-closed rules. It intentionally does not register or select
 `GET /api/workspaces/:id/runs/:run_id`. The byte-identical owner
 `studio_run_detail_http_v1` contract (SHA-256
-`773ee2bd36e154a9090c8e2978c1f7703eebff68e02c0e3c2dab2ca30eeb0a8d`)
-explicitly sets `cutover.route_selection` to `forbidden`. Its owner oracle
+`8230963eeb317ccacf5fa83a29fec730a830ebbb81ead9d16629251a1993ab1e`)
+keeps route selection outside the Python owner. Its owner oracle
 publishes both splitter metadata and the optional pipeline runtime values with
 column provenance before the consumer boundary. The Studio-owned
 `studio_run_detail_composition_v1` contract (SHA-256
-`512a6f1d3aefc0362ff4f2f7aa2b94a4c833fb146063901f76de51844fb339ca`)
+`9090e2e0c68b3bf1dcc9ce0fcb99eb8ee69ab26f845c68cce56d8518aa4210f0`)
 freezes splitter presentation, runtime aggregation/propagation,
 linked-dataset mapping, and `rerun_ready`;
 Rust and FastAPI consume one differential golden without re-parsing
 `expanded_config`. The Store-v5 composition fixture and FastAPI differential
 are therefore proven. The versioned `studio_run_detail_preselection_v1`
 contract (SHA-256
-`0067c85d4c542a3d210664dcd1628820dcc1713e1f82171f88d9f8292d702044`)
+`7adf737f2025d4491fae30194b65aa7c5d48fe55a6c5c3341a4d8dc17a344adc`)
 now also resolves each linked workspace ID through the native
 catalogue and verifies the exact Store v5 schema, projection columns,
 immutable read, and journal policy once per request without caching. Missing
-stores and old schemas select FastAPI before the target request; busy,
+stores and old schemas select the transitional scientific plugin before the target request; busy,
 unreadable, or incomplete v5 stores reject without a target request.
 
-Run-detail cutover nevertheless remains fail-closed. The current Rust reader
-publishes `studio_run_detail_v1`, while the composition boundary requires the
-owner-produced `studio_run_detail_http_inputs_v1` envelope (including
-materialized splitter rows, runtime provenance, and result rows). Splitters
-are not persisted as Store-v5 columns, and the consumer is forbidden to
-recover them by parsing `expanded_config`. Until a library-owned materializer
-boundary publishes that exact envelope, verified Store-v5 preselection returns
-`409` with reason
-`studio_run_detail_http_inputs_v1_materializer_unavailable`, the native target
-route is unregistered, and the renderer continues to route the entire
-run-detail request to FastAPI.
+Exact Store v5 now selects the native run-detail target only when the explicit
+CPython library host is configured and preflights the exact owner callable.
+Each preflight and target uses a fresh isolated (`-I`) process, strict JSON
+stdin, a 3/15 second deadline, 8 KiB input, 4 MiB stdout, and 64 KiB stderr
+bounds. Rust validates the exact seven-field owner envelope, composes the HTTP
+response, and never exposes stderr or the resolved workspace path. Missing or
+old stores select the transitional scientific plugin before the target HTTP
+request; a native selection never falls back. Splitters remain owner-produced:
+the Rust consumer neither parses nor receives permission to interpret
+`expanded_config`.
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a

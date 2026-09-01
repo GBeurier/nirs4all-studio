@@ -3,8 +3,8 @@
   "schema_version": 1,
   "owner_input": {
     "contract": "nirs4all.studio-run-detail-http.v1",
-    "contract_sha256": "773ee2bd36e154a9090c8e2978c1f7703eebff68e02c0e3c2dab2ca30eeb0a8d",
-    "owner_commit": "3ed4f347e66ea20ad3db348e36e68a80ed382d97",
+    "contract_sha256": "8230963eeb317ccacf5fa83a29fec730a830ebbb81ead9d16629251a1993ab1e",
+    "owner_commit": "f3d83a98e00847fc7bcb1904033a4316f3408a18",
     "required_source_branch": "store_v5",
     "splitter_materialization": "owner_output_only_consumer_must_not_parse_expanded_config",
     "ordered_arrays": ["run_detail.pipelines", "pipeline_splitters", "pipeline_runtime"],
@@ -83,9 +83,9 @@
   },
   "cutover": {
     "store_branch_composition_proven": true,
-    "route_selection": "forbidden",
-    "blocked_on": ["studio_workspace_manifest_run_detail_v1_or_preselection_proof"],
-    "legacy_manifest_branch_proven": false,
+    "route_selection": "per_request_store_v5_and_owner_host_preflight",
+    "blocked_on": [],
+    "legacy_manifest_branch_proven": "selected_scientific_plugin_before_target_http",
     "fallback_after_native_selection": "none"
   }
 }

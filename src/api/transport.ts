@@ -43,6 +43,8 @@ const NATIVE_SIDECAR_WORKSPACE_PIPELINE_SUMMARIES_ENDPOINT =
   /^\/workspaces\/[^/?]+\/results$/;
 const NATIVE_SIDECAR_WORKSPACE_RESULTS_SUMMARY_ENDPOINT =
   /^\/workspaces\/[^/?]+\/results\/summary$/;
+const WORKSPACE_RUN_DETAIL_ENDPOINT =
+  /^\/workspaces\/([^/?]+)\/runs\/([^/?]+)$/;
 
 type ElectronBackendStatus =
   | "stopped"
@@ -69,6 +71,16 @@ interface ElectronBridgeApi {
     status: NativeSidecarStatus;
     url: string | null;
     pythonPluginHostConfigured: boolean;
+  }>;
+  preselectWorkspaceRunDetail?: (workspaceId: string) => Promise<{
+    schema_id: "nirs4all.studio-run-detail-preselection-decision.v1";
+    workspace_id: string;
+    target: "native-sidecar" | "scientific-plugin" | "reject";
+    verified_store_v5: boolean;
+    store_schema_version: 5 | null;
+    reason: string;
+    fallback_after_native_selection: "none";
+    status: number;
   }>;
 }
 
@@ -186,6 +198,14 @@ export function resetBackendUrl(): void {
 }
 
 async function resolveApiRoute(endpoint: string, method: string): Promise<ApiRoute> {
+  const runDetail = WORKSPACE_RUN_DETAIL_ENDPOINT.exec(endpoint);
+  if (
+    runDetail &&
+    method.toUpperCase() === "GET" &&
+    isElectronEnvironment()
+  ) {
+    return resolveWorkspaceRunDetailRoute(runDetail[1]);
+  }
   if (
     !isNativeSidecarEndpoint(endpoint, method) ||
     !isElectronEnvironment()
@@ -212,6 +232,45 @@ async function resolveApiRoute(endpoint: string, method: string): Promise<ApiRou
     logger.warn(`Failed to inspect native sidecar for ${endpoint}`, error);
   }
   return { baseUrl: await getApiBaseUrl(), source: "backend" };
+}
+
+async function resolveWorkspaceRunDetailRoute(
+  encodedWorkspaceId: string,
+): Promise<ApiRoute> {
+  const bridge = getElectronBridge();
+  if (!bridge?.preselectWorkspaceRunDetail) {
+    return { baseUrl: await getApiBaseUrl(), source: "backend" };
+  }
+  let workspaceId: string;
+  try {
+    workspaceId = decodeURIComponent(encodedWorkspaceId);
+  } catch {
+    throw { detail: "Invalid workspace identifier", status: 400 } satisfies ApiError;
+  }
+
+  const decision = await bridge.preselectWorkspaceRunDetail(workspaceId);
+  if (decision.target === "scientific-plugin") {
+    return { baseUrl: await getApiBaseUrl(), source: "backend" };
+  }
+  if (decision.target === "reject") {
+    throw {
+      detail: `Native run-detail preselection rejected the request: ${decision.reason}`,
+      status: decision.status,
+    } satisfies ApiError;
+  }
+
+  const info = await bridge.getNativeSidecarInfo?.();
+  if (
+    info?.status !== "running" ||
+    !info.url ||
+    !info.pythonPluginHostConfigured
+  ) {
+    throw {
+      detail: "Native run-detail selection became unavailable",
+      status: 503,
+    } satisfies ApiError;
+  }
+  return { baseUrl: `${info.url}/api`, source: "native-sidecar" };
 }
 
 function isNativeSidecarEndpoint(endpoint: string, method: string): boolean {

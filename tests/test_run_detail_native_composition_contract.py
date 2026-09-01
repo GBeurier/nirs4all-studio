@@ -93,7 +93,7 @@ def test_fastapi_oracle_matches_the_native_composition_golden() -> None:
     contract = CONTRACTS / "studio_run_detail_http_v1.json"
     owner_fixture = FIXTURES / "workspace_store_v5_run_detail_http_inputs.response.json"
     assert hashlib.sha256(contract.read_bytes()).hexdigest() == (
-        "773ee2bd36e154a9090c8e2978c1f7703eebff68e02c0e3c2dab2ca30eeb0a8d"
+        "8230963eeb317ccacf5fa83a29fec730a830ebbb81ead9d16629251a1993ab1e"
     )
     assert hashlib.sha256(owner_fixture.read_bytes()).hexdigest() == (
         "1053274a5d5a900bb3511afc3290c0adae5a1c2b84beacb742fd650f806c19bd"
@@ -118,7 +118,7 @@ def test_fastapi_oracle_matches_the_native_composition_golden() -> None:
 def test_preselection_contract_keeps_legacy_branch_before_target_http() -> None:
     contract_path = CONTRACTS / "studio_run_detail_preselection_v1.json"
     assert hashlib.sha256(contract_path.read_bytes()).hexdigest() == (
-        "0067c85d4c542a3d210664dcd1628820dcc1713e1f82171f88d9f8292d702044"
+        "7adf737f2025d4491fae30194b65aa7c5d48fe55a6c5c3341a4d8dc17a344adc"
     )
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
 
@@ -133,9 +133,21 @@ def test_preselection_contract_keeps_legacy_branch_before_target_http() -> None:
     ]
     assert contract["decisions"]["reject"]["target_request_count"] == 0
     assert contract["transport"]["fallback_after_native_selection"] == "none"
-    assert contract["owner_materialization"]["status"] == "unavailable"
+    assert contract["owner_materialization"]["status"] == "available_and_qualified"
     assert (
         contract["owner_materialization"]["consumer_parse_expanded_config"]
         == "forbidden"
     )
-    assert not contract["decisions"]["native-sidecar"]["currently_reachable"]
+    assert contract["decisions"]["native-sidecar"]["currently_reachable"]
+    assert contract["bridge_bounds"] == {
+        "isolated_mode": "-I",
+        "request_transport": "strict_json_stdin",
+        "input_bytes": 8192,
+        "preflight_timeout_ms": 3000,
+        "request_timeout_ms": 15000,
+        "stdout_bytes": 4 * 1024 * 1024,
+        "stderr_bytes": 64 * 1024,
+        "stdout_schema": "exact_seven_field_owner_envelope_or_null",
+        "stderr_exposure_to_renderer": "forbidden",
+        "process_lifetime": "one_fresh_process_per_preflight_or_target_request",
+    }

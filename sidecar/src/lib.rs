@@ -28,12 +28,15 @@ pub mod conformal_store;
 pub mod job_lifecycle;
 mod results_summary;
 pub mod run_detail;
+pub mod run_detail_cpython;
 pub mod run_detail_preselection;
 mod settings;
 pub mod websocket_transport;
 pub mod workspace_store;
 
 use results_summary::read_results_summary;
+use run_detail::compose_store_run_detail;
+use run_detail_cpython::{materialize_run_detail_owner, RunDetailOwnerBridgeFailure};
 use run_detail_preselection::preselect_run_detail;
 pub use settings::DatasetLinkIdentity;
 use settings::{AppSettingsStore, ConfigPathError};
@@ -41,9 +44,9 @@ use websocket_transport::{
     handle_websocket_connection, LegacyWebSocketEndpoint, WebSocketConnectionManager,
 };
 use workspace_store::{
-    read_pipeline_summaries, read_run_summaries, WorkspaceStorePipelineSummary,
-    WorkspaceStoreReadError, WorkspaceStoreRunSummary, DEFAULT_PIPELINE_SUMMARIES_LIMIT,
-    MAX_RUN_SUMMARIES,
+    preflight_run_detail_projection, read_pipeline_summaries, read_run_summaries,
+    WorkspaceStorePipelineSummary, WorkspaceStoreReadError, WorkspaceStoreRunSummary,
+    DEFAULT_PIPELINE_SUMMARIES_LIMIT, MAX_RUN_SUMMARIES,
 };
 
 pub const PROTOCOL_VERSION: &str = "studio-sidecar-r1";
@@ -407,6 +410,21 @@ impl SidecarState {
         }
     }
 
+    /// Configure both halves of the native run-detail boundary explicitly.
+    /// The interpreter is a library host; the settings directory remains
+    /// Rust-owned and is never passed to the renderer.
+    #[must_use]
+    pub fn with_run_detail_host(
+        python_plugin_host: impl Into<PathBuf>,
+        app_settings_dir: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            python_plugin_host: Some(python_plugin_host.into()),
+            app_settings: AppSettingsStore::new(app_settings_dir),
+            ..Self::default()
+        }
+    }
+
     /// Use an explicit app-settings directory in tests and controlled desktop
     /// launches.  The store still keeps the legacy `app_settings.json` shape.
     #[must_use]
@@ -457,7 +475,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":false,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":{python_plugin_configured},\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{python_plugin_configured}}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -637,6 +655,7 @@ pub fn route_request_with_body(
         _ if workspace_run_detail_preselection_path(path) => {
             route_workspace_run_detail_preselection(state, method, path)
         }
+        _ if workspace_run_detail_path(path) => route_workspace_run_detail(state, method, path),
         _ if workspace_runs_path(path) => route_workspace_run_summaries(state, method, path),
         _ if workspace_results_summary_path(path) => {
             route_workspace_results_summary(state, method, path)
@@ -903,6 +922,27 @@ fn workspace_run_detail_preselection_path(path: &str) -> bool {
     workspace_run_detail_preselection_workspace(path).is_some()
 }
 
+fn workspace_run_detail_ids(path: &str) -> Option<(String, String)> {
+    let suffix = path.strip_prefix("/api/workspaces/")?;
+    let mut segments = suffix.split('/');
+    match (
+        segments.next(),
+        segments.next(),
+        segments.next(),
+        segments.next(),
+    ) {
+        (Some(workspace_id), Some("runs"), Some(run_id), None) => Some((
+            decoded_path_segment(workspace_id)?,
+            decoded_path_segment(run_id)?,
+        )),
+        _ => None,
+    }
+}
+
+fn workspace_run_detail_path(path: &str) -> bool {
+    workspace_run_detail_ids(path).is_some()
+}
+
 fn workspace_run_discovery_query_supported(query: Option<&str>) -> bool {
     let Some(query) = query else {
         return true;
@@ -1021,10 +1061,96 @@ fn route_workspace_run_detail_preselection(
         }
         Err(error) => return app_settings_storage_error("preselect run detail", &error),
     };
-    let decision = preselect_run_detail(&workspace_path);
+    let decision = preselect_run_detail(&workspace_path, state.python_plugin_host.as_deref());
     HttpResponse::json(
         decision.status,
         decision.response(&workspace_id).to_string(),
+    )
+}
+
+fn route_workspace_run_detail(state: &SidecarState, method: &str, path: &str) -> HttpResponse {
+    if method != "GET" {
+        return method_not_allowed(method, path, "GET");
+    }
+    let Some((workspace_id, run_id)) = workspace_run_detail_ids(path) else {
+        return linked_workspace_route_not_found(path);
+    };
+    let workspace_path = match state.app_settings.linked_workspace_path(&workspace_id) {
+        Ok(Some(workspace_path)) => workspace_path,
+        Ok(None) => {
+            return HttpResponse::json(404, json!({"detail": "Workspace not found"}).to_string());
+        }
+        Err(error) => return app_settings_storage_error("resolve linked workspace", &error),
+    };
+
+    if let Err(error) = preflight_run_detail_projection(&workspace_path) {
+        return workspace_store_read_error_response(&error);
+    }
+
+    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+        return error_response(
+            503,
+            ErrorCode::PythonPluginUnavailable,
+            "The configured Python library host is unavailable",
+            BTreeMap::new(),
+        );
+    };
+    let owner_output =
+        match materialize_run_detail_owner(python_plugin_host, &workspace_path, &run_id) {
+            Ok(Some(output)) => output,
+            Ok(None) => {
+                return HttpResponse::json(
+                    404,
+                    json!({"detail": format!("Run '{run_id}' not found")}).to_string(),
+                );
+            }
+            Err(error) => return run_detail_owner_bridge_error_response(error),
+        };
+    let linked_datasets = match state.app_settings.dataset_links() {
+        Ok(datasets) => datasets,
+        Err(error) => return app_settings_storage_error("read linked datasets", &error),
+    };
+    compose_store_run_detail(&owner_output, &linked_datasets).map_or_else(
+        |_| {
+            error_response(
+                409,
+                ErrorCode::InvalidRequest,
+                "The Store-v5 owner output is incompatible with the native run-detail contract",
+                BTreeMap::from([("workspace_id".into(), workspace_id)]),
+            )
+        },
+        |response| HttpResponse::json(200, response.to_string()),
+    )
+}
+
+fn run_detail_owner_bridge_error_response(error: RunDetailOwnerBridgeFailure) -> HttpResponse {
+    let (status, code, message) = match error {
+        RunDetailOwnerBridgeFailure::InvalidInput => (
+            400,
+            ErrorCode::InvalidRequest,
+            "The native run-detail request contains an invalid identifier",
+        ),
+        RunDetailOwnerBridgeFailure::TimedOut => (
+            504,
+            ErrorCode::RequestTimeout,
+            "The Python library host exceeded the native run-detail deadline",
+        ),
+        RunDetailOwnerBridgeFailure::SpawnFailed => (
+            503,
+            ErrorCode::PythonPluginUnavailable,
+            "The configured Python library host could not be started",
+        ),
+        _ => (
+            502,
+            ErrorCode::PythonPluginPreflightFailed,
+            "The Python library host returned an invalid native run-detail result",
+        ),
+    };
+    error_response(
+        status,
+        code,
+        message,
+        BTreeMap::from([("reason".into(), error.reason().into())]),
     )
 }
 
@@ -2319,6 +2445,7 @@ fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpRe
     }
     if request.query.is_some()
         && (workspace_run_detail_preselection_path(&request.path)
+            || workspace_run_detail_path(&request.path)
             || workspace_results_path(&request.path)
             || workspace_results_summary_path(&request.path))
     {
@@ -3445,7 +3572,7 @@ mod tests {
     }
 
     #[test]
-    fn run_detail_route_remains_unregistered_while_cutover_is_forbidden() {
+    fn run_detail_route_fails_closed_without_a_linked_workspace() {
         let mut state = SidecarState::default();
         let response = route_request(
             &mut state,
@@ -3454,8 +3581,8 @@ mod tests {
         );
         assert_eq!(response.status, 404);
         assert_eq!(
-            serde_json::from_str::<Value>(&response.body).unwrap()["error"]["code"],
-            "route_not_found"
+            serde_json::from_str::<Value>(&response.body).unwrap()["detail"],
+            "Workspace not found"
         );
     }
 
