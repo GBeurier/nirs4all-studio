@@ -73,8 +73,13 @@ pub enum WorkspaceStoreReadError {
     StoreNotFound,
     NotARegularFile(PathBuf),
     LiveJournal(PathBuf),
+    #[cfg(windows)]
+    UnsupportedPath(PathBuf),
     Open(String),
-    SchemaVersion { expected: i64, actual: i64 },
+    SchemaVersion {
+        expected: i64,
+        actual: i64,
+    },
     MissingColumns(Vec<String>),
     LimitOutOfRange(u16),
     OffsetOutOfRange(u64),
@@ -91,6 +96,12 @@ impl fmt::Display for WorkspaceStoreReadError {
             Self::LiveJournal(path) => write!(
                 formatter,
                 "WorkspaceStore has an active SQLite journal sidecar: {}",
+                path.display()
+            ),
+            #[cfg(windows)]
+            Self::UnsupportedPath(path) => write!(
+                formatter,
+                "WorkspaceStore path is unsupported by the bundled SQLite build: {}",
                 path.display()
             ),
             Self::Open(detail) => write!(formatter, "could not open WorkspaceStore read-only: {detail}"),
@@ -235,8 +246,8 @@ fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
         json!({"name": "id", "column": "run_id", "type": "string", "required": true}),
         json!({"name": "name", "column": "name", "type": "string", "required": true}),
         json!({"name": "status", "column": "status", "type": "string", "default": "unknown"}),
-        json!({"name": "created_at", "column": "created_at", "type": "timestamp", "default": ""}),
-        json!({"name": "completed_at", "column": "completed_at", "type": "timestamp", "default": ""}),
+        json!({"name": "created_at", "column": "created_at", "type": "timestamp", "serialization": "iso8601", "default": ""}),
+        json!({"name": "completed_at", "column": "completed_at", "type": "timestamp", "serialization": "iso8601", "default": ""}),
         json!({"name": "datasets", "column": "datasets", "type": "json", "default": []}),
         json!({"name": "summary", "column": "summary", "type": "json", "default": {}}),
         json!({"name": "error", "column": "error", "type": "string", "nullable": true}),
@@ -310,6 +321,8 @@ fn refuse_live_journals(database: &Path) -> Result<(), WorkspaceStoreReadError> 
 }
 
 fn immutable_read_only_uri(path: &Path) -> Result<String, WorkspaceStoreReadError> {
+    #[cfg(windows)]
+    refuse_unsupported_path(path)?;
     let canonical = path
         .canonicalize()
         .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
@@ -320,6 +333,30 @@ fn immutable_read_only_uri(path: &Path) -> Result<String, WorkspaceStoreReadErro
     })?;
     uri.set_query(Some("mode=ro&immutable=1"));
     Ok(uri.into())
+}
+
+#[cfg(windows)]
+fn refuse_unsupported_path(path: &Path) -> Result<(), WorkspaceStoreReadError> {
+    use std::path::{Component, Prefix};
+
+    let unsupported = path.components().next().is_some_and(|component| {
+        matches!(
+            component,
+            Component::Prefix(prefix)
+                if matches!(
+                    prefix.kind(),
+                    Prefix::UNC(_, _)
+                        | Prefix::VerbatimUNC(_, _)
+                        | Prefix::Verbatim(_)
+                        | Prefix::DeviceNS(_)
+                )
+        )
+    });
+    if unsupported {
+        Err(WorkspaceStoreReadError::UnsupportedPath(path.to_path_buf()))
+    } else {
+        Ok(())
+    }
 }
 
 fn validate_database(connection: &Connection) -> Result<(), WorkspaceStoreReadError> {
@@ -372,8 +409,8 @@ fn row_to_run_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceStoreRunSummar
         id: required_text(row, 0, "run_id")?,
         name: required_text(row, 1, "name")?,
         status: optional_text(row, 2)?.unwrap_or_else(|| "unknown".into()),
-        created_at: optional_text(row, 3)?.unwrap_or_default(),
-        completed_at: optional_text(row, 4)?.unwrap_or_default(),
+        created_at: iso8601_timestamp(optional_text(row, 3)?),
+        completed_at: iso8601_timestamp(optional_text(row, 4)?),
         datasets: json_or_default(optional_text(row, 5)?, json!([])),
         summary: json_or_default(optional_text(row, 6)?, json!({})),
         error: optional_text(row, 7)?,
@@ -392,6 +429,14 @@ fn required_text(row: &Row<'_>, index: usize, field: &'static str) -> rusqlite::
 
 fn optional_text(row: &Row<'_>, index: usize) -> rusqlite::Result<Option<String>> {
     row.get(index)
+}
+
+fn iso8601_timestamp(raw: Option<String>) -> String {
+    let mut value = raw.unwrap_or_default();
+    if value.as_bytes().get(10) == Some(&b' ') {
+        value.replace_range(10..11, "T");
+    }
+    value
 }
 
 fn json_or_default(raw: Option<String>, default: Value) -> Value {
@@ -448,12 +493,8 @@ mod tests {
         );
         assert_eq!(runs[0].response()["name"], "native scanner parity");
         assert_eq!(runs[0].response()["status"], "completed");
-        assert!(runs[0].response()["created_at"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty()));
-        assert!(runs[0].response()["completed_at"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty()));
+        assert_eq!(runs[0].response()["created_at"], "2026-09-01T07:54:59");
+        assert_eq!(runs[0].response()["completed_at"], "2026-09-01T07:54:59");
         assert_eq!(
             runs[0].response()["datasets"],
             json!([{"name": "corn", "samples": 42}])
@@ -541,12 +582,30 @@ mod tests {
     fn refuses_a_workspace_with_an_active_wal_sidecar() {
         let workspace = fixture_workspace("workspace-store-wal");
         let wal = workspace.join("store.sqlite-wal");
-        fs::write(&wal, b"active WAL prevents immutable snapshot reads").unwrap();
+        let writer = Connection::open(workspace.join("store.sqlite")).unwrap();
+        writer
+            .execute_batch(
+                "PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0; \
+                 UPDATE runs SET name = 'writer has uncheckpointed changes'",
+            )
+            .unwrap();
+        assert!(wal.is_file());
 
         assert!(matches!(
             read_run_summaries(&workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0),
             Err(WorkspaceStoreReadError::LiveJournal(path)) if path == wal
         ));
+        drop(writer);
         fs::remove_dir_all(workspace).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn refuses_unc_paths_before_opening_sqlite() {
+        let path = PathBuf::from(r"\\server\share\store.sqlite");
+        assert!(matches!(
+            super::immutable_read_only_uri(&path),
+            Err(WorkspaceStoreReadError::UnsupportedPath(unsupported)) if unsupported == path
+        ));
     }
 }

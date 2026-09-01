@@ -1,0 +1,25 @@
+{
+  "workspace_id": "workspace-a",
+  "runs": [
+    {
+      "id": "12345678-1234-5678-1234-567812345678",
+      "name": "native scanner parity",
+      "status": "completed",
+      "created_at": "2026-09-01T07:54:59",
+      "completed_at": "2026-09-01T07:54:59",
+      "format": "store",
+      "datasets": [
+        {
+          "name": "corn",
+          "samples": 42
+        }
+      ],
+      "summary": {
+        "total_results": 3,
+        "best_score": 0.12
+      },
+      "error": null
+    }
+  ],
+  "total": 1
+}

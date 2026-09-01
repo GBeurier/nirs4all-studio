@@ -903,6 +903,25 @@ fn workspace_store_read_error_response(error: &WorkspaceStoreReadError) -> HttpR
             })
             .to_string(),
         ),
+        WorkspaceStoreReadError::LiveJournal(_) | WorkspaceStoreReadError::ChangedDuringRead => {
+            HttpResponse::json(
+                409,
+                json!({
+                    "detail": "WorkspaceStore is changing and cannot be read as an immutable snapshot",
+                    "code": "workspace_store_busy",
+                })
+                .to_string(),
+            )
+        }
+        #[cfg(windows)]
+        WorkspaceStoreReadError::UnsupportedPath(_) => HttpResponse::json(
+            409,
+            json!({
+                "detail": "WorkspaceStore must be on a local volume supported by bundled SQLite",
+                "code": "workspace_store_path_unsupported",
+            })
+            .to_string(),
+        ),
         _ => HttpResponse::json(
             500,
             json!({
@@ -2660,6 +2679,29 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    fn test_directory(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "studio-sidecar-{name}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    fn linked_workspace_record(id: &str, path: &Path, active: bool, runs_count: usize) -> Value {
+        json!({
+            "id": id,
+            "path": path.to_string_lossy(),
+            "name": id,
+            "is_active": active,
+            "linked_at": "2026-09-01T10:00:00",
+            "last_scanned": null,
+            "discovered": {"runs_count": runs_count},
+        })
+    }
+
     #[test]
     fn readiness_stays_explicitly_non_parity() {
         let state = SidecarState::default();
@@ -2959,45 +3001,45 @@ mod tests {
 
     #[test]
     fn workspace_run_summary_route_reads_the_python_written_v5_store_without_a_python_host() {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let directory = std::env::temp_dir().join(format!(
-            "studio-sidecar-workspace-run-summary-{}-{nonce}",
-            std::process::id()
-        ));
+        let directory = test_directory("workspace-run-summary");
         let settings_directory = directory.join("config");
         let workspace = directory.join("workspace");
         let empty_workspace = directory.join("empty-workspace");
+        let busy_workspace = directory.join("busy-workspace");
+        let v4_workspace = directory.join("v4-workspace");
         fs::create_dir_all(&settings_directory).unwrap();
         fs::create_dir_all(&workspace).unwrap();
         fs::create_dir_all(&empty_workspace).unwrap();
+        fs::create_dir_all(&busy_workspace).unwrap();
+        fs::create_dir_all(&v4_workspace).unwrap();
         fs::write(
             workspace.join("store.sqlite"),
             include_bytes!("../tests/fixtures/workspace_store_v5.sqlite"),
         )
         .unwrap();
         fs::write(
+            busy_workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5.sqlite"),
+        )
+        .unwrap();
+        fs::write(busy_workspace.join("store.sqlite-wal"), b"active writer").unwrap();
+        fs::write(
+            v4_workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5.sqlite"),
+        )
+        .unwrap();
+        let v4 = rusqlite::Connection::open(v4_workspace.join("store.sqlite")).unwrap();
+        v4.execute_batch("PRAGMA user_version = 4").unwrap();
+        drop(v4);
+        fs::write(
             settings_directory.join("app_settings.json"),
             json!({
-                "linked_workspaces": [{
-                    "id": "workspace-a",
-                    "path": workspace.to_string_lossy(),
-                    "name": "A",
-                    "is_active": true,
-                    "linked_at": "2026-09-01T10:00:00",
-                    "last_scanned": null,
-                    "discovered": {"runs_count": 1},
-                }, {
-                    "id": "workspace-empty",
-                    "path": empty_workspace.to_string_lossy(),
-                    "name": "Empty",
-                    "is_active": false,
-                    "linked_at": "2026-09-01T10:00:00",
-                    "last_scanned": null,
-                    "discovered": {"runs_count": 0},
-                }],
+                "linked_workspaces": [
+                    linked_workspace_record("workspace-a", &workspace, true, 1),
+                    linked_workspace_record("workspace-empty", &empty_workspace, false, 0),
+                    linked_workspace_record("workspace-busy", &busy_workspace, false, 1),
+                    linked_workspace_record("workspace-v4", &v4_workspace, false, 1),
+                ],
             })
             .to_string(),
         )
@@ -3007,23 +3049,11 @@ mod tests {
         let response = route_request(&mut state, "GET", "/api/workspaces/workspace-a/runs");
         assert_eq!(response.status, 200);
         let payload: Value = serde_json::from_str(&response.body).unwrap();
-        assert_eq!(payload["workspace_id"], "workspace-a");
-        assert_eq!(payload["total"], 1);
-        assert_eq!(
-            payload["runs"][0]["id"],
-            "12345678-1234-5678-1234-567812345678"
-        );
-        assert_eq!(payload["runs"][0]["name"], "native scanner parity");
-        assert_eq!(payload["runs"][0]["status"], "completed");
-        assert_eq!(payload["runs"][0]["format"], "store");
-        assert_eq!(
-            payload["runs"][0]["datasets"],
-            json!([{"name": "corn", "samples": 42}])
-        );
-        assert_eq!(
-            payload["runs"][0]["summary"],
-            json!({"total_results": 3, "best_score": 0.12})
-        );
+        let expected: Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/workspace_store_v5_runs.response.json"
+        ))
+        .unwrap();
+        assert_eq!(payload, expected);
         assert!(!workspace.join("store.sqlite-wal").exists());
         assert!(!workspace.join("store.sqlite-shm").exists());
         assert_eq!(
@@ -3035,6 +3065,18 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Value>(&unavailable.body).unwrap()["code"],
             "workspace_store_unavailable"
+        );
+        let busy = route_request(&mut state, "GET", "/api/workspaces/workspace-busy/runs");
+        assert_eq!(busy.status, 409);
+        assert_eq!(
+            serde_json::from_str::<Value>(&busy.body).unwrap()["code"],
+            "workspace_store_busy"
+        );
+        let incompatible = route_request(&mut state, "GET", "/api/workspaces/workspace-v4/runs");
+        assert_eq!(incompatible.status, 409);
+        assert_eq!(
+            serde_json::from_str::<Value>(&incompatible.body).unwrap()["code"],
+            "workspace_store_schema_incompatible"
         );
         let missing = route_request(&mut state, "GET", "/api/workspaces/missing/runs");
         assert_eq!(missing.status, 404);
