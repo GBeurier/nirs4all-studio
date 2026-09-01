@@ -11,6 +11,7 @@ import { EnvManager } from "./env-manager";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { NativeSidecarManager } from "./native-sidecar-manager";
 import { startNativeSession } from "./native-session-lifecycle";
+import { preselectRendererTransport } from "./renderer-transport-selection";
 import { preselectWorkspaceRunDetail } from "./workspace-route-preselection";
 import { applyPortablePathOverrides } from "./portable-paths";
 import { ScientificPluginLifecycle } from "./scientific-plugin-lifecycle";
@@ -554,6 +555,10 @@ ipcMain.handle("backend:getInfo", () => {
 ipcMain.handle("sidecar:getInfo", () => {
   return getNativeSidecarInfo();
 });
+
+ipcMain.handle("sidecar:preselectRendererTransport", (_event, request: unknown) =>
+  preselectRendererTransport(request, getNativeSidecarInfo),
+);
 
 ipcMain.handle(
   "sidecar:preselectWorkspaceRunDetail",

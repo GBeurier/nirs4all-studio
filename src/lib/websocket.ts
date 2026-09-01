@@ -97,7 +97,9 @@ function isElectronEnvironment(): boolean {
 async function waitForElectronApi(maxWaitMs: number = 5000): Promise<boolean> {
   const startTime = Date.now();
   while (Date.now() - startTime < maxWaitMs) {
-    if ((window as unknown as { electronApi?: { getScientificPluginUrl?: () => Promise<string> } }).electronApi?.getScientificPluginUrl) {
+    if ((window as unknown as {
+      electronApi?: { preselectRendererTransport?: (request: unknown) => Promise<unknown> };
+    }).electronApi?.preselectRendererTransport) {
       return true;
     }
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -111,18 +113,57 @@ function toWebSocketBaseUrl(httpUrl: string): string {
   return `${wsProtocol}//${url.host}`;
 }
 
-export async function getWebSocketBaseUrl(): Promise<string> {
+export async function getWebSocketBaseUrl(path = "/ws"): Promise<string> {
   if (typeof window === 'undefined') return 'ws://localhost';
 
   if (isElectronEnvironment()) {
     const apiAvailable = await waitForElectronApi();
     if (!apiAvailable) {
-      throw new Error('Scientific plugin IPC is unavailable for WebSocket connection');
+      throw new Error('Renderer transport preselection IPC is unavailable for WebSocket connection');
     }
     const electronApi = (window as unknown as {
-      electronApi: { getScientificPluginUrl: () => Promise<string> };
+      electronApi: {
+        getScientificPluginUrl: () => Promise<string>;
+        preselectRendererTransport: (request: {
+          kind: "websocket";
+          path: string;
+        }) => Promise<{
+          schema_id: string;
+          kind: string;
+          method: null;
+          path: string;
+          target: "native-sidecar" | "scientific-plugin" | "reject";
+          base_url: string | null;
+          renderer_transport: boolean;
+          scientific_execution: boolean;
+          reason: string;
+          fallback_after_native_selection: string;
+          status: number;
+        }>;
+      };
     }).electronApi;
     try {
+      const decision = await electronApi.preselectRendererTransport({
+        kind: "websocket",
+        path,
+      });
+      if (
+        decision.schema_id !== "nirs4all.studio-renderer-transport-selection-decision.v1" ||
+        decision.kind !== "websocket" || decision.method !== null ||
+        decision.path !== path || decision.scientific_execution !== false ||
+        decision.fallback_after_native_selection !== "none"
+      ) {
+        throw new Error("Invalid renderer WebSocket transport decision");
+      }
+      if (decision.target === "reject") {
+        throw new Error("Native WebSocket transport rejected: " + decision.reason);
+      }
+      if (decision.target === "native-sidecar") {
+        if (!decision.renderer_transport || !decision.base_url) {
+          throw new Error("Incomplete native WebSocket transport decision");
+        }
+        return toWebSocketBaseUrl(decision.base_url);
+      }
       const backendUrl = await electronApi.getScientificPluginUrl();
       return toWebSocketBaseUrl(backendUrl);
     } catch (error) {
@@ -430,8 +471,9 @@ export class WebSocketClient {
  * @returns WebSocket client configured for the job
  */
 export async function createJobWebSocket(jobId: string): Promise<WebSocketClient> {
-  const baseUrl = await getWebSocketBaseUrl();
-  const url = `${baseUrl}/ws/job/${jobId}`;
+  const path = `/ws/job/${jobId}`;
+  const baseUrl = await getWebSocketBaseUrl(path);
+  const url = `${baseUrl}${path}`;
   return new WebSocketClient(url);
 }
 
@@ -442,8 +484,9 @@ export async function createJobWebSocket(jobId: string): Promise<WebSocketClient
  * @returns WebSocket client configured for training updates
  */
 export async function createTrainingWebSocket(jobId: string): Promise<WebSocketClient> {
-  const baseUrl = await getWebSocketBaseUrl();
-  const url = `${baseUrl}/ws/training/${jobId}`;
+  const path = `/ws/training/${jobId}`;
+  const baseUrl = await getWebSocketBaseUrl(path);
+  const url = `${baseUrl}${path}`;
   return new WebSocketClient(url);
 }
 

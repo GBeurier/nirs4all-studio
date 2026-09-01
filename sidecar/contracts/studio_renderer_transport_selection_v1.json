@@ -1,0 +1,86 @@
+{
+  "schema_id": "nirs4all.studio-renderer-transport-selection.v1",
+  "schema_version": 1,
+  "owner": "electron_main_process",
+  "ipc": "sidecar:preselectRendererTransport",
+  "decision_schema": "nirs4all.studio-renderer-transport-selection-decision.v1",
+  "preflight": {
+    "endpoint": "/sidecar/v1/capabilities",
+    "cache": "forbidden",
+    "per_request_or_connection": true,
+    "required_features": [
+      "renderer_transport_selection",
+      "renderer_http_transport",
+      "renderer_websocket_transport"
+    ]
+  },
+  "targets": ["native-sidecar", "scientific-plugin", "reject"],
+  "selection": {
+    "native_qualified_unavailable_or_mismatch": "reject",
+    "unmigrated_before_native_selection": "scientific-plugin",
+    "fallback_after_native_selection": "none",
+    "fastapi_or_uvicorn_acquire_after_native_candidate": "forbidden"
+  },
+  "http": {
+    "exact": [
+      "GET /health",
+      "GET /system/readiness",
+      "GET /system/status",
+      "GET /system/capabilities",
+      "GET /system/info",
+      "GET /system/build",
+      "GET /system/network",
+      "GET /system/env-coherence",
+      "GET /app/settings",
+      "PUT /app/settings",
+      "GET /app/favorites",
+      "POST /app/favorites",
+      "GET /app/config-path",
+      "POST /app/config-path",
+      "DELETE /app/config-path",
+      "GET /workspaces",
+      "GET /updates/version",
+      "GET /updates/runtime/status",
+      "GET /updates/settings",
+      "PUT /updates/settings",
+      "POST /runs/run-groups"
+    ],
+    "templates": [
+      "DELETE /app/favorites/{pipeline_id}",
+      "DELETE /workspaces/{workspace_id}",
+      "POST /workspaces/{workspace_id}/activate",
+      "GET /workspaces/{workspace_id}/runs",
+      "GET /workspaces/{workspace_id}/results",
+      "GET /workspaces/{workspace_id}/results/summary",
+      "GET /training/{job_id}",
+      "GET /automl/{job_id}",
+      "GET /updates/webapp/download-status/{job_id}",
+      "POST /training/{job_id}/stop",
+      "POST /automl/{job_id}/stop",
+      "POST /runs/execution-job-records/{job_id}/cancel",
+      "POST /runs/{run_id}/stop",
+      "POST /updates/webapp/download-cancel/{job_id}",
+      "GET /runs/execution-job-records/{job_id}",
+      "GET /runs/{run_id}/execution-job-record"
+    ],
+    "workspace_run_query": {
+      "allowed": ["source=unified|manifests|parquet", "refresh=true|false"],
+      "duplicates": "reject",
+      "unknown": "reject"
+    },
+    "run_detail": "owned_by_studio_run_detail_preselection_v1"
+  },
+  "websocket": {
+    "native": ["/ws/job/{job_id}", "/ws/training/{job_id}"],
+    "excluded": {
+      "/ws": "renderer_dynamic_subscribe_is_not_compatible_with_frozen_native_client_messages"
+    }
+  },
+  "capability_distinction": {
+    "submission_transport": "scientific_submission_transport",
+    "renderer_selection": "renderer_transport_selection",
+    "renderer_http": "renderer_http_transport",
+    "renderer_websocket": "renderer_websocket_transport",
+    "scientific_execution": false
+  }
+}

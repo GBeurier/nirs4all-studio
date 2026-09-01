@@ -18,31 +18,6 @@ const DEFAULT_API_BASE_URL = "/api";
 // Cache for the resolved backend URL in Electron mode
 let resolvedBackendUrl: string | null = null;
 let backendUrlPromise: Promise<string> | null = null;
-const NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS = new Set([
-  "/system/capabilities",
-  "/system/info",
-  "/system/build",
-  "/system/env-coherence",
-  "/updates/version",
-  "/updates/runtime/status",
-]);
-const NATIVE_SIDECAR_STATE_ENDPOINTS = new Set([
-  "/health",
-  "/app/settings",
-  "/app/favorites",
-  "/app/config-path",
-  "/workspaces",
-  "/system/status",
-  "/system/network",
-  "/updates/settings",
-]);
-const NATIVE_SIDECAR_WORKSPACE_STATE_ENDPOINT = /^\/workspaces\/[^/?]+(?:\/(activate))?$/;
-const NATIVE_SIDECAR_WORKSPACE_RUN_SUMMARIES_ENDPOINT =
-  /^\/workspaces\/[^/?]+\/runs(?:\?([^#]+))?$/;
-const NATIVE_SIDECAR_WORKSPACE_PIPELINE_SUMMARIES_ENDPOINT =
-  /^\/workspaces\/[^/?]+\/results$/;
-const NATIVE_SIDECAR_WORKSPACE_RESULTS_SUMMARY_ENDPOINT =
-  /^\/workspaces\/[^/?]+\/results\/summary$/;
 const WORKSPACE_RUN_DETAIL_ENDPOINT =
   /^\/workspaces\/([^/?]+)\/runs\/([^/?]+)$/;
 
@@ -71,6 +46,23 @@ interface ElectronBridgeApi {
     status: NativeSidecarStatus;
     url: string | null;
     pythonPluginHostConfigured: boolean;
+  }>;
+  preselectRendererTransport?: (request:
+    | { kind: "http"; method: string; path: string }
+    | { kind: "websocket"; path: string },
+  ) => Promise<{
+    schema_id: "nirs4all.studio-renderer-transport-selection-decision.v1";
+    kind: "http" | "websocket";
+    method: string | null;
+    path: string;
+    surface: string;
+    target: "native-sidecar" | "scientific-plugin" | "reject";
+    base_url: string | null;
+    renderer_transport: boolean;
+    scientific_execution: false;
+    reason: string;
+    fallback_after_native_selection: "none";
+    status: number;
   }>;
   preselectWorkspaceRunDetail?: (workspaceId: string) => Promise<{
     schema_id: "nirs4all.studio-run-detail-preselection-decision.v1";
@@ -122,6 +114,19 @@ async function waitForElectronApi(maxWaitMs: number = 5000): Promise<boolean> {
       (window as unknown as { electronApi?: ElectronBridgeApi }).electronApi
         ?.getScientificPluginUrl
     ) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return false;
+}
+
+async function waitForRendererTransportApi(
+  maxWaitMs: number = 5000,
+): Promise<boolean> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < maxWaitMs) {
+    if (getElectronBridge()?.preselectRendererTransport) {
       return true;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -206,32 +211,57 @@ async function resolveApiRoute(endpoint: string, method: string): Promise<ApiRou
   ) {
     return resolveWorkspaceRunDetailRoute(runDetail[1]);
   }
+  if (!isElectronEnvironment()) {
+    return { baseUrl: await getApiBaseUrl(), source: "backend" };
+  }
+  let selector = getElectronBridge()?.preselectRendererTransport;
+  if (!selector && await waitForRendererTransportApi()) {
+    selector = getElectronBridge()?.preselectRendererTransport;
+  }
+  if (!selector) {
+    throw {
+      detail: "Renderer transport preselection IPC is unavailable",
+      status: 503,
+    } satisfies ApiError;
+  }
+  const normalizedMethod = method.toUpperCase();
+  const decision = await selector({
+    kind: "http",
+    method: normalizedMethod,
+    path: endpoint,
+  });
   if (
-    !isNativeSidecarEndpoint(endpoint, method) ||
-    !isElectronEnvironment()
+    decision.schema_id !==
+      "nirs4all.studio-renderer-transport-selection-decision.v1" ||
+    decision.kind !== "http" ||
+    decision.method !== normalizedMethod ||
+    decision.path !== endpoint ||
+    decision.fallback_after_native_selection !== "none" ||
+    decision.scientific_execution !== false
   ) {
+    throw {
+      detail: "Renderer transport preselection returned an invalid decision",
+      status: 500,
+    } satisfies ApiError;
+  }
+  if (decision.target === "scientific-plugin") {
     return { baseUrl: await getApiBaseUrl(), source: "backend" };
   }
-  const sidecar = getElectronBridge()?.getNativeSidecarInfo;
-  if (!sidecar) {
-    return { baseUrl: await getApiBaseUrl(), source: "backend" };
+  if (decision.target === "reject") {
+    throw {
+      detail: `Renderer transport preselection rejected the request: ${decision.reason}`,
+      status: decision.status,
+    } satisfies ApiError;
   }
-  try {
-    const info = await sidecar();
-    if (
-      info.status === "running" &&
-      info.url &&
-      (!requiresPythonPluginHost(endpoint) || info.pythonPluginHostConfigured)
-    ) {
-      const baseUrl = `${info.url}/api`;
-      logger.info(`Using native sidecar route for ${endpoint}: ${baseUrl}`);
-      return { baseUrl, source: "native-sidecar" };
-    }
-    logger.info(`Native sidecar cannot serve ${endpoint} in its current state`);
-  } catch (error) {
-    logger.warn(`Failed to inspect native sidecar for ${endpoint}`, error);
+  if (!decision.renderer_transport || !decision.base_url) {
+    throw {
+      detail: "Native renderer transport decision is incomplete",
+      status: 500,
+    } satisfies ApiError;
   }
-  return { baseUrl: await getApiBaseUrl(), source: "backend" };
+  const baseUrl = `${decision.base_url}/api`;
+  logger.info(`Using preflighted native sidecar route for ${endpoint}: ${baseUrl}`);
+  return { baseUrl, source: "native-sidecar" };
 }
 
 async function resolveWorkspaceRunDetailRoute(
@@ -271,71 +301,6 @@ async function resolveWorkspaceRunDetailRoute(
     } satisfies ApiError;
   }
   return { baseUrl: `${info.url}/api`, source: "native-sidecar" };
-}
-
-function isNativeSidecarEndpoint(endpoint: string, method: string): boolean {
-  return (
-    NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS.has(endpoint) ||
-    NATIVE_SIDECAR_STATE_ENDPOINTS.has(endpoint) ||
-    endpoint.startsWith("/app/favorites/") ||
-    isNativeLinkedWorkspaceStateEndpoint(endpoint, method) ||
-    isNativeWorkspaceRunSummariesEndpoint(endpoint, method) ||
-    isNativeWorkspacePipelineSummariesEndpoint(endpoint, method) ||
-    isNativeWorkspaceResultsSummaryEndpoint(endpoint, method)
-  );
-}
-
-function isNativeLinkedWorkspaceStateEndpoint(endpoint: string, method: string): boolean {
-  const match = NATIVE_SIDECAR_WORKSPACE_STATE_ENDPOINT.exec(endpoint);
-  if (!match) return false;
-  const normalizedMethod = method.toUpperCase();
-  return (
-    (normalizedMethod === "DELETE" && match[1] === undefined) ||
-    (normalizedMethod === "POST" && match[1] === "activate")
-  );
-}
-
-function isNativeWorkspaceRunSummariesEndpoint(endpoint: string, method: string): boolean {
-  if (method.toUpperCase() !== "GET") return false;
-  const match = NATIVE_SIDECAR_WORKSPACE_RUN_SUMMARIES_ENDPOINT.exec(endpoint);
-  if (!match) return false;
-  const query = match[1];
-  if (query === undefined) return true;
-
-  const seen = new Set<string>();
-  for (const parameter of query.split("&")) {
-    const parts = parameter.split("=");
-    if (parts.length !== 2) return false;
-    const [name, value] = parts;
-    if (seen.has(name)) return false;
-    if (
-      (name === "source" && ["unified", "manifests", "parquet"].includes(value)) ||
-      (name === "refresh" && ["true", "false"].includes(value))
-    ) {
-      seen.add(name);
-      continue;
-    }
-    return false;
-  }
-  return seen.size > 0;
-}
-
-function isNativeWorkspacePipelineSummariesEndpoint(endpoint: string, method: string): boolean {
-  return (
-    method.toUpperCase() === "GET" &&
-    NATIVE_SIDECAR_WORKSPACE_PIPELINE_SUMMARIES_ENDPOINT.test(endpoint)
-  );
-}
-
-function isNativeWorkspaceResultsSummaryEndpoint(endpoint: string, method: string): boolean {
-  return (
-    method.toUpperCase() === "GET" &&
-    NATIVE_SIDECAR_WORKSPACE_RESULTS_SUMMARY_ENDPOINT.test(endpoint)
-  );
-}
-
-function requiresPythonPluginHost(endpoint: string): boolean {
-  return NATIVE_SIDECAR_PYTHON_PLUGIN_ENDPOINTS.has(endpoint);
 }
 
 export interface ApiError {

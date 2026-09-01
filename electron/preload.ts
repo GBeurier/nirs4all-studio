@@ -88,6 +88,24 @@ const electronApi = {
     error?: string;
   }> => ipcRenderer.invoke("sidecar:getInfo"),
 
+  preselectRendererTransport: (request:
+    | { kind: "http"; method: string; path: string }
+    | { kind: "websocket"; path: string },
+  ): Promise<{
+    schema_id: "nirs4all.studio-renderer-transport-selection-decision.v1";
+    kind: "http" | "websocket";
+    method: string | null;
+    path: string;
+    surface: string;
+    target: "native-sidecar" | "scientific-plugin" | "reject";
+    base_url: string | null;
+    renderer_transport: boolean;
+    scientific_execution: false;
+    reason: string;
+    fallback_after_native_selection: "none";
+    status: number;
+  }> => ipcRenderer.invoke("sidecar:preselectRendererTransport", request),
+
   preselectWorkspaceRunDetail: (
     workspaceId: string,
   ): Promise<{
