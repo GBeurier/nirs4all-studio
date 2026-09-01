@@ -19,6 +19,14 @@ interface NativeSidecarRouteInfo {
   url: string | null;
 }
 
+interface WorkspaceRoutePolicy {
+  pythonHttpDiagnosticEnabled: boolean;
+}
+
+const RUST_ONLY_POLICY: WorkspaceRoutePolicy = {
+  pythonHttpDiagnosticEnabled: false,
+};
+
 const DECISION_SCHEMA =
   "nirs4all.studio-run-detail-preselection-decision.v1" as const;
 
@@ -67,13 +75,14 @@ function isDecision(value: unknown): value is Omit<WorkspaceRunDetailPreselectio
  * verification and exact owner-callable preflight. This function does not
  * cache the decision or expose the resolved filesystem path. Exact Store v5
  * selects the native target only when the bounded CPython library host is
- * configured and ready; legacy storage selects the scientific plugin before
- * the target request.
+ * configured and ready. Legacy storage refuses in Rust-only mode; only an
+ * explicit process-wide diagnostic policy may select the Python HTTP owner.
  */
 export async function preselectWorkspaceRunDetail(
   workspaceId: string,
   sidecarInfo: () => NativeSidecarRouteInfo,
   request: typeof fetch = fetch,
+  policy: WorkspaceRoutePolicy = RUST_ONLY_POLICY,
 ): Promise<WorkspaceRunDetailPreselection> {
   if (!workspaceId || workspaceId.trim() !== workspaceId) {
     return {
@@ -83,9 +92,21 @@ export async function preselectWorkspaceRunDetail(
     };
   }
 
+
+  if (policy.pythonHttpDiagnosticEnabled) {
+    return scientificPluginDecision(
+      workspaceId,
+      "explicit_python_http_diagnostic_mode",
+    );
+  }
+
   const info = sidecarInfo();
   if (info.status !== "running" || !info.url) {
-    return scientificPluginDecision(workspaceId, "native_sidecar_unavailable");
+    return {
+      ...scientificPluginDecision(workspaceId, "native_sidecar_unavailable"),
+      target: "reject",
+      status: 503,
+    };
   }
 
   try {
@@ -101,6 +122,16 @@ export async function preselectWorkspaceRunDetail(
         ...scientificPluginDecision(workspaceId, "invalid_native_preselection_response"),
         target: "reject",
         status: 500,
+      };
+    }
+    if (body.target === "scientific-plugin") {
+      return {
+        ...scientificPluginDecision(
+          workspaceId,
+          "workspace_not_native_qualified_rust_only",
+        ),
+        target: "reject",
+        status: 501,
       };
     }
     return { ...body, status: response.status };

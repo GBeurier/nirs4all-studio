@@ -271,11 +271,19 @@ npm run electron:preview
 ```
 
 Electron starts the Rust control-plane sidecar and creates the desktop window
-without starting Python. A route that still belongs to the compatibility or
-scientific surface acquires the bundled/configured Python process lazily,
-single-flight, and waits for its readiness before returning a URL. WebSocket
-acquisition follows the same rule. Changing or restarting that scientific
-runtime never restarts the Rust control plane.
+without starting a Python HTTP server. In the normal desktop product every
+renderer HTTP/WebSocket request is preselected for a qualified Rust route;
+unmigrated routes fail closed before Python acquisition. The bundled/configured
+CPython runtime remains available only as the bounded stdio library/plugin host
+invoked by Rust.
+
+For R2 diagnosis only, `--enable-python-http-diagnostic` explicitly assigns the
+whole renderer session to the transitional FastAPI backend. This visible switch
+is never an automatic fallback. In development only, the exact environment
+value `NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1` is equivalent; packaged builds
+ignore that environment variable. Session-wide ownership keeps job creation,
+status, cancellation, and WebSockets on one backend. The FastAPI files remain
+packaged transitionally until their R3 physical removal.
 
 The native-backend migration currently has an explicit **hybrid transition**
 mode. Setting `NIRS4ALL_NATIVE_SIDECAR_PATH` to the absolute path of a built
@@ -286,8 +294,7 @@ session creation. In an all-in-one package,
 `NIRS4ALL_ENABLE_NATIVE_SIDECAR=1` selects the bundled
 `resources/backend/native/studio-sidecar` instead. It routes only explicitly
 migrated UI calls through the sidecar and never falls back to Python after a
-native route is selected; every other route family explicitly acquires FastAPI
-until it is migrated.
+native route is selected; every other route family refuses in Rust-only mode.
 When that opt-in sidecar runs
 from an all-in-one package, Electron passes its embedded interpreter to the
 sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; the explicit preflight verifies
@@ -302,12 +309,10 @@ do not fall back to FastAPI after sidecar selection. Run discovery is also
 served natively for `/api/workspaces/{workspace_id}/runs` when its query is
 empty or contains only one `source=unified|manifests|parquet` and one
 `refresh=true|false` value (in either order); duplicate or unknown query
-parameters remain on the legacy route. Workspace linking, pruning, scan
-mutations, and all scientific operations remain legacy routes.
-While update checks remain legacy, their Python manager observes the same
-atomically replaced update-settings file and invalidates its prerelease-release
-cache when that preference changes, so native settings take effect without a
-Studio restart.
+parameters are not native-qualified and therefore refuse in the normal desktop
+session. Workspace linking, pruning, scan mutations, and scientific surfaces
+not listed above are likewise unavailable until migrated (or while the explicit
+R2 diagnostic owner is selected).
 
 > **Note**: The webapp can run **without nirs4all installed** for pure UI development. The backend will report missing capabilities but the frontend is fully functional.
 

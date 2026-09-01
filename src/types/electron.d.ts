@@ -23,6 +23,8 @@ interface BackendInfo {
   url: string;
   error?: string;
   restartCount: number;
+  httpMode?: "rust-only" | "python-http-diagnostic";
+  activationSource?: "default" | "explicit-cli" | "explicit-dev-env";
 }
 
 interface BackendRestartResult {
@@ -89,11 +91,14 @@ interface ScientificPluginInfo {
   url: string | null;
   error?: string;
   restartCount: number;
+  httpMode?: "rust-only" | "python-http-diagnostic";
+  activationSource?: "default" | "explicit-cli" | "explicit-dev-env";
 }
 
 interface ScientificReadiness {
   scientific_status: string;
   scientific_requested: boolean;
+  python_http_mode?: "rust-only" | "python-http-diagnostic";
   core_ready: boolean;
   ml_ready: boolean;
   ml_loading: boolean;
@@ -197,14 +202,10 @@ interface ElectronApi {
    */
   getWindowSize(): Promise<{ width: number; height: number } | null>;
 
-  /**
-   * Get the port the backend is running on
-   */
+  /** Get the transitional port in explicit Python HTTP diagnostic mode. */
   getBackendPort(): Promise<number>;
 
-  /**
-   * Get the full backend URL (e.g., http://127.0.0.1:8000)
-   */
+  /** Get the transitional URL in explicit Python HTTP diagnostic mode. */
   getBackendUrl(): Promise<string>;
 
   /**
@@ -231,7 +232,7 @@ interface ElectronApi {
   /** Inspect the optional scientific/FastAPI plugin without activating it. */
   getScientificPluginInfo(): Promise<ScientificPluginInfo>;
 
-  /** Lazily start the scientific plugin, wait for readiness, and return its URL. */
+  /** Acquire FastAPI only after explicit process-wide diagnostic activation. */
   getScientificPluginUrl(): Promise<string>;
 
   /** Inspect scientific readiness without activating the plugin. */

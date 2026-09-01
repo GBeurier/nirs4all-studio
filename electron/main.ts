@@ -16,6 +16,12 @@ import { preselectWorkspaceRunDetail } from "./workspace-route-preselection";
 import { applyPortablePathOverrides } from "./portable-paths";
 import { ScientificPluginLifecycle } from "./scientific-plugin-lifecycle";
 import {
+  PYTHON_HTTP_DIAGNOSTIC_ENV,
+  PYTHON_HTTP_DIAGNOSTIC_SWITCH,
+  requirePythonHttpDiagnostic,
+  resolvePythonHttpDiagnosticPolicy,
+} from "./python-http-diagnostic-policy";
+import {
   getTelemetryConsentStatus,
   writeTelemetryConsent,
   type TelemetryConsentStatus,
@@ -128,6 +134,22 @@ const backendManager = new BackendManager();
 backendManager.setEnvManager(envManager);
 const nativeSidecarManager = new NativeSidecarManager();
 let nativePythonPluginHostStale = false;
+const pythonHttpDiagnosticPolicy = resolvePythonHttpDiagnosticPolicy({
+  isPackaged: app.isPackaged,
+  hasSwitch: (name) => app.commandLine.hasSwitch(name),
+  environmentValue: process.env[PYTHON_HTTP_DIAGNOSTIC_ENV],
+});
+
+if (pythonHttpDiagnosticPolicy.enabled) {
+  console.warn(
+    `[main] Python HTTP diagnostic mode explicitly enabled via ${pythonHttpDiagnosticPolicy.source}; ` +
+      "the renderer transport owner is FastAPI for this whole session",
+  );
+} else {
+  console.log(
+    `[main] Rust-only renderer transport; use --${PYTHON_HTTP_DIAGNOSTIC_SWITCH} only for explicit diagnostics`,
+  );
+}
 
 async function prepareScientificPlugin(): Promise<void> {
   // Development has an explicit repo-local venv fallback. Packaged runtimes
@@ -146,6 +168,7 @@ async function prepareScientificPlugin(): Promise<void> {
 const scientificPlugin = new ScientificPluginLifecycle(
   backendManager,
   prepareScientificPlugin,
+  () => requirePythonHttpDiagnostic(pythonHttpDiagnosticPolicy),
 );
 
 const ACTIVE_BACKEND_STATUSES = new Set<BackendStatus>([
@@ -155,6 +178,7 @@ const ACTIVE_BACKEND_STATUSES = new Set<BackendStatus>([
 ]);
 
 async function restartBackendAfterTelemetryChange(): Promise<boolean> {
+  if (!pythonHttpDiagnosticPolicy.enabled) return false;
   const status = backendManager.getInfo().status;
   if (!ACTIVE_BACKEND_STATUSES.has(status)) return false;
 
@@ -548,15 +572,21 @@ ipcMain.handle("telemetry:setConsent", async (_event, enabled: boolean) => {
 
 // IPC Handlers for backend management
 ipcMain.handle("backend:getPort", async () => {
+  requirePythonHttpDiagnostic(pythonHttpDiagnosticPolicy);
   return scientificPlugin.ensureRunning();
 });
 
 ipcMain.handle("backend:getUrl", async () => {
+  requirePythonHttpDiagnostic(pythonHttpDiagnosticPolicy);
   return scientificPlugin.getUrl();
 });
 
 ipcMain.handle("backend:getInfo", () => {
-  return backendManager.getInfo();
+  return {
+    ...backendManager.getInfo(),
+    httpMode: pythonHttpDiagnosticPolicy.mode,
+    activationSource: pythonHttpDiagnosticPolicy.source,
+  };
 });
 
 ipcMain.handle("sidecar:getInfo", () => {
@@ -564,13 +594,17 @@ ipcMain.handle("sidecar:getInfo", () => {
 });
 
 ipcMain.handle("sidecar:preselectRendererTransport", (_event, request: unknown) =>
-  preselectRendererTransport(request, getNativeSidecarInfo),
+  preselectRendererTransport(request, getNativeSidecarInfo, fetch, {
+    pythonHttpDiagnosticEnabled: pythonHttpDiagnosticPolicy.enabled,
+  }),
 );
 
 ipcMain.handle(
   "sidecar:preselectWorkspaceRunDetail",
   (_event, workspaceId: string) =>
-    preselectWorkspaceRunDetail(workspaceId, getNativeSidecarInfo),
+    preselectWorkspaceRunDetail(workspaceId, getNativeSidecarInfo, fetch, {
+      pythonHttpDiagnosticEnabled: pythonHttpDiagnosticPolicy.enabled,
+    }),
 );
 
 ipcMain.handle("control:getInfo", () => {
@@ -582,11 +616,19 @@ ipcMain.handle("control:getInfo", () => {
   };
 });
 
-ipcMain.handle("scientific:getInfo", () => scientificPlugin.getInfo());
-ipcMain.handle("scientific:getUrl", () => scientificPlugin.getUrl());
+ipcMain.handle("scientific:getInfo", () => ({
+  ...scientificPlugin.getInfo(),
+  httpMode: pythonHttpDiagnosticPolicy.mode,
+  activationSource: pythonHttpDiagnosticPolicy.source,
+}));
+ipcMain.handle("scientific:getUrl", () => {
+  requirePythonHttpDiagnostic(pythonHttpDiagnosticPolicy);
+  return scientificPlugin.getUrl();
+});
 
 async function restartScientificPlugin(options?: { skipEnsure?: boolean }) {
   try {
+    requirePythonHttpDiagnostic(pythonHttpDiagnosticPolicy);
     const port = await scientificPlugin.restart(!!options?.skipEnsure);
     return { success: true, port };
   } catch (error) {
@@ -608,6 +650,7 @@ async function getScientificReadiness() {
     return {
       scientific_status: plugin.status,
       scientific_requested: plugin.requested,
+      python_http_mode: pythonHttpDiagnosticPolicy.mode,
       core_ready: false,
       ml_ready: false,
       ml_loading:
@@ -626,11 +669,13 @@ async function getScientificReadiness() {
         ...(await response.json() as Record<string, unknown>),
         scientific_status: plugin.status,
         scientific_requested: plugin.requested,
+        python_http_mode: pythonHttpDiagnosticPolicy.mode,
       };
     }
     return {
       scientific_status: plugin.status,
       scientific_requested: plugin.requested,
+      python_http_mode: pythonHttpDiagnosticPolicy.mode,
       core_ready: false,
       ml_ready: false,
       ml_loading: false,
@@ -641,6 +686,7 @@ async function getScientificReadiness() {
     return {
       scientific_status: plugin.status,
       scientific_requested: plugin.requested,
+      python_http_mode: pythonHttpDiagnosticPolicy.mode,
       core_ready: false,
       ml_ready: false,
       ml_loading: false,
@@ -750,9 +796,11 @@ ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
     nativePythonPluginHostStale = true;
     scientificPlugin.clearFailure();
 
-    // Runtime setup configures the optional scientific plugin. It stays
-    // inactive until a FastAPI route or WebSocket explicitly acquires it.
-    console.log("Python environment ready; scientific plugin remains inactive");
+    // Runtime setup configures the bounded CPython library/plugin host used by
+    // the Rust sidecar. It does not enable or start the diagnostic HTTP server.
+    console.log(
+      "Python library/plugin host ready; Python HTTP diagnostic remains policy-gated",
+    );
 
     return { success: true };
   } catch (error) {
@@ -783,11 +831,12 @@ app.whenReady().then(async () => {
   // less obvious backend-start step.
   envManager.validateConfiguredState();
 
-  // Packaged products always start the Rust control plane. It still reports
-  // partial API coverage and never redirects an unmigrated route to Python.
-  // Creating a native session has no Python dependency. Compatibility and
-  // scientific routes acquire Uvicorn explicitly through IPC when needed.
-  console.log("Creating native session with scientific plugin inactive");
+  // Packaged products always start the Rust control plane. The default session
+  // refuses every unmigrated renderer route and cannot acquire Uvicorn. The
+  // bounded CPython stdio host remains an optional sidecar dependency.
+  console.log(
+    `Creating native session (renderer owner: ${pythonHttpDiagnosticPolicy.mode})`,
+  );
   await startNativeSession({
     startControlPlane: startNativeSidecar,
     createWindow,

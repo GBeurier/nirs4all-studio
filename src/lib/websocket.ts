@@ -164,6 +164,12 @@ export async function getWebSocketBaseUrl(path = "/ws"): Promise<string> {
         }
         return toWebSocketBaseUrl(decision.base_url);
       }
+      if (
+        decision.target !== "scientific-plugin" ||
+        decision.reason !== "explicit_python_http_diagnostic_mode"
+      ) {
+        throw new Error("Python HTTP WebSocket target was not explicitly diagnostic-selected");
+      }
       const backendUrl = await electronApi.getScientificPluginUrl();
       return toWebSocketBaseUrl(backendUrl);
     } catch (error) {

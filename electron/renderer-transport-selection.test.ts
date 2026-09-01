@@ -13,6 +13,9 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
     protocol_version: "studio-sidecar-r1",
     features: {
       renderer_transport_selection: true,
+      renderer_rust_only_default: true,
+      implicit_python_http_fallback: false,
+      unmigrated_renderer_routes_fail_closed: true,
       renderer_http_transport: true,
       renderer_websocket_transport: true,
       scientific_submission_transport: true,
@@ -83,19 +86,57 @@ describe("renderer transport preselection", () => {
     });
   });
 
-  it("does not inspect the sidecar for an unmigrated route or incompatible main WebSocket", async () => {
+  it("rejects unmigrated HTTP and WebSocket routes without inspecting or acquiring Python", async () => {
     const info = vi.fn(running);
     const request = vi.fn();
     await expect(preselectRendererTransport(
       { kind: "http", method: "GET", path: "/datasets" },
       info,
       request,
-    )).resolves.toMatchObject({ target: "scientific-plugin", surface: "unmigrated" });
+    )).resolves.toMatchObject({
+      target: "reject",
+      surface: "unmigrated",
+      reason: "route_not_native_qualified_rust_only",
+      status: 501,
+    });
     await expect(preselectRendererTransport(
       { kind: "websocket", path: "/ws" },
       info,
       request,
-    )).resolves.toMatchObject({ target: "scientific-plugin", surface: "unmigrated" });
+    )).resolves.toMatchObject({
+      target: "reject",
+      surface: "unmigrated",
+      reason: "route_not_native_qualified_rust_only",
+      status: 501,
+    });
+    expect(info).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("uses Python HTTP only as an explicit session-wide diagnostic owner", async () => {
+    const info = vi.fn(running);
+    const request = vi.fn();
+    const policy = { pythonHttpDiagnosticEnabled: true };
+
+    for (const candidate of [
+      { kind: "http" as const, method: "POST", path: "/training/start" },
+      { kind: "http" as const, method: "GET", path: "/training/job-1" },
+      { kind: "http" as const, method: "POST", path: "/training/job-1/stop" },
+      { kind: "websocket" as const, path: "/ws/training/job-1" },
+    ]) {
+      await expect(preselectRendererTransport(
+        candidate,
+        info,
+        request,
+        policy,
+      )).resolves.toMatchObject({
+        target: "scientific-plugin",
+        surface: "python-http-diagnostic",
+        reason: "explicit_python_http_diagnostic_mode",
+        fallback_after_native_selection: "none",
+      });
+    }
+
     expect(info).not.toHaveBeenCalled();
     expect(request).not.toHaveBeenCalled();
   });

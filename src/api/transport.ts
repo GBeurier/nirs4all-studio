@@ -78,7 +78,7 @@ interface ElectronBridgeApi {
 
 type ApiRoute = {
   baseUrl: string;
-  source: "backend" | "native-sidecar";
+  source: "web-backend" | "python-http-diagnostic" | "native-sidecar";
 };
 
 /**
@@ -101,23 +101,6 @@ function isElectronEnvironment(): boolean {
     return true;
   }
 
-  return false;
-}
-
-/**
- * Wait for electronApi to become available (preload script may take time)
- */
-async function waitForElectronApi(maxWaitMs: number = 5000): Promise<boolean> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < maxWaitMs) {
-    if (
-      (window as unknown as { electronApi?: ElectronBridgeApi }).electronApi
-        ?.getScientificPluginUrl
-    ) {
-      return true;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
   return false;
 }
 
@@ -145,9 +128,8 @@ function getElectronBridge(): ElectronBridgeApi | null {
 }
 
 /**
- * Get the API base URL, resolving Electron backend URL if needed.
- * In Electron mode, this fetches the dynamic port from the main process.
- * In web mode, it returns "/api" (which Vite proxies to the backend).
+ * Get the web API base URL. Electron requests must always carry a route through
+ * preselection; a generic base URL could otherwise acquire Python implicitly.
  */
 export async function getApiBaseUrl(): Promise<string> {
   // Return cached URL if available
@@ -162,35 +144,48 @@ export async function getApiBaseUrl(): Promise<string> {
 
   // Check if we're in Electron mode
   if (isElectronEnvironment()) {
-    backendUrlPromise = (async () => {
-      try {
-        // Wait for electronApi to be available
-        const apiAvailable = await waitForElectronApi();
-        if (!apiAvailable) {
-          logger.error("electronApi not available after waiting");
-          throw new Error("electronApi not available");
-        }
-
-        const electronApi = getElectronBridge();
-        if (!electronApi?.getScientificPluginUrl) {
-          throw new Error("Scientific plugin IPC is unavailable");
-        }
-        const backendUrl = await electronApi.getScientificPluginUrl();
-        resolvedBackendUrl = `${backendUrl}/api`;
-        logger.info(`Using Electron scientific plugin URL: ${resolvedBackendUrl}`);
-        return resolvedBackendUrl;
-      } catch (error) {
-        logger.error("Failed to acquire Electron scientific plugin:", error);
-        backendUrlPromise = null;
-        throw error;
-      }
-    })();
-    return backendUrlPromise;
+    throw {
+      detail: "Electron API requests require explicit renderer transport preselection",
+      status: 500,
+      code: "STUDIO_RENDERER_ROUTE_REQUIRED",
+    } satisfies ApiError;
   }
 
   // Web mode - use relative URL (Vite proxy)
   resolvedBackendUrl = DEFAULT_API_BASE_URL;
   return resolvedBackendUrl;
+}
+
+async function acquirePythonHttpDiagnosticRoute(): Promise<ApiRoute> {
+  if (resolvedBackendUrl !== null) {
+    return {
+      baseUrl: resolvedBackendUrl,
+      source: "python-http-diagnostic",
+    };
+  }
+  if (!backendUrlPromise) {
+    const bridge = getElectronBridge();
+    if (!bridge?.getScientificPluginUrl) {
+      throw {
+        detail: "Explicit Python HTTP diagnostic IPC is unavailable",
+        status: 503,
+        code: "STUDIO_PYTHON_HTTP_DIAGNOSTIC_UNAVAILABLE",
+      } satisfies ApiError;
+    }
+    backendUrlPromise = bridge.getScientificPluginUrl()
+      .then((backendUrl) => {
+        resolvedBackendUrl = `${backendUrl}/api`;
+        return resolvedBackendUrl;
+      })
+      .catch((error) => {
+        backendUrlPromise = null;
+        throw error;
+      });
+  }
+  return {
+    baseUrl: await backendUrlPromise,
+    source: "python-http-diagnostic",
+  };
 }
 
 /**
@@ -212,7 +207,7 @@ async function resolveApiRoute(endpoint: string, method: string): Promise<ApiRou
     return resolveWorkspaceRunDetailRoute(runDetail[1]);
   }
   if (!isElectronEnvironment()) {
-    return { baseUrl: await getApiBaseUrl(), source: "backend" };
+    return { baseUrl: await getApiBaseUrl(), source: "web-backend" };
   }
   let selector = getElectronBridge()?.preselectRendererTransport;
   if (!selector && await waitForRendererTransportApi()) {
@@ -245,12 +240,23 @@ async function resolveApiRoute(endpoint: string, method: string): Promise<ApiRou
     } satisfies ApiError;
   }
   if (decision.target === "scientific-plugin") {
-    return { baseUrl: await getApiBaseUrl(), source: "backend" };
+    if (
+      decision.surface !== "python-http-diagnostic" ||
+      decision.reason !== "explicit_python_http_diagnostic_mode"
+    ) {
+      throw {
+        detail: "Python HTTP target was not explicitly diagnostic-selected",
+        status: 500,
+        code: "STUDIO_INVALID_PYTHON_HTTP_SELECTION",
+      } satisfies ApiError;
+    }
+    return acquirePythonHttpDiagnosticRoute();
   }
   if (decision.target === "reject") {
     throw {
       detail: `Renderer transport preselection rejected the request: ${decision.reason}`,
       status: decision.status,
+      code: "STUDIO_NATIVE_ROUTE_UNAVAILABLE",
     } satisfies ApiError;
   }
   if (!decision.renderer_transport || !decision.base_url) {
@@ -269,7 +275,11 @@ async function resolveWorkspaceRunDetailRoute(
 ): Promise<ApiRoute> {
   const bridge = getElectronBridge();
   if (!bridge?.preselectWorkspaceRunDetail) {
-    return { baseUrl: await getApiBaseUrl(), source: "backend" };
+    throw {
+      detail: "Native run-detail preselection IPC is unavailable",
+      status: 503,
+      code: "STUDIO_RUN_DETAIL_PRESELECTION_UNAVAILABLE",
+    } satisfies ApiError;
   }
   let workspaceId: string;
   try {
@@ -280,12 +290,20 @@ async function resolveWorkspaceRunDetailRoute(
 
   const decision = await bridge.preselectWorkspaceRunDetail(workspaceId);
   if (decision.target === "scientific-plugin") {
-    return { baseUrl: await getApiBaseUrl(), source: "backend" };
+    if (decision.reason !== "explicit_python_http_diagnostic_mode") {
+      throw {
+        detail: "Python HTTP run-detail target was not explicitly diagnostic-selected",
+        status: 500,
+        code: "STUDIO_INVALID_PYTHON_HTTP_SELECTION",
+      } satisfies ApiError;
+    }
+    return acquirePythonHttpDiagnosticRoute();
   }
   if (decision.target === "reject") {
     throw {
       detail: `Native run-detail preselection rejected the request: ${decision.reason}`,
       status: decision.status,
+      code: "STUDIO_NATIVE_RUN_DETAIL_UNAVAILABLE",
     } satisfies ApiError;
   }
 
@@ -306,6 +324,7 @@ async function resolveWorkspaceRunDetailRoute(
 export interface ApiError {
   detail: string;
   status: number;
+  code?: string;
 }
 
 export interface RequestOptions extends Omit<RequestInit, "body"> {
@@ -509,7 +528,7 @@ async function fetchWithRetry(
       lastError = error;
       if (
         attempt === 0 &&
-        route.source === "backend" &&
+        route.source === "python-http-diagnostic" &&
         isRetryableElectronNetworkError(error)
       ) {
         logger.warn(

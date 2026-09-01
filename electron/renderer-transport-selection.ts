@@ -22,6 +22,10 @@ export interface RendererTransportSelection {
   status: number;
 }
 
+export interface RendererTransportPolicy {
+  pythonHttpDiagnosticEnabled: boolean;
+}
+
 interface NativeSidecarRouteInfo {
   status: "disabled" | "starting" | "running" | "stopped" | "error";
   url: string | null;
@@ -40,6 +44,9 @@ const PROTOCOL_VERSION = "studio-sidecar-r1";
 const IDENTIFIER = "[A-Za-z0-9._-]{1,256}";
 const identifierPath = (prefix: string, suffix = "") =>
   new RegExp(`^${prefix}(${IDENTIFIER})${suffix}$`);
+const RUST_ONLY_POLICY: RendererTransportPolicy = {
+  pythonHttpDiagnosticEnabled: false,
+};
 
 const exactHttpRoutes = new Map<string, NativeSurface>([
   ["GET /health", { name: "health", capability: "health" }],
@@ -214,6 +221,7 @@ export async function preselectRendererTransport(
   rawRequest: unknown,
   sidecarInfo: () => NativeSidecarRouteInfo,
   request: typeof fetch = fetch,
+  policy: RendererTransportPolicy = RUST_ONLY_POLICY,
 ): Promise<RendererTransportSelection> {
   const normalized = normalizeRequest(rawRequest);
   if (!normalized) {
@@ -224,6 +232,19 @@ export async function preselectRendererTransport(
     return decision(normalized, "invalid", "reject", "invalid_route_path", 400);
   }
 
+  // The transitional FastAPI backend is a process-wide diagnostic owner, not
+  // a per-route fallback. Preselecting it for the whole renderer session keeps
+  // creation/status/cancellation/WebSocket job ownership coherent.
+  if (policy.pythonHttpDiagnosticEnabled) {
+    return decision(
+      normalized,
+      "python-http-diagnostic",
+      "scientific-plugin",
+      "explicit_python_http_diagnostic_mode",
+      200,
+    );
+  }
+
   const surface = normalized.kind === "http"
     ? classifyHttp(normalized.method, normalized.path)
     : classifyWebSocket(normalized.path);
@@ -231,7 +252,13 @@ export async function preselectRendererTransport(
     if (isNativeShapedCandidate(normalized)) {
       return decision(normalized, "invalid-native-candidate", "reject", "native_route_contract_mismatch", 400);
     }
-    return decision(normalized, "unmigrated", "scientific-plugin", "route_not_native_qualified", 200);
+    return decision(
+      normalized,
+      "unmigrated",
+      "reject",
+      "route_not_native_qualified_rust_only",
+      501,
+    );
   }
 
   const info = sidecarInfo();
@@ -260,6 +287,9 @@ export async function preselectRendererTransport(
       capabilities.protocol_version !== PROTOCOL_VERSION ||
       !features || typeof features !== "object" || Array.isArray(features) ||
       (features as Record<string, unknown>).renderer_transport_selection !== true ||
+      (features as Record<string, unknown>).renderer_rust_only_default !== true ||
+      (features as Record<string, unknown>).implicit_python_http_fallback !== false ||
+      (features as Record<string, unknown>).unmigrated_renderer_routes_fail_closed !== true ||
       (features as Record<string, unknown>)[
         normalized.kind === "http"
           ? "renderer_http_transport"

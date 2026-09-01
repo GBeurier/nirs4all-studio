@@ -22,9 +22,10 @@ export interface ScientificPluginInfo {
 /**
  * Owns the optional FastAPI compatibility/scientific plugin lifecycle.
  *
- * Merely constructing or inspecting this object never starts Python. Callers
- * must explicitly acquire the URL, which performs one shared, blocking start
- * and only returns once the backend health check has passed.
+ * Merely constructing or inspecting this object never starts Python. Even URL
+ * acquisition is authorized first by the process-wide diagnostic policy,
+ * before runtime preparation or spawn. An authorized diagnostic acquisition
+ * performs one shared, blocking start and waits for backend health.
  */
 export class ScientificPluginLifecycle {
   private activationPromise: Promise<number> | null = null;
@@ -34,6 +35,7 @@ export class ScientificPluginLifecycle {
   constructor(
     private readonly backend: ScientificPluginBackend,
     private readonly prepare: () => Promise<void>,
+    private readonly authorizeActivation: () => void = () => undefined,
   ) {}
 
   getInfo(): ScientificPluginInfo {
@@ -52,6 +54,7 @@ export class ScientificPluginLifecycle {
   }
 
   async ensureRunning(): Promise<number> {
+    this.authorizeActivation();
     const info = this.backend.getInfo();
     if (info.status === "running") return info.port;
     if (this.activationPromise) return this.activationPromise;
@@ -91,6 +94,7 @@ export class ScientificPluginLifecycle {
   }
 
   async restart(skipPrepare = false): Promise<number> {
+    this.authorizeActivation();
     this.requested = true;
     this.activationError = null;
     if (!skipPrepare) await this.prepare();
