@@ -1111,6 +1111,7 @@ class TestWorkspaceResultsSummaryEndpoint:
             metric="r2",
             n=1,
             score_column="cv_val_score",
+            ascending=False,
         )
         repository.close.assert_called_once_with()
 

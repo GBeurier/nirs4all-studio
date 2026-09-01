@@ -313,6 +313,7 @@ def _query_top_chains_for_results_summary(
     dataset_name: str,
     metric: str | None,
     n: int,
+    higher_is_better: bool,
 ) -> list[dict[str, Any]]:
     """Return repository-ranked top CV rows for one dataset."""
     query_top_chains = getattr(source, "query_top_chains", None)
@@ -328,6 +329,7 @@ def _query_top_chains_for_results_summary(
             metric=metric,
             n=n,
             score_column="cv_val_score",
+            ascending=not higher_is_better,
         )
     except Exception:
         return []
@@ -496,6 +498,7 @@ def _build_results_summary_payload(
             dataset_name=dataset_name,
             metric=metric,
             n=n,
+            higher_is_better=higher_is_better,
         )
 
         top_cv_rows: list[dict[str, Any]] = []
