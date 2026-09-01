@@ -55,6 +55,16 @@ function createElectronApiMock(
       url: null,
       pythonPluginHostConfigured: false,
     }),
+    preselectWorkspaceRunDetail: vi.fn().mockResolvedValue({
+      schema_id: "nirs4all.studio-run-detail-preselection-decision.v1",
+      workspace_id: "workspace-a",
+      target: "scientific-plugin",
+      verified_store_v5: false,
+      store_schema_version: null,
+      reason: "legacy_manifest_or_store_absent",
+      fallback_after_native_selection: "none",
+      status: 200,
+    }),
     getControlPlaneInfo: vi.fn().mockResolvedValue({
       role: "control-plane",
       ready: true,
@@ -856,7 +866,7 @@ describe("API client request handling", () => {
     );
   });
 
-  it("keeps run detail on FastAPI while the owner contract forbids cutover", async () => {
+  it("keeps run detail on FastAPI while owner HTTP-input materialization is unavailable", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({ detail: "Run 'missing-run' not found" }, 404),
     );
@@ -869,7 +879,11 @@ describe("API client request handling", () => {
       pythonPluginHostConfigured: false,
     });
     vi.stubGlobal("fetch", fetchMock);
-    window.electronApi = createElectronApiMock({ getNativeSidecarInfo });
+    const preselectWorkspaceRunDetail = vi.fn();
+    window.electronApi = createElectronApiMock({
+      getNativeSidecarInfo,
+      preselectWorkspaceRunDetail,
+    });
 
     await expect(
       api.get("/workspaces/workspace-a/runs/missing-run"),
@@ -877,6 +891,7 @@ describe("API client request handling", () => {
       detail: "Run 'missing-run' not found",
       status: 404,
     });
+    expect(preselectWorkspaceRunDetail).not.toHaveBeenCalled();
     expect(getNativeSidecarInfo).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(

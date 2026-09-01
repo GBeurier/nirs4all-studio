@@ -1,0 +1,87 @@
+{
+  "schema_id": "nirs4all.studio-run-detail-preselection.v1",
+  "schema_version": 1,
+  "workspace_store_schema_version": 5,
+  "scope": {
+    "method": "GET",
+    "target_path": "/api/workspaces/{workspace_id}/runs/{run_id}",
+    "preselection_ipc": "sidecar:preselectWorkspaceRunDetail",
+    "native_probe_path": "/sidecar/v1/workspaces/{workspace_id}/run-detail-preselection",
+    "frequency": "once_per_target_request",
+    "cache": "forbidden",
+    "activation": "published_not_selected_by_renderer_until_owner_materializer_available"
+  },
+  "identity_resolution": {
+    "owner": "native_app_settings_catalogue",
+    "mapping": "exact_linked_workspace_id_to_persisted_path",
+    "filesystem_path_exposure_to_renderer": "forbidden",
+    "missing_workspace": {"decision": "reject", "http_status": 404}
+  },
+  "verification": {
+    "reader": "workspace_store.preflight_run_detail_projection",
+    "open_mode": "sqlite_immutable_read_only",
+    "checks": [
+      "published_contract_exact",
+      "store_path_canonical_local_regular_file",
+      "no_sqlite_journal_sidecar",
+      "file_stamp_unchanged",
+      "schema_version_exactly_5",
+      "run_detail_required_tables_and_columns"
+    ],
+    "target_read_repeats_all_checks_when_registered": true,
+    "time_of_check_time_of_use_change": "native_409_no_retry"
+  },
+  "owner_materialization": {
+    "required_callable": "nirs4all.pipeline.storage.studio_run_detail_http_inputs_v1",
+    "required_output": "nirs4all.studio-run-detail-http.v1",
+    "current_rust_reader_output": "studio_run_detail_v1",
+    "missing_fields": [
+      "source_branch",
+      "pipeline_splitters",
+      "pipeline_runtime",
+      "runtime_column_provenance",
+      "results",
+      "results_count"
+    ],
+    "consumer_parse_expanded_config": "forbidden",
+    "status": "unavailable",
+    "route_registration": "forbidden_until_available"
+  },
+  "decisions": {
+    "native-sidecar": {
+      "condition": "all_verification_checks_pass_and_owner_http_inputs_materializer_available",
+      "verified_store_v5": true,
+      "target_request_count": 1,
+      "currently_reachable": false
+    },
+    "scientific-plugin": {
+      "condition": "store_sqlite_absent_or_schema_version_not_5",
+      "verified_store_v5": false,
+      "meaning": "legacy_manifest_or_legacy_store_branch",
+      "selected_before_target_http": true
+    },
+    "reject": {
+      "condition": "workspace_missing_or_store_present_but_unreadable_busy_changed_projection_incomplete_or_owner_materializer_unavailable",
+      "verified_store_v5": "boolean_preserved_from_store_preflight",
+      "target_request_count": 0,
+      "http_status": [404, 409, 500]
+    }
+  },
+  "transport": {
+    "native_route_requires_running_sidecar": true,
+    "sidecar_unavailable_before_selection": "scientific-plugin",
+    "scientific_plugin_acquired_only_after_decision": true,
+    "fallback_after_native_selection": "none",
+    "native_network_retry": "none",
+    "native_http_error_retry": "none"
+  },
+  "response_branch_proof": {
+    "store_v5_composition_contract": "nirs4all.studio-run-detail-composition.v1",
+    "composition_contract_sha256": "512a6f1d3aefc0362ff4f2f7aa2b94a4c833fb146063901f76de51844fb339ca",
+    "owner_http_contract": "nirs4all.studio-run-detail-http.v1",
+    "owner_http_contract_sha256": "773ee2bd36e154a9090c8e2978c1f7703eebff68e02c0e3c2dab2ca30eeb0a8d",
+    "legacy_branch": "not_reimplemented_native_selected_scientific_plugin_before_target_request",
+    "route_status": "forbidden",
+    "blocked_on": "studio_run_detail_http_inputs_v1_owner_materializer_boundary"
+  }
+}

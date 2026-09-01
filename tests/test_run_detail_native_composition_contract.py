@@ -113,3 +113,29 @@ def test_fastapi_oracle_matches_the_native_composition_golden() -> None:
 
     assert actual == expected
     assert owner == before
+
+
+def test_preselection_contract_keeps_legacy_branch_before_target_http() -> None:
+    contract_path = CONTRACTS / "studio_run_detail_preselection_v1.json"
+    assert hashlib.sha256(contract_path.read_bytes()).hexdigest() == (
+        "0067c85d4c542a3d210664dcd1628820dcc1713e1f82171f88d9f8292d702044"
+    )
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+
+    assert contract["scope"]["frequency"] == "once_per_target_request"
+    assert contract["scope"]["cache"] == "forbidden"
+    assert (
+        contract["decisions"]["scientific-plugin"]["condition"]
+        == "store_sqlite_absent_or_schema_version_not_5"
+    )
+    assert contract["decisions"]["scientific-plugin"][
+        "selected_before_target_http"
+    ]
+    assert contract["decisions"]["reject"]["target_request_count"] == 0
+    assert contract["transport"]["fallback_after_native_selection"] == "none"
+    assert contract["owner_materialization"]["status"] == "unavailable"
+    assert (
+        contract["owner_materialization"]["consumer_parse_expanded_config"]
+        == "forbidden"
+    )
+    assert not contract["decisions"]["native-sidecar"]["currently_reachable"]

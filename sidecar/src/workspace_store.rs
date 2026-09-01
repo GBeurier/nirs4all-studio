@@ -501,6 +501,48 @@ pub fn read_run_detail_projection(
     result
 }
 
+/// Verify that a linked workspace can serve the exact Studio run-detail v1
+/// projection without reading a particular run.
+///
+/// This is the authoritative route-preselection probe. It applies the same
+/// contract, immutable snapshot, schema, and required-column checks as
+/// [`read_run_detail_projection`]. A future selected request must repeat those
+/// checks, so a workspace change between preselection and the read fails
+/// closed. The current native target route remains unregistered.
+///
+/// # Errors
+///
+/// Returns [`WorkspaceStoreReadError`] when the workspace is not an exact,
+/// immutable Store-v5 run-detail source.
+pub fn preflight_run_detail_projection(
+    workspace_path: &Path,
+) -> Result<(), WorkspaceStoreReadError> {
+    validate_contract()?;
+    validate_run_detail_http_contract()?;
+    let database = canonical_workspace_store_path(workspace_path)?;
+    let before = file_stamp(&database)?;
+    refuse_live_journals(&database)?;
+    let uri = immutable_read_only_uri(&database)?;
+    let connection = Connection::open_with_flags(
+        uri,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    validate_database(&connection)?;
+    validate_table_columns(&connection, "runs", &RUN_DETAIL_RUN_COLUMNS)?;
+    validate_table_columns(&connection, "pipelines", &RUN_DETAIL_PIPELINE_COLUMNS)?;
+    validate_table_columns(&connection, "chains", &RUN_DETAIL_CHAIN_COLUMNS)?;
+    validate_table_columns(&connection, "logs", &RUN_DETAIL_LOG_COLUMNS)?;
+    drop(connection);
+    refuse_live_journals(&database)?;
+    if file_stamp(&database)? != before {
+        return Err(WorkspaceStoreReadError::ChangedDuringRead);
+    }
+    Ok(())
+}
+
 /// Return the public Store v5 pipeline-summary page for a linked workspace.
 ///
 /// This deliberately implements only the filter-free, bounded projection.

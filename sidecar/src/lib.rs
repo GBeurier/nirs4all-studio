@@ -21,16 +21,19 @@ use std::{
 
 use atomicwrites::replace_atomic;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use percent_encoding::percent_decode_str;
 use serde_json::{json, Value};
 
 pub mod conformal_store;
 pub mod job_lifecycle;
 mod results_summary;
 pub mod run_detail;
+pub mod run_detail_preselection;
 mod settings;
 pub mod workspace_store;
 
 use results_summary::read_results_summary;
+use run_detail_preselection::preselect_run_detail;
 pub use settings::DatasetLinkIdentity;
 use settings::{AppSettingsStore, ConfigPathError};
 use workspace_store::{
@@ -450,7 +453,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":false,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -627,6 +630,9 @@ pub fn route_request_with_body(
         (_, "/api/app/favorites") => method_not_allowed(method, path, "GET, POST"),
         (_, "/api/app/config-path") => method_not_allowed(method, path, "GET, POST, DELETE"),
         (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
+        _ if workspace_run_detail_preselection_path(path) => {
+            route_workspace_run_detail_preselection(state, method, path)
+        }
         _ if workspace_runs_path(path) => route_workspace_run_summaries(state, method, path),
         _ if workspace_results_summary_path(path) => {
             route_workspace_results_summary(state, method, path)
@@ -870,6 +876,29 @@ fn workspace_runs_path(path: &str) -> bool {
     )
 }
 
+fn decoded_path_segment(value: &str) -> Option<String> {
+    percent_decode_str(value)
+        .decode_utf8()
+        .ok()
+        .map(std::borrow::Cow::into_owned)
+        .filter(|value| !value.is_empty() && !value.contains('/'))
+}
+
+fn workspace_run_detail_preselection_workspace(path: &str) -> Option<String> {
+    let suffix = path.strip_prefix("/sidecar/v1/workspaces/")?;
+    let mut segments = suffix.split('/');
+    match (segments.next(), segments.next(), segments.next()) {
+        (Some(workspace_id), Some("run-detail-preselection"), None) if !workspace_id.is_empty() => {
+            decoded_path_segment(workspace_id)
+        }
+        _ => None,
+    }
+}
+
+fn workspace_run_detail_preselection_path(path: &str) -> bool {
+    workspace_run_detail_preselection_workspace(path).is_some()
+}
+
 fn workspace_run_discovery_query_supported(query: Option<&str>) -> bool {
     let Some(query) = query else {
         return true;
@@ -956,6 +985,43 @@ fn route_workspace_run_summaries(state: &SidecarState, method: &str, path: &str)
         }
         Err(error) => workspace_store_read_error_response(&error),
     }
+}
+
+fn route_workspace_run_detail_preselection(
+    state: &SidecarState,
+    method: &str,
+    path: &str,
+) -> HttpResponse {
+    if method != "GET" {
+        return method_not_allowed(method, path, "GET");
+    }
+    let Some(workspace_id) = workspace_run_detail_preselection_workspace(path) else {
+        return linked_workspace_route_not_found(path);
+    };
+    let workspace_path = match state.app_settings.linked_workspace_path(&workspace_id) {
+        Ok(Some(workspace_path)) => workspace_path,
+        Ok(None) => {
+            return HttpResponse::json(
+                404,
+                json!({
+                    "schema_id": "nirs4all.studio-run-detail-preselection-decision.v1",
+                    "workspace_id": workspace_id,
+                    "target": "reject",
+                    "verified_store_v5": false,
+                    "store_schema_version": null,
+                    "reason": "workspace_not_found",
+                    "fallback_after_native_selection": "none",
+                })
+                .to_string(),
+            );
+        }
+        Err(error) => return app_settings_storage_error("preselect run detail", &error),
+    };
+    let decision = preselect_run_detail(&workspace_path);
+    HttpResponse::json(
+        decision.status,
+        decision.response(&workspace_id).to_string(),
+    )
 }
 
 fn route_workspace_pipeline_summaries(
@@ -2248,7 +2314,9 @@ fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpRe
         );
     }
     if request.query.is_some()
-        && (workspace_results_path(&request.path) || workspace_results_summary_path(&request.path))
+        && (workspace_run_detail_preselection_path(&request.path)
+            || workspace_results_path(&request.path)
+            || workspace_results_summary_path(&request.path))
     {
         return error_response(
             404,
