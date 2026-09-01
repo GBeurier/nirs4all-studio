@@ -248,6 +248,19 @@ restricts channels to `job:<opaque-id>` and job lifecycle events, and accepts
 only bounded JSON-object data. This is a scaffold, not a claim of legacy
 WebSocket parity or a live subscription service.
 
+`contracts/studio_job_lifecycle_v1.json` freezes the R2 cutover target without
+changing that R1 capability claim. It separates the sequenced native internal
+stream from the renderer-facing Studio V1 envelope, records the five-state job
+lifecycle and cooperative cancellation semantics, and anchors emitted event
+shapes to `docs/contracts/studio-v1/fixtures/websocket.snapshot.json`. In
+particular, the legacy manager publishes cancellation as `job_failed` with
+`"Job was cancelled"`; the declared `job_cancelled` enum member remains
+unreachable unless a reviewed compatibility exception changes the frozen
+contract. Route selection remains forbidden until the native scientific job
+registry, real WebSocket upgrade/connection manager, legacy endpoint mapping,
+HTTP state parity, renderer selection, and differential gate all exist. Once a
+request is selected native, neither Uvicorn nor FastAPI may be retried.
+
 ## Coverage and rollback
 
 Covered: local liveness/readiness, frozen bootstrap health/readiness,
