@@ -291,8 +291,12 @@ routes are `/api/health`, `/api/system/capabilities`, `/api/system/info`, and
 `/api/updates/runtime/status`, `/api/updates/settings`, plus `/api/app/settings`,
 `/api/app/favorites`, `/api/app/config-path`, the `/api/workspaces` catalogue,
 and native workspace activation/unlink mutations. They are served by Rust and
-do not fall back to FastAPI after sidecar selection; workspace linking,
-pruning, scanning, and all scientific operations remain legacy routes.
+do not fall back to FastAPI after sidecar selection. Run discovery is also
+served natively for `/api/workspaces/{workspace_id}/runs` when its query is
+empty or contains only one `source=unified|manifests|parquet` and one
+`refresh=true|false` value (in either order); duplicate or unknown query
+parameters remain on the legacy route. Workspace linking, pruning, scan
+mutations, and all scientific operations remain legacy routes.
 While update checks remain legacy, their Python manager observes the same
 atomically replaced update-settings file and invalidates its prerelease-release
 cache when that preference changes, so native settings take effect without a
