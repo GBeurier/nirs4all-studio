@@ -22,7 +22,11 @@ nursery = "warn"
 [dependencies]
 atomicwrites = "0.4.4"
 base64 = "0.22"
+cap-std = "3"
 nirs4all = "=0.3.22"
+# Minimal immutable snapshot of selected IO commit fce1e1f; see its provenance
+# and offline inventory verifier. It must become a published identity by LOCK-RELEASE.
+nirs4all-io = { version = "=0.1.6", path = "vendor/nirs4all-io-fce/upstream/crates/nirs4all-io" }
 percent-encoding = "2.3"
 rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde_json = "1.0"

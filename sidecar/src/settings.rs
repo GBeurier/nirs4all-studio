@@ -52,6 +52,11 @@ pub enum ConfigPathError {
 
 impl AppSettingsStore {
     #[must_use]
+    pub fn config_dir(&self) -> &Path {
+        &self.config_dir
+    }
+
+    #[must_use]
     pub fn from_environment() -> Self {
         Self::with_config_paths(resolve_config_dir(), default_config_dir())
     }

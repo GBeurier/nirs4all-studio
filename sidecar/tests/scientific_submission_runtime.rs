@@ -17,7 +17,9 @@ use studio_sidecar::{
         ScientificExecutorSelection, ScientificJobExecutor, ScientificJobTerminal,
         ScientificSubmissionPreflight,
     },
-    route_request, route_request_with_body, SidecarState, MAX_REQUEST_BODY_BYTES,
+    route_request, route_request_with_body,
+    scientific_request_resolver::ScientificRequestResolver,
+    SidecarState, MAX_REQUEST_BODY_BYTES,
 };
 
 #[derive(Debug, Default)]
@@ -43,6 +45,7 @@ impl ScientificJobExecutor for CompletingScientificExecutor {
         Ok(ScientificExecutorSelection {
             execution_backend: "dag-ml-core".into(),
             execution_mode: Some("bounded-library-host".into()),
+            prepared_payload: json!({}),
         })
     }
 
@@ -81,6 +84,44 @@ struct ImmediateCancelAckExecutor {
     terminal: Mutex<Option<Arc<dyn ScientificJobTerminal>>>,
 }
 
+#[derive(Debug)]
+struct ResolvingExecutor {
+    resolver: ScientificRequestResolver,
+}
+
+impl ScientificJobExecutor for ResolvingExecutor {
+    fn is_selected(&self) -> bool {
+        true
+    }
+
+    fn preflight_submission(
+        &self,
+        request: &ScientificSubmissionPreflight,
+    ) -> Result<ScientificExecutorSelection, JobExecutorError> {
+        let prepared_payload = self
+            .resolver
+            .resolve(request)
+            .map_err(|_| JobExecutorError::PreflightRefused)?;
+        Ok(ScientificExecutorSelection {
+            execution_backend: "dag-ml-core".into(),
+            execution_mode: Some("bounded-cpython-stdio".into()),
+            prepared_payload,
+        })
+    }
+
+    fn submit_scientific(
+        &self,
+        _request: &ScientificExecutionRequest,
+        _terminal: Arc<dyn ScientificJobTerminal>,
+    ) -> Result<(), JobExecutorError> {
+        panic!("a refused resolver preflight must never submit")
+    }
+
+    fn request_cooperative_cancel(&self, _job_id: &str) -> Result<(), JobExecutorError> {
+        Err(JobExecutorError::CancellationRefused)
+    }
+}
+
 impl ScientificJobExecutor for ImmediateCancelAckExecutor {
     fn is_selected(&self) -> bool {
         true
@@ -93,6 +134,7 @@ impl ScientificJobExecutor for ImmediateCancelAckExecutor {
         Ok(ScientificExecutorSelection {
             execution_backend: "dag-ml-core".into(),
             execution_mode: Some("bounded-library-host".into()),
+            prepared_payload: json!({}),
         })
     }
 
@@ -133,6 +175,7 @@ impl ScientificJobExecutor for RecordingScientificExecutor {
         Ok(ScientificExecutorSelection {
             execution_backend: "dag-ml-core".into(),
             execution_mode: Some("bounded-library-host".into()),
+            prepared_payload: json!({}),
         })
     }
 
@@ -351,6 +394,39 @@ fn invalid_and_oversized_submissions_never_call_the_executor_or_write_a_job() {
     assert_eq!(response.status, 413);
     assert_eq!(executor.preflights.load(Ordering::Relaxed), 0);
     assert_eq!(executor.submissions.load(Ordering::Relaxed), 0);
+    assert_eq!(fs::read_dir(workspace.join("runs")).unwrap().count(), 0);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn resolver_id_mismatch_is_refused_before_registry_events_or_durable_mutation() {
+    let root = test_directory("resolver-id-mismatch");
+    let config = root.join("config");
+    let workspace = root.join("workspace");
+    configure_active_workspace(&config, &workspace);
+    let runtime = Arc::new(NativeJobRuntime::with_executor(Arc::new(
+        ResolvingExecutor {
+            resolver: ScientificRequestResolver::new(&config),
+        },
+    )));
+    let mut state =
+        SidecarState::with_native_jobs_and_app_settings_dir(Arc::clone(&runtime), &config);
+    let mut payload = valid_payload();
+    payload["legacyConfig"]["execution_backend"] = json!("local-python");
+    payload["legacyConfig"]["pipeline_ids"] = json!(["pipeline-other"]);
+    payload["legacyConfig"]["split_group_by_by_dataset"] = json!({});
+    payload["strictCampaignSpecs"]["splitSpecs"][0]["campaign"]["executionBackend"] =
+        json!("local-python");
+
+    let response = route_request_with_body(
+        &mut state,
+        "POST",
+        "/api/runs/run-groups",
+        &serde_json::to_vec(&payload).unwrap(),
+    );
+    assert_eq!(response.status, 503);
+    assert_eq!(runtime.published_event_count(), 0);
+    assert_eq!(runtime.durable_write_count(), 0);
     assert_eq!(fs::read_dir(workspace.join("runs")).unwrap().count(), 0);
     fs::remove_dir_all(root).unwrap();
 }

@@ -294,10 +294,13 @@ verifies and starts the bundled content-addressed
 UI calls through Rust; every other route family refuses before fetch in the
 normal session. Electron passes the selected embedded interpreter to the
 sidecar solely as `NIRS4ALL_PYTHON_PLUGIN_HOST`; the explicit preflight verifies
-the interpreter and scientific callable identities. The bounded stdio worker
-and Rust-owned terminal callback are implemented, but product scientific
-execution remains unavailable because the current saved run-group payload has
-no selected Rust resolver to the callable's path-free matrix contract. The first UI-backed native
+the interpreter and scientific callable identities. The bounded stdio worker,
+Rust-owned terminal callback, and native saved-input resolver are implemented.
+On qualified Unix launches, the resolver accepts only one train-only numeric
+regression dataset and an explicit saved KFold + PLS pipeline, delegates
+assembly to `nirs4all-io`, and passes a path-free matrix payload to CPython.
+Other scientific shapes fail before job/event/durable mutation; Windows stays
+unavailable until process-tree termination is qualified. The first UI-backed native
 routes are `/api/health`, `/api/system/capabilities`, `/api/system/info`, and
 `/api/system/env-coherence`, `/api/system/network`, `/api/updates/version`,
 `/api/updates/runtime/status`, `/api/updates/settings`, plus `/api/app/settings`,

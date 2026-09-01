@@ -308,7 +308,7 @@ impl JobRecord {
 }
 
 /// Bounded native job-state registry with terminal-only eviction.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct JobRegistry {
     jobs: BTreeMap<String, JobRecord>,
     capacity: usize,

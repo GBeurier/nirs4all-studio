@@ -1,0 +1,23 @@
+# vendor-corpus convention profile (Appendix G) -- the headline new capability:
+# a folder of one-spectrum-per-file vendor files + a reference table.
+# N vendor files = N samples; targets joined from the reference by filename stem
+# (or an id column). Spectra are identified by format sniffing via nirs4all-formats.
+profile = "vendor-corpus"
+version = 1
+
+[spectra]
+match = "by-format-sniff"
+formats = ["opus", "jcamp", "spc", "asd", "sed", "sig", "spa", "dx", "0"]
+
+[reference]
+names = ["y", "ref", "reference", "targets", "labels", "meta", "metadata"]
+
+[join]
+sample_key = "filename_stem"   # or an id column in the reference table
+on_missing = "warn"            # warn | drop | error
+on_duplicate_stem = "warn"     # warn | error
+multi_spectra_per_sample = "reps"  # reps | error
+
+[match]
+case_insensitive = true
+recursive = true

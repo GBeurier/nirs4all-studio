@@ -1,0 +1,36 @@
+# nirs4all-classic convention profile (Appendix G).
+# Patterns copied verbatim (lowercased) from nirs4all's FolderParser.FILE_PATTERNS
+# so this profile reproduces FolderParser matches exactly. COPY_PROVENANCE #4.
+profile = "nirs4all-classic"
+version = 1
+
+[roles]
+train_x = ["xcal", "x_cal", "cal_x", "calx", "train_x", "trainx", "x_train", "xtrain"]
+test_x = ["xval", "x_val", "val_x", "valx", "xtest", "x_test", "test_x", "testx"]
+train_y = ["ycal", "y_cal", "cal_y", "caly", "train_y", "trainy", "y_train", "ytrain"]
+test_y = ["ytest", "y_test", "test_y", "testy", "yval", "y_val", "val_y", "valy"]
+train_group = [
+    "mcal", "m_cal", "cal_m", "calm", "train_m", "trainm", "m_train", "mtrain",
+    "metacal", "meta_cal", "cal_meta", "calmeta", "train_meta", "trainmeta", "meta_train", "metatrain",
+    "metadatacal", "metadata_cal", "cal_metadata", "calmetadata", "train_metadata", "trainmetadata", "metadata_train", "metadatatrain",
+]
+test_group = [
+    "mtest", "m_test", "test_m", "testm", "mval", "m_val", "val_m", "valm",
+    "metatest", "meta_test", "test_meta", "testmeta", "metaval", "meta_val", "val_meta", "valmeta",
+    "metadatatest", "metadata_test", "test_metadata", "testmetadata", "metadataval", "metadata_val", "val_metadata", "valmetadata",
+]
+folds = ["folds", "fold", "cv_folds", "cvfolds", "cross_validation", "crossvalidation", "cv", "splits"]
+
+[bare]
+x = ["x"]
+y = ["y"]
+meta = ["m", "meta", "metadata", "group"]
+
+[match]
+short_pattern_word_boundary = true
+case_insensitive = true
+recursive = false
+# "from-formats-registry": the resolver supplies the supported-extension set so
+# vendor formats are scannable too (not CSV-only). A default CSV-family set is
+# used when no registry is available.
+extensions = ["from-formats-registry"]
