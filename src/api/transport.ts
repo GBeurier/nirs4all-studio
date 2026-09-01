@@ -562,10 +562,21 @@ async function parseBoundedJsonResponse(
     throw new RangeError("Bounded JSON response limit must be a safe integer");
   }
 
+  const reader = response.body?.getReader();
+  const cancelReader = async () => {
+    if (!reader) return;
+    try {
+      await reader.cancel();
+    } catch {
+      // The response refusal remains authoritative if cancellation fails.
+    }
+  };
+
   const contentLength = response.headers.get("content-length");
   if (contentLength !== null) {
     const normalized = contentLength.trim();
     if (!/^\d+$/.test(normalized)) {
+      await cancelReader();
       throw boundedJsonResponseError(
         "Bounded JSON response has an invalid Content-Length",
       );
@@ -575,13 +586,13 @@ async function parseBoundedJsonResponse(
       !Number.isSafeInteger(declaredBytes) ||
       declaredBytes > maximumBytes
     ) {
+      await cancelReader();
       throw boundedJsonResponseError(
         `Bounded JSON response exceeds the ${maximumBytes}-byte limit`,
       );
     }
   }
 
-  const reader = response.body?.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
   if (reader) {
@@ -590,11 +601,7 @@ async function parseBoundedJsonResponse(
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > maximumBytes) {
-        try {
-          await reader.cancel();
-        } catch {
-          // The size violation remains authoritative if cancellation fails.
-        }
+        await cancelReader();
         throw boundedJsonResponseError(
           `Bounded JSON response exceeds the ${maximumBytes}-byte limit`,
         );

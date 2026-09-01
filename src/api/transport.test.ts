@@ -458,6 +458,34 @@ describe("API client request handling", () => {
     });
   });
 
+  it.each([
+    ["invalid", "unknown"],
+    ["oversized", String(MAX_BOUNDED_JSON_BYTES + 1)],
+  ])(
+    "cancels an open response stream for %s Content-Length",
+    async (_label, contentLength) => {
+      const cancel = vi.fn();
+      const stream = new ReadableStream<Uint8Array>({ cancel });
+      installNativeArchiveResponse(
+        new Response(stream, {
+          headers: { "Content-Length": contentLength },
+        }),
+      );
+
+      await expect(
+        api.postBoundedJson(
+          "/predict/archive-v2",
+          {},
+          MAX_BOUNDED_JSON_BYTES,
+        ),
+      ).rejects.toMatchObject({
+        status: 502,
+        code: "STUDIO_BOUNDED_JSON_RESPONSE_INVALID",
+      });
+      expect(cancel).toHaveBeenCalledOnce();
+    },
+  );
+
   it("does not trust a false lower Content-Length", async () => {
     const body = `${jsonWithExactBytes(MAX_BOUNDED_JSON_BYTES)} `;
     installNativeArchiveResponse(
