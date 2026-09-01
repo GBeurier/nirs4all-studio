@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { api } from "@/api/transport";
 import { useSynthesisBuilder } from "./contexts";
 
 interface ExportDialogProps {
@@ -56,10 +57,12 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const { data: workspace } = useQuery({
     queryKey: ["workspace"],
     queryFn: async () => {
-      const response = await fetch("/api/workspace");
-      if (!response.ok) return null;
-      const data = await response.json();
-      return data.workspace;
+      try {
+        const data = await api.get<{ workspace: unknown }>("/workspace");
+        return data.workspace;
+      } catch {
+        return null;
+      }
     },
   });
 
@@ -80,23 +83,21 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         })),
       };
 
-      const response = await fetch("/api/synthesis/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      try {
+        return await api.post<GenerateResponse>("/synthesis/generate", {
           config,
           export_to_workspace: exportMode === "workspace",
           export_to_csv: exportMode === "csv" ? customPath : null,
           dataset_name: datasetName || undefined,
-        }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || "Generation failed");
+        });
+      } catch (error) {
+        const detail = error && typeof error === "object" && "detail" in error
+          ? (error as { detail?: unknown }).detail
+          : null;
+        throw new Error(
+          typeof detail === "string" && detail ? detail : "Generation failed",
+        );
       }
-
-      return response.json() as Promise<GenerateResponse>;
     },
     onSuccess: () => {
       // Could add a toast notification here
