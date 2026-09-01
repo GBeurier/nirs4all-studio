@@ -25,6 +25,7 @@ use serde_json::{json, Value};
 
 pub mod conformal_store;
 mod results_summary;
+pub mod run_detail;
 mod settings;
 pub mod workspace_store;
 

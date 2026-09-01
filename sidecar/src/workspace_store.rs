@@ -928,7 +928,7 @@ fn validate_run_detail_cutover_policy(projection: &Value) -> Result<(), Workspac
     Ok(())
 }
 
-fn validate_run_detail_http_contract() -> Result<(), WorkspaceStoreReadError> {
+pub(crate) fn validate_run_detail_http_contract() -> Result<(), WorkspaceStoreReadError> {
     let contract: Value = serde_json::from_str(STUDIO_RUN_DETAIL_HTTP_CONTRACT)
         .map_err(|error| WorkspaceStoreReadError::Contract(error.to_string()))?;
     validate_run_detail_http_contract_value(&contract)
@@ -966,10 +966,11 @@ fn validate_run_detail_http_owner_inputs(contract: &Value) -> Result<(), Workspa
             "group_by",
         ],
     });
+    let expected_runtime_dependency = expected_run_detail_runtime_dependency();
     let expected_owner_oracle = json!({
         "callable": "nirs4all.pipeline.storage.studio_run_detail_http_inputs_v1",
         "scope": "store_v5_owner_inputs_only",
-        "open_mode": "delegated_to_workspace_store_read_studio_run_detail_v1",
+        "open_mode": "composed_immutable_reads_guarded_by_before_after_database_stamp",
         "writes_or_cache": "forbidden",
         "not_found": "null",
     });
@@ -977,6 +978,8 @@ fn validate_run_detail_http_owner_inputs(contract: &Value) -> Result<(), Workspa
         "source_branch",
         "run_detail",
         "pipeline_splitters",
+        "pipeline_runtime",
+        "runtime_column_provenance",
         "results",
         "results_count",
     ]);
@@ -984,7 +987,11 @@ fn validate_run_detail_http_owner_inputs(contract: &Value) -> Result<(), Workspa
         "ordering": "run_detail.pipelines_order",
         "entry_fields": ["pipeline_id", "splitter"],
         "splitter": "splitter_config_output_or_null",
+        "materialization": "derived_by_owner_oracle_before_consumer_boundary",
+        "consumer_reimplementation": "forbidden",
     });
+    let (expected_pipeline_runtime, expected_runtime_provenance) =
+        expected_run_detail_runtime_outputs();
     let expected_results_mapping = json!({
         "id": "pipeline.pipeline_id",
         "run_id": "pipeline.run_id",
@@ -1010,10 +1017,14 @@ fn validate_run_detail_http_owner_inputs(contract: &Value) -> Result<(), Workspa
         || contract.get("request") != Some(&expected_request)
         || contract.pointer("/dependencies/workspace_store_read") != Some(&expected_read_dependency)
         || contract.pointer("/dependencies/splitter_config") != Some(&expected_splitter_dependency)
+        || contract.pointer("/dependencies/pipeline_runtime") != Some(&expected_runtime_dependency)
         || contract.get("owner_oracle") != Some(&expected_owner_oracle)
         || contract.pointer("/owner_output/fields") != Some(&expected_owner_fields)
         || contract.pointer("/owner_output/pipeline_splitters")
             != Some(&expected_pipeline_splitters)
+        || contract.pointer("/owner_output/pipeline_runtime") != Some(&expected_pipeline_runtime)
+        || contract.pointer("/owner_output/runtime_column_provenance")
+            != Some(&expected_runtime_provenance)
         || contract.pointer("/owner_output/results/mapping") != Some(&expected_results_mapping)
     {
         return Err(WorkspaceStoreReadError::Contract(
@@ -1021,6 +1032,64 @@ fn validate_run_detail_http_owner_inputs(contract: &Value) -> Result<(), Workspa
         ));
     }
     Ok(())
+}
+
+fn expected_run_detail_runtime_dependency() -> Value {
+    json!({
+        "owner_method": "WorkspaceStore.get_studio_run_detail_runtime_v1",
+        "source_table": "pipelines",
+        "required_columns": ["pipeline_id", "run_id", "created_at"],
+        "optional_columns": [
+            "engine",
+            "engine_requested",
+            "engine_diagnostics",
+            "runtime_manifest",
+            "fallback_policy",
+            "native_result_refs",
+        ],
+        "optional_column_selection": "fixed_allowlist_present_column_or_sql_null_alias",
+        "absent_optional_column": "null_with_absent_in_store_v5_provenance",
+        "present_text_columns": ["engine", "engine_requested"],
+        "present_json_shapes": {
+            "engine_diagnostics": "array_or_null",
+            "runtime_manifest": "object_or_null",
+            "fallback_policy": "object_or_null",
+            "native_result_refs": "array_or_null",
+        },
+        "malformed_or_wrong_shape": "reject",
+        "non_finite_numbers": "replace_with_null_recursively",
+        "ordering": "pipeline_created_at_desc_then_pipeline_id_asc",
+    })
+}
+
+fn expected_run_detail_runtime_outputs() -> (Value, Value) {
+    let fields = json!([
+        "engine",
+        "engine_requested",
+        "engine_diagnostics",
+        "runtime_manifest",
+        "fallback_policy",
+        "native_result_refs",
+    ]);
+    (
+        json!({
+            "ordering": "run_detail.pipelines_order",
+            "entry_fields": [
+                "pipeline_id",
+                "engine",
+                "engine_requested",
+                "engine_diagnostics",
+                "runtime_manifest",
+                "fallback_policy",
+                "native_result_refs",
+            ],
+            "source": "pipeline_runtime_dependency",
+        }),
+        json!({
+            "fields": fields,
+            "values": ["stored_column", "absent_in_store_v5"],
+        }),
+    )
 }
 
 fn validate_run_detail_http_cutover(contract: &Value) -> Result<(), WorkspaceStoreReadError> {
@@ -1036,6 +1105,7 @@ fn validate_run_detail_http_cutover(contract: &Value) -> Result<(), WorkspaceSto
     });
     let expected_runtime_composition = json!({
         "owner": "studio_http_adapter",
+        "required_input": "owner_output.pipeline_runtime_and_runtime_column_provenance",
         "required_outputs": [
             "engine",
             "engine_requested",
