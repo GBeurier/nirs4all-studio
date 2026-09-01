@@ -1,0 +1,134 @@
+{
+  "schema_id": "nirs4all.studio-job-lifecycle.v1",
+  "schema_version": 1,
+  "legacy_contract": "studio-v1",
+  "ownership": {
+    "control_plane": "studio_sidecar_rust",
+    "job_registry": "studio_sidecar_rust",
+    "websocket_server": "studio_sidecar_rust",
+    "scientific_execution": "nirs4all_core_or_preflighted_python_plugin",
+    "fastapi_or_uvicorn": "forbidden_after_native_selection",
+    "fallback_after_native_selection": "none"
+  },
+  "job": {
+    "statuses": ["pending", "running", "completed", "failed", "cancelled"],
+    "types": [
+      "analysis",
+      "automl",
+      "evaluation",
+      "export",
+      "maintenance",
+      "prediction",
+      "training",
+      "update_apply",
+      "update_download",
+      "venv_create",
+      "venv_install"
+    ],
+    "terminal_statuses": ["completed", "failed", "cancelled"],
+    "transitions": {
+      "pending": ["running", "cancelled"],
+      "running": ["completed", "failed", "cancelled"],
+      "completed": [],
+      "failed": [],
+      "cancelled": []
+    },
+    "public_fields": [
+      "id",
+      "type",
+      "status",
+      "created_at",
+      "started_at",
+      "completed_at",
+      "progress",
+      "progress_message",
+      "config",
+      "result",
+      "error",
+      "metrics",
+      "duration_seconds"
+    ],
+    "progress": {
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "monotonic": false,
+      "completed_value": 100.0
+    },
+    "cancellation": {
+      "legacy_endpoints": [
+        "/api/training/{job_id}/stop",
+        "/api/automl/{job_id}/stop",
+        "/api/runs/execution-job-records/{job_id}/cancel",
+        "/api/runs/{run_id}/stop",
+        "/api/updates/webapp/download-cancel/{job_id}"
+      ],
+      "accepted_from": ["pending", "running"],
+      "rejected_from": ["completed", "failed", "cancelled"],
+      "pending_is_terminal_immediately": true,
+      "running_is_cooperative": true,
+      "legacy_terminal_event": "job_failed",
+      "legacy_terminal_error": "Job was cancelled",
+      "job_cancelled_event_status": "declared_but_unreachable"
+    }
+  },
+  "legacy_websocket": {
+    "endpoints": ["/ws", "/ws/job/{job_id}", "/ws/training/{job_id}"],
+    "renderer_envelope_keys": ["type", "channel", "data", "timestamp"],
+    "channel": {
+      "job": "job:{job_id}",
+      "system": "system"
+    },
+    "timestamp": "iso8601",
+    "automatic_subscription": {
+      "/ws/job/{job_id}": "job:{job_id}",
+      "/ws/training/{job_id}": "job:{job_id}"
+    },
+    "client_messages": {
+      "ping": "accepted",
+      "subscribe": "refused_by_frozen_studio_v1",
+      "unsubscribe": "refused_by_frozen_studio_v1"
+    },
+    "required_emitted_job_events": [
+      "job_started",
+      "job_progress",
+      "job_metrics",
+      "job_completed",
+      "job_failed"
+    ],
+    "declared_unreachable_job_events": ["job_cancelled"],
+    "compatibility": "exact_frozen_payload_shapes_or_approved_ledger_exception"
+  },
+  "native_internal_stream": {
+    "protocol_version": "studio-sidecar-r1",
+    "envelope_keys": ["protocol_version", "channel", "sequence", "timestamp", "type", "data"],
+    "sequence": "strictly_increasing_per_channel",
+    "exposure": "internal_only_until_renderer_adapter_preserves_legacy_envelope"
+  },
+  "delivery": {
+    "ordering": "job_state_transition_order_per_channel",
+    "reconnect": "client_reconnects_then_reads_authoritative_job_state",
+    "event_replay": "not_promised_by_studio_v1",
+    "authoritative_recovery": "http_job_state",
+    "duplicate_terminal_events": "forbidden",
+    "events_after_terminal": "forbidden"
+  },
+  "cutover": {
+    "route_selection": "forbidden",
+    "blocked_on": [
+      "native_scientific_job_registry",
+      "native_websocket_upgrade_and_connection_manager",
+      "legacy_endpoint_aliases_or_exact_transport_remap",
+      "http_job_state_parity",
+      "websocket_differential_parity",
+      "renderer_native_websocket_selection"
+    ],
+    "required_gate": "STU-004",
+    "fallback_after_native_selection": "none"
+  },
+  "oracle": {
+    "job_manager": "api/jobs/manager.py",
+    "websocket_manager": "websocket/manager.py",
+    "behavior_snapshot": "docs/contracts/studio-v1/fixtures/behavior.snapshot.json",
+    "frozen_snapshot": "docs/contracts/studio-v1/fixtures/websocket.snapshot.json"
+  }
+}
