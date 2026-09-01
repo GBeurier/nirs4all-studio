@@ -354,6 +354,7 @@ export function PipelineExecutionDialog({
       setIsQuickRunning(false);
     }
   }, [
+    allowFallback,
     execute,
     navigate,
     onOpenChange,
@@ -361,6 +362,7 @@ export function PipelineExecutionDialog({
     pipelineName,
     queryClient,
     runName,
+    runtimeEngine,
     selectedDataset,
     selectedExecutionSplitGroupBy,
     selectedRobustnessLaunchPayload,
