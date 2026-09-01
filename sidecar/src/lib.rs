@@ -25,6 +25,7 @@ use percent_encoding::percent_decode_str;
 use serde_json::{json, Value};
 
 pub mod conformal_store;
+pub mod execution_job_records;
 pub mod job_http;
 pub mod job_lifecycle;
 mod results_summary;
@@ -35,6 +36,10 @@ mod settings;
 pub mod websocket_transport;
 pub mod workspace_store;
 
+use execution_job_records::{
+    compose_execution_job_record_response, match_durable_execution_job_record_route,
+    read_execution_job_record, DurableExecutionJobRecordRoute, ExecutionJobRecordReadError,
+};
 use job_http::{is_native_job_http_path, route_native_job_request, NativeJobRuntime};
 use results_summary::read_results_summary;
 use run_detail::compose_store_run_detail;
@@ -46,9 +51,9 @@ use websocket_transport::{
     handle_websocket_connection, LegacyWebSocketEndpoint, WebSocketConnectionManager,
 };
 use workspace_store::{
-    preflight_run_detail_projection, read_pipeline_summaries, read_run_summaries,
-    WorkspaceStorePipelineSummary, WorkspaceStoreReadError, WorkspaceStoreRunSummary,
-    DEFAULT_PIPELINE_SUMMARIES_LIMIT, MAX_RUN_SUMMARIES,
+    preflight_run_detail_projection, read_pipeline_summaries, read_run_detail_projection,
+    read_run_summaries, WorkspaceStorePipelineSummary, WorkspaceStoreReadError,
+    WorkspaceStoreRunSummary, DEFAULT_PIPELINE_SUMMARIES_LIMIT, MAX_RUN_SUMMARIES,
 };
 
 pub const PROTOCOL_VERSION: &str = "studio-sidecar-r1";
@@ -494,7 +499,7 @@ impl SidecarState {
     pub fn capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":false,\"durable_execution_job_record_reads\":false,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":false,\"durable_execution_job_record_reads\":true,\"scientific_execution\":false,\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":true,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":false}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -685,6 +690,9 @@ pub fn route_request_with_body(
         _ if path.starts_with("/api/app/favorites/") => route_app_favourite(state, method, path),
         _ if path.starts_with("/api/workspaces/") => {
             route_linked_workspace_state(state, method, path)
+        }
+        _ if match_durable_execution_job_record_route(path).is_some() => {
+            route_durable_execution_job_record(state, method, path)
         }
         _ if is_native_job_http_path(path) => {
             route_native_job_request(&state.native_jobs, method, path)
@@ -1249,6 +1257,100 @@ fn route_workspace_results_summary(state: &SidecarState, method: &str, path: &st
         Ok(payload) => HttpResponse::json(200, payload.to_string()),
         Err(error) => workspace_store_read_error_response(&error),
     }
+}
+
+fn route_durable_execution_job_record(
+    state: &SidecarState,
+    method: &str,
+    path: &str,
+) -> HttpResponse {
+    if method != "GET" {
+        return method_not_allowed(method, path, "GET");
+    }
+    let Some(route) = match_durable_execution_job_record_route(path) else {
+        return error_response(
+            404,
+            ErrorCode::RouteNotFound,
+            "No native durable execution-job route matches this path",
+            BTreeMap::from([("path".into(), path.into())]),
+        );
+    };
+    let active = match state.app_settings.active_linked_workspace_response() {
+        Ok(Some(active)) => active,
+        Ok(None) => return missing_durable_execution_record(route.route, &route.id),
+        Err(error) => return app_settings_storage_error("resolve active linked workspace", &error),
+    };
+    let Some(workspace_path) = active
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(PathBuf::from)
+    else {
+        return app_settings_storage_error(
+            "resolve active linked workspace",
+            "active linked workspace is missing a path",
+        );
+    };
+
+    let run = match read_run_detail_projection(&workspace_path, &route.id) {
+        Ok(run) => run,
+        Err(error) => return workspace_store_read_error_response(&error),
+    };
+    if route.route == DurableExecutionJobRecordRoute::ByRunId && run.is_none() {
+        return HttpResponse::json(
+            404,
+            json!({"detail": format!("Run {} not found", route.id)}).to_string(),
+        );
+    }
+    let record = match read_execution_job_record(&workspace_path, &route.id) {
+        Ok(record) => record,
+        Err(ExecutionJobRecordReadError::Missing) => {
+            return missing_durable_execution_record(route.route, &route.id);
+        }
+        Err(error) => return execution_job_record_read_error_response(&error),
+    };
+    HttpResponse::json(
+        200,
+        compose_execution_job_record_response(&record, run.as_ref()).to_string(),
+    )
+}
+
+fn missing_durable_execution_record(
+    route: DurableExecutionJobRecordRoute,
+    id: &str,
+) -> HttpResponse {
+    let detail = match route {
+        DurableExecutionJobRecordRoute::ByJobId => {
+            format!("Execution job record {id} not found")
+        }
+        DurableExecutionJobRecordRoute::ByRunId => {
+            format!("Execution job record for run {id} not found")
+        }
+    };
+    HttpResponse::json(404, json!({"detail": detail}).to_string())
+}
+
+fn execution_job_record_read_error_response(error: &ExecutionJobRecordReadError) -> HttpResponse {
+    let reason = match error {
+        ExecutionJobRecordReadError::WorkspaceUnavailable => "workspace_unavailable",
+        ExecutionJobRecordReadError::InvalidIdentifier => "invalid_identifier",
+        ExecutionJobRecordReadError::Missing => "missing",
+        ExecutionJobRecordReadError::SymlinkOrEscape => "symlink_or_escape",
+        ExecutionJobRecordReadError::TooLarge => "too_large",
+        ExecutionJobRecordReadError::ChangedDuringRead => "changed_during_read",
+        ExecutionJobRecordReadError::Read => "read_failed",
+        ExecutionJobRecordReadError::InvalidJson => "invalid_json",
+        ExecutionJobRecordReadError::InvalidShape => "invalid_shape",
+    };
+    HttpResponse::json(
+        409,
+        json!({
+            "detail": "Workspace execution job record is not compatible with the native contract",
+            "code": "execution_job_record_incompatible",
+            "reason": reason,
+        })
+        .to_string(),
+    )
 }
 
 fn workspace_store_read_error_response(error: &WorkspaceStoreReadError) -> HttpResponse {
@@ -2455,7 +2557,10 @@ fn read_bounded_stdout(
 }
 
 fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpResponse {
-    if request.query.is_some() && is_native_job_http_path(&request.path) {
+    if request.query.is_some()
+        && (is_native_job_http_path(&request.path)
+            || match_durable_execution_job_record_route(&request.path).is_some())
+    {
         return error_response(
             404,
             ErrorCode::RouteNotFound,
@@ -3252,13 +3357,13 @@ mod tests {
             "updates_settings_routes",
             "native_job_status_routes",
             "native_job_cancellation_routes",
+            "durable_execution_job_record_reads",
         ] {
             assert_eq!(capabilities["features"][feature], true, "{feature}");
         }
         for feature in [
             "legacy_api_routes",
             "native_scientific_submission_routes",
-            "durable_execution_job_record_reads",
             "scientific_execution",
             "python_plugin_execution",
         ] {
@@ -4251,13 +4356,15 @@ mod tests {
     }
 
     #[test]
-    fn native_job_aliases_reject_queries_and_unselected_submission_paths() {
+    fn native_job_routes_reject_queries_and_submission_stays_unselected() {
         let mut state = SidecarState::default();
         for target in [
             "/api/training/opaque?refresh=true",
             "/api/automl/opaque?wait=true",
             "/api/updates/webapp/download-status/opaque?poll=1",
             "/api/training/opaque/stop?force=true",
+            "/api/runs/execution-job-records/opaque?refresh=true",
+            "/api/runs/run-1/execution-job-record?refresh=true",
         ] {
             let raw = format!("GET {target} HTTP/1.1\r\nHost: localhost\r\n\r\n");
             let request = parse_http_request(raw.as_bytes()).unwrap();
@@ -4272,12 +4379,115 @@ mod tests {
             ("POST", "/api/training/start"),
             ("GET", "/api/training/jobs"),
             ("GET", "/api/automl/jobs"),
-            ("GET", "/api/runs/execution-job-records/opaque"),
-            ("GET", "/api/runs/run-1/execution-job-record"),
         ] {
             let response = route_request(&mut state, method, path);
             assert_eq!(response.status, 404, "{method} {path}");
         }
+    }
+
+    #[test]
+    fn durable_execution_job_reads_use_active_store_and_never_the_memory_registry() {
+        let root = test_directory("durable-execution-record");
+        let config = root.join("config");
+        let workspace = root.join("workspace-a");
+        let run_id = "12345678-1234-5678-1234-567812345678";
+        let orphan_id = "orphan-job";
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(workspace.join("runs").join(run_id)).unwrap();
+        fs::create_dir_all(workspace.join("runs").join(orphan_id)).unwrap();
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/workspace_store_v5.sqlite"),
+            workspace.join("store.sqlite"),
+        )
+        .unwrap();
+        let record = |id: &str, name: &str| {
+            json!({
+                "job_id": id,
+                "job_type": "training",
+                "requested_backend": "native",
+                "execution_backend": "native",
+                "execution_mode": "embedded-cpython",
+                "status": "running",
+                "progress": 25.0,
+                "progress_message": "training",
+                "progress_unavailable": false,
+                "created_at": "2026-09-01T12:00:00Z",
+                "started_at": "2026-09-01T12:00:01Z",
+                "completed_at": null,
+                "request": {"run_name": name},
+                "driver": {"backend": "native"},
+                "metrics": {},
+                "error": null
+            })
+        };
+        fs::write(
+            workspace
+                .join("runs")
+                .join(run_id)
+                .join("execution_job_record.json"),
+            serde_json::to_vec(&record(run_id, "request name")).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            workspace
+                .join("runs")
+                .join(orphan_id)
+                .join("execution_job_record.json"),
+            serde_json::to_vec(&record(orphan_id, "Orphaned scheduler job")).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            config.join("app_settings.json"),
+            json!({
+                "linked_workspaces": [linked_workspace_record("workspace-a", &workspace, true, 1)]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut state = SidecarState::with_app_settings_dir(&config);
+
+        let by_job = route_request(
+            &mut state,
+            "GET",
+            &format!("/api/runs/execution-job-records/{run_id}"),
+        );
+        assert_eq!(by_job.status, 200);
+        let by_job: Value = serde_json::from_str(&by_job.body).unwrap();
+        assert_eq!(by_job["run_id"], run_id);
+        assert_eq!(by_job["run_name"], "native scanner parity");
+        assert_eq!(by_job["run_status"], "completed");
+        assert_eq!(by_job["is_orphaned"], false);
+
+        let by_run = route_request(
+            &mut state,
+            "GET",
+            &format!("/api/runs/{run_id}/execution-job-record"),
+        );
+        assert_eq!(by_run.status, 200);
+        assert_eq!(serde_json::from_str::<Value>(&by_run.body).unwrap(), by_job);
+
+        let orphan = route_request(
+            &mut state,
+            "GET",
+            &format!("/api/runs/execution-job-records/{orphan_id}"),
+        );
+        assert_eq!(orphan.status, 200);
+        let orphan: Value = serde_json::from_str(&orphan.body).unwrap();
+        assert_eq!(orphan["run_name"], "Orphaned scheduler job");
+        assert_eq!(orphan["run_status"], "orphaned");
+        assert_eq!(orphan["is_orphaned"], true);
+
+        let missing_run =
+            route_request(&mut state, "GET", "/api/runs/missing/execution-job-record");
+        assert_eq!(missing_run.status, 404);
+        let wrong_method = route_request(
+            &mut state,
+            "POST",
+            &format!("/api/runs/{run_id}/execution-job-record"),
+        );
+        assert_eq!(wrong_method.status, 405);
+        assert_eq!(wrong_method.headers[0], ("Allow", "GET".into()));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

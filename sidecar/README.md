@@ -32,6 +32,10 @@ transport, and registered read/cancel aliases for native jobs:
   `POST /api/runs/:run_id/stop`, and
   `POST /api/updates/webapp/download-cancel/:job_id` share the same native
   cooperative-cancellation state and event stream.
+- `GET /api/runs/execution-job-records/:job_id` and
+  `GET /api/runs/:run_id/execution-job-record` read the active workspace's
+  bounded immutable `execution_job_record.json` snapshot and enrich known runs
+  only through Store v5. They never query the in-memory job registry.
 - `GET /api/health` and `GET /api/system/readiness` (the frozen
   post-lifespan bootstrap responses only)
 - `GET /api/system/capabilities` (an explicit Rust-owned route which invokes
@@ -108,12 +112,12 @@ request; a native selection never falls back. Splitters remain owner-produced:
 the Rust consumer neither parses nor receives permission to interpret
 `expanded_config`.
 
-The native job adapter is deliberately narrower than the durable run-record
-surface. `GET /api/runs/execution-job-records/:job_id` and
-`GET /api/runs/:run_id/execution-job-record` remain unselected because their
-owner is the WorkspaceStore contract, not the in-memory job registry. The
-tested mapping table in `job_http.rs` prevents those reads from being confused
-with the five cancellation aliases.
+The in-memory native job adapter remains deliberately separate from the
+durable run-record surface. `GET /api/runs/execution-job-records/:job_id` and
+`GET /api/runs/:run_id/execution-job-record` use the dedicated
+`studio_execution_job_record_v1` bounded reader plus Store v5 run identity.
+The tested mapping table in `job_http.rs` prevents those reads from being
+confused with the three polling and five cancellation aliases.
 
 It does **not** launch Python/CPython as an HTTP backend, Uvicorn, or FastAPI;
 it has no fallback launcher. An explicitly configured CPython may run only as a
@@ -180,7 +184,7 @@ full API parity or silently redirect an unmigrated product route to Python.
 The capability object separately advertises
 `native_job_status_routes: true`, `native_job_cancellation_routes: true`,
 `native_scientific_submission_routes: false`, and
-`durable_execution_job_record_reads: false`.
+`durable_execution_job_record_reads: true`.
 The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. `GET /sidecar/v1/python/preflight` launches that product-owned
 interpreter with `-I`, bounds it to three seconds, and checks `import nirs4all`.
@@ -328,11 +332,11 @@ Rust-owned Python-bridge system routes plus native network state, native app pre
 and config-path selection, native system-status catalogue state, plus the linked-workspace catalogue and its native
 activation/unlink mutations,
 all-in-one binary packaging, and Electron's explicit loopback-only lifecycle
-management, plus bounded RFC 6455 upgrades, three native job-state reads, and
-five cancellation aliases on the sidecar port. Missing: every other legacy `/api/*` route, all
+management, plus bounded RFC 6455 upgrades, three native job-state reads, five
+cancellation aliases, and two immutable durable execution-record reads on the
+sidecar port. Missing: every other legacy `/api/*` route, all
 scientific execution, workspace/dataset persistence, uploads, authentication,
-scientific job submission/executor selection, durable execution-record reads,
-renderer WebSocket selection, and parity
+scientific job submission/executor selection, renderer WebSocket selection, and parity
 mapping/diffing for the full frozen surface.
 
 Rollback is exclusion of the sidecar binary/resource and routing the listed

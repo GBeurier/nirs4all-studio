@@ -478,7 +478,7 @@ fn event_size_is_refused_before_any_unpublishable_state_mutation() {
 }
 
 #[test]
-fn scientific_submission_and_durable_reads_remain_unselected() {
+fn scientific_submission_and_durable_reads_stay_outside_the_memory_adapter() {
     let runtime = NativeJobRuntime::default();
     for path in [
         "/api/training/start",
