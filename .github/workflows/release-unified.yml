@@ -208,11 +208,11 @@ jobs:
             gir1.2-gtk-3.0 \
             gir1.2-webkit2-4.1
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Update package.json version
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
@@ -302,11 +302,11 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Update package.json version
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
@@ -447,11 +447,11 @@ jobs:
         with:
           targets: x86_64-apple-darwin
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Update package.json version
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
@@ -638,11 +638,11 @@ jobs:
         with:
           targets: aarch64-apple-darwin
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Update package.json version
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
@@ -856,11 +856,11 @@ jobs:
           path: build/.python-cache
           key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Update package.json version
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
@@ -991,11 +991,11 @@ jobs:
             gir1.2-gtk-3.0 \
             gir1.2-webkit2-4.1
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Update package.json version
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
@@ -1110,11 +1110,11 @@ jobs:
           path: build/.python-cache
           key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Update package.json version
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
@@ -1318,11 +1318,11 @@ jobs:
           path: build/.python-cache
           key: archive-pbs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/python-runtime-config.cjs') }}
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Update package.json version
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version

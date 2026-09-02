@@ -1,0 +1,26 @@
+{
+  "schema_version": "nirs4all.vendored-npm/v1",
+  "package": {
+    "name": "nirs4all-ui",
+    "version": "0.1.13"
+  },
+  "source": {
+    "commit_sha": "406d94d70004f27459ef12347af1e6f0079ab6ac",
+    "tree_sha": "377722160bbf188c474aacfecc8a6825095be2ca"
+  },
+  "artifact": {
+    "filename": "nirs4all-ui-0.1.13.tgz",
+    "size": 3120473,
+    "sha256": "44ba22aef663548f426518ada8478a5c461e96dd5592cf2691b68776c42b9a67",
+    "npm_integrity": "sha512-ax4/r2DEjKIRUS3T9yB5Zl5xqc47dL+NSddleKEklofoueRWkkuKZhZlY2tkCU4N1yWRifM3ZkMbWkBUUhmKyw=="
+  },
+  "license_files": [
+    "LICENSE",
+    "LICENSING.md",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSES/Apache-2.0.txt",
+    "LICENSES/AGPL-3.0-or-later.txt",
+    "LICENSES/CeCILL-2.1.txt",
+    "LICENSES/MIT.txt"
+  ]
+}

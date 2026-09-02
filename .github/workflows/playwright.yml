@@ -38,11 +38,11 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Install Python dependencies
         run: |
