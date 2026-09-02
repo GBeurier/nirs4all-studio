@@ -1,0 +1,19 @@
+[package]
+name = "studio-windows-job"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Narrow Windows Job Object guard for the Studio converter launcher"
+license = "(CECILL-2.1 OR AGPL-3.0-or-later)"
+publish = false
+
+[lints.rust]
+unsafe_code = "deny"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }

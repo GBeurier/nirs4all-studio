@@ -1420,8 +1420,16 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "studio-windows-job",
  "tungstenite",
  "url",
+]
+
+[[package]]
+name = "studio-windows-job"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -41,6 +41,9 @@ url = "2.5.4"
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["process", "signal"] }
 
+[target.'cfg(windows)'.dependencies]
+studio-windows-job = { path = "crates/studio-windows-job" }
+
 # Core 0.3.25 pins the locally qualified DagML 0.3.23 train, which is not yet
 # available from crates.io. Keep the exact qualified Cargo package payloads and
 # replace these patches with registry identities before LOCK-RELEASE.

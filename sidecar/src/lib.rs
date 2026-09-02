@@ -558,8 +558,9 @@ impl SidecarState {
 
     /// Configure a converter seam and settings catalogue for native route
     /// integration tests and controlled non-product launches.
+    #[cfg(test)]
     #[must_use]
-    pub fn with_legacy_converter_and_app_settings_dir(
+    pub(crate) fn with_legacy_converter_and_app_settings_dir(
         converter: Arc<dyn legacy_conversion::LegacyConverter>,
         app_settings_dir: impl Into<PathBuf>,
     ) -> Self {
@@ -1377,8 +1378,8 @@ fn legacy_workspace_conversion_with(
 fn legacy_conversion_bridge_error_response(error: LegacyConversionFailure) -> HttpResponse {
     let status = match error {
         LegacyConversionFailure::Busy => 409,
+        LegacyConversionFailure::Unavailable | LegacyConversionFailure::SpawnFailed => 503,
         LegacyConversionFailure::TimedOut => 504,
-        LegacyConversionFailure::SpawnFailed => 503,
         LegacyConversionFailure::ProcessFailed
         | LegacyConversionFailure::OutputReadFailed
         | LegacyConversionFailure::StdoutTooLarge
@@ -4888,6 +4889,7 @@ mod tests {
     fn conversion_process_boundary_failures_have_closed_http_mappings() {
         for (failure, status) in [
             (LegacyConversionFailure::Busy, 409),
+            (LegacyConversionFailure::Unavailable, 503),
             (LegacyConversionFailure::SpawnFailed, 503),
             (LegacyConversionFailure::TimedOut, 504),
             (LegacyConversionFailure::ProcessFailed, 502),

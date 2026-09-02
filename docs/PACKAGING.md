@@ -375,6 +375,10 @@ invokes it only via bounded stdio and keeps HTTP, activation, and rollback
 state in Rust. Both the bake and sidecar capability gates execute a minimal
 DuckDB query and a PyArrow Parquet memory round-trip; matching package names or
 versions alone cannot advertise conversion.
+Every public conversion execution path rechecks this attestation immediately
+before spawn. Windows packages use the sidecar's internal Job Object launcher;
+it joins a kill-on-close job before creating CPython, so descendants cannot race
+the containment boundary or request breakaway.
 The image does embed the exact `nirs4all-methods` ABI 2.3 library and its
 `STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
 independent of the plugin host. CI supplies that library through a local
