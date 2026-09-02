@@ -75,18 +75,12 @@ outside the app bundle for explicit compatibility diagnostics:
 Electron starts the packaged sidecar on every packaged desktop launch. This
 managed environment is never eligible for the product stdio plugin host.
 Installer layouts without a bundled closure advertise that capability as
-unavailable, and routes requiring it refuse; they do not select FastAPI. Changing the interpreter
-stops only a diagnostic HTTP process if one was explicitly active; it never
-restarts the Rust sidecar. A running sidecar whose original plugin-host path
+unavailable, and routes requiring it refuse. Changing the interpreter does not
+start another backend. A running sidecar whose original plugin-host path
 became stale reports the optional host as unavailable until the next
-application launch. The sidecar remains the product HTTP owner and never
-launches FastAPI or Uvicorn.
-
-FastAPI source may remain in the source checkout solely for an explicit development diagnostic
-session selected with `--enable-python-http-diagnostic`; it is absent from Phase 2 desktop packages. Packaged products ignore environment-based diagnostic activation. The
-mode is process-wide, visible over backend/scientific IPC state, and cannot be
-selected as a per-request fallback. Physical removal of the retained FastAPI,
-PyInstaller, and requirements surfaces is the R3 DROP step.
+application launch. The sidecar remains the sole product HTTP owner. There is
+no command-line switch, environment activation, IPC acquisition, or renderer
+target for a Python HTTP backend in Phase 2 desktop packages.
 
 Packaged startup verifies the sidecar size and SHA-256 from
 `STUDIO_RUNTIME_CONTRACT.json` before spawning it. A missing or altered sidecar

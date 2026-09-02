@@ -110,14 +110,8 @@ fn contract_freezes_per_request_preselection_and_no_native_fallback() {
         contract["scope"]["activation"],
         "renderer_selects_once_before_each_bare_run_detail_target_request"
     );
-    assert_eq!(
-        contract["decisions"]["scientific-plugin"]["selected_before_target_http"],
-        true
-    );
-    assert_eq!(
-        contract["decisions"]["scientific-plugin"]["implicit_selection"],
-        "forbidden"
-    );
+    assert!(contract["decisions"].get("scientific-plugin").is_none());
+    assert_eq!(contract["transport"]["python_http_target"], "absent");
     assert_eq!(
         contract["transport"]["sidecar_unavailable_before_selection"],
         "reject_503"

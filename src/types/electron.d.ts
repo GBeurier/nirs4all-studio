@@ -8,25 +8,6 @@ import type {
   DesktopEnvActionResult,
 } from "@/types/pythonRuntime";
 
-/** Backend status types */
-type BackendStatus =
-  | "stopped"
-  | "starting"
-  | "running"
-  | "error"
-  | "restarting"
-  | "setup_required";
-
-interface BackendInfo {
-  status: BackendStatus;
-  port: number;
-  url: string;
-  error?: string;
-  restartCount: number;
-  httpMode?: "rust-only" | "python-http-diagnostic";
-  activationSource?: "default" | "explicit-cli" | "explicit-dev-env";
-}
-
 interface BackendRestartResult {
   success: boolean;
   port?: number;
@@ -50,7 +31,7 @@ interface NativeSidecarInfo {
 interface WorkspaceRunDetailPreselection {
   schema_id: "nirs4all.studio-run-detail-preselection-decision.v1";
   workspace_id: string;
-  target: "native-sidecar" | "scientific-plugin" | "reject";
+  target: "native-sidecar" | "reject";
   verified_store_v5: boolean;
   store_schema_version: 5 | null;
   reason: string;
@@ -68,7 +49,7 @@ interface RendererTransportSelection {
   method: string | null;
   path: string;
   surface: string;
-  target: "native-sidecar" | "scientific-plugin" | "reject";
+  target: "native-sidecar" | "reject";
   base_url: string | null;
   renderer_transport: boolean;
   scientific_execution: false;
@@ -80,30 +61,6 @@ interface RendererTransportSelection {
 interface ControlPlaneInfo extends NativeSidecarInfo {
   role: "control-plane";
   ready: boolean;
-}
-
-interface ScientificPluginInfo {
-  role: "scientific-plugin";
-  status: BackendStatus;
-  ready: boolean;
-  requested: boolean;
-  port: number | null;
-  url: string | null;
-  error?: string;
-  restartCount: number;
-  httpMode?: "rust-only" | "python-http-diagnostic";
-  activationSource?: "default" | "explicit-cli" | "explicit-dev-env";
-}
-
-interface ScientificReadiness {
-  scientific_status: string;
-  scientific_requested: boolean;
-  python_http_mode?: "rust-only" | "python-http-diagnostic";
-  core_ready: boolean;
-  ml_ready: boolean;
-  ml_loading: boolean;
-  ml_error: string | null;
-  workspace_ready?: boolean;
 }
 
 interface ElectronApi {
@@ -202,17 +159,6 @@ interface ElectronApi {
    */
   getWindowSize(): Promise<{ width: number; height: number } | null>;
 
-  /** Get the transitional port in explicit Python HTTP diagnostic mode. */
-  getBackendPort(): Promise<number>;
-
-  /** Get the transitional URL in explicit Python HTTP diagnostic mode. */
-  getBackendUrl(): Promise<string>;
-
-  /**
-   * Get full backend information including status
-   */
-  getBackendInfo(): Promise<BackendInfo>;
-
   /** Get the explicit native-sidecar diagnostic state. */
   getNativeSidecarInfo(): Promise<NativeSidecarInfo>;
 
@@ -229,23 +175,10 @@ interface ElectronApi {
   /** Read the mandatory Rust control-plane state without starting Python. */
   getControlPlaneInfo(): Promise<ControlPlaneInfo>;
 
-  /** Inspect the optional scientific/FastAPI plugin without activating it. */
-  getScientificPluginInfo(): Promise<ScientificPluginInfo>;
-
-  /** Acquire FastAPI only after explicit process-wide diagnostic activation. */
-  getScientificPluginUrl(): Promise<string>;
-
-  /** Inspect scientific readiness without activating the plugin. */
-  getScientificReadiness(): Promise<ScientificReadiness>;
-
   /**
    * Restart the backend server
    */
   restartBackend(
-    options?: BackendRestartOptions,
-  ): Promise<BackendRestartResult>;
-
-  restartScientificPlugin(
     options?: BackendRestartOptions,
   ): Promise<BackendRestartResult>;
 
@@ -254,12 +187,6 @@ interface ElectronApi {
    * @param callback - Called when backend status changes
    * @returns Cleanup function to unsubscribe
    */
-  onBackendStatusChanged(callback: (info: BackendInfo) => void): () => void;
-
-  onScientificPluginStatusChanged(
-    callback: (info: BackendInfo) => void,
-  ): () => void;
-
   /**
    * Python environment management
    */

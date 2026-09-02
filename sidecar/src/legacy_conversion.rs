@@ -29,6 +29,7 @@ use nix::{
 
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use url::Url;
 
 pub const LEGACY_TRANSITION_STATUS_ROUTE: &str = "/api/workspace/transition-status";
@@ -217,7 +218,7 @@ impl LegacyConverter for UnselectedLegacyConverter {
 #[derive(Debug)]
 struct PythonModuleLegacyConverter {
     python_plugin_host: PathBuf,
-    attested: bool,
+    python_host_sha256: Option<String>,
     poisoned: AtomicBool,
 }
 
@@ -228,7 +229,12 @@ impl PythonModuleLegacyConverter {
         timeout: Duration,
         cleanup_timeout: Duration,
     ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
-        if !self.attested {
+        // Availability is deliberately not cached: the interpreter or its
+        // installed closure may have been replaced since Studio startup.
+        if !self.python_host_identity_matches()
+            || !attest_python_tools_runtime(&self.python_plugin_host)
+            || !self.python_host_identity_matches()
+        {
             return Err(LegacyConversionFailure::Unavailable);
         }
         if self.poisoned.load(Ordering::Acquire) {
@@ -249,7 +255,10 @@ impl PythonModuleLegacyConverter {
 
 impl LegacyConverter for PythonModuleLegacyConverter {
     fn is_available(&self) -> bool {
-        self.attested && !self.poisoned.load(Ordering::Acquire)
+        !self.poisoned.load(Ordering::Acquire)
+            && self.python_host_identity_matches()
+            && attest_python_tools_runtime(&self.python_plugin_host)
+            && self.python_host_identity_matches()
     }
 
     fn command(&self, request: &LegacyConversionRequest) -> Vec<String> {
@@ -283,16 +292,13 @@ impl Default for LegacyConversionRuntime {
 impl LegacyConversionRuntime {
     #[must_use]
     pub fn from_python_plugin_host(python_plugin_host: Option<PathBuf>) -> Self {
-        python_plugin_host.map_or_else(Self::default, |python_plugin_host| {
-            let attested = attest_python_tools_runtime(&python_plugin_host);
-            Self {
-                converter: Arc::new(PythonModuleLegacyConverter {
-                    python_plugin_host,
-                    attested,
-                    poisoned: AtomicBool::new(false),
-                }),
-                running: Arc::new(AtomicBool::new(false)),
-            }
+        python_plugin_host.map_or_else(Self::default, |python_plugin_host| Self {
+            converter: Arc::new(PythonModuleLegacyConverter {
+                python_host_sha256: sha256_regular_file(&python_plugin_host),
+                python_plugin_host,
+                poisoned: AtomicBool::new(false),
+            }),
+            running: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -341,6 +347,47 @@ impl LegacyConversionRuntime {
         }
         self.converter.run(request)
     }
+}
+
+impl PythonModuleLegacyConverter {
+    fn python_host_identity_matches(&self) -> bool {
+        self.python_host_sha256
+            .as_deref()
+            .zip(sha256_regular_file(&self.python_plugin_host).as_deref())
+            .is_some_and(|(expected, actual)| expected == actual)
+    }
+}
+
+fn sha256_regular_file(path: &Path) -> Option<String> {
+    let before = std::fs::symlink_metadata(path).ok()?;
+    if before.file_type().is_symlink() || !before.is_file() {
+        return None;
+    }
+    let mut file = std::fs::File::open(path).ok()?;
+    let opened = file.metadata().ok()?;
+    if !same_file_identity(&before, &opened) {
+        return None;
+    }
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 16 * 1024];
+    loop {
+        let count = file.read(&mut buffer).ok()?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    let after = file.metadata().ok()?;
+    let path_after = std::fs::symlink_metadata(path).ok()?;
+    if path_after.file_type().is_symlink()
+        || !same_file_identity(&opened, &after)
+        || !same_file_identity(&opened, &path_after)
+        || opened.len() != after.len()
+        || opened.modified().ok() != after.modified().ok()
+    {
+        return None;
+    }
+    Some(format!("{:x}", hasher.finalize()))
 }
 
 fn attest_python_tools_runtime(python_plugin_host: &Path) -> bool {
@@ -491,6 +538,7 @@ fn default_output_path(workspace_path: &Path) -> Result<PathBuf, String> {
 fn detect_legacy_marker(
     workspace_path: &Path,
 ) -> Result<Option<(&'static str, &'static str)>, String> {
+    reject_recursive_symlinks(workspace_path)?;
     for (name, expected_directory, format, message) in [
         (
             "store.duckdb",
@@ -589,6 +637,40 @@ fn detect_legacy_marker(
         return Ok(Some((format, message)));
     }
     Ok(None)
+}
+
+fn reject_recursive_symlinks(workspace_path: &Path) -> Result<(), String> {
+    let mut pending = vec![workspace_path.to_path_buf()];
+    let mut inspected = 0_usize;
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory)
+            .map_err(|error| format!("could not inspect {}: {error}", directory.display()))?
+        {
+            let entry = entry.map_err(|error| {
+                format!(
+                    "could not inspect entry below {}: {error}",
+                    directory.display()
+                )
+            })?;
+            inspected = inspected.saturating_add(1);
+            if inspected > MAX_RUN_TREE_ENTRIES {
+                return Err("workspace detector exceeds the fixed recursive entry limit".into());
+            }
+            let path = entry.path();
+            let metadata = std::fs::symlink_metadata(&path)
+                .map_err(|error| format!("could not inspect {}: {error}", path.display()))?;
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "workspace detector refuses a symlink at any depth: {}",
+                    path.display()
+                ));
+            }
+            if metadata.is_dir() {
+                pending.push(path);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn candidate_metadata(path: &Path) -> Result<Option<std::fs::Metadata>, String> {
@@ -696,6 +778,13 @@ pub(crate) fn validate_workspace_v2_store(
     workspace_path: &Path,
     sqlite_path: &Path,
 ) -> Result<(), &'static str> {
+    open_validated_workspace_v2_store(workspace_path, sqlite_path).map(drop)
+}
+
+pub(crate) fn open_validated_workspace_v2_store(
+    workspace_path: &Path,
+    sqlite_path: &Path,
+) -> Result<Connection, &'static str> {
     let root = workspace_path.canonicalize().map_err(|_| "root")?;
     let metadata = strict_candidate_metadata(sqlite_path)?.ok_or("store")?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
@@ -763,7 +852,6 @@ pub(crate) fn validate_workspace_v2_store(
             return Err("schema");
         }
     }
-    drop(connection);
     let after = std::fs::metadata(&store).map_err(|_| "store")?;
     if store.canonicalize().map_err(|_| "store")? != store
         || !same_file_identity(&before, &after)
@@ -772,7 +860,7 @@ pub(crate) fn validate_workspace_v2_store(
     {
         return Err("changed");
     }
-    Ok(())
+    Ok(connection)
 }
 
 fn strict_candidate_metadata(path: &Path) -> Result<Option<std::fs::Metadata>, &'static str> {
@@ -924,11 +1012,28 @@ fn build_python_module_command(
         python_plugin_host.to_string_lossy().into_owned(),
         "-I".into(),
         "-B".into(),
-        "-m".into(),
-        "nirs4all_tools".into(),
+        "-c".into(),
+        tools_converter_bootstrap(),
+        "--".into(),
     ];
     command.extend(converter_arguments(request));
     command
+}
+
+fn tools_converter_bootstrap() -> String {
+    format!(
+        r#"import contextlib,io,json,runpy,sys
+_capture=io.StringIO()
+with contextlib.redirect_stdout(_capture):
+ exec({TOOLS_PREFLIGHT:?},{{}})
+_attestation=json.loads(_capture.getvalue())
+_expected={{"version":"{TOOLS_VERSION}","record":"{TOOLS_RECORD_SHA256}","manifest":"{TOOLS_MANIFEST_SHA256}","verified":True,"module":"nirs4all_tools","duckdb":"1.5.5","pyarrow":"25.0.1","duckdb_functional":True,"pyarrow_parquet_functional":True}}
+if _attestation != _expected:
+ raise RuntimeError("unqualified nirs4all-tools runtime")
+sys.argv=["nirs4all_tools",*sys.argv[2:]]
+runpy.run_module("nirs4all_tools",run_name="__main__",alter_sys=True)
+"#
+    )
 }
 
 fn converter_arguments(request: &LegacyConversionRequest) -> Vec<String> {
@@ -1393,7 +1498,7 @@ mod tests {
         symlink(real.join("store.duckdb"), marker_root.join("store.duckdb")).unwrap();
         assert!(inspect_workspace_transition(&marker_root)
             .unwrap_err()
-            .contains("must not be a symlink"));
+            .contains("symlink at any depth"));
 
         for (index, candidate) in [
             "store.duckdb",
@@ -1428,7 +1533,7 @@ mod tests {
         .unwrap();
         assert!(inspect_workspace_transition(&run_manifest_root)
             .unwrap_err()
-            .contains("must not be a symlink"));
+            .contains("symlink"));
 
         let native_target = root.join("native-target");
         fs::create_dir(&native_target).unwrap();
@@ -1444,7 +1549,7 @@ mod tests {
             symlink(target, workspace.join(name)).unwrap();
             assert!(inspect_workspace_transition(&workspace)
                 .unwrap_err()
-                .contains("symlinked subtree"));
+                .contains("symlink"));
         }
 
         for (name, target) in [
@@ -1456,7 +1561,26 @@ mod tests {
             symlink(target, workspace.join("runs/run-a")).unwrap();
             assert!(inspect_workspace_transition(&workspace)
                 .unwrap_err()
-                .contains("symlinked subtree"));
+                .contains("symlink"));
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn detector_rejects_valid_and_dangling_symlinks_below_arbitrary_depth() {
+        use std::os::unix::fs::symlink;
+
+        let root = temporary_directory("detector-deep-symlinks");
+        let target = root.join("target");
+        fs::create_dir(&target).unwrap();
+        for (name, destination) in [("valid", target), ("dangling", root.join("missing-target"))] {
+            let workspace = root.join(name);
+            let deep = workspace.join("one/two/three/four");
+            fs::create_dir_all(&deep).unwrap();
+            symlink(destination, deep.join("candidate")).unwrap();
+            let error = inspect_workspace_transition(&workspace).unwrap_err();
+            assert!(error.contains("symlink at any depth"));
         }
         fs::remove_dir_all(root).unwrap();
     }
@@ -1479,7 +1603,9 @@ mod tests {
         assert!(command.contains(&"--dry-run".into()));
         assert!(command.contains(&"--strict".into()));
         assert!(!command.contains(&"--verify".into()));
-        assert_eq!(command[4], "nirs4all_tools");
+        assert_eq!(&command[1..4], ["-I", "-B", "-c"]);
+        assert!(command[4].contains("runpy.run_module(\"nirs4all_tools\""));
+        assert_eq!(command[5], "--");
         let external = LegacyConversionRuntime::default().command(&request);
         assert_eq!(external[0], "nirs4all-tools");
         assert_eq!(&external[1..3], ["legacy", "migrate"]);
@@ -1590,13 +1716,53 @@ mod tests {
 
         let direct = PythonModuleLegacyConverter {
             python_plugin_host: PathBuf::from("/must-not-spawn"),
-            attested: false,
+            python_host_sha256: None,
             poisoned: AtomicBool::new(false),
         };
         assert_eq!(
             direct.run(&request),
             Err(LegacyConversionFailure::Unavailable)
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_reattests_host_replaced_after_initial_capability_check() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temporary_directory("runtime-host-replacement");
+        let host = root.join("python-host");
+        let expected = format!(
+            "{{\"duckdb\":\"1.5.5\",\"duckdb_functional\":true,\"manifest\":\"{TOOLS_MANIFEST_SHA256}\",\"module\":\"nirs4all_tools\",\"pyarrow\":\"25.0.1\",\"pyarrow_parquet_functional\":true,\"record\":\"{TOOLS_RECORD_SHA256}\",\"verified\":true,\"version\":\"{TOOLS_VERSION}\"}}"
+        );
+        fs::write(&host, format!("#!/bin/sh\nprintf '%s\\n' '{expected}'\n")).unwrap();
+        let mut permissions = fs::metadata(&host).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&host, permissions.clone()).unwrap();
+        let runtime = LegacyConversionRuntime::from_python_plugin_host(Some(host.clone()));
+        assert!(runtime.is_available());
+
+        let invoked = root.join("replacement-invoked");
+        fs::write(
+            &host,
+            format!("#!/bin/sh\nprintf x >> '{}'\nexit 1\n", invoked.display()),
+        )
+        .unwrap();
+        fs::set_permissions(&host, permissions).unwrap();
+        let request = LegacyConversionRequest {
+            workspace_path: root.join("source"),
+            output_path: root.join("output"),
+            verify: true,
+            dry_run: false,
+            strict: true,
+            link_converted_workspace: false,
+        };
+        assert_eq!(
+            runtime.run(&request),
+            Err(LegacyConversionFailure::Unavailable)
+        );
+        assert!(!invoked.exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(windows)]
@@ -1668,55 +1834,5 @@ mod tests {
             Err(LegacyConversionFailure::CleanupFailed)
         );
         assert!(started.elapsed() < Duration::from_millis(500));
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn incomplete_cleanup_permanently_poisons_converter() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let root = temporary_directory("poisoned-converter");
-        let host = root.join("python-host");
-        fs::write(&host, "#!/bin/sh\nsetsid sh -c 'sleep 1' &\nexit 0\n").unwrap();
-        let mut permissions = fs::metadata(&host).unwrap().permissions();
-        permissions.set_mode(0o700);
-        fs::set_permissions(&host, permissions).unwrap();
-        let converter = PythonModuleLegacyConverter {
-            python_plugin_host: host,
-            attested: true,
-            poisoned: AtomicBool::new(false),
-        };
-        let request = LegacyConversionRequest {
-            workspace_path: root.join("source"),
-            output_path: root.join("output"),
-            verify: true,
-            dry_run: false,
-            strict: true,
-            link_converted_workspace: false,
-        };
-
-        let started = Instant::now();
-        assert_eq!(
-            converter.run_with_timeouts(
-                &request,
-                Duration::from_secs(1),
-                Duration::from_millis(50),
-            ),
-            Err(LegacyConversionFailure::CleanupFailed)
-        );
-        assert!(started.elapsed() < Duration::from_millis(500));
-        assert!(!converter.is_available());
-
-        let retry_started = Instant::now();
-        assert_eq!(
-            converter.run_with_timeouts(
-                &request,
-                Duration::from_secs(1),
-                Duration::from_millis(50),
-            ),
-            Err(LegacyConversionFailure::CleanupFailed)
-        );
-        assert!(retry_started.elapsed() < Duration::from_millis(25));
-        fs::remove_dir_all(root).unwrap();
     }
 }

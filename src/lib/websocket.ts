@@ -123,7 +123,6 @@ export async function getWebSocketBaseUrl(path = "/ws"): Promise<string> {
     }
     const electronApi = (window as unknown as {
       electronApi: {
-        getScientificPluginUrl: () => Promise<string>;
         preselectRendererTransport: (request: {
           kind: "websocket";
           path: string;
@@ -132,7 +131,7 @@ export async function getWebSocketBaseUrl(path = "/ws"): Promise<string> {
           kind: string;
           method: null;
           path: string;
-          target: "native-sidecar" | "scientific-plugin" | "reject";
+          target: "native-sidecar" | "reject";
           base_url: string | null;
           renderer_transport: boolean;
           scientific_execution: boolean;
@@ -164,16 +163,9 @@ export async function getWebSocketBaseUrl(path = "/ws"): Promise<string> {
         }
         return toWebSocketBaseUrl(decision.base_url);
       }
-      if (
-        decision.target !== "scientific-plugin" ||
-        decision.reason !== "explicit_python_http_diagnostic_mode"
-      ) {
-        throw new Error("Python HTTP WebSocket target was not explicitly diagnostic-selected");
-      }
-      const backendUrl = await electronApi.getScientificPluginUrl();
-      return toWebSocketBaseUrl(backendUrl);
+      throw new Error("Unexpected renderer WebSocket transport target");
     } catch (error) {
-      logger.error('Failed to acquire scientific plugin WebSocket URL:', error);
+      logger.error('Failed to acquire native WebSocket URL:', error);
       throw error;
     }
   }

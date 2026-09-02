@@ -36,7 +36,8 @@ fn real_tools_dry_run_uses_bounded_stdio_and_keeps_the_source_immutable() {
     };
 
     let command = runtime.command(&request);
-    assert_eq!(&command[1..5], ["-I", "-B", "-m", "nirs4all_tools"]);
+    assert_eq!(&command[1..4], ["-I", "-B", "-c"]);
+    assert!(command[4].contains("runpy.run_module(\"nirs4all_tools\""));
     let output = runtime.run(&request).unwrap();
     assert_eq!(output.return_code, 0);
     assert!(output.stderr.is_empty());

@@ -1,6 +1,5 @@
 export type WorkspaceRunDetailTarget =
   | "native-sidecar"
-  | "scientific-plugin"
   | "reject";
 
 export interface WorkspaceRunDetailPreselection {
@@ -19,25 +18,17 @@ interface NativeSidecarRouteInfo {
   url: string | null;
 }
 
-interface WorkspaceRoutePolicy {
-  pythonHttpDiagnosticEnabled: boolean;
-}
-
-const RUST_ONLY_POLICY: WorkspaceRoutePolicy = {
-  pythonHttpDiagnosticEnabled: false,
-};
-
 const DECISION_SCHEMA =
   "nirs4all.studio-run-detail-preselection-decision.v1" as const;
 
-function scientificPluginDecision(
+function rejectDecision(
   workspaceId: string,
   reason: string,
 ): WorkspaceRunDetailPreselection {
   return {
     schema_id: DECISION_SCHEMA,
     workspace_id: workspaceId,
-    target: "scientific-plugin",
+    target: "reject",
     verified_store_v5: false,
     store_schema_version: null,
     reason,
@@ -54,7 +45,6 @@ function isDecision(value: unknown): value is Omit<WorkspaceRunDetailPreselectio
     decision.schema_id === DECISION_SCHEMA &&
     typeof decision.workspace_id === "string" &&
     (target === "native-sidecar" ||
-      target === "scientific-plugin" ||
       target === "reject") &&
     typeof decision.verified_store_v5 === "boolean" &&
     (decision.store_schema_version === 5 ||
@@ -64,7 +54,6 @@ function isDecision(value: unknown): value is Omit<WorkspaceRunDetailPreselectio
     (target !== "native-sidecar" ||
       (decision.verified_store_v5 === true &&
         decision.store_schema_version === 5)) &&
-    (target !== "scientific-plugin" || decision.verified_store_v5 === false) &&
     (decision.verified_store_v5 === false || decision.store_schema_version === 5)
   );
 }
@@ -76,34 +65,24 @@ function isDecision(value: unknown): value is Omit<WorkspaceRunDetailPreselectio
  * cache the decision or expose the resolved filesystem path. Exact Store v5
  * selects the native target only when the bounded CPython library host is
  * configured and ready. Legacy storage refuses in Rust-only mode; only an
- * explicit process-wide diagnostic policy may select the Python HTTP owner.
+ * no Python HTTP owner or fallback exists in the packaged product.
  */
 export async function preselectWorkspaceRunDetail(
   workspaceId: string,
   sidecarInfo: () => NativeSidecarRouteInfo,
   request: typeof fetch = fetch,
-  policy: WorkspaceRoutePolicy = RUST_ONLY_POLICY,
 ): Promise<WorkspaceRunDetailPreselection> {
   if (!workspaceId || workspaceId.trim() !== workspaceId) {
     return {
-      ...scientificPluginDecision(workspaceId, "invalid_workspace_id"),
-      target: "reject",
+      ...rejectDecision(workspaceId, "invalid_workspace_id"),
       status: 400,
     };
-  }
-
-
-  if (policy.pythonHttpDiagnosticEnabled) {
-    return scientificPluginDecision(
-      workspaceId,
-      "explicit_python_http_diagnostic_mode",
-    );
   }
 
   const info = sidecarInfo();
   if (info.status !== "running" || !info.url) {
     return {
-      ...scientificPluginDecision(workspaceId, "native_sidecar_unavailable"),
+      ...rejectDecision(workspaceId, "native_sidecar_unavailable"),
       target: "reject",
       status: 503,
     };
@@ -119,25 +98,15 @@ export async function preselectWorkspaceRunDetail(
       (body.target === "reject" ? !response.ok : response.ok);
     if (!isDecision(body) || body.workspace_id !== workspaceId || !statusMatchesTarget) {
       return {
-        ...scientificPluginDecision(workspaceId, "invalid_native_preselection_response"),
+        ...rejectDecision(workspaceId, "invalid_native_preselection_response"),
         target: "reject",
         status: 500,
-      };
-    }
-    if (body.target === "scientific-plugin") {
-      return {
-        ...scientificPluginDecision(
-          workspaceId,
-          "workspace_not_native_qualified_rust_only",
-        ),
-        target: "reject",
-        status: 501,
       };
     }
     return { ...body, status: response.status };
   } catch {
     return {
-      ...scientificPluginDecision(workspaceId, "native_preselection_unreachable"),
+      ...rejectDecision(workspaceId, "native_preselection_unreachable"),
       target: "reject",
       status: 503,
     };

@@ -14,6 +14,8 @@
   "identity_resolution": {
     "owner": "native_app_settings_catalogue",
     "mapping": "exact_linked_workspace_id_to_persisted_path",
+    "content_addressed_store_consumption": "same_authenticated_sqlite_connection",
+    "python_owner_input": "private_store_snapshot_serialized_from_authenticated_connection",
     "filesystem_path_exposure_to_renderer": "forbidden",
     "missing_workspace": {"decision": "reject", "http_status": 404}
   },
@@ -62,14 +64,6 @@
       "target_request_count": 1,
       "currently_reachable": true
     },
-    "scientific-plugin": {
-      "condition": "explicit_process_wide_python_http_diagnostic_mode_before_sidecar_probe",
-      "verified_store_v5": false,
-      "meaning": "transitional_r2_diagnostic_session_owner",
-      "selected_before_target_http": true,
-      "sidecar_probe_count": 0,
-      "implicit_selection": "forbidden"
-    },
     "reject": {
       "condition": "workspace_missing_or_legacy_store_or_store_present_but_unreadable_busy_changed_projection_incomplete_or_owner_host_unconfigured_or_preflight_failed",
       "verified_store_v5": "boolean_preserved_from_store_preflight",
@@ -81,7 +75,7 @@
     "native_route_requires_running_sidecar": true,
     "native_route_requires_configured_preflighted_python_library_host": true,
     "sidecar_unavailable_before_selection": "reject_503",
-    "scientific_plugin_acquired_only_after_explicit_process_wide_decision": true,
+    "python_http_target": "absent",
     "fallback_after_native_selection": "none",
     "native_network_retry": "none",
     "native_http_error_retry": "none"

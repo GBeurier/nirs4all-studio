@@ -57,29 +57,6 @@ const electronApi = {
     backendRestarted?: boolean;
   }> => ipcRenderer.invoke("telemetry:setConsent", enabled),
 
-  /**
-   * Backend management
-   */
-  getBackendPort: (): Promise<number> => ipcRenderer.invoke("backend:getPort"),
-
-  getBackendUrl: (): Promise<string> => ipcRenderer.invoke("backend:getUrl"),
-
-  getBackendInfo: (): Promise<{
-    status:
-      | "stopped"
-      | "starting"
-      | "running"
-      | "error"
-      | "restarting"
-      | "setup_required";
-    port: number;
-    url: string;
-    error?: string;
-    restartCount: number;
-    httpMode?: "rust-only" | "python-http-diagnostic";
-    activationSource?: "default" | "explicit-cli" | "explicit-dev-env";
-  }> => ipcRenderer.invoke("backend:getInfo"),
-
   getNativeSidecarInfo: (): Promise<{
     status: "disabled" | "starting" | "running" | "stopped" | "error";
     host: string | null;
@@ -99,7 +76,7 @@ const electronApi = {
     method: string | null;
     path: string;
     surface: string;
-    target: "native-sidecar" | "scientific-plugin" | "reject";
+    target: "native-sidecar" | "reject";
     base_url: string | null;
     renderer_transport: boolean;
     scientific_execution: false;
@@ -113,7 +90,7 @@ const electronApi = {
   ): Promise<{
     schema_id: "nirs4all.studio-run-detail-preselection-decision.v1";
     workspace_id: string;
-    target: "native-sidecar" | "scientific-plugin" | "reject";
+    target: "native-sidecar" | "reject";
     verified_store_v5: boolean;
     store_schema_version: 5 | null;
     reason: string;
@@ -133,37 +110,10 @@ const electronApi = {
     error?: string;
   }> => ipcRenderer.invoke("control:getInfo"),
 
-  getScientificPluginInfo: (): Promise<{
-    role: "scientific-plugin";
-    ready: boolean;
-    requested: boolean;
-    status:
-      | "stopped"
-      | "starting"
-      | "running"
-      | "error"
-      | "restarting"
-      | "setup_required";
-    port: number | null;
-    url: string | null;
-    error?: string;
-    restartCount: number;
-    httpMode?: "rust-only" | "python-http-diagnostic";
-    activationSource?: "default" | "explicit-cli" | "explicit-dev-env";
-  }> => ipcRenderer.invoke("scientific:getInfo"),
-
-  getScientificPluginUrl: (): Promise<string> =>
-    ipcRenderer.invoke("scientific:getUrl"),
-
   restartBackend: (options?: {
     skipEnsure?: boolean;
   }): Promise<{ success: boolean; port?: number; error?: string }> =>
     ipcRenderer.invoke("backend:restart", options),
-
-  restartScientificPlugin: (options?: {
-    skipEnsure?: boolean;
-  }): Promise<{ success: boolean; port?: number; error?: string }> =>
-    ipcRenderer.invoke("scientific:restart", options),
 
   onBackendStatusChanged: (
     callback: (info: {
@@ -186,46 +136,6 @@ const electronApi = {
     // Return cleanup function
     return () => ipcRenderer.removeListener("backend:statusChanged", handler);
   },
-
-  onScientificPluginStatusChanged: (
-    callback: (info: {
-      status:
-        | "stopped"
-        | "starting"
-        | "running"
-        | "error"
-        | "restarting"
-        | "setup_required";
-      port: number;
-      url: string;
-      error?: string;
-      restartCount: number;
-    }) => void,
-  ) => {
-    const handler = (_event: Electron.IpcRendererEvent, info: unknown) =>
-      callback(info as Parameters<typeof callback>[0]);
-    ipcRenderer.on("backend:statusChanged", handler);
-    return () => ipcRenderer.removeListener("backend:statusChanged", handler);
-  },
-
-  /** Check ML readiness status */
-  getMlStatus: (): Promise<{
-    ml_ready: boolean;
-    ml_loading: boolean;
-    ml_error: string | null;
-    core_ready: boolean;
-  }> => ipcRenderer.invoke("backend:getMlStatus"),
-
-  getScientificReadiness: (): Promise<{
-    scientific_status: string;
-    scientific_requested: boolean;
-    python_http_mode?: "rust-only" | "python-http-diagnostic";
-    ml_ready: boolean;
-    ml_loading: boolean;
-    ml_error: string | null;
-    core_ready: boolean;
-    workspace_ready?: boolean;
-  }> => ipcRenderer.invoke("scientific:getReadiness"),
 
   /**
    * Listen for ML ready notification.

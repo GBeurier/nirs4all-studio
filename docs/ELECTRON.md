@@ -28,28 +28,18 @@ nirs4all-webapp uses Electron as the desktop shell, replacing the previous PyWeb
 ### Current native-session lifecycle
 
 Electron now starts the Rust `studio-sidecar` control plane and creates the
-window without launching Uvicorn. `electron/native-session-lifecycle.ts` owns
-that dependency-free session start. `electron/scientific-plugin-lifecycle.ts`
-owns the transitional Python HTTP diagnostic process, but its activation is
-denied before preparation/spawn in the default Rust-only policy.
+window through `electron/native-session-lifecycle.ts`. No packaged Electron
+entrypoint imports or starts a Python HTTP server.
 
 Native route selection happens before dispatch. A request selected for the
-sidecar is never retried through FastAPI. An unmigrated route returns a typed
-fail-closed refusal without acquiring Python. For R2 diagnosis only, the
-visible `--enable-python-http-diagnostic` switch assigns the entire renderer
-session to FastAPI; development also accepts the exact opt-in environment value
-`NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1`. Packaged builds ignore that
-environment variable. This session-wide selection preserves job ownership and
-never acts as fallback. Control-plane and diagnostic readiness are exposed
-separately over IPC. The Rust sidecar can still invoke the bounded CPython stdio
+sidecar is never retried through another server. An unmigrated route returns a
+typed fail-closed refusal without acquiring Python. The Rust sidecar can invoke bounded CPython stdio
 library/plugin host independently of this HTTP policy. In packaged products
 that host is discoverable only through `STUDIO_RUNTIME_CONTRACT.json` and its
 content-addressed adjacent runtime closure; user/managed venvs and environment
 overrides cannot replace it. The child uses `-I -S -B` and owns no listener.
 
-The later backend-manager examples in this guide describe the implementation
-of that optional compatibility process. They are not the application startup
-sequence and must not be used to reintroduce eager Uvicorn startup.
+Historical backend-manager examples below are not product entrypoints.
 
 ---
 
@@ -92,7 +82,7 @@ The authoritative packaged path is:
 
 ```text
 renderer request/connection
-  -> Electron process-wide policy and per-target preselection
+  -> Electron per-target preselection
      -> native-qualified: Rust studio-sidecar HTTP/WS listener
      -> unmigrated: typed refusal before fetch/spawn/retry
 
@@ -100,9 +90,8 @@ Rust may invoke bounded nirs4all library callables through fresh isolated
 CPython JSON-stdio processes. CPython never owns the product listener.
 ```
 
-The detailed `backend-manager.ts` diagram below documents only the optional
-whole-session FastAPI diagnostic selected with
-`--enable-python-http-diagnostic`; it is not the default desktop architecture.
+The historical `backend-manager.ts` diagram below is retained only as source
+history; it is excluded from the packaged Electron dependency graph.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -115,7 +104,7 @@ whole-session FastAPI diagnostic selected with
 │  │  ├── BrowserWindow creation                                        │ │
 │  │  ├── App lifecycle (ready, quit, activate)                         │ │
 │  │  ├── IPC handlers (file dialogs, system info)                      │ │
-│  │  └── Optional diagnostic lifecycle (via backend-manager.ts)         │ │
+│  │  └── Rust-sidecar lifecycle                                         │ │
 │  │                                                                    │ │
 │  │  electron/backend-manager.ts                                       │ │
 │  │  ├── spawn() - Start Python backend subprocess                     │ │
@@ -382,7 +371,7 @@ Workspace transition diagnosis and conversion are also native renderer routes:
 Rust owns `GET /api/workspace/transition-status` and
 `POST /api/workspace/legacy-convert`. Conversion may start the configured
 CPython executable only as a bounded stdio host for the offline
-`nirs4all_tools` module; it never acquires FastAPI/Uvicorn or a second HTTP
+`nirs4all_tools` module; it never acquires a second HTTP
 owner. A verified code `0` result may activate the fresh output, code `10`
 keeps the preserved output inactive, and code `20` is a visible refusal. The
 legacy source remains linked for rollback. Activation additionally requires a
@@ -390,16 +379,19 @@ strict immutable SQLite V2 check and compare-and-swap of the active workspace
 id, so a selection changed during conversion is never stolen. Open directory
 and store handles pin the validated objects through activation; file identity
 and SHA-256 content are checked around a second final V2 validation immediately
-before the atomic settings replacement. The digest of that exact validated
-handle is persisted on the converted catalogue entry and revalidated before
-every native route resolves the linked workspace path. A substitution after
-final validation may be recorded, but it is never consumable. Catalogue entries
+before the atomic settings replacement. The digest of the exact validated
+SQLite serialization is persisted. Each native Store consumer receives the
+same authenticated connection rather than reopening a path; the Python
+run-detail library host receives a private snapshot serialized from that
+connection. A substitution after final validation is never consumable. Catalogue entries
 created by older Studio versions remain compatible and continue through their
 existing per-reader format preflight.
 
-The Tools capability probe is executable, not declarative: after exact
+The Tools capability probe is repeated at each spawn and executable, not declarative: after exact
 wheel/RECORD verification it runs an in-memory DuckDB query and an in-memory
-PyArrow Parquet round-trip. Output readers report through bounded channels;
+PyArrow Parquet round-trip. Conversion repeats that attestation inside the
+same interpreter immediately before `runpy` invokes the qualified module.
+Output readers report through bounded channels;
 there is no unbounded thread join. If descendant cleanup does not close the
 pipes within two seconds, the request fails and that converter instance is
 permanently disabled, limiting a hostile escaped descendant to at most the two
@@ -421,8 +413,6 @@ the native unknown-field allowlist fail-closed even though legacy Pydantic
 ignored extra request fields. Both exceptions are frozen in
 `sidecar/contracts/studio_legacy_workspace_conversion_v1.json`.
 
-For a deliberate whole-session FastAPI diagnostic, set
-`NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1` before `npm run start:desktop`.
 For browser-only web development, run `python main.py --no-reload` beside
 `npm run dev`; this does not describe the packaged desktop product.
 
@@ -479,7 +469,7 @@ The renderer communicates with the backend via HTTP/WebSocket only:
 
 ### Legacy Python Backend Build (not a desktop release path)
 
-The commands below are retained for explicit diagnostics only. Phase 2 desktop
+The commands below are retained for browser-only web development. Phase 2 desktop
 installers use the Rust sidecar plus the plugin-only CPython closure and never
 package this FastAPI/PyInstaller backend.
 

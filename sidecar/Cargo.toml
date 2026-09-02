@@ -31,10 +31,11 @@ nirs4all = { version = "=0.3.25", path = "vendor/nirs4all-core-4eb8a68/upstream/
 # and offline inventory/test gates. It must become a published identity by LOCK-RELEASE.
 nirs4all-io = { version = "=0.1.7", path = "vendor/nirs4all-io-f419/upstream/crates/nirs4all-io" }
 percent-encoding = "2.3"
-rusqlite = { version = "0.32.1", features = ["bundled"] }
+rusqlite = { version = "0.32.1", features = ["bundled", "serialize"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 sha2 = "0.10.9"
+tempfile = "3"
 tungstenite = { version = "0.26.2", default-features = false, features = ["handshake"] }
 url = "2.5.4"
 

@@ -19,6 +19,7 @@ use std::{
 
 use atomicwrites::{replace_atomic, AllowOverwrite, AtomicFile};
 use cap_std::{ambient_authority, fs::Dir};
+use rusqlite::{Connection, DatabaseName, OpenFlags};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -37,6 +38,23 @@ pub struct AppSettingsStore {
     config_dir: PathBuf,
     default_config_dir: PathBuf,
     write_lock: Arc<Mutex<()>>,
+}
+
+/// A linked workspace resolution whose content-addressed Store, when present,
+/// is held by the exact `SQLite` connection whose bytes were authenticated.
+pub struct LinkedWorkspaceAccess {
+    path: PathBuf,
+    store: Option<Connection>,
+}
+
+impl LinkedWorkspaceAccess {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub const fn store(&self) -> Option<&Connection> {
+        self.store.as_ref()
+    }
 }
 
 struct WorkspaceActivationGuard {
@@ -104,7 +122,7 @@ impl WorkspaceActivationGuard {
     fn final_validate(&self) -> Result<String, String> {
         self.revalidate()?;
         let before_digest = sha256_file_handle(&self.store_handle)?;
-        crate::legacy_conversion::validate_workspace_v2_store(
+        let connection = crate::legacy_conversion::open_validated_workspace_v2_store(
             &self.workspace_path,
             &self.store_path,
         )
@@ -115,7 +133,9 @@ impl WorkspaceActivationGuard {
         if before_digest != after_digest {
             return Err("converted workspace content changed during final validation".into());
         }
-        Ok(after_digest)
+        let authenticated = sha256_connection(&connection)?;
+        drop(connection);
+        Ok(authenticated)
     }
 }
 
@@ -144,7 +164,10 @@ fn sha256_file_handle(file: &fs::File) -> Result<String, String> {
     }
 }
 
-fn verify_persisted_store_content(workspace_path: &Path, expected: &str) -> Result<(), String> {
+fn open_verified_persisted_store(
+    workspace_path: &Path,
+    expected: &str,
+) -> Result<Connection, String> {
     if expected.len() != 64
         || !expected
             .bytes()
@@ -168,31 +191,72 @@ fn verify_persisted_store_content(workspace_path: &Path, expected: &str) -> Resu
     if path_before.file_type().is_symlink() || !path_before.is_file() {
         return Err("linked workspace store content identity cannot be verified safely".into());
     }
-    let store = fs::File::open(&store_path)
-        .map_err(|error| format!("linked workspace store cannot be opened: {error}"))?;
-    let opened_before = store
-        .metadata()
-        .map_err(|error| format!("linked workspace store cannot be identified: {error}"))?;
-    if !metadata_unchanged(&path_before, &opened_before) {
-        return Err("linked workspace store changed before content verification".into());
-    }
-    let actual = sha256_file_handle(&store)?;
-    let opened_after = store
-        .metadata()
-        .map_err(|error| format!("linked workspace store cannot be re-identified: {error}"))?;
+    refuse_store_journals(&store_path)?;
+    before_linked_store_open();
+    let mut uri = url::Url::from_file_path(&store_path)
+        .map_err(|()| "linked workspace Store URI cannot be represented".to_string())?;
+    uri.set_query(Some("mode=ro&immutable=1"));
+    let connection = Connection::open_with_flags(
+        uri.as_str(),
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| format!("linked workspace store cannot be opened: {error}"))?;
+    let actual = sha256_connection(&connection)?;
     let path_after = fs::symlink_metadata(&store_path)
         .map_err(|error| format!("linked workspace store changed: {error}"))?;
     if path_after.file_type().is_symlink()
-        || !metadata_unchanged(&opened_before, &opened_after)
-        || !metadata_unchanged(&opened_before, &path_after)
+        || !path_after.is_file()
         || fs::canonicalize(&store_path).ok().as_deref() != Some(store_path.as_path())
     {
         return Err("linked workspace store changed during content verification".into());
     }
+    refuse_store_journals(&store_path)?;
     if actual != expected {
         return Err("linked workspace store content does not match its activated identity".into());
     }
+    Ok(connection)
+}
+
+fn sha256_connection(connection: &Connection) -> Result<String, String> {
+    let bytes = connection
+        .serialize(DatabaseName::Main)
+        .map_err(|error| format!("could not serialize authenticated workspace Store: {error}"))?;
+    let bytes: &[u8] = bytes.as_ref();
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+fn refuse_store_journals(store_path: &Path) -> Result<(), String> {
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut candidate = store_path.as_os_str().to_os_string();
+        candidate.push(suffix);
+        let candidate = PathBuf::from(candidate);
+        match fs::symlink_metadata(&candidate) {
+            Ok(_) => return Err("linked workspace Store has a live journal sidecar".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("could not inspect Store journal sidecar: {error}")),
+        }
+    }
     Ok(())
+}
+
+#[cfg(not(test))]
+const fn before_linked_store_open() {}
+
+#[cfg(test)]
+thread_local! {
+    static BEFORE_LINKED_STORE_OPEN: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
+}
+
+#[cfg(test)]
+fn before_linked_store_open() {
+    BEFORE_LINKED_STORE_OPEN.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().take() {
+            hook();
+        }
+    });
 }
 
 #[cfg(unix)]
@@ -491,15 +555,40 @@ impl AppSettingsStore {
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty())
             .ok_or_else(|| "active linked workspace is missing an id".to_string())?;
-        verified_linked_workspace_path(workspace)?;
+        verified_linked_workspace_access(workspace)?;
         Ok(Some(linked_workspace_response(workspace, id)))
     }
 
-    /// Resolve a linked workspace's persisted path. Converted workspaces carry
-    /// a content-addressed Store identity which is revalidated before every
-    /// route receives the path; legacy entries without that field retain their
-    /// existing compatibility behaviour.
-    pub fn linked_workspace_path(&self, workspace_id: &str) -> Result<Option<PathBuf>, String> {
+    pub(crate) fn active_linked_workspace_access(
+        &self,
+    ) -> Result<Option<LinkedWorkspaceAccess>, String> {
+        let settings = self.load()?;
+        let Some(workspaces) = settings.get("linked_workspaces") else {
+            return Ok(None);
+        };
+        let workspaces = workspaces
+            .as_array()
+            .ok_or_else(|| "stored linked_workspaces must be a JSON array".to_string())?;
+        let Some(workspace) = workspaces.iter().find(|workspace| {
+            workspace
+                .get("is_active")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+        }) else {
+            return Ok(None);
+        };
+        let workspace = workspace
+            .as_object()
+            .ok_or_else(|| "stored linked_workspaces entries must be JSON objects".to_string())?;
+        Ok(Some(verified_linked_workspace_access(workspace)?))
+    }
+
+    /// Resolve a linked workspace and retain the exact authenticated `SQLite`
+    /// connection for content-addressed converted entries.
+    pub(crate) fn linked_workspace_access(
+        &self,
+        workspace_id: &str,
+    ) -> Result<Option<LinkedWorkspaceAccess>, String> {
         let settings = self.load()?;
         let Some(workspaces) = settings.get("linked_workspaces") else {
             return Ok(None);
@@ -518,7 +607,7 @@ impl AppSettingsStore {
         let workspace = workspace
             .as_object()
             .ok_or_else(|| "stored linked_workspaces entries must be JSON objects".to_string())?;
-        Ok(Some(verified_linked_workspace_path(workspace)?))
+        Ok(Some(verified_linked_workspace_access(workspace)?))
     }
 
     /// Load the minimal, read-only dataset catalogue used by native result
@@ -1050,22 +1139,26 @@ fn linked_workspace_response(workspace: &Map<String, Value>, id: &str) -> Value 
     })
 }
 
-fn verified_linked_workspace_path(workspace: &Map<String, Value>) -> Result<PathBuf, String> {
+fn verified_linked_workspace_access(
+    workspace: &Map<String, Value>,
+) -> Result<LinkedWorkspaceAccess, String> {
     let path = workspace
         .get("path")
         .and_then(Value::as_str)
         .filter(|path| !path.trim().is_empty())
         .ok_or_else(|| "linked workspace is missing a path".to_string())?;
     let path = PathBuf::from(path);
-    if let Some(expected) = workspace
+    let store = if let Some(expected) = workspace
         .get(STORE_CONTENT_SHA256_FIELD)
         .and_then(Value::as_str)
     {
-        verify_persisted_store_content(&path, expected)?;
+        Some(open_verified_persisted_store(&path, expected)?)
     } else if workspace.contains_key(STORE_CONTENT_SHA256_FIELD) {
         return Err("linked workspace has a malformed persisted store content identity".into());
-    }
-    Ok(path)
+    } else {
+        None
+    };
+    Ok(LinkedWorkspaceAccess { path, store })
 }
 
 fn default_discovered() -> Value {
@@ -1151,7 +1244,8 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::{
-        AppSettingsStore, DatasetLinkIdentity, MAX_DATASET_LINKS_BYTES, STORE_CONTENT_SHA256_FIELD,
+        AppSettingsStore, Connection, DatasetLinkIdentity, BEFORE_LINKED_STORE_OPEN,
+        MAX_DATASET_LINKS_BYTES, STORE_CONTENT_SHA256_FIELD,
     };
 
     fn temporary_directory(name: &str) -> PathBuf {
@@ -1534,7 +1628,10 @@ mod tests {
         let converted_id = activated["id"].as_str().unwrap();
         assert_eq!(catalogue["active_workspace_id"], converted_id);
         assert_eq!(
-            store.linked_workspace_path(converted_id).unwrap(),
+            store
+                .linked_workspace_access(converted_id)
+                .unwrap()
+                .map(|access| access.path),
             Some(converted.canonicalize().unwrap())
         );
         let persisted = store.load().unwrap();
@@ -1684,12 +1781,59 @@ mod tests {
             .unwrap();
         let converted_id = activated["id"].as_str().unwrap();
 
-        let error = settings.linked_workspace_path(converted_id).unwrap_err();
+        assert!(settings.linked_workspace_access(converted_id).is_err());
+        assert!(settings.active_linked_workspace_response().is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn authenticated_connection_rejects_substitution_in_exact_pre_open_window() {
+        let directory = temporary_directory("linked-store-exact-open-window");
+        let source = directory.join("legacy");
+        let converted = directory.join("converted");
+        fs::create_dir(&source).unwrap();
+        fs::create_dir(&converted).unwrap();
+        write_strict_v2_store(&converted);
+        fs::write(
+            directory.join("app_settings.json"),
+            serde_json::to_vec(&json!({"linked_workspaces": [{
+                "id": "workspace-legacy", "path": source.canonicalize().unwrap(),
+                "name": "Legacy", "is_active": true
+            }]}))
+            .unwrap(),
+        )
+        .unwrap();
+        let settings = AppSettingsStore::new(&directory);
+        let activated = settings
+            .link_and_activate_workspace(&converted, "2026-09-02T12:00:00Z", "workspace-legacy")
+            .unwrap();
+        let converted_id = activated["id"].as_str().unwrap().to_owned();
+        let replacement_dir = directory.join("replacement");
+        fs::create_dir(&replacement_dir).unwrap();
+        write_strict_v2_store(&replacement_dir);
+        let replacement = replacement_dir.join("store.sqlite");
+        let connection = Connection::open(&replacement).unwrap();
+        connection
+            .execute(
+                "INSERT INTO projects(project_id, name) VALUES ('substituted', 'Substituted')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+        let active_store = converted.join("store.sqlite");
+        let displaced = converted.join("store.original.sqlite");
+        BEFORE_LINKED_STORE_OPEN.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move || {
+                fs::rename(&active_store, &displaced).unwrap();
+                fs::rename(&replacement, &active_store).unwrap();
+            }));
+        });
+
+        let error = settings
+            .linked_workspace_access(&converted_id)
+            .err()
+            .expect("substituted Store must never become consumable");
         assert!(error.contains("does not match its activated identity"));
-        assert!(settings
-            .active_linked_workspace_response()
-            .unwrap_err()
-            .contains("does not match its activated identity"));
         fs::remove_dir_all(directory).unwrap();
     }
 

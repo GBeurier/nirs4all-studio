@@ -4,7 +4,6 @@ export type RendererTransportRequest =
 
 export type RendererTransportTarget =
   | "native-sidecar"
-  | "scientific-plugin"
   | "reject";
 
 export interface RendererTransportSelection {
@@ -20,10 +19,6 @@ export interface RendererTransportSelection {
   reason: string;
   fallback_after_native_selection: "none";
   status: number;
-}
-
-export interface RendererTransportPolicy {
-  pythonHttpDiagnosticEnabled: boolean;
 }
 
 interface NativeSidecarRouteInfo {
@@ -44,10 +39,6 @@ const PROTOCOL_VERSION = "studio-sidecar-r1";
 const IDENTIFIER = "[A-Za-z0-9._-]{1,256}";
 const identifierPath = (prefix: string, suffix = "") =>
   new RegExp(`^${prefix}(${IDENTIFIER})${suffix}$`);
-const RUST_ONLY_POLICY: RendererTransportPolicy = {
-  pythonHttpDiagnosticEnabled: false,
-};
-
 const exactHttpRoutes = new Map<string, NativeSurface>([
   ["GET /health", { name: "health", capability: "health" }],
   ["GET /system/readiness", { name: "readiness", capability: "readiness" }],
@@ -224,7 +215,6 @@ export async function preselectRendererTransport(
   rawRequest: unknown,
   sidecarInfo: () => NativeSidecarRouteInfo,
   request: typeof fetch = fetch,
-  policy: RendererTransportPolicy = RUST_ONLY_POLICY,
 ): Promise<RendererTransportSelection> {
   const normalized = normalizeRequest(rawRequest);
   if (!normalized) {
@@ -233,19 +223,6 @@ export async function preselectRendererTransport(
   }
   if (!normalized.path.startsWith("/") || normalized.path.includes("#") || normalized.path.length > 2048) {
     return decision(normalized, "invalid", "reject", "invalid_route_path", 400);
-  }
-
-  // The transitional FastAPI backend is a process-wide diagnostic owner, not
-  // a per-route fallback. Preselecting it for the whole renderer session keeps
-  // creation/status/cancellation/WebSocket job ownership coherent.
-  if (policy.pythonHttpDiagnosticEnabled) {
-    return decision(
-      normalized,
-      "python-http-diagnostic",
-      "scientific-plugin",
-      "explicit_python_http_diagnostic_mode",
-      200,
-    );
   }
 
   const surface = normalized.kind === "http"

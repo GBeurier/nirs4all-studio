@@ -10,12 +10,14 @@ use std::{
     path::Path,
 };
 
+use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
 use crate::{
     settings::DatasetLinkIdentity,
     workspace_store::{
-        read_results_summary_source, WorkspaceStoreReadError, WorkspaceStoreResultsSummarySourceRow,
+        read_results_summary_source, read_results_summary_source_from_connection,
+        WorkspaceStoreReadError, WorkspaceStoreResultsSummarySourceRow,
     },
 };
 
@@ -29,6 +31,15 @@ struct SummaryRow {
     source: WorkspaceStoreResultsSummarySourceRow,
     synthetic_refit: bool,
     is_refit_only: bool,
+}
+
+pub fn read_results_summary_from_connection(
+    connection: &Connection,
+    workspace_id: &str,
+    linked_datasets: &[DatasetLinkIdentity],
+) -> Result<Value, WorkspaceStoreReadError> {
+    let rows = read_results_summary_source_from_connection(connection)?;
+    Ok(build_results_summary(rows, workspace_id, linked_datasets))
 }
 
 /// Build the exact bare `GET /results/summary` response from Store v5.

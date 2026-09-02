@@ -456,6 +456,21 @@ pub fn read_run_summaries(
     result
 }
 
+pub(crate) fn read_run_summaries_from_connection(
+    connection: &Connection,
+    limit: u16,
+    offset: u64,
+) -> Result<Vec<WorkspaceStoreRunSummary>, WorkspaceStoreReadError> {
+    validate_contract()?;
+    if limit == 0 || limit > MAX_RUN_SUMMARIES {
+        return Err(WorkspaceStoreReadError::LimitOutOfRange(limit));
+    }
+    let offset =
+        i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
+    validate_database(connection)?;
+    query_run_summaries(connection, i64::from(limit), offset)
+}
+
 /// Return the immutable Store-owned portion of one Studio run detail.
 ///
 /// This is deliberately a projection reader, not an HTTP route implementation.
@@ -501,6 +516,23 @@ pub fn read_run_detail_projection(
     result
 }
 
+pub(crate) fn read_run_detail_projection_from_connection(
+    connection: &Connection,
+    run_id: &str,
+) -> Result<Option<Value>, WorkspaceStoreReadError> {
+    validate_contract()?;
+    validate_run_detail_http_contract()?;
+    if run_id.is_empty() || run_id.trim() != run_id || run_id.contains('\0') {
+        return Err(WorkspaceStoreReadError::InvalidRunId);
+    }
+    validate_database(connection)?;
+    validate_table_columns(connection, "runs", &RUN_DETAIL_RUN_COLUMNS)?;
+    validate_table_columns(connection, "pipelines", &RUN_DETAIL_PIPELINE_COLUMNS)?;
+    validate_table_columns(connection, "chains", &RUN_DETAIL_CHAIN_COLUMNS)?;
+    validate_table_columns(connection, "logs", &RUN_DETAIL_LOG_COLUMNS)?;
+    query_run_detail_projection(connection, run_id)
+}
+
 /// Verify that a linked workspace can serve the exact Studio run-detail v1
 /// projection without reading a particular run.
 ///
@@ -540,6 +572,19 @@ pub fn preflight_run_detail_projection(
     if file_stamp(&database)? != before {
         return Err(WorkspaceStoreReadError::ChangedDuringRead);
     }
+    Ok(())
+}
+
+pub(crate) fn preflight_run_detail_projection_from_connection(
+    connection: &Connection,
+) -> Result<(), WorkspaceStoreReadError> {
+    validate_contract()?;
+    validate_run_detail_http_contract()?;
+    validate_database(connection)?;
+    validate_table_columns(connection, "runs", &RUN_DETAIL_RUN_COLUMNS)?;
+    validate_table_columns(connection, "pipelines", &RUN_DETAIL_PIPELINE_COLUMNS)?;
+    validate_table_columns(connection, "chains", &RUN_DETAIL_CHAIN_COLUMNS)?;
+    validate_table_columns(connection, "logs", &RUN_DETAIL_LOG_COLUMNS)?;
     Ok(())
 }
 
@@ -583,6 +628,21 @@ pub fn read_pipeline_summaries(
         return Err(WorkspaceStoreReadError::ChangedDuringRead);
     }
     result
+}
+
+pub(crate) fn read_pipeline_summaries_from_connection(
+    connection: &Connection,
+    limit: u16,
+    offset: u64,
+) -> Result<WorkspaceStorePipelineSummaryPage, WorkspaceStoreReadError> {
+    validate_contract()?;
+    if limit == 0 || limit > MAX_PIPELINE_SUMMARIES {
+        return Err(WorkspaceStoreReadError::LimitOutOfRange(limit));
+    }
+    let offset =
+        i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
+    validate_database(connection)?;
+    query_pipeline_summaries(connection, i64::from(limit), offset)
 }
 
 /// Return one deterministic page from the public Store v5 chain-ranking primitive.
@@ -683,6 +743,18 @@ pub(crate) fn read_results_summary_source(
         return Err(WorkspaceStoreReadError::ChangedDuringRead);
     }
     result
+}
+
+pub(crate) fn read_results_summary_source_from_connection(
+    connection: &Connection,
+) -> Result<Vec<WorkspaceStoreResultsSummarySourceRow>, WorkspaceStoreReadError> {
+    validate_contract()?;
+    validate_results_summary_contract()?;
+    validate_database(connection)?;
+    validate_table_columns(connection, "chains", &RESULTS_SUMMARY_CHAIN_COLUMNS)?;
+    validate_table_columns(connection, "pipelines", &RESULTS_SUMMARY_PIPELINE_COLUMNS)?;
+    validate_table_columns(connection, "predictions", &PREDICTION_RANKING_COLUMNS)?;
+    query_results_summary_source(connection)
 }
 
 fn validate_contract() -> Result<(), WorkspaceStoreReadError> {

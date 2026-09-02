@@ -15,7 +15,7 @@
       "scientific_execution"
     ]
   },
-  "targets": ["native-sidecar", "scientific-plugin", "reject"],
+  "targets": ["native-sidecar", "reject"],
   "selection": {
     "default_session_owner": "native-sidecar",
     "native_qualified_unavailable_or_mismatch": "reject",
@@ -25,13 +25,11 @@
     "fastapi_or_uvicorn_acquire_after_native_candidate": "forbidden",
     "implicit_python_http_acquisition": "forbidden"
   },
-  "python_http_diagnostic": {
-    "default": false,
-    "activation": "explicit_process_wide_only",
-    "packaged_activation": "--enable-python-http-diagnostic",
-    "development_environment_activation": "NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1",
-    "packaged_environment_activation": "forbidden",
-    "renderer_session_owner": "scientific-plugin",
+  "python_http": {
+    "packaged_entrypoint": "absent",
+    "command_line_activation": "forbidden",
+    "environment_activation": "forbidden",
+    "renderer_target": "absent",
     "per_route_fallback": "forbidden"
   },
   "http": {
