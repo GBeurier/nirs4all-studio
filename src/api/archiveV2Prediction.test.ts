@@ -52,7 +52,7 @@ function response(): Record<string, unknown> {
       [2.5, 15],
     ],
     provenance: {
-      executor: `nirs4all-core@0.3.23+libn4m-abi-2.2:${"b".repeat(64)}`,
+      executor: `nirs4all-core@0.3.24+libn4m-abi-2.2:${"b".repeat(64)}`,
       archive_ref: request.archive.ref,
       workspace_id: request.workspace_id,
     },
@@ -115,7 +115,7 @@ describe("native Archive V2 array prediction client", () => {
       "executor identity",
       {
         provenance: {
-          executor: `nirs4all-core@0.3.24+libn4m-abi-2.2:${"b".repeat(64)}`,
+          executor: `nirs4all-core@0.3.23+libn4m-abi-2.2:${"b".repeat(64)}`,
           archive_ref: request.archive.ref,
           workspace_id: request.workspace_id,
         },

@@ -168,7 +168,7 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
             target_names: prediction.target_names,
             values: prediction.values,
             provenance_executor: format!(
-                "nirs4all-core@0.3.23+libn4m-abi-{}.{}:{}",
+                "nirs4all-core@0.3.24+libn4m-abi-{}.{}:{}",
                 self.methods.abi_major, self.methods.abi_minor, self.methods.sha256
             ),
         })
@@ -1194,5 +1194,9 @@ mod tests {
         );
         assert_eq!(contract["executor_boundary"]["python_http_owner"], false);
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
+        assert_eq!(
+            contract["executor_boundary"]["core"],
+            "immutable nirs4all-core bc001e53 snapshot exposing nirs4all 0.3.24"
+        );
     }
 }

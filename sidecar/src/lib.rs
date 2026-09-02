@@ -5415,7 +5415,7 @@ mod tests {
             archive_v2_prediction::PackagedMethodsLibraryIdentity {
                 path: methods_path,
                 size: methods_size,
-                sha256: methods_sha256,
+                sha256: methods_sha256.clone(),
                 abi_major: 2,
                 abi_minor: 2,
             },
@@ -5453,6 +5453,10 @@ mod tests {
         assert_eq!(response["fallback_used"], false);
         assert_eq!(response["sample_ids"], json!(["predict.0", "predict.1"]));
         assert_eq!(response["target_names"], json!(["protein", "moisture"]));
+        assert_eq!(
+            response["provenance"]["executor"],
+            format!("nirs4all-core@0.3.24+libn4m-abi-2.2:{methods_sha256}")
+        );
         let expected = [
             [1.636_363_636_363_636_5, 13.272_727_272_727_273],
             [2.499_999_999_999_999_6, 15.0],
