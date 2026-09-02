@@ -751,6 +751,9 @@ pub fn route_request_with_body(
         ("GET", "/api/system/status") => system_status_response(state),
         ("GET", "/api/app/settings") => app_settings_response(state),
         ("PUT", "/api/app/settings") => update_app_settings_response(state, body),
+        ("GET", "/api/config/setup-status") => setup_status_response(state),
+        ("POST", "/api/config/skip-setup") => complete_setup_response(state, "cpu"),
+        ("POST", "/api/config/complete-setup") => complete_setup_request_response(state, body),
         ("GET", "/api/app/favorites") => app_favourites_response(state),
         ("POST", "/api/app/favorites") => add_app_favourite_response(state, body),
         ("GET", "/api/app/config-path") => app_config_path_response(state),
@@ -780,6 +783,7 @@ pub fn route_request_with_body(
         (
             _,
             "/api/health"
+            | "/api/config/setup-status"
             | "/api/system/readiness"
             | "/api/system/status"
             | "/sidecar/v1/health"
@@ -798,6 +802,9 @@ pub fn route_request_with_body(
         ) => method_not_allowed(method, path, "GET"),
         (_, "/api/updates/settings" | "/api/app/settings") => {
             method_not_allowed(method, path, "GET, PUT")
+        }
+        (_, "/api/config/skip-setup" | "/api/config/complete-setup") => {
+            method_not_allowed(method, path, "POST")
         }
         (_, "/api/app/favorites") => method_not_allowed(method, path, "GET, POST"),
         (_, "/api/app/config-path") => method_not_allowed(method, path, "GET, POST, DELETE"),
@@ -1003,6 +1010,32 @@ fn app_settings_response(state: &SidecarState) -> HttpResponse {
     match state.app_settings.response() {
         Ok(settings) => HttpResponse::json(200, settings.to_string()),
         Err(error) => app_settings_storage_error("get app settings", &error),
+    }
+}
+
+fn setup_status_response(state: &SidecarState) -> HttpResponse {
+    match state.app_settings.setup_status() {
+        Ok(status) => HttpResponse::json(200, status.to_string()),
+        Err(error) => app_settings_storage_error("get setup status", &error),
+    }
+}
+
+fn complete_setup_request_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    let request = match app_settings_request_body(body) {
+        Ok(request) => request,
+        Err(response) => return response,
+    };
+    let Some(profile) = request.get("profile").and_then(Value::as_str) else {
+        return app_settings_validation_error("request body must contain a string profile");
+    };
+    complete_setup_response(state, profile)
+}
+
+fn complete_setup_response(state: &SidecarState, profile: &str) -> HttpResponse {
+    match state.app_settings.complete_setup(profile) {
+        Ok(status) => HttpResponse::json(200, status.to_string()),
+        Err(error) if profile.trim().is_empty() => app_settings_validation_error(&error),
+        Err(error) => app_settings_storage_error("complete setup", &error),
     }
 }
 
@@ -4077,6 +4110,66 @@ mod tests {
         );
         assert_eq!(
             route_request_with_body(&mut state, "PUT", "/api/app/settings", b"[]").status,
+            422
+        );
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn setup_routes_persist_without_acquiring_a_python_http_backend() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "studio-sidecar-setup-routes-{}-{nonce}",
+            std::process::id()
+        ));
+        let mut state = SidecarState::with_app_settings_dir(&directory);
+
+        let initial = route_request(&mut state, "GET", "/api/config/setup-status");
+        assert_eq!(initial.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&initial.body).unwrap(),
+            json!({
+                "setup_completed": false,
+                "selected_profile": null,
+                "completed_at": null,
+            })
+        );
+
+        let skipped = route_request(&mut state, "POST", "/api/config/skip-setup");
+        assert_eq!(skipped.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&skipped.body).unwrap()["selected_profile"],
+            "cpu"
+        );
+        let persisted = route_request(&mut state, "GET", "/api/config/setup-status");
+        assert_eq!(
+            serde_json::from_str::<Value>(&persisted.body).unwrap()["setup_completed"],
+            true
+        );
+
+        let completed = route_request_with_body(
+            &mut state,
+            "POST",
+            "/api/config/complete-setup",
+            br#"{"profile":"gpu-cuda-torch"}"#,
+        );
+        assert_eq!(completed.status, 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(&completed.body).unwrap()["selected_profile"],
+            "gpu-cuda-torch"
+        );
+        assert_eq!(
+            route_request_with_body(
+                &mut state,
+                "POST",
+                "/api/config/complete-setup",
+                br#"{"profile":""}"#,
+            )
+            .status,
             422
         );
 

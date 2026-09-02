@@ -20,6 +20,7 @@ use atomicwrites::{replace_atomic, AllowOverwrite, AtomicFile};
 use serde_json::{json, Map, Value};
 
 const APP_SETTINGS_FILE: &str = "app_settings.json";
+const SETUP_STATUS_FILE: &str = "setup_status.json";
 const DATASET_LINKS_FILE: &str = "dataset_links.json";
 const MAX_DATASET_LINKS_BYTES: u64 = 2 * 1024 * 1024;
 const CONFIG_ENV: &str = "NIRS4ALL_CONFIG";
@@ -89,6 +90,54 @@ impl AppSettingsStore {
             "favorite_pipelines": favourite_pipelines(&settings),
             "ui_preferences": settings.get("ui_preferences").cloned().filter(Value::is_object).unwrap_or_else(|| json!({})),
         }))
+    }
+
+    /// Read the first-launch marker shared with existing Studio installs.
+    /// Missing or malformed state is treated as setup not yet completed.
+    pub fn setup_status(&self) -> Result<Value, String> {
+        let path = self.config_dir.join(SETUP_STATUS_FILE);
+        if !path.exists() {
+            return Ok(default_setup_status());
+        }
+        let content = fs::read_to_string(&path)
+            .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+        let Ok(status) = serde_json::from_str::<Value>(&content) else {
+            return Ok(default_setup_status());
+        };
+        let Some(status) = status.as_object() else {
+            return Ok(default_setup_status());
+        };
+        if status.get("setup_completed").and_then(Value::as_bool) != Some(true) {
+            return Ok(default_setup_status());
+        }
+        let selected_profile = status
+            .get("selected_profile")
+            .and_then(Value::as_str)
+            .filter(|profile| !profile.trim().is_empty());
+        let Some(selected_profile) = selected_profile else {
+            return Ok(default_setup_status());
+        };
+        Ok(json!({
+            "setup_completed": true,
+            "selected_profile": selected_profile,
+            "completed_at": status.get("completed_at").and_then(Value::as_str),
+        }))
+    }
+
+    /// Persist a selected first-launch profile without acquiring a Python
+    /// runtime. Package installation remains an explicit plugin-host action.
+    pub fn complete_setup(&self, profile: &str) -> Result<Value, String> {
+        let profile = profile.trim();
+        if profile.is_empty() {
+            return Err("setup profile must not be empty".into());
+        }
+        let status = json!({
+            "setup_completed": true,
+            "selected_profile": profile,
+            "completed_at": null,
+        });
+        self.save_named_json(SETUP_STATUS_FILE, &status)?;
+        Ok(status)
     }
 
     pub fn update_ui_preferences(&self, updates: &Value) -> Result<(), String> {
@@ -488,22 +537,25 @@ impl AppSettingsStore {
     }
 
     fn save(&self, settings: &Value) -> Result<(), String> {
+        self.save_named_json(APP_SETTINGS_FILE, settings)
+    }
+
+    fn save_named_json(&self, file_name: &str, document: &Value) -> Result<(), String> {
         fs::create_dir_all(&self.config_dir).map_err(|error| {
             format!(
                 "could not create settings directory {}: {error}",
                 self.config_dir.display()
             )
         })?;
-        let path = self.config_dir.join(APP_SETTINGS_FILE);
+        let path = self.config_dir.join(file_name);
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let temporary = self.config_dir.join(format!(
-            ".{APP_SETTINGS_FILE}.{}-{nonce}.tmp",
-            process::id()
-        ));
-        let encoded = serde_json::to_vec_pretty(settings)
+        let temporary = self
+            .config_dir
+            .join(format!(".{file_name}.{}-{nonce}.tmp", process::id()));
+        let encoded = serde_json::to_vec_pretty(document)
             .map_err(|error| format!("could not encode app settings: {error}"))?;
         let write_result = (|| -> Result<(), String> {
             let mut file = OpenOptions::new()
@@ -586,6 +638,14 @@ fn default_settings() -> Value {
             "density": "comfortable",
             "language": "en",
         },
+    })
+}
+
+fn default_setup_status() -> Value {
+    json!({
+        "setup_completed": false,
+        "selected_profile": null,
+        "completed_at": null,
     })
 }
 
@@ -732,6 +792,32 @@ mod tests {
         );
         assert!(store.remove_favourite("pipeline-a").unwrap());
         assert!(!store.remove_favourite("pipeline-a").unwrap());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn setup_status_round_trips_in_the_legacy_file_without_python() {
+        let directory = temporary_directory("setup-status");
+        let store = AppSettingsStore::new(&directory);
+
+        assert_eq!(
+            store.setup_status().unwrap(),
+            json!({
+                "setup_completed": false,
+                "selected_profile": null,
+                "completed_at": null,
+            })
+        );
+        assert_eq!(
+            store.complete_setup("cpu").unwrap(),
+            json!({
+                "setup_completed": true,
+                "selected_profile": "cpu",
+                "completed_at": null,
+            })
+        );
+        assert_eq!(store.setup_status().unwrap()["selected_profile"], "cpu");
+        assert!(store.complete_setup("  ").is_err());
         fs::remove_dir_all(directory).unwrap();
     }
 
