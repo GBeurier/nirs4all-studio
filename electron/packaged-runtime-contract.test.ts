@@ -3,9 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { verifyPackagedRuntimeContract } from "./packaged-runtime-contract";
+import { preselectRendererTransport } from "./renderer-transport-selection";
 
 const tempDirs: string[] = [];
 
@@ -175,6 +176,65 @@ describe("packaged runtime contract", () => {
       pythonPluginHostError: null,
       pythonSitePackagesPath: fixture.sitePackagesPath,
     });
+  });
+
+  it("keeps verified packaged stdio execution behind Rust-owned routes", async () => {
+    const fixture = makeResources();
+    const verified = verifyPackagedRuntimeContract({
+      resourcesPath: fixture.resourcesPath,
+      platform: "linux",
+    });
+    expect(verified.pythonPluginHostPath).toBe(fixture.pythonPath);
+
+    const capabilities = vi.fn().mockImplementation(
+      async () => new Response(
+        JSON.stringify({
+          protocol_version: "studio-sidecar-r1",
+          features: {
+            renderer_transport_selection: true,
+            renderer_rust_only_default: true,
+            implicit_python_http_fallback: false,
+            unmigrated_renderer_routes_fail_closed: true,
+            renderer_http_transport: true,
+            renderer_websocket_transport: true,
+            health: true,
+            scientific_submission_transport: true,
+            native_archive_v2_prediction: true,
+            system_capabilities_route: true,
+            python_plugin_preflight: true,
+            python_plugin_execution: true,
+            scientific_execution: true,
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    const packagedSidecar = () => ({
+      status: "running" as const,
+      url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: verified.pythonPluginHostPath !== null,
+    });
+
+    for (const candidate of [
+      { kind: "http" as const, method: "GET", path: "/health" },
+      { kind: "http" as const, method: "POST", path: "/runs/run-groups" },
+      { kind: "http" as const, method: "POST", path: "/predict/archive-v2" },
+      { kind: "http" as const, method: "GET", path: "/system/capabilities" },
+      { kind: "websocket" as const, path: "/ws/training/job-1" },
+    ]) {
+      await expect(preselectRendererTransport(
+        candidate,
+        packagedSidecar,
+        capabilities,
+      )).resolves.toMatchObject({
+        target: "native-sidecar",
+        renderer_transport: true,
+        scientific_execution: false,
+        fallback_after_native_selection: "none",
+        status: 200,
+      });
+    }
+    expect(capabilities).toHaveBeenCalledTimes(5);
   });
 
   it("refuses an altered product sidecar before spawn", () => {

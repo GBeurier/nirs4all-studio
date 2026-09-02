@@ -18,6 +18,7 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
       unmigrated_renderer_routes_fail_closed: true,
       renderer_http_transport: true,
       renderer_websocket_transport: true,
+      health: true,
       scientific_submission_transport: true,
       native_archive_v2_prediction: true,
       scientific_execution: false,
@@ -58,6 +59,100 @@ describe("renderer transport preselection", () => {
       "http://127.0.0.1:43123/sidecar/v1/capabilities",
       { method: "GET", cache: "no-store" },
     );
+  });
+
+  it("keeps native Rust routes selected when packaged stdio execution is ready", async () => {
+    const request = vi.fn().mockImplementation(
+      async () => capabilityResponse({
+        scientific_execution: true,
+        python_plugin_execution: true,
+        python_plugin_preflight: true,
+      }),
+    );
+
+    for (const candidate of [
+      { kind: "http" as const, method: "GET", path: "/health" },
+      { kind: "http" as const, method: "POST", path: "/runs/run-groups" },
+      { kind: "http" as const, method: "POST", path: "/predict/archive-v2" },
+      { kind: "http" as const, method: "GET", path: "/training/job-1" },
+      { kind: "http" as const, method: "GET", path: "/system/capabilities" },
+      { kind: "websocket" as const, path: "/ws/job/job-1" },
+    ]) {
+      await expect(preselectRendererTransport(
+        candidate,
+        running,
+        request,
+      )).resolves.toMatchObject({
+        target: "native-sidecar",
+        base_url: "http://127.0.0.1:43123",
+        renderer_transport: true,
+        scientific_execution: false,
+        reason: "native_capability_preflight_passed",
+        fallback_after_native_selection: "none",
+        status: 200,
+      });
+    }
+    expect(request).toHaveBeenCalledTimes(6);
+  });
+
+  it("still rejects malformed execution capability, transport, and Python owner", async () => {
+    const malformedExecution = vi.fn().mockResolvedValue(
+      capabilityResponse({ scientific_execution: "available" }),
+    );
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/health" },
+      running,
+      malformedExecution,
+    )).resolves.toMatchObject({
+      target: "reject",
+      reason: "native_capability_mismatch",
+      status: 503,
+    });
+
+    const wrongTransport = vi.fn().mockResolvedValue(capabilityResponse({
+      renderer_http_transport: false,
+      scientific_execution: true,
+    }));
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/health" },
+      running,
+      wrongTransport,
+    )).resolves.toMatchObject({
+      target: "reject",
+      reason: "native_capability_mismatch",
+      status: 503,
+    });
+
+    const wrongOwnerCapability = vi.fn().mockResolvedValue(capabilityResponse({
+      scientific_execution: true,
+      python_plugin_execution: true,
+      python_plugin_preflight: false,
+    }));
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/system/capabilities" },
+      running,
+      wrongOwnerCapability,
+    )).resolves.toMatchObject({
+      target: "reject",
+      reason: "native_capability_mismatch",
+      status: 503,
+    });
+
+    const noRequest = vi.fn();
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/system/capabilities" },
+      () => ({
+        status: "running",
+        url: "http://127.0.0.1:43123",
+        pythonPluginHostConfigured: false,
+      }),
+      noRequest,
+    )).resolves.toMatchObject({
+      target: "reject",
+      reason: "native_python_host_unavailable",
+      status: 503,
+    });
+    expect(noRequest).not.toHaveBeenCalled();
   });
 
   it("selects Archive V2 prediction without acquiring the explicit Python host", async () => {

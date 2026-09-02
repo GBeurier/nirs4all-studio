@@ -286,20 +286,29 @@ export async function preselectRendererTransport(
     const features = capabilities.features;
     if (
       capabilities.protocol_version !== PROTOCOL_VERSION ||
-      !features || typeof features !== "object" || Array.isArray(features) ||
-      (features as Record<string, unknown>).renderer_transport_selection !== true ||
-      (features as Record<string, unknown>).renderer_rust_only_default !== true ||
-      (features as Record<string, unknown>).implicit_python_http_fallback !== false ||
-      (features as Record<string, unknown>).unmigrated_renderer_routes_fail_closed !== true ||
-      (features as Record<string, unknown>)[
+      !features || typeof features !== "object" || Array.isArray(features)
+    ) {
+      return decision(normalized, surface.name, "reject", "native_capability_mismatch", 503);
+    }
+    const nativeFeatures = features as Record<string, unknown>;
+    // This capability becomes true when Rust has selected a bounded scientific
+    // executor (including packaged CPython over stdio). It is not a renderer
+    // route owner: validate the shape, while the transport and owner fields
+    // below remain the fail-closed selection inputs.
+    if (
+      nativeFeatures.renderer_transport_selection !== true ||
+      nativeFeatures.renderer_rust_only_default !== true ||
+      nativeFeatures.implicit_python_http_fallback !== false ||
+      nativeFeatures.unmigrated_renderer_routes_fail_closed !== true ||
+      nativeFeatures[
         normalized.kind === "http"
           ? "renderer_http_transport"
           : "renderer_websocket_transport"
       ] !== true ||
-      (features as Record<string, unknown>)[surface.capability] !== true ||
+      nativeFeatures[surface.capability] !== true ||
       (surface.requiresPythonHost &&
-        (features as Record<string, unknown>).python_plugin_preflight !== true) ||
-      (features as Record<string, unknown>).scientific_execution !== false
+        nativeFeatures.python_plugin_preflight !== true) ||
+      typeof nativeFeatures.scientific_execution !== "boolean"
     ) {
       return decision(normalized, surface.name, "reject", "native_capability_mismatch", 503);
     }

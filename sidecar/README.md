@@ -210,6 +210,9 @@ The capability object separately advertises
 `native_scientific_submission_routes: true`,
 `scientific_submission_transport: true`, a dynamic `scientific_execution`, and
 `durable_execution_job_record_reads: true`.
+Renderer preselection validates `scientific_execution` as a boolean but does not
+require it to be false: `true` means the Rust-owned executor has selected its
+bounded library host, never that CPython owns an HTTP or WebSocket route.
 The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. Every product-owned CPython launch uses `-B` plus
 `PYTHONDONTWRITEBYTECODE=1`, so probing cannot add bytecode to the attested
