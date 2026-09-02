@@ -57,12 +57,51 @@ function getTopLevelYamlSection(filePath: string, key: string): string {
   return section.join("\n");
 }
 
+function getExtraResourceFilter(filePath: string, from: string): string[] {
+  const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+  const values: string[] = [];
+  let inExtraResources = false;
+  let inRequestedResource = false;
+  let inFilter = false;
+
+  for (const line of lines) {
+    if (!inExtraResources) {
+      if (line === "extraResources:") inExtraResources = true;
+      continue;
+    }
+    if (/^\S/.test(line)) break;
+
+    const resource = line.match(/^ {2}- from:\s*(.+)$/);
+    if (resource) {
+      inRequestedResource = resource[1].trim() === from;
+      inFilter = false;
+      continue;
+    }
+    if (!inRequestedResource) continue;
+    if (line.trim() === "filter:") {
+      inFilter = true;
+      continue;
+    }
+    if (!inFilter) continue;
+
+    const value = line.match(/^ {6}-\s+"?(.*?)"?\s*$/);
+    if (value) values.push(value[1]);
+  }
+  return values;
+}
+
 describe("electron-builder config", () => {
+  const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const configNames = fs
+    .readdirSync(projectRoot)
+    .filter((name) => /^electron-builder\..+\.ya?ml$/.test(name))
+    .sort();
+
   it("packages the shared Python runtime config required by the Electron main process", () => {
-    const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const expectedFiles = ["scripts/python-runtime-config.cjs", "recommended-config.json"];
 
-    for (const configName of ["electron-builder.installer.yml", "electron-builder.archive.yml"]) {
+    expect(configNames).toEqual(["electron-builder.archive.yml", "electron-builder.installer.yml"]);
+    for (const configName of configNames) {
       const packagedFiles = getTopLevelYamlList(path.join(projectRoot, configName), "files");
 
       expect(packagedFiles, `${configName} files list`).toEqual(
@@ -72,12 +111,42 @@ describe("electron-builder config", () => {
   });
 
   it("leaves mac architecture selection to the CLI so release jobs do not cross-build both arches", () => {
-    const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-
-    for (const configName of ["electron-builder.installer.yml", "electron-builder.archive.yml"]) {
+    for (const configName of configNames) {
       const macSection = getTopLevelYamlSection(path.join(projectRoot, configName), "mac");
 
       expect(macSection, `${configName} mac section`).not.toMatch(/^\s+arch:\s*$/m);
     }
+  });
+
+  it("packages the complete plugin closure and Rust sidecar in every desktop artifact", () => {
+    const expectedInstallerFilter = [
+      "python-runtime/**/*",
+      "native/**/*",
+      "recommended-config.json",
+      "version.json",
+    ];
+    expect(
+      getExtraResourceFilter(
+        path.join(projectRoot, "electron-builder.installer.yml"),
+        "backend-dist/",
+      ),
+    ).toEqual(expectedInstallerFilter);
+    expect(
+      getExtraResourceFilter(
+        path.join(projectRoot, "electron-builder.archive.yml"),
+        "backend-dist/",
+      ),
+    ).toEqual(["**/*"]);
+  });
+
+  it("never selects legacy Python backend source for standard installers", () => {
+    const installer = fs.readFileSync(
+      path.join(projectRoot, "electron-builder.installer.yml"),
+      "utf8",
+    );
+    expect(installer).not.toMatch(
+      /^\s+-\s+"?(?:api|websocket|updater|public)\/|^\s+-\s+"?main\.py/m,
+    );
+    expect(installer).toContain("plugin-only CPython closure");
   });
 });
