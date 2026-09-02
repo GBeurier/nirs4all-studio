@@ -155,6 +155,11 @@ away. Release resources must also be installed read-only and protected by the
 platform package/signature mechanism; any observed drift fails the job and
 terminates a just-spawned worker.
 
+Every Rust-owned invocation of the embedded CPython host disables bytecode
+writes with both `-B` and `PYTHONDONTWRITEBYTECODE=1`. This keeps preflight,
+system/update inspection, run-detail materialization, and scientific execution
+from adding `__pycache__` members to the exact packaged closure.
+
 Linux CI executes the unpacked installer directly. The release workflow also
 verifies the same manifest for Windows x64 and macOS x64/arm64 payloads on their
 matching runners; archive jobs additionally execute the full extracted-bundle
@@ -165,6 +170,12 @@ installation, runtime creation, snapshot restore, and config alignment
 mutations are disabled. Users may still switch the compatibility diagnostic
 environment to an external Python runtime; that choice does not replace the
 packaged stdio plugin host.
+
+`nirs4all-tools` remains an explicit dependency of the transitional
+FastAPI/tooling environment only. The dependency-sync gate validates its exact
+version separately through `BACKEND_TRANSITION_TOOL_PACKAGES`; it is excluded
+from `BACKEND_COMMON_PACKAGES`, the PyInstaller hidden-import roster, and the
+packaged Rust product's bounded CPython plugin closure.
 
 ## Runtime Modes
 

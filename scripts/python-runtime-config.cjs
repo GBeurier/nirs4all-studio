@@ -36,6 +36,14 @@ const BACKEND_COMMON_PACKAGES = Object.freeze([
   "msgpack>=1.0.0",
 ]);
 
+// Explicit dependencies of the transitional FastAPI/tooling environment.
+// They are validated in requirements*.txt, but must not be promoted into the
+// packaged Rust product's bounded CPython plugin closure or PyInstaller's
+// runtime hidden-import roster.
+const BACKEND_TRANSITION_TOOL_PACKAGES = Object.freeze([
+  "nirs4all-tools>=0.0.5",
+]);
+
 const LEGACY_FLAVOR_TO_PROFILE = Object.freeze({
   cpu: "cpu",
   "cpu-lite": "cpu-lite",
@@ -321,6 +329,7 @@ const MANAGED_RUNTIME_PACKAGES = Object.freeze([
 module.exports = {
   assertProfileSupportedOnPlatform,
   BACKEND_COMMON_PACKAGES,
+  BACKEND_TRANSITION_TOOL_PACKAGES,
   LEGACY_FLAVOR_TO_PROFILE,
   LITE_EXCLUDED_PACKAGE_NAMES,
   LITE_PROFILE,
