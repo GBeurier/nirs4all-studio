@@ -393,11 +393,11 @@ R2 diagnostic owner is selected).
 - **Chromium** for consistent WebGL support across all platforms
 - **IPC Bridge** for secure main/renderer communication
 
-### Backend
-- **FastAPI** for high-performance REST API
-- **[nirs4all](https://github.com/GBeurier/nirs4all)** Python library for all NIRS analysis
-- **WebSocket** for real-time training progress updates
-- **PyInstaller** for standalone backend packaging
+### Product Backend and Python Interop
+- **Rust sidecar** for packaged HTTP/WS orchestration, jobs, scheduling, and storage
+- **[nirs4all](https://github.com/GBeurier/nirs4all)** in a bounded, content-addressed CPython library/plugin host over stdio
+- **FastAPI/WebSocket Python source** retained only for web development and explicit whole-session diagnostics
+- **PyInstaller surfaces** retained as legacy compatibility tooling, never selected by Phase 2 desktop releases
 
 ---
 
@@ -421,25 +421,25 @@ nirs4all_webapp/
 ├── electron/               # Electron main process
 │   ├── main.ts             # Main entry point (window management)
 │   ├── preload.ts          # Secure IPC bridge (contextBridge)
-│   ├── backend-manager.ts  # Python backend lifecycle management
-│   ├── env-manager.ts      # Python environment detection and setup
+│   ├── backend-manager.ts  # Optional diagnostic Python backend lifecycle
+│   ├── env-manager.ts      # Packaged CPython plugin-host resolution
 │   └── logger.ts           # Persistent file logging
-├── api/                    # FastAPI backend
+├── api/                    # Legacy web-dev/diagnostic FastAPI routes
 │   ├── workspace.py        # Workspace management routes
 │   ├── datasets.py         # Dataset operations
 │   ├── pipelines.py        # Pipeline CRUD
 │   ├── predictions.py      # Prediction storage
 │   └── system.py           # Health, system info, and GPU detection
 ├── scripts/                # Build and utility scripts
-│   ├── build-backend.cjs   # Python backend packaging (cross-platform)
-│   └── build-release.cjs   # Full release build (cross-platform)
+│   ├── bake-python-plugin-runtime.cjs # Pinned plugin-only closure builder
+│   └── build-release.cjs   # CPU installer build on the matching host
 ├── build/                  # Build configuration
 │   └── entitlements.mac.plist  # macOS code signing entitlements
 ├── docs/                   # Documentation
 │   └── _internals/         # Developer guides
 ├── public/                 # Static assets
-├── main.py                 # FastAPI application entry
-├── backend.spec            # PyInstaller spec file (backend executable)
+├── main.py                 # Legacy web-dev/diagnostic FastAPI entry
+├── backend.spec            # Legacy PyInstaller compatibility spec
 ├── electron-builder.installer.yml  # Electron packaging config (installer)
 ├── electron-builder.archive.yml    # Electron packaging config (portable archive)
 └── package.json            # Node dependencies

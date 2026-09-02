@@ -177,7 +177,7 @@ jobs:
           echo "skip_docker=${{ inputs.skip_docker || 'false' }}" >> $GITHUB_OUTPUT
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Installer: Linux x64 (venv-based, Electron + embedded Python)
+  # Installer: Linux x64 (Electron + Rust sidecar + plugin-only CPython closure)
   # ═══════════════════════════════════════════════════════════════════════════
   installer-linux:
     name: Installer — Linux x64
@@ -274,7 +274,7 @@ jobs:
           retention-days: 5
 
   # ═══════════════════════════════════════════════════════════════════════════
-  # Installer: Windows x64 (venv-based, Electron + embedded Python)
+  # Installer: Windows x64 (Electron + Rust sidecar + plugin-only CPython closure)
   # ═══════════════════════════════════════════════════════════════════════════
   installer-windows:
     name: Installer — Windows x64
