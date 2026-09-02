@@ -925,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "nirs4all"
-version = "0.3.23"
+version = "0.3.24"
 dependencies = [
  "dag-ml",
  "dag-ml-core",
