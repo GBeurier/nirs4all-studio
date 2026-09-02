@@ -39,6 +39,18 @@ fn checked_in_contract_matches_the_rust_route_and_process_bounds() {
         contract["converter"]["stderr_limit_bytes"],
         MAX_CONVERTER_STDERR_BYTES
     );
+    assert_eq!(
+        contract["converter"]["qualified_identity"]["version"],
+        "0.0.7"
+    );
+    assert_eq!(
+        contract["converter"]["qualified_identity"]["source_commit"],
+        "e3a332633f87b4652a06f8993e63c386a3568698"
+    );
+    assert_eq!(
+        contract["converter"]["qualified_identity"]["readers"]["duckdb"],
+        "1.5.5"
+    );
 }
 
 #[test]
@@ -50,7 +62,15 @@ fn exit_and_rollback_policy_prevents_false_success_or_source_loss() {
         "forbidden"
     );
     assert_eq!(contract["exit_codes"]["20"]["http_status"], 422);
+    assert_eq!(contract["exit_codes"]["30"]["http_status"], 422);
+    assert_eq!(contract["exit_codes"]["40"]["http_status"], 409);
+    assert_eq!(contract["exit_codes"]["70"]["http_status"], 500);
+    assert_eq!(contract["exit_codes"]["other"]["http_status"], 502);
     assert_eq!(contract["rollback"]["legacy_source_retained"], true);
     assert_eq!(contract["rollback"]["previous_workspace_unlinked"], false);
     assert_eq!(contract["converter"]["python_http"], "forbidden");
+    assert_eq!(
+        contract["compatibility_exceptions"]["STU-CONV-SYNC-001"]["status"],
+        "approved"
+    );
 }

@@ -1326,7 +1326,7 @@ fn legacy_workspace_conversion_with(
     legacy_conversion: &LegacyConversionRuntime,
     body: &[u8],
 ) -> HttpResponse {
-    let (_, workspace_path) = match active_workspace_identity(app_settings) {
+    let (source_workspace_id, workspace_path) = match active_workspace_identity(app_settings) {
         Ok(active) => active,
         Err(response) => return response,
     };
@@ -1365,7 +1365,13 @@ fn legacy_workspace_conversion_with(
         Ok(result) => result,
         Err(error) => return legacy_conversion_bridge_error_response(error),
     };
-    legacy_conversion_process_response(app_settings, &request, &command, &result)
+    legacy_conversion_process_response(
+        app_settings,
+        &source_workspace_id,
+        &request,
+        &command,
+        &result,
+    )
 }
 
 fn legacy_conversion_bridge_error_response(error: LegacyConversionFailure) -> HttpResponse {
@@ -1391,6 +1397,7 @@ fn legacy_conversion_bridge_error_response(error: LegacyConversionFailure) -> Ht
 
 fn legacy_conversion_process_response(
     app_settings: &AppSettingsStore,
+    source_workspace_id: &str,
     request: &LegacyConversionRequest,
     command: &[String],
     result: &LegacyConversionProcessOutput,
@@ -1418,7 +1425,11 @@ fn legacy_conversion_process_response(
             );
         } else {
             let timestamp = websocket_transport::rfc3339_now();
-            match app_settings.link_and_activate_workspace(&request.output_path, &timestamp) {
+            match app_settings.link_and_activate_workspace(
+                &request.output_path,
+                &timestamp,
+                source_workspace_id,
+            ) {
                 Ok(workspace) => {
                     linked_workspace_id = workspace
                         .get("id")
@@ -1429,7 +1440,10 @@ fn legacy_conversion_process_response(
                         .and_then(Value::as_str)
                         .map(str::to_owned);
                 }
-                Err(error) => link_error = Some(error),
+                Err(error) => {
+                    activation_skipped = true;
+                    link_error = Some(error);
+                }
             }
         }
     }
@@ -4025,6 +4039,23 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    fn write_strict_v2_store(workspace: &Path) {
+        fs::create_dir_all(workspace).unwrap();
+        let connection = rusqlite::Connection::open(workspace.join("store.sqlite")).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA user_version = 2;
+                 CREATE TABLE projects(project_id TEXT PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE runs(run_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT);
+                 CREATE TABLE pipelines(pipeline_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, name TEXT NOT NULL, dataset_name TEXT NOT NULL);
+                 CREATE TABLE chains(chain_id TEXT PRIMARY KEY, pipeline_id TEXT NOT NULL, steps TEXT NOT NULL, model_step_idx INTEGER NOT NULL, model_class TEXT NOT NULL);
+                 CREATE TABLE predictions(prediction_id TEXT PRIMARY KEY, pipeline_id TEXT NOT NULL, dataset_name TEXT NOT NULL, model_name TEXT NOT NULL, model_class TEXT NOT NULL, fold_id TEXT NOT NULL, partition TEXT NOT NULL, metric TEXT NOT NULL, task_type TEXT NOT NULL);
+                 CREATE TABLE artifacts(artifact_id TEXT PRIMARY KEY, artifact_path TEXT NOT NULL, content_hash TEXT NOT NULL);
+                 CREATE TABLE logs(log_id TEXT PRIMARY KEY, pipeline_id TEXT NOT NULL, step_idx INTEGER NOT NULL, event TEXT NOT NULL);",
+            )
+            .unwrap();
+    }
+
     #[derive(Debug)]
     struct SelectedTestJobExecutor;
 
@@ -4109,8 +4140,7 @@ mod tests {
             request: &LegacyConversionRequest,
         ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
             if !request.dry_run && matches!(self.return_code, 0 | 10) {
-                fs::create_dir_all(&request.output_path).unwrap();
-                fs::write(request.output_path.join("store.sqlite"), b"verified target").unwrap();
+                write_strict_v2_store(&request.output_path);
             }
             Ok(LegacyConversionProcessOutput {
                 return_code: self.return_code,
@@ -4159,8 +4189,7 @@ mod tests {
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
             }
             drop(state);
-            fs::create_dir_all(&request.output_path).unwrap();
-            fs::write(request.output_path.join("store.sqlite"), b"verified target").unwrap();
+            write_strict_v2_store(&request.output_path);
             Ok(LegacyConversionProcessOutput {
                 return_code: 0,
                 stdout: "conversion complete".into(),
@@ -4797,8 +4826,15 @@ mod tests {
     }
 
     #[test]
-    fn conversion_exit_ten_preserves_without_activation_and_twenty_is_refused() {
-        for (code, expected_status) in [(10, 200), (20, 422)] {
+    fn conversion_exit_policy_is_closed_for_every_declared_and_unknown_code() {
+        for (code, expected_status, detail) in [
+            (10, 200, "best-effort"),
+            (20, 422, "unsupported input"),
+            (30, 422, "verification failed"),
+            (40, 409, "safety policy"),
+            (70, 500, "internal error"),
+            (99, 502, "unknown exit code"),
+        ] {
             let root = test_directory(&format!("legacy-conversion-code-{code}"));
             fs::create_dir_all(&root).unwrap();
             let (mut state, source) = legacy_conversion_state(&root, code);
@@ -4829,10 +4865,7 @@ mod tests {
                     .unwrap()
                     .contains("best-effort"));
             } else {
-                assert!(response["detail"]
-                    .as_str()
-                    .unwrap()
-                    .contains("unsupported input"));
+                assert!(response["detail"].as_str().unwrap().contains(detail));
             }
             assert_eq!(
                 state
@@ -4851,10 +4884,54 @@ mod tests {
     }
 
     #[test]
+    fn conversion_process_boundary_failures_have_closed_http_mappings() {
+        for (failure, status) in [
+            (LegacyConversionFailure::Busy, 409),
+            (LegacyConversionFailure::SpawnFailed, 503),
+            (LegacyConversionFailure::TimedOut, 504),
+            (LegacyConversionFailure::ProcessFailed, 502),
+            (LegacyConversionFailure::OutputReadFailed, 502),
+            (LegacyConversionFailure::StdoutTooLarge, 502),
+            (LegacyConversionFailure::StderrTooLarge, 502),
+            (LegacyConversionFailure::InvalidUtf8, 502),
+        ] {
+            let response = legacy_conversion_bridge_error_response(failure);
+            assert_eq!(response.status, status);
+            assert_eq!(
+                serde_json::from_str::<Value>(&response.body).unwrap()["reason"],
+                failure.reason()
+            );
+        }
+    }
+
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one end-to-end concurrency test keeps the gate, health probe, CAS mutation, and response assertions together"
+    )]
     fn live_conversion_releases_the_route_mutex_while_the_converter_runs() {
         let root = test_directory("legacy-conversion-live-concurrency");
         fs::create_dir_all(&root).unwrap();
         let (mut state, _) = legacy_conversion_state(&root, 0);
+        let alternate = root.join("alternate");
+        fs::create_dir_all(&alternate).unwrap();
+        let settings_path = root.join("config/app_settings.json");
+        let mut settings: Value =
+            serde_json::from_slice(&fs::read(&settings_path).unwrap()).unwrap();
+        settings["linked_workspaces"]
+            .as_array_mut()
+            .unwrap()
+            .push(linked_workspace_record(
+                "workspace-alternate",
+                &alternate.canonicalize().unwrap(),
+                false,
+                0,
+            ));
+        fs::write(
+            &settings_path,
+            serde_json::to_vec_pretty(&settings).unwrap(),
+        )
+        .unwrap();
         let gate = Arc::new((Mutex::new((false, false)), std::sync::Condvar::new()));
         state.legacy_conversion =
             LegacyConversionRuntime::with_converter(Arc::new(BlockingLegacyConverter {
@@ -4923,6 +5000,14 @@ mod tests {
         let mut health_response = String::new();
         let health_result = health.read_to_string(&mut health_response);
 
+        assert!(state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .app_settings
+            .activate_linked_workspace("workspace-alternate")
+            .unwrap()
+            .is_some());
+
         let mut gate_state = lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -4932,10 +5017,25 @@ mod tests {
 
         health_result.unwrap();
         assert!(health_response.starts_with("HTTP/1.1 200 OK\r\n"));
-        assert!(conversion
-            .join()
+        let conversion_response = conversion.join().unwrap();
+        assert!(conversion_response.starts_with("HTTP/1.1 200 OK\r\n"));
+        let conversion_body: Value =
+            serde_json::from_str(conversion_response.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        assert_eq!(conversion_body["activation_skipped"], true);
+        assert!(conversion_body["link_error"]
+            .as_str()
             .unwrap()
-            .starts_with("HTTP/1.1 200 OK\r\n"));
+            .contains("active workspace changed"));
+        assert_eq!(
+            state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .app_settings
+                .active_linked_workspace_response()
+                .unwrap()
+                .unwrap()["id"],
+            "workspace-alternate"
+        );
         server.join().unwrap();
         fs::remove_dir_all(root).unwrap();
     }

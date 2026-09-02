@@ -213,11 +213,12 @@ mutations are disabled. Users may still switch the compatibility diagnostic
 environment to an external Python runtime; that choice does not replace the
 packaged stdio plugin host.
 
-`nirs4all-tools` remains an explicit dependency of the transitional
-FastAPI/tooling environment only. The dependency-sync gate validates its exact
-version separately through `BACKEND_TRANSITION_TOOL_PACKAGES`; it is excluded
-from `BACKEND_COMMON_PACKAGES`, the PyInstaller hidden-import roster, and the
-packaged Rust product's bounded CPython plugin closure.
+The loose `nirs4all-tools>=0.0.5` range remains confined to the transitional
+FastAPI/tooling dependency declaration. The packaged Rust product instead
+installs and attests the qualified `nirs4all-tools` 0.0.7 wheel from commit
+`e3a332633f87b4652a06f8993e63c386a3568698`, plus exact `duckdb==1.5.5` and
+`pyarrow==25.0.1` readers, inside the bounded CPython stdio closure. It remains
+excluded from `BACKEND_COMMON_PACKAGES` and never acquires an HTTP role.
 
 ## Runtime Modes
 
@@ -281,8 +282,11 @@ node scripts/bake-python-plugin-runtime.cjs
 ```
 
 This produces `backend-dist/` with `python-runtime/` and the strict
-`PLUGIN_RUNTIME_READY.json`. Pass `--plugin-wheel <path>` for an offline build;
-the wheel must match the pinned c8 SHA-256.
+`PLUGIN_RUNTIME_READY.json`. Pass `--plugin-wheel <path>` and
+`--tools-wheel <path>` for an offline build; both wheels must match their
+pinned SHA-256 identities. The unpublished qualified `dag-ml 0.3.23` platform
+wheel is still a separate prerequisite of the selected `nirs4all` wheel; the
+bake fails closed when that artifact is unavailable.
 
 ## CI/CD Pipeline
 

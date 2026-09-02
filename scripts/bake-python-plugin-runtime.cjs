@@ -13,6 +13,13 @@ const PLUGIN_WHEEL_SHA256 = "00326c703b933ff2c4b106905e1c44f81906b918db30bb5d05a
 const PLUGIN_DISTRIBUTION_VERSION = "0.10.3";
 const PLUGIN_INSTALLED_MANIFEST_SHA256 = "261d0acbb05fa3a60b75d28f0f21b54c0985bd82b44227f9d852b159cc8c5684";
 const PLUGIN_RECORD_SHA256 = "41833befe7dd25b0c0c7e19c6090b44e29bb2d2243700164c49f951fe3ad71c2";
+const TOOLS_SOURCE_COMMIT = "e3a332633f87b4652a06f8993e63c386a3568698";
+const TOOLS_WHEEL_SHA256 = "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc";
+const TOOLS_DISTRIBUTION_VERSION = "0.0.7";
+const TOOLS_RECORD_SHA256 = "8db345e39929f63e658d33bba1a9379336547e5653ed4b51271792791e5d6f54";
+const TOOLS_INSTALLED_MANIFEST_SHA256 = "37e8862680fe35efcf6b3348ad5c064701f8ba90f43be89bd07c632a59a509fb";
+const DUCKDB_VERSION = "1.5.5";
+const PYARROW_VERSION = "25.0.1";
 const FORBIDDEN_DISTRIBUTIONS = Object.freeze([
   "fastapi",
   "httptools",
@@ -53,7 +60,7 @@ if os.name == "posix":
     try: os.spawnv(os.P_WAIT,"/bin/true",["true"])
     except RuntimeError: spawnv_denied=True
 else: spawnv_denied=True
-import nirs4all
+import nirs4all,nirs4all_tools,duckdb,pyarrow
 d=importlib.metadata.distribution("nirs4all")
 r=next(x for x in d.files or [] if str(x).endswith(".dist-info/RECORD")); record_bytes=open(d.locate_file(r),"rb").read()
 rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
@@ -62,7 +69,15 @@ verified=True
 for relative,encoded,size in rows:
     algorithm,expected=encoded.split("=",1); payload=open(d.locate_file(relative),"rb").read(); actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
     if actual != expected or (size and len(payload) != int(size)): verified=False; break
-print(json.dumps({"bind_denied":bind_denied,"spawn_denied":spawn_denied,"spawnv_denied":spawnv_denied,"implementation":sys.implementation.name,"isolated":bool(sys.flags.isolated),"no_site":bool(sys.flags.no_site),"dont_write_bytecode":bool(sys.dont_write_bytecode),"version":d.version,"record":hashlib.sha256(record_bytes).hexdigest(),"manifest":hashlib.sha256(m).hexdigest(),"verified":verified,"callable":callable(getattr(nirs4all,"studio_scientific_job_v1",None))},sort_keys=True,separators=(",",":")))`;
+td=importlib.metadata.distribution("nirs4all-tools")
+tr=next(x for x in td.files or [] if str(x).endswith(".dist-info/RECORD")); trb=open(td.locate_file(tr),"rb").read()
+trows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(trb.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
+tm="".join(",".join(row)+"\n" for row in trows).encode("utf-8")
+tverified=True
+for relative,encoded,size in trows:
+    algorithm,expected=encoded.split("=",1); payload=open(td.locate_file(relative),"rb").read(); actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
+    if actual != expected or (size and len(payload) != int(size)): tverified=False; break
+print(json.dumps({"bind_denied":bind_denied,"spawn_denied":spawn_denied,"spawnv_denied":spawnv_denied,"implementation":sys.implementation.name,"isolated":bool(sys.flags.isolated),"no_site":bool(sys.flags.no_site),"dont_write_bytecode":bool(sys.dont_write_bytecode),"version":d.version,"record":hashlib.sha256(record_bytes).hexdigest(),"manifest":hashlib.sha256(m).hexdigest(),"verified":verified,"callable":callable(getattr(nirs4all,"studio_scientific_job_v1",None)),"tools_version":td.version,"tools_record":hashlib.sha256(trb).hexdigest(),"tools_manifest":hashlib.sha256(tm).hexdigest(),"tools_verified":tverified,"tools_module":getattr(nirs4all_tools,"__name__",None),"duckdb_version":duckdb.__version__,"pyarrow_version":pyarrow.__version__},sort_keys=True,separators=(",",":")))`;
 
 function normalizeDistribution(name) {
   return name.trim().toLowerCase().replace(/[_.]+/g, "-");
@@ -250,6 +265,13 @@ function runPreflight(runtimeRoot, sitePackages, platform = process.platform) {
     response.manifest !== PLUGIN_INSTALLED_MANIFEST_SHA256 ||
     response.verified !== true ||
     response.callable !== true
+    || response.tools_version !== TOOLS_DISTRIBUTION_VERSION
+    || response.tools_record !== TOOLS_RECORD_SHA256
+    || response.tools_manifest !== TOOLS_INSTALLED_MANIFEST_SHA256
+    || response.tools_verified !== true
+    || response.tools_module !== "nirs4all_tools"
+    || response.duckdb_version !== DUCKDB_VERSION
+    || response.pyarrow_version !== PYARROW_VERSION
   ) {
     throw new Error(`Plugin runtime preflight identity mismatch: ${result.stdout.trim()}`);
   }
@@ -276,6 +298,17 @@ function expectedMarker(platform = process.platform, arch = process.arch) {
     platform,
     arch,
     forbidden_distributions: [...FORBIDDEN_DISTRIBUTIONS],
+    conversion_tools: {
+      source_commit: TOOLS_SOURCE_COMMIT,
+      wheel_sha256: TOOLS_WHEEL_SHA256,
+      distribution: "nirs4all-tools",
+      distribution_version: TOOLS_DISTRIBUTION_VERSION,
+      distribution_record_sha256: TOOLS_RECORD_SHA256,
+      installed_manifest_sha256: TOOLS_INSTALLED_MANIFEST_SHA256,
+      module: "nirs4all_tools",
+      cli: "python -I -B -m nirs4all_tools",
+      readers: { duckdb: DUCKDB_VERSION, pyarrow: PYARROW_VERSION },
+    },
   };
 }
 
@@ -310,6 +343,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
     constraints: "",
     pluginWheel: "",
+    toolsWheel: "",
     verifyOnly: false,
     finalizeExisting: false,
   };
@@ -319,6 +353,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--cache-dir") options.cacheDir = path.resolve(argv[++index]);
     else if (arg === "--constraints") options.constraints = path.resolve(argv[++index]);
     else if (arg === "--plugin-wheel") options.pluginWheel = path.resolve(argv[++index]);
+    else if (arg === "--tools-wheel") options.toolsWheel = path.resolve(argv[++index]);
     else if (arg === "--verify-only") options.verifyOnly = true;
     else if (arg === "--finalize-existing") options.finalizeExisting = true;
     else throw new Error(`Unknown argument: ${arg}`);
@@ -339,6 +374,7 @@ function runSetup(options) {
   ];
   if (options.constraints) args.push("--constraints", options.constraints);
   if (options.pluginWheel) args.push("--plugin-wheel", options.pluginWheel);
+  if (options.toolsWheel) args.push("--tools-wheel", options.toolsWheel);
   const result = spawnSync(process.execPath, args, { stdio: "inherit", windowsHide: true });
   if (result.status !== 0) throw new Error(`Plugin runtime setup failed with code ${result.status}`);
 }

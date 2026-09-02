@@ -19,6 +19,7 @@
  *   --runtime-only               Build only the embedded python runtime payload + build_info.json
  *   --build-mode <id>            build_info.json mode value (default: installer)
  *   --plugin-wheel <path>        Exact pinned wheel for studio-python-plugin-runtime
+ *   --tools-wheel <path>         Exact pinned nirs4all-tools wheel for the stdio converter
  *   --local-nirs4all             Install nirs4all from local source instead of PyPI
  *   --local-nirs4all-path <path> Local nirs4all source path (default: ../nirs4all, then ./nirs4all-lib)
  *   --local-dag-ml-path <path>   Optional local dag-ml Python package path
@@ -57,6 +58,10 @@ const PLUGIN_BUILD_MODE = "studio-python-plugin-runtime";
 const PLUGIN_SOURCE_COMMIT = "322265576ccfaeb1ee22332d05ae04b87be4b538";
 const PLUGIN_WHEEL_SHA256 = "00326c703b933ff2c4b106905e1c44f81906b918db30bb5d05aa189846c48940";
 const PLUGIN_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all.git@${PLUGIN_SOURCE_COMMIT}`;
+const TOOLS_SOURCE_COMMIT = "e3a332633f87b4652a06f8993e63c386a3568698";
+const TOOLS_WHEEL_SHA256 = "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc";
+const TOOLS_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all-tools.git@${TOOLS_SOURCE_COMMIT}`;
+const TOOLS_READER_PACKAGES = Object.freeze(["duckdb==1.5.5", "pyarrow==25.0.1"]);
 
 // --- Argument parsing ---
 const args = process.argv.slice(2);
@@ -73,6 +78,7 @@ let localNirs4allPath = "";
 let localDagMlPath = "";
 let localDagMlDataPath = "";
 let pluginWheel = "";
+let toolsWheel = "";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--flavor" && args[i + 1]) {
@@ -101,6 +107,8 @@ for (let i = 0; i < args.length; i++) {
     localDagMlDataPath = path.resolve(args[++i]);
   } else if (args[i] === "--plugin-wheel" && args[i + 1]) {
     pluginWheel = path.resolve(args[++i]);
+  } else if (args[i] === "--tools-wheel" && args[i + 1]) {
+    toolsWheel = path.resolve(args[++i]);
   }
 }
 
@@ -133,6 +141,9 @@ try {
   }
   if (pluginWheel && !fs.existsSync(pluginWheel)) {
     throw new Error(`Plugin wheel not found: ${pluginWheel}`);
+  }
+  if (toolsWheel && !fs.existsSync(toolsWheel)) {
+    throw new Error(`Tools wheel not found: ${toolsWheel}`);
   }
 } catch (error) {
   console.error(`Error: ${error.message}`);
@@ -443,18 +454,21 @@ function pruneStandaloneRuntimeArtifacts(runtimeRoot) {
   };
 }
 
-async function restorePinnedPluginWheelRecord(runtimePython, runtimeRoot, wheelPath) {
+async function restorePinnedWheelRecord(runtimePython, runtimeRoot, wheelPath, distribution, version) {
   const script = String.raw`import pathlib,sys,zipfile
 root=pathlib.Path(sys.argv[1])
 wheel=pathlib.Path(sys.argv[2])
+distribution=sys.argv[3]
+version=sys.argv[4]
 with zipfile.ZipFile(wheel) as archive:
-    members=[name for name in archive.namelist() if name.endswith("nirs4all-0.10.3.dist-info/RECORD")]
+    suffix=f"{distribution}-{version}.dist-info/RECORD"
+    members=[name for name in archive.namelist() if name.endswith(suffix)]
     if len(members) != 1: raise RuntimeError(f"expected one wheel RECORD, found {len(members)}")
     payload=archive.read(members[0])
-candidates=list(root.glob("python/Lib/site-packages/nirs4all-0.10.3.dist-info/RECORD"))+list(root.glob("python/lib/python3.*/site-packages/nirs4all-0.10.3.dist-info/RECORD"))
+candidates=list(root.glob(f"python/Lib/site-packages/{suffix}"))+list(root.glob(f"python/lib/python3.*/site-packages/{suffix}"))
 if len(candidates) != 1: raise RuntimeError(f"expected one installed RECORD, found {len(candidates)}")
 candidates[0].write_bytes(payload)`;
-  await runCommand(runtimePython, ["-I", "-S", "-B", "-c", script, runtimeRoot, wheelPath]);
+  await runCommand(runtimePython, ["-I", "-S", "-B", "-c", script, runtimeRoot, wheelPath, distribution, version]);
 }
 
 function pruneStandaloneRuntimeLaunchers(buildRoot) {
@@ -793,6 +807,7 @@ async function main() {
 
   const resolvedLocalNirs4allPath = pluginOnly ? null : resolveLocalNirs4allPath();
   let selectedPluginWheel = null;
+  let selectedToolsWheel = null;
   if (pluginOnly) {
     const wheelDir = path.join(cacheDir, "studio-python-plugin-wheel");
     fs.mkdirSync(wheelDir, { recursive: true });
@@ -835,6 +850,51 @@ async function main() {
     }), {}, {
       retries: isWindows ? 3 : 1,
       label: "install pinned nirs4all plugin wheel",
+    });
+    await runCommandWithRetries(runtimePython, buildPipInstallArgs(TOOLS_READER_PACKAGES, {
+      constraintsFile,
+      isolated: true,
+      noCompile: true,
+      upgrade: true,
+    }), {}, {
+      retries: isWindows ? 3 : 1,
+      label: "install exact legacy converter readers",
+    });
+    const toolsWheelDir = path.join(cacheDir, "studio-python-tools-wheel");
+    fs.mkdirSync(toolsWheelDir, { recursive: true });
+    if (toolsWheel) {
+      selectedToolsWheel = toolsWheel;
+    } else {
+      for (const entry of fs.readdirSync(toolsWheelDir)) {
+        if (entry.endsWith(".whl")) fs.rmSync(path.join(toolsWheelDir, entry), { force: true });
+      }
+      await runCommandWithRetries(runtimePython, [
+        "-I", "-m", "pip", "wheel", "--no-deps", "--wheel-dir", toolsWheelDir, TOOLS_SOURCE_URL,
+      ], {}, {
+        retries: isWindows ? 3 : 1,
+        label: "build pinned nirs4all-tools wheel",
+      });
+      const wheels = fs.readdirSync(toolsWheelDir)
+        .filter((entry) => /^nirs4all_tools-.*\.whl$/i.test(entry));
+      if (wheels.length !== 1) {
+        throw new Error(`Pinned tools build produced ${wheels.length} nirs4all-tools wheels`);
+      }
+      selectedToolsWheel = path.join(toolsWheelDir, wheels[0]);
+    }
+    const actualToolsWheelSha256 = sha256File(selectedToolsWheel);
+    if (actualToolsWheelSha256 !== TOOLS_WHEEL_SHA256) {
+      throw new Error(
+        `Pinned tools wheel identity mismatch: expected ${TOOLS_WHEEL_SHA256}, got ${actualToolsWheelSha256}`,
+      );
+    }
+    await runCommandWithRetries(runtimePython, buildPipInstallArgs([selectedToolsWheel], {
+      constraintsFile,
+      isolated: true,
+      noCompile: true,
+      extraPipArgs: ["--no-deps"],
+    }), {}, {
+      retries: isWindows ? 3 : 1,
+      label: "install pinned nirs4all-tools wheel",
     });
   } else if (localNirs4all && resolvedLocalNirs4allPath) {
     // A distributable bundle must NOT install nirs4all editable: an editable
@@ -923,8 +983,9 @@ async function main() {
       `  Removed ${runtimeStats.removedPaths + launcherStats.removedPaths} development-only paths (${formatSize(runtimeStats.removedBytes + launcherStats.removedBytes)})`,
     );
     if (pluginOnly) {
-      await restorePinnedPluginWheelRecord(runtimePython, backendDist, selectedPluginWheel);
-      console.log("  Restored the exact pinned wheel RECORD after isolated installation");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "0.10.3");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedToolsWheel, "nirs4all_tools", "0.0.7");
+      console.log("  Restored both exact pinned wheel RECORDs after isolated installation");
     }
     console.log("");
   }
@@ -980,6 +1041,9 @@ async function main() {
     selected_source_commit: pluginOnly ? PLUGIN_SOURCE_COMMIT : null,
     selected_wheel_sha256: pluginOnly ? PLUGIN_WHEEL_SHA256 : null,
     selected_wheel_filename: selectedPluginWheel ? path.basename(selectedPluginWheel) : null,
+    conversion_tools_source_commit: pluginOnly ? TOOLS_SOURCE_COMMIT : null,
+    conversion_tools_wheel_sha256: pluginOnly ? TOOLS_WHEEL_SHA256 : null,
+    conversion_tools_wheel_filename: selectedToolsWheel ? path.basename(selectedToolsWheel) : null,
   };
   const buildInfoPath = path.join(backendDist, "build_info.json");
   fs.writeFileSync(buildInfoPath, JSON.stringify(buildInfo, null, 2));

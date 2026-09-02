@@ -96,6 +96,17 @@ function writePackagedContract(
     distribution_version: "0.10.3",
     distribution_record_sha256: "41833befe7dd25b0c0c7e19c6090b44e29bb2d2243700164c49f951fe3ad71c2",
     installed_manifest_sha256: "261d0acbb05fa3a60b75d28f0f21b54c0985bd82b44227f9d852b159cc8c5684",
+    conversion_tools: {
+      source_commit: "e3a332633f87b4652a06f8993e63c386a3568698",
+      wheel_sha256: "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc",
+      distribution: "nirs4all-tools",
+      distribution_version: "0.0.7",
+      distribution_record_sha256: "8db345e39929f63e658d33bba1a9379336547e5653ed4b51271792791e5d6f54",
+      installed_manifest_sha256: "37e8862680fe35efcf6b3348ad5c064701f8ba90f43be89bd07c632a59a509fb",
+      module: "nirs4all_tools",
+      cli: "python -I -B -m nirs4all_tools",
+      readers: { duckdb: "1.5.5", pyarrow: "25.0.1" },
+    },
     platform: "linux",
     arch: process.arch,
     forbidden_distributions: [

@@ -36,10 +36,10 @@ const BACKEND_COMMON_PACKAGES = Object.freeze([
   "msgpack>=1.0.0",
 ]);
 
-// Explicit dependencies of the transitional FastAPI/tooling environment.
-// They are validated in requirements*.txt, but must not be promoted into the
-// packaged Rust product's bounded CPython plugin closure or PyInstaller's
-// runtime hidden-import roster.
+// Dependency declaration retained for the transitional FastAPI environment.
+// The packaged Rust product installs a separately pinned/attested Tools wheel
+// plus exact readers into its bounded stdio-only CPython closure; this loose
+// range must never be promoted into BACKEND_COMMON_PACKAGES or managed config.
 const BACKEND_TRANSITION_TOOL_PACKAGES = Object.freeze([
   "nirs4all-tools>=0.0.5",
 ]);
