@@ -116,6 +116,8 @@ describe("electron-builder config", () => {
     expect(readme).toContain("Rust sidecar");
     expect(readme).toContain("bounded, content-addressed CPython library/plugin host");
     expect(readme).toContain("CPU installer build on the matching host");
+    expect(readme).toContain("absent from product installers and all-in-one archives");
+    expect(readme).not.toContain("FastAPI files remain packaged transitionally");
   });
 
   it("packages the shared Python runtime config required by the Electron main process", () => {
