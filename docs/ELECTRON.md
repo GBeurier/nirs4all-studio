@@ -387,7 +387,19 @@ owner. A verified code `0` result may activate the fresh output, code `10`
 keeps the preserved output inactive, and code `20` is a visible refusal. The
 legacy source remains linked for rollback. Activation additionally requires a
 strict immutable SQLite V2 check and compare-and-swap of the active workspace
-id, so a selection changed during conversion is never stolen.
+id, so a selection changed during conversion is never stolen. Open directory
+and store handles pin the validated objects through activation; file identity
+is checked around a second final V2 validation immediately before the atomic
+settings replacement. Any replacement attempt leaves the prior catalogue
+untouched.
+
+The Tools capability probe is executable, not declarative: after exact
+wheel/RECORD verification it runs an in-memory DuckDB query and an in-memory
+PyArrow Parquet round-trip. Output readers report through bounded channels;
+there is no unbounded thread join. If descendant cleanup does not close the
+pipes within two seconds, the request fails and that converter instance is
+permanently disabled, limiting a hostile escaped descendant to at most the two
+already-bounded reader tasks.
 
 `STU-CONV-SYNC-001` is the approved, narrow parity exception: this route returns
 the bounded conversion result synchronously (maximum 1800 seconds) until Rust

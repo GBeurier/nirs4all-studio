@@ -60,7 +60,7 @@ if os.name == "posix":
     try: os.spawnv(os.P_WAIT,"/bin/true",["true"])
     except RuntimeError: spawnv_denied=True
 else: spawnv_denied=True
-import nirs4all,nirs4all_tools,duckdb,pyarrow
+import nirs4all,nirs4all_tools,duckdb,pyarrow,pyarrow.parquet as parquet
 d=importlib.metadata.distribution("nirs4all")
 r=next(x for x in d.files or [] if str(x).endswith(".dist-info/RECORD")); record_bytes=open(d.locate_file(r),"rb").read()
 rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
@@ -77,7 +77,9 @@ tverified=True
 for relative,encoded,size in trows:
     algorithm,expected=encoded.split("=",1); payload=open(td.locate_file(relative),"rb").read(); actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
     if actual != expected or (size and len(payload) != int(size)): tverified=False; break
-print(json.dumps({"bind_denied":bind_denied,"spawn_denied":spawn_denied,"spawnv_denied":spawnv_denied,"implementation":sys.implementation.name,"isolated":bool(sys.flags.isolated),"no_site":bool(sys.flags.no_site),"dont_write_bytecode":bool(sys.dont_write_bytecode),"version":d.version,"record":hashlib.sha256(record_bytes).hexdigest(),"manifest":hashlib.sha256(m).hexdigest(),"verified":verified,"callable":callable(getattr(nirs4all,"studio_scientific_job_v1",None)),"tools_version":td.version,"tools_record":hashlib.sha256(trb).hexdigest(),"tools_manifest":hashlib.sha256(tm).hexdigest(),"tools_verified":tverified,"tools_module":getattr(nirs4all_tools,"__name__",None),"duckdb_version":duckdb.__version__,"pyarrow_version":pyarrow.__version__},sort_keys=True,separators=(",",":")))`;
+dc=duckdb.connect(":memory:"); duckdb_functional=dc.execute("SELECT 40 + 2").fetchone()==(42,); dc.close()
+table=pyarrow.table({"value":[1,2,3]}); sink=pyarrow.BufferOutputStream(); parquet.write_table(table,sink); payload=sink.getvalue(); restored=parquet.read_table(pyarrow.BufferReader(payload)); pyarrow_functional=restored.equals(table)
+print(json.dumps({"bind_denied":bind_denied,"spawn_denied":spawn_denied,"spawnv_denied":spawnv_denied,"implementation":sys.implementation.name,"isolated":bool(sys.flags.isolated),"no_site":bool(sys.flags.no_site),"dont_write_bytecode":bool(sys.dont_write_bytecode),"version":d.version,"record":hashlib.sha256(record_bytes).hexdigest(),"manifest":hashlib.sha256(m).hexdigest(),"verified":verified,"callable":callable(getattr(nirs4all,"studio_scientific_job_v1",None)),"tools_version":td.version,"tools_record":hashlib.sha256(trb).hexdigest(),"tools_manifest":hashlib.sha256(tm).hexdigest(),"tools_verified":tverified,"tools_module":getattr(nirs4all_tools,"__name__",None),"duckdb_version":duckdb.__version__,"pyarrow_version":pyarrow.__version__,"duckdb_functional":duckdb_functional,"pyarrow_parquet_functional":pyarrow_functional},sort_keys=True,separators=(",",":")))`;
 
 function normalizeDistribution(name) {
   return name.trim().toLowerCase().replace(/[_.]+/g, "-");
@@ -272,6 +274,8 @@ function runPreflight(runtimeRoot, sitePackages, platform = process.platform) {
     || response.tools_module !== "nirs4all_tools"
     || response.duckdb_version !== DUCKDB_VERSION
     || response.pyarrow_version !== PYARROW_VERSION
+    || response.duckdb_functional !== true
+    || response.pyarrow_parquet_functional !== true
   ) {
     throw new Error(`Plugin runtime preflight identity mismatch: ${result.stdout.trim()}`);
   }
@@ -308,6 +312,10 @@ function expectedMarker(platform = process.platform, arch = process.arch) {
       module: "nirs4all_tools",
       cli: "python -I -B -m nirs4all_tools",
       readers: { duckdb: DUCKDB_VERSION, pyarrow: PYARROW_VERSION },
+      functional_probes: {
+        duckdb: "in-memory-select-40-plus-2",
+        pyarrow_parquet: "in-memory-round-trip",
+      },
     },
   };
 }
