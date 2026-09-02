@@ -1,0 +1,113 @@
+{
+  "fold_set": {
+    "id": "uc6_outer",
+    "sample_ids": ["S001", "S002", "S003", "S004", "S005", "S006"],
+    "folds": [
+      {
+        "fold_id": "fold0",
+        "train_sample_ids": ["S002", "S003", "S005", "S006"],
+        "validation_sample_ids": ["S001", "S004"]
+      },
+      {
+        "fold_id": "fold1",
+        "train_sample_ids": ["S001", "S003", "S004", "S006"],
+        "validation_sample_ids": ["S002", "S005"]
+      },
+      {
+        "fold_id": "fold2",
+        "train_sample_ids": ["S001", "S002", "S004", "S005"],
+        "validation_sample_ids": ["S003", "S006"]
+      }
+    ]
+  },
+  "join_policy": {
+    "node_id": "merge:pred",
+    "allow_train_predictions_as_features": false,
+    "join_on": "sample_id",
+    "include_partitions": ["validation"]
+  },
+  "requested_sample_order": ["S001", "S002", "S003", "S004", "S005", "S006"],
+  "prediction_blocks": [
+    {
+      "prediction_id": "b0_fold0",
+      "producer_node": "branch:b0.model:pls",
+      "partition": "validation",
+      "fold_id": "fold0",
+      "sample_ids": ["S004", "S001"],
+      "values": [[4.0], [1.0]],
+      "target_names": ["y"]
+    },
+    {
+      "prediction_id": "b0_fold1",
+      "producer_node": "branch:b0.model:pls",
+      "partition": "validation",
+      "fold_id": "fold1",
+      "sample_ids": ["S005", "S002"],
+      "values": [[5.0], [2.0]],
+      "target_names": ["y"]
+    },
+    {
+      "prediction_id": "b0_fold2",
+      "producer_node": "branch:b0.model:pls",
+      "partition": "validation",
+      "fold_id": "fold2",
+      "sample_ids": ["S006", "S003"],
+      "values": [[6.0], [3.0]],
+      "target_names": ["y"]
+    },
+    {
+      "prediction_id": "b1_fold0",
+      "producer_node": "branch:b1.model:rf",
+      "partition": "validation",
+      "fold_id": "fold0",
+      "sample_ids": ["S004", "S001"],
+      "values": [[40.0], [10.0]],
+      "target_names": ["y"]
+    },
+    {
+      "prediction_id": "b1_fold1",
+      "producer_node": "branch:b1.model:rf",
+      "partition": "validation",
+      "fold_id": "fold1",
+      "sample_ids": ["S005", "S002"],
+      "values": [[50.0], [20.0]],
+      "target_names": ["y"]
+    },
+    {
+      "prediction_id": "b1_fold2",
+      "producer_node": "branch:b1.model:rf",
+      "partition": "validation",
+      "fold_id": "fold2",
+      "sample_ids": ["S006", "S003"],
+      "values": [[60.0], [30.0]],
+      "target_names": ["y"]
+    },
+    {
+      "prediction_id": "b2_fold0",
+      "producer_node": "branch:b2.model:svr",
+      "partition": "validation",
+      "fold_id": "fold0",
+      "sample_ids": ["S004", "S001"],
+      "values": [[400.0], [100.0]],
+      "target_names": ["y"]
+    },
+    {
+      "prediction_id": "b2_fold1",
+      "producer_node": "branch:b2.model:svr",
+      "partition": "validation",
+      "fold_id": "fold1",
+      "sample_ids": ["S005", "S002"],
+      "values": [[500.0], [200.0]],
+      "target_names": ["y"]
+    },
+    {
+      "prediction_id": "b2_fold2",
+      "producer_node": "branch:b2.model:svr",
+      "partition": "validation",
+      "fold_id": "fold2",
+      "sample_ids": ["S006", "S003"],
+      "values": [[600.0], [300.0]],
+      "target_names": ["y"]
+    }
+  ]
+}

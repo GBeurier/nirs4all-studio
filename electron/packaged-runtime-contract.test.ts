@@ -142,7 +142,12 @@ function makeResources(): {
       methods_library: {
         mode: "unavailable",
         member: null,
-        abi: { major: 2, minor: 2 },
+        abi: { major: 2, minor: 3 },
+        source: {
+          commit: "4983c9a1df39d430a78c615bda209d3353514aa1",
+          tree: "8f8a7809d22ff5d95f64a22e519759eaa3fd2ec0",
+          project_version: "1.0.13",
+        },
       },
     }),
   );
@@ -301,7 +306,7 @@ describe("packaged runtime contract", () => {
       "STUDIO_RUNTIME_CONTRACT.json",
     );
     const methodsPath = path.join(backendRoot, "native", "libn4m.so");
-    const methods = Buffer.from("libn4m-abi-2.2");
+    const methods = Buffer.from("libn4m-abi-2.3");
     fs.writeFileSync(methodsPath, methods);
     const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
     contract.methods_library = {
@@ -311,7 +316,12 @@ describe("packaged runtime contract", () => {
         size: methods.length,
         sha256: digest(methods),
       },
-      abi: { major: 2, minor: 2 },
+      abi: { major: 2, minor: 3 },
+      source: {
+        commit: "4983c9a1df39d430a78c615bda209d3353514aa1",
+        tree: "8f8a7809d22ff5d95f64a22e519759eaa3fd2ec0",
+        project_version: "1.0.13",
+      },
     };
     fs.writeFileSync(contractPath, JSON.stringify(contract));
 

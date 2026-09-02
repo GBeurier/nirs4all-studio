@@ -1,0 +1,59 @@
+{
+  "id": "data-plan:nir-chem-tabular-fusion",
+  "metadata": {
+    "example": "materialize two sources, align on samples, concatenate features"
+  },
+  "output_ports": {
+    "x": "x_collated"
+  },
+  "requires_user_choice": [],
+  "schema_version": 1,
+  "steps": [
+    {
+      "adapter_id": "dag-ml-data.materialize.arrow",
+      "inputs": ["source:nir"],
+      "kind": "materialize",
+      "output": "nir_raw",
+      "params": {
+        "feature_set_id": "nir"
+      }
+    },
+    {
+      "adapter_id": "dag-ml-data.materialize.arrow",
+      "inputs": ["source:chem"],
+      "kind": "materialize",
+      "output": "chem_raw",
+      "params": {
+        "feature_set_id": "chem"
+      }
+    },
+    {
+      "adapter_id": "dag-ml-data.align.sample_id",
+      "inputs": ["nir_raw", "chem_raw"],
+      "kind": "align",
+      "output": "aligned_sources",
+      "params": {
+        "mode": "inner"
+      }
+    },
+    {
+      "adapter_id": "dag-ml-data.join.concatenate_features",
+      "inputs": ["aligned_sources"],
+      "kind": "join",
+      "output": "x_joined",
+      "params": {
+        "namespace_columns": true
+      }
+    },
+    {
+      "adapter_id": "dag-ml-data.collate.row_major_f64",
+      "inputs": ["x_joined"],
+      "kind": "collate",
+      "output": "x_collated",
+      "params": {
+        "layout": "row_major"
+      }
+    }
+  ],
+  "warnings": []
+}

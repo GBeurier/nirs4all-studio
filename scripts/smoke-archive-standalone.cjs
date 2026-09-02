@@ -222,6 +222,7 @@ function verifyLaunchRuntimeContract(launchLayout, platformId, arch = process.ar
     platform: platformId,
     arch,
     requireBundledPythonPlugin: true,
+    requireBundledMethods: true,
   });
 }
 

@@ -44,7 +44,10 @@ const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
 const METHODS_ABI_MAJOR: u32 = 2;
-const METHODS_ABI_MINOR: u32 = 2;
+const METHODS_ABI_MINOR: u32 = 3;
+const METHODS_SOURCE_COMMIT: &str = "4983c9a1df39d430a78c615bda209d3353514aa1";
+const METHODS_SOURCE_TREE: &str = "8f8a7809d22ff5d95f64a22e519759eaa3fd2ec0";
+const METHODS_PROJECT_VERSION: &str = "1.0.13";
 const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -91,7 +94,7 @@ pub struct CoreArchiveV2PredictionExecutor {
 
 impl CoreArchiveV2PredictionExecutor {
     /// Acquire one exact packaged libn4m identity before advertising the
-    /// capability. The packaged contract fixes ABI 2.2 and this preflight
+    /// capability. The packaged contract fixes ABI 2.3 and this preflight
     /// attests its exact bytes. Core snapshots and re-attests those bytes, then
     /// the n4m binding performs the ABI compatibility call during execution.
     pub fn acquire(
@@ -168,7 +171,7 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
             target_names: prediction.target_names,
             values: prediction.values,
             provenance_executor: format!(
-                "nirs4all-core@0.3.24+libn4m-abi-{}.{}:{}",
+                "nirs4all-core@0.3.25+libn4m-abi-{}.{}:{}",
                 self.methods.abi_major, self.methods.abi_minor, self.methods.sha256
             ),
         })
@@ -323,7 +326,7 @@ fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdentity>
         return None;
     }
     let methods = root.get("methods_library")?.as_object()?;
-    if methods.len() != 3 || methods.get("mode").and_then(Value::as_str) != Some("bundled-required")
+    if methods.len() != 4 || methods.get("mode").and_then(Value::as_str) != Some("bundled-required")
     {
         return None;
     }
@@ -338,6 +341,14 @@ fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdentity>
     }
     let abi = methods.get("abi")?.as_object()?;
     if abi.len() != 2 {
+        return None;
+    }
+    let source = methods.get("source")?.as_object()?;
+    if source.len() != 3
+        || source.get("commit").and_then(Value::as_str) != Some(METHODS_SOURCE_COMMIT)
+        || source.get("tree").and_then(Value::as_str) != Some(METHODS_SOURCE_TREE)
+        || source.get("project_version").and_then(Value::as_str) != Some(METHODS_PROJECT_VERSION)
+    {
         return None;
     }
     Some(PackagedMethodsLibraryIdentity {
@@ -1196,7 +1207,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "immutable nirs4all-core bc001e53 snapshot exposing nirs4all 0.3.24"
+            "immutable nirs4all-core 4eb8a687 snapshot exposing nirs4all 0.3.25 and n4m 0.1.2"
         );
     }
 }

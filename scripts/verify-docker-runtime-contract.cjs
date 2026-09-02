@@ -26,7 +26,11 @@ requireText(dockerfile, "FROM ${NODE_IMAGE} AS frontend", "frontend build stage"
 requireText(dockerfile, "FROM ${RUST_IMAGE} AS sidecar", "Rust sidecar build stage");
 requireText(dockerfile, "FROM ${NGINX_IMAGE} AS runtime", "minimal web runtime stage");
 requireText(dockerfile, "cargo build --locked --release", "locked Rust build");
-requireText(dockerfile, "COPY --from=sidecar", "sidecar-only backend copy");
+requireText(dockerfile, "COPY --from=methods-runtime /libn4m.so.2.3.0", "native Methods named context");
+requireText(dockerfile, "NIRS4ALL_METHODS_SHA256", "native Methods content identity");
+requireText(dockerfile, "c.verifyRuntimeContract", "packaged runtime contract verification");
+requireText(dockerfile, "requireBundledMethods:true", "mandatory Methods policy");
+requireText(dockerfile, "COPY --from=native-runtime-contract", "closed native backend copy");
 requireText(dockerfile, "USER nginx", "unprivileged runtime user");
 requireText(dockerfile, "! command -v python", "runtime Python absence assertion");
 requireText(dockerfile, "! command -v python3", "runtime Python 3 absence assertion");
@@ -50,7 +54,7 @@ forbid(nginx, /proxy_pass\s+http:\/\/(?!studio_sidecar)/, "non-sidecar backend p
 
 requireText(entrypoint, "readonly sidecar_host=127.0.0.1", "fixed loopback bind");
 requireText(entrypoint, "readonly sidecar_port=8001", "private sidecar port");
-requireText(entrypoint, '/usr/local/bin/studio-sidecar --host "${sidecar_host}" --port "${sidecar_port}"', "sidecar launch");
+requireText(entrypoint, '/opt/nirs4all/backend/native/studio-sidecar --host "${sidecar_host}" --port "${sidecar_port}"', "sidecar launch");
 requireText(entrypoint, "/sidecar/v1/readiness", "sidecar startup readiness gate");
 requireText(entrypoint, "exec nginx -g 'daemon off;'", "foreground static server");
 forbid(entrypoint, /python|uvicorn|main\.py|scheduler|fallback/im, "non-sidecar backend path");
@@ -61,9 +65,11 @@ for (const excluded of ["api/", "websocket/", "main.py", "requirements*.txt", "b
 
 requireText(ciWorkflow, "npm run test:docker-runtime-contract", "CI static Docker contract gate");
 requireText(ciWorkflow, "scripts/smoke-docker-native-runtime.sh", "CI live Docker smoke");
+requireText(ciWorkflow, "--build-context methods-runtime=", "CI Methods build context");
 requireText(releaseWorkflow, "STUDIO_VERSION=${{ needs.prepare.outputs.version }}", "release image version");
 requireText(releaseWorkflow, "STUDIO_REVISION=${{ github.sha }}", "release image revision");
 requireText(releaseWorkflow, "scripts/smoke-docker-native-runtime.sh", "release live Docker smoke");
+requireText(releaseWorkflow, "methods-runtime=${{ env.NIRS4ALL_BUILD_METHODS_DIRECTORY }}", "release Methods build context");
 forbid(releaseWorkflow, /variant:\s*gpu-cuda|tag_suffix:\s*['"]?-gpu-cuda/im, "legacy GPU/Python image variant");
 
 if (errors.length > 0) {

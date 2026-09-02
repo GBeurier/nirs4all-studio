@@ -1,0 +1,70 @@
+{
+  "bundle_id": "bundle:cli.demo",
+  "schema_version": 1,
+  "plan_id": "plan:cli.bundle",
+  "graph_fingerprint": "dbdeb632cb41d144e1e52292d2ac6c4d4bd7969f7d220682be9786ab6c7d850f",
+  "campaign_fingerprint": "36d594208654c9bd05d68de30f27850a6f2a42b6cd3163e0cb7c48c5a5aaf9e5",
+  "controller_fingerprint": "256a970fed335d054bb70473c28706f29500c0306c93d2917511e5e58075a3fb",
+  "selected_variant_id": "variant:e30e0bcc0b694951",
+  "selections": {
+    "merge": {
+      "policy_id": "select:rmse",
+      "selected_candidate_id": "model:base",
+      "metric_name": "rmse",
+      "objective": "minimize",
+      "metric_level": "sample",
+      "selected_score": 0.98,
+      "ranked_candidates": [
+        {
+          "candidate_id": "model:base",
+          "score": 0.98,
+          "rank": 1
+        },
+        {
+          "candidate_id": "model:other",
+          "score": 1.11,
+          "rank": 2
+        }
+      ]
+    }
+  },
+  "refit_artifacts": [
+    {
+      "node_id": "model:base",
+      "controller_id": "controller:model.mock",
+      "artifact": {
+        "id": "artifact:model:base:refit",
+        "kind": "mock_model",
+        "controller_id": "controller:model.mock",
+        "backend": "joblib",
+        "uri": "artifacts/574cca985c73a83dde82cbb3bbd5db5a215b8e232f9b937d6cdbbbec188c37fc.joblib",
+        "content_fingerprint": "574cca985c73a83dde82cbb3bbd5db5a215b8e232f9b937d6cdbbbec188c37fc",
+        "size_bytes": 128,
+        "plugin": "dagml.mock",
+        "plugin_version": "1.0.0"
+      },
+      "params_fingerprint": "140a7ef7079b316f626f1deee4e571aaa089a614516a45c4bed8b13ee6549e26",
+      "data_requirement_keys": [
+        "model:base.x"
+      ],
+      "prediction_requirement_keys": []
+    }
+  ],
+  "prediction_requirements": [],
+  "prediction_caches": [],
+  "data_requirements": [
+    {
+      "node_id": "model:base",
+      "input_name": "x",
+      "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+      "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+      "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+      "output_representation": "tabular_numeric",
+      "feature_set_id": "x"
+    }
+  ],
+  "unsafe_flags": [],
+  "metadata": {
+    "purpose": "cli bundle fixture"
+  }
+}

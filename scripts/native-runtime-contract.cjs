@@ -15,6 +15,11 @@ const PYTHON_CLOSURE_SCHEMA = "nirs4all.studio-python-plugin-closure.v1";
 const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
 const MAX_PYTHON_CLOSURE_FILES = 100_000;
 const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
+const METHODS_ABI_MAJOR = 2;
+const METHODS_ABI_MINOR = 3;
+const METHODS_SOURCE_COMMIT = "4983c9a1df39d430a78c615bda209d3353514aa1";
+const METHODS_SOURCE_TREE = "8f8a7809d22ff5d95f64a22e519759eaa3fd2ec0";
+const METHODS_PROJECT_VERSION = "1.0.13";
 
 function isPathInside(root, candidate) {
   const relative = path.relative(root, candidate);
@@ -309,12 +314,22 @@ function createRuntimeContract({
     ? {
         mode: "bundled-required",
         member: describeFile(methodsPath, methodsRelativePath, backendRoot),
-        abi: { major: 2, minor: 2 },
+        abi: { major: METHODS_ABI_MAJOR, minor: METHODS_ABI_MINOR },
+        source: {
+          commit: METHODS_SOURCE_COMMIT,
+          tree: METHODS_SOURCE_TREE,
+          project_version: METHODS_PROJECT_VERSION,
+        },
       }
     : {
         mode: "unavailable",
         member: null,
-        abi: { major: 2, minor: 2 },
+        abi: { major: METHODS_ABI_MAJOR, minor: METHODS_ABI_MINOR },
+        source: {
+          commit: METHODS_SOURCE_COMMIT,
+          tree: METHODS_SOURCE_TREE,
+          project_version: METHODS_PROJECT_VERSION,
+        },
       };
 
   return {
@@ -506,6 +521,7 @@ function verifyRuntimeContract({
   platform = process.platform,
   arch = process.arch,
   requireBundledPythonPlugin = false,
+  requireBundledMethods = false,
 }) {
   verifyArtifactBoundary(artifactBoundaryRoot, backendRoot);
   const contractPath = path.join(backendRoot, "native", CONTRACT_FILE);
@@ -581,8 +597,11 @@ function verifyRuntimeContract({
   if (
     !methods ||
     !["unavailable", "bundled-required"].includes(methods.mode) ||
-    methods.abi?.major !== 2 ||
-    methods.abi?.minor !== 2
+    methods.abi?.major !== METHODS_ABI_MAJOR ||
+    methods.abi?.minor !== METHODS_ABI_MINOR ||
+    methods.source?.commit !== METHODS_SOURCE_COMMIT ||
+    methods.source?.tree !== METHODS_SOURCE_TREE ||
+    methods.source?.project_version !== METHODS_PROJECT_VERSION
   ) {
     throw new Error("Invalid native Methods policy in packaged runtime contract");
   }
@@ -601,6 +620,9 @@ function verifyRuntimeContract({
     );
   } else if (methods.member !== null) {
     throw new Error("Unavailable native Methods policy must not select a member");
+  }
+  if (requireBundledMethods && !methodsLibraryPath) {
+    throw new Error("Packaged native Methods library is required for this release artifact");
   }
 
   // Revalidate after all hashes and policy checks so a concurrent tree mutation
@@ -626,6 +648,7 @@ function parseVerifyArgs(argv = process.argv.slice(2)) {
     platform: process.platform,
     arch: process.arch,
     requireBundledPythonPlugin: false,
+    requireBundledMethods: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -649,6 +672,8 @@ function parseVerifyArgs(argv = process.argv.slice(2)) {
       parsed.arch = readValue();
     } else if (flag === "--require-bundled-python-plugin") {
       parsed.requireBundledPythonPlugin = true;
+    } else if (flag === "--require-bundled-methods") {
+      parsed.requireBundledMethods = true;
     } else {
       throw new Error(`Unknown argument: ${argument}`);
     }
@@ -685,6 +710,11 @@ module.exports = {
   compareUtf8Paths,
   createRuntimeContract,
   hasValidPlatformSignature,
+  METHODS_ABI_MAJOR,
+  METHODS_ABI_MINOR,
+  METHODS_PROJECT_VERSION,
+  METHODS_SOURCE_COMMIT,
+  METHODS_SOURCE_TREE,
   parseVerifyArgs,
   PYTHON_CLOSURE_FILE,
   PYTHON_CLOSURE_SCHEMA,

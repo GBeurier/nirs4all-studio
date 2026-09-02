@@ -31,6 +31,14 @@ const TARGETS = Object.freeze({
   "aarch64-apple-darwin": { platform: "darwin", arch: "arm64" },
 });
 
+function assertMethodsBuildIdentityConfigured(sourcePath, expectedSha256) {
+  if (sourcePath === null || expectedSha256 === null) {
+    throw new Error(
+      `Native Methods ABI 2.3 is required: set ${METHODS_BUILD_SOURCE_ENV} and ${METHODS_BUILD_SHA256_ENV}`,
+    );
+  }
+}
+
 function getNativeSidecarPaths(
   root = projectRoot,
   platform = process.platform,
@@ -182,6 +190,7 @@ async function buildNativeSidecar({
   methodsLibrarySource = process.env[METHODS_BUILD_SOURCE_ENV]?.trim() || null,
   methodsLibrarySha256 = process.env[METHODS_BUILD_SHA256_ENV]?.trim() || null,
 } = {}) {
+  assertMethodsBuildIdentityConfigured(methodsLibrarySource, methodsLibrarySha256);
   const target = targetTriple ? TARGETS[targetTriple] : null;
   const targetPlatform = target?.platform ?? platform;
   if (targetTriple && platform !== targetPlatform) {
@@ -214,6 +223,11 @@ async function buildNativeSidecar({
     sourcePath: methodsLibrarySource,
     expectedSha256: methodsLibrarySha256,
   });
+  if (methodsLibraryPath === null) {
+    throw new Error(
+      `Native Methods ABI 2.3 is required: set ${METHODS_BUILD_SOURCE_ENV} and ${METHODS_BUILD_SHA256_ENV}`,
+    );
+  }
   const contract = writeRuntimeContract({
     backendRoot,
     platform: targetPlatform,
@@ -241,6 +255,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertMethodsBuildIdentityConfigured,
   buildNativeSidecar,
   getNativeSidecarPaths,
   parseArgs,

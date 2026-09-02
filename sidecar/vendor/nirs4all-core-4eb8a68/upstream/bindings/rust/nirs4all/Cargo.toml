@@ -1,0 +1,53 @@
+[package]
+name = "nirs4all"
+version = "0.3.25"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Portable nirs4all aggregate binding over formats, IO, datasets, methods, dag-ml, and dag-ml-data"
+readme = "README.md"
+homepage = "https://nirs4all.org"
+documentation = "https://nirs4all-core.readthedocs.io/en/latest/"
+keywords = ["nirs", "spectroscopy", "chemometrics", "bindings"]
+include = [
+    "Cargo.toml",
+    "build.rs",
+    "README.md",
+    "LICENSES/CECILL-2.1.txt",
+    "LICENSES/AGPL-3.0-or-later.txt",
+    "src/**/*.rs",
+    "src/archive_v1_fixtures/**",
+    "tests/parity/fixtures/portable_kennard_stone_snv_pls.json",
+    "tests/parity/fixtures/portable_kennard_stone_snv_pls.yaml",
+    "tests/parity/fixtures/portable_methods_pipeline.json",
+    "tests/parity/fixtures/portable_methods_pipeline.yaml",
+    "tests/parity/fixtures/portable_savgol_pls.json",
+    "tests/parity/fixtures/portable_savgol_pls.yaml",
+    "tests/parity/fixtures/portable_snv_pls.json",
+    "tests/parity/fixtures/portable_snv_pls.yaml",
+    "tests/parity/expected/portable_python_oracle.json",
+]
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# The bundled aggregate is methods + formats + io (+ dag-ml). nirs4all-datasets
+# stays EXTERNAL/OPTIONAL to avoid bloat: it is exposed behind this OFF-by-default
+# feature. Enabling it only un-gates the `datasets` upstream surface in this
+# crate; it pulls in NO extra compiled dependency (the Rust binding delegates to
+# the datasets host at runtime, it never vendors the datasets crate).
+default = []
+datasets = []
+[dependencies]
+dag_ml_crate = { package = "dag-ml", version = "=0.3.23" }
+dag_ml_core = { package = "dag-ml-core", version = "=0.3.23", features = ["methods-optimizer"] }
+dag_ml_data_crate = { package = "dag-ml-data", version = "0.2.9" }
+libloading = "0.8"
+n4m = { version = "=0.1.2", features = ["dynamic"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+tempfile = "3"
+unicode-normalization = "0.1"

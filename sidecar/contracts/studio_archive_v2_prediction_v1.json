@@ -78,10 +78,10 @@
     "python_http_owner": false,
     "fastapi_fallback": false,
     "dag_ml_envelope": false,
-    "core": "immutable nirs4all-core bc001e53 snapshot exposing nirs4all 0.3.24",
-    "libn4m_identity": "product-owned absolute non-symlink path plus size plus SHA-256 plus ABI 2.2; never request-controlled",
+    "core": "immutable nirs4all-core 4eb8a687 snapshot exposing nirs4all 0.3.25 and n4m 0.1.2",
+    "libn4m_identity": "product-owned absolute non-symlink path plus size plus SHA-256 plus ABI 2.3; never request-controlled",
     "core_preflight": "preflight_methods_archive_v2_library snapshots the attested bytes and checks the real ABI before capability selection",
-    "build_stage": "NIRS4ALL_BUILD_METHODS_LIBRARY plus NIRS4ALL_BUILD_METHODS_SHA256, both build-time-only; absent means unavailable",
+    "build_stage": "NIRS4ALL_BUILD_METHODS_LIBRARY plus NIRS4ALL_BUILD_METHODS_SHA256, both build-time-only and mandatory for every release artifact",
     "release_builder_blocker": "each platform builder must provide and qualify one attested libn4m closure"
   },
   "typed_errors": [

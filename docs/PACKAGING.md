@@ -59,6 +59,7 @@ resources/
     │   └── PYTHON_PLUGIN_CLOSURE.json
     ├── native/
     │   ├── studio-sidecar
+    │   ├── libn4m.so / libn4m.dylib / n4m.dll
     │   └── STUDIO_RUNTIME_CONTRACT.json
     ├── recommended-config.json
     └── version.json
@@ -109,6 +110,7 @@ resources/
     │   └── PLUGIN_RUNTIME_READY.json
     └── native/
         ├── studio-sidecar
+        ├── libn4m.so / libn4m.dylib / n4m.dll
         └── STUDIO_RUNTIME_CONTRACT.json
 ```
 
@@ -136,8 +138,11 @@ Uvicorn server transitive set. `PLUGIN_RUNTIME_READY.json` freezes the exact
 enables the plugin capability.
 
 Every installer/release gate invokes `native-runtime-contract.cjs` with
-`--require-bundled-python-plugin`. Therefore a standard installer or
-all-in-one archive cannot silently publish `mode: unavailable`.
+`--require-bundled-python-plugin` and `--require-bundled-methods`. The sidecar
+builder likewise refuses to emit a product tree unless the build supplies one
+content-addressed native Methods library at ABI 2.3. Therefore a standard
+installer or all-in-one archive cannot silently publish either capability as
+`mode: unavailable`.
 
 The same content contract pins the bundled interpreter and every runtime file.
 If any member is missing, altered, added, or path-substituted after packaging,
@@ -321,6 +326,10 @@ Uvicorn, `main.py`, `api/`, or `websocket/` sources. A separately attested
 CPython library/plugin closure may be mounted and selected with the existing
 `NIRS4ALL_PYTHON_PLUGIN_*` variables; Rust invokes it only through the bounded
 stdio protocol. It never owns a port, scheduler, store, or fallback route.
+The image does embed the exact `nirs4all-methods` ABI 2.3 library and its
+`STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
+available without Python. CI supplies that library through a local BuildKit
+context built and tested from commit `4983c9a1…`, never from an unverified URL.
 
 Persist native Studio configuration in `/var/lib/nirs4all-studio` and mount
 scientific workspaces under `/workspaces`:

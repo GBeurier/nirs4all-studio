@@ -284,6 +284,16 @@ gate. This snapshot must be replaced by an exact published package or
 remotely fetchable git revision before LOCK-RELEASE; local/sibling worktree paths
 are forbidden.
 
+Core 0.3.25 requires the selected but not-yet-published DagML 0.3.23 crates.
+Studio therefore also carries the complete immutable DagML commit
+`bad5aff0bfbc14c622f5ade7f393f29399df6e07` under
+`sidecar/vendor/dag-ml-bad5/` and patches only `dag-ml` and `dag-ml-core` to
+the two exact qualified Cargo package payloads. Unrelated workspace crates and
+the generated Python extension are excluded. `sidecar/scripts/verify-vendored-dagml.sh`
+checks its 94-file inventory, package digests, and exact repository/crate trees.
+Both path patches must be replaced
+by the published crate identities before LOCK-RELEASE.
+
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the
 portable executable's `.nirs4all/config`, a valid redirect file, then the

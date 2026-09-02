@@ -22,6 +22,7 @@ const contract = require(contractModulePath) as {
       platform: string;
       arch: string;
       requireBundledPythonPlugin: boolean;
+      requireBundledMethods: boolean;
     }): { sidecarPath: string };
     smokeSidecar?(sidecarPath: string): void;
   }): Promise<{
@@ -90,10 +91,12 @@ function verifier(options: {
   platform: string;
   arch: string;
   requireBundledPythonPlugin: boolean;
+  requireBundledMethods: boolean;
 }): { sidecarPath: string } {
   expect(["linux", "win32", "darwin"]).toContain(options.platform);
   expect(options.arch).toBe(options.platform === "darwin" ? process.arch : "x64");
   expect(options.requireBundledPythonPlugin).toBe(true);
+  expect(options.requireBundledMethods).toBe(true);
   const expectedBoundary = options.platform === "darwin"
     ? path.resolve(options.backendRoot, "../../..")
     : path.resolve(options.backendRoot, "../..");

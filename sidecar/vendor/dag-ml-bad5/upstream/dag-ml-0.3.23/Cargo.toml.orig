@@ -1,0 +1,13 @@
+[package]
+name = "dag-ml"
+description = "Rust facade for the DAG-ML control engine."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+dag-ml-core.workspace = true

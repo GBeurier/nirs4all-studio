@@ -36,12 +36,12 @@ env:
   PYTHON_VERSION: '3.11'
   # Release archives/images must be reproducible. Keep these refs pinned to the
   # selected RC heads and update them with the ecosystem release board.
-  NIRS4ALL_LIBRARY_REF: bf242e4854693ccb048b7f0ffc5f3fdd2380315a
-  DAG_ML_REF: a8f6cb3845fcb19f81450b4776094f21978cf2b7
-  DAG_ML_DATA_REF: 616f3e5ff715667d537c089a9ba059832f8cc1c9
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/bf242e4854693ccb048b7f0ffc5f3fdd2380315a.tar.gz
-  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/a8f6cb3845fcb19f81450b4776094f21978cf2b7.tar.gz
-  DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/616f3e5ff715667d537c089a9ba059832f8cc1c9.tar.gz
+  NIRS4ALL_LIBRARY_REF: 322265576ccfaeb1ee22332d05ae04b87be4b538
+  DAG_ML_REF: bad5aff0bfbc14c622f5ade7f393f29399df6e07
+  DAG_ML_DATA_REF: 1f60b920d34acda7c0fbc044b593bb6af1fab4c1
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/322265576ccfaeb1ee22332d05ae04b87be4b538.tar.gz
+  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/bad5aff0bfbc14c622f5ade7f393f29399df6e07.tar.gz
+  DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/1f60b920d34acda7c0fbc044b593bb6af1fab4c1.tar.gz
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -211,6 +211,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: linux
+          arch: x64
+
+      - name: Qualify native Archive V2 replay
+        run: npm run test:native-archive-v2
+
       - name: Verify exact nirs4all-ui package
         run: npm run check:ui-package
 
@@ -237,7 +246,7 @@ jobs:
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
           backend-dist/native/studio-sidecar --smoke-readiness
 
       - name: Package with electron-builder
@@ -252,7 +261,7 @@ jobs:
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
           ARTIFACT_BOUNDARY="$(dirname "$(dirname "$BACKEND_ROOT")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform linux --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
           "$SIDECAR" --smoke-readiness
 
       - name: Generate checksums
@@ -305,6 +314,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: win32
+          arch: x64
+
+      - name: Qualify native Archive V2 replay
+        run: npm run test:native-archive-v2
+
       - name: Verify exact nirs4all-ui package
         run: npm run check:ui-package
 
@@ -335,7 +353,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $sidecar -PathType Leaf)) {
             throw "Native Studio sidecar not found: $sidecar"
           }
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform win32 --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform win32 --arch x64 --require-bundled-python-plugin --require-bundled-methods
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -371,7 +389,7 @@ jobs:
           }
           $backendRoot = Split-Path -Parent (Split-Path -Parent $sidecar.FullName)
           $artifactBoundary = Split-Path -Parent (Split-Path -Parent $backendRoot)
-          node scripts/native-runtime-contract.cjs --backend-root $backendRoot --artifact-boundary-root $artifactBoundary --platform win32 --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root $backendRoot --artifact-boundary-root $artifactBoundary --platform win32 --arch x64 --require-bundled-python-plugin --require-bundled-methods
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar.FullName --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -450,6 +468,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: darwin
+          arch: x64
+
+      - name: Qualify native Archive V2 replay
+        run: npm run test:native-archive-v2
+
       - name: Verify exact nirs4all-ui package
         run: npm run check:ui-package
 
@@ -476,7 +503,7 @@ jobs:
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-apple-darwin
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch x64 --require-bundled-python-plugin --require-bundled-methods
           if [ "$(uname -m)" = "x86_64" ]; then
             backend-dist/native/studio-sidecar --smoke-readiness
           else
@@ -526,7 +553,7 @@ jobs:
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
           ARTIFACT_BOUNDARY="$(dirname "$(dirname "$(dirname "$BACKEND_ROOT")")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch x64 --require-bundled-python-plugin --require-bundled-methods
           if [ "$(uname -m)" = "x86_64" ]; then
             "$SIDECAR" --smoke-readiness
           else
@@ -641,6 +668,15 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: darwin
+          arch: arm64
+
+      - name: Qualify native Archive V2 replay
+        run: npm run test:native-archive-v2
+
       - name: Verify exact nirs4all-ui package
         run: npm run check:ui-package
 
@@ -667,7 +703,7 @@ jobs:
         run: |
           node scripts/build-native-sidecar.cjs --target aarch64-apple-darwin
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch arm64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch arm64 --require-bundled-python-plugin --require-bundled-methods
           if [ "$(uname -m)" = "arm64" ]; then
             backend-dist/native/studio-sidecar --smoke-readiness
           else
@@ -714,7 +750,7 @@ jobs:
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
           ARTIFACT_BOUNDARY="$(dirname "$(dirname "$(dirname "$BACKEND_ROOT")")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch arm64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch arm64 --require-bundled-python-plugin --require-bundled-methods
           if [ "$(uname -m)" = "arm64" ]; then
             "$SIDECAR" --smoke-readiness
           else
@@ -850,6 +886,15 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: win32
+          arch: x64
+
+      - name: Qualify native Archive V2 replay
+        run: npm run test:native-archive-v2
+
       - name: Cache all-in-one runtime downloads
         uses: actions/cache@v4
         with:
@@ -972,6 +1017,15 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: linux
+          arch: x64
+
+      - name: Qualify native Archive V2 replay
+        run: npm run test:native-archive-v2
 
       - name: Cache all-in-one runtime downloads
         uses: actions/cache@v4
@@ -1103,6 +1157,15 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: darwin
+          arch: x64
+
+      - name: Qualify native Archive V2 replay
+        run: npm run test:native-archive-v2
 
       - name: Cache all-in-one runtime downloads
         uses: actions/cache@v4
@@ -1312,6 +1375,15 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: darwin
+          arch: arm64
+
+      - name: Qualify native Archive V2 replay
+        run: npm run test:native-archive-v2
+
       - name: Cache all-in-one runtime downloads
         uses: actions/cache@v4
         with:
@@ -1486,11 +1558,22 @@ jobs:
       - name: Verify fail-closed Docker contract
         run: npm run test:docker-runtime-contract
 
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: linux
+          arch: x64
+
+      - name: Qualify native Archive V2 replay
+        run: npm run test:native-archive-v2
+
       - name: Build and smoke native release candidate
         run: |
           docker build \
             --build-arg STUDIO_VERSION=${{ needs.prepare.outputs.version }} \
             --build-arg STUDIO_REVISION=${{ github.sha }} \
+            --build-arg NIRS4ALL_METHODS_SHA256=${NIRS4ALL_BUILD_METHODS_SHA256} \
+            --build-context methods-runtime="$(dirname "${NIRS4ALL_BUILD_METHODS_LIBRARY}")" \
             --tag nirs4all-studio:native-release-candidate \
             .
           bash scripts/smoke-docker-native-runtime.sh nirs4all-studio:native-release-candidate
@@ -1514,6 +1597,9 @@ jobs:
           build-args: |
             STUDIO_VERSION=${{ needs.prepare.outputs.version }}
             STUDIO_REVISION=${{ github.sha }}
+            NIRS4ALL_METHODS_SHA256=${{ env.NIRS4ALL_BUILD_METHODS_SHA256 }}
+          build-contexts: |
+            methods-runtime=${{ env.NIRS4ALL_BUILD_METHODS_DIRECTORY }}
           cache-from: type=gha,scope=native-container
           cache-to: type=gha,mode=max,scope=native-container
           labels: |

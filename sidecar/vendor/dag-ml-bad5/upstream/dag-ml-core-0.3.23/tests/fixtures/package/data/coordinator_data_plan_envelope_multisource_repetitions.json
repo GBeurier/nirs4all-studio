@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+  "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+  "plan": {
+    "id": "multisource-repetitions-to-sample",
+    "steps": [
+      {
+        "kind": "materialize",
+        "source_id": "A",
+        "adapter_id": null,
+        "input_representation": null,
+        "output_representation": "source_A_observation",
+        "fit_scope": "stateless",
+        "requires_user_choice": false,
+        "metadata": {
+          "output": "src:A"
+        }
+      },
+      {
+        "kind": "materialize",
+        "source_id": "B",
+        "adapter_id": null,
+        "input_representation": null,
+        "output_representation": "source_B_observation",
+        "fit_scope": "stateless",
+        "requires_user_choice": false,
+        "metadata": {
+          "output": "src:B"
+        }
+      },
+      {
+        "kind": "materialize",
+        "source_id": "C",
+        "adapter_id": null,
+        "input_representation": null,
+        "output_representation": "source_C_observation",
+        "fit_scope": "stateless",
+        "requires_user_choice": false,
+        "metadata": {
+          "output": "src:C"
+        }
+      },
+      {
+        "kind": "join",
+        "source_id": null,
+        "adapter_id": null,
+        "input_representation": "observation",
+        "output_representation": "combo_observation",
+        "fit_scope": "stateless",
+        "requires_user_choice": false,
+        "metadata": {
+          "inputs": ["src:A", "src:B", "src:C"],
+          "output": "relation:combo"
+        }
+      }
+    ],
+    "output_representation": "combo_observation",
+    "issues": []
+  },
+  "coordinator_relations": {
+    "records": [
+      {
+        "unit_level": "observation",
+        "observation_id": "obs.s1.A.0",
+        "sample_id": "sample:1",
+        "source_id": "A",
+        "rep_id": "rep:0",
+        "target_id": "target:sample",
+        "group_id": "group:sample",
+        "origin_sample_id": null,
+        "is_augmented": false
+      },
+      {
+        "unit_level": "observation",
+        "observation_id": "obs.s1.A.1",
+        "sample_id": "sample:1",
+        "source_id": "A",
+        "rep_id": "rep:1",
+        "target_id": "target:sample",
+        "group_id": "group:sample",
+        "origin_sample_id": null,
+        "is_augmented": false
+      },
+      {
+        "unit_level": "observation",
+        "observation_id": "obs.s1.B.0",
+        "sample_id": "sample:1",
+        "source_id": "B",
+        "rep_id": "rep:0",
+        "target_id": "target:sample",
+        "group_id": "group:sample",
+        "origin_sample_id": null,
+        "is_augmented": false
+      },
+      {
+        "unit_level": "observation",
+        "observation_id": "obs.s1.B.1",
+        "sample_id": "sample:1",
+        "source_id": "B",
+        "rep_id": "rep:1",
+        "target_id": "target:sample",
+        "group_id": "group:sample",
+        "origin_sample_id": null,
+        "is_augmented": false
+      },
+      {
+        "unit_level": "observation",
+        "observation_id": "obs.s1.B.2",
+        "sample_id": "sample:1",
+        "source_id": "B",
+        "rep_id": "rep:2",
+        "target_id": "target:sample",
+        "group_id": "group:sample",
+        "origin_sample_id": null,
+        "is_augmented": false
+      },
+      {
+        "unit_level": "observation",
+        "observation_id": "obs.s1.C.0",
+        "sample_id": "sample:1",
+        "source_id": "C",
+        "rep_id": "rep:0",
+        "target_id": "target:sample",
+        "group_id": "group:sample",
+        "origin_sample_id": null,
+        "is_augmented": false
+      },
+      {
+        "unit_level": "observation",
+        "observation_id": "obs.s1.C.1",
+        "sample_id": "sample:1",
+        "source_id": "C",
+        "rep_id": "rep:1",
+        "target_id": "target:sample",
+        "group_id": "group:sample",
+        "origin_sample_id": null,
+        "is_augmented": false
+      },
+      {
+        "unit_level": "combo",
+        "unit_id": "unit:combo:s1:A0:B0:C0",
+        "observation_id": "obs.s1.combo.A0.B0.C0",
+        "sample_id": "sample:1",
+        "source_id": "combo",
+        "target_id": "target:sample",
+        "group_id": "group:sample",
+        "origin_sample_id": "sample:1",
+        "derived_unit_id": "combo:s1:A0:B0:C0",
+        "component_observation_ids": [
+          "obs.s1.A.0",
+          "obs.s1.B.0",
+          "obs.s1.C.0"
+        ],
+        "sample_influence_weight": 1.0,
+        "quality_flag": "ok",
+        "is_augmented": false
+      }
+    ]
+  },
+  "metadata": {
+    "fixture": "asymmetric_multisource_repetitions",
+    "source_repetition_counts": {
+      "A": 2,
+      "B": 3,
+      "C": 2
+    }
+  }
+}

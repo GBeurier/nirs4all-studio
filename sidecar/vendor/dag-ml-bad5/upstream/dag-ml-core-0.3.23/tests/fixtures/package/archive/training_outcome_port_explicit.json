@@ -1,0 +1,2068 @@
+{
+  "schema_version": 2,
+  "outcome_id": "training:estimator.refit.port-explicit-v2",
+  "run_id": "run:estimator.contract",
+  "training_request_fingerprint": "2e3fb0f9419ec83630fbe969bf5fa70e6f2951adf6cec86a34223fdadadafdc6",
+  "data_identities": [
+    {
+      "requirement_key": "branch:b0.model:ridge.x",
+      "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+      "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+      "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+      "data_content_fingerprint": "571c0cdb081d894215bdc6959791149471f3fa181af23fb11d54197c90cdf81a",
+      "target_content_fingerprint": "9301588c1a32cde32277720d7b8d81011b07a97f926dc5bb7676212b310822f6",
+      "identity_fingerprint": "0dbdb34908ca2509902d637e1987447eaff4f7855b0ee6ca49b7f68244ca65b2"
+    },
+    {
+      "requirement_key": "branch:b1.augment:noise.x",
+      "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+      "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+      "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+      "data_content_fingerprint": "54bfc4293f023576e3ba40ecf72a992f7d68dba8b632a43d8268a9e7d17144db",
+      "target_content_fingerprint": "5615e8109d58d0ff7fe685a667940ccce619a4a688fec315dcf2d6677c062f9d",
+      "identity_fingerprint": "58d0bcfa6d01a67d08ae2e9573624320333bd6b73054d25a8f02848af2863e1d"
+    },
+    {
+      "requirement_key": "merge:stack.pred_plus_original.meta:ridge.x_original",
+      "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+      "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+      "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+      "data_content_fingerprint": "a977366d39ccaa71111aaffa992ef249ebb4f8c4d895b4f7d8d4fe21be76076f",
+      "target_content_fingerprint": "764228e3b12c5f23abff7408e39a035503446e3ce862f73d16e22b19ba4e62a1",
+      "identity_fingerprint": "cb4e563b790d2d3d69180bf37e3ba38242d78f7f77dbeec596aaa1bb39d32484"
+    }
+  ],
+  "effective_plan": {
+    "id": "plan:fixture.execution.branch_merge",
+    "graph_plan": {
+      "graph": {
+        "id": "dsl-branch-merge-executable",
+        "interface": {
+          "inputs": [
+            {
+              "name": "x",
+              "kind": "data",
+              "representation": "tabular_numeric",
+              "cardinality": "one",
+              "description": ""
+            }
+          ],
+          "outputs": [
+            {
+              "name": "prediction",
+              "kind": "prediction",
+              "representation": null,
+              "cardinality": "one",
+              "description": ""
+            }
+          ]
+        },
+        "nodes": [
+          {
+            "id": "branch:b0.model:ridge",
+            "kind": "model",
+            "operator": {
+              "type": "Ridge"
+            },
+            "params": {
+              "alpha": 0.3
+            },
+            "ports": {
+              "inputs": [
+                {
+                  "name": "x",
+                  "kind": "data",
+                  "representation": "tabular_numeric",
+                  "cardinality": "one",
+                  "description": ""
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "oof",
+                  "kind": "prediction",
+                  "representation": null,
+                  "cardinality": "one",
+                  "description": ""
+                }
+              ]
+            },
+            "metadata": {
+              "dsl_branch": "b0",
+              "dsl_branch_mode": "duplication"
+            },
+            "seed_label": "branch:b0"
+          },
+          {
+            "id": "branch:b1.augment:noise",
+            "kind": "augmentation",
+            "operator": {
+              "type": "GaussianNoise"
+            },
+            "params": {
+              "scope": "train_only",
+              "std": 0.01
+            },
+            "ports": {
+              "inputs": [
+                {
+                  "name": "x",
+                  "kind": "data",
+                  "representation": "tabular_numeric",
+                  "cardinality": "one",
+                  "description": ""
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "x_out",
+                  "kind": "data",
+                  "representation": "tabular_numeric",
+                  "cardinality": "one",
+                  "description": ""
+                }
+              ]
+            },
+            "metadata": {
+              "dsl_branch": "b1",
+              "dsl_branch_mode": "duplication"
+            },
+            "seed_label": "branch:b1.augment"
+          },
+          {
+            "id": "branch:b1.model:rf",
+            "kind": "model",
+            "operator": {
+              "type": "RandomForestRegressor"
+            },
+            "params": {
+              "n_estimators": 64
+            },
+            "ports": {
+              "inputs": [
+                {
+                  "name": "x",
+                  "kind": "data",
+                  "representation": "tabular_numeric",
+                  "cardinality": "one",
+                  "description": ""
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "oof",
+                  "kind": "prediction",
+                  "representation": null,
+                  "cardinality": "one",
+                  "description": ""
+                }
+              ]
+            },
+            "metadata": {
+              "dsl_branch": "b1",
+              "dsl_branch_mode": "duplication"
+            },
+            "seed_label": "branch:b1"
+          },
+          {
+            "id": "merge:stack.pred_plus_original.meta:ridge",
+            "kind": "model",
+            "operator": {
+              "type": "RidgeMetaStacker"
+            },
+            "params": {
+              "alpha": 0.2
+            },
+            "ports": {
+              "inputs": [
+                {
+                  "name": "b0_oof",
+                  "kind": "prediction",
+                  "representation": null,
+                  "cardinality": "one",
+                  "description": ""
+                },
+                {
+                  "name": "b1_oof",
+                  "kind": "prediction",
+                  "representation": null,
+                  "cardinality": "one",
+                  "description": ""
+                },
+                {
+                  "name": "x_original",
+                  "kind": "data",
+                  "representation": "tabular_numeric",
+                  "cardinality": "one",
+                  "description": ""
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "oof",
+                  "kind": "prediction",
+                  "representation": null,
+                  "cardinality": "one",
+                  "description": ""
+                }
+              ]
+            },
+            "metadata": {
+              "merge_mode": "predictions_plus_original"
+            },
+            "seed_label": "merge:stack"
+          }
+        ],
+        "edges": [
+          {
+            "source": {
+              "node_id": "branch:b1.augment:noise",
+              "port_name": "x_out"
+            },
+            "target": {
+              "node_id": "branch:b1.model:rf",
+              "port_name": "x"
+            },
+            "contract": {
+              "kind": "data",
+              "representation": "tabular_numeric",
+              "requires_oof": false,
+              "requires_fold_alignment": true,
+              "propagates_lineage": true
+            }
+          },
+          {
+            "source": {
+              "node_id": "branch:b0.model:ridge",
+              "port_name": "oof"
+            },
+            "target": {
+              "node_id": "merge:stack.pred_plus_original.meta:ridge",
+              "port_name": "b0_oof"
+            },
+            "contract": {
+              "kind": "prediction",
+              "representation": null,
+              "requires_oof": true,
+              "requires_fold_alignment": true,
+              "propagates_lineage": true
+            }
+          },
+          {
+            "source": {
+              "node_id": "branch:b1.model:rf",
+              "port_name": "oof"
+            },
+            "target": {
+              "node_id": "merge:stack.pred_plus_original.meta:ridge",
+              "port_name": "b1_oof"
+            },
+            "contract": {
+              "kind": "prediction",
+              "representation": null,
+              "requires_oof": true,
+              "requires_fold_alignment": true,
+              "propagates_lineage": true
+            }
+          }
+        ],
+        "search_space_fingerprint": "77b9ec07501659b5f620e8815278b621dc8bd1bf5daa59c194d4cd1eb2bcdd2c",
+        "metadata": {
+          "demo": "executable branch/merge DSL with coordinated variants and heterogeneous merge"
+        }
+      },
+      "topological_order": [
+        "branch:b0.model:ridge",
+        "branch:b1.augment:noise",
+        "branch:b1.model:rf",
+        "merge:stack.pred_plus_original.meta:ridge"
+      ],
+      "parallel_levels": [
+        [
+          "branch:b0.model:ridge",
+          "branch:b1.augment:noise"
+        ],
+        [
+          "branch:b1.model:rf"
+        ],
+        [
+          "merge:stack.pred_plus_original.meta:ridge"
+        ]
+      ]
+    },
+    "campaign": {
+      "id": "campaign:dsl.branch.merge.executable",
+      "root_seed": 12345,
+      "leakage_policy": {
+        "split_unit": "sample",
+        "forbid_origin_cross_fold": true,
+        "allow_observation_split_with_shared_target": false,
+        "require_group_ids": false,
+        "unsafe_flags": []
+      },
+      "aggregation_policy": {
+        "aggregation_level": "sample",
+        "method": "mean",
+        "weights": "none",
+        "emit_parallel_metrics": true,
+        "selection_metric_level": "sample",
+        "store_raw_predictions": true,
+        "store_aggregated_predictions": true
+      },
+      "split_invocation": {
+        "id": "split:outer",
+        "controller_id": null,
+        "leakage_policy": {
+          "split_unit": "sample",
+          "forbid_origin_cross_fold": true,
+          "allow_observation_split_with_shared_target": false,
+          "require_group_ids": false,
+          "unsafe_flags": []
+        },
+        "params": {
+          "kind": "kfold",
+          "n_splits": 2,
+          "shuffle": false
+        },
+        "fold_set": {
+          "id": "outer",
+          "sample_ids": [
+            "sample:1",
+            "sample:2",
+            "sample:3",
+            "sample:4"
+          ],
+          "folds": [
+            {
+              "fold_id": "fold:0",
+              "train_sample_ids": [
+                "sample:3",
+                "sample:4"
+              ],
+              "validation_sample_ids": [
+                "sample:1",
+                "sample:2"
+              ],
+              "metadata": {}
+            },
+            {
+              "fold_id": "fold:1",
+              "train_sample_ids": [
+                "sample:1",
+                "sample:2"
+              ],
+              "validation_sample_ids": [
+                "sample:3",
+                "sample:4"
+              ],
+              "metadata": {}
+            }
+          ],
+          "sample_groups": {}
+        }
+      },
+      "generation": {
+        "strategy": "cartesian",
+        "dimensions": [
+          {
+            "name": "stack_profile",
+            "choices": [
+              {
+                "label": "linear_stack",
+                "value": {
+                  "branch:b0.model:ridge": {
+                    "alpha": 0.1
+                  },
+                  "branch:b1.model:rf": {
+                    "max_depth": 4,
+                    "n_estimators": 64
+                  },
+                  "merge:stack.pred_plus_original.meta:ridge": {
+                    "alpha": 0.05
+                  }
+                },
+                "param_overrides": [
+                  {
+                    "node_id": "branch:b0.model:ridge",
+                    "params": {
+                      "alpha": 0.1
+                    }
+                  },
+                  {
+                    "node_id": "branch:b1.model:rf",
+                    "params": {
+                      "max_depth": 4,
+                      "n_estimators": 64
+                    }
+                  },
+                  {
+                    "node_id": "merge:stack.pred_plus_original.meta:ridge",
+                    "params": {
+                      "alpha": 0.05
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "robust_stack",
+                "value": {
+                  "branch:b0.model:ridge": {
+                    "alpha": 1.0
+                  },
+                  "branch:b1.model:rf": {
+                    "max_depth": 8,
+                    "n_estimators": 128
+                  },
+                  "merge:stack.pred_plus_original.meta:ridge": {
+                    "alpha": 0.5
+                  }
+                },
+                "param_overrides": [
+                  {
+                    "node_id": "branch:b0.model:ridge",
+                    "params": {
+                      "alpha": 1.0
+                    }
+                  },
+                  {
+                    "node_id": "branch:b1.model:rf",
+                    "params": {
+                      "max_depth": 8,
+                      "n_estimators": 128
+                    }
+                  },
+                  {
+                    "node_id": "merge:stack.pred_plus_original.meta:ridge",
+                    "params": {
+                      "alpha": 0.5
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "max_variants": 2
+      },
+      "shape_plans": {
+        "branch:b1.augment:noise": {
+          "node_id": "branch:b1.augment:noise",
+          "input_granularity": "sample",
+          "target_granularity": "sample",
+          "fit_rows": "fold_train",
+          "predict_rows": "fold_validation",
+          "feature_namespace": null,
+          "feature_schema_fingerprint": null,
+          "target_space": "raw",
+          "aggregation_policy": {
+            "aggregation_level": "sample",
+            "method": "mean",
+            "weights": "none",
+            "emit_parallel_metrics": true,
+            "selection_metric_level": "sample",
+            "store_raw_predictions": true,
+            "store_aggregated_predictions": true
+          },
+          "augmentation_policy": {
+            "sample_scope": "train_only",
+            "feature_scope": "none",
+            "require_origin_id": true,
+            "inherit_group": true,
+            "inherit_target": true
+          },
+          "selection_policy": {
+            "scope": "none",
+            "store_masks": true,
+            "allow_schema_mismatch_on_join": false
+          }
+        }
+      },
+      "data_bindings": {
+        "branch:b0.model:ridge": [
+          {
+            "node_id": "branch:b0.model:ridge",
+            "input_name": "x",
+            "request_id": "nir-to-tabular",
+            "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+            "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+            "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+            "output_representation": "tabular_numeric",
+            "feature_set_id": "x",
+            "source_ids": [
+              "nir"
+            ],
+            "require_relations": true,
+            "view_policy": {
+              "fit_partition": "fold_train",
+              "predict_partition": "fold_validation",
+              "include_augmented_train": true,
+              "include_augmented_validation": false,
+              "include_excluded": false,
+              "require_sample_ids": true
+            },
+            "metadata": {}
+          }
+        ],
+        "branch:b1.augment:noise": [
+          {
+            "node_id": "branch:b1.augment:noise",
+            "input_name": "x",
+            "request_id": "nir-to-tabular",
+            "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+            "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+            "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+            "output_representation": "tabular_numeric",
+            "feature_set_id": "x",
+            "source_ids": [
+              "nir"
+            ],
+            "require_relations": true,
+            "view_policy": {
+              "fit_partition": "fold_train",
+              "predict_partition": "fold_validation",
+              "include_augmented_train": true,
+              "include_augmented_validation": false,
+              "include_excluded": false,
+              "require_sample_ids": true
+            },
+            "metadata": {}
+          }
+        ],
+        "merge:stack.pred_plus_original.meta:ridge": [
+          {
+            "node_id": "merge:stack.pred_plus_original.meta:ridge",
+            "input_name": "x_original",
+            "request_id": "nir-to-tabular",
+            "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+            "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+            "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+            "output_representation": "tabular_numeric",
+            "feature_set_id": "x",
+            "source_ids": [
+              "nir"
+            ],
+            "require_relations": true,
+            "view_policy": {
+              "fit_partition": "fold_train",
+              "predict_partition": "fold_validation",
+              "include_augmented_train": true,
+              "include_augmented_validation": false,
+              "include_excluded": false,
+              "require_sample_ids": true
+            },
+            "metadata": {
+              "merge_input": "original_features"
+            }
+          }
+        ]
+      },
+      "metadata": {}
+    },
+    "node_plans": {
+      "branch:b0.model:ridge": {
+        "node_id": "branch:b0.model:ridge",
+        "kind": "model",
+        "controller_id": "controller:model.mock",
+        "controller_version": "0.1.0",
+        "supported_phases": [
+          "FIT_CV",
+          "REFIT",
+          "PREDICT"
+        ],
+        "controller_capabilities": [
+          "deterministic",
+          "thread_safe",
+          "process_safe",
+          "emits_predictions",
+          "consumes_oof_predictions",
+          "emits_artifacts",
+          "stateful",
+          "uses_core_rng"
+        ],
+        "fit_scope": "fold_train",
+        "rng_policy": "uses_core_seed",
+        "artifact_policy": "serializable",
+        "input_nodes": [],
+        "output_nodes": [
+          "merge:stack.pred_plus_original.meta:ridge"
+        ],
+        "shape_plan": null,
+        "data_bindings": [
+          {
+            "node_id": "branch:b0.model:ridge",
+            "input_name": "x",
+            "request_id": "nir-to-tabular",
+            "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+            "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+            "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+            "output_representation": "tabular_numeric",
+            "feature_set_id": "x",
+            "source_ids": [
+              "nir"
+            ],
+            "require_relations": true,
+            "view_policy": {
+              "fit_partition": "fold_train",
+              "predict_partition": "fold_validation",
+              "include_augmented_train": true,
+              "include_augmented_validation": false,
+              "include_excluded": false,
+              "require_sample_ids": true
+            },
+            "metadata": {}
+          }
+        ],
+        "params": {
+          "alpha": 0.1
+        },
+        "params_fingerprint": "af39a185b5a846fc6bbdc703ee4a7bf3e4b7ad9a304563d6cc024a36dc6628ab"
+      },
+      "branch:b1.augment:noise": {
+        "node_id": "branch:b1.augment:noise",
+        "kind": "augmentation",
+        "controller_id": "controller:augmentation.mock",
+        "controller_version": "0.1.0",
+        "supported_phases": [
+          "FIT_CV",
+          "REFIT",
+          "PREDICT"
+        ],
+        "controller_capabilities": [
+          "deterministic",
+          "thread_safe",
+          "process_safe",
+          "uses_core_rng"
+        ],
+        "fit_scope": "fold_train",
+        "rng_policy": "uses_core_seed",
+        "artifact_policy": "serializable",
+        "input_nodes": [],
+        "output_nodes": [
+          "branch:b1.model:rf"
+        ],
+        "shape_plan": {
+          "node_id": "branch:b1.augment:noise",
+          "input_granularity": "sample",
+          "target_granularity": "sample",
+          "fit_rows": "fold_train",
+          "predict_rows": "fold_validation",
+          "feature_namespace": null,
+          "feature_schema_fingerprint": null,
+          "target_space": "raw",
+          "aggregation_policy": {
+            "aggregation_level": "sample",
+            "method": "mean",
+            "weights": "none",
+            "emit_parallel_metrics": true,
+            "selection_metric_level": "sample",
+            "store_raw_predictions": true,
+            "store_aggregated_predictions": true
+          },
+          "augmentation_policy": {
+            "sample_scope": "train_only",
+            "feature_scope": "none",
+            "require_origin_id": true,
+            "inherit_group": true,
+            "inherit_target": true
+          },
+          "selection_policy": {
+            "scope": "none",
+            "store_masks": true,
+            "allow_schema_mismatch_on_join": false
+          }
+        },
+        "data_bindings": [
+          {
+            "node_id": "branch:b1.augment:noise",
+            "input_name": "x",
+            "request_id": "nir-to-tabular",
+            "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+            "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+            "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+            "output_representation": "tabular_numeric",
+            "feature_set_id": "x",
+            "source_ids": [
+              "nir"
+            ],
+            "require_relations": true,
+            "view_policy": {
+              "fit_partition": "fold_train",
+              "predict_partition": "fold_validation",
+              "include_augmented_train": true,
+              "include_augmented_validation": false,
+              "include_excluded": false,
+              "require_sample_ids": true
+            },
+            "metadata": {}
+          }
+        ],
+        "params": {
+          "scope": "train_only",
+          "std": 0.01
+        },
+        "params_fingerprint": "33d2aa022dffa4cf09394b0edc178bf379bab06c569e00b7260fb5c546f433c6"
+      },
+      "branch:b1.model:rf": {
+        "node_id": "branch:b1.model:rf",
+        "kind": "model",
+        "controller_id": "controller:model.mock",
+        "controller_version": "0.1.0",
+        "supported_phases": [
+          "FIT_CV",
+          "REFIT",
+          "PREDICT"
+        ],
+        "controller_capabilities": [
+          "deterministic",
+          "thread_safe",
+          "process_safe",
+          "emits_predictions",
+          "consumes_oof_predictions",
+          "emits_artifacts",
+          "stateful",
+          "uses_core_rng"
+        ],
+        "fit_scope": "fold_train",
+        "rng_policy": "uses_core_seed",
+        "artifact_policy": "serializable",
+        "input_nodes": [
+          "branch:b1.augment:noise"
+        ],
+        "output_nodes": [
+          "merge:stack.pred_plus_original.meta:ridge"
+        ],
+        "shape_plan": null,
+        "data_bindings": [],
+        "params": {
+          "max_depth": 4,
+          "n_estimators": 64
+        },
+        "params_fingerprint": "825b0d7229d08dad92ad5f81443063e14bdeb3e03ef3ca294c81c156711b7924"
+      },
+      "merge:stack.pred_plus_original.meta:ridge": {
+        "node_id": "merge:stack.pred_plus_original.meta:ridge",
+        "kind": "model",
+        "controller_id": "controller:model.mock",
+        "controller_version": "0.1.0",
+        "supported_phases": [
+          "FIT_CV",
+          "REFIT",
+          "PREDICT"
+        ],
+        "controller_capabilities": [
+          "deterministic",
+          "thread_safe",
+          "process_safe",
+          "emits_predictions",
+          "consumes_oof_predictions",
+          "emits_artifacts",
+          "stateful",
+          "uses_core_rng"
+        ],
+        "fit_scope": "fold_train",
+        "rng_policy": "uses_core_seed",
+        "artifact_policy": "serializable",
+        "input_nodes": [
+          "branch:b0.model:ridge",
+          "branch:b1.model:rf"
+        ],
+        "output_nodes": [],
+        "shape_plan": null,
+        "data_bindings": [
+          {
+            "node_id": "merge:stack.pred_plus_original.meta:ridge",
+            "input_name": "x_original",
+            "request_id": "nir-to-tabular",
+            "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+            "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+            "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+            "output_representation": "tabular_numeric",
+            "feature_set_id": "x",
+            "source_ids": [
+              "nir"
+            ],
+            "require_relations": true,
+            "view_policy": {
+              "fit_partition": "fold_train",
+              "predict_partition": "fold_validation",
+              "include_augmented_train": true,
+              "include_augmented_validation": false,
+              "include_excluded": false,
+              "require_sample_ids": true
+            },
+            "metadata": {
+              "merge_input": "original_features"
+            }
+          }
+        ],
+        "params": {
+          "alpha": 0.05
+        },
+        "params_fingerprint": "e7fcc53de2b14105e7e7f5b943b3eb32811c5ac79ad70f10fee4de31137921d2"
+      }
+    },
+    "controller_manifests": {
+      "controller:augmentation.mock": {
+        "controller_id": "controller:augmentation.mock",
+        "controller_version": "0.1.0",
+        "operator_kind": "augmentation",
+        "priority": 0,
+        "supported_phases": [
+          "FIT_CV",
+          "REFIT",
+          "PREDICT"
+        ],
+        "input_ports": [
+          {
+            "name": "x",
+            "kind": "data",
+            "representation": "tabular_numeric",
+            "cardinality": "one",
+            "description": ""
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "x_out",
+            "kind": "data",
+            "representation": "tabular_numeric",
+            "cardinality": "one",
+            "description": ""
+          }
+        ],
+        "data_requirements": null,
+        "capabilities": [
+          "deterministic",
+          "thread_safe",
+          "process_safe",
+          "uses_core_rng"
+        ],
+        "fit_scope": "fold_train",
+        "rng_policy": "uses_core_seed",
+        "artifact_policy": "serializable"
+      },
+      "controller:model.mock": {
+        "controller_id": "controller:model.mock",
+        "controller_version": "0.1.0",
+        "operator_kind": "model",
+        "priority": 0,
+        "supported_phases": [
+          "FIT_CV",
+          "REFIT",
+          "PREDICT"
+        ],
+        "input_ports": [
+          {
+            "name": "x",
+            "kind": "data",
+            "representation": "tabular_numeric",
+            "cardinality": "one",
+            "description": ""
+          }
+        ],
+        "output_ports": [
+          {
+            "name": "oof",
+            "kind": "prediction",
+            "representation": null,
+            "cardinality": "one",
+            "description": ""
+          }
+        ],
+        "data_requirements": null,
+        "capabilities": [
+          "deterministic",
+          "thread_safe",
+          "process_safe",
+          "emits_predictions",
+          "consumes_oof_predictions",
+          "emits_artifacts",
+          "stateful",
+          "uses_core_rng"
+        ],
+        "fit_scope": "fold_train",
+        "rng_policy": "uses_core_seed",
+        "artifact_policy": "serializable"
+      }
+    },
+    "variants": [
+      {
+        "variant_id": "variant:a964828b1417c6e7",
+        "choices": {
+          "stack_profile": {
+            "label": "linear_stack",
+            "value": {
+              "branch:b0.model:ridge": {
+                "alpha": 0.1
+              },
+              "branch:b1.model:rf": {
+                "max_depth": 4,
+                "n_estimators": 64
+              },
+              "merge:stack.pred_plus_original.meta:ridge": {
+                "alpha": 0.05
+              }
+            },
+            "param_overrides": [
+              {
+                "node_id": "branch:b0.model:ridge",
+                "params": {
+                  "alpha": 0.1
+                }
+              },
+              {
+                "node_id": "branch:b1.model:rf",
+                "params": {
+                  "max_depth": 4,
+                  "n_estimators": 64
+                }
+              },
+              {
+                "node_id": "merge:stack.pred_plus_original.meta:ridge",
+                "params": {
+                  "alpha": 0.05
+                }
+              }
+            ]
+          }
+        },
+        "fingerprint": "a964828b1417c6e7c1262a7ee9c670a96e14488e793edc87afbd457f8c76265e",
+        "seed": 9427227917191738996
+      },
+      {
+        "variant_id": "variant:0b9d3467abc21f41",
+        "choices": {
+          "stack_profile": {
+            "label": "robust_stack",
+            "value": {
+              "branch:b0.model:ridge": {
+                "alpha": 1.0
+              },
+              "branch:b1.model:rf": {
+                "max_depth": 8,
+                "n_estimators": 128
+              },
+              "merge:stack.pred_plus_original.meta:ridge": {
+                "alpha": 0.5
+              }
+            },
+            "param_overrides": [
+              {
+                "node_id": "branch:b0.model:ridge",
+                "params": {
+                  "alpha": 1.0
+                }
+              },
+              {
+                "node_id": "branch:b1.model:rf",
+                "params": {
+                  "max_depth": 8,
+                  "n_estimators": 128
+                }
+              },
+              {
+                "node_id": "merge:stack.pred_plus_original.meta:ridge",
+                "params": {
+                  "alpha": 0.5
+                }
+              }
+            ]
+          }
+        },
+        "fingerprint": "0b9d3467abc21f414b01cf6dd1e9d2de9f95fa1288e34acad6c66e3db1ce4757",
+        "seed": 18257700902469358065
+      }
+    ],
+    "fold_set": {
+      "id": "outer",
+      "sample_ids": [
+        "sample:1",
+        "sample:2",
+        "sample:3",
+        "sample:4"
+      ],
+      "folds": [
+        {
+          "fold_id": "fold:0",
+          "train_sample_ids": [
+            "sample:3",
+            "sample:4"
+          ],
+          "validation_sample_ids": [
+            "sample:1",
+            "sample:2"
+          ],
+          "metadata": {}
+        },
+        {
+          "fold_id": "fold:1",
+          "train_sample_ids": [
+            "sample:1",
+            "sample:2"
+          ],
+          "validation_sample_ids": [
+            "sample:3",
+            "sample:4"
+          ],
+          "metadata": {}
+        }
+      ],
+      "sample_groups": {}
+    },
+    "graph_fingerprint": "5ff380e69dad7b2f67725483afd8b917b3d2bcde7190c4cfa952b6c227d773d5",
+    "campaign_fingerprint": "0778413bc8e3069ef4c2148cb17a5e15ec8ffbc38ca588d2146c6d2aee713c05",
+    "controller_fingerprint": "03fce82bb64a7c1820c70146b0489d6ed649e90d922e392d6eb9309eba829897"
+  },
+  "effective_plan_fingerprint": "6c0b08080a09d69c196866412a5b292a98b5591fdd51684c1e4a05d82f92db73",
+  "selected_variant_id": "variant:a964828b1417c6e7",
+  "selected_variant_fingerprint": "a964828b1417c6e7c1262a7ee9c670a96e14488e793edc87afbd457f8c76265e",
+  "selection_output_id": "output:meta.final",
+  "parameter_patches": [
+    {
+      "schema_version": 1,
+      "node_id": "branch:b0.model:ridge",
+      "namespace": "operator",
+      "path": [
+        "alpha"
+      ],
+      "value": 0.1
+    },
+    {
+      "schema_version": 1,
+      "node_id": "branch:b1.model:rf",
+      "namespace": "operator",
+      "path": [
+        "max_depth"
+      ],
+      "value": 4
+    },
+    {
+      "schema_version": 1,
+      "node_id": "branch:b1.model:rf",
+      "namespace": "operator",
+      "path": [
+        "n_estimators"
+      ],
+      "value": 64
+    },
+    {
+      "schema_version": 1,
+      "node_id": "merge:stack.pred_plus_original.meta:ridge",
+      "namespace": "operator",
+      "path": [
+        "alpha"
+      ],
+      "value": 0.05
+    }
+  ],
+  "refit": {
+    "requested": true,
+    "status": "completed",
+    "strategy": "refit_one"
+  },
+  "score_set": {
+    "schema_version": 2,
+    "plan_id": "plan:fixture.execution.branch_merge",
+    "selection_metric": "rmse",
+    "reports": [
+      {
+        "prediction_id": "prediction:meta.oof.avg",
+        "producer_node": "merge:stack.pred_plus_original.meta:ridge",
+        "producer_port": "oof",
+        "variant_id": "variant:a964828b1417c6e7",
+        "partition": "validation",
+        "fold_id": "avg",
+        "level": "sample",
+        "row_count": 4,
+        "target_width": 1,
+        "target_names": [
+          "protein"
+        ],
+        "metrics": {
+          "rmse": 0.15811388300841897
+        }
+      },
+      {
+        "prediction_id": "prediction:meta.oof.avg.loser",
+        "producer_node": "merge:stack.pred_plus_original.meta:ridge",
+        "producer_port": "oof",
+        "variant_id": "variant:0b9d3467abc21f41",
+        "partition": "validation",
+        "fold_id": "avg",
+        "level": "sample",
+        "row_count": 4,
+        "target_width": 1,
+        "target_names": [
+          "protein"
+        ],
+        "metrics": {
+          "rmse": 0.3
+        }
+      }
+    ]
+  },
+  "outputs": [
+    {
+      "binding": {
+        "schema_version": 1,
+        "binding_id": "output:meta.final",
+        "node_id": "merge:stack.pred_plus_original.meta:ridge",
+        "port_name": "oof",
+        "prediction_level": "sample",
+        "unit_level": "physical_sample",
+        "prediction_kind": "regression_point",
+        "prediction_source": "final_refit",
+        "refit_strategy": "refit_one",
+        "aggregation_fingerprint": "f26a1edef406d0d2fc5189cd22d842978ce4de9354714e5dc69b75552ddfd41d",
+        "target_names": [
+          "protein"
+        ],
+        "target_units": [
+          "percent"
+        ],
+        "class_labels": [
+          []
+        ],
+        "output_order": "target_order",
+        "target_space": "raw",
+        "binding_fingerprint": "c8d90368ab9e3a2a6ed03f729fdbda2521a42e429bd88d2334d86f6b55214c4f"
+      },
+      "predictions": [
+        {
+          "prediction_id": "prediction:meta.final",
+          "producer_node": "merge:stack.pred_plus_original.meta:ridge",
+          "producer_port": "oof",
+          "partition": "final",
+          "fold_id": null,
+          "sample_ids": [
+            "sample:1",
+            "sample:2",
+            "sample:3",
+            "sample:4"
+          ],
+          "values": [
+            [
+              1.1
+            ],
+            [
+              1.9
+            ],
+            [
+              3.2
+            ],
+            [
+              3.8
+            ]
+          ],
+          "target_names": [
+            "protein"
+          ]
+        }
+      ],
+      "observation_predictions": [],
+      "aggregated_predictions": [
+        {
+          "prediction_id": "prediction:meta.final.sample",
+          "producer_node": "merge:stack.pred_plus_original.meta:ridge",
+          "producer_port": "oof",
+          "partition": "final",
+          "fold_id": null,
+          "level": "sample",
+          "unit_ids": [
+            {
+              "level": "sample",
+              "id": "sample:1"
+            },
+            {
+              "level": "sample",
+              "id": "sample:2"
+            },
+            {
+              "level": "sample",
+              "id": "sample:3"
+            },
+            {
+              "level": "sample",
+              "id": "sample:4"
+            }
+          ],
+          "values": [
+            [
+              1.1
+            ],
+            [
+              1.9
+            ],
+            [
+              3.2
+            ],
+            [
+              3.8
+            ]
+          ],
+          "target_names": [
+            "protein"
+          ]
+        }
+      ],
+      "schema_version": 2
+    }
+  ],
+  "lineage": [
+    {
+      "record_id": "lineage:branch:b0.model:ridge:FIT_CV:variant:a964828b1417c6e7:fold:0",
+      "run_id": "run:estimator.contract",
+      "node_id": "branch:b0.model:ridge",
+      "phase": "FIT_CV",
+      "controller_id": "controller:model.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": "fold:0",
+      "branch_path": [],
+      "input_lineage": [],
+      "artifact_refs": [],
+      "params_fingerprint": "af39a185b5a846fc6bbdc703ee4a7bf3e4b7ad9a304563d6cc024a36dc6628ab",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 1563070192825621098,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 1.0
+      }
+    },
+    {
+      "record_id": "lineage:branch:b0.model:ridge:FIT_CV:variant:a964828b1417c6e7:fold:1",
+      "run_id": "run:estimator.contract",
+      "node_id": "branch:b0.model:ridge",
+      "phase": "FIT_CV",
+      "controller_id": "controller:model.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": "fold:1",
+      "branch_path": [],
+      "input_lineage": [],
+      "artifact_refs": [],
+      "params_fingerprint": "af39a185b5a846fc6bbdc703ee4a7bf3e4b7ad9a304563d6cc024a36dc6628ab",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 3956164421179603716,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 0.0
+      }
+    },
+    {
+      "record_id": "lineage:branch:b0.model:ridge:REFIT:variant:a964828b1417c6e7:nofold",
+      "run_id": "run:estimator.contract",
+      "node_id": "branch:b0.model:ridge",
+      "phase": "REFIT",
+      "controller_id": "controller:model.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": null,
+      "branch_path": [],
+      "input_lineage": [],
+      "artifact_refs": [
+        {
+          "id": "artifact:branch:b0.model:ridge:refit",
+          "kind": "mock_model",
+          "controller_id": "controller:model.mock",
+          "backend": "json",
+          "uri": "artifacts/daddc56f7cb31bc1af40e1a78cf32bd371520ea4e2d3bfd854176eda48db2684.json",
+          "content_fingerprint": "b6ce0fe0c992ddd20c2f300917cb323003d7adadf5364d9d9b2f2e154a8e8917",
+          "size_bytes": 128,
+          "plugin": "dagml.python_process",
+          "plugin_version": "1.0.0"
+        }
+      ],
+      "params_fingerprint": "af39a185b5a846fc6bbdc703ee4a7bf3e4b7ad9a304563d6cc024a36dc6628ab",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 6289080270157491715,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 0.0
+      }
+    },
+    {
+      "record_id": "lineage:branch:b1.augment:noise:FIT_CV:variant:a964828b1417c6e7:fold:0",
+      "run_id": "run:estimator.contract",
+      "node_id": "branch:b1.augment:noise",
+      "phase": "FIT_CV",
+      "controller_id": "controller:augmentation.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": "fold:0",
+      "branch_path": [],
+      "input_lineage": [],
+      "artifact_refs": [],
+      "params_fingerprint": "33d2aa022dffa4cf09394b0edc178bf379bab06c569e00b7260fb5c546f433c6",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 9899947350578798681,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 1.0
+      }
+    },
+    {
+      "record_id": "lineage:branch:b1.augment:noise:FIT_CV:variant:a964828b1417c6e7:fold:1",
+      "run_id": "run:estimator.contract",
+      "node_id": "branch:b1.augment:noise",
+      "phase": "FIT_CV",
+      "controller_id": "controller:augmentation.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": "fold:1",
+      "branch_path": [],
+      "input_lineage": [],
+      "artifact_refs": [],
+      "params_fingerprint": "33d2aa022dffa4cf09394b0edc178bf379bab06c569e00b7260fb5c546f433c6",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 15763620806765257358,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 0.0
+      }
+    },
+    {
+      "record_id": "lineage:branch:b1.augment:noise:REFIT:variant:a964828b1417c6e7:nofold",
+      "run_id": "run:estimator.contract",
+      "node_id": "branch:b1.augment:noise",
+      "phase": "REFIT",
+      "controller_id": "controller:augmentation.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": null,
+      "branch_path": [],
+      "input_lineage": [],
+      "artifact_refs": [],
+      "params_fingerprint": "33d2aa022dffa4cf09394b0edc178bf379bab06c569e00b7260fb5c546f433c6",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 13901946371884154562,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 0.0
+      }
+    },
+    {
+      "record_id": "lineage:branch:b1.model:rf:FIT_CV:variant:a964828b1417c6e7:fold:0",
+      "run_id": "run:estimator.contract",
+      "node_id": "branch:b1.model:rf",
+      "phase": "FIT_CV",
+      "controller_id": "controller:model.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": "fold:0",
+      "branch_path": [],
+      "input_lineage": [
+        "lineage:branch:b1.augment:noise:FIT_CV:variant:a964828b1417c6e7:fold:0"
+      ],
+      "artifact_refs": [],
+      "params_fingerprint": "825b0d7229d08dad92ad5f81443063e14bdeb3e03ef3ca294c81c156711b7924",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 6471510700431013769,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 1.0
+      }
+    },
+    {
+      "record_id": "lineage:branch:b1.model:rf:FIT_CV:variant:a964828b1417c6e7:fold:1",
+      "run_id": "run:estimator.contract",
+      "node_id": "branch:b1.model:rf",
+      "phase": "FIT_CV",
+      "controller_id": "controller:model.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": "fold:1",
+      "branch_path": [],
+      "input_lineage": [
+        "lineage:branch:b1.augment:noise:FIT_CV:variant:a964828b1417c6e7:fold:1"
+      ],
+      "artifact_refs": [],
+      "params_fingerprint": "825b0d7229d08dad92ad5f81443063e14bdeb3e03ef3ca294c81c156711b7924",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 1206588471368433682,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 0.0
+      }
+    },
+    {
+      "record_id": "lineage:branch:b1.model:rf:REFIT:variant:a964828b1417c6e7:nofold",
+      "run_id": "run:estimator.contract",
+      "node_id": "branch:b1.model:rf",
+      "phase": "REFIT",
+      "controller_id": "controller:model.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": null,
+      "branch_path": [],
+      "input_lineage": [
+        "lineage:branch:b1.augment:noise:REFIT:variant:a964828b1417c6e7:nofold"
+      ],
+      "artifact_refs": [
+        {
+          "id": "artifact:branch:b1.model:rf:refit",
+          "kind": "mock_model",
+          "controller_id": "controller:model.mock",
+          "backend": "json",
+          "uri": "artifacts/ea3c05fa8bf005a31f877be5a2de701d46a4c8e91a849c7f19ee2634c9c401c3.json",
+          "content_fingerprint": "080f39410270fecb7030f29ef828f6a2b753ec69c56ecaed8dbdd01fd47b8adb",
+          "size_bytes": 128,
+          "plugin": "dagml.python_process",
+          "plugin_version": "1.0.0"
+        }
+      ],
+      "params_fingerprint": "825b0d7229d08dad92ad5f81443063e14bdeb3e03ef3ca294c81c156711b7924",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 1549994917790504745,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 0.0
+      }
+    },
+    {
+      "record_id": "lineage:merge:stack.pred_plus_original.meta:ridge:FIT_CV:variant:a964828b1417c6e7:fold:0",
+      "run_id": "run:estimator.contract",
+      "node_id": "merge:stack.pred_plus_original.meta:ridge",
+      "phase": "FIT_CV",
+      "controller_id": "controller:model.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": "fold:0",
+      "branch_path": [],
+      "input_lineage": [
+        "lineage:branch:b0.model:ridge:FIT_CV:variant:a964828b1417c6e7:fold:0",
+        "lineage:branch:b1.model:rf:FIT_CV:variant:a964828b1417c6e7:fold:0"
+      ],
+      "artifact_refs": [],
+      "params_fingerprint": "e7fcc53de2b14105e7e7f5b943b3eb32811c5ac79ad70f10fee4de31137921d2",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 17911382851551370327,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 1.0
+      }
+    },
+    {
+      "record_id": "lineage:merge:stack.pred_plus_original.meta:ridge:FIT_CV:variant:a964828b1417c6e7:fold:1",
+      "run_id": "run:estimator.contract",
+      "node_id": "merge:stack.pred_plus_original.meta:ridge",
+      "phase": "FIT_CV",
+      "controller_id": "controller:model.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": "fold:1",
+      "branch_path": [],
+      "input_lineage": [
+        "lineage:branch:b0.model:ridge:FIT_CV:variant:a964828b1417c6e7:fold:1",
+        "lineage:branch:b1.model:rf:FIT_CV:variant:a964828b1417c6e7:fold:1"
+      ],
+      "artifact_refs": [],
+      "params_fingerprint": "e7fcc53de2b14105e7e7f5b943b3eb32811c5ac79ad70f10fee4de31137921d2",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 11485570344478250311,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 0.0
+      }
+    },
+    {
+      "record_id": "lineage:merge:stack.pred_plus_original.meta:ridge:REFIT:variant:a964828b1417c6e7:nofold",
+      "run_id": "run:estimator.contract",
+      "node_id": "merge:stack.pred_plus_original.meta:ridge",
+      "phase": "REFIT",
+      "controller_id": "controller:model.mock",
+      "controller_version": "0.1.0",
+      "variant_id": "variant:a964828b1417c6e7",
+      "fold_id": null,
+      "branch_path": [],
+      "input_lineage": [
+        "lineage:branch:b0.model:ridge:REFIT:variant:a964828b1417c6e7:nofold",
+        "lineage:branch:b1.model:rf:REFIT:variant:a964828b1417c6e7:nofold"
+      ],
+      "artifact_refs": [
+        {
+          "id": "artifact:merge:stack.pred_plus_original.meta:ridge:refit",
+          "kind": "mock_model",
+          "controller_id": "controller:model.mock",
+          "backend": "json",
+          "uri": "artifacts/9b568c6eb72a0587758375d8498e6f6e75b44c5d68318ab58b8c980200816d94.json",
+          "content_fingerprint": "e04a465664fa5d102d7345c2d7dd334fa822209438cc32e7ed07205224abb019",
+          "size_bytes": 128,
+          "plugin": "dagml.python_process",
+          "plugin_version": "1.0.0"
+        }
+      ],
+      "params_fingerprint": "e7fcc53de2b14105e7e7f5b943b3eb32811c5ac79ad70f10fee4de31137921d2",
+      "data_model_shape_fingerprint": null,
+      "aggregation_policy_fingerprint": null,
+      "seed": 8665541430793175086,
+      "unsafe_flags": [],
+      "metrics": {
+        "adapter_smoke": 1.0,
+        "process_worker_count": 2.0,
+        "process_worker_index": 0.0
+      }
+    }
+  ],
+  "portable_prediction_caches": {
+    "bundle_id": "bundle:estimator.contract",
+    "schema_version": 2,
+    "caches": [
+      {
+        "requirement_key": "branch:b0.model:ridge.oof->merge:stack.pred_plus_original.meta:ridge.b0_oof",
+        "cache_id": "prediction-cache:branch:b0.model:ridge.oof->merge:stack.pred_plus_original.meta:ridge.b0_oof",
+        "format": "dag-ml-json-prediction-blocks-v2",
+        "partition": "validation",
+        "block_count": 2,
+        "row_count": 4,
+        "content_fingerprint": "7577d3f055f223dbcc1a8fcbf0f05c9f29b892cad02d8d1cd5ed228a8472b087",
+        "blocks": [
+          {
+            "prediction_id": "pred:branch:b0.model:ridge:FIT_CV",
+            "producer_node": "branch:b0.model:ridge",
+            "producer_port": "oof",
+            "partition": "validation",
+            "fold_id": "fold:0",
+            "sample_ids": [
+              "sample:1",
+              "sample:2"
+            ],
+            "values": [
+              [
+                50420.0
+              ],
+              [
+                50420.0
+              ]
+            ],
+            "target_names": [
+              "y"
+            ]
+          },
+          {
+            "prediction_id": "pred:branch:b0.model:ridge:FIT_CV",
+            "producer_node": "branch:b0.model:ridge",
+            "producer_port": "oof",
+            "partition": "validation",
+            "fold_id": "fold:1",
+            "sample_ids": [
+              "sample:3",
+              "sample:4"
+            ],
+            "values": [
+              [
+                50421.0
+              ],
+              [
+                50421.0
+              ]
+            ],
+            "target_names": [
+              "y"
+            ]
+          }
+        ],
+        "prediction_level": "sample",
+        "cache_namespace_fingerprints": [
+          "8e0d2bca968c227cff2b5b1a952f71e90a100be07507129f88d19dbc748690fa",
+          "e984ebac52ebef3258c10dd81021a6c0d17feef95061968ce8ccbc760afa934d"
+        ]
+      },
+      {
+        "requirement_key": "branch:b1.model:rf.oof->merge:stack.pred_plus_original.meta:ridge.b1_oof",
+        "cache_id": "prediction-cache:branch:b1.model:rf.oof->merge:stack.pred_plus_original.meta:ridge.b1_oof",
+        "format": "dag-ml-json-prediction-blocks-v2",
+        "partition": "validation",
+        "block_count": 2,
+        "row_count": 4,
+        "content_fingerprint": "d9ddcbae67cba0993ed18834d3ab01cfe59cb9e0238eee4d95ac79351a7e8851",
+        "blocks": [
+          {
+            "prediction_id": "pred:branch:b1.model:rf:FIT_CV",
+            "producer_node": "branch:b1.model:rf",
+            "producer_port": "oof",
+            "partition": "validation",
+            "fold_id": "fold:0",
+            "sample_ids": [
+              "sample:1",
+              "sample:2"
+            ],
+            "values": [
+              [
+                383160.0
+              ],
+              [
+                383160.0
+              ]
+            ],
+            "target_names": [
+              "y"
+            ]
+          },
+          {
+            "prediction_id": "pred:branch:b1.model:rf:FIT_CV",
+            "producer_node": "branch:b1.model:rf",
+            "producer_port": "oof",
+            "partition": "validation",
+            "fold_id": "fold:1",
+            "sample_ids": [
+              "sample:3",
+              "sample:4"
+            ],
+            "values": [
+              [
+                383161.0
+              ],
+              [
+                383161.0
+              ]
+            ],
+            "target_names": [
+              "y"
+            ]
+          }
+        ],
+        "prediction_level": "sample",
+        "cache_namespace_fingerprints": [
+          "3a4a62cbb09f87b125280481b75ff8774e51c6f39acb2f3042afb8b6418f9fef",
+          "bf086d3bd048b899f4ad98936e890d2579cfbb1b98507b6313fb8a7f5ed5230e"
+        ]
+      }
+    ]
+  },
+  "training_influence": {
+    "schema_version": 1,
+    "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+    "entries": [
+      {
+        "kind": "transform_fit",
+        "scope_id": "fit:branch.b1.augmentation",
+        "node_id": "branch:b1.augment:noise",
+        "physical_sample_ids": [
+          "sample:1",
+          "sample:2",
+          "sample:3",
+          "sample:4"
+        ],
+        "origin_sample_ids": [],
+        "group_ids": []
+      },
+      {
+        "kind": "model_fit",
+        "scope_id": "fit:branch.b0.ridge",
+        "node_id": "branch:b0.model:ridge",
+        "physical_sample_ids": [
+          "sample:1",
+          "sample:2",
+          "sample:3",
+          "sample:4"
+        ],
+        "origin_sample_ids": [],
+        "group_ids": []
+      },
+      {
+        "kind": "model_fit",
+        "scope_id": "fit:branch.b1.rf",
+        "node_id": "branch:b1.model:rf",
+        "physical_sample_ids": [
+          "sample:1",
+          "sample:2",
+          "sample:3",
+          "sample:4"
+        ],
+        "origin_sample_ids": [],
+        "group_ids": []
+      },
+      {
+        "kind": "hpo_selection",
+        "scope_id": "selection:rmse",
+        "node_id": null,
+        "physical_sample_ids": [
+          "sample:1",
+          "sample:2",
+          "sample:3",
+          "sample:4"
+        ],
+        "origin_sample_ids": [],
+        "group_ids": []
+      },
+      {
+        "kind": "trained_meta_aggregation",
+        "scope_id": "fit:meta.ridge",
+        "node_id": "merge:stack.pred_plus_original.meta:ridge",
+        "physical_sample_ids": [
+          "sample:1",
+          "sample:2",
+          "sample:3",
+          "sample:4"
+        ],
+        "origin_sample_ids": [],
+        "group_ids": []
+      }
+    ],
+    "manifest_fingerprint": "cf8f6ce4dbf07b81621d4baf62fca07e218936da8a85d444a91e74e302f485dd"
+  },
+  "execution_bundle": {
+    "bundle_id": "bundle:estimator.contract",
+    "schema_version": 2,
+    "plan_id": "plan:fixture.execution.branch_merge",
+    "graph_fingerprint": "5ff380e69dad7b2f67725483afd8b917b3d2bcde7190c4cfa952b6c227d773d5",
+    "campaign_fingerprint": "0778413bc8e3069ef4c2148cb17a5e15ec8ffbc38ca588d2146c6d2aee713c05",
+    "controller_fingerprint": "03fce82bb64a7c1820c70146b0489d6ed649e90d922e392d6eb9309eba829897",
+    "selected_variant_id": "variant:a964828b1417c6e7",
+    "selections": {
+      "selection:outcome.rmse": {
+        "policy_id": "selection:outcome.rmse",
+        "selected_candidate_id": "variant:a964828b1417c6e7",
+        "metric_name": "rmse",
+        "objective": "minimize",
+        "metric_level": "sample",
+        "evaluation_scope": "oof",
+        "selected_score": 0.15811388300841897,
+        "ranked_candidates": [
+          {
+            "candidate_id": "variant:a964828b1417c6e7",
+            "score": 0.15811388300841897,
+            "rank": 1
+          },
+          {
+            "candidate_id": "variant:0b9d3467abc21f41",
+            "score": 0.3,
+            "rank": 2
+          }
+        ]
+      }
+    },
+    "refit_artifacts": [
+      {
+        "node_id": "branch:b0.model:ridge",
+        "controller_id": "controller:model.mock",
+        "artifact": {
+          "id": "artifact:branch:b0.model:ridge:refit",
+          "kind": "mock_model",
+          "controller_id": "controller:model.mock",
+          "backend": "json",
+          "uri": "artifacts/daddc56f7cb31bc1af40e1a78cf32bd371520ea4e2d3bfd854176eda48db2684.json",
+          "content_fingerprint": "b6ce0fe0c992ddd20c2f300917cb323003d7adadf5364d9d9b2f2e154a8e8917",
+          "size_bytes": 128,
+          "plugin": "dagml.python_process",
+          "plugin_version": "1.0.0"
+        },
+        "params_fingerprint": "af39a185b5a846fc6bbdc703ee4a7bf3e4b7ad9a304563d6cc024a36dc6628ab",
+        "data_requirement_keys": [
+          "branch:b0.model:ridge.x"
+        ],
+        "prediction_requirement_keys": []
+      },
+      {
+        "node_id": "branch:b1.model:rf",
+        "controller_id": "controller:model.mock",
+        "artifact": {
+          "id": "artifact:branch:b1.model:rf:refit",
+          "kind": "mock_model",
+          "controller_id": "controller:model.mock",
+          "backend": "json",
+          "uri": "artifacts/ea3c05fa8bf005a31f877be5a2de701d46a4c8e91a849c7f19ee2634c9c401c3.json",
+          "content_fingerprint": "080f39410270fecb7030f29ef828f6a2b753ec69c56ecaed8dbdd01fd47b8adb",
+          "size_bytes": 128,
+          "plugin": "dagml.python_process",
+          "plugin_version": "1.0.0"
+        },
+        "params_fingerprint": "825b0d7229d08dad92ad5f81443063e14bdeb3e03ef3ca294c81c156711b7924",
+        "data_requirement_keys": [],
+        "prediction_requirement_keys": []
+      },
+      {
+        "node_id": "merge:stack.pred_plus_original.meta:ridge",
+        "controller_id": "controller:model.mock",
+        "artifact": {
+          "id": "artifact:merge:stack.pred_plus_original.meta:ridge:refit",
+          "kind": "mock_model",
+          "controller_id": "controller:model.mock",
+          "backend": "json",
+          "uri": "artifacts/9b568c6eb72a0587758375d8498e6f6e75b44c5d68318ab58b8c980200816d94.json",
+          "content_fingerprint": "e04a465664fa5d102d7345c2d7dd334fa822209438cc32e7ed07205224abb019",
+          "size_bytes": 128,
+          "plugin": "dagml.python_process",
+          "plugin_version": "1.0.0"
+        },
+        "params_fingerprint": "e7fcc53de2b14105e7e7f5b943b3eb32811c5ac79ad70f10fee4de31137921d2",
+        "data_requirement_keys": [
+          "merge:stack.pred_plus_original.meta:ridge.x_original"
+        ],
+        "prediction_requirement_keys": [
+          "branch:b0.model:ridge.oof->merge:stack.pred_plus_original.meta:ridge.b0_oof",
+          "branch:b1.model:rf.oof->merge:stack.pred_plus_original.meta:ridge.b1_oof"
+        ]
+      }
+    ],
+    "prediction_requirements": [
+      {
+        "producer_node": "branch:b0.model:ridge",
+        "source_port": "oof",
+        "consumer_node": "merge:stack.pred_plus_original.meta:ridge",
+        "target_port": "b0_oof",
+        "partition": "validation",
+        "fold_ids": [
+          "fold:0",
+          "fold:1"
+        ],
+        "sample_ids": [
+          "sample:1",
+          "sample:2",
+          "sample:3",
+          "sample:4"
+        ],
+        "prediction_width": 1,
+        "target_names": [
+          "y"
+        ],
+        "prediction_level": "sample"
+      },
+      {
+        "producer_node": "branch:b1.model:rf",
+        "source_port": "oof",
+        "consumer_node": "merge:stack.pred_plus_original.meta:ridge",
+        "target_port": "b1_oof",
+        "partition": "validation",
+        "fold_ids": [
+          "fold:0",
+          "fold:1"
+        ],
+        "sample_ids": [
+          "sample:1",
+          "sample:2",
+          "sample:3",
+          "sample:4"
+        ],
+        "prediction_width": 1,
+        "target_names": [
+          "y"
+        ],
+        "prediction_level": "sample"
+      }
+    ],
+    "prediction_caches": [
+      {
+        "requirement_key": "branch:b0.model:ridge.oof->merge:stack.pred_plus_original.meta:ridge.b0_oof",
+        "cache_id": "prediction-cache:branch:b0.model:ridge.oof->merge:stack.pred_plus_original.meta:ridge.b0_oof",
+        "format": "dag-ml-json-prediction-blocks-v2",
+        "partition": "validation",
+        "fold_ids": [
+          "fold:0",
+          "fold:1"
+        ],
+        "sample_ids": [
+          "sample:1",
+          "sample:2",
+          "sample:3",
+          "sample:4"
+        ],
+        "prediction_width": 1,
+        "target_names": [
+          "y"
+        ],
+        "block_count": 2,
+        "row_count": 4,
+        "content_fingerprint": "7577d3f055f223dbcc1a8fcbf0f05c9f29b892cad02d8d1cd5ed228a8472b087",
+        "blocks": [
+          {
+            "prediction_id": "pred:branch:b0.model:ridge:FIT_CV",
+            "fold_id": "fold:0",
+            "row_count": 2,
+            "sample_ids": [
+              "sample:1",
+              "sample:2"
+            ],
+            "content_fingerprint": "126ac771c4a264112ad27bf74ee7b847e81ec9b8314267eeac4f981b4e659d69",
+            "prediction_level": "sample"
+          },
+          {
+            "prediction_id": "pred:branch:b0.model:ridge:FIT_CV",
+            "fold_id": "fold:1",
+            "row_count": 2,
+            "sample_ids": [
+              "sample:3",
+              "sample:4"
+            ],
+            "content_fingerprint": "5cc57c95b377ec1298f5fd99aa94ef04b0b6cc585178e7eefca9355f33ad713f",
+            "prediction_level": "sample"
+          }
+        ],
+        "prediction_level": "sample",
+        "cache_namespace_fingerprints": [
+          "8e0d2bca968c227cff2b5b1a952f71e90a100be07507129f88d19dbc748690fa",
+          "e984ebac52ebef3258c10dd81021a6c0d17feef95061968ce8ccbc760afa934d"
+        ]
+      },
+      {
+        "requirement_key": "branch:b1.model:rf.oof->merge:stack.pred_plus_original.meta:ridge.b1_oof",
+        "cache_id": "prediction-cache:branch:b1.model:rf.oof->merge:stack.pred_plus_original.meta:ridge.b1_oof",
+        "format": "dag-ml-json-prediction-blocks-v2",
+        "partition": "validation",
+        "fold_ids": [
+          "fold:0",
+          "fold:1"
+        ],
+        "sample_ids": [
+          "sample:1",
+          "sample:2",
+          "sample:3",
+          "sample:4"
+        ],
+        "prediction_width": 1,
+        "target_names": [
+          "y"
+        ],
+        "block_count": 2,
+        "row_count": 4,
+        "content_fingerprint": "d9ddcbae67cba0993ed18834d3ab01cfe59cb9e0238eee4d95ac79351a7e8851",
+        "blocks": [
+          {
+            "prediction_id": "pred:branch:b1.model:rf:FIT_CV",
+            "fold_id": "fold:0",
+            "row_count": 2,
+            "sample_ids": [
+              "sample:1",
+              "sample:2"
+            ],
+            "content_fingerprint": "e47012c3c95f07a95d64b03890af8a2a92c7a69ac4ef1ce49a0a7d6b4c3d770a",
+            "prediction_level": "sample"
+          },
+          {
+            "prediction_id": "pred:branch:b1.model:rf:FIT_CV",
+            "fold_id": "fold:1",
+            "row_count": 2,
+            "sample_ids": [
+              "sample:3",
+              "sample:4"
+            ],
+            "content_fingerprint": "d5cc8055ca12b75f8ebcb324f3e743958fb99b88ab5b44e0889a077751b3f51c",
+            "prediction_level": "sample"
+          }
+        ],
+        "prediction_level": "sample",
+        "cache_namespace_fingerprints": [
+          "3a4a62cbb09f87b125280481b75ff8774e51c6f39acb2f3042afb8b6418f9fef",
+          "bf086d3bd048b899f4ad98936e890d2579cfbb1b98507b6313fb8a7f5ed5230e"
+        ]
+      }
+    ],
+    "scores": {
+      "schema_version": 2,
+      "plan_id": "plan:fixture.execution.branch_merge",
+      "selection_metric": "rmse",
+      "reports": [
+        {
+          "prediction_id": "prediction:meta.oof.avg",
+          "producer_node": "merge:stack.pred_plus_original.meta:ridge",
+          "producer_port": "oof",
+          "variant_id": "variant:a964828b1417c6e7",
+          "partition": "validation",
+          "fold_id": "avg",
+          "level": "sample",
+          "row_count": 4,
+          "target_width": 1,
+          "target_names": [
+            "protein"
+          ],
+          "metrics": {
+            "rmse": 0.15811388300841897
+          }
+        },
+        {
+          "prediction_id": "prediction:meta.oof.avg.loser",
+          "producer_node": "merge:stack.pred_plus_original.meta:ridge",
+          "producer_port": "oof",
+          "variant_id": "variant:0b9d3467abc21f41",
+          "partition": "validation",
+          "fold_id": "avg",
+          "level": "sample",
+          "row_count": 4,
+          "target_width": 1,
+          "target_names": [
+            "protein"
+          ],
+          "metrics": {
+            "rmse": 0.3
+          }
+        }
+      ]
+    },
+    "data_requirements": [
+      {
+        "node_id": "branch:b0.model:ridge",
+        "input_name": "x",
+        "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+        "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+        "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+        "output_representation": "tabular_numeric",
+        "feature_set_id": "x"
+      },
+      {
+        "node_id": "branch:b1.augment:noise",
+        "input_name": "x",
+        "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+        "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+        "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+        "output_representation": "tabular_numeric",
+        "feature_set_id": "x"
+      },
+      {
+        "node_id": "merge:stack.pred_plus_original.meta:ridge",
+        "input_name": "x_original",
+        "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+        "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+        "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+        "output_representation": "tabular_numeric",
+        "feature_set_id": "x"
+      }
+    ],
+    "unsafe_flags": [],
+    "metadata": {
+      "contract_fixture": "training_outcome.v1"
+    }
+  },
+  "replayable_phases": [
+    "PREDICT"
+  ],
+  "warnings": [],
+  "diagnostics": {
+    "contract_fixture": true,
+    "refit_disabled_for_hpo": false
+  },
+  "outcome_fingerprint": "36b571b3ba37e766eda78fd550b1c88b17dc867dcba2f1763e20382c4be6bfbe"
+}

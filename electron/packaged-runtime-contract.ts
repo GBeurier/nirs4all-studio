@@ -14,6 +14,11 @@ const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
 const PLUGIN_SOURCE_COMMIT = "322265576ccfaeb1ee22332d05ae04b87be4b538";
 const PLUGIN_WHEEL_SHA256 = "00326c703b933ff2c4b106905e1c44f81906b918db30bb5d05aa189846c48940";
+const METHODS_ABI_MAJOR = 2;
+const METHODS_ABI_MINOR = 3;
+const METHODS_SOURCE_COMMIT = "4983c9a1df39d430a78c615bda209d3353514aa1";
+const METHODS_SOURCE_TREE = "8f8a7809d22ff5d95f64a22e519759eaa3fd2ec0";
+const METHODS_PROJECT_VERSION = "1.0.13";
 const FORBIDDEN_PLUGIN_DISTRIBUTIONS = [
   "fastapi",
   "httptools",
@@ -51,6 +56,7 @@ interface PackagedRuntimeContract {
     mode: string;
     member: ContractMember | null;
     abi: { major: number; minor: number };
+    source: { commit: string; tree: string; project_version: string };
   };
 }
 
@@ -456,8 +462,11 @@ export function verifyPackagedRuntimeContract({
   if (
     !methods ||
     !["unavailable", "bundled-required"].includes(methods.mode) ||
-    methods.abi?.major !== 2 ||
-    methods.abi?.minor !== 2
+    methods.abi?.major !== METHODS_ABI_MAJOR ||
+    methods.abi?.minor !== METHODS_ABI_MINOR ||
+    methods.source?.commit !== METHODS_SOURCE_COMMIT ||
+    methods.source?.tree !== METHODS_SOURCE_TREE ||
+    methods.source?.project_version !== METHODS_PROJECT_VERSION
   ) {
     throw new Error("Invalid native Methods policy in packaged runtime contract");
   }

@@ -1,0 +1,194 @@
+# Build, smoke-test, and publish the `nirs4all` npm package.
+#
+# nirs4all-core's JS/WASM binding (bindings/wasm) combines an ES-module surface
+# with the Rust Archive V2 validator built by its prepack hook. Numerical
+# execution remains delegated to optional upstream @nirs4all/* WASM peer
+# dependencies; the aggregate does not vendor their kernels.
+#
+# npm package name is `nirs4all` (there is no "full" nirs4all on npm, so this
+# aggregate owns the `nirs4all` umbrella in JS). nirs4all-datasets stays
+# OPTIONAL: it is declared as an optional peer dependency, never a hard
+# dependency.
+#
+# Publishing needs the NPM_TOKEN repository secret (an automation token that can
+# publish the `nirs4all` package; the name must be free / owned by the
+# maintainer). Provenance (publishConfig.provenance, injected below) needs the
+# id-token: write permission and a public repo.
+#
+# Triggers
+# --------
+# - push tag v*.*.*  -> build + smoke + (non-pre-release) publish to npm
+# - workflow_dispatch (publish input) -> build + smoke + (publish=true) publish
+name: release-npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to npm (true) or dry-run only (false)'
+        type: boolean
+        default: false
+  push:
+    # GitHub tag filters are globs, not regex; '-rc'/pre-release tags still
+    # match here and are filtered out of the publish step below.
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write   # npm provenance (OIDC)
+
+jobs:
+  strict-wasm-parity:
+    name: Strict WASM parity / Python oracle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      - name: Read pinned nirs4all-methods ref
+        id: methods-pin
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import tomllib
+
+          upstreams = tomllib.loads(Path("compat/upstreams.toml").read_text())["upstream"]
+          methods = [item for item in upstreams if item.get("key") == "methods"]
+          if len(methods) != 1:
+              raise SystemExit("compat/upstreams.toml must contain exactly one methods upstream")
+          ref = methods[0].get("ref")
+          if not isinstance(ref, str) or not ref.strip():
+              raise SystemExit("compat/upstreams.toml methods upstream must define a non-empty ref")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"ref={ref.strip()}\n")
+
+      - uses: actions/checkout@v7.0.0
+        with:
+          repository: GBeurier/nirs4all-methods
+          path: nirs4all-methods
+          ref: ${{ steps.methods-pin.outputs.ref }}
+
+      - name: Install Emscripten SDK
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install latest
+          "$RUNNER_TEMP/emsdk/emsdk" activate latest
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          {
+            echo "EMSDK=$EMSDK"
+            echo "EMSDK_NODE=$EMSDK_NODE"
+          } >> "$GITHUB_ENV"
+          {
+            echo "$EMSDK"
+            echo "$EMSDK/upstream/emscripten"
+          } >> "$GITHUB_PATH"
+
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - run: npm ci --prefix bindings/wasm
+      - run: cmake --preset emscripten
+        working-directory: nirs4all-methods
+      - run: cmake --build --preset emscripten --target n4m_wasm --parallel
+        working-directory: nirs4all-methods
+      - run: npm ci
+        working-directory: nirs4all-methods/bindings/js
+      - run: npm run build && npm run stage:wasm
+        working-directory: nirs4all-methods/bindings/js
+      - name: Run strict WASM parity against the Python oracle
+        run: |
+          NIRS4ALL_METHODS_JS_DIST="$GITHUB_WORKSPACE/nirs4all-methods/bindings/js/dist" \
+          NIRS4ALL_CORE_REQUIRE_METHODS_PARITY=1 \
+          npm test --prefix bindings/wasm
+
+  build-and-publish:
+    needs: strict-wasm-parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Install + test the package
+        run: |
+          npm ci --prefix bindings/wasm
+          npm test --prefix bindings/wasm
+
+      - name: Inject npm provenance into package.json
+        working-directory: bindings/wasm
+        # The committed package.json has no publishConfig; add public access +
+        # OIDC provenance for the published artifact (does not change the source
+        # tree's behavior — it is only read by `npm publish`).
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            p.publishConfig = Object.assign({}, p.publishConfig, { access: "public", provenance: true });
+            fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+            console.log("package.json ->", p.name, p.version);
+          '
+
+      - name: npm pack --dry-run (confirm src + d.ts ship)
+        working-directory: bindings/wasm
+        run: npm pack --dry-run
+
+      - name: Validate tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: bindings/wasm
+        run: |
+          set -euo pipefail
+          PKG_VER=$(node -p "require('./package.json').version")
+          echo "package.json=$PKG_VER  tag=$GITHUB_REF_NAME"
+          if [ "$PKG_VER" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "ERROR: package.json version ($PKG_VER) != tag (${GITHUB_REF_NAME#v}). Run scripts/bump_version.sh and re-tag."
+            exit 1
+          fi
+
+      - name: Decide publish
+        id: gate
+        working-directory: bindings/wasm
+        run: |
+          set -euo pipefail
+          # Publish on a non-pre-release tag push, OR on workflow_dispatch with
+          # publish=true. Pre-release tags (containing '-') never publish.
+          if [ "${{ github.event_name }}" = "push" ] && [[ "${GITHUB_REF_NAME}" == v* ]] && [[ "${GITHUB_REF_NAME}" != *-* ]]; then
+            do=true
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.publish }}" = "true" ]; then
+            do=true
+          else
+            do=false
+            echo "Dry-run only (no publish)."
+          fi
+          # Idempotency guard: npm forbids republishing an existing version (E403).
+          # If this exact name@version is already on the registry, skip the publish
+          # so re-running a tag (or a no-op release) succeeds instead of erroring.
+          if [ "$do" = "true" ]; then
+            PKG_NAME=$(node -p "require('./package.json').name")
+            PKG_VER=$(node -p "require('./package.json').version")
+            if npm view "${PKG_NAME}@${PKG_VER}" version >/dev/null 2>&1; then
+              echo "${PKG_NAME}@${PKG_VER} already published; skipping publish."
+              do=false
+            fi
+          fi
+          echo "do=$do" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm (provenance)
+        if: steps.gate.outputs.do == 'true'
+        working-directory: bindings/wasm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

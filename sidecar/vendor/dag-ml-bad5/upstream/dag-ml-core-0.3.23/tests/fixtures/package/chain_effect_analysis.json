@@ -1,0 +1,38 @@
+{
+  "schema_id": "https://github.com/GBeurier/dag-ml/schemas/chain_effect_analysis.v1.schema.json",
+  "schema_version": 1,
+  "metric": {
+    "key": "nrmse",
+    "label": "nRMSE",
+    "lower_is_better": true
+  },
+  "lens": "rank_by_dataset",
+  "baseline": 0.5,
+  "evaluation_scope": "oof",
+  "points": [
+    {
+      "id": "chain_1",
+      "score": 0.10,
+      "goodness": 1.0,
+      "dataset": "wheat_protein",
+      "source": "nir",
+      "ordered_tokens": [
+        { "token": "split_kfold", "label": "KFold", "role": "split" },
+        { "token": "snv", "label": "SNV", "role": "preprocess" },
+        { "token": "pls", "label": "PLS", "role": "model" }
+      ]
+    },
+    {
+      "id": "chain_2",
+      "score": 0.20,
+      "goodness": 0.0,
+      "dataset": "wheat_protein",
+      "source": "nir",
+      "ordered_tokens": [
+        { "token": "split_kfold", "label": "KFold", "role": "split" },
+        { "token": "msc", "label": "MSC", "role": "preprocess" },
+        { "token": "pls", "label": "PLS", "role": "model" }
+      ]
+    }
+  ]
+}

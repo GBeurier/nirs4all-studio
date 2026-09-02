@@ -1,0 +1,520 @@
+{
+  "schema_version": 1,
+  "golden_scenarios": [
+    {
+      "scenario_id": "d9.per_source_aggregate.source_models.sample_reducer",
+      "flow": [
+        "per_source_aggregate",
+        "source_models",
+        "sample_level_reducer"
+      ],
+      "mock_phase_path": ["fit_cv", "refit", "predict"],
+      "representation_replay_manifest": {
+        "manifest_id": "repr:d9.per_source_aggregate",
+        "representation_plan": {
+          "kind": "aggregate",
+          "input_unit_level": "observation",
+          "output_unit_level": "physical_sample",
+          "reducer_id": "reducer:source.mean_to_sample",
+          "method": "mean",
+          "cardinality": "many_to_one"
+        },
+        "output_unit_level": "physical_sample",
+        "output_representation": "sample_features",
+        "relation_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "feature_schema_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "final_reduction_id": "reduction:per_source_mean",
+        "sample_observation_mapping": [
+          {
+            "physical_sample_id": "sample:1",
+            "source_id": "source:a",
+            "observation_ids": ["obs:a.1", "obs:a.2"]
+          },
+          {
+            "physical_sample_id": "sample:1",
+            "source_id": "source:b",
+            "observation_ids": ["obs:b.1", "obs:b.2", "obs:b.3"]
+          }
+        ],
+        "missing_source_policy": "strict",
+        "prediction_representation": "sample_prediction",
+        "final_output_unit_level": "physical_sample",
+        "train_compatibility": {
+          "policy": "strict",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "predict_relation_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "train_unit_count": 12,
+          "predict_unit_count": 12,
+          "final_reducer_stabilizes_output": true
+        },
+        "predict_compatibility": {
+          "policy": "strict",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "predict_relation_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "train_unit_count": 12,
+          "predict_unit_count": 12,
+          "final_reducer_stabilizes_output": true
+        },
+        "metadata": {
+          "d9_golden": true,
+          "source_cardinality": "A=2/B=3/C=2"
+        }
+      },
+      "assertions": [
+        "outputs are physical-sample level",
+        "source repetitions are reduced before model features"
+      ]
+    },
+    {
+      "scenario_id": "d9.late_fusion_by_source.prediction_join.meta_model",
+      "flow": [
+        "late_fusion_by_source",
+        "prediction_join",
+        "meta_model"
+      ],
+      "mock_phase_path": ["fit_cv", "refit", "predict"],
+      "representation_replay_manifest": {
+        "manifest_id": "repr:d9.late_fusion",
+        "representation_plan": {
+          "kind": "aggregate",
+          "input_unit_level": "source_sample",
+          "output_unit_level": "physical_sample",
+          "reducer_id": "reducer:source_oof_join",
+          "method": "identity_join",
+          "cardinality": "many_to_one"
+        },
+        "output_unit_level": "physical_sample",
+        "output_representation": "late_fusion_sample_oof",
+        "relation_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "feature_schema_fingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "final_reduction_id": "reduction:sample_oof_join",
+        "missing_source_policy": "strict",
+        "prediction_representation": "sample_prediction",
+        "final_output_unit_level": "physical_sample",
+        "train_compatibility": {
+          "policy": "strict",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "predict_relation_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "train_unit_count": 12,
+          "predict_unit_count": 12,
+          "final_reducer_stabilizes_output": true
+        },
+        "predict_compatibility": {
+          "policy": "strict",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "predict_relation_fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "train_unit_count": 12,
+          "predict_unit_count": 12,
+          "final_reducer_stabilizes_output": true
+        },
+        "metadata": {
+          "requires_validation_oof": true,
+          "meta_training_features": "oof"
+        }
+      },
+      "assertions": [
+        "prediction join is sample aligned",
+        "meta model consumes validation OOF only during fit"
+      ]
+    },
+    {
+      "scenario_id": "d9.cartesian_full.model.combo_to_sample_reducer",
+      "flow": [
+        "cartesian_full",
+        "model",
+        "combo_to_sample_reducer"
+      ],
+      "mock_phase_path": ["fit_cv", "refit", "predict"],
+      "representation_replay_manifest": {
+        "manifest_id": "repr:d9.cartesian_full",
+        "representation_plan": {
+          "kind": "cartesian_product",
+          "combination_plan": {
+            "mode": "cartesian",
+            "component_source_ids": ["source:a", "source:b", "source:c"],
+            "budget": 12,
+            "missing_source_policy": "strict"
+          },
+          "output_unit_level": "combo",
+          "cardinality": "many_to_many",
+          "preserve_provenance": true
+        },
+        "combination_plan": {
+          "mode": "cartesian",
+          "component_source_ids": ["source:a", "source:b", "source:c"],
+          "budget": 12,
+          "missing_source_policy": "strict"
+        },
+        "output_unit_level": "combo",
+        "output_representation": "combo_features",
+        "relation_fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "feature_schema_fingerprint": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "final_reduction_id": "reduction:combo_to_sample.mean",
+        "sample_observation_mapping": [
+          {
+            "physical_sample_id": "sample:1",
+            "source_id": "source:a",
+            "observation_ids": ["obs:a.1", "obs:a.2"]
+          },
+          {
+            "physical_sample_id": "sample:1",
+            "source_id": "source:b",
+            "observation_ids": ["obs:b.1", "obs:b.2", "obs:b.3"]
+          },
+          {
+            "physical_sample_id": "sample:1",
+            "source_id": "source:c",
+            "observation_ids": ["obs:c.1", "obs:c.2"]
+          }
+        ],
+        "combo_selection": [
+          {
+            "combo_unit_id": "combo:sample1:a1:b1:c1",
+            "physical_sample_id": "sample:1",
+            "component_observation_ids": ["obs:a.1", "obs:b.1", "obs:c.1"]
+          },
+          {
+            "combo_unit_id": "combo:sample1:a2:b3:c2",
+            "physical_sample_id": "sample:1",
+            "component_observation_ids": ["obs:a.2", "obs:b.3", "obs:c.2"]
+          }
+        ],
+        "missing_source_policy": "strict",
+        "missing_repetition_policy": "strict",
+        "prediction_representation": "sample_prediction",
+        "final_output_unit_level": "physical_sample",
+        "train_compatibility": {
+          "policy": "strict",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "predict_relation_fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "train_unit_count": 12,
+          "predict_unit_count": 12,
+          "final_reducer_stabilizes_output": true
+        },
+        "predict_compatibility": {
+          "policy": "strict",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "predict_relation_fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "train_unit_count": 12,
+          "predict_unit_count": 12,
+          "final_reducer_stabilizes_output": true
+        },
+        "metadata": {
+          "combo_rows_are_relation_backed": true
+        }
+      },
+      "assertions": [
+        "combo rows retain component observation ids",
+        "final output is reduced to physical samples"
+      ]
+    },
+    {
+      "scenario_id": "d9.cartesian_mc.deterministic_replay",
+      "flow": ["cartesian_mc", "deterministic_replay"],
+      "mock_phase_path": ["fit_cv", "refit", "predict"],
+      "representation_replay_manifest": {
+        "manifest_id": "repr:d9.cartesian_mc",
+        "representation_plan": {
+          "kind": "monte_carlo_cartesian",
+          "combination_plan": {
+            "mode": "sample_k",
+            "component_source_ids": ["source:a", "source:b", "source:c"],
+            "seed": 4242,
+            "cap": 4,
+            "missing_source_policy": "mask"
+          },
+          "output_unit_level": "combo",
+          "cardinality": "bounded_many",
+          "preserve_provenance": true
+        },
+        "combination_plan": {
+          "mode": "sample_k",
+          "component_source_ids": ["source:a", "source:b", "source:c"],
+          "seed": 4242,
+          "cap": 4,
+          "missing_source_policy": "mask"
+        },
+        "output_unit_level": "combo",
+        "output_representation": "sampled_combo_features",
+        "relation_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+        "feature_schema_fingerprint": "2222222222222222222222222222222222222222222222222222222222222222",
+        "final_reduction_id": "reduction:sampled_combo_to_sample.mean",
+        "combo_selection": [
+          {
+            "combo_unit_id": "combo:sample1:mc0",
+            "physical_sample_id": "sample:1",
+            "component_observation_ids": ["obs:a.1", "obs:b.1", "obs:c.1"],
+            "seed": 4242
+          },
+          {
+            "combo_unit_id": "combo:sample1:mc1",
+            "physical_sample_id": "sample:1",
+            "component_observation_ids": ["obs:a.2", "obs:b.3", "obs:c.2"],
+            "seed": 4243
+          }
+        ],
+        "missing_source_policy": "mask",
+        "missing_repetition_policy": "mask",
+        "prediction_representation": "sample_prediction",
+        "final_output_unit_level": "physical_sample",
+        "train_compatibility": {
+          "policy": "mask",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+          "predict_relation_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+          "train_unit_count": 4,
+          "predict_unit_count": 4,
+          "fixed_width_required": true,
+          "final_reducer_stabilizes_output": true
+        },
+        "predict_compatibility": {
+          "policy": "mask",
+          "outcome": "compatible_with_fallback",
+          "fallback_used": "mask",
+          "warning_severity": "warning",
+          "affected_source_count": 0,
+          "affected_repetition_count": 2,
+          "affected_sample_count": 1,
+          "train_relation_fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+          "predict_relation_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333",
+          "train_unit_count": 4,
+          "predict_unit_count": 3,
+          "fixed_width_required": true,
+          "final_reducer_stabilizes_output": true,
+          "cartesian_combo_count_changed": true,
+          "messages": ["deterministic sample_k replay applied mask fallback"]
+        },
+        "metadata": {
+          "deterministic_seed": 4242
+        }
+      },
+      "assertions": [
+        "sample_k seed is persisted",
+        "predict-time repetition drift is explicit and reduced to samples"
+      ]
+    },
+    {
+      "scenario_id": "d9.stack_fixed.strict_cardinality",
+      "flow": ["stack_fixed", "strict_cardinality"],
+      "mock_phase_path": ["fit_cv", "refit", "predict"],
+      "representation_replay_manifest": {
+        "manifest_id": "repr:d9.stack_fixed",
+        "representation_plan": {
+          "kind": "stack_fixed",
+          "output_unit_level": "source_sample",
+          "cardinality": "one_to_many",
+          "expected_cardinality": 3,
+          "component_source_ids": ["source:a", "source:b", "source:c"]
+        },
+        "output_unit_level": "source_sample",
+        "output_representation": "fixed_source_stack",
+        "relation_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+        "feature_schema_fingerprint": "5555555555555555555555555555555555555555555555555555555555555555",
+        "missing_source_policy": "strict",
+        "prediction_representation": "sample_prediction",
+        "final_output_unit_level": "physical_sample",
+        "train_compatibility": {
+          "policy": "strict",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+          "predict_relation_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+          "train_unit_count": 3,
+          "predict_unit_count": 3,
+          "fixed_width_required": true
+        },
+        "predict_compatibility": {
+          "policy": "strict",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+          "predict_relation_fingerprint": "4444444444444444444444444444444444444444444444444444444444444444",
+          "train_unit_count": 3,
+          "predict_unit_count": 3,
+          "fixed_width_required": true
+        },
+        "metadata": {
+          "strict_cardinality": 3
+        }
+      },
+      "assertions": [
+        "stack width is fixed and source-complete"
+      ]
+    },
+    {
+      "scenario_id": "d9.stack_padded_masked.missing_repetition",
+      "flow": ["stack_padded_masked", "missing_repetition"],
+      "mock_phase_path": ["fit_cv", "refit", "predict"],
+      "representation_replay_manifest": {
+        "manifest_id": "repr:d9.stack_padded_masked",
+        "representation_plan": {
+          "kind": "stack_padded_masked",
+          "output_unit_level": "source_sample",
+          "cardinality": "bounded_many",
+          "expected_cardinality": 3,
+          "missing_source_policy": "mask",
+          "requires_missing_masks": true,
+          "component_source_ids": ["source:a", "source:b", "source:c"]
+        },
+        "output_unit_level": "source_sample",
+        "output_representation": "masked_source_stack",
+        "relation_fingerprint": "6666666666666666666666666666666666666666666666666666666666666666",
+        "feature_schema_fingerprint": "7777777777777777777777777777777777777777777777777777777777777777",
+        "missing_source_policy": "mask",
+        "missing_repetition_policy": "mask",
+        "prediction_representation": "sample_prediction",
+        "final_output_unit_level": "physical_sample",
+        "train_compatibility": {
+          "policy": "mask",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "6666666666666666666666666666666666666666666666666666666666666666",
+          "predict_relation_fingerprint": "6666666666666666666666666666666666666666666666666666666666666666",
+          "train_unit_count": 3,
+          "predict_unit_count": 3,
+          "fixed_width_required": true
+        },
+        "predict_compatibility": {
+          "policy": "mask",
+          "outcome": "compatible_with_fallback",
+          "fallback_used": "mask",
+          "warning_severity": "warning",
+          "affected_source_count": 0,
+          "affected_repetition_count": 1,
+          "affected_sample_count": 1,
+          "train_relation_fingerprint": "6666666666666666666666666666666666666666666666666666666666666666",
+          "predict_relation_fingerprint": "8888888888888888888888888888888888888888888888888888888888888888",
+          "train_unit_count": 3,
+          "predict_unit_count": 2,
+          "fixed_width_required": true,
+          "messages": ["missing repetition masked for fixed-width stack"]
+        },
+        "metadata": {
+          "requires_missing_masks": true
+        }
+      },
+      "assertions": [
+        "missing repetitions are represented by masks",
+        "sample-level prediction shape remains stable"
+      ]
+    },
+    {
+      "scenario_id": "d9.combo_meta_post.relation_backed_adapters",
+      "flow": [
+        "cartesian_full",
+        "combo_meta_model",
+        "adapter:combo_to_sample",
+        "final_sample_reducer"
+      ],
+      "mock_phase_path": ["fit_cv", "refit", "predict"],
+      "representation_replay_manifest": {
+        "manifest_id": "repr:d9.combo_meta_post",
+        "representation_plan": {
+          "kind": "cartesian_product",
+          "combination_plan": {
+            "mode": "cartesian",
+            "component_source_ids": ["source:a", "source:b", "source:c"],
+            "budget": 12,
+            "missing_source_policy": "strict",
+            "metadata": {
+              "adapter": "combo_meta_post"
+            }
+          },
+          "output_unit_level": "combo",
+          "cardinality": "many_to_many",
+          "preserve_provenance": true
+        },
+        "combination_plan": {
+          "mode": "cartesian",
+          "component_source_ids": ["source:a", "source:b", "source:c"],
+          "budget": 12,
+          "missing_source_policy": "strict",
+          "metadata": {
+            "adapter": "combo_meta_post"
+          }
+        },
+        "output_unit_level": "combo",
+        "output_representation": "combo_meta_features",
+        "relation_fingerprint": "9999999999999999999999999999999999999999999999999999999999999999",
+        "feature_schema_fingerprint": "abababababababababababababababababababababababababababababababab",
+        "final_reduction_id": "reduction:combo_meta_post.sample_mean",
+        "combo_selection": [
+          {
+            "combo_unit_id": "combo:sample1:meta0",
+            "physical_sample_id": "sample:1",
+            "component_observation_ids": ["obs:a.1", "obs:b.1", "obs:c.1"]
+          }
+        ],
+        "missing_source_policy": "strict",
+        "missing_repetition_policy": "strict",
+        "prediction_representation": "sample_prediction",
+        "final_output_unit_level": "physical_sample",
+        "train_compatibility": {
+          "policy": "strict",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "9999999999999999999999999999999999999999999999999999999999999999",
+          "predict_relation_fingerprint": "9999999999999999999999999999999999999999999999999999999999999999",
+          "train_unit_count": 12,
+          "predict_unit_count": 12,
+          "final_reducer_stabilizes_output": true
+        },
+        "predict_compatibility": {
+          "policy": "strict",
+          "outcome": "compatible",
+          "affected_source_count": 0,
+          "affected_repetition_count": 0,
+          "affected_sample_count": 0,
+          "train_relation_fingerprint": "9999999999999999999999999999999999999999999999999999999999999999",
+          "predict_relation_fingerprint": "9999999999999999999999999999999999999999999999999999999999999999",
+          "train_unit_count": 12,
+          "predict_unit_count": 12,
+          "final_reducer_stabilizes_output": true
+        },
+        "metadata": {
+          "fit_influence_policy": "equal_sample_influence",
+          "adapters": ["relation_backed_combo", "combo_to_sample"]
+        }
+      },
+      "assertions": [
+        "combo identities remain relation backed",
+        "fit influence is explicit before final sample reducer"
+      ]
+    }
+  ]
+}
