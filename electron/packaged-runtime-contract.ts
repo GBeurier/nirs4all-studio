@@ -12,8 +12,8 @@ const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
 const MAX_PYTHON_CLOSURE_FILES = 100_000;
 const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
-const PLUGIN_SOURCE_COMMIT = "c8b5fd5bf847ce26f78008b9abd00fa54f790825";
-const PLUGIN_WHEEL_SHA256 = "646971289137b8005b9848a4c22c000acce01660850ade63fd743c637366d24e";
+const PLUGIN_SOURCE_COMMIT = "322265576ccfaeb1ee22332d05ae04b87be4b538";
+const PLUGIN_WHEEL_SHA256 = "00326c703b933ff2c4b106905e1c44f81906b918db30bb5d05aa189846c48940";
 const FORBIDDEN_PLUGIN_DISTRIBUTIONS = [
   "fastapi",
   "httptools",
@@ -353,9 +353,9 @@ function verifyPluginMarker(
     marker.distribution !== "nirs4all" ||
     marker.distribution_version !== "0.10.3" ||
     marker.distribution_record_sha256 !==
-      "d48ebcf15a6c83c99b8581f6d86da9165eb3fdf4ca9fbb6130311fd176e0db06" ||
+      "41833befe7dd25b0c0c7e19c6090b44e29bb2d2243700164c49f951fe3ad71c2" ||
     marker.installed_manifest_sha256 !==
-      "691bafb2ebbdc8b7f0e628aef99af3c2109bd49e235e3020bf0fc71459fe3d10" ||
+      "261d0acbb05fa3a60b75d28f0f21b54c0985bd82b44227f9d852b159cc8c5684" ||
     marker.platform !== platform ||
     marker.arch !== arch ||
     !Array.isArray(marker.forbidden_distributions) ||
