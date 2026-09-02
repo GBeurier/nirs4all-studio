@@ -378,6 +378,15 @@ In development mode:
 - Electron starts the Rust sidecar and refuses unmigrated renderer routes
 - Electron loads from `http://localhost:5173`
 
+Workspace transition diagnosis and conversion are also native renderer routes:
+Rust owns `GET /api/workspace/transition-status` and
+`POST /api/workspace/legacy-convert`. Conversion may start the configured
+CPython executable only as a bounded stdio host for the offline
+`nirs4all_tools` module; it never acquires FastAPI/Uvicorn or a second HTTP
+owner. A verified code `0` result may activate the fresh output, code `10`
+keeps the preserved output inactive, and code `20` is a visible refusal. The
+legacy source remains linked for rollback.
+
 For a deliberate whole-session FastAPI diagnostic, set
 `NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1` before `npm run start:desktop`.
 For browser-only web development, run `python main.py --no-reload` beside

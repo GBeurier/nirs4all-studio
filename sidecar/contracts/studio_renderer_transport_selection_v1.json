@@ -52,6 +52,8 @@
       "POST /app/config-path",
       "DELETE /app/config-path",
       "GET /workspaces",
+      "GET /workspace/transition-status",
+      "POST /workspace/legacy-convert",
       "GET /updates/version",
       "GET /updates/runtime/status",
       "GET /updates/settings",
@@ -95,6 +97,8 @@
     "renderer_http": "renderer_http_transport",
     "renderer_websocket": "renderer_websocket_transport",
     "scientific_execution": false,
-    "sidecar_scientific_execution_input": "boolean_orthogonal_to_renderer_route_ownership"
+    "sidecar_scientific_execution_input": "boolean_orthogonal_to_renderer_route_ownership",
+    "workspace_transition_detection": "workspace_transition_status_route",
+    "bounded_tools_conversion": "legacy_workspace_conversion_route"
   }
 }
