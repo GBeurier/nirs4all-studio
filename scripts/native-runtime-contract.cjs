@@ -5,22 +5,155 @@ const path = require("node:path");
 
 const CONTRACT_FILE = "STUDIO_RUNTIME_CONTRACT.json";
 const CONTRACT_SCHEMA = "nirs4all.studio-packaged-runtime.v1";
+const PYTHON_CLOSURE_FILE = "PYTHON_PLUGIN_CLOSURE.json";
+const PYTHON_CLOSURE_SCHEMA = "nirs4all.studio-python-plugin-closure.v1";
+const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
+const MAX_PYTHON_CLOSURE_FILES = 100_000;
+const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 
 function sha256File(filePath) {
   const hash = crypto.createHash("sha256");
-  hash.update(fs.readFileSync(filePath));
+  const descriptor = fs.openSync(filePath, "r");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    for (;;) {
+      const count = fs.readSync(descriptor, buffer, 0, buffer.length, null);
+      if (count === 0) break;
+      hash.update(buffer.subarray(0, count));
+    }
+  } finally {
+    fs.closeSync(descriptor);
+  }
   return hash.digest("hex");
 }
 
-function describeFile(filePath, relativePath) {
-  const stat = fs.statSync(filePath);
-  if (!stat.isFile()) {
-    throw new Error(`Packaged runtime member is not a file: ${filePath}`);
+function describeFile(filePath, relativePath, boundaryRoot = path.dirname(filePath)) {
+  const stat = fs.lstatSync(filePath);
+  const relative = path.relative(path.resolve(boundaryRoot), path.resolve(filePath));
+  const expected = path.resolve(fs.realpathSync.native(boundaryRoot), relative);
+  if (
+    stat.isSymbolicLink() ||
+    !stat.isFile() ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    fs.realpathSync.native(filePath) !== expected
+  ) {
+    throw new Error(`Packaged runtime member is not a canonical regular file: ${filePath}`);
   }
   return {
     path: relativePath.split(path.sep).join("/"),
     size: stat.size,
     sha256: sha256File(filePath),
+  };
+}
+
+function assertCanonicalDirectory(directoryPath, label, boundaryRoot = directoryPath) {
+  const metadata = fs.lstatSync(directoryPath);
+  const relative = path.relative(path.resolve(boundaryRoot), path.resolve(directoryPath));
+  const expected = path.resolve(fs.realpathSync.native(boundaryRoot), relative);
+  if (
+    metadata.isSymbolicLink() ||
+    !metadata.isDirectory() ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    fs.realpathSync.native(directoryPath) !== expected
+  ) {
+    throw new Error(`${label} must be a canonical non-symlink directory`);
+  }
+}
+
+function collectRuntimeClosure(runtimeRoot) {
+  assertCanonicalDirectory(runtimeRoot, "Bundled Python runtime root");
+  const files = [];
+  const directories = [];
+  const pending = [runtimeRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    assertCanonicalDirectory(
+      directory,
+      "Bundled Python runtime directory",
+      runtimeRoot,
+    );
+    if (directories.length >= MAX_PYTHON_CLOSURE_DIRECTORIES) {
+      throw new Error("Bundled Python runtime exceeds the 100000-directory closure limit");
+    }
+    const relativeDirectory = path.relative(runtimeRoot, directory);
+    directories.push(relativeDirectory.split(path.sep).join("/"));
+    const entries = fs
+      .readdirSync(directory, { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const entryPath = path.join(directory, entry.name);
+      const metadata = fs.lstatSync(entryPath);
+      if (metadata.isSymbolicLink()) {
+        throw new Error(`Bundled Python runtime must not contain symlinks: ${entryPath}`);
+      }
+      if (metadata.isDirectory()) {
+        pending.push(entryPath);
+        continue;
+      }
+      if (!metadata.isFile()) {
+        throw new Error(`Bundled Python runtime contains a special file: ${entryPath}`);
+      }
+      if (files.length >= MAX_PYTHON_CLOSURE_FILES) {
+        throw new Error("Bundled Python runtime exceeds the 100000-file closure limit");
+      }
+      const relativePath = path.relative(runtimeRoot, entryPath).split(path.sep).join("/");
+      files.push({
+        path: relativePath,
+        size: metadata.size,
+        sha256: sha256File(entryPath),
+      });
+    }
+  }
+  files.sort((left, right) => left.path.localeCompare(right.path));
+  directories.sort();
+  return { files, directories };
+}
+
+function findRuntimeSitePackages(runtimeRoot, directories) {
+  const candidates = directories
+    .filter((relativePath) =>
+      relativePath === "Lib/site-packages" ||
+      /^lib\/python3\.\d+\/site-packages$/.test(relativePath),
+    )
+    .map((relativePath) => path.join(runtimeRoot, ...relativePath.split("/")));
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Bundled Python runtime must contain exactly one site-packages directory; found ${candidates.length}`,
+    );
+  }
+  return candidates[0];
+}
+
+function writePythonRuntimeClosure(backendRoot) {
+  const runtimeRoot = path.join(backendRoot, "python-runtime", "python");
+  const { files, directories } = collectRuntimeClosure(runtimeRoot);
+  const sitePackagesPath = findRuntimeSitePackages(runtimeRoot, directories);
+  const closurePath = path.join(
+    backendRoot,
+    "python-runtime",
+    PYTHON_CLOSURE_FILE,
+  );
+  const closure = {
+    schema: PYTHON_CLOSURE_SCHEMA,
+    root: "python-runtime/python",
+    site_packages: path
+      .relative(backendRoot, sitePackagesPath)
+      .split(path.sep)
+      .join("/"),
+    directories,
+    files,
+  };
+  const encoded = `${JSON.stringify(closure)}\n`;
+  if (Buffer.byteLength(encoded) > MAX_PYTHON_CLOSURE_BYTES) {
+    throw new Error("Bundled Python closure manifest exceeds 32 MiB");
+  }
+  fs.writeFileSync(closurePath, encoded, { flag: "w" });
+  return {
+    closurePath,
+    runtimeRoot,
+    sitePackagesPath,
   };
 }
 
@@ -56,8 +189,11 @@ function createRuntimeContract({
   );
   const hasBundledRuntime = fs.existsSync(runtimeReadyPath);
   let pythonPluginHost = {
-    mode: "external-explicit",
+    mode: "unavailable",
     member: null,
+    closure: null,
+    runtime_root: null,
+    site_packages: null,
   };
   if (hasBundledRuntime) {
     const pythonRelativePath = bundledPythonRelativePath(platform);
@@ -67,9 +203,17 @@ function createRuntimeContract({
         `Bundled runtime marker exists but its Python plugin host is missing: ${pythonPath}`,
       );
     }
+    const closure = writePythonRuntimeClosure(backendRoot);
     pythonPluginHost = {
       mode: "bundled-required",
-      member: describeFile(pythonPath, pythonRelativePath),
+      member: describeFile(pythonPath, pythonRelativePath, backendRoot),
+      closure: describeFile(
+        closure.closurePath,
+        path.relative(backendRoot, closure.closurePath),
+        backendRoot,
+      ),
+      runtime_root: path.relative(backendRoot, closure.runtimeRoot).split(path.sep).join("/"),
+      site_packages: path.relative(backendRoot, closure.sitePackagesPath).split(path.sep).join("/"),
     };
   }
   const methodsRelativePath = bundledMethodsRelativePath(platform);
@@ -93,7 +237,7 @@ function createRuntimeContract({
   const methodsLibrary = methodsLibraryPath !== null
     ? {
         mode: "bundled-required",
-        member: describeFile(methodsPath, methodsRelativePath),
+        member: describeFile(methodsPath, methodsRelativePath, backendRoot),
         abi: { major: 2, minor: 2 },
       }
     : {
@@ -108,7 +252,7 @@ function createRuntimeContract({
     arch,
     product_backend: "rust-sidecar",
     python_role: "library-plugin-host-only",
-    sidecar: describeFile(sidecarPath, sidecarRelativePath),
+    sidecar: describeFile(sidecarPath, sidecarRelativePath, backendRoot),
     python_plugin_host: pythonPluginHost,
     methods_library: methodsLibrary,
   };
@@ -169,10 +313,21 @@ function assertMember(backendRoot, label, member, platform, allowPlatformSignatu
     throw new Error(`${label} not found: ${memberPath}`);
   }
   const metadata = fs.lstatSync(memberPath);
-  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+  const backendMetadata = fs.lstatSync(backendRoot);
+  const expectedCanonicalPath = path.resolve(
+    fs.realpathSync.native(backendRoot),
+    normalized,
+  );
+  if (
+    backendMetadata.isSymbolicLink() ||
+    !backendMetadata.isDirectory() ||
+    metadata.isSymbolicLink() ||
+    !metadata.isFile() ||
+    fs.realpathSync.native(memberPath) !== expectedCanonicalPath
+  ) {
     throw new Error(`${label} must be a regular non-symlink packaged member`);
   }
-  const actual = describeFile(memberPath, member.path);
+  const actual = describeFile(memberPath, member.path, backendRoot);
   if (
     (actual.size !== member.size || actual.sha256 !== member.sha256) &&
     !(allowPlatformSignature && hasValidPlatformSignature(memberPath, platform))
@@ -180,6 +335,79 @@ function assertMember(backendRoot, label, member, platform, allowPlatformSignatu
     throw new Error(`${label} integrity mismatch: ${memberPath}`);
   }
   return memberPath;
+}
+
+function verifyPythonRuntimeClosure(backendRoot, plugin, platform) {
+  const normalizedSitePackages =
+    typeof plugin.site_packages === "string"
+      ? path.normalize(plugin.site_packages).split(path.sep).join("/")
+      : null;
+  if (
+    plugin.runtime_root !== "python-runtime/python" ||
+    typeof plugin.site_packages !== "string" ||
+    normalizedSitePackages !== plugin.site_packages ||
+    !plugin.site_packages.startsWith("python-runtime/python/")
+  ) {
+    throw new Error("Invalid bundled Python closure paths in packaged runtime contract");
+  }
+  const closurePath = assertMember(
+    backendRoot,
+    "Bundled Python closure manifest",
+    plugin.closure,
+    platform,
+    false,
+  );
+  const encoded = fs.readFileSync(closurePath);
+  if (encoded.length > MAX_PYTHON_CLOSURE_BYTES) {
+    throw new Error("Bundled Python closure manifest exceeds 32 MiB");
+  }
+  const closure = JSON.parse(encoded.toString("utf8"));
+  if (
+    !closure ||
+    closure.schema !== PYTHON_CLOSURE_SCHEMA ||
+    closure.root !== plugin.runtime_root ||
+    closure.site_packages !== plugin.site_packages ||
+    !Array.isArray(closure.directories) ||
+    closure.directories.length < 1 ||
+    closure.directories.length > MAX_PYTHON_CLOSURE_DIRECTORIES ||
+    !Array.isArray(closure.files) ||
+    closure.files.length < 1 ||
+    closure.files.length > MAX_PYTHON_CLOSURE_FILES
+  ) {
+    throw new Error("Invalid bundled Python closure manifest");
+  }
+  const runtimeRoot = path.join(backendRoot, ...plugin.runtime_root.split("/"));
+  const actualClosure = collectRuntimeClosure(runtimeRoot);
+  if (
+    actualClosure.directories.length !== closure.directories.length ||
+    actualClosure.directories.some(
+      (directory, index) => directory !== closure.directories[index],
+    )
+  ) {
+    throw new Error("Bundled Python runtime closure directory inventory mismatch");
+  }
+  const actual = actualClosure.files;
+  if (actual.length !== closure.files.length) {
+    throw new Error("Bundled Python runtime closure inventory mismatch");
+  }
+  for (let index = 0; index < actual.length; index += 1) {
+    const expected = closure.files[index];
+    if (
+      !expected ||
+      expected.path !== actual[index].path ||
+      expected.size !== actual[index].size ||
+      expected.sha256 !== actual[index].sha256
+    ) {
+      throw new Error(`Bundled Python runtime closure mismatch: ${actual[index].path}`);
+    }
+  }
+  const sitePackagesPath = path.join(backendRoot, ...plugin.site_packages.split("/"));
+  assertCanonicalDirectory(
+    sitePackagesPath,
+    "Bundled Python site-packages",
+    runtimeRoot,
+  );
+  return { closurePath, runtimeRoot, sitePackagesPath };
 }
 
 function verifyRuntimeContract({
@@ -220,10 +448,13 @@ function verifyRuntimeContract({
   );
 
   const plugin = contract.python_plugin_host;
-  if (!plugin || !["external-explicit", "bundled-required"].includes(plugin.mode)) {
+  if (!plugin || !["unavailable", "bundled-required"].includes(plugin.mode)) {
     throw new Error("Invalid Python plugin-host policy in packaged runtime contract");
   }
   let pythonPluginHostPath = null;
+  let pythonClosurePath = null;
+  let pythonRuntimeRoot = null;
+  let pythonSitePackagesPath = null;
   if (plugin.mode === "bundled-required") {
     const expectedPython = bundledPythonRelativePath(platform);
     if (path.normalize(plugin.member?.path ?? "") !== expectedPython) {
@@ -235,8 +466,17 @@ function verifyRuntimeContract({
       plugin.member,
       platform,
     );
-  } else if (plugin.member !== null) {
-    throw new Error("External Python plugin-host policy must not select a member");
+    const closure = verifyPythonRuntimeClosure(backendRoot, plugin, platform);
+    pythonClosurePath = closure.closurePath;
+    pythonRuntimeRoot = closure.runtimeRoot;
+    pythonSitePackagesPath = closure.sitePackagesPath;
+  } else if (
+    plugin.member !== null ||
+    plugin.closure !== null ||
+    plugin.runtime_root !== null ||
+    plugin.site_packages !== null
+  ) {
+    throw new Error("Unavailable Python plugin-host policy must not select packaged members");
   }
 
   const methods = contract.methods_library;
@@ -265,7 +505,16 @@ function verifyRuntimeContract({
     throw new Error("Unavailable native Methods policy must not select a member");
   }
 
-  return { contract, contractPath, sidecarPath, pythonPluginHostPath, methodsLibraryPath };
+  return {
+    contract,
+    contractPath,
+    sidecarPath,
+    pythonPluginHostPath,
+    pythonClosurePath,
+    pythonRuntimeRoot,
+    pythonSitePackagesPath,
+    methodsLibraryPath,
+  };
 }
 
 function parseVerifyArgs(argv = process.argv.slice(2)) {
@@ -321,10 +570,15 @@ module.exports = {
   CONTRACT_FILE,
   CONTRACT_SCHEMA,
   bundledPythonRelativePath,
+  collectRuntimeClosure,
   createRuntimeContract,
   hasValidPlatformSignature,
   parseVerifyArgs,
+  PYTHON_CLOSURE_FILE,
+  PYTHON_CLOSURE_SCHEMA,
   sha256File,
+  verifyPythonRuntimeClosure,
   verifyRuntimeContract,
+  writePythonRuntimeClosure,
   writeRuntimeContract,
 };

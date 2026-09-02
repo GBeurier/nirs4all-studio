@@ -98,8 +98,31 @@ describe("build-native-sidecar", () => {
       );
       fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
       fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+      fs.mkdirSync(
+        path.join(
+          backendRoot,
+          "python-runtime",
+          "python",
+          "lib",
+          "python3.11",
+          "site-packages",
+        ),
+        { recursive: true },
+      );
       fs.writeFileSync(sidecarPath, "rust-sidecar");
       fs.writeFileSync(pythonPath, "python-host");
+      fs.writeFileSync(
+        path.join(
+          backendRoot,
+          "python-runtime",
+          "python",
+          "lib",
+          "python3.11",
+          "site-packages",
+          "nirs4all.py",
+        ),
+        "def studio_scientific_job_v1(): pass\n",
+      );
       fs.writeFileSync(
         path.join(backendRoot, "python-runtime", "RUNTIME_READY.json"),
         "{}\n",

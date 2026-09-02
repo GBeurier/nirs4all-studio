@@ -56,6 +56,8 @@ def deny_product_network(event,args):
     if event in {"subprocess.Popen","os.system","os.posix_spawn"}:
         raise RuntimeError("CPython library host cannot spawn child processes")
 sys.addaudithook(deny_product_network)
+if sys.argv[1]:
+    sys.path.insert(0,sys.argv[1])
 probe=socket.socket()
 bind_denied=False
 try:
@@ -107,6 +109,8 @@ def deny_product_network(event,args):
     if event in {"subprocess.Popen","os.system","os.posix_spawn"}:
         raise RuntimeError("CPython library host cannot spawn child processes")
 sys.addaudithook(deny_product_network)
+if sys.argv[1]:
+    sys.path.insert(0,sys.argv[1])
 raw=sys.stdin.buffer.read(65537)
 if len(raw)>65536:
     raise RuntimeError("scientific request exceeds stdin budget")
@@ -132,7 +136,7 @@ target=getattr(nirs4all,"studio_scientific_job_v1",None)
 if not callable(target):
     raise RuntimeError("scientific callable unavailable")
 actual_path=os.path.realpath(inspect.getsourcefile(target))
-if actual_path != sys.argv[1] or hashlib.sha256(open(actual_path,"rb").read()).hexdigest() != sys.argv[2]:
+if actual_path != sys.argv[2] or hashlib.sha256(open(actual_path,"rb").read()).hexdigest() != sys.argv[3]:
     raise RuntimeError("scientific callable identity changed")
 response=target(request)
 encoded=json.dumps(response,allow_nan=False,ensure_ascii=False,separators=(",",":"),sort_keys=True).encode("utf-8")
@@ -161,6 +165,8 @@ pub enum ScientificCpythonUnavailable {
     CallableUnavailable,
     CallableTampered,
     DistributionTampered,
+    RuntimeContractUnavailable,
+    RuntimeContractTampered,
     RequestResolverUnavailable,
     PlatformKillTreeUnqualified,
     TerminalCallbackFailed,
@@ -190,6 +196,8 @@ impl ScientificCpythonUnavailable {
             Self::CallableUnavailable => "scientific_callable_unavailable",
             Self::CallableTampered => "scientific_callable_tampered",
             Self::DistributionTampered => "scientific_distribution_tampered",
+            Self::RuntimeContractUnavailable => "python_runtime_contract_unavailable",
+            Self::RuntimeContractTampered => "python_runtime_contract_tampered",
             Self::RequestResolverUnavailable => "scientific_request_resolver_unavailable",
             Self::PlatformKillTreeUnqualified => "scientific_platform_kill_tree_unqualified",
             Self::TerminalCallbackFailed => "scientific_terminal_callback_failed",
@@ -206,6 +214,22 @@ struct HostIdentity {
     sha256: [u8; 32],
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RuntimeClosureFile {
+    relative_path: String,
+    size: u64,
+    sha256: [u8; 32],
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PackagedRuntimeIdentity {
+    runtime_root: PathBuf,
+    site_packages: PathBuf,
+    closure: HostIdentity,
+    directories: Vec<String>,
+    files: Vec<RuntimeClosureFile>,
+}
+
 /// Sticky acquisition record for an explicitly selected `CPython` stdio host.
 ///
 /// Selection requires the exact attested distribution and callable, a Unix
@@ -215,6 +239,7 @@ struct HostIdentity {
 pub struct CpythonScientificJobExecutor {
     identity: Option<HostIdentity>,
     callable_identity: Option<HostIdentity>,
+    packaged_runtime: Option<PackagedRuntimeIdentity>,
     acquisition: ScientificCpythonUnavailable,
     resolver: ScientificRequestResolver,
     running: Arc<Mutex<BTreeMap<String, Arc<AtomicBool>>>>,
@@ -232,13 +257,48 @@ impl CpythonScientificJobExecutor {
 
     #[must_use]
     pub fn acquire_with_config_dir(path: impl AsRef<Path>, config_dir: impl Into<PathBuf>) -> Self {
+        Self::acquire_inner(path.as_ref(), None, config_dir.into())
+    }
+
+    /// Acquire only an adjacent packaged runtime already selected by Electron's
+    /// content contract. Product startup uses this path; user venvs and PATH
+    /// discovery never reach it.
+    #[must_use]
+    pub fn acquire_packaged_with_config_dir(
+        path: impl AsRef<Path>,
+        closure: impl AsRef<Path>,
+        runtime_root: impl AsRef<Path>,
+        site_packages: impl AsRef<Path>,
+        config_dir: impl Into<PathBuf>,
+    ) -> Self {
+        let packaged_runtime = packaged_runtime_identity(
+            path.as_ref(),
+            closure.as_ref(),
+            runtime_root.as_ref(),
+            site_packages.as_ref(),
+        );
+        match packaged_runtime {
+            Ok(identity) => Self::acquire_inner(path.as_ref(), Some(identity), config_dir.into()),
+            Err(error) => Self::unavailable(error, config_dir.into()),
+        }
+    }
+
+    fn acquire_inner(
+        path: &Path,
+        packaged_runtime: Option<PackagedRuntimeIdentity>,
+        config_dir: PathBuf,
+    ) -> Self {
         let resolver = ScientificRequestResolver::new(config_dir);
-        match acquire_host(path.as_ref()) {
+        let site_packages = packaged_runtime
+            .as_ref()
+            .map(|identity| identity.site_packages.as_path());
+        match acquire_host(path, site_packages) {
             Ok((identity, callable_identity)) => {
                 let callable_ready = callable_identity.is_some();
                 Self {
                     identity: Some(identity),
                     callable_identity,
+                    packaged_runtime,
                     acquisition: if callable_ready {
                         ScientificCpythonUnavailable::RequestResolverUnavailable
                     } else {
@@ -252,11 +312,24 @@ impl CpythonScientificJobExecutor {
             Err(error) => Self {
                 identity: None,
                 callable_identity: None,
+                packaged_runtime,
                 acquisition: error,
                 resolver,
                 running: Arc::new(Mutex::new(BTreeMap::new())),
                 terminal_callback_failed: Arc::new(AtomicBool::new(false)),
             },
+        }
+    }
+
+    fn unavailable(error: ScientificCpythonUnavailable, config_dir: PathBuf) -> Self {
+        Self {
+            identity: None,
+            callable_identity: None,
+            packaged_runtime: None,
+            acquisition: error,
+            resolver: ScientificRequestResolver::new(config_dir),
+            running: Arc::new(Mutex::new(BTreeMap::new())),
+            terminal_callback_failed: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -277,6 +350,11 @@ impl CpythonScientificJobExecutor {
         if let Some(identity) = &self.callable_identity {
             if verify_identity(identity).is_err() {
                 return ScientificCpythonUnavailable::CallableTampered.reason();
+            }
+        }
+        if let Some(identity) = &self.packaged_runtime {
+            if verify_packaged_runtime_anchor(identity).is_err() {
+                return ScientificCpythonUnavailable::RuntimeContractTampered.reason();
             }
         }
         if self.callable_identity.is_some() && !self.resolver.is_configured() {
@@ -309,8 +387,16 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         let (Some(host), Some(callable)) = (&self.identity, &self.callable_identity) else {
             return Err(JobExecutorError::PreflightRefused);
         };
-        let (current_host, current_callable) =
-            acquire_host(&host.canonical_path).map_err(|_| JobExecutorError::PreflightRefused)?;
+        if let Some(packaged_runtime) = &self.packaged_runtime {
+            verify_packaged_runtime_identity(packaged_runtime)
+                .map_err(|_| JobExecutorError::PreflightRefused)?;
+        }
+        let site_packages = self
+            .packaged_runtime
+            .as_ref()
+            .map(|identity| identity.site_packages.as_path());
+        let (current_host, current_callable) = acquire_host(&host.canonical_path, site_packages)
+            .map_err(|_| JobExecutorError::PreflightRefused)?;
         if &current_host != host || current_callable.as_ref() != Some(callable) {
             return Err(JobExecutorError::PreflightRefused);
         }
@@ -335,6 +421,10 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         let (Some(host), Some(callable)) = (&self.identity, &self.callable_identity) else {
             return Err(JobExecutorError::SubmissionRefused);
         };
+        if let Some(packaged_runtime) = &self.packaged_runtime {
+            verify_packaged_runtime_identity(packaged_runtime)
+                .map_err(|_| JobExecutorError::SubmissionRefused)?;
+        }
         verify_identity(host).map_err(|_| JobExecutorError::SubmissionRefused)?;
         verify_identity(callable).map_err(|_| JobExecutorError::SubmissionRefused)?;
         validate_scientific_request(&request.payload, &request.job_id)
@@ -355,10 +445,20 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         let job_id = request.job_id.clone();
         let host = host.clone();
         let callable = callable.clone();
+        let site_packages = self
+            .packaged_runtime
+            .as_ref()
+            .map(|identity| identity.site_packages.clone());
         let running = Arc::clone(&self.running);
         let terminal_callback_failed = Arc::clone(&self.terminal_callback_failed);
         std::thread::spawn(move || {
-            let outcome = run_scientific_process(&host, &callable, &encoded, &cancelled);
+            let outcome = run_scientific_process(
+                &host,
+                &callable,
+                site_packages.as_deref(),
+                &encoded,
+                &cancelled,
+            );
             running
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -395,9 +495,10 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
 
 fn acquire_host(
     path: &Path,
+    site_packages: Option<&Path>,
 ) -> Result<(HostIdentity, Option<HostIdentity>), ScientificCpythonUnavailable> {
     let identity = host_identity(path)?;
-    let output = run_preflight(&identity.canonical_path)?;
+    let output = run_preflight(&identity.canonical_path, site_packages)?;
     let response: Value = serde_json::from_slice(&output)
         .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
     let object = response
@@ -497,6 +598,346 @@ fn host_identity(path: &Path) -> Result<HostIdentity, ScientificCpythonUnavailab
     host_identity_with_limit(path, MAX_SCIENTIFIC_CPYTHON_HOST_BYTES)
 }
 
+fn packaged_runtime_identity(
+    host: &Path,
+    closure: &Path,
+    runtime_root: &Path,
+    site_packages: &Path,
+) -> Result<PackagedRuntimeIdentity, ScientificCpythonUnavailable> {
+    let runtime_root_path = absolute_path(runtime_root)?;
+    let package_root = runtime_root_path
+        .parent()
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let host_path = absolute_path(host)?;
+    let closure_path = absolute_path(closure)?;
+    let site_packages_path = absolute_path(site_packages)?;
+    reject_symlink_below(package_root, &runtime_root_path)?;
+    reject_symlink_below(package_root, &host_path)?;
+    reject_symlink_below(package_root, &closure_path)?;
+    reject_symlink_below(package_root, &site_packages_path)?;
+    let runtime_root = runtime_root_path
+        .canonicalize()
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let runtime_metadata = fs::metadata(&runtime_root)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    if !runtime_metadata.is_dir() {
+        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
+    }
+    let site_packages = site_packages_path
+        .canonicalize()
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let site_metadata = fs::metadata(&site_packages)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let host = host_path
+        .canonicalize()
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let closure = host_identity_with_limit(&closure_path, 32 * 1024 * 1024)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    if !site_metadata.is_dir()
+        || !site_packages.starts_with(&runtime_root)
+        || !host.starts_with(&runtime_root)
+        || closure.canonical_path.parent() != runtime_root.parent()
+        || runtime_root.file_name().and_then(std::ffi::OsStr::to_str) != Some("python")
+        || runtime_root
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(std::ffi::OsStr::to_str)
+            != Some("python-runtime")
+        || closure
+            .canonical_path
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            != Some("PYTHON_PLUGIN_CLOSURE.json")
+    {
+        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
+    }
+    let (directories, files) = parse_runtime_closure(&closure, &runtime_root, &site_packages)?;
+    let identity = PackagedRuntimeIdentity {
+        runtime_root,
+        site_packages,
+        closure,
+        directories,
+        files,
+    };
+    verify_packaged_runtime_identity(&identity)?;
+    Ok(identity)
+}
+
+fn parse_runtime_closure(
+    closure: &HostIdentity,
+    runtime_root: &Path,
+    site_packages: &Path,
+) -> Result<(Vec<String>, Vec<RuntimeClosureFile>), ScientificCpythonUnavailable> {
+    let encoded = fs::read(&closure.canonical_path)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let value: Value = serde_json::from_slice(&encoded)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    let object = value
+        .as_object()
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    let backend_root = runtime_root
+        .parent()
+        .and_then(Path::parent)
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let site_packages_relative = manifest_relative_path(
+        site_packages
+            .strip_prefix(backend_root)
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?,
+    )?;
+    if object.len() != 5
+        || object.get("schema").and_then(Value::as_str)
+            != Some("nirs4all.studio-python-plugin-closure.v1")
+        || object.get("root").and_then(Value::as_str) != Some("python-runtime/python")
+        || object.get("site_packages").and_then(Value::as_str)
+            != Some(site_packages_relative.as_str())
+    {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    let directories = object
+        .get("directories")
+        .and_then(Value::as_array)
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    let files = object
+        .get("files")
+        .and_then(Value::as_array)
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    if directories.is_empty()
+        || directories.len() > 100_000
+        || files.is_empty()
+        || files.len() > 100_000
+    {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    let directories = directories
+        .iter()
+        .map(|entry| {
+            let relative = entry
+                .as_str()
+                .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
+            validate_manifest_path(relative, true)?;
+            Ok(relative.to_owned())
+        })
+        .collect::<Result<Vec<_>, ScientificCpythonUnavailable>>()?;
+    if directories.windows(2).any(|pair| pair[0] >= pair[1]) || !directories[0].is_empty() {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    let files = files
+        .iter()
+        .map(parse_runtime_closure_file)
+        .collect::<Result<Vec<_>, ScientificCpythonUnavailable>>()?;
+    if files
+        .windows(2)
+        .any(|pair| pair[0].relative_path >= pair[1].relative_path)
+    {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    Ok((directories, files))
+}
+
+fn parse_runtime_closure_file(
+    value: &Value,
+) -> Result<RuntimeClosureFile, ScientificCpythonUnavailable> {
+    let object = value
+        .as_object()
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    let relative_path = object
+        .get("path")
+        .and_then(Value::as_str)
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    let size = object
+        .get("size")
+        .and_then(Value::as_u64)
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    let digest = object
+        .get("sha256")
+        .and_then(Value::as_str)
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    if object.len() != 3 {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    validate_manifest_path(relative_path, false)?;
+    Ok(RuntimeClosureFile {
+        relative_path: relative_path.to_owned(),
+        size,
+        sha256: parse_hex_digest(digest)?,
+    })
+}
+
+fn validate_manifest_path(
+    relative: &str,
+    allow_root: bool,
+) -> Result<(), ScientificCpythonUnavailable> {
+    if (relative.is_empty() && allow_root)
+        || (!relative.is_empty()
+            && !relative.starts_with('/')
+            && !relative.contains('\\')
+            && relative
+                .split('/')
+                .all(|component| !component.is_empty() && component != "." && component != ".."))
+    {
+        Ok(())
+    } else {
+        Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+    }
+}
+
+fn parse_hex_digest(digest: &str) -> Result<[u8; 32], ScientificCpythonUnavailable> {
+    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    let mut decoded = [0_u8; 32];
+    for (index, chunk) in digest.as_bytes().chunks_exact(2).enumerate() {
+        decoded[index] = (hex_nibble(chunk[0])? << 4) | hex_nibble(chunk[1])?;
+    }
+    Ok(decoded)
+}
+
+const fn hex_nibble(byte: u8) -> Result<u8, ScientificCpythonUnavailable> {
+    match byte {
+        b'0'..=b'9' => Ok(byte - b'0'),
+        b'a'..=b'f' => Ok(byte - b'a' + 10),
+        _ => Err(ScientificCpythonUnavailable::RuntimeContractTampered),
+    }
+}
+
+fn manifest_relative_path(path: &Path) -> Result<String, ScientificCpythonUnavailable> {
+    let mut parts = Vec::new();
+    for component in path.components() {
+        let std::path::Component::Normal(part) = component else {
+            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+        };
+        parts.push(
+            part.to_str()
+                .ok_or(ScientificCpythonUnavailable::RuntimeContractTampered)?,
+        );
+    }
+    Ok(parts.join("/"))
+}
+
+fn absolute_path(path: &Path) -> Result<PathBuf, ScientificCpythonUnavailable> {
+    if path.is_absolute() {
+        Ok(path.to_path_buf())
+    } else {
+        Ok(std::env::current_dir()
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?
+            .join(path))
+    }
+}
+
+fn reject_symlink_below(boundary: &Path, path: &Path) -> Result<(), ScientificCpythonUnavailable> {
+    let relative = path
+        .strip_prefix(boundary)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let mut current = boundary.to_path_buf();
+    for component in relative.components() {
+        match component {
+            std::path::Component::Normal(_) => current.push(component),
+            std::path::Component::CurDir => continue,
+            _ => return Err(ScientificCpythonUnavailable::RuntimeContractTampered),
+        }
+        let metadata = fs::symlink_metadata(&current)
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+        if metadata.file_type().is_symlink() {
+            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+        }
+    }
+    let boundary_metadata = fs::symlink_metadata(boundary)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    if boundary_metadata.file_type().is_symlink() || !boundary_metadata.is_dir() {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    Ok(())
+}
+
+fn canonical_directory_identity(path: &Path) -> Result<PathBuf, ScientificCpythonUnavailable> {
+    let metadata = fs::symlink_metadata(path)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    path.canonicalize()
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)
+}
+
+fn verify_packaged_runtime_identity(
+    identity: &PackagedRuntimeIdentity,
+) -> Result<(), ScientificCpythonUnavailable> {
+    verify_packaged_runtime_anchor(identity)?;
+    let (directories, files) = collect_runtime_inventory(&identity.runtime_root)?;
+    if directories != identity.directories || files != identity.files {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    Ok(())
+}
+
+fn verify_packaged_runtime_anchor(
+    identity: &PackagedRuntimeIdentity,
+) -> Result<(), ScientificCpythonUnavailable> {
+    let runtime_root = canonical_directory_identity(&identity.runtime_root)?;
+    let site_packages = canonical_directory_identity(&identity.site_packages)?;
+    let closure_metadata = fs::symlink_metadata(&identity.closure.canonical_path)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    if runtime_root != identity.runtime_root
+        || site_packages != identity.site_packages
+        || closure_metadata.file_type().is_symlink()
+        || !closure_metadata.is_file()
+        || !site_packages.starts_with(&runtime_root)
+    {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    verify_identity(&identity.closure)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)
+}
+
+fn collect_runtime_inventory(
+    runtime_root: &Path,
+) -> Result<(Vec<String>, Vec<RuntimeClosureFile>), ScientificCpythonUnavailable> {
+    let mut pending = vec![runtime_root.to_path_buf()];
+    let mut directories = Vec::new();
+    let mut files = Vec::new();
+    while let Some(directory) = pending.pop() {
+        let relative = directory
+            .strip_prefix(runtime_root)
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+        directories.push(manifest_relative_path(relative)?);
+        let entries = fs::read_dir(&directory)
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+        for entry in entries {
+            let entry = entry.map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+            if metadata.file_type().is_symlink() {
+                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+            }
+            if metadata.is_dir() {
+                if directories.len() + pending.len() >= 100_000 {
+                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+                pending.push(path);
+            } else if metadata.is_file() {
+                if files.len() >= 100_000 {
+                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+                let relative = path
+                    .strip_prefix(runtime_root)
+                    .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+                files.push(RuntimeClosureFile {
+                    relative_path: manifest_relative_path(relative)?,
+                    size: metadata.len(),
+                    sha256: hash_file(&path)
+                        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?,
+                });
+            } else {
+                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+            }
+        }
+    }
+    directories.sort();
+    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok((directories, files))
+}
+
 fn host_identity_with_limit(
     path: &Path,
     maximum_bytes: u64,
@@ -561,27 +1002,29 @@ fn hash_file(path: &Path) -> Result<[u8; 32], ScientificCpythonUnavailable> {
     Ok(digest.finalize().into())
 }
 
-fn run_preflight(path: &Path) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
-    run_process(
-        path,
-        PREFLIGHT_SCRIPT,
-        SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
-        MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES,
-        MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES,
-    )
-}
-
-fn run_process(
+fn run_preflight(
     path: &Path,
-    script: &str,
-    timeout: Duration,
-    stdout_limit: usize,
-    stderr_limit: usize,
+    site_packages: Option<&Path>,
 ) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
     let scratch = ScratchDirectory::create()?;
     let mut command = Command::new(path);
+    let isolated_packaged = site_packages.is_some();
+    let site_packages = site_packages
+        .and_then(Path::to_str)
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)
+        .or_else(|error| {
+            if site_packages.is_none() {
+                Ok("")
+            } else {
+                Err(error)
+            }
+        })?;
+    if isolated_packaged {
+        command.args(["-I", "-S", "-B", "-c", PREFLIGHT_SCRIPT, site_packages]);
+    } else {
+        command.args(["-I", "-B", "-c", PREFLIGHT_SCRIPT, site_packages]);
+    }
     command
-        .args(["-I", "-c", script])
         .env_clear()
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("PYTHONNOUSERSITE", "1")
@@ -592,6 +1035,45 @@ fn run_process(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    run_configured_process(
+        command,
+        SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
+        MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES,
+        MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES,
+    )
+}
+
+#[cfg(test)]
+fn run_process(
+    path: &Path,
+    script: &str,
+    timeout: Duration,
+    stdout_limit: usize,
+    stderr_limit: usize,
+) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
+    let scratch = ScratchDirectory::create()?;
+    let mut command = Command::new(path);
+    command
+        .args(["-I", "-S", "-B", "-c", script])
+        .env_clear()
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .env("PYTHONNOUSERSITE", "1")
+        .env("TMPDIR", &scratch.path)
+        .env("TMP", &scratch.path)
+        .env("TEMP", &scratch.path)
+        .current_dir(&scratch.path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    run_configured_process(command, timeout, stdout_limit, stderr_limit)
+}
+
+fn run_configured_process(
+    mut command: Command,
+    timeout: Duration,
+    stdout_limit: usize,
+    stderr_limit: usize,
+) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -638,12 +1120,14 @@ fn run_process(
 fn run_scientific_process(
     host: &HostIdentity,
     callable: &HostIdentity,
+    site_packages: Option<&Path>,
     input: &[u8],
     cancelled: &AtomicBool,
 ) -> Result<Value, ScientificCpythonUnavailable> {
     run_scientific_process_with_timeout(
         host,
         callable,
+        site_packages,
         input,
         cancelled,
         SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
@@ -653,6 +1137,7 @@ fn run_scientific_process(
 fn run_scientific_process_with_timeout(
     host: &HostIdentity,
     callable: &HostIdentity,
+    site_packages: Option<&Path>,
     input: &[u8],
     cancelled: &AtomicBool,
     execution_timeout: Duration,
@@ -672,34 +1157,7 @@ fn run_scientific_process_with_timeout(
         })
         .ok_or(ScientificCpythonUnavailable::InvalidRequest)?;
     let scratch = ScratchDirectory::create()?;
-    let mut command = Command::new(&host.canonical_path);
-    command
-        .args([
-            "-I",
-            "-c",
-            EXECUTION_SCRIPT,
-            callable
-                .canonical_path
-                .to_str()
-                .ok_or(ScientificCpythonUnavailable::CallableTampered)?,
-            &hex_digest(&callable.sha256),
-        ])
-        .env_clear()
-        .env("PYTHONDONTWRITEBYTECODE", "1")
-        .env("PYTHONNOUSERSITE", "1")
-        .env("N4A_DAGML_INPROCESS", "1")
-        .env("TMPDIR", &scratch.path)
-        .env("TMP", &scratch.path)
-        .env("TEMP", &scratch.path)
-        .current_dir(&scratch.path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
+    let mut command = scientific_worker_command(host, callable, site_packages, &scratch.path)?;
     let mut child = command
         .spawn()
         .map_err(|_| ScientificCpythonUnavailable::SpawnFailed)?;
@@ -751,6 +1209,71 @@ fn run_scientific_process_with_timeout(
     // removal and verification; Drop remains the error-path fallback.
     scratch.cleanup()?;
     Ok(response)
+}
+
+fn scientific_worker_command(
+    host: &HostIdentity,
+    callable: &HostIdentity,
+    site_packages: Option<&Path>,
+    scratch: &Path,
+) -> Result<Command, ScientificCpythonUnavailable> {
+    let mut command = Command::new(&host.canonical_path);
+    let isolated_packaged = site_packages.is_some();
+    let site_packages = site_packages
+        .and_then(Path::to_str)
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)
+        .or_else(|error| {
+            if site_packages.is_none() {
+                Ok("")
+            } else {
+                Err(error)
+            }
+        })?;
+    let callable_path = callable
+        .canonical_path
+        .to_str()
+        .ok_or(ScientificCpythonUnavailable::CallableTampered)?;
+    let callable_digest = hex_digest(&callable.sha256);
+    if isolated_packaged {
+        command.args([
+            "-I",
+            "-S",
+            "-B",
+            "-c",
+            EXECUTION_SCRIPT,
+            site_packages,
+            callable_path,
+            &callable_digest,
+        ]);
+    } else {
+        command.args([
+            "-I",
+            "-B",
+            "-c",
+            EXECUTION_SCRIPT,
+            site_packages,
+            callable_path,
+            &callable_digest,
+        ]);
+    }
+    command
+        .env_clear()
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .env("PYTHONNOUSERSITE", "1")
+        .env("N4A_DAGML_INPROCESS", "1")
+        .env("TMPDIR", scratch)
+        .env("TMP", scratch)
+        .env("TEMP", scratch)
+        .current_dir(scratch)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    Ok(command)
 }
 
 fn wait_for_worker(
@@ -1158,6 +1681,35 @@ mod tests {
         path
     }
 
+    fn write_runtime_closure(runtime_root: &Path, site_packages: &Path, closure: &Path) {
+        let (directories, files) = collect_runtime_inventory(runtime_root).unwrap();
+        let encoded_files = files
+            .iter()
+            .map(|file| {
+                serde_json::json!({
+                    "path": file.relative_path,
+                    "size": file.size,
+                    "sha256": hex_digest(&file.sha256),
+                })
+            })
+            .collect::<Vec<_>>();
+        fs::write(
+            closure,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": "nirs4all.studio-python-plugin-closure.v1",
+                "root": "python-runtime/python",
+                "site_packages": format!(
+                    "python-runtime/python/{}",
+                    manifest_relative_path(site_packages.strip_prefix(runtime_root).unwrap()).unwrap()
+                ),
+                "directories": directories,
+                "files": encoded_files,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    }
+
     fn attested_unready_host_response(implementation: &str) -> String {
         format!(
             r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
@@ -1175,6 +1727,15 @@ mod tests {
         assert_eq!(contract["python_role"], "library-plugin-host-only");
         assert_eq!(contract["required_implementation"], "cpython");
         assert_eq!(contract["minimum_python_version"], "3.11");
+        assert_eq!(contract["runtime_discovery"], "packaged_contract_only");
+        assert_eq!(
+            contract["runtime_closure"],
+            "exact_path_size_sha256_inventory_without_symlinks_or_special_files"
+        );
+        assert_eq!(
+            contract["python_flags"],
+            serde_json::json!(["-I", "-S", "-B"])
+        );
         assert_eq!(contract["selected_source_commit"], SCIENTIFIC_SOURCE_COMMIT);
         assert_eq!(contract["selected_wheel_sha256"], SCIENTIFIC_WHEEL_SHA256);
         assert_eq!(
@@ -1292,6 +1853,73 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn packaged_runtime_contract_is_adjacent_sticky_and_symlink_closed() {
+        let root = test_directory("packaged-runtime");
+        let runtime = root.join("python-runtime");
+        let python_root = runtime.join("python");
+        let site_packages = python_root.join("lib/python3.11/site-packages");
+        fs::create_dir_all(&site_packages).unwrap();
+        let valid_json = attested_unready_host_response("cpython");
+        let host = shell_host(&python_root.join("bin"), "python3", &valid_json);
+        let package_member = site_packages.join("attested_plugin.py");
+        fs::write(&package_member, "ATTESTED = True\n").unwrap();
+        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
+        write_runtime_closure(&python_root, &site_packages, &closure);
+        let acquired = CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
+            &host,
+            &closure,
+            &python_root,
+            &site_packages,
+            root.join("config"),
+        );
+        assert_eq!(
+            acquired.unavailable_reason(),
+            "scientific_callable_unavailable"
+        );
+        fs::write(&package_member, "ATTESTED = False\n").unwrap();
+        assert_eq!(
+            verify_packaged_runtime_identity(acquired.packaged_runtime.as_ref().unwrap()),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+        fs::write(&package_member, "ATTESTED = True\n").unwrap();
+        fs::write(&closure, "tampered-closure").unwrap();
+        assert_eq!(
+            acquired.unavailable_reason(),
+            "python_runtime_contract_tampered"
+        );
+
+        let absent = CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
+            &host,
+            runtime.join("absent.json"),
+            &python_root,
+            &site_packages,
+            root.join("config"),
+        );
+        assert_eq!(
+            absent.unavailable_reason(),
+            "python_runtime_contract_unavailable"
+        );
+
+        let outside_site = root.join("outside-site");
+        fs::create_dir_all(&outside_site).unwrap();
+        fs::remove_dir_all(&site_packages).unwrap();
+        std::os::unix::fs::symlink(&outside_site, &site_packages).unwrap();
+        let substituted = CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
+            &host,
+            &closure,
+            &python_root,
+            &site_packages,
+            root.join("config"),
+        );
+        assert_eq!(
+            substituted.unavailable_reason(),
+            "python_runtime_contract_tampered"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn process_boundary_refuses_timeout_malformed_and_oversized_streams() {
         let root = test_directory("limits");
         let malformed = shell_host(&root, "malformed", "printf nope");
@@ -1350,6 +1978,7 @@ mod tests {
             run_scientific_process_with_timeout(
                 &timeout_host,
                 &callable,
+                None,
                 request,
                 &AtomicBool::new(false),
                 Duration::from_millis(50),
@@ -1379,6 +2008,7 @@ mod tests {
             run_scientific_process_with_timeout(
                 &cancel_host,
                 &callable,
+                None,
                 request,
                 &cancelled,
                 Duration::from_secs(1),
@@ -1449,5 +2079,18 @@ mod tests {
             serde_json::json!({"denied": true})
         );
         TcpListener::bind(address).unwrap();
+
+        let http_script = "import http.server,json,sys\n\
+            def deny(event,args):\n if event=='socket.bind': raise RuntimeError('denied')\n\
+            sys.addaudithook(deny)\n\
+            denied=False\n\
+            try: http.server.HTTPServer(('127.0.0.1',0),http.server.BaseHTTPRequestHandler)\n\
+            except RuntimeError: denied=True\n\
+            print(json.dumps({'http_listener_denied':denied}))\n";
+        let output = run_process(&python, http_script, Duration::from_secs(2), 1024, 1024).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output).unwrap(),
+            serde_json::json!({"http_listener_denied": true})
+        );
     }
 }

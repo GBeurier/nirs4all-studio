@@ -97,6 +97,9 @@ pub fn read_dataset_links(
 
 pub const PYTHON_PLUGIN_HOST_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST";
 pub const PYTHON_PLUGIN_HOST_BUNDLED_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
+pub const PYTHON_PLUGIN_CLOSURE_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_CLOSURE";
+pub const PYTHON_PLUGIN_RUNTIME_ROOT_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_RUNTIME_ROOT";
+pub const PYTHON_PLUGIN_SITE_PACKAGES_ENV: &str = "NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES";
 pub const SCIENTIFIC_EXECUTOR_ENV: &str = "NIRS4ALL_SCIENTIFIC_EXECUTOR";
 pub const RUNTIME_MODE_ENV: &str = "NIRS4ALL_RUNTIME_MODE";
 pub const RUNTIME_KIND_ENV: &str = "NIRS4ALL_RUNTIME_KIND";
@@ -453,6 +456,15 @@ impl SidecarState {
             .map(PathBuf::from);
         let python_plugin_host_bundled = env::var(PYTHON_PLUGIN_HOST_BUNDLED_ENV)
             .is_ok_and(|value| value.eq_ignore_ascii_case("true"));
+        let python_plugin_closure = env::var_os(PYTHON_PLUGIN_CLOSURE_ENV)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+        let python_plugin_runtime_root = env::var_os(PYTHON_PLUGIN_RUNTIME_ROOT_ENV)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+        let python_plugin_site_packages = env::var_os(PYTHON_PLUGIN_SITE_PACKAGES_ENV)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
         let runtime_mode = env::var(RUNTIME_MODE_ENV)
             .ok()
             .filter(|value| !value.trim().is_empty())
@@ -465,24 +477,28 @@ impl SidecarState {
         let native_jobs = if env::var(SCIENTIFIC_EXECUTOR_ENV).as_deref()
             == Ok(scientific_cpython::SCIENTIFIC_CPYTHON_EXECUTOR_ID)
         {
-            python_plugin_host.as_ref().map_or_else(
-                || {
-                    Arc::new(NativeJobRuntime::with_executor(Arc::new(
-                        scientific_cpython::CpythonScientificJobExecutor::acquire_with_config_dir(
-                            Path::new(""),
-                            app_settings.config_dir(),
-                        ),
-                    )))
-                },
-                |path| {
-                    Arc::new(NativeJobRuntime::with_executor(Arc::new(
-                        scientific_cpython::CpythonScientificJobExecutor::acquire_with_config_dir(
-                            path,
-                            app_settings.config_dir(),
-                        ),
-                    )))
-                },
-            )
+            let empty = Path::new("");
+            Arc::new(NativeJobRuntime::with_executor(Arc::new(
+                scientific_cpython::CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
+                    python_plugin_host_bundled
+                        .then_some(python_plugin_host.as_deref())
+                        .flatten()
+                        .unwrap_or(empty),
+                    python_plugin_host_bundled
+                        .then_some(python_plugin_closure.as_deref())
+                        .flatten()
+                        .unwrap_or(empty),
+                    python_plugin_host_bundled
+                        .then_some(python_plugin_runtime_root.as_deref())
+                        .flatten()
+                        .unwrap_or(empty),
+                    python_plugin_host_bundled
+                        .then_some(python_plugin_site_packages.as_deref())
+                        .flatten()
+                        .unwrap_or(empty),
+                    app_settings.config_dir(),
+                ),
+            )))
         } else {
             Arc::new(NativeJobRuntime::default())
         };
