@@ -6425,10 +6425,10 @@ mod tests {
                 size: methods_size,
                 sha256: methods_sha256.clone(),
                 abi_major: 2,
-                abi_minor: 3,
+                abi_minor: 4,
             },
         )
-        .expect("the exact ABI 2.3 libn4m witness must preflight");
+        .expect("the exact ABI 2.4 libn4m witness must preflight");
         let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
             Arc::new(executor),
             &config,
@@ -6463,7 +6463,7 @@ mod tests {
         assert_eq!(response["target_names"], json!(["protein", "moisture"]));
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.3.25+libn4m-abi-2.3:{methods_sha256}")
+            format!("nirs4all-core@0.3.25+libn4m-abi-2.4:{methods_sha256}")
         );
         let expected = [
             [1.636_363_636_363_636_5, 13.272_727_272_727_273],

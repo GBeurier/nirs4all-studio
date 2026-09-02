@@ -22,8 +22,10 @@ use std::{
 use cap_std::fs::MetadataExt as CapMetadataExt;
 use cap_std::{ambient_authority, fs::Dir};
 use nirs4all::{
-    dag_ml::RunId, load_archive_v2_bytes, predict_methods_archive_v2_matrix,
-    preflight_methods_archive_v2_library, MethodsArchiveMatrixPredictRequest,
+    dag_ml::{RunId, NATIVE_PREDICTOR_CAPABILITY_PREDICT},
+    inspect_methods_archive_v2_predictors, load_archive_v2_bytes,
+    predict_methods_archive_v2_matrix, preflight_methods_archive_v2_library,
+    MethodsArchiveMatrixPredictRequest,
 };
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -44,10 +46,10 @@ const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
 const METHODS_ABI_MAJOR: u32 = 2;
-const METHODS_ABI_MINOR: u32 = 3;
-const METHODS_SOURCE_COMMIT: &str = "4983c9a1df39d430a78c615bda209d3353514aa1";
-const METHODS_SOURCE_TREE: &str = "8f8a7809d22ff5d95f64a22e519759eaa3fd2ec0";
-const METHODS_PROJECT_VERSION: &str = "1.0.13";
+const METHODS_ABI_MINOR: u32 = 4;
+const METHODS_SOURCE_COMMIT: &str = "a71ee2927524d03482183de3d6e22661efc05d12";
+const METHODS_SOURCE_TREE: &str = "f6749f4c4be7dca161f3c2677dd10a9ac4434b66";
+const METHODS_PROJECT_VERSION: &str = "1.0.14";
 const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -94,7 +96,7 @@ pub struct CoreArchiveV2PredictionExecutor {
 
 impl CoreArchiveV2PredictionExecutor {
     /// Acquire one exact packaged libn4m identity before advertising the
-    /// capability. The packaged contract fixes ABI 2.3 and this preflight
+    /// capability. The packaged contract fixes ABI 2.4 and this preflight
     /// attests its exact bytes. Core snapshots and re-attests those bytes, then
     /// the n4m binding performs the ABI compatibility call during execution.
     pub fn acquire(
@@ -130,6 +132,29 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
         if archive.reference().archive_sha256() != resolved.request.archive_sha256 {
             return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
         }
+        let descriptors = inspect_methods_archive_v2_predictors(
+            &archive,
+            &self.methods.path,
+            &self.methods.sha256,
+        )
+        .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let input_features = resolved
+            .request
+            .x
+            .first()
+            .map(Vec::len)
+            .ok_or(ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        require_predictor_descriptor_contracts(
+            descriptors.iter().map(|descriptor| {
+                (
+                    descriptor.capabilities,
+                    descriptor.dimensions.n_features,
+                    descriptor.dimensions.n_targets,
+                )
+            }),
+            input_features,
+            resolved.request.expected_target_names.len(),
+        )?;
         let identity = &resolved.request.archive_sha256[..16];
         let outcome = predict_methods_archive_v2_matrix(
             &archive,
@@ -176,6 +201,30 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
             ),
         })
     }
+}
+
+fn require_predictor_descriptor_contracts(
+    descriptors: impl IntoIterator<Item = (u64, i32, i32)>,
+    input_features: usize,
+    expected_targets: usize,
+) -> Result<(), ArchiveV2PredictionExecutorError> {
+    let mut seen = false;
+    let mut input_binding_match = false;
+    for (capabilities, n_features, n_targets) in descriptors {
+        seen = true;
+        if capabilities & NATIVE_PREDICTOR_CAPABILITY_PREDICT == 0 {
+            return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
+        }
+        if usize::try_from(n_features).ok() == Some(input_features)
+            && usize::try_from(n_targets).ok() == Some(expected_targets)
+        {
+            input_binding_match = true;
+        }
+    }
+    if !seen || !input_binding_match {
+        return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1160,6 +1209,27 @@ mod tests {
     }
 
     #[test]
+    fn predictor_descriptor_gate_accepts_stacking_and_refuses_missing_contracts() {
+        let predict = NATIVE_PREDICTOR_CAPABILITY_PREDICT;
+        assert_eq!(
+            require_predictor_descriptor_contracts([(predict, 2, 2), (predict, 1, 2)], 2, 2,),
+            Ok(())
+        );
+        assert_eq!(
+            require_predictor_descriptor_contracts([(predict, 3, 2)], 2, 2),
+            Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
+        );
+        assert_eq!(
+            require_predictor_descriptor_contracts([(0, 2, 2)], 2, 2),
+            Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
+        );
+        assert_eq!(
+            require_predictor_descriptor_contracts([], 2, 2),
+            Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
+        );
+    }
+
+    #[test]
     fn frozen_contract_records_caps_and_conditional_product_selection() {
         let contract: Value = serde_json::from_str(include_str!(
             "../contracts/studio_archive_v2_prediction_v1.json"
@@ -1207,7 +1277,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "immutable nirs4all-core 4eb8a687 snapshot exposing nirs4all 0.3.25 and n4m 0.1.2"
+            "immutable nirs4all-core 3a3ce728 snapshot exposing nirs4all 0.3.25 and n4m 0.1.3"
         );
     }
 }

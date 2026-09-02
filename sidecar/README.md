@@ -309,15 +309,16 @@ gate. This snapshot must be replaced by an exact published package or
 remotely fetchable git revision before LOCK-RELEASE; local/sibling worktree paths
 are forbidden.
 
-Core 0.3.25 requires the selected but not-yet-published DagML 0.3.23 crates.
-Studio therefore also carries the complete immutable DagML commit
-`bad5aff0bfbc14c622f5ade7f393f29399df6e07` under
-`sidecar/vendor/dag-ml-bad5/` and patches only `dag-ml` and `dag-ml-core` to
-the two exact qualified Cargo package payloads. Unrelated workspace crates and
-the generated Python extension are excluded. `sidecar/scripts/verify-vendored-dagml.sh`
-checks its 94-file inventory, package digests, and exact repository/crate trees.
-Both path patches must be replaced
-by the published crate identities before LOCK-RELEASE.
+Core 0.3.25 requires the selected but not-yet-published DagML 0.3.23 and n4m
+0.1.3 crates. Studio therefore carries the exact DagML commit
+`189099119b69e74c69466f2308808cb423dc2e94` under
+`sidecar/vendor/dag-ml-1890991/` and the exact n4m binding from Methods commit
+`a71ee2927524d03482183de3d6e22661efc05d12` under
+`sidecar/vendor/n4m-a71ee29/`. Only their qualified Cargo package payloads are
+included; unrelated workspace crates, native libraries, and generated bindings
+are excluded. The vendored-source verification scripts check their inventories,
+package digests, and exact repository/crate trees. All three path patches must
+be replaced by published crate identities before LOCK-RELEASE.
 
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the
