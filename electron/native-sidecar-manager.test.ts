@@ -79,6 +79,30 @@ function writePackagedContract(
     "PYTHON_PLUGIN_CLOSURE.json",
   );
   fs.writeFileSync(closurePath, `${JSON.stringify(closure)}\n`);
+  const markerPath = path.join(
+    backendRoot,
+    "python-runtime",
+    "PLUGIN_RUNTIME_READY.json",
+  );
+  fs.writeFileSync(markerPath, JSON.stringify({
+    schema: "nirs4all.studio-python-plugin-runtime.v1",
+    python_role: "library-plugin-host-only",
+    product_backend: "rust-sidecar",
+    transport: "bounded-cpython-stdio-v1",
+    http_listener: "forbidden",
+    source_commit: "c8b5fd5bf847ce26f78008b9abd00fa54f790825",
+    wheel_sha256: "646971289137b8005b9848a4c22c000acce01660850ade63fd743c637366d24e",
+    distribution: "nirs4all",
+    distribution_version: "0.10.3",
+    distribution_record_sha256: "d48ebcf15a6c83c99b8581f6d86da9165eb3fdf4ca9fbb6130311fd176e0db06",
+    installed_manifest_sha256: "691bafb2ebbdc8b7f0e628aef99af3c2109bd49e235e3020bf0fc71459fe3d10",
+    platform: "linux",
+    arch: process.arch,
+    forbidden_distributions: [
+      "fastapi", "httptools", "python-multipart", "sentry-sdk", "starlette",
+      "uvicorn", "uvloop", "watchfiles", "websockets",
+    ],
+  }));
   fs.writeFileSync(
     path.join(
       resourcesPath,
@@ -105,6 +129,10 @@ function writePackagedContract(
         ),
         runtime_root: "python-runtime/python",
         site_packages: "python-runtime/python/lib/python3.11/site-packages",
+        marker: describe(
+          markerPath,
+          "python-runtime/PLUGIN_RUNTIME_READY.json",
+        ),
       },
       methods_library: {
         mode: "unavailable",

@@ -32,7 +32,7 @@
     "check:ui-shim": "node scripts/sync-ui-shim.mjs --check",
     "lint:parallel": "concurrently --group --names eslint,tsc,nodes,storage,ui,ruff,deps --prefix-colors blue,cyan,magenta,green,gray,yellow,white npm:lint:eslint npm:lint:tsc npm:lint:nodes npm:lint:storage npm:check:ui-shim npm:lint:ruff npm:lint:deps",
     "test:frontend": "vitest run",
-    "test:native-sidecar": "vitest run electron/native-sidecar-manager.test.ts electron/native-session-lifecycle.test.ts electron/scientific-plugin-lifecycle.test.ts electron/packaged-runtime-contract.test.ts electron/build-native-sidecar.test.ts electron/smoke-archive-standalone.test.ts src/api/transport.test.ts",
+    "test:native-sidecar": "vitest run electron/native-sidecar-manager.test.ts electron/native-session-lifecycle.test.ts electron/scientific-plugin-lifecycle.test.ts electron/packaged-runtime-contract.test.ts electron/build-native-sidecar.test.ts electron/bake-python-plugin-runtime.test.ts electron/smoke-archive-standalone.test.ts src/api/transport.test.ts",
     "test:backend": "node scripts/run-python.cjs -m pytest tests/ -v --tb=short --timeout=120 -n auto",
     "test:contract": "node scripts/run-python.cjs scripts/verify-studio-v1-contract.py --check",
     "test:routes": "node scripts/run-python.cjs -m pytest tests/test_route_registry.py -q",

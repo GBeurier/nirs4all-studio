@@ -11,6 +11,20 @@ const PYTHON_CLOSURE_SCHEMA = "nirs4all.studio-python-plugin-closure.v1";
 const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
 const MAX_PYTHON_CLOSURE_FILES = 100_000;
 const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
+const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
+const PLUGIN_SOURCE_COMMIT = "c8b5fd5bf847ce26f78008b9abd00fa54f790825";
+const PLUGIN_WHEEL_SHA256 = "646971289137b8005b9848a4c22c000acce01660850ade63fd743c637366d24e";
+const FORBIDDEN_PLUGIN_DISTRIBUTIONS = [
+  "fastapi",
+  "httptools",
+  "python-multipart",
+  "sentry-sdk",
+  "starlette",
+  "uvicorn",
+  "uvloop",
+  "watchfiles",
+  "websockets",
+] as const;
 
 interface ContractMember {
   path: string;
@@ -31,6 +45,7 @@ interface PackagedRuntimeContract {
     closure: ContractMember | null;
     runtime_root: string | null;
     site_packages: string | null;
+    marker: ContractMember | null;
   };
   methods_library: {
     mode: string;
@@ -305,6 +320,50 @@ function verifyPythonRuntimeClosure(
   return { closurePath, runtimeRoot, sitePackagesPath };
 }
 
+function verifyPluginMarker(
+  backendRoot: string,
+  plugin: PackagedRuntimeContract["python_plugin_host"],
+  platform: NodeJS.Platform,
+  arch: string,
+): void {
+  const expectedPath = path.join("python-runtime", PLUGIN_MARKER_FILE);
+  if (path.normalize(plugin.marker?.path ?? "") !== expectedPath) {
+    throw new Error("Packaged Python plugin marker path mismatch");
+  }
+  const markerPath = validateMember(
+    backendRoot,
+    "Bundled Python plugin marker",
+    plugin.marker,
+    platform,
+    false,
+  );
+  const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as Record<string, unknown>;
+  if (
+    marker.schema !== "nirs4all.studio-python-plugin-runtime.v1" ||
+    marker.python_role !== "library-plugin-host-only" ||
+    marker.product_backend !== "rust-sidecar" ||
+    marker.transport !== "bounded-cpython-stdio-v1" ||
+    marker.http_listener !== "forbidden" ||
+    marker.source_commit !== PLUGIN_SOURCE_COMMIT ||
+    marker.wheel_sha256 !== PLUGIN_WHEEL_SHA256 ||
+    marker.distribution !== "nirs4all" ||
+    marker.distribution_version !== "0.10.3" ||
+    marker.distribution_record_sha256 !==
+      "d48ebcf15a6c83c99b8581f6d86da9165eb3fdf4ca9fbb6130311fd176e0db06" ||
+    marker.installed_manifest_sha256 !==
+      "691bafb2ebbdc8b7f0e628aef99af3c2109bd49e235e3020bf0fc71459fe3d10" ||
+    marker.platform !== platform ||
+    marker.arch !== arch ||
+    !Array.isArray(marker.forbidden_distributions) ||
+    marker.forbidden_distributions.length !== FORBIDDEN_PLUGIN_DISTRIBUTIONS.length ||
+    marker.forbidden_distributions.some(
+      (name, index) => name !== FORBIDDEN_PLUGIN_DISTRIBUTIONS[index],
+    )
+  ) {
+    throw new Error("Packaged Python plugin marker identity mismatch");
+  }
+}
+
 function hasValidPlatformSignature(
   filePath: string,
   platform: NodeJS.Platform,
@@ -440,7 +499,8 @@ export function verifyPackagedRuntimeContract({
       plugin.member !== null ||
       plugin.closure !== null ||
       plugin.runtime_root !== null ||
-      plugin.site_packages !== null
+      plugin.site_packages !== null ||
+      plugin.marker !== null
     ) {
       throw new Error(
         "Unavailable Python plugin-host policy must not select packaged members",
@@ -475,6 +535,7 @@ export function verifyPackagedRuntimeContract({
       platform,
     );
     const closure = verifyPythonRuntimeClosure(backendRoot, plugin, platform);
+    verifyPluginMarker(backendRoot, plugin, platform, arch);
     return {
       contractPath,
       sidecarPath,

@@ -108,7 +108,7 @@ describe("smoke-archive-standalone", () => {
 
     expect(layout.executablePath).toBe(path.join(extractedRoot, "nirs4all Studio.exe"));
     expect(layout.runtimeReadyPath).toBe(
-      path.join(extractedRoot, "resources", "backend", "python-runtime", "RUNTIME_READY.json"),
+      path.join(extractedRoot, "resources", "backend", "python-runtime", "PLUGIN_RUNTIME_READY.json"),
     );
     expect(layout.bundledPythonPath).toBe(
       path.join(extractedRoot, "resources", "backend", "python-runtime", "python", "python.exe"),
@@ -116,9 +116,7 @@ describe("smoke-archive-standalone", () => {
     expect(layout.nativeSidecarPath).toBe(
       path.join(extractedRoot, "resources", "backend", "native", "studio-sidecar.exe"),
     );
-    expect(layout.bundledPythonCandidates).toContain(
-      path.join(extractedRoot, "resources", "backend", "python-runtime", "venv", "Scripts", "python.exe"),
-    );
+    expect(layout.bundledPythonCandidates).toEqual([layout.bundledPythonPath]);
   });
 
   it("resolves a wrapped Linux standalone layout", () => {
@@ -132,7 +130,7 @@ describe("smoke-archive-standalone", () => {
     expect(layout.appRoot).toBe(appRoot);
     expect(layout.executablePath).toBe(path.join(appRoot, "nirs4all-webapp"));
     expect(layout.runtimeReadyPath).toBe(
-      path.join(appRoot, "resources", "backend", "python-runtime", "RUNTIME_READY.json"),
+      path.join(appRoot, "resources", "backend", "python-runtime", "PLUGIN_RUNTIME_READY.json"),
     );
     expect(layout.nativeSidecarPath).toBe(
       path.join(appRoot, "resources", "backend", "native", "studio-sidecar"),
@@ -151,7 +149,7 @@ describe("smoke-archive-standalone", () => {
       path.join(appBundle, "Contents", "MacOS", "nirs4all Studio"),
     );
     expect(layout.runtimeReadyPath).toBe(
-      path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "RUNTIME_READY.json"),
+      path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "PLUGIN_RUNTIME_READY.json"),
     );
     expect(layout.bundledPythonPath).toBe(
       path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "python", "bin", "python3"),
@@ -159,9 +157,7 @@ describe("smoke-archive-standalone", () => {
     expect(layout.nativeSidecarPath).toBe(
       path.join(appBundle, "Contents", "Resources", "backend", "native", "studio-sidecar"),
     );
-    expect(layout.bundledPythonCandidates).toContain(
-      path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "venv", "bin", "python"),
-    );
+    expect(layout.bundledPythonCandidates).toEqual([layout.bundledPythonPath]);
   });
 
   it("detects build-path leaks inside runtime launcher files", () => {

@@ -39,12 +39,12 @@ pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_HOST_BYTES: u64 = 64 * 1024 * 1024;
 pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "0.10.3";
 pub const SCIENTIFIC_DISTRIBUTION_RECORD_SHA256: &str =
-    "444d14c05d6a47b504e3f75a7a74891bdc2d60020d9d659e44c8b1406df7aa21";
+    "d48ebcf15a6c83c99b8581f6d86da9165eb3fdf4ca9fbb6130311fd176e0db06";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
-    "67667f329c5d416c26d1e42614bc6b3d0d2ad2bd9e2786f0262ffe7fd3d4e991";
+    "691bafb2ebbdc8b7f0e628aef99af3c2109bd49e235e3020bf0fc71459fe3d10";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
-    "0aa170685d821c217011d00f6373853d993f340f1e70499d3f560fd92e40b86a";
-pub const SCIENTIFIC_SOURCE_COMMIT: &str = "5ebb0788c392e8e1e3e3538a8ab872d724d97a64";
+    "646971289137b8005b9848a4c22c000acce01660850ade63fd743c637366d24e";
+pub const SCIENTIFIC_SOURCE_COMMIT: &str = "c8b5fd5bf847ce26f78008b9abd00fa54f790825";
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "b861e555a5f210d8df22b1f3cd5f9cef3b6ee20cacd5e5d37b3bca8ae9c41e2a";
 
@@ -53,7 +53,7 @@ SCHEMA="nirs4all.studio-scientific-cpython-host.v1"
 def deny_product_network(event,args):
     if event == "socket.bind":
         raise RuntimeError("CPython library host cannot own a listening socket")
-    if event in {"subprocess.Popen","os.system","os.posix_spawn"}:
+    if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}:
         raise RuntimeError("CPython library host cannot spawn child processes")
 sys.addaudithook(deny_product_network)
 if sys.argv[1]:
@@ -78,6 +78,7 @@ try:
     record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
     record_path=distribution.locate_file(record_entry) if record_entry else None
     record_bytes=open(record_path,"rb").read() if record_path else b""
+    distribution_record_sha256=hashlib.sha256(record_bytes).hexdigest() if record_bytes else None
     record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
     manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
     distribution_manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest() if manifest_bytes else None
@@ -97,16 +98,17 @@ except Exception as error:
     callable_sha256=None
     distribution_version=None
     distribution_manifest_sha256=None
+    distribution_record_sha256=None
     distribution_files_verified=False
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"0aa170685d821c217011d00f6373853d993f340f1e70499d3f560fd92e40b86a","source_commit":"5ebb0788c392e8e1e3e3538a8ab872d724d97a64"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"646971289137b8005b9848a4c22c000acce01660850ade63fd743c637366d24e","source_commit":"c8b5fd5bf847ce26f78008b9abd00fa54f790825"},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,os,socket,sys
 def deny_product_network(event,args):
     if event == "socket.bind":
         raise RuntimeError("CPython library host cannot own a listening socket")
-    if event in {"subprocess.Popen","os.system","os.posix_spawn"}:
+    if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}:
         raise RuntimeError("CPython library host cannot spawn child processes")
 sys.addaudithook(deny_product_network)
 if sys.argv[1]:
@@ -121,9 +123,11 @@ if distribution.version != "0.10.3":
 record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
 record_path=distribution.locate_file(record_entry) if record_entry else None
 record_bytes=open(record_path,"rb").read() if record_path else b""
+if hashlib.sha256(record_bytes).hexdigest() != "d48ebcf15a6c83c99b8581f6d86da9165eb3fdf4ca9fbb6130311fd176e0db06":
+    raise RuntimeError("scientific distribution RECORD identity changed")
 record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
 manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-if hashlib.sha256(manifest_bytes).hexdigest() != "67667f329c5d416c26d1e42614bc6b3d0d2ad2bd9e2786f0262ffe7fd3d4e991":
+if hashlib.sha256(manifest_bytes).hexdigest() != "691bafb2ebbdc8b7f0e628aef99af3c2109bd49e235e3020bf0fc71459fe3d10":
     raise RuntimeError("scientific distribution identity changed")
 for relative,encoded,size in record_rows:
     algorithm,expected=encoded.split("=",1)
@@ -445,17 +449,14 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         let job_id = request.job_id.clone();
         let host = host.clone();
         let callable = callable.clone();
-        let site_packages = self
-            .packaged_runtime
-            .as_ref()
-            .map(|identity| identity.site_packages.clone());
+        let packaged_runtime = self.packaged_runtime.clone();
         let running = Arc::clone(&self.running);
         let terminal_callback_failed = Arc::clone(&self.terminal_callback_failed);
         std::thread::spawn(move || {
             let outcome = run_scientific_process(
                 &host,
                 &callable,
-                site_packages.as_deref(),
+                packaged_runtime.as_ref(),
                 &encoded,
                 &cancelled,
             );
@@ -504,7 +505,7 @@ fn acquire_host(
     let object = response
         .as_object()
         .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
-    if object.len() != 17
+    if object.len() != 18
         || object.get("schema").and_then(Value::as_str)
             != Some("nirs4all.studio-scientific-cpython-host.v1")
         || object.get("callable").and_then(Value::as_str)
@@ -521,6 +522,10 @@ fn acquire_host(
             .get("distribution_manifest_sha256")
             .and_then(Value::as_str)
             != Some(SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256)
+        || object
+            .get("distribution_record_sha256")
+            .and_then(Value::as_str)
+            != Some(SCIENTIFIC_DISTRIBUTION_RECORD_SHA256)
         || object
             .get("distribution_files_verified")
             .and_then(Value::as_bool)
@@ -1120,14 +1125,14 @@ fn run_configured_process(
 fn run_scientific_process(
     host: &HostIdentity,
     callable: &HostIdentity,
-    site_packages: Option<&Path>,
+    packaged_runtime: Option<&PackagedRuntimeIdentity>,
     input: &[u8],
     cancelled: &AtomicBool,
 ) -> Result<Value, ScientificCpythonUnavailable> {
     run_scientific_process_with_timeout(
         host,
         callable,
-        site_packages,
+        packaged_runtime,
         input,
         cancelled,
         SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
@@ -1137,13 +1142,16 @@ fn run_scientific_process(
 fn run_scientific_process_with_timeout(
     host: &HostIdentity,
     callable: &HostIdentity,
-    site_packages: Option<&Path>,
+    packaged_runtime: Option<&PackagedRuntimeIdentity>,
     input: &[u8],
     cancelled: &AtomicBool,
     execution_timeout: Duration,
 ) -> Result<Value, ScientificCpythonUnavailable> {
     verify_identity(host)?;
     verify_identity(callable).map_err(|_| ScientificCpythonUnavailable::CallableTampered)?;
+    if let Some(identity) = packaged_runtime {
+        verify_packaged_runtime_identity(identity)?;
+    }
     if input.len() > MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES {
         return Err(ScientificCpythonUnavailable::InvalidRequest);
     }
@@ -1157,10 +1165,17 @@ fn run_scientific_process_with_timeout(
         })
         .ok_or(ScientificCpythonUnavailable::InvalidRequest)?;
     let scratch = ScratchDirectory::create()?;
+    let site_packages = packaged_runtime.map(|identity| identity.site_packages.as_path());
     let mut command = scientific_worker_command(host, callable, site_packages, &scratch.path)?;
     let mut child = command
         .spawn()
         .map_err(|_| ScientificCpythonUnavailable::SpawnFailed)?;
+    if let Some(identity) = packaged_runtime {
+        if let Err(error) = verify_packaged_runtime_identity(identity) {
+            let _ = terminate_worker(&mut child);
+            return Err(error);
+        }
+    }
     let (Some(mut stdin), Some(stdout), Some(stderr)) =
         (child.stdin.take(), child.stdout.take(), child.stderr.take())
     else {
@@ -1176,6 +1191,9 @@ fn run_scientific_process_with_timeout(
         std::thread::spawn(move || read_bounded(stderr, MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES));
     let (status, cancellation_observed, timed_out) =
         wait_for_worker(&mut child, cancelled, execution_timeout)?;
+    if let Some(identity) = packaged_runtime {
+        verify_packaged_runtime_identity(identity)?;
+    }
     let stdin_result = stdin_writer
         .join()
         .map_err(|_| ScientificCpythonUnavailable::ProcessFailed)?;
@@ -1712,7 +1730,7 @@ mod tests {
 
     fn attested_unready_host_response(implementation: &str) -> String {
         format!(
-            r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
+            r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_record_sha256":"{SCIENTIFIC_DISTRIBUTION_RECORD_SHA256}","distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
         )
     }
 
@@ -1920,6 +1938,70 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn worker_revalidates_runtime_before_spawn_and_after_execution() {
+        let root = test_directory("worker-runtime-drift");
+        let runtime = root.join("python-runtime");
+        let python_root = runtime.join("python");
+        let site_packages = python_root.join("lib/python3.11/site-packages");
+        fs::create_dir_all(&site_packages).unwrap();
+        let host = shell_host(
+            &python_root.join("bin"),
+            "python3",
+            "sleep 0.2; printf '%s' '{\"engine\":\"dag-ml\",\"job_id\":\"drift-job\",\"result\":{\"metric\":\"rmse\",\"model\":\"pls_regression\",\"prediction_count\":4,\"task_type\":\"regression\",\"training_score\":0.1,\"validation_score\":0.2},\"schema\":\"nirs4all.studio-scientific-job-result.v1\"}'",
+        );
+        let callable_path = site_packages.join("studio_scientific.py");
+        fs::write(
+            &callable_path,
+            "def studio_scientific_job_v1(request): pass\n",
+        )
+        .unwrap();
+        let member = site_packages.join("attested_member.py");
+        fs::write(&member, "ATTESTED = True\n").unwrap();
+        let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
+        write_runtime_closure(&python_root, &site_packages, &closure);
+        let packaged =
+            packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap();
+        let acquired_host = host_identity(&host).unwrap();
+        let callable_identity = host_identity(&callable_path).unwrap();
+        let request = serde_json::to_vec(&serde_json::json!({"job_id": "drift-job"})).unwrap();
+        let cancelled = AtomicBool::new(false);
+
+        fs::write(&member, "ATTESTED = False\n").unwrap();
+        assert_eq!(
+            run_scientific_process_with_timeout(
+                &acquired_host,
+                &callable_identity,
+                Some(&packaged),
+                &request,
+                &cancelled,
+                Duration::from_secs(1),
+            ),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+
+        fs::write(&member, "ATTESTED = True\n").unwrap();
+        let member_for_thread = member;
+        let mutation = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            fs::write(member_for_thread, "ATTESTED = False\n").unwrap();
+        });
+        assert_eq!(
+            run_scientific_process_with_timeout(
+                &acquired_host,
+                &callable_identity,
+                Some(&packaged),
+                &request,
+                &cancelled,
+                Duration::from_secs(1),
+            ),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+        mutation.join().unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn process_boundary_refuses_timeout_malformed_and_oversized_streams() {
         let root = test_directory("limits");
         let malformed = shell_host(&root, "malformed", "printf nope");
@@ -2091,6 +2173,20 @@ mod tests {
         assert_eq!(
             serde_json::from_slice::<Value>(&output).unwrap(),
             serde_json::json!({"http_listener_denied": true})
+        );
+
+        let spawn_script = "import json,os,sys\n\
+            def deny(event,args):\n if event in {'subprocess.Popen','os.system','os.spawn','os.posix_spawn','os.fork','os.forkpty','os.exec','pty.spawn'}: raise RuntimeError('denied')\n\
+            sys.addaudithook(deny)\n\
+            denied=False\n\
+            try: os.spawnv(os.P_WAIT,'/bin/true',['true'])\n\
+            except RuntimeError: denied=True\n\
+            print(json.dumps({'spawnv_denied':denied}))\n";
+        let output =
+            run_process(&python, spawn_script, Duration::from_secs(2), 1024, 1024).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&output).unwrap(),
+            serde_json::json!({"spawnv_denied": true})
         );
     }
 }

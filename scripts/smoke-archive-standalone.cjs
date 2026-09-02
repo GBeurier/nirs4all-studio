@@ -172,13 +172,11 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
       appRoot: appBundle,
       backendRoot: path.join(resourcesDir, "backend"),
       executablePath: path.join(appBundle, "Contents", "MacOS", appName),
-      runtimeReadyPath: path.join(runtimeRoot, "RUNTIME_READY.json"),
+      runtimeReadyPath: path.join(runtimeRoot, "PLUGIN_RUNTIME_READY.json"),
       nativeSidecarPath: path.join(resourcesDir, "backend", "native", nativeSidecarName),
       bundledPythonPath: path.join(runtimeRoot, "python", "bin", "python3"),
       bundledPythonCandidates: [
         path.join(runtimeRoot, "python", "bin", "python3"),
-        path.join(runtimeRoot, "python", "bin", "python"),
-        path.join(runtimeRoot, "venv", "bin", "python"),
       ],
     };
   }
@@ -194,7 +192,7 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
     appRoot,
     backendRoot: path.join(appRoot, "resources", "backend"),
     executablePath: path.join(appRoot, executableName),
-    runtimeReadyPath: path.join(runtimeRoot, "RUNTIME_READY.json"),
+    runtimeReadyPath: path.join(runtimeRoot, "PLUGIN_RUNTIME_READY.json"),
     nativeSidecarPath: path.join(appRoot, "resources", "backend", "native", nativeSidecarName),
     bundledPythonPath:
       platformId === "win32"
@@ -204,12 +202,9 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
       platformId === "win32"
         ? [
             path.join(runtimeRoot, "python", "python.exe"),
-            path.join(runtimeRoot, "venv", "Scripts", "python.exe"),
           ]
         : [
             path.join(runtimeRoot, "python", "bin", "python3"),
-            path.join(runtimeRoot, "python", "bin", "python"),
-            path.join(runtimeRoot, "venv", "bin", "python"),
           ],
   };
 }
@@ -543,6 +538,7 @@ async function smokeArchiveStandalone(rawConfig) {
     backendRoot: launchLayout.backendRoot,
     platform: config.platform,
     arch: process.arch,
+    requireBundledPythonPlugin: true,
   });
   if (verifiedRuntime.sidecarPath !== launchLayout.nativeSidecarPath) {
     throw new Error("Runtime contract did not select the packaged native sidecar");

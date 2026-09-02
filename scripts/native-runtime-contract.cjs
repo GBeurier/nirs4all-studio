@@ -2,6 +2,11 @@ const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const {
+  PLUGIN_MARKER_FILE,
+  expectedMarker,
+  verifyPluginRuntime,
+} = require("./bake-python-plugin-runtime.cjs");
 
 const CONTRACT_FILE = "STUDIO_RUNTIME_CONTRACT.json";
 const CONTRACT_SCHEMA = "nirs4all.studio-packaged-runtime.v1";
@@ -182,20 +187,18 @@ function createRuntimeContract({
     throw new Error(`Native Studio sidecar not found: ${sidecarPath}`);
   }
 
-  const runtimeReadyPath = path.join(
-    backendRoot,
-    "python-runtime",
-    "RUNTIME_READY.json",
-  );
-  const hasBundledRuntime = fs.existsSync(runtimeReadyPath);
+  const pluginMarkerPath = path.join(backendRoot, "python-runtime", PLUGIN_MARKER_FILE);
+  const hasBundledRuntime = fs.existsSync(pluginMarkerPath);
   let pythonPluginHost = {
     mode: "unavailable",
     member: null,
     closure: null,
     runtime_root: null,
     site_packages: null,
+    marker: null,
   };
   if (hasBundledRuntime) {
+    verifyPluginRuntime({ backendRoot, platform, arch, writeMarker: false });
     const pythonRelativePath = bundledPythonRelativePath(platform);
     const pythonPath = path.join(backendRoot, pythonRelativePath);
     if (!fs.existsSync(pythonPath)) {
@@ -214,6 +217,11 @@ function createRuntimeContract({
       ),
       runtime_root: path.relative(backendRoot, closure.runtimeRoot).split(path.sep).join("/"),
       site_packages: path.relative(backendRoot, closure.sitePackagesPath).split(path.sep).join("/"),
+      marker: describeFile(
+        pluginMarkerPath,
+        path.relative(backendRoot, pluginMarkerPath),
+        backendRoot,
+      ),
     };
   }
   const methodsRelativePath = bundledMethodsRelativePath(platform);
@@ -410,10 +418,30 @@ function verifyPythonRuntimeClosure(backendRoot, plugin, platform) {
   return { closurePath, runtimeRoot, sitePackagesPath };
 }
 
+function verifyPluginMarker(backendRoot, plugin, platform, arch) {
+  const expectedPath = path.join("python-runtime", PLUGIN_MARKER_FILE);
+  if (path.normalize(plugin.marker?.path ?? "") !== expectedPath) {
+    throw new Error("Packaged Python plugin marker path mismatch");
+  }
+  const readyPath = assertMember(
+    backendRoot,
+    "Bundled Python plugin marker",
+    plugin.marker,
+    platform,
+    false,
+  );
+  const actual = JSON.parse(fs.readFileSync(readyPath, "utf8"));
+  if (JSON.stringify(actual) !== JSON.stringify(expectedMarker(platform, arch))) {
+    throw new Error("Bundled Python plugin marker identity mismatch");
+  }
+  return readyPath;
+}
+
 function verifyRuntimeContract({
   backendRoot,
   platform = process.platform,
   arch = process.arch,
+  requireBundledPythonPlugin = false,
 }) {
   const contractPath = path.join(backendRoot, "native", CONTRACT_FILE);
   if (!fs.existsSync(contractPath)) {
@@ -467,6 +495,7 @@ function verifyRuntimeContract({
       platform,
     );
     const closure = verifyPythonRuntimeClosure(backendRoot, plugin, platform);
+    verifyPluginMarker(backendRoot, plugin, platform, arch);
     pythonClosurePath = closure.closurePath;
     pythonRuntimeRoot = closure.runtimeRoot;
     pythonSitePackagesPath = closure.sitePackagesPath;
@@ -474,9 +503,13 @@ function verifyRuntimeContract({
     plugin.member !== null ||
     plugin.closure !== null ||
     plugin.runtime_root !== null ||
-    plugin.site_packages !== null
+    plugin.site_packages !== null ||
+    plugin.marker !== null
   ) {
     throw new Error("Unavailable Python plugin-host policy must not select packaged members");
+  }
+  if (requireBundledPythonPlugin && !pythonPluginHostPath) {
+    throw new Error("Packaged Python plugin runtime is required for this release artifact");
   }
 
   const methods = contract.methods_library;
@@ -522,6 +555,7 @@ function parseVerifyArgs(argv = process.argv.slice(2)) {
     backendRoot: "",
     platform: process.platform,
     arch: process.arch,
+    requireBundledPythonPlugin: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -541,6 +575,8 @@ function parseVerifyArgs(argv = process.argv.slice(2)) {
       parsed.platform = readValue();
     } else if (flag === "--arch") {
       parsed.arch = readValue();
+    } else if (flag === "--require-bundled-python-plugin") {
+      parsed.requireBundledPythonPlugin = true;
     } else {
       throw new Error(`Unknown argument: ${argument}`);
     }

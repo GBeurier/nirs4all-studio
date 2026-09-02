@@ -9,7 +9,7 @@ The source of truth is:
 - `electron-builder.archive.yml`
 - `scripts/build-release.cjs`
 - `scripts/build-archive-standalone.cjs`
-- `scripts/bake-standalone-backend.cjs`
+- `scripts/bake-python-plugin-runtime.cjs`
 - `scripts/native-runtime-contract.cjs`
 
 Legacy PyInstaller-based backend packaging still exists in the repository for compatibility and debugging, but it is no longer the published desktop release path.
@@ -20,9 +20,9 @@ The project now publishes three desktop distribution families plus Docker:
 
 | Product | Platforms | Published assets | Runtime model |
 |---|---|---|---|
-| Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + Rust `native/studio-sidecar` + compatibility backend source; Python environment is writable and managed outside the app bundle |
+| Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + Rust `native/studio-sidecar` + read-only plugin-only CPython closure |
 | Portable Windows | Windows x64 | `-portable.exe` | Electron portable layout with state under `.nirs4all/` next to the executable |
-| All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` on Windows/macOS, `-all-in-one-*.tar.gz` on Linux | Electron + Rust `native/studio-sidecar` + backend source + embedded `python-runtime/python`; the embedded runtime is read-only until the user switches away |
+| All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` on Windows/macOS, `-all-in-one-*.tar.gz` on Linux | Electron + Rust `native/studio-sidecar` + the same read-only plugin-only CPython closure; no Python backend source |
 | Docker | Linux | `ghcr.io/gbeurier/nirs4all-studio:*` | No Electron; FastAPI serves the UI |
 
 For the desktop all-in-one bundle, v1 is deliberately locked to a single product profile:
@@ -37,7 +37,7 @@ For the desktop all-in-one bundle, v1 is deliberately locked to a single product
 
 - `Installer`: standard OS install flow (`.exe`, `.dmg`, `.AppImage`, `.deb`).
 - `Portable`: Windows-only `-portable.exe` build with dedicated state next to the executable.
-- `All-in-one`: the final archive bundle distributed to users, containing Electron, backend source, embedded Python, and a baked venv.
+- `All-in-one`: the final archive bundle distributed to users, containing Electron, Rust, and the embedded plugin-only CPython closure.
 - `Bundled runtime`: the embedded Python runtime found under `resources/backend/python-runtime/`.
 - `Legacy PyInstaller`: historical frozen-backend packaging path. Not the release path for the desktop product anymore.
 
@@ -48,18 +48,18 @@ An extracted all-in-one archive is not the same thing as portable mode. Portable
 ### Installer / portable builds
 
 Installer-oriented builds package the Rust control-plane binary alongside the
-compatibility backend source:
+same plugin-only CPython closure as all-in-one archives:
 
 ```text
 resources/
 └── backend/
-    ├── api/
-    ├── websocket/
-    ├── updater/
+    ├── python-runtime/
+    │   ├── python/
+    │   ├── PLUGIN_RUNTIME_READY.json
+    │   └── PYTHON_PLUGIN_CLOSURE.json
     ├── native/
     │   ├── studio-sidecar
     │   └── STUDIO_RUNTIME_CONTRACT.json
-    ├── main.py
     ├── recommended-config.json
     └── version.json
 ```
@@ -80,9 +80,8 @@ became stale reports the optional host as unavailable until the next
 application launch. The sidecar remains the product HTTP owner and never
 launches FastAPI or Uvicorn.
 
-FastAPI source is retained in the R2 packages solely for an explicit diagnostic
-session selected with `--enable-python-http-diagnostic`. Packaged products are
-Rust-only by default and ignore environment-based diagnostic activation. The
+FastAPI source may remain in the source checkout solely for an explicit development diagnostic
+session selected with `--enable-python-http-diagnostic`; it is absent from Phase 2 desktop packages. Packaged products ignore environment-based diagnostic activation. The
 mode is process-wide, visible over backend/scientific IPC state, and cannot be
 selected as a per-request fallback. Physical removal of the retained FastAPI,
 PyInstaller, and requirements surfaces is the R3 DROP step.
@@ -102,16 +101,12 @@ All-in-one bundles embed the runtime directly in the packaged app:
 ```text
 resources/
 └── backend/
-    ├── api/
-    ├── websocket/
-    ├── updater/
-    ├── main.py
     ├── recommended-config.json
     ├── version.json
     ├── python-runtime/
     │   ├── python/
     │   ├── PYTHON_PLUGIN_CLOSURE.json
-    │   └── RUNTIME_READY.json
+    │   └── PLUGIN_RUNTIME_READY.json
     └── native/
         ├── studio-sidecar
         └── STUDIO_RUNTIME_CONTRACT.json
@@ -127,12 +122,38 @@ The Rust
 sidecar remains the process and HTTP owner; the embedded Python runtime is a
 plugin capability, not a FastAPI/Uvicorn fallback.
 
+Phase 2 installers and all-in-one archives build this payload with
+`scripts/bake-python-plugin-runtime.cjs`. This is a separate product profile;
+it does not invoke `bake-standalone-backend.cjs`, copy `api/`, `websocket/`, or
+`main.py`, or install the shared FastAPI backend dependency set. It rebuilds
+the selected `nirs4all` wheel from source commit
+`c8b5fd5bf847ce26f78008b9abd00fa54f790825` (or accepts that exact wheel for
+an offline build), verifies SHA-256
+`646971289137b8005b9848a4c22c000acce01660850ade63fd743c637366d24e`,
+and rejects FastAPI, Starlette, Uvicorn, Sentry's FastAPI integration, and the
+Uvicorn server transitive set. `PLUGIN_RUNTIME_READY.json` freezes the exact
+`library-plugin-host-only` role. The older generic `RUNTIME_READY.json` never
+enables the plugin capability.
+
+Every installer/release gate invokes `native-runtime-contract.cjs` with
+`--require-bundled-python-plugin`. Therefore a standard installer or
+all-in-one archive cannot silently publish `mode: unavailable`.
+
 The same content contract pins the bundled interpreter and every runtime file.
 If any member is missing, altered, added, or path-substituted after packaging,
 the Rust sidecar still owns the product
 port and reports the Python plugin host unavailable. It does not acquire,
 restart, or fall back to Uvicorn. Archive creation and the release smoke are
 stricter: they reject such an incomplete bundle before publication.
+
+Rust re-hashes the complete closure during acquisition, in the worker thread
+immediately before spawn, immediately after spawn before stdin is released,
+and after process exit. Cross-platform filesystems do not provide one portable
+sealed-executable primitive for this tree, so the residual same-user race
+between a successful hash and the kernel's later module read is not claimed
+away. Release resources must also be installed read-only and protected by the
+platform package/signature mechanism; any observed drift fails the job and
+terminates a just-spawned worker.
 
 Linux CI executes the unpacked installer directly. The release workflow also
 verifies the same manifest for Windows x64 and macOS x64/arm64 payloads on their
@@ -194,15 +215,17 @@ Behavior:
 - must run on the matching target host (`platform` and `arch` must match the runner)
 - bakes the embedded runtime first, then packages with `electron-builder.archive.yml`
 
-### Backend-only bake
+### Plugin-runtime-only bake
 
-To build only the embedded backend payload:
+To build only the embedded library/plugin payload:
 
 ```bash
-node scripts/bake-standalone-backend.cjs --profile cpu --platform win32 --arch x64
+node scripts/bake-python-plugin-runtime.cjs
 ```
 
-This produces `backend-dist/` with `python-runtime/` and `RUNTIME_READY.json`.
+This produces `backend-dist/` with `python-runtime/` and the strict
+`PLUGIN_RUNTIME_READY.json`. Pass `--plugin-wheel <path>` for an offline build;
+the wheel must match the pinned c8 SHA-256.
 
 ## CI/CD Pipeline
 
@@ -342,8 +365,8 @@ The release workflow validates this with `scripts/smoke-update-zip-permissions.p
 
 The packaged runtime was not detected. Check that the archive contains:
 
-- `resources/backend/python-runtime/RUNTIME_READY.json`
-- the bundled `venv`
+- `resources/backend/python-runtime/PLUGIN_RUNTIME_READY.json`
+- `resources/backend/python-runtime/PYTHON_PLUGIN_CLOSURE.json`
 
 ### Linux or macOS update succeeds but the app will not launch
 
@@ -371,8 +394,9 @@ The updater prefers asset names containing `all-in-one`. Do not publish generic 
 | `electron-builder.yml` | Compatibility/default entry that still points to installer-style packaging |
 | `scripts/build-release.cjs` | Local installer-oriented build helper |
 | `scripts/build-archive-standalone.cjs` | Local all-in-one ZIP build helper |
-| `scripts/bake-standalone-backend.cjs` | Builder for embedded backend + runtime |
-| `scripts/copy-backend-source.cjs` | Copies backend source payload into `backend-dist/` |
+| `scripts/bake-python-plugin-runtime.cjs` | Builder/verifier for the pinned plugin-only CPython closure |
+| `scripts/bake-standalone-backend.cjs` | Legacy compatibility backend builder; never used by Phase 2 desktop release |
+| `scripts/copy-backend-source.cjs` | Legacy compatibility source copier; never used by Phase 2 desktop release |
 | `scripts/smoke-archive-standalone.cjs` | Offline launch smoke test for extracted all-in-one bundles |
 | `scripts/smoke-update-zip-permissions.py` | ZIP permission restoration smoke test |
 | `api/update_downloader.py` | Download, checksum, and archive extraction logic |

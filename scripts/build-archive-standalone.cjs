@@ -145,6 +145,16 @@ function resolveBuildConfig(rawOptions, host = { platform: process.platform, arc
   if (config.constraintsFile && !fs.existsSync(config.constraintsFile)) {
     throw new Error(`Constraints file not found: ${config.constraintsFile}`);
   }
+  if (
+    config.localNirs4all ||
+    config.localNirs4allPath ||
+    config.localDagMlPath ||
+    config.localDagMlDataPath
+  ) {
+    throw new Error(
+      "Phase 2 plugin-only archives refuse local Python source substitution; use the pinned c8 wheel",
+    );
+  }
 
   return config;
 }
@@ -327,7 +337,7 @@ function ensureBuildInputsExist(config) {
   }
 
   const backendDistPath = path.join(projectRoot, "backend-dist");
-  const runtimeReady = path.join(backendDistPath, "python-runtime", "RUNTIME_READY.json");
+  const runtimeReady = path.join(backendDistPath, "python-runtime", "PLUGIN_RUNTIME_READY.json");
   if (!fs.existsSync(runtimeReady)) {
     throw new Error(
       "backend-dist/ does not contain a baked standalone runtime. Re-run without --skip-backend or bake the runtime first.",
@@ -338,6 +348,7 @@ function ensureBuildInputsExist(config) {
     backendRoot: backendDistPath,
     platform: config.platform,
     arch: config.arch,
+    requireBundledPythonPlugin: true,
   });
 }
 
@@ -385,31 +396,14 @@ async function buildArchiveStandalone(config) {
   }
 
   if (!config.skipBackend) {
-    console.log("=== Step 1: Bake standalone backend runtime ===");
+    console.log("=== Step 1: Bake plugin-only CPython runtime ===");
     const bakeArgs = [
-      path.join("scripts", "bake-standalone-backend.cjs"),
-      "--profile",
-      config.profile,
-      "--platform",
-      config.platform,
-      "--arch",
-      config.arch,
+      path.join("scripts", "bake-python-plugin-runtime.cjs"),
+      "--backend-root",
+      path.join(projectRoot, "backend-dist"),
       "--cache-dir",
       config.cacheDir,
-      "--clean",
     ];
-    if (config.localNirs4all) {
-      bakeArgs.push("--local-nirs4all");
-    }
-    if (config.localNirs4allPath) {
-      bakeArgs.push("--local-nirs4all-path", config.localNirs4allPath);
-    }
-    if (config.localDagMlPath) {
-      bakeArgs.push("--local-dag-ml-path", config.localDagMlPath);
-    }
-    if (config.localDagMlDataPath) {
-      bakeArgs.push("--local-dag-ml-data-path", config.localDagMlDataPath);
-    }
     if (config.constraintsFile) {
       bakeArgs.push("--constraints", config.constraintsFile);
     }
@@ -419,6 +413,7 @@ async function buildArchiveStandalone(config) {
       backendRoot: path.join(projectRoot, "backend-dist"),
       platform: config.platform,
       arch: config.arch,
+      requireBundledPythonPlugin: true,
     });
     console.log("");
   } else {
