@@ -16,7 +16,7 @@ trap cleanup EXIT
 docker run --detach --name "${container}" --publish 127.0.0.1::8000 "${image}" >/dev/null
 
 port=""
-for _ in $(seq 1 60); do
+for _ in $(seq 1 360); do
   port=$(docker port "${container}" 8000/tcp 2>/dev/null | sed -n 's/.*://p' | head -n1)
   if [[ -n "${port}" ]] && curl --fail --silent "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; then
     break
@@ -40,12 +40,42 @@ node -e '
   const capabilities = JSON.parse(process.argv[4]);
   if (health.status !== "ok" && health.status !== "healthy") throw new Error("unexpected native health response");
   if (capabilityStatus !== "200") throw new Error("bounded Python plugin host is unavailable");
-  if (!capabilityResponse || typeof capabilityResponse !== "object") throw new Error("unexpected Python capability response");
+  const pythonCapabilities = capabilityResponse?.capabilities;
+  const expectedPythonCapabilities = ["autogluon", "jax", "nirs4all", "shap", "tensorflow", "torch", "umap"];
+  if (!pythonCapabilities || typeof pythonCapabilities !== "object" || Array.isArray(pythonCapabilities)) {
+    throw new Error("unexpected Python capability response");
+  }
+  if (JSON.stringify(Object.keys(pythonCapabilities).sort()) !== JSON.stringify(expectedPythonCapabilities)) {
+    throw new Error("unexpected Python capability keys");
+  }
+  if (Object.values(pythonCapabilities).some((available) => typeof available !== "boolean")) {
+    throw new Error("Python capabilities must be booleans");
+  }
+  if (pythonCapabilities.nirs4all !== true) throw new Error("nirs4all plugin import is unavailable");
   if (capabilities.features?.implicit_python_http_fallback !== false) throw new Error("Python HTTP fallback is not disabled");
   if (capabilities.python_plugin_host !== "configured") throw new Error("bounded Python host is not configured");
-  if (capabilities.features?.scientific_execution !== true) throw new Error("CPython stdio scientific execution is unavailable");
+  if (capabilities.features?.scientific_execution !== false) throw new Error("fresh runtime unexpectedly selected scientific execution without a dataset catalogue");
+  if (capabilities.features?.python_plugin_execution !== false) throw new Error("fresh runtime unexpectedly selected Python execution without a dataset catalogue");
   if (capabilities.features?.native_archive_v2_prediction !== true) throw new Error("native Methods archive replay is unavailable");
 ' "${health}" "${capability_status}" "${capability_response}" "${capabilities}"
+
+# Scientific execution is selected dynamically only after the Rust-owned
+# resolver has a valid catalogue. Seed the smallest valid V2 document in the
+# fresh state volume and prove the capability transition without restarting or
+# replacing the Rust HTTP owner.
+docker exec "${container}" sh -eu -c '
+  test ! -e "${NIRS4ALL_CONFIG}/dataset_links.json"
+  printf "%s\n" '\''{"version":"1.0","schema_version":2,"datasets":[],"groups":[]}'\'' \
+    > "${NIRS4ALL_CONFIG}/dataset_links.json"
+'
+configured_capabilities=$(docker exec "${container}" curl --fail --silent \
+  http://127.0.0.1:8001/sidecar/v1/capabilities)
+node -e '
+  const capabilities = JSON.parse(process.argv[1]);
+  if (capabilities.features?.scientific_execution !== true) throw new Error("valid catalogue did not select CPython stdio scientific execution");
+  if (capabilities.features?.python_plugin_execution !== true) throw new Error("valid catalogue did not select Python plugin execution");
+  if (capabilities.features?.implicit_python_http_fallback !== false) throw new Error("Python HTTP fallback changed during capability transition");
+' "${configured_capabilities}"
 
 node --input-type=module -e '
   const socket = new WebSocket(process.argv[1]);

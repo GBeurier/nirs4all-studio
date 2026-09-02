@@ -13,7 +13,7 @@ FROM ${NODE_IMAGE} AS frontend
 WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
-COPY vite.config.ts tsconfig*.json index.html ./
+COPY vite.config.ts postcss.config.js tailwind.config.ts tsconfig*.json index.html ./
 COPY public/ public/
 COPY src/ src/
 RUN npm run build
@@ -82,6 +82,8 @@ RUN printf '%s\n' \
     && ! ldd /opt/nirs4all/backend/native/libn4m.so | grep -q 'not found' \
     && ldd /opt/nirs4all/backend/python-runtime/python/bin/python3 \
     && ! ldd /opt/nirs4all/backend/python-runtime/python/bin/python3 | grep -q 'not found' \
+    && find /opt/nirs4all/backend/python-runtime/python -type f \( -name '*.so' -o -name '*.so.*' \) \
+      -exec sh -eu -c 'for object do dependencies=$(ldd "$object" 2>&1) || { echo "ELF dependency scan failed: $object" >&2; echo "$dependencies" >&2; exit 1; }; case "$dependencies" in *"not found"*) echo "ELF dependency missing: $object" >&2; echo "$dependencies" >&2; exit 1;; esac; done' sh {} + \
     && ! command -v python \
     && ! command -v python3
 
@@ -101,7 +103,7 @@ ENV NIRS4ALL_RUNTIME_MODE=container \
 
 VOLUME ["/var/lib/nirs4all-studio", "/workspaces"]
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
     CMD curl --fail --silent --show-error http://127.0.0.1:8000/api/health >/dev/null || exit 1
 
 USER nginx
