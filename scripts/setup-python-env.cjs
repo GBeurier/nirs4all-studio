@@ -54,8 +54,8 @@ const TORCH_CUDA_INDEX_URL = "https://download.pytorch.org/whl/cu124";
 const TORCH_PROFILE_PACKAGE = "torch";
 const CUDA_TORCH_PROFILE = "gpu-cuda-torch";
 const PLUGIN_BUILD_MODE = "studio-python-plugin-runtime";
-const PLUGIN_SOURCE_COMMIT = "c8b5fd5bf847ce26f78008b9abd00fa54f790825";
-const PLUGIN_WHEEL_SHA256 = "646971289137b8005b9848a4c22c000acce01660850ade63fd743c637366d24e";
+const PLUGIN_SOURCE_COMMIT = "322265576ccfaeb1ee22332d05ae04b87be4b538";
+const PLUGIN_WHEEL_SHA256 = "00326c703b933ff2c4b106905e1c44f81906b918db30bb5d05aa189846c48940";
 const PLUGIN_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all.git@${PLUGIN_SOURCE_COMMIT}`;
 
 // --- Argument parsing ---

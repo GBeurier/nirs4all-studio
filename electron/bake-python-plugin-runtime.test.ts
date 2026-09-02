@@ -24,15 +24,15 @@ const pluginRuntime = require("../scripts/bake-python-plugin-runtime.cjs") as {
 };
 
 describe("plugin-only CPython runtime", () => {
-  it("pins the selected c8 source and wheel in the exact role marker", () => {
+  it("pins the selected release source and wheel in the exact role marker", () => {
     expect(pluginRuntime.expectedMarker("linux", "x64")).toMatchObject({
       schema: "nirs4all.studio-python-plugin-runtime.v1",
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "c8b5fd5bf847ce26f78008b9abd00fa54f790825",
+      source_commit: "322265576ccfaeb1ee22332d05ae04b87be4b538",
       wheel_sha256:
-        "646971289137b8005b9848a4c22c000acce01660850ade63fd743c637366d24e",
+        "00326c703b933ff2c4b106905e1c44f81906b918db30bb5d05aa189846c48940",
       platform: "linux",
       arch: "x64",
     });

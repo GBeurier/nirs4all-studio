@@ -1,0 +1,64 @@
+{
+  "schema": "nirs4all.studio-python-plugin-runtime-proof.v1",
+  "generated_at": "2026-09-02T18:28:35+02:00",
+  "scope": "local-linux-x64-qualification-not-a-release-artifact",
+  "studio_base_commit": "2aa9db87318423ea75d70a8bd5ece96ed0c2d0ab",
+  "stage": "/home/delete/nirs4all/_worktrees/RC-v1-studio-python-322265/backend-dist",
+  "python_source_commit": "322265576ccfaeb1ee22332d05ae04b87be4b538",
+  "nirs4all_wheel_sha256": "00326c703b933ff2c4b106905e1c44f81906b918db30bb5d05aa189846c48940",
+  "nirs4all_distribution_record_sha256": "41833befe7dd25b0c0c7e19c6090b44e29bb2d2243700164c49f951fe3ad71c2",
+  "nirs4all_installed_manifest_sha256": "261d0acbb05fa3a60b75d28f0f21b54c0985bd82b44227f9d852b159cc8c5684",
+  "nirs4all_callable_sha256": "b861e555a5f210d8df22b1f3cd5f9cef3b6ee20cacd5e5d37b3bca8ae9c41e2a",
+  "dag_ml_source_commit": "bad5aff0bfbc14c622f5ade7f393f29399df6e07",
+  "dag_ml_wheel_sha256": "70ab921cad941853cae86754e688fe8f12e7a9078463bd06f54bffbb212c4d77",
+  "plugin_marker_sha256": "7eb6c4b9b0582c75decf59f0969554107ab1ee8d1f7e051bce9a4a3fb8b616c9",
+  "runtime_closure_sha256": "1cebf2806714f73758802d066c2bc2c72358f95304b003c7e7bae85105c4a4e5",
+  "packaged_contract_sha256": "2d63c0acde4a58d4232397d7387757ccae8ba21b75ccc61f7f02f85602924473",
+  "sidecar_sha256": "c91d767feb8d4f9c50020ecf42b4855b8152c7c5aa359073621fb2f4991e8d7c",
+  "runtime_regular_files": 8999,
+  "runtime_directories": 975,
+  "runtime_symlink_pth_pyc_or_pycache_count": 0,
+  "installed_distributions": 44,
+  "python_flags": ["-I", "-S", "-B"],
+  "preflight": {
+    "nirs4all_import": true,
+    "callable": "nirs4all.studio_scientific_job_v1",
+    "record_members_verified": true,
+    "socket_bind_denied": true,
+    "process_spawn_denied": true,
+    "closed_path_free_scientific_job_executed": true,
+    "rust_http_owner_remained_active": true
+  },
+  "forbidden_backend_payload": {
+    "fastapi": false,
+    "starlette": false,
+    "uvicorn": false,
+    "sentry_fastapi": false,
+    "api_source_tree": false,
+    "websocket_source_tree": false,
+    "main_py": false
+  },
+  "gates": {
+    "typescript_no_emit": "pass",
+    "eslint_changed_runtime_files": "pass",
+    "node_syntax_runtime_builders": "pass",
+    "electron_runtime_contract_tests": "21 passed",
+    "cargo_fmt": "pass",
+    "cargo_clippy_all_targets": "pass",
+    "cargo_tests": "166 passed, 2 ignored",
+    "real_packaged_cpython_scientific_stdio": "1 passed",
+    "real_packaged_cpython_system_bridge_without_execution_enablement": "1 passed",
+    "packaged_runtime_contract": "pass",
+    "rust_sidecar_smoke_readiness": "pass"
+  },
+  "provenance": {
+    "nirs4all_receipt": "/home/delete/nirs4all/_artifacts/nirs4all-python/322265576ccfaeb1ee22332d05ae04b87be4b538/qualification-receipt.json",
+    "offline_nirs4all_wheel": "/home/delete/nirs4all/_artifacts/nirs4all-python/322265576ccfaeb1ee22332d05ae04b87be4b538/A/release/nirs4all-0.10.3-py3-none-any.whl",
+    "offline_dag_ml_wheel": "/home/delete/nirs4all/_artifacts/dag-ml/bad5aff0bfbc14c622f5ade7f393f29399df6e07/repro-a/dag_ml-0.3.23-cp311-abi3-manylinux_2_34_x86_64.whl",
+    "dependency_resolution": "Exact unpublished nirs4all and dag-ml wheels were supplied locally; remaining dependencies were resolved by the embedded pip runtime. The complete resulting closure is content-addressed above."
+  },
+  "publication": {
+    "pushed": false,
+    "published": false
+  }
+}
