@@ -26,6 +26,8 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
       native_job_cancellation_routes: true,
       durable_execution_job_record_reads: true,
       system_capabilities_route: true,
+      workspace_transition_status_route: true,
+      legacy_workspace_conversion_route: true,
       ...overrides,
     },
   }), { status: 200 });
@@ -187,6 +189,49 @@ describe("renderer transport preselection", () => {
       reason: "native_capability_mismatch",
       status: 503,
     });
+  });
+
+  it("selects Rust-owned transition detection and bounded Tools conversion separately", async () => {
+    const request = vi.fn().mockResolvedValue(capabilityResponse());
+    const withoutPythonHost = () => ({
+      status: "running" as const,
+      url: "http://127.0.0.1:43123",
+      pythonPluginHostConfigured: false,
+    });
+
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/workspace/transition-status" },
+      withoutPythonHost,
+      request,
+    )).resolves.toMatchObject({
+      surface: "workspace-transition-status",
+      target: "native-sidecar",
+    });
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "POST", path: "/workspace/legacy-convert" },
+      withoutPythonHost,
+      request,
+    )).resolves.toMatchObject({
+      surface: "legacy-workspace-conversion",
+      target: "reject",
+      reason: "native_python_host_unavailable",
+      status: 503,
+    });
+    expect(request).toHaveBeenCalledOnce();
+
+    const configuredRequest = vi.fn().mockResolvedValue(
+      capabilityResponse({ python_plugin_preflight: true }),
+    );
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "POST", path: "/workspace/legacy-convert" },
+      running,
+      configuredRequest,
+    )).resolves.toMatchObject({
+      surface: "legacy-workspace-conversion",
+      target: "native-sidecar",
+      reason: "native_capability_preflight_passed",
+    });
+    expect(configuredRequest).toHaveBeenCalledOnce();
   });
 
   it("rejects a native candidate before target request when sidecar or capability is unavailable", async () => {

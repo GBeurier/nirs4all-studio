@@ -29,6 +29,7 @@ pub mod conformal_store;
 pub mod execution_job_records;
 pub mod job_http;
 pub mod job_lifecycle;
+pub mod legacy_conversion;
 mod results_summary;
 pub mod run_detail;
 pub mod run_detail_cpython;
@@ -49,6 +50,12 @@ use execution_job_records::{
     read_execution_job_record, DurableExecutionJobRecordRoute, ExecutionJobRecordReadError,
 };
 use job_http::{is_native_job_http_path, route_native_job_request, NativeJobRuntime};
+use legacy_conversion::{
+    display_command, inspect_workspace_transition,
+    parse_request as parse_legacy_conversion_request, LegacyConversionFailure,
+    LegacyConversionProcessOutput, LegacyConversionRequest, LegacyConversionRuntime,
+    LEGACY_CONVERSION_ROUTE, LEGACY_TRANSITION_STATUS_ROUTE,
+};
 use results_summary::read_results_summary;
 use run_detail::compose_store_run_detail;
 use run_detail_cpython::{materialize_run_detail_owner, RunDetailOwnerBridgeFailure};
@@ -384,6 +391,7 @@ pub struct SidecarState {
     update_settings: UpdateSettingsStore,
     native_jobs: Arc<NativeJobRuntime>,
     archive_v2_prediction: ArchiveV2PredictionRuntime,
+    legacy_conversion: LegacyConversionRuntime,
 }
 
 impl Default for SidecarState {
@@ -403,6 +411,7 @@ impl Default for SidecarState {
             update_settings: UpdateSettingsStore::from_environment(),
             native_jobs: Arc::new(NativeJobRuntime::default()),
             archive_v2_prediction: ArchiveV2PredictionRuntime::default(),
+            legacy_conversion: LegacyConversionRuntime::default(),
         }
     }
 }
@@ -503,7 +512,7 @@ impl SidecarState {
             Arc::new(NativeJobRuntime::default())
         };
         Self {
-            python_plugin_host,
+            python_plugin_host: python_plugin_host.clone(),
             python_plugin_host_bundled,
             runtime_mode,
             runtime_kind,
@@ -513,14 +522,17 @@ impl SidecarState {
             native_jobs,
             app_settings,
             update_settings: UpdateSettingsStore::from_environment(),
+            legacy_conversion: LegacyConversionRuntime::from_python_plugin_host(python_plugin_host),
             ..Self::default()
         }
     }
 
     #[must_use]
     pub fn with_python_plugin_host(path: impl Into<PathBuf>) -> Self {
+        let path = path.into();
         Self {
-            python_plugin_host: Some(path.into()),
+            python_plugin_host: Some(path.clone()),
+            legacy_conversion: LegacyConversionRuntime::from_python_plugin_host(Some(path)),
             ..Self::default()
         }
     }
@@ -533,8 +545,26 @@ impl SidecarState {
         python_plugin_host: impl Into<PathBuf>,
         app_settings_dir: impl Into<PathBuf>,
     ) -> Self {
+        let python_plugin_host = python_plugin_host.into();
         Self {
-            python_plugin_host: Some(python_plugin_host.into()),
+            python_plugin_host: Some(python_plugin_host.clone()),
+            legacy_conversion: LegacyConversionRuntime::from_python_plugin_host(Some(
+                python_plugin_host,
+            )),
+            app_settings: AppSettingsStore::new(app_settings_dir),
+            ..Self::default()
+        }
+    }
+
+    /// Configure a converter seam and settings catalogue for native route
+    /// integration tests and controlled non-product launches.
+    #[must_use]
+    pub fn with_legacy_converter_and_app_settings_dir(
+        converter: Arc<dyn legacy_conversion::LegacyConverter>,
+        app_settings_dir: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            legacy_conversion: LegacyConversionRuntime::with_converter(converter),
             app_settings: AppSettingsStore::new(app_settings_dir),
             ..Self::default()
         }
@@ -614,13 +644,14 @@ impl SidecarState {
         let python_plugin_configured = self.python_plugin_host.is_some();
         let scientific_execution = self.native_jobs.execution_selected();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_transition_status_route\":true,\"legacy_workspace_conversion_route\":{},\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
                 "unconfigured"
             },
             self.archive_v2_prediction.is_selected(),
+            self.legacy_conversion.is_available(),
         )
     }
 
@@ -760,6 +791,8 @@ pub fn route_request_with_body(
         ("POST", "/api/app/config-path") => set_app_config_path_response(state, body),
         ("DELETE", "/api/app/config-path") => reset_app_config_path_response(state),
         ("GET", "/api/workspaces") => app_linked_workspaces_response(state),
+        ("GET", LEGACY_TRANSITION_STATUS_ROUTE) => workspace_transition_status_response(state),
+        ("POST", LEGACY_CONVERSION_ROUTE) => legacy_workspace_conversion_response(state, body),
         ("GET", "/sidecar/v1/health") => HttpResponse::json(200, state.health_json()),
         ("GET", "/sidecar/v1/readiness") => HttpResponse::json(200, state.readiness_json()),
         ("GET", "/sidecar/v1/capabilities") => HttpResponse::json(200, state.capabilities_json()),
@@ -798,17 +831,21 @@ pub fn route_request_with_body(
             | "/api/updates/version"
             | "/api/updates/runtime/status"
             | "/api/workspaces"
+            | LEGACY_TRANSITION_STATUS_ROUTE
             | "/sidecar/v1/ws",
         ) => method_not_allowed(method, path, "GET"),
         (_, "/api/updates/settings" | "/api/app/settings") => {
             method_not_allowed(method, path, "GET, PUT")
         }
-        (_, "/api/config/skip-setup" | "/api/config/complete-setup") => {
-            method_not_allowed(method, path, "POST")
-        }
+        (
+            _,
+            "/api/config/skip-setup"
+            | "/api/config/complete-setup"
+            | LEGACY_CONVERSION_ROUTE
+            | "/sidecar/v1/jobs",
+        ) => method_not_allowed(method, path, "POST"),
         (_, "/api/app/favorites") => method_not_allowed(method, path, "GET, POST"),
         (_, "/api/app/config-path") => method_not_allowed(method, path, "GET, POST, DELETE"),
-        (_, "/sidecar/v1/jobs") => method_not_allowed(method, path, "POST"),
         _ if workspace_run_detail_preselection_path(path) => {
             route_workspace_run_detail_preselection(state, method, path)
         }
@@ -1202,6 +1239,256 @@ fn app_linked_workspaces_response(state: &SidecarState) -> HttpResponse {
         Ok(workspaces) => HttpResponse::json(200, workspaces.to_string()),
         Err(error) => app_settings_storage_error("get linked workspaces", &error),
     }
+}
+
+fn active_workspace_identity(
+    app_settings: &AppSettingsStore,
+) -> Result<(String, PathBuf), HttpResponse> {
+    let active = app_settings
+        .active_linked_workspace_response()
+        .map_err(|error| app_settings_storage_error("resolve active linked workspace", &error))?
+        .ok_or_else(|| {
+            HttpResponse::json(409, json!({"detail": "No workspace selected"}).to_string())
+        })?;
+    let id = active
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| {
+            HttpResponse::json(
+                409,
+                json!({"detail": "Active linked workspace identity is invalid"}).to_string(),
+            )
+        })?;
+    let path = active
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+        .ok_or_else(|| {
+            HttpResponse::json(
+                409,
+                json!({"detail": "Active linked workspace path is invalid"}).to_string(),
+            )
+        })?;
+    Ok((id.to_owned(), PathBuf::from(path)))
+}
+
+fn workspace_transition_status_response(state: &SidecarState) -> HttpResponse {
+    let (_, workspace_path) = match active_workspace_identity(&state.app_settings) {
+        Ok(active) => active,
+        Err(response) => return response,
+    };
+    let status = match inspect_workspace_transition(&workspace_path) {
+        Ok(status) => status,
+        Err(error) => {
+            return HttpResponse::json(
+                409,
+                json!({"detail": format!("Failed to get transition status: {error}")}).to_string(),
+            );
+        }
+    };
+    let default_output_path = status
+        .default_output_path
+        .as_ref()
+        .map(|path| path.to_string_lossy().into_owned());
+    let conversion_command = default_output_path.as_ref().map(|output_path| {
+        let request = LegacyConversionRequest {
+            workspace_path: status.path.clone(),
+            output_path: PathBuf::from(output_path),
+            verify: true,
+            dry_run: false,
+            strict: false,
+            link_converted_workspace: true,
+        };
+        display_command(&state.legacy_conversion.command(&request))
+    });
+    HttpResponse::json(
+        200,
+        json!({
+            "path": status.path.to_string_lossy(),
+            "format": status.format,
+            "conversion_required": status.conversion_required,
+            "message": status.message,
+            "conversion_command": conversion_command,
+            "default_output_path": default_output_path,
+            "converter_available": state.legacy_conversion.is_available(),
+        })
+        .to_string(),
+    )
+}
+
+fn legacy_workspace_conversion_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    legacy_workspace_conversion_with(&state.app_settings, &state.legacy_conversion, body)
+}
+
+fn legacy_workspace_conversion_with(
+    app_settings: &AppSettingsStore,
+    legacy_conversion: &LegacyConversionRuntime,
+    body: &[u8],
+) -> HttpResponse {
+    let (_, workspace_path) = match active_workspace_identity(app_settings) {
+        Ok(active) => active,
+        Err(response) => return response,
+    };
+    let status = match inspect_workspace_transition(&workspace_path) {
+        Ok(status) => status,
+        Err(error) => {
+            return HttpResponse::json(
+                409,
+                json!({"detail": format!("Failed to inspect active workspace: {error}")})
+                    .to_string(),
+            );
+        }
+    };
+    if !status.conversion_required {
+        return HttpResponse::json(
+            409,
+            json!({"detail": "Active workspace does not require legacy conversion"}).to_string(),
+        );
+    }
+    if !legacy_conversion.is_available() {
+        return HttpResponse::json(
+            503,
+            json!({"detail": "The bounded nirs4all-tools converter is unavailable"}).to_string(),
+        );
+    }
+    let default_output = status
+        .default_output_path
+        .as_deref()
+        .expect("a required conversion always has a default output");
+    let request = match parse_legacy_conversion_request(body, &workspace_path, default_output) {
+        Ok(request) => request,
+        Err(detail) => return HttpResponse::json(422, json!({"detail": detail}).to_string()),
+    };
+    let command = legacy_conversion.command(&request);
+    let result = match legacy_conversion.run(&request) {
+        Ok(result) => result,
+        Err(error) => return legacy_conversion_bridge_error_response(error),
+    };
+    legacy_conversion_process_response(app_settings, &request, &command, &result)
+}
+
+fn legacy_conversion_bridge_error_response(error: LegacyConversionFailure) -> HttpResponse {
+    let status = match error {
+        LegacyConversionFailure::Busy => 409,
+        LegacyConversionFailure::TimedOut => 504,
+        LegacyConversionFailure::SpawnFailed => 503,
+        LegacyConversionFailure::ProcessFailed
+        | LegacyConversionFailure::OutputReadFailed
+        | LegacyConversionFailure::StdoutTooLarge
+        | LegacyConversionFailure::StderrTooLarge
+        | LegacyConversionFailure::InvalidUtf8 => 502,
+    };
+    HttpResponse::json(
+        status,
+        json!({
+            "detail": "The bounded nirs4all-tools converter process failed",
+            "reason": error.reason(),
+        })
+        .to_string(),
+    )
+}
+
+fn legacy_conversion_process_response(
+    app_settings: &AppSettingsStore,
+    request: &LegacyConversionRequest,
+    command: &[String],
+    result: &LegacyConversionProcessOutput,
+) -> HttpResponse {
+    let code = result.return_code;
+    let success = matches!(code, 0 | 10);
+    let best_effort = code == 10;
+    let mut activation_skipped = false;
+    let mut linked_workspace_id: Option<String> = None;
+    let mut active_workspace_path: Option<String> = None;
+    let mut link_error: Option<String> = None;
+
+    if success && !request.dry_run && request.link_converted_workspace {
+        if best_effort {
+            activation_skipped = true;
+            link_error = Some(
+                "Conversion completed in best-effort mode; the converted workspace was not activated automatically."
+                    .into(),
+            );
+        } else if !request.verify {
+            activation_skipped = true;
+            link_error = Some(
+                "Conversion was not verified; the converted workspace was not activated automatically."
+                    .into(),
+            );
+        } else {
+            let timestamp = websocket_transport::rfc3339_now();
+            match app_settings.link_and_activate_workspace(&request.output_path, &timestamp) {
+                Ok(workspace) => {
+                    linked_workspace_id = workspace
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned);
+                    active_workspace_path = workspace
+                        .get("path")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned);
+                }
+                Err(error) => link_error = Some(error),
+            }
+        }
+    }
+
+    let payload = json!({
+        "job_id": null,
+        "command": command,
+        "output_path": request.output_path.to_string_lossy(),
+        "dry_run": request.dry_run,
+        "return_code": code,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "success": success,
+        "best_effort": best_effort,
+        "activation_skipped": activation_skipped,
+        "link_converted_workspace": request.link_converted_workspace,
+        "linked_workspace_id": linked_workspace_id,
+        "active_workspace_path": active_workspace_path,
+        "link_error": link_error,
+    });
+    match code {
+        0 | 10 => HttpResponse::json(200, payload.to_string()),
+        20 => legacy_conversion_refusal_response(
+            422,
+            "Legacy workspace conversion refused unsupported input",
+            payload,
+        ),
+        30 => legacy_conversion_refusal_response(
+            422,
+            "Legacy workspace conversion verification failed",
+            payload,
+        ),
+        40 => legacy_conversion_refusal_response(
+            409,
+            "Legacy workspace conversion was refused by safety policy",
+            payload,
+        ),
+        70 => legacy_conversion_refusal_response(
+            500,
+            "Legacy workspace converter reported an internal error",
+            payload,
+        ),
+        _ => legacy_conversion_refusal_response(
+            502,
+            "Legacy workspace converter returned an unknown exit code",
+            payload,
+        ),
+    }
+}
+
+fn legacy_conversion_refusal_response(
+    status: u16,
+    detail: &str,
+    mut payload: Value,
+) -> HttpResponse {
+    if let Some(payload) = payload.as_object_mut() {
+        payload.insert("detail".into(), Value::String(detail.into()));
+    }
+    HttpResponse::json(status, payload.to_string())
 }
 
 fn system_status_response(state: &SidecarState) -> HttpResponse {
@@ -2876,7 +3163,9 @@ fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpRe
         && (is_native_job_http_path(&request.path)
             || match_durable_execution_job_record_route(&request.path).is_some()
             || request.path == SCIENTIFIC_SUBMISSION_ROUTE
-            || request.path == ARCHIVE_V2_PREDICTION_ROUTE)
+            || request.path == ARCHIVE_V2_PREDICTION_ROUTE
+            || request.path == LEGACY_TRANSITION_STATUS_ROUTE
+            || request.path == LEGACY_CONVERSION_ROUTE)
     {
         return error_response(
             404,
@@ -3307,6 +3596,27 @@ fn handle_connection_with_limits_and_websocket(
                     }
                 }
             }
+            if request.method == "POST"
+                && request.path == LEGACY_CONVERSION_ROUTE
+                && request.query.is_none()
+            {
+                // A migration may legitimately take minutes. Snapshot the two
+                // cloneable, internally synchronized owners and release the
+                // global route-table mutex before starting the bounded process
+                // so health, progress, and refusal routes remain responsive.
+                let (app_settings, legacy_conversion) = {
+                    let state = state.lock().expect("sidecar state mutex poisoned");
+                    (state.app_settings.clone(), state.legacy_conversion.clone())
+                };
+                return write_response(
+                    &mut stream,
+                    &legacy_workspace_conversion_with(
+                        &app_settings,
+                        &legacy_conversion,
+                        &request.body,
+                    ),
+                );
+            }
             let mut state = state.lock().expect("sidecar state mutex poisoned");
             route_http_request(&mut state, &request)
         }
@@ -3544,13 +3854,16 @@ fn write_response(stream: &mut TcpStream, response: &HttpResponse) -> std::io::R
         200 => "OK",
         202 => "Accepted",
         400 => "Bad Request",
+        409 => "Conflict",
         408 => "Request Timeout",
         422 => "Unprocessable Content",
         429 => "Too Many Requests",
         404 => "Not Found",
         405 => "Method Not Allowed",
         426 => "Upgrade Required",
+        502 => "Bad Gateway",
         503 => "Service Unavailable",
+        504 => "Gateway Timeout",
         _ => "Internal Server Error",
     };
     write!(
@@ -3754,6 +4067,108 @@ mod tests {
         }
     }
 
+    #[derive(Debug)]
+    struct TestLegacyConverter {
+        return_code: i32,
+    }
+
+    impl legacy_conversion::LegacyConverter for TestLegacyConverter {
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        fn command(&self, request: &LegacyConversionRequest) -> Vec<String> {
+            let mut command = vec![
+                "/attested/python".into(),
+                "-I".into(),
+                "-B".into(),
+                "-m".into(),
+                "nirs4all_tools".into(),
+                "legacy".into(),
+                "migrate".into(),
+                request.workspace_path.to_string_lossy().into_owned(),
+                "--output".into(),
+                request.output_path.to_string_lossy().into_owned(),
+                "--target".into(),
+                "nirs4all-workspace-v2".into(),
+            ];
+            if request.verify && !request.dry_run {
+                command.push("--verify".into());
+            }
+            if request.dry_run {
+                command.push("--dry-run".into());
+            }
+            if request.strict {
+                command.push("--strict".into());
+            }
+            command
+        }
+
+        fn run(
+            &self,
+            request: &LegacyConversionRequest,
+        ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
+            if !request.dry_run && matches!(self.return_code, 0 | 10) {
+                fs::create_dir_all(&request.output_path).unwrap();
+                fs::write(request.output_path.join("store.sqlite"), b"verified target").unwrap();
+            }
+            Ok(LegacyConversionProcessOutput {
+                return_code: self.return_code,
+                stdout: if self.return_code == 10 {
+                    "opaque legacy items preserved".into()
+                } else {
+                    "conversion complete".into()
+                },
+                stderr: String::new(),
+            })
+        }
+    }
+
+    #[derive(Debug)]
+    struct BlockingLegacyConverter {
+        gate: Arc<(Mutex<(bool, bool)>, std::sync::Condvar)>,
+    }
+
+    impl legacy_conversion::LegacyConverter for BlockingLegacyConverter {
+        fn is_available(&self) -> bool {
+            true
+        }
+
+        fn command(&self, request: &LegacyConversionRequest) -> Vec<String> {
+            vec![
+                "/attested/python".into(),
+                "-m".into(),
+                "nirs4all_tools".into(),
+                request.workspace_path.to_string_lossy().into_owned(),
+            ]
+        }
+
+        fn run(
+            &self,
+            request: &LegacyConversionRequest,
+        ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
+            let (lock, wake) = &*self.gate;
+            let mut state = lock
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            state.0 = true;
+            wake.notify_all();
+            while !state.1 {
+                state = wake
+                    .wait(state)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+            drop(state);
+            fs::create_dir_all(&request.output_path).unwrap();
+            fs::write(request.output_path.join("store.sqlite"), b"verified target").unwrap();
+            Ok(LegacyConversionProcessOutput {
+                return_code: 0,
+                stdout: "conversion complete".into(),
+                stderr: String::new(),
+            })
+        }
+    }
+
     fn test_directory(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -3775,6 +4190,37 @@ mod tests {
             "last_scanned": null,
             "discovered": {"runs_count": runs_count},
         })
+    }
+
+    fn legacy_conversion_state(root: &Path, return_code: i32) -> (SidecarState, PathBuf) {
+        let config = root.join("config");
+        let source = root.join("legacy");
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("store.duckdb"), b"immutable source").unwrap();
+        fs::write(
+            config.join("app_settings.json"),
+            serde_json::to_vec_pretty(&json!({
+                "version": "3.0",
+                "linked_workspaces": [linked_workspace_record(
+                    "workspace-legacy",
+                    &source.canonicalize().unwrap(),
+                    true,
+                    1,
+                )],
+                "favorite_pipelines": [],
+                "ui_preferences": {},
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        (
+            SidecarState::with_legacy_converter_and_app_settings_dir(
+                Arc::new(TestLegacyConverter { return_code }),
+                config,
+            ),
+            source,
+        )
     }
 
     fn assert_route_code(state: &mut SidecarState, path: &str, status: u16, code: &str) {
@@ -3868,6 +4314,7 @@ mod tests {
             "app_settings_routes",
             "app_config_path_routes",
             "linked_workspace_catalog_route",
+            "workspace_transition_status_route",
             "workspace_store_v5_run_summary_route",
             "workspace_store_v5_run_detail_route",
             "run_detail_owner_preflight_per_request",
@@ -3906,6 +4353,10 @@ mod tests {
         assert_eq!(
             capabilities["features"]["python_plugin_preflight"],
             configured
+        );
+        assert_eq!(
+            capabilities["features"]["legacy_workspace_conversion_route"],
+            state.legacy_conversion.is_available()
         );
     }
 
@@ -4282,6 +4733,261 @@ mod tests {
             })
         );
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn transition_and_verified_conversion_routes_are_rust_owned_and_rollback_safe() {
+        let root = test_directory("legacy-conversion-code-zero");
+        fs::create_dir_all(&root).unwrap();
+        let (mut state, source) = legacy_conversion_state(&root, 0);
+
+        let transition = route_request(&mut state, "GET", LEGACY_TRANSITION_STATUS_ROUTE);
+        assert_eq!(transition.status, 200, "{}", transition.body);
+        let transition: Value = serde_json::from_str(&transition.body).unwrap();
+        assert_eq!(transition["format"], "duckdb-workspace");
+        assert_eq!(transition["conversion_required"], true);
+        assert_eq!(transition["converter_available"], true);
+        assert!(transition["conversion_command"]
+            .as_str()
+            .unwrap()
+            .contains("-m nirs4all_tools legacy migrate"));
+
+        let output = root.join("converted");
+        let response = route_request_with_body(
+            &mut state,
+            "POST",
+            LEGACY_CONVERSION_ROUTE,
+            serde_json::to_string(&json!({
+                "output_path": output,
+                "verify": true,
+                "link_converted_workspace": true,
+            }))
+            .unwrap()
+            .as_bytes(),
+        );
+        assert_eq!(response.status, 200, "{}", response.body);
+        let response: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(response["return_code"], 0);
+        assert_eq!(response["success"], true);
+        assert_eq!(response["best_effort"], false);
+        assert_eq!(
+            response["active_workspace_path"],
+            output.canonicalize().unwrap().to_string_lossy().as_ref()
+        );
+        assert_eq!(
+            fs::read(source.join("store.duckdb")).unwrap(),
+            b"immutable source"
+        );
+
+        let restored = route_request(
+            &mut state,
+            "POST",
+            "/api/workspaces/workspace-legacy/activate",
+        );
+        assert_eq!(restored.status, 200, "{}", restored.body);
+        assert_eq!(
+            state
+                .app_settings
+                .active_linked_workspace_response()
+                .unwrap()
+                .unwrap()["id"],
+            "workspace-legacy"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn conversion_exit_ten_preserves_without_activation_and_twenty_is_refused() {
+        for (code, expected_status) in [(10, 200), (20, 422)] {
+            let root = test_directory(&format!("legacy-conversion-code-{code}"));
+            fs::create_dir_all(&root).unwrap();
+            let (mut state, source) = legacy_conversion_state(&root, code);
+            let output = root.join("converted");
+            let response = route_request_with_body(
+                &mut state,
+                "POST",
+                LEGACY_CONVERSION_ROUTE,
+                serde_json::to_string(&json!({
+                    "output_path": output,
+                    "verify": true,
+                    "link_converted_workspace": true,
+                }))
+                .unwrap()
+                .as_bytes(),
+            );
+            assert_eq!(response.status, expected_status, "{}", response.body);
+            let response: Value = serde_json::from_str(&response.body).unwrap();
+            assert_eq!(response["return_code"], code);
+            assert_eq!(response["success"], code == 10);
+            assert_eq!(response["best_effort"], code == 10);
+            assert_eq!(response["linked_workspace_id"], Value::Null);
+            assert_eq!(response["active_workspace_path"], Value::Null);
+            if code == 10 {
+                assert_eq!(response["activation_skipped"], true);
+                assert!(response["link_error"]
+                    .as_str()
+                    .unwrap()
+                    .contains("best-effort"));
+            } else {
+                assert!(response["detail"]
+                    .as_str()
+                    .unwrap()
+                    .contains("unsupported input"));
+            }
+            assert_eq!(
+                state
+                    .app_settings
+                    .active_linked_workspace_response()
+                    .unwrap()
+                    .unwrap()["id"],
+                "workspace-legacy"
+            );
+            assert_eq!(
+                fs::read(source.join("store.duckdb")).unwrap(),
+                b"immutable source"
+            );
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn live_conversion_releases_the_route_mutex_while_the_converter_runs() {
+        let root = test_directory("legacy-conversion-live-concurrency");
+        fs::create_dir_all(&root).unwrap();
+        let (mut state, _) = legacy_conversion_state(&root, 0);
+        let gate = Arc::new((Mutex::new((false, false)), std::sync::Condvar::new()));
+        state.legacy_conversion =
+            LegacyConversionRuntime::with_converter(Arc::new(BlockingLegacyConverter {
+                gate: Arc::clone(&gate),
+            }));
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let state = Arc::new(Mutex::new(state));
+        let server_state = Arc::clone(&state);
+        let server = thread::spawn(move || {
+            let mut handlers = Vec::new();
+            for _ in 0..2 {
+                let (stream, _) = listener.accept().unwrap();
+                let state = Arc::clone(&server_state);
+                handlers.push(thread::spawn(move || {
+                    handle_connection_with_limits(stream, &state, ServerLimits::default()).unwrap();
+                }));
+            }
+            for handler in handlers {
+                handler.join().unwrap();
+            }
+        });
+
+        let output = root.join("converted");
+        let body = serde_json::to_string(&json!({
+            "output_path": output,
+            "verify": true,
+            "link_converted_workspace": true,
+        }))
+        .unwrap();
+        let conversion = thread::spawn(move || {
+            let mut client = TcpStream::connect(address).unwrap();
+            client
+                .write_all(
+                    format!(
+                        "POST {LEGACY_CONVERSION_ROUTE} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+            let mut response = String::new();
+            client.read_to_string(&mut response).unwrap();
+            response
+        });
+
+        let (lock, wake) = &*gate;
+        let mut gate_state = lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while !gate_state.0 {
+            gate_state = wake
+                .wait(gate_state)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        drop(gate_state);
+
+        let mut health = TcpStream::connect(address).unwrap();
+        health
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        health
+            .write_all(b"GET /sidecar/v1/health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .unwrap();
+        let mut health_response = String::new();
+        let health_result = health.read_to_string(&mut health_response);
+
+        let mut gate_state = lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gate_state.1 = true;
+        wake.notify_all();
+        drop(gate_state);
+
+        health_result.unwrap();
+        assert!(health_response.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert!(conversion
+            .join()
+            .unwrap()
+            .starts_with("HTTP/1.1 200 OK\r\n"));
+        server.join().unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn conversion_dry_run_never_writes_or_activates_and_routes_reject_query_drift() {
+        let root = test_directory("legacy-conversion-dry-run");
+        fs::create_dir_all(&root).unwrap();
+        let (mut state, source) = legacy_conversion_state(&root, 0);
+        let output = root.join("converted");
+        let response = route_request_with_body(
+            &mut state,
+            "POST",
+            LEGACY_CONVERSION_ROUTE,
+            serde_json::to_string(&json!({
+                "output_path": output,
+                "dry_run": true,
+                "verify": true,
+                "link_converted_workspace": true,
+            }))
+            .unwrap()
+            .as_bytes(),
+        );
+        assert_eq!(response.status, 200, "{}", response.body);
+        let response: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(response["dry_run"], true);
+        assert_eq!(response["link_converted_workspace"], false);
+        let command = response["command"].as_array().unwrap();
+        assert!(command.contains(&json!("--dry-run")));
+        assert!(!command.contains(&json!("--verify")));
+        assert!(!output.exists());
+        assert_eq!(
+            fs::read(source.join("store.duckdb")).unwrap(),
+            b"immutable source"
+        );
+
+        for raw in [
+            b"GET /api/workspace/transition-status?deep=true HTTP/1.1\r\nHost: localhost\r\n\r\n".as_slice(),
+            b"POST /api/workspace/legacy-convert?retry=true HTTP/1.1\r\nHost: localhost\r\nContent-Length: 2\r\n\r\n{}".as_slice(),
+        ] {
+            let request = parse_http_request(raw).unwrap();
+            assert_eq!(route_http_request(&mut state, &request).status, 404);
+        }
+        assert_eq!(
+            route_request(&mut state, "POST", LEGACY_TRANSITION_STATUS_ROUTE).status,
+            405
+        );
+        assert_eq!(
+            route_request(&mut state, "GET", LEGACY_CONVERSION_ROUTE).status,
+            405
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

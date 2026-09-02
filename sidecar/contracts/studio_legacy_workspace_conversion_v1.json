@@ -1,0 +1,95 @@
+{
+  "schema_id": "nirs4all.studio-legacy-workspace-conversion.v1",
+  "schema_version": 1,
+  "owner": "studio-sidecar-rust",
+  "routes": {
+    "transition_status": "GET /api/workspace/transition-status",
+    "convert": "POST /api/workspace/legacy-convert",
+    "query_parameters": "forbidden"
+  },
+  "workspace_selection": "active_persisted_linked_workspace",
+  "detection": {
+    "owner": "rust",
+    "deep_legacy_parsing": "forbidden",
+    "bounded_run_tree_entries": 4096,
+    "formats": [
+      "duckdb-workspace",
+      "sqlite-workspace-legacy-arrays",
+      "sqlite-workspace-unreadable",
+      "fs-runs-legacy",
+      "sqlite-workspace-v2",
+      "new-or-empty"
+    ]
+  },
+  "converter": {
+    "owner": "nirs4all-tools",
+    "transport": "bounded_stdio_process",
+    "python_http": "forbidden",
+    "module": "nirs4all_tools",
+    "target": "nirs4all-workspace-v2",
+    "maximum_concurrent_processes": 1,
+    "timeout_seconds": 1800,
+    "stdout_limit_bytes": 262144,
+    "stderr_limit_bytes": 262144,
+    "source_mutation": "forbidden",
+    "output_policy": "fresh_disjoint_directory_owned_by_tools"
+  },
+  "request": {
+    "allowed_fields": [
+      "output_path",
+      "verify",
+      "dry_run",
+      "strict",
+      "link_converted_workspace"
+    ],
+    "unknown_fields": "reject",
+    "output_path": "absolute_bounded_path_or_default_sibling",
+    "dry_run_activation": "forbidden"
+  },
+  "exit_codes": {
+    "0": {
+      "meaning": "verified_conversion_without_warnings_or_successful_dry_run",
+      "http_status": 200,
+      "automatic_activation": "only_after_requested_verify"
+    },
+    "10": {
+      "meaning": "best_effort_opaque_preservation",
+      "http_status": 200,
+      "automatic_activation": "forbidden"
+    },
+    "20": {
+      "meaning": "unsupported_input",
+      "http_status": 422,
+      "automatic_activation": "forbidden"
+    },
+    "30": {
+      "meaning": "verification_failed",
+      "http_status": 422,
+      "automatic_activation": "forbidden"
+    },
+    "40": {
+      "meaning": "safety_policy_refusal",
+      "http_status": 409,
+      "automatic_activation": "forbidden"
+    },
+    "70": {
+      "meaning": "converter_internal_error",
+      "http_status": 500,
+      "automatic_activation": "forbidden"
+    }
+  },
+  "rollback": {
+    "conversion_direction": "one_way",
+    "reverse_conversion": "forbidden",
+    "legacy_source_retained": true,
+    "catalogue_activation": "single_atomic_settings_replacement",
+    "previous_workspace_unlinked": false,
+    "restore_action": "reactivate_previous_linked_workspace"
+  },
+  "renderer": {
+    "transition_capability": "workspace_transition_status_route",
+    "conversion_capability": "legacy_workspace_conversion_route",
+    "conversion_requires_configured_python_library_host": true,
+    "fallback_after_native_selection": "none"
+  }
+}

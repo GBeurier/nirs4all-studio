@@ -177,6 +177,7 @@ function createElectronApiMock(
 
 function mockRequiresPythonHost(path: string): boolean {
   return [
+    "/workspace/legacy-convert",
     "/system/capabilities",
     "/system/info",
     "/system/build",
@@ -193,6 +194,8 @@ function mockNativeCandidate(path: string, method: string): boolean {
     "/app/favorites",
     "/app/config-path",
     "/workspaces",
+    "/workspace/transition-status",
+    "/workspace/legacy-convert",
     "/system/status",
     "/system/network",
     "/updates/settings",

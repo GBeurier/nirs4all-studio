@@ -364,6 +364,11 @@ Uvicorn, `main.py`, `api/`, or `websocket/` sources. The Rust sidecar selects
 that interpreter through fixed `NIRS4ALL_PYTHON_PLUGIN_*` identities and invokes
 it only through the bounded stdio protocol. It never owns a port, scheduler,
 store, or fallback route.
+The Rust transition-status route is always available. The conversion route is
+advertised only when that attested closure also contains the exact qualified
+`nirs4all-tools` distribution and its required format readers; the sidecar
+invokes it only via bounded stdio and keeps HTTP, activation, and rollback
+state in Rust.
 The image does embed the exact `nirs4all-methods` ABI 2.3 library and its
 `STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
 independent of the plugin host. CI supplies that library through a local

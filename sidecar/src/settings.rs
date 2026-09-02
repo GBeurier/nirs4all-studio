@@ -13,11 +13,13 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     process,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use atomicwrites::{replace_atomic, AllowOverwrite, AtomicFile};
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 
 const APP_SETTINGS_FILE: &str = "app_settings.json";
 const SETUP_STATUS_FILE: &str = "setup_status.json";
@@ -28,10 +30,11 @@ const PORTABLE_ROOT_ENV: &str = "NIRS4ALL_PORTABLE_ROOT";
 const PORTABLE_EXE_ENV: &str = "NIRS4ALL_PORTABLE_EXE";
 const CONFIG_REDIRECT_FILE: &str = "config_redirect.txt";
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AppSettingsStore {
     config_dir: PathBuf,
     default_config_dir: PathBuf,
+    write_lock: Arc<Mutex<()>>,
 }
 
 /// The only dataset-link fields used to associate a Store result with the
@@ -75,6 +78,7 @@ impl AppSettingsStore {
         Self {
             config_dir: config_dir.into(),
             default_config_dir: default_config_dir.into(),
+            write_lock: Arc::new(Mutex::new(())),
         }
     }
 
@@ -127,6 +131,10 @@ impl AppSettingsStore {
     /// Persist a selected first-launch profile without acquiring a Python
     /// runtime. Package installation remains an explicit plugin-host action.
     pub fn complete_setup(&self, profile: &str) -> Result<Value, String> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let profile = profile.trim();
         if profile.is_empty() {
             return Err("setup profile must not be empty".into());
@@ -141,6 +149,10 @@ impl AppSettingsStore {
     }
 
     pub fn update_ui_preferences(&self, updates: &Value) -> Result<(), String> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let preferences = updates
             .get("ui_preferences")
             .ok_or_else(|| "request body must contain ui_preferences".to_string())?;
@@ -170,6 +182,10 @@ impl AppSettingsStore {
     }
 
     pub fn add_favourite(&self, pipeline_id: &str) -> Result<bool, String> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut settings = self.load()?;
         let root = settings
             .as_object_mut()
@@ -192,6 +208,10 @@ impl AppSettingsStore {
     }
 
     pub fn remove_favourite(&self, pipeline_id: &str) -> Result<bool, String> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut settings = self.load()?;
         let root = settings
             .as_object_mut()
@@ -216,6 +236,10 @@ impl AppSettingsStore {
     /// are repaired in place so callers always receive stable unique keys,
     /// matching the legacy manager's read-time migration.
     pub fn linked_workspaces_response(&self) -> Result<Value, String> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut settings = self.load()?;
         let (workspaces, active_workspace_id, mutated) = {
             let root = settings
@@ -394,6 +418,10 @@ impl AppSettingsStore {
     /// catalogue state; scanning and scientific-store access stay outside this
     /// settings store until their native contracts are available.
     pub fn activate_linked_workspace(&self, workspace_id: &str) -> Result<Option<Value>, String> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut settings = self.load()?;
         let root = settings
             .as_object_mut()
@@ -428,10 +456,107 @@ impl AppSettingsStore {
         Ok(activated)
     }
 
+    /// Link and activate one verified converted workspace in a single atomic
+    /// settings replacement.  The previous workspace remains in the catalogue
+    /// as the non-destructive rollback target, and a failed save leaves the
+    /// prior active selection untouched on disk.
+    pub fn link_and_activate_workspace(
+        &self,
+        workspace_path: &Path,
+        linked_at: &str,
+    ) -> Result<Value, String> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let metadata = fs::symlink_metadata(workspace_path).map_err(|error| {
+            format!(
+                "converted workspace is unavailable at {}: {error}",
+                workspace_path.display()
+            )
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err("converted workspace must be a real directory, not a link".into());
+        }
+        let workspace_path = fs::canonicalize(workspace_path).map_err(|error| {
+            format!(
+                "could not resolve converted workspace {}: {error}",
+                workspace_path.display()
+            )
+        })?;
+        let store = workspace_path.join("store.sqlite");
+        let store_metadata = fs::symlink_metadata(&store).map_err(|error| {
+            format!("verified converted workspace has no store.sqlite: {error}")
+        })?;
+        if store_metadata.file_type().is_symlink() || !store_metadata.is_file() {
+            return Err("verified converted workspace store.sqlite must be a real file".into());
+        }
+        let canonical_path = display_path(&workspace_path);
+        let mut settings = self.load()?;
+        let root = settings
+            .as_object_mut()
+            .ok_or_else(|| "app settings root must be a JSON object".to_string())?;
+        let workspaces = root
+            .entry("linked_workspaces")
+            .or_insert_with(|| Value::Array(Vec::new()))
+            .as_array_mut()
+            .ok_or_else(|| "stored linked_workspaces must be a JSON array".to_string())?;
+
+        let existing_index = workspaces.iter().position(|workspace| {
+            workspace
+                .get("path")
+                .and_then(Value::as_str)
+                .is_some_and(|path| paths_refer_to_same_location(path, &workspace_path))
+        });
+        let target_index = existing_index.unwrap_or_else(|| {
+            let id = converted_workspace_id(&canonical_path, linked_at, workspaces);
+            let name = workspace_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("Converted Workspace");
+            workspaces.push(json!({
+                "id": id,
+                "path": canonical_path,
+                "name": name,
+                "is_active": false,
+                "linked_at": linked_at,
+                "last_scanned": linked_at,
+                "discovered": default_discovered(),
+            }));
+            workspaces.len() - 1
+        });
+
+        let mut activated = None;
+        for (index, workspace) in workspaces.iter_mut().enumerate() {
+            let workspace = workspace.as_object_mut().ok_or_else(|| {
+                "stored linked_workspaces entries must be JSON objects".to_string()
+            })?;
+            let is_active = index == target_index;
+            workspace.insert("is_active".into(), Value::Bool(is_active));
+            if is_active {
+                workspace.insert("path".into(), Value::String(canonical_path.clone()));
+                let id = workspace
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty())
+                    .ok_or_else(|| "converted workspace entry is missing an id".to_string())?;
+                activated = Some(linked_workspace_response(workspace, id));
+            }
+        }
+        let activated =
+            activated.ok_or_else(|| "converted workspace activation failed".to_string())?;
+        self.save(&settings)?;
+        Ok(activated)
+    }
+
     /// Remove one linked workspace from the local catalogue.  No workspace
     /// files are deleted.  When the active entry is removed, preserve the
     /// legacy behaviour by selecting the first remaining workspace.
     pub fn unlink_linked_workspace(&self, workspace_id: &str) -> Result<bool, String> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut settings = self.load()?;
         let root = settings
             .as_object_mut()
@@ -480,6 +605,10 @@ impl AppSettingsStore {
     }
 
     pub fn set_config_path(&mut self, path: &str) -> Result<PathBuf, ConfigPathError> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let config_dir = Path::new(path)
             .canonicalize()
             .map_err(|_| ConfigPathError::DoesNotExist(path.to_owned()))?;
@@ -504,6 +633,10 @@ impl AppSettingsStore {
     }
 
     pub fn reset_config_path(&mut self) -> Result<PathBuf, ConfigPathError> {
+        let _write_guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let redirect = self.default_config_dir.join(CONFIG_REDIRECT_FILE);
         if redirect.exists() {
             fs::remove_file(&redirect).map_err(|error| {
@@ -674,6 +807,33 @@ fn default_discovered() -> Value {
         "exports_count": 0,
         "templates_count": 0,
     })
+}
+
+fn paths_refer_to_same_location(stored_path: &str, candidate: &Path) -> bool {
+    fs::canonicalize(stored_path).is_ok_and(|stored| stored == candidate)
+}
+
+fn converted_workspace_id(path: &str, linked_at: &str, workspaces: &[Value]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(path.as_bytes());
+    hasher.update([0]);
+    hasher.update(linked_at.as_bytes());
+    let digest = format!("{:x}", hasher.finalize());
+    let existing = workspaces
+        .iter()
+        .filter_map(|workspace| workspace.get("id").and_then(Value::as_str))
+        .collect::<HashSet<_>>();
+    for suffix in 0_u32.. {
+        let candidate = if suffix == 0 {
+            format!("ws_{}", &digest[..16])
+        } else {
+            format!("ws_{}_{suffix}", &digest[..16])
+        };
+        if !existing.contains(candidate.as_str()) {
+            return candidate;
+        }
+    }
+    unreachable!("the finite workspace catalogue cannot exhaust u32 identifiers")
 }
 
 fn next_workspace_id(index: usize, seen_ids: &HashSet<String>) -> String {
@@ -1043,6 +1203,90 @@ mod tests {
         assert_eq!(listed["active_workspace_id"], "workspace-a");
         assert_eq!(listed["total"], 1);
         assert_eq!(listed["workspaces"][0]["is_active"], true);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn converted_workspace_activation_is_atomic_and_keeps_the_source_for_rollback() {
+        let directory = temporary_directory("converted-workspace-activation");
+        let source = directory.join("legacy");
+        let converted = directory.join("converted");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&converted).unwrap();
+        fs::write(source.join("store.duckdb"), b"immutable legacy source").unwrap();
+        fs::write(converted.join("store.sqlite"), b"verified target").unwrap();
+        fs::write(
+            directory.join("app_settings.json"),
+            serde_json::to_string(&json!({
+                "linked_workspaces": [{
+                    "id": "workspace-legacy",
+                    "path": source.canonicalize().unwrap(),
+                    "name": "Legacy",
+                    "is_active": true,
+                    "linked_at": "2026-08-31T12:00:00Z",
+                    "last_scanned": null,
+                    "discovered": {},
+                }],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let store = AppSettingsStore::new(&directory);
+
+        let activated = store
+            .link_and_activate_workspace(&converted, "2026-09-02T12:00:00Z")
+            .unwrap();
+        assert_eq!(
+            activated["path"],
+            converted.canonicalize().unwrap().to_string_lossy().as_ref()
+        );
+        assert_eq!(activated["is_active"], true);
+        let catalogue = store.linked_workspaces_response().unwrap();
+        assert_eq!(catalogue["total"], 2);
+        assert_eq!(catalogue["workspaces"][0]["id"], "workspace-legacy");
+        assert_eq!(catalogue["workspaces"][0]["is_active"], false);
+        let converted_id = activated["id"].as_str().unwrap();
+        assert_eq!(catalogue["active_workspace_id"], converted_id);
+
+        assert!(store
+            .activate_linked_workspace("workspace-legacy")
+            .unwrap()
+            .is_some());
+        assert_eq!(
+            store.linked_workspaces_response().unwrap()["active_workspace_id"],
+            "workspace-legacy"
+        );
+        assert_eq!(
+            fs::read(source.join("store.duckdb")).unwrap(),
+            b"immutable legacy source"
+        );
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn converted_workspace_activation_refuses_links_and_missing_verified_store() {
+        let directory = temporary_directory("converted-workspace-refusal");
+        let store = AppSettingsStore::new(&directory);
+        let missing_store = directory.join("missing-store");
+        fs::create_dir(&missing_store).unwrap();
+        assert!(store
+            .link_and_activate_workspace(&missing_store, "2026-09-02T12:00:00Z")
+            .unwrap_err()
+            .contains("store.sqlite"));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let real = directory.join("real");
+            fs::create_dir(&real).unwrap();
+            fs::write(real.join("store.sqlite"), b"target").unwrap();
+            let linked = directory.join("linked");
+            symlink(&real, &linked).unwrap();
+            assert!(store
+                .link_and_activate_workspace(&linked, "2026-09-02T12:00:00Z")
+                .unwrap_err()
+                .contains("not a link"));
+        }
         fs::remove_dir_all(directory).unwrap();
     }
 }

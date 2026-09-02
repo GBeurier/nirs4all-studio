@@ -60,6 +60,8 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["POST /app/config-path", { name: "app-config-path", capability: "app_config_path_routes" }],
   ["DELETE /app/config-path", { name: "app-config-path", capability: "app_config_path_routes" }],
   ["GET /workspaces", { name: "linked-workspaces", capability: "linked_workspace_catalog_route" }],
+  ["GET /workspace/transition-status", { name: "workspace-transition-status", capability: "workspace_transition_status_route" }],
+  ["POST /workspace/legacy-convert", { name: "legacy-workspace-conversion", capability: "legacy_workspace_conversion_route", requiresPythonHost: true }],
   ["GET /system/network", { name: "system-network", capability: "system_network_route" }],
   ["GET /updates/settings", { name: "updates-settings", capability: "updates_settings_routes" }],
   ["PUT /updates/settings", { name: "updates-settings", capability: "updates_settings_routes" }],
