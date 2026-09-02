@@ -286,6 +286,79 @@ describe("installer release post-package contract", () => {
     })).rejects.toThrow(/component 'linux-unpacked' must be a real directory/);
   });
 
+  it.each(["release", "build"])(
+    "rejects an initial %s parent symlink without writing through it",
+    async (name) => {
+      if (process.platform === "win32") return;
+      const root = temporaryRoot();
+      const external = temporaryRoot();
+      fs.symlinkSync(external, path.join(root, name));
+
+      await expect(contract.packageAndVerifyInstallerOutputs({
+        releaseRoot: path.join(root, "release"),
+        requestedPlatform: "linux",
+        hostPlatform: "linux",
+        runBuilder: async () => {
+          throw new Error("builder must not start");
+        },
+        verifyRuntimeContract: verifier,
+        smokeSidecar: () => undefined,
+      })).rejects.toThrow(/must be a real directory/);
+      expect(fs.readdirSync(external)).toEqual([]);
+    },
+  );
+
+  it("rejects a release-root symlink swap during the builder without external writes", async () => {
+    if (process.platform === "win32") return;
+    const root = temporaryRoot();
+    const releaseRoot = path.join(root, "release");
+    const external = temporaryRoot();
+
+    await expect(contract.packageAndVerifyInstallerOutputs({
+      releaseRoot,
+      requestedPlatform: "linux",
+      hostPlatform: "linux",
+      runBuilder: async (stagingRoot) => {
+        writeLinuxOutputs(stagingRoot);
+        fs.renameSync(releaseRoot, path.join(root, "release-before-swap"));
+        fs.symlinkSync(external, releaseRoot);
+      },
+      verifyRuntimeContract: verifier,
+      smokeSidecar: () => undefined,
+    })).rejects.toThrow(/release root.*must be a real directory/i);
+    expect(fs.readdirSync(external)).toEqual([]);
+  });
+
+  it("rejects a build-root symlink swap and never cleans an external lookalike", async () => {
+    if (process.platform === "win32") return;
+    const root = temporaryRoot();
+    const buildRoot = path.join(root, "build");
+    const external = temporaryRoot();
+    let externalSentinel = "";
+
+    await expect(contract.packageAndVerifyInstallerOutputs({
+      releaseRoot: path.join(root, "release"),
+      requestedPlatform: "linux",
+      hostPlatform: "linux",
+      runBuilder: async (stagingRoot) => {
+        writeLinuxOutputs(stagingRoot);
+        const externalStaging = path.join(
+          external,
+          "installer-invocations",
+          path.basename(stagingRoot),
+        );
+        fs.mkdirSync(externalStaging, { recursive: true });
+        externalSentinel = path.join(externalStaging, "must-survive");
+        fs.writeFileSync(externalSentinel, "outside");
+        fs.renameSync(buildRoot, path.join(root, "build-before-swap"));
+        fs.symlinkSync(external, buildRoot);
+      },
+      verifyRuntimeContract: verifier,
+      smokeSidecar: () => undefined,
+    })).rejects.toThrow(/staging root.*must be a real directory/i);
+    expect(fs.readFileSync(externalSentinel, "utf8")).toBe("outside");
+  });
+
   it("rejects a special file in the expected installer artifacts", async () => {
     if (process.platform === "win32") return;
     const root = temporaryRoot();
