@@ -208,6 +208,11 @@ fn websocket_cutover_contract_is_anchored_to_the_frozen_studio_v1_oracle() {
         false
     );
     assert_eq!(
+        renderer["capability_distinction"]["sidecar_scientific_execution_input"],
+        "boolean_orthogonal_to_renderer_route_ownership"
+    );
+    assert!(strings(&renderer["preflight"]["required_features"]).contains("scientific_execution"));
+    assert_eq!(
         renderer["selection"]["fallback_after_native_selection"],
         "none"
     );

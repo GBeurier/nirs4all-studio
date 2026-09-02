@@ -11,7 +11,8 @@
     "required_features": [
       "renderer_transport_selection",
       "renderer_http_transport",
-      "renderer_websocket_transport"
+      "renderer_websocket_transport",
+      "scientific_execution"
     ]
   },
   "targets": ["native-sidecar", "scientific-plugin", "reject"],
@@ -93,6 +94,7 @@
     "renderer_selection": "renderer_transport_selection",
     "renderer_http": "renderer_http_transport",
     "renderer_websocket": "renderer_websocket_transport",
-    "scientific_execution": false
+    "scientific_execution": false,
+    "sidecar_scientific_execution_input": "boolean_orthogonal_to_renderer_route_ownership"
   }
 }
