@@ -208,11 +208,14 @@ Use `scripts/build-archive-standalone.cjs` for the distributed all-in-one archiv
 npm run release:all-in-one:clean -- --platform win32 --arch x64
 npm run release:all-in-one:clean -- --platform linux --arch x64
 npm run release:all-in-one:clean -- --platform darwin --arch arm64
+# Optional smaller scientific closure (same Rust/product boundary):
+npm run release:all-in-one:clean -- --profile cpu-lite --platform linux --arch x64
 ```
 
 Behavior:
 
-- locked to profile `cpu`
+- supports profile `cpu` (default) and `cpu-lite`; both keep the same Rust
+  product backend and plugin-only CPython boundary
 - must run on the matching target host (`platform` and `arch` must match the runner)
 - bakes the embedded runtime first, then packages with `electron-builder.archive.yml`
 
