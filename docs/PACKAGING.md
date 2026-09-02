@@ -23,7 +23,7 @@ The project now publishes three desktop distribution families plus Docker:
 | Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + Rust `native/studio-sidecar` + read-only plugin-only CPython closure |
 | Portable Windows | Windows x64 | `-portable.exe` | Electron portable layout with state under `.nirs4all/` next to the executable |
 | All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` on Windows/macOS, `-all-in-one-*.tar.gz` on Linux | Electron + Rust `native/studio-sidecar` + the same read-only plugin-only CPython closure; no Python backend source |
-| Docker | Linux x64 | `ghcr.io/gbeurier/nirs4all-studio:*` | nginx static UI + loopback Rust sidecar; no Python HTTP backend |
+| Docker | Linux x64 | `ghcr.io/gbeurier/nirs4all-studio:*` | nginx static UI + loopback Rust sidecar + bounded plugin-only CPython closure; no Python HTTP backend |
 
 For the desktop all-in-one bundle, v1 is deliberately locked to a single product profile:
 
@@ -321,15 +321,18 @@ compiled React application and proxies `/api/*` and `/ws*` to
 WebSocket, job/control, scheduler and state owner. Its loopback port is neither
 exposed nor configurable by container users.
 
-The default image contains no CPython interpreter, Python packages, FastAPI,
-Uvicorn, `main.py`, `api/`, or `websocket/` sources. A separately attested
-CPython library/plugin closure may be mounted and selected with the existing
-`NIRS4ALL_PYTHON_PLUGIN_*` variables; Rust invokes it only through the bounded
-stdio protocol. It never owns a port, scheduler, store, or fallback route.
+The default image embeds the same fixed, separately attested CPython
+library/plugin closure as the desktop packages. It contains no FastAPI,
+Uvicorn, `main.py`, `api/`, or `websocket/` sources. The Rust sidecar selects
+that interpreter through fixed `NIRS4ALL_PYTHON_PLUGIN_*` identities and invokes
+it only through the bounded stdio protocol. It never owns a port, scheduler,
+store, or fallback route.
 The image does embed the exact `nirs4all-methods` ABI 2.3 library and its
 `STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
-available without Python. CI supplies that library through a local BuildKit
-context built and tested from commit `4983c9a1…`, never from an unverified URL.
+independent of the plugin host. CI supplies that library through a local
+BuildKit context built and tested from commit `4983c9a1…`, never from an
+unverified URL. The image build verifies both the complete CPython closure and
+the Methods digest before the runtime stage is assembled.
 
 Persist native Studio configuration in `/var/lib/nirs4all-studio` and mount
 scientific workspaces under `/workspaces`:

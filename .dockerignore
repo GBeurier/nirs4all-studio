@@ -17,6 +17,7 @@ main.py
 requirements*.txt
 backend.spec
 recommended-config.json
+!recommended-config.json
 
 # Development and CI-only sources
 .git/

@@ -30,21 +30,22 @@ health=$(curl --fail --silent "http://127.0.0.1:${port}/api/health")
 capability_error_file=$(mktemp)
 capability_status=$(curl --silent --output "${capability_error_file}" --write-out '%{http_code}' \
   "http://127.0.0.1:${port}/api/system/capabilities")
-capability_error=$(cat "${capability_error_file}")
+capability_response=$(cat "${capability_error_file}")
 capabilities=$(docker exec "${container}" curl --fail --silent \
   http://127.0.0.1:8001/sidecar/v1/capabilities)
 node -e '
   const health = JSON.parse(process.argv[1]);
   const capabilityStatus = process.argv[2];
-  const capabilityError = JSON.parse(process.argv[3]);
+  const capabilityResponse = JSON.parse(process.argv[3]);
   const capabilities = JSON.parse(process.argv[4]);
   if (health.status !== "ok" && health.status !== "healthy") throw new Error("unexpected native health response");
-  if (capabilityStatus !== "503") throw new Error("absent Python host did not fail closed");
-  if (capabilityError.error?.code !== "python_plugin_unavailable") throw new Error("unexpected Python host refusal");
+  if (capabilityStatus !== "200") throw new Error("bounded Python plugin host is unavailable");
+  if (!capabilityResponse || typeof capabilityResponse !== "object") throw new Error("unexpected Python capability response");
   if (capabilities.features?.implicit_python_http_fallback !== false) throw new Error("Python HTTP fallback is not disabled");
-  if (capabilities.python_plugin_host !== "unconfigured") throw new Error("default image unexpectedly configured a Python host");
+  if (capabilities.python_plugin_host !== "configured") throw new Error("bounded Python host is not configured");
+  if (capabilities.features?.scientific_execution !== true) throw new Error("CPython stdio scientific execution is unavailable");
   if (capabilities.features?.native_archive_v2_prediction !== true) throw new Error("native Methods archive replay is unavailable");
-' "${health}" "${capability_status}" "${capability_error}" "${capabilities}"
+' "${health}" "${capability_status}" "${capability_response}" "${capabilities}"
 
 node --input-type=module -e '
   const socket = new WebSocket(process.argv[1]);
@@ -58,6 +59,9 @@ docker exec "${container}" sh -eu -c '
   test -x /opt/nirs4all/backend/native/studio-sidecar
   test -f /opt/nirs4all/backend/native/libn4m.so
   test -f /opt/nirs4all/backend/native/STUDIO_RUNTIME_CONTRACT.json
+  test -x /opt/nirs4all/backend/python-runtime/python/bin/python3
+  test -f /opt/nirs4all/backend/python-runtime/PLUGIN_RUNTIME_READY.json
+  test -f /opt/nirs4all/backend/python-runtime/PYTHON_PLUGIN_CLOSURE.json
   ! command -v python
   ! command -v python3
   test ! -e /app/main.py

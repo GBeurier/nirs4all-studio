@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # nirs4all Studio native container: static renderer + Rust product backend.
 # nginx owns the public socket. The Rust sidecar remains loopback-only and is
-# the sole HTTP/control backend; Python is never installed in this image.
+# the sole HTTP/control backend; CPython is a bounded stdio library/plugin host.
 
 ARG NODE_IMAGE=node:24-bookworm-slim
 # The locked ICU graph requires Rust 1.88 even though the sidecar sources retain
@@ -25,24 +25,37 @@ RUN cargo build --locked --release --manifest-path sidecar/Cargo.toml \
     && strip sidecar/target/release/studio-sidecar \
     && sidecar/target/release/studio-sidecar --smoke-readiness >/dev/null
 
+FROM ${NODE_IMAGE} AS python-plugin-runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY recommended-config.json ./
+COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/bake-python-plugin-runtime.cjs scripts/
+RUN --mount=type=cache,target=/python-cache \
+    node scripts/bake-python-plugin-runtime.cjs \
+      --backend-root /product/backend \
+      --cache-dir /python-cache
+
 FROM ${NODE_IMAGE} AS native-runtime-contract
 ARG NIRS4ALL_METHODS_SHA256
 WORKDIR /product
 RUN test -n "${NIRS4ALL_METHODS_SHA256}" \
     && mkdir -p backend/native /contract-scripts
+COPY --from=python-plugin-runtime /product/backend/ backend/
 COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/studio-sidecar
 COPY --from=methods-runtime /libn4m.so.2.3.0 backend/native/libn4m.so
 COPY scripts/native-runtime-contract.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/
 RUN test "$(sha256sum backend/native/libn4m.so | cut -d' ' -f1)" = "${NIRS4ALL_METHODS_SHA256}" \
     && chmod 0755 backend/native/studio-sidecar \
-    && node -e 'const c=require("/contract-scripts/native-runtime-contract.cjs"); c.writeRuntimeContract({backendRoot:"/product/backend",platform:"linux",arch:"x64",methodsLibraryPath:"/product/backend/native/libn4m.so"}); c.verifyRuntimeContract({backendRoot:"/product/backend",artifactBoundaryRoot:"/product/backend",platform:"linux",arch:"x64",requireBundledMethods:true})'
+    && node -e 'const c=require("/contract-scripts/native-runtime-contract.cjs"); c.writeRuntimeContract({backendRoot:"/product/backend",platform:"linux",arch:"x64",methodsLibraryPath:"/product/backend/native/libn4m.so"}); c.verifyRuntimeContract({backendRoot:"/product/backend",artifactBoundaryRoot:"/product/backend",platform:"linux",arch:"x64",requireBundledPythonPlugin:true,requireBundledMethods:true})'
 
 FROM ${NGINX_IMAGE} AS runtime
 ARG STUDIO_VERSION=0.9.1
 ARG STUDIO_REVISION=unknown
 
 # tini forwards termination to nginx and its loopback sidecar process group;
-# curl is used for startup/readiness checks only. No Python runtime is present.
+# curl is used for startup/readiness checks only. CPython has no public socket.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 tini \
     && rm -rf /var/lib/apt/lists/* \
@@ -67,6 +80,8 @@ RUN printf '%s\n' \
     && ! ldd /opt/nirs4all/backend/native/studio-sidecar | grep -q 'not found' \
     && ldd /opt/nirs4all/backend/native/libn4m.so \
     && ! ldd /opt/nirs4all/backend/native/libn4m.so | grep -q 'not found' \
+    && ldd /opt/nirs4all/backend/python-runtime/python/bin/python3 \
+    && ! ldd /opt/nirs4all/backend/python-runtime/python/bin/python3 | grep -q 'not found' \
     && ! command -v python \
     && ! command -v python3
 
@@ -76,6 +91,12 @@ ENV NIRS4ALL_RUNTIME_MODE=container \
     NIRS4ALL_BUILD_INFO_PATH=/etc/nirs4all-studio-build-info.json \
     NIRS4ALL_CONFIG=/var/lib/nirs4all-studio/config \
     NIRS4ALL_BACKEND_DATA_DIR=/var/lib/nirs4all-studio \
+    NIRS4ALL_PYTHON_PLUGIN_HOST=/opt/nirs4all/backend/python-runtime/python/bin/python3 \
+    NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED=true \
+    NIRS4ALL_PYTHON_PLUGIN_CLOSURE=/opt/nirs4all/backend/python-runtime/PYTHON_PLUGIN_CLOSURE.json \
+    NIRS4ALL_PYTHON_PLUGIN_RUNTIME_ROOT=/opt/nirs4all/backend/python-runtime/python \
+    NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES=/opt/nirs4all/backend/python-runtime/python/lib/python3.11/site-packages \
+    NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1 \
     NIRS4ALL_DOCKER=true
 
 VOLUME ["/var/lib/nirs4all-studio", "/workspaces"]
