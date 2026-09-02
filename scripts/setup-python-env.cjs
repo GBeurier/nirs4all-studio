@@ -35,7 +35,6 @@ const https = require("https");
 const http = require("http");
 const {
   assertProfileSupportedOnPlatform,
-  BACKEND_COMMON_PACKAGES,
   PYTHON_VERSION,
   PBS_TAG,
   getArchiveFilename,
@@ -45,6 +44,7 @@ const {
   listSupportedPlatformArchKeys,
   resolveProfileForFlavor,
 } = require("./python-runtime-config.cjs");
+const { BACKEND_COMMON_PACKAGES } = require("./python-http-runtime-config.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 process.chdir(projectRoot);

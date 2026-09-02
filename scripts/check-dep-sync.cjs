@@ -3,8 +3,9 @@
  * check-dep-sync.cjs — fail the green gate if the backend runtime dependency
  * sources drift apart.
  *
- * Single source of truth: BACKEND_COMMON_PACKAGES in scripts/python-runtime-config.cjs
- * (it already feeds the standalone build and is profile-aware).
+ * Single source of truth: BACKEND_COMMON_PACKAGES in
+ * scripts/python-http-runtime-config.cjs. This transitional source/dev config
+ * is intentionally excluded from packaged Electron products.
  *
  * Validated against it:
  *   - requirements.txt          (dev / CI / PyInstaller fallback install list)
@@ -22,7 +23,7 @@ const path = require("path");
 const {
   BACKEND_COMMON_PACKAGES,
   BACKEND_TRANSITION_TOOL_PACKAGES,
-} = require("./python-runtime-config.cjs");
+} = require("./python-http-runtime-config.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
 const BUILD_ONLY = new Set(["pyinstaller"]);
@@ -93,7 +94,7 @@ function checkRequirements(file) {
       errors.push(
         `${file}: '${spec}' is not in canonical BACKEND_COMMON_PACKAGES ` +
           `or BACKEND_TRANSITION_TOOL_PACKAGES ` +
-          `(classify it in scripts/python-runtime-config.cjs or remove it here)`,
+          `(classify it in scripts/python-http-runtime-config.cjs or remove it here)`,
       );
     }
   }
@@ -117,7 +118,7 @@ checkBackendSpec();
 if (errors.length) {
   console.error("Backend dependency sources are out of sync with BACKEND_COMMON_PACKAGES:\n");
   for (const e of errors) console.error("  ✗ " + e);
-  console.error("\nCanonical source: scripts/python-runtime-config.cjs (BACKEND_COMMON_PACKAGES).");
+  console.error("\nCanonical source: scripts/python-http-runtime-config.cjs (BACKEND_COMMON_PACKAGES).");
   process.exit(1);
 }
 
