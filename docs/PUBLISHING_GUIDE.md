@@ -7,8 +7,8 @@ Step-by-step checklist for publishing a new nirs4all-webapp release.
 ## Prerequisites
 
 - Push access to `GBeurier/nirs4all-webapp`
-- The `electron-release.yml` GitHub Actions workflow is in place
-- `electron-builder.yml` has the `publish` section configured (already done)
+- The `release-unified.yml` GitHub Actions workflow is in place
+- The installer/archive electron-builder configs have their publish metadata configured
 
 ## Steps
 
@@ -50,9 +50,10 @@ git push origin 1.1.0-beta.1
 
 The `release-unified.yml` workflow triggers on `[0-9]*` tags (no `v` prefix). It will:
 
-1. Build **CPU** and **GPU** flavors for Linux and Windows
-2. Generate **SHA256 checksums** as `.sha256` sidecar files
-3. Create a **GitHub Release** with all assets attached
+1. Build the single attested **CPU** installer profile for Linux x64, Windows x64, and macOS x64/arm64
+2. Build the matching all-in-one archives unless explicitly skipped, plus separately scoped Docker images
+3. Generate **SHA256 checksums** as `.sha256` sidecar files
+4. Create a **GitHub Release** with all assets attached
 
 Monitor progress at: `https://github.com/GBeurier/nirs4all-webapp/actions`
 
@@ -64,11 +65,10 @@ After CI completes:
 
 1. Go to `https://github.com/GBeurier/nirs4all-webapp/releases/latest`
 2. Confirm all expected assets are present:
-   - `nirs4all-Studio-<version>-win-x64.exe` + `.sha256` (CPU)
-   - `nirs4all-Studio-<version>-gpu-win-x64.exe` + `.sha256` (GPU)
-   - `nirs4all-Studio-<version>-linux-x64.AppImage` + `.sha256` (CPU)
-   - `nirs4all-Studio-<version>-linux-x64.deb` + `.sha256` (CPU)
-   - GPU Linux variants
+   - Windows x64 NSIS and portable executables + `.sha256`
+   - Linux x64 AppImage and deb + `.sha256`
+   - macOS x64 and arm64 DMGs + `.sha256`
+   - all-in-one archives for each enabled platform/architecture
 3. Verify checksums: download an asset and its `.sha256` file, then:
    ```bash
    sha256sum -c nirs4all-Studio-1.1.0-win-x64.exe.sha256
@@ -103,7 +103,7 @@ If you need to rebuild without pushing a new tag:
 
 1. Go to **Actions > Electron Build & Release**
 2. Click **Run workflow**
-3. Enter the tag (e.g., `1.1.0`) and select flavor (`cpu`, `gpu`, or `both`)
+3. Enter the tag (e.g., `1.1.0`) and choose whether to skip all-in-one archives or Docker images
 
 ---
 

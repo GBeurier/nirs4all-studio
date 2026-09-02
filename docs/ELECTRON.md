@@ -473,18 +473,19 @@ npm run dist:mac       # macOS (DMG)
 ### Full Release
 
 ```bash
-# CPU edition
-npm run release -- --flavor cpu
-
-# GPU edition
-npm run release -- --flavor gpu
+# Run on the matching host; CPU is the only attested installer profile.
+npm run release -- --platform linux --flavor cpu
 ```
 
 This runs:
 1. `npm run build` (React frontend)
-2. backend runtime/archive preparation inside `scripts/build-release.cjs`
+2. pinned plugin-only CPython closure preparation and Rust sidecar build
 3. `npm run build:electron` (Electron main process)
-4. electron-builder packaging
+4. electron-builder packaging plus fresh-output/runtime verification
+
+Use `npm run release:all-in-one` for portable archives. The installer helper
+rejects GPU/cpu-lite labels, cross-host targets, `--platform all`, and legacy
+standalone mode.
 
 ---
 

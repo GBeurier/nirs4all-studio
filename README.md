@@ -65,9 +65,12 @@ The simplest option. Downloads and installs like any desktop application.
 
 3. Run the installer and launch nirs4all Studio
 
-The installer embeds a Python environment and manages dependencies automatically. **You don't need Python installed on your machine.**
+The installer embeds the Rust product backend and a fixed, content-addressed
+CPython library/plugin closure. It does not discover user environments or
+install packages at runtime. **You don't need Python installed on your machine.**
 
-> **GPU support**: The default installer is CPU-only. For GPU acceleration (CUDA on Linux/Windows, Metal on macOS), download the GPU edition from the release page (tagged `gpu` in the filename).
+> **GPU support**: Published desktop installers and portable archives use the
+> single CPU profile. GPU-CUDA remains a separately scoped Docker image.
 
 ### Option 2 — All-in-one Standalone (Portable)
 
@@ -79,12 +82,13 @@ A self-contained archive — just extract and run. No installation, no admin rig
    | Platform | File |
    |----------|------|
    | **Windows** | `nirs4all-Studio-*-all-in-one-win-x64.zip` |
-   | **macOS** | `nirs4all-Studio-*-all-in-one-mac-*.dmg` |
+   | **macOS** | `nirs4all Studio-*-all-in-one-mac-*.zip` |
    | **Linux** | `nirs4all-Studio-*-all-in-one-linux-x64.tar.gz` |
 
 3. Extract the archive and run the executable inside
 
-Everything is bundled — Python runtime, backend, and frontend. Nothing else to install.
+Everything is bundled — Electron, the Rust product backend, and the fixed
+CPython plugin-host closure. Nothing else to install.
 
 ### Option 3 — Developer Setup (From Source)
 
@@ -105,7 +109,7 @@ Then set up the Python backend and start the servers — see [Getting Started](#
 | **Install required** | Yes | No (extract & run) | Clone + npm install |
 | **Python required** | No (bundled) | No (bundled) | Yes (3.11+) |
 | **Auto-updates** | Yes | Manual re-download | git pull |
-| **GPU editions** | CPU or GPU | CPU or GPU | Your choice |
+| **Desktop profile** | CPU | CPU | Contributor-selected |
 | **Best for** | End users | Portable / trial use | Contributors |
 
 ---
