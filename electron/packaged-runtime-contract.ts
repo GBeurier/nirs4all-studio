@@ -14,6 +14,8 @@ const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
 const PLUGIN_SOURCE_COMMIT = "322265576ccfaeb1ee22332d05ae04b87be4b538";
 const PLUGIN_WHEEL_SHA256 = "00326c703b933ff2c4b106905e1c44f81906b918db30bb5d05aa189846c48940";
+const TOOLS_SOURCE_COMMIT = "e3a332633f87b4652a06f8993e63c386a3568698";
+const TOOLS_WHEEL_SHA256 = "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc";
 const METHODS_ABI_MAJOR = 2;
 const METHODS_ABI_MINOR = 3;
 const METHODS_SOURCE_COMMIT = "4983c9a1df39d430a78c615bda209d3353514aa1";
@@ -348,6 +350,8 @@ function verifyPluginMarker(
     false,
   );
   const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as Record<string, unknown>;
+  const conversionTools = marker.conversion_tools as Record<string, unknown> | undefined;
+  const readers = conversionTools?.readers as Record<string, unknown> | undefined;
   if (
     marker.schema !== "nirs4all.studio-python-plugin-runtime.v1" ||
     marker.python_role !== "library-plugin-host-only" ||
@@ -362,6 +366,18 @@ function verifyPluginMarker(
       "41833befe7dd25b0c0c7e19c6090b44e29bb2d2243700164c49f951fe3ad71c2" ||
     marker.installed_manifest_sha256 !==
       "261d0acbb05fa3a60b75d28f0f21b54c0985bd82b44227f9d852b159cc8c5684" ||
+    conversionTools?.source_commit !== TOOLS_SOURCE_COMMIT ||
+    conversionTools?.wheel_sha256 !== TOOLS_WHEEL_SHA256 ||
+    conversionTools?.distribution !== "nirs4all-tools" ||
+    conversionTools?.distribution_version !== "0.0.7" ||
+    conversionTools?.distribution_record_sha256 !==
+      "8db345e39929f63e658d33bba1a9379336547e5653ed4b51271792791e5d6f54" ||
+    conversionTools?.installed_manifest_sha256 !==
+      "37e8862680fe35efcf6b3348ad5c064701f8ba90f43be89bd07c632a59a509fb" ||
+    conversionTools?.module !== "nirs4all_tools" ||
+    conversionTools?.cli !== "python -I -B -m nirs4all_tools" ||
+    readers?.duckdb !== "1.5.5" ||
+    readers?.pyarrow !== "25.0.1" ||
     marker.platform !== platform ||
     marker.arch !== arch ||
     !Array.isArray(marker.forbidden_distributions) ||

@@ -18,7 +18,7 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
 };
 
 describe("python-runtime-config", () => {
-  it("keeps transition tooling outside the packaged runtime dependency closure", () => {
+  it("keeps the loose transition-tool range outside shared backend dependency sets", () => {
     expect(runtimeConfig.BACKEND_TRANSITION_TOOL_PACKAGES).toEqual([
       "nirs4all-tools>=0.0.5",
     ]);

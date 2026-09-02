@@ -35,6 +35,15 @@ describe("plugin-only CPython runtime", () => {
         "00326c703b933ff2c4b106905e1c44f81906b918db30bb5d05aa189846c48940",
       platform: "linux",
       arch: "x64",
+      conversion_tools: {
+        source_commit: "e3a332633f87b4652a06f8993e63c386a3568698",
+        wheel_sha256:
+          "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc",
+        distribution: "nirs4all-tools",
+        distribution_version: "0.0.7",
+        module: "nirs4all_tools",
+        readers: { duckdb: "1.5.5", pyarrow: "25.0.1" },
+      },
     });
     expect(pluginRuntime.FORBIDDEN_DISTRIBUTIONS).toEqual(
       expect.arrayContaining(["fastapi", "starlette", "uvicorn", "sentry-sdk"]),
@@ -47,11 +56,14 @@ describe("plugin-only CPython runtime", () => {
       "stage/backend",
       "--plugin-wheel",
       "stage/nirs4all.whl",
+      "--tools-wheel",
+      "stage/nirs4all_tools.whl",
       "--verify-only",
     ]);
     expect(parsed).toMatchObject({
       backendRoot: path.resolve("stage/backend"),
       pluginWheel: path.resolve("stage/nirs4all.whl"),
+      toolsWheel: path.resolve("stage/nirs4all_tools.whl"),
       verifyOnly: true,
     });
   });

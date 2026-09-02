@@ -14,23 +14,46 @@
     "bounded_run_tree_entries": 4096,
     "formats": [
       "duckdb-workspace",
+      "legacy-arrays-directory",
       "sqlite-workspace-legacy-arrays",
-      "sqlite-workspace-unreadable",
+      "sqlite-workspace-unreadable-or-incompatible",
       "fs-runs-legacy",
+      "fs-runs-v2",
+      "loose-predictions",
+      "n4a-bundle",
+      "n4a-py-bundle",
+      "native-results-v1",
       "sqlite-workspace-v2",
       "new-or-empty"
-    ]
+    ],
+    "sqlite_read": "immutable_read_only_uri",
+    "strict_v2": "integrity_ok_user_version_2_all_7_tables_required_columns_no_live_journal",
+    "symlink_policy": "reject_root_and_recognized_marker_symlinks"
   },
   "converter": {
     "owner": "nirs4all-tools",
     "transport": "bounded_stdio_process",
     "python_http": "forbidden",
     "module": "nirs4all_tools",
+    "cli": "python -I -B -m nirs4all_tools legacy migrate",
+    "qualified_identity": {
+      "source_commit": "e3a332633f87b4652a06f8993e63c386a3568698",
+      "version": "0.0.7",
+      "wheel_sha256": "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc",
+      "record_sha256": "8db345e39929f63e658d33bba1a9379336547e5653ed4b51271792791e5d6f54",
+      "installed_manifest_sha256": "37e8862680fe35efcf6b3348ad5c064701f8ba90f43be89bd07c632a59a509fb",
+      "readers": {
+        "duckdb": "1.5.5",
+        "pyarrow": "25.0.1"
+      }
+    },
+    "capability_gate": "startup_import_version_record_manifest_and_reader_attestation",
     "target": "nirs4all-workspace-v2",
     "maximum_concurrent_processes": 1,
     "timeout_seconds": 1800,
     "stdout_limit_bytes": 262144,
     "stderr_limit_bytes": 262144,
+    "process_tree_termination": "unix_process_group_and_windows_taskkill_tree",
     "source_mutation": "forbidden",
     "output_policy": "fresh_disjoint_directory_owned_by_tools"
   },
@@ -43,6 +66,7 @@
       "link_converted_workspace"
     ],
     "unknown_fields": "reject",
+    "unknown_fields_python_parity_exception": "approved_fail_closed_native_allowlist",
     "output_path": "absolute_bounded_path_or_default_sibling",
     "dry_run_activation": "forbidden"
   },
@@ -76,13 +100,19 @@
       "meaning": "converter_internal_error",
       "http_status": 500,
       "automatic_activation": "forbidden"
+    },
+    "other": {
+      "meaning": "unknown_exit_code",
+      "http_status": 502,
+      "automatic_activation": "forbidden"
     }
   },
   "rollback": {
     "conversion_direction": "one_way",
     "reverse_conversion": "forbidden",
     "legacy_source_retained": true,
-    "catalogue_activation": "single_atomic_settings_replacement",
+    "catalogue_activation": "single_atomic_settings_replacement_after_strict_v2_validation",
+    "activation_compare_and_swap": "active_workspace_id_must_equal_conversion_source_id",
     "previous_workspace_unlinked": false,
     "restore_action": "reactivate_previous_linked_workspace"
   },
@@ -91,5 +121,21 @@
     "conversion_capability": "legacy_workspace_conversion_route",
     "conversion_requires_configured_python_library_host": true,
     "fallback_after_native_selection": "none"
+  },
+  "compatibility_exceptions": {
+    "STU-CONV-SYNC-001": {
+      "status": "approved",
+      "scope": "legacy conversion route only",
+      "difference": "bounded synchronous response instead of the legacy Python maintenance-job wrapper",
+      "reason": "the Rust sidecar has no durable maintenance-job execution owner yet; the renderer already accepts the direct response",
+      "bounds": "one process, 1800 seconds, bounded stdio, route-state mutex released",
+      "removal_gate": "native durable maintenance-job execution contract"
+    },
+    "STU-CONV-UNKNOWN-001": {
+      "status": "approved",
+      "scope": "legacy conversion request only",
+      "difference": "unknown JSON fields are rejected although legacy Pydantic ignored them",
+      "reason": "security-sensitive command construction uses an explicit frozen allowlist"
+    }
   }
 }

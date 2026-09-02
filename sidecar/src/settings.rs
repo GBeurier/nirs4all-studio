@@ -464,6 +464,7 @@ impl AppSettingsStore {
         &self,
         workspace_path: &Path,
         linked_at: &str,
+        expected_active_workspace_id: &str,
     ) -> Result<Value, String> {
         let _write_guard = self
             .write_lock
@@ -491,8 +492,23 @@ impl AppSettingsStore {
         if store_metadata.file_type().is_symlink() || !store_metadata.is_file() {
             return Err("verified converted workspace store.sqlite must be a real file".into());
         }
-        let canonical_path = display_path(&workspace_path);
         let mut settings = self.load()?;
+        let current_active_workspace_id = active_workspace_id(&settings);
+        if current_active_workspace_id != Some(expected_active_workspace_id) {
+            return Err(
+                "active workspace changed while conversion was running; activation was skipped"
+                    .into(),
+            );
+        }
+        crate::legacy_conversion::validate_workspace_v2_store(&workspace_path, &store).map_err(
+            |reason| format!("converted workspace failed strict V2 validation: {reason}"),
+        )?;
+        let confirmed_workspace_path = fs::canonicalize(&workspace_path)
+            .map_err(|error| format!("could not re-resolve converted workspace: {error}"))?;
+        if confirmed_workspace_path != workspace_path {
+            return Err("converted workspace changed during validation".into());
+        }
+        let canonical_path = display_path(&workspace_path);
         let root = settings
             .as_object_mut()
             .ok_or_else(|| "app settings root must be a JSON object".to_string())?;
@@ -714,6 +730,22 @@ impl AppSettingsStore {
     }
 }
 
+fn active_workspace_id(settings: &Value) -> Option<&str> {
+    settings
+        .get("linked_workspaces")
+        .and_then(Value::as_array)
+        .and_then(|workspaces| {
+            workspaces.iter().find_map(|workspace| {
+                workspace
+                    .get("is_active")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                    .then(|| workspace.get("id").and_then(Value::as_str))
+                    .flatten()
+            })
+        })
+}
+
 fn resolve_config_dir() -> PathBuf {
     if let Some(path) = nonempty_env(CONFIG_ENV) {
         return PathBuf::from(path);
@@ -876,7 +908,7 @@ fn deep_merge(current: &mut Map<String, Value>, updates: &Map<String, Value>) {
 mod tests {
     use std::{
         env, fs,
-        path::PathBuf,
+        path::{Path, PathBuf},
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -895,6 +927,22 @@ mod tests {
         ));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    fn write_strict_v2_store(workspace: &Path) {
+        let connection = rusqlite::Connection::open(workspace.join("store.sqlite")).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA user_version = 2;
+                 CREATE TABLE projects(project_id TEXT PRIMARY KEY, name TEXT NOT NULL);
+                 CREATE TABLE runs(run_id TEXT PRIMARY KEY, name TEXT NOT NULL, status TEXT);
+                 CREATE TABLE pipelines(pipeline_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, name TEXT NOT NULL, dataset_name TEXT NOT NULL);
+                 CREATE TABLE chains(chain_id TEXT PRIMARY KEY, pipeline_id TEXT NOT NULL, steps TEXT NOT NULL, model_step_idx INTEGER NOT NULL, model_class TEXT NOT NULL);
+                 CREATE TABLE predictions(prediction_id TEXT PRIMARY KEY, pipeline_id TEXT NOT NULL, dataset_name TEXT NOT NULL, model_name TEXT NOT NULL, model_class TEXT NOT NULL, fold_id TEXT NOT NULL, partition TEXT NOT NULL, metric TEXT NOT NULL, task_type TEXT NOT NULL);
+                 CREATE TABLE artifacts(artifact_id TEXT PRIMARY KEY, artifact_path TEXT NOT NULL, content_hash TEXT NOT NULL);
+                 CREATE TABLE logs(log_id TEXT PRIMARY KEY, pipeline_id TEXT NOT NULL, step_idx INTEGER NOT NULL, event TEXT NOT NULL);",
+            )
+            .unwrap();
     }
 
     #[test]
@@ -1214,7 +1262,7 @@ mod tests {
         fs::create_dir_all(&source).unwrap();
         fs::create_dir_all(&converted).unwrap();
         fs::write(source.join("store.duckdb"), b"immutable legacy source").unwrap();
-        fs::write(converted.join("store.sqlite"), b"verified target").unwrap();
+        write_strict_v2_store(&converted);
         fs::write(
             directory.join("app_settings.json"),
             serde_json::to_string(&json!({
@@ -1234,7 +1282,7 @@ mod tests {
         let store = AppSettingsStore::new(&directory);
 
         let activated = store
-            .link_and_activate_workspace(&converted, "2026-09-02T12:00:00Z")
+            .link_and_activate_workspace(&converted, "2026-09-02T12:00:00Z", "workspace-legacy")
             .unwrap();
         assert_eq!(
             activated["path"],
@@ -1269,23 +1317,45 @@ mod tests {
         let store = AppSettingsStore::new(&directory);
         let missing_store = directory.join("missing-store");
         fs::create_dir(&missing_store).unwrap();
-        assert!(store
-            .link_and_activate_workspace(&missing_store, "2026-09-02T12:00:00Z")
-            .unwrap_err()
-            .contains("store.sqlite"));
+        assert!(
+            store
+                .link_and_activate_workspace(
+                    &missing_store,
+                    "2026-09-02T12:00:00Z",
+                    "workspace-legacy",
+                )
+                .unwrap_err()
+                .contains("store.sqlite")
+        );
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::symlink;
             let real = directory.join("real");
             fs::create_dir(&real).unwrap();
-            fs::write(real.join("store.sqlite"), b"target").unwrap();
+            write_strict_v2_store(&real);
             let linked = directory.join("linked");
             symlink(&real, &linked).unwrap();
             assert!(store
-                .link_and_activate_workspace(&linked, "2026-09-02T12:00:00Z")
+                .link_and_activate_workspace(&linked, "2026-09-02T12:00:00Z", "workspace-legacy",)
                 .unwrap_err()
                 .contains("not a link"));
+
+            let store_link_workspace = directory.join("store-link-workspace");
+            fs::create_dir(&store_link_workspace).unwrap();
+            symlink(
+                real.join("store.sqlite"),
+                store_link_workspace.join("store.sqlite"),
+            )
+            .unwrap();
+            assert!(store
+                .link_and_activate_workspace(
+                    &store_link_workspace,
+                    "2026-09-02T12:00:00Z",
+                    "workspace-legacy",
+                )
+                .unwrap_err()
+                .contains("store.sqlite must be a real file"));
         }
         fs::remove_dir_all(directory).unwrap();
     }

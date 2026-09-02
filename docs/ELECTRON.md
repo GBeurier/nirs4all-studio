@@ -385,7 +385,17 @@ CPython executable only as a bounded stdio host for the offline
 `nirs4all_tools` module; it never acquires FastAPI/Uvicorn or a second HTTP
 owner. A verified code `0` result may activate the fresh output, code `10`
 keeps the preserved output inactive, and code `20` is a visible refusal. The
-legacy source remains linked for rollback.
+legacy source remains linked for rollback. Activation additionally requires a
+strict immutable SQLite V2 check and compare-and-swap of the active workspace
+id, so a selection changed during conversion is never stolen.
+
+`STU-CONV-SYNC-001` is the approved, narrow parity exception: this route returns
+the bounded conversion result synchronously (maximum 1800 seconds) until Rust
+owns durable maintenance-job execution. The global route-state mutex is
+released while the process runs. `STU-CONV-UNKNOWN-001` also explicitly keeps
+the native unknown-field allowlist fail-closed even though legacy Pydantic
+ignored extra request fields. Both exceptions are frozen in
+`sidecar/contracts/studio_legacy_workspace_conversion_v1.json`.
 
 For a deliberate whole-session FastAPI diagnostic, set
 `NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1` before `npm run start:desktop`.
