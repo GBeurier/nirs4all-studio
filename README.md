@@ -70,7 +70,8 @@ CPython library/plugin closure. It does not discover user environments or
 install packages at runtime. **You don't need Python installed on your machine.**
 
 > **GPU support**: Published desktop installers and portable archives use the
-> single CPU profile. GPU-CUDA remains a separately scoped Docker image.
+> single CPU profile. The native Docker image deliberately contains no Python
+> scientific runtime; GPU plugin-host packaging remains separately scoped.
 
 ### Option 2 — All-in-one Standalone (Portable)
 
@@ -111,6 +112,25 @@ Then set up the Python backend and start the servers — see [Getting Started](#
 | **Auto-updates** | Yes | Manual re-download | git pull |
 | **Desktop profile** | CPU | CPU | Contributor-selected |
 | **Best for** | End users | Portable / trial use | Contributors |
+
+### Native Docker deployment
+
+The product container serves the compiled frontend with nginx on port `8000`.
+Requests under `/api` and `/ws` are proxied to the Rust sidecar bound only to
+`127.0.0.1:8001` inside the container. The image contains no FastAPI/Uvicorn
+runtime or Python backend source.
+
+```bash
+docker run --rm -p 8000:8000 \
+  -v studio-state:/var/lib/nirs4all-studio \
+  -v /path/to/workspaces:/workspaces \
+  ghcr.io/gbeurier/nirs4all-studio:latest
+```
+
+An optional, separately attested CPython library/plugin host may be mounted and
+selected explicitly for bounded Rust-to-Python stdio calls. It never owns an
+HTTP port, scheduler, store, or fallback route. See
+[Docker packaging](docs/PACKAGING.md#docker-asset) for the exact boundary.
 
 ---
 

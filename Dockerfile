@@ -1,135 +1,73 @@
-# nirs4all Studio — Docker image for server/HPC deployment
-# No Electron — web frontend served by FastAPI at http://localhost:8000
-#
-# Build:
-#   docker build -t nirs4all-studio .
-#   docker build --build-arg INSTALL_GPU=true --build-arg BASE_IMAGE=nvidia/cuda:12.4.1-runtime-ubuntu22.04 -t nirs4all-studio:gpu-cuda .
-#
-# Run:
-#   docker run -p 8000:8000 -v /path/to/workspaces:/workspaces nirs4all-studio
-#   docker run --gpus all -p 8000:8000 nirs4all-studio:gpu-cuda
+# syntax=docker/dockerfile:1.7
+# nirs4all Studio native container: static renderer + Rust product backend.
+# nginx owns the public socket. The Rust sidecar remains loopback-only and is
+# the sole HTTP/control backend; Python is never installed in this image.
 
-# ── Build arguments ──
-ARG BASE_IMAGE=python:3.11-slim
-ARG INSTALL_GPU=false
-ARG NIRS4ALL_SOURCE_URL=https://github.com/GBeurier/nirs4all/archive/bf242e4854693ccb048b7f0ffc5f3fdd2380315a.tar.gz
-ARG DAG_ML_SOURCE_URL=https://github.com/GBeurier/dag-ml/archive/a8f6cb3845fcb19f81450b4776094f21978cf2b7.tar.gz
-ARG DAG_ML_DATA_SOURCE_URL=https://github.com/GBeurier/dag-ml-data/archive/616f3e5ff715667d537c089a9ba059832f8cc1c9.tar.gz
-ARG PYTHON_VERSION=3.11.13
-ARG PYTHON_STANDALONE_TAG=20250828
+ARG NODE_IMAGE=node:24-bookworm-slim
+# The locked ICU graph requires Rust 1.88 even though the sidecar sources retain
+# their lower language-level rust-version declaration.
+ARG RUST_IMAGE=rust:1.88-bookworm
+ARG NGINX_IMAGE=nginx:1.27.5-bookworm
 
-# ══════════════════════════════════════════════════════════════════════
-# Stage 1: Frontend builder
-# ══════════════════════════════════════════════════════════════════════
-FROM node:22-slim AS frontend
-
+FROM ${NODE_IMAGE} AS frontend
 WORKDIR /build
-
-# Install dependencies first (layer caching)
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
-
-# Build frontend
 COPY vite.config.ts tsconfig*.json index.html ./
 COPY public/ public/
 COPY src/ src/
 RUN npm run build
 
-# ══════════════════════════════════════════════════════════════════════
-# Stage 2: Runtime
-# ══════════════════════════════════════════════════════════════════════
-FROM ${BASE_IMAGE} AS runtime
+FROM ${RUST_IMAGE} AS sidecar
+WORKDIR /build
+COPY sidecar/ sidecar/
+RUN cargo build --locked --release --manifest-path sidecar/Cargo.toml \
+    && strip sidecar/target/release/studio-sidecar \
+    && sidecar/target/release/studio-sidecar --smoke-readiness >/dev/null
 
-ARG INSTALL_GPU=false
-ARG NIRS4ALL_SOURCE_URL=https://github.com/GBeurier/nirs4all/archive/bf242e4854693ccb048b7f0ffc5f3fdd2380315a.tar.gz
-ARG DAG_ML_SOURCE_URL=https://github.com/GBeurier/dag-ml/archive/a8f6cb3845fcb19f81450b4776094f21978cf2b7.tar.gz
-ARG DAG_ML_DATA_SOURCE_URL=https://github.com/GBeurier/dag-ml-data/archive/616f3e5ff715667d537c089a9ba059832f8cc1c9.tar.gz
-ARG PYTHON_VERSION=3.11.13
-ARG PYTHON_STANDALONE_TAG=20250828
-ENV PATH="/opt/python-build-standalone/python/bin:${PATH}"
+FROM ${NGINX_IMAGE} AS runtime
+ARG STUDIO_VERSION=0.9.1
+ARG STUDIO_REVISION=unknown
 
-# Apt retry config (mitigates transient mirror hash-sum mismatches in CI)
-RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries
+# tini forwards termination to nginx and its loopback sidecar process group;
+# curl is used for startup/readiness checks only. No Python runtime is present.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/lib/nirs4all-studio/config /workspaces /var/cache/nginx /var/run/nginx \
+    && chown -R nginx:nginx /var/lib/nirs4all-studio /workspaces /var/cache/nginx /var/run/nginx /var/log/nginx
 
-# System dependencies
-# hadolint ignore=DL3008
-RUN rm -rf /var/lib/apt/lists/* \
-    && apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    build-essential \
-    tar \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=frontend --chown=nginx:nginx /build/dist/ /usr/share/nginx/html/
+COPY --from=sidecar --chown=nginx:nginx /build/sidecar/target/release/studio-sidecar /usr/local/bin/studio-sidecar
+COPY docker/nginx.conf /etc/nginx/nginx.conf
+COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/studio-entrypoint
 
-# Ensure Python 3.11+ is available. CUDA Ubuntu 22.04 images ship Python 3.10,
-# which is too old for the nirs4all V1 RC runtime.
-# hadolint ignore=DL3013
-RUN set -eux; \
-    if command -v python3 >/dev/null 2>&1 && python3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)"; then \
-        ln -sf "$(command -v python3)" /usr/local/bin/python; \
-    else \
-        archive="cpython-${PYTHON_VERSION}+${PYTHON_STANDALONE_TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz"; \
-        url="https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_STANDALONE_TAG}/${archive}"; \
-        mkdir -p /opt/python-build-standalone; \
-        curl -fsSL "$url" -o /tmp/python-build-standalone.tar.gz; \
-        tar -xzf /tmp/python-build-standalone.tar.gz -C /opt/python-build-standalone; \
-        rm /tmp/python-build-standalone.tar.gz; \
-        ln -sf /opt/python-build-standalone/python/bin/python3 /usr/local/bin/python3; \
-        ln -sf /opt/python-build-standalone/python/bin/python3 /usr/local/bin/python; \
-    fi; \
-    python -m ensurepip --upgrade; \
-    python -m pip install --no-cache-dir --upgrade pip; \
-    python --version; \
-    python -m pip --version
+RUN printf '%s\n' \
+      '{' \
+      '  "flavor": "native-container",' \
+      '  "gpu_enabled": false,' \
+      '  "backend": "rust-sidecar",' \
+      "  \"version\": \"${STUDIO_VERSION}\"," \
+      "  \"revision\": \"${STUDIO_REVISION}\"" \
+      '}' > /usr/share/nginx/html/build_info.json \
+    && cp /usr/share/nginx/html/build_info.json /etc/nirs4all-studio-build-info.json \
+    && ldd /usr/local/bin/studio-sidecar \
+    && ! ldd /usr/local/bin/studio-sidecar | grep -q 'not found' \
+    && ! command -v python \
+    && ! command -v python3
 
-WORKDIR /app
+ENV NIRS4ALL_RUNTIME_MODE=container \
+    NIRS4ALL_RUNTIME_KIND=native-sidecar \
+    NIRS4ALL_APP_VERSION=${STUDIO_VERSION} \
+    NIRS4ALL_BUILD_INFO_PATH=/etc/nirs4all-studio-build-info.json \
+    NIRS4ALL_CONFIG=/var/lib/nirs4all-studio/config \
+    NIRS4ALL_BACKEND_DATA_DIR=/var/lib/nirs4all-studio \
+    NIRS4ALL_DOCKER=true
 
-# Install Python dependencies
-COPY requirements-cpu.txt requirements-gpu.txt ./
-RUN python -m pip install --no-cache-dir -r requirements-cpu.txt && \
-    if [ "$INSTALL_GPU" = "true" ]; then \
-        python -m pip install --no-cache-dir -r requirements-gpu.txt; \
-    fi
-
-# Install dag-ml runtimes before nirs4all so the Docker image uses the same
-# backend stack as the release-candidate archives.
-RUN set -eux; \
-    curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable; \
-    export PATH="/root/.cargo/bin:${PATH}"; \
-    rustc --version; \
-    cargo --version; \
-    python -m pip install --no-cache-dir \
-        "dag-ml-data @ ${DAG_ML_DATA_SOURCE_URL}#subdirectory=crates/dag-ml-data-py" \
-        "dag-ml @ ${DAG_ML_SOURCE_URL}#subdirectory=crates/dag-ml-py"; \
-    python -m pip install --no-cache-dir "${NIRS4ALL_SOURCE_URL}" && \
-    python -c "import dag_ml, dag_ml_data, nirs4all; print('runtime ok', nirs4all.__version__)"; \
-    apt-get purge -y --auto-remove build-essential; \
-    rm -rf /root/.cargo /root/.rustup /root/.cache/pip /var/lib/apt/lists/*
-
-# Copy backend source
-COPY main.py ./
-COPY api/ api/
-COPY websocket/ websocket/
-COPY recommended-config.json ./
-
-# Copy frontend build from stage 1
-COPY --from=frontend /build/dist ./dist
-COPY public/ public/
-
-# Write build info
-RUN python -c "import json, datetime; json.dump({ \
-    'build_date': datetime.datetime.utcnow().isoformat() + 'Z', \
-    'mode': 'docker', \
-    'gpu': '${INSTALL_GPU}' \
-    }, open('build_info.json', 'w'))"
-
-# Runtime configuration
-ENV NIRS4ALL_DOCKER=true
-ENV PYTHONUNBUFFERED=1
-
+VOLUME ["/var/lib/nirs4all-studio", "/workspaces"]
 EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl --fail --silent --show-error http://127.0.0.1:8000/api/health >/dev/null || exit 1
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
-
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+USER nginx
+ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/studio-entrypoint"]
