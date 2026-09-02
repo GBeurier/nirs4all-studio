@@ -140,16 +140,18 @@ async function globalSetup(config: FullConfig) {
       throw new Error(`Could not prepare first-launch setup state: ${e}`);
     }
 
-    // Force English language in workspace settings for deterministic tests
+    // Force English in the Rust-owned application preferences. This setup must
+    // not require an active scientific workspace merely to make UI tests
+    // deterministic.
     try {
-      const response = await page.request.put(`${e2eRuntime.backendUrl}/api/workspace/settings`, {
-        data: { general: { language: 'en' } },
+      const response = await page.request.put(`${e2eRuntime.backendUrl}/api/app/settings`, {
+        data: { ui_preferences: { language: 'en' } },
       });
       if (!response.ok()) {
         throw new Error(`HTTP ${response.status()} ${await readResponseSnippet(response)}`);
       }
     } catch (e) {
-      throw new Error(`Could not reset language to English: ${e}`);
+      throw new Error(`Could not reset application language to English: ${e}`);
     }
   } finally {
     await browser.close();

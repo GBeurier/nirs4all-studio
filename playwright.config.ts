@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { resolveE2eRuntimeConfig } from './e2e/fixtures/e2e-env';
 
 const e2eRuntime = resolveE2eRuntimeConfig();
+const nodeExecutable = JSON.stringify(process.execPath);
 
 function buildWebServerEnv(overrides: Record<string, string>): Record<string, string> {
   const env: Record<string, string> = {};
@@ -29,8 +30,8 @@ const frontendWebServerEnv = buildWebServerEnv({
 /**
  * Playwright E2E Test Configuration for nirs4all_webapp
  *
- * Supports both web mode (Vite dev server) and desktop mode (FastAPI serving static files).
- * Run specific mode with: npm run e2e:web or npm run e2e:desktop
+ * Exercises the browser renderer through Vite while the product API and
+ * WebSocket surface are owned by the Rust sidecar.
  */
 export default defineConfig({
   testDir: './e2e/tests',
@@ -64,7 +65,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
 
-    // Timeouts — Vite proxy to FastAPI can be slow on Windows
+    // Timeouts — a cold Rust build plus the Vite proxy can be slow on Windows
     actionTimeout: 15000,
     navigationTimeout: 60000,
   },
@@ -114,7 +115,7 @@ export default defineConfig({
       },
     },
 
-    // Web mode tests (Vite dev server + FastAPI backend)
+    // Web mode tests (Vite dev server + Rust product sidecar)
     {
       name: 'web-chromium',
       dependencies: ['web-chromium-smoke'],
@@ -139,21 +140,13 @@ export default defineConfig({
       },
     },
 
-    // Desktop mode tests (FastAPI serves static build)
-    {
-      name: 'desktop-chromium',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: e2eRuntime.backendUrl,
-      },
-    },
   ],
 
   // Web server configuration - auto-start dev servers
   webServer: [
-    // Backend API server (always needed)
+    // Product API server (always Rust; CPython never owns this port).
     {
-      command: `node scripts/run-python.cjs main.py --no-reload --host ${e2eRuntime.backendHost} --port ${e2eRuntime.backendPort}`,
+      command: `cargo run --manifest-path sidecar/Cargo.toml --locked -- --host ${e2eRuntime.backendHost} --port ${e2eRuntime.backendPort}`,
       url: `${e2eRuntime.backendUrl}/api/health`,
       reuseExistingServer: e2eRuntime.reuseExistingServer,
       timeout: 120000,
@@ -163,7 +156,9 @@ export default defineConfig({
     },
     // Frontend dev server (for web mode projects)
     {
-      command: `npm run dev -- --host ${e2eRuntime.frontendHost} --port ${e2eRuntime.frontendPort} --strictPort`,
+      // Reuse the Node executable that loaded Playwright. This avoids npm
+      // crossing into a host Windows installation from a WSL checkout.
+      command: `${nodeExecutable} node_modules/vite/bin/vite.js --host ${e2eRuntime.frontendHost} --port ${e2eRuntime.frontendPort} --strictPort`,
       url: e2eRuntime.frontendUrl,
       reuseExistingServer: e2eRuntime.reuseExistingServer,
       timeout: 120000,
