@@ -22,6 +22,9 @@ const fs = require("fs");
 const path = require("path");
 const { resolveSpawnCommand } = require("./spawn-command.cjs");
 const { verifyRuntimeContract } = require("./native-runtime-contract.cjs");
+const {
+  packageAndVerifyInstallerOutputs,
+} = require("./installer-release-contract.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 process.chdir(projectRoot);
@@ -255,33 +258,22 @@ async function main() {
         break;
     }
 
-    await runCommand("npx", [
-      "electron-builder",
-      "--config",
-      "electron-builder.installer.yml",
-      ...builderArgs,
-    ]);
-
-    console.log("");
-    console.log("========================================");
-    console.log("  Build Complete!");
-    console.log("========================================");
-    console.log("");
-    console.log(`Flavor: ${flavor.toUpperCase()}`);
-    console.log("Output files are in: release/");
-
     const releasePath = path.join(projectRoot, "release");
-    if (fs.existsSync(releasePath)) {
-      const files = fs.readdirSync(releasePath);
-      for (const file of files) {
-        const stat = fs.statSync(path.join(releasePath, file));
-        if (stat.isFile()) {
-          const sizeMB = (stat.size / (1024 * 1024)).toFixed(1);
-          console.log(`  ${file} (${sizeMB}M)`);
-        }
-      }
-    }
-    console.log("");
+    const packaged = await packageAndVerifyInstallerOutputs({
+      releaseRoot: releasePath,
+      requestedPlatform: platform,
+      verifyRuntimeContract,
+      runBuilder: (stagingRoot) =>
+        runCommand("npx", [
+          "electron-builder",
+          "--config",
+          "electron-builder.installer.yml",
+          "--publish",
+          "never",
+          `--config.directories.output=${stagingRoot}`,
+          ...builderArgs,
+        ]),
+    });
 
     // Rename output files to include a flavor suffix (cpu is the default, unsuffixed).
     const flavorSuffix = { gpu: "gpu", "cpu-lite": "lite" }[flavor];
@@ -307,6 +299,29 @@ async function main() {
         }
       }
     }
+
+    console.log("");
+    console.log("========================================");
+    console.log("  Build Complete!");
+    console.log("========================================");
+    console.log("");
+    console.log(`Flavor: ${flavor.toUpperCase()}`);
+    console.log("Output files are in: release/");
+    console.log(
+      `Verified outputs from this invocation: ${packaged.producedNames.join(", ")}`,
+    );
+
+    if (fs.existsSync(releasePath)) {
+      const files = fs.readdirSync(releasePath);
+      for (const file of files) {
+        const stat = fs.statSync(path.join(releasePath, file));
+        if (stat.isFile()) {
+          const sizeMB = (stat.size / (1024 * 1024)).toFixed(1);
+          console.log(`  ${file} (${sizeMB}M)`);
+        }
+      }
+    }
+    console.log("");
   } catch (error) {
     console.error("Build failed:", error.message);
     process.exit(1);
