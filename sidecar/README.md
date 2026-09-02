@@ -211,11 +211,13 @@ The capability object separately advertises
 `scientific_submission_transport: true`, a dynamic `scientific_execution`, and
 `durable_execution_job_record_reads: true`.
 The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
-is set. `GET /sidecar/v1/python/preflight` launches that product-owned
-interpreter with `-I`, bounds it to three seconds, and checks `import nirs4all`.
+is set. Every product-owned CPython launch uses `-B` plus
+`PYTHONDONTWRITEBYTECODE=1`, so probing cannot add bytecode to the attested
+runtime closure. `GET /sidecar/v1/python/preflight` also uses `-I`, bounds the
+cold import to 15 seconds, and checks `import nirs4all`.
 `GET /api/system/capabilities` and `GET /api/system/info` use the same bridge
 with a bounded 15-second optional-import probe. `GET /api/system/env-coherence`
-uses a bounded three-second import/runtime probe and reports `python_plugin_host`
+uses a bounded 15-second import/runtime probe and reports `python_plugin_host`
 as the runtime kind. `GET /api/system/build` assembles the product-selected
 build metadata in Rust and uses the same bounded host only to inspect optional
 `torch` GPU availability. `GET /api/updates/version` combines the

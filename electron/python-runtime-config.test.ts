@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
   assertProfileSupportedOnPlatform(profileId: string, platform?: string): void;
+  BACKEND_COMMON_PACKAGES: string[];
+  BACKEND_TRANSITION_TOOL_PACKAGES: string[];
   LITE_EXCLUDED_PACKAGE_NAMES: string[];
   MANAGED_RUNTIME_PACKAGES: string[];
   PRODUCT_PROFILES: Record<string, { extraPackageNames: string[] }>;
@@ -16,6 +18,18 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
 };
 
 describe("python-runtime-config", () => {
+  it("keeps transition tooling outside the packaged runtime dependency closure", () => {
+    expect(runtimeConfig.BACKEND_TRANSITION_TOOL_PACKAGES).toEqual([
+      "nirs4all-tools>=0.0.5",
+    ]);
+    expect(runtimeConfig.BACKEND_COMMON_PACKAGES).not.toContain(
+      "nirs4all-tools>=0.0.5",
+    );
+    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).not.toContain(
+      "nirs4all-tools>=0.0.5",
+    );
+  });
+
   it("keeps the standalone v1 scope pinned to the cpu profile extras", () => {
     expect(runtimeConfig.STANDALONE_V1_PROFILE).toBe("cpu");
     expect(runtimeConfig.PRODUCT_PROFILES.cpu.extraPackageNames).toEqual([

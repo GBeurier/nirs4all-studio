@@ -111,7 +111,7 @@ pub const UPDATE_SETTINGS_FILE: &str = "update_settings.yaml";
 pub const MAX_UPDATE_SETTINGS_BYTES: u64 = 16 * 1024;
 pub const VENV_METADATA_FILE: &str = "venv_metadata.json";
 pub const MAX_VENV_METADATA_BYTES: u64 = 16 * 1024;
-pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(3);
+pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(15);
 pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration = Duration::from_secs(15);
 pub const MAX_PYTHON_PLUGIN_OUTPUT_BYTES: usize = 8 * 1024;
 pub const MAX_PYTHON_PLUGIN_RUNTIME_STATUS_OUTPUT_BYTES: usize = 256 * 1024;
@@ -2501,7 +2501,8 @@ fn preflight_python_plugin_host(
     python_plugin_host: &Path,
 ) -> Result<(), PythonPluginPreflightFailure> {
     let mut child = Command::new(python_plugin_host)
-        .args(["-I", "-c", "import nirs4all"])
+        .args(["-I", "-B", "-c", "import nirs4all"])
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -2774,7 +2775,8 @@ fn run_python_plugin_json_with_limit(
     output_limit: usize,
 ) -> Result<Value, PythonPluginBridgeFailure> {
     let mut child = Command::new(python_plugin_host)
-        .args(["-I", "-c", script])
+        .args(["-I", "-B", "-c", script])
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -3926,6 +3928,70 @@ mod tests {
             "python_plugin_preflight_failed"
         );
         assert_eq!(failed_body["error"]["details"]["reason"], "spawn_failed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn python_plugin_routes_cannot_write_bytecode_into_the_runtime() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let runtime = std::env::temp_dir().join(format!(
+            "studio-sidecar-python-preflight-bytecode-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&runtime).unwrap();
+        let host = runtime.join("python3");
+        fs::write(
+            &host,
+            format!(
+                "#!/bin/sh\ncase \" $* \" in *\" -B \"*) ;; *) mkdir -p '{0}/__pycache__'; touch '{0}/__pycache__/mutated.pyc' ;; esac\nif [ \"${{PYTHONDONTWRITEBYTECODE:-}}\" != 1 ]; then mkdir -p '{0}/__pycache__'; touch '{0}/__pycache__/mutated.pyc'; fi\nprintf '{{}}'\nexit 0\n",
+                runtime.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&host).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&host, permissions).unwrap();
+
+        let mut state = SidecarState::with_python_plugin_host(host);
+        for route in [
+            "/sidecar/v1/python/preflight",
+            "/api/system/capabilities",
+            "/api/system/info",
+            "/api/system/build",
+            "/api/system/env-coherence",
+            "/api/updates/version",
+            "/api/updates/runtime/status",
+        ] {
+            let response = route_request(&mut state, "GET", route);
+            assert_ne!(response.status, 404, "{route}");
+            assert!(
+                !runtime.join("__pycache__").exists(),
+                "{route} launched CPython without disabling bytecode writes"
+            );
+        }
+
+        fs::remove_dir_all(runtime).unwrap();
+    }
+
+    #[test]
+    fn every_product_cpython_launch_disables_bytecode_writes_statically() {
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        for relative in [
+            "src/lib.rs",
+            "src/run_detail_cpython.rs",
+            "src/scientific_cpython.rs",
+        ] {
+            let source = fs::read_to_string(manifest.join(relative)).unwrap();
+            assert!(
+                !source.contains(".args([\"-I\", \"-c\""),
+                "{relative} contains a CPython launch that permits bytecode writes"
+            );
+        }
     }
 
     #[test]

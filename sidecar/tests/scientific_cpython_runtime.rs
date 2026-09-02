@@ -130,7 +130,7 @@ fn absent_malformed_and_oversized_hosts_are_typed_before_mutation() {
             "python_host_stdout_too_large",
         ),
         (
-            shell_host(&root, "timeout", "sleep 6"),
+            shell_host(&root, "timeout", "sleep 16"),
             "python_host_timed_out",
         ),
     ];

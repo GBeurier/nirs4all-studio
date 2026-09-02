@@ -212,7 +212,8 @@ fn run_python(
     limits: BridgeLimits,
 ) -> Result<Vec<u8>, RunDetailOwnerBridgeFailure> {
     let mut child = Command::new(python_plugin_host)
-        .args(["-I", "-c", script])
+        .args(["-I", "-B", "-c", script])
+        .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdin(if input.is_some() {
             Stdio::piped()
         } else {
@@ -394,6 +395,41 @@ mod tests {
         for path in [timeout, stdout, stderr, malformed] {
             std::fs::remove_file(path).unwrap();
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_detail_bridge_cannot_write_bytecode_into_the_runtime() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let runtime = std::env::temp_dir().join(format!(
+            "studio-run-detail-bytecode-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&runtime).unwrap();
+        let host = shell_host(
+            "bytecode",
+            &format!(
+                "case \" $* \" in *\" -B \"*) ;; *) mkdir -p '{0}/__pycache__'; touch '{0}/__pycache__/mutated.pyc' ;; esac\nif [ \"${{PYTHONDONTWRITEBYTECODE:-}}\" != 1 ]; then mkdir -p '{0}/__pycache__'; touch '{0}/__pycache__/mutated.pyc'; fi\nprintf '{{}}'",
+                runtime.display()
+            ),
+        );
+        let limits = BridgeLimits {
+            timeout: Duration::from_secs(1),
+            stdout: 16,
+            stderr: 16,
+        };
+
+        assert_eq!(
+            run_python(&host, "ignored", None, limits),
+            Ok(b"{}".to_vec())
+        );
+        assert!(!runtime.join("__pycache__").exists());
+
+        std::fs::remove_file(host).unwrap();
+        std::fs::remove_dir_all(runtime).unwrap();
     }
 
     #[cfg(unix)]
