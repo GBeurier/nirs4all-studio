@@ -143,6 +143,61 @@ function requireDirectoryChain(root, segments, label) {
   return current;
 }
 
+function relativeDirectorySegments(root, directoryPath, label) {
+  const relative = path.relative(path.resolve(root), path.resolve(directoryPath));
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error(`${label} escapes its invocation boundary`);
+  }
+  return relative.split(path.sep).filter(Boolean);
+}
+
+function ensureRealChildDirectory(parent, name, label) {
+  requireRealDirectory(parent, `${label} parent`);
+  if (!name || name !== path.basename(name)) {
+    throw new Error(`${label} must be a direct child directory`);
+  }
+  const child = path.join(parent, name);
+  try {
+    fs.mkdirSync(child);
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+  }
+  requireRealDirectory(child, label);
+  assertCanonicalMember(parent, child, label);
+  return child;
+}
+
+function validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot) {
+  requireDirectoryChain(
+    invocationBoundary,
+    relativeDirectorySegments(invocationBoundary, releaseRoot, "Installer release root"),
+    "Installer release root",
+  );
+  requireDirectoryChain(
+    invocationBoundary,
+    relativeDirectorySegments(invocationBoundary, stagingRoot, "Installer staging root"),
+    "Installer staging root",
+  );
+}
+
+function removeGeneratedDirectoryIfConfined(invocationBoundary, directoryPath) {
+  try {
+    requireDirectoryChain(
+      invocationBoundary,
+      relativeDirectorySegments(invocationBoundary, directoryPath, "Generated directory"),
+      "Generated directory",
+    );
+  } catch {
+    return false;
+  }
+  fs.rmSync(directoryPath, { recursive: true, force: true });
+  return true;
+}
+
 function assertClosedBackendTree(root, backendRoot, label) {
   assertCanonicalMember(root, backendRoot, label);
   const pending = [backendRoot];
@@ -351,17 +406,29 @@ function verifyDiscoveredOutputs({
   }
 }
 
-function moveWithRollback(stagingRoot, releaseRoot, names, verifyPublished) {
+function moveWithRollback(
+  invocationBoundary,
+  stagingRoot,
+  releaseRoot,
+  names,
+  verifyPublished,
+) {
+  validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
   const backupRoot = path.join(
     path.dirname(stagingRoot),
     `.installer-backup-${process.pid}-${crypto.randomUUID()}`,
   );
-  fs.mkdirSync(releaseRoot, { recursive: true });
-  fs.mkdirSync(backupRoot, { recursive: true });
+  fs.mkdirSync(backupRoot);
+  requireDirectoryChain(
+    invocationBoundary,
+    relativeDirectorySegments(invocationBoundary, backupRoot, "Installer backup root"),
+    "Installer backup root",
+  );
   const moved = [];
   const backedUp = [];
   try {
     for (const name of names) {
+      validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
       const source = path.join(stagingRoot, name);
       const destination = path.join(releaseRoot, name);
       if (fs.existsSync(destination)) {
@@ -372,16 +439,20 @@ function moveWithRollback(stagingRoot, releaseRoot, names, verifyPublished) {
       moved.push(name);
     }
     verifyPublished();
+    validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
   } catch (error) {
+    validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
     for (const name of moved.reverse()) {
+      validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
       fs.rmSync(path.join(releaseRoot, name), { recursive: true, force: true });
     }
     for (const name of backedUp) {
+      validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
       fs.renameSync(path.join(backupRoot, name), path.join(releaseRoot, name));
     }
     throw error;
   } finally {
-    fs.rmSync(backupRoot, { recursive: true, force: true });
+    removeGeneratedDirectoryIfConfined(invocationBoundary, backupRoot);
   }
 }
 
@@ -394,18 +465,26 @@ async function packageAndVerifyInstallerOutputs({
   hostPlatform = process.platform,
 }) {
   const invocationBoundary = path.dirname(releaseRoot);
-  fs.mkdirSync(releaseRoot, { recursive: true });
-  requireDirectoryChain(
+  requireRealDirectory(invocationBoundary, "Installer invocation boundary");
+  assertCanonicalMember(
     invocationBoundary,
-    [path.basename(releaseRoot)],
+    invocationBoundary,
+    "Installer invocation boundary",
+  );
+  ensureRealChildDirectory(
+    invocationBoundary,
+    path.basename(releaseRoot),
     "Installer release root",
   );
   const releaseBefore = snapshotTopLevel(releaseRoot);
-  const stagingParent = path.join(path.dirname(releaseRoot), "build", "installer-invocations");
-  fs.mkdirSync(stagingParent, { recursive: true });
-  requireDirectoryChain(
+  const buildRoot = ensureRealChildDirectory(
     invocationBoundary,
-    ["build", "installer-invocations"],
+    "build",
+    "Installer build root",
+  );
+  const stagingParent = ensureRealChildDirectory(
+    buildRoot,
+    "installer-invocations",
     "Installer staging parent",
   );
   const stagingRoot = fs.mkdtempSync(path.join(stagingParent, "installer-"));
@@ -417,6 +496,7 @@ async function packageAndVerifyInstallerOutputs({
   const stagingBefore = snapshotTopLevel(stagingRoot);
   try {
     await runBuilder(stagingRoot);
+    validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
     const stagingAfter = snapshotTopLevel(stagingRoot);
     const producedNames = newlyProducedNames(stagingBefore, stagingAfter);
     if (producedNames.length === 0) {
@@ -444,7 +524,8 @@ async function packageAndVerifyInstallerOutputs({
     }
 
     let finalOutputs = null;
-    moveWithRollback(stagingRoot, releaseRoot, promotedNames, () => {
+    validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
+    moveWithRollback(invocationBoundary, stagingRoot, releaseRoot, promotedNames, () => {
       const publishedOutputs = platforms.map((platform, index) =>
         discoverPlatformOutput(
           releaseRoot,
@@ -480,7 +561,7 @@ async function packageAndVerifyInstallerOutputs({
       outputs: finalOutputs,
     };
   } finally {
-    fs.rmSync(stagingRoot, { recursive: true, force: true });
+    removeGeneratedDirectoryIfConfined(invocationBoundary, stagingRoot);
   }
 }
 
