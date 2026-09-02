@@ -5,9 +5,9 @@ commercial license). Product packages bundle selected native, Python, Electron, 
 components. Their license notices are part of the distribution; the authoritative text also
 ships with each upstream project.
 
-The native product runtime embeds `nirs4all-methods` 1.0.13 from commit
-`4983c9a1df39d430a78c615bda209d3353514aa1` (tree
-`8f8a7809d22ff5d95f64a22e519759eaa3fd2ec0`) as `libn4m`, under CeCILL-2.1.
+The native product runtime embeds `nirs4all-methods` 1.0.14 from commit
+`a71ee2927524d03482183de3d6e22661efc05d12` (tree
+`f6749f4c4be7dca161f3c2677dd10a9ac4434b66`) as `libn4m`, under CeCILL-2.1.
 Studio compiles its Rust sidecar against immutable snapshots of `nirs4all-core`,
 `dag-ml`/`dag-ml-core`, and `nirs4all-io`; their exact commits, inventories, package
 digests, and license files are recorded beside those snapshots under `sidecar/vendor/`.

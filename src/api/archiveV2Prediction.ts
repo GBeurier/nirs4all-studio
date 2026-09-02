@@ -19,7 +19,7 @@ const MAX_EXECUTOR_BYTES = 256;
 const SHA256 = /^[a-f0-9]{64}$/;
 const IDENTIFIER = /^[A-Za-z0-9._:-]+$/;
 const CORE_METHODS_EXECUTOR =
-  /^nirs4all-core@0\.3\.25\+libn4m-abi-2\.3:[a-f0-9]{64}$/;
+  /^nirs4all-core@0\.3\.25\+libn4m-abi-2\.4:[a-f0-9]{64}$/;
 const encoder = new TextEncoder();
 
 type JsonRecord = Record<string, unknown>;

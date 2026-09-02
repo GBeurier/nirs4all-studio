@@ -19,7 +19,7 @@ native contract mismatch, and the client validates response identity, order,
 shape, finiteness, fallback state, and workspace/archive provenance.
 It reads at most 2 MiB of raw response bytes before JSON parsing, regardless of
 whether `Content-Length` is present or truthful. The executor identity must be
-the closed `nirs4all-core@0.3.25+libn4m-abi-2.3:<sha256>` form.
+the closed `nirs4all-core@0.3.25+libn4m-abi-2.4:<sha256>` form.
 
 `npm run test:native-archive-v2` is the product gate for this path. It verifies
 the attested 60,014-byte multitarget Archive V2 witness, verifies the exact

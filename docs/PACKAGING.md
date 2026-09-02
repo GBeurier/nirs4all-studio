@@ -135,7 +135,7 @@ enables the plugin capability.
 Every installer/release gate invokes `native-runtime-contract.cjs` with
 `--require-bundled-python-plugin` and `--require-bundled-methods`. The sidecar
 builder likewise refuses to emit a product tree unless the build supplies one
-content-addressed native Methods library at ABI 2.3. Therefore a standard
+content-addressed native Methods library at ABI 2.4. Therefore a standard
 installer or all-in-one archive cannot silently publish either capability as
 `mode: unavailable`.
 
@@ -373,7 +373,7 @@ Every public conversion execution path rechecks this attestation immediately
 before spawn. Windows packages use the sidecar's internal Job Object launcher;
 it joins a kill-on-close job before creating CPython, so descendants cannot race
 the containment boundary or request breakaway.
-The image does embed the exact `nirs4all-methods` ABI 2.3 library and its
+The image does embed the exact `nirs4all-methods` ABI 2.4 library and its
 `STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
 independent of the plugin host. CI supplies that library through a local
 BuildKit context built and tested from commit `4983c9a1…`, never from an

@@ -35,7 +35,7 @@
     "test:frontend": "vitest run",
     "test:native-sidecar": "vitest run electron/native-sidecar-manager.test.ts electron/native-session-lifecycle.test.ts electron/scientific-plugin-lifecycle.test.ts electron/packaged-runtime-contract.test.ts electron/build-native-methods.test.ts electron/build-native-sidecar.test.ts electron/bake-python-plugin-runtime.test.ts electron/smoke-archive-standalone.test.ts src/api/transport.test.ts",
     "test:native-archive-v2": "node scripts/test-native-archive-v2.cjs",
-    "test:vendored-native-sources": "sh sidecar/scripts/verify-vendored-io.sh && sh sidecar/scripts/verify-vendored-core.sh && sh sidecar/scripts/verify-vendored-dagml.sh",
+    "test:vendored-native-sources": "sh sidecar/scripts/verify-vendored-io.sh && sh sidecar/scripts/verify-vendored-core.sh && sh sidecar/scripts/verify-vendored-dagml.sh && sh sidecar/scripts/verify-vendored-n4m.sh",
     "test:backend": "node scripts/run-python.cjs -m pytest tests/ -v --tb=short --timeout=120 -n auto",
     "test:contract": "node scripts/run-python.cjs scripts/verify-studio-v1-contract.py --check",
     "test:docker-runtime-contract": "node scripts/verify-docker-runtime-contract.cjs",
