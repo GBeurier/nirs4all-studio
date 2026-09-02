@@ -446,6 +446,7 @@ function verifyDiscoveredOutputs({
         platform: output.platform,
         arch: output.platform === "darwin" ? process.arch : "x64",
         requireBundledPythonPlugin: true,
+        requireBundledMethods: true,
       });
     };
     const first = verify();

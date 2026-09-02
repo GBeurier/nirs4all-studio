@@ -43,6 +43,7 @@ node -e '
   if (capabilityError.error?.code !== "python_plugin_unavailable") throw new Error("unexpected Python host refusal");
   if (capabilities.features?.implicit_python_http_fallback !== false) throw new Error("Python HTTP fallback is not disabled");
   if (capabilities.python_plugin_host !== "unconfigured") throw new Error("default image unexpectedly configured a Python host");
+  if (capabilities.features?.native_archive_v2_prediction !== true) throw new Error("native Methods archive replay is unavailable");
 ' "${health}" "${capability_status}" "${capability_error}" "${capabilities}"
 
 node --input-type=module -e '
@@ -54,6 +55,9 @@ node --input-type=module -e '
 ' "ws://127.0.0.1:${port}/ws?client_id=docker-smoke"
 
 docker exec "${container}" sh -eu -c '
+  test -x /opt/nirs4all/backend/native/studio-sidecar
+  test -f /opt/nirs4all/backend/native/libn4m.so
+  test -f /opt/nirs4all/backend/native/STUDIO_RUNTIME_CONTRACT.json
   ! command -v python
   ! command -v python3
   test ! -e /app/main.py

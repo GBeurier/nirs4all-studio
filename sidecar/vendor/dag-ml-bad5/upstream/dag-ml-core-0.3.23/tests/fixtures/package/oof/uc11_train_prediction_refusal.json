@@ -1,0 +1,50 @@
+{
+  "fold_set": {
+    "id": "uc11_outer",
+    "sample_ids": ["S001", "S002", "S003", "S004", "S005", "S006"],
+    "folds": [
+      {
+        "fold_id": "fold0",
+        "train_sample_ids": ["S002", "S003", "S005", "S006"],
+        "validation_sample_ids": ["S001", "S004"]
+      },
+      {
+        "fold_id": "fold1",
+        "train_sample_ids": ["S001", "S003", "S004", "S006"],
+        "validation_sample_ids": ["S002", "S005"]
+      },
+      {
+        "fold_id": "fold2",
+        "train_sample_ids": ["S001", "S002", "S004", "S005"],
+        "validation_sample_ids": ["S003", "S006"]
+      }
+    ]
+  },
+  "join_policy": {
+    "node_id": "merge:pred",
+    "allow_train_predictions_as_features": false,
+    "join_on": "sample_id",
+    "include_partitions": ["train", "validation"]
+  },
+  "requested_sample_order": ["S001", "S002", "S003", "S004", "S005", "S006"],
+  "prediction_blocks": [
+    {
+      "prediction_id": "b0_fold0_train",
+      "producer_node": "branch:b0.model:pls",
+      "partition": "train",
+      "fold_id": "fold0",
+      "sample_ids": ["S006", "S002", "S005", "S003"],
+      "values": [[6.6], [2.2], [5.5], [3.3]],
+      "target_names": ["y"]
+    },
+    {
+      "prediction_id": "b0_fold0_val",
+      "producer_node": "branch:b0.model:pls",
+      "partition": "validation",
+      "fold_id": "fold0",
+      "sample_ids": ["S004", "S001"],
+      "values": [[4.0], [1.0]],
+      "target_names": ["y"]
+    }
+  ]
+}

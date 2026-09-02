@@ -1,0 +1,30 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/dag-ml.git",
+  "commit": "bad5aff0bfbc14c622f5ade7f393f29399df6e07",
+  "repository_tree": "529ecc687d6b9307f41ee34feafcf5d8135ba9ae",
+  "included_crate_trees": {
+    "dag-ml": "bba3d934c7cc6488cca1557128e7ed24577bbd1e",
+    "dag-ml-core": "87f5b18085e7fda2aeed1fb79767f2defea0b50e"
+  },
+  "selected_crate_packages": [
+    {
+      "name": "dag-ml",
+      "version": "0.3.23",
+      "sha256": "4a6948c1574e5649d247152d6fce93eabf932c03565408a439edc2e6b5853d0b"
+    },
+    {
+      "name": "dag-ml-core",
+      "version": "0.3.23",
+      "sha256": "b581e1ac6470470af35219e212f7ef77c310441cd5990bb545d7eb8d116c6f74"
+    }
+  ],
+  "snapshot_policy": "Only the exact locally qualified Cargo package payloads are extracted under upstream/. Each payload includes Cargo's normalized and original manifests, VCS identity, lockfile, selected source/include files, and package licence/readme files. Unrelated workspace crates, bindings, generated native extensions, and sites are excluded.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 94
+  },
+  "verification": "../../scripts/verify-vendored-dagml.sh",
+  "release_gate": "This locally qualified 0.3.23 snapshot is transitional. Published dag-ml and dag-ml-core 0.3.23 identities must replace the path patches before LOCK-RELEASE."
+}

@@ -8,6 +8,10 @@ import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const buildNativeSidecar = require("../scripts/build-native-sidecar.cjs") as {
+  assertMethodsBuildIdentityConfigured(
+    sourcePath: string | null,
+    expectedSha256: string | null,
+  ): void;
   getNativeSidecarPaths(
     root?: string,
     platform?: NodeJS.Platform,
@@ -42,6 +46,7 @@ const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
     platform: string;
     arch: string;
     requireBundledPythonPlugin?: boolean;
+    requireBundledMethods?: boolean;
   }): {
     sidecarPath: string;
     pythonPluginHostPath: string | null;
@@ -58,12 +63,31 @@ const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
       methods_library: {
         mode: string;
         abi: { major: number; minor: number };
+        source: { commit: string; tree: string; project_version: string };
       };
     };
   };
 };
 
 describe("build-native-sidecar", () => {
+  it("refuses a product build without an exact native Methods identity", () => {
+    expect(() =>
+      buildNativeSidecar.assertMethodsBuildIdentityConfigured(null, null),
+    ).toThrow(/Native Methods ABI 2\.3 is required/);
+    expect(() =>
+      buildNativeSidecar.assertMethodsBuildIdentityConfigured(
+        "/build/libn4m.so",
+        null,
+      ),
+    ).toThrow(/NIRS4ALL_BUILD_METHODS_SHA256/);
+    expect(() =>
+      buildNativeSidecar.assertMethodsBuildIdentityConfigured(
+        "/build/libn4m.so",
+        "a".repeat(64),
+      ),
+    ).not.toThrow();
+  });
+
   it("orders closure paths bytewise exactly as the Rust verifier", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-byte-order-"));
     try {
@@ -181,12 +205,21 @@ describe("build-native-sidecar", () => {
           requireBundledPythonPlugin: true,
         }),
       ).toThrow(/required/);
+      expect(() =>
+        runtimeContract.verifyRuntimeContract({
+          backendRoot,
+          artifactBoundaryRoot: backendRoot,
+          platform: "linux",
+          arch: "x64",
+          requireBundledMethods: true,
+        }),
+      ).toThrow(/native Methods library is required/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("attests an explicitly staged ABI 2.2 native Methods closure", () => {
+  it("attests an explicitly staged ABI 2.3 native Methods closure", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-methods-contract-"));
     try {
       const backendRoot = path.join(root, "backend-dist");
@@ -194,7 +227,7 @@ describe("build-native-sidecar", () => {
       const methodsPath = path.join(backendRoot, "native", "libn4m.so");
       fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
       fs.writeFileSync(sidecarPath, "rust-sidecar");
-      fs.writeFileSync(methodsPath, "libn4m-abi-2.2");
+      fs.writeFileSync(methodsPath, "libn4m-abi-2.3");
 
       const written = runtimeContract.writeRuntimeContract({
         backendRoot,
@@ -204,7 +237,12 @@ describe("build-native-sidecar", () => {
       });
       expect(written.contract.methods_library).toMatchObject({
         mode: "bundled-required",
-        abi: { major: 2, minor: 2 },
+        abi: { major: 2, minor: 3 },
+        source: {
+          commit: "4983c9a1df39d430a78c615bda209d3353514aa1",
+          tree: "8f8a7809d22ff5d95f64a22e519759eaa3fd2ec0",
+          project_version: "1.0.13",
+        },
       });
       expect(
         runtimeContract.verifyRuntimeContract({
@@ -224,7 +262,7 @@ describe("build-native-sidecar", () => {
     try {
       const backendRoot = path.join(root, "backend-dist");
       const sourcePath = path.join(root, "libn4m-source.so");
-      const bytes = Buffer.from("libn4m-abi-2.2");
+      const bytes = Buffer.from("libn4m-abi-2.3");
       fs.writeFileSync(sourcePath, bytes);
       const expectedSha256 = createHash("sha256").update(bytes).digest("hex");
 
@@ -257,7 +295,7 @@ describe("build-native-sidecar", () => {
       const sourcePath = path.join(root, "libn4m-source.so");
       const outsidePath = path.join(root, "outside.so");
       const stagedPath = path.join(backendRoot, "native", "libn4m.so");
-      const bytes = Buffer.from("libn4m-abi-2.2");
+      const bytes = Buffer.from("libn4m-abi-2.3");
       fs.writeFileSync(sourcePath, bytes);
       fs.writeFileSync(outsidePath, "must-not-change");
       fs.mkdirSync(path.dirname(stagedPath), { recursive: true });
@@ -288,13 +326,16 @@ describe("build-native-sidecar", () => {
         "--platform=darwin",
         "--arch",
         "arm64",
+        "--require-bundled-python-plugin",
+        "--require-bundled-methods",
       ]),
     ).toEqual({
       backendRoot: path.resolve("release/product/resources/backend"),
       artifactBoundaryRoot: path.resolve("release/product"),
       platform: "darwin",
       arch: "arm64",
-      requireBundledPythonPlugin: false,
+      requireBundledPythonPlugin: true,
+      requireBundledMethods: true,
     });
     expect(() => runtimeContract.parseVerifyArgs([])).toThrow(
       "--backend-root is required",
@@ -347,6 +388,8 @@ describe("build-native-sidecar", () => {
       expect(calls.length, relativePath).toBeGreaterThan(0);
       for (const call of calls) {
         expect(call[1], relativePath).toContain("artifactBoundaryRoot:");
+        expect(call[1], relativePath).toContain("requireBundledPythonPlugin: true");
+        expect(call[1], relativePath).toContain("requireBundledMethods: true");
       }
     }
     for (const relativePath of [
@@ -360,6 +403,8 @@ describe("build-native-sidecar", () => {
       expect(commands.length, relativePath).toBeGreaterThan(0);
       for (const command of commands) {
         expect(command, relativePath).toContain("--artifact-boundary-root");
+        expect(command, relativePath).toContain("--require-bundled-python-plugin");
+        expect(command, relativePath).toContain("--require-bundled-methods");
       }
     }
   });

@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "fixture_id": "dag-ml-core.conformal-w0-golden.v1",
+  "provenance": "Frozen from the independent W0 Python Decimal(repr(binary64)) oracle and W0 numeric-evidence fixtures; production code never reads this file.",
+  "rank_cases": [
+    {"id": "standard_080", "sample_count": 20, "coverage": 0.8, "coverage_bits": "3fe999999999999a", "expected_rank": 17},
+    {"id": "standard_090", "sample_count": 20, "coverage": 0.9, "coverage_bits": "3feccccccccccccd", "expected_rank": 19},
+    {"id": "standard_095", "sample_count": 20, "coverage": 0.95, "coverage_bits": "3fee666666666666", "expected_rank": 20},
+    {"id": "standard_099", "sample_count": 20, "coverage": 0.99, "coverage_bits": "3fefae147ae147ae", "expected_rank": 21},
+    {"id": "standard_0999", "sample_count": 20, "coverage": 0.999, "coverage_bits": "3feff7ced916872b", "expected_rank": 21},
+    {"id": "naive_binary64_overshoot", "sample_count": 24, "coverage": 0.28, "coverage_bits": "3fd1eb851eb851ec", "expected_rank": 7, "naive_rank": 8},
+    {"id": "naive_binary64_undershoot", "sample_count": 2, "coverage": 0.33333333333333337, "coverage_bits": "3fd5555555555556", "expected_rank": 2, "naive_rank": 1},
+    {"id": "minimum_subnormal", "sample_count": 1000000, "coverage": 5e-324, "coverage_bits": "0000000000000001", "expected_rank": 1},
+    {"id": "minimum_normal", "sample_count": 1000000, "coverage": 2.2250738585072014e-308, "coverage_bits": "0010000000000000", "expected_rank": 1},
+    {"id": "largest_below_one", "sample_count": 1, "coverage": 0.9999999999999999, "coverage_bits": "3fefffffffffffff", "expected_rank": 2},
+    {"id": "u128_scale_38_boundary", "sample_count": 1, "coverage": 1e-38, "coverage_bits": "380b38fb9daa78e4", "expected_rank": 1},
+    {"id": "maximum_n_near_one", "sample_count": 18446744073709551614, "coverage": 0.9999999999999999, "coverage_bits": "3fefffffffffffff", "expected_rank": 18446744073709549771}
+  ],
+  "calibration_cases": [
+    {
+      "id": "w0_unsorted_marginal",
+      "multi_target_policy": "marginal",
+      "small_sample_policy": "error",
+      "residuals": [[0.4], [1.0], [0.2], [1.8], [0.6], [1.2], [0.8], [2.0], [0.1], [1.6], [0.3], [1.4], [0.5], [1.9], [0.7], [1.1], [0.9], [1.3], [1.5], [1.7]],
+      "coverages": [0.9, 0.95],
+      "expected": [
+        {"rank": 19, "radii": [1.9]},
+        {"rank": 20, "radii": [2.0]}
+      ]
+    },
+    {
+      "id": "w0_ties_no_interpolation",
+      "multi_target_policy": "marginal",
+      "small_sample_policy": "error",
+      "residuals": [[1.0], [0.0], [2.0], [0.5], [1.0], [2.0], [0.0], [1.0], [0.5]],
+      "coverages": [0.5, 0.8],
+      "expected": [
+        {"rank": 5, "radii": [1.0]},
+        {"rank": 8, "radii": [2.0]}
+      ]
+    },
+    {
+      "id": "two_target_joint_max",
+      "multi_target_policy": "joint_max",
+      "small_sample_policy": "error",
+      "residuals": [[1.0, 4.0], [2.0, 1.0], [3.0, 3.0], [4.0, 2.0]],
+      "coverages": [0.5],
+      "expected": [
+        {"rank": 3, "radii": [4.0]}
+      ]
+    },
+    {
+      "id": "small_n_tagged_unbounded",
+      "multi_target_policy": "marginal",
+      "small_sample_policy": "unbounded",
+      "residuals": [[0.2, 0.3], [0.4, 0.5], [0.6, 0.7]],
+      "coverages": [0.95],
+      "expected": [
+        {"rank": 4, "radii": [null, null]}
+      ]
+    }
+  ],
+  "application_cases": [
+    {
+      "id": "w0_marginal_nested",
+      "multi_target_policy": "marginal",
+      "points": [[10.0, 20.0], [11.0, 21.0]],
+      "quantiles": [
+        {"coverage": 0.8, "rank": 1, "radii": [2.0, 2.0]},
+        {"coverage": 0.9, "rank": 2, "radii": [3.0, 3.0]}
+      ],
+      "expected_cells": [
+        [[[8.0, 12.0], [18.0, 22.0]], [[9.0, 13.0], [19.0, 23.0]]],
+        [[[7.0, 13.0], [17.0, 23.0]], [[8.0, 14.0], [18.0, 24.0]]]
+      ]
+    },
+    {
+      "id": "w0_joint_nested",
+      "multi_target_policy": "joint_max",
+      "points": [[10.0, 20.0], [11.0, 21.0]],
+      "quantiles": [
+        {"coverage": 0.8, "rank": 1, "radii": [3.0]},
+        {"coverage": 0.9, "rank": 2, "radii": [4.0]}
+      ],
+      "expected_cells": [
+        [[[7.0, 13.0], [17.0, 23.0]], [[8.0, 14.0], [18.0, 24.0]]],
+        [[[6.0, 14.0], [16.0, 24.0]], [[7.0, 15.0], [17.0, 25.0]]]
+      ]
+    },
+    {
+      "id": "w0_small_n_unbounded",
+      "multi_target_policy": "marginal",
+      "points": [[10.0, 20.0]],
+      "quantiles": [
+        {"coverage": 0.99, "rank": 2, "radii": [null, null]}
+      ],
+      "expected_cells": [
+        [[null, null]]
+      ]
+    },
+    {
+      "id": "w0_decimal_repr_endpoints",
+      "multi_target_policy": "marginal",
+      "points": [[0.1]],
+      "quantiles": [
+        {"coverage": 0.8, "rank": 1, "radii": [0.2]}
+      ],
+      "expected_cells": [
+        [[[-0.1, 0.3]]]
+      ],
+      "expected_cell_bits": [
+        [[["bfb999999999999a", "3fd3333333333333"]]]
+      ]
+    }
+  ],
+  "application_error_cases": [
+    {
+      "id": "radius_below_point_ulp",
+      "multi_target_policy": "marginal",
+      "coverage_bits": "3fe999999999999a",
+      "point_bits": "4341c37937e08000",
+      "radius_bits": "3fe0000000000000",
+      "expected_coverage_index": 0,
+      "expected_row": 0,
+      "expected_target": 0
+    }
+  ],
+  "metric_cases": [
+    {
+      "id": "w0_marginal_miss_penalty",
+      "multi_target_policy": "marginal",
+      "coverage": 0.8,
+      "truth": [[10.0, 21.0], [14.0, 21.0]],
+      "cells": [[[8.0, 12.0], [18.0, 22.0]], [[9.0, 13.0], [19.0, 23.0]]],
+      "expected": [
+        {"target_index": 0, "measurement_status": "finite", "empirical_coverage": 0.5, "coverage_gap": -0.30000000000000004, "coverage_gap_bits": "bfd3333333333334", "mean_width": 4.0, "median_width": 4.0, "interval_score": 9.0},
+        {"target_index": 1, "measurement_status": "finite", "empirical_coverage": 1.0, "coverage_gap": 0.19999999999999996, "coverage_gap_bits": "3fc9999999999998", "mean_width": 4.0, "median_width": 4.0, "interval_score": 4.0}
+      ]
+    },
+    {
+      "id": "w0_joint_all_target_coverage",
+      "multi_target_policy": "joint_max",
+      "coverage": 0.8,
+      "truth": [[10.0, 21.0], [14.0, 21.0]],
+      "cells": [[[7.0, 13.0], [17.0, 23.0]], [[8.0, 14.0], [18.0, 24.0]]],
+      "expected": [
+        {"target_index": null, "measurement_status": "finite", "empirical_coverage": 1.0, "coverage_gap": 0.19999999999999996, "coverage_gap_bits": "3fc9999999999998", "mean_width": 6.0, "median_width": 6.0, "interval_score": 6.0}
+      ]
+    },
+    {
+      "id": "w0_unbounded_measurements",
+      "multi_target_policy": "marginal",
+      "coverage": 0.99,
+      "truth": [[100.0, -100.0]],
+      "cells": [[null, null]],
+      "expected": [
+        {"target_index": 0, "measurement_status": "unbounded", "empirical_coverage": 1.0, "coverage_gap": 0.010000000000000009, "coverage_gap_bits": "3f847ae147ae1480", "mean_width": null, "median_width": null, "interval_score": null},
+        {"target_index": 1, "measurement_status": "unbounded", "empirical_coverage": 1.0, "coverage_gap": 0.010000000000000009, "coverage_gap_bits": "3f847ae147ae1480", "mean_width": null, "median_width": null, "interval_score": null}
+      ]
+    }
+  ]
+}

@@ -25,6 +25,18 @@ RUN cargo build --locked --release --manifest-path sidecar/Cargo.toml \
     && strip sidecar/target/release/studio-sidecar \
     && sidecar/target/release/studio-sidecar --smoke-readiness >/dev/null
 
+FROM ${NODE_IMAGE} AS native-runtime-contract
+ARG NIRS4ALL_METHODS_SHA256
+WORKDIR /product
+RUN test -n "${NIRS4ALL_METHODS_SHA256}" \
+    && mkdir -p backend/native /contract-scripts
+COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/studio-sidecar
+COPY --from=methods-runtime /libn4m.so.2.3.0 backend/native/libn4m.so
+COPY scripts/native-runtime-contract.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/
+RUN test "$(sha256sum backend/native/libn4m.so | cut -d' ' -f1)" = "${NIRS4ALL_METHODS_SHA256}" \
+    && chmod 0755 backend/native/studio-sidecar \
+    && node -e 'const c=require("/contract-scripts/native-runtime-contract.cjs"); c.writeRuntimeContract({backendRoot:"/product/backend",platform:"linux",arch:"x64",methodsLibraryPath:"/product/backend/native/libn4m.so"}); c.verifyRuntimeContract({backendRoot:"/product/backend",artifactBoundaryRoot:"/product/backend",platform:"linux",arch:"x64",requireBundledMethods:true})'
+
 FROM ${NGINX_IMAGE} AS runtime
 ARG STUDIO_VERSION=0.9.1
 ARG STUDIO_REVISION=unknown
@@ -32,13 +44,13 @@ ARG STUDIO_REVISION=unknown
 # tini forwards termination to nginx and its loopback sidecar process group;
 # curl is used for startup/readiness checks only. No Python runtime is present.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl tini \
+    && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 tini \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /var/lib/nirs4all-studio/config /workspaces /var/cache/nginx /var/run/nginx \
     && chown -R nginx:nginx /var/lib/nirs4all-studio /workspaces /var/cache/nginx /var/run/nginx /var/log/nginx
 
 COPY --from=frontend --chown=nginx:nginx /build/dist/ /usr/share/nginx/html/
-COPY --from=sidecar --chown=nginx:nginx /build/sidecar/target/release/studio-sidecar /usr/local/bin/studio-sidecar
+COPY --from=native-runtime-contract --chown=nginx:nginx /product/backend/ /opt/nirs4all/backend/
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/studio-entrypoint
 
@@ -51,8 +63,10 @@ RUN printf '%s\n' \
       "  \"revision\": \"${STUDIO_REVISION}\"" \
       '}' > /usr/share/nginx/html/build_info.json \
     && cp /usr/share/nginx/html/build_info.json /etc/nirs4all-studio-build-info.json \
-    && ldd /usr/local/bin/studio-sidecar \
-    && ! ldd /usr/local/bin/studio-sidecar | grep -q 'not found' \
+    && ldd /opt/nirs4all/backend/native/studio-sidecar \
+    && ! ldd /opt/nirs4all/backend/native/studio-sidecar | grep -q 'not found' \
+    && ldd /opt/nirs4all/backend/native/libn4m.so \
+    && ! ldd /opt/nirs4all/backend/native/libn4m.so | grep -q 'not found' \
     && ! command -v python \
     && ! command -v python3
 

@@ -23,10 +23,10 @@ nursery = "warn"
 atomicwrites = "0.4.4"
 base64 = "0.22"
 cap-std = "3"
-# Complete immutable snapshot of selected Core commit bc001e53; see its
-# provenance and offline inventory/test gates. It must become published
-# nirs4all 0.3.24 before LOCK-RELEASE.
-nirs4all = { version = "=0.3.24", path = "vendor/nirs4all-core-bc001e5/upstream/bindings/rust/nirs4all" }
+# Complete immutable snapshot of selected Core commit 4eb8a687; see its
+# provenance and offline inventory/test gates. Its final descendant must be
+# relocked against published dag-ml-data 0.2.10 before LOCK-RELEASE.
+nirs4all = { version = "=0.3.25", path = "vendor/nirs4all-core-4eb8a68/upstream/bindings/rust/nirs4all" }
 # Complete immutable snapshot of selected IO commit f41967d; see its provenance
 # and offline inventory/test gates. It must become a published identity by LOCK-RELEASE.
 nirs4all-io = { version = "=0.1.7", path = "vendor/nirs4all-io-f419/upstream/crates/nirs4all-io" }
@@ -40,3 +40,10 @@ url = "2.5.4"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["process", "signal"] }
+
+# Core 0.3.25 pins the locally qualified DagML 0.3.23 train, which is not yet
+# available from crates.io. Keep the exact qualified Cargo package payloads and
+# replace these patches with registry identities before LOCK-RELEASE.
+[patch.crates-io]
+dag-ml = { path = "vendor/dag-ml-bad5/upstream/dag-ml-0.3.23" }
+dag-ml-core = { path = "vendor/dag-ml-bad5/upstream/dag-ml-core-0.3.23" }

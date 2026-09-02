@@ -152,7 +152,7 @@ function resolveBuildConfig(rawOptions, host = { platform: process.platform, arc
     config.localDagMlDataPath
   ) {
     throw new Error(
-      "Phase 2 plugin-only archives refuse local Python source substitution; use the pinned c8 wheel",
+      "Phase 2 plugin-only archives refuse local Python source substitution; use the pinned 32226557 wheel",
     );
   }
 
@@ -350,6 +350,7 @@ function ensureBuildInputsExist(config) {
     platform: config.platform,
     arch: config.arch,
     requireBundledPythonPlugin: true,
+    requireBundledMethods: true,
   });
 }
 
@@ -416,6 +417,7 @@ async function buildArchiveStandalone(config) {
       platform: config.platform,
       arch: config.arch,
       requireBundledPythonPlugin: true,
+      requireBundledMethods: true,
     });
     console.log("");
   } else {

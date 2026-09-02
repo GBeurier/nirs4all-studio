@@ -1,0 +1,287 @@
+[
+  {
+    "controller_id": "controller:augmentation.mock",
+    "controller_version": "0.1.0",
+    "operator_kind": "augmentation",
+    "priority": 0,
+    "supported_phases": [
+      "FIT_CV",
+      "REFIT",
+      "PREDICT"
+    ],
+    "input_ports": [
+      {
+        "name": "x",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "output_ports": [
+      {
+        "name": "x_out",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "data_requirements": null,
+    "capabilities": [
+      "deterministic",
+      "thread_safe",
+      "process_safe",
+      "uses_core_rng"
+    ],
+    "fit_scope": "fold_train",
+    "rng_policy": "uses_core_seed",
+    "artifact_policy": "serializable"
+  },
+  {
+    "controller_id": "controller:transform.mock",
+    "controller_version": "0.1.0",
+    "operator_kind": "transform",
+    "priority": 0,
+    "supported_phases": ["FIT_CV", "REFIT", "PREDICT"],
+    "input_ports": [
+      {
+        "name": "x",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "output_ports": [
+      {
+        "name": "x_out",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "data_requirements": null,
+    "capabilities": ["deterministic", "thread_safe", "process_safe", "uses_core_rng"],
+    "fit_scope": "fold_train",
+    "rng_policy": "uses_core_seed",
+    "artifact_policy": "serializable"
+  },
+  {
+    "controller_id": "controller:model.mock",
+    "controller_version": "0.1.0",
+    "operator_kind": "model",
+    "priority": 0,
+    "supported_phases": ["FIT_CV", "REFIT", "PREDICT"],
+    "input_ports": [
+      {
+        "name": "x",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "output_ports": [
+      {
+        "name": "oof",
+        "kind": "prediction",
+        "representation": null,
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "data_requirements": null,
+    "capabilities": [
+      "deterministic",
+      "thread_safe",
+      "process_safe",
+      "uses_core_rng",
+      "emits_predictions",
+      "consumes_oof_predictions",
+      "emits_artifacts",
+      "stateful"
+    ],
+    "fit_scope": "fold_train",
+    "rng_policy": "uses_core_seed",
+    "artifact_policy": "serializable"
+  },
+  {
+    "controller_id": "controller:tuner.mock",
+    "controller_version": "0.1.0",
+    "operator_kind": "tuner",
+    "priority": 0,
+    "supported_phases": ["FIT_CV", "REFIT", "PREDICT"],
+    "input_ports": [
+      {
+        "name": "x",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "output_ports": [
+      {
+        "name": "oof",
+        "kind": "prediction",
+        "representation": null,
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "data_requirements": null,
+    "capabilities": [
+      "deterministic",
+      "thread_safe",
+      "process_safe",
+      "uses_core_rng",
+      "emits_predictions",
+      "consumes_oof_predictions",
+      "emits_artifacts",
+      "stateful",
+      "expands_variants"
+    ],
+    "fit_scope": "fold_train",
+    "rng_policy": "uses_core_seed",
+    "artifact_policy": "serializable"
+  },
+  {
+    "controller_id": "controller:feature-join.mock",
+    "controller_version": "0.1.0",
+    "operator_kind": "feature_join",
+    "priority": 0,
+    "supported_phases": ["FIT_CV", "REFIT", "PREDICT"],
+    "input_ports": [],
+    "output_ports": [
+      {
+        "name": "x_out",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "data_requirements": null,
+    "capabilities": ["deterministic", "thread_safe", "process_safe"],
+    "fit_scope": "fold_train",
+    "rng_policy": "uses_core_seed",
+    "artifact_policy": "serializable"
+  },
+  {
+    "controller_id": "controller:mixed-join.mock",
+    "controller_version": "0.1.0",
+    "operator_kind": "mixed_join",
+    "priority": 0,
+    "supported_phases": ["FIT_CV", "REFIT", "PREDICT"],
+    "input_ports": [],
+    "output_ports": [
+      {
+        "name": "x_out",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "data_requirements": null,
+    "capabilities": [
+      "deterministic",
+      "thread_safe",
+      "process_safe",
+      "consumes_oof_predictions"
+    ],
+    "fit_scope": "fold_train",
+    "rng_policy": "uses_core_seed",
+    "artifact_policy": "serializable"
+  },
+  {
+    "controller_id": "controller:data-generator.mock",
+    "controller_version": "0.1.0",
+    "operator_kind": "generator",
+    "priority": 0,
+    "supported_phases": ["FIT_CV", "REFIT", "PREDICT"],
+    "input_ports": [
+      {
+        "name": "x",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "output_ports": [
+      {
+        "name": "x_out",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "data_requirements": null,
+    "capabilities": [
+      "deterministic",
+      "thread_safe",
+      "process_safe",
+      "uses_core_rng",
+      "shape_changing",
+      "generates_data",
+      "emits_relation"
+    ],
+    "fit_scope": "fold_train",
+    "rng_policy": "uses_core_seed",
+    "artifact_policy": "serializable"
+  },
+  {
+    "controller_id": "controller:prediction-join.mock",
+    "controller_version": "0.1.0",
+    "operator_kind": "prediction_join",
+    "priority": 0,
+    "supported_phases": ["FIT_CV", "REFIT", "PREDICT"],
+    "input_ports": [],
+    "output_ports": [
+      {
+        "name": "prediction",
+        "kind": "prediction",
+        "representation": null,
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "data_requirements": null,
+    "capabilities": [
+      "deterministic",
+      "thread_safe",
+      "process_safe",
+      "emits_predictions",
+      "consumes_oof_predictions"
+    ],
+    "fit_scope": "fold_train",
+    "rng_policy": "uses_core_seed",
+    "artifact_policy": "serializable"
+  },
+  {
+    "controller_id": "controller:source-join.mock",
+    "controller_version": "0.1.0",
+    "operator_kind": "source_join",
+    "priority": 0,
+    "supported_phases": ["FIT_CV", "REFIT", "PREDICT"],
+    "input_ports": [],
+    "output_ports": [
+      {
+        "name": "x_out",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": ""
+      }
+    ],
+    "data_requirements": null,
+    "capabilities": ["deterministic", "thread_safe", "process_safe"],
+    "fit_scope": "fold_train",
+    "rng_policy": "uses_core_seed",
+    "artifact_policy": "serializable"
+  }
+]

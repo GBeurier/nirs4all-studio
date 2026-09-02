@@ -1,0 +1,27 @@
+{
+  "schema": "nirs4all-studio.archive-v2-witness.v1",
+  "path": "multitarget-pls-abi2.0.n4a",
+  "sha256": "6c626742245db5232a35c6b70095640480f6c6fb98c56dca5bce958686bbc99e",
+  "size": 60014,
+  "archive_id": "archive:dag-ml-0.3.23-multitarget-methods-pls",
+  "source": {
+    "repository": "https://github.com/GBeurier/dag-ml.git",
+    "commit": "bad5aff0bfbc14c622f5ade7f393f29399df6e07",
+    "tree": "529ecc687d6b9307f41ee34feafcf5d8135ba9ae",
+    "receipt_sha256": "b0214669fc0b86052464d1adee0e4701686b7d8bce6949e1293df5e17ac0c5d1"
+  },
+  "producer": {
+    "core_commit": "4eb8a687b0b3797b6f5db816444cf840f67c8ee0",
+    "core_tree": "4ccd67a7fe556db2c50615500cca096cae7666ef",
+    "core_version": "0.3.25"
+  },
+  "required_methods_abi": {
+    "major": 2,
+    "minor": 3
+  },
+  "expected": {
+    "sample_ids": ["predict.0", "predict.1"],
+    "target_names": ["protein", "moisture"],
+    "values": [[1.6363636363636365, 13.272727272727273], [2.4999999999999996, 15.0]]
+  }
+}

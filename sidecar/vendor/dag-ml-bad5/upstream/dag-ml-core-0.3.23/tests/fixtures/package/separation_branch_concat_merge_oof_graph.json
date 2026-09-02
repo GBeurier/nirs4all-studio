@@ -1,0 +1,158 @@
+{
+  "id": "separation-branch-concat-merge-oof",
+  "interface": {
+    "inputs": [
+      {
+        "name": "x",
+        "kind": "data",
+        "representation": "tabular_numeric",
+        "cardinality": "one",
+        "description": "original tabular features"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "oof",
+        "kind": "prediction",
+        "representation": null,
+        "cardinality": "one",
+        "description": "reassembled full-universe OOF"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "branch:site__A.model:pls",
+      "kind": "model",
+      "operator": { "type": "PLSRegression" },
+      "params": { "n_components": 2 },
+      "ports": {
+        "inputs": [
+          {
+            "name": "x",
+            "kind": "data",
+            "representation": "tabular_numeric",
+            "cardinality": "one",
+            "description": ""
+          }
+        ],
+        "outputs": [
+          {
+            "name": "oof",
+            "kind": "prediction",
+            "representation": null,
+            "cardinality": "one",
+            "description": ""
+          }
+        ]
+      },
+      "metadata": {},
+      "seed_label": "branch:site__A"
+    },
+    {
+      "id": "branch:site__B.model:pls",
+      "kind": "model",
+      "operator": { "type": "PLSRegression" },
+      "params": { "n_components": 2 },
+      "ports": {
+        "inputs": [
+          {
+            "name": "x",
+            "kind": "data",
+            "representation": "tabular_numeric",
+            "cardinality": "one",
+            "description": ""
+          }
+        ],
+        "outputs": [
+          {
+            "name": "oof",
+            "kind": "prediction",
+            "representation": null,
+            "cardinality": "one",
+            "description": ""
+          }
+        ]
+      },
+      "metadata": {},
+      "seed_label": "branch:site__B"
+    },
+    {
+      "id": "merge:sites",
+      "kind": "prediction_join",
+      "operator": null,
+      "params": {},
+      "ports": {
+        "inputs": [
+          {
+            "name": "oof_branch:site__A.model:pls",
+            "kind": "prediction",
+            "representation": null,
+            "cardinality": "one",
+            "description": ""
+          },
+          {
+            "name": "oof_branch:site__B.model:pls",
+            "kind": "prediction",
+            "representation": null,
+            "cardinality": "one",
+            "description": ""
+          }
+        ],
+        "outputs": [
+          {
+            "name": "oof",
+            "kind": "prediction",
+            "representation": null,
+            "cardinality": "one",
+            "description": ""
+          }
+        ]
+      },
+      "metadata": {
+        "merge_mode": "concat"
+      },
+      "seed_label": "merge:sites"
+    }
+  ],
+  "edges": [
+    {
+      "source": {
+        "node_id": "branch:site__A.model:pls",
+        "port_name": "oof"
+      },
+      "target": {
+        "node_id": "merge:sites",
+        "port_name": "oof_branch:site__A.model:pls"
+      },
+      "contract": {
+        "kind": "prediction",
+        "representation": null,
+        "requires_oof": true,
+        "requires_fold_alignment": true,
+        "propagates_lineage": true
+      }
+    },
+    {
+      "source": {
+        "node_id": "branch:site__B.model:pls",
+        "port_name": "oof"
+      },
+      "target": {
+        "node_id": "merge:sites",
+        "port_name": "oof_branch:site__B.model:pls"
+      },
+      "contract": {
+        "kind": "prediction",
+        "representation": null,
+        "requires_oof": true,
+        "requires_fold_alignment": true,
+        "propagates_lineage": true
+      }
+    }
+  ],
+  "search_space_fingerprint": null,
+  "metadata": {
+    "demo": "separation-branch concat merge (Slice 3.5 bundle assembly)"
+  }
+}

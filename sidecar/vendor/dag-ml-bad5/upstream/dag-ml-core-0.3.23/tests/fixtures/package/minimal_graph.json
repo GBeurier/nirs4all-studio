@@ -1,0 +1,11 @@
+{
+  "id": "minimal-coordinator-smoke",
+  "interface": {"inputs": [{"name": "x", "kind": "data", "representation": "tabular_numeric", "cardinality": "one", "description": "input features"}], "outputs": [{"name": "prediction", "kind": "prediction", "representation": null, "cardinality": "one", "description": "final prediction"}]},
+  "nodes": [
+    {"id": "transform:snv", "kind": "transform", "operator": {"type": "StandardNormalVariate"}, "params": {}, "ports": {"inputs": [{"name": "x", "kind": "data", "representation": "tabular_numeric", "cardinality": "one", "description": ""}], "outputs": [{"name": "x_out", "kind": "data", "representation": "tabular_numeric", "cardinality": "one", "description": ""}]}, "metadata": {}, "seed_label": "snv"},
+    {"id": "model:base", "kind": "model", "operator": {"type": "RandomForestRegressor"}, "params": {"n_estimators": 100}, "ports": {"inputs": [{"name": "x", "kind": "data", "representation": "tabular_numeric", "cardinality": "one", "description": ""}], "outputs": [{"name": "oof", "kind": "prediction", "representation": null, "cardinality": "one", "description": ""}]}, "metadata": {}, "seed_label": "base"}
+  ],
+  "edges": [{"source": {"node_id": "transform:snv", "port_name": "x_out"}, "target": {"node_id": "model:base", "port_name": "x"}, "contract": {"kind": "data", "representation": "tabular_numeric", "requires_oof": false, "requires_fold_alignment": true, "propagates_lineage": true}}],
+  "search_space_fingerprint": null,
+  "metadata": {}
+}

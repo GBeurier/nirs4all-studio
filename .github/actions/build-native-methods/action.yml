@@ -1,0 +1,45 @@
+name: Build exact native Methods runtime
+description: Build, test, and export the content-addressed nirs4all-methods ABI 2.3 library
+
+inputs:
+  platform:
+    description: Node platform id (linux, win32, darwin)
+    required: true
+  arch:
+    description: Node architecture id (x64, arm64)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout exact nirs4all-methods source
+      uses: actions/checkout@v4
+      with:
+        repository: GBeurier/nirs4all-methods
+        ref: 4983c9a1df39d430a78c615bda209d3353514aa1
+        path: _deps/nirs4all-methods
+        persist-credentials: false
+
+    - name: Install Linux Methods toolchain
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends gcc-12 g++-12 ninja-build cmake
+
+    - name: Install macOS Methods toolchain
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install cmake ninja
+
+    - name: Select Windows MSVC toolchain
+      if: runner.os == 'Windows'
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Build, test, and attest native Methods
+      shell: bash
+      run: >-
+        node scripts/build-native-methods.cjs
+        --source-root "${{ github.workspace }}/_deps/nirs4all-methods"
+        --platform "${{ inputs.platform }}"
+        --arch "${{ inputs.arch }}"

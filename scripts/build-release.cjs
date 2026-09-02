@@ -249,6 +249,7 @@ async function main() {
       backendRoot: path.join(projectRoot, "backend-dist"),
       artifactBoundaryRoot: path.join(projectRoot, "backend-dist"),
       requireBundledPythonPlugin: true,
+      requireBundledMethods: true,
     });
     console.log("");
 

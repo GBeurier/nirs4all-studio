@@ -5,7 +5,7 @@ readonly sidecar_host=127.0.0.1
 readonly sidecar_port=8001
 readonly readiness_url="http://${sidecar_host}:${sidecar_port}/sidecar/v1/readiness"
 
-/usr/local/bin/studio-sidecar --host "${sidecar_host}" --port "${sidecar_port}" &
+/opt/nirs4all/backend/native/studio-sidecar --host "${sidecar_host}" --port "${sidecar_port}" &
 sidecar_pid=$!
 
 attempt=0

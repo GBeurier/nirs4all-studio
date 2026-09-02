@@ -1,0 +1,62 @@
+{
+  "branch:b0": {
+    "policy_id": "select:branch:b0.rmse_sample",
+    "selected_candidate_id": "branch:b0.model:ridge",
+    "metric_name": "rmse_sample",
+    "objective": "minimize",
+    "metric_level": "sample",
+    "selected_score": 0.118,
+    "ranked_candidates": [
+      {
+        "candidate_id": "branch:b0.model:ridge",
+        "score": 0.118,
+        "rank": 1
+      },
+      {
+        "candidate_id": "branch:b0.model:lasso",
+        "score": 0.143,
+        "rank": 2
+      }
+    ]
+  },
+  "branch:b1": {
+    "policy_id": "select:branch:b1.rmse_sample",
+    "selected_candidate_id": "branch:b1.model:rf",
+    "metric_name": "rmse_sample",
+    "objective": "minimize",
+    "metric_level": "sample",
+    "selected_score": 0.104,
+    "ranked_candidates": [
+      {
+        "candidate_id": "branch:b1.model:rf",
+        "score": 0.104,
+        "rank": 1
+      },
+      {
+        "candidate_id": "branch:b1.model:extratrees",
+        "score": 0.121,
+        "rank": 2
+      }
+    ]
+  },
+  "merge:stack": {
+    "policy_id": "select:merge.stack.rmse_sample",
+    "selected_candidate_id": "merge:stack.pred_plus_original.meta:ridge",
+    "metric_name": "rmse_sample",
+    "objective": "minimize",
+    "metric_level": "sample",
+    "selected_score": 0.091,
+    "ranked_candidates": [
+      {
+        "candidate_id": "merge:stack.pred_plus_original.meta:ridge",
+        "score": 0.091,
+        "rank": 1
+      },
+      {
+        "candidate_id": "merge:stack.pred_only.meta:ridge",
+        "score": 0.109,
+        "rank": 2
+      }
+    ]
+  }
+}

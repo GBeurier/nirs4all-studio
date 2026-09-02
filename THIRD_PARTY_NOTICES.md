@@ -1,10 +1,19 @@
 # Third-Party Notices — nirs4all-studio
 
 `nirs4all-studio` is distributed under `CeCILL-2.1 OR AGPL-3.0-or-later` (plus an optional
-commercial license; see [`LICENSING.md`](LICENSING.md)). nirs4all-studio does **not** vendor the
-components below — they are pulled from their official distributions — but their licenses are
-acknowledged here as a courtesy and for compliance. Licenses are reported on a best-effort
-basis; the authoritative text always ships with each upstream project.
+commercial license). Product packages bundle selected native, Python, Electron, and frontend
+components. Their license notices are part of the distribution; the authoritative text also
+ships with each upstream project.
+
+The native product runtime embeds `nirs4all-methods` 1.0.13 from commit
+`4983c9a1df39d430a78c615bda209d3353514aa1` (tree
+`8f8a7809d22ff5d95f64a22e519759eaa3fd2ec0`) as `libn4m`, under CeCILL-2.1.
+Studio compiles its Rust sidecar against immutable snapshots of `nirs4all-core`,
+`dag-ml`/`dag-ml-core`, and `nirs4all-io`; their exact commits, inventories, package
+digests, and license files are recorded beside those snapshots under `sidecar/vendor/`.
+The bounded CPython plugin closure embeds the exact
+`nirs4all` wheel identified by `STUDIO_RUNTIME_CONTRACT.json`. None of these Python components
+owns an HTTP listener, scheduler, store, or fallback path.
 
 Its frontend is built on the npm/Node ecosystem; the vast majority of dependencies are **MIT**-licensed, with some **Apache-2.0** and **BSD** components. Principal dependencies:
 
@@ -28,6 +37,8 @@ For the exhaustive, version-pinned dependency tree and its licenses, run:
 npx license-checker --summary      # or: pnpm licenses list
 ```
 
-The bundled Python scientific backend reuses `nirs4all`; its third-party licenses are those of `nirs4all` (NumPy / pandas / SciPy / scikit-learn / …, BSD-3-Clause / MIT / Apache-2.0).
+The bundled Python scientific plugin host reuses `nirs4all`; its third-party licenses are those
+of `nirs4all` (NumPy / pandas / SciPy / scikit-learn / …, BSD-3-Clause / MIT / Apache-2.0).
 
-License-family texts are bundled under [`LICENSES/`](LICENSES/): MIT, Apache-2.0, BSD-3-Clause.
+License-family texts are bundled under [`LICENSES/`](LICENSES/), including CeCILL-2.1,
+AGPL-3.0-or-later, MIT, Apache-2.0, and BSD-3-Clause.

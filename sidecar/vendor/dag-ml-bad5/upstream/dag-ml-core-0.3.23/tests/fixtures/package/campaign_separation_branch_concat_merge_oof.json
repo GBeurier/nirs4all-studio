@@ -1,0 +1,112 @@
+{
+  "id": "campaign:separation.branch.concat.merge.oof",
+  "root_seed": 12345,
+  "leakage_policy": {
+    "split_unit": "sample",
+    "forbid_origin_cross_fold": true,
+    "allow_observation_split_with_shared_target": false,
+    "require_group_ids": false,
+    "unsafe_flags": []
+  },
+  "aggregation_policy": {
+    "aggregation_level": "sample",
+    "method": "mean",
+    "weights": "none",
+    "emit_parallel_metrics": true,
+    "selection_metric_level": "sample",
+    "store_raw_predictions": true,
+    "store_aggregated_predictions": true
+  },
+  "split_invocation": {
+    "id": "split:outer",
+    "controller_id": null,
+    "leakage_policy": {
+      "split_unit": "sample",
+      "forbid_origin_cross_fold": true,
+      "allow_observation_split_with_shared_target": false,
+      "require_group_ids": false,
+      "unsafe_flags": []
+    },
+    "params": {
+      "kind": "kfold",
+      "n_splits": 2,
+      "shuffle": false
+    },
+    "fold_set": {
+      "id": "outer",
+      "sample_ids": ["sample:1", "sample:2", "sample:3", "sample:4"],
+      "folds": [
+        {
+          "fold_id": "fold:0",
+          "train_sample_ids": ["sample:3", "sample:4"],
+          "validation_sample_ids": ["sample:1", "sample:2"],
+          "metadata": {}
+        },
+        {
+          "fold_id": "fold:1",
+          "train_sample_ids": ["sample:1", "sample:2"],
+          "validation_sample_ids": ["sample:3", "sample:4"],
+          "metadata": {}
+        }
+      ],
+      "sample_groups": {}
+    }
+  },
+  "generation": {
+    "strategy": "none",
+    "dimensions": [],
+    "max_variants": 1
+  },
+  "shape_plans": {},
+  "data_bindings": {
+    "branch:site__A.model:pls": [
+      {
+        "node_id": "branch:site__A.model:pls",
+        "input_name": "x",
+        "request_id": "nir-to-tabular",
+        "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+        "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+        "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+        "output_representation": "tabular_numeric",
+        "feature_set_id": "x",
+        "source_ids": ["nir"],
+        "require_relations": true,
+        "view_policy": {
+          "fit_partition": "fold_train",
+          "predict_partition": "fold_validation",
+          "include_augmented_train": true,
+          "include_augmented_validation": false,
+          "include_excluded": false,
+          "require_sample_ids": true
+        },
+        "metadata": {}
+      }
+    ],
+    "branch:site__B.model:pls": [
+      {
+        "node_id": "branch:site__B.model:pls",
+        "input_name": "x",
+        "request_id": "nir-to-tabular",
+        "schema_fingerprint": "f97b37872fa22134b508f98fd8e207e5b776b52594fb8f6f5c3e15bee212246b",
+        "plan_fingerprint": "7c5431d85574b3f337022fa5d25971d5b5cf445b90331b49938f573ff6901e4d",
+        "relation_fingerprint": "a3a7e329df35db9f2883a17b8611b7fae6dcaa031875e3ec2c9be1b9e29cbe10",
+        "output_representation": "tabular_numeric",
+        "feature_set_id": "x",
+        "source_ids": ["nir"],
+        "require_relations": true,
+        "view_policy": {
+          "fit_partition": "fold_train",
+          "predict_partition": "fold_validation",
+          "include_augmented_train": true,
+          "include_augmented_validation": false,
+          "include_excluded": false,
+          "require_sample_ids": true
+        },
+        "metadata": {}
+      }
+    ]
+  },
+  "metadata": {
+    "demo": "separation-branch concat merge (Slice 3.5 bundle assembly)"
+  }
+}
