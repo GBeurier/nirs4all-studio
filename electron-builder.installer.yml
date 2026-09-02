@@ -14,8 +14,8 @@ files:
   - recommended-config.json
   - "!**/*.map"
 
-# Installer builds ship backend source only.
-# Python is downloaded / managed at runtime in user data.
+# Standard installers ship the attested plugin-only CPython closure beside the
+# Rust sidecar. They never ship the legacy Python HTTP/WS backend source.
 extraResources:
   - from: LICENSE
     to: LICENSE
@@ -36,12 +36,8 @@ extraResources:
   - from: backend-dist/
     to: backend/
     filter:
-      - "api/**/*"
-      - "websocket/**/*"
-      - "updater/**/*"
+      - "python-runtime/**/*"
       - "native/**/*"
-      - "main.py"
-      - "public/**/*"
       - "recommended-config.json"
       - "version.json"
 
