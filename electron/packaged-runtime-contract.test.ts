@@ -79,6 +79,31 @@ function makeResources(): {
   );
   fs.writeFileSync(closurePath, `${JSON.stringify(closure)}\n`);
   const closureBytes = fs.readFileSync(closurePath);
+  const markerPath = path.join(
+    backendRoot,
+    "python-runtime",
+    "PLUGIN_RUNTIME_READY.json",
+  );
+  fs.writeFileSync(markerPath, JSON.stringify({
+    schema: "nirs4all.studio-python-plugin-runtime.v1",
+    python_role: "library-plugin-host-only",
+    product_backend: "rust-sidecar",
+    transport: "bounded-cpython-stdio-v1",
+    http_listener: "forbidden",
+    source_commit: "c8b5fd5bf847ce26f78008b9abd00fa54f790825",
+    wheel_sha256: "646971289137b8005b9848a4c22c000acce01660850ade63fd743c637366d24e",
+    distribution: "nirs4all",
+    distribution_version: "0.10.3",
+    distribution_record_sha256: "d48ebcf15a6c83c99b8581f6d86da9165eb3fdf4ca9fbb6130311fd176e0db06",
+    installed_manifest_sha256: "691bafb2ebbdc8b7f0e628aef99af3c2109bd49e235e3020bf0fc71459fe3d10",
+    platform: "linux",
+    arch: process.arch,
+    forbidden_distributions: [
+      "fastapi", "httptools", "python-multipart", "sentry-sdk", "starlette",
+      "uvicorn", "uvloop", "watchfiles", "websockets",
+    ],
+  }));
+  const markerBytes = fs.readFileSync(markerPath);
   fs.writeFileSync(
     path.join(backendRoot, "native", "STUDIO_RUNTIME_CONTRACT.json"),
     JSON.stringify({
@@ -106,6 +131,11 @@ function makeResources(): {
         },
         runtime_root: "python-runtime/python",
         site_packages: "python-runtime/python/lib/python3.11/site-packages",
+        marker: {
+          path: "python-runtime/PLUGIN_RUNTIME_READY.json",
+          size: markerBytes.length,
+          sha256: digest(markerBytes),
+        },
       },
       methods_library: {
         mode: "unavailable",
@@ -149,6 +179,28 @@ describe("packaged runtime contract", () => {
         platform: "linux",
       }),
     ).toThrow("Native Studio sidecar integrity mismatch");
+  });
+
+  it("disables Python when the plugin-only role marker is altered", () => {
+    const fixture = makeResources();
+    const markerPath = path.join(
+      fixture.resourcesPath,
+      "backend",
+      "python-runtime",
+      "PLUGIN_RUNTIME_READY.json",
+    );
+    const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    marker.python_role = "standalone-bundled-runtime";
+    fs.writeFileSync(markerPath, JSON.stringify(marker));
+    expect(
+      verifyPackagedRuntimeContract({
+        resourcesPath: fixture.resourcesPath,
+        platform: "linux",
+      }),
+    ).toMatchObject({
+      pythonPluginHostPath: null,
+      pythonPluginHostError: expect.stringMatching(/marker.*(integrity|identity)/i),
+    });
   });
 
   it("disables a missing bundled Python host without changing the Rust backend", () => {

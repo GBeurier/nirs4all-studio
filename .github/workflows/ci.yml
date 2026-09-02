@@ -235,27 +235,27 @@ jobs:
       - name: Build Electron frontend
         run: npm run build:electron
 
-      - name: Copy backend source files
-        run: node scripts/copy-backend-source.cjs --clean
+      - name: Build pinned plugin-only CPython runtime
+        run: node scripts/bake-python-plugin-runtime.cjs
 
       - name: Build and smoke native sidecar
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform linux --arch x64
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin
           backend-dist/native/studio-sidecar --smoke-readiness
 
-      - name: Verify backend source
+      - name: Verify Python backend source is absent
         run: |
-          test -f backend-dist/main.py || { echo "::error::Backend source not copied"; exit 1; }
-          test -d backend-dist/api || { echo "::error::Backend api/ not copied"; exit 1; }
-          echo "Backend source ready"
+          test ! -f backend-dist/main.py
+          test ! -d backend-dist/api
+          test ! -d backend-dist/websocket
 
       - name: Test electron-builder (dry-run)
         run: |
           npx electron-builder --config electron-builder.installer.yml --linux --dir
           test -x release/linux-unpacked/resources/backend/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root release/linux-unpacked/resources/backend --platform linux --arch x64
+          node scripts/native-runtime-contract.cjs --backend-root release/linux-unpacked/resources/backend --platform linux --arch x64 --require-bundled-python-plugin
           release/linux-unpacked/resources/backend/native/studio-sidecar --smoke-readiness
           echo "Electron build test passed"
 

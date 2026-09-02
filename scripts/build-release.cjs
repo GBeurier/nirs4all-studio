@@ -21,6 +21,7 @@ const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { resolveSpawnCommand } = require("./spawn-command.cjs");
+const { verifyRuntimeContract } = require("./native-runtime-contract.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 process.chdir(projectRoot);
@@ -175,28 +176,11 @@ async function main() {
       console.log("");
     }
 
-    // Step 1: Prepare Python backend
+    // Step 1: Prepare the pinned plugin-only CPython runtime. Python is never
+    // the product HTTP/WS backend in Phase 2.
     if (!skipBackend) {
-      if (mode === "installer") {
-        // Lightweight build: only copy backend source files.
-        // Python runtime is downloaded at first launch by env-manager.
-        console.log(
-          "=== Step 1: Copying backend source files (lightweight) ===",
-        );
-        await runCommand("node", [
-          "scripts/copy-backend-source.cjs",
-          "--clean",
-        ]);
-      } else {
-        console.log(
-          `=== Step 1: Building Python backend with PyInstaller (${flavor.toUpperCase()}) ===`,
-        );
-        await runCommand("node", [
-          "scripts/build-backend.cjs",
-          "--flavor",
-          flavor,
-        ]);
-      }
+      console.log("=== Step 1: Building plugin-only CPython runtime ===");
+      await runCommand("node", ["scripts/bake-python-plugin-runtime.cjs"]);
       console.log("");
     } else {
       console.log("=== Step 1: Skipping backend build ===");
@@ -211,6 +195,10 @@ async function main() {
         process.exit(1);
       }
       console.log("");
+      await runCommand("node", [
+        "scripts/bake-python-plugin-runtime.cjs",
+        "--verify-only",
+      ]);
     }
 
     // Every desktop artifact ships the Rust control-plane binary. This is
@@ -218,6 +206,10 @@ async function main() {
     // frozen for the selected release profile.
     console.log("=== Step 1b: Building native Studio sidecar ===");
     await runCommand("node", ["scripts/build-native-sidecar.cjs"]);
+    verifyRuntimeContract({
+      backendRoot: path.join(projectRoot, "backend-dist"),
+      requireBundledPythonPlugin: true,
+    });
     console.log("");
 
     // Step 2: Build frontend (Vite + Electron)

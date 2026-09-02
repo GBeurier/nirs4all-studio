@@ -230,14 +230,14 @@ jobs:
           }
           EOF
 
-      - name: Copy backend source files
-        run: node scripts/copy-backend-source.cjs --clean
+      - name: Build pinned plugin-only CPython runtime
+        run: node scripts/bake-python-plugin-runtime.cjs
 
       - name: Build and smoke native sidecar
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform linux --arch x64
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin
           backend-dist/native/studio-sidecar --smoke-readiness
 
       - name: Package with electron-builder
@@ -251,7 +251,7 @@ jobs:
           test -n "$SIDECAR"
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform linux --arch x64
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform linux --arch x64 --require-bundled-python-plugin
           "$SIDECAR" --smoke-readiness
 
       - name: Generate checksums
@@ -322,8 +322,8 @@ jobs:
             commit = "${{ github.sha }}"
           } | ConvertTo-Json | Out-File -FilePath version.json -Encoding utf8
 
-      - name: Copy backend source files
-        run: node scripts/copy-backend-source.cjs --clean
+      - name: Build pinned plugin-only CPython runtime
+        run: node scripts/bake-python-plugin-runtime.cjs
 
       - name: Build and smoke native sidecar
         shell: pwsh
@@ -334,7 +334,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $sidecar -PathType Leaf)) {
             throw "Native Studio sidecar not found: $sidecar"
           }
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform win32 --arch x64
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform win32 --arch x64 --require-bundled-python-plugin
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -369,7 +369,7 @@ jobs:
             throw "Packaged native Studio sidecar not found under release/"
           }
           $backendRoot = Split-Path -Parent (Split-Path -Parent $sidecar.FullName)
-          node scripts/native-runtime-contract.cjs --backend-root $backendRoot --platform win32 --arch x64
+          node scripts/native-runtime-contract.cjs --backend-root $backendRoot --platform win32 --arch x64 --require-bundled-python-plugin
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar.FullName --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -467,14 +467,14 @@ jobs:
           }
           EOF
 
-      - name: Copy backend source files
-        run: node scripts/copy-backend-source.cjs --clean
+      - name: Build pinned plugin-only CPython runtime
+        run: node scripts/bake-python-plugin-runtime.cjs
 
       - name: Build and smoke native sidecar
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-apple-darwin
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform darwin --arch x64
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform darwin --arch x64 --require-bundled-python-plugin
           if [ "$(uname -m)" = "x86_64" ]; then
             backend-dist/native/studio-sidecar --smoke-readiness
           else
@@ -523,7 +523,7 @@ jobs:
           test -n "$SIDECAR"
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform darwin --arch x64
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform darwin --arch x64 --require-bundled-python-plugin
           if [ "$(uname -m)" = "x86_64" ]; then
             "$SIDECAR" --smoke-readiness
           else
@@ -657,14 +657,14 @@ jobs:
           }
           EOF
 
-      - name: Copy backend source files
-        run: node scripts/copy-backend-source.cjs --clean
+      - name: Build pinned plugin-only CPython runtime
+        run: node scripts/bake-python-plugin-runtime.cjs
 
       - name: Build and smoke native sidecar
         run: |
           node scripts/build-native-sidecar.cjs --target aarch64-apple-darwin
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform darwin --arch arm64
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform darwin --arch arm64 --require-bundled-python-plugin
           if [ "$(uname -m)" = "arm64" ]; then
             backend-dist/native/studio-sidecar --smoke-readiness
           else
@@ -710,7 +710,7 @@ jobs:
           test -n "$SIDECAR"
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform darwin --arch arm64
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform darwin --arch arm64 --require-bundled-python-plugin
           if [ "$(uname -m)" = "arm64" ]; then
             "$SIDECAR" --smoke-readiness
           else
@@ -874,11 +874,7 @@ jobs:
           echo "CSC_KEY_PASSWORD=$($env:WINDOWS_CERT_PASSWORD)" >> $env:GITHUB_ENV
 
       - name: Build all-in-one archive
-        run: >-
-          node scripts/build-archive-standalone.cjs --clean --platform win32 --arch x64
-          --local-nirs4all --local-nirs4all-path nirs4all-lib
-          --local-dag-ml-data-path dag-ml-data/crates/dag-ml-data-py
-          --local-dag-ml-path dag-ml/crates/dag-ml-py
+        run: node scripts/build-archive-standalone.cjs --clean --platform win32 --arch x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -1001,11 +997,7 @@ jobs:
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build all-in-one archive
-        run: >-
-          node scripts/build-archive-standalone.cjs --clean --platform linux --arch x64
-          --local-nirs4all --local-nirs4all-path nirs4all-lib
-          --local-dag-ml-data-path dag-ml-data/crates/dag-ml-data-py
-          --local-dag-ml-path dag-ml/crates/dag-ml-py
+        run: node scripts/build-archive-standalone.cjs --clean --platform linux --arch x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIRS4ALL_TAR_GZIP_PROGRAM: pigz -9
@@ -1177,10 +1169,7 @@ jobs:
           fi
           ulimit -n "$TARGET_LIMIT" || true
           echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
-          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch x64 \
-            --local-nirs4all --local-nirs4all-path nirs4all-lib \
-            --local-dag-ml-data-path dag-ml-data/crates/dag-ml-data-py \
-            --local-dag-ml-path dag-ml/crates/dag-ml-py
+          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -1188,7 +1177,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           # cpu-darwin-x64 ships a checked-in constraints file; fail the bake if
           # it is ever missing so this distributable stays reproducible. Read by
-          # bake-standalone-backend.cjs (inherited through build-archive-standalone.cjs).
+          # the plugin-only runtime builder (inherited through build-archive-standalone.cjs).
           NIRS4ALL_REQUIRE_CONSTRAINTS: '1'
 
       - name: Notarize, staple, and rebuild final ZIP
@@ -1388,10 +1377,7 @@ jobs:
           fi
           ulimit -n "$TARGET_LIMIT" || true
           echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
-          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch arm64 \
-            --local-nirs4all --local-nirs4all-path nirs4all-lib \
-            --local-dag-ml-data-path dag-ml-data/crates/dag-ml-data-py \
-            --local-dag-ml-path dag-ml/crates/dag-ml-py
+          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

@@ -241,7 +241,9 @@ file behind `nirs4all.studio_scientific_job_v1`; both identities are sticky and
 reverified before execution, including a child-side callable check. The
 response must identify CPython 3.11 or newer with `-I -S -B` isolation active and
 pass a real negative bind self-test. A Python audit hook rejects `socket.bind`,
-including `http.server` listener creation, so this host cannot become the
+including `http.server` listener creation, and rejects subprocess, system,
+posix-spawn, fork/forkpty, exec, and pty-spawn audit events (covering
+`os.spawnv` and multiprocessing's platform process paths). This host cannot become the
 HTTP/WS product backend. The closed contract is
 `contracts/studio_scientific_cpython_host_v1.json`.
 

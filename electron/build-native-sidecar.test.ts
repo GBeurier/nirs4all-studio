@@ -35,6 +35,7 @@ const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
     backendRoot: string;
     platform: string;
     arch: string;
+    requireBundledPythonPlugin?: boolean;
   }): {
     sidecarPath: string;
     pythonPluginHostPath: string | null;
@@ -84,7 +85,7 @@ describe("build-native-sidecar", () => {
     );
   });
 
-  it("writes and verifies the all-in-one Rust/Python resource contract", () => {
+  it("never promotes a generic standalone Python backend marker to plugin capability", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-build-contract-"));
     try {
       const backendRoot = path.join(root, "backend-dist");
@@ -142,9 +143,17 @@ describe("build-native-sidecar", () => {
         }),
       ).toMatchObject({
         sidecarPath,
-        pythonPluginHostPath: pythonPath,
+        pythonPluginHostPath: null,
         methodsLibraryPath: null,
       });
+      expect(() =>
+        runtimeContract.verifyRuntimeContract({
+          backendRoot,
+          platform: "linux",
+          arch: "x64",
+          requireBundledPythonPlugin: true,
+        }),
+      ).toThrow(/required/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -254,6 +263,7 @@ describe("build-native-sidecar", () => {
       backendRoot: path.resolve("release/product/resources/backend"),
       platform: "darwin",
       arch: "arm64",
+      requireBundledPythonPlugin: false,
     });
     expect(() => runtimeContract.parseVerifyArgs([])).toThrow(
       "--backend-root is required",

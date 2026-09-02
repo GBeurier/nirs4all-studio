@@ -112,6 +112,26 @@ describe("build-archive-standalone", () => {
     ).toThrow("Standalone archive packaging supports the 'cpu', 'cpu-lite' profiles.");
   });
 
+  it("rejects local Python source substitution for plugin-only archives", () => {
+    expect(() =>
+      archiveBuildModule.resolveBuildConfig(
+        {
+          profile: "cpu",
+          platform: "linux",
+          arch: "x64",
+          clean: false,
+          skipBackend: false,
+          skipFrontend: false,
+          localNirs4all: true,
+          localNirs4allPath: path.resolve("nirs4all-lib"),
+          cacheDir: path.resolve("build/.python-cache"),
+          constraintsFile: "",
+        },
+        { platform: "linux", arch: "x64" },
+      ),
+    ).toThrow(/refuse local Python source substitution/);
+  });
+
   it("rejects archive builds on a different host target", () => {
     expect(() =>
       archiveBuildModule.resolveBuildConfig(
