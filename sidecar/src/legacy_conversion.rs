@@ -13,7 +13,7 @@ use std::{
     process::{ChildStderr, ChildStdout, Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        mpsc, Arc,
     },
     time::{Duration, Instant},
 };
@@ -86,6 +86,7 @@ const WORKSPACE_V2_REQUIRED_COLUMNS: [(&str, &[&str]); 7] = [
     ("runs", &["run_id", "name", "status"]),
 ];
 const TOOLS_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(20);
+const PROCESS_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const TOOLS_VERSION: &str = "0.0.7";
 const TOOLS_RECORD_SHA256: &str =
     "8db345e39929f63e658d33bba1a9379336547e5653ed4b51271792791e5d6f54";
@@ -107,9 +108,13 @@ for relative,encoded,size in rows:
  if actual != expected or (size and len(payload) != int(size)): verified=False; break
 record=hashlib.sha256(b).hexdigest(); manifest=hashlib.sha256(m).hexdigest()
 identity_ok=d.version=="0.0.7" and record=="8db345e39929f63e658d33bba1a9379336547e5653ed4b51271792791e5d6f54" and manifest=="37e8862680fe35efcf6b3348ad5c064701f8ba90f43be89bd07c632a59a509fb" and verified
-if identity_ok: import nirs4all_tools,duckdb,pyarrow
+duckdb_functional=pyarrow_functional=False
+if identity_ok:
+ import nirs4all_tools,duckdb,pyarrow,pyarrow.parquet as parquet
+ dc=duckdb.connect(":memory:"); duckdb_functional=dc.execute("SELECT 40 + 2").fetchone()==(42,); dc.close()
+ table=pyarrow.table({"value":[1,2,3]}); sink=pyarrow.BufferOutputStream(); parquet.write_table(table,sink); payload=sink.getvalue(); restored=parquet.read_table(pyarrow.BufferReader(payload)); pyarrow_functional=restored.equals(table)
 else: nirs4all_tools=duckdb=pyarrow=None
-print(json.dumps({"version":d.version,"record":record,"manifest":manifest,"verified":verified,"module":getattr(nirs4all_tools,"__name__",None),"duckdb":getattr(duckdb,"__version__",None),"pyarrow":getattr(pyarrow,"__version__",None)},sort_keys=True,separators=(",",":")))"#;
+print(json.dumps({"version":d.version,"record":record,"manifest":manifest,"verified":verified,"module":getattr(nirs4all_tools,"__name__",None),"duckdb":getattr(duckdb,"__version__",None),"pyarrow":getattr(pyarrow,"__version__",None),"duckdb_functional":duckdb_functional,"pyarrow_parquet_functional":pyarrow_functional},sort_keys=True,separators=(",",":")))"#;
 const REQUEST_FIELDS: [&str; 5] = [
     "dry_run",
     "link_converted_workspace",
@@ -149,6 +154,7 @@ pub enum LegacyConversionFailure {
     StdoutTooLarge,
     StderrTooLarge,
     InvalidUtf8,
+    CleanupFailed,
 }
 
 impl LegacyConversionFailure {
@@ -163,6 +169,7 @@ impl LegacyConversionFailure {
             Self::StdoutTooLarge => "legacy_converter_stdout_too_large",
             Self::StderrTooLarge => "legacy_converter_stderr_too_large",
             Self::InvalidUtf8 => "legacy_converter_invalid_utf8",
+            Self::CleanupFailed => "legacy_converter_cleanup_failed",
         }
     }
 }
@@ -208,11 +215,35 @@ impl LegacyConverter for UnselectedLegacyConverter {
 struct PythonModuleLegacyConverter {
     python_plugin_host: PathBuf,
     attested: bool,
+    poisoned: AtomicBool,
+}
+
+impl PythonModuleLegacyConverter {
+    fn run_with_timeouts(
+        &self,
+        request: &LegacyConversionRequest,
+        timeout: Duration,
+        cleanup_timeout: Duration,
+    ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(LegacyConversionFailure::CleanupFailed);
+        }
+        let result = run_bounded_command_with_cleanup_timeout(
+            &self.python_plugin_host,
+            &self.command(request)[1..],
+            timeout,
+            cleanup_timeout,
+        );
+        if result == Err(LegacyConversionFailure::CleanupFailed) {
+            self.poisoned.store(true, Ordering::Release);
+        }
+        result
+    }
 }
 
 impl LegacyConverter for PythonModuleLegacyConverter {
     fn is_available(&self) -> bool {
-        self.attested
+        self.attested && !self.poisoned.load(Ordering::Acquire)
     }
 
     fn command(&self, request: &LegacyConversionRequest) -> Vec<String> {
@@ -223,11 +254,7 @@ impl LegacyConverter for PythonModuleLegacyConverter {
         &self,
         request: &LegacyConversionRequest,
     ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
-        run_bounded_command(
-            &self.python_plugin_host,
-            &self.command(request)[1..],
-            LEGACY_CONVERSION_TIMEOUT,
-        )
+        self.run_with_timeouts(request, LEGACY_CONVERSION_TIMEOUT, PROCESS_CLEANUP_TIMEOUT)
     }
 }
 
@@ -256,6 +283,7 @@ impl LegacyConversionRuntime {
                 converter: Arc::new(PythonModuleLegacyConverter {
                     python_plugin_host,
                     attested,
+                    poisoned: AtomicBool::new(false),
                 }),
                 running: Arc::new(AtomicBool::new(false)),
             }
@@ -303,7 +331,9 @@ impl LegacyConversionRuntime {
 }
 
 fn attest_python_tools_runtime(python_plugin_host: &Path) -> bool {
-    if !python_plugin_host.is_file() {
+    if !std::fs::symlink_metadata(python_plugin_host)
+        .is_ok_and(|metadata| !metadata.file_type().is_symlink() && metadata.is_file())
+    {
         return false;
     }
     let arguments = vec![
@@ -329,6 +359,11 @@ fn attest_python_tools_runtime(python_plugin_host: &Path) -> bool {
         && value.get("module").and_then(Value::as_str) == Some("nirs4all_tools")
         && value.get("duckdb").and_then(Value::as_str) == Some("1.5.5")
         && value.get("pyarrow").and_then(Value::as_str) == Some("25.0.1")
+        && value.get("duckdb_functional").and_then(Value::as_bool) == Some(true)
+        && value
+            .get("pyarrow_parquet_functional")
+            .and_then(Value::as_bool)
+            == Some(true)
 }
 
 struct ConversionPermit<'a>(&'a AtomicBool);
@@ -363,7 +398,7 @@ pub fn inspect_workspace_transition(
     if let Some((format, message)) = detect_legacy_marker(workspace_path)? {
         return Ok(required_status(workspace_path, output, format, message));
     }
-    if sqlite_path.exists() {
+    if candidate_metadata(&sqlite_path)?.is_some() {
         return match validate_workspace_v2_store(workspace_path, &sqlite_path) {
             Ok(()) => Ok(WorkspaceTransitionStatus {
                 path: workspace_path.to_path_buf(),
@@ -443,23 +478,41 @@ fn default_output_path(workspace_path: &Path) -> Result<PathBuf, String> {
 fn detect_legacy_marker(
     workspace_path: &Path,
 ) -> Result<Option<(&'static str, &'static str)>, String> {
-    for (name, format, message) in [
+    for (name, expected_directory, format, message) in [
         (
             "store.duckdb",
+            false,
             "duckdb-workspace",
             "Legacy DuckDB workspace detected.",
         ),
         (
             "arrays",
+            true,
             "legacy-arrays-directory",
             "Legacy array sidecars detected.",
         ),
     ] {
         let path = workspace_path.join(name);
-        if path.exists() {
-            reject_marker_symlink(&path)?;
+        if let Some(metadata) = candidate_metadata(&path)? {
+            let correct_type = if expected_directory {
+                metadata.is_dir()
+            } else {
+                metadata.is_file()
+            };
+            if !correct_type {
+                return Err(format!(
+                    "workspace marker has an invalid type: {}",
+                    path.display()
+                ));
+            }
             return Ok(Some((format, message)));
         }
+    }
+    if has_native_results_triplet(workspace_path)? {
+        return Ok(Some((
+            "native-results-v1",
+            "Native results bundle requires converter compatibility preflight.",
+        )));
     }
     let mut inspected = 0_usize;
     for entry in std::fs::read_dir(workspace_path)
@@ -486,7 +539,9 @@ fn detect_legacy_marker(
             || lower.ends_with(".meta.parquet")
             || lower.ends_with("_predictions.json");
         if legacy_file {
-            if file_type.is_symlink() || !file_type.is_file() {
+            let metadata = candidate_metadata(&entry.path())?
+                .ok_or_else(|| "workspace marker disappeared during inspection".to_string())?;
+            if !metadata.is_file() {
                 return Err(format!(
                     "legacy marker must be a regular file: {}",
                     entry.path().display()
@@ -504,11 +559,7 @@ fn detect_legacy_marker(
                 "Legacy portable or loose prediction artifact detected.",
             )));
         }
-        if file_type.is_dir()
-            && ["manifest.json", "score_set.json", "predictions.parquet"]
-                .iter()
-                .all(|member| entry.path().join(member).is_file())
-        {
+        if file_type.is_dir() && has_native_results_triplet(&entry.path())? {
             return Ok(Some((
                 "native-results-v1",
                 "Native results bundle requires converter compatibility preflight.",
@@ -526,27 +577,42 @@ fn detect_legacy_marker(
     Ok(None)
 }
 
-fn reject_marker_symlink(path: &Path) -> Result<(), String> {
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("could not inspect {}: {error}", path.display()))?;
-    if metadata.file_type().is_symlink() {
-        Err(format!(
+fn candidate_metadata(path: &Path) -> Result<Option<std::fs::Metadata>, String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(format!(
             "workspace marker must not be a symlink: {}",
             path.display()
-        ))
-    } else {
-        Ok(())
+        )),
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("could not inspect {}: {error}", path.display())),
     }
+}
+
+fn has_native_results_triplet(directory: &Path) -> Result<bool, String> {
+    let mut complete = true;
+    for member in ["manifest.json", "score_set.json", "predictions.parquet"] {
+        match candidate_metadata(&directory.join(member))? {
+            Some(metadata) if metadata.is_file() => {}
+            Some(_) => {
+                return Err(format!(
+                    "native results marker must be a regular file: {}",
+                    directory.join(member).display()
+                ));
+            }
+            None => complete = false,
+        }
+    }
+    Ok(complete)
 }
 
 fn runs_tree_format(workspace_path: &Path) -> Result<Option<&'static str>, String> {
     let runs = workspace_path.join("runs");
-    if !runs.exists() {
+    let Some(runs_metadata) = candidate_metadata(&runs)? else {
         return Ok(None);
-    }
-    reject_marker_symlink(&runs)?;
-    if !runs.is_dir() {
-        return Ok(None);
+    };
+    if !runs_metadata.is_dir() {
+        return Err("workspace runs marker must be a directory".into());
     }
     let mut inspected = 0_usize;
     for run in std::fs::read_dir(&runs)
@@ -565,11 +631,11 @@ fn runs_tree_format(workspace_path: &Path) -> Result<Option<&'static str>, Strin
             continue;
         }
         let run_manifest = run.path().join("run_manifest.yaml");
-        if run_manifest.exists() {
-            reject_marker_symlink(&run_manifest)?;
-            if run_manifest.is_file() {
-                return Ok(Some("fs-runs-v2"));
+        if let Some(metadata) = candidate_metadata(&run_manifest)? {
+            if !metadata.is_file() {
+                return Err("run manifest marker must be a regular file".into());
             }
+            return Ok(Some("fs-runs-v2"));
         }
         for pipeline in std::fs::read_dir(run.path())
             .map_err(|error| format!("could not inspect {}: {error}", run.path().display()))?
@@ -585,11 +651,11 @@ fn runs_tree_format(workspace_path: &Path) -> Result<Option<&'static str>, Strin
                 .map_err(|error| format!("could not inspect pipeline entry: {error}"))?;
             if pipeline_type.is_dir() {
                 let manifest = pipeline.path().join("manifest.yaml");
-                if manifest.exists() {
-                    reject_marker_symlink(&manifest)?;
-                    if manifest.is_file() {
-                        return Ok(Some("fs-runs-legacy"));
+                if let Some(metadata) = candidate_metadata(&manifest)? {
+                    if !metadata.is_file() {
+                        return Err("pipeline manifest marker must be a regular file".into());
                     }
+                    return Ok(Some("fs-runs-legacy"));
                 }
             }
         }
@@ -602,14 +668,13 @@ pub(crate) fn validate_workspace_v2_store(
     sqlite_path: &Path,
 ) -> Result<(), &'static str> {
     let root = workspace_path.canonicalize().map_err(|_| "root")?;
-    let metadata = std::fs::symlink_metadata(sqlite_path).map_err(|_| "store")?;
+    let metadata = strict_candidate_metadata(sqlite_path)?.ok_or("store")?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err("store");
     }
     for suffix in ["-wal", "-shm", "-journal"] {
-        if workspace_path
-            .join(format!("store.sqlite{suffix}"))
-            .exists()
+        if strict_candidate_metadata(&workspace_path.join(format!("store.sqlite{suffix}")))?
+            .is_some()
         {
             return Err("live-journal");
         }
@@ -681,21 +746,30 @@ pub(crate) fn validate_workspace_v2_store(
     Ok(())
 }
 
+fn strict_candidate_metadata(path: &Path) -> Result<Option<std::fs::Metadata>, &'static str> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err("symlink"),
+        Ok(metadata) => Ok(Some(metadata)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err("metadata"),
+    }
+}
+
 #[cfg(unix)]
-fn same_file_identity(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
+pub(crate) fn same_file_identity(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
     use std::os::unix::fs::MetadataExt;
     before.dev() == after.dev() && before.ino() == after.ino()
 }
 
 #[cfg(windows)]
-fn same_file_identity(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
+pub(crate) fn same_file_identity(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt;
     before.volume_serial_number() == after.volume_serial_number()
         && before.file_index() == after.file_index()
 }
 
 #[cfg(not(any(unix, windows)))]
-fn same_file_identity(_before: &std::fs::Metadata, _after: &std::fs::Metadata) -> bool {
+pub(crate) fn same_file_identity(_before: &std::fs::Metadata, _after: &std::fs::Metadata) -> bool {
     true
 }
 
@@ -774,9 +848,16 @@ fn resolve_for_overlap_check(path: &Path) -> Option<PathBuf> {
     let normalized = normalize_absolute_path(path)?;
     let mut existing = normalized.as_path();
     let mut suffix = Vec::new();
-    while !existing.exists() {
-        suffix.push(existing.file_name()?.to_owned());
-        existing = existing.parent()?;
+    loop {
+        match std::fs::symlink_metadata(existing) {
+            Ok(metadata) if metadata.file_type().is_symlink() => return None,
+            Ok(_) => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                suffix.push(existing.file_name()?.to_owned());
+                existing = existing.parent()?;
+            }
+            Err(_) => return None,
+        }
     }
     let mut resolved = existing.canonicalize().ok()?;
     for component in suffix.into_iter().rev() {
@@ -848,6 +929,20 @@ fn run_bounded_command(
     arguments: &[String],
     timeout: Duration,
 ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
+    run_bounded_command_with_cleanup_timeout(
+        executable,
+        arguments,
+        timeout,
+        PROCESS_CLEANUP_TIMEOUT,
+    )
+}
+
+fn run_bounded_command_with_cleanup_timeout(
+    executable: &Path,
+    arguments: &[String],
+    timeout: Duration,
+    cleanup_timeout: Duration,
+) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
     let mut command = Command::new(executable);
     command
         .args(arguments)
@@ -861,63 +956,99 @@ fn run_bounded_command(
         .map_err(|_| LegacyConversionFailure::SpawnFailed)?;
     let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
         terminate_process_tree(&mut child);
-        let _ = child.wait();
+        let _ = reap_child_bounded(&mut child, cleanup_timeout);
         return Err(LegacyConversionFailure::OutputReadFailed);
     };
     let stdout_exceeded = Arc::new(AtomicBool::new(false));
     let stderr_exceeded = Arc::new(AtomicBool::new(false));
     let stdout_flag = Arc::clone(&stdout_exceeded);
     let stderr_flag = Arc::clone(&stderr_exceeded);
-    let stdout_reader = std::thread::spawn(move || {
-        read_bounded_stdout(stdout, MAX_CONVERTER_STDOUT_BYTES, &stdout_flag)
+    let (stdout_sender, stdout_receiver) = mpsc::channel();
+    let (stderr_sender, stderr_receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = stdout_sender.send(read_bounded_stdout(
+            stdout,
+            MAX_CONVERTER_STDOUT_BYTES,
+            &stdout_flag,
+        ));
     });
-    let stderr_reader = std::thread::spawn(move || {
-        read_bounded_stderr(stderr, MAX_CONVERTER_STDERR_BYTES, &stderr_flag)
+    std::thread::spawn(move || {
+        let _ = stderr_sender.send(read_bounded_stderr(
+            stderr,
+            MAX_CONVERTER_STDERR_BYTES,
+            &stderr_flag,
+        ));
     });
 
     let started_at = Instant::now();
-    let status = loop {
+    let outcome = loop {
         if stdout_exceeded.load(Ordering::Acquire) || stderr_exceeded.load(Ordering::Acquire) {
-            terminate_process_tree(&mut child);
-            let _ = child.wait();
-            break None;
+            let failure = check_output_limits(
+                stdout_exceeded.load(Ordering::Acquire),
+                stderr_exceeded.load(Ordering::Acquire),
+            )
+            .expect_err("at least one output bound is exceeded");
+            break Err(failure);
         }
         match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
+            Ok(Some(status)) => break Ok(status),
             Ok(None) if started_at.elapsed() >= timeout => {
-                terminate_process_tree(&mut child);
-                let _ = child.wait();
-                let _ = stdout_reader.join();
-                let _ = stderr_reader.join();
-                return Err(LegacyConversionFailure::TimedOut);
+                break Err(LegacyConversionFailure::TimedOut);
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(25)),
             Err(_) => {
-                terminate_process_tree(&mut child);
-                let _ = child.wait();
-                let _ = stdout_reader.join();
-                let _ = stderr_reader.join();
-                return Err(LegacyConversionFailure::ProcessFailed);
+                break Err(LegacyConversionFailure::ProcessFailed);
             }
         }
     };
-    let stdout = stdout_reader
-        .join()
-        .map_err(|_| LegacyConversionFailure::OutputReadFailed)?
-        .map_err(|_| LegacyConversionFailure::OutputReadFailed)?;
-    let stderr = stderr_reader
-        .join()
-        .map_err(|_| LegacyConversionFailure::OutputReadFailed)?
-        .map_err(|_| LegacyConversionFailure::OutputReadFailed)?;
-    check_output_limits(
-        stdout_exceeded.load(Ordering::Acquire),
-        stderr_exceeded.load(Ordering::Acquire),
-    )?;
-    let status = status.ok_or(LegacyConversionFailure::ProcessFailed)?;
+    if outcome.is_err() {
+        terminate_process_tree(&mut child);
+        if !reap_child_bounded(&mut child, cleanup_timeout) {
+            return Err(LegacyConversionFailure::CleanupFailed);
+        }
+    }
+    let (stdout, stderr) =
+        match receive_reader_outputs(&stdout_receiver, &stderr_receiver, cleanup_timeout) {
+            Ok(outputs) => outputs,
+            Err(error) => {
+                terminate_orphaned_process_group(&child);
+                return Err(error);
+            }
+        };
+    let status = outcome?;
     let return_code = status
         .code()
         .ok_or(LegacyConversionFailure::ProcessFailed)?;
     decode_process_output(return_code, stdout, stderr)
+}
+
+fn receive_reader_outputs(
+    stdout: &mpsc::Receiver<std::io::Result<Vec<u8>>>,
+    stderr: &mpsc::Receiver<std::io::Result<Vec<u8>>>,
+    timeout: Duration,
+) -> Result<(Vec<u8>, Vec<u8>), LegacyConversionFailure> {
+    let deadline = Instant::now() + timeout;
+    let receive = |receiver: &mpsc::Receiver<std::io::Result<Vec<u8>>>| {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        receiver
+            .recv_timeout(remaining)
+            .map_err(|_| LegacyConversionFailure::CleanupFailed)?
+            .map_err(|_| LegacyConversionFailure::OutputReadFailed)
+    };
+    Ok((receive(stdout)?, receive(stderr)?))
+}
+
+fn reap_child_bounded(child: &mut std::process::Child, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return true,
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(None) | Err(_) => return false,
+        }
+    }
 }
 
 const fn check_output_limits(
@@ -982,10 +1113,24 @@ fn terminate_process_tree(child: &mut std::process::Child) {
                 std::thread::sleep(Duration::from_millis(10));
             }
             let _ = killer.kill();
-            let _ = killer.wait();
         }
     }
     let _ = child.kill();
+}
+
+#[cfg(unix)]
+fn terminate_orphaned_process_group(child: &std::process::Child) {
+    if let Ok(pid) = i32::try_from(child.id()) {
+        let _ = killpg(Pid::from_raw(pid), Signal::SIGKILL);
+    }
+}
+
+#[cfg(not(unix))]
+fn terminate_orphaned_process_group(_child: &std::process::Child) {
+    // On Windows, taskkill cannot safely address a tree after its root PID has
+    // already exited and may have been reused. The converter is poisoned, so
+    // at most these two bounded reader tasks can remain until escaped handles
+    // close; no later conversion can accumulate more.
 }
 
 fn read_bounded_stdout(
@@ -1021,6 +1166,7 @@ fn read_bounded(
         retained.extend_from_slice(&buffer[..copied]);
         if copied < count {
             exceeded.store(true, Ordering::Release);
+            return Ok(retained);
         }
     }
 }
@@ -1157,6 +1303,16 @@ mod tests {
             inspect_workspace_transition(&incomplete).unwrap().format,
             "sqlite-workspace-unreadable-or-incompatible"
         );
+
+        let native_root = root.join("native-root");
+        fs::create_dir(&native_root).unwrap();
+        for member in ["manifest.json", "score_set.json", "predictions.parquet"] {
+            fs::write(native_root.join(member), b"opaque").unwrap();
+        }
+        assert_eq!(
+            inspect_workspace_transition(&native_root).unwrap().format,
+            "native-results-v1"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1177,6 +1333,41 @@ mod tests {
         fs::create_dir(&marker_root).unwrap();
         symlink(real.join("store.duckdb"), marker_root.join("store.duckdb")).unwrap();
         assert!(inspect_workspace_transition(&marker_root)
+            .unwrap_err()
+            .contains("must not be a symlink"));
+
+        for (index, candidate) in [
+            "store.duckdb",
+            "store.sqlite",
+            "arrays",
+            "model.n4a",
+            "model.n4a.py",
+            "sample.meta.parquet",
+            "run_predictions.json",
+            "manifest.json",
+            "score_set.json",
+            "predictions.parquet",
+            "runs",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let workspace = root.join(format!("dangling-{index}"));
+            fs::create_dir(&workspace).unwrap();
+            symlink(workspace.join("missing-target"), workspace.join(candidate)).unwrap();
+            assert!(inspect_workspace_transition(&workspace)
+                .unwrap_err()
+                .contains("must not be a symlink"));
+        }
+
+        let run_manifest_root = root.join("dangling-run-manifest");
+        fs::create_dir_all(run_manifest_root.join("runs/run-a")).unwrap();
+        symlink(
+            run_manifest_root.join("missing-manifest"),
+            run_manifest_root.join("runs/run-a/run_manifest.yaml"),
+        )
+        .unwrap();
+        assert!(inspect_workspace_transition(&run_manifest_root)
             .unwrap_err()
             .contains("must not be a symlink"));
         fs::remove_dir_all(root).unwrap();
@@ -1283,5 +1474,88 @@ mod tests {
             Err(LegacyConversionFailure::TimedOut)
         );
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn reader_collection_deadline_never_waits_for_open_pipe_senders() {
+        let (_stdout_sender, stdout_receiver) = mpsc::channel();
+        let (_stderr_sender, stderr_receiver) = mpsc::channel();
+        let started = Instant::now();
+        assert_eq!(
+            receive_reader_outputs(
+                &stdout_receiver,
+                &stderr_receiver,
+                Duration::from_millis(25),
+            ),
+            Err(LegacyConversionFailure::CleanupFailed)
+        );
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn escaped_descendant_holding_pipes_fails_cleanup_within_deadline() {
+        let arguments = vec!["-c".to_string(), "setsid sh -c 'sleep 1' &".to_string()];
+        let started = Instant::now();
+        assert_eq!(
+            run_bounded_command_with_cleanup_timeout(
+                Path::new("/bin/sh"),
+                &arguments,
+                Duration::from_secs(1),
+                Duration::from_millis(50),
+            ),
+            Err(LegacyConversionFailure::CleanupFailed)
+        );
+        assert!(started.elapsed() < Duration::from_millis(500));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn incomplete_cleanup_permanently_poisons_converter() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temporary_directory("poisoned-converter");
+        let host = root.join("python-host");
+        fs::write(&host, "#!/bin/sh\nsetsid sh -c 'sleep 1' &\nexit 0\n").unwrap();
+        let mut permissions = fs::metadata(&host).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&host, permissions).unwrap();
+        let converter = PythonModuleLegacyConverter {
+            python_plugin_host: host,
+            attested: true,
+            poisoned: AtomicBool::new(false),
+        };
+        let request = LegacyConversionRequest {
+            workspace_path: root.join("source"),
+            output_path: root.join("output"),
+            verify: true,
+            dry_run: false,
+            strict: true,
+            link_converted_workspace: false,
+        };
+
+        let started = Instant::now();
+        assert_eq!(
+            converter.run_with_timeouts(
+                &request,
+                Duration::from_secs(1),
+                Duration::from_millis(50),
+            ),
+            Err(LegacyConversionFailure::CleanupFailed)
+        );
+        assert!(started.elapsed() < Duration::from_millis(500));
+        assert!(!converter.is_available());
+
+        let retry_started = Instant::now();
+        assert_eq!(
+            converter.run_with_timeouts(
+                &request,
+                Duration::from_secs(1),
+                Duration::from_millis(50),
+            ),
+            Err(LegacyConversionFailure::CleanupFailed)
+        );
+        assert!(retry_started.elapsed() < Duration::from_millis(25));
+        fs::remove_dir_all(root).unwrap();
     }
 }

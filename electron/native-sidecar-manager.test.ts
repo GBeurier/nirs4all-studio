@@ -106,6 +106,10 @@ function writePackagedContract(
       module: "nirs4all_tools",
       cli: "python -I -B -m nirs4all_tools",
       readers: { duckdb: "1.5.5", pyarrow: "25.0.1" },
+      functional_probes: {
+        duckdb: "in-memory-select-40-plus-2",
+        pyarrow_parquet: "in-memory-round-trip",
+      },
     },
     platform: "linux",
     arch: process.arch,

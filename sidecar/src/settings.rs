@@ -18,6 +18,7 @@ use std::{
 };
 
 use atomicwrites::{replace_atomic, AllowOverwrite, AtomicFile};
+use cap_std::{ambient_authority, fs::Dir};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -35,6 +36,98 @@ pub struct AppSettingsStore {
     config_dir: PathBuf,
     default_config_dir: PathBuf,
     write_lock: Arc<Mutex<()>>,
+}
+
+struct WorkspaceActivationGuard {
+    workspace_path: PathBuf,
+    store_path: PathBuf,
+    workspace_metadata: fs::Metadata,
+    store_metadata: fs::Metadata,
+    _workspace_handle: Dir,
+    _store_handle: fs::File,
+}
+
+impl WorkspaceActivationGuard {
+    fn capture(workspace_path: &Path, store_path: &Path) -> Result<Self, String> {
+        let workspace_metadata = fs::symlink_metadata(workspace_path)
+            .map_err(|error| format!("could not identify converted workspace: {error}"))?;
+        if workspace_metadata.file_type().is_symlink() || !workspace_metadata.is_dir() {
+            return Err("converted workspace identity changed before activation".into());
+        }
+        let workspace_handle = Dir::open_ambient_dir(workspace_path, ambient_authority())
+            .map_err(|error| format!("could not hold converted workspace directory: {error}"))?;
+        let opened_workspace_metadata = workspace_handle.dir_metadata().map_err(|error| {
+            format!("could not identify held converted workspace directory: {error}")
+        })?;
+        if !workspace_handle_matches_std(&workspace_metadata, &opened_workspace_metadata) {
+            return Err("converted workspace identity changed before activation".into());
+        }
+        let store_handle = fs::File::open(store_path)
+            .map_err(|error| format!("could not hold converted workspace store: {error}"))?;
+        let store_metadata = store_handle
+            .metadata()
+            .map_err(|error| format!("could not identify converted workspace store: {error}"))?;
+        let guard = Self {
+            workspace_path: workspace_path.to_path_buf(),
+            store_path: store_path.to_path_buf(),
+            workspace_metadata,
+            store_metadata,
+            _workspace_handle: workspace_handle,
+            _store_handle: store_handle,
+        };
+        guard.revalidate()?;
+        Ok(guard)
+    }
+
+    fn revalidate(&self) -> Result<(), String> {
+        let workspace_metadata = fs::symlink_metadata(&self.workspace_path)
+            .map_err(|error| format!("converted workspace changed before activation: {error}"))?;
+        let store_metadata = fs::symlink_metadata(&self.store_path).map_err(|error| {
+            format!("converted workspace store changed before activation: {error}")
+        })?;
+        if workspace_metadata.file_type().is_symlink()
+            || !workspace_metadata.is_dir()
+            || store_metadata.file_type().is_symlink()
+            || !store_metadata.is_file()
+            || fs::canonicalize(&self.workspace_path).ok().as_deref()
+                != Some(self.workspace_path.as_path())
+            || fs::canonicalize(&self.store_path).ok().as_deref() != Some(self.store_path.as_path())
+            || !metadata_unchanged(&self.workspace_metadata, &workspace_metadata)
+            || !metadata_unchanged(&self.store_metadata, &store_metadata)
+        {
+            return Err("converted workspace identity changed before atomic activation".into());
+        }
+        Ok(())
+    }
+
+    fn final_validate(&self) -> Result<(), String> {
+        self.revalidate()?;
+        crate::legacy_conversion::validate_workspace_v2_store(
+            &self.workspace_path,
+            &self.store_path,
+        )
+        .map_err(|reason| format!("converted workspace failed final V2 validation: {reason}"))?;
+        self.revalidate()
+    }
+}
+
+fn metadata_unchanged(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    crate::legacy_conversion::same_file_identity(before, after)
+        && before.len() == after.len()
+        && before.modified().ok() == after.modified().ok()
+}
+
+#[cfg(unix)]
+fn workspace_handle_matches_std(path: &fs::Metadata, handle: &cap_std::fs::Metadata) -> bool {
+    use cap_std::fs::MetadataExt as CapMetadataExt;
+    use std::os::unix::fs::MetadataExt;
+
+    path.dev() == handle.dev() && path.ino() == handle.ino()
+}
+
+#[cfg(not(unix))]
+fn workspace_handle_matches_std(path: &fs::Metadata, handle: &cap_std::fs::Metadata) -> bool {
+    path.is_dir() == handle.is_dir() && path.len() == handle.len()
 }
 
 /// The only dataset-link fields used to associate a Store result with the
@@ -466,6 +559,21 @@ impl AppSettingsStore {
         linked_at: &str,
         expected_active_workspace_id: &str,
     ) -> Result<Value, String> {
+        self.link_and_activate_workspace_with_hook(
+            workspace_path,
+            linked_at,
+            expected_active_workspace_id,
+            || {},
+        )
+    }
+
+    fn link_and_activate_workspace_with_hook(
+        &self,
+        workspace_path: &Path,
+        linked_at: &str,
+        expected_active_workspace_id: &str,
+        before_atomic_activation: impl FnOnce(),
+    ) -> Result<Value, String> {
         let _write_guard = self
             .write_lock
             .lock()
@@ -492,6 +600,7 @@ impl AppSettingsStore {
         if store_metadata.file_type().is_symlink() || !store_metadata.is_file() {
             return Err("verified converted workspace store.sqlite must be a real file".into());
         }
+        let activation_guard = WorkspaceActivationGuard::capture(&workspace_path, &store)?;
         let mut settings = self.load()?;
         let current_active_workspace_id = active_workspace_id(&settings);
         if current_active_workspace_id != Some(expected_active_workspace_id) {
@@ -561,6 +670,8 @@ impl AppSettingsStore {
         }
         let activated =
             activated.ok_or_else(|| "converted workspace activation failed".to_string())?;
+        before_atomic_activation();
+        activation_guard.final_validate()?;
         self.save(&settings)?;
         Ok(activated)
     }
@@ -1357,6 +1468,87 @@ mod tests {
                 .unwrap_err()
                 .contains("store.sqlite must be a real file"));
         }
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn atomic_activation_guard_refuses_store_change_in_final_window() {
+        let directory = temporary_directory("activation-final-window-store-change");
+        let source = directory.join("legacy");
+        let converted = directory.join("converted");
+        fs::create_dir(&source).unwrap();
+        fs::create_dir(&converted).unwrap();
+        write_strict_v2_store(&converted);
+        fs::write(
+            directory.join("app_settings.json"),
+            serde_json::to_vec(&json!({
+                "linked_workspaces": [{
+                    "id": "workspace-legacy",
+                    "path": source.canonicalize().unwrap(),
+                    "name": "Legacy",
+                    "is_active": true
+                }]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let store = AppSettingsStore::new(&directory);
+        let sqlite = converted.join("store.sqlite");
+        let error = store
+            .link_and_activate_workspace_with_hook(
+                &converted,
+                "2026-09-02T12:00:00Z",
+                "workspace-legacy",
+                || fs::write(&sqlite, b"replacement bytes").unwrap(),
+            )
+            .unwrap_err();
+        assert!(error.contains("identity changed"));
+        let catalogue = store.linked_workspaces_response().unwrap();
+        assert_eq!(catalogue["active_workspace_id"], "workspace-legacy");
+        assert_eq!(catalogue["total"], 1);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_activation_guard_refuses_directory_replacement_in_final_window() {
+        let directory = temporary_directory("activation-final-window-directory-swap");
+        let source = directory.join("legacy");
+        let converted = directory.join("converted");
+        let displaced = directory.join("displaced");
+        fs::create_dir(&source).unwrap();
+        fs::create_dir(&converted).unwrap();
+        write_strict_v2_store(&converted);
+        fs::write(
+            directory.join("app_settings.json"),
+            serde_json::to_vec(&json!({
+                "linked_workspaces": [{
+                    "id": "workspace-legacy",
+                    "path": source.canonicalize().unwrap(),
+                    "name": "Legacy",
+                    "is_active": true
+                }]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let store = AppSettingsStore::new(&directory);
+        let error = store
+            .link_and_activate_workspace_with_hook(
+                &converted,
+                "2026-09-02T12:00:00Z",
+                "workspace-legacy",
+                || {
+                    fs::rename(&converted, &displaced).unwrap();
+                    fs::create_dir(&converted).unwrap();
+                    write_strict_v2_store(&converted);
+                },
+            )
+            .unwrap_err();
+        assert!(error.contains("identity changed"));
+        let catalogue = store.linked_workspaces_response().unwrap();
+        assert_eq!(catalogue["active_workspace_id"], "workspace-legacy");
+        assert_eq!(catalogue["total"], 1);
         fs::remove_dir_all(directory).unwrap();
     }
 }

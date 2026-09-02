@@ -1383,7 +1383,8 @@ fn legacy_conversion_bridge_error_response(error: LegacyConversionFailure) -> Ht
         | LegacyConversionFailure::OutputReadFailed
         | LegacyConversionFailure::StdoutTooLarge
         | LegacyConversionFailure::StderrTooLarge
-        | LegacyConversionFailure::InvalidUtf8 => 502,
+        | LegacyConversionFailure::InvalidUtf8
+        | LegacyConversionFailure::CleanupFailed => 502,
     };
     HttpResponse::json(
         status,
@@ -4894,6 +4895,7 @@ mod tests {
             (LegacyConversionFailure::StdoutTooLarge, 502),
             (LegacyConversionFailure::StderrTooLarge, 502),
             (LegacyConversionFailure::InvalidUtf8, 502),
+            (LegacyConversionFailure::CleanupFailed, 502),
         ] {
             let response = legacy_conversion_bridge_error_response(failure);
             assert_eq!(response.status, status);

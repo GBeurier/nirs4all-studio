@@ -48,9 +48,19 @@ fn checked_in_contract_matches_the_rust_route_and_process_bounds() {
         "e3a332633f87b4652a06f8993e63c386a3568698"
     );
     assert_eq!(
-        contract["converter"]["qualified_identity"]["readers"]["duckdb"],
+        contract["converter"]["qualified_identity"]["readers"]["duckdb"]["version"],
         "1.5.5"
     );
+    assert_eq!(
+        contract["converter"]["qualified_identity"]["readers"]["duckdb"]["functional_probe"],
+        "in-memory-select-40-plus-2"
+    );
+    assert_eq!(
+        contract["converter"]["qualified_identity"]["readers"]["pyarrow"]["functional_probe"],
+        "in-memory-round-trip"
+    );
+    assert_eq!(contract["converter"]["reader_cleanup_timeout_seconds"], 2);
+    assert_eq!(contract["converter"]["unbounded_reader_join"], "forbidden");
 }
 
 #[test]

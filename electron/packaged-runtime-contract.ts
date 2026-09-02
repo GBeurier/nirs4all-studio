@@ -352,6 +352,7 @@ function verifyPluginMarker(
   const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as Record<string, unknown>;
   const conversionTools = marker.conversion_tools as Record<string, unknown> | undefined;
   const readers = conversionTools?.readers as Record<string, unknown> | undefined;
+  const functionalProbes = conversionTools?.functional_probes as Record<string, unknown> | undefined;
   if (
     marker.schema !== "nirs4all.studio-python-plugin-runtime.v1" ||
     marker.python_role !== "library-plugin-host-only" ||
@@ -378,6 +379,8 @@ function verifyPluginMarker(
     conversionTools?.cli !== "python -I -B -m nirs4all_tools" ||
     readers?.duckdb !== "1.5.5" ||
     readers?.pyarrow !== "25.0.1" ||
+    functionalProbes?.duckdb !== "in-memory-select-40-plus-2" ||
+    functionalProbes?.pyarrow_parquet !== "in-memory-round-trip" ||
     marker.platform !== platform ||
     marker.arch !== arch ||
     !Array.isArray(marker.forbidden_distributions) ||
