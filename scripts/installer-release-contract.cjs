@@ -171,7 +171,36 @@ function ensureRealChildDirectory(parent, name, label) {
   return child;
 }
 
-function validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot) {
+function captureDirectoryIdentity(directoryPath, label) {
+  requireRealDirectory(directoryPath, label);
+  const stat = fs.lstatSync(directoryPath, { bigint: true });
+  return {
+    path: directoryPath,
+    canonicalPath: fs.realpathSync.native(directoryPath),
+    dev: stat.dev.toString(),
+    ino: stat.ino.toString(),
+    birthtimeNs: stat.birthtimeNs.toString(),
+  };
+}
+
+function assertDirectoryIdentity(identity, label) {
+  const actual = captureDirectoryIdentity(identity.path, label);
+  if (
+    actual.canonicalPath !== identity.canonicalPath ||
+    actual.dev !== identity.dev ||
+    actual.ino !== identity.ino ||
+    actual.birthtimeNs !== identity.birthtimeNs
+  ) {
+    throw new Error(`${label} identity changed during installer packaging`);
+  }
+}
+
+function validateTransactionRoots(
+  invocationBoundary,
+  releaseRoot,
+  stagingRoot,
+  directoryIdentities = [],
+) {
   requireDirectoryChain(
     invocationBoundary,
     relativeDirectorySegments(invocationBoundary, releaseRoot, "Installer release root"),
@@ -182,15 +211,23 @@ function validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot) 
     relativeDirectorySegments(invocationBoundary, stagingRoot, "Installer staging root"),
     "Installer staging root",
   );
+  for (const identity of directoryIdentities) {
+    assertDirectoryIdentity(identity, "Installer transaction directory");
+  }
 }
 
-function removeGeneratedDirectoryIfConfined(invocationBoundary, directoryPath) {
+function removeGeneratedDirectoryIfConfined(
+  invocationBoundary,
+  directoryPath,
+  expectedIdentity,
+) {
   try {
     requireDirectoryChain(
       invocationBoundary,
       relativeDirectorySegments(invocationBoundary, directoryPath, "Generated directory"),
       "Generated directory",
     );
+    assertDirectoryIdentity(expectedIdentity, "Generated directory");
   } catch {
     return false;
   }
@@ -412,8 +449,14 @@ function moveWithRollback(
   releaseRoot,
   names,
   verifyPublished,
+  directoryIdentities,
 ) {
-  validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
+  validateTransactionRoots(
+    invocationBoundary,
+    releaseRoot,
+    stagingRoot,
+    directoryIdentities,
+  );
   const backupRoot = path.join(
     path.dirname(stagingRoot),
     `.installer-backup-${process.pid}-${crypto.randomUUID()}`,
@@ -424,11 +467,21 @@ function moveWithRollback(
     relativeDirectorySegments(invocationBoundary, backupRoot, "Installer backup root"),
     "Installer backup root",
   );
+  const backupIdentity = captureDirectoryIdentity(
+    backupRoot,
+    "Installer backup root",
+  );
   const moved = [];
   const backedUp = [];
+  let preserveBackup = false;
   try {
     for (const name of names) {
-      validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
+      validateTransactionRoots(
+        invocationBoundary,
+        releaseRoot,
+        stagingRoot,
+        directoryIdentities,
+      );
       const source = path.join(stagingRoot, name);
       const destination = path.join(releaseRoot, name);
       if (fs.existsSync(destination)) {
@@ -439,20 +492,54 @@ function moveWithRollback(
       moved.push(name);
     }
     verifyPublished();
-    validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
+    validateTransactionRoots(
+      invocationBoundary,
+      releaseRoot,
+      stagingRoot,
+      directoryIdentities,
+    );
   } catch (error) {
-    validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
+    try {
+      validateTransactionRoots(
+        invocationBoundary,
+        releaseRoot,
+        stagingRoot,
+        directoryIdentities,
+      );
+    } catch (boundaryError) {
+      preserveBackup = true;
+      throw new Error(
+        `Installer transaction boundary changed; rollback refused and recovery backup retained at ${backupIdentity.canonicalPath}: ${boundaryError.message}`,
+        { cause: error },
+      );
+    }
     for (const name of moved.reverse()) {
-      validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
+      validateTransactionRoots(
+        invocationBoundary,
+        releaseRoot,
+        stagingRoot,
+        directoryIdentities,
+      );
       fs.rmSync(path.join(releaseRoot, name), { recursive: true, force: true });
     }
     for (const name of backedUp) {
-      validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
+      validateTransactionRoots(
+        invocationBoundary,
+        releaseRoot,
+        stagingRoot,
+        directoryIdentities,
+      );
       fs.renameSync(path.join(backupRoot, name), path.join(releaseRoot, name));
     }
     throw error;
   } finally {
-    removeGeneratedDirectoryIfConfined(invocationBoundary, backupRoot);
+    if (!preserveBackup) {
+      removeGeneratedDirectoryIfConfined(
+        invocationBoundary,
+        backupRoot,
+        backupIdentity,
+      );
+    }
   }
 }
 
@@ -493,10 +580,23 @@ async function packageAndVerifyInstallerOutputs({
     ["build", "installer-invocations", path.basename(stagingRoot)],
     "Installer staging root",
   );
+  const transactionDirectoryIdentities = [
+    captureDirectoryIdentity(invocationBoundary, "Installer invocation boundary"),
+    captureDirectoryIdentity(releaseRoot, "Installer release root"),
+    captureDirectoryIdentity(buildRoot, "Installer build root"),
+    captureDirectoryIdentity(stagingParent, "Installer staging parent"),
+    captureDirectoryIdentity(stagingRoot, "Installer staging root"),
+  ];
+  const stagingIdentity = transactionDirectoryIdentities.at(-1);
   const stagingBefore = snapshotTopLevel(stagingRoot);
   try {
     await runBuilder(stagingRoot);
-    validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
+    validateTransactionRoots(
+      invocationBoundary,
+      releaseRoot,
+      stagingRoot,
+      transactionDirectoryIdentities,
+    );
     const stagingAfter = snapshotTopLevel(stagingRoot);
     const producedNames = newlyProducedNames(stagingBefore, stagingAfter);
     if (producedNames.length === 0) {
@@ -524,7 +624,12 @@ async function packageAndVerifyInstallerOutputs({
     }
 
     let finalOutputs = null;
-    validateTransactionRoots(invocationBoundary, releaseRoot, stagingRoot);
+    validateTransactionRoots(
+      invocationBoundary,
+      releaseRoot,
+      stagingRoot,
+      transactionDirectoryIdentities,
+    );
     moveWithRollback(invocationBoundary, stagingRoot, releaseRoot, promotedNames, () => {
       const publishedOutputs = platforms.map((platform, index) =>
         discoverPlatformOutput(
@@ -555,13 +660,17 @@ async function packageAndVerifyInstallerOutputs({
           outputs[index].artifactIdentities,
         ),
       );
-    });
+    }, transactionDirectoryIdentities);
     return {
       producedNames: promotedNames,
       outputs: finalOutputs,
     };
   } finally {
-    removeGeneratedDirectoryIfConfined(invocationBoundary, stagingRoot);
+    removeGeneratedDirectoryIfConfined(
+      invocationBoundary,
+      stagingRoot,
+      stagingIdentity,
+    );
   }
 }
 

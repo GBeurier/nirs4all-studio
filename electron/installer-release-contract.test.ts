@@ -359,6 +359,66 @@ describe("installer release post-package contract", () => {
     expect(fs.readFileSync(externalSentinel, "utf8")).toBe("outside");
   });
 
+  it("refuses rollback through a release symlink swapped during published verify", async () => {
+    if (process.platform === "win32") return;
+    const root = temporaryRoot();
+    const external = temporaryRoot();
+    const releaseRoot = path.join(root, "release");
+    const oldBackend = writeLinuxOutputs(releaseRoot);
+    fs.writeFileSync(path.join(oldBackend, "contract.ok"), "old-release");
+    const externalBackend = writeLinuxOutputs(external);
+    const externalAppImage = path.join(
+      external,
+      "nirs4all Studio-0.10.3-linux-x64.AppImage",
+    );
+    const externalDeb = path.join(
+      external,
+      "nirs4all Studio-0.10.3-linux-x64.deb",
+    );
+    fs.writeFileSync(path.join(externalBackend, "contract.ok"), "outside-backend");
+    fs.writeFileSync(externalAppImage, "outside-appimage");
+    fs.writeFileSync(externalDeb, "outside-deb");
+    let verifyCount = 0;
+
+    await expect(contract.packageAndVerifyInstallerOutputs({
+      releaseRoot,
+      requestedPlatform: "linux",
+      hostPlatform: "linux",
+      runBuilder: async (stagingRoot) => {
+        writeLinuxOutputs(stagingRoot);
+      },
+      verifyRuntimeContract: (options) => {
+        const result = verifier(options);
+        verifyCount += 1;
+        if (verifyCount === 3) {
+          fs.renameSync(releaseRoot, path.join(root, "release-after-swap"));
+          fs.symlinkSync(external, releaseRoot);
+          throw new Error("forced failure after published verify");
+        }
+        return result;
+      },
+      smokeSidecar: () => undefined,
+    })).rejects.toThrow(/rollback refused and recovery backup retained/);
+
+    expect(fs.readFileSync(path.join(externalBackend, "contract.ok"), "utf8"))
+      .toBe("outside-backend");
+    expect(fs.readFileSync(externalAppImage, "utf8")).toBe("outside-appimage");
+    expect(fs.readFileSync(externalDeb, "utf8")).toBe("outside-deb");
+    const invocationRoot = path.join(root, "build", "installer-invocations");
+    const backups = fs.readdirSync(invocationRoot).filter((name) =>
+      name.startsWith(".installer-backup-"),
+    );
+    expect(backups).toHaveLength(1);
+    expect(fs.readFileSync(path.join(
+      invocationRoot,
+      backups[0],
+      "linux-unpacked",
+      "resources",
+      "backend",
+      "contract.ok",
+    ), "utf8")).toBe("old-release");
+  });
+
   it("rejects a special file in the expected installer artifacts", async () => {
     if (process.platform === "win32") return;
     const root = temporaryRoot();
