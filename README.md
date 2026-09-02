@@ -286,8 +286,9 @@ whole renderer session to the transitional FastAPI backend. This visible switch
 is never an automatic fallback. In development only, the exact environment
 value `NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1` is equivalent; packaged builds
 ignore that environment variable. Session-wide ownership keeps job creation,
-status, cancellation, and WebSockets on one backend. The FastAPI files remain
-packaged transitionally until their R3 physical removal.
+status, cancellation, and WebSockets on one backend. The FastAPI/WebSocket
+sources remain in the checkout for web development and explicit diagnostics,
+but are absent from product installers and all-in-one archives.
 
 The native sidecar is the packaged product backend, not an opt-in hybrid. For
 development, `NIRS4ALL_NATIVE_SIDECAR_PATH` may point to a specific built
