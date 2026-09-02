@@ -11,6 +11,7 @@ The source of truth is:
 - `scripts/build-archive-standalone.cjs`
 - `scripts/bake-python-plugin-runtime.cjs`
 - `scripts/native-runtime-contract.cjs`
+- `scripts/macos-attested-runtime.cjs`
 
 Legacy PyInstaller-based backend packaging still exists in the repository for compatibility and debugging, but it is no longer the published desktop release path.
 
@@ -164,6 +165,42 @@ Every Rust-owned invocation of the embedded CPython host disables bytecode
 writes with both `-B` and `PYTHONDONTWRITEBYTECODE=1`. This keeps preflight,
 system/update inspection, run-detail materialization, and scientific execution
 from adding `__pycache__` members to the exact packaged closure.
+
+### macOS signing order for attested native bytes
+
+macOS code signing changes Mach-O bytes. The packaged runtime therefore uses a
+strict order that differs from the default recursive Electron signing pass:
+
+1. Electron Builder copies `backend-dist/` into the unsigned `.app`.
+2. `scripts/macos-attested-runtime.cjs`, registered as `afterPack`, verifies the
+   copied runtime contract and discovers Mach-O files from the complete CPython
+   closure plus the optional `native/libn4m.dylib`.
+3. When Electron Builder has selected a signing identity, the hook signs those
+   files first with that same identity, hardened-runtime options, inherited
+   entitlements, keychain, and timestamp policy. Any unresolved requested
+   identity, non-Mach-O selected interpreter/library, signing error, or
+   verification error aborts packaging.
+4. Only after those signatures are final does the hook regenerate
+   `PYTHON_PLUGIN_CLOSURE.json` and `STUDIO_RUNTIME_CONTRACT.json`, then verify
+   the complete copied tree again.
+5. Both Electron Builder configs use `mac.signIgnore` for exactly the CPython
+   runtime root and `libn4m.dylib`. Electron Builder still signs the Rust
+   sidecar, Electron helpers, frameworks, and outer application normally. The
+   outer application signature seals the already signed and attested resources.
+
+Unsigned local x64 builds have no signing identity to apply, but the hook still
+re-attests the bytes in the final `.app`. Apple Silicon's Electron Builder
+ad-hoc fallback is mirrored for the embedded Mach-O files. Custom macOS signing
+hooks are rejected because their identity cannot be proven equal to the one
+used for this pre-sign phase. This ordering preserves byte attestation; it does
+not replace the release workflow's application-signature, notarization, staple,
+or extracted-artifact verification gates.
+Nested `.app`, `.bundle`, `.framework`, `.plugin`, or `.xpc` directories inside
+the CPython closure are not currently attested as signable bundles and are
+rejected instead of being partially signed.
+
+This is purely a packaging rule. The Rust sidecar remains the sole product HTTP
+and WebSocket owner; CPython remains a bounded stdio library host.
 
 Linux CI executes the unpacked installer directly. The release workflow also
 verifies the same manifest for Windows x64 and macOS x64/arm64 payloads on their
