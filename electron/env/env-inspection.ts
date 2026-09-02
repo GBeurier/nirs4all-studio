@@ -84,12 +84,18 @@ function getSupportedProfiles(config: RecommendedConfigFile): Array<[string, Rec
 
 /** Core package names with version/extras specifiers stripped. */
 export function getManagedCorePackageNames(): string[] {
-  return MANAGED_RUNTIME_PACKAGES.map((packageSpec) => packageSpec.split(">=")[0].split("[")[0]);
+  return MANAGED_RUNTIME_PACKAGES.map((packageSpec) => packageSpec.split(/[<>=!~ []/)[0]);
 }
 
-export function getMissingCorePackages(installedPackageNames: Set<string>): string[] {
-  return getManagedCorePackageNames()
-    .filter((packageName) => !installedPackageNames.has(normalizePackageName(packageName)));
+export function getMissingCorePackages(installedPackages: ReadonlyMap<string, string>): string[] {
+  return MANAGED_RUNTIME_PACKAGES.filter((packageSpec) => {
+    const packageName = packageSpec.split(/[<>=!~ []/)[0];
+    const installedVersion = installedPackages.get(normalizePackageName(packageName));
+    if (!installedVersion) return true;
+
+    const exactVersion = packageSpec.match(/==\s*([^;\s]+)/)?.[1];
+    return Boolean(exactVersion && installedVersion !== exactVersion);
+  }).map((packageSpec) => packageSpec.split(/[<>=!~ []/)[0]);
 }
 
 export function getMissingOptionalPackages(installedPackages: Set<string>): string[] {

@@ -158,7 +158,7 @@ describe("EnvManager", () => {
     }
   });
 
-  it("repairs a runtime that is missing nirs4all even when uvicorn and fastapi import", async () => {
+  it("repairs a runtime that is missing the bounded nirs4all plugin entrypoint", async () => {
     const userDataDir = makeUserDataDir();
     const settingsPath = path.join(userDataDir, "env-settings.json");
     const pythonPath = path.join(userDataDir, "runtime", "python.exe");
@@ -177,7 +177,7 @@ describe("EnvManager", () => {
     childProcessMocks.execFile.mockImplementation((...args: unknown[]) => {
       const code = args[1] as string[];
       const callback = args[args.length - 1] as (error: Error | null) => void;
-      if (Array.isArray(code) && code[1]?.includes("import uvicorn, fastapi")) {
+      if (Array.isArray(code) && code[1]?.includes("sys.version_info")) {
         callback(null);
         return;
       }
@@ -212,6 +212,14 @@ describe("EnvManager", () => {
           args.includes("install"),
       ),
     ).toBe(true);
+
+    const installArgs = childProcessMocks.spawn.mock.calls
+      .filter(([, args]) => Array.isArray(args) && args.includes("install"))
+      .flatMap(([, args]) => args as string[]);
+    expect(installArgs).toContain("nirs4all==0.10.3");
+    expect(installArgs.join(" ").toLowerCase()).not.toMatch(
+      /fastapi|uvicorn|python-multipart|sentry-sdk/,
+    );
   });
 
   it("annotates spawn failures with the exact command that could not be started", async () => {
@@ -281,7 +289,7 @@ describe("EnvManager", () => {
         installed: inspectCalls === 1
           ? { nirs4all: "0.9.3" }
           : {
-              nirs4all: "0.9.3",
+              nirs4all: "0.10.3",
               fastapi: "0.111.0",
               uvicorn: "0.30.0",
               pydantic: "2.10.0",
@@ -360,7 +368,7 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.8",
           installed: {
-            nirs4all: "0.9.3",
+            nirs4all: "0.10.3",
             fastapi: "0.111.0",
             uvicorn: "0.30.0",
             pydantic: "2.10.0",
@@ -422,7 +430,7 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.7",
           installed: {
-            nirs4all: "0.9.3",
+            nirs4all: "0.10.3",
             fastapi: "0.111.0",
             uvicorn: "0.30.0",
             pydantic: "2.10.0",

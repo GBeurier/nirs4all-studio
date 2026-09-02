@@ -212,7 +212,7 @@ export class EnvManager {
   }
 
   /**
-   * Resolve the Python executable Electron intends to target for backend
+   * Resolve the Python executable Electron intends to target for plugin-host
    * verification / repair work. Falls back to the runtime launch path when no
    * configured interpreter has been persisted yet.
    */
@@ -260,7 +260,7 @@ export class EnvManager {
   private buildInspectedEnv(pythonPath: string, data: InspectPythonData): InspectedEnv {
     const envRoot = getEnvRootForPythonPath(pythonPath);
     const installedPackageNames = new Set(data.installedPackages.keys());
-    const missingCorePackages = getMissingCorePackages(installedPackageNames);
+    const missingCorePackages = getMissingCorePackages(data.installedPackages);
     const profileAlignmentGuess = guessProfileAlignment(installedPackageNames);
 
     return {
@@ -422,9 +422,8 @@ export class EnvManager {
   }
 
   /**
-   * Lightweight runtime check: verifies that uvicorn and fastapi are
-   * importable. Intended for the startup-fast path — does NOT import
-   * `nirs4all`, which is heavy and is loaded lazily by the backend itself.
+   * Lightweight check that the selected interpreter can host the bounded
+   * Rust -> Python stdio plugin. Package imports stay in the explicit verify.
    */
   async verifyBackendRuntime(): Promise<boolean> {
     const pythonPath = this.getBackendTargetPythonPath();
@@ -434,7 +433,7 @@ export class EnvManager {
     const result = await new Promise<boolean>((resolve) => {
       execFile(
         pythonPath,
-        ["-c", "import uvicorn, fastapi"],
+        ["-c", "import sys; assert sys.version_info >= (3, 11)"],
         { timeout: 15000 },
         (error) => resolve(!error),
       );
@@ -444,8 +443,8 @@ export class EnvManager {
   }
 
   /**
-   * Heavier verify that also imports `nirs4all`. Used by explicit setup/repair
-   * flows, never on the startup critical path.
+   * Verify the exact nirs4all distribution and bounded stdio entrypoint used
+   * by the native sidecar. No Python HTTP/control-plane module is imported.
    */
   async verifyBackendPackages(): Promise<boolean> {
     const pythonPath = this.getBackendTargetPythonPath();
@@ -455,7 +454,13 @@ export class EnvManager {
     const result = await new Promise<boolean>((resolve) => {
       execFile(
         pythonPath,
-        ["-c", "import uvicorn; import fastapi; import nirs4all"],
+        [
+          "-c",
+          "from importlib import metadata as m; "
+          + "assert m.version('nirs4all') == '0.10.3'; "
+          + "from nirs4all import studio_scientific_job_v1; "
+          + "assert callable(studio_scientific_job_v1)",
+        ],
         { timeout: 30000 },
         (error) => resolve(!error),
       );
@@ -465,14 +470,14 @@ export class EnvManager {
   }
 
   /**
-   * Ensure critical backend packages are installed.
-   * Verifies the lightweight runtime first, then confirms that `nirs4all`
-   * itself imports cleanly before writing the persistent verify cache.
+   * Ensure the bounded Python plugin host is installed and importable.
+   * Verifies the interpreter first, then confirms the exact `nirs4all`
+   * stdio entrypoint before writing the persistent verify cache.
    *
    * Returns true when a repair/install was actually performed.
    *
-   * Called before starting the backend to fix the portable-mode issue
-   * where the env exists but is missing backend dependencies.
+   * Called before starting the native sidecar when a selected interpreter is
+   * missing its plugin-host dependency.
    */
   async ensureBackendPackages(options?: EnsureBackendPackagesOptions): Promise<boolean> {
     if (!this.validateConfiguredState()) {
@@ -514,9 +519,8 @@ export class EnvManager {
         console.log("ensureBackendPackages: verify-cache disabled (no fingerprint)");
       }
 
-      // Cache miss / disabled / mismatch — verify the lightweight runtime
-      // first so we can repair the common "uvicorn/fastapi missing" case
-      // without paying the heavier import if the env is obviously broken.
+      // Cache miss / disabled / mismatch — verify the interpreter before the
+      // heavier exact-distribution and stdio-entrypoint import.
       const hasRuntime = await this.verifyBackendRuntime();
       if (!hasRuntime) {
         if (isBundledRuntime) {
@@ -526,24 +530,24 @@ export class EnvManager {
         }
         if (!(await probeNetworkOnline())) {
           // Offline: don't blindly mark ready. Confirm the heavier
-          // verifyBackendPackages succeeds before claiming the env works,
+          // plugin-host verify succeeds before claiming the env works,
           // otherwise leave a clear error so the UI can surface it.
           const hasBackendPackages = await this.verifyBackendPackages();
           if (hasBackendPackages) {
-            console.warn("Runtime check failed but backend packages OK and offline — proceeding without repair");
+            console.warn("Interpreter check failed but plugin host is usable offline — proceeding without repair");
             this.lastError = null;
             this.status = "ready";
             return false;
           }
           this.status = "error";
-          this.lastError = "Backend runtime packages missing and the app is offline. Connect to the internet once to repair, or install the required packages manually (fastapi, uvicorn, nirs4all).";
+          this.lastError = "Python plugin host is missing and the app is offline. Connect to the internet once to repair, or install the exact nirs4all plugin package manually.";
           throw new Error(this.lastError);
         }
-        console.log("Backend runtime packages missing, installing core packages...");
+        console.log("Python plugin host missing, installing managed plugin package...");
         await installCorePackages(pythonPath, {
           timeoutMs: options?.timeoutMs,
         });
-        console.log("Core packages installed successfully");
+        console.log("Python plugin host installed successfully");
         repaired = true;
       }
 
@@ -559,24 +563,24 @@ export class EnvManager {
         }
         if (!(await probeNetworkOnline())) {
           // Offline and packages don't import. The runtime check passed so
-          // the backend may still serve a degraded experience; surface the
+          // the interpreter may still be healthy; surface the plugin failure
           // problem rather than claim "ready".
           this.status = "error";
-          this.lastError = "Some backend packages are not importable and the app is offline. Connect to the internet to repair the environment.";
+          this.lastError = "The Python plugin host is not importable and the app is offline. Connect to the internet to repair the environment.";
           throw new Error(this.lastError);
         }
         if (!repaired) {
-          console.log("Backend packages incomplete, reinstalling core packages...");
+          console.log("Python plugin host incomplete, reinstalling managed plugin package...");
           await installCorePackages(pythonPath, {
             timeoutMs: options?.timeoutMs,
           });
-          console.log("Core packages reinstalled successfully");
+          console.log("Python plugin host reinstalled successfully");
           repaired = true;
         }
 
         hasBackendPackages = await this.verifyBackendPackages();
         if (!hasBackendPackages) {
-          throw new Error("Backend packages are still not importable after repair");
+          throw new Error("Python plugin host is still not importable after repair");
         }
       }
 
@@ -662,7 +666,7 @@ export class EnvManager {
 
   /**
    * Persist an inspected Python environment and optionally install its missing
-   * backend-core packages before switching.
+   * managed plugin-host package before switching.
    */
   async applyExistingEnv(
     envPath: string,
@@ -694,7 +698,7 @@ export class EnvManager {
     if (!info.hasCorePackages && !shouldInstallCorePackages) {
       return {
         success: false,
-        message: `Python ${info.pythonVersion} is missing required backend packages (${info.missingCorePackages.join(", ")}). Choose an explicit install action before switching.`,
+        message: `Python ${info.pythonVersion} is missing the required plugin-host package (${info.missingCorePackages.join(", ")}). Choose an explicit install action before switching.`,
         info,
       };
     }
@@ -703,7 +707,7 @@ export class EnvManager {
       if (!(await probeNetworkOnline())) {
         return {
           success: false,
-          message: `Python ${info.pythonVersion} is missing required backend packages and the app is offline. Connect to the internet once to install ${info.missingCorePackages.join(", ")} or install them manually and retry.`,
+          message: `Python ${info.pythonVersion} is missing the required plugin-host package and the app is offline. Connect to the internet once to install ${info.missingCorePackages.join(", ")} or install it manually and retry.`,
           info,
         };
       }
@@ -723,7 +727,7 @@ export class EnvManager {
       if (!refreshedInspection.success || !refreshedInspection.info) {
         return {
           success: false,
-          message: "Core packages were installed but the environment could not be revalidated.",
+          message: "The plugin-host package was installed but the environment could not be revalidated.",
         };
       }
 
@@ -731,7 +735,7 @@ export class EnvManager {
       if (!info.hasCorePackages) {
         return {
           success: false,
-          message: `Core backend packages are still missing after installation: ${info.missingCorePackages.join(", ")}`,
+          message: `The plugin-host package is still missing after installation: ${info.missingCorePackages.join(", ")}`,
           info,
         };
       }
@@ -742,7 +746,7 @@ export class EnvManager {
     this.status = "ready";
     this.lastError = null;
 
-    const action = shouldInstallCorePackages ? "Installed core packages and switched" : "Using";
+    const action = shouldInstallCorePackages ? "Installed the plugin host and switched" : "Using";
     return {
       success: true,
       message: `${action} Python ${info.pythonVersion} from ${pythonPath}`,
