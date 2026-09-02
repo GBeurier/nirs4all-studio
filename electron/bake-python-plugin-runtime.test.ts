@@ -20,6 +20,7 @@ const pluginRuntime = require("../scripts/bake-python-plugin-runtime.cjs") as {
     sitePackages: string,
   ): string[];
   materializeInternalRuntimeLinks(runtimeRoot: string): void;
+  removeEmptyDirectories(runtimeRoot: string): void;
 };
 
 describe("plugin-only CPython runtime", () => {
@@ -103,4 +104,22 @@ describe("plugin-only CPython runtime", () => {
       }
     },
   );
+
+  it("removes empty runtime directories before closure attestation", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-plugin-empty-dirs-"));
+    try {
+      const emptyLeaf = path.join(root, "share", "nested");
+      const retained = path.join(root, "lib", "python3.11");
+      fs.mkdirSync(emptyLeaf, { recursive: true });
+      fs.mkdirSync(retained, { recursive: true });
+      fs.writeFileSync(path.join(retained, "stdlib.py"), "pass\n");
+
+      pluginRuntime.removeEmptyDirectories(root);
+
+      expect(fs.existsSync(path.join(root, "share"))).toBe(false);
+      expect(fs.readFileSync(path.join(retained, "stdlib.py"), "utf8")).toBe("pass\n");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

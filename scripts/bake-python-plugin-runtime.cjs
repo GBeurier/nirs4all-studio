@@ -110,6 +110,26 @@ function removeBytecode(runtimeRoot) {
   }
 }
 
+function removeEmptyDirectories(runtimeRoot) {
+  const directories = [];
+  const pending = [runtimeRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    directories.push(directory);
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        pending.push(path.join(directory, entry.name));
+      }
+    }
+  }
+  directories.sort((left, right) => right.length - left.length);
+  for (const directory of directories) {
+    if (directory !== runtimeRoot && fs.readdirSync(directory).length === 0) {
+      fs.rmdirSync(directory);
+    }
+  }
+}
+
 function assertClosedTree(runtimeRoot) {
   const pending = [runtimeRoot];
   while (pending.length > 0) {
@@ -262,7 +282,12 @@ function expectedMarker(platform = process.platform, arch = process.arch) {
 function verifyPluginRuntime({ backendRoot, platform = process.platform, arch = process.arch, writeMarker = false }) {
   const runtimeRoot = path.join(backendRoot, "python-runtime", "python");
   const sitePackages = findSitePackages(runtimeRoot);
-  if (writeMarker) removeBytecode(runtimeRoot);
+  if (writeMarker) {
+    removeBytecode(runtimeRoot);
+    // electron-builder does not preserve empty directories. Normalize them
+    // before content-addressing so the packaged closure remains identical.
+    removeEmptyDirectories(runtimeRoot);
+  }
   const distributions = assertPluginOnlyPayload(backendRoot, runtimeRoot, sitePackages);
   const preflight = runPreflight(runtimeRoot, sitePackages, platform);
   const expected = expectedMarker(platform, arch);
@@ -350,6 +375,7 @@ module.exports = {
   expectedMarker,
   findSitePackages,
   materializeInternalRuntimeLinks,
+  removeEmptyDirectories,
   parseArgs,
   verifyPluginRuntime,
 };
