@@ -70,7 +70,9 @@ function makeResources(): {
           sha256: digest(bytes),
         };
       })
-      .sort((left, right) => left.path.localeCompare(right.path)),
+      .sort((left, right) =>
+        Buffer.compare(Buffer.from(left.path, "utf8"), Buffer.from(right.path, "utf8")),
+      ),
   };
   const closurePath = path.join(
     backendRoot,

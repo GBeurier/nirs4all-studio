@@ -91,6 +91,10 @@ function sha256File(filePath) {
   return hash.digest("hex");
 }
 
+function compareUtf8Paths(left, right) {
+  return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
+}
+
 function describeFile(filePath, relativePath, boundaryRoot = path.dirname(filePath)) {
   const stat = fs.lstatSync(filePath);
   const relative = path.relative(path.resolve(boundaryRoot), path.resolve(filePath));
@@ -145,7 +149,7 @@ function collectRuntimeClosure(runtimeRoot) {
     directories.push(relativeDirectory.split(path.sep).join("/"));
     const entries = fs
       .readdirSync(directory, { withFileTypes: true })
-      .sort((left, right) => left.name.localeCompare(right.name));
+      .sort((left, right) => compareUtf8Paths(left.name, right.name));
     for (const entry of entries) {
       const entryPath = path.join(directory, entry.name);
       const metadata = fs.lstatSync(entryPath);
@@ -170,8 +174,8 @@ function collectRuntimeClosure(runtimeRoot) {
       });
     }
   }
-  files.sort((left, right) => left.path.localeCompare(right.path));
-  directories.sort();
+  files.sort((left, right) => compareUtf8Paths(left.path, right.path));
+  directories.sort(compareUtf8Paths);
   return { files, directories };
 }
 
@@ -678,6 +682,7 @@ module.exports = {
   CONTRACT_SCHEMA,
   bundledPythonRelativePath,
   collectRuntimeClosure,
+  compareUtf8Paths,
   createRuntimeContract,
   hasValidPlatformSignature,
   parseVerifyArgs,
