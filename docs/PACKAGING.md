@@ -23,7 +23,7 @@ The project now publishes three desktop distribution families plus Docker:
 | Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + Rust `native/studio-sidecar` + read-only plugin-only CPython closure |
 | Portable Windows | Windows x64 | `-portable.exe` | Electron portable layout with state under `.nirs4all/` next to the executable |
 | All-in-one bundle | Windows x64, Linux x64, macOS x64/arm64 | `-all-in-one-*.zip` on Windows/macOS, `-all-in-one-*.tar.gz` on Linux | Electron + Rust `native/studio-sidecar` + the same read-only plugin-only CPython closure; no Python backend source |
-| Docker | Linux | `ghcr.io/gbeurier/nirs4all-studio:*` | No Electron; FastAPI serves the UI |
+| Docker | Linux x64 | `ghcr.io/gbeurier/nirs4all-studio:*` | nginx static UI + loopback Rust sidecar; no Python HTTP backend |
 
 For the desktop all-in-one bundle, v1 is deliberately locked to a single product profile:
 
@@ -270,7 +270,7 @@ The release workflow is `.github/workflows/release-unified.yml`.
 | `archive-linux` | Linux all-in-one tar.gz |
 | `archive-macos-x64` | macOS Intel all-in-one ZIP, rebuilt after notarization/stapling |
 | `archive-macos-arm64` | macOS Apple Silicon all-in-one ZIP, rebuilt after notarization/stapling |
-| `docker` | CPU and GPU-CUDA container images |
+| `docker` | Native container image with nginx and the Rust sidecar |
 | `release` | Consolidates `installer-*` and `archive-*` artifacts into the GitHub Release |
 
 ### Why installer and archive builds are split
@@ -304,12 +304,36 @@ The split is intentional:
 | macOS Intel | `nirs4all Studio-{version}-all-in-one-mac-x64.zip` |
 | macOS Apple Silicon | `nirs4all Studio-{version}-all-in-one-mac-arm64.zip` |
 
-### Docker assets
+### Docker asset
 
-| Variant | Tag |
+| Runtime | Tag |
 |---|---|
-| CPU | `ghcr.io/gbeurier/nirs4all-studio:{version}` |
-| GPU-CUDA | `ghcr.io/gbeurier/nirs4all-studio:{version}-gpu-cuda` |
+| Native Rust | `ghcr.io/gbeurier/nirs4all-studio:{version}` |
+
+The container has one public listener: nginx on port `8000`. It serves the
+compiled React application and proxies `/api/*` and `/ws*` to
+`studio-sidecar` on `127.0.0.1:8001`. The sidecar is the sole product HTTP,
+WebSocket, job/control, scheduler and state owner. Its loopback port is neither
+exposed nor configurable by container users.
+
+The default image contains no CPython interpreter, Python packages, FastAPI,
+Uvicorn, `main.py`, `api/`, or `websocket/` sources. A separately attested
+CPython library/plugin closure may be mounted and selected with the existing
+`NIRS4ALL_PYTHON_PLUGIN_*` variables; Rust invokes it only through the bounded
+stdio protocol. It never owns a port, scheduler, store, or fallback route.
+
+Persist native Studio configuration in `/var/lib/nirs4all-studio` and mount
+scientific workspaces under `/workspaces`:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -v studio-state:/var/lib/nirs4all-studio \
+  -v /path/to/workspaces:/workspaces \
+  ghcr.io/gbeurier/nirs4all-studio:{version}
+```
+
+The OCI healthcheck calls the Rust-owned `/api/health` route through nginx, so
+healthy status proves both processes and the reverse-proxy path are available.
 
 Each downloadable artifact also ships with a `.sha256` sidecar when produced by the release workflow.
 

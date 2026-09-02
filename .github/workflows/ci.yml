@@ -68,6 +68,34 @@ jobs:
           echo "Build outputs verified"
 
   # ═══════════════════════════════════════════════════════════════════════════
+  # Product container: static renderer + loopback Rust sidecar
+  # ═══════════════════════════════════════════════════════════════════════════
+  docker-native-runtime:
+    name: Native Docker Runtime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Verify fail-closed Docker contract
+        run: npm run test:docker-runtime-contract
+
+      - name: Build native product image
+        run: >-
+          docker build
+          --build-arg STUDIO_VERSION=ci
+          --build-arg STUDIO_REVISION=${GITHUB_SHA}
+          --tag nirs4all-studio:native-ci
+          .
+
+      - name: Smoke static, HTTP and WebSocket routing
+        run: bash scripts/smoke-docker-native-runtime.sh nirs4all-studio:native-ci
+
+  # ═══════════════════════════════════════════════════════════════════════════
   # Backend: Lint, Test, Validate
   # ═══════════════════════════════════════════════════════════════════════════
   backend:

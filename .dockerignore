@@ -1,40 +1,46 @@
-# Dependencies
+# Dependencies and local environments
 node_modules/
 .venv/
 __pycache__/
 
-# Build outputs
+# Generated outputs
 dist/
 dist-electron/
 release/
 backend-dist/
+sidecar/target/
 
-# Development
+# Transitional Python HTTP backend: never enters the product image context.
+api/
+websocket/
+main.py
+requirements*.txt
+backend.spec
+recommended-config.json
+
+# Development and CI-only sources
 .git/
 .github/
 .vscode/
 *.md
 !README.md
-
-# Tests
 tests/
 e2e/
 playwright-report/
 test-results/
+Dockerfile.ci
+Dockerfile.ci.dockerignore
 
-# Electron (not used in Docker)
+# Desktop-only sources
 electron/
 build/
 installer/
+updater/
 
-# Specs
+# Local configuration
 *.spec
-
-# Environment
 .env
 .env.*
-
-# IDE
 *.swp
 *.swo
 .idea/
