@@ -41,12 +41,4 @@ export default tseslint.config({
     ],
     "@typescript-eslint/no-unused-vars": "off",
   },
-}, {
-  // The shared UI package ships checked-in ESM output. Its source is linted
-  // above; registering this plugin here makes its own scoped suppressions
-  // valid without imposing TypeScript rules on generated JavaScript.
-  files: ["vendor/nirs4all-ui/dist/**/*.{js,jsx}"],
-  plugins: {
-    "react-hooks": reactHooks,
-  },
 });

@@ -31,16 +31,11 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install dependencies
         run: npm ci
 
-      - name: Check nirs4all-ui vendored shim
-        run: npm run check:ui-shim
-        env:
-          NIRS4ALL_UI_SHIM_REQUIRED: '1'
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Lint
         run: npm run lint:eslint
@@ -219,11 +214,11 @@ jobs:
             gir1.2-webkit2-4.1 \
             upx-ucl
 
-      - name: Provide nirs4all-ui sibling
-        uses: ./.github/actions/nirs4all-ui-sibling
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Check native sidecar
         run: |
