@@ -104,6 +104,20 @@ describe("electron-builder config", () => {
     expect(packageJson.homepage).toBe("https://nirs4all.org");
   });
 
+  it("documents official installers as Rust plus plugin-only CPython", () => {
+    const workflow = fs.readFileSync(
+      path.join(projectRoot, ".github", "workflows", "release-unified.yml"),
+      "utf8",
+    );
+    expect(workflow).not.toMatch(/Installer: .*venv-based|Installer: .*embedded Python/);
+    expect(workflow).toContain("Rust sidecar + plugin-only CPython closure");
+
+    const readme = fs.readFileSync(path.join(projectRoot, "README.md"), "utf8");
+    expect(readme).toContain("Rust sidecar");
+    expect(readme).toContain("bounded, content-addressed CPython library/plugin host");
+    expect(readme).toContain("CPU installer build on the matching host");
+  });
+
   it("packages the shared Python runtime config required by the Electron main process", () => {
     const expectedFiles = ["scripts/python-runtime-config.cjs", "recommended-config.json"];
 
