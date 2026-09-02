@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
@@ -7,6 +8,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { verifyPackagedRuntimeContract } from "./packaged-runtime-contract";
 import { preselectRendererTransport } from "./renderer-transport-selection";
+
+const require = createRequire(import.meta.url);
+const { assertPackagedElectronGraph } = require("../scripts/check-packaged-electron-graph.cjs") as {
+  assertPackagedElectronGraph(options: { root: string; requireDist: boolean }): {
+    sourceFiles: string[];
+    distFiles: string[];
+  };
+};
 
 const tempDirs: string[] = [];
 
@@ -178,31 +187,14 @@ afterEach(() => {
 });
 
 describe("packaged runtime contract", () => {
-  it("has no Python HTTP server entrypoint in the packaged Electron graph", () => {
+  it("keeps the transitive packaged Electron graph plugin-host only", () => {
     const root = process.cwd();
-    const packagedEntrypoints = [
-      "electron/main.ts",
-      "electron/preload.ts",
-      "electron/renderer-transport-selection.ts",
-      "electron/workspace-route-preselection.ts",
-      "src/api/transport.ts",
-      "src/lib/websocket.ts",
-    ];
-    const forbidden = [
-      /enable-python-http-diagnostic/i,
-      /NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC/,
-      /scientific-plugin/,
-      /from ["']\.\/backend-manager["']/,
-      /from ["']\.\/scientific-plugin-lifecycle["']/,
-      /fastapi/i,
-      /uvicorn/i,
-    ];
-    for (const relative of packagedEntrypoints) {
-      const source = fs.readFileSync(path.join(root, relative), "utf8");
-      for (const pattern of forbidden) {
-        expect(source, `${relative} must exclude ${pattern}`).not.toMatch(pattern);
-      }
-    }
+    const result = assertPackagedElectronGraph({ root, requireDist: false });
+    const relativeSources = result.sourceFiles.map((file) => path.relative(root, file));
+    expect(relativeSources).toContain("electron/env-manager.ts");
+    expect(relativeSources).toContain("electron/env/provisioning.ts");
+    expect(relativeSources).toContain("scripts/python-runtime-config.cjs");
+    expect(relativeSources).not.toContain("scripts/python-http-runtime-config.cjs");
     expect(
       fs.existsSync(path.join(root, "electron/python-http-diagnostic-policy.ts")),
     ).toBe(false);
