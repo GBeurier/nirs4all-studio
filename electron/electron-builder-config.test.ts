@@ -141,6 +141,24 @@ describe("electron-builder config", () => {
     }
   });
 
+  it("pre-signs macOS attested runtime bytes and excludes only those bytes from builder signing", () => {
+    for (const configName of configNames) {
+      const source = fs.readFileSync(path.join(projectRoot, configName), "utf8");
+      const macSection = getTopLevelYamlSection(path.join(projectRoot, configName), "mac");
+      expect(source, configName).toMatch(
+        /^afterPack: scripts\/macos-attested-runtime\.cjs$/m,
+      );
+      expect(macSection, configName).toContain("signIgnore:");
+      expect(macSection, configName).toContain(
+        "backend[\\\\/]python-runtime[\\\\/]python[\\\\/]",
+      );
+      expect(macSection, configName).toContain(
+        "backend[\\\\/]native[\\\\/]libn4m\\.dylib$",
+      );
+      expect(macSection, configName).not.toContain("studio-sidecar");
+    }
+  });
+
   it("packages the complete plugin closure and Rust sidecar in every desktop artifact", () => {
     const expectedInstallerFilter = [
       "python-runtime/**/*",

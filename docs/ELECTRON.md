@@ -483,6 +483,14 @@ This runs:
 3. `npm run build:electron` (Electron main process)
 4. electron-builder packaging plus fresh-output/runtime verification
 
+On macOS, the Electron Builder `afterPack` hook pre-signs every Mach-O in the
+copied CPython closure and the optional `libn4m.dylib`, then regenerates their
+SHA-256 closure and `STUDIO_RUNTIME_CONTRACT.json`. `mac.signIgnore` prevents a
+second signature from changing those attested bytes. It does not match
+`native/studio-sidecar`, so Electron Builder signs the Rust HTTP/WS owner and
+the outer `.app` normally. See `docs/PACKAGING.md` for the fail-closed signing
+order and its notarization limits.
+
 Use `npm run release:all-in-one` for portable archives. The installer helper
 rejects GPU/cpu-lite labels, cross-host targets, `--platform all`, and legacy
 standalone mode.

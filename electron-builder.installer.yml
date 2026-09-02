@@ -35,6 +35,10 @@ extraResources:
 
 asar: true
 
+# On macOS, pre-sign closure Mach-O members in the copied .app and rewrite
+# their content contract before electron-builder signs the remaining bundle.
+afterPack: scripts/macos-attested-runtime.cjs
+
 win:
   target:
     - target: nsis
@@ -70,6 +74,11 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # These exact bytes are pre-signed and re-attested by afterPack. The Rust
+  # sidecar does not match these expressions and is signed normally.
+  signIgnore:
+    - '[\\/]Contents[\\/]Resources[\\/]backend[\\/]python-runtime[\\/]python[\\/]'
+    - '[\\/]Contents[\\/]Resources[\\/]backend[\\/]native[\\/]libn4m\.dylib$'
   artifactName: "${productName}-${version}-mac-${arch}.${ext}"
 
 dmg:
