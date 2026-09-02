@@ -26,6 +26,10 @@ const buildNativeSidecar = require("../scripts/build-native-sidecar.cjs") as {
   }): string | null;
 };
 const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
+  collectRuntimeClosure(runtimeRoot: string): {
+    files: Array<{ path: string; size: number; sha256: string }>;
+    directories: string[];
+  };
   parseVerifyArgs(argv?: string[]): {
     backendRoot: string;
     artifactBoundaryRoot: string;
@@ -60,6 +64,25 @@ const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
 };
 
 describe("build-native-sidecar", () => {
+  it("orders closure paths bytewise exactly as the Rust verifier", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-byte-order-"));
+    try {
+      for (const name of ["install-sh", "Makefile", "zeta", "Éclair", "éclair", "😀.txt"]) {
+        fs.writeFileSync(path.join(root, name), name);
+      }
+      const closure = runtimeContract.collectRuntimeClosure(root);
+      const expected = closure.files
+        .map((entry) => entry.path)
+        .sort((left, right) =>
+          Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+        );
+      expect(closure.files.map((entry) => entry.path)).toEqual(expected);
+      expect(expected.indexOf("Makefile")).toBeLessThan(expected.indexOf("install-sh"));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("places the host-native binary in the packaged backend resource tree", () => {
     const paths = buildNativeSidecar.getNativeSidecarPaths("/workspace/studio", "linux");
 

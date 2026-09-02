@@ -82,6 +82,10 @@ function hashFile(filePath: string): string {
   return hash.digest("hex");
 }
 
+function compareUtf8Paths(left: string, right: string): number {
+  return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
+}
+
 function validateCanonicalDirectory(
   directoryPath: string,
   label: string,
@@ -136,7 +140,7 @@ function collectRuntimeClosure(runtimeRoot: string): {
     );
     const entries = fs
       .readdirSync(directory, { withFileTypes: true })
-      .sort((left, right) => left.name.localeCompare(right.name));
+      .sort((left, right) => compareUtf8Paths(left.name, right.name));
     for (const entry of entries) {
       const entryPath = path.join(directory, entry.name);
       const stat = fs.lstatSync(entryPath);
@@ -167,8 +171,8 @@ function collectRuntimeClosure(runtimeRoot: string): {
     }
   }
   return {
-    files: files.sort((left, right) => left.path.localeCompare(right.path)),
-    directories: directories.sort(),
+    files: files.sort((left, right) => compareUtf8Paths(left.path, right.path)),
+    directories: directories.sort(compareUtf8Paths),
   };
 }
 
