@@ -8,6 +8,10 @@ const SIDECAR_PORT_ENV = "NIRS4ALL_NATIVE_SIDECAR_PORT";
 const SIDECAR_ENABLE_PACKAGED_ENV = "NIRS4ALL_ENABLE_NATIVE_SIDECAR";
 const PYTHON_PLUGIN_HOST_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST";
 const PYTHON_PLUGIN_HOST_BUNDLED_ENV = "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED";
+const PYTHON_PLUGIN_CLOSURE_ENV = "NIRS4ALL_PYTHON_PLUGIN_CLOSURE";
+const PYTHON_PLUGIN_RUNTIME_ROOT_ENV = "NIRS4ALL_PYTHON_PLUGIN_RUNTIME_ROOT";
+const PYTHON_PLUGIN_SITE_PACKAGES_ENV =
+  "NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES";
 const SCIENTIFIC_EXECUTOR_ENV = "NIRS4ALL_SCIENTIFIC_EXECUTOR";
 const RUNTIME_MODE_ENV = "NIRS4ALL_RUNTIME_MODE";
 const RUNTIME_KIND_ENV = "NIRS4ALL_RUNTIME_KIND";
@@ -89,27 +93,6 @@ export function resolveNativeSidecarPath({
   );
 }
 
-/** Resolve an embedded interpreter without treating it as an HTTP backend. */
-export function resolveBundledPythonPluginHost({
-  resourcesPath = electronProcess.resourcesPath,
-  platform = process.platform,
-}: Omit<NativeSidecarPathOptions, "environment"> = {}): string | null {
-  if (!resourcesPath) return null;
-  const runtimeRoot = path.join(resourcesPath, "backend", "python-runtime");
-  const candidates =
-    platform === "win32"
-      ? [
-          path.join(runtimeRoot, "python", "python.exe"),
-          path.join(runtimeRoot, "venv", "Scripts", "python.exe"),
-        ]
-      : [
-          path.join(runtimeRoot, "python", "bin", "python3"),
-          path.join(runtimeRoot, "python", "bin", "python"),
-          path.join(runtimeRoot, "venv", "bin", "python"),
-        ];
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
-}
-
 /**
  * Launches the native Studio control plane from an explicit binary in
  * development or the packaged resource in product builds. It deliberately has
@@ -174,7 +157,11 @@ export class NativeSidecarManager {
     }
 
     const explicitSidecar = process.env[SIDECAR_PATH_ENV]?.trim();
+    const packagedProduct = packagedResourceEnabled && !explicitSidecar;
     let verifiedBundledPython: string | null = null;
+    let verifiedBundledClosure: string | null = null;
+    let verifiedBundledRuntimeRoot: string | null = null;
+    let verifiedBundledSitePackages: string | null = null;
     this.pythonPluginHostError = null;
     if (packagedResourceEnabled && !explicitSidecar) {
       const resourcesPath = options.resourcesPath ?? electronProcess.resourcesPath;
@@ -191,6 +178,9 @@ export class NativeSidecarManager {
         });
         configuredPath = verified.sidecarPath;
         verifiedBundledPython = verified.pythonPluginHostPath;
+        verifiedBundledClosure = verified.pythonClosurePath;
+        verifiedBundledRuntimeRoot = verified.pythonRuntimeRoot;
+        verifiedBundledSitePackages = verified.pythonSitePackagesPath;
         this.pythonPluginHostError = verified.pythonPluginHostError;
       } catch (error) {
         return this.failBeforeSpawn(
@@ -228,31 +218,38 @@ export class NativeSidecarManager {
     const explicitPythonPluginHost =
       process.env[PYTHON_PLUGIN_HOST_ENV]?.trim();
     const selectedPythonPluginHost = options.pythonPluginHost?.trim();
-    const bundledPythonPluginHost =
-      explicitPythonPluginHost || selectedPythonPluginHost
-        ? null
-        : packagedResourceEnabled && !explicitSidecar
-          ? verifiedBundledPython
-          : resolveBundledPythonPluginHost({
-              resourcesPath: options.resourcesPath,
-              platform: options.platform,
-            });
-    const pythonPluginHost =
-      explicitPythonPluginHost ||
-      selectedPythonPluginHost ||
-      bundledPythonPluginHost;
+    const pythonPluginHost = packagedProduct
+      ? verifiedBundledPython
+      : explicitPythonPluginHost || selectedPythonPluginHost || null;
     this.pythonPluginHostConfigured = Boolean(pythonPluginHost);
     const childEnvironment: NodeJS.ProcessEnv = { ...process.env };
+    delete childEnvironment[PYTHON_PLUGIN_HOST_ENV];
+    delete childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV];
+    delete childEnvironment[PYTHON_PLUGIN_CLOSURE_ENV];
+    delete childEnvironment[PYTHON_PLUGIN_RUNTIME_ROOT_ENV];
+    delete childEnvironment[PYTHON_PLUGIN_SITE_PACKAGES_ENV];
     delete childEnvironment[SCIENTIFIC_EXECUTOR_ENV];
     if (pythonPluginHost) {
       childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
-      childEnvironment[SCIENTIFIC_EXECUTOR_ENV] = "cpython-stdio-v1";
-    } else {
-      delete childEnvironment[PYTHON_PLUGIN_HOST_ENV];
-      delete childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV];
+      if (packagedProduct) {
+        if (
+          !verifiedBundledClosure ||
+          !verifiedBundledRuntimeRoot ||
+          !verifiedBundledSitePackages
+        ) {
+          return this.failBeforeSpawn(
+            "Packaged Python plugin host is missing its verified closure",
+          );
+        }
+        childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV] = "true";
+        childEnvironment[PYTHON_PLUGIN_CLOSURE_ENV] = verifiedBundledClosure;
+        childEnvironment[PYTHON_PLUGIN_RUNTIME_ROOT_ENV] =
+          verifiedBundledRuntimeRoot;
+        childEnvironment[PYTHON_PLUGIN_SITE_PACKAGES_ENV] =
+          verifiedBundledSitePackages;
+        childEnvironment[SCIENTIFIC_EXECUTOR_ENV] = "cpython-stdio-v1";
+      }
     }
-    if (bundledPythonPluginHost)
-      childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV] = "true";
     if (options.runtimeMode?.trim())
       childEnvironment[RUNTIME_MODE_ENV] = options.runtimeMode.trim();
     if (options.runtimeKind?.trim())

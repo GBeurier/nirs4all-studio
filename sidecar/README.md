@@ -232,14 +232,17 @@ routes are capability evidence, never transparent Python fallback.
 
 Electron explicitly selects the bounded scientific-host acquisition candidate
 with `NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1` only when it also supplies
-`NIRS4ALL_PYTHON_PLUGIN_HOST`. The sidecar fingerprints that executable with
+the bundled marker plus host, closure manifest, runtime root, and unique
+site-packages paths obtained from the verified packaged contract. The sidecar
+rejects user/managed venv and PATH discovery. It fingerprints that executable with
 SHA-256 and runs one fresh, isolated JSON-stdio preflight under a five-second,
 8 KiB stdout, and 64 KiB stderr budget. It also fingerprints the exact source
 file behind `nirs4all.studio_scientific_job_v1`; both identities are sticky and
 reverified before execution, including a child-side callable check. The
-response must identify CPython 3.11 or newer with `-I` isolation active and
+response must identify CPython 3.11 or newer with `-I -S -B` isolation active and
 pass a real negative bind self-test. A Python audit hook rejects `socket.bind`,
-so this host cannot become the HTTP/WS product backend. The closed contract is
+including `http.server` listener creation, so this host cannot become the
+HTTP/WS product backend. The closed contract is
 `contracts/studio_scientific_cpython_host_v1.json`.
 
 The fresh-process execution bridge accepts only the callable's already-resolved

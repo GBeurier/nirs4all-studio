@@ -64,14 +64,16 @@ resources/
     └── version.json
 ```
 
-At runtime, Electron resolves or creates a writable Python environment outside the app bundle:
+At runtime, Electron may still resolve or create a writable Python environment
+outside the app bundle for explicit compatibility diagnostics:
 
 - installed app: standard `userData` paths
 - portable Windows app: `.nirs4all/` next to the executable
 
-Electron starts the packaged sidecar on every packaged desktop launch. Before
-the explicit Python library/plugin host is configured, routes requiring that
-bounded stdio host refuse; they do not select FastAPI. Changing the interpreter
+Electron starts the packaged sidecar on every packaged desktop launch. This
+managed environment is never eligible for the product stdio plugin host.
+Installer layouts without a bundled closure advertise that capability as
+unavailable, and routes requiring it refuse; they do not select FastAPI. Changing the interpreter
 stops only a diagnostic HTTP process if one was explicitly active; it never
 restarts the Rust sidecar. A running sidecar whose original plugin-host path
 became stale reports the optional host as unavailable until the next
@@ -108,6 +110,7 @@ resources/
     ├── version.json
     ├── python-runtime/
     │   ├── python/
+    │   ├── PYTHON_PLUGIN_CLOSURE.json
     │   └── RUNTIME_READY.json
     └── native/
         ├── studio-sidecar
@@ -115,15 +118,18 @@ resources/
 ```
 
 Electron starts the packaged sidecar automatically and gives it the sibling
-embedded interpreter only for the bounded `nirs4all` import preflight. The
-interpreter must be copied into the payload as a regular executable; a Unix
-virtual-environment symlink is intentionally unsupported by the native host
-attestation and fails closed. The Rust
+embedded interpreter only after the runtime contract and closure manifest have
+verified the exact file inventory, sizes, hashes, canonical parents, unique
+site-packages directory, and absence of symlinks/special files. Packaged
+environment overrides, managed/user venvs, PATH, and source siblings are ignored.
+The worker uses `-I -S -B` and inserts only the attested site-packages directory.
+The Rust
 sidecar remains the process and HTTP owner; the embedded Python runtime is a
 plugin capability, not a FastAPI/Uvicorn fallback.
 
-The same content contract pins the bundled interpreter. If that interpreter is
-missing or altered after packaging, the Rust sidecar still owns the product
+The same content contract pins the bundled interpreter and every runtime file.
+If any member is missing, altered, added, or path-substituted after packaging,
+the Rust sidecar still owns the product
 port and reports the Python plugin host unavailable. It does not acquire,
 restart, or fall back to Uvicorn. Archive creation and the release smoke are
 stricter: they reject such an incomplete bundle before publication.
@@ -135,8 +141,9 @@ smoke on each target OS.
 
 While the app is still running on the embedded bundled runtime, package
 installation, runtime creation, snapshot restore, and config alignment
-mutations are disabled. Users may still switch the bundled app to an external
-Python runtime; after that switch, mutations target the external runtime.
+mutations are disabled. Users may still switch the compatibility diagnostic
+environment to an external Python runtime; that choice does not replace the
+packaged stdio plugin host.
 
 ## Runtime Modes
 

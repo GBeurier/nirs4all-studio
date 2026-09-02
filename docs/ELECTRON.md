@@ -42,7 +42,10 @@ session to FastAPI; development also accepts the exact opt-in environment value
 environment variable. This session-wide selection preserves job ownership and
 never acts as fallback. Control-plane and diagnostic readiness are exposed
 separately over IPC. The Rust sidecar can still invoke the bounded CPython stdio
-library/plugin host independently of this HTTP policy.
+library/plugin host independently of this HTTP policy. In packaged products
+that host is discoverable only through `STUDIO_RUNTIME_CONTRACT.json` and its
+content-addressed adjacent runtime closure; user/managed venvs and environment
+overrides cannot replace it. The child uses `-I -S -B` and owns no listener.
 
 The later backend-manager examples in this guide describe the implementation
 of that optional compatibility process. They are not the application startup

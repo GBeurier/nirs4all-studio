@@ -17,6 +17,7 @@ function makeResources(): {
   resourcesPath: string;
   sidecarPath: string;
   pythonPath: string;
+  sitePackagesPath: string;
 } {
   const resourcesPath = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-runtime-contract-"));
   tempDirs.push(resourcesPath);
@@ -31,10 +32,53 @@ function makeResources(): {
   );
   const sidecar = Buffer.from("rust-sidecar");
   const python = Buffer.from("python-plugin-host");
+  const sitePackagesPath = path.join(
+    backendRoot,
+    "python-runtime",
+    "python",
+    "lib",
+    "python3.11",
+    "site-packages",
+  );
+  const packagePath = path.join(sitePackagesPath, "nirs4all.py");
   fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
   fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
+  fs.mkdirSync(sitePackagesPath, { recursive: true });
   fs.writeFileSync(sidecarPath, sidecar);
   fs.writeFileSync(pythonPath, python);
+  fs.writeFileSync(packagePath, "def studio_scientific_job_v1(): pass\n");
+  const closure = {
+    schema: "nirs4all.studio-python-plugin-closure.v1",
+    root: "python-runtime/python",
+    site_packages: "python-runtime/python/lib/python3.11/site-packages",
+    directories: [
+      "",
+      "bin",
+      "lib",
+      "lib/python3.11",
+      "lib/python3.11/site-packages",
+    ],
+    files: [pythonPath, packagePath]
+      .map((filePath) => {
+        const bytes = fs.readFileSync(filePath);
+        return {
+          path: path
+            .relative(path.join(backendRoot, "python-runtime", "python"), filePath)
+            .split(path.sep)
+            .join("/"),
+          size: bytes.length,
+          sha256: digest(bytes),
+        };
+      })
+      .sort((left, right) => left.path.localeCompare(right.path)),
+  };
+  const closurePath = path.join(
+    backendRoot,
+    "python-runtime",
+    "PYTHON_PLUGIN_CLOSURE.json",
+  );
+  fs.writeFileSync(closurePath, `${JSON.stringify(closure)}\n`);
+  const closureBytes = fs.readFileSync(closurePath);
   fs.writeFileSync(
     path.join(backendRoot, "native", "STUDIO_RUNTIME_CONTRACT.json"),
     JSON.stringify({
@@ -55,6 +99,13 @@ function makeResources(): {
           size: python.length,
           sha256: digest(python),
         },
+        closure: {
+          path: "python-runtime/PYTHON_PLUGIN_CLOSURE.json",
+          size: closureBytes.length,
+          sha256: digest(closureBytes),
+        },
+        runtime_root: "python-runtime/python",
+        site_packages: "python-runtime/python/lib/python3.11/site-packages",
       },
       methods_library: {
         mode: "unavailable",
@@ -63,7 +114,7 @@ function makeResources(): {
       },
     }),
   );
-  return { resourcesPath, sidecarPath, pythonPath };
+  return { resourcesPath, sidecarPath, pythonPath, sitePackagesPath };
 }
 
 afterEach(() => {
@@ -85,6 +136,7 @@ describe("packaged runtime contract", () => {
       sidecarPath: fixture.sidecarPath,
       pythonPluginHostPath: fixture.pythonPath,
       pythonPluginHostError: null,
+      pythonSitePackagesPath: fixture.sitePackagesPath,
     });
   });
 
@@ -112,6 +164,76 @@ describe("packaged runtime contract", () => {
       pythonPluginHostPath: null,
       pythonPluginHostError: expect.stringContaining(
         "Bundled Python plugin host not found",
+      ),
+    });
+  });
+
+  it("disables a changed or extended Python closure before sidecar spawn", () => {
+    const changed = makeResources();
+    fs.appendFileSync(
+      path.join(changed.sitePackagesPath, "nirs4all.py"),
+      "# tampered\n",
+    );
+    expect(
+      verifyPackagedRuntimeContract({
+        resourcesPath: changed.resourcesPath,
+        platform: "linux",
+      }),
+    ).toMatchObject({
+      sidecarPath: changed.sidecarPath,
+      pythonPluginHostPath: null,
+      pythonPluginHostError: expect.stringContaining("closure mismatch"),
+    });
+
+    const extended = makeResources();
+    fs.writeFileSync(path.join(extended.sitePackagesPath, "injected.pth"), "import injected\n");
+    expect(
+      verifyPackagedRuntimeContract({
+        resourcesPath: extended.resourcesPath,
+        platform: "linux",
+      }),
+    ).toMatchObject({
+      pythonPluginHostPath: null,
+      pythonPluginHostError: expect.stringContaining("inventory mismatch"),
+    });
+  });
+
+  it("refuses symlink and parent-path substitution inside the Python closure", () => {
+    if (process.platform === "win32") return;
+    const leaf = makeResources();
+    const outside = path.join(leaf.resourcesPath, "outside.py");
+    fs.writeFileSync(outside, "outside\n");
+    fs.symlinkSync(outside, path.join(leaf.sitePackagesPath, "injected.py"));
+    expect(
+      verifyPackagedRuntimeContract({
+        resourcesPath: leaf.resourcesPath,
+        platform: "linux",
+      }),
+    ).toMatchObject({
+      pythonPluginHostPath: null,
+      pythonPluginHostError: expect.stringContaining("must not contain symlinks"),
+    });
+
+    const parent = makeResources();
+    const original = path.join(
+      parent.resourcesPath,
+      "backend",
+      "python-runtime",
+      "python",
+      "lib",
+    );
+    const substituted = path.join(parent.resourcesPath, "substituted-lib");
+    fs.renameSync(original, substituted);
+    fs.symlinkSync(substituted, original, "dir");
+    expect(
+      verifyPackagedRuntimeContract({
+        resourcesPath: parent.resourcesPath,
+        platform: "linux",
+      }),
+    ).toMatchObject({
+      pythonPluginHostPath: null,
+      pythonPluginHostError: expect.stringContaining(
+        "must not contain symlinks",
       ),
     });
   });
