@@ -298,12 +298,32 @@ jobs:
           release/linux-unpacked/resources/backend/native/studio-sidecar --smoke-readiness
           echo "Electron build test passed"
 
+  # Windows is the authoritative runtime gate for the converter Job Object.
+  sidecar-windows:
+    name: Native Sidecar Windows Containment
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Check and test Windows Job containment
+        run: |
+          cargo fmt --manifest-path sidecar/crates/studio-windows-job/Cargo.toml -- --check
+          cargo clippy --manifest-path sidecar/crates/studio-windows-job/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path sidecar/Cargo.toml --all-targets -- -D warnings
+          cargo test --manifest-path sidecar/Cargo.toml
+
   # ═══════════════════════════════════════════════════════════════════════════
   # Summary
   # ═══════════════════════════════════════════════════════════════════════════
   summary:
     name: CI Summary
-    needs: [frontend, backend, electron-build]
+    needs: [frontend, backend, electron-build, sidecar-windows]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -312,6 +332,7 @@ jobs:
           FRONTEND="${{ needs.frontend.result }}"
           BACKEND="${{ needs.backend.result }}"
           ELECTRON="${{ needs.electron-build.result }}"
+          WINDOWS="${{ needs.sidecar-windows.result }}"
 
           echo "## CI Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -320,7 +341,8 @@ jobs:
           echo "| Frontend | $([[ $FRONTEND == 'success' ]] && echo '✅' || echo '❌') $FRONTEND |" >> $GITHUB_STEP_SUMMARY
           echo "| Backend | $([[ $BACKEND == 'success' ]] && echo '✅' || echo '❌') $BACKEND |" >> $GITHUB_STEP_SUMMARY
           echo "| Electron Build | $([[ $ELECTRON == 'success' ]] && echo '✅' || echo '❌') $ELECTRON |" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows Sidecar | $([[ $WINDOWS == 'success' ]] && echo '✅' || echo '❌') $WINDOWS |" >> $GITHUB_STEP_SUMMARY
 
-          if [[ "$FRONTEND" != "success" || "$BACKEND" != "success" || "$ELECTRON" != "success" ]]; then
+          if [[ "$FRONTEND" != "success" || "$BACKEND" != "success" || "$ELECTRON" != "success" || "$WINDOWS" != "success" ]]; then
             exit 1
           fi

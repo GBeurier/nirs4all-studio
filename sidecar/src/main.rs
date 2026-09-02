@@ -1,13 +1,43 @@
 use std::{env, process::ExitCode};
 
+#[cfg(windows)]
+use std::process;
+
 use studio_sidecar::{serve, smoke_readiness_json};
 
 fn main() -> ExitCode {
+    #[cfg(windows)]
+    maybe_run_internal_windows_job_launcher();
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("studio-sidecar: {message}");
             ExitCode::from(2)
+        }
+    }
+}
+
+#[cfg(windows)]
+fn maybe_run_internal_windows_job_launcher() {
+    use std::ffi::OsStr;
+
+    let mut arguments = env::args_os().skip(1);
+    if arguments.next().as_deref()
+        != Some(OsStr::new(
+            studio_sidecar::legacy_conversion::WINDOWS_JOB_LAUNCHER_ARGUMENT,
+        ))
+    {
+        return;
+    }
+    let Some(executable) = arguments.next() else {
+        eprintln!("studio-sidecar: internal converter Job launcher is missing its executable");
+        process::exit(70);
+    };
+    match studio_sidecar::legacy_conversion::run_windows_job_launcher(&executable, arguments) {
+        Ok(never) => match never {},
+        Err(error) => {
+            eprintln!("studio-sidecar: {error}");
+            process::exit(70);
         }
     }
 }

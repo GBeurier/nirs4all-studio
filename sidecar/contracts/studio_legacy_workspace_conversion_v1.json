@@ -29,7 +29,7 @@
     "sqlite_read": "immutable_read_only_uri",
     "strict_v2": "integrity_ok_user_version_2_all_7_tables_required_columns_no_live_journal",
     "native_results_triplet_scope": "active_root_and_direct_child_directories",
-    "symlink_policy": "symlink_metadata_rejects_live_or_dangling_root_and_every_candidate_marker"
+    "symlink_policy": "symlink_metadata_rejects_live_or_dangling_root_marker_and_every_encountered_subtree_entry"
   },
   "converter": {
     "owner": "nirs4all-tools",
@@ -55,12 +55,14 @@
       }
     },
     "capability_gate": "startup_exact_wheel_record_manifest_and_functional_reader_attestation",
+    "execution_gate": "runtime_rechecks_attestation_immediately_before_every_spawn",
     "target": "nirs4all-workspace-v2",
     "maximum_concurrent_processes": 1,
     "timeout_seconds": 1800,
     "stdout_limit_bytes": 262144,
     "stderr_limit_bytes": 262144,
-    "process_tree_termination": "unix_process_group_and_windows_taskkill_tree",
+    "process_tree_termination": "unix_process_group_and_windows_internal_launcher_job_object",
+    "windows_job_policy": "launcher_assigns_itself_before_python_spawn_kill_on_close_no_breakaway",
     "reader_cleanup_timeout_seconds": 2,
     "cleanup_failure_policy": "return_failure_and_permanently_poison_converter_instance",
     "unbounded_reader_join": "forbidden",
@@ -124,6 +126,9 @@
     "catalogue_activation": "single_atomic_settings_replacement_after_strict_v2_validation",
     "activation_compare_and_swap": "active_workspace_id_must_equal_conversion_source_id",
     "activation_identity_guard": "held_directory_and_store_handles_plus_identity_revalidation_before_and_after_final_v2_validation",
+    "activated_store_identity": "sha256_of_the_exact_handle_content_stable_across_final_v2_validation",
+    "activated_store_consumption": "persisted_sha256_revalidated_fail_closed_before_every_linked_workspace_path_resolution",
+    "legacy_catalogue_compatibility": "entries_without_store_content_sha256_keep_preexisting_reader_preflight",
     "previous_workspace_unlinked": false,
     "restore_action": "reactivate_previous_linked_workspace"
   },

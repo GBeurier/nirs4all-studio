@@ -92,6 +92,7 @@ const TOOLS_RECORD_SHA256: &str =
     "8db345e39929f63e658d33bba1a9379336547e5653ed4b51271792791e5d6f54";
 const TOOLS_MANIFEST_SHA256: &str =
     "37e8862680fe35efcf6b3348ad5c064701f8ba90f43be89bd07c632a59a509fb";
+pub const WINDOWS_JOB_LAUNCHER_ARGUMENT: &str = "--internal-legacy-converter-job";
 const TOOLS_PREFLIGHT: &str = r#"import base64,csv,hashlib,importlib.metadata,io,json,os,socket,subprocess,sys
 def deny(event,args):
  if event == "socket.bind": raise RuntimeError("listener denied")
@@ -147,6 +148,7 @@ pub struct LegacyConversionProcessOutput {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LegacyConversionFailure {
     Busy,
+    Unavailable,
     SpawnFailed,
     TimedOut,
     ProcessFailed,
@@ -162,6 +164,7 @@ impl LegacyConversionFailure {
     pub const fn reason(self) -> &'static str {
         match self {
             Self::Busy => "legacy_conversion_already_running",
+            Self::Unavailable => "legacy_converter_unavailable",
             Self::SpawnFailed => "legacy_converter_spawn_failed",
             Self::TimedOut => "legacy_converter_timeout",
             Self::ProcessFailed => "legacy_converter_process_failed",
@@ -174,7 +177,7 @@ impl LegacyConversionFailure {
     }
 }
 
-pub trait LegacyConverter: Debug + Send + Sync {
+pub(crate) trait LegacyConverter: Debug + Send + Sync {
     fn is_available(&self) -> bool;
     fn command(&self, request: &LegacyConversionRequest) -> Vec<String>;
 
@@ -207,7 +210,7 @@ impl LegacyConverter for UnselectedLegacyConverter {
         &self,
         _request: &LegacyConversionRequest,
     ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
-        Err(LegacyConversionFailure::SpawnFailed)
+        Err(LegacyConversionFailure::Unavailable)
     }
 }
 
@@ -225,6 +228,9 @@ impl PythonModuleLegacyConverter {
         timeout: Duration,
         cleanup_timeout: Duration,
     ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
+        if !self.attested {
+            return Err(LegacyConversionFailure::Unavailable);
+        }
         if self.poisoned.load(Ordering::Acquire) {
             return Err(LegacyConversionFailure::CleanupFailed);
         }
@@ -291,7 +297,8 @@ impl LegacyConversionRuntime {
     }
 
     #[must_use]
-    pub fn with_converter(converter: Arc<dyn LegacyConverter>) -> Self {
+    #[cfg(test)]
+    pub(crate) fn with_converter(converter: Arc<dyn LegacyConverter>) -> Self {
         Self {
             converter,
             running: Arc::new(AtomicBool::new(false)),
@@ -318,6 +325,9 @@ impl LegacyConversionRuntime {
         &self,
         request: &LegacyConversionRequest,
     ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
+        if !self.converter.is_available() {
+            return Err(LegacyConversionFailure::Unavailable);
+        }
         if self
             .running
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
@@ -326,6 +336,9 @@ impl LegacyConversionRuntime {
             return Err(LegacyConversionFailure::Busy);
         }
         let _permit = ConversionPermit(&self.running);
+        if !self.converter.is_available() {
+            return Err(LegacyConversionFailure::Unavailable);
+        }
         self.converter.run(request)
     }
 }
@@ -526,6 +539,7 @@ fn detect_legacy_marker(
         let file_type = entry
             .file_type()
             .map_err(|error| format!("could not inspect workspace entry type: {error}"))?;
+        reject_symlinked_subtree(file_type, &entry.path(), "workspace")?;
         let name = entry.file_name();
         let Some(name) = name.to_str() else {
             return Err("workspace contains a non-UTF-8 entry name".into());
@@ -623,11 +637,11 @@ fn runs_tree_format(workspace_path: &Path) -> Result<Option<&'static str>, Strin
         if inspected > MAX_RUN_TREE_ENTRIES {
             return Err("legacy runs preflight exceeds the fixed entry limit".into());
         }
-        if !run
+        let run_type = run
             .file_type()
-            .map_err(|error| format!("could not inspect run entry: {error}"))?
-            .is_dir()
-        {
+            .map_err(|error| format!("could not inspect run entry: {error}"))?;
+        reject_symlinked_subtree(run_type, &run.path(), "legacy runs")?;
+        if !run_type.is_dir() {
             continue;
         }
         let run_manifest = run.path().join("run_manifest.yaml");
@@ -649,6 +663,7 @@ fn runs_tree_format(workspace_path: &Path) -> Result<Option<&'static str>, Strin
             let pipeline_type = pipeline
                 .file_type()
                 .map_err(|error| format!("could not inspect pipeline entry: {error}"))?;
+            reject_symlinked_subtree(pipeline_type, &pipeline.path(), "legacy runs")?;
             if pipeline_type.is_dir() {
                 let manifest = pipeline.path().join("manifest.yaml");
                 if let Some(metadata) = candidate_metadata(&manifest)? {
@@ -661,6 +676,20 @@ fn runs_tree_format(workspace_path: &Path) -> Result<Option<&'static str>, Strin
         }
     }
     Ok(None)
+}
+
+fn reject_symlinked_subtree(
+    file_type: std::fs::FileType,
+    path: &Path,
+    detector: &str,
+) -> Result<(), String> {
+    if file_type.is_symlink() {
+        return Err(format!(
+            "{detector} detector refuses a symlinked subtree entry: {}",
+            path.display()
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_workspace_v2_store(
@@ -943,9 +972,8 @@ fn run_bounded_command_with_cleanup_timeout(
     timeout: Duration,
     cleanup_timeout: Duration,
 ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
-    let mut command = Command::new(executable);
+    let mut command = bounded_process_command(executable, arguments)?;
     command
-        .args(arguments)
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -1022,6 +1050,34 @@ fn run_bounded_command_with_cleanup_timeout(
     decode_process_output(return_code, stdout, stderr)
 }
 
+#[cfg(not(windows))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "the platform implementations share one fallible command-construction boundary"
+)]
+fn bounded_process_command(
+    executable: &Path,
+    arguments: &[String],
+) -> Result<Command, LegacyConversionFailure> {
+    let mut command = Command::new(executable);
+    command.args(arguments);
+    Ok(command)
+}
+
+#[cfg(windows)]
+fn bounded_process_command(
+    executable: &Path,
+    arguments: &[String],
+) -> Result<Command, LegacyConversionFailure> {
+    let launcher = std::env::current_exe().map_err(|_| LegacyConversionFailure::SpawnFailed)?;
+    let mut command = Command::new(launcher);
+    command
+        .arg(WINDOWS_JOB_LAUNCHER_ARGUMENT)
+        .arg(executable)
+        .args(arguments);
+    Ok(command)
+}
+
 fn receive_reader_outputs(
     stdout: &mpsc::Receiver<std::io::Result<Vec<u8>>>,
     stderr: &mpsc::Receiver<std::io::Result<Vec<u8>>>,
@@ -1082,11 +1138,7 @@ fn configure_process_tree(command: &mut Command) {
 }
 
 #[cfg(windows)]
-fn configure_process_tree(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-    command.creation_flags(CREATE_NEW_PROCESS_GROUP);
-}
+fn configure_process_tree(_command: &mut Command) {}
 
 #[cfg(not(any(unix, windows)))]
 fn configure_process_tree(_command: &mut Command) {}
@@ -1096,25 +1148,9 @@ fn terminate_process_tree(child: &mut std::process::Child) {
     if let Ok(pid) = i32::try_from(child.id()) {
         let _ = killpg(Pid::from_raw(pid), Signal::SIGKILL);
     }
-    #[cfg(windows)]
-    {
-        let mut killer = Command::new("taskkill");
-        killer
-            .args(["/PID", &child.id().to_string(), "/T", "/F"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        if let Ok(mut killer) = killer.spawn() {
-            let started = Instant::now();
-            while started.elapsed() < Duration::from_secs(2) {
-                if killer.try_wait().ok().flatten().is_some() {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            let _ = killer.kill();
-        }
-    }
+    // On Windows the direct child is the internal launcher. It assigned itself
+    // to a kill-on-close Job Object before spawning Python, so terminating the
+    // launcher closes the only job handle and contains the complete tree.
     let _ = child.kill();
 }
 
@@ -1127,10 +1163,33 @@ fn terminate_orphaned_process_group(child: &std::process::Child) {
 
 #[cfg(not(unix))]
 fn terminate_orphaned_process_group(_child: &std::process::Child) {
-    // On Windows, taskkill cannot safely address a tree after its root PID has
-    // already exited and may have been reused. The converter is poisoned, so
-    // at most these two bounded reader tasks can remain until escaped handles
-    // close; no later conversion can accumulate more.
+    // The Windows launcher owns a kill-on-close Job Object. Once it exits, the
+    // OS terminates every remaining member before the bounded pipe deadline.
+}
+
+#[cfg(windows)]
+pub fn run_windows_job_launcher(
+    executable: &std::ffi::OsStr,
+    arguments: impl IntoIterator<Item = std::ffi::OsString>,
+) -> Result<std::convert::Infallible, String> {
+    let _job = studio_windows_job::KillOnCloseJob::assign_current_process()?;
+    let code = Command::new(executable)
+        .args(arguments)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_or_else(
+            |error| {
+                eprintln!("studio-sidecar: could not start contained legacy converter: {error}");
+                70
+            },
+            |status| status.code().unwrap_or(70),
+        );
+    // `process::exit` deliberately skips Drop. The OS closes the last Job
+    // handle while terminating this launcher, which atomically kills any
+    // descendants that outlived Python without replacing Python's exit code.
+    std::process::exit(code)
 }
 
 fn read_bounded_stdout(
@@ -1357,7 +1416,7 @@ mod tests {
             symlink(workspace.join("missing-target"), workspace.join(candidate)).unwrap();
             assert!(inspect_workspace_transition(&workspace)
                 .unwrap_err()
-                .contains("must not be a symlink"));
+                .contains("symlink"));
         }
 
         let run_manifest_root = root.join("dangling-run-manifest");
@@ -1370,6 +1429,35 @@ mod tests {
         assert!(inspect_workspace_transition(&run_manifest_root)
             .unwrap_err()
             .contains("must not be a symlink"));
+
+        let native_target = root.join("native-target");
+        fs::create_dir(&native_target).unwrap();
+        for member in ["manifest.json", "score_set.json", "predictions.parquet"] {
+            fs::write(native_target.join(member), b"opaque").unwrap();
+        }
+        for (name, target) in [
+            ("native-valid-link", native_target.clone()),
+            ("native-dangling-link", root.join("missing-native-target")),
+        ] {
+            let workspace = root.join(format!("workspace-{name}"));
+            fs::create_dir(&workspace).unwrap();
+            symlink(target, workspace.join(name)).unwrap();
+            assert!(inspect_workspace_transition(&workspace)
+                .unwrap_err()
+                .contains("symlinked subtree"));
+        }
+
+        for (name, target) in [
+            ("valid", native_target),
+            ("dangling", root.join("missing-run-target")),
+        ] {
+            let workspace = root.join(format!("runs-{name}"));
+            fs::create_dir_all(workspace.join("runs")).unwrap();
+            symlink(target, workspace.join("runs/run-a")).unwrap();
+            assert!(inspect_workspace_transition(&workspace)
+                .unwrap_err()
+                .contains("symlinked subtree"));
+        }
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1457,16 +1545,89 @@ mod tests {
     }
 
     #[test]
+    fn runtime_never_executes_an_unattested_converter() {
+        #[derive(Debug)]
+        struct UnattestedProbe {
+            ran: Arc<AtomicBool>,
+        }
+
+        impl LegacyConverter for UnattestedProbe {
+            fn is_available(&self) -> bool {
+                false
+            }
+
+            fn command(&self, _request: &LegacyConversionRequest) -> Vec<String> {
+                vec!["unattested".into()]
+            }
+
+            fn run(
+                &self,
+                _request: &LegacyConversionRequest,
+            ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
+                self.ran.store(true, Ordering::Release);
+                Err(LegacyConversionFailure::SpawnFailed)
+            }
+        }
+
+        let ran = Arc::new(AtomicBool::new(false));
+        let runtime = LegacyConversionRuntime::with_converter(Arc::new(UnattestedProbe {
+            ran: Arc::clone(&ran),
+        }));
+        let request = LegacyConversionRequest {
+            workspace_path: PathBuf::from("/unattested-source"),
+            output_path: PathBuf::from("/unattested-output"),
+            verify: true,
+            dry_run: false,
+            strict: true,
+            link_converted_workspace: false,
+        };
+
+        assert_eq!(
+            runtime.run(&request),
+            Err(LegacyConversionFailure::Unavailable)
+        );
+        assert!(!ran.load(Ordering::Acquire));
+
+        let direct = PythonModuleLegacyConverter {
+            python_plugin_host: PathBuf::from("/must-not-spawn"),
+            attested: false,
+            poisoned: AtomicBool::new(false),
+        };
+        assert_eq!(
+            direct.run(&request),
+            Err(LegacyConversionFailure::Unavailable)
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_command_is_always_routed_through_internal_job_launcher() {
+        use std::ffi::OsStr;
+
+        let command = bounded_process_command(
+            Path::new(r"C:\qualified\python.exe"),
+            &["-I".into(), "-m".into(), "nirs4all_tools".into()],
+        )
+        .unwrap();
+        let arguments = command.get_args().collect::<Vec<_>>();
+        assert_eq!(
+            arguments,
+            [
+                OsStr::new(WINDOWS_JOB_LAUNCHER_ARGUMENT),
+                OsStr::new(r"C:\qualified\python.exe"),
+                OsStr::new("-I"),
+                OsStr::new("-m"),
+                OsStr::new("nirs4all_tools"),
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn converter_timeout_is_strictly_bounded() {
-        #[cfg(unix)]
         let (executable, arguments) = (
             Path::new("/bin/sh"),
             vec!["-c".to_string(), "sleep 30".to_string()],
-        );
-        #[cfg(windows)]
-        let (executable, arguments) = (
-            Path::new("cmd.exe"),
-            vec!["/C".to_string(), "ping -n 30 127.0.0.1 >NUL".to_string()],
         );
         let started = Instant::now();
         assert_eq!(

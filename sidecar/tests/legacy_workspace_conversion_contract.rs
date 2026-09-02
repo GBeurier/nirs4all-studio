@@ -61,6 +61,14 @@ fn checked_in_contract_matches_the_rust_route_and_process_bounds() {
     );
     assert_eq!(contract["converter"]["reader_cleanup_timeout_seconds"], 2);
     assert_eq!(contract["converter"]["unbounded_reader_join"], "forbidden");
+    assert_eq!(
+        contract["converter"]["execution_gate"],
+        "runtime_rechecks_attestation_immediately_before_every_spawn"
+    );
+    assert_eq!(
+        contract["converter"]["windows_job_policy"],
+        "launcher_assigns_itself_before_python_spawn_kill_on_close_no_breakaway"
+    );
 }
 
 #[test]
@@ -78,6 +86,10 @@ fn exit_and_rollback_policy_prevents_false_success_or_source_loss() {
     assert_eq!(contract["exit_codes"]["other"]["http_status"], 502);
     assert_eq!(contract["rollback"]["legacy_source_retained"], true);
     assert_eq!(contract["rollback"]["previous_workspace_unlinked"], false);
+    assert_eq!(
+        contract["rollback"]["activated_store_consumption"],
+        "persisted_sha256_revalidated_fail_closed_before_every_linked_workspace_path_resolution"
+    );
     assert_eq!(contract["converter"]["python_http"], "forbidden");
     assert_eq!(
         contract["compatibility_exceptions"]["STU-CONV-SYNC-001"]["status"],
