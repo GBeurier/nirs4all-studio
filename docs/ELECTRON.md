@@ -434,7 +434,11 @@ The renderer communicates with the backend via HTTP/WebSocket only:
 
 ## Build System
 
-### Backend Build (PyInstaller)
+### Legacy Python Backend Build (not a desktop release path)
+
+The commands below are retained for explicit diagnostics only. Phase 2 desktop
+installers use the Rust sidecar plus the plugin-only CPython closure and never
+package this FastAPI/PyInstaller backend.
 
 ```bash
 # CPU build

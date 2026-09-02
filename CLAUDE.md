@@ -31,9 +31,8 @@ Individual gates: `lint:eslint`, `lint:tsc`, `lint:nodes` (= `validate:nodes`), 
 
 ### Build / release
 - Frontend: `npm run build` (web) / `npm run build:electron` (Electron renderer, relative `./` base).
-- Full release: `node scripts/build-release.cjs --mode {installer|standalone} --flavor {cpu|gpu|gpu-metal}` (or `npm run release`, `npm run release:all-in-one`):
-  - **installer** — embeds a Python venv, allows runtime `pip install`, produces native installers (`.exe`/`.dmg`/`.deb`).
-  - **standalone** — freezes the backend with PyInstaller (`backend.spec`) into a portable archive; no Python needed on the target.
+- Installer release: `npm run release -- --platform <matching-host> --flavor cpu`. It packages the Rust product backend plus the attested plugin-only CPython closure; cross-host builds, non-CPU labels, and legacy standalone mode are rejected.
+- Portable all-in-one archive: `npm run release:all-in-one -- --platform <host> --arch <host-arch>`.
 - Docker-isolated CI locally: `npm run ci:docker[:frontend|:backend|:e2e|:lint]`.
 
 ## Architecture

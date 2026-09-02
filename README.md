@@ -485,17 +485,20 @@ Direct scripts are also available: `npm run dev` for Vite, `python -m uvicorn ma
 | `npm run release:all-in-one` | Build a portable all-in-one archive |
 | `npm run release:all-in-one:clean` | Clean and rebuild a portable all-in-one archive |
 
-### Build Modes
+### Desktop Release Profiles
 
-The release build supports two modes via `--mode`:
-
-- **`installer`** (default) — Embeds a Python environment with a venv. Supports runtime `pip install` for optional dependencies. Produces platform-native installers (`.exe`, `.dmg`, `.deb`).
-- **`standalone`** — Freezes the backend with PyInstaller into a single executable. Produces portable all-in-one archives. No Python needed on the target machine.
+`npm run release` builds the CPU installer on the current host only. The product
+backend is Rust; the adjacent content-addressed CPython closure is restricted to
+library/plugin interop and does not use a user venv, PATH discovery, or runtime
+`pip install`.
 
 ```bash
-node scripts/build-release.cjs --mode installer --flavor cpu
-node scripts/build-release.cjs --mode standalone --flavor gpu
+npm run release -- --platform linux --flavor cpu
+npm run release:all-in-one -- --platform linux --arch x64
 ```
+
+Portable archives use `release:all-in-one`. Legacy `--standalone`, non-CPU
+flavors, `--platform all`, and cross-host installer builds are rejected.
 
 ### npm Scripts - Packaging
 
@@ -504,7 +507,7 @@ node scripts/build-release.cjs --mode standalone --flavor gpu
 | `npm run release -- --platform win` | Package for Windows |
 | `npm run release -- --platform mac` | Package for macOS |
 | `npm run release -- --platform linux` | Package for Linux |
-| `npm run release -- --platform all` | Package for all platforms |
+| `npm run release -- --platform <host>` | Package on the matching Linux, Windows, or macOS host |
 
 ---
 

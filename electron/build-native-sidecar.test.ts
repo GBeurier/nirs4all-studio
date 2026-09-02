@@ -28,11 +28,13 @@ const buildNativeSidecar = require("../scripts/build-native-sidecar.cjs") as {
 const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
   parseVerifyArgs(argv?: string[]): {
     backendRoot: string;
+    artifactBoundaryRoot: string;
     platform: string;
     arch: string;
   };
   verifyRuntimeContract(options: {
     backendRoot: string;
+    artifactBoundaryRoot: string;
     platform: string;
     arch: string;
     requireBundledPythonPlugin?: boolean;
@@ -138,6 +140,7 @@ describe("build-native-sidecar", () => {
       expect(
         runtimeContract.verifyRuntimeContract({
           backendRoot,
+          artifactBoundaryRoot: backendRoot,
           platform: "linux",
           arch: "x64",
         }),
@@ -149,6 +152,7 @@ describe("build-native-sidecar", () => {
       expect(() =>
         runtimeContract.verifyRuntimeContract({
           backendRoot,
+          artifactBoundaryRoot: backendRoot,
           platform: "linux",
           arch: "x64",
           requireBundledPythonPlugin: true,
@@ -182,6 +186,7 @@ describe("build-native-sidecar", () => {
       expect(
         runtimeContract.verifyRuntimeContract({
           backendRoot,
+          artifactBoundaryRoot: backendRoot,
           platform: "linux",
           arch: "x64",
         }),
@@ -255,12 +260,15 @@ describe("build-native-sidecar", () => {
       runtimeContract.parseVerifyArgs([
         "--backend-root",
         "release/product/resources/backend",
+        "--artifact-boundary-root",
+        "release/product",
         "--platform=darwin",
         "--arch",
         "arm64",
       ]),
     ).toEqual({
       backendRoot: path.resolve("release/product/resources/backend"),
+      artifactBoundaryRoot: path.resolve("release/product"),
       platform: "darwin",
       arch: "arm64",
       requireBundledPythonPlugin: false,
@@ -268,5 +276,68 @@ describe("build-native-sidecar", () => {
     expect(() => runtimeContract.parseVerifyArgs([])).toThrow(
       "--backend-root is required",
     );
+    expect(() => runtimeContract.parseVerifyArgs([
+      "--backend-root",
+      "backend-dist",
+    ])).toThrow("--artifact-boundary-root is required");
+  });
+
+  it("rejects an ancestor symlink between the artifact boundary and backend", () => {
+    if (process.platform === "win32") return;
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-native-boundary-symlink-"));
+    try {
+      const artifactBoundaryRoot = path.join(root, "linux-unpacked");
+      const outsideResources = path.join(root, "outside-resources");
+      const outsideBackend = path.join(outsideResources, "backend");
+      const sidecarPath = path.join(outsideBackend, "native", "studio-sidecar");
+      fs.mkdirSync(path.dirname(sidecarPath), { recursive: true });
+      fs.mkdirSync(artifactBoundaryRoot);
+      fs.writeFileSync(sidecarPath, "rust-sidecar");
+      runtimeContract.writeRuntimeContract({
+        backendRoot: outsideBackend,
+        platform: "linux",
+        arch: "x64",
+      });
+      fs.symlinkSync(outsideResources, path.join(artifactBoundaryRoot, "resources"));
+
+      expect(() => runtimeContract.verifyRuntimeContract({
+        backendRoot: path.join(artifactBoundaryRoot, "resources", "backend"),
+        artifactBoundaryRoot,
+        platform: "linux",
+        arch: "x64",
+      })).toThrow(/boundary component must be a real non-symlink directory/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps every official runtime verifier call fail-closed on an explicit boundary", () => {
+    const projectRoot = path.resolve(import.meta.dirname, "..");
+    for (const relativePath of [
+      "scripts/build-release.cjs",
+      "scripts/build-archive-standalone.cjs",
+      "scripts/smoke-archive-standalone.cjs",
+      "scripts/installer-release-contract.cjs",
+    ]) {
+      const source = fs.readFileSync(path.join(projectRoot, relativePath), "utf8");
+      const calls = [...source.matchAll(/verifyRuntimeContract\(\{([\s\S]*?)\n\s*\}\);/g)];
+      expect(calls.length, relativePath).toBeGreaterThan(0);
+      for (const call of calls) {
+        expect(call[1], relativePath).toContain("artifactBoundaryRoot:");
+      }
+    }
+    for (const relativePath of [
+      ".github/workflows/ci.yml",
+      ".github/workflows/release-unified.yml",
+    ]) {
+      const source = fs.readFileSync(path.join(projectRoot, relativePath), "utf8");
+      const commands = source
+        .split(/\r?\n/)
+        .filter((line) => line.includes("scripts/native-runtime-contract.cjs"));
+      expect(commands.length, relativePath).toBeGreaterThan(0);
+      for (const command of commands) {
+        expect(command, relativePath).toContain("--artifact-boundary-root");
+      }
+    }
   });
 });

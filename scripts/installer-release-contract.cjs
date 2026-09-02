@@ -79,68 +79,236 @@ function requireRealDirectory(directoryPath, label) {
   return directoryPath;
 }
 
-function discoverPlatformOutput(stagingRoot, platform, producedNames) {
+function requireRealFile(filePath, label) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`${label} is missing: ${filePath}`);
+  }
+  const stat = fs.lstatSync(filePath);
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    throw new Error(`${label} must be a real regular file: ${filePath}`);
+  }
+  return filePath;
+}
+
+function regularFileIdentity(filePath, label) {
+  requireRealFile(filePath, label);
+  const before = fs.lstatSync(filePath, { bigint: true });
+  const hash = crypto.createHash("sha256");
+  const descriptor = fs.openSync(filePath, "r");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    for (;;) {
+      const count = fs.readSync(descriptor, buffer, 0, buffer.length, null);
+      if (count === 0) break;
+      hash.update(buffer.subarray(0, count));
+    }
+  } finally {
+    fs.closeSync(descriptor);
+  }
+  const after = fs.lstatSync(filePath, { bigint: true });
+  if (
+    before.ino !== after.ino ||
+    before.size !== after.size ||
+    before.mtimeNs !== after.mtimeNs ||
+    before.ctimeNs !== after.ctimeNs
+  ) {
+    throw new Error(`${label} changed while its identity was captured: ${filePath}`);
+  }
+  return {
+    size: after.size.toString(),
+    sha256: hash.digest("hex"),
+  };
+}
+
+function assertCanonicalMember(root, memberPath, label) {
+  const canonicalRoot = fs.realpathSync.native(root);
+  const canonicalMember = fs.realpathSync.native(memberPath);
+  const rootPrefix = `${canonicalRoot}${path.sep}`;
+  if (
+    (canonicalMember !== canonicalRoot && !canonicalMember.startsWith(rootPrefix))
+  ) {
+    throw new Error(`${label} escapes its installer output root`);
+  }
+}
+
+function requireDirectoryChain(root, segments, label) {
+  requireRealDirectory(root, `${label} output root`);
+  assertCanonicalMember(root, root, `${label} output root`);
+  let current = root;
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    requireRealDirectory(current, `${label} component '${segment}'`);
+    assertCanonicalMember(root, current, `${label} component '${segment}'`);
+  }
+  return current;
+}
+
+function assertClosedBackendTree(root, backendRoot, label) {
+  assertCanonicalMember(root, backendRoot, label);
+  const pending = [backendRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const name of fs.readdirSync(directory)) {
+      const entryPath = path.join(directory, name);
+      const stat = fs.lstatSync(entryPath);
+      if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile())) {
+        throw new Error(`${label} contains a link or special file: ${entryPath}`);
+      }
+      assertCanonicalMember(backendRoot, entryPath, label);
+      if (stat.isDirectory()) {
+        pending.push(entryPath);
+      }
+    }
+  }
+}
+
+function assertDiscoveredOutput(output) {
+  const backendRoot = requireDirectoryChain(
+    output.outputRoot,
+    output.backendSegments,
+    `${output.platform} packaged backend`,
+  );
+  if (backendRoot !== output.backendRoot) {
+    throw new Error(`${output.platform} packaged backend path changed after discovery`);
+  }
+  assertClosedBackendTree(
+    output.outputRoot,
+    backendRoot,
+    `${output.platform} packaged backend`,
+  );
+  for (const artifact of output.artifacts) {
+    const artifactPath = path.join(output.outputRoot, artifact);
+    const identity = regularFileIdentity(
+      artifactPath,
+      `${output.platform} installer artifact`,
+    );
+    if (
+      identity.size !== output.artifactIdentities[artifact]?.size ||
+      identity.sha256 !== output.artifactIdentities[artifact]?.sha256
+    ) {
+      throw new Error(`${output.platform} installer artifact identity mismatch: ${artifact}`);
+    }
+    assertCanonicalMember(
+      output.outputRoot,
+      artifactPath,
+      `${output.platform} installer artifact`,
+    );
+  }
+}
+
+function validateProducedEntries(stagingRoot, producedNames, outputs) {
+  const expected = new Set(
+    outputs.flatMap((output) => [output.unpackedName, ...output.artifacts]),
+  );
+  for (const name of producedNames) {
+    const entryPath = path.join(stagingRoot, name);
+    if (expected.has(name)) {
+      const output = outputs.find((candidate) => candidate.unpackedName === name);
+      if (output) {
+        requireRealDirectory(entryPath, `${output.platform} unpacked output`);
+      } else {
+        requireRealFile(entryPath, "Installer artifact");
+      }
+      assertCanonicalMember(stagingRoot, entryPath, "Fresh installer output");
+      continue;
+    }
+    if (/^builder-(?:debug|effective-config)\.ya?ml$/i.test(name)) {
+      requireRealFile(entryPath, "electron-builder metadata");
+      assertCanonicalMember(stagingRoot, entryPath, "electron-builder metadata");
+      continue;
+    }
+    throw new Error(`Unexpected fresh electron-builder output: ${name}`);
+  }
+  return [...expected].sort();
+}
+
+function discoverPlatformOutput(
+  stagingRoot,
+  platform,
+  producedNames,
+  expectedArtifactIdentities = null,
+) {
   const produced = new Set(producedNames);
-  const entries = fs.readdirSync(stagingRoot, { withFileTypes: true });
-  const producedFiles = entries
-    .filter((entry) => produced.has(entry.name) && entry.isFile())
-    .map((entry) => entry.name);
-  const producedDirectories = entries
-    .filter((entry) => produced.has(entry.name) && entry.isDirectory())
-    .map((entry) => entry.name);
+  const producedEntries = fs
+    .readdirSync(stagingRoot)
+    .filter((name) => produced.has(name));
 
   let unpackedName;
   let backendRoot;
+  let backendSegments;
   let artifacts;
   if (platform === "linux") {
     unpackedName = requireExactlyOne(
-      producedDirectories.filter((name) => /^linux(?:-[a-z0-9_-]+)?-unpacked$/i.test(name)),
+      producedEntries.filter((name) => /^linux(?:-[a-z0-9_-]+)?-unpacked$/i.test(name)),
       "Linux unpacked application",
     );
     artifacts = [
-      requireExactlyOne(producedFiles.filter((name) => name.endsWith(".AppImage")), "Linux AppImage"),
-      requireExactlyOne(producedFiles.filter((name) => name.endsWith(".deb")), "Linux deb"),
+      requireExactlyOne(producedEntries.filter((name) => name.endsWith(".AppImage")), "Linux AppImage"),
+      requireExactlyOne(producedEntries.filter((name) => name.endsWith(".deb")), "Linux deb"),
     ];
-    backendRoot = path.join(stagingRoot, unpackedName, "resources", "backend");
+    backendSegments = [unpackedName, "resources", "backend"];
+    backendRoot = path.join(stagingRoot, ...backendSegments);
   } else if (platform === "win32") {
     unpackedName = requireExactlyOne(
-      producedDirectories.filter((name) => /^win(?:-[a-z0-9_-]+)?-unpacked$/i.test(name)),
+      producedEntries.filter((name) => /^win(?:-[a-z0-9_-]+)?-unpacked$/i.test(name)),
       "Windows unpacked application",
     );
-    const executables = producedFiles.filter((name) => name.toLowerCase().endsWith(".exe"));
+    const executables = producedEntries.filter((name) => name.toLowerCase().endsWith(".exe"));
     artifacts = [
       requireExactlyOne(executables.filter((name) => /-portable\.exe$/i.test(name)), "Windows portable executable"),
       requireExactlyOne(executables.filter((name) => !/-portable\.exe$/i.test(name)), "Windows NSIS installer"),
     ];
-    backendRoot = path.join(stagingRoot, unpackedName, "resources", "backend");
+    backendSegments = [unpackedName, "resources", "backend"];
+    backendRoot = path.join(stagingRoot, ...backendSegments);
   } else if (platform === "darwin") {
     unpackedName = requireExactlyOne(
-      producedDirectories.filter((name) => /^mac(?:-[a-z0-9_-]+)?$/i.test(name)),
+      producedEntries.filter((name) => /^mac(?:-[a-z0-9_-]+)?$/i.test(name)),
       "macOS unpacked application directory",
     );
     artifacts = [
-      requireExactlyOne(producedFiles.filter((name) => name.endsWith(".dmg")), "macOS dmg"),
+      requireExactlyOne(producedEntries.filter((name) => name.endsWith(".dmg")), "macOS dmg"),
     ];
     const macRoot = path.join(stagingRoot, unpackedName);
     const appName = requireExactlyOne(
       fs
-        .readdirSync(macRoot, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && entry.name.endsWith(".app"))
-        .map((entry) => entry.name),
+        .readdirSync(macRoot)
+        .filter((name) => name.endsWith(".app")),
       "macOS app bundle",
     );
-    backendRoot = path.join(macRoot, appName, "Contents", "Resources", "backend");
+    backendSegments = [
+      unpackedName,
+      appName,
+      "Contents",
+      "Resources",
+      "backend",
+    ];
+    backendRoot = path.join(stagingRoot, ...backendSegments);
   } else {
     throw new Error(`Unsupported installer output platform: ${platform}`);
   }
 
-  requireRealDirectory(backendRoot, `${platform} packaged backend`);
-  return {
+  const output = {
     platform,
+    outputRoot: stagingRoot,
     unpackedName,
+    backendSegments,
     backendRoot,
+    artifactBoundaryRoot: platform === "darwin"
+      ? path.join(stagingRoot, unpackedName, backendSegments[1])
+      : path.join(stagingRoot, unpackedName),
     artifacts,
+    artifactIdentities: expectedArtifactIdentities ?? Object.fromEntries(
+      artifacts.map((artifact) => [
+        artifact,
+        regularFileIdentity(
+          path.join(stagingRoot, artifact),
+          `${platform} installer artifact`,
+        ),
+      ]),
+    ),
   };
+  assertDiscoveredOutput(output);
+  return output;
 }
 
 function smokePackagedSidecar(sidecarPath) {
@@ -165,13 +333,16 @@ function verifyDiscoveredOutputs({
   hostPlatform = process.platform,
 }) {
   for (const output of outputs) {
-    const verify = () =>
-      verifyRuntimeContract({
+    const verify = () => {
+      assertDiscoveredOutput(output);
+      return verifyRuntimeContract({
         backendRoot: output.backendRoot,
+        artifactBoundaryRoot: output.artifactBoundaryRoot,
         platform: output.platform,
         arch: output.platform === "darwin" ? process.arch : "x64",
         requireBundledPythonPlugin: true,
       });
+    };
     const first = verify();
     if (output.platform === hostPlatform) {
       smokeSidecar(first.sidecarPath);
@@ -222,10 +393,27 @@ async function packageAndVerifyInstallerOutputs({
   smokeSidecar = smokePackagedSidecar,
   hostPlatform = process.platform,
 }) {
+  const invocationBoundary = path.dirname(releaseRoot);
+  fs.mkdirSync(releaseRoot, { recursive: true });
+  requireDirectoryChain(
+    invocationBoundary,
+    [path.basename(releaseRoot)],
+    "Installer release root",
+  );
   const releaseBefore = snapshotTopLevel(releaseRoot);
   const stagingParent = path.join(path.dirname(releaseRoot), "build", "installer-invocations");
   fs.mkdirSync(stagingParent, { recursive: true });
+  requireDirectoryChain(
+    invocationBoundary,
+    ["build", "installer-invocations"],
+    "Installer staging parent",
+  );
   const stagingRoot = fs.mkdtempSync(path.join(stagingParent, "installer-"));
+  requireDirectoryChain(
+    invocationBoundary,
+    ["build", "installer-invocations", path.basename(stagingRoot)],
+    "Installer staging root",
+  );
   const stagingBefore = snapshotTopLevel(stagingRoot);
   try {
     await runBuilder(stagingRoot);
@@ -240,16 +428,30 @@ async function packageAndVerifyInstallerOutputs({
     const outputs = platforms.map((platform) =>
       discoverPlatformOutput(stagingRoot, platform, producedNames),
     );
+    const promotedNames = validateProducedEntries(stagingRoot, producedNames, outputs);
     verifyDiscoveredOutputs({
       outputs,
       verifyRuntimeContract,
       smokeSidecar,
       hostPlatform,
     });
+    for (const output of outputs) {
+      assertDiscoveredOutput(output);
+    }
+    const revalidatedNames = validateProducedEntries(stagingRoot, producedNames, outputs);
+    if (JSON.stringify(revalidatedNames) !== JSON.stringify(promotedNames)) {
+      throw new Error("Fresh installer output set changed before promotion");
+    }
 
-    moveWithRollback(stagingRoot, releaseRoot, producedNames, () => {
-      const publishedOutputs = platforms.map((platform) =>
-        discoverPlatformOutput(releaseRoot, platform, producedNames),
+    let finalOutputs = null;
+    moveWithRollback(stagingRoot, releaseRoot, promotedNames, () => {
+      const publishedOutputs = platforms.map((platform, index) =>
+        discoverPlatformOutput(
+          releaseRoot,
+          platform,
+          promotedNames,
+          outputs[index].artifactIdentities,
+        ),
       );
       verifyDiscoveredOutputs({
         outputs: publishedOutputs,
@@ -257,20 +459,25 @@ async function packageAndVerifyInstallerOutputs({
         smokeSidecar,
         hostPlatform,
       });
-    });
-
-    const releaseAfter = snapshotTopLevel(releaseRoot);
-    const publishedNames = newlyProducedNames(releaseBefore, releaseAfter);
-    for (const name of producedNames) {
-      if (!publishedNames.includes(name)) {
-        throw new Error(`Verified installer output was not published by this invocation: ${name}`);
+      const releaseAfter = snapshotTopLevel(releaseRoot);
+      const publishedNames = newlyProducedNames(releaseBefore, releaseAfter);
+      for (const name of promotedNames) {
+        if (!publishedNames.includes(name)) {
+          throw new Error(`Verified installer output was not published by this invocation: ${name}`);
+        }
       }
-    }
+      finalOutputs = platforms.map((platform, index) =>
+        discoverPlatformOutput(
+          releaseRoot,
+          platform,
+          promotedNames,
+          outputs[index].artifactIdentities,
+        ),
+      );
+    });
     return {
-      producedNames,
-      outputs: platforms.map((platform) =>
-        discoverPlatformOutput(releaseRoot, platform, producedNames),
-      ),
+      producedNames: promotedNames,
+      outputs: finalOutputs,
     };
   } finally {
     fs.rmSync(stagingRoot, { recursive: true, force: true });

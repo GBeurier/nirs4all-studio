@@ -97,6 +97,13 @@ describe("electron-builder config", () => {
     .filter((name) => /^electron-builder\..+\.ya?ml$/.test(name))
     .sort();
 
+  it("provides the homepage metadata required by Linux deb packaging", () => {
+    const packageJson = JSON.parse(
+      fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"),
+    );
+    expect(packageJson.homepage).toBe("https://nirs4all.org");
+  });
+
   it("packages the shared Python runtime config required by the Electron main process", () => {
     const expectedFiles = ["scripts/python-runtime-config.cjs", "recommended-config.json"];
 

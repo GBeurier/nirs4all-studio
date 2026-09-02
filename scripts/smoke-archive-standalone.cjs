@@ -215,6 +215,16 @@ function ensurePathExists(targetPath, label) {
   }
 }
 
+function verifyLaunchRuntimeContract(launchLayout, platformId, arch = process.arch) {
+  return verifyRuntimeContract({
+    backendRoot: launchLayout.backendRoot,
+    artifactBoundaryRoot: launchLayout.appRoot,
+    platform: platformId,
+    arch,
+    requireBundledPythonPlugin: true,
+  });
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -534,12 +544,10 @@ async function smokeArchiveStandalone(rawConfig) {
   const bundledPythonPath = launchLayout.bundledPythonCandidates.find((candidate) => fs.existsSync(candidate))
     ?? launchLayout.bundledPythonPath;
   ensurePathExists(bundledPythonPath, "Bundled Python");
-  const verifiedRuntime = verifyRuntimeContract({
-    backendRoot: launchLayout.backendRoot,
-    platform: config.platform,
-    arch: process.arch,
-    requireBundledPythonPlugin: true,
-  });
+  const verifiedRuntime = verifyLaunchRuntimeContract(
+    launchLayout,
+    config.platform,
+  );
   if (verifiedRuntime.sidecarPath !== launchLayout.nativeSidecarPath) {
     throw new Error("Runtime contract did not select the packaged native sidecar");
   }
@@ -640,6 +648,7 @@ module.exports = {
   parseArgs,
   removePathWithRetries,
   resolveLaunchLayout,
+  verifyLaunchRuntimeContract,
   smokeArchiveStandalone,
   waitForChildExit,
   waitForMlReady,

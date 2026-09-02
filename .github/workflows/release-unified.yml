@@ -237,7 +237,7 @@ jobs:
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin
           backend-dist/native/studio-sidecar --smoke-readiness
 
       - name: Package with electron-builder
@@ -251,7 +251,8 @@ jobs:
           test -n "$SIDECAR"
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform linux --arch x64 --require-bundled-python-plugin
+          ARTIFACT_BOUNDARY="$(dirname "$(dirname "$BACKEND_ROOT")")"
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform linux --arch x64 --require-bundled-python-plugin
           "$SIDECAR" --smoke-readiness
 
       - name: Generate checksums
@@ -334,7 +335,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $sidecar -PathType Leaf)) {
             throw "Native Studio sidecar not found: $sidecar"
           }
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform win32 --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform win32 --arch x64 --require-bundled-python-plugin
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -369,7 +370,8 @@ jobs:
             throw "Packaged native Studio sidecar not found under release/"
           }
           $backendRoot = Split-Path -Parent (Split-Path -Parent $sidecar.FullName)
-          node scripts/native-runtime-contract.cjs --backend-root $backendRoot --platform win32 --arch x64 --require-bundled-python-plugin
+          $artifactBoundary = Split-Path -Parent (Split-Path -Parent $backendRoot)
+          node scripts/native-runtime-contract.cjs --backend-root $backendRoot --artifact-boundary-root $artifactBoundary --platform win32 --arch x64 --require-bundled-python-plugin
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & $sidecar.FullName --smoke-readiness
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -474,7 +476,7 @@ jobs:
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-apple-darwin
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform darwin --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch x64 --require-bundled-python-plugin
           if [ "$(uname -m)" = "x86_64" ]; then
             backend-dist/native/studio-sidecar --smoke-readiness
           else
@@ -523,7 +525,8 @@ jobs:
           test -n "$SIDECAR"
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform darwin --arch x64 --require-bundled-python-plugin
+          ARTIFACT_BOUNDARY="$(dirname "$(dirname "$(dirname "$BACKEND_ROOT")")")"
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch x64 --require-bundled-python-plugin
           if [ "$(uname -m)" = "x86_64" ]; then
             "$SIDECAR" --smoke-readiness
           else
@@ -664,7 +667,7 @@ jobs:
         run: |
           node scripts/build-native-sidecar.cjs --target aarch64-apple-darwin
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform darwin --arch arm64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform darwin --arch arm64 --require-bundled-python-plugin
           if [ "$(uname -m)" = "arm64" ]; then
             backend-dist/native/studio-sidecar --smoke-readiness
           else
@@ -710,7 +713,8 @@ jobs:
           test -n "$SIDECAR"
           test -x "$SIDECAR"
           BACKEND_ROOT="$(dirname "$(dirname "$SIDECAR")")"
-          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --platform darwin --arch arm64 --require-bundled-python-plugin
+          ARTIFACT_BOUNDARY="$(dirname "$(dirname "$(dirname "$BACKEND_ROOT")")")"
+          node scripts/native-runtime-contract.cjs --backend-root "$BACKEND_ROOT" --artifact-boundary-root "$ARTIFACT_BOUNDARY" --platform darwin --arch arm64 --require-bundled-python-plugin
           if [ "$(uname -m)" = "arm64" ]; then
             "$SIDECAR" --smoke-readiness
           else

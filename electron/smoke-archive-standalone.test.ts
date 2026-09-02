@@ -54,6 +54,14 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     bundledPythonCandidates: string[];
     nativeSidecarPath: string;
   };
+  verifyLaunchRuntimeContract(
+    launchLayout: {
+      appRoot: string;
+      backendRoot: string;
+    },
+    platformId: string,
+    arch?: string,
+  ): unknown;
   removePathWithRetries(
     targetPath: string,
     options?: { retryCount?: number; retryDelayMs?: number },
@@ -135,6 +143,28 @@ describe("smoke-archive-standalone", () => {
     expect(layout.nativeSidecarPath).toBe(
       path.join(appRoot, "resources", "backend", "native", "studio-sidecar"),
     );
+  });
+
+  it("rejects an archive whose resources ancestor is an external symlink", () => {
+    if (process.platform === "win32") return;
+    const extractedRoot = makeTempDir("n4a-smoke-ancestor-link-");
+    const appRoot = path.join(extractedRoot, "nirs4all Studio");
+    const outsideResources = path.join(extractedRoot, "outside-resources");
+    fs.mkdirSync(path.join(outsideResources, "backend"), { recursive: true });
+    fs.mkdirSync(appRoot);
+    fs.writeFileSync(path.join(appRoot, "nirs4all-webapp"), "");
+    fs.symlinkSync(outsideResources, path.join(appRoot, "resources"));
+
+    const layout = smokeModule.resolveLaunchLayout(
+      extractedRoot,
+      "linux",
+      "nirs4all Studio",
+    );
+    expect(() => smokeModule.verifyLaunchRuntimeContract(
+      layout,
+      "linux",
+      "x64",
+    )).toThrow(/boundary component must be a real non-symlink directory/);
   });
 
   it("resolves the macOS .app layout", () => {

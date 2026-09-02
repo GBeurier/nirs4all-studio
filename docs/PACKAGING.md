@@ -197,7 +197,8 @@ Notes:
 
 - it is the local helper for installer targets
 - the published desktop release matrix is no longer split into CPU/GPU installers
-- the old `--mode standalone` option is a legacy path, not the all-in-one bundle workflow
+- `--mode standalone` is rejected; use `npm run release:all-in-one`
+- only the CPU profile and the matching host platform are accepted; cross-host and `--platform all` builds are rejected
 
 ### All-in-one local builds
 
