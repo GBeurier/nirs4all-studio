@@ -24,16 +24,21 @@ function forbid(source, pattern, label) {
 
 requireText(dockerfile, "FROM ${NODE_IMAGE} AS frontend", "frontend build stage");
 requireText(dockerfile, "FROM ${RUST_IMAGE} AS sidecar", "Rust sidecar build stage");
+requireText(dockerfile, "FROM ${NODE_IMAGE} AS python-plugin-runtime", "bounded CPython plugin build stage");
 requireText(dockerfile, "FROM ${NGINX_IMAGE} AS runtime", "minimal web runtime stage");
 requireText(dockerfile, "cargo build --locked --release", "locked Rust build");
 requireText(dockerfile, "COPY --from=methods-runtime /libn4m.so.2.3.0", "native Methods named context");
 requireText(dockerfile, "NIRS4ALL_METHODS_SHA256", "native Methods content identity");
 requireText(dockerfile, "c.verifyRuntimeContract", "packaged runtime contract verification");
+requireText(dockerfile, "requireBundledPythonPlugin:true", "mandatory CPython plugin policy");
 requireText(dockerfile, "requireBundledMethods:true", "mandatory Methods policy");
 requireText(dockerfile, "COPY --from=native-runtime-contract", "closed native backend copy");
 requireText(dockerfile, "USER nginx", "unprivileged runtime user");
-requireText(dockerfile, "! command -v python", "runtime Python absence assertion");
-requireText(dockerfile, "! command -v python3", "runtime Python 3 absence assertion");
+requireText(dockerfile, "NIRS4ALL_PYTHON_PLUGIN_HOST=/opt/nirs4all/backend/python-runtime/python/bin/python3", "bounded CPython host path");
+requireText(dockerfile, "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED=true", "bundled CPython identity");
+requireText(dockerfile, "NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1", "stdio scientific executor selection");
+requireText(dockerfile, "! command -v python", "no ambient Python command");
+requireText(dockerfile, "! command -v python3", "no ambient Python 3 command");
 requireText(dockerfile, "http://127.0.0.1:8000/api/health", "public native healthcheck");
 requireText(dockerfile, 'ENTRYPOINT ["/usr/bin/tini"', "process-group supervisor");
 
@@ -62,6 +67,7 @@ forbid(entrypoint, /python|uvicorn|main\.py|scheduler|fallback/im, "non-sidecar 
 for (const excluded of ["api/", "websocket/", "main.py", "requirements*.txt", "backend.spec"]) {
   requireText(dockerignore, excluded, "Python backend context exclusion");
 }
+requireText(dockerignore, "!recommended-config.json", "plugin build configuration inclusion");
 
 requireText(ciWorkflow, "npm run test:docker-runtime-contract", "CI static Docker contract gate");
 requireText(ciWorkflow, "scripts/smoke-docker-native-runtime.sh", "CI live Docker smoke");
@@ -78,4 +84,4 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-console.log("Docker native-runtime contract passed: nginx -> loopback Rust sidecar; no Python HTTP runtime");
+console.log("Docker native-runtime contract passed: nginx -> loopback Rust sidecar + bounded CPython stdio plugin");

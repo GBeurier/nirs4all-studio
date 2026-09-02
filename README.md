@@ -69,9 +69,9 @@ The installer embeds the Rust product backend and a fixed, content-addressed
 CPython library/plugin closure. It does not discover user environments or
 install packages at runtime. **You don't need Python installed on your machine.**
 
-> **GPU support**: Published desktop installers and portable archives use the
-> single CPU profile. The native Docker image deliberately contains no Python
-> scientific runtime; GPU plugin-host packaging remains separately scoped.
+> **GPU support**: Published desktop installers, portable archives, and the
+> native Docker image use the single CPU plugin profile. GPU plugin-host
+> packaging remains separately scoped.
 
 ### Option 2 — All-in-one Standalone (Portable)
 
@@ -120,7 +120,8 @@ Requests under `/api` and `/ws` are proxied to the Rust sidecar bound only to
 `127.0.0.1:8001` inside the container. The image contains no FastAPI/Uvicorn
 runtime or Python backend source.
 It does include the content-addressed `nirs4all-methods` ABI 2.3 library used by
-the Rust/Core Archive V2 prediction path.
+the Rust/Core Archive V2 prediction path and the same fixed CPython
+library/plugin closure used for bounded Rust-to-Python stdio interoperability.
 
 ```bash
 docker run --rm -p 8000:8000 \
@@ -129,9 +130,8 @@ docker run --rm -p 8000:8000 \
   ghcr.io/gbeurier/nirs4all-studio:latest
 ```
 
-An optional, separately attested CPython library/plugin host may be mounted and
-selected explicitly for bounded Rust-to-Python stdio calls. It never owns an
-HTTP port, scheduler, store, or fallback route. See
+The embedded CPython closure is selected only for bounded Rust-to-Python stdio
+calls. It never owns an HTTP port, scheduler, store, or fallback route. See
 [Docker packaging](docs/PACKAGING.md#docker-asset) for the exact boundary.
 
 ---
