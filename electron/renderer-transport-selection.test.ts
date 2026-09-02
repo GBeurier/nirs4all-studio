@@ -288,34 +288,6 @@ describe("renderer transport preselection", () => {
     expect(request).not.toHaveBeenCalled();
   });
 
-  it("uses Python HTTP only as an explicit session-wide diagnostic owner", async () => {
-    const info = vi.fn(running);
-    const request = vi.fn();
-    const policy = { pythonHttpDiagnosticEnabled: true };
-
-    for (const candidate of [
-      { kind: "http" as const, method: "POST", path: "/training/start" },
-      { kind: "http" as const, method: "GET", path: "/training/job-1" },
-      { kind: "http" as const, method: "POST", path: "/training/job-1/stop" },
-      { kind: "websocket" as const, path: "/ws/training/job-1" },
-    ]) {
-      await expect(preselectRendererTransport(
-        candidate,
-        info,
-        request,
-        policy,
-      )).resolves.toMatchObject({
-        target: "scientific-plugin",
-        surface: "python-http-diagnostic",
-        reason: "explicit_python_http_diagnostic_mode",
-        fallback_after_native_selection: "none",
-      });
-    }
-
-    expect(info).not.toHaveBeenCalled();
-    expect(request).not.toHaveBeenCalled();
-  });
-
   it("selects only bounded job WebSockets and keeps scientific execution false", async () => {
     const request = vi.fn().mockResolvedValue(capabilityResponse());
     await expect(preselectRendererTransport(

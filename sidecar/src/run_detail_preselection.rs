@@ -54,60 +54,74 @@ pub fn preselect_run_detail(
     python_plugin_host: Option<&Path>,
 ) -> RunDetailPreselection {
     match preflight_run_detail_projection(workspace_path) {
-        Ok(()) => match python_plugin_host {
-            Some(host) if preflight_run_detail_owner(host).is_ok() => RunDetailPreselection {
-                target: RunDetailTarget::NativeSidecar,
-                verified_store_v5: true,
-                reason: "store_v5_owner_materializer_ready",
-                status: 200,
-            },
-            Some(_) => RunDetailPreselection {
-                target: RunDetailTarget::Reject,
-                verified_store_v5: true,
-                reason: "studio_run_detail_owner_preflight_failed",
-                status: 503,
-            },
-            None => RunDetailPreselection {
-                target: RunDetailTarget::Reject,
-                verified_store_v5: true,
-                reason: "python_plugin_host_unconfigured",
-                status: 503,
-            },
+        Ok(()) => preselect_verified_run_detail_owner(python_plugin_host),
+        Err(error) => reject_store_preflight(&error),
+    }
+}
+
+#[must_use]
+pub fn preselect_verified_run_detail_owner(
+    python_plugin_host: Option<&Path>,
+) -> RunDetailPreselection {
+    match python_plugin_host {
+        Some(host) if preflight_run_detail_owner(host).is_ok() => RunDetailPreselection {
+            target: RunDetailTarget::NativeSidecar,
+            verified_store_v5: true,
+            reason: "store_v5_owner_materializer_ready",
+            status: 200,
         },
-        Err(WorkspaceStoreReadError::StoreNotFound) => RunDetailPreselection {
+        Some(_) => RunDetailPreselection {
+            target: RunDetailTarget::Reject,
+            verified_store_v5: true,
+            reason: "studio_run_detail_owner_preflight_failed",
+            status: 503,
+        },
+        None => RunDetailPreselection {
+            target: RunDetailTarget::Reject,
+            verified_store_v5: true,
+            reason: "python_plugin_host_unconfigured",
+            status: 503,
+        },
+    }
+}
+
+#[must_use]
+pub const fn reject_store_preflight(error: &WorkspaceStoreReadError) -> RunDetailPreselection {
+    match error {
+        WorkspaceStoreReadError::StoreNotFound => RunDetailPreselection {
             target: RunDetailTarget::Reject,
             verified_store_v5: false,
             reason: "legacy_manifest_or_store_absent_rust_only",
             status: 501,
         },
-        Err(WorkspaceStoreReadError::SchemaVersion { .. }) => RunDetailPreselection {
+        WorkspaceStoreReadError::SchemaVersion { .. } => RunDetailPreselection {
             target: RunDetailTarget::Reject,
             verified_store_v5: false,
             reason: "legacy_store_schema_rust_only",
             status: 501,
         },
-        Err(
-            WorkspaceStoreReadError::LiveJournal(_) | WorkspaceStoreReadError::ChangedDuringRead,
-        ) => RunDetailPreselection {
-            target: RunDetailTarget::Reject,
-            verified_store_v5: false,
-            reason: "workspace_store_busy",
-            status: 409,
-        },
-        Err(WorkspaceStoreReadError::MissingColumns { .. }) => RunDetailPreselection {
+        WorkspaceStoreReadError::LiveJournal(_) | WorkspaceStoreReadError::ChangedDuringRead => {
+            RunDetailPreselection {
+                target: RunDetailTarget::Reject,
+                verified_store_v5: false,
+                reason: "workspace_store_busy",
+                status: 409,
+            }
+        }
+        WorkspaceStoreReadError::MissingColumns { .. } => RunDetailPreselection {
             target: RunDetailTarget::Reject,
             verified_store_v5: false,
             reason: "workspace_store_projection_incompatible",
             status: 409,
         },
         #[cfg(windows)]
-        Err(WorkspaceStoreReadError::UnsupportedPath(_)) => RunDetailPreselection {
+        WorkspaceStoreReadError::UnsupportedPath(_) => RunDetailPreselection {
             target: RunDetailTarget::Reject,
             verified_store_v5: false,
             reason: "workspace_store_path_unsupported",
             status: 409,
         },
-        Err(_) => RunDetailPreselection {
+        _ => RunDetailPreselection {
             target: RunDetailTarget::Reject,
             verified_store_v5: false,
             reason: "workspace_store_preselection_failed",

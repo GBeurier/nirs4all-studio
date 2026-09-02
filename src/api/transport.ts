@@ -21,27 +21,11 @@ let backendUrlPromise: Promise<string> | null = null;
 const WORKSPACE_RUN_DETAIL_ENDPOINT =
   /^\/workspaces\/([^/?]+)\/runs\/([^/?]+)$/;
 
-type ElectronBackendStatus =
-  | "stopped"
-  | "starting"
-  | "running"
-  | "error"
-  | "restarting"
-  | "setup_required";
 type NativeSidecarStatus =
   "disabled" | "starting" | "running" | "stopped" | "error";
 
 interface ElectronBridgeApi {
   isElectron?: boolean;
-  getBackendUrl?: () => Promise<string>;
-  getScientificPluginUrl?: () => Promise<string>;
-  getBackendInfo?: () => Promise<{
-    status: ElectronBackendStatus;
-    port: number;
-    url: string;
-    error?: string;
-    restartCount: number;
-  }>;
   getNativeSidecarInfo?: () => Promise<{
     status: NativeSidecarStatus;
     url: string | null;
@@ -56,7 +40,7 @@ interface ElectronBridgeApi {
     method: string | null;
     path: string;
     surface: string;
-    target: "native-sidecar" | "scientific-plugin" | "reject";
+    target: "native-sidecar" | "reject";
     base_url: string | null;
     renderer_transport: boolean;
     scientific_execution: false;
@@ -67,7 +51,7 @@ interface ElectronBridgeApi {
   preselectWorkspaceRunDetail?: (workspaceId: string) => Promise<{
     schema_id: "nirs4all.studio-run-detail-preselection-decision.v1";
     workspace_id: string;
-    target: "native-sidecar" | "scientific-plugin" | "reject";
+    target: "native-sidecar" | "reject";
     verified_store_v5: boolean;
     store_schema_version: 5 | null;
     reason: string;
@@ -78,7 +62,7 @@ interface ElectronBridgeApi {
 
 type ApiRoute = {
   baseUrl: string;
-  source: "web-backend" | "python-http-diagnostic" | "native-sidecar";
+  source: "web-backend" | "native-sidecar";
 };
 
 /**
@@ -156,38 +140,6 @@ export async function getApiBaseUrl(): Promise<string> {
   return resolvedBackendUrl;
 }
 
-async function acquirePythonHttpDiagnosticRoute(): Promise<ApiRoute> {
-  if (resolvedBackendUrl !== null) {
-    return {
-      baseUrl: resolvedBackendUrl,
-      source: "python-http-diagnostic",
-    };
-  }
-  if (!backendUrlPromise) {
-    const bridge = getElectronBridge();
-    if (!bridge?.getScientificPluginUrl) {
-      throw {
-        detail: "Explicit Python HTTP diagnostic IPC is unavailable",
-        status: 503,
-        code: "STUDIO_PYTHON_HTTP_DIAGNOSTIC_UNAVAILABLE",
-      } satisfies ApiError;
-    }
-    backendUrlPromise = bridge.getScientificPluginUrl()
-      .then((backendUrl) => {
-        resolvedBackendUrl = `${backendUrl}/api`;
-        return resolvedBackendUrl;
-      })
-      .catch((error) => {
-        backendUrlPromise = null;
-        throw error;
-      });
-  }
-  return {
-    baseUrl: await backendUrlPromise,
-    source: "python-http-diagnostic",
-  };
-}
-
 /**
  * Reset the cached backend URL so the next API call re-resolves it.
  * Must be called after backend restart (port may change).
@@ -239,19 +191,6 @@ async function resolveApiRoute(endpoint: string, method: string): Promise<ApiRou
       status: 500,
     } satisfies ApiError;
   }
-  if (decision.target === "scientific-plugin") {
-    if (
-      decision.surface !== "python-http-diagnostic" ||
-      decision.reason !== "explicit_python_http_diagnostic_mode"
-    ) {
-      throw {
-        detail: "Python HTTP target was not explicitly diagnostic-selected",
-        status: 500,
-        code: "STUDIO_INVALID_PYTHON_HTTP_SELECTION",
-      } satisfies ApiError;
-    }
-    return acquirePythonHttpDiagnosticRoute();
-  }
   if (decision.target === "reject") {
     throw {
       detail: `Renderer transport preselection rejected the request: ${decision.reason}`,
@@ -289,16 +228,6 @@ async function resolveWorkspaceRunDetailRoute(
   }
 
   const decision = await bridge.preselectWorkspaceRunDetail(workspaceId);
-  if (decision.target === "scientific-plugin") {
-    if (decision.reason !== "explicit_python_http_diagnostic_mode") {
-      throw {
-        detail: "Python HTTP run-detail target was not explicitly diagnostic-selected",
-        status: 500,
-        code: "STUDIO_INVALID_PYTHON_HTTP_SELECTION",
-      } satisfies ApiError;
-    }
-    return acquirePythonHttpDiagnosticRoute();
-  }
   if (decision.target === "reject") {
     throw {
       detail: `Native run-detail preselection rejected the request: ${decision.reason}`,
@@ -442,82 +371,12 @@ function toApiError(error: unknown): ApiError {
   };
 }
 
-function isRetryableElectronNetworkError(error: unknown): boolean {
-  if (!isElectronEnvironment() || isApiError(error) || isAbortError(error)) {
-    return false;
-  }
-
-  if (error instanceof TypeError) {
-    return true;
-  }
-
-  if (error instanceof Error) {
-    return /failed to fetch|fetch failed|networkerror/i.test(error.message);
-  }
-
-  return false;
-}
-
-async function waitForElectronBackendToBeReachable(
-  maxWaitMs: number = 8000,
-): Promise<void> {
-  const bridge = getElectronBridge();
-  if (!bridge?.getBackendInfo) {
-    return;
-  }
-
-  const deadline = Date.now() + maxWaitMs;
-  while (Date.now() < deadline) {
-    try {
-      const info = await bridge.getBackendInfo();
-      if (info.status === "running") {
-        return;
-      }
-      if (
-        info.status === "error" ||
-        info.status === "setup_required" ||
-        info.status === "stopped"
-      ) {
-        return;
-      }
-    } catch {
-      // Fall through to the next poll interval.
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-}
-
-async function prepareElectronBackendRetry(endpoint: string): Promise<void> {
-  resetBackendUrl();
-
-  const bridge = getElectronBridge();
-  if (!bridge?.getBackendInfo) {
-    return;
-  }
-
-  try {
-    const info = await bridge.getBackendInfo();
-    if (info.status === "starting" || info.status === "restarting") {
-      logger.warn(
-        `[request] waiting for backend ${info.status} before retrying ${endpoint}`,
-      );
-      await waitForElectronBackendToBeReachable();
-    }
-  } catch (error) {
-    logger.warn(
-      `[request] failed to inspect backend status before retrying ${endpoint}`,
-      error,
-    );
-  }
-}
-
 async function fetchWithRetry(
   endpoint: string,
   config: RequestInit,
 ): Promise<Response> {
   let lastError: unknown;
-  let route = await resolveApiRoute(endpoint, config.method ?? "GET");
+  const route = await resolveApiRoute(endpoint, config.method ?? "GET");
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const url = `${route.baseUrl}${endpoint}`;
@@ -526,19 +385,6 @@ async function fetchWithRetry(
       return await fetch(url, config);
     } catch (error) {
       lastError = error;
-      if (
-        attempt === 0 &&
-        route.source === "python-http-diagnostic" &&
-        isRetryableElectronNetworkError(error)
-      ) {
-        logger.warn(
-          `[request] transient Electron network error for ${endpoint}; retrying once`,
-          error,
-        );
-        await prepareElectronBackendRetry(endpoint);
-        route = await resolveApiRoute(endpoint, config.method ?? "GET");
-        continue;
-      }
       throw error;
     }
   }

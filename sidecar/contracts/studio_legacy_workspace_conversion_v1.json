@@ -36,7 +36,8 @@
     "transport": "bounded_stdio_process",
     "python_http": "forbidden",
     "module": "nirs4all_tools",
-    "cli": "python -I -B -m nirs4all_tools legacy migrate",
+    "cli": "python -I -B -c <same-process-attest-and-runpy-bootstrap> -- legacy migrate",
+    "spawn_identity_binding": "the interpreter regular-file SHA-256 captured from the packaged-qualified host is rechecked around every preflight and immediately before spawn; the launched interpreter then repeats the exact wheel, RECORD, manifest, DuckDB, and PyArrow functional attestation before runpy executes nirs4all_tools in that same process",
     "qualified_identity": {
       "source_commit": "e3a332633f87b4652a06f8993e63c386a3568698",
       "version": "0.0.7",

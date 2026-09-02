@@ -303,14 +303,10 @@ unmigrated routes fail closed before Python acquisition. The bundled/configured
 CPython runtime remains available only as the bounded stdio library/plugin host
 invoked by Rust.
 
-For R2 diagnosis only, `--enable-python-http-diagnostic` explicitly assigns the
-whole renderer session to the transitional FastAPI backend. This visible switch
-is never an automatic fallback. In development only, the exact environment
-value `NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1` is equivalent; packaged builds
-ignore that environment variable. Session-wide ownership keeps job creation,
-status, cancellation, and WebSockets on one backend. The FastAPI/WebSocket
-sources remain in the checkout for web development and explicit diagnostics,
-but are absent from product installers and all-in-one archives.
+Phase 2 desktop has no Python HTTP activation flag, environment override, IPC
+acquisition path, or renderer target. Web-development server sources remain in
+the checkout, but they are outside the packaged Electron dependency graph and
+absent from product installers and all-in-one archives.
 
 The native sidecar is the packaged product backend, not an opt-in hybrid. For
 development, `NIRS4ALL_NATIVE_SIDECAR_PATH` may point to a specific built

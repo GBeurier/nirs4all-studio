@@ -28,19 +28,16 @@ function selection(
 }
 
 function setElectronApi(
-  getScientificPluginUrl: () => Promise<string>,
   preselectRendererTransport = vi.fn(async ({ path }: { path: string }) =>
-    selection(path, "scientific-plugin")),
+    selection(path, "reject", "route_not_native_qualified_rust_only")),
 ) {
   (window as unknown as {
     electronApi?: {
       isElectron: boolean;
-      getScientificPluginUrl: () => Promise<string>;
       preselectRendererTransport: typeof preselectRendererTransport;
     };
   }).electronApi = {
     isElectron: true,
-    getScientificPluginUrl,
     preselectRendererTransport,
   };
 }
@@ -53,7 +50,6 @@ describe("getWebSocketBaseUrl", () => {
   it("rejects the unmigrated main socket without acquiring Python in Rust-only mode", async () => {
     const acquire = vi.fn();
     setElectronApi(
-      acquire,
       vi.fn().mockResolvedValue(
         selection("/ws", "reject", "route_not_native_qualified_rust_only"),
       ),
@@ -65,18 +61,19 @@ describe("getWebSocketBaseUrl", () => {
     expect(acquire).not.toHaveBeenCalled();
   });
 
-  it("acquires the session-wide Python owner only after explicit diagnostic selection", async () => {
+  it("rejects the removed Python HTTP target without acquisition", async () => {
     const acquire = vi.fn().mockResolvedValue("http://127.0.0.1:43123");
-    setElectronApi(acquire);
+    setElectronApi(vi.fn().mockResolvedValue(selection("/ws", "scientific-plugin")));
 
-    await expect(getWebSocketBaseUrl()).resolves.toBe("ws://127.0.0.1:43123");
-    expect(acquire).toHaveBeenCalledOnce();
+    await expect(getWebSocketBaseUrl()).rejects.toThrow(
+      "Unexpected renderer WebSocket transport target",
+    );
+    expect(acquire).not.toHaveBeenCalled();
   });
 
   it("refuses an implicit Python WebSocket target without acquisition", async () => {
     const acquire = vi.fn();
     setElectronApi(
-      acquire,
       vi.fn().mockResolvedValue({
         ...selection("/ws", "scientific-plugin"),
         surface: "unmigrated",
@@ -85,7 +82,7 @@ describe("getWebSocketBaseUrl", () => {
     );
 
     await expect(getWebSocketBaseUrl()).rejects.toThrow(
-      "not explicitly diagnostic-selected",
+      "Unexpected renderer WebSocket transport target",
     );
     expect(acquire).not.toHaveBeenCalled();
   });
@@ -95,7 +92,7 @@ describe("getWebSocketBaseUrl", () => {
     const preselect = vi.fn().mockResolvedValue(
       selection("/ws/job/job-1", "native-sidecar"),
     );
-    setElectronApi(acquire, preselect);
+    setElectronApi(preselect);
 
     await expect(getWebSocketBaseUrl("/ws/job/job-1")).resolves.toBe(
       "ws://127.0.0.1:43123",
@@ -110,7 +107,6 @@ describe("getWebSocketBaseUrl", () => {
   it("fails closed after a native WebSocket candidate is rejected", async () => {
     const acquire = vi.fn();
     setElectronApi(
-      acquire,
       vi.fn().mockResolvedValue(
         selection("/ws/training/job-1", "reject", "capability_mismatch"),
       ),
@@ -123,12 +119,10 @@ describe("getWebSocketBaseUrl", () => {
   });
 
   it("fails closed instead of falling back to the renderer origin", async () => {
-    setElectronApi(
-      vi.fn().mockRejectedValue(new Error("Scientific plugin unavailable")),
-    );
+    setElectronApi(vi.fn().mockRejectedValue(new Error("Native sidecar unavailable")));
 
     await expect(getWebSocketBaseUrl()).rejects.toThrow(
-      "Scientific plugin unavailable",
+      "Native sidecar unavailable",
     );
   });
 });

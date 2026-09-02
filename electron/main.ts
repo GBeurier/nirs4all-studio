@@ -6,7 +6,6 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = electron;
 import path from "node:path";
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
-import { BackendManager, type BackendStatus } from "./backend-manager";
 import { EnvManager } from "./env-manager";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { NativeSidecarManager } from "./native-sidecar-manager";
@@ -14,13 +13,6 @@ import { startNativeSession } from "./native-session-lifecycle";
 import { preselectRendererTransport } from "./renderer-transport-selection";
 import { preselectWorkspaceRunDetail } from "./workspace-route-preselection";
 import { applyPortablePathOverrides } from "./portable-paths";
-import { ScientificPluginLifecycle } from "./scientific-plugin-lifecycle";
-import {
-  PYTHON_HTTP_DIAGNOSTIC_ENV,
-  PYTHON_HTTP_DIAGNOSTIC_SWITCH,
-  requirePythonHttpDiagnostic,
-  resolvePythonHttpDiagnosticPolicy,
-} from "./python-http-diagnostic-policy";
 import {
   getTelemetryConsentStatus,
   writeTelemetryConsent,
@@ -130,69 +122,9 @@ if (portableLayout) {
 if (SentryMain) console.log("Sentry crash reporting enabled (main process)");
 
 const envManager = new EnvManager();
-const backendManager = new BackendManager();
-backendManager.setEnvManager(envManager);
 const nativeSidecarManager = new NativeSidecarManager();
 let nativePythonPluginHostStale = false;
-const pythonHttpDiagnosticPolicy = resolvePythonHttpDiagnosticPolicy({
-  isPackaged: app.isPackaged,
-  hasSwitch: (name) => app.commandLine.hasSwitch(name),
-  environmentValue: process.env[PYTHON_HTTP_DIAGNOSTIC_ENV],
-});
-
-if (pythonHttpDiagnosticPolicy.enabled) {
-  console.warn(
-    `[main] Python HTTP diagnostic mode explicitly enabled via ${pythonHttpDiagnosticPolicy.source}; ` +
-      "the renderer transport owner is FastAPI for this whole session",
-  );
-} else {
-  console.log(
-    `[main] Rust-only renderer transport; use --${PYTHON_HTTP_DIAGNOSTIC_SWITCH} only for explicit diagnostics`,
-  );
-}
-
-async function prepareScientificPlugin(): Promise<void> {
-  // Development has an explicit repo-local venv fallback. Packaged runtimes
-  // are repaired only when the user has configured one; a bundled standalone
-  // backend remains usable without creating a Python environment first.
-  if (process.env.VITE_DEV_SERVER_URL === undefined) {
-    if (!envManager.isReady()) {
-      throw new Error(
-        "Python library/plugin host is not configured; the Rust product backend remains active",
-      );
-    }
-    await envManager.ensureBackendPackages();
-  }
-}
-
-const scientificPlugin = new ScientificPluginLifecycle(
-  backendManager,
-  prepareScientificPlugin,
-  () => requirePythonHttpDiagnostic(pythonHttpDiagnosticPolicy),
-);
-
-const ACTIVE_BACKEND_STATUSES = new Set<BackendStatus>([
-  "starting",
-  "running",
-  "restarting",
-]);
-
-async function restartBackendAfterTelemetryChange(): Promise<boolean> {
-  if (!pythonHttpDiagnosticPolicy.enabled) return false;
-  const status = backendManager.getInfo().status;
-  if (!ACTIVE_BACKEND_STATUSES.has(status)) return false;
-
-  try {
-    await scientificPlugin.restart(true);
-    return true;
-  } catch (error) {
-    console.error(
-      "Failed to restart backend after telemetry consent change:",
-      error,
-    );
-    return false;
-  }
-}
+console.log("Rust-only renderer transport; Python is restricted to bounded stdio plugins");
 
 function nativeSidecarStartOptions() {
   const configuredRuntime = envManager.getConfiguredRuntimeMode();
@@ -253,9 +185,6 @@ function getNativeSidecarInfo() {
 async function applyPythonRuntimeChange<T extends { success: boolean }>(
   change: () => Promise<T>,
 ): Promise<T> {
-  // Interpreter changes stop only the optional scientific process. The Rust
-  // control plane remains available throughout the operation.
-  await scientificPlugin.stop();
   const result = await change();
   if (result.success) {
     // The running sidecar was launched with the previous plugin-host path.
@@ -263,7 +192,6 @@ async function applyPythonRuntimeChange<T extends { success: boolean }>(
     // route selection happens before (not after) choosing the compatibility
     // plugin. Never restart the Rust control plane to rebind Python.
     nativePythonPluginHostStale = true;
-    scientificPlugin.clearFailure();
   }
   return result;
 }
@@ -402,8 +330,6 @@ async function createWindow() {
 // to die), we quit so it can proceed with the file copy and relaunch.
 ipcMain.handle("app:quitForUpdate", () => {
   console.log("Quitting for update — updater script will relaunch the app");
-  // Tell backend manager to skip tree-kill so the updater script survives
-  backendManager.setQuittingForUpdate();
   // Small delay so the IPC response reaches the renderer before we exit
   setTimeout(() => app.quit(), 500);
   // Hard deadline: if the normal quit flow gets stuck (before-quit handler,
@@ -554,39 +480,13 @@ ipcMain.handle("telemetry:getConsent", () => {
   return getTelemetryConsentStatus(app);
 });
 
-ipcMain.handle("telemetry:setConsent", async (_event, enabled: boolean) => {
-  const previousStatus = getTelemetryConsentStatus(app);
+ipcMain.handle("telemetry:setConsent", (_event, enabled: boolean) => {
   const status: Exclude<TelemetryConsentStatus, "unset"> = enabled
     ? "accepted"
     : "declined";
   const record = writeTelemetryConsent(app, status);
   applyTelemetryConsent(status);
-  const shouldRestartBackend =
-    previousStatus !== status &&
-    (previousStatus === "accepted" || status === "accepted");
-  const backendRestarted = shouldRestartBackend
-    ? await restartBackendAfterTelemetryChange()
-    : false;
-  return { ...record, backendRestarted };
-});
-
-// IPC Handlers for backend management
-ipcMain.handle("backend:getPort", async () => {
-  requirePythonHttpDiagnostic(pythonHttpDiagnosticPolicy);
-  return scientificPlugin.ensureRunning();
-});
-
-ipcMain.handle("backend:getUrl", async () => {
-  requirePythonHttpDiagnostic(pythonHttpDiagnosticPolicy);
-  return scientificPlugin.getUrl();
-});
-
-ipcMain.handle("backend:getInfo", () => {
-  return {
-    ...backendManager.getInfo(),
-    httpMode: pythonHttpDiagnosticPolicy.mode,
-    activationSource: pythonHttpDiagnosticPolicy.source,
-  };
+  return { ...record, backendRestarted: false };
 });
 
 ipcMain.handle("sidecar:getInfo", () => {
@@ -594,17 +494,13 @@ ipcMain.handle("sidecar:getInfo", () => {
 });
 
 ipcMain.handle("sidecar:preselectRendererTransport", (_event, request: unknown) =>
-  preselectRendererTransport(request, getNativeSidecarInfo, fetch, {
-    pythonHttpDiagnosticEnabled: pythonHttpDiagnosticPolicy.enabled,
-  }),
+  preselectRendererTransport(request, getNativeSidecarInfo, fetch),
 );
 
 ipcMain.handle(
   "sidecar:preselectWorkspaceRunDetail",
   (_event, workspaceId: string) =>
-    preselectWorkspaceRunDetail(workspaceId, getNativeSidecarInfo, fetch, {
-      pythonHttpDiagnosticEnabled: pythonHttpDiagnosticPolicy.enabled,
-    }),
+    preselectWorkspaceRunDetail(workspaceId, getNativeSidecarInfo, fetch),
 );
 
 ipcMain.handle("control:getInfo", () => {
@@ -616,21 +512,12 @@ ipcMain.handle("control:getInfo", () => {
   };
 });
 
-ipcMain.handle("scientific:getInfo", () => ({
-  ...scientificPlugin.getInfo(),
-  httpMode: pythonHttpDiagnosticPolicy.mode,
-  activationSource: pythonHttpDiagnosticPolicy.source,
-}));
-ipcMain.handle("scientific:getUrl", () => {
-  requirePythonHttpDiagnostic(pythonHttpDiagnosticPolicy);
-  return scientificPlugin.getUrl();
-});
-
-async function restartScientificPlugin(options?: { skipEnsure?: boolean }) {
+async function restartNativeBackend() {
   try {
-    requirePythonHttpDiagnostic(pythonHttpDiagnosticPolicy);
-    const port = await scientificPlugin.restart(!!options?.skipEnsure);
-    return { success: true, port };
+    await nativeSidecarManager.stop();
+    await startNativeSidecar();
+    const info = getNativeSidecarInfo();
+    return { success: true, port: info.port ?? undefined };
   } catch (error) {
     return {
       success: false,
@@ -639,65 +526,8 @@ async function restartScientificPlugin(options?: { skipEnsure?: boolean }) {
   }
 }
 
-ipcMain.handle("backend:restart", (_event, options) =>
-  restartScientificPlugin(options));
-ipcMain.handle("scientific:restart", (_event, options) =>
-  restartScientificPlugin(options));
-
-async function getScientificReadiness() {
-  const plugin = scientificPlugin.getInfo();
-  if (!plugin.ready || !plugin.url) {
-    return {
-      scientific_status: plugin.status,
-      scientific_requested: plugin.requested,
-      python_http_mode: pythonHttpDiagnosticPolicy.mode,
-      core_ready: false,
-      ml_ready: false,
-      ml_loading:
-        plugin.status === "starting" || plugin.status === "restarting",
-      ml_error: plugin.error ?? null,
-      workspace_ready: false,
-    };
-  }
-  try {
-    const response = await fetch(
-      `${plugin.url}/api/system/readiness`,
-      { signal: AbortSignal.timeout(3000) },
-    );
-    if (response.ok) {
-      return {
-        ...(await response.json() as Record<string, unknown>),
-        scientific_status: plugin.status,
-        scientific_requested: plugin.requested,
-        python_http_mode: pythonHttpDiagnosticPolicy.mode,
-      };
-    }
-    return {
-      scientific_status: plugin.status,
-      scientific_requested: plugin.requested,
-      python_http_mode: pythonHttpDiagnosticPolicy.mode,
-      core_ready: false,
-      ml_ready: false,
-      ml_loading: false,
-      ml_error: `Scientific readiness probe failed (${response.status})`,
-      workspace_ready: false,
-    };
-  } catch (error) {
-    return {
-      scientific_status: plugin.status,
-      scientific_requested: plugin.requested,
-      python_http_mode: pythonHttpDiagnosticPolicy.mode,
-      core_ready: false,
-      ml_ready: false,
-      ml_loading: false,
-      ml_error: error instanceof Error ? error.message : String(error),
-      workspace_ready: false,
-    };
-  }
-}
-
-ipcMain.handle("backend:getMlStatus", getScientificReadiness);
-ipcMain.handle("scientific:getReadiness", getScientificReadiness);
+ipcMain.handle("backend:restart", (_event, _options) =>
+  restartNativeBackend());
 
 // IPC Handlers for Python environment management
 ipcMain.handle("env:getStatus", () => {
@@ -785,7 +615,6 @@ ipcMain.handle("env:isPortable", () => {
 
 ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
   try {
-    await scientificPlugin.stop();
     await envManager.setup((percent, step, detail) => {
       // Broadcast progress to all renderer windows
       const windows = BrowserWindow.getAllWindows();
@@ -794,12 +623,10 @@ ipcMain.handle("env:startSetup", async (_, targetDir?: string) => {
       }
     }, targetDir);
     nativePythonPluginHostStale = true;
-    scientificPlugin.clearFailure();
 
-    // Runtime setup configures the bounded CPython library/plugin host used by
-    // the Rust sidecar. It does not enable or start the diagnostic HTTP server.
+    // Runtime setup configures only the bounded CPython library/plugin host.
     console.log(
-      "Python library/plugin host ready; Python HTTP diagnostic remains policy-gated",
+      "Python library/plugin host ready; restart the Rust sidecar to bind it",
     );
 
     return { success: true };
@@ -832,11 +659,9 @@ app.whenReady().then(async () => {
   envManager.validateConfiguredState();
 
   // Packaged products always start the Rust control plane. The default session
-  // refuses every unmigrated renderer route and cannot acquire Uvicorn. The
+  // refuses every unmigrated renderer route. The
   // bounded CPython stdio host remains an optional sidecar dependency.
-  console.log(
-    `Creating native session (renderer owner: ${pythonHttpDiagnosticPolicy.mode})`,
-  );
+  console.log("Creating native session (renderer owner: Rust sidecar)");
   await startNativeSession({
     startControlPlane: startNativeSidecar,
     createWindow,
@@ -871,12 +696,7 @@ app.on("before-quit", (event) => {
   if (isQuitting) return; // Re-entry after stop() completes — let quit proceed
   isQuitting = true;
   event.preventDefault();
-  // Await backend stop before allowing quit — prevents Electron exiting
-  // before taskkill runs. stop() has a 2s force-kill timeout as safety net.
-  Promise.allSettled([
-    scientificPlugin.stop(),
-    nativeSidecarManager.stop(),
-  ]).finally(() => {
+  Promise.allSettled([nativeSidecarManager.stop()]).finally(() => {
     app.quit(); // Re-enters before-quit with isQuitting=true, then proceeds
   });
   // Hard deadline: if stop() never resolves (stuck process, missing exit event),

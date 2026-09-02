@@ -38,15 +38,12 @@ fn assert_renderer_rust_only_contract(renderer: &Value) {
         renderer["selection"]["implicit_python_http_acquisition"],
         "forbidden"
     );
-    assert_eq!(renderer["python_http_diagnostic"]["default"], false);
+    assert_eq!(renderer["python_http"]["packaged_entrypoint"], "absent");
     assert_eq!(
-        renderer["python_http_diagnostic"]["activation"],
-        "explicit_process_wide_only"
-    );
-    assert_eq!(
-        renderer["python_http_diagnostic"]["per_route_fallback"],
+        renderer["python_http"]["command_line_activation"],
         "forbidden"
     );
+    assert_eq!(renderer["python_http"]["per_route_fallback"], "forbidden");
 }
 
 #[test]

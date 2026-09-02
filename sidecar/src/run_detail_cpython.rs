@@ -8,13 +8,14 @@
 use std::{
     collections::BTreeSet,
     error::Error,
-    fmt,
+    fmt, fs,
     io::{Read, Write},
     path::Path,
     process::{ChildStderr, ChildStdout, Command, Stdio},
     time::{Duration, Instant},
 };
 
+use rusqlite::{Connection, DatabaseName};
 use serde_json::{json, Value};
 
 pub const RUN_DETAIL_OWNER_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -53,6 +54,7 @@ pub enum RunDetailOwnerBridgeFailure {
     StdoutTooLarge,
     StderrTooLarge,
     MalformedResponse,
+    SnapshotFailed,
 }
 
 impl RunDetailOwnerBridgeFailure {
@@ -68,6 +70,7 @@ impl RunDetailOwnerBridgeFailure {
             Self::StdoutTooLarge => "python_plugin_stdout_too_large",
             Self::StderrTooLarge => "python_plugin_stderr_too_large",
             Self::MalformedResponse => "python_plugin_malformed_response",
+            Self::SnapshotFailed => "authenticated_store_snapshot_failed",
         }
     }
 }
@@ -171,6 +174,37 @@ pub fn materialize_run_detail_owner(
     }
     validate_owner_envelope(&value)?;
     Ok(Some(value))
+}
+
+/// Materialize from a private snapshot serialized by the already authenticated
+/// `SQLite` connection. The Python owner never reopens the mutable linked path.
+///
+/// # Errors
+///
+/// Returns a closed bridge failure when serialization, private snapshot
+/// creation, or the bounded owner call fails.
+pub fn materialize_run_detail_owner_from_connection(
+    python_plugin_host: &Path,
+    connection: &Connection,
+    run_id: &str,
+) -> Result<Option<Value>, RunDetailOwnerBridgeFailure> {
+    let bytes = connection
+        .serialize(DatabaseName::Main)
+        .map_err(|_| RunDetailOwnerBridgeFailure::SnapshotFailed)?;
+    let snapshot = tempfile::Builder::new()
+        .prefix("nirs4all-studio-authenticated-store-")
+        .tempdir()
+        .map_err(|_| RunDetailOwnerBridgeFailure::SnapshotFailed)?;
+    let store_path = snapshot.path().join("store.sqlite");
+    let bytes: &[u8] = bytes.as_ref();
+    fs::write(&store_path, bytes).map_err(|_| RunDetailOwnerBridgeFailure::SnapshotFailed)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&store_path, fs::Permissions::from_mode(0o400))
+            .map_err(|_| RunDetailOwnerBridgeFailure::SnapshotFailed)?;
+    }
+    materialize_run_detail_owner(python_plugin_host, snapshot.path(), run_id)
 }
 
 fn validate_owner_envelope(value: &Value) -> Result<(), RunDetailOwnerBridgeFailure> {

@@ -56,10 +56,12 @@ use legacy_conversion::{
     LegacyConversionProcessOutput, LegacyConversionRequest, LegacyConversionRuntime,
     LEGACY_CONVERSION_ROUTE, LEGACY_TRANSITION_STATUS_ROUTE,
 };
-use results_summary::read_results_summary;
+use results_summary::{read_results_summary, read_results_summary_from_connection};
 use run_detail::compose_store_run_detail;
-use run_detail_cpython::{materialize_run_detail_owner, RunDetailOwnerBridgeFailure};
-use run_detail_preselection::preselect_run_detail;
+use run_detail_cpython::{
+    materialize_run_detail_owner, materialize_run_detail_owner_from_connection,
+    RunDetailOwnerBridgeFailure,
+};
 use scientific_submission::{
     validate_scientific_submission, ScientificSubmissionValidationError,
     SCIENTIFIC_SUBMISSION_ROUTE,
@@ -70,8 +72,10 @@ use websocket_transport::{
     handle_websocket_connection, LegacyWebSocketEndpoint, WebSocketConnectionManager,
 };
 use workspace_store::{
-    preflight_run_detail_projection, read_pipeline_summaries, read_run_detail_projection,
-    read_run_summaries, WorkspaceStorePipelineSummary, WorkspaceStoreReadError,
+    preflight_run_detail_projection, preflight_run_detail_projection_from_connection,
+    read_pipeline_summaries, read_pipeline_summaries_from_connection, read_run_detail_projection,
+    read_run_detail_projection_from_connection, read_run_summaries,
+    read_run_summaries_from_connection, WorkspaceStorePipelineSummary, WorkspaceStoreReadError,
     WorkspaceStoreRunSummary, DEFAULT_PIPELINE_SUMMARIES_LIMIT, MAX_RUN_SUMMARIES,
 };
 
@@ -917,9 +921,9 @@ fn archive_v2_prediction_response(state: &SidecarState, body: &[u8]) -> HttpResp
         Ok(request) => request,
         Err(error) => return archive_v2_prediction_error_response(&error),
     };
-    let Ok(Some(workspace_path)) = state
+    let Ok(Some(workspace)) = state
         .app_settings
-        .linked_workspace_path(&request.workspace_id)
+        .linked_workspace_access(&request.workspace_id)
     else {
         return archive_v2_prediction_error_response(
             &ArchiveV2PredictionError::WorkspaceUnavailable,
@@ -927,7 +931,7 @@ fn archive_v2_prediction_response(state: &SidecarState, body: &[u8]) -> HttpResp
     };
     match state
         .archive_v2_prediction
-        .execute(request, &workspace_path)
+        .execute(request, workspace.path())
     {
         Ok(response) => HttpResponse::json(200, response),
         Err(error) => archive_v2_prediction_error_response(&error),
@@ -1654,14 +1658,18 @@ fn route_workspace_run_summaries(state: &SidecarState, method: &str, path: &str)
     else {
         return linked_workspace_route_not_found(path);
     };
-    let workspace_path = match state.app_settings.linked_workspace_path(workspace_id) {
-        Ok(Some(workspace_path)) => workspace_path,
+    let workspace = match state.app_settings.linked_workspace_access(workspace_id) {
+        Ok(Some(workspace)) => workspace,
         Ok(None) => {
             return HttpResponse::json(404, json!({"detail": "Workspace not found"}).to_string());
         }
         Err(error) => return app_settings_storage_error("resolve linked workspace", &error),
     };
-    match read_run_summaries(&workspace_path, MAX_RUN_SUMMARIES, 0) {
+    let result = workspace.store().map_or_else(
+        || read_run_summaries(workspace.path(), MAX_RUN_SUMMARIES, 0),
+        |store| read_run_summaries_from_connection(store, MAX_RUN_SUMMARIES, 0),
+    );
+    match result {
         Ok(runs) => {
             let runs = runs
                 .iter()
@@ -1688,8 +1696,8 @@ fn route_workspace_run_detail_preselection(
     let Some(workspace_id) = workspace_run_detail_preselection_workspace(path) else {
         return linked_workspace_route_not_found(path);
     };
-    let workspace_path = match state.app_settings.linked_workspace_path(&workspace_id) {
-        Ok(Some(workspace_path)) => workspace_path,
+    let workspace = match state.app_settings.linked_workspace_access(&workspace_id) {
+        Ok(Some(workspace)) => workspace,
         Ok(None) => {
             return HttpResponse::json(
                 404,
@@ -1707,7 +1715,16 @@ fn route_workspace_run_detail_preselection(
         }
         Err(error) => return app_settings_storage_error("preselect run detail", &error),
     };
-    let decision = preselect_run_detail(&workspace_path, state.python_plugin_host.as_deref());
+    let projection = workspace.store().map_or_else(
+        || preflight_run_detail_projection(workspace.path()),
+        preflight_run_detail_projection_from_connection,
+    );
+    let decision = match projection {
+        Ok(()) => run_detail_preselection::preselect_verified_run_detail_owner(
+            state.python_plugin_host.as_deref(),
+        ),
+        Err(error) => run_detail_preselection::reject_store_preflight(&error),
+    };
     HttpResponse::json(
         decision.status,
         decision.response(&workspace_id).to_string(),
@@ -1721,15 +1738,19 @@ fn route_workspace_run_detail(state: &SidecarState, method: &str, path: &str) ->
     let Some((workspace_id, run_id)) = workspace_run_detail_ids(path) else {
         return linked_workspace_route_not_found(path);
     };
-    let workspace_path = match state.app_settings.linked_workspace_path(&workspace_id) {
-        Ok(Some(workspace_path)) => workspace_path,
+    let workspace = match state.app_settings.linked_workspace_access(&workspace_id) {
+        Ok(Some(workspace)) => workspace,
         Ok(None) => {
             return HttpResponse::json(404, json!({"detail": "Workspace not found"}).to_string());
         }
         Err(error) => return app_settings_storage_error("resolve linked workspace", &error),
     };
 
-    if let Err(error) = preflight_run_detail_projection(&workspace_path) {
+    let projection = workspace.store().map_or_else(
+        || preflight_run_detail_projection(workspace.path()),
+        preflight_run_detail_projection_from_connection,
+    );
+    if let Err(error) = projection {
         return workspace_store_read_error_response(&error);
     }
 
@@ -1741,17 +1762,20 @@ fn route_workspace_run_detail(state: &SidecarState, method: &str, path: &str) ->
             BTreeMap::new(),
         );
     };
-    let owner_output =
-        match materialize_run_detail_owner(python_plugin_host, &workspace_path, &run_id) {
-            Ok(Some(output)) => output,
-            Ok(None) => {
-                return HttpResponse::json(
-                    404,
-                    json!({"detail": format!("Run '{run_id}' not found")}).to_string(),
-                );
-            }
-            Err(error) => return run_detail_owner_bridge_error_response(error),
-        };
+    let owner_result = workspace.store().map_or_else(
+        || materialize_run_detail_owner(python_plugin_host, workspace.path(), &run_id),
+        |store| materialize_run_detail_owner_from_connection(python_plugin_host, store, &run_id),
+    );
+    let owner_output = match owner_result {
+        Ok(Some(output)) => output,
+        Ok(None) => {
+            return HttpResponse::json(
+                404,
+                json!({"detail": format!("Run '{run_id}' not found")}).to_string(),
+            );
+        }
+        Err(error) => return run_detail_owner_bridge_error_response(error),
+    };
     let linked_datasets = match state.app_settings.dataset_links() {
         Ok(datasets) => datasets,
         Err(error) => return app_settings_storage_error("read linked datasets", &error),
@@ -1815,14 +1839,18 @@ fn route_workspace_pipeline_summaries(
     else {
         return linked_workspace_route_not_found(path);
     };
-    let workspace_path = match state.app_settings.linked_workspace_path(workspace_id) {
-        Ok(Some(workspace_path)) => workspace_path,
+    let workspace = match state.app_settings.linked_workspace_access(workspace_id) {
+        Ok(Some(workspace)) => workspace,
         Ok(None) => {
             return HttpResponse::json(404, json!({"detail": "Workspace not found"}).to_string());
         }
         Err(error) => return app_settings_storage_error("resolve linked workspace", &error),
     };
-    match read_pipeline_summaries(&workspace_path, DEFAULT_PIPELINE_SUMMARIES_LIMIT, 0) {
+    let result = workspace.store().map_or_else(
+        || read_pipeline_summaries(workspace.path(), DEFAULT_PIPELINE_SUMMARIES_LIMIT, 0),
+        |store| read_pipeline_summaries_from_connection(store, DEFAULT_PIPELINE_SUMMARIES_LIMIT, 0),
+    );
+    match result {
         Ok(page) => {
             let results = page
                 .results
@@ -1858,8 +1886,8 @@ fn route_workspace_results_summary(state: &SidecarState, method: &str, path: &st
     else {
         return linked_workspace_route_not_found(path);
     };
-    let workspace_path = match state.app_settings.linked_workspace_path(workspace_id) {
-        Ok(Some(workspace_path)) => workspace_path,
+    let workspace = match state.app_settings.linked_workspace_access(workspace_id) {
+        Ok(Some(workspace)) => workspace,
         Ok(None) => {
             return HttpResponse::json(404, json!({"detail": "Workspace not found"}).to_string());
         }
@@ -1869,7 +1897,11 @@ fn route_workspace_results_summary(state: &SidecarState, method: &str, path: &st
         Ok(linked_datasets) => linked_datasets,
         Err(error) => return app_settings_storage_error("read dataset links", &error),
     };
-    match read_results_summary(&workspace_path, workspace_id, &linked_datasets) {
+    let result = workspace.store().map_or_else(
+        || read_results_summary(workspace.path(), workspace_id, &linked_datasets),
+        |store| read_results_summary_from_connection(store, workspace_id, &linked_datasets),
+    );
+    match result {
         Ok(payload) => HttpResponse::json(200, payload.to_string()),
         Err(error) => workspace_store_read_error_response(&error),
     }
@@ -1891,24 +1923,15 @@ fn route_durable_execution_job_record(
             BTreeMap::from([("path".into(), path.into())]),
         );
     };
-    let active = match state.app_settings.active_linked_workspace_response() {
-        Ok(Some(active)) => active,
+    let workspace = match state.app_settings.active_linked_workspace_access() {
+        Ok(Some(workspace)) => workspace,
         Ok(None) => return missing_durable_execution_record(route.route, &route.id),
         Err(error) => return app_settings_storage_error("resolve active linked workspace", &error),
     };
-    let Some(workspace_path) = active
-        .get("path")
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(PathBuf::from)
-    else {
-        return app_settings_storage_error(
-            "resolve active linked workspace",
-            "active linked workspace is missing a path",
-        );
-    };
-
-    let run = match read_run_detail_projection(&workspace_path, &route.id) {
+    let run = match workspace.store().map_or_else(
+        || read_run_detail_projection(workspace.path(), &route.id),
+        |store| read_run_detail_projection_from_connection(store, &route.id),
+    ) {
         Ok(run) => run,
         Err(error) => return workspace_store_read_error_response(&error),
     };
@@ -1918,7 +1941,7 @@ fn route_durable_execution_job_record(
             json!({"detail": format!("Run {} not found", route.id)}).to_string(),
         );
     }
-    let record = match read_execution_job_record(&workspace_path, &route.id) {
+    let record = match read_execution_job_record(workspace.path(), &route.id) {
         Ok(record) => record,
         Err(ExecutionJobRecordReadError::Missing) => {
             return missing_durable_execution_record(route.route, &route.id);

@@ -178,6 +178,35 @@ afterEach(() => {
 });
 
 describe("packaged runtime contract", () => {
+  it("has no Python HTTP server entrypoint in the packaged Electron graph", () => {
+    const root = process.cwd();
+    const packagedEntrypoints = [
+      "electron/main.ts",
+      "electron/preload.ts",
+      "electron/renderer-transport-selection.ts",
+      "electron/workspace-route-preselection.ts",
+      "src/api/transport.ts",
+      "src/lib/websocket.ts",
+    ];
+    const forbidden = [
+      /enable-python-http-diagnostic/i,
+      /NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC/,
+      /scientific-plugin/,
+      /from ["']\.\/backend-manager["']/,
+      /from ["']\.\/scientific-plugin-lifecycle["']/,
+      /fastapi/i,
+      /uvicorn/i,
+    ];
+    for (const relative of packagedEntrypoints) {
+      const source = fs.readFileSync(path.join(root, relative), "utf8");
+      for (const pattern of forbidden) {
+        expect(source, `${relative} must exclude ${pattern}`).not.toMatch(pattern);
+      }
+    }
+    expect(
+      fs.existsSync(path.join(root, "electron/python-http-diagnostic-policy.ts")),
+    ).toBe(false);
+  });
   it("selects content-addressed Rust and bundled Python resources", () => {
     const fixture = makeResources();
     expect(

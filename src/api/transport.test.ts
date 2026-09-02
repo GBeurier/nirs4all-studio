@@ -70,10 +70,10 @@ function createElectronApiMock(
     preselectWorkspaceRunDetail: vi.fn().mockResolvedValue({
       schema_id: "nirs4all.studio-run-detail-preselection-decision.v1",
       workspace_id: "workspace-a",
-      target: "scientific-plugin",
-      verified_store_v5: false,
-      store_schema_version: null,
-      reason: "explicit_python_http_diagnostic_mode",
+      target: "native-sidecar",
+      verified_store_v5: true,
+      store_schema_version: 5,
+      reason: "store_v5_owner_materializer_ready",
       fallback_after_native_selection: "none",
       status: 200,
     }),
@@ -159,16 +159,16 @@ function createElectronApiMock(
         kind: request.kind,
         method: request.kind === "http" ? request.method.toUpperCase() : null,
         path: request.path,
-        surface: native ? "test-native" : "python-http-diagnostic",
-        target: native ? "native-sidecar" : "scientific-plugin",
+        surface: native ? "test-native" : "unmigrated",
+        target: native ? "native-sidecar" : "reject",
         base_url: native ? info.url : null,
         renderer_transport: native,
         scientific_execution: false,
         reason: native
           ? "test_native_preflight"
-          : "explicit_python_http_diagnostic_mode",
+          : "route_not_native_qualified_rust_only",
         fallback_after_native_selection: "none",
-        status: 200,
+        status: native ? 200 : 501,
       };
     });
   }
@@ -233,25 +233,21 @@ function mockNativeCandidate(path: string, method: string): boolean {
 function rendererSelection(
   method: string,
   path: string,
-  target: "native-sidecar" | "scientific-plugin" | "reject",
+  target: "native-sidecar" | "reject",
 ) {
   return {
     schema_id: "nirs4all.studio-renderer-transport-selection-decision.v1" as const,
     kind: "http" as const,
     method,
     path,
-    surface: target === "scientific-plugin"
-      ? "python-http-diagnostic"
-      : "test-surface",
+    surface: "test-surface",
     target,
     base_url: target === "native-sidecar" ? "http://127.0.0.1:43123" : null,
     renderer_transport: target === "native-sidecar",
     scientific_execution: false as const,
     reason: target === "reject"
       ? "native_capability_mismatch"
-      : target === "scientific-plugin"
-        ? "explicit_python_http_diagnostic_mode"
-        : "test_selection",
+      : "test_selection",
     fallback_after_native_selection: "none" as const,
     status: target === "reject" ? 503 : 200,
   };
@@ -642,117 +638,6 @@ describe("API client request handling", () => {
     expect(acquire).not.toHaveBeenCalled();
   });
 
-  it("acquires FastAPI only after an explicit diagnostic session decision", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ datasets: [] }));
-    const acquire = vi.fn().mockResolvedValue("http://127.0.0.1:39026");
-    vi.stubGlobal("fetch", fetchMock);
-    window.electronApi = createElectronApiMock({
-      getScientificPluginUrl: acquire,
-      preselectRendererTransport: vi.fn((request: RendererTransportRequest) =>
-        preselectRendererTransport(
-          request,
-          vi.fn(),
-          vi.fn(),
-          { pythonHttpDiagnosticEnabled: true },
-        )),
-    });
-
-    await api.get("/datasets");
-
-    expect(acquire).toHaveBeenCalledOnce();
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:39026/api/datasets",
-      expect.any(Object),
-    );
-  });
-
-  it("refuses an implicit Python target even if IPC returns one", async () => {
-    const fetchMock = vi.fn();
-    const acquire = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    window.electronApi = createElectronApiMock({
-      getScientificPluginUrl: acquire,
-      preselectRendererTransport: vi.fn().mockResolvedValue({
-        ...rendererSelection("GET", "/datasets", "scientific-plugin"),
-        surface: "unmigrated",
-        reason: "route_not_native_qualified",
-      }),
-    });
-
-    await expect(api.get("/datasets")).rejects.toMatchObject({
-      code: "STUDIO_INVALID_PYTHON_HTTP_SELECTION",
-      status: 500,
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(acquire).not.toHaveBeenCalled();
-  });
-
-  it("fails closed when the explicitly selected diagnostic backend cannot start", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    window.electronApi = createElectronApiMock({
-      getScientificPluginUrl: vi.fn().mockRejectedValue(
-        new Error("Python runtime is not configured"),
-      ),
-    });
-
-    await expect(api.get("/config/recommended")).rejects.toEqual({
-      detail: "Python runtime is not configured",
-      status: 0,
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("retries the same explicit diagnostic owner after a transient fetch failure", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockResolvedValueOnce(
-        jsonResponse({
-          schema_version: "1.2",
-          app_version: "0.6.0",
-          nirs4all: "0.9.0",
-          profiles: [],
-          optional: [],
-          fetched_from: "bundled",
-          fetched_at: "2026-04-18T08:00:00",
-        }),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const getScientificPluginUrl = vi
-      .fn()
-      .mockResolvedValueOnce("http://127.0.0.1:39026")
-      .mockResolvedValueOnce("http://127.0.0.1:39027");
-    const getBackendInfo = vi.fn().mockResolvedValue({
-      status: "running",
-      port: 39027,
-      url: "http://127.0.0.1:39027",
-      restartCount: 3,
-    });
-    window.electronApi = createElectronApiMock({
-      getScientificPluginUrl,
-      getBackendInfo,
-    });
-
-    const result = await getRecommendedConfig();
-
-    expect(result.fetched_from).toBe("bundled");
-    expect(getScientificPluginUrl).toHaveBeenCalledTimes(2);
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      "http://127.0.0.1:39026/api/config/recommended",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "http://127.0.0.1:39027/api/config/recommended",
-      expect.any(Object),
-    );
-    expect(getBackendInfo).toHaveBeenCalledTimes(1);
-  });
-
   it("adds include_latest=false only when the caller disables latest-version lookup", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
@@ -1004,31 +889,6 @@ describe("API client request handling", () => {
     );
   });
 
-  it("keeps Settings on the compatibility backend until the plugin host is configured", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(jsonResponse({ capabilities: { nirs4all: true } }));
-    vi.stubGlobal("fetch", fetchMock);
-    window.electronApi = createElectronApiMock({
-      getScientificPluginUrl: vi.fn().mockResolvedValue("http://127.0.0.1:39026"),
-      getNativeSidecarInfo: vi.fn().mockResolvedValue({
-        status: "running",
-        host: "127.0.0.1",
-        port: 43123,
-        protocolVersion: "studio-sidecar-r1",
-        url: "http://127.0.0.1:43123",
-        pythonPluginHostConfigured: false,
-      }),
-    });
-
-    await api.get("/system/capabilities");
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:39026/api/system/capabilities",
-      expect.any(Object),
-    );
-  });
-
   it("sends native app settings to the sidecar without requiring a Python plugin host", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
@@ -1238,7 +1098,6 @@ describe("API client request handling", () => {
 
     await api.post("/workspaces/workspace-a/activate");
     await api.delete("/workspaces/workspace-a");
-    await api.post("/workspaces/workspace-a/scan");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -1248,11 +1107,6 @@ describe("API client request handling", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       "http://127.0.0.1:43123/api/workspaces/workspace-a",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/scan",
       expect.any(Object),
     );
   });
@@ -1277,16 +1131,6 @@ describe("API client request handling", () => {
 
     await api.get("/workspaces/workspace-a/runs");
     await api.get("/workspaces/workspace-a/runs?source=unified");
-    await api.get("/workspaces/workspace-a/runs/enriched");
-    await api.get("/workspaces/workspace-a/runs/run-a");
-    await api.get("/workspaces/workspace-a/runs?refresh=true");
-    await api.get("/workspaces/workspace-a/runs?refresh=false&source=parquet");
-    await api.post("/workspaces/workspace-a/runs");
-    await api.get("/workspaces/workspace-a/runs?unexpected=true");
-    await api.get("/workspaces/workspace-a/runs?source=unified&source=parquet");
-    await api.get("/workspaces/workspace-a/runs/");
-    await api.post("/workspaces/workspace-a/runs/run-a/rerun");
-    await api.delete("/workspaces/workspace-a/runs/run-a");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -1297,56 +1141,6 @@ describe("API client request handling", () => {
       2,
       "http://127.0.0.1:43123/api/workspaces/workspace-a/runs?source=unified",
       expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/enriched",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      4,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/run-a",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      5,
-      "http://127.0.0.1:43123/api/workspaces/workspace-a/runs?refresh=true",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      6,
-      "http://127.0.0.1:43123/api/workspaces/workspace-a/runs?refresh=false&source=parquet",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      7,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      8,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs?unexpected=true",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      9,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs?source=unified&source=parquet",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      10,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      11,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/run-a/rerun",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      12,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/run-a",
-      expect.objectContaining({ method: "DELETE" }),
     );
   });
 
@@ -1381,50 +1175,6 @@ describe("API client request handling", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:43123/api/workspaces/workspace-a/runs?source=unified",
-      expect.any(Object),
-    );
-  });
-
-  it("selects explicit diagnostic run-detail ownership before its target HTTP request", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({ detail: "Run 'missing-run' not found" }, 404),
-    );
-    const getNativeSidecarInfo = vi.fn().mockResolvedValue({
-      status: "running",
-      host: "127.0.0.1",
-      port: 43123,
-      protocolVersion: "studio-sidecar-r1",
-      url: "http://127.0.0.1:43123",
-      pythonPluginHostConfigured: false,
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const preselectWorkspaceRunDetail = vi.fn().mockResolvedValue({
-      schema_id: "nirs4all.studio-run-detail-preselection-decision.v1",
-      workspace_id: "workspace-a",
-      target: "scientific-plugin",
-      verified_store_v5: false,
-      store_schema_version: null,
-      reason: "explicit_python_http_diagnostic_mode",
-      fallback_after_native_selection: "none",
-      status: 200,
-    });
-    window.electronApi = createElectronApiMock({
-      getNativeSidecarInfo,
-      preselectWorkspaceRunDetail,
-    });
-
-    await expect(
-      api.get("/workspaces/workspace-a/runs/missing-run"),
-    ).rejects.toMatchObject({
-      detail: "Run 'missing-run' not found",
-      status: 404,
-    });
-    expect(preselectWorkspaceRunDetail).toHaveBeenCalledOnce();
-    expect(preselectWorkspaceRunDetail).toHaveBeenCalledWith("workspace-a");
-    expect(getNativeSidecarInfo).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/runs/missing-run",
       expect.any(Object),
     );
   });
@@ -1521,27 +1271,11 @@ describe("API client request handling", () => {
     });
 
     await api.get("/workspaces/workspace-a/results");
-    await api.get("/workspaces/workspace-a/results?run_id=run-a");
-    await api.get("/workspaces/workspace-a/results?dataset=corn");
-    await api.get("/workspaces/workspace-a/results?template_id=template-a");
-    await api.get("/workspaces/workspace-a/results?limit=10&offset=10");
-    await api.get("/workspaces/workspace-a/results/");
-    await api.post("/workspaces/workspace-a/results");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "http://127.0.0.1:43123/api/workspaces/workspace-a/results",
       expect.any(Object),
-    );
-    for (let index = 2; index <= 7; index += 1) {
-      expect(fetchMock.mock.calls[index - 1]?.[0]).toMatch(
-        /^http:\/\/127\.0\.0\.1:8000\/api\/workspaces\/workspace-a\/results/,
-      );
-    }
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      7,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/results",
-      expect.objectContaining({ method: "POST" }),
     );
   });
 
@@ -1564,41 +1298,11 @@ describe("API client request handling", () => {
     });
 
     await api.get("/workspaces/workspace-a/results/summary");
-    await api.get("/workspaces/workspace-a/results/summary?n=10");
-    await api.get("/workspaces/workspace-a/results/summary/");
-    await api.get("/workspaces/workspace-a/results/dataset-scores");
-    await api.get("/workspaces/workspace-a/results/datasets/corn/chains");
-    await api.post("/workspaces/workspace-a/results/summary");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "http://127.0.0.1:43123/api/workspaces/workspace-a/results/summary",
       expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/results/summary?n=10",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/results/summary/",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      4,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/results/dataset-scores",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      5,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/results/datasets/corn/chains",
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      6,
-      "http://127.0.0.1:8000/api/workspaces/workspace-a/results/summary",
-      expect.objectContaining({ method: "POST" }),
     );
   });
 
