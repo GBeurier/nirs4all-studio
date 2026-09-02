@@ -26,6 +26,11 @@ requireText(dockerfile, "FROM ${NODE_IMAGE} AS frontend", "frontend build stage"
 requireText(dockerfile, "FROM ${RUST_IMAGE} AS sidecar", "Rust sidecar build stage");
 requireText(dockerfile, "FROM ${NODE_IMAGE} AS python-plugin-runtime", "bounded CPython plugin build stage");
 requireText(dockerfile, "FROM ${NGINX_IMAGE} AS runtime", "minimal web runtime stage");
+requireText(
+  dockerfile,
+  "COPY vite.config.ts postcss.config.js tailwind.config.ts tsconfig*.json index.html ./",
+  "frontend CSS build configuration",
+);
 requireText(dockerfile, "cargo build --locked --release", "locked Rust build");
 requireText(dockerfile, "COPY --from=methods-runtime /libn4m.so.2.3.0", "native Methods named context");
 requireText(dockerfile, "NIRS4ALL_METHODS_SHA256", "native Methods content identity");
@@ -39,7 +44,10 @@ requireText(dockerfile, "NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED=true", "bundled CPy
 requireText(dockerfile, "NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1", "stdio scientific executor selection");
 requireText(dockerfile, "! command -v python", "no ambient Python command");
 requireText(dockerfile, "! command -v python3", "no ambient Python 3 command");
+requireText(dockerfile, "find /opt/nirs4all/backend/python-runtime/python -type f", "complete CPython ELF dependency scan");
+requireText(dockerfile, "ELF dependency missing", "fail-closed CPython ELF dependency result");
 requireText(dockerfile, "http://127.0.0.1:8000/api/health", "public native healthcheck");
+requireText(dockerfile, "--start-period=180s", "bounded CPython startup health grace");
 requireText(dockerfile, 'ENTRYPOINT ["/usr/bin/tini"', "process-group supervisor");
 
 forbid(dockerfile, /^FROM\s+python(?:\s|:)/im, "Python runtime base");
@@ -61,6 +69,8 @@ requireText(entrypoint, "readonly sidecar_host=127.0.0.1", "fixed loopback bind"
 requireText(entrypoint, "readonly sidecar_port=8001", "private sidecar port");
 requireText(entrypoint, '/opt/nirs4all/backend/native/studio-sidecar --host "${sidecar_host}" --port "${sidecar_port}"', "sidecar launch");
 requireText(entrypoint, "/sidecar/v1/readiness", "sidecar startup readiness gate");
+requireText(entrypoint, "readonly readiness_attempt_limit=600", "attested runtime startup allowance");
+requireText(entrypoint, "sleep 0.25", "bounded readiness polling interval");
 requireText(entrypoint, "exec nginx -g 'daemon off;'", "foreground static server");
 forbid(entrypoint, /python|uvicorn|main\.py|scheduler|fallback/im, "non-sidecar backend path");
 
@@ -68,9 +78,18 @@ for (const excluded of ["api/", "websocket/", "main.py", "requirements*.txt", "b
   requireText(dockerignore, excluded, "Python backend context exclusion");
 }
 requireText(dockerignore, "!recommended-config.json", "plugin build configuration inclusion");
+forbid(dockerignore, /^(?:postcss\.config\.js|tailwind\.config\.ts)\/?$/m, "frontend CSS build configuration exclusion");
+
+requireText(ciWorkflow, "scripts/smoke-docker-native-runtime.sh", "CI live Docker smoke");
+const dockerSmoke = read("scripts/smoke-docker-native-runtime.sh");
+requireText(dockerSmoke, "seq 1 360", "bounded live startup allowance");
+requireText(dockerSmoke, "pythonCapabilities.nirs4all !== true", "nirs4all capability import assertion");
+requireText(dockerSmoke, "scientific_execution !== false", "fresh unconfigured scientific capability assertion");
+requireText(dockerSmoke, "schema_version\":2", "minimal V2 dataset catalogue seed");
+requireText(dockerSmoke, "scientific_execution !== true", "configured scientific capability assertion");
+requireText(dockerSmoke, "implicit_python_http_fallback !== false", "transition fallback refusal assertion");
 
 requireText(ciWorkflow, "npm run test:docker-runtime-contract", "CI static Docker contract gate");
-requireText(ciWorkflow, "scripts/smoke-docker-native-runtime.sh", "CI live Docker smoke");
 requireText(ciWorkflow, "--build-context methods-runtime=", "CI Methods build context");
 requireText(releaseWorkflow, "STUDIO_VERSION=${{ needs.prepare.outputs.version }}", "release image version");
 requireText(releaseWorkflow, "STUDIO_REVISION=${{ github.sha }}", "release image revision");
