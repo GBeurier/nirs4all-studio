@@ -504,6 +504,45 @@ describe("installer release post-package contract", () => {
     })).rejects.toThrow("installer artifact identity mismatch");
   });
 
+  it("promotes and rehashes allowlisted updater metadata", async () => {
+    const root = temporaryRoot();
+    const releaseRoot = path.join(root, "release");
+    const result = await contract.packageAndVerifyInstallerOutputs({
+      releaseRoot,
+      requestedPlatform: "linux",
+      hostPlatform: "linux",
+      runBuilder: async (stagingRoot) => {
+        writeLinuxOutputs(stagingRoot);
+        fs.writeFileSync(path.join(stagingRoot, "latest-linux.yml"), "version: 0.10.3\n");
+      },
+      verifyRuntimeContract: verifier,
+      smokeSidecar: () => undefined,
+    });
+
+    expect(result.producedNames).toContain("latest-linux.yml");
+    expect(fs.readFileSync(path.join(releaseRoot, "latest-linux.yml"), "utf8"))
+      .toBe("version: 0.10.3\n");
+  });
+
+  it("rejects updater metadata mutation during staged smoke", async () => {
+    const root = temporaryRoot();
+    let staging = "";
+    await expect(contract.packageAndVerifyInstallerOutputs({
+      releaseRoot: path.join(root, "release"),
+      requestedPlatform: "linux",
+      hostPlatform: "linux",
+      runBuilder: async (stagingRoot) => {
+        staging = stagingRoot;
+        writeLinuxOutputs(stagingRoot);
+        fs.writeFileSync(path.join(stagingRoot, "latest-linux.yml"), "version: 0.10.3\n");
+      },
+      verifyRuntimeContract: verifier,
+      smokeSidecar: () => {
+        fs.appendFileSync(path.join(staging, "latest-linux.yml"), "tampered: true\n");
+      },
+    })).rejects.toThrow("installer artifact identity mismatch");
+  });
+
   it("rejects installer mutation after final staged verify and before promotion", async () => {
     const root = temporaryRoot();
     let staging = "";
@@ -602,6 +641,17 @@ describe("installer release post-package contract", () => {
         writeLinuxOutputs(stagingRoot);
         writeWindowsOutputs(stagingRoot);
         writeMacOutputs(stagingRoot);
+        fs.writeFileSync(path.join(stagingRoot, "latest-linux.yml"), "linux\n");
+        fs.writeFileSync(path.join(stagingRoot, "latest.yml"), "windows\n");
+        fs.writeFileSync(path.join(stagingRoot, "latest-mac.yml"), "mac\n");
+        fs.writeFileSync(
+          path.join(stagingRoot, "nirs4all Studio Setup 0.10.3.exe.blockmap"),
+          "windows-blockmap",
+        );
+        fs.writeFileSync(
+          path.join(stagingRoot, "nirs4all Studio-0.10.3.dmg.blockmap"),
+          "mac-blockmap",
+        );
         if (process.platform !== "win32") {
           const frameworks = path.join(
             stagingRoot,

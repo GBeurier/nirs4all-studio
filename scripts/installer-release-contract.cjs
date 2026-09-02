@@ -268,7 +268,7 @@ function assertDiscoveredOutput(output) {
     backendRoot,
     `${output.platform} packaged backend`,
   );
-  for (const artifact of output.artifacts) {
+  for (const artifact of output.allArtifacts) {
     const artifactPath = path.join(output.outputRoot, artifact);
     const identity = regularFileIdentity(
       artifactPath,
@@ -290,7 +290,7 @@ function assertDiscoveredOutput(output) {
 
 function validateProducedEntries(stagingRoot, producedNames, outputs) {
   const expected = new Set(
-    outputs.flatMap((output) => [output.unpackedName, ...output.artifacts]),
+    outputs.flatMap((output) => [output.unpackedName, ...output.allArtifacts]),
   );
   for (const name of producedNames) {
     const entryPath = path.join(stagingRoot, name);
@@ -329,6 +329,7 @@ function discoverPlatformOutput(
   let backendRoot;
   let backendSegments;
   let artifacts;
+  let updaterMetadataPattern;
   if (platform === "linux") {
     unpackedName = requireExactlyOne(
       producedEntries.filter((name) => /^linux(?:-[a-z0-9_-]+)?-unpacked$/i.test(name)),
@@ -340,6 +341,7 @@ function discoverPlatformOutput(
     ];
     backendSegments = [unpackedName, "resources", "backend"];
     backendRoot = path.join(stagingRoot, ...backendSegments);
+    updaterMetadataPattern = /^latest-linux\.ya?ml$/i;
   } else if (platform === "win32") {
     unpackedName = requireExactlyOne(
       producedEntries.filter((name) => /^win(?:-[a-z0-9_-]+)?-unpacked$/i.test(name)),
@@ -352,6 +354,7 @@ function discoverPlatformOutput(
     ];
     backendSegments = [unpackedName, "resources", "backend"];
     backendRoot = path.join(stagingRoot, ...backendSegments);
+    updaterMetadataPattern = /^latest\.ya?ml$/i;
   } else if (platform === "darwin") {
     unpackedName = requireExactlyOne(
       producedEntries.filter((name) => /^mac(?:-[a-z0-9_-]+)?$/i.test(name)),
@@ -375,10 +378,18 @@ function discoverPlatformOutput(
       "backend",
     ];
     backendRoot = path.join(stagingRoot, ...backendSegments);
+    updaterMetadataPattern = /^latest-mac\.ya?ml$/i;
   } else {
     throw new Error(`Unsupported installer output platform: ${platform}`);
   }
 
+  const auxiliaryArtifacts = producedEntries.filter((name) =>
+    updaterMetadataPattern.test(name) || (
+      name.toLowerCase().endsWith(".blockmap") &&
+      artifacts.some((artifact) => name === `${artifact}.blockmap`)
+    ),
+  );
+  const allArtifacts = [...artifacts, ...auxiliaryArtifacts];
   const output = {
     platform,
     outputRoot: stagingRoot,
@@ -389,8 +400,10 @@ function discoverPlatformOutput(
       ? path.join(stagingRoot, unpackedName, backendSegments[1])
       : path.join(stagingRoot, unpackedName),
     artifacts,
+    auxiliaryArtifacts,
+    allArtifacts,
     artifactIdentities: expectedArtifactIdentities ?? Object.fromEntries(
-      artifacts.map((artifact) => [
+      allArtifacts.map((artifact) => [
         artifact,
         regularFileIdentity(
           path.join(stagingRoot, artifact),
