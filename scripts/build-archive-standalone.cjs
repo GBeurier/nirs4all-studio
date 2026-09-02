@@ -340,12 +340,13 @@ function ensureBuildInputsExist(config) {
   const runtimeReady = path.join(backendDistPath, "python-runtime", "PLUGIN_RUNTIME_READY.json");
   if (!fs.existsSync(runtimeReady)) {
     throw new Error(
-      "backend-dist/ does not contain a baked standalone runtime. Re-run without --skip-backend or bake the runtime first.",
+      "backend-dist/ does not contain the baked Python plugin-host runtime. Re-run without --skip-backend or bake the runtime first.",
     );
   }
 
   verifyRuntimeContract({
     backendRoot: backendDistPath,
+    artifactBoundaryRoot: backendDistPath,
     platform: config.platform,
     arch: config.arch,
     requireBundledPythonPlugin: true,
@@ -411,6 +412,7 @@ async function buildArchiveStandalone(config) {
     await runCommand(getNodeCommand(), [path.join("scripts", "build-native-sidecar.cjs")]);
     verifyRuntimeContract({
       backendRoot: path.join(projectRoot, "backend-dist"),
+      artifactBoundaryRoot: path.join(projectRoot, "backend-dist"),
       platform: config.platform,
       arch: config.arch,
       requireBundledPythonPlugin: true,

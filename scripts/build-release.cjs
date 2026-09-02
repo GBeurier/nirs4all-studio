@@ -6,15 +6,12 @@
  *   node scripts/build-release.cjs [options]
  *
  * Options:
- *   --flavor cpu|gpu      Build flavor (default: cpu)
- *   --mode installer|standalone  Build mode (default: installer)
- *                         installer: embedded Python + venv (supports runtime pip)
- *                         standalone: PyInstaller frozen executable
- *   --standalone          Shorthand for --mode standalone
+ *   --flavor cpu          Build flavor (only supported release profile)
+ *   --mode installer      Installer mode (standalone uses release:all-in-one)
  *   --clean               Clean all build artifacts before building
- *   --skip-backend        Skip building the Python backend (use existing)
+ *   --skip-backend        Reuse an existing attested plugin-host closure
  *   --skip-frontend       Skip building the frontend (use existing)
- *   --platform            Target platform: win, mac, linux, or all (default: current)
+ *   --platform            Current host only: win, mac, or linux (default: current)
  */
 
 const { spawn, execSync } = require("child_process");
@@ -32,18 +29,27 @@ process.chdir(projectRoot);
 // Parse arguments
 const args = process.argv.slice(2);
 let flavor = "cpu";
-let mode = "installer"; // "installer" (embedded Python + venv) or "standalone" (PyInstaller exe)
+let mode = "installer";
 let clean = false;
 let skipBackend = false;
 let skipFrontend = false;
 let platform = "";
+let argumentError = "";
 
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === "--flavor" && args[i + 1]) {
+  if (args[i] === "--flavor") {
+    if (!args[i + 1] || args[i + 1].startsWith("--")) {
+      argumentError = "--flavor requires a value";
+      break;
+    }
     flavor = args[++i];
   } else if (args[i] === "--clean") {
     clean = true;
-  } else if (args[i] === "--mode" && args[i + 1]) {
+  } else if (args[i] === "--mode") {
+    if (!args[i + 1] || args[i + 1].startsWith("--")) {
+      argumentError = "--mode requires a value";
+      break;
+    }
     mode = args[++i];
   } else if (args[i] === "--standalone") {
     mode = "standalone";
@@ -51,23 +57,54 @@ for (let i = 0; i < args.length; i++) {
     skipBackend = true;
   } else if (args[i] === "--skip-frontend") {
     skipFrontend = true;
-  } else if (args[i] === "--platform" && args[i + 1]) {
+  } else if (args[i] === "--platform") {
+    if (!args[i + 1] || args[i + 1].startsWith("--")) {
+      argumentError = "--platform requires a value";
+      break;
+    }
     platform = args[++i];
+  } else {
+    argumentError = `Unknown argument: ${args[i]}`;
+    break;
   }
 }
 
-// Validate flavor
-if (!["cpu", "cpu-lite", "gpu"].includes(flavor)) {
+if (argumentError) {
+  console.error(`Error: ${argumentError}.`);
+  process.exit(1);
+}
+
+if (flavor !== "cpu") {
   console.error(
-    `Error: Invalid flavor '${flavor}'. Must be 'cpu', 'cpu-lite', or 'gpu'.`,
+    `Error: Release flavor '${flavor}' is not implemented. Use '--flavor cpu'.`,
   );
   process.exit(1);
 }
 
-// Validate mode
-if (!["installer", "standalone"].includes(mode)) {
+if (mode !== "installer") {
   console.error(
-    `Error: Invalid mode '${mode}'. Must be 'installer' or 'standalone'.`,
+    `Error: Release mode '${mode}' is not supported here. Use 'npm run release:all-in-one' for portable archives.`,
+  );
+  process.exit(1);
+}
+
+const hostPlatform = { win32: "win", darwin: "mac", linux: "linux" }[process.platform];
+if (!hostPlatform) {
+  console.error(`Error: Unsupported release host '${process.platform}'.`);
+  process.exit(1);
+}
+const supportedHostArch = process.platform === "darwin"
+  ? ["x64", "arm64"].includes(process.arch)
+  : process.arch === "x64";
+if (!supportedHostArch) {
+  console.error(
+    `Error: Installer packaging is not attested on '${process.platform}/${process.arch}'.`,
+  );
+  process.exit(1);
+}
+if (platform && platform !== hostPlatform) {
+  console.error(
+    `Error: Cross-platform installer packaging '${platform}' from '${hostPlatform}' is not attested. Run this helper on the matching host.`,
   );
   process.exit(1);
 }
@@ -186,7 +223,7 @@ async function main() {
       await runCommand("node", ["scripts/bake-python-plugin-runtime.cjs"]);
       console.log("");
     } else {
-      console.log("=== Step 1: Skipping backend build ===");
+      console.log("=== Step 1: Reusing plugin-host closure ===");
       const backendDistPath = path.join(projectRoot, "backend-dist");
       if (
         !fs.existsSync(backendDistPath) ||
@@ -204,13 +241,13 @@ async function main() {
       ]);
     }
 
-    // Every desktop artifact ships the Rust control-plane binary. This is
-    // independent of whether the compatibility Python backend is copied or
-    // frozen for the selected release profile.
+    // Every desktop artifact ships the Rust control-plane binary and the
+    // separately attested Python library/plugin-host closure.
     console.log("=== Step 1b: Building native Studio sidecar ===");
     await runCommand("node", ["scripts/build-native-sidecar.cjs"]);
     verifyRuntimeContract({
       backendRoot: path.join(projectRoot, "backend-dist"),
+      artifactBoundaryRoot: path.join(projectRoot, "backend-dist"),
       requireBundledPythonPlugin: true,
     });
     console.log("");
@@ -274,31 +311,6 @@ async function main() {
           ...builderArgs,
         ]),
     });
-
-    // Rename output files to include a flavor suffix (cpu is the default, unsuffixed).
-    const flavorSuffix = { gpu: "gpu", "cpu-lite": "lite" }[flavor];
-    if (flavorSuffix && fs.existsSync(releasePath)) {
-      console.log(
-        `Renaming output files to include '${flavorSuffix}' flavor...`,
-      );
-      const files = fs.readdirSync(releasePath);
-      for (const file of files) {
-        const filePath = path.join(releasePath, file);
-        if (
-          fs.statSync(filePath).isFile() &&
-          !file.includes(`-${flavorSuffix}`)
-        ) {
-          const newName = file.replace(
-            /(nirs4all-[\d.]+)/,
-            `$1-${flavorSuffix}`,
-          );
-          if (newName !== file) {
-            fs.renameSync(filePath, path.join(releasePath, newName));
-            console.log(`  ${file} -> ${newName}`);
-          }
-        }
-      }
-    }
 
     console.log("");
     console.log("========================================");

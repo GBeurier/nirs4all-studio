@@ -123,7 +123,7 @@ If you need to rebuild without pushing a new tag:
 
 | Issue | Resolution |
 |-------|-----------|
-| CI fails on PyInstaller step | Check that `requirements-cpu.txt` / `requirements-gpu.txt` are up to date |
+| Plugin-runtime packaging fails | Check the pinned plugin wheel/closure identity and the native runtime contract gate |
 | No assets on the release | Check the CI logs for electron-builder errors; ensure `GH_TOKEN` secret is set |
 | Update check returns "Up to date" | Verify the tag version is higher than the installed version; check `version.json` |
 | Checksum verification fails | Re-run the CI — the `.sha256` file may have been generated from a different build |

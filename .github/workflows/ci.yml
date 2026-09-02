@@ -242,7 +242,7 @@ jobs:
         run: |
           node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
           test -x backend-dist/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin
           backend-dist/native/studio-sidecar --smoke-readiness
 
       - name: Verify Python backend source is absent
@@ -255,7 +255,7 @@ jobs:
         run: |
           npx electron-builder --config electron-builder.installer.yml --linux --dir
           test -x release/linux-unpacked/resources/backend/native/studio-sidecar
-          node scripts/native-runtime-contract.cjs --backend-root release/linux-unpacked/resources/backend --platform linux --arch x64 --require-bundled-python-plugin
+          node scripts/native-runtime-contract.cjs --backend-root release/linux-unpacked/resources/backend --artifact-boundary-root release/linux-unpacked --platform linux --arch x64 --require-bundled-python-plugin
           release/linux-unpacked/resources/backend/native/studio-sidecar --smoke-readiness
           echo "Electron build test passed"
 

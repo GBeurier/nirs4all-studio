@@ -16,6 +16,65 @@ const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
 const MAX_PYTHON_CLOSURE_FILES = 100_000;
 const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 
+function isPathInside(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+function verifyArtifactBoundary(artifactBoundaryRoot, backendRoot) {
+  if (!artifactBoundaryRoot) {
+    throw new Error("An explicit artifact boundary root is required");
+  }
+  const boundaryRoot = path.resolve(artifactBoundaryRoot);
+  const resolvedBackendRoot = path.resolve(backendRoot);
+  if (!isPathInside(boundaryRoot, resolvedBackendRoot)) {
+    throw new Error("Packaged backend escapes its artifact boundary root");
+  }
+
+  const boundaryMetadata = fs.lstatSync(boundaryRoot);
+  if (boundaryMetadata.isSymbolicLink() || !boundaryMetadata.isDirectory()) {
+    throw new Error("Artifact boundary root must be a real non-symlink directory");
+  }
+  const canonicalBoundary = fs.realpathSync.native(boundaryRoot);
+  let current = boundaryRoot;
+  const relativeBackend = path.relative(boundaryRoot, resolvedBackendRoot);
+  for (const segment of relativeBackend.split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment);
+    const metadata = fs.lstatSync(current);
+    if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+      throw new Error(
+        `Packaged backend boundary component must be a real non-symlink directory: ${current}`,
+      );
+    }
+    if (!isPathInside(canonicalBoundary, fs.realpathSync.native(current))) {
+      throw new Error(`Packaged backend boundary component escapes artifact root: ${current}`);
+    }
+  }
+
+  const pending = [resolvedBackendRoot];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const name of fs.readdirSync(directory)) {
+      const entryPath = path.join(directory, name);
+      const metadata = fs.lstatSync(entryPath);
+      if (metadata.isSymbolicLink() || (!metadata.isDirectory() && !metadata.isFile())) {
+        throw new Error(`Packaged backend contains a link or special file: ${entryPath}`);
+      }
+      if (!isPathInside(canonicalBoundary, fs.realpathSync.native(entryPath))) {
+        throw new Error(`Packaged backend member escapes artifact root: ${entryPath}`);
+      }
+      if (metadata.isDirectory()) {
+        pending.push(entryPath);
+      }
+    }
+  }
+  return { boundaryRoot, backendRoot: resolvedBackendRoot };
+}
+
 function sha256File(filePath) {
   const hash = crypto.createHash("sha256");
   const descriptor = fs.openSync(filePath, "r");
@@ -439,10 +498,12 @@ function verifyPluginMarker(backendRoot, plugin, platform, arch) {
 
 function verifyRuntimeContract({
   backendRoot,
+  artifactBoundaryRoot,
   platform = process.platform,
   arch = process.arch,
   requireBundledPythonPlugin = false,
 }) {
+  verifyArtifactBoundary(artifactBoundaryRoot, backendRoot);
   const contractPath = path.join(backendRoot, "native", CONTRACT_FILE);
   if (!fs.existsSync(contractPath)) {
     throw new Error(`Packaged runtime contract not found: ${contractPath}`);
@@ -538,6 +599,10 @@ function verifyRuntimeContract({
     throw new Error("Unavailable native Methods policy must not select a member");
   }
 
+  // Revalidate after all hashes and policy checks so a concurrent tree mutation
+  // cannot silently become the artifact accepted by this invocation.
+  verifyArtifactBoundary(artifactBoundaryRoot, backendRoot);
+
   return {
     contract,
     contractPath,
@@ -553,6 +618,7 @@ function verifyRuntimeContract({
 function parseVerifyArgs(argv = process.argv.slice(2)) {
   const parsed = {
     backendRoot: "",
+    artifactBoundaryRoot: "",
     platform: process.platform,
     arch: process.arch,
     requireBundledPythonPlugin: false,
@@ -571,6 +637,8 @@ function parseVerifyArgs(argv = process.argv.slice(2)) {
     };
     if (flag === "--backend-root") {
       parsed.backendRoot = path.resolve(readValue());
+    } else if (flag === "--artifact-boundary-root") {
+      parsed.artifactBoundaryRoot = path.resolve(readValue());
     } else if (flag === "--platform") {
       parsed.platform = readValue();
     } else if (flag === "--arch") {
@@ -583,6 +651,9 @@ function parseVerifyArgs(argv = process.argv.slice(2)) {
   }
   if (!parsed.backendRoot) {
     throw new Error("--backend-root is required");
+  }
+  if (!parsed.artifactBoundaryRoot) {
+    throw new Error("--artifact-boundary-root is required");
   }
   return parsed;
 }
@@ -614,6 +685,7 @@ module.exports = {
   PYTHON_CLOSURE_SCHEMA,
   sha256File,
   verifyPythonRuntimeClosure,
+  verifyArtifactBoundary,
   verifyRuntimeContract,
   writePythonRuntimeClosure,
   writeRuntimeContract,
