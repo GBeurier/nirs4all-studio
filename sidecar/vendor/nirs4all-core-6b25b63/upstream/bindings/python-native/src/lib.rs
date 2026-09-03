@@ -16,6 +16,7 @@ use nirs4all::{
     load_archive_v2, load_archive_v3,
     predict_methods_archive_v2_matrix_json as core_predict_methods_archive_v2_matrix_json,
     replay_methods_archive_v2_conformal_presentation_v1_json as core_replay_methods_archive_v2_conformal_presentation_v1_json,
+    replay_methods_archive_v2_conformal_presentation_v2_json as core_replay_methods_archive_v2_conformal_presentation_v2_json,
     replay_methods_archive_v2_json as core_replay_methods_archive_v2_json,
     replay_methods_archive_v3_json as core_replay_methods_archive_v3_json, write_archive_v2,
     write_archive_v3, ArchivePayload, ArchiveV2WriteRequest, ArchiveV3WriteRequest,
@@ -220,6 +221,51 @@ fn replay_methods_archive_v2_conformal_presentation_v1_json(
     .map_err(replay_error)
 }
 
+/// Replay one calibrated Archive V2 and return DAG-ML's complete,
+/// content-bound multi-target conformal presentation V2. Python transports
+/// strict JSON only and cannot reconstruct predictor or archive fingerprints.
+#[pyfunction]
+#[pyo3(signature = (
+    path,
+    request_json,
+    data_envelopes_json,
+    methods_inputs_json,
+    methods_library_path,
+    outcome_id,
+    run_id,
+    warnings_json = "[]",
+    diagnostics_json = "{}"
+))]
+#[allow(clippy::too_many_arguments)]
+fn replay_methods_archive_v2_conformal_presentation_v2_json(
+    py: Python<'_>,
+    path: &str,
+    request_json: &str,
+    data_envelopes_json: &str,
+    methods_inputs_json: &str,
+    methods_library_path: &str,
+    outcome_id: &str,
+    run_id: &str,
+    warnings_json: &str,
+    diagnostics_json: &str,
+) -> PyResult<String> {
+    let archive_path = PathBuf::from(path);
+    let input = replay_json_input(
+        request_json,
+        data_envelopes_json,
+        methods_inputs_json,
+        methods_library_path,
+        outcome_id,
+        run_id,
+        warnings_json,
+        diagnostics_json,
+    );
+    py.allow_threads(move || {
+        core_replay_methods_archive_v2_conformal_presentation_v2_json(&archive_path, input)
+    })
+    .map_err(replay_error)
+}
+
 /// Replay one Core-validated Archive V3 through a fresh Methods-only runtime.
 /// Supplemental host controllers are deliberately unavailable from Python.
 #[pyfunction]
@@ -341,6 +387,10 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(wrap_pyfunction!(
         replay_methods_archive_v2_conformal_presentation_v1_json,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        replay_methods_archive_v2_conformal_presentation_v2_json,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(replay_methods_archive_v3_json, module)?)?;

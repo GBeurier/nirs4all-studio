@@ -313,8 +313,8 @@ Core 0.3.25 requires the selected but not-yet-published DagML 0.3.23 and n4m
 0.1.4 crates. Studio therefore carries the exact DagML commit
 `dafb8b6fb98f9d380d30559a3f4b868c91e5b5c4` under
 `sidecar/vendor/dag-ml-dafb8b6/`, Core commit
-`94d712f60848df60ce6fa90f006ada09767cfd08` under
-`sidecar/vendor/nirs4all-core-94d712f/`, and the exact n4m binding from Methods commit
+`6b25b63bb09adfe3c4dae8ffacc90d09a1a81e16` under
+`sidecar/vendor/nirs4all-core-6b25b63/`, and the exact n4m binding from Methods commit
 `48ad1e5a50844f68c2b99e93b02ad6a3b491c07b` under
 `sidecar/vendor/n4m-48ad1e5/`. Core's unpublished `dag-ml-data` 0.2.10
 dependency is pinned to commit `1f60b92` under

@@ -642,7 +642,7 @@ impl ArchiveV2PredictionRuntime {
     }
 }
 
-fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdentity> {
+pub(crate) fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdentity> {
     let executable = std::env::current_exe().ok()?;
     let native_directory = executable.parent()?;
     let backend_root = native_directory.parent()?;

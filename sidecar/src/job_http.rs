@@ -272,6 +272,7 @@ struct DurableScientificJob {
     execution_backend: String,
     execution_mode: Option<String>,
     request: Value,
+    executor: Arc<dyn ScientificJobExecutor>,
 }
 
 impl Default for NativeJobRuntime {
@@ -341,7 +342,33 @@ impl NativeJobRuntime {
         timestamp: &str,
         now: Instant,
     ) -> Result<ScientificSubmissionReceipt, NativeJobRuntimeError> {
-        if !self.executor.is_selected() {
+        self.submit_with_executor_at(
+            submission.run_name(),
+            submission.requested_backend(),
+            submission.payload(),
+            workspace_id,
+            workspace_path,
+            timestamp,
+            now,
+            Arc::clone(&self.executor),
+        )
+    }
+
+    /// Submit a bounded native operation through an explicitly selected Rust
+    /// executor while retaining the shared job lifecycle and durable record.
+    #[allow(clippy::too_many_arguments)]
+    pub fn submit_with_executor_at(
+        &self,
+        run_name: &str,
+        requested_backend: &str,
+        payload: &Value,
+        workspace_id: &str,
+        workspace_path: &Path,
+        timestamp: &str,
+        now: Instant,
+        executor: Arc<dyn ScientificJobExecutor>,
+    ) -> Result<ScientificSubmissionReceipt, NativeJobRuntimeError> {
+        if !executor.is_selected() {
             return Err(NativeJobRuntimeError::Executor(
                 JobExecutorError::Unselected,
             ));
@@ -353,22 +380,28 @@ impl NativeJobRuntime {
             job_id: job_id.clone(),
             workspace_id: workspace_id.into(),
             workspace_path: workspace_path.clone(),
-            requested_backend: submission.requested_backend().into(),
-            payload: submission.payload().clone(),
+            requested_backend: requested_backend.into(),
+            payload: payload.clone(),
         };
-        let selection = self
-            .executor
+        let selection = executor
             .preflight_submission(&preflight)
             .map_err(NativeJobRuntimeError::Executor)?;
         validate_executor_selection(&selection).map_err(NativeJobRuntimeError::Executor)?;
         let config = json!({
             "run_id": job_id,
-            "run_name": submission.run_name(),
-            "requested_backend": submission.requested_backend(),
+            "run_name": run_name,
+            "requested_backend": requested_backend,
             "execution_backend": selection.execution_backend,
             "submission_transport": "studio-sidecar-rust",
         });
-        self.register_with_id_at(&job_id, JobType::Training, config, timestamp, now)?;
+        self.register_with_selected_executor_at(
+            executor.is_selected(),
+            &job_id,
+            JobType::Training,
+            config,
+            timestamp,
+            now,
+        )?;
         self.durable_jobs
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -376,10 +409,11 @@ impl NativeJobRuntime {
                 job_id.clone(),
                 DurableScientificJob {
                     workspace_path: workspace_path.clone(),
-                    requested_backend: submission.requested_backend().into(),
+                    requested_backend: requested_backend.into(),
                     execution_backend: selection.execution_backend.clone(),
                     execution_mode: selection.execution_mode.clone(),
-                    request: submission.payload().clone(),
+                    request: payload.clone(),
+                    executor: Arc::clone(&executor),
                 },
             );
         if let Err(error) = self.start_at(&job_id, timestamp, now) {
@@ -393,14 +427,11 @@ impl NativeJobRuntime {
             job_id: job_id.clone(),
             workspace_id: workspace_id.into(),
             workspace_path,
-            requested_backend: submission.requested_backend().into(),
+            requested_backend: requested_backend.into(),
             payload: selection.prepared_payload.clone(),
         };
         let terminal: Arc<dyn ScientificJobTerminal> = Arc::new(self.clone());
-        if let Err(error) = self
-            .executor
-            .submit_scientific(&execution_request, terminal)
-        {
+        if let Err(error) = executor.submit_scientific(&execution_request, terminal) {
             let _ = self.fail_at(
                 &job_id,
                 "Scientific executor refused the registered submission",
@@ -412,9 +443,9 @@ impl NativeJobRuntime {
         }
         Ok(ScientificSubmissionReceipt {
             job_id,
-            run_name: submission.run_name().into(),
+            run_name: run_name.into(),
             created_at: timestamp.into(),
-            requested_backend: submission.requested_backend().into(),
+            requested_backend: requested_backend.into(),
             execution_backend: selection.execution_backend,
             workspace_id: workspace_id.into(),
         })
@@ -433,7 +464,26 @@ impl NativeJobRuntime {
         timestamp: &str,
         now: Instant,
     ) -> Result<JobSnapshot, NativeJobRuntimeError> {
-        if !self.executor.is_selected() {
+        self.register_with_selected_executor_at(
+            self.executor.is_selected(),
+            id,
+            job_type,
+            config,
+            timestamp,
+            now,
+        )
+    }
+
+    fn register_with_selected_executor_at(
+        &self,
+        executor_selected: bool,
+        id: impl Into<String>,
+        job_type: JobType,
+        config: Value,
+        timestamp: &str,
+        now: Instant,
+    ) -> Result<JobSnapshot, NativeJobRuntimeError> {
+        if !executor_selected {
             return Err(NativeJobRuntimeError::Executor(
                 JobExecutorError::Unselected,
             ));
@@ -608,7 +658,13 @@ impl NativeJobRuntime {
             // ahead of the authoritative lifecycle flag.
             let mutation = registry.request_cancel_at(id, timestamp, now)?;
             drop(registry);
-            self.executor
+            let executor = self
+                .durable_jobs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get(id)
+                .map_or_else(|| Arc::clone(&self.executor), |job| Arc::clone(&job.executor));
+            executor
                 .request_cooperative_cancel(id)
                 .map_err(NativeJobRuntimeError::Executor)?;
             return self.publish(mutation);

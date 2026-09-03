@@ -10,14 +10,18 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use dag_ml_core::{
-    build_archive_v2_native_portable_payloads, data_binding_requirement_key, execute_training,
-    ArtifactLoadMode, BundleId, ControllerId, DataBinding, DataMaterializationRequest,
-    DataProviderViewSpec, DataViewRequest, EntityUnitLevel, ExternalDataPlanEnvelope,
-    FittedArtifactMode, HandleKind, HandleRef, InMemoryArtifactStore, MethodsPlsController,
-    MethodsPlsData, MethodsPlsDataRequest, MethodsPlsDataset, MethodsPlsMatrix, MethodsRuntime,
-    Phase, RunId, RuntimeControllerRegistry, RuntimeDataProvider, SampleRelation,
-    SampleRelationSet, TrainingDataIdentity, TrainingExecutionInput, TrainingInfluenceManifest,
-    TrainingOutcome, TrainingRequest,
+    build_archive_v2_native_portable_payloads,
+    calibrate_attached_training_replay_with_derived_context, data_binding_requirement_key,
+    execute_attached_training_replay, execute_training, ArtifactLoadMode,
+    AttachedTrainingReplayInput, BundleDataRequirement, BundleId, ConformalCalibration,
+    ConformalCalibrationTruth, ConformalMultiTargetPolicy, ConformalSmallSamplePolicy,
+    ControllerId, DataBinding, DataMaterializationRequest, DataProviderViewSpec, DataViewRequest,
+    EntityUnitLevel, ExternalDataPlanEnvelope, FittedArtifactMode, HandleKind, HandleRef,
+    InMemoryArtifactStore, MethodsPlsController, MethodsPlsData, MethodsPlsDataRequest,
+    MethodsPlsDataset, MethodsPlsMatrix, Phase, RunId, RuntimeControllerRegistry,
+    RuntimeDataProvider, SampleRelation, SampleRelationSet, TrainingDataIdentity,
+    TrainingExecutionInput, TrainingInfluenceManifest, TrainingOutcome, TrainingReplayOutcome,
+    TrainingReplayRequest, TrainingRequest, TRAINING_REPLAY_REQUEST_SCHEMA_VERSION,
 };
 use dag_ml_data_crate::{
     CoordinatorDataMaterializationRequest, CoordinatorHandleKind, DataView, SampleId as IoSampleId,
@@ -27,6 +31,7 @@ use dag_ml_data_provider_crate::DagMlDataProvider;
 pub use nirs4all_io_dagml::DatasetPackage;
 use nirs4all_io_dagml::PackageProvider;
 
+use crate::native_methods_replay::configure_methods_runtime_for_source;
 use crate::{write_archive_v2, ArchivePayload, ArchiveV2Reference, ArchiveV2WriteRequest};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -114,6 +119,31 @@ impl DatasetPackageMethodsProvider {
 
     pub fn source_id(&self) -> &str {
         &self.source_id
+    }
+
+    fn bind_replay_requirement(
+        &mut self,
+        requirement: &BundleDataRequirement,
+    ) -> Result<(), String> {
+        requirement.validate().map_err(|error| error.to_string())?;
+        if requirement.feature_set_id.as_deref() != Some(self.provider.feature_set_id())
+            || requirement.output_representation
+                != self.provider.envelope().plan.output_representation.as_str()
+        {
+            return Err(format!(
+                "Core calibration source `{}` is incompatible with signed data requirement `{}`",
+                self.source_id,
+                requirement.key()
+            ));
+        }
+        // The bundle owns the training-time structural contract. A held-out
+        // package naturally has different concrete relation/fold metadata,
+        // while IO remains authoritative for its buffers and content proofs.
+        self.external_envelope.schema_fingerprint = requirement.schema_fingerprint.clone();
+        self.external_envelope.plan_fingerprint = requirement.plan_fingerprint.clone();
+        self.external_envelope
+            .validate()
+            .map_err(|error| error.to_string())
     }
 
     /// Explicitly release all IO provider handles. `Drop` invokes the same
@@ -286,6 +316,69 @@ impl DatasetPackageMethodsProvider {
             rows: sample_ids.len(),
             cols: target_names.len(),
         })
+    }
+
+    fn conformal_truth(
+        &self,
+        replay: &TrainingReplayOutcome,
+        binding_id: &str,
+    ) -> Result<ConformalCalibrationTruth, String> {
+        let output = replay
+            .outputs
+            .iter()
+            .find(|output| output.binding.binding_id == binding_id)
+            .ok_or("Core calibration replay has no requested output binding")?;
+        if output.binding.target_names != self.provider.target_names() {
+            return Err(
+                "Core calibration target order differs from the replay output binding".to_string(),
+            );
+        }
+        let [point] = output.predictions.as_slice() else {
+            return Err(
+                "Core calibration replay requires one terminal point-prediction block".to_string(),
+            );
+        };
+        let handles = self
+            .handles
+            .lock()
+            .map_err(|_| "Core IO provider handle registry is poisoned".to_string())?;
+        let predict_views = handles
+            .views
+            .iter()
+            .filter(|slot| slot.phase == Phase::Predict)
+            .collect::<Vec<_>>();
+        let [slot] = predict_views.as_slice() else {
+            return Err(format!(
+                "Core calibration replay requires exactly one IO PREDICT view, got {}",
+                predict_views.len()
+            ));
+        };
+        let feature = self
+            .provider
+            .feature_block_f64(slot.handle)
+            .map_err(|error| error.to_string())?;
+        let sample_ids = feature
+            .sample_ids
+            .iter()
+            .map(|id| dag_ml_core::SampleId::new(id.as_str()).map_err(|error| error.to_string()))
+            .collect::<Result<Vec<_>, _>>()?;
+        if sample_ids != point.sample_ids {
+            return Err(
+                "Core calibration truth rows differ from replay point-prediction identities"
+                    .to_string(),
+            );
+        }
+        let targets = self.project_targets(
+            slot.handle,
+            &feature.sample_ids,
+            self.provider.target_names(),
+        )?;
+        let values = targets
+            .values
+            .chunks_exact(targets.cols)
+            .map(|row| row.to_vec())
+            .collect();
+        Ok(ConformalCalibrationTruth { sample_ids, values })
     }
 }
 
@@ -546,6 +639,251 @@ pub struct DatasetPackageMethodsArchiveV2Outcome {
     pub archive: ArchiveV2Reference,
 }
 
+/// Closed input for native Methods training plus held-out conformal
+/// calibration from two explicitly distinct IO packages.
+pub struct DatasetPackageMethodsConformalArchiveV2Request<'a> {
+    pub training_dataset: &'a DatasetPackage,
+    pub training_source_id: &'a str,
+    pub calibration_dataset: &'a DatasetPackage,
+    pub calibration_source_id: &'a str,
+    pub training_request: &'a TrainingRequest,
+    pub coverages: Vec<f64>,
+    pub multi_target_policy: ConformalMultiTargetPolicy,
+    pub small_sample_policy: ConformalSmallSamplePolicy,
+    pub outcome_id: &'a str,
+    pub training_run_id: RunId,
+    pub calibration_run_id: RunId,
+    pub calibration_replay_request_id: &'a str,
+    pub calibration_replay_outcome_id: &'a str,
+    pub bundle_id: BundleId,
+    pub package_id: &'a str,
+    pub archive_id: &'a str,
+    pub archive_path: &'a Path,
+    pub methods_library_path: &'a Path,
+}
+
+/// Calibrated native training evidence and its persisted Archive V2 identity.
+pub struct DatasetPackageMethodsConformalArchiveV2Outcome {
+    pub training: TrainingOutcome,
+    pub calibration: ConformalCalibration,
+    pub calibration_replay: TrainingReplayOutcome,
+    pub archive: ArchiveV2Reference,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_dataset_package_methods_training(
+    provider: &DatasetPackageMethodsProvider,
+    training_request: &TrainingRequest,
+    outcome_id: &str,
+    run_id: RunId,
+    bundle_id: BundleId,
+    methods_library_path: &Path,
+    artifacts: &mut InMemoryArtifactStore,
+) -> Result<TrainingOutcome, String> {
+    let projection = training_request
+        .project()
+        .map_err(|error| error.to_string())?;
+    let influence = TrainingInfluenceManifest::derive_for_projection(
+        &projection,
+        training_request,
+        provider.relations(),
+    )
+    .map_err(|error| error.to_string())?;
+    let runtime = configure_methods_runtime_for_source(methods_library_path)
+        .map_err(|error| error.to_string())?;
+    let mut controllers = RuntimeControllerRegistry::new();
+    controllers
+        .register(Box::new(MethodsPlsController::new(runtime)))
+        .map_err(|error| error.to_string())?;
+    execute_training(TrainingExecutionInput {
+        request: training_request,
+        outcome_id: outcome_id.to_string(),
+        run_id,
+        bundle_id,
+        controllers: &controllers,
+        data_provider: provider,
+        relations: provider.relations(),
+        training_influence: &influence,
+        artifact_store: artifacts,
+        warnings: Vec::new(),
+        diagnostics: BTreeMap::new(),
+    })
+    .map_err(|error| error.to_string())
+}
+
+fn validate_disjoint_calibration_relations(
+    training: &SampleRelationSet,
+    calibration: &SampleRelationSet,
+) -> Result<(), String> {
+    let training_ids = training
+        .records
+        .iter()
+        .flat_map(|record| {
+            std::iter::once(&record.sample_id).chain(record.origin_sample_id.as_ref())
+        })
+        .collect::<BTreeSet<_>>();
+    if let Some(overlap) = calibration
+        .records
+        .iter()
+        .flat_map(|record| {
+            std::iter::once(&record.sample_id).chain(record.origin_sample_id.as_ref())
+        })
+        .find(|sample_id| training_ids.contains(sample_id))
+    {
+        return Err(format!(
+            "Core conformal calibration identity `{overlap}` overlaps training"
+        ));
+    }
+    let training_observations = training
+        .records
+        .iter()
+        .map(|record| &record.observation_id)
+        .collect::<BTreeSet<_>>();
+    if let Some(overlap) = calibration
+        .records
+        .iter()
+        .map(|record| &record.observation_id)
+        .find(|observation_id| training_observations.contains(observation_id))
+    {
+        return Err(format!(
+            "Core conformal calibration observation `{overlap}` overlaps training"
+        ));
+    }
+    Ok(())
+}
+
+/// Train one package, replay a target-bound held-out package, delegate all
+/// conformal derivation to DAG-ML, and persist the resulting Package V2.
+/// Core only enforces aggregate identity, source and target-order boundaries.
+pub fn train_dataset_package_methods_conformal_archive_v2(
+    input: DatasetPackageMethodsConformalArchiveV2Request<'_>,
+) -> Result<DatasetPackageMethodsConformalArchiveV2Outcome, String> {
+    let training_provider =
+        DatasetPackageMethodsProvider::new(input.training_dataset, input.training_source_id)?;
+    let mut calibration_provider =
+        DatasetPackageMethodsProvider::new(input.calibration_dataset, input.calibration_source_id)?;
+    validate_disjoint_calibration_relations(
+        training_provider.relations(),
+        calibration_provider.relations(),
+    )?;
+    if training_provider.provider.target_names() != calibration_provider.provider.target_names() {
+        return Err(
+            "Core conformal calibration target order differs from training targets".to_string(),
+        );
+    }
+
+    let mut artifacts = InMemoryArtifactStore::new();
+    let mut training = execute_dataset_package_methods_training(
+        &training_provider,
+        input.training_request,
+        input.outcome_id,
+        input.training_run_id,
+        input.bundle_id,
+        input.methods_library_path,
+        &mut artifacts,
+    )?;
+    let [requirement] = training.execution_bundle.data_requirements.as_slice() else {
+        return Err(format!(
+            "Core conformal Methods replay requires exactly one data requirement, got {}",
+            training.execution_bundle.data_requirements.len()
+        ));
+    };
+    let [binding] = training.outputs.as_slice() else {
+        return Err(format!(
+            "Core conformal Methods replay requires exactly one output binding, got {}",
+            training.outputs.len()
+        ));
+    };
+    if binding.binding.target_names != calibration_provider.provider.target_names() {
+        return Err(
+            "Core conformal calibration target order differs from signed training output"
+                .to_string(),
+        );
+    }
+    calibration_provider.bind_replay_requirement(requirement)?;
+    let requirement_key = requirement.key();
+    let data_envelopes = BTreeMap::from([(
+        requirement_key.clone(),
+        calibration_provider.external_envelope().clone(),
+    )]);
+    let mut replay_request = TrainingReplayRequest {
+        schema_version: TRAINING_REPLAY_REQUEST_SCHEMA_VERSION,
+        request_id: input.calibration_replay_request_id.to_string(),
+        source_outcome_fingerprint: training.outcome_fingerprint.clone(),
+        phase: Phase::Predict,
+        data_envelope_keys: vec![requirement_key],
+        output_binding_ids: vec![binding.binding.binding_id.clone()],
+        request_fingerprint: String::new(),
+    };
+    replay_request.request_fingerprint = replay_request
+        .compute_fingerprint()
+        .map_err(|error| error.to_string())?;
+    replay_request
+        .validate()
+        .map_err(|error| error.to_string())?;
+    let runtime = configure_methods_runtime_for_source(input.methods_library_path)
+        .map_err(|error| error.to_string())?;
+    let mut controllers = RuntimeControllerRegistry::new();
+    controllers
+        .register(Box::new(MethodsPlsController::new(runtime)))
+        .map_err(|error| error.to_string())?;
+    let calibration_replay = execute_attached_training_replay(AttachedTrainingReplayInput {
+        source: &training,
+        request: &replay_request,
+        outcome_id: input.calibration_replay_outcome_id.to_string(),
+        run_id: input.calibration_run_id,
+        controllers: &controllers,
+        data_provider: &calibration_provider,
+        artifact_store: &artifacts,
+        data_envelopes: &data_envelopes,
+        warnings: Vec::new(),
+        diagnostics: BTreeMap::new(),
+    })
+    .map_err(|error| error.to_string())?;
+    let binding_id = binding.binding.binding_id.clone();
+    let truth = calibration_provider.conformal_truth(&calibration_replay, &binding_id)?;
+    let calibration = calibrate_attached_training_replay_with_derived_context(
+        &mut training,
+        &calibration_replay,
+        &binding_id,
+        calibration_provider.relations(),
+        truth,
+        input.coverages,
+        input.multi_target_policy,
+        input.small_sample_policy,
+    )
+    .map_err(|error| error.to_string())?;
+    let package = training
+        .to_portable_predictor_package(
+            input.package_id,
+            FittedArtifactMode::PortableRequired,
+            ArtifactLoadMode::NativePortable,
+        )
+        .map_err(|error| error.to_string())?;
+    let payloads = build_archive_v2_native_portable_payloads(input.archive_id, &training, &package)
+        .map_err(|error| error.to_string())?;
+    let archive = write_archive_v2(
+        input.archive_path,
+        ArchiveV2WriteRequest {
+            manifest: payloads.manifest,
+            payloads: payloads
+                .members
+                .into_iter()
+                .map(|(path, bytes)| ArchivePayload { path, bytes })
+                .collect(),
+        },
+    )
+    .map_err(|error| error.to_string())?;
+    calibration_provider.release_all();
+    training_provider.release_all();
+    Ok(DatasetPackageMethodsConformalArchiveV2Outcome {
+        training,
+        calibration,
+        calibration_replay,
+        archive,
+    })
+}
+
 /// Execute the selected IO package source through DAG-ML's typed training
 /// operation and Methods controller, then persist the portable Package V2 as a
 /// Core Archive V2. No Python, `SpectroDataset`, fallback or JSON round-trip is
@@ -554,37 +892,16 @@ pub fn train_dataset_package_methods_archive_v2(
     input: DatasetPackageMethodsArchiveV2Request<'_>,
 ) -> Result<DatasetPackageMethodsArchiveV2Outcome, String> {
     let provider = DatasetPackageMethodsProvider::new(input.dataset, input.source_id)?;
-    let projection = input
-        .training_request
-        .project()
-        .map_err(|error| error.to_string())?;
-    let influence = TrainingInfluenceManifest::derive_for_projection(
-        &projection,
-        input.training_request,
-        provider.relations(),
-    )
-    .map_err(|error| error.to_string())?;
-    let runtime =
-        MethodsRuntime::configure(input.methods_library_path).map_err(|error| error.to_string())?;
-    let mut controllers = RuntimeControllerRegistry::new();
-    controllers
-        .register(Box::new(MethodsPlsController::new(runtime)))
-        .map_err(|error| error.to_string())?;
     let mut artifacts = InMemoryArtifactStore::new();
-    let training = execute_training(TrainingExecutionInput {
-        request: input.training_request,
-        outcome_id: input.outcome_id.to_string(),
-        run_id: input.run_id,
-        bundle_id: input.bundle_id,
-        controllers: &controllers,
-        data_provider: &provider,
-        relations: provider.relations(),
-        training_influence: &influence,
-        artifact_store: &mut artifacts,
-        warnings: Vec::new(),
-        diagnostics: BTreeMap::new(),
-    })
-    .map_err(|error| error.to_string())?;
+    let training = execute_dataset_package_methods_training(
+        &provider,
+        input.training_request,
+        input.outcome_id,
+        input.run_id,
+        input.bundle_id,
+        input.methods_library_path,
+        &mut artifacts,
+    )?;
     let package = training
         .to_portable_predictor_package(
             input.package_id,
@@ -627,7 +944,9 @@ mod tests {
 
     use super::*;
     use crate::{
-        load_archive_v2, predict_methods_archive_v2_matrix, MethodsArchiveMatrixPredictRequest,
+        load_archive_v2, predict_methods_archive_v2_matrix,
+        predict_methods_archive_v2_matrix_conformal_presentation_v2,
+        preflight_methods_archive_v2_library, MethodsArchiveMatrixPredictRequest,
     };
 
     fn matrix(rows: usize, columns: usize, values: &[f32]) -> Matrix {
@@ -739,6 +1058,120 @@ mod tests {
             audits: vec![],
         };
         assembled.blocks.insert("train".to_string(), block);
+        DatasetPackage::from_assembled(&assembled)
+    }
+
+    fn numeric_multi_target_package(identity_prefix: &str, target_offset: f32) -> DatasetPackage {
+        let mut assembled = numeric_multi_source_package().to_assembled();
+        assembled.name = format!("conformal-{identity_prefix}");
+        let block = assembled.blocks.get_mut("train").unwrap();
+        block.y = Some(matrix(
+            8,
+            2,
+            &[
+                3.0 + target_offset,
+                1.5 + target_offset,
+                5.0 + target_offset,
+                2.5 + target_offset,
+                7.0 + target_offset,
+                3.5 + target_offset,
+                9.0 + target_offset,
+                4.5 + target_offset,
+                11.0 + target_offset,
+                5.5 + target_offset,
+                13.0 + target_offset,
+                6.5 + target_offset,
+                15.0 + target_offset,
+                7.5 + target_offset,
+                17.0 + target_offset,
+                8.5 + target_offset,
+            ],
+        ));
+        block.y_headers = vec!["protein".into(), "moisture".into()];
+        block.metadata = Some(Frame::from_columns(
+            vec![
+                Column::from_cells(
+                    "sample_id",
+                    (1..=8)
+                        .map(|index| {
+                            Cell::Str(if identity_prefix.is_empty() {
+                                format!("sample.{index}")
+                            } else {
+                                format!("{identity_prefix}.sample.{index}")
+                            })
+                        })
+                        .collect(),
+                ),
+                Column::from_cells(
+                    "observation_id",
+                    (1..=8)
+                        .map(|index| {
+                            Cell::Str(if identity_prefix.is_empty() {
+                                format!("observation.{index}")
+                            } else {
+                                format!("{identity_prefix}.observation.{index}")
+                            })
+                        })
+                        .collect(),
+                ),
+                Column::from_cells(
+                    "group_id",
+                    (1..=8)
+                        .map(|index| {
+                            let group = if index <= 4 { "batch.a" } else { "batch.b" };
+                            Cell::Str(if identity_prefix.is_empty() {
+                                group.to_string()
+                            } else {
+                                format!("{identity_prefix}.{group}")
+                            })
+                        })
+                        .collect(),
+                ),
+            ],
+            "text",
+        ));
+        assembled.fold_provenance = vec![
+            FoldProvenance {
+                train_observation_ids: (5..=8)
+                    .map(|index| {
+                        if identity_prefix.is_empty() {
+                            format!("observation.{index}")
+                        } else {
+                            format!("{identity_prefix}.observation.{index}")
+                        }
+                    })
+                    .collect(),
+                validation_observation_ids: (1..=4)
+                    .map(|index| {
+                        if identity_prefix.is_empty() {
+                            format!("observation.{index}")
+                        } else {
+                            format!("{identity_prefix}.observation.{index}")
+                        }
+                    })
+                    .collect(),
+            },
+            FoldProvenance {
+                train_observation_ids: (1..=4)
+                    .map(|index| {
+                        if identity_prefix.is_empty() {
+                            format!("observation.{index}")
+                        } else {
+                            format!("{identity_prefix}.observation.{index}")
+                        }
+                    })
+                    .collect(),
+                validation_observation_ids: (5..=8)
+                    .map(|index| {
+                        if identity_prefix.is_empty() {
+                            format!("observation.{index}")
+                        } else {
+                            format!("{identity_prefix}.observation.{index}")
+                        }
+                    })
+                    .collect(),
+            },
+        ];
         DatasetPackage::from_assembled(&assembled)
     }
 
@@ -876,6 +1309,9 @@ mod tests {
             "artifact_policy": "serializable"
         }]))
         .unwrap();
+        let target_names = provider.provider.target_names().to_vec();
+        let target_units = vec![None::<String>; target_names.len()];
+        let class_labels = vec![Vec::<String>::new(); target_names.len()];
         let options = serde_json::from_value(serde_json::json!({
             "refit": true,
             "refit_strategy": "refit_one",
@@ -891,8 +1327,8 @@ mod tests {
             "outputs": [{
                 "output_id": "output:prediction", "node_id": "model:pls", "port_name": "oof",
                 "prediction_level": "sample", "unit_level": "physical_sample",
-                "prediction_kind": "regression_point", "target_names": ["protein"],
-                "target_units": [null], "class_labels": [[]], "output_order": "target_order", "target_space": "raw"
+                "prediction_kind": "regression_point", "target_names": target_names,
+                "target_units": target_units, "class_labels": class_labels, "output_order": "target_order", "target_space": "raw"
             }],
             "scheduler": {"kind": "sequential", "backend": null, "workers": 1},
             "resources": {"cpu_threads": 1, "memory_bytes": null, "gpu_devices": [], "wall_time_ms": null},
@@ -946,18 +1382,55 @@ mod tests {
         assert!((values[1][0] - 21.0).abs() < 1.0e-8);
     }
 
+    fn assert_fresh_conformal_presentation(archive_path: &Path, library: &Path) {
+        let archive = load_archive_v2(archive_path).unwrap();
+        let presentation = predict_methods_archive_v2_matrix_conformal_presentation_v2(
+            &archive,
+            MethodsArchiveMatrixPredictRequest {
+                sample_ids: vec!["fresh:1".into(), "fresh:2".into()],
+                x: vec![vec![9.0, 18.0, 27.0], vec![10.0, 20.0, 30.0]],
+                expected_target_names: vec!["protein".into(), "moisture".into()],
+                methods_library_path: library.to_path_buf(),
+                methods_library_sha256: sha256(library),
+                request_id: "predict:conformal.v2".into(),
+                outcome_id: "outcome:conformal.v2.fresh".into(),
+                run_id: RunId::new("run:conformal.v2.fresh").unwrap(),
+                warnings: vec![],
+                diagnostics: BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(presentation.target_names, ["protein", "moisture"]);
+        assert_eq!(presentation.sample_ids.len(), 2);
+        assert_eq!(presentation.interval_block.intervals.len(), 1);
+
+        let package_json =
+            std::str::from_utf8(archive.portable_predictor_package().unwrap()).unwrap();
+        let package = dag_ml_core::PortablePredictorPackage::from_json(package_json).unwrap();
+        let descriptors = package
+            .execution_bundle
+            .refit_artifacts
+            .iter()
+            .filter_map(|record| record.artifact.native_predictor_descriptor.clone())
+            .collect::<Vec<_>>();
+        let mut tampered = serde_json::to_value(&presentation).unwrap();
+        tampered["target_names"] = serde_json::json!(["moisture", "protein"]);
+        let tampered = serde_json::to_string(&tampered).unwrap();
+        assert!(dag_ml_core::ConformalPresentationV2::from_json_for_package(
+            &tampered,
+            &package,
+            &descriptors,
+        )
+        .is_err());
+    }
+
     #[test]
     fn numeric_package_provider_trains_archives_and_fresh_predicts() {
-        if let (Some(archive), Some(library)) = (
-            std::env::var_os("N4A_DATA002_CHILD_ARCHIVE"),
-            std::env::var_os("N4A_DATA002_CHILD_LIBRARY"),
-        ) {
-            assert_fresh_prediction(Path::new(&archive), Path::new(&library));
-            return;
-        }
         let library = PathBuf::from(
             std::env::var_os("N4M_LIBRARY_PATH").expect("N4M_LIBRARY_PATH must name libn4m"),
         );
+        let library_sha256 = sha256(&library);
+        preflight_methods_archive_v2_library(&library, &library_sha256).unwrap();
         let package = numeric_multi_source_package();
         let provider = DatasetPackageMethodsProvider::new(&package, "spectra").unwrap();
         assert_eq!(provider.source_id(), "spectra");
@@ -990,14 +1463,7 @@ mod tests {
         assert_eq!(trained.training.execution_bundle.data_requirements.len(), 1);
         assert_eq!(trained.training.execution_bundle.refit_artifacts.len(), 1);
 
-        let status = std::process::Command::new(std::env::current_exe().unwrap())
-            .arg("io_training::tests::numeric_package_provider_trains_archives_and_fresh_predicts")
-            .arg("--exact")
-            .env("N4A_DATA002_CHILD_ARCHIVE", &archive_path)
-            .env("N4A_DATA002_CHILD_LIBRARY", &library)
-            .status()
-            .unwrap();
-        assert!(status.success(), "fresh-process Archive V2 replay failed");
+        assert_fresh_prediction(&archive_path, &library);
 
         let mut unsupported = package.to_assembled();
         unsupported.blocks.get_mut("train").unwrap().processings[0]
@@ -1007,5 +1473,92 @@ mod tests {
             .err()
             .unwrap()
             .contains("processing"));
+    }
+
+    #[test]
+    fn numeric_packages_train_calibrate_archive_and_present_multi_target() {
+        let library = PathBuf::from(
+            std::env::var_os("N4M_LIBRARY_PATH").expect("N4M_LIBRARY_PATH must name libn4m"),
+        );
+        let library_sha256 = sha256(&library);
+        preflight_methods_archive_v2_library(&library, &library_sha256).unwrap();
+        let training_package = numeric_multi_target_package("", 0.0);
+        let calibration_package = numeric_multi_target_package("calibration", 0.25);
+        let provider = DatasetPackageMethodsProvider::new(&training_package, "spectra").unwrap();
+        let request = training_request(&provider);
+        drop(provider);
+        let directory = tempfile::tempdir().unwrap();
+        let archive_path = directory.path().join("conformal-v2.n4a");
+        let produced = train_dataset_package_methods_conformal_archive_v2(
+            DatasetPackageMethodsConformalArchiveV2Request {
+                training_dataset: &training_package,
+                training_source_id: "spectra",
+                calibration_dataset: &calibration_package,
+                calibration_source_id: "spectra",
+                training_request: &request,
+                coverages: vec![0.75],
+                multi_target_policy: ConformalMultiTargetPolicy::Marginal,
+                small_sample_policy: ConformalSmallSamplePolicy::Error,
+                outcome_id: "outcome:conformal.v2",
+                training_run_id: RunId::new("run:conformal.v2.train").unwrap(),
+                calibration_run_id: RunId::new("run:conformal.v2.calibrate").unwrap(),
+                calibration_replay_request_id: "request:conformal.v2.calibrate",
+                calibration_replay_outcome_id: "outcome:conformal.v2.calibrate",
+                bundle_id: BundleId::new("bundle:conformal.v2").unwrap(),
+                package_id: "predictor:conformal.v2",
+                archive_id: "archive:conformal.v2",
+                archive_path: &archive_path,
+                methods_library_path: &library,
+            },
+        )
+        .unwrap();
+        assert_eq!(produced.calibration.target_names, ["protein", "moisture"]);
+        assert_eq!(produced.calibration_replay.input_data_identities.len(), 1);
+        assert!(produced.calibration_replay.input_data_identities[0]
+            .target_content_fingerprint
+            .is_some());
+        assert_eq!(
+            produced.training.conformal_calibration.as_ref(),
+            Some(&produced.calibration)
+        );
+        drop(produced);
+        assert_fresh_conformal_presentation(&archive_path, &library);
+
+        let overlap_path = directory.path().join("overlap.n4a");
+        let overlap = match train_dataset_package_methods_conformal_archive_v2(
+            DatasetPackageMethodsConformalArchiveV2Request {
+                training_dataset: &training_package,
+                training_source_id: "spectra",
+                calibration_dataset: &training_package,
+                calibration_source_id: "spectra",
+                training_request: &request,
+                coverages: vec![0.75],
+                multi_target_policy: ConformalMultiTargetPolicy::Marginal,
+                small_sample_policy: ConformalSmallSamplePolicy::Error,
+                outcome_id: "outcome:conformal.overlap",
+                training_run_id: RunId::new("run:conformal.overlap.train").unwrap(),
+                calibration_run_id: RunId::new("run:conformal.overlap.calibrate").unwrap(),
+                calibration_replay_request_id: "request:conformal.overlap.calibrate",
+                calibration_replay_outcome_id: "outcome:conformal.overlap.calibrate",
+                bundle_id: BundleId::new("bundle:conformal.overlap").unwrap(),
+                package_id: "predictor:conformal.overlap",
+                archive_id: "archive:conformal.overlap",
+                archive_path: &overlap_path,
+                methods_library_path: &library,
+            },
+        ) {
+            Ok(_) => panic!("overlapping calibration package was accepted"),
+            Err(error) => error,
+        };
+        assert!(overlap.contains("overlaps training"), "{overlap}");
+        assert!(!overlap_path.exists());
+
+        let mut missing_ids = calibration_package.to_assembled();
+        missing_ids.identity.sample_id = None;
+        let missing_ids = DatasetPackage::from_assembled(&missing_ids);
+        let error = DatasetPackageMethodsProvider::new(&missing_ids, "spectra")
+            .err()
+            .expect("missing sample ids must be refused");
+        assert!(error.contains("sample"), "{error}");
     }
 }

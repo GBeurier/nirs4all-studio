@@ -23,13 +23,16 @@ nursery = "warn"
 atomicwrites = "0.4.4"
 base64 = "0.22"
 cap-std = "3"
-# Complete immutable snapshot of selected Core commit 94d712f; see its
+# Complete immutable snapshot of selected Core commit 6b25b63; see its
 # provenance and offline inventory/test gates. Its final descendant must be
 # relocked against published dag-ml-data 0.2.10 before LOCK-RELEASE.
-nirs4all = { version = "=0.3.25", path = "vendor/nirs4all-core-94d712f/upstream/bindings/rust/nirs4all" }
-# Complete immutable snapshot of selected IO commit f41967d; see its provenance
-# and offline inventory/test gates. It must become a published identity by LOCK-RELEASE.
+nirs4all = { version = "=0.3.25", path = "vendor/nirs4all-core-6b25b63/upstream/bindings/rust/nirs4all" }
+# Historical role-tagged reader retained for the frozen scientific-submission
+# resolver.
 nirs4all-io = { version = "=0.1.7", path = "vendor/nirs4all-io-f419/upstream/crates/nirs4all-io" }
+# Complete immutable snapshot of selected IO commit 54fa4f5; its native
+# DatasetPackage handoff remains a local publish=false qualification patch.
+nirs4all-io-data002 = { package = "nirs4all-io", version = "=0.1.12", path = "vendor/nirs4all-io-54fa/upstream/crates/nirs4all-io" }
 percent-encoding = "2.3"
 rusqlite = { version = "0.32.1", features = ["bundled", "serialize"] }
 serde_json = "1.0"

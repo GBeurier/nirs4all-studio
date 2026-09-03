@@ -30,6 +30,7 @@ pub mod execution_job_records;
 pub mod job_http;
 pub mod job_lifecycle;
 pub mod legacy_conversion;
+mod native_archive_training;
 mod results_summary;
 pub mod run_detail;
 pub mod run_detail_cpython;
@@ -57,6 +58,10 @@ use legacy_conversion::{
     parse_request as parse_legacy_conversion_request, LegacyConversionFailure,
     LegacyConversionProcessOutput, LegacyConversionRequest, LegacyConversionRuntime,
     LEGACY_CONVERSION_ROUTE, LEGACY_TRANSITION_STATUS_ROUTE,
+};
+use native_archive_training::{
+    parse_request as parse_native_archive_training_request, NativeArchiveTrainingExecutor,
+    NATIVE_ARCHIVE_TRAINING_BACKEND, NATIVE_ARCHIVE_TRAINING_ROUTE,
 };
 use results_summary::{read_results_summary, read_results_summary_from_connection};
 use run_detail::compose_store_run_detail;
@@ -400,6 +405,7 @@ pub struct SidecarState {
     app_settings: AppSettingsStore,
     update_settings: UpdateSettingsStore,
     native_jobs: Arc<NativeJobRuntime>,
+    native_archive_training: Option<Arc<NativeArchiveTrainingExecutor>>,
     archive_v2_prediction: ArchiveV2PredictionRuntime,
     legacy_conversion: LegacyConversionRuntime,
 }
@@ -420,6 +426,7 @@ impl Default for SidecarState {
             app_settings: AppSettingsStore::from_environment(),
             update_settings: UpdateSettingsStore::from_environment(),
             native_jobs: Arc::new(NativeJobRuntime::default()),
+            native_archive_training: None,
             archive_v2_prediction: ArchiveV2PredictionRuntime::default(),
             legacy_conversion: LegacyConversionRuntime::default(),
         }
@@ -521,6 +528,8 @@ impl SidecarState {
         } else {
             Arc::new(NativeJobRuntime::default())
         };
+        let native_archive_training =
+            NativeArchiveTrainingExecutor::acquire(app_settings.config_dir()).map(Arc::new);
         Self {
             python_plugin_host: python_plugin_host.clone(),
             python_plugin_host_bundled,
@@ -530,6 +539,7 @@ impl SidecarState {
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
             native_jobs,
+            native_archive_training,
             app_settings,
             update_settings: UpdateSettingsStore::from_environment(),
             legacy_conversion: LegacyConversionRuntime::from_python_plugin_host(python_plugin_host),
@@ -606,6 +616,21 @@ impl SidecarState {
 
     #[cfg(test)]
     #[must_use]
+    fn with_native_archive_training_and_prediction(
+        trainer: Arc<NativeArchiveTrainingExecutor>,
+        predictor: Arc<dyn archive_v2_prediction::ArchiveV2PredictionExecutor>,
+        app_settings_dir: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            native_archive_training: Some(trainer),
+            archive_v2_prediction: ArchiveV2PredictionRuntime::with_executor(predictor),
+            app_settings: AppSettingsStore::new(app_settings_dir),
+            ..Self::default()
+        }
+    }
+
+    #[cfg(test)]
+    #[must_use]
     pub fn with_update_settings_path(path: impl Into<PathBuf>) -> Self {
         Self {
             update_settings: UpdateSettingsStore::new(path),
@@ -655,13 +680,14 @@ impl SidecarState {
         let python_plugin_configured = self.python_plugin_host.is_some();
         let scientific_execution = self.native_jobs.execution_selected();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"native_conformal_presentation_v2\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_transition_status_route\":true,\"legacy_workspace_conversion_route\":{},\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"native_archive_v2_training\":{},\"native_conformal_presentation_v2\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_transition_status_route\":true,\"legacy_workspace_conversion_route\":{},\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
                 "unconfigured"
             },
             self.archive_v2_prediction.is_selected(),
+            self.native_archive_training.is_some(),
             self.archive_v2_prediction.is_selected(),
             self.legacy_conversion.is_available(),
         )
@@ -784,6 +810,13 @@ pub fn route_request_with_body(
 ) -> HttpResponse {
     if let Some(response) = route_archive_v2_prediction_match(state, method, path, body) {
         return response;
+    }
+    if path == NATIVE_ARCHIVE_TRAINING_ROUTE {
+        return if method == "POST" {
+            native_archive_training_response(state, body)
+        } else {
+            method_not_allowed(method, path, "POST")
+        };
     }
     if let Some(response) = route_scientific_submission_match(state, method, path, body) {
         return response;
@@ -962,9 +995,10 @@ fn archive_v2_conformal_projection_response(state: &SidecarState, body: &[u8]) -
     };
     let authorized = workspace
         .store()
-        .and_then(|store| {
-            workspace_store::read_archive_v2_registrations_from_connection(store).ok()
-        })
+        .map_or_else(
+            || workspace_store::read_archive_v2_registrations(workspace.path()).ok(),
+            |store| workspace_store::read_archive_v2_registrations_from_connection(store).ok(),
+        )
         .is_some_and(|registrations| {
             registrations.iter().any(|registration| {
                 registration.artifact_path == artifact_path
@@ -1002,13 +1036,10 @@ fn archive_v2_catalogue_response(state: &SidecarState, workspace_id: &str) -> Ht
             &ArchiveV2PredictionError::WorkspaceUnavailable,
         );
     };
-    let Some(store) = workspace.store() else {
-        return archive_v2_prediction_error_response(
-            &ArchiveV2PredictionError::WorkspaceUnavailable,
-        );
-    };
-    let registrations = match workspace_store::read_archive_v2_registrations_from_connection(store)
-    {
+    let registrations = match workspace.store().map_or_else(
+        || workspace_store::read_archive_v2_registrations(workspace.path()),
+        workspace_store::read_archive_v2_registrations_from_connection,
+    ) {
         Ok(registrations) => registrations,
         Err(error) => return workspace_store_read_error_response(&error),
     };
@@ -1045,9 +1076,12 @@ fn archive_v2_prediction_response(state: &SidecarState, body: &[u8]) -> HttpResp
     if let Some(artifact_path) = request.archive_ref.strip_prefix("artifacts/") {
         let authorized = workspace
             .store()
-            .and_then(|store| {
-                workspace_store::read_archive_v2_registrations_from_connection(store).ok()
-            })
+            .map_or_else(
+                || workspace_store::read_archive_v2_registrations(workspace.path()).ok(),
+                |store| {
+                    workspace_store::read_archive_v2_registrations_from_connection(store).ok()
+                },
+            )
             .is_some_and(|registrations| {
                 registrations.iter().any(|registration| {
                     registration.artifact_path == artifact_path
@@ -1092,9 +1126,10 @@ fn archive_v2_conformal_presentation_response(state: &SidecarState, body: &[u8])
     };
     let authorized = workspace
         .store()
-        .and_then(|store| {
-            workspace_store::read_archive_v2_registrations_from_connection(store).ok()
-        })
+        .map_or_else(
+            || workspace_store::read_archive_v2_registrations(workspace.path()).ok(),
+            |store| workspace_store::read_archive_v2_registrations_from_connection(store).ok(),
+        )
         .is_some_and(|registrations| {
             registrations.iter().any(|registration| {
                 registration.artifact_path == artifact_path
@@ -3546,6 +3581,56 @@ fn scientific_submission_response(state: &SidecarState, body: &[u8]) -> HttpResp
         Path::new(workspace_path),
         &timestamp,
         Instant::now(),
+    ))
+}
+
+fn native_archive_training_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    let Some(trainer) = state.native_archive_training.as_ref() else {
+        return HttpResponse::json(
+            503,
+            json!({"detail": "Native Archive V2 training is unavailable"}).to_string(),
+        );
+    };
+    let request = match parse_native_archive_training_request(body) {
+        Ok(request) => request,
+        Err(reason) => {
+            return HttpResponse::json(
+                422,
+                json!({"detail": "Native Archive V2 training request is invalid", "reason": reason})
+                    .to_string(),
+            )
+        }
+    };
+    let workspace = match state
+        .app_settings
+        .linked_workspace_access(&request.workspace_id)
+    {
+        Ok(Some(workspace)) => workspace,
+        _ => {
+            return HttpResponse::json(
+                409,
+                json!({"detail": "Persisted linked workspace is unavailable"}).to_string(),
+            )
+        }
+    };
+    if workspace.store().is_some() {
+        return HttpResponse::json(
+            409,
+            json!({"detail": "Content-addressed immutable workspace cannot accept training artifacts"})
+                .to_string(),
+        );
+    }
+    let executor: Arc<dyn job_http::ScientificJobExecutor> = trainer.clone();
+    let timestamp = websocket_transport::rfc3339_now();
+    scientific_submission_runtime_response(state.native_jobs.submit_with_executor_at(
+        &request.run_name,
+        NATIVE_ARCHIVE_TRAINING_BACKEND,
+        &request.payload,
+        &request.workspace_id,
+        workspace.path(),
+        &timestamp,
+        Instant::now(),
+        executor,
     ))
 }
 
@@ -6696,6 +6781,234 @@ mod tests {
             "artifacts/models/model.n4a"
         );
         assert_eq!(body["archives"][0]["identity_status"], "verified");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn native_saved_multisource_dataset_trains_catalogues_and_fresh_predicts() {
+        let library = PathBuf::from(
+            env::var_os("N4M_LIBRARY_PATH")
+                .expect("N4M_LIBRARY_PATH must name the final ABI 2.5 libn4m"),
+        );
+        let library_bytes = fs::read(&library).unwrap();
+        let methods = archive_v2_prediction::PackagedMethodsLibraryIdentity {
+            path: library,
+            size: u64::try_from(library_bytes.len()).unwrap(),
+            sha256: format!("{:x}", Sha256::digest(&library_bytes)),
+            abi_major: 2,
+            abi_minor: 5,
+        };
+        let predictor = Arc::new(
+            archive_v2_prediction::CoreArchiveV2PredictionExecutor::acquire(methods.clone())
+                .unwrap(),
+        );
+        let root = test_directory("native-researcher-train");
+        let config = root.join("config");
+        let workspace = root.join("workspace");
+        let dataset = root.join("dataset");
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir(workspace.join("runs")).unwrap();
+        fs::create_dir_all(&dataset).unwrap();
+        fs::write(
+            workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5.sqlite"),
+        )
+        .unwrap();
+
+        let mut headers = vec![
+            "sample_id".to_string(),
+            "observation_id".to_string(),
+            "group_id".to_string(),
+        ];
+        headers.extend((1000..=1100).step_by(10).map(|value| value.to_string()));
+        headers.push("protein".into());
+        let mut spectra = vec![headers.join(";")];
+        let mut fresh_x = Vec::new();
+        for sample in 0..8 {
+            let values = (0..11)
+                .map(|feature| {
+                    f64::from(u32::try_from((sample + 2) * (feature + 1)).unwrap())
+                        + f64::from(
+                            u32::try_from((sample * feature * feature + feature) % 7).unwrap(),
+                        ) / 10.0
+                })
+                .collect::<Vec<_>>();
+            spectra.push(format!(
+                "sample.{};observation.{};{};{};{}",
+                sample + 1,
+                sample + 1,
+                if sample < 4 { "batch.a" } else { "batch.b" },
+                values
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(";"),
+                3.0 + f64::from(u32::try_from(sample).unwrap()) * 1.5,
+            ));
+            if sample < 2 {
+                fresh_x.push(values);
+            }
+        }
+        fs::write(dataset.join("spectra.csv"), spectra.join("\n") + "\n").unwrap();
+        let mut markers = vec!["sample_id;marker_a;marker_b".to_string()];
+        for sample in 0..8 {
+            markers.push(format!(
+                "sample.{};{};{}",
+                sample + 1,
+                sample % 2,
+                (sample + 1) % 2
+            ));
+        }
+        fs::write(dataset.join("markers.csv"), markers.join("\n") + "\n").unwrap();
+        let dataset_config = dataset.join("dataset.json");
+        fs::write(
+            &dataset_config,
+            json!({
+                "name": "saved-multisource-numeric",
+                "task_type": "regression",
+                "sample_index": {"by":"id","key":"sample_id","observation_id":"observation_id","group_id":"group_id"},
+                "sources": [
+                    {
+                        "id":"spectra","role":"mixed","input":"spectra.csv","key":"sample_id",
+                        "columns":[
+                            {"role":"features","select":{"regex":"^1[0-9]{3}$"}},
+                            {"role":"targets","select":["protein"]},
+                            {"role":"metadata","select":["sample_id","observation_id","group_id"]}
+                        ]
+                    },
+                    {
+                        "id":"markers","role":"features","input":"markers.csv","key":"sample_id",
+                        "columns":[{"role":"features","select":["marker_a","marker_b"]}],
+                        "join":{"to":"spectra","on":"sample_id","how":"1:1","coverage":"error"}
+                    }
+                ],
+                "folds":{"inline":[
+                    {"train":[4,5,6,7],"val":[0,1,2,3]},
+                    {"train":[0,1,2,3],"val":[4,5,6,7]}
+                ]}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        fs::write(
+            config.join("dataset_links.json"),
+            json!({"version":"1.0","schema_version":1,"datasets":[{
+                "id":"dataset-a","name":"Dataset A","path":dataset_config.canonicalize().unwrap()
+            }]})
+            .to_string(),
+        )
+        .unwrap();
+        fs::write(
+            config.join("app_settings.json"),
+            json!({"linked_workspaces":[linked_workspace_record("workspace-a", &workspace, true, 0)]})
+                .to_string(),
+        )
+        .unwrap();
+
+        let trainer = Arc::new(native_archive_training::NativeArchiveTrainingExecutor::with_methods(
+            &config,
+            methods,
+        ));
+        let mut state = SidecarState::with_native_archive_training_and_prediction(
+            trainer,
+            predictor,
+            &config,
+        );
+        let request = json!({
+            "schema_version":1,
+            "operation":"native_dataset_train_archive_v2",
+            "workspace_id":"workspace-a",
+            "run_name":"Native researcher PLS",
+            "dataset":{"id":"dataset-a","source_id":"spectra"},
+            "pipeline":{
+                "profile":"snv_savgol_pls_v1",
+                "snv":{"ddof":0},
+                "savgol":{"mode":"interp","window_length":3,"polyorder":2,"deriv":0,"delta":1.0},
+                "pls":{"n_components":2}
+            },
+            "execution":{"engine":"core_rust_io_dag_methods","allow_fallback":false}
+        });
+        let mut invalid = request.clone();
+        invalid["pipeline"]["snv"]["ddof"] = json!(1);
+        let refused = route_request_with_body(
+            &mut state,
+            "POST",
+            native_archive_training::NATIVE_ARCHIVE_TRAINING_ROUTE,
+            invalid.to_string().as_bytes(),
+        );
+        assert_eq!(refused.status, 422);
+
+        let accepted = route_request_with_body(
+            &mut state,
+            "POST",
+            native_archive_training::NATIVE_ARCHIVE_TRAINING_ROUTE,
+            request.to_string().as_bytes(),
+        );
+        assert_eq!(accepted.status, 202, "{}", accepted.body);
+        let receipt: Value = serde_json::from_str(&accepted.body).unwrap();
+        let job_id = receipt["job_id"].as_str().unwrap();
+        let terminal = (0..500)
+            .find_map(|_| {
+                let response = route_request(
+                    &mut state,
+                    "GET",
+                    &format!("/api/training/{job_id}"),
+                );
+                assert_eq!(response.status, 200, "{}", response.body);
+                let body: Value = serde_json::from_str(&response.body).unwrap();
+                if matches!(body["status"].as_str(), Some("completed" | "failed" | "cancelled")) {
+                    Some(body)
+                } else {
+                    thread::sleep(Duration::from_millis(10));
+                    None
+                }
+        })
+        .expect("native training job must reach a terminal state");
+        assert_eq!(terminal["status"], "completed", "{terminal}");
+
+        let catalogue = route_request(
+            &mut state,
+            "GET",
+            "/api/workspaces/workspace-a/archive-v2",
+        );
+        assert_eq!(catalogue.status, 200, "{}", catalogue.body);
+        let catalogue: Value = serde_json::from_str(&catalogue.body).unwrap();
+        assert_eq!(catalogue["archives"].as_array().unwrap().len(), 1);
+        let archive_ref = catalogue["archives"][0]["archive_ref"]
+            .as_str()
+            .unwrap();
+        let archive_sha256 = catalogue["archives"][0]["archive_sha256"]
+            .as_str()
+            .unwrap();
+        assert_eq!(catalogue["archives"][0]["n_features"], 11);
+        assert_eq!(catalogue["archives"][0]["target_names"], json!(["protein"]));
+
+        let prediction = route_request_with_body(
+            &mut state,
+            "POST",
+            ARCHIVE_V2_PREDICTION_ROUTE,
+            json!({
+                "schema_version":1,"operation":"archive_v2_predict","workspace_id":"workspace-a",
+                "archive":{"ref":archive_ref,"sha256":archive_sha256},
+                "input":{"kind":"array","sample_ids":["fresh.1","fresh.2"],"x":fresh_x,"expected_target_names":["protein"]},
+                "execution":{"engine":"core_rust_methods","allow_fallback":false}
+            })
+            .to_string()
+            .as_bytes(),
+        );
+        assert_eq!(prediction.status, 200, "{}", prediction.body);
+        let prediction: Value = serde_json::from_str(&prediction.body).unwrap();
+        assert_eq!(prediction["sample_ids"], json!(["fresh.1", "fresh.2"]));
+        assert_eq!(prediction["target_names"], json!(["protein"]));
+        assert!(prediction["values"].as_array().is_some_and(|rows| {
+            rows.len() == 2
+                && rows.iter().all(|row| {
+                    row.as_array().is_some_and(|values| {
+                        values.len() == 1 && values[0].as_f64().is_some_and(f64::is_finite)
+                    })
+                })
+        }));
         fs::remove_dir_all(root).unwrap();
     }
 
