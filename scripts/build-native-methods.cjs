@@ -176,6 +176,20 @@ function appendGitHubSearchPath(searchPathFile, directory) {
   fs.appendFileSync(searchPathFile, `${directory}\n`);
 }
 
+function withPrependedSearchPath(environment, directory, platform = process.platform) {
+  if (/[\r\n]/.test(directory)) {
+    throw new Error("Methods runtime directory contains a newline");
+  }
+  const next = {};
+  let inheritedPath = "";
+  for (const [name, value] of Object.entries(environment)) {
+    if (name.toLowerCase() === "path") inheritedPath = value || "";
+    else next[name] = value;
+  }
+  next.PATH = `${directory}${platform === "win32" ? ";" : ":"}${inheritedPath}`;
+  return next;
+}
+
 function buildAndAttest({
   sourceRoot,
   platform = process.platform,
@@ -209,10 +223,7 @@ function buildAndAttest({
   );
   const library = resolveBuiltLibrary(source.sourceRoot, config);
   const cliEnv = platform === "win32"
-    ? {
-        ...process.env,
-        PATH: `${path.dirname(library.libraryPath)}${path.delimiter}${process.env.PATH || ""}`,
-      }
+    ? withPrependedSearchPath(process.env, path.dirname(library.libraryPath), platform)
     : process.env;
   const abiInfo = run(cliPath, ["--abi-info"], {
     cwd: source.sourceRoot,
@@ -302,4 +313,5 @@ module.exports = {
   parseArgs,
   resolveBuiltLibrary,
   targetConfig,
+  withPrependedSearchPath,
 };

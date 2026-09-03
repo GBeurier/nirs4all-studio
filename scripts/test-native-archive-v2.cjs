@@ -4,6 +4,7 @@ const { createHash } = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { withPrependedSearchPath } = require("./build-native-methods.cjs");
 
 const root = path.resolve(__dirname, "..");
 const witness = path.join(
@@ -16,6 +17,7 @@ const witness = path.join(
 const expectedWitnessSha256 =
   "6c626742245db5232a35c6b70095640480f6c6fb98c56dca5bce958686bbc99e";
 const methodsLibrary = process.env.NIRS4ALL_BUILD_METHODS_LIBRARY;
+const methodsDirectory = process.env.NIRS4ALL_BUILD_METHODS_DIRECTORY;
 const methodsSha256 = process.env.NIRS4ALL_BUILD_METHODS_SHA256;
 
 function fail(message) {
@@ -38,6 +40,13 @@ if (!methodsLibrary || !path.isAbsolute(methodsLibrary)) {
 if (!fs.existsSync(methodsLibrary) || !fs.statSync(methodsLibrary).isFile()) {
   fail(`missing Methods library: ${methodsLibrary}`);
 }
+if (
+  !methodsDirectory ||
+  !path.isAbsolute(methodsDirectory) ||
+  path.resolve(methodsDirectory) !== path.dirname(path.resolve(methodsLibrary))
+) {
+  fail("NIRS4ALL_BUILD_METHODS_DIRECTORY must match the attested library directory");
+}
 if (!/^[0-9a-f]{64}$/.test(methodsSha256 || "")) {
   fail("NIRS4ALL_BUILD_METHODS_SHA256 must be a lowercase SHA-256 digest");
 }
@@ -59,7 +68,9 @@ execFileSync(
   {
     cwd: root,
     env: {
-      ...process.env,
+      ...(process.platform === "win32"
+        ? withPrependedSearchPath(process.env, methodsDirectory, process.platform)
+        : process.env),
       N4A_RT_PRED_ARCHIVE_V2: witness,
       N4A_RT_PRED_METHODS_LIBRARY: methodsLibrary,
       N4A_RT_PRED_METHODS_SHA256: methodsSha256,

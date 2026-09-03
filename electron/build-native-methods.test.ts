@@ -30,6 +30,11 @@ const methodsBuild = require("../scripts/build-native-methods.cjs") as {
     buildExtra: string[];
     ctestExtra: string[];
   };
+  withPrependedSearchPath(
+    environment: Record<string, string>,
+    directory: string,
+    platform?: string,
+  ): Record<string, string>;
 };
 
 describe("native Methods product build", () => {
@@ -116,6 +121,19 @@ describe("native Methods product build", () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("prefixes one unambiguous Windows PATH for child processes", () => {
+    expect(
+      methodsBuild.withPrependedSearchPath(
+        { Path: "C:\\Windows", HOME: "C:\\Users\\runner" },
+        "D:\\runtime",
+        "win32",
+      ),
+    ).toEqual({
+      HOME: "C:\\Users\\runner",
+      PATH: "D:\\runtime;C:\\Windows",
+    });
   });
 
   it("requires an explicit source checkout", () => {
