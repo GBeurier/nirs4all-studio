@@ -16,6 +16,7 @@ const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
       extraPipArgs?: string[];
     },
   ): string[];
+  buildPluginToolchainInstallArgs(): string[];
   getLocalNirs4allCandidates(explicitPath?: string, env?: Record<string, string | undefined>): string[];
   resolveLocalNirs4allPath(explicitPath?: string, env?: Record<string, string | undefined>): string | null;
   getDependencyInstallPhases(
@@ -54,6 +55,24 @@ afterEach(() => {
 });
 
 describe("setup-python-env", () => {
+  it("keeps the plugin wheel toolchain exact while bounding network retries", () => {
+    expect(setupPythonEnvModule.buildPluginToolchainInstallArgs()).toEqual([
+      "-I",
+      "-m",
+      "pip",
+      "install",
+      "--prefer-binary",
+      "--no-compile",
+      "--upgrade",
+      "--timeout",
+      "60",
+      "--retries",
+      "3",
+      "setuptools==84.0.0",
+      "wheel==0.48.0",
+    ]);
+  });
+
   it("adds --no-compile when building bundled standalone pip installs", () => {
     const args = setupPythonEnvModule.buildPipInstallArgs(["nirs4all==0.1.0"], {
       constraintsFile: "build/constraints.txt",
