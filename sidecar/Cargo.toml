@@ -50,6 +50,6 @@ studio-windows-job = { path = "crates/studio-windows-job" }
 # package payloads and replace these patches with registry identities before
 # LOCK-RELEASE.
 [patch.crates-io]
-dag-ml = { path = "vendor/dag-ml-6800c4f/upstream/dag-ml-0.3.23" }
-dag-ml-core = { path = "vendor/dag-ml-6800c4f/upstream/dag-ml-core-0.3.23" }
+dag-ml = { path = "vendor/dag-ml-879e2af/upstream/dag-ml-0.3.23" }
+dag-ml-core = { path = "vendor/dag-ml-879e2af/upstream/dag-ml-core-0.3.23" }
 n4m = { path = "vendor/n4m-48ad1e5/upstream/n4m-0.1.4" }

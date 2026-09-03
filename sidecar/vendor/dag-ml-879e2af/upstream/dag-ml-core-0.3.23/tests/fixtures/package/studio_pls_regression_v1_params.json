@@ -1,0 +1,7 @@
+{
+  "copy": true,
+  "max_iter": 500,
+  "n_components": 2,
+  "scale": true,
+  "tol": 1e-6
+}
