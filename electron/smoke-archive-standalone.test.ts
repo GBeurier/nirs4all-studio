@@ -24,7 +24,7 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     sandboxRoot: string;
     keepSandbox: boolean;
   };
-  buildSandboxEnv(platformId: string, sandboxRoot: string, port: number): Record<string, string>;
+  buildSandboxEnv(platformId: string, sandboxRoot: string, port: number, timeoutMs?: number): Record<string, string>;
   cleanupSandboxRoot(
     sandboxRoot: string,
     options?: { retryCount?: number; retryDelayMs?: number },
@@ -210,10 +210,12 @@ describe("smoke-archive-standalone", () => {
 
   it("creates an isolated Linux sandbox env", () => {
     const sandboxRoot = makeTempDir("n4a-smoke-env-");
-    const env = smokeModule.buildSandboxEnv("linux", sandboxRoot, 43123);
+    const env = smokeModule.buildSandboxEnv("linux", sandboxRoot, 43123, 90000);
 
     expect(env.NIRS4ALL_OFFLINE).toBe("1");
     expect(env.NIRS4ALL_NATIVE_SIDECAR_PORT).toBe("43123");
+    expect(env.NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS).toBe("90000");
+    expect(env.NIRS4ALL_PLUGIN_PACKAGE_VERIFY_TIMEOUT_MS).toBe("90000");
     expect(env.NIRS4ALL_BACKEND_PORT).toBeUndefined();
     expect(env.HOME).toBe(path.join(sandboxRoot, "home"));
     expect(env.XDG_CACHE_HOME).toBe(path.join(sandboxRoot, "home", ".cache"));

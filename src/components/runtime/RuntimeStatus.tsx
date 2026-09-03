@@ -6,6 +6,7 @@ import {
   RefreshCw,
   type LucideIcon,
 } from "lucide-react";
+import { RuntimeResultStatusBadge } from "nirs4all-ui/components";
 
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -72,13 +73,16 @@ export function RuntimeStatusBadge({
   variant?: RuntimeResultBadgeVariant;
 }) {
   const display = getRuntimeResultStatusDisplay(status);
+  const Icon = runtimeStatusIcons[display.icon];
 
   return (
     <Badge variant={variant ?? display.badgeVariant} className={cn("gap-1.5", display.bgClass, className)}>
-      {showIcon && (
-        <RuntimeStatusIcon status={status} className={cn("h-3.5 w-3.5", iconClassName)} />
-      )}
-      {display.label}
+      <RuntimeResultStatusBadge
+        status={status}
+        icon={showIcon ? <Icon className={cn("h-3.5 w-3.5", display.colorClass, display.iconClass, iconClassName)} /> : null}
+        className="inline-flex items-center gap-1.5"
+        showProgress={false}
+      />
     </Badge>
   );
 }

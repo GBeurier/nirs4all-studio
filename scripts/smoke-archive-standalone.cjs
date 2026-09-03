@@ -302,13 +302,15 @@ function collectRuntimePathLeaks(runtimeRoot, disallowedFragments) {
   return leaks;
 }
 
-function buildSandboxEnv(platformId, sandboxRoot, port) {
+function buildSandboxEnv(platformId, sandboxRoot, port, timeoutMs = DEFAULT_TIMEOUT_MS) {
   const env = {
     ...process.env,
     CI: "1",
     ELECTRON_ENABLE_LOGGING: "1",
     NIRS4ALL_OFFLINE: "1",
     NIRS4ALL_NATIVE_SIDECAR_PORT: String(port),
+    NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS: String(timeoutMs),
+    NIRS4ALL_PLUGIN_PACKAGE_VERIFY_TIMEOUT_MS: String(timeoutMs),
   };
   delete env.NIRS4ALL_BACKEND_PORT;
 
@@ -570,7 +572,7 @@ async function smokeArchiveStandalone(rawConfig) {
 
   const port = await choosePort(config.port);
   const sandboxRoot = config.sandboxRoot || fs.mkdtempSync(path.join(os.tmpdir(), "n4a-archive-smoke-"));
-  const env = buildSandboxEnv(config.platform, sandboxRoot, port);
+  const env = buildSandboxEnv(config.platform, sandboxRoot, port, config.timeoutMs);
   const outputBuffer = [];
 
   console.log(`Smoke root:     ${config.extractedRoot}`);
