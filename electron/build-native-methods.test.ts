@@ -41,6 +41,7 @@ describe("native Methods product build", () => {
       preset: "ci-windows-msvc-release",
       cliParts: ["cpp", "cli", "Release", "n4m_cli.exe"],
       buildExtra: ["--config", "Release"],
+      ctestExtra: ["-C", "Release"],
     });
     expect(methodsBuild.targetConfig("darwin", "x64").configureExtra).toContain(
       "-DCMAKE_OSX_ARCHITECTURES=x86_64",
