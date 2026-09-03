@@ -216,7 +216,7 @@ describe("EnvManager", () => {
     const installArgs = childProcessMocks.spawn.mock.calls
       .filter(([, args]) => Array.isArray(args) && args.includes("install"))
       .flatMap(([, args]) => args as string[]);
-    expect(installArgs).toContain("nirs4all==0.10.3");
+    expect(installArgs).toContain("nirs4all==0.13.0");
     expect(installArgs.join(" ").toLowerCase()).not.toMatch(
       /fastapi|uvicorn|python-multipart|sentry-sdk/,
     );
@@ -289,7 +289,7 @@ describe("EnvManager", () => {
         installed: inspectCalls === 1
           ? { nirs4all: "0.9.3" }
           : {
-              nirs4all: "0.10.3",
+              nirs4all: "0.13.0",
               fastapi: "0.111.0",
               uvicorn: "0.30.0",
               pydantic: "2.10.0",
@@ -368,7 +368,7 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.8",
           installed: {
-            nirs4all: "0.10.3",
+            nirs4all: "0.13.0",
             fastapi: "0.111.0",
             uvicorn: "0.30.0",
             pydantic: "2.10.0",
@@ -430,7 +430,7 @@ describe("EnvManager", () => {
         callback(null, JSON.stringify({
           version: "3.11.7",
           installed: {
-            nirs4all: "0.10.3",
+            nirs4all: "0.13.0",
             fastapi: "0.111.0",
             uvicorn: "0.30.0",
             pydantic: "2.10.0",
