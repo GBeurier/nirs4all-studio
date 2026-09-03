@@ -23,11 +23,12 @@ use cap_std::fs::MetadataExt as CapMetadataExt;
 use cap_std::{ambient_authority, fs::Dir};
 use nirs4all::{
     dag_ml::{
-        NativePredictorDescriptorV1, PortablePredictorPackage, RunId,
+        ConformalPresentationV2, NativePredictorDescriptorV1, PortablePredictorPackage, RunId,
         NATIVE_PREDICTOR_CAPABILITY_PREDICT,
     },
     inspect_methods_archive_v2_predictors, load_archive_v2_bytes,
     load_methods_archive_v2_conformal_presentation_v2, predict_methods_archive_v2_matrix,
+    predict_methods_archive_v2_matrix_conformal_presentation_v2,
     preflight_methods_archive_v2_library, MethodsArchiveMatrixPredictRequest,
 };
 use serde_json::{json, Map, Value};
@@ -38,6 +39,8 @@ use std::os::unix::fs::MetadataExt as StdMetadataExt;
 pub const ARCHIVE_V2_PREDICTION_ROUTE: &str = "/api/predict/archive-v2";
 pub const ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE: &str =
     "/api/predict/archive-v2/conformal-presentation";
+pub const ARCHIVE_V2_CONFORMAL_PROJECTION_ROUTE: &str =
+    "/api/predict/archive-v2/conformal-projection";
 pub const MAX_PREDICTION_BODY_BYTES: usize = 64 * 1024;
 pub const MAX_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_PREDICTION_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
@@ -89,6 +92,14 @@ pub struct ArchiveV2PredictionOutput {
     pub target_names: Vec<String>,
     pub values: Vec<Vec<f64>>,
     pub provenance_executor: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchiveV2ConformalProjectionReference {
+    pub archive_sha256: String,
+    pub sample_ids: Vec<String>,
+    pub target_names: Vec<String>,
+    pub presentation_fingerprint: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -312,6 +323,40 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
         serde_json::to_string(&presentation)
             .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)
     }
+
+    fn execute_conformal(
+        &self,
+        resolved: &ResolvedArchiveV2PredictionRequest,
+    ) -> Result<ConformalPresentationV2, ArchiveV2PredictionExecutorError> {
+        let archive = load_archive_v2_bytes(&resolved.archive_bytes)
+            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        if archive.reference().archive_sha256() != resolved.request.archive_sha256 {
+            return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
+        }
+        let identity = &resolved.request.archive_sha256[..16];
+        predict_methods_archive_v2_matrix_conformal_presentation_v2(
+            &archive,
+            MethodsArchiveMatrixPredictRequest {
+                sample_ids: resolved.request.sample_ids.clone(),
+                x: resolved.request.x.clone(),
+                expected_target_names: resolved.request.expected_target_names.clone(),
+                methods_library_path: self.methods.path.clone(),
+                methods_library_sha256: self.methods.sha256.clone(),
+                request_id: format!("request:studio.archive-v2-conformal:{identity}"),
+                outcome_id: format!("outcome:studio.archive-v2-conformal:{identity}"),
+                run_id: RunId::new(format!("run:studio.archive-v2-conformal:{identity}"))
+                    .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?,
+                warnings: Vec::new(),
+                diagnostics: BTreeMap::from([(
+                    "contract".into(),
+                    Value::String(
+                        "nirs4all.studio-archive-v2-conformal-projection-contract.v1".into(),
+                    ),
+                )]),
+            },
+        )
+        .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)
+    }
 }
 
 fn require_predictor_descriptor_contracts(
@@ -372,6 +417,13 @@ pub trait ArchiveV2PredictionExecutor: Debug + Send + Sync {
         _expected_sha256: &str,
         _presentation_json: &str,
     ) -> Result<String, ArchiveV2PredictionExecutorError> {
+        Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
+    }
+
+    fn execute_conformal(
+        &self,
+        _request: &ResolvedArchiveV2PredictionRequest,
+    ) -> Result<ConformalPresentationV2, ArchiveV2PredictionExecutorError> {
         Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
     }
 }
@@ -551,6 +603,42 @@ impl ArchiveV2PredictionRuntime {
                 &presentation_json,
             )
             .map_err(|_| ArchiveV2PredictionError::InvalidConformalPresentation)
+    }
+
+    /// Execute Core's conformal projection, persist its exact typed value, and
+    /// return only the immutable identity needed by the renderer read route.
+    pub fn execute_conformal_projection(
+        &self,
+        request: ArchiveV2PredictionRequest,
+        workspace_path: &Path,
+        store: &crate::conformal_store::ConformalPresentationStore,
+    ) -> Result<String, ArchiveV2PredictionError> {
+        if !self.is_selected() {
+            return Err(ArchiveV2PredictionError::ExecutorUnavailable);
+        }
+        let archive_bytes = read_archive(workspace_path, &request)?;
+        let resolved = ResolvedArchiveV2PredictionRequest {
+            request,
+            archive_bytes,
+        };
+        let presentation = self
+            .executor
+            .execute_conformal(&resolved)
+            .map_err(|_| ArchiveV2PredictionError::InvalidConformalPresentation)?;
+        store
+            .store_v2(&presentation)
+            .map_err(|_| ArchiveV2PredictionError::InvalidConformalPresentation)?;
+        let reference = ArchiveV2ConformalProjectionReference {
+            archive_sha256: presentation.archive_sha256,
+            sample_ids: presentation
+                .sample_ids
+                .iter()
+                .map(|sample_id| sample_id.as_str().to_owned())
+                .collect(),
+            target_names: presentation.target_names,
+            presentation_fingerprint: presentation.presentation_fingerprint,
+        };
+        project_conformal_reference(&resolved.request, &reference)
     }
 }
 
@@ -1235,6 +1323,28 @@ fn project_response(
         return Err(ArchiveV2PredictionError::ResponseTooLarge);
     }
     Ok(response)
+}
+
+fn project_conformal_reference(
+    request: &ArchiveV2PredictionRequest,
+    reference: &ArchiveV2ConformalProjectionReference,
+) -> Result<String, ArchiveV2PredictionError> {
+    if reference.archive_sha256 != request.archive_sha256
+        || reference.sample_ids != request.sample_ids
+        || reference.target_names != request.expected_target_names
+        || !valid_sha256(&reference.presentation_fingerprint)
+    {
+        return Err(ArchiveV2PredictionError::InvalidExecutorOutput);
+    }
+    Ok(json!({
+        "schema_version": 1,
+        "operation": "archive_v2_conformal_projection",
+        "archive_sha256": reference.archive_sha256,
+        "sample_ids": reference.sample_ids,
+        "target_names": reference.target_names,
+        "presentation_fingerprint": reference.presentation_fingerprint,
+    })
+    .to_string())
 }
 
 fn project_catalogue_response(

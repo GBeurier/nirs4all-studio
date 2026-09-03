@@ -59,6 +59,7 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["POST /runs/run-groups", { name: "scientific-submission", capability: "scientific_submission_transport" }],
   ["POST /predict/archive-v2", { name: "archive-v2-prediction", capability: "native_archive_v2_prediction" }],
   ["POST /predict/archive-v2/conformal-presentation", { name: "archive-v2-conformal-presentation", capability: "native_conformal_presentation_v2" }],
+  ["POST /predict/archive-v2/conformal-projection", { name: "archive-v2-conformal-projection", capability: "native_conformal_presentation_v2" }],
 ]);
 
 const pythonHostRoutes = new Map<string, NativeSurface>([

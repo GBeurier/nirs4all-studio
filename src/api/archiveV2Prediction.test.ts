@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ARCHIVE_V2_ARRAY_PREDICTION_ENDPOINT,
   ARCHIVE_V2_CONFORMAL_PRESENTATION_ENDPOINT,
+  ARCHIVE_V2_CONFORMAL_PROJECTION_ENDPOINT,
   getPersistedArchiveV2ConformalPresentation,
   getPersistedArchiveV2Catalogue,
   predictPersistedArchiveV2Array,
+  projectPersistedArchiveV2ConformalPresentation,
 } from "./archiveV2Prediction";
 import type {
   ArchiveV2ArrayPredictionRequest,
@@ -145,6 +147,33 @@ describe("native Archive V2 array prediction client", () => {
       ARCHIVE_V2_CONFORMAL_PRESENTATION_ENDPOINT,
       conformalRequest,
       2 * 1024 * 1024,
+    );
+  });
+
+  it("persists a conformal projection and accepts only its aligned fingerprint reference", async () => {
+    const registered = {
+      ...request,
+      archive: { ...request.archive, ref: "artifacts/models/model.n4a" },
+    };
+    const reference = {
+      schema_version: 1,
+      operation: "archive_v2_conformal_projection",
+      archive_sha256: registered.archive.sha256,
+      sample_ids: registered.input.sample_ids,
+      target_names: registered.input.expected_target_names,
+      presentation_fingerprint: "f".repeat(64),
+    };
+    transport.postBoundedJson.mockResolvedValue(reference);
+    await expect(projectPersistedArchiveV2ConformalPresentation(registered)).resolves.toEqual(reference);
+    expect(transport.postBoundedJson).toHaveBeenCalledWith(
+      ARCHIVE_V2_CONFORMAL_PROJECTION_ENDPOINT,
+      registered,
+      2 * 1024 * 1024,
+    );
+
+    transport.postBoundedJson.mockResolvedValue({ ...reference, sample_ids: ["predict.1", "predict.0"] });
+    await expect(projectPersistedArchiveV2ConformalPresentation(registered)).rejects.toThrow(
+      "Invalid native conformal projection reference",
     );
   });
 
