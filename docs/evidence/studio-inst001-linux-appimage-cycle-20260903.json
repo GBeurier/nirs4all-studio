@@ -1,0 +1,57 @@
+{
+  "schema_version": "nirs4all.studio-inst001-linux-cycle-evidence.v1",
+  "executed_at": "2026-09-03",
+  "scope": "isolated Linux x64 AppImage lifecycle on two real CI artifacts",
+  "status": "passed",
+  "evidence_state": "advanced_local_linux_appimage_cycle",
+  "inst001_complete": false,
+  "release_eligible": false,
+  "holds": [
+    "deb_package_manager_cycle_not_covered",
+    "windows_and_macos_not_covered",
+    "signing_and_publication_not_covered"
+  ],
+  "environment": {
+    "os": "Linux",
+    "architecture": "x86_64",
+    "display": "Xvfb",
+    "node": "v24.16.0",
+    "offline": true,
+    "isolated_home_xdg": true
+  },
+  "artifacts": {
+    "install": {
+      "workflow_run": 33769655509,
+      "studio_commit": "0903abaf066f341ff0cb021314249d4caad3626f",
+      "name": "nirs4all Studio-0.11.0-linux-x86_64.AppImage",
+      "sha256": "82bd84dbbee347cbe599d0ebf0e6a59dd0630fc0e426c1b1fcc6bdeedd4a23b8",
+      "size_bytes": 455694950
+    },
+    "update": {
+      "workflow_run": 33777731069,
+      "studio_commit": "ca4ee2afbb7596b2e4ba4b00f6d5797e553dfa39",
+      "name": "nirs4all Studio-0.11.0-linux-x86_64.AppImage",
+      "sha256": "22938444a616d93c9e093a2b53cc17b45788d4f563c7d75b3a969651736465f3",
+      "size_bytes": 455662121
+    }
+  },
+  "steps": [
+    { "id": "verify-artifacts", "status": "passed" },
+    {
+      "id": "install",
+      "status": "passed",
+      "installed_sha256": "82bd84dbbee347cbe599d0ebf0e6a59dd0630fc0e426c1b1fcc6bdeedd4a23b8"
+    },
+    { "id": "launch", "status": "passed" },
+    { "id": "crash", "status": "passed" },
+    { "id": "restart", "status": "passed" },
+    {
+      "id": "update",
+      "status": "passed",
+      "installed_sha256": "22938444a616d93c9e093a2b53cc17b45788d4f563c7d75b3a969651736465f3"
+    },
+    { "id": "launch-updated", "status": "passed" },
+    { "id": "uninstall", "status": "passed" }
+  ],
+  "failure": null
+}

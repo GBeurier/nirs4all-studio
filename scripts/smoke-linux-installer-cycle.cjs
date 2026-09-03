@@ -250,6 +250,7 @@ async function runCycle(rawConfig) {
   try {
     report.artifacts.install = verifyArtifact(config.installArtifact, config.installSha256, "install");
     report.artifacts.update = verifyArtifact(config.updateArtifact, config.updateSha256, "update");
+    report.holds = report.holds.filter((hold) => hold !== "real_candidate_artifacts_required");
     report.steps.push(passedStep(activeStep));
 
     const workRoot = config.workRoot || os.tmpdir();

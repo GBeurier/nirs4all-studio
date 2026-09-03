@@ -99,6 +99,8 @@ test("runs install, launch, crash, restart, update, and uninstall with fake arti
   assert.equal(report.evidence_state, "advanced_local_linux_appimage_cycle");
   assert.equal(report.inst001_complete, false);
   assert.equal(report.release_eligible, false);
+  assert.equal(report.holds.includes("real_candidate_artifacts_required"), false);
+  assert.equal(report.holds.includes("windows_and_macos_not_covered"), true);
   assert.deepEqual(
     report.steps.map((step) => [step.id, step.status]),
     [
