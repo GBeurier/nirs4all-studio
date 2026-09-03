@@ -30,9 +30,9 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "ea3320ca0636dc45b88a32c020c50d2ae40dc2b3",
+      source_commit: "3a38f589e5acbda58c5d071c95036f2572972ecd",
       wheel_sha256:
-        "538c2605bb5b09d047c3a5396a477e3acab1bb99e52dc9bf95199e244419ae2b",
+        "31a19980014e0538c444c5f9a1a3cff0a8cdd6cf9e9950fe099e016e730865e9",
       platform: "linux",
       arch: "x64",
       conversion_tools: {

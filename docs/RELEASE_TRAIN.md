@@ -14,6 +14,15 @@ packaged in R2 so a structured DAG-ML refusal can be retried through the real
 legacy engine. Direct Legacy selection is also explicit. Missing capabilities
 disable the selector rather than silently changing engines.
 
-This Python HTTP backend is transitional and belongs only to R2. R3 merges the
-strict reconciled product, removes the backend and selector, restores the Rust
-sidecar as sole HTTP/control-plane owner, and forces fallback off.
+The packaged Python HTTP fallback is transitional and belongs only to R2. R3
+merges the strict reconciled product, removes that fallback and its selector
+from the packaged renderer path, restores the Rust sidecar as sole
+HTTP/control-plane owner, and forces fallback off. FastAPI remains source-only
+for web development and the visible whole-session diagnostic mode.
+
+## R3 — Studio 0.11.0
+
+R3 is the strict successor. The packaged renderer always targets the Rust
+sidecar; scientific Python is limited to the attested, bounded stdio plugin
+host and cannot own a product port or serve as a route fallback. Missing or
+invalid Python leaves Rust active while scientific capabilities fail closed.

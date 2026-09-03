@@ -55,8 +55,8 @@ const TORCH_CUDA_INDEX_URL = "https://download.pytorch.org/whl/cu124";
 const TORCH_PROFILE_PACKAGE = "torch";
 const CUDA_TORCH_PROFILE = "gpu-cuda-torch";
 const PLUGIN_BUILD_MODE = "studio-python-plugin-runtime";
-const PLUGIN_SOURCE_COMMIT = "ea3320ca0636dc45b88a32c020c50d2ae40dc2b3";
-const PLUGIN_WHEEL_SHA256 = "538c2605bb5b09d047c3a5396a477e3acab1bb99e52dc9bf95199e244419ae2b";
+const PLUGIN_SOURCE_COMMIT = "3a38f589e5acbda58c5d071c95036f2572972ecd";
+const PLUGIN_WHEEL_SHA256 = "31a19980014e0538c444c5f9a1a3cff0a8cdd6cf9e9950fe099e016e730865e9";
 const PLUGIN_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all.git@${PLUGIN_SOURCE_COMMIT}`;
 const TOOLS_SOURCE_COMMIT = "e3a332633f87b4652a06f8993e63c386a3568698";
 const TOOLS_WHEEL_SHA256 = "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc";
@@ -983,7 +983,7 @@ async function main() {
       `  Removed ${runtimeStats.removedPaths + launcherStats.removedPaths} development-only paths (${formatSize(runtimeStats.removedBytes + launcherStats.removedBytes)})`,
     );
     if (pluginOnly) {
-      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "0.13.0");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.0.0rc2");
       await restorePinnedWheelRecord(runtimePython, backendDist, selectedToolsWheel, "nirs4all_tools", "0.0.7");
       console.log("  Restored both exact pinned wheel RECORDs after isolated installation");
     }

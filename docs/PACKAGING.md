@@ -136,9 +136,9 @@ Phase 2 installers and all-in-one archives build this payload with
 it does not invoke `bake-standalone-backend.cjs`, copy `api/`, `websocket/`, or
 `main.py`, or install the shared FastAPI backend dependency set. It rebuilds
 the selected `nirs4all` wheel from source commit
-`ea3320ca0636dc45b88a32c020c50d2ae40dc2b3` (or accepts that exact wheel for
+`3a38f589e5acbda58c5d071c95036f2572972ecd` (or accepts that exact wheel for
 an offline build), verifies SHA-256
-`538c2605bb5b09d047c3a5396a477e3acab1bb99e52dc9bf95199e244419ae2b`,
+`31a19980014e0538c444c5f9a1a3cff0a8cdd6cf9e9950fe099e016e730865e9`,
 and rejects FastAPI, Starlette, Uvicorn, Sentry's FastAPI integration, and the
 Uvicorn server transitive set. `PLUGIN_RUNTIME_READY.json` freezes the exact
 `library-plugin-host-only` role. The older generic `RUNTIME_READY.json` never
