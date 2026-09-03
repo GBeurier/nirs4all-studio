@@ -64,6 +64,7 @@ const TOOLS_SOURCE_EPOCH = "1788346349";
 const TOOLS_WHEEL_SHA256 = "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc";
 const TOOLS_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all-tools.git@${TOOLS_SOURCE_COMMIT}`;
 const WHEEL_BUILD_TOOLCHAIN = Object.freeze(["setuptools==84.0.0", "wheel==0.48.0"]);
+const PLUGIN_PIP_NETWORK_ARGS = Object.freeze(["--timeout", "60", "--retries", "3"]);
 const TOOLS_READER_PACKAGES = Object.freeze(["duckdb==1.5.5", "pyarrow==25.0.1"]);
 
 // --- Argument parsing ---
@@ -273,6 +274,15 @@ function buildPipInstallArgs(packageSpecs, options = {}) {
     ...(options.constraintsFile ? ["-c", options.constraintsFile] : []),
     ...packageSpecs,
   ];
+}
+
+function buildPluginToolchainInstallArgs() {
+  return buildPipInstallArgs(WHEEL_BUILD_TOOLCHAIN, {
+    isolated: true,
+    noCompile: true,
+    upgrade: true,
+    extraPipArgs: PLUGIN_PIP_NETWORK_ARGS,
+  });
 }
 
 function getLocalNirs4allCandidates(explicitPath = localNirs4allPath, env = process.env) {
@@ -815,12 +825,8 @@ async function main() {
     const wheelDir = path.join(cacheDir, "studio-python-plugin-wheel");
     fs.mkdirSync(wheelDir, { recursive: true });
     if (!pluginWheel || !toolsWheel) {
-      await runCommandWithRetries(runtimePython, buildPipInstallArgs(WHEEL_BUILD_TOOLCHAIN, {
-        isolated: true,
-        noCompile: true,
-        upgrade: true,
-      }), {}, {
-        retries: isWindows ? 3 : 1,
+      await runCommandWithRetries(runtimePython, buildPluginToolchainInstallArgs(), {}, {
+        retries: 2,
         label: "install exact wheel build toolchain",
       });
     }
@@ -1118,6 +1124,7 @@ module.exports = {
   getCompileTargets,
   isStandaloneBundledRuntimeMode,
   buildPipInstallArgs,
+  buildPluginToolchainInstallArgs,
   getLocalNirs4allCandidates,
   resolveLocalNirs4allPath,
   getDependencyInstallPhases,
