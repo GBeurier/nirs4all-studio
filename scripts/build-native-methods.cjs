@@ -168,11 +168,20 @@ function appendGitHubEnvironment(environmentPath, library) {
   );
 }
 
+function appendGitHubSearchPath(searchPathFile, directory) {
+  if (!searchPathFile) return;
+  if (/[\r\n]/.test(directory)) {
+    throw new Error("Methods runtime directory contains a newline");
+  }
+  fs.appendFileSync(searchPathFile, `${directory}\n`);
+}
+
 function buildAndAttest({
   sourceRoot,
   platform = process.platform,
   arch = process.arch,
   githubEnv = process.env.GITHUB_ENV || "",
+  githubPath = process.env.GITHUB_PATH || "",
 }) {
   if (platform !== process.platform || arch !== process.arch) {
     throw new Error(
@@ -228,6 +237,9 @@ function buildAndAttest({
   }
   assertSourceIdentity(source.sourceRoot);
   appendGitHubEnvironment(githubEnv, library);
+  if (platform === "win32") {
+    appendGitHubSearchPath(githubPath, path.dirname(library.libraryPath));
+  }
   return {
     schema: "nirs4all.studio-methods-build.v1",
     platform,
@@ -283,6 +295,7 @@ if (require.main === module) {
 
 module.exports = {
   appendGitHubEnvironment,
+  appendGitHubSearchPath,
   assertSourceIdentity,
   buildAndAttest,
   collectRegularFiles,

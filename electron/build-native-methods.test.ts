@@ -11,6 +11,7 @@ const methodsBuild = require("../scripts/build-native-methods.cjs") as {
     environmentPath: string,
     library: { libraryPath: string; sha256: string },
   ): void;
+  appendGitHubSearchPath(searchPathFile: string, directory: string): void;
   parseArgs(argv?: string[]): {
     sourceRoot: string;
     platform: string;
@@ -96,6 +97,21 @@ describe("native Methods product build", () => {
           libraryPath: "/build/evil\npath",
           sha256: "b".repeat(64),
         }),
+      ).toThrow(/newline/);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("exports the attested runtime directory for later Windows process loading", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-methods-path-"));
+    try {
+      const searchPathFile = path.join(root, "github-path");
+      const runtimeDirectory = path.join(root, "cpp", "src", "Release");
+      methodsBuild.appendGitHubSearchPath(searchPathFile, runtimeDirectory);
+      expect(fs.readFileSync(searchPathFile, "utf8")).toBe(`${runtimeDirectory}\n`);
+      expect(() =>
+        methodsBuild.appendGitHubSearchPath(searchPathFile, "evil\npath"),
       ).toThrow(/newline/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
