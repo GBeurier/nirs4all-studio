@@ -1767,6 +1767,7 @@ dependencies = [
  "nix",
  "percent-encoding",
  "rusqlite",
+ "same-file",
  "serde_json",
  "serde_yaml",
  "sha2 0.10.9",
