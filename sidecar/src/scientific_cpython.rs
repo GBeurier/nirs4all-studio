@@ -244,6 +244,7 @@ pub struct CpythonScientificJobExecutor {
     identity: Option<HostIdentity>,
     callable_identity: Option<HostIdentity>,
     packaged_runtime: Option<PackagedRuntimeIdentity>,
+    #[cfg_attr(not(unix), allow(dead_code))]
     acquisition: ScientificCpythonUnavailable,
     resolver: ScientificRequestResolver,
     running: Arc<Mutex<BTreeMap<String, Arc<AtomicBool>>>>,
