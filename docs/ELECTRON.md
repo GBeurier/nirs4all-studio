@@ -1,6 +1,6 @@
 # Electron Architecture Guide
 
-This document describes the Electron-based desktop architecture for nirs4all-webapp.
+This document describes the Electron-based desktop architecture for nirs4all Studio.
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@ This document describes the Electron-based desktop architecture for nirs4all-web
 
 ## Overview
 
-nirs4all-webapp uses Electron as the desktop shell, replacing the previous PyWebView-based approach. This provides:
+nirs4all Studio uses Electron as the desktop shell, replacing the previous PyWebView-based approach. This provides:
 
 - **Consistent WebGL**: Chromium engine on all platforms
 - **Better DevTools**: Full Chrome DevTools support
@@ -412,6 +412,21 @@ released while the process runs. `STU-CONV-UNKNOWN-001` also explicitly keeps
 the native unknown-field allowlist fail-closed even though legacy Pydantic
 ignored extra request fields. Both exceptions are frozen in
 `sidecar/contracts/studio_legacy_workspace_conversion_v1.json`.
+
+Conversion is intentionally a low-volume migration aid, not a transactional
+snapshot protocol for a workspace being modified concurrently. The qualified
+interpreter is re-attested inside the child, but the OS starts it by its
+verified path and Tools receives the legacy source by path. Stop source writers
+and keep the linked legacy workspace for rollback. Those path/concurrency limits
+are accepted residual risks; code `0` may activate, code `10` remains preserved
+and inactive, and code `20` remains an explicit refusal.
+
+Native researcher training is a separate Rust-only route:
+`POST /api/training/native-archive-v2`. It selects one persisted IO dataset
+source, executes `SNV(ddof=0) -> Savitzky-Golay(mode=interp) -> PLS` through
+IO/DAG-ML/Methods/Core, and registers the resulting Archive V2 in Store v5.
+The route supports bounded named multi-target regression and has no CPython,
+HPO, fusion, N-D, or fallback branch.
 
 For browser-only web development, run `python main.py --no-reload` beside
 `npm run dev`; this does not describe the packaged desktop product.

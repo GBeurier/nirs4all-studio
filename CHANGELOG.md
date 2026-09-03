@@ -6,6 +6,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Native persisted-dataset training:** Rust now owns
+  `POST /api/training/native-archive-v2`, job lifecycle, cancellation and Store
+  registration. The bounded route selects one dense IO source and delegates
+  the exact `SNV(ddof=0) -> Savitzky-Golay(mode=interp) -> PLS` training path
+  to DAG-ML/Methods/Core, producing Archive V2 without CPython or fallback.
+- **Multi-target conformal presentation:** Native Archive V2 replay and
+  persistence now carry DAG-ML's identity-bound `ConformalPresentationV2` for
+  named targets without recalculating calibration in Studio.
+
+### Changed
+
+- **Product ownership:** Packaged Studio is a Rust-only HTTP/WebSocket control
+  plane. Embedded CPython is limited to fresh bounded stdio calls for explicit
+  library/plugin operations; it never owns product routing or persistence.
+- **Legacy conversion contract:** verified code `0` output may activate, code
+  `10` remains preserved but inactive, and code `20` is an explicit refusal.
+  The source remains linked for rollback. Concurrent source mutation and the
+  path-based interpreter spawn are accepted limits of this low-volume migration
+  aid, not transactional immutability guarantees.
+
 ## [0.8.2] — 2026-06-13
 
 ### Fixed
