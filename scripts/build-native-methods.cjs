@@ -20,6 +20,7 @@ const MAX_LIBRARY_BYTES = 64 * 1024 * 1024;
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
+    env: options.env,
     encoding: "utf8",
     stdio: options.capture ? ["ignore", "pipe", "pipe"] : "inherit",
     windowsHide: true,
@@ -197,12 +198,22 @@ function buildAndAttest({
     config.preset,
     ...config.cliParts,
   );
-  const abiInfo = run(cliPath, ["--abi-info"], { cwd: source.sourceRoot, capture: true });
+  const library = resolveBuiltLibrary(source.sourceRoot, config);
+  const cliEnv = platform === "win32"
+    ? {
+        ...process.env,
+        PATH: `${path.dirname(library.libraryPath)}${path.delimiter}${process.env.PATH || ""}`,
+      }
+    : process.env;
+  const abiInfo = run(cliPath, ["--abi-info"], {
+    cwd: source.sourceRoot,
+    env: cliEnv,
+    capture: true,
+  });
   if (!new RegExp(`abi_version\\s*:\\s*${METHODS_ABI_MAJOR}\\.${METHODS_ABI_MINOR}\\.0`).test(abiInfo)) {
     throw new Error("Built Methods CLI did not report ABI 2.5.0");
   }
-  run(cliPath, ["--selfcheck"], { cwd: source.sourceRoot, capture: true });
-  const library = resolveBuiltLibrary(source.sourceRoot, config);
+  run(cliPath, ["--selfcheck"], { cwd: source.sourceRoot, env: cliEnv, capture: true });
   if (platform === "darwin") {
     const architectures = run("lipo", ["-archs", library.libraryPath], {
       cwd: source.sourceRoot,
