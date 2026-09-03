@@ -1654,6 +1654,7 @@ dependencies = [
  "atomicwrites",
  "base64 0.22.1",
  "cap-std",
+ "dag-ml-core",
  "nirs4all",
  "nirs4all-io 0.1.12",
  "nirs4all-io 0.1.7",
