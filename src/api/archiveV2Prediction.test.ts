@@ -2,16 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ARCHIVE_V2_ARRAY_PREDICTION_ENDPOINT,
+  getPersistedArchiveV2Catalogue,
   predictPersistedArchiveV2Array,
 } from "./archiveV2Prediction";
 import type { ArchiveV2ArrayPredictionRequest } from "@/types/archiveV2Prediction";
 
 const transport = vi.hoisted(() => ({
   postBoundedJson: vi.fn(),
+  getBoundedJson: vi.fn(),
 }));
 
 vi.mock("./transport", () => ({
-  api: { postBoundedJson: transport.postBoundedJson },
+  api: { postBoundedJson: transport.postBoundedJson, getBoundedJson: transport.getBoundedJson },
 }));
 
 const request: ArchiveV2ArrayPredictionRequest = {
@@ -61,9 +63,16 @@ function response(): Record<string, unknown> {
 
 beforeEach(() => {
   transport.postBoundedJson.mockReset();
+  transport.getBoundedJson.mockReset();
 });
 
 describe("native Archive V2 array prediction client", () => {
+  it("loads a bounded Core-verified catalogue", async () => {
+    const catalogue = { schema_version: 1, operation: "archive_v2_catalogue", workspace_id: "workspace-a", archives: [{ archive_id: "archive-a", archive_ref: "artifacts/model.n4a", archive_sha256: "a".repeat(64), n_features: 2, target_names: ["protein"], descriptor_fingerprint: "b".repeat(64), identity_status: "verified" }] };
+    transport.getBoundedJson.mockResolvedValue(catalogue);
+    await expect(getPersistedArchiveV2Catalogue("workspace-a")).resolves.toEqual(catalogue);
+    expect(transport.getBoundedJson).toHaveBeenCalledWith("/workspaces/workspace-a/archive-v2", 256 * 1024);
+  });
   it("posts the frozen array-only request and returns the aligned response", async () => {
     transport.postBoundedJson.mockResolvedValue(response());
 

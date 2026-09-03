@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   predict: vi.fn(),
+  catalogue: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -23,6 +24,11 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/api/archiveV2Prediction", () => ({
   predictPersistedArchiveV2Array: mocks.predict,
+  getPersistedArchiveV2Catalogue: mocks.catalogue,
+}));
+
+vi.mock("@/api/linkedWorkspaces", () => ({
+  getLinkedWorkspaces: vi.fn(async () => ({ workspaces: [], active_workspace_id: "workspace-a", total: 1 })),
 }));
 
 vi.mock("@/components/layout/MlLoadingOverlay", () => ({
@@ -47,7 +53,7 @@ import {
 function selection() {
   return createPersistedArchiveV2Selection({
     workspace_id: "workspace-a",
-    archive_ref: "models/calibration.n4a",
+    archive_ref: "artifacts/calibration.n4a",
     archive_sha256: "a".repeat(64),
     n_features: 2,
     target_names: ["protein", "moisture"],
@@ -70,6 +76,7 @@ async function renderPage() {
       </QueryClientProvider>,
     );
   });
+  await waitFor(() => expect(container.querySelector("textarea")?.hasAttribute("disabled")).toBe(false));
   cleanup = async () => {
     await act(async () => root.unmount());
     client.clear();
@@ -109,6 +116,8 @@ beforeEach(() => {
   localStorage.clear();
   persistArchiveV2Selection(selection());
   mocks.predict.mockReset();
+  mocks.catalogue.mockReset();
+  mocks.catalogue.mockResolvedValue({ schema_version: 1, operation: "archive_v2_catalogue", workspace_id: "workspace-a", archives: [{ archive_id: "archive:calibration", archive_ref: "artifacts/calibration.n4a", archive_sha256: "a".repeat(64), n_features: 2, target_names: ["protein", "moisture"], descriptor_fingerprint: "b".repeat(64), identity_status: "verified" }] });
   mocks.toastSuccess.mockReset();
   mocks.toastError.mockReset();
 });
@@ -132,7 +141,7 @@ describe("Predict Archive V2 page", () => {
       values: [[1.1, 12.2], [1.3, 12.4]],
       provenance: {
         executor: `nirs4all-core@0.3.25+libn4m-abi-2.5:${"b".repeat(64)}`,
-        archive_ref: "models/calibration.n4a",
+        archive_ref: "artifacts/calibration.n4a",
         workspace_id: "workspace-a",
       },
     });
@@ -142,7 +151,7 @@ describe("Predict Archive V2 page", () => {
     await waitFor(() => expect(mocks.predict).toHaveBeenCalledOnce());
 
     expect(mocks.predict).toHaveBeenCalledWith(expect.objectContaining({
-      archive: { ref: "models/calibration.n4a", sha256: "a".repeat(64) },
+      archive: { ref: "artifacts/calibration.n4a", sha256: "a".repeat(64) },
       input: expect.objectContaining({
         x: [[1, 2], [3, 4]],
         expected_target_names: ["protein", "moisture"],
@@ -164,8 +173,7 @@ describe("Predict Archive V2 page", () => {
 
     persistArchiveV2Selection({ ...selection(), target_names: ["moisture", "protein"] });
     await enterSpectraAndRun(container, "[[1, 2]]");
-    await waitFor(() => expect(container.querySelector('[role="alert"]')?.textContent)
-      .toContain("Archive identity changed"));
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith(expect.stringContaining("Archive identity changed")));
     expect(mocks.predict).not.toHaveBeenCalled();
   });
 });

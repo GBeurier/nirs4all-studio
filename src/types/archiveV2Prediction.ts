@@ -64,3 +64,20 @@ export interface ArchiveV2SelectionDraft {
   readonly n_features: number;
   readonly target_names: readonly string[];
 }
+
+export interface ArchiveV2CatalogueEntry {
+  readonly archive_id: string;
+  readonly archive_ref: string;
+  readonly archive_sha256: string;
+  readonly n_features: number;
+  readonly target_names: readonly string[];
+  readonly descriptor_fingerprint: string;
+  readonly identity_status: "verified";
+}
+
+export interface ArchiveV2CatalogueResponse {
+  readonly schema_version: 1;
+  readonly operation: "archive_v2_catalogue";
+  readonly workspace_id: string;
+  readonly archives: readonly ArchiveV2CatalogueEntry[];
+}

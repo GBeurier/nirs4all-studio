@@ -35,7 +35,7 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 
 describe("renderer transport preselection", () => {
   it("selects scientific submission transport natively only after capabilities preflight", async () => {
-    const request = vi.fn().mockResolvedValue(capabilityResponse());
+    const request = vi.fn().mockImplementation(async () => capabilityResponse());
     const decision = await preselectRendererTransport(
       { kind: "http", method: "POST", path: "/runs/run-groups" },
       running,
@@ -76,6 +76,7 @@ describe("renderer transport preselection", () => {
       { kind: "http" as const, method: "GET", path: "/health" },
       { kind: "http" as const, method: "POST", path: "/runs/run-groups" },
       { kind: "http" as const, method: "POST", path: "/predict/archive-v2" },
+      { kind: "http" as const, method: "GET", path: "/workspaces/workspace-a/archive-v2" },
       { kind: "http" as const, method: "GET", path: "/training/job-1" },
       { kind: "http" as const, method: "GET", path: "/system/capabilities" },
       { kind: "websocket" as const, path: "/ws/job/job-1" },
@@ -94,7 +95,7 @@ describe("renderer transport preselection", () => {
         status: 200,
       });
     }
-    expect(request).toHaveBeenCalledTimes(6);
+    expect(request).toHaveBeenCalledTimes(7);
   });
 
   it("still rejects malformed execution capability, transport, and Python owner", async () => {
@@ -158,7 +159,7 @@ describe("renderer transport preselection", () => {
   });
 
   it("selects Archive V2 prediction without acquiring the explicit Python host", async () => {
-    const request = vi.fn().mockResolvedValue(capabilityResponse());
+    const request = vi.fn().mockImplementation(async () => capabilityResponse());
     const withoutPythonHost = () => ({
       status: "running" as const,
       url: "http://127.0.0.1:43123",
@@ -174,6 +175,16 @@ describe("renderer transport preselection", () => {
       target: "native-sidecar",
       base_url: "http://127.0.0.1:43123",
       reason: "native_capability_preflight_passed",
+      status: 200,
+    });
+
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/workspaces/workspace-a/archive-v2" },
+      withoutPythonHost,
+      request,
+    )).resolves.toMatchObject({
+      surface: "archive-v2-catalogue",
+      target: "native-sidecar",
       status: 200,
     });
 

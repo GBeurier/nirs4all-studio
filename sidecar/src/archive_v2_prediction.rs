@@ -22,7 +22,10 @@ use std::{
 use cap_std::fs::MetadataExt as CapMetadataExt;
 use cap_std::{ambient_authority, fs::Dir};
 use nirs4all::{
-    dag_ml::{NativePredictorDescriptorV1, RunId, NATIVE_PREDICTOR_CAPABILITY_PREDICT},
+    dag_ml::{
+        NativePredictorDescriptorV1, PortablePredictorPackage, RunId,
+        NATIVE_PREDICTOR_CAPABILITY_PREDICT,
+    },
     inspect_methods_archive_v2_predictors, load_archive_v2_bytes,
     predict_methods_archive_v2_matrix, preflight_methods_archive_v2_library,
     MethodsArchiveMatrixPredictRequest,
@@ -36,6 +39,7 @@ pub const ARCHIVE_V2_PREDICTION_ROUTE: &str = "/api/predict/archive-v2";
 pub const MAX_PREDICTION_BODY_BYTES: usize = 64 * 1024;
 pub const MAX_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_PREDICTION_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_ARCHIVE_V2_CATALOGUE_RESPONSE_BYTES: usize = 256 * 1024;
 const MAX_SAMPLES: usize = 128;
 const MAX_FEATURES: usize = 256;
 const MAX_CELLS: usize = 16_384;
@@ -75,6 +79,24 @@ pub struct ArchiveV2PredictionOutput {
     pub target_names: Vec<String>,
     pub values: Vec<Vec<f64>>,
     pub provenance_executor: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchiveV2CatalogueInspection {
+    pub archive_id: String,
+    pub n_features: usize,
+    pub target_names: Vec<String>,
+    pub descriptor_fingerprint: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchiveV2CatalogueEntry {
+    pub archive_id: String,
+    pub archive_ref: String,
+    pub archive_sha256: String,
+    pub n_features: usize,
+    pub target_names: Vec<String>,
+    pub descriptor_fingerprint: String,
 }
 
 /// Product-owned identity of the one native Methods library selected by a
@@ -121,6 +143,69 @@ impl CoreArchiveV2PredictionExecutor {
 impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
     fn is_selected(&self) -> bool {
         true
+    }
+
+    fn inspect(
+        &self,
+        archive_bytes: &[u8],
+        expected_sha256: &str,
+    ) -> Result<ArchiveV2CatalogueInspection, ArchiveV2PredictionExecutorError> {
+        let archive = load_archive_v2_bytes(archive_bytes)
+            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        if archive.reference().archive_sha256() != expected_sha256 {
+            return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
+        }
+        let descriptors = inspect_methods_archive_v2_predictors(
+            &archive,
+            &self.methods.path,
+            &self.methods.sha256,
+        )
+        .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let descriptor = descriptors
+            .iter()
+            .find(|descriptor| descriptor.capabilities & NATIVE_PREDICTOR_CAPABILITY_PREDICT != 0)
+            .ok_or(ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let n_features = descriptor
+            .pipeline
+            .as_ref()
+            .map_or(descriptor.dimensions.n_features, |pipeline| {
+                pipeline.raw_n_features
+            });
+        let n_features = usize::try_from(n_features)
+            .ok()
+            .filter(|value| *value > 0 && *value <= MAX_FEATURES)
+            .ok_or(ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let package_json = std::str::from_utf8(
+            archive
+                .portable_predictor_package()
+                .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?,
+        )
+        .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let package = PortablePredictorPackage::from_json(package_json)
+            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        let target_names = package
+            .output_bindings
+            .first()
+            .map(|binding| binding.target_names.clone())
+            .filter(|targets| {
+                !targets.is_empty()
+                    && targets.len() <= MAX_TARGETS
+                    && targets.iter().all(|target| valid_id(target))
+                    && package
+                        .output_bindings
+                        .iter()
+                        .all(|binding| binding.target_names == *targets)
+            })
+            .ok_or(ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        if usize::try_from(descriptor.dimensions.n_targets).ok() != Some(target_names.len()) {
+            return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
+        }
+        Ok(ArchiveV2CatalogueInspection {
+            archive_id: archive.reference().archive_id().to_owned(),
+            n_features,
+            target_names,
+            descriptor_fingerprint: descriptor.descriptor_fingerprint.clone(),
+        })
     }
 
     fn execute(
@@ -229,6 +314,12 @@ pub enum ArchiveV2PredictionExecutorError {
 pub trait ArchiveV2PredictionExecutor: Debug + Send + Sync {
     fn is_selected(&self) -> bool;
 
+    fn inspect(
+        &self,
+        archive_bytes: &[u8],
+        expected_sha256: &str,
+    ) -> Result<ArchiveV2CatalogueInspection, ArchiveV2PredictionExecutorError>;
+
     /// Execute one validated, content-addressed array request.
     ///
     /// # Errors
@@ -265,6 +356,14 @@ struct UnselectedArchiveV2PredictionExecutor;
 impl ArchiveV2PredictionExecutor for UnselectedArchiveV2PredictionExecutor {
     fn is_selected(&self) -> bool {
         false
+    }
+
+    fn inspect(
+        &self,
+        _archive_bytes: &[u8],
+        _expected_sha256: &str,
+    ) -> Result<ArchiveV2CatalogueInspection, ArchiveV2PredictionExecutorError> {
+        Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
     }
 
     fn execute(
@@ -332,6 +431,47 @@ impl ArchiveV2PredictionRuntime {
             .execute(&resolved)
             .map_err(|_| ArchiveV2PredictionError::ExecutionFailed)?;
         project_response(&resolved.request, &output)
+    }
+
+    pub fn catalogue(
+        &self,
+        workspace_id: &str,
+        workspace_path: &Path,
+        registrations: &[crate::workspace_store::WorkspaceStoreArchiveV2Registration],
+    ) -> Result<String, ArchiveV2PredictionError> {
+        if !self.is_selected() {
+            return Err(ArchiveV2PredictionError::ExecutorUnavailable);
+        }
+        let mut entries = Vec::new();
+        for registration in registrations {
+            let archive_ref = format!("artifacts/{}", registration.artifact_path);
+            if !valid_id(&registration.artifact_id)
+                || !valid_archive_ref(&archive_ref)
+                || !valid_sha256(&registration.content_hash)
+            {
+                continue;
+            }
+            let Ok(archive_bytes) =
+                read_archive_identity(workspace_path, &archive_ref, &registration.content_hash)
+            else {
+                continue;
+            };
+            let Ok(inspection) = self
+                .executor
+                .inspect(&archive_bytes, &registration.content_hash)
+            else {
+                continue;
+            };
+            entries.push(ArchiveV2CatalogueEntry {
+                archive_id: inspection.archive_id,
+                archive_ref,
+                archive_sha256: registration.content_hash.clone(),
+                n_features: inspection.n_features,
+                target_names: inspection.target_names,
+                descriptor_fingerprint: inspection.descriptor_fingerprint,
+            });
+        }
+        project_catalogue_response(workspace_id, &entries)
     }
 }
 
@@ -631,6 +771,10 @@ fn valid_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
 }
 
+pub(crate) fn valid_workspace_id(value: &str) -> bool {
+    valid_id(value)
+}
+
 fn valid_archive_ref(value: &str) -> bool {
     if value.is_empty() || value.len() > MAX_ARCHIVE_REF_BYTES || value.contains('\\') {
         return false;
@@ -741,15 +885,33 @@ fn read_archive(
     workspace_path: &Path,
     request: &ArchiveV2PredictionRequest,
 ) -> Result<Vec<u8>, ArchiveV2PredictionError> {
+    read_archive_identity(
+        workspace_path,
+        &request.archive_ref,
+        &request.archive_sha256,
+    )
+}
+
+fn read_archive_identity(
+    workspace_path: &Path,
+    archive_ref: &str,
+    archive_sha256: &str,
+) -> Result<Vec<u8>, ArchiveV2PredictionError> {
     let workspace = open_workspace(workspace_path)?;
-    let mut directory = open_child_directory(&workspace, Path::new("exports"))?;
-    let components = Path::new(&request.archive_ref)
+    let mut components = Path::new(archive_ref)
         .components()
         .map(|component| match component {
             Component::Normal(value) => Ok(value.to_owned()),
             _ => Err(ArchiveV2PredictionError::ArchiveUnsafe),
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let root = if components.first().is_some_and(|value| value == "artifacts") {
+        components.remove(0);
+        "artifacts"
+    } else {
+        "exports"
+    };
+    let mut directory = open_child_directory(&workspace, Path::new(root))?;
     let (file_name, parents) = components
         .split_last()
         .ok_or(ArchiveV2PredictionError::ArchiveUnsafe)?;
@@ -811,7 +973,7 @@ fn read_archive(
         return Err(ArchiveV2PredictionError::ArchiveUnsafe);
     }
     let actual = format!("{:x}", Sha256::digest(&bytes));
-    if actual != request.archive_sha256 {
+    if actual != archive_sha256 {
         return Err(ArchiveV2PredictionError::ArchiveDigestMismatch);
     }
     Ok(bytes)
@@ -927,6 +1089,46 @@ fn project_response(
     Ok(response)
 }
 
+fn project_catalogue_response(
+    workspace_id: &str,
+    entries: &[ArchiveV2CatalogueEntry],
+) -> Result<String, ArchiveV2PredictionError> {
+    if !valid_id(workspace_id)
+        || entries.iter().any(|entry| {
+            !valid_id(&entry.archive_id)
+                || !valid_archive_ref(&entry.archive_ref)
+                || !valid_sha256(&entry.archive_sha256)
+                || entry.n_features == 0
+                || entry.n_features > MAX_FEATURES
+                || entry.target_names.is_empty()
+                || entry.target_names.len() > MAX_TARGETS
+                || entry.target_names.iter().any(|target| !valid_id(target))
+                || !valid_sha256(&entry.descriptor_fingerprint)
+        })
+    {
+        return Err(ArchiveV2PredictionError::InvalidExecutorOutput);
+    }
+    let response = json!({
+        "schema_version": 1,
+        "operation": "archive_v2_catalogue",
+        "workspace_id": workspace_id,
+        "archives": entries.iter().map(|entry| json!({
+            "archive_id": entry.archive_id,
+            "archive_ref": entry.archive_ref,
+            "archive_sha256": entry.archive_sha256,
+            "n_features": entry.n_features,
+            "target_names": entry.target_names,
+            "descriptor_fingerprint": entry.descriptor_fingerprint,
+            "identity_status": "verified",
+        })).collect::<Vec<_>>(),
+    })
+    .to_string();
+    if response.len() > MAX_ARCHIVE_V2_CATALOGUE_RESPONSE_BYTES {
+        return Err(ArchiveV2PredictionError::ResponseTooLarge);
+    }
+    Ok(response)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{fs, time::SystemTime};
@@ -939,6 +1141,22 @@ mod tests {
     impl ArchiveV2PredictionExecutor for FakeExecutor {
         fn is_selected(&self) -> bool {
             true
+        }
+
+        fn inspect(
+            &self,
+            archive_bytes: &[u8],
+            _expected_sha256: &str,
+        ) -> Result<ArchiveV2CatalogueInspection, ArchiveV2PredictionExecutorError> {
+            if archive_bytes != b"archive-v2-bytes" {
+                return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
+            }
+            Ok(ArchiveV2CatalogueInspection {
+                archive_id: "archive-a".into(),
+                n_features: 2,
+                target_names: vec!["protein".into(), "moisture".into()],
+                descriptor_fingerprint: "b".repeat(64),
+            })
         }
 
         fn execute(

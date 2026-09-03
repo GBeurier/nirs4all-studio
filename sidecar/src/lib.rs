@@ -900,12 +900,55 @@ fn route_archive_v2_prediction_match(
     path: &str,
     body: &[u8],
 ) -> Option<HttpResponse> {
+    if let Some(workspace_id) = archive_v2_catalogue_workspace_id(path) {
+        return Some(if method == "GET" {
+            archive_v2_catalogue_response(state, workspace_id)
+        } else {
+            method_not_allowed(method, path, "GET")
+        });
+    }
     (path == ARCHIVE_V2_PREDICTION_ROUTE).then(|| {
         if method != "POST" {
             return method_not_allowed(method, path, "POST");
         }
         archive_v2_prediction_response(state, body)
     })
+}
+
+fn archive_v2_catalogue_workspace_id(path: &str) -> Option<&str> {
+    let remainder = path.strip_prefix("/api/workspaces/")?;
+    let workspace_id = remainder.strip_suffix("/archive-v2")?;
+    archive_v2_prediction::valid_workspace_id(workspace_id).then_some(workspace_id)
+}
+
+fn archive_v2_catalogue_response(state: &SidecarState, workspace_id: &str) -> HttpResponse {
+    if !state.archive_v2_prediction.is_selected() {
+        return archive_v2_prediction_error_response(
+            &ArchiveV2PredictionError::ExecutorUnavailable,
+        );
+    }
+    let Ok(Some(workspace)) = state.app_settings.linked_workspace_access(workspace_id) else {
+        return archive_v2_prediction_error_response(
+            &ArchiveV2PredictionError::WorkspaceUnavailable,
+        );
+    };
+    let Some(store) = workspace.store() else {
+        return archive_v2_prediction_error_response(
+            &ArchiveV2PredictionError::WorkspaceUnavailable,
+        );
+    };
+    let registrations = match workspace_store::read_archive_v2_registrations_from_connection(store)
+    {
+        Ok(registrations) => registrations,
+        Err(error) => return workspace_store_read_error_response(&error),
+    };
+    match state
+        .archive_v2_prediction
+        .catalogue(workspace_id, workspace.path(), &registrations)
+    {
+        Ok(response) => HttpResponse::json(200, response),
+        Err(error) => archive_v2_prediction_error_response(&error),
+    }
 }
 
 fn archive_v2_prediction_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
@@ -929,6 +972,24 @@ fn archive_v2_prediction_response(state: &SidecarState, body: &[u8]) -> HttpResp
             &ArchiveV2PredictionError::WorkspaceUnavailable,
         );
     };
+    if let Some(artifact_path) = request.archive_ref.strip_prefix("artifacts/") {
+        let authorized = workspace
+            .store()
+            .and_then(|store| {
+                workspace_store::read_archive_v2_registrations_from_connection(store).ok()
+            })
+            .is_some_and(|registrations| {
+                registrations.iter().any(|registration| {
+                    registration.artifact_path == artifact_path
+                        && registration.content_hash == request.archive_sha256
+                })
+            });
+        if !authorized {
+            return archive_v2_prediction_error_response(
+                &ArchiveV2PredictionError::ArchiveNotFound,
+            );
+        }
+    }
     match state
         .archive_v2_prediction
         .execute(request, workspace.path())
@@ -4105,6 +4166,27 @@ mod tests {
             true
         }
 
+        fn inspect(
+            &self,
+            archive_bytes: &[u8],
+            _expected_sha256: &str,
+        ) -> Result<
+            archive_v2_prediction::ArchiveV2CatalogueInspection,
+            archive_v2_prediction::ArchiveV2PredictionExecutorError,
+        > {
+            if archive_bytes != b"fake-archive-v2" {
+                return Err(
+                    archive_v2_prediction::ArchiveV2PredictionExecutorError::ExecutionFailed,
+                );
+            }
+            Ok(archive_v2_prediction::ArchiveV2CatalogueInspection {
+                archive_id: "archive-a".into(),
+                n_features: 2,
+                target_names: vec!["protein".into(), "moisture".into()],
+                descriptor_fingerprint: "b".repeat(64),
+            })
+        }
+
         fn execute(
             &self,
             request: &archive_v2_prediction::ResolvedArchiveV2PredictionRequest,
@@ -6385,6 +6467,62 @@ mod tests {
         assert_eq!(response["sample_ids"], json!(["s1", "s2"]));
         assert_eq!(response["target_names"], json!(["protein", "moisture"]));
         assert_eq!(response["values"], json!([[1.5, 13.0], [2.5, 15.0]]));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn archive_v2_catalogue_lists_only_store_registered_core_verified_archives() {
+        let root = test_directory("archive-v2-catalogue-route");
+        let config = root.join("config");
+        let workspace = root.join("workspace");
+        let artifacts = workspace.join("artifacts/models");
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(&artifacts).unwrap();
+        fs::write(artifacts.join("model.n4a"), b"fake-archive-v2").unwrap();
+        fs::write(artifacts.join("tampered.n4a"), b"changed-archive").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(root.join("outside.n4a"), artifacts.join("escaped.n4a"))
+            .unwrap();
+        #[cfg(unix)]
+        fs::write(root.join("outside.n4a"), b"fake-archive-v2").unwrap();
+        fs::write(
+            workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5.sqlite"),
+        )
+        .unwrap();
+        let archive_digest = format!("{:x}", Sha256::digest(b"fake-archive-v2"));
+        let connection = rusqlite::Connection::open(workspace.join("store.sqlite")).unwrap();
+        connection.execute("INSERT INTO artifacts (artifact_id, artifact_path, content_hash, format, size_bytes, ref_count) VALUES (?, ?, ?, 'n4a', ?, 1)", rusqlite::params!["artifact:model", "models/model.n4a", archive_digest, 15_i64]).unwrap();
+        connection.execute("INSERT INTO artifacts (artifact_id, artifact_path, content_hash, format, size_bytes, ref_count) VALUES (?, ?, ?, 'n4a', ?, 1)", rusqlite::params!["artifact:tampered", "models/tampered.n4a", "c".repeat(64), 15_i64]).unwrap();
+        #[cfg(unix)]
+        connection.execute("INSERT INTO artifacts (artifact_id, artifact_path, content_hash, format, size_bytes, ref_count) VALUES (?, ?, ?, 'n4a', ?, 1)", rusqlite::params!["artifact:escaped", "models/escaped.n4a", format!("{:x}", Sha256::digest(b"fake-archive-v2")), 15_i64]).unwrap();
+        drop(connection);
+        let store_digest = format!(
+            "{:x}",
+            Sha256::digest(fs::read(workspace.join("store.sqlite")).unwrap())
+        );
+        let mut record = linked_workspace_record("workspace-a", &workspace, true, 0);
+        record["store_content_sha256"] = json!(store_digest);
+        fs::write(
+            config.join("app_settings.json"),
+            json!({ "linked_workspaces": [record] }).to_string(),
+        )
+        .unwrap();
+        let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
+            Arc::new(SelectedArchiveV2TestExecutor),
+            &config,
+        );
+
+        let response = route_request(&mut state, "GET", "/api/workspaces/workspace-a/archive-v2");
+        assert_eq!(response.status, 200);
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(body["operation"], "archive_v2_catalogue");
+        assert_eq!(body["archives"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            body["archives"][0]["archive_ref"],
+            "artifacts/models/model.n4a"
+        );
+        assert_eq!(body["archives"][0]["identity_status"], "verified");
         fs::remove_dir_all(root).unwrap();
     }
 

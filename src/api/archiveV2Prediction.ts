@@ -2,11 +2,13 @@ import { api } from "./transport";
 import type {
   ArchiveV2ArrayPredictionRequest,
   ArchiveV2ArrayPredictionResponse,
+  ArchiveV2CatalogueResponse,
 } from "@/types/archiveV2Prediction";
 
 export const ARCHIVE_V2_ARRAY_PREDICTION_ENDPOINT =
   "/predict/archive-v2" as const;
 export const MAX_ARCHIVE_V2_PREDICTION_RESPONSE_BYTES = 2 * 1024 * 1024;
+export const MAX_ARCHIVE_V2_CATALOGUE_RESPONSE_BYTES = 256 * 1024;
 
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_SAMPLES = 128;
@@ -200,6 +202,55 @@ function parseResponse(
     throw new TypeError("Invalid native Archive V2 array prediction response");
   }
   return value as unknown as ArchiveV2ArrayPredictionResponse;
+}
+
+function parseCatalogue(value: unknown, workspaceId: string): ArchiveV2CatalogueResponse {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ["schema_version", "operation", "workspace_id", "archives"]) ||
+    value.schema_version !== 1 ||
+    value.operation !== "archive_v2_catalogue" ||
+    value.workspace_id !== workspaceId ||
+    !Array.isArray(value.archives) ||
+    value.archives.length > 128
+  ) {
+    throw new TypeError("Invalid native Archive V2 catalogue response");
+  }
+  const seen = new Set<string>();
+  for (const entry of value.archives) {
+    if (
+      !isRecord(entry) ||
+      !hasExactKeys(entry, [
+        "archive_id", "archive_ref", "archive_sha256", "n_features",
+        "target_names", "descriptor_fingerprint", "identity_status",
+      ]) ||
+      !isIdentifier(entry.archive_id) ||
+      !isArchiveRef(entry.archive_ref) ||
+      typeof entry.archive_sha256 !== "string" || !SHA256.test(entry.archive_sha256) ||
+      !Number.isSafeInteger(entry.n_features) || (entry.n_features as number) < 1 ||
+      (entry.n_features as number) > MAX_FEATURES ||
+      !isUniqueIdentifiers(entry.target_names, MAX_TARGETS) ||
+      typeof entry.descriptor_fingerprint !== "string" || !SHA256.test(entry.descriptor_fingerprint) ||
+      entry.identity_status !== "verified" ||
+      seen.has(`${entry.archive_ref}:${entry.archive_sha256}`)
+    ) {
+      throw new TypeError("Invalid native Archive V2 catalogue response");
+    }
+    seen.add(`${entry.archive_ref}:${entry.archive_sha256}`);
+  }
+  return value as unknown as ArchiveV2CatalogueResponse;
+}
+
+export async function getPersistedArchiveV2Catalogue(
+  workspaceId: string,
+): Promise<ArchiveV2CatalogueResponse> {
+  if (!isIdentifier(workspaceId)) throw new TypeError("Invalid workspace identifier");
+  const endpoint = `/workspaces/${workspaceId}/archive-v2`;
+  const response = await api.getBoundedJson<unknown>(
+    endpoint,
+    MAX_ARCHIVE_V2_CATALOGUE_RESPONSE_BYTES,
+  );
+  return parseCatalogue(response, workspaceId);
 }
 
 /**

@@ -109,6 +109,9 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
     return { name: "linked-workspace-state", capability: "linked_workspace_state_routes" };
   }
   if (method === "GET") {
+    if (identifierPath("/workspaces/", "/archive-v2").test(path)) {
+      return { name: "archive-v2-catalogue", capability: "native_archive_v2_prediction" };
+    }
     const runs = classifyWorkspaceRuns(path);
     if (runs) return runs;
     if (identifierPath("/workspaces/", "/results").test(path)) {
@@ -161,7 +164,7 @@ function isNativeShapedCandidate(request: RendererTransportRequest): boolean {
       .some((entry) => entry.slice(entry.indexOf(" ") + 1) === pathname)
   ) return true;
   return /^\/app\/favorites\/[^/]*$/.test(pathname) ||
-    /^\/workspaces\/[^/]+\/(?:activate|runs|results(?:\/summary)?)\/?$/.test(pathname) ||
+    /^\/workspaces\/[^/]+\/(?:activate|archive-v2|runs|results(?:\/summary)?)\/?$/.test(pathname) ||
     /^\/training\/(?!start$|jobs$)[^/]+(?:\/stop)?$/.test(pathname) ||
     /^\/automl\/(?!jobs$)[^/]+(?:\/stop)?$/.test(pathname) ||
     /^\/updates\/webapp\/(?:download-status|download-cancel)\/[^/]*$/.test(pathname) ||

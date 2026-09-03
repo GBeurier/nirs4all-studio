@@ -1,89 +1,51 @@
-/**
- * @vitest-environment jsdom
- */
-
+/** @vitest-environment jsdom */
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ModelSelector } from "./ModelSelector";
 import { readPersistedArchiveV2Selection } from "@/lib/archiveV2Selection";
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-  .IS_REACT_ACT_ENVIRONMENT = true;
+vi.mock("@/api/linkedWorkspaces", () => ({
+  getLinkedWorkspaces: vi.fn(async () => ({ workspaces: [], active_workspace_id: "workspace-a", total: 1 })),
+}));
+vi.mock("@/api/archiveV2Prediction", () => ({
+  getPersistedArchiveV2Catalogue: vi.fn(async () => ({
+    schema_version: 1, operation: "archive_v2_catalogue", workspace_id: "workspace-a",
+    archives: [{ archive_id: "archive-a", archive_ref: "artifacts/model.n4a", archive_sha256: "a".repeat(64), n_features: 2, target_names: ["protein", "moisture"], descriptor_fingerprint: "b".repeat(64), identity_status: "verified" }],
+  })),
+}));
 
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let cleanup: (() => Promise<void>) | null = null;
 
 async function renderSelector(onSelect: ReturnType<typeof vi.fn>) {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  await act(async () => {
-    root.render(<ModelSelector selectedModel={null} onSelect={onSelect} />);
-  });
-  cleanup = async () => {
-    await act(async () => root.unmount());
-    container.remove();
-  };
+  const container = document.createElement("div"); document.body.appendChild(container);
+  const root = createRoot(container); const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await act(async () => { root.render(<QueryClientProvider client={client}><ModelSelector selectedModel={null} onSelect={onSelect} /></QueryClientProvider>); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  cleanup = async () => { await act(async () => root.unmount()); container.remove(); };
   return container;
 }
 
-async function setInput(container: HTMLElement, id: string, value: string) {
-  const input = container.querySelector<HTMLInputElement>(`#${id}`)!;
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!
-      .set!.call(input, value);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-}
-
 beforeEach(() => localStorage.clear());
+afterEach(async () => { await cleanup?.(); cleanup = null; vi.clearAllMocks(); });
 
-afterEach(async () => {
-  await cleanup?.();
-  cleanup = null;
-  vi.clearAllMocks();
-});
-
-describe("Archive V2 ModelSelector", () => {
-  it("persists and selects only the explicit Archive V2 contract", async () => {
-    const onSelect = vi.fn();
-    const container = await renderSelector(onSelect);
-
-    await setInput(container, "archive-workspace-id", "workspace-a");
-    await setInput(container, "archive-ref", "models/calibration.n4a");
-    await setInput(container, "archive-sha256", "a".repeat(64));
-    await setInput(container, "archive-n-features", "2");
-    await setInput(container, "archive-target-names", "protein, moisture");
-
-    const save = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("Verify and select"))!;
-    await act(async () => save.click());
-
-    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({
-      kind: "persisted_archive_v2",
-      archive_ref: "models/calibration.n4a",
-      n_features: 2,
-      target_names: ["protein", "moisture"],
-    }));
+describe("Archive V2 ModelSelector catalogue", () => {
+  it("selects and persists only a Core-verified catalogue entry", async () => {
+    const onSelect = vi.fn(); const container = await renderSelector(onSelect);
+    const entry = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("archive-a"))!;
+    expect(entry).toBeTruthy();
+    await act(async () => entry.click());
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ archive_ref: "artifacts/model.n4a", n_features: 2, target_names: ["protein", "moisture"] }));
     expect(readPersistedArchiveV2Selection()?.archive_sha256).toBe("a".repeat(64));
+    expect(container.querySelector("input")).toBeNull();
   });
 
-  it("refuses an absolute legacy-style path", async () => {
-    const onSelect = vi.fn();
-    const container = await renderSelector(onSelect);
-
-    await setInput(container, "archive-workspace-id", "workspace-a");
-    await setInput(container, "archive-ref", "/tmp/model.joblib");
-    await setInput(container, "archive-sha256", "a".repeat(64));
-    await setInput(container, "archive-n-features", "2");
-    await setInput(container, "archive-target-names", "protein");
-    const save = Array.from(container.querySelectorAll("button"))
-      .find((button) => button.textContent?.includes("Verify and select"))!;
-    await act(async () => save.click());
-
-    expect(container.querySelector('[role="alert"]')?.textContent)
-      .toContain("Invalid Archive V2 selection");
-    expect(onSelect).not.toHaveBeenCalled();
+  it("clears a stale persisted identity absent from the current catalogue", async () => {
+    localStorage.setItem("nirs4all:predict:archive-v2-selection", JSON.stringify({ schema_version: 1, kind: "persisted_archive_v2", workspace_id: "workspace-a", archive_ref: "artifacts/moved.n4a", archive_sha256: "c".repeat(64), n_features: 2, target_names: ["protein"] }));
+    await renderSelector(vi.fn());
+    expect(readPersistedArchiveV2Selection()).toBeNull();
   });
 });
