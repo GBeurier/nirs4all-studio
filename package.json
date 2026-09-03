@@ -1,7 +1,7 @@
 {
   "name": "nirs4all-webapp",
   "private": true,
-  "version": "0.9.1",
+  "version": "0.10.2",
   "homepage": "https://nirs4all.org",
   "type": "module",
   "description": "Unified NIRS analysis desktop application",
@@ -31,6 +31,7 @@
     "lint:deps": "node scripts/check-dep-sync.cjs",
     "check:packaged-electron-graph": "node scripts/check-packaged-electron-graph.cjs",
     "check:ui-package": "node scripts/check-ui-package.mjs",
+    "smoke:nirs4all-ui-package": "tsc -p tsconfig.nirs4all-ui-package-smoke.json --noEmit && node scripts/smoke-nirs4all-ui-package.mjs",
     "lint:parallel": "concurrently --group --names eslint,tsc,nodes,storage,ui,ruff,deps --prefix-colors blue,cyan,magenta,green,gray,yellow,white npm:lint:eslint npm:lint:tsc npm:lint:nodes npm:lint:storage npm:check:ui-package npm:lint:ruff npm:lint:deps",
     "test:frontend": "vitest run",
     "test:native-sidecar": "vitest run electron/native-sidecar-manager.test.ts electron/native-session-lifecycle.test.ts electron/scientific-plugin-lifecycle.test.ts electron/packaged-runtime-contract.test.ts electron/build-native-methods.test.ts electron/build-native-sidecar.test.ts electron/bake-python-plugin-runtime.test.ts electron/smoke-archive-standalone.test.ts src/api/transport.test.ts",

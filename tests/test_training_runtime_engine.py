@@ -139,7 +139,9 @@ def test_run_training_task_forwards_runtime_engine_to_nirs4all(monkeypatch: pyte
     result = training_api._run_training_task(job, lambda progress, message: True)
 
     assert calls[0]["engine"] == "dag-ml"
-    assert calls[0]["allow_fallback"] is True
+    # R2 always makes the nominal attempt fail closed. The orchestration layer
+    # performs the explicit legacy retry only after a structured refusal.
+    assert calls[0]["allow_fallback"] is False
     assert result["engine_requested"] == "dag-ml"
     assert result["fallback_policy"] == {
         "source": "nirs4all.run.allow_fallback",

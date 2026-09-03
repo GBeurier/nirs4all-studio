@@ -13,7 +13,7 @@ export const RUNTIME_BACKEND_PREFERENCE_CHANGED_EVENT =
   "nirs4all:runtime-backend-preference-changed";
 
 export const DEFAULT_RUNTIME_BACKEND_PREFERENCE: RuntimeBackendPreference = {
-  engine: null,
+  engine: "dag-ml",
   allowFallback: false,
 };
 
