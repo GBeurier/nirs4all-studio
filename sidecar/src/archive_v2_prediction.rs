@@ -301,7 +301,7 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
             target_names: prediction.target_names,
             values: prediction.values,
             provenance_executor: format!(
-                "nirs4all-core@0.3.27+libn4m-abi-{}.{}:{}",
+                "nirs4all-core@0.3.28+libn4m-abi-{}.{}:{}",
                 self.methods.abi_major, self.methods.abi_minor, self.methods.sha256
             ),
         })

@@ -1183,9 +1183,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94b3aebc12a3dbfd0842cbd0792ec5ec171f766e70098204fc1288126894a8b0"
+checksum = "93c2f92ae6a96e62ab6c0e43781c487d67aa517c68f07f51d9269f69e41bd725"
 dependencies = [
  "dag-ml",
  "dag-ml-core",
