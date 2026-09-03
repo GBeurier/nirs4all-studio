@@ -10,34 +10,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
-## [0.10.1] — 2026-08-07
+## [0.11.0] — 2026-09-03
 
 ### Added
 
-- **Runtime backend preference**: Studio now exposes a global runtime backend
-  preference for transition testing. Users can keep the legacy Python backend or
-  request `dag-ml` with explicit fallback behavior; experiment, pipeline-editor,
-  training, and AutoML launch paths forward and record the requested/actual engine
-  metadata.
-- **Legacy workspace transition UX**: Studio detects legacy workspace layouts,
-  shows a top-level warning for the active workspace, and provides a conversion
-  action that writes a sibling `*-workspace-v2` directory through the shared
-  `nirs4all-tools` converter. Clean conversions can be linked and activated;
-  best-effort conversions remain available but are not auto-activated.
-- **Current RC installer artifacts**: A non-publishing `Release` workflow dispatch
-  on `main` produced unsigned installer artifacts for `1.0.0-rc.4`, including
-  Windows x64, without creating a GitHub Release or switching production.
+- **Native persisted-dataset training:** Rust now owns
+  `POST /api/training/native-archive-v2`, job lifecycle, cancellation and Store
+  registration. The bounded route selects one dense IO source and delegates
+  the exact `SNV(ddof=0) -> Savitzky-Golay(mode=interp) -> PLS` training path
+  to DAG-ML/Methods/Core, producing Archive V2 without CPython or fallback.
+- **Multi-target conformal presentation:** Native Archive V2 replay and
+  persistence now carry DAG-ML's identity-bound `ConformalPresentationV2` for
+  named targets without recalculating calibration in Studio.
 
 ### Changed
 
-- Studio production remains on the current published line until the Windows RC
-  installer is manually smoke-tested and the held Python `nirs4all` transition
-  release is cut.
-- Transition compatibility is intentionally local to Studio and the Python library.
-  Other V1 runtimes consume the new workspace format only; the legacy/converter
-  support is planned for removal after the transition release window.
+- **Product ownership:** Packaged Studio is a Rust-only HTTP/WebSocket control
+  plane. Embedded CPython is limited to fresh bounded stdio calls for explicit
+  library/plugin operations; it never owns product routing or persistence.
+- **Legacy conversion contract:** verified code `0` output may activate, code
+  `10` remains preserved but inactive, and code `20` is an explicit refusal.
+  The source remains linked for rollback. Concurrent source mutation and the
+  path-based interpreter spawn are accepted limits of this low-volume migration
+  aid, not transactional immutability guarantees.
 
----
+### Fixed
+
+- **Release reconciliation:** preserve the public 0.10.1 runtime-smoke budgets,
+  bound non-blocking self-update checks, and enforce coherent 0.11.0 release
+  manifests without reintroducing a Python HTTP backend or runtime selector.
 
 ## [0.8.2] — 2026-06-13
 

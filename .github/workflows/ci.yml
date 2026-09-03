@@ -4,13 +4,16 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'rc/**']
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, 'rc/**']
 
 env:
   NODE_VERSION: '24'
   PYTHON_VERSION: '3.11'
+  NIRS4ALL_LIBRARY_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor-python' || 'main' }}
+  DAG_ML_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor' || 'main' }}
+  DAG_ML_DATA_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor' || 'main' }}
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -22,47 +25,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout nirs4all-ui library
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/nirs4all-ui
-          ref: ef456b51ff83c11732fa5bb79809b4dcb04475bb
-          path: nirs4all-ui-lib
-
-      - name: Prepare nirs4all-ui sibling
-        shell: bash
-        run: |
-          rm -rf ../nirs4all-ui
-          cp -R nirs4all-ui-lib ../nirs4all-ui
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - name: Disable nirs4all-ui sibling prepare hook
-        shell: bash
-        run: npm pkg delete scripts.prepare --prefix ../nirs4all-ui
-
-      - name: Pack nirs4all-ui package
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd nirs4all-ui-lib
-          npm ci
-          npm run prepublishOnly
-          UI_TGZ=$(npm pack --pack-destination "$RUNNER_TEMP" --json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s)[0].filename))")
-          echo "NIRS4ALL_UI_TGZ=$RUNNER_TEMP/$UI_TGZ" >> "$GITHUB_ENV"
-
       - name: Install dependencies
         run: npm ci
 
-      - name: Install packed nirs4all-ui package
-        run: npm install --no-save "$NIRS4ALL_UI_TGZ"
-
-      - name: Smoke installed nirs4all-ui package
-        run: npm run smoke:nirs4all-ui-package
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Lint
         run: npm run lint:eslint
@@ -95,6 +68,42 @@ jobs:
           echo "Build outputs verified"
 
   # ═══════════════════════════════════════════════════════════════════════════
+  # Product container: static renderer + loopback Rust sidecar
+  # ═══════════════════════════════════════════════════════════════════════════
+  docker-native-runtime:
+    name: Native Docker Runtime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Verify fail-closed Docker contract
+        run: npm run test:docker-runtime-contract
+
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: linux
+          arch: x64
+
+      - name: Build native product image
+        run: >-
+          docker build
+          --build-arg STUDIO_VERSION=ci
+          --build-arg STUDIO_REVISION=${GITHUB_SHA}
+          --build-arg NIRS4ALL_METHODS_SHA256=${NIRS4ALL_BUILD_METHODS_SHA256}
+          --build-context methods-runtime="$(dirname "${NIRS4ALL_BUILD_METHODS_LIBRARY}")"
+          --tag nirs4all-studio:native-ci
+          .
+
+      - name: Smoke static, HTTP and WebSocket routing
+        run: bash scripts/smoke-docker-native-runtime.sh nirs4all-studio:native-ci
+
+  # ═══════════════════════════════════════════════════════════════════════════
   # Backend: Lint, Test, Validate
   # ═══════════════════════════════════════════════════════════════════════════
   backend:
@@ -119,25 +128,28 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: ce09f92a61238cfd2673c10626a17ac4c311a57c
+          ref: ${{ env.NIRS4ALL_LIBRARY_REF }}
           path: nirs4all-lib
 
-      - name: Checkout dag-ml bindings
+      - name: Checkout dag-ml runtime
         uses: actions/checkout@v4
         with:
           repository: GBeurier/dag-ml
-          path: dag-ml-lib
+          ref: ${{ env.DAG_ML_REF }}
+          path: dag-ml
 
-      - name: Checkout dag-ml-data bindings
+      - name: Checkout dag-ml-data runtime
         uses: actions/checkout@v4
         with:
           repository: GBeurier/dag-ml-data
-          path: dag-ml-data-lib
+          ref: ${{ env.DAG_ML_DATA_REF }}
+          path: dag-ml-data
 
-      - name: Install dag-ml RC dependencies from source
-        run: |
-          pip install ./dag-ml-lib/crates/dag-ml-py
-          pip install ./dag-ml-data-lib/crates/dag-ml-data-py
+      - name: Setup Rust for local dag-ml wheels
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install local dag-ml runtime wheels
+        run: pip install ./dag-ml/crates/dag-ml-py ./dag-ml-data/crates/dag-ml-data-py
 
       - name: Install nirs4all from source
         run: pip install ./nirs4all-lib
@@ -145,7 +157,7 @@ jobs:
       - name: Lint Python (ruff)
         run: |
           pip install ruff
-          ruff check . --exclude nirs4all-lib --exclude dag-ml-lib --exclude dag-ml-data-lib
+          npm run lint:ruff
 
       - name: Verify imports
         run: |
@@ -210,19 +222,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout nirs4all-ui library
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/nirs4all-ui
-          ref: ${{ github.head_ref || github.ref_name }}
-          path: nirs4all-ui-lib
-
-      - name: Prepare nirs4all-ui sibling
-        shell: bash
-        run: |
-          rm -rf ../nirs4all-ui
-          cp -R nirs4all-ui-lib ../nirs4all-ui
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -235,9 +234,11 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: Disable nirs4all-ui sibling prepare hook
-        shell: bash
-        run: npm pkg delete scripts.prepare --prefix ../nirs4all-ui
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: x86_64-unknown-linux-gnu
 
       - name: Install system dependencies
         run: |
@@ -252,43 +253,77 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Pack nirs4all-ui package
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd nirs4all-ui-lib
-          npm ci
-          npm run prepublishOnly
-          UI_TGZ=$(npm pack --pack-destination "$RUNNER_TEMP" --json | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s)[0].filename))")
-          echo "NIRS4ALL_UI_TGZ=$RUNNER_TEMP/$UI_TGZ" >> "$GITHUB_ENV"
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: linux
+          arch: x64
 
-      - name: Install packed nirs4all-ui package
-        shell: bash
-        run: npm install --no-save "$NIRS4ALL_UI_TGZ"
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
+
+      - name: Check native sidecar
+        run: |
+          npm run test:vendored-native-sources
+          cargo fmt --manifest-path sidecar/Cargo.toml -- --check
+          cargo clippy --manifest-path sidecar/Cargo.toml --all-targets -- -D warnings
+          cargo test --manifest-path sidecar/Cargo.toml
+          npm run test:native-archive-v2
+          npm run test:native-sidecar
 
       - name: Build Electron frontend
         run: npm run build:electron
 
-      - name: Copy backend source files
-        run: node scripts/copy-backend-source.cjs --clean
+      - name: Build pinned plugin-only CPython runtime
+        run: node scripts/bake-python-plugin-runtime.cjs
 
-      - name: Verify backend source
+      - name: Build and smoke native sidecar
         run: |
-          test -f backend-dist/main.py || { echo "::error::Backend source not copied"; exit 1; }
-          test -d backend-dist/api || { echo "::error::Backend api/ not copied"; exit 1; }
-          echo "Backend source ready"
+          node scripts/build-native-sidecar.cjs --target x86_64-unknown-linux-gnu
+          test -x backend-dist/native/studio-sidecar
+          node scripts/native-runtime-contract.cjs --backend-root backend-dist --artifact-boundary-root backend-dist --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          backend-dist/native/studio-sidecar --smoke-readiness
+
+      - name: Verify Python backend source is absent
+        run: |
+          test ! -f backend-dist/main.py
+          test ! -d backend-dist/api
+          test ! -d backend-dist/websocket
 
       - name: Test electron-builder (dry-run)
         run: |
-          npx electron-builder --linux --dir
+          npx electron-builder --config electron-builder.installer.yml --linux --dir
+          test -x release/linux-unpacked/resources/backend/native/studio-sidecar
+          node scripts/native-runtime-contract.cjs --backend-root release/linux-unpacked/resources/backend --artifact-boundary-root release/linux-unpacked --platform linux --arch x64 --require-bundled-python-plugin --require-bundled-methods
+          release/linux-unpacked/resources/backend/native/studio-sidecar --smoke-readiness
           echo "Electron build test passed"
+
+  # Windows is the authoritative runtime gate for the converter Job Object.
+  sidecar-windows:
+    name: Native Sidecar Windows Containment
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Check and test Windows Job containment
+        run: |
+          cargo fmt --manifest-path sidecar/crates/studio-windows-job/Cargo.toml -- --check
+          cargo clippy --manifest-path sidecar/crates/studio-windows-job/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path sidecar/Cargo.toml --all-targets -- -D warnings
+          cargo test --manifest-path sidecar/Cargo.toml
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Summary
   # ═══════════════════════════════════════════════════════════════════════════
   summary:
     name: CI Summary
-    needs: [frontend, backend, electron-build]
+    needs: [frontend, backend, electron-build, sidecar-windows]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -297,6 +332,7 @@ jobs:
           FRONTEND="${{ needs.frontend.result }}"
           BACKEND="${{ needs.backend.result }}"
           ELECTRON="${{ needs.electron-build.result }}"
+          WINDOWS="${{ needs.sidecar-windows.result }}"
 
           echo "## CI Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -305,7 +341,8 @@ jobs:
           echo "| Frontend | $([[ $FRONTEND == 'success' ]] && echo '✅' || echo '❌') $FRONTEND |" >> $GITHUB_STEP_SUMMARY
           echo "| Backend | $([[ $BACKEND == 'success' ]] && echo '✅' || echo '❌') $BACKEND |" >> $GITHUB_STEP_SUMMARY
           echo "| Electron Build | $([[ $ELECTRON == 'success' ]] && echo '✅' || echo '❌') $ELECTRON |" >> $GITHUB_STEP_SUMMARY
+          echo "| Windows Sidecar | $([[ $WINDOWS == 'success' ]] && echo '✅' || echo '❌') $WINDOWS |" >> $GITHUB_STEP_SUMMARY
 
-          if [[ "$FRONTEND" != "success" || "$BACKEND" != "success" || "$ELECTRON" != "success" ]]; then
+          if [[ "$FRONTEND" != "success" || "$BACKEND" != "success" || "$ELECTRON" != "success" || "$WINDOWS" != "success" ]]; then
             exit 1
           fi

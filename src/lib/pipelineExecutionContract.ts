@@ -24,10 +24,6 @@ export interface PipelineExecutionConfig {
   inlinePipeline?: PipelineExecutionInlinePipeline;
   targetSelection?: PipelineExecutionTargetSelection;
   executionBackend?: "local-python" | "cluster" | "wasm-local";
-  engine?: "legacy" | "dag-ml";
-  /** UI-facing selector; projected to the HTTP `engine` field. */
-  runtimeEngine?: string | null;
-  allowFallback?: boolean;
   robustness?: PipelineExecutionRobustnessLaunchPayload;
   campaignId?: string;
 }
@@ -103,8 +99,8 @@ export interface LegacyPipelineExecutePayload {
   verbose: number;
   export_model: boolean;
   model_name?: string;
-  engine?: "legacy" | "dag-ml";
-  allow_fallback?: boolean;
+  engine: "dag-ml";
+  allow_fallback: false;
   split_group_by_by_dataset: Record<string, string | null>;
   inline_pipeline: PipelineExecutionInlinePipeline | null;
   robustness?: PipelineExecutionRobustnessLaunchPayload;
@@ -190,25 +186,15 @@ export function normalizePipelineExecutionConfig(config: PipelineExecutionConfig
   };
 }
 
-function normalizePipelineExecutionEngine(
-  value: string | null | undefined,
-): LegacyPipelineExecutePayload["engine"] {
-  const normalized = value?.trim();
-  if (!normalized) return undefined;
-  if (normalized === "legacy" || normalized === "dag-ml") return normalized;
-  throw new Error(`Unsupported pipeline execution engine: ${normalized}`);
-}
-
 export function toLegacyPipelineExecutePayload(config: PipelineExecutionConfig): LegacyPipelineExecutePayload {
   const normalized = normalizePipelineExecutionConfig(config);
-  const selectedEngine = normalizePipelineExecutionEngine(normalized.runtimeEngine) ?? normalized.engine;
   return {
     dataset_id: normalized.datasetIds[0],
     verbose: normalized.verbose ?? 1,
     export_model: normalized.exportModel ?? true,
     model_name: normalized.modelName,
-    ...(selectedEngine !== undefined ? { engine: selectedEngine } : {}),
-    ...(normalized.allowFallback !== undefined ? { allow_fallback: normalized.allowFallback } : {}),
+    engine: "dag-ml",
+    allow_fallback: false,
     split_group_by_by_dataset: normalized.splitGroupByByDataset ?? {},
     inline_pipeline: normalized.inlinePipeline ?? null,
     ...(normalized.robustness ? { robustness: normalized.robustness } : {}),

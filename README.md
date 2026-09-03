@@ -9,18 +9,24 @@
 
 **Unified NIRS Analysis Desktop Application**
 
-A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis, combining the power of the [nirs4all](https://github.com/GBeurier/nirs4all) Python library with a sleek React-based user interface.
+A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis, with a Rust-owned product control plane, React UI, native Methods execution, and bounded CPython stdio interoperability for explicit libraries/plugins.
 
 [![License: CeCILL-2.1](https://img.shields.io/badge/license-CeCILL--2.1-blue.svg)](LICENSE)
 [![Node 20+](https://img.shields.io/badge/node-20+-green.svg)](https://nodejs.org/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-[Download](https://github.com/GBeurier/nirs4all-webapp/releases/latest) •
+[Historical 0.10.1 downloads](https://github.com/GBeurier/nirs4all-studio/releases/tag/0.10.1) •
 [User Guide](docs/user-guide/) •
 [nirs4all Library](https://github.com/GBeurier/nirs4all) •
 [Website](https://nirs4all.org)
 
 </div>
+
+> **Release status:** the Phase 2/R4/V1 Rust-only product is a local,
+> unpublished candidate. There is currently no candidate installer, portable
+> archive, container image, or update channel to download. The public `0.10.1`
+> release is retained for historical rollback/support only and does not attest
+> the architecture or platform support described for the candidate below.
 
 ---
 
@@ -38,70 +44,63 @@ nirs4all comes in two flavors — pick the one that fits your workflow:
 | | **nirs4all Studio** (Desktop App) | **nirs4all** (Python Library) |
 |---|---|---|
 | **Best for** | Researchers, technicians, and anyone who prefers a visual interface | Developers, data scientists, and anyone who writes Python scripts |
-| **What it is** | A desktop application with drag-and-drop pipelines, interactive charts, and one-click model training | A `pip install` Python package with a declarative API for building NIRS pipelines in code |
-| **Install** | [Download the installer](https://github.com/GBeurier/nirs4all-webapp/releases/latest) | `pip install nirs4all` |
+| **What it is** | A Rust-owned desktop product with drag-and-drop pipelines, interactive charts, and bounded native training; CPython is a stdio library/plugin host only | A `pip install` Python package with a declarative API for building NIRS pipelines in code |
+| **Install** | Candidate unavailable; [historical 0.10.1 assets](https://github.com/GBeurier/nirs4all-studio/releases/tag/0.10.1) remain available for rollback/support | `pip install nirs4all` |
 | **Repository** | **You are here** | [GBeurier/nirs4all](https://github.com/GBeurier/nirs4all) |
 
-> **Not sure?** If you've never written Python code, start here with **nirs4all Studio**. It uses the [nirs4all Python library](https://github.com/GBeurier/nirs4all) under the hood and gives you all the same capabilities through a graphical interface.
+> **Not sure?** If you've never written Python code, start here with **nirs4all Studio**.
+> Studio exposes a deliberately bounded product surface rather than mirroring
+> every Python-library capability.
 
 ---
 
-## Installation
+## Candidate Installation Targets
 
-nirs4all Studio offers three ways to get started, depending on your needs:
+The following formats describe the intended candidate distribution contract.
+They are not download links and do not claim that the candidate has been
+published or qualified on every platform.
 
-### Option 1 — Installer (Recommended)
+### Installer target (unpublished)
 
-The simplest option. Downloads and installs like any desktop application.
+| Target platform | Candidate file contract | Availability |
+|-----------------|-------------------------|--------------|
+| **Windows x64** | `.exe` installer | Unpublished; installation qualification pending |
+| **macOS** (Intel & Apple Silicon) | `.dmg` disk image | Unpublished; installation qualification pending |
+| **Linux x64** | `.AppImage` or `.deb` package | Unpublished; local evidence is not a public release |
 
-1. Go to the [latest release](https://github.com/GBeurier/nirs4all-webapp/releases/latest)
-2. Download the installer for your platform:
-
-   | Platform | File |
-   |----------|------|
-   | **Windows** | `.exe` installer |
-   | **macOS** (Intel & Apple Silicon) | `.dmg` disk image |
-   | **Linux** | `.AppImage` or `.deb` package |
-
-3. Run the installer and launch nirs4all Studio
-
-The installer embeds the Rust product backend and a fixed, content-addressed
+The candidate installer embeds the Rust product backend and a fixed, content-addressed
 CPython library/plugin closure. It does not discover user environments or
 install packages at runtime. **You don't need Python installed on your machine.**
 
-> **GPU support**: Published desktop installers, portable archives, and the
-> native Docker image use the single CPU plugin profile. GPU plugin-host
-> packaging remains separately scoped.
+> **Candidate profile:** the proposed desktop packages and native Docker image
+> use the single CPU plugin profile. GPU plugin-host packaging remains
+> separately scoped and is not a candidate download promise.
 
-### Option 2 — All-in-one Standalone (Portable)
+### All-in-one archive target (unpublished)
 
-A self-contained archive — just extract and run. No installation, no admin rights needed. Ideal for trying nirs4all Studio without committing to an install, or for machines where you can't install software.
+| Target platform | Candidate file contract | Availability |
+|-----------------|-------------------------|--------------|
+| **Windows x64** | `nirs4all-Studio-*-all-in-one-win-x64.zip` | Unpublished; qualification pending |
+| **macOS x64/arm64** | `nirs4all Studio-*-all-in-one-mac-*.zip` | Unpublished; qualification pending |
+| **Linux x64** | `nirs4all-Studio-*-all-in-one-linux-x64.tar.gz` | Unpublished; local evidence only |
 
-1. Go to the [latest release](https://github.com/GBeurier/nirs4all-webapp/releases/latest)
-2. Download the **all-in-one** archive for your platform:
+The candidate contract bundles Electron, the Rust product backend, and the
+fixed CPython plugin-host closure. It does not bundle a Python HTTP backend.
 
-   | Platform | File |
-   |----------|------|
-   | **Windows** | `nirs4all-Studio-*-all-in-one-win-x64.zip` |
-   | **macOS** | `nirs4all Studio-*-all-in-one-mac-*.zip` |
-   | **Linux** | `nirs4all-Studio-*-all-in-one-linux-x64.tar.gz` |
-
-3. Extract the archive and run the executable inside
-
-Everything is bundled — Electron, the Rust product backend, and the fixed
-CPython plugin-host closure. Nothing else to install.
-
-### Option 3 — Developer Setup (From Source)
+### Developer setup from source
 
 For contributors, or if you want to hack on the code. Requires **Node.js 20+** and **Python 3.11+**.
 
 ```bash
-git clone https://github.com/GBeurier/nirs4all-webapp.git
-cd nirs4all-webapp
+git clone https://github.com/GBeurier/nirs4all-studio.git
+cd nirs4all-studio
 npm install
 ```
 
-Then set up the Python backend and start the servers — see [Getting Started](#getting-started) below.
+The optional Python commands in [Getting Started](#getting-started) start only
+the transitional web-development or explicit whole-session diagnostic server.
+Packaged desktop mode uses the Rust sidecar and can never select that Python
+HTTP process as a product route or fallback.
 
 ### Installation comparison
 
@@ -109,11 +108,11 @@ Then set up the Python backend and start the servers — see [Getting Started](#
 |---|---|---|---|
 | **Install required** | Yes | No (extract & run) | Clone + npm install |
 | **Python required** | No (bundled) | No (bundled) | Yes (3.11+) |
-| **Auto-updates** | Yes | Manual re-download | git pull |
+| **Auto-updates** | Candidate channel unavailable | Candidate archive unavailable | git pull |
 | **Desktop profile** | CPU | CPU | Contributor-selected |
 | **Best for** | End users | Portable / trial use | Contributors |
 
-### Native Docker deployment
+### Native Docker candidate
 
 The product container serves the compiled frontend with nginx on port `8000`.
 Requests under `/api` and `/ws` are proxied to the Rust sidecar bound only to
@@ -123,12 +122,9 @@ It does include the content-addressed `nirs4all-methods` ABI 2.5 library used by
 the Rust/Core Archive V2 prediction path and the same fixed CPython
 library/plugin closure used for bounded Rust-to-Python stdio interoperability.
 
-```bash
-docker run --rm -p 8000:8000 \
-  -v studio-state:/var/lib/nirs4all-studio \
-  -v /path/to/workspaces:/workspaces \
-  ghcr.io/gbeurier/nirs4all-studio:latest
-```
+No candidate container tag is published. Build and tag the image locally for
+development; do not treat `ghcr.io/...:latest` or the historical `0.10.1`
+release as evidence for this Rust-only candidate.
 
 The embedded CPython closure is selected only for bounded Rust-to-Python stdio
 calls. It never owns an HTTP port, scheduler, store, or fallback route. See
@@ -138,7 +134,10 @@ calls. It never owns an HTTP port, scheduler, store, or fallback route. See
 
 ## Getting Started
 
-> This section is for **developers running from source** (Option 3 above). If you installed via the Installer or Standalone, just launch the app — no setup needed.
+> This section is strictly for **developers running from source**. Python and
+> FastAPI commands below start the transitional browser-development or explicit
+> diagnostic stack only. They are not installation instructions for the
+> unpublished desktop candidate and cannot become its backend or fallback.
 
 ### Prerequisites
 
@@ -176,7 +175,7 @@ This project supports development on:
    npm run doctor
    ```
 
-4. **Start development servers:**
+4. **Start development servers (diagnostic web stack only):**
 
    Use the cross-platform launcher for the full web stack:
 
@@ -185,7 +184,7 @@ This project supports development on:
    scripts\launcher.cmd stop
    ```
 
-   Or run frontend and backend separately:
+   Or run the frontend and the diagnostic-only FastAPI server separately:
    ```cmd
    npm run dev          REM Frontend (Vite) at http://localhost:5173
    ```
@@ -224,7 +223,7 @@ This project supports development on:
    npm run doctor
    ```
 
-4. **Start development servers:**
+4. **Start development servers (diagnostic web stack only):**
 
    Use the cross-platform launcher for the full web stack:
 
@@ -233,7 +232,7 @@ This project supports development on:
    ./scripts/launcher.sh stop
    ```
 
-   Or run frontend and backend separately:
+   Or run the frontend and the diagnostic-only FastAPI server separately:
    ```bash
    npm run dev          # Frontend (Vite) at http://localhost:5173
    ```
@@ -345,6 +344,15 @@ session. Workspace linking, pruning, scan mutations, and scientific surfaces
 not listed above are likewise unavailable until migrated (or while the explicit
 R2 diagnostic owner is selected).
 
+The separate native researcher route `POST /api/training/native-archive-v2`
+does not invoke CPython. It resolves one persisted IO dataset and one selected
+dense source, executes the exact
+`SNV(ddof=0) -> Savitzky-Golay(mode=interp) -> PLS` profile through
+IO/DAG-ML/Methods/Core, writes Archive V2, and registers the artifact in the
+workspace Store. It supports named multi-target regression within the bounded
+native limits; fusion, N-D payloads, HPO, and fallback are not part of this
+route.
+
 > **Note**: The webapp can run **without nirs4all installed** for pure UI development. The backend will report missing capabilities but the frontend is fully functional.
 
 ---
@@ -393,7 +401,7 @@ R2 diagnostic owner is selected).
 - **Transfer Analysis** — Instrument transfer and domain adaptation tools
 - **Workspace Management** — Organize datasets, pipelines, and results
 - **Native Desktop Experience** — Runs as a standalone desktop app via Electron
-- **GPU Acceleration** — CUDA (Linux/Windows) and Metal (macOS) support
+- **GPU experimentation** — available in contributor/diagnostic Python workflows; GPU packaging is not qualified for the unpublished product candidate
 
 ---
 
@@ -474,12 +482,15 @@ Use the unified launcher for all modes:
 
 | Windows | Linux/macOS | Description |
 |---------|-------------|-------------|
-| `scripts\launcher.cmd start web:dev` | `./scripts/launcher.sh start web:dev` | Start frontend + backend (web dev) |
+| `scripts\launcher.cmd start web:dev` | `./scripts/launcher.sh start web:dev` | Start frontend + diagnostic FastAPI server for web development only |
 | `scripts\launcher.cmd start desktop:dev` | `./scripts/launcher.sh start desktop:dev` | Start Electron desktop (dev) |
 | `scripts\launcher.cmd stop` | `./scripts/launcher.sh stop` | Stop all servers |
 | `scripts\launcher.cmd status` | `./scripts/launcher.sh status` | Show server status |
 
-Direct scripts are also available: `npm run dev` for Vite, `python -m uvicorn main:app --reload --port 8000` for the backend, and `npm run start:desktop` for Electron.
+Direct scripts are also available: `npm run dev` for Vite,
+`python -m uvicorn main:app --reload --port 8000` for the diagnostic-development
+server only, and `npm run start:desktop` for the Rust-owned Electron product
+session.
 
 ### npm Scripts - Development
 
@@ -496,21 +507,22 @@ Direct scripts are also available: `npm run dev` for Vite, `python -m uvicorn ma
 | `npm run test:parallel` | Run Vitest and pytest together |
 | `npm run test:e2e` | Run Playwright web Chromium tests |
 
-### npm Scripts - Production Builds
+### npm Scripts - Local Candidate Builds
 
 | Command | Description |
 |---------|-------------|
 | `npm run build` | Build frontend for production |
 | `npm run build:electron` | Build Electron app |
 | `npm run electron:preview` | Preview Electron production build |
-| `npm run release` | Build an installer release |
-| `npm run release:clean` | Clean and rebuild an installer release |
-| `npm run release:all-in-one` | Build a portable all-in-one archive |
-| `npm run release:all-in-one:clean` | Clean and rebuild a portable all-in-one archive |
+| `npm run release` | Build an unpublished installer candidate locally |
+| `npm run release:clean` | Clean and rebuild an unpublished installer candidate |
+| `npm run release:all-in-one` | Build an unpublished portable archive candidate |
+| `npm run release:all-in-one:clean` | Clean and rebuild an unpublished archive candidate |
 
 ### Desktop Release Profiles
 
-`npm run release` builds the CPU installer on the current host only. The product
+`npm run release` builds an unpublished CPU installer candidate on the current
+host only; it does not publish or qualify the target platform. The product
 backend is Rust; the adjacent content-addressed CPython closure is restricted to
 library/plugin interop and does not use a user venv, PATH discovery, or runtime
 `pip install`.
@@ -548,7 +560,7 @@ In desktop mode, all main process logs are written to rotating log files:
 
 ### Sentry Crash Reporting (optional)
 
-Automatic crash reporting via [Sentry](https://sentry.io/) can be enabled by setting the `SENTRY_DSN` environment variable. This captures errors from the Electron main process, the React frontend, and the Python backend.
+Automatic crash reporting via [Sentry](https://sentry.io/) can be enabled by setting the `SENTRY_DSN` environment variable. This captures errors from the Electron main process and React frontend; the transitional diagnostic Python backend reports only when it is explicitly running.
 
 ```bash
 # Set before launching the app

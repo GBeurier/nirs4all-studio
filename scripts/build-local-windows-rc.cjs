@@ -12,7 +12,6 @@ const path = require("path");
 const { resolveSpawnCommand } = require("./spawn-command.cjs");
 
 const projectRoot = path.join(__dirname, "..");
-const uiSiblingRoot = path.resolve(projectRoot, "..", "nirs4all-ui");
 process.chdir(projectRoot);
 
 function printHelp() {
@@ -86,19 +85,12 @@ function looksLikeWslUncPath(value) {
     || value.includes("\\wsl$\\");
 }
 
-async function prepareNirs4allUiSibling() {
-  const packageJson = path.join(uiSiblingRoot, "package.json");
-  if (!fs.existsSync(packageJson)) {
-    throw new Error(
-      `Missing nirs4all-ui sibling checkout at ${uiSiblingRoot}. `
-      + "Clone https://github.com/GBeurier/nirs4all-ui next to nirs4all-studio before building the Windows RC.",
-    );
-  }
-
-  console.log("Preparing nirs4all-ui sibling package...");
-  await runCommand("npm", ["--prefix", uiSiblingRoot, "ci"]);
-  await runCommand("npm", ["--prefix", uiSiblingRoot, "run", "build"]);
+async function verifyReleaseInputs() {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+  await runCommand("npm", ["run", "check:ui-package"]);
+  console.log(`Release inputs select Studio ${packageJson.version} and the exact vendored UI package.`);
   console.log("");
+  return packageJson.version;
 }
 
 async function main() {
@@ -135,7 +127,13 @@ async function main() {
   console.log("  Publish: never");
   console.log("");
 
-  await prepareNirs4allUiSibling();
+  const packageVersion = await verifyReleaseInputs();
+  if (options.version !== packageVersion) {
+    throw new Error(
+      `Requested version '${options.version}' does not match package.json '${packageVersion}'. `
+      + "Bump the release manifests before building the native installer.",
+    );
+  }
 
   if (!options.skipSmoke) {
     await runCommand("npm", ["run", "release:smoke"]);
@@ -146,7 +144,7 @@ async function main() {
   if (options.clean) {
     releaseArgs.push("--clean");
   }
-  releaseArgs.push("--platform", "win", "--version", options.version);
+  releaseArgs.push("--platform", "win");
   await runCommand("npm", releaseArgs);
 }
 
@@ -161,5 +159,5 @@ module.exports = {
   isSemver,
   looksLikeWslUncPath,
   parseArgs,
-  prepareNirs4allUiSibling,
+  verifyReleaseInputs,
 };

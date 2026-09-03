@@ -6,7 +6,6 @@ import {
   type SelectedPipelinesRuntimeGrouping,
 } from "@/lib/runtimeSplitGrouping";
 import { experimentReviewCopy } from "@/lib/experimentReviewPresentation";
-import { RuntimeBackendSelector } from "@/components/runtime/RuntimeBackendSelector";
 
 import { NewExperimentCampaignPlanPreview } from "./NewExperimentCampaignPlanPreview";
 import { NewExperimentReviewDescriptionField } from "./NewExperimentReviewDescriptionField";
@@ -22,13 +21,9 @@ export interface NewExperimentReviewStepProps {
   executionEnvironmentDiagnostics: NewExperimentExecutionEnvironmentDiagnostics;
   experimentDescription: string;
   groupingSelection: SelectedPipelinesRuntimeGrouping;
-  runtimeEngine?: string | null;
   selectedDatasetIds: string[];
-  allowFallback?: boolean;
   onExperimentDescriptionChange: (value: string) => void;
   onExperimentNameChange: (value: string) => void;
-  onRuntimeEngineChange?: (value: string | null) => void;
-  onAllowFallbackChange?: (value: boolean) => void;
 }
 
 export function NewExperimentReviewStep({
@@ -40,13 +35,9 @@ export function NewExperimentReviewStep({
   executionEnvironmentDiagnostics,
   experimentDescription,
   groupingSelection,
-  runtimeEngine,
   selectedDatasetIds,
-  allowFallback = false,
   onExperimentDescriptionChange,
   onExperimentNameChange,
-  onRuntimeEngineChange,
-  onAllowFallbackChange,
 }: NewExperimentReviewStepProps) {
   return (
     <div className="space-y-6">
@@ -61,14 +52,6 @@ export function NewExperimentReviewStep({
         campaignPreview={campaignPreview}
         executionEnvironmentDiagnostics={executionEnvironmentDiagnostics}
       />
-      {onRuntimeEngineChange && onAllowFallbackChange && (
-        <RuntimeBackendSelector
-          runtimeEngine={runtimeEngine ?? null}
-          allowFallback={allowFallback}
-          onRuntimeEngineChange={onRuntimeEngineChange}
-          onAllowFallbackChange={onAllowFallbackChange}
-        />
-      )}
       <NewExperimentReviewDescriptionField
         experimentDescription={experimentDescription}
         onExperimentDescriptionChange={onExperimentDescriptionChange}

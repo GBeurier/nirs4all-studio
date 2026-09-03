@@ -1,64 +1,98 @@
-# Release Checklist — Environment Management
+# Release Checklist — Phase 2 Candidate
 
-Pre-release verification steps for the Python environment management system.
+This checklist describes the unpublished Rust-only desktop candidate. It does
+not authorize publication. GitHub release `0.10.1` is the historical
+rollback/support release and must not be presented as the Phase 2 candidate.
+There is currently no candidate installer, archive, Docker image, or update
+channel to download.
 
-## Automated (CI)
+## Candidate identity and documentation
 
-- [ ] Backend tests pass (`pytest tests/ -v`)
-- [ ] Coherence smoke test passes (CI step)
-- [ ] Frontend tests pass (`npm run test:frontend`)
-- [ ] Electron build test succeeds (dry-run)
-- [ ] Lint passes: `npm run lint:parallel`
+- [ ] A version newer than historical `0.10.1` is frozen by the final release
+      lock with exact source SHAs, checksums, SBOM, and signatures.
+- [ ] Candidate pages expose downloads only after those exact artifacts exist
+      and have passed the release gate.
+- [ ] Historical `0.10.1` links are labelled as rollback/support artifacts and
+      never used as evidence for the candidate architecture.
+- [ ] Installer, archive, Docker, update, and platform claims match the final
+      lock and installation evidence.
 
-## Manual — Environment Coherence
+## Candidate product boundary
 
-- [ ] **Fresh install**: wizard shows, managed env created, backend starts, dependencies page shows installed packages
-- [ ] **Existing local venv**: select it in the wizard or Settings, inspect it first, then restart into it; `/api/system/env-coherence` reports `configured_matches_running: true`
-- [ ] **Conda env**: detected or browsed, inspected before switch, backend restarts into it
-- [ ] **Missing core packages / refuse install**: inspect existing Python, refuse install, runtime does not switch
-- [ ] **Missing core packages / accept install**: inspect existing Python, install core packages explicitly, runtime switches successfully after restart
-- [ ] **Mismatch state**: Python Runtime card shows distinct configured and running paths when Electron is configured for a different interpreter than the running backend
-- [ ] **Preflight mismatch**: `POST /api/runs/preflight` reports `env_mismatch` when configured and running Python differ
-- [ ] **Optional-package gap**: runtime can still run supported pipelines even when unrelated optional packages are missing
-- [ ] **Bundled default runtime**: bundled build starts on embedded runtime and shows the embedded-runtime warning
-- [ ] **Bundled to external switch**: bundled build can switch to external Python; backend restarts under that interpreter and package actions target the external runtime
-- [ ] **Switch back to managed runtime**: create a managed runtime from Settings and confirm it becomes the configured backend runtime again
+- [ ] Electron starts the verified Rust sidecar as the sole HTTP, WebSocket,
+      job, scheduler/control, store, and UI-adapter owner.
+- [ ] Unmigrated product routes fail closed before fetch or process acquisition;
+      no Python or FastAPI fallback is available.
+- [ ] Embedded CPython is accepted only as the content-addressed, bounded stdio
+      library/plugin host and owns no listener, scheduler, store, or product
+      lifecycle.
+- [ ] Missing or altered CPython disables only the relevant plugin capability;
+      Rust remains the active product backend.
+- [ ] Installers and archives contain no FastAPI, Uvicorn, `main.py`, `api/`,
+      `websocket/`, PyInstaller backend, or backend requirements.
 
-## Manual — Portable Mode
+## Installation qualification (`INST-001`)
 
-- [ ] **First launch**: wizard shows, env created relative to executable location
-- [ ] **Relocated .exe**: move portable exe to new directory, re-launch, wizard re-shows (path drift detected)
-- [ ] **"Don't ask again"**: respected on next launch from same location
-- [ ] **Version update**: wizard always shows after version change regardless of skip preference
+- [ ] Run the prepared Linux x64 AppImage lifecycle harness against two explicit,
+      locked candidate artifacts and retain its JSON receipt:
+      `node scripts/smoke-linux-installer-cycle.cjs --install-artifact <old.AppImage>
+      --install-sha256 <sha256> --update-artifact <new.AppImage> --update-sha256
+      <sha256> --report <receipt.json>`. The harness performs no build or download;
+      missing, symlinked, or altered inputs are refused before installation.
+- [ ] Install, update, uninstall, and crash recovery pass on each promised
+      Linux architecture.
+- [ ] Install, update, uninstall, notarization/signature, and crash recovery
+      pass on each promised macOS architecture.
+- [ ] Install, update, uninstall, signature, and crash recovery pass on each
+      promised Windows architecture, including the required manual smoke.
+- [ ] Published platform wording is restricted to the exact matrix that passed.
 
-## Manual — Electron-Specific
+Until every applicable item above has a release receipt, the candidate remains
+NO-GO and its downloads remain unavailable.
 
-- [ ] `env-settings.json` persists only `pythonPath`, wizard metadata, and portable skip state
-- [ ] macOS: quarantine attribute removed from python-build-standalone binary
+A passing harness receipt advances only an isolated Linux x64 AppImage cycle.
+It does not qualify `.deb` package-manager behavior, signatures, publication,
+Windows, macOS, or `INST-001` as a whole.
 
-## Manual — Cross-Platform
+## Historical diagnostic-development checklist
 
-- [ ] **Windows**: paths with spaces, case differences, and mixed separators work correctly
-- [ ] **macOS Intel**: Homebrew `/usr/local/bin` Python detected
-- [ ] **macOS ARM**: Homebrew `/opt/homebrew/bin` Python detected
-- [ ] **Linux**: symlinked Python paths resolve correctly
+The checks below preserve the old FastAPI/Python environment surface for
+browser development, explicit whole-session diagnostics, and support of
+historical releases. They are not candidate installer acceptance criteria and
+cannot select a Python product backend.
 
-## Manual — Docker
+### Automated diagnostic checks
 
-- [ ] Docker build starts without wizard or env setup
-- [ ] GET `/api/system/env-coherence` returns `coherent: true`
-- [ ] Dependencies endpoint works and reports container packages
+- [ ] Diagnostic backend tests pass (`pytest tests/ -v`).
+- [ ] Environment-coherence smoke passes in diagnostic mode.
+- [ ] Frontend tests pass (`npm run test:frontend`).
+- [ ] Lint passes (`npm run lint:parallel`).
 
-## Release Artifact Checks
+### Manual Python environment diagnostics
 
-- [ ] Native Windows local RC smoke passes: `npm run release:smoke`
-- [ ] `release:smoke` includes the `nirs4all-ui` package smoke for the local `file:../nirs4all-ui` dependency
-- [ ] `../nirs4all-ui` exists beside `nirs4all-studio`; `release:windows-rc` rebuilds it before smoke/build
-- [ ] Native Windows local RC installer build passes from PowerShell: `npm run release:windows-rc -- --version 1.0.0-rc.1`
-- [ ] Windows RC command runs from a native Windows checkout, not WSL or a `\\wsl...` UNC path
-- [ ] Windows RC build logs show `Publish: never`; no GitHub Release, tag, or upload is created
-- [ ] RC version is stamped locally with `--version` into `version.json`, Electron metadata, and the rendered app version without changing `package.json` or `package-lock.json`
-- [ ] Windows RC output includes both `release/nirs4all Studio-1.0.0-rc.1-win-x64.exe` and `release/nirs4all Studio-1.0.0-rc.1-win-x64-portable.exe`
-- [ ] Windows installer target is NSIS x64 and Windows portable target is x64
-- [ ] `env-settings.json` is NOT included in any release artifact
-- [ ] Backend source files are properly copied (verify `backend-dist/main.py` exists)
+- [ ] A local venv or Conda interpreter is inspected before an explicit
+      diagnostic-session switch.
+- [ ] Missing packages are reported without silently changing the runtime.
+- [ ] Configured and running interpreter mismatches are visible through the
+      diagnostic environment-coherence endpoint.
+- [ ] Package installation and managed-environment mutation stay confined to
+      the explicit diagnostic surface.
+- [ ] Changing a diagnostic interpreter never restarts or replaces the Rust
+      sidecar used by the candidate product.
+
+### Historical portable and platform checks
+
+- [ ] Historical portable-mode state remains relative to the executable and
+      detects relocation/version drift.
+- [ ] Historical Windows paths with spaces and mixed separators remain
+      diagnosable.
+- [ ] Historical macOS Homebrew and Linux symlinked interpreters remain
+      diagnosable.
+- [ ] Diagnostic Docker startup and environment-coherence endpoints remain
+      supportable without being described as the candidate product path.
+
+### Historical artifact checks
+
+- [ ] `env-settings.json` is absent from historical compatibility artifacts.
+- [ ] Legacy `backend-dist/main.py` checks apply only to explicitly historical
+      PyInstaller/diagnostic builds and never to a Phase 2 candidate artifact.

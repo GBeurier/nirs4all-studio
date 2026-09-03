@@ -38,6 +38,8 @@ describe("pipelineExecutionContract", () => {
       verbose: 1,
       export_model: false,
       model_name: undefined,
+      engine: "dag-ml",
+      allow_fallback: false,
       split_group_by_by_dataset: {
         "dataset-a": "subject",
       },
@@ -48,7 +50,7 @@ describe("pipelineExecutionContract", () => {
     });
   });
 
-  it("does not add engine fields when no runtime engine is selected", () => {
+  it("always projects the strict native engine contract", () => {
     expect(toLegacyPipelineExecutePayload({
       pipelineId: "pipe-1",
       datasetId: "dataset-a",
@@ -57,47 +59,17 @@ describe("pipelineExecutionContract", () => {
       verbose: 1,
       export_model: true,
       model_name: undefined,
+      engine: "dag-ml",
+      allow_fallback: false,
       split_group_by_by_dataset: {},
       inline_pipeline: null,
     });
-  });
-
-  it("serializes selected runtime engine and fallback policy", () => {
-    expect(toLegacyPipelineExecutePayload({
-      pipelineId: "pipe-1",
-      datasetId: "dataset-a",
-      engine: "dag-ml",
-      allowFallback: false,
-    })).toMatchObject({
-      dataset_id: "dataset-a",
-      engine: "dag-ml",
-      allow_fallback: false,
-    });
-
-    expect(toLegacyPipelineExecutePayload({
-      pipelineId: "pipe-1",
-      datasetId: "dataset-a",
-      runtimeEngine: " dag-ml ",
-      allowFallback: true,
-    })).toMatchObject({
-      engine: "dag-ml",
-      allow_fallback: true,
-    });
-  });
-
-  it("rejects unsupported runtime engines before transport", () => {
-    expect(() => toLegacyPipelineExecutePayload({
-      pipelineId: "pipe-1",
-      datasetId: "dataset-a",
-      runtimeEngine: "future-engine",
-    })).toThrow("Unsupported pipeline execution engine: future-engine");
   });
 
   it("preserves native finetuning optimizer persistence in inline execution payloads", () => {
     expect(toLegacyPipelineExecutePayload({
       pipelineId: "pipe-1",
       datasetId: "dataset-a",
-      runtimeEngine: "dag-ml",
       inlinePipeline: {
         name: "Native tuning",
         steps: [

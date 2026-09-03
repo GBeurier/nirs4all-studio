@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Ensure package version matches latest semver tag
+      - name: Ensure package version does not regress latest semver tag
         shell: bash
         run: |
           set -euo pipefail
@@ -27,8 +27,9 @@ jobs:
             echo "No numeric semver tags found; package version is $version."
             exit 0
           fi
-          if [[ "$version" != "$latest_tag" ]]; then
-            echo "::error::package.json version ($version) must match latest release tag ($latest_tag)."
+          greatest="$(printf '%s\n%s\n' "$latest_tag" "$version" | sort -V | tail -n 1)"
+          if [[ "$greatest" != "$version" ]]; then
+            echo "::error::package.json version ($version) is older than latest release tag ($latest_tag)."
             exit 1
           fi
-          echo "package.json version matches $latest_tag."
+          echo "package.json version $version is coherent with latest release tag $latest_tag."

@@ -11,10 +11,13 @@ Very large datasets (over 50,000 samples or 10,000 features) can cause slower re
 
 **Workaround**: Use a subset of your data for initial exploration. The application handles large datasets during model training, but interactive visualizations perform best with moderate-sized data.
 
-### Browser compatibility (web mode)
-When running in web mode, nirs4all Studio works best in modern browsers: Chrome 90+, Firefox 90+, Edge 90+, or Safari 15+. Older browsers may not support all features.
+### Browser delivery is a separate product
+nirs4all Studio has no current browser/FastAPI deployment mode. The separate
+nirs4all Web application is client-side WASM and publishes its own browser
+requirements.
 
-**Workaround**: Use the desktop app for the best experience, or update your browser to the latest version.
+**Workaround**: Use a qualified Studio desktop artifact, or use nirs4all Web
+when its documented client-side capability set is sufficient.
 
 ---
 
@@ -62,18 +65,16 @@ Some chart color palettes may have reduced contrast in dark theme.
 
 ## Desktop App
 
-### First launch on macOS
-On macOS, the first launch may trigger a security warning because the app is not signed with an Apple Developer certificate.
+### Candidate platform availability
+Local packaging configuration does not prove that a platform artifact is
+published, signed, or qualified.
 
-**Workaround**: Right-click the app and select "Open" to bypass the warning. You only need to do this once.
-
-### Windows antivirus false positives
-Some Windows antivirus software may flag the bundled Python backend as suspicious.
-
-**Workaround**: Add the nirs4all Studio installation directory to your antivirus exclusion list.
+**Workaround**: Install only an artifact named by the matching signed release
+manifest. Do not bypass operating-system signature checks or add broad antivirus
+exclusions for an unqualified build.
 
 ---
 
 :::{note}
-If you encounter an issue not listed here, please report it on the [GitHub Issues page](https://github.com/gbeurier/nirs4all/issues).
+If you encounter an issue not listed here, please report it on the [Studio GitHub Issues page](https://github.com/GBeurier/nirs4all-studio/issues).
 :::

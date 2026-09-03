@@ -14,15 +14,11 @@ files:
   - recommended-config.json
   - "!**/*.map"
 
-# Installer builds ship backend source only.
-# Python is downloaded / managed at runtime in user data.
+# Standard installers ship the attested plugin-only CPython closure beside the
+# Rust sidecar. They never ship the legacy Python HTTP/WS backend source.
 extraResources:
   - from: LICENSE
     to: LICENSE
-  - from: LICENSING.md
-    to: LICENSING.md
-  - from: LICENSING_FR.md
-    to: LICENSING_FR.md
   - from: THIRD_PARTY_NOTICES.md
     to: THIRD_PARTY_NOTICES.md
   - from: LICENSES/
@@ -32,15 +28,16 @@ extraResources:
   - from: backend-dist/
     to: backend/
     filter:
-      - "api/**/*"
-      - "websocket/**/*"
-      - "updater/**/*"
-      - "main.py"
-      - "public/**/*"
+      - "python-runtime/**/*"
+      - "native/**/*"
       - "recommended-config.json"
       - "version.json"
 
 asar: true
+
+# On macOS, pre-sign closure Mach-O members in the copied .app and rewrite
+# their content contract before electron-builder signs the remaining bundle.
+afterPack: scripts/macos-attested-runtime.cjs
 
 win:
   target:
@@ -77,6 +74,11 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # These exact bytes are pre-signed and re-attested by afterPack. The Rust
+  # sidecar does not match these expressions and is signed normally.
+  signIgnore:
+    - '[\\/]Contents[\\/]Resources[\\/]backend[\\/]python-runtime[\\/]python[\\/]'
+    - '[\\/]Contents[\\/]Resources[\\/]backend[\\/]native[\\/]libn4m\.dylib$'
   artifactName: "${productName}-${version}-mac-${arch}.${ext}"
 
 dmg:

@@ -3,22 +3,27 @@
  * check-dep-sync.cjs — fail the green gate if the backend runtime dependency
  * sources drift apart.
  *
- * Single source of truth: BACKEND_COMMON_PACKAGES in scripts/python-runtime-config.cjs
- * (it already feeds the standalone build and is profile-aware).
+ * Single source of truth: BACKEND_COMMON_PACKAGES in
+ * scripts/python-http-runtime-config.cjs. This transitional source/dev config
+ * is intentionally excluded from packaged Electron products.
  *
  * Validated against it:
  *   - requirements.txt          (dev / CI / PyInstaller fallback install list)
  *   - requirements-cpu.txt      (the live PyInstaller CPU build install list)
  *   - backend.spec hiddenimports (the frozen-build module roster)
  *
- * Build-only tooling (pyinstaller) and the nirs4all library are NOT part of the
- * runtime set and are ignored here.
+ * Build-only tooling (pyinstaller) is ignored. Transitional diagnostic tools
+ * are declared separately in BACKEND_TRANSITION_TOOL_PACKAGES: they must stay
+ * in both requirements files without entering the runtime/hiddenimport set.
  *
  * Exit 0 when every source agrees; exit 1 with a precise diff otherwise.
  */
 const fs = require("fs");
 const path = require("path");
-const { BACKEND_COMMON_PACKAGES } = require("./python-runtime-config.cjs");
+const {
+  BACKEND_COMMON_PACKAGES,
+  BACKEND_TRANSITION_TOOL_PACKAGES,
+} = require("./python-http-runtime-config.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
 const BUILD_ONLY = new Set(["pyinstaller"]);
@@ -51,6 +56,12 @@ const canonical = new Map(
     return [base, spec];
   }),
 );
+const transitionTools = new Map(
+  BACKEND_TRANSITION_TOOL_PACKAGES.map((s) => {
+    const { base, spec } = parseSpec(s);
+    return [base, spec];
+  }),
+);
 
 const errors = [];
 
@@ -71,11 +82,19 @@ function checkRequirements(file) {
       errors.push(`${file}: '${found.get(base)}' must match canonical '${spec}'`);
     }
   }
+  for (const [base, spec] of transitionTools) {
+    if (!found.has(base)) {
+      errors.push(`${file}: missing transitional tooling dep '${spec}'`);
+    } else if (found.get(base) !== spec) {
+      errors.push(`${file}: '${found.get(base)}' must match transitional tooling '${spec}'`);
+    }
+  }
   for (const [base, spec] of found) {
-    if (!canonical.has(base)) {
+    if (!canonical.has(base) && !transitionTools.has(base)) {
       errors.push(
         `${file}: '${spec}' is not in canonical BACKEND_COMMON_PACKAGES ` +
-          `(add it to scripts/python-runtime-config.cjs or remove it here)`,
+          `or BACKEND_TRANSITION_TOOL_PACKAGES ` +
+          `(classify it in scripts/python-http-runtime-config.cjs or remove it here)`,
       );
     }
   }
@@ -99,11 +118,12 @@ checkBackendSpec();
 if (errors.length) {
   console.error("Backend dependency sources are out of sync with BACKEND_COMMON_PACKAGES:\n");
   for (const e of errors) console.error("  ✗ " + e);
-  console.error("\nCanonical source: scripts/python-runtime-config.cjs (BACKEND_COMMON_PACKAGES).");
+  console.error("\nCanonical source: scripts/python-http-runtime-config.cjs (BACKEND_COMMON_PACKAGES).");
   process.exit(1);
 }
 
 console.log(
   `✓ backend dependency sources in sync (${canonical.size} runtime packages: ` +
-    `requirements.txt, requirements-cpu.txt, backend.spec)`,
+    `requirements.txt, requirements-cpu.txt, backend.spec; ` +
+    `${transitionTools.size} transitional tooling package)`,
 );

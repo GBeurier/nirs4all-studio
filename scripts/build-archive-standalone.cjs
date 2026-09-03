@@ -18,6 +18,10 @@
  *   --local-nirs4all      Install nirs4all from local source instead of PyPI
  *   --local-nirs4all-path <path>
  *                          Local nirs4all source path
+ *   --local-dag-ml-path <path>
+ *                          Optional local dag-ml Python package path
+ *   --local-dag-ml-data-path <path>
+ *                          Optional local dag-ml-data Python package path
  *   --cache-dir <path>    Cache dir for python-build-standalone downloads
  *   --constraints <path>  Optional pip constraints file for the bake step
  *   --help                Show usage
@@ -31,6 +35,7 @@ const {
   STANDALONE_V1_PROFILE,
 } = require("./python-runtime-config.cjs");
 const { resolveSpawnCommand } = require("./spawn-command.cjs");
+const { verifyRuntimeContract } = require("./native-runtime-contract.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 const isWindows = process.platform === "win32";
@@ -50,6 +55,10 @@ Options:
   --local-nirs4all      Install nirs4all from local source instead of PyPI
   --local-nirs4all-path <path>
                         Local nirs4all source path
+  --local-dag-ml-path <path>
+                        Optional local dag-ml Python package path
+  --local-dag-ml-data-path <path>
+                        Optional local dag-ml-data Python package path
   --cache-dir <path>    Cache dir for python-build-standalone downloads
   --constraints <path>  Optional pip constraints file for the bake step
   --help                Show this message`);
@@ -65,6 +74,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     skipFrontend: false,
     localNirs4all: false,
     localNirs4allPath: "",
+    localDagMlPath: "",
+    localDagMlDataPath: "",
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
     constraintsFile: "",
   };
@@ -91,6 +102,10 @@ function parseArgs(argv = process.argv.slice(2)) {
       parsed.localNirs4all = true;
     } else if (flag === "--local-nirs4all-path") {
       parsed.localNirs4allPath = path.resolve(inlineValue ?? argv[++i]);
+    } else if (flag === "--local-dag-ml-path") {
+      parsed.localDagMlPath = path.resolve(inlineValue ?? argv[++i]);
+    } else if (flag === "--local-dag-ml-data-path") {
+      parsed.localDagMlDataPath = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--cache-dir") {
       parsed.cacheDir = path.resolve(inlineValue ?? argv[++i]);
     } else if (flag === "--constraints") {
@@ -110,6 +125,8 @@ function resolveBuildConfig(rawOptions, host = { platform: process.platform, arc
     cacheDir: path.resolve(rawOptions.cacheDir),
     constraintsFile: rawOptions.constraintsFile ? path.resolve(rawOptions.constraintsFile) : "",
     localNirs4allPath: rawOptions.localNirs4allPath ? path.resolve(rawOptions.localNirs4allPath) : "",
+    localDagMlPath: rawOptions.localDagMlPath ? path.resolve(rawOptions.localDagMlPath) : "",
+    localDagMlDataPath: rawOptions.localDagMlDataPath ? path.resolve(rawOptions.localDagMlDataPath) : "",
   };
 
   const allowedProfiles = [STANDALONE_V1_PROFILE, LITE_PROFILE];
@@ -127,6 +144,16 @@ function resolveBuildConfig(rawOptions, host = { platform: process.platform, arc
 
   if (config.constraintsFile && !fs.existsSync(config.constraintsFile)) {
     throw new Error(`Constraints file not found: ${config.constraintsFile}`);
+  }
+  if (
+    config.localNirs4all ||
+    config.localNirs4allPath ||
+    config.localDagMlPath ||
+    config.localDagMlDataPath
+  ) {
+    throw new Error(
+      "Phase 2 plugin-only archives refuse local Python source substitution; use the pinned 32226557 wheel",
+    );
   }
 
   return config;
@@ -310,12 +337,21 @@ function ensureBuildInputsExist(config) {
   }
 
   const backendDistPath = path.join(projectRoot, "backend-dist");
-  const runtimeReady = path.join(backendDistPath, "python-runtime", "RUNTIME_READY.json");
+  const runtimeReady = path.join(backendDistPath, "python-runtime", "PLUGIN_RUNTIME_READY.json");
   if (!fs.existsSync(runtimeReady)) {
     throw new Error(
-      "backend-dist/ does not contain a baked standalone runtime. Re-run without --skip-backend or bake the runtime first.",
+      "backend-dist/ does not contain the baked Python plugin-host runtime. Re-run without --skip-backend or bake the runtime first.",
     );
   }
+
+  verifyRuntimeContract({
+    backendRoot: backendDistPath,
+    artifactBoundaryRoot: backendDistPath,
+    platform: config.platform,
+    arch: config.arch,
+    requireBundledPythonPlugin: true,
+    requireBundledMethods: true,
+  });
 }
 
 function ensureFrontendOutputsExist(config) {
@@ -362,29 +398,27 @@ async function buildArchiveStandalone(config) {
   }
 
   if (!config.skipBackend) {
-    console.log("=== Step 1: Bake standalone backend runtime ===");
+    console.log("=== Step 1: Bake plugin-only CPython runtime ===");
     const bakeArgs = [
-      path.join("scripts", "bake-standalone-backend.cjs"),
-      "--profile",
-      config.profile,
-      "--platform",
-      config.platform,
-      "--arch",
-      config.arch,
+      path.join("scripts", "bake-python-plugin-runtime.cjs"),
+      "--backend-root",
+      path.join(projectRoot, "backend-dist"),
       "--cache-dir",
       config.cacheDir,
-      "--clean",
     ];
-    if (config.localNirs4all) {
-      bakeArgs.push("--local-nirs4all");
-    }
-    if (config.localNirs4allPath) {
-      bakeArgs.push("--local-nirs4all-path", config.localNirs4allPath);
-    }
     if (config.constraintsFile) {
       bakeArgs.push("--constraints", config.constraintsFile);
     }
     await runCommand(getNodeCommand(), bakeArgs);
+    await runCommand(getNodeCommand(), [path.join("scripts", "build-native-sidecar.cjs")]);
+    verifyRuntimeContract({
+      backendRoot: path.join(projectRoot, "backend-dist"),
+      artifactBoundaryRoot: path.join(projectRoot, "backend-dist"),
+      platform: config.platform,
+      arch: config.arch,
+      requireBundledPythonPlugin: true,
+      requireBundledMethods: true,
+    });
     console.log("");
   } else {
     console.log("=== Step 1: Reusing existing backend-dist/ ===");
