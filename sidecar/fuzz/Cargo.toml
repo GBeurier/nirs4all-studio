@@ -1,0 +1,24 @@
+[package]
+name = "studio-sidecar-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+studio-sidecar = { path = ".." }
+tempfile = "3"
+
+[[bin]]
+name = "workspace_store_v5_bytes"
+path = "fuzz_targets/workspace_store_v5_bytes.rs"
+test = false
+doc = false
+bench = false
+
+# Keep the developer-only fuzz package outside the sidecar release package.
+[workspace]
+members = ["."]
