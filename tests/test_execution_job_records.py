@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
+import api.execution_job_records as execution_job_records
 from api.execution_job_records import ExecutionJobRecord, WorkspaceExecutionJobRecordRepository
 
 
@@ -47,6 +49,37 @@ def test_workspace_execution_job_record_repository_persists_latest_snapshot(tmp_
     assert record is not None
     assert record.status == "running"
     assert record.progress_unavailable is False
+
+
+def test_workspace_execution_job_record_repository_retries_atomic_replace_with_unique_temp_name(
+    tmp_path, monkeypatch
+):
+    repository = WorkspaceExecutionJobRecordRepository(tmp_path)
+    original_replace = Path.replace
+    replace_sources: list[Path] = []
+
+    def flaky_replace(source: Path, target: Path) -> Path:
+        replace_sources.append(source)
+        if len(replace_sources) < 3:
+            raise PermissionError(5, "Access is denied")
+        return original_replace(source, target)
+
+    monkeypatch.setattr(Path, "replace", flaky_replace)
+    monkeypatch.setattr(execution_job_records.time, "sleep", lambda _delay: None)
+
+    repository.save_job_record(_record("run-retry"))
+    repository.save_job_record(
+        replace(_record("run-retry"), status="completed", progress=100.0)
+    )
+
+    assert replace_sources[0] == replace_sources[1] == replace_sources[2]
+    assert replace_sources[3] != replace_sources[0]
+    assert replace_sources[0].parent == tmp_path / "runs" / "run-retry"
+    assert replace_sources[0].name != "execution_job_record.json.tmp"
+    assert not list((tmp_path / "runs" / "run-retry").glob("*.tmp"))
+    record = repository.get("run-retry")
+    assert record is not None
+    assert record.status == "completed"
 
 
 @pytest.mark.parametrize(("status", "expected_progress"), [("completed", 100.0), ("running", 0.0)])

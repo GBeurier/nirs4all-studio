@@ -19,19 +19,19 @@ Larger datasets and complex pipelines (especially those using deep learning mode
 
 ## Desktop App (Recommended)
 
-The easiest way to get started is to download the desktop application from the GitHub releases page. The installer bundles everything you need -- no additional software required.
+The easiest way to get started is to download the desktop application from the GitHub releases page. The installer ships the app and backend source, then creates or reuses a writable Python runtime outside the app bundle. You normally do not need to install Python yourself.
 
 ### Windows
 
-1. Go to the [nirs4all Studio releases page](https://github.com/nirs4all/nirs4all-webapp/releases) on GitHub.
-2. Download the latest `.exe` installer (for example, `nirs4all-studio-setup-0.1.0.exe`).
+1. Go to the [nirs4all Studio releases page](https://github.com/GBeurier/nirs4all-studio/releases) on GitHub.
+2. Download the latest `.exe` installer (for example, `nirs4all Studio-1.0.0-win-x64.exe`).
 3. Run the installer and follow the on-screen instructions.
 4. Once installed, launch **nirs4all Studio** from your Start menu or desktop shortcut.
 
 ### macOS
 
-1. Go to the [nirs4all Studio releases page](https://github.com/nirs4all/nirs4all-webapp/releases) on GitHub.
-2. Download the latest `.dmg` file (for example, `nirs4all-studio-0.1.0.dmg`).
+1. Go to the [nirs4all Studio releases page](https://github.com/GBeurier/nirs4all-studio/releases) on GitHub.
+2. Download the latest `.dmg` file (for example, `nirs4all Studio-1.0.0-mac-arm64.dmg`).
 3. Open the `.dmg` file and drag **nirs4all Studio** into your Applications folder.
 4. Launch the app from your Applications folder or Launchpad.
 
@@ -61,8 +61,8 @@ If you prefer to run nirs4all Studio as a local web application in your browser,
 1. **Clone the repository**:
 
    ```bash
-   git clone https://github.com/nirs4all/nirs4all-webapp.git
-   cd nirs4all-webapp
+   git clone https://github.com/GBeurier/nirs4all-studio.git
+   cd nirs4all-studio
    ```
 
 2. **Install frontend dependencies**:

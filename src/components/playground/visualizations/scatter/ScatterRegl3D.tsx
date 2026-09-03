@@ -24,6 +24,7 @@ import {
   computeRegl3DPointColors,
   createRegl3DCameraMatrices,
   createRegl3DIndexMap,
+  createRegl3DReadbackCoordinate,
   createRegl3DRectPickingPlan,
   decodeRegl3DPickPixel,
   generateRegl3DGridGeometry,
@@ -105,9 +106,9 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
       const pickFbo = pickFboRef.current;
       if (!canvas || !regl || !pickFbo) return [];
 
-      const rect = canvas.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio, 2);
-      const pickingPlan = createRegl3DRectPickingPlan(x1, y1, x2, y2, rect.height, dpr);
+      const { width, height } = pickFboSizeRef.current;
+      const pickingPlan = createRegl3DRectPickingPlan(x1, y1, x2, y2, width, height, dpr);
       if (!pickingPlan) return [];
 
       // Sample the picking buffer at a grid of points
@@ -234,8 +235,8 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
       canvas.width = width;
       canvas.height = height;
       pickFbo.resize(width, height);
-      pickFboSizeRef.current = { width, height };
     }
+    pickFboSizeRef.current = { width, height };
 
     const viewMatrix = orbitControls.update();
     const { projection: projectionMatrix, model: modelMatrix } = createRegl3DCameraMatrices(width, height);
@@ -315,11 +316,14 @@ export const ScatterRegl3D = forwardRef<Scatter3DHandle, ScatterRendererProps & 
     const pickFbo = pickFboRef.current;
     if (!regl || !pickFbo) return null;
 
-    const { height } = pickFboSizeRef.current;
+    const { width, height } = pickFboSizeRef.current;
+    const coordinate = createRegl3DReadbackCoordinate(x, y, width, height);
+    if (!coordinate) return null;
+
     const pixel = regl.read({
       framebuffer: pickFbo,
-      x: Math.floor(x),
-      y: height - Math.floor(y) - 1,
+      x: coordinate.x,
+      y: coordinate.y,
       width: 1,
       height: 1,
     });

@@ -119,6 +119,11 @@ def _run_prediction(
         ) from e
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Prediction data is incompatible with model '{model_id}': {e}",
+        ) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 

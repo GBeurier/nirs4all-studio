@@ -1,14 +1,14 @@
-# Publishing a Release — Quick Guide
+# Publishing a Release - Quick Guide
 
-Step-by-step checklist for publishing a new nirs4all-webapp release.
+Step-by-step checklist for publishing a new nirs4all Studio release from `GBeurier/nirs4all-studio`.
 
 ---
 
 ## Prerequisites
 
-- Push access to `GBeurier/nirs4all-webapp`
-- The `release-unified.yml` GitHub Actions workflow is in place
-- The installer/archive electron-builder configs have their publish metadata configured
+- Push access to `GBeurier/nirs4all-studio`
+- The `.github/workflows/release-unified.yml` GitHub Actions workflow is in place
+- The packaging source of truth is documented in `docs/PACKAGING.md`
 
 ## Steps
 
@@ -50,12 +50,14 @@ git push origin 1.1.0-beta.1
 
 The `release-unified.yml` workflow triggers on `[0-9]*` tags (no `v` prefix). It will:
 
-1. Build the single attested **CPU** installer profile for Linux x64, Windows x64, and macOS x64/arm64
-2. Build the matching all-in-one archives unless explicitly skipped, plus separately scoped Docker images
-3. Generate **SHA256 checksums** as `.sha256` sidecar files
-4. Create a **GitHub Release** with all assets attached
+1. Build installer assets for Windows, macOS, and Linux
+2. Build Windows portable assets
+3. Build all-in-one archives unless `skip_all_in_one` is enabled
+4. Build Docker images unless `skip_docker` is enabled
+5. Generate **SHA256 checksums** as `.sha256` sidecar files
+6. Create a **GitHub Release** with all assets attached
 
-Monitor progress at: `https://github.com/GBeurier/nirs4all-webapp/actions`
+Monitor progress at: `https://github.com/GBeurier/nirs4all-studio/actions`
 
 Typical build time: ~15-25 minutes.
 
@@ -63,15 +65,17 @@ Typical build time: ~15-25 minutes.
 
 After CI completes:
 
-1. Go to `https://github.com/GBeurier/nirs4all-webapp/releases/latest`
+1. Go to `https://github.com/GBeurier/nirs4all-studio/releases/latest`
 2. Confirm all expected assets are present:
-   - Windows x64 NSIS and portable executables + `.sha256`
-   - Linux x64 AppImage and deb + `.sha256`
-   - macOS x64 and arm64 DMGs + `.sha256`
-   - all-in-one archives for each enabled platform/architecture
+   - `nirs4all Studio-<version>-win-x64.exe` + `.sha256`
+   - `nirs4all Studio-<version>-win-x64-portable.exe` + `.sha256`
+   - `nirs4all Studio-<version>-mac-x64.dmg` and `nirs4all Studio-<version>-mac-arm64.dmg` + `.sha256`
+   - `nirs4all Studio-<version>-linux-x64.AppImage` + `.sha256`
+   - `nirs4all Studio-<version>-linux-x64.deb` + `.sha256`
+   - all-in-one archives when enabled: `.zip` on Windows/macOS and `.tar.gz` on Linux
 3. Verify checksums: download an asset and its `.sha256` file, then:
    ```bash
-   sha256sum -c nirs4all-Studio-1.1.0-win-x64.exe.sha256
+   sha256sum -c "nirs4all Studio-1.1.0-win-x64.exe.sha256"
    ```
 
 ### 5. Edit release notes (optional)
@@ -101,9 +105,37 @@ On a machine running the **previous** version:
 
 If you need to rebuild without pushing a new tag:
 
-1. Go to **Actions > Electron Build & Release**
+1. Go to **Actions > Release**
 2. Click **Run workflow**
-3. Enter the tag (e.g., `1.1.0`) and choose whether to skip all-in-one archives or Docker images
+3. Enter the tag/version, for example `1.1.0`
+4. Use `skip_all_in_one` and `skip_docker` to limit the build matrix
+
+For an installer-only Windows RC smoke build while production remains held:
+
+1. Run **Actions > Release** on `main`
+2. Set `tag` to the current RC version, for example `1.0.0-rc.4`
+3. Set `skip_all_in_one=true`
+4. Keep `skip_docker=true`
+
+When the RC tag does not exist as a tag, the workflow stamps that version into the artifacts but checks out the triggering commit. This produces unsigned test artifacts without creating a release tag or publishing a production release. The current prepared RC artifact set is workflow run `29145157945` for `1.0.0-rc.4`.
+
+## Local Windows RC installer
+
+For a local installer candidate while the Studio production release remains held, run from a native Windows checkout such as `C:\src\nirs4all\nirs4all-studio`, not from WSL or a `\\wsl...` UNC path:
+
+```powershell
+npm install
+npm run release:windows-rc -- --version 1.0.0-rc.4
+```
+
+The helper rebuilds the sibling `..\nirs4all-ui` package, runs the quick release smoke unless `--skip-smoke` is passed, stamps the RC version locally, and then builds Windows installer artifacts with publishing disabled. Expected outputs:
+
+```text
+release/nirs4all Studio-1.0.0-rc.4-win-x64.exe
+release/nirs4all Studio-1.0.0-rc.4-win-x64-portable.exe
+```
+
+Use `npm run release:windows-rc -- --version 1.0.0-rc.4 --skip-smoke` only after `npm run release:smoke` has already passed on the same checkout.
 
 ---
 
@@ -123,8 +155,9 @@ If you need to rebuild without pushing a new tag:
 
 | Issue | Resolution |
 |-------|-----------|
-| Plugin-runtime packaging fails | Check the pinned plugin wheel/closure identity and the native runtime contract gate |
-| No assets on the release | Check the CI logs for electron-builder errors; ensure `GH_TOKEN` secret is set |
+| CI fails in installer jobs | Check `electron-builder.installer.yml`, backend source copy logs, and `scripts/check-dep-sync.cjs` output |
+| CI fails in all-in-one jobs | Check `docs/PACKAGING.md`, `scripts/build-archive-standalone.cjs`, runtime bake logs, and constraint files |
+| No assets on the release | Check the CI logs for electron-builder or upload errors; ensure release permissions/secrets are available |
 | Update check returns "Up to date" | Verify the tag version is higher than the installed version; check `version.json` |
 | Checksum verification fails | Re-run the CI — the `.sha256` file may have been generated from a different build |
 | Download resumes but fails checksum | Delete the partial download in `~/.nirs4all-webapp/update_cache/` and retry |

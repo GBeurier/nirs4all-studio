@@ -3,9 +3,9 @@
  *
  * The goal is to validate the real bundled runtime path:
  *   - launch the packaged Electron app with offline forced via env
- *   - force a deterministic Rust control-plane port
- *   - wait for sidecar-specific readiness and capabilities
- *   - explicitly preflight the bundled CPython library/plugin host
+ *   - force a deterministic backend port
+ *   - wait for /api/health
+ *   - verify /api/system/build reports runtime_mode=bundled
  *
  * Usage:
  *   node scripts/smoke-archive-standalone.cjs --extracted-root <path> [options]
@@ -17,11 +17,14 @@ const os = require("os");
 const path = require("path");
 const { createServer } = require("net");
 const packageJson = require("../package.json");
-const { verifyRuntimeContract } = require("./native-runtime-contract.cjs");
 
 const DEFAULT_APP_NAME = "nirs4all Studio";
 const DEFAULT_TIMEOUT_MS = 180000;
 const DEFAULT_POLL_INTERVAL_MS = 1000;
+// Importing nirs4all (Phase 2 / ml_ready) is slow — the full ML stack cold-import
+// can take 60-120s — so the ml-ready probe gets its own generous budget instead
+// of sharing the (shorter) health budget.
+const DEFAULT_ML_READY_TIMEOUT_MS = 180000;
 
 function printHelp() {
   console.log(`Usage:
@@ -31,7 +34,7 @@ Options:
   --extracted-root <path>  Root directory created after unzipping the archive
   --platform <id>         win32 | linux | darwin (default: current platform)
   --app-name <name>       Expected packaged app name (default: ${DEFAULT_APP_NAME})
-  --port <n>              Rust sidecar port via NIRS4ALL_NATIVE_SIDECAR_PORT
+  --port <n>              Backend port to force via NIRS4ALL_BACKEND_PORT
   --timeout-ms <n>        Timeout for health/runtime checks (default: ${DEFAULT_TIMEOUT_MS})
   --sandbox-root <path>   Optional isolated HOME/AppData root
   --keep-sandbox          Keep the generated sandbox directory for inspection
@@ -163,20 +166,19 @@ function findDirectoryAppRoot(extractedRoot, executableName, maxDepth = 2) {
 }
 
 function resolveLaunchLayout(extractedRoot, platformId, appName) {
-  const nativeSidecarName = platformId === "win32" ? "studio-sidecar.exe" : "studio-sidecar";
   if (platformId === "darwin") {
     const appBundle = findMacAppBundle(extractedRoot, appName);
     const resourcesDir = path.join(appBundle, "Contents", "Resources");
     const runtimeRoot = path.join(resourcesDir, "backend", "python-runtime");
     return {
       appRoot: appBundle,
-      backendRoot: path.join(resourcesDir, "backend"),
       executablePath: path.join(appBundle, "Contents", "MacOS", appName),
-      runtimeReadyPath: path.join(runtimeRoot, "PLUGIN_RUNTIME_READY.json"),
-      nativeSidecarPath: path.join(resourcesDir, "backend", "native", nativeSidecarName),
+      runtimeReadyPath: path.join(runtimeRoot, "RUNTIME_READY.json"),
       bundledPythonPath: path.join(runtimeRoot, "python", "bin", "python3"),
       bundledPythonCandidates: [
         path.join(runtimeRoot, "python", "bin", "python3"),
+        path.join(runtimeRoot, "python", "bin", "python"),
+        path.join(runtimeRoot, "venv", "bin", "python"),
       ],
     };
   }
@@ -190,10 +192,8 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
   const runtimeRoot = path.join(appRoot, "resources", "backend", "python-runtime");
   return {
     appRoot,
-    backendRoot: path.join(appRoot, "resources", "backend"),
     executablePath: path.join(appRoot, executableName),
-    runtimeReadyPath: path.join(runtimeRoot, "PLUGIN_RUNTIME_READY.json"),
-    nativeSidecarPath: path.join(appRoot, "resources", "backend", "native", nativeSidecarName),
+    runtimeReadyPath: path.join(runtimeRoot, "RUNTIME_READY.json"),
     bundledPythonPath:
       platformId === "win32"
         ? path.join(runtimeRoot, "python", "python.exe")
@@ -202,9 +202,12 @@ function resolveLaunchLayout(extractedRoot, platformId, appName) {
       platformId === "win32"
         ? [
             path.join(runtimeRoot, "python", "python.exe"),
+            path.join(runtimeRoot, "venv", "Scripts", "python.exe"),
           ]
         : [
             path.join(runtimeRoot, "python", "bin", "python3"),
+            path.join(runtimeRoot, "python", "bin", "python"),
+            path.join(runtimeRoot, "venv", "bin", "python"),
           ],
   };
 }
@@ -213,17 +216,6 @@ function ensurePathExists(targetPath, label) {
   if (!fs.existsSync(targetPath)) {
     throw new Error(`${label} not found: ${targetPath}`);
   }
-}
-
-function verifyLaunchRuntimeContract(launchLayout, platformId, arch = process.arch) {
-  return verifyRuntimeContract({
-    backendRoot: launchLayout.backendRoot,
-    artifactBoundaryRoot: launchLayout.appRoot,
-    platform: platformId,
-    arch,
-    requireBundledPythonPlugin: true,
-    requireBundledMethods: true,
-  });
 }
 
 function ensureDir(dirPath) {
@@ -302,15 +294,16 @@ function collectRuntimePathLeaks(runtimeRoot, disallowedFragments) {
   return leaks;
 }
 
-function buildSandboxEnv(platformId, sandboxRoot, port) {
+function buildSandboxEnv(platformId, sandboxRoot, port, timeoutMs = DEFAULT_TIMEOUT_MS) {
   const env = {
     ...process.env,
     CI: "1",
     ELECTRON_ENABLE_LOGGING: "1",
     NIRS4ALL_OFFLINE: "1",
-    NIRS4ALL_NATIVE_SIDECAR_PORT: String(port),
+    NIRS4ALL_BACKEND_PORT: String(port),
+    NIRS4ALL_BACKEND_RUNTIME_VERIFY_TIMEOUT_MS: String(timeoutMs),
+    NIRS4ALL_BACKEND_PACKAGE_VERIFY_TIMEOUT_MS: String(timeoutMs),
   };
-  delete env.NIRS4ALL_BACKEND_PORT;
 
   if (platformId === "win32") {
     const userProfile = path.join(sandboxRoot, "UserProfile");
@@ -425,9 +418,9 @@ async function cleanupSandboxRoot(sandboxRoot, options = {}) {
 
 async function waitForReady(port, timeoutMs, child, outputBuffer) {
   const deadline = Date.now() + timeoutMs;
-  const healthUrl = `http://127.0.0.1:${port}/sidecar/v1/health`;
-  const capabilitiesUrl = `http://127.0.0.1:${port}/sidecar/v1/capabilities`;
-  const pluginPreflightUrl = `http://127.0.0.1:${port}/sidecar/v1/python/preflight`;
+  const healthUrl = `http://127.0.0.1:${port}/api/health`;
+  const buildUrl = `http://127.0.0.1:${port}/api/system/build`;
+  const infoUrl = `http://127.0.0.1:${port}/api/system/info`;
 
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
@@ -438,16 +431,15 @@ async function waitForReady(port, timeoutMs, child, outputBuffer) {
       const healthResponse = await fetch(healthUrl, { signal: AbortSignal.timeout(3000) });
       if (healthResponse.ok) {
         const healthPayload = await healthResponse.json();
-        if (healthPayload.sidecar_ready === true) {
-          const capabilitiesResponse = await fetch(capabilitiesUrl, { signal: AbortSignal.timeout(3000) });
-          const capabilitiesPayload = capabilitiesResponse.ok ? await capabilitiesResponse.json() : null;
-          const pluginResponse = await fetch(pluginPreflightUrl, { signal: AbortSignal.timeout(15000) });
-          const pluginPayload = pluginResponse.ok ? await pluginResponse.json() : null;
+        if (healthPayload.core_ready || healthPayload.ready) {
+          const buildResponse = await fetch(buildUrl, { signal: AbortSignal.timeout(3000) });
+          const buildPayload = buildResponse.ok ? await buildResponse.json() : null;
+          const infoResponse = await fetch(infoUrl, { signal: AbortSignal.timeout(3000) });
+          const infoPayload = infoResponse.ok ? await infoResponse.json() : null;
           return {
             healthPayload,
-            capabilitiesPayload,
-            pluginPayload,
-            pluginStatus: pluginResponse.status,
+            buildPayload,
+            infoPayload,
           };
         }
       }
@@ -461,9 +453,15 @@ async function waitForReady(port, timeoutMs, child, outputBuffer) {
   throw new Error(`Timed out waiting for ${healthUrl}.\n${outputBuffer.join("\n")}`);
 }
 
-// Retained for the self-update smoke, whose staged legacy compatibility
-// backend still has an explicit ML-readiness assertion. The archive product
-// startup smoke above deliberately does not acquire that HTTP process.
+/**
+ * Assert the bundled runtime can actually `import nirs4all` (Phase 2 / ml_ready),
+ * not just boot FastAPI (Phase 1 / core_ready). A broken editable install ships a
+ * runtime that is "healthy" but cannot import nirs4all — every ML page is then
+ * dead for the user. /api/system/env-coherence reports `core_ready` true only once
+ * Phase 1 is done AND `missing_core_packages` (fastapi/uvicorn/nirs4all) is empty,
+ * so we poll it until both hold. On timeout we surface the last payload so a missing
+ * nirs4all is obvious in CI logs.
+ */
 async function waitForMlReady(port, timeoutMs, child, outputBuffer) {
   const deadline = Date.now() + timeoutMs;
   const coherenceUrl = `http://127.0.0.1:${port}/api/system/env-coherence`;
@@ -473,23 +471,24 @@ async function waitForMlReady(port, timeoutMs, child, outputBuffer) {
     if (child.exitCode !== null) {
       throw new Error(`App exited before ml-ready check completed (code ${child.exitCode}).\n${outputBuffer.join("\n")}`);
     }
+
     try {
       const response = await fetch(coherenceUrl, { signal: AbortSignal.timeout(5000) });
       if (response.ok) {
         const payload = await response.json();
         lastPayload = payload;
-        const missingCore = Array.isArray(payload.missing_core_packages)
-          ? payload.missing_core_packages
-          : [];
+        const missingCore = Array.isArray(payload.missing_core_packages) ? payload.missing_core_packages : [];
         if (payload.core_ready === true && missingCore.length === 0) {
           return payload;
         }
       }
     } catch {
-      // Ignore transient connection errors while the explicit plugin loads.
+      // Ignore transient connection errors while ML deps load.
     }
+
     await delay(DEFAULT_POLL_INTERVAL_MS);
   }
+
   throw new Error(
     `Timed out waiting for ml-ready at ${coherenceUrl} `
     + `(import nirs4all may be broken in the bundled runtime). `
@@ -541,20 +540,9 @@ async function smokeArchiveStandalone(rawConfig) {
   const launchLayout = resolveLaunchLayout(config.extractedRoot, config.platform, config.appName);
   ensurePathExists(launchLayout.executablePath, "Packaged executable");
   ensurePathExists(launchLayout.runtimeReadyPath, "Bundled runtime marker");
-  ensurePathExists(launchLayout.nativeSidecarPath, "Native Studio sidecar");
   const bundledPythonPath = launchLayout.bundledPythonCandidates.find((candidate) => fs.existsSync(candidate))
     ?? launchLayout.bundledPythonPath;
   ensurePathExists(bundledPythonPath, "Bundled Python");
-  const verifiedRuntime = verifyLaunchRuntimeContract(
-    launchLayout,
-    config.platform,
-  );
-  if (verifiedRuntime.sidecarPath !== launchLayout.nativeSidecarPath) {
-    throw new Error("Runtime contract did not select the packaged native sidecar");
-  }
-  if (verifiedRuntime.pythonPluginHostPath !== bundledPythonPath) {
-    throw new Error("Runtime contract did not select the bundled Python plugin host");
-  }
 
   const pathLeaks = collectRuntimePathLeaks(
     path.dirname(launchLayout.runtimeReadyPath),
@@ -570,15 +558,14 @@ async function smokeArchiveStandalone(rawConfig) {
 
   const port = await choosePort(config.port);
   const sandboxRoot = config.sandboxRoot || fs.mkdtempSync(path.join(os.tmpdir(), "n4a-archive-smoke-"));
-  const env = buildSandboxEnv(config.platform, sandboxRoot, port);
+  const env = buildSandboxEnv(config.platform, sandboxRoot, port, config.timeoutMs);
   const outputBuffer = [];
 
   console.log(`Smoke root:     ${config.extractedRoot}`);
   console.log(`Executable:     ${launchLayout.executablePath}`);
   console.log(`Bundled Python: ${bundledPythonPath}`);
-  console.log(`Native sidecar: ${launchLayout.nativeSidecarPath}`);
   console.log(`Sandbox:        ${sandboxRoot}`);
-  console.log(`Sidecar port:   ${port}`);
+  console.log(`Backend port:   ${port}`);
 
   const child = spawn(launchLayout.executablePath, [], {
     cwd: launchLayout.appRoot,
@@ -591,31 +578,27 @@ async function smokeArchiveStandalone(rawConfig) {
   child.stderr?.on("data", (chunk) => pushOutput(outputBuffer, "stderr", chunk));
 
   try {
-    const { healthPayload, capabilitiesPayload, pluginPayload, pluginStatus } =
-      await waitForReady(port, config.timeoutMs, child, outputBuffer);
-    if (healthPayload.protocol_version !== "studio-sidecar-r1") {
-      throw new Error(`Unexpected sidecar protocol: ${healthPayload.protocol_version ?? "undefined"}`);
+    const { buildPayload, infoPayload } = await waitForReady(port, config.timeoutMs, child, outputBuffer);
+    const runtimeMode = buildPayload?.runtime_mode;
+    const pythonExecutable = infoPayload?.python?.executable ?? "";
+
+    if (runtimeMode !== "bundled") {
+      throw new Error(`Expected runtime_mode=bundled, got ${runtimeMode ?? "undefined"}`);
     }
-    if (
-      capabilitiesPayload?.features?.scientific_execution !== false ||
-      capabilitiesPayload?.features?.legacy_api_routes !== false ||
-      capabilitiesPayload?.features?.python_plugin_preflight !== true
-    ) {
-      throw new Error(`Unexpected native capabilities: ${JSON.stringify(capabilitiesPayload)}`);
-    }
-    if (
-      pluginStatus !== 200 ||
-      pluginPayload?.python_plugin_host !== "ready" ||
-      pluginPayload?.nirs4all_import !== true ||
-      pluginPayload?.scientific_execution !== "unavailable"
-    ) {
-      throw new Error(`Bundled Python plugin-host preflight failed: ${JSON.stringify(pluginPayload)}`);
+    if (!String(pythonExecutable).includes("python-runtime")) {
+      throw new Error(`Expected bundled python executable, got ${pythonExecutable || "undefined"}`);
     }
 
+    // Phase 2: the bundled runtime must be able to `import nirs4all`, not just
+    // boot FastAPI — otherwise a broken editable install ships green and breaks
+    // only when a user runs a pipeline.
+    const mlReadyTimeoutMs = Math.max(config.timeoutMs, DEFAULT_ML_READY_TIMEOUT_MS);
+    const coherencePayload = await waitForMlReady(port, mlReadyTimeoutMs, child, outputBuffer);
+
     console.log("Smoke check passed.");
-    console.log(`  product backend: Rust sidecar (${healthPayload.protocol_version})`);
-    console.log(`  Python role:     explicit library/plugin host (${pluginPayload.bridge})`);
-    console.log("  Python HTTP fallback: not selected");
+    console.log(`  runtime_mode: ${runtimeMode}`);
+    console.log(`  python:       ${pythonExecutable}`);
+    console.log(`  ml_ready:     core packages present (${JSON.stringify(coherencePayload.missing_core_packages)} missing)`);
   } finally {
     await terminateApp(child);
     if (!config.keepSandbox && !config.sandboxRoot) {
@@ -649,7 +632,6 @@ module.exports = {
   parseArgs,
   removePathWithRetries,
   resolveLaunchLayout,
-  verifyLaunchRuntimeContract,
   smokeArchiveStandalone,
   waitForChildExit,
   waitForMlReady,

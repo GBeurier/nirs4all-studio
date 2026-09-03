@@ -1685,6 +1685,14 @@ class StoreAdapter:
             dataset_name=pred.get("dataset_name"),
             payload=pred,
         )
+        raw_sample_ids = _to_json_compatible(pred.get("sample_ids"))
+        sample_ids = (
+            raw_sample_ids
+            if isinstance(raw_sample_ids, list)
+            and len(raw_sample_ids) == len(y_true_list)
+            and all(isinstance(sample_id, str) for sample_id in raw_sample_ids)
+            else None
+        )
 
         return {
             "prediction_id": prediction_id,
@@ -1695,6 +1703,7 @@ class StoreAdapter:
             "model_name": pred.get("model_name", "unknown"),
             "dataset_name": pred.get("dataset_name", "unknown"),
             "sample_metadata": sample_metadata,
+            "sample_ids": sample_ids,
         }
 
     # ------------------------------------------------------------------

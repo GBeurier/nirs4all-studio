@@ -6,6 +6,8 @@ reconcile it on the next launch by comparing the running version to the staged
 one. These tests lock that success/failure logic.
 """
 
+import asyncio
+
 import updater
 
 
@@ -65,3 +67,38 @@ def test_version_advanced_logic():
     assert updater._version_advanced("0.8.2", "0.9.0", "0.8.3") is True  # current >= to
     assert updater._version_advanced("0.8.2", "0.8.2", "0.8.3") is False  # stayed on old
     assert updater._version_advanced("0.8.2", "unknown", "0.8.3") is False
+
+
+def test_failed_apply_is_reported_once_without_duplicate_error_log(monkeypatch):
+    import main
+    from api import updates as updates_module
+
+    result = {
+        "status": "failed",
+        "from_version": "0.9.1",
+        "to_version": "0.10.0",
+        "update_mode": "directory",
+        "log_tail": "backup failed",
+    }
+
+    class _UpdateManager:
+        @staticmethod
+        def get_webapp_version():
+            return "0.9.1"
+
+    reported = []
+    warnings = []
+    errors = []
+    monkeypatch.setattr(updates_module, "update_manager", _UpdateManager())
+    monkeypatch.setattr(updater, "reconcile_apply", lambda _version: result)
+    monkeypatch.setattr(updater, "cleanup_old_updates", lambda: None)
+    monkeypatch.setattr(main, "_report_update_failure", reported.append)
+    monkeypatch.setattr(main.logger, "warning", lambda *args, **_kwargs: warnings.append(args))
+    monkeypatch.setattr(main.logger, "error", lambda *args, **_kwargs: errors.append(args))
+
+    asyncio.run(main.cleanup_old_updates_background())
+
+    assert reported == [result]
+    assert len(warnings) == 1
+    assert "Update apply did NOT complete" in warnings[0][0]
+    assert errors == []

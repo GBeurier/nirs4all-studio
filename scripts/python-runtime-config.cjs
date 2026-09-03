@@ -18,12 +18,23 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
   }),
 });
 
-// The managed runtime is a bounded Rust -> Python stdio plugin host. Keep its
-// package list exact and intentionally small: Python HTTP/control-plane
-// dependencies live in python-http-runtime-config.cjs, which is source/dev only.
-const PLUGIN_DISTRIBUTION_VERSION = "0.10.3";
-const PLUGIN_HOST_PACKAGES = Object.freeze([
-  `nirs4all==${PLUGIN_DISTRIBUTION_VERSION}`,
+// Canonical backend runtime dependency set. This is the single source of truth:
+// requirements.txt, requirements-cpu.txt and backend.spec are validated against it
+// by scripts/check-dep-sync.cjs (run in the green gate). Build-only tools
+// (pyinstaller) and the nirs4all library are NOT part of this set.
+const BACKEND_COMMON_PACKAGES = Object.freeze([
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.34.0",
+  "pydantic>=2.10.0",
+  "python-multipart>=0.0.20",
+  "httpx>=0.27.0",
+  "pyyaml>=6.0",
+  "packaging>=24.0",
+  "platformdirs>=4.0.0",
+  "sentry-sdk[fastapi]>=2.0.0",
+  "orjson>=3.10.0",
+  "msgpack>=1.0.0",
+  "nirs4all-tools[duckdb,parquet]>=0.0.5",
 ]);
 
 const LEGACY_FLAVOR_TO_PROFILE = Object.freeze({
@@ -300,10 +311,17 @@ function resolveProfileForFlavor(flavor, platform = process.platform) {
   return profileFromFlavor;
 }
 
-const MANAGED_RUNTIME_PACKAGES = PLUGIN_HOST_PACKAGES;
+const MANAGED_RUNTIME_PACKAGES = Object.freeze([
+  ...BACKEND_COMMON_PACKAGES,
+  ...getProfilePackageInstallSpecs(STANDALONE_V1_PROFILE, {
+    includeExtraPackages: false,
+    packageNames: ["nirs4all"],
+  }),
+]);
 
 module.exports = {
   assertProfileSupportedOnPlatform,
+  BACKEND_COMMON_PACKAGES,
   LEGACY_FLAVOR_TO_PROFILE,
   LITE_EXCLUDED_PACKAGE_NAMES,
   LITE_PROFILE,
@@ -315,8 +333,6 @@ module.exports = {
   PYTHON_BUILD_STANDALONE_ARCHIVES,
   PYTHON_VERSION,
   PYTHON_VERSION_MM,
-  PLUGIN_DISTRIBUTION_VERSION,
-  PLUGIN_HOST_PACKAGES,
   STANDALONE_V1_PROFILE,
   getArchiveFilename,
   getDownloadUrl,
