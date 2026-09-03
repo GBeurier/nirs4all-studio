@@ -1,6 +1,9 @@
 {
   "schema": "nirs4all-studio.vendored-source.v1",
   "upstream": "https://github.com/GBeurier/dag-ml.git",
+  "selected_release_commit": "b7d643f450da3018c8208a84abcabfab09d5da7d",
+  "selected_release_repository_tree": "20876a6c04c550c2f662aa58583fb7305f42ee03",
+  "payload_packaging_commit": "dafb8b6fb98f9d380d30559a3f4b868c91e5b5c4",
   "commit": "dafb8b6fb98f9d380d30559a3f4b868c91e5b5c4",
   "repository_tree": "44a2c4a46911d2c49c33fe75418674bd0e129d5e",
   "included_crate_trees": {
@@ -26,5 +29,5 @@
     "hashed_files": 95
   },
   "verification": "../../scripts/verify-vendored-dagml.sh",
-  "release_gate": "This locally qualified 0.3.23 snapshot is transitional. Published dag-ml and dag-ml-core 0.3.23 identities must replace the path patches before LOCK-RELEASE."
+  "release_gate": "The selected release commit b7d643f450da3018c8208a84abcabfab09d5da7d has the exact included dag-ml and dag-ml-core crate trees recorded here. This content-identical locally qualified payload remains a transitional hold only because dag-ml and dag-ml-core 0.3.23 are not yet both available from the registry. Remove the path patches immediately after those exact registry packages are published."
 }

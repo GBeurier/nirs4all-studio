@@ -18,18 +18,23 @@
  *   --output-dir <path>          Output directory (default: backend-dist/)
  *   --runtime-only               Build only the embedded python runtime payload + build_info.json
  *   --build-mode <id>            build_info.json mode value (default: installer)
+ *   --plugin-wheel <path>        Exact pinned wheel for studio-python-plugin-runtime
+ *   --tools-wheel <path>         Exact pinned nirs4all-tools wheel for the stdio converter
  *   --local-nirs4all             Install nirs4all from local source instead of PyPI
  *   --local-nirs4all-path <path> Local nirs4all source path (default: ../nirs4all, then ./nirs4all-lib)
+ *   --local-dag-ml-path <path>   Optional local dag-ml Python package path
+ *   --local-dag-ml-data-path <path>
+ *                                Optional local dag-ml-data Python package path
  */
 
 const { spawn, execFile } = require("child_process");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
 const http = require("http");
 const {
   assertProfileSupportedOnPlatform,
-  BACKEND_COMMON_PACKAGES,
   PYTHON_VERSION,
   PBS_TAG,
   getArchiveFilename,
@@ -39,6 +44,7 @@ const {
   listSupportedPlatformArchKeys,
   resolveProfileForFlavor,
 } = require("./python-runtime-config.cjs");
+const { BACKEND_COMMON_PACKAGES } = require("./python-http-runtime-config.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 process.chdir(projectRoot);
@@ -48,6 +54,14 @@ const TORCH_CPU_INDEX_URL = "https://download.pytorch.org/whl/cpu";
 const TORCH_CUDA_INDEX_URL = "https://download.pytorch.org/whl/cu124";
 const TORCH_PROFILE_PACKAGE = "torch";
 const CUDA_TORCH_PROFILE = "gpu-cuda-torch";
+const PLUGIN_BUILD_MODE = "studio-python-plugin-runtime";
+const PLUGIN_SOURCE_COMMIT = "ea3320ca0636dc45b88a32c020c50d2ae40dc2b3";
+const PLUGIN_WHEEL_SHA256 = "538c2605bb5b09d047c3a5396a477e3acab1bb99e52dc9bf95199e244419ae2b";
+const PLUGIN_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all.git@${PLUGIN_SOURCE_COMMIT}`;
+const TOOLS_SOURCE_COMMIT = "e3a332633f87b4652a06f8993e63c386a3568698";
+const TOOLS_WHEEL_SHA256 = "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc";
+const TOOLS_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all-tools.git@${TOOLS_SOURCE_COMMIT}`;
+const TOOLS_READER_PACKAGES = Object.freeze(["duckdb==1.5.5", "pyarrow==25.0.1"]);
 
 // --- Argument parsing ---
 const args = process.argv.slice(2);
@@ -61,6 +75,10 @@ let outputDir = path.join(projectRoot, "backend-dist");
 let runtimeOnly = false;
 let buildMode = "installer";
 let localNirs4allPath = "";
+let localDagMlPath = "";
+let localDagMlDataPath = "";
+let pluginWheel = "";
+let toolsWheel = "";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--flavor" && args[i + 1]) {
@@ -83,8 +101,18 @@ for (let i = 0; i < args.length; i++) {
     localNirs4all = true;
   } else if (args[i] === "--local-nirs4all-path" && args[i + 1]) {
     localNirs4allPath = path.resolve(args[++i]);
+  } else if (args[i] === "--local-dag-ml-path" && args[i + 1]) {
+    localDagMlPath = path.resolve(args[++i]);
+  } else if (args[i] === "--local-dag-ml-data-path" && args[i + 1]) {
+    localDagMlDataPath = path.resolve(args[++i]);
+  } else if (args[i] === "--plugin-wheel" && args[i + 1]) {
+    pluginWheel = path.resolve(args[++i]);
+  } else if (args[i] === "--tools-wheel" && args[i + 1]) {
+    toolsWheel = path.resolve(args[++i]);
   }
 }
+
+const pluginOnly = buildMode === PLUGIN_BUILD_MODE;
 
 let profile = explicitProfile;
 if (!profile) {
@@ -107,6 +135,15 @@ try {
   });
   if (constraintsFile && !fs.existsSync(constraintsFile)) {
     throw new Error(`Constraints file not found: ${constraintsFile}`);
+  }
+  if (pluginOnly && (localNirs4all || localNirs4allPath || localDagMlPath || localDagMlDataPath)) {
+    throw new Error("Plugin-only runtime refuses local source and dag-ml path substitution");
+  }
+  if (pluginWheel && !fs.existsSync(pluginWheel)) {
+    throw new Error(`Plugin wheel not found: ${pluginWheel}`);
+  }
+  if (toolsWheel && !fs.existsSync(toolsWheel)) {
+    throw new Error(`Tools wheel not found: ${toolsWheel}`);
   }
 } catch (error) {
   console.error(`Error: ${error.message}`);
@@ -135,6 +172,12 @@ function getDirSize(dirPath) {
     }
   }
   return totalSize;
+}
+
+function sha256File(filePath) {
+  const digest = crypto.createHash("sha256");
+  digest.update(fs.readFileSync(filePath));
+  return digest.digest("hex");
 }
 
 function getPathSize(targetPath) {
@@ -216,6 +259,7 @@ async function runCommandWithRetries(command, args, options = {}, retryOptions =
 
 function buildPipInstallArgs(packageSpecs, options = {}) {
   return [
+    ...(options.isolated ? ["-I"] : []),
     "-m",
     "pip",
     "install",
@@ -244,6 +288,35 @@ function getLocalNirs4allCandidates(explicitPath = localNirs4allPath, env = proc
 function resolveLocalNirs4allPath(explicitPath = localNirs4allPath, env = process.env) {
   const candidates = getLocalNirs4allCandidates(explicitPath, env);
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+function resolveRequiredLocalPackagePath(label, explicitPath) {
+  if (!explicitPath) {
+    return null;
+  }
+  const resolvedPath = path.resolve(explicitPath);
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`${label} local source path not found: ${resolvedPath}`);
+  }
+  return resolvedPath;
+}
+
+async function installLocalPythonSource(runtimePython, label, sourcePath, options = {}) {
+  const editable = Boolean(options.editable);
+  console.log(`  Installing ${label} from local source (${editable ? "editable" : "copy"})...`);
+  await runCommandWithRetries(runtimePython, [
+    "-m",
+    "pip",
+    "install",
+    "--prefer-binary",
+    ...(options.noCompile ? ["--no-compile"] : []),
+    ...(options.constraintsFile ? ["-c", options.constraintsFile] : []),
+    ...(editable ? ["-e"] : []),
+    sourcePath,
+  ], {}, {
+    retries: isWindows ? 3 : 1,
+    label: `pip install ${editable ? "-e " : ""}${sourcePath}`,
+  });
 }
 
 function getStandaloneTorchIndexArgs(profileId, platform = process.platform) {
@@ -299,7 +372,7 @@ function getDependencyInstallPhases(profileId, platform = process.platform) {
 }
 
 function isStandaloneBundledRuntimeMode(mode = buildMode) {
-  return mode === "standalone-bundled-runtime";
+  return mode === "standalone-bundled-runtime" || mode === PLUGIN_BUILD_MODE;
 }
 
 function walkTreeSync(rootPath, visitor) {
@@ -320,9 +393,31 @@ function walkTreeSync(rootPath, visitor) {
 function pruneStandaloneRuntimeArtifacts(runtimeRoot) {
   const pruneDirNames = new Set(["Headers", "cmake", "include", "pkgconfig", "__pycache__"]);
   const pruneShareLeafNames = new Set(["doc", "docs", "gtk-doc", "info", "man"]);
+  if (pluginOnly) {
+    // The library/plugin worker has no terminal UI. PBS ships terminfo largely
+    // as symlink aliases, which are forbidden in the packaged closure.
+    pruneShareLeafNames.add("terminfo");
+  }
   const targets = new Set();
 
   walkTreeSync(runtimeRoot, (entryPath, entry) => {
+    const parentName = path.basename(path.dirname(entryPath));
+    if (pluginOnly && parentName === "site-packages" && (
+      ["pip", "setuptools", "pkg_resources", "_distutils_hack"].includes(entry.name) ||
+      /^(?:pip|setuptools)-.*\.dist-info$/i.test(entry.name)
+    )) {
+      targets.add(entryPath);
+      return false;
+    }
+    if (pluginOnly && entry.isFile() && (
+      entry.name.endsWith(".pth") ||
+      entry.name === "direct_url.json" ||
+      entry.name === "INSTALLER" ||
+      entry.name === "REQUESTED"
+    )) {
+      targets.add(entryPath);
+      return false;
+    }
     if (!entry.isDirectory()) {
       return true;
     }
@@ -332,7 +427,6 @@ function pruneStandaloneRuntimeArtifacts(runtimeRoot) {
       return false;
     }
 
-    const parentName = path.basename(path.dirname(entryPath));
     if (parentName === "share" && pruneShareLeafNames.has(entry.name)) {
       targets.add(entryPath);
       return false;
@@ -358,6 +452,23 @@ function pruneStandaloneRuntimeArtifacts(runtimeRoot) {
     removedBytes,
     removedPaths,
   };
+}
+
+async function restorePinnedWheelRecord(runtimePython, runtimeRoot, wheelPath, distribution, version) {
+  const script = String.raw`import pathlib,sys,zipfile
+root=pathlib.Path(sys.argv[1])
+wheel=pathlib.Path(sys.argv[2])
+distribution=sys.argv[3]
+version=sys.argv[4]
+with zipfile.ZipFile(wheel) as archive:
+    suffix=f"{distribution}-{version}.dist-info/RECORD"
+    members=[name for name in archive.namelist() if name.endswith(suffix)]
+    if len(members) != 1: raise RuntimeError(f"expected one wheel RECORD, found {len(members)}")
+    payload=archive.read(members[0])
+candidates=list(root.glob(f"python/Lib/site-packages/{suffix}"))+list(root.glob(f"python/lib/python3.*/site-packages/{suffix}"))
+if len(candidates) != 1: raise RuntimeError(f"expected one installed RECORD, found {len(candidates)}")
+candidates[0].write_bytes(payload)`;
+  await runCommand(runtimePython, ["-I", "-S", "-B", "-c", script, runtimeRoot, wheelPath, distribution, version]);
 }
 
 function pruneStandaloneRuntimeLaunchers(buildRoot) {
@@ -496,6 +607,7 @@ async function main() {
   console.log(`  Output dir:     ${outputDir}`);
   console.log(`  Runtime only:   ${runtimeOnly}`);
   console.log(`  Build mode:     ${buildMode}`);
+  console.log(`  Plugin wheel:   ${pluginWheel || "(rebuild pinned source)"}`);
   console.log(`  Local nirs4all: ${localNirs4all}`);
   if (localNirs4all) {
     console.log(`  Local source:   ${resolveLocalNirs4allPath() || "(not found)"}`);
@@ -613,29 +725,37 @@ async function main() {
   }
 
   console.log("  Bootstrapping pip via ensurepip...");
-  await runCommand(runtimePython, ["-m", "ensurepip", "--upgrade"]);
+  const isolatedPythonArgs = pluginOnly ? ["-I"] : [];
+  await runCommand(runtimePython, [...isolatedPythonArgs, "-m", "ensurepip", "--upgrade"]);
 
   // Verify pip is usable
-  await runCommand(runtimePython, ["-m", "pip", "--version"]);
+  await runCommand(runtimePython, [...isolatedPythonArgs, "-m", "pip", "--version"]);
 
-  // Upgrade pip to latest
-  console.log("  Upgrading pip...");
-  await runCommandWithRetries(runtimePython, [
-    "-m",
-    "pip",
-    "install",
-    ...(useBundledBasePython ? ["--no-compile"] : []),
-    "--upgrade",
-    "pip",
-  ], {}, {
-    retries: isWindows ? 3 : 1,
-    label: "pip install --upgrade pip",
-  });
+  // The plugin runtime uses the pip bundled by the pinned PBS archive. Pulling
+  // an unpinned "latest" pip would make its packaged closure time-dependent.
+  if (pluginOnly) {
+    console.log("  Keeping the pinned python-build-standalone pip...");
+  } else {
+    console.log("  Upgrading pip...");
+    await runCommandWithRetries(runtimePython, [
+      "-m",
+      "pip",
+      "install",
+      ...(useBundledBasePython ? ["--no-compile"] : []),
+      "--upgrade",
+      "pip",
+    ], {}, {
+      retries: isWindows ? 3 : 1,
+      label: "pip install --upgrade pip",
+    });
+  }
   console.log("");
 
   // 6. Install dependencies
   console.log(`=== Step 4: Install dependencies (${profile}) ===`);
-  const dependencyInstallPhases = getDependencyInstallPhases(profile, process.platform);
+  const dependencyInstallPhases = pluginOnly
+    ? Object.freeze([])
+    : getDependencyInstallPhases(profile, process.platform);
   const dependencyCount = dependencyInstallPhases.reduce((total, phase) => total + phase.packageSpecs.length, 0);
   console.log(`  Installing ${dependencyCount} backend packages from shared runtime config...`);
   // Large wheel installs on Windows can hit transient RECORD/file-lock races.
@@ -653,32 +773,140 @@ async function main() {
     });
   }
 
-  // 7. Install nirs4all
-  console.log("");
-  console.log("=== Step 5: Install nirs4all ===");
+  // 7. Install optional local dag-ml runtimes before nirs4all so the Python
+  // oracle/runtime package resolves against the RC native backend stack.
+  const resolvedLocalDagMlDataPath = pluginOnly
+    ? null
+    : resolveRequiredLocalPackagePath("dag-ml-data", localDagMlDataPath);
+  const resolvedLocalDagMlPath = pluginOnly
+    ? null
+    : resolveRequiredLocalPackagePath("dag-ml", localDagMlPath);
+  if (resolvedLocalDagMlDataPath || resolvedLocalDagMlPath) {
+    console.log("");
+    console.log("=== Step 5: Install dag-ml runtime packages ===");
+    const editable = !useBundledBasePython;
+    if (resolvedLocalDagMlDataPath) {
+      await installLocalPythonSource(runtimePython, "dag-ml-data", resolvedLocalDagMlDataPath, {
+        constraintsFile,
+        editable,
+        noCompile: useBundledBasePython,
+      });
+    }
+    if (resolvedLocalDagMlPath) {
+      await installLocalPythonSource(runtimePython, "dag-ml", resolvedLocalDagMlPath, {
+        constraintsFile,
+        editable,
+        noCompile: useBundledBasePython,
+      });
+    }
+  }
 
-  const resolvedLocalNirs4allPath = resolveLocalNirs4allPath();
-  if (localNirs4all && resolvedLocalNirs4allPath) {
+  // 8. Install nirs4all
+  console.log("");
+  console.log("=== Step 6: Install nirs4all ===");
+
+  const resolvedLocalNirs4allPath = pluginOnly ? null : resolveLocalNirs4allPath();
+  let selectedPluginWheel = null;
+  let selectedToolsWheel = null;
+  if (pluginOnly) {
+    const wheelDir = path.join(cacheDir, "studio-python-plugin-wheel");
+    fs.mkdirSync(wheelDir, { recursive: true });
+    if (pluginWheel) {
+      selectedPluginWheel = pluginWheel;
+    } else {
+      for (const entry of fs.readdirSync(wheelDir)) {
+        if (entry.endsWith(".whl")) fs.rmSync(path.join(wheelDir, entry), { force: true });
+      }
+      await runCommandWithRetries(runtimePython, [
+        "-I",
+        "-m",
+        "pip",
+        "wheel",
+        "--no-deps",
+        "--wheel-dir",
+        wheelDir,
+        PLUGIN_SOURCE_URL,
+      ], {}, {
+        retries: isWindows ? 3 : 1,
+        label: "build pinned nirs4all plugin wheel",
+      });
+      const wheels = fs.readdirSync(wheelDir)
+        .filter((entry) => /^nirs4all-.*\.whl$/i.test(entry));
+      if (wheels.length !== 1) {
+        throw new Error(`Pinned plugin build produced ${wheels.length} nirs4all wheels`);
+      }
+      selectedPluginWheel = path.join(wheelDir, wheels[0]);
+    }
+    const actualWheelSha256 = sha256File(selectedPluginWheel);
+    if (actualWheelSha256 !== PLUGIN_WHEEL_SHA256) {
+      throw new Error(
+        `Pinned plugin wheel identity mismatch: expected ${PLUGIN_WHEEL_SHA256}, got ${actualWheelSha256}`,
+      );
+    }
+    await runCommandWithRetries(runtimePython, buildPipInstallArgs([selectedPluginWheel], {
+      constraintsFile,
+      isolated: true,
+      noCompile: true,
+    }), {}, {
+      retries: isWindows ? 3 : 1,
+      label: "install pinned nirs4all plugin wheel",
+    });
+    await runCommandWithRetries(runtimePython, buildPipInstallArgs(TOOLS_READER_PACKAGES, {
+      constraintsFile,
+      isolated: true,
+      noCompile: true,
+      upgrade: true,
+    }), {}, {
+      retries: isWindows ? 3 : 1,
+      label: "install exact legacy converter readers",
+    });
+    const toolsWheelDir = path.join(cacheDir, "studio-python-tools-wheel");
+    fs.mkdirSync(toolsWheelDir, { recursive: true });
+    if (toolsWheel) {
+      selectedToolsWheel = toolsWheel;
+    } else {
+      for (const entry of fs.readdirSync(toolsWheelDir)) {
+        if (entry.endsWith(".whl")) fs.rmSync(path.join(toolsWheelDir, entry), { force: true });
+      }
+      await runCommandWithRetries(runtimePython, [
+        "-I", "-m", "pip", "wheel", "--no-deps", "--wheel-dir", toolsWheelDir, TOOLS_SOURCE_URL,
+      ], {}, {
+        retries: isWindows ? 3 : 1,
+        label: "build pinned nirs4all-tools wheel",
+      });
+      const wheels = fs.readdirSync(toolsWheelDir)
+        .filter((entry) => /^nirs4all_tools-.*\.whl$/i.test(entry));
+      if (wheels.length !== 1) {
+        throw new Error(`Pinned tools build produced ${wheels.length} nirs4all-tools wheels`);
+      }
+      selectedToolsWheel = path.join(toolsWheelDir, wheels[0]);
+    }
+    const actualToolsWheelSha256 = sha256File(selectedToolsWheel);
+    if (actualToolsWheelSha256 !== TOOLS_WHEEL_SHA256) {
+      throw new Error(
+        `Pinned tools wheel identity mismatch: expected ${TOOLS_WHEEL_SHA256}, got ${actualToolsWheelSha256}`,
+      );
+    }
+    await runCommandWithRetries(runtimePython, buildPipInstallArgs([selectedToolsWheel], {
+      constraintsFile,
+      isolated: true,
+      noCompile: true,
+      extraPipArgs: ["--no-deps"],
+    }), {}, {
+      retries: isWindows ? 3 : 1,
+      label: "install pinned nirs4all-tools wheel",
+    });
+  } else if (localNirs4all && resolvedLocalNirs4allPath) {
     // A distributable bundle must NOT install nirs4all editable: an editable
     // install leaves path-dependent artifacts (__editable__*.pth / *_finder.py
     // / direct_url.json) pointing at the build machine's checkout, so
     // `import nirs4all` fails on the user's machine. Install a *copy*
     // (non-editable) into the bundled runtime. Editable is kept only for
     // non-bundled dev setups where live-editing the local source is wanted.
-    const editable = !useBundledBasePython;
-    console.log(`  Installing nirs4all from local source (${editable ? "editable" : "copy"})...`);
-    await runCommandWithRetries(runtimePython, [
-      "-m",
-      "pip",
-      "install",
-      "--prefer-binary",
-      ...(useBundledBasePython ? ["--no-compile"] : []),
-      ...(constraintsFile ? ["-c", constraintsFile] : []),
-      ...(editable ? ["-e"] : []),
-      resolvedLocalNirs4allPath,
-    ], {}, {
-      retries: isWindows ? 3 : 1,
-      label: `pip install ${editable ? "-e " : ""}${resolvedLocalNirs4allPath}`,
+    await installLocalPythonSource(runtimePython, "nirs4all", resolvedLocalNirs4allPath, {
+      constraintsFile,
+      editable: !useBundledBasePython,
+      noCompile: useBundledBasePython,
     });
   } else if (localNirs4all) {
     console.log(`  Warning: --local-nirs4all specified but no local source was found. Checked: ${getLocalNirs4allCandidates().join(", ")}`);
@@ -754,6 +982,11 @@ async function main() {
     console.log(
       `  Removed ${runtimeStats.removedPaths + launcherStats.removedPaths} development-only paths (${formatSize(runtimeStats.removedBytes + launcherStats.removedBytes)})`,
     );
+    if (pluginOnly) {
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "0.13.0");
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedToolsWheel, "nirs4all_tools", "0.0.7");
+      console.log("  Restored both exact pinned wheel RECORDs after isolated installation");
+    }
     console.log("");
   }
 
@@ -783,7 +1016,7 @@ async function main() {
   // first import — a major cause of slow first launch (notably Intel macOS).
   // Pre-compile the whole runtime here. Best-effort: a single odd .py in some
   // dependency must not fail the bake.
-  if (isStandaloneBundledRuntimeMode(buildMode) && fs.existsSync(pythonDir)) {
+  if (buildMode === "standalone-bundled-runtime" && fs.existsSync(pythonDir)) {
     console.log("  Pre-compiling the bundled runtime (third-party packages)...");
     try {
       await runCommand(runtimePython, ["-m", "compileall", "-q", "-j", "0", pythonDir]);
@@ -804,6 +1037,13 @@ async function main() {
     pbs_tag: PBS_TAG,
     platform: platformKey,
     built_at: new Date().toISOString(),
+    python_role: pluginOnly ? "library-plugin-host-only" : null,
+    selected_source_commit: pluginOnly ? PLUGIN_SOURCE_COMMIT : null,
+    selected_wheel_sha256: pluginOnly ? PLUGIN_WHEEL_SHA256 : null,
+    selected_wheel_filename: selectedPluginWheel ? path.basename(selectedPluginWheel) : null,
+    conversion_tools_source_commit: pluginOnly ? TOOLS_SOURCE_COMMIT : null,
+    conversion_tools_wheel_sha256: pluginOnly ? TOOLS_WHEEL_SHA256 : null,
+    conversion_tools_wheel_filename: selectedToolsWheel ? path.basename(selectedToolsWheel) : null,
   };
   const buildInfoPath = path.join(backendDist, "build_info.json");
   fs.writeFileSync(buildInfoPath, JSON.stringify(buildInfo, null, 2));

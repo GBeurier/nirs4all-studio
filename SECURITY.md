@@ -4,7 +4,7 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+| 0.11.x  | :white_check_mark: |
 
 ## Reporting a Vulnerability
 
@@ -26,8 +26,12 @@ We aim to acknowledge reports within **5 business days** and to provide a fix or
 
 This policy covers:
 - The nirs4all-webapp frontend (React/TypeScript)
-- The nirs4all-webapp backend (FastAPI/Python)
+- The Rust Studio sidecar and its bounded CPython stdio plugin host
 - The Electron desktop shell and IPC layer
 
 Security issues in the nirs4all Python library should be reported via the [nirs4all security policy](../nirs4all/SECURITY.md).
 Security issues in third-party dependencies should be reported directly to those projects.
+
+The dependency advisories temporarily accepted for this release, their product
+exposure, and their removal criteria are documented in
+[`docs/DEPENDENCY_SECURITY_HOLDS.md`](docs/DEPENDENCY_SECURITY_HOLDS.md).

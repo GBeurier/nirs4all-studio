@@ -200,6 +200,8 @@ describe("useNewExperimentLaunchFlow", () => {
       inline_pipeline: undefined,
       inline_pipelines: [],
       split_group_by_by_dataset: { d1: null },
+      engine: "dag-ml",
+      allow_fallback: false,
     });
     expect(toastMocks.success).toHaveBeenCalledWith("Experiment started!");
     expect(onRunCreated).toHaveBeenCalledWith("run-1");
@@ -207,14 +209,11 @@ describe("useNewExperimentLaunchFlow", () => {
     await mounted.unmount();
   });
 
-  it("threads explicit runtime engine and fallback policy into launch submissions", async () => {
+  it("threads the strict native runtime contract into launch submissions", async () => {
     apiMocks.runPreflight.mockResolvedValue({ ready: true, issues: [] } satisfies PreflightResult);
     apiMocks.createRun.mockResolvedValue(run());
 
-    const mounted = await renderHook(() => useNewExperimentLaunchFlow(launchFlowInput({
-      runtimeEngine: "dag-ml",
-      allowFallback: true,
-    })));
+    const mounted = await renderHook(() => useNewExperimentLaunchFlow(launchFlowInput()));
 
     await act(async () => {
       await mounted.result.current!.handleLaunch();
@@ -223,7 +222,7 @@ describe("useNewExperimentLaunchFlow", () => {
 
     expect(apiMocks.createRun).toHaveBeenCalledWith(expect.objectContaining({
       engine: "dag-ml",
-      allow_fallback: true,
+      allow_fallback: false,
       dataset_ids: ["d1"],
       pipeline_ids: ["p1"],
     }));
@@ -318,6 +317,8 @@ describe("useNewExperimentLaunchFlow", () => {
       inline_pipeline: undefined,
       inline_pipelines: [],
       split_group_by_by_dataset: { d1: null },
+      engine: "dag-ml",
+      allow_fallback: false,
     }, singlePairSplitSpecResult));
     expect(toastMocks.success).toHaveBeenCalledWith("Experiment started!");
     expect(onRunCreated).toHaveBeenCalledWith("cluster-run-1");
@@ -424,6 +425,8 @@ describe("useNewExperimentLaunchFlow", () => {
       },
       inline_pipelines: [],
       split_group_by_by_dataset: { d1: null },
+      engine: "dag-ml",
+      allow_fallback: false,
     });
 
     await mounted.unmount();
@@ -535,6 +538,8 @@ describe("useNewExperimentLaunchFlow", () => {
         },
         inline_pipelines: [],
         split_group_by_by_dataset: { d1: null },
+        engine: "dag-ml",
+        allow_fallback: false,
       },
       manifest: {
         version: NATIVE_EXPERIMENT_LAUNCH_PAYLOAD_VERSION,

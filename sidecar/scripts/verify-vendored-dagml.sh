@@ -24,6 +24,8 @@ grep -q '"sha1": "dafb8b6fb98f9d380d30559a3f4b868c91e5b5c4"' "$facade/.cargo_vcs
 grep -q '"sha1": "dafb8b6fb98f9d380d30559a3f4b868c91e5b5c4"' "$core/.cargo_vcs_info.json"
 grep -q '"commit": "dafb8b6fb98f9d380d30559a3f4b868c91e5b5c4"' "$vendor_root/PROVENANCE.json"
 grep -q '"repository_tree": "44a2c4a46911d2c49c33fe75418674bd0e129d5e"' "$vendor_root/PROVENANCE.json"
+grep -q '"selected_release_commit": "b7d643f450da3018c8208a84abcabfab09d5da7d"' "$vendor_root/PROVENANCE.json"
+grep -q '"selected_release_repository_tree": "20876a6c04c550c2f662aa58583fb7305f42ee03"' "$vendor_root/PROVENANCE.json"
 grep -q '"dag-ml": "bba3d934c7cc6488cca1557128e7ed24577bbd1e"' "$vendor_root/PROVENANCE.json"
 grep -q '"dag-ml-core": "203cb17729225f1bafff5109f9a9c42c49838dd4"' "$vendor_root/PROVENANCE.json"
 grep -q '"sha256": "8107c50a572f217fa7f9ad696d6eba30355d6a1dd4dc7d107b21979567cb92fe"' "$vendor_root/PROVENANCE.json"

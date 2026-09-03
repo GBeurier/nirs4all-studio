@@ -107,7 +107,8 @@ If you always import CSV files from the same instrument software, set the defaul
 
 ## Advanced tab
 
-The Advanced tab provides backend diagnostics, system information, and developer options.
+The Advanced tab provides Rust control-plane diagnostics, bounded plugin-host
+information, system information, and developer options.
 
 ```{figure} ../_images/settings/st-advanced.png
 :alt: Settings page — Advanced tab
@@ -120,9 +121,9 @@ The Advanced tab showing backend status, system information, and developer mode 
 
 | Field | Description |
 |-------|-------------|
-| **Status indicator** | A colored dot showing whether the Python backend is running (green), starting (amber), or stopped (red). |
-| **Backend URL** | The address and port where the FastAPI backend is serving (e.g., `http://localhost:8000`). |
-| **Restart backend** | A button to restart the backend process without restarting the entire application. |
+| **Status indicator** | A colored dot showing whether the packaged Rust sidecar is running (green), starting (amber), or stopped (red). |
+| **Backend endpoint** | The loopback endpoint selected for the Rust sidecar. It is not a Python/FastAPI service. |
+| **Restart backend** | Restarts the Rust sidecar lifecycle. This can interrupt running jobs. |
 
 ### System information
 
@@ -130,8 +131,8 @@ The Advanced tab showing backend status, system information, and developer mode 
 |-------|-------------|
 | **Operating system** | Detected OS name and version. |
 | **Node.js version** | Version of the Node.js runtime (relevant in desktop mode). |
-| **Python version** | Version of the Python interpreter running the backend. |
-| **nirs4all version** | Version of the nirs4all library installed in the backend environment. |
+| **Python version** | Version of the bounded CPython stdio host, when that packaged capability is present. It does not own the backend. |
+| **nirs4all version** | Version attested for the read-only scientific library/plugin closure, when present. |
 
 ### GPU detection
 
@@ -142,7 +143,9 @@ The Advanced tab showing backend status, system information, and developer mode 
 | **CUDA version** | The detected CUDA toolkit version, if applicable. |
 
 :::{note}
-GPU acceleration is used automatically by deep learning models (TensorFlow, PyTorch) when available. Traditional models (PLS, Random Forest, Ridge) run on CPU regardless of GPU availability.
+GPU detection is informational. Native Methods training uses the qualified CPU
+path. A Python library/plugin may use a GPU only when its packaged capability
+and operation preflight explicitly allow it.
 :::
 
 ### Updates

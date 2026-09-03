@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NativeResultsExportAffordance } from "./NativeResultsExportAffordance";
-import { RuntimeBackendSelector } from "./RuntimeBackendSelector";
+import { RuntimeBackendStatus } from "./RuntimeBackendStatus";
 import { RuntimeDiagnosticsList } from "./RuntimeDiagnosticsList";
 import { RuntimeEngineBadge } from "./RuntimeEngineBadge";
 import { RuntimeRunStatePresentation } from "./RuntimeStatus";
@@ -111,8 +111,8 @@ describe("runtime result components", () => {
   });
 });
 
-describe("RuntimeBackendSelector", () => {
-  it("clears explicit backend selection when the runtime lacks run(engine=...) support", async () => {
+describe("RuntimeBackendStatus", () => {
+  it("reports native unavailable without exposing a selector", async () => {
     mocks.getRuntimeSummary.mockResolvedValue({
       runtime_engine_capabilities: {
         supports_explicit_run_engine: false,
@@ -121,31 +121,22 @@ describe("RuntimeBackendSelector", () => {
         reason: "unsupported",
       },
     });
-    const onRuntimeEngineChange = vi.fn();
-    const onAllowFallbackChange = vi.fn();
-
-    const { root } = await render(
-      <RuntimeBackendSelector
-        runtimeEngine="dag-ml"
-        allowFallback
-        onRuntimeEngineChange={onRuntimeEngineChange}
-        onAllowFallbackChange={onAllowFallbackChange}
-      />,
-    );
+    const { container, root } = await render(<RuntimeBackendStatus />);
 
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(onRuntimeEngineChange).toHaveBeenCalledWith(null);
-    expect(onAllowFallbackChange).toHaveBeenCalledWith(false);
+    expect(container.textContent).toContain("Native unavailable");
+    expect(container.textContent).toContain("Legacy execution and fallback are disabled");
+    expect(container.querySelector("button")).toBeNull();
 
     await act(async () => {
       root.unmount();
     });
   });
 
-  it("keeps explicit backend selection when the runtime exposes run(engine=...) support", async () => {
+  it("reports native available when strict DAG-ML is supported", async () => {
     mocks.getRuntimeSummary.mockResolvedValue({
       runtime_engine_capabilities: {
         supports_explicit_run_engine: true,
@@ -154,24 +145,13 @@ describe("RuntimeBackendSelector", () => {
         reason: null,
       },
     });
-    const onRuntimeEngineChange = vi.fn();
-    const onAllowFallbackChange = vi.fn();
-
-    const { root } = await render(
-      <RuntimeBackendSelector
-        runtimeEngine="dag-ml"
-        allowFallback
-        onRuntimeEngineChange={onRuntimeEngineChange}
-        onAllowFallbackChange={onAllowFallbackChange}
-      />,
-    );
+    const { container, root } = await render(<RuntimeBackendStatus />);
 
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(onRuntimeEngineChange).not.toHaveBeenCalled();
-    expect(onAllowFallbackChange).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Native available");
 
     await act(async () => {
       root.unmount();

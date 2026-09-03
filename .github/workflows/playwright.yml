@@ -4,9 +4,9 @@ name: Playwright E2E Tests
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'rc/**']
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, 'rc/**']
 
 env:
   # Node 22 = the locally-validated toolchain (engines: >=20). On node 24 the
@@ -14,6 +14,9 @@ env:
   # 100% (3 bounded attempts, identical signature), never reaching the tests.
   NODE_VERSION: '22'
   PYTHON_VERSION: '3.11'
+  NIRS4ALL_LIBRARY_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor-python' || 'main' }}
+  DAG_ML_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor' || 'main' }}
+  DAG_ML_DATA_REF: ${{ startsWith(github.head_ref || github.ref_name, 'rc/') && 'rc/v1-full-refactor' || 'main' }}
 
 jobs:
   e2e:
@@ -22,19 +25,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Checkout nirs4all-ui library
-        uses: actions/checkout@v4
-        with:
-          repository: GBeurier/nirs4all-ui
-          ref: ef456b51ff83c11732fa5bb79809b4dcb04475bb
-          path: nirs4all-ui-lib
-
-      - name: Prepare nirs4all-ui sibling
-        shell: bash
-        run: |
-          rm -rf ../nirs4all-ui
-          cp -R nirs4all-ui-lib ../nirs4all-ui
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -48,12 +38,11 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: Disable nirs4all-ui sibling prepare hook
-        shell: bash
-        run: npm pkg delete scripts.prepare --prefix ../nirs4all-ui
-
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Verify exact nirs4all-ui package
+        run: npm run check:ui-package
 
       - name: Install Python dependencies
         run: |
@@ -64,25 +53,28 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GBeurier/nirs4all
-          ref: ce09f92a61238cfd2673c10626a17ac4c311a57c
+          ref: ${{ env.NIRS4ALL_LIBRARY_REF }}
           path: nirs4all-lib
 
-      - name: Checkout dag-ml bindings
+      - name: Checkout dag-ml runtime
         uses: actions/checkout@v4
         with:
           repository: GBeurier/dag-ml
-          path: dag-ml-lib
+          ref: ${{ env.DAG_ML_REF }}
+          path: dag-ml
 
-      - name: Checkout dag-ml-data bindings
+      - name: Checkout dag-ml-data runtime
         uses: actions/checkout@v4
         with:
           repository: GBeurier/dag-ml-data
-          path: dag-ml-data-lib
+          ref: ${{ env.DAG_ML_DATA_REF }}
+          path: dag-ml-data
 
-      - name: Install dag-ml RC dependencies from source
-        run: |
-          pip install ./dag-ml-lib/crates/dag-ml-py
-          pip install ./dag-ml-data-lib/crates/dag-ml-data-py
+      - name: Setup Rust for local dag-ml wheels
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install local dag-ml runtime wheels
+        run: pip install ./dag-ml/crates/dag-ml-py ./dag-ml-data/crates/dag-ml-data-py
 
       - name: Install nirs4all from source
         run: pip install ./nirs4all-lib

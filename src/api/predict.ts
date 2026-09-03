@@ -8,6 +8,7 @@ import type {
   PredictRequest,
   PredictResponse,
 } from "@/types/predict";
+import { STRICT_NATIVE_RUNTIME_ENGINE } from "@/lib/runtimeBackendPreference";
 
 export async function getAvailableModels(): Promise<AvailableModelsResponse> {
   return api.get("/models/available");
@@ -16,7 +17,11 @@ export async function getAvailableModels(): Promise<AvailableModelsResponse> {
 export async function runPrediction(
   request: PredictRequest
 ): Promise<PredictResponse> {
-  return api.post("/predict", request);
+  return api.post("/predict", {
+    ...request,
+    engine: STRICT_NATIVE_RUNTIME_ENGINE,
+    allow_fallback: false,
+  });
 }
 
 function predictionErrorMessage(error: unknown): string {
@@ -35,18 +40,13 @@ export async function runPredictionWithFile(
   modelId: string,
   modelSource: string,
   file: File,
-  options: { engine?: string | null; allowFallback?: boolean } = {}
 ): Promise<PredictResponse> {
   const formData = new FormData();
   formData.append("model_id", modelId);
   formData.append("model_source", modelSource);
   formData.append("file", file);
-  if (options.engine) {
-    formData.append("engine", options.engine);
-  }
-  if (options.allowFallback !== undefined) {
-    formData.append("allow_fallback", String(options.allowFallback));
-  }
+  formData.append("engine", STRICT_NATIVE_RUNTIME_ENGINE);
+  formData.append("allow_fallback", "false");
 
   try {
     return await requestForm<PredictResponse>("/predict/file", formData);
