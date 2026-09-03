@@ -23,20 +23,8 @@ nursery = "warn"
 atomicwrites = "0.4.4"
 base64 = "0.22"
 cap-std = "3"
-# Complete immutable snapshot of selected Core commit 6b25b63; see its
-# provenance and offline inventory/test gates. Its final descendant must be
-# relocked against published dag-ml-data 0.2.10 before LOCK-RELEASE.
-nirs4all = { version = "=0.3.25", path = "vendor/nirs4all-core-6b25b63/upstream/bindings/rust/nirs4all" }
-# Release debt IO-0.1.13: 0.1.12 removed `RoleTaggedReadLimits` and
-# `load_role_tagged_assembled_with_limits`, consumed by
-# `src/scientific_request_resolver.rs`. Restore them upstream from commit
-# f41967d (`crates/nirs4all-io/src/{api,lib}.rs`, guarded by
-# `tests/role_tagged_adapter.rs`), then repin Studio once to published 0.1.13.
-# Do not recreate this bounded IO adapter in Studio.
-nirs4all-io = { version = "=0.1.7", path = "vendor/nirs4all-io-f419/upstream/crates/nirs4all-io" }
-# Complete immutable snapshot of selected IO commit 54fa4f5; its native
-# DatasetPackage handoff remains a local publish=false qualification patch.
-nirs4all-io-data002 = { package = "nirs4all-io", version = "=0.1.12", path = "vendor/nirs4all-io-54fa/upstream/crates/nirs4all-io" }
+nirs4all = "=0.3.26"
+nirs4all-io = "=0.1.13"
 percent-encoding = "2.3"
 rusqlite = { version = "0.32.1", features = ["bundled", "serialize"] }
 serde_json = "1.0"
@@ -47,28 +35,10 @@ tungstenite = { version = "0.26.2", default-features = false, features = ["hands
 url = "2.5.4"
 
 [dev-dependencies]
-# Registry hold: final DagML release commit b08c626 has the exact same selected
-# crate trees as this qualified package payload. Keep the path until 0.3.23 is
-# published, then switch this dependency to the registry identity.
-dag-ml-core = { version = "=0.3.23", path = "vendor/dag-ml-dafb8b6/upstream/dag-ml-core-0.3.23" }
-nirs4all-io-data002 = { package = "nirs4all-io", version = "=0.1.12", path = "vendor/nirs4all-io-54fa/upstream/crates/nirs4all-io" }
+dag-ml-core = "=0.3.23"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29", features = ["process", "signal"] }
 
 [target.'cfg(windows)'.dependencies]
 studio-windows-job = { path = "crates/studio-windows-job" }
-
-# Core 0.3.25 pins DagML 0.3.23 and n4m 0.1.4, which are not yet all available
-# from crates.io. DagML final commit b08c626 has the exact same selected crate
-# trees as the qualified payload below. Keep these local holds until the exact
-# registry packages are published, then remove every path patch.
-[patch.crates-io]
-dag-ml = { path = "vendor/dag-ml-dafb8b6/upstream/dag-ml-0.3.23" }
-dag-ml-core = { path = "vendor/dag-ml-dafb8b6/upstream/dag-ml-core-0.3.23" }
-dag-ml-data = { path = "vendor/dag-ml-data-1f60/upstream/crates/dag-ml-data" }
-dag-ml-data-core = { path = "vendor/dag-ml-data-1f60/upstream/crates/dag-ml-data-core" }
-dag-ml-data-provider = { path = "vendor/dag-ml-data-1f60/upstream/crates/dag-ml-data-provider" }
-nirs4all-io = { path = "vendor/nirs4all-io-54fa/upstream/crates/nirs4all-io" }
-nirs4all-io-dagml = { path = "vendor/nirs4all-io-54fa/upstream/crates/nirs4all-io-dagml" }
-n4m = { path = "vendor/n4m-48ad1e5/upstream/n4m-0.1.4" }
