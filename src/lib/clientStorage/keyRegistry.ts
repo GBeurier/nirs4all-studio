@@ -206,6 +206,15 @@ export const clientStorageKeys = {
     version: 2,
     description: "Linked workspaces cache used for instant cold-start rendering.",
   }),
+  predictArchiveV2Selection: defineClientStorageKey<unknown>(
+    "n4a:predict:archive-v2-selection",
+    {
+      area: "local",
+      scope: "workspace",
+      description:
+        "Bounded Archive V2 prediction pointer; invalid or legacy values are cleared fail-closed.",
+    },
+  ),
 } as const;
 
 export const clientStorageKeyPrefixes = {

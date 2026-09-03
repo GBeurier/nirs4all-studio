@@ -1,24 +1,29 @@
-import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
-import { motion } from "@/lib/motion";
 import { AlertCircle, Zap } from "lucide-react";
 import { toast } from "sonner";
+
+import { predictPersistedArchiveV2Array } from "@/api/archiveV2Prediction";
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
+import { ArchiveV2DataInput } from "@/components/predict/ArchiveV2DataInput";
+import { ArchiveV2PredictionResults } from "@/components/predict/ArchiveV2PredictionResults";
 import { ModelSelector } from "@/components/predict/ModelSelector";
-import { DataInput, type DataSourceConfig } from "@/components/predict/DataInput";
-import { PredictResults, type PredictionInput } from "@/components/predict/PredictResults";
 import { Button } from "@/components/ui/button";
-import { runPrediction, runPredictionWithFile } from "@/api/predict";
-import type { AvailableModel, PredictResponse } from "@/types/predict";
+import {
+  archiveV2SelectionIdentityEquals,
+  buildArchiveV2ArrayPredictionRequest,
+  readPersistedArchiveV2Selection,
+} from "@/lib/archiveV2Selection";
+import { motion } from "@/lib/motion";
+import type {
+  ArchiveV2ArrayPredictionResponse,
+  PersistedArchiveV2Selection,
+} from "@/types/archiveV2Prediction";
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08 },
-  },
+  visible: { opacity: 1, transition: { staggerChildren: 0.08 } },
 };
 
 const itemVariants = {
@@ -26,81 +31,39 @@ const itemVariants = {
   visible: { opacity: 1, y: 0 },
 };
 
-function inputFromConfig(config: DataSourceConfig): PredictionInput {
-  if (config.type === "dataset") {
-    return {
-      type: "dataset",
-      datasetId: config.datasetId,
-      partition: config.partition,
-    };
-  }
-  if (config.type === "file") {
-    return { type: "file", fileName: config.file.name };
-  }
-  return { type: "array", rowCount: config.spectra.length };
-}
-
 export default function Predict() {
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
-  const [selectedModel, setSelectedModel] = useState<AvailableModel | null>(null);
-  const [result, setResult] = useState<PredictResponse | null>(null);
-  const [lastInput, setLastInput] = useState<PredictionInput | null>(null);
-  const [preselected, setPreselected] = useState(false);
-
-  // Deep-link: pre-select model from URL params (e.g., from ModelActionMenu)
-  const urlModelId = searchParams.get("model_id");
-  const urlSource = searchParams.get("source") as "chain" | "bundle" | null;
-
-  useEffect(() => {
-    if (urlModelId && urlSource && !preselected) {
-      setSelectedModel({
-        id: urlModelId,
-        name: urlModelId,
-        source: urlSource,
-        model_class: "",
-        dataset_name: null,
-        metric: null,
-        best_score: null,
-        created_at: null,
-        file_size: null,
-        preprocessing: null,
-        bundle_path: null,
-        prediction_metric: null,
-        prediction_score: null,
-      });
-      setPreselected(true);
-    }
-  }, [urlModelId, urlSource, preselected]);
+  const [selectedModel, setSelectedModel] =
+    useState<PersistedArchiveV2Selection | null>(() =>
+      readPersistedArchiveV2Selection(),
+    );
+  const [result, setResult] =
+    useState<ArchiveV2ArrayPredictionResponse | null>(null);
 
   const predictMutation = useMutation({
-    mutationFn: async (config: DataSourceConfig) => {
-      if (!selectedModel) throw new Error("No model selected");
+    mutationFn: async (spectra: number[][]) => {
+      if (!selectedModel) throw new Error("No Archive V2 selected.");
 
-      if (config.type === "file") {
-        return runPredictionWithFile(
-          selectedModel.id,
-          selectedModel.source,
-          config.file
+      // Re-read the bounded contract immediately before transport. A cleared,
+      // edited, moved-reference, digest, width, or target-order identity is
+      // refused locally instead of being silently reinterpreted.
+      const persisted = readPersistedArchiveV2Selection();
+      if (
+        !persisted ||
+        !archiveV2SelectionIdentityEquals(selectedModel, persisted)
+      ) {
+        throw new Error(
+          "Archive identity changed. Verify and select the persisted Archive V2 again.",
         );
       }
 
-      return runPrediction({
-        model_id: selectedModel.id,
-        model_source: selectedModel.source,
-        data_source: config.type,
-        dataset_id: config.type === "dataset" ? config.datasetId : undefined,
-        partition: config.type === "dataset" ? config.partition : undefined,
-        spectra: config.type === "array" ? config.spectra : undefined,
-      });
+      const request = buildArchiveV2ArrayPredictionRequest(persisted, spectra);
+      return predictPersistedArchiveV2Array(request);
     },
     onSuccess: (data) => {
       setResult(data);
       toast.success(
-        t("predict.results.summary", {
-          count: data.num_samples,
-          model: data.model_name,
-        })
+        `Predicted ${data.sample_ids.length} samples with ${data.archive_id}.`,
       );
     },
     onError: (error: Error) => {
@@ -108,27 +71,17 @@ export default function Predict() {
     },
   });
 
-  const handleRunPrediction = useCallback(
-    (config: DataSourceConfig) => {
-      // Capture the input context alongside the request so the results viewer
-      // can display the real dataset/file/array the user ran against (not just
-      // the model's training dataset name).
-      setLastInput(inputFromConfig(config));
-      predictMutation.mutate(config);
+  const handleModelSelect = useCallback(
+    (model: PersistedArchiveV2Selection | null) => {
+      setSelectedModel(model);
+      setResult(null);
+      predictMutation.reset();
     },
     [predictMutation],
   );
 
   const handleReset = useCallback(() => {
     setResult(null);
-    setLastInput(null);
-    predictMutation.reset();
-  }, [predictMutation]);
-
-  const handleModelSelect = useCallback((model: AvailableModel) => {
-    setSelectedModel(model);
-    setResult(null);
-    setLastInput(null);
     predictMutation.reset();
   }, [predictMutation]);
 
@@ -142,7 +95,6 @@ export default function Predict() {
         animate="visible"
         className="space-y-6"
       >
-        {/* Header */}
         <motion.div variants={itemVariants}>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -151,7 +103,7 @@ export default function Predict() {
             <div>
               <h1 className="text-2xl font-bold">{t("predict.title")}</h1>
               <p className="text-sm text-muted-foreground">
-                {t("predict.subtitle")}
+                Native replay of an immutable persisted Archive V2.
               </p>
             </div>
           </div>
@@ -167,10 +119,10 @@ export default function Predict() {
             </div>
 
             <div className="space-y-6">
-              <DataInput
-                model={selectedModel}
+              <ArchiveV2DataInput
+                selection={selectedModel}
                 isLoading={predictMutation.isPending}
-                onRunPrediction={handleRunPrediction}
+                onRunPrediction={predictMutation.mutate}
               />
 
               {predictionError && (
@@ -179,19 +131,17 @@ export default function Predict() {
                   className="rounded-xl border border-destructive/40 bg-destructive/10 p-4"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-destructive/15">
-                      <AlertCircle className="h-4 w-4 text-destructive" />
-                    </div>
+                    <AlertCircle className="mt-1 h-4 w-4 text-destructive" />
                     <div className="flex-1 space-y-1">
                       <p className="text-sm font-semibold text-destructive">
                         {t("predict.errors.predictionFailed")}
                       </p>
-                      <p className="break-words text-xs leading-5 text-destructive/90">
-                        {predictionError.message ||
-                          t("predict.errors.predictionFailed")}
+                      <p className="break-words text-xs text-destructive/90">
+                        {predictionError.message}
                       </p>
                     </div>
                     <Button
+                      type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => predictMutation.reset()}
@@ -203,24 +153,11 @@ export default function Predict() {
               )}
 
               {result && !predictionError && (
-                <PredictResults
-                  result={result}
-                  model={selectedModel}
-                  input={lastInput}
-                  onReset={handleReset}
-                />
+                <ArchiveV2PredictionResults result={result} onReset={handleReset} />
               )}
             </div>
           </div>
         </motion.div>
-
-        {!selectedModel && (
-          <motion.div variants={itemVariants}>
-            <p className="text-sm text-muted-foreground">
-              Choose a trained model to unlock dataset replay, file upload, or pasted spectra.
-            </p>
-          </motion.div>
-        )}
       </motion.div>
     </MlLoadingOverlay>
   );
