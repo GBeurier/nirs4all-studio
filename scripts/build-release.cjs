@@ -109,31 +109,36 @@ if (platform && platform !== hostPlatform) {
   process.exit(1);
 }
 
-// Sync version from latest git tag into package.json
+// A release tag on HEAD is authoritative. On an untagged preparation branch,
+// retain package.json instead of silently downgrading to the previous release.
 function syncVersionFromGitTag() {
+  let tag;
   try {
-    const tag = execSync("git describe --tags --abbrev=0", {
+    tag = execSync("git describe --tags --exact-match HEAD", {
       cwd: projectRoot,
       encoding: "utf-8",
     }).trim();
-    const version = tag.replace(/^v/, "");
-    if (!/^\d+\.\d+\.\d+/.test(version)) {
-      console.warn(
-        `Warning: git tag '${tag}' is not a valid semver version, skipping version sync.`,
-      );
-      return;
-    }
-    const pkgPath = path.join(projectRoot, "package.json");
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-    if (pkg.version !== version) {
-      console.log(`Syncing version from git tag: ${pkg.version} -> ${version}`);
-      pkg.version = version;
-      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-    }
   } catch {
     console.warn(
-      "Warning: Could not read git tags, using package.json version as-is.",
+      "No exact release tag on HEAD; using package.json version as-is.",
     );
+    return;
+  }
+
+  const version = tag.replace(/^v/, "");
+  if (!/^\d+\.\d+\.\d+/.test(version)) {
+    console.warn(
+      `Warning: git tag '${tag}' is not a valid semver version, skipping version validation.`,
+    );
+    return;
+  }
+  const pkgPath = path.join(projectRoot, "package.json");
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+  if (pkg.version !== version) {
+    console.error(
+      `Error: exact release tag '${tag}' does not match package.json version '${pkg.version}'.`,
+    );
+    process.exit(1);
   }
 }
 

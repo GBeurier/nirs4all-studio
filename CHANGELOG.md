@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ## [Unreleased]
 
+---
+
+## [0.11.0] — 2026-09-03
+
 ### Added
 
 - **Native persisted-dataset training:** Rust now owns
@@ -29,6 +33,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
   The source remains linked for rollback. Concurrent source mutation and the
   path-based interpreter spawn are accepted limits of this low-volume migration
   aid, not transactional immutability guarantees.
+
+### Fixed
+
+- **Release reconciliation:** preserve the public 0.10.1 runtime-smoke budgets,
+  bound non-blocking self-update checks, and enforce coherent 0.11.0 release
+  manifests without reintroducing a Python HTTP backend or runtime selector.
 
 ## [0.8.2] — 2026-06-13
 

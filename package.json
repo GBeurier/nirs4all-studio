@@ -1,7 +1,7 @@
 {
   "name": "nirs4all-webapp",
   "private": true,
-  "version": "0.9.1",
+  "version": "0.11.0",
   "homepage": "https://nirs4all.org",
   "type": "module",
   "description": "Unified NIRS analysis desktop application",
@@ -54,6 +54,9 @@
     "ci:docker:rebuild": "bash scripts/ci-test.sh --rebuild",
     "release": "node scripts/build-release.cjs",
     "release:clean": "node scripts/build-release.cjs --clean",
+    "release:smoke": "npm run check:ui-package && npm run test:native-archive-v2 && npm run test:native-sidecar",
+    "release:windows-rc": "node scripts/build-local-windows-rc.cjs",
+    "smoke:nirs4all-ui-package": "tsc -p tsconfig.nirs4all-ui-package-smoke.json --noEmit && node scripts/smoke-nirs4all-ui-package.mjs",
     "release:all-in-one": "node scripts/build-archive-standalone.cjs",
     "release:all-in-one:clean": "node scripts/build-archive-standalone.cjs --clean"
   },

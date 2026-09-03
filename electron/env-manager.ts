@@ -106,6 +106,11 @@ interface EnsureBackendPackagesOptions {
   timeoutMs?: number;
 }
 
+function envTimeoutMs(name: string, fallbackMs: number): number {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isInteger(value) && value >= 1000 ? value : fallbackMs;
+}
+
 interface ApplyExistingPythonOptions {
   installCorePackages?: boolean;
 }
@@ -429,12 +434,13 @@ export class EnvManager {
     const pythonPath = this.getBackendTargetPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return false;
 
+    const timeout = envTimeoutMs("NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS", 15000);
     const start = Date.now();
     const result = await new Promise<boolean>((resolve) => {
       execFile(
         pythonPath,
         ["-c", "import sys; assert sys.version_info >= (3, 11)"],
-        { timeout: 15000 },
+        { timeout },
         (error) => resolve(!error),
       );
     });
@@ -450,6 +456,7 @@ export class EnvManager {
     const pythonPath = this.getBackendTargetPythonPath();
     if (!pythonPath || !fs.existsSync(pythonPath)) return false;
 
+    const timeout = envTimeoutMs("NIRS4ALL_PLUGIN_PACKAGE_VERIFY_TIMEOUT_MS", 30000);
     const start = Date.now();
     const result = await new Promise<boolean>((resolve) => {
       execFile(
@@ -461,7 +468,7 @@ export class EnvManager {
           + "from nirs4all import studio_scientific_job_v1; "
           + "assert callable(studio_scientific_job_v1)",
         ],
-        { timeout: 30000 },
+        { timeout },
         (error) => resolve(!error),
       );
     });

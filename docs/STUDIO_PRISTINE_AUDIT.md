@@ -20,7 +20,7 @@ Audit effectue sur le repo local `/home/delete/nirs4all/nirs4all-studio`, avec l
 
 - `/home/delete/nirs4all/dag-ml`
 - `/home/delete/nirs4all/dag-ml-data`
-- `/home/delete/nirs4all/nirs4all-lite`
+- `/home/delete/nirs4all/nirs4all-core`
 - `/home/delete/nirs4all/nirs4all-formats`
 - `/home/delete/nirs4all/nirs4all-io`
 - `/home/delete/nirs4all/nirs4all-datasets`
@@ -257,7 +257,7 @@ Le systeme actuel sait dire qu'un module est importable ou qu'un operateur est i
 - contraintes package/version;
 - source de l'implementation (`n4a-methods`, `sklearn`, custom, remote).
 
-Cette grille existe deja dans l'esprit du contrat `nirs4all-lite/docs/OPERATORS.md`. Studio devrait l'adopter avant d'ajouter les nouveaux nodes.
+Cette grille existe deja dans l'esprit du contrat equivalent `nirs4all-core/docs/OPERATORS.md`. Studio devrait l'adopter avant d'ajouter les nouveaux nodes.
 
 ### 8. La persistance locale est dispersee
 

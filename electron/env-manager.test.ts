@@ -743,6 +743,7 @@ describe("EnvManager", () => {
   });
 
   it("verifies the configured custom runtime even when a bundled runtime is present", async () => {
+    vi.stubEnv("NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS", "45000");
     const userDataDir = makeUserDataDir();
     const settingsPath = path.join(userDataDir, "env-settings.json");
     const customPython = path.join(userDataDir, "custom-env", "python.exe");
@@ -775,8 +776,10 @@ describe("EnvManager", () => {
     fs.writeFileSync(bundledPython, "");
 
     childProcessMocks.execFile.mockImplementation((command: string, ...args: unknown[]) => {
+      const options = args[1] as { timeout?: number };
       const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
       expect(command).toBe(customPython);
+      expect(options.timeout).toBe(45000);
       callback(null, "", "");
     });
 
