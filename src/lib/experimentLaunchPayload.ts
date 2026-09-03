@@ -96,8 +96,6 @@ export interface BuildExperimentLaunchSelectionPayloadPlanInput {
   strictCampaignSpecs: CampaignSinglePairSplitSpecResult;
   executionAdapter: ExperimentExecutionAdapter;
   missingIssues?: MissingOperatorIssue[];
-  runtimeEngine?: string | null;
-  allowFallback?: boolean;
 }
 
 export type BuildExperimentLaunchPayloadDiagnosticsInput = Pick<
@@ -390,8 +388,6 @@ export function buildExperimentLaunchSelectionPayloadPlan({
   strictCampaignSpecs,
   executionAdapter,
   missingIssues = [],
-  runtimeEngine,
-  allowFallback,
 }: BuildExperimentLaunchSelectionPayloadPlanInput): ExperimentLaunchPayloadPlan {
   const legacyConfig = buildExperimentLaunchConfig({
     name,
@@ -401,8 +397,6 @@ export function buildExperimentLaunchSelectionPayloadPlan({
     selectedGroupingPayload,
     missingIssues,
     executionBackend: executionAdapter.nativeBackends[0],
-    runtimeEngine,
-    allowFallback,
   });
   const effectiveStrictCampaignSpecs = buildExperimentLaunchStrictCampaignSpecs({
     strictCampaignSpecs,

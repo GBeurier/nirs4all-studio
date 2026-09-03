@@ -319,10 +319,8 @@ describe("PipelineExecutionDialog", () => {
     expect(mocks.execute).toHaveBeenCalledTimes(1);
     const launchPayload = mocks.execute.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(launchPayload).toMatchObject({
-      allowFallback: false,
       datasetId: "dataset-1",
       pipelineId: "pipeline-1",
-      runtimeEngine: null,
     });
     expect(launchPayload).not.toHaveProperty("robustness");
     expect(launchPayload).not.toHaveProperty("robustnessScenarios");

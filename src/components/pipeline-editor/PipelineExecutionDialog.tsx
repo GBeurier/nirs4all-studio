@@ -71,8 +71,8 @@ import {
   StatusBadge,
   type PipelineLaunchMode,
 } from "./PipelineExecutionDialogSections";
-import { RuntimeBackendSelector } from "@/components/runtime/RuntimeBackendSelector";
-import { useRuntimeBackendPreference } from "@/lib/runtimeBackendPreference";
+import { RuntimeBackendStatus } from "@/components/runtime/RuntimeBackendStatus";
+import { STRICT_NATIVE_RUNTIME_ENGINE } from "@/lib/runtimeBackendPreference";
 import { useKeywordRegistry } from "@/hooks/useKeywordRegistry";
 import { NativeAssuranceContractCard } from "./NativeAssuranceContractCard";
 import {
@@ -126,12 +126,6 @@ export function PipelineExecutionDialog({
   const [robustnessDraft, setRobustnessDraft] = useState<RobustnessScenarioDraft>(DEFAULT_ROBUSTNESS_SCENARIO_DRAFT);
   const [attachRobustnessDraft, setAttachRobustnessDraft] = useState(false);
   const [publishRobustnessSpectralEvidence, setPublishRobustnessSpectralEvidence] = useState(false);
-  const {
-    runtimeEngine,
-    allowFallback,
-    setRuntimeEngine,
-    setAllowFallback,
-  } = useRuntimeBackendPreference();
   const keywordRegistry = useKeywordRegistry({ enabled: open });
 
   // Hooks
@@ -300,8 +294,6 @@ export function PipelineExecutionDialog({
           selectedExecutionSplitGroupBy,
         ),
         inlinePipeline,
-        runtimeEngine,
-        allowFallback,
         ...(selectedRobustnessLaunchPayload ? { robustness: selectedRobustnessLaunchPayload } : {}),
       });
       return;
@@ -320,8 +312,8 @@ export function PipelineExecutionDialog({
           selectedExecutionSplitGroupBy,
         ),
         inline_pipeline: inlinePipeline,
-        engine: runtimeEngine,
-        allow_fallback: allowFallback,
+        engine: STRICT_NATIVE_RUNTIME_ENGINE,
+        allow_fallback: false,
         ...(selectedRobustnessLaunchPayload ? { robustness: selectedRobustnessLaunchPayload } : {}),
       });
 
@@ -354,7 +346,6 @@ export function PipelineExecutionDialog({
       setIsQuickRunning(false);
     }
   }, [
-    allowFallback,
     execute,
     navigate,
     onOpenChange,
@@ -362,7 +353,6 @@ export function PipelineExecutionDialog({
     pipelineName,
     queryClient,
     runName,
-    runtimeEngine,
     selectedDataset,
     selectedExecutionSplitGroupBy,
     selectedRobustnessLaunchPayload,
@@ -506,18 +496,11 @@ export function PipelineExecutionDialog({
               onDatasetChange={handleDatasetChange}
             />
 
-            <RuntimeBackendSelector
-              runtimeEngine={runtimeEngine}
-              allowFallback={allowFallback}
-              disabled={executionInputsDisabled}
-              compact
-              onRuntimeEngineChange={setRuntimeEngine}
-              onAllowFallbackChange={setAllowFallback}
-            />
+            <RuntimeBackendStatus compact />
 
             <NativeAssuranceContractCard
               registry={keywordRegistry.data}
-              runtimeEngine={runtimeEngine}
+              runtimeEngine={STRICT_NATIVE_RUNTIME_ENGINE}
             />
 
             <RobustnessScenarioDraftCard

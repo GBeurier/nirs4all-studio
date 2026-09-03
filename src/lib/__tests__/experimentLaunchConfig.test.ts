@@ -38,6 +38,8 @@ describe("experimentLaunchConfig", () => {
       inline_pipeline: { name: "Draft", steps: [{ id: "draft" }] },
       inline_pipelines: [],
       split_group_by_by_dataset: { d1: null },
+      engine: "dag-ml",
+      allow_fallback: false,
     });
   });
 
@@ -65,7 +67,7 @@ describe("experimentLaunchConfig", () => {
     });
   });
 
-  it("includes explicit runtime engine and fallback policy when requested", () => {
+  it("always includes the strict native runtime contract", () => {
     expect(buildExperimentLaunchConfig({
       name: "Runtime",
       selectedDatasetIds: ["d1"],
@@ -73,23 +75,8 @@ describe("experimentLaunchConfig", () => {
         { id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps },
       ],
       selectedGroupingPayload: { d1: null },
-      runtimeEngine: " dag-ml ",
-      allowFallback: true,
     })).toMatchObject({
       engine: "dag-ml",
-      allow_fallback: true,
-    });
-
-    expect(buildExperimentLaunchConfig({
-      name: "Strict",
-      selectedDatasetIds: ["d1"],
-      selectedPipelineConfigs: [
-        { id: "pipe-1", name: "PLS Pipeline", steps: pipeline().steps },
-      ],
-      selectedGroupingPayload: { d1: null },
-      runtimeEngine: " ",
-      allowFallback: false,
-    })).toMatchObject({
       allow_fallback: false,
     });
   });

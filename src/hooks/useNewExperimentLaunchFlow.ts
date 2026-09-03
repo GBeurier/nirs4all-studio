@@ -37,8 +37,6 @@ export interface UseNewExperimentLaunchFlowInput {
   singlePairSplitSpecResult?: CampaignSinglePairSplitSpecResult;
   hasGroupingBlockingError: boolean;
   executionAdapter?: ExperimentExecutionAdapter;
-  runtimeEngine?: string | null;
-  allowFallback?: boolean;
   launchSubmitters?: SubmitExperimentLaunchSubmissionOptions;
   onGroupingBlockingError: () => void;
   onRunCreated: (runId: string) => void;
@@ -64,8 +62,6 @@ export function useNewExperimentLaunchFlow({
   singlePairSplitSpecResult = { splitSpecs: [], skippedRunIds: [] },
   hasGroupingBlockingError,
   executionAdapter = LEGACY_LOCAL_EXPERIMENT_EXECUTION_ADAPTER,
-  runtimeEngine,
-  allowFallback,
   launchSubmitters,
   onGroupingBlockingError,
   onRunCreated,
@@ -91,15 +87,11 @@ export function useNewExperimentLaunchFlow({
       strictCampaignSpecs: singlePairSplitSpecResult,
       executionAdapter,
       missingIssues,
-      runtimeEngine,
-      allowFallback,
     });
   }, [
-    allowFallback,
     executionAdapter,
     experimentDescription,
     experimentName,
-    runtimeEngine,
     selectedDatasetIds,
     selectedGroupingPayload,
     selectedPipelineConfigs,

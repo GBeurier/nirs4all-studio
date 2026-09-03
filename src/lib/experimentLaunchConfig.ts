@@ -1,5 +1,6 @@
 import type { PipelineStep as EditorPipelineStep } from "@/components/pipeline-editor/types";
 import type { ExperimentConfig, RunExecutionBackend } from "@/types/runs";
+import { STRICT_NATIVE_RUNTIME_ENGINE } from "./runtimeBackendPreference";
 
 import {
   CURRENT_EDITED_PIPELINE_ID,
@@ -18,8 +19,6 @@ export interface BuildExperimentLaunchConfigInput {
   selectedGroupingPayload: Record<string, string | null>;
   missingIssues?: MissingOperatorIssue[];
   executionBackend?: RunExecutionBackend;
-  runtimeEngine?: string | null;
-  allowFallback?: boolean;
 }
 
 export function buildExperimentLaunchConfig({
@@ -30,8 +29,6 @@ export function buildExperimentLaunchConfig({
   selectedGroupingPayload,
   missingIssues = [],
   executionBackend = "local-python",
-  runtimeEngine,
-  allowFallback,
 }: BuildExperimentLaunchConfigInput): ExperimentConfig {
   const issuesByPipelineId = new Map<string, MissingOperatorIssue[]>();
   const issuesByPipelineName = new Map<string, MissingOperatorIssue[]>();
@@ -93,18 +90,12 @@ export function buildExperimentLaunchConfig({
     inline_pipeline: inlinePipeline,
     inline_pipelines: additionalInlinePipelines,
     split_group_by_by_dataset: selectedGroupingPayload,
+    engine: STRICT_NATIVE_RUNTIME_ENGINE,
+    allow_fallback: false,
   };
 
   if (executionBackend !== "local-python") {
     config.execution_backend = executionBackend;
   }
-  const normalizedRuntimeEngine = runtimeEngine?.trim();
-  if (normalizedRuntimeEngine) {
-    config.engine = normalizedRuntimeEngine;
-  }
-  if (allowFallback !== undefined) {
-    config.allow_fallback = allowFallback;
-  }
-
   return config;
 }
