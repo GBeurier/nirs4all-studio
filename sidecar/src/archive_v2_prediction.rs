@@ -155,8 +155,10 @@ impl CoreArchiveV2PredictionExecutor {
             MAX_METHODS_LIBRARY_BYTES,
         )
         .map_err(|()| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
-        preflight_methods_archive_v2_library(&methods.path, &methods.sha256)
-            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        preflight_methods_archive_v2_library(&methods.path, &methods.sha256).map_err(|error| {
+            eprintln!("Archive V2 libn4m preflight failed: {error}");
+            ArchiveV2PredictionExecutorError::ExecutionFailed
+        })?;
         Ok(Self { methods })
     }
 }
