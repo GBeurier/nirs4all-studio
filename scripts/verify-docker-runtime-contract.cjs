@@ -32,7 +32,7 @@ requireText(
   "frontend CSS build configuration",
 );
 requireText(dockerfile, "cargo build --locked --release", "locked Rust build");
-requireText(dockerfile, "COPY --from=methods-runtime /libn4m.so.2.4.0", "native Methods named context");
+requireText(dockerfile, "COPY --from=methods-runtime /libn4m.so.2.5.0", "native Methods named context");
 requireText(dockerfile, "NIRS4ALL_METHODS_SHA256", "native Methods content identity");
 requireText(dockerfile, "c.verifyRuntimeContract", "packaged runtime contract verification");
 requireText(dockerfile, "requireBundledPythonPlugin:true", "mandatory CPython plugin policy");

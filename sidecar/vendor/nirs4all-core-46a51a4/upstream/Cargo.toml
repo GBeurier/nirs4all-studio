@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["bindings/rust/nirs4all", "bindings/python-native", "bindings/wasm-native"]
+
+[workspace.package]
+edition = "2021"
+license = "CECILL-2.1 OR AGPL-3.0-or-later"
+repository = "https://github.com/GBeurier/nirs4all-core"
+
+# Local release-candidate qualification. These exact candidates are not
+# published yet; keep the patch explicit until their release closure lands.
+[patch.crates-io]
+dag-ml = { path = "/home/delete/nirs4all/_worktrees/DAG-methods-pipeline-v2/crates/dag-ml" }
+dag-ml-core = { path = "/home/delete/nirs4all/_worktrees/DAG-methods-pipeline-v2/crates/dag-ml-core" }
+n4m = { path = "/home/delete/nirs4all/_worktrees/MTH-abi24-inspect/bindings/rust/n4m" }

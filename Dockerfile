@@ -44,7 +44,7 @@ RUN test -n "${NIRS4ALL_METHODS_SHA256}" \
     && mkdir -p backend/native /contract-scripts
 COPY --from=python-plugin-runtime /product/backend/ backend/
 COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/studio-sidecar
-COPY --from=methods-runtime /libn4m.so.2.4.0 backend/native/libn4m.so
+COPY --from=methods-runtime /libn4m.so.2.5.0 backend/native/libn4m.so
 COPY scripts/native-runtime-contract.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/
 RUN test "$(sha256sum backend/native/libn4m.so | cut -d' ' -f1)" = "${NIRS4ALL_METHODS_SHA256}" \
     && chmod 0755 backend/native/studio-sidecar \

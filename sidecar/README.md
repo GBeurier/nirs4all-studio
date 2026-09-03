@@ -310,11 +310,11 @@ remotely fetchable git revision before LOCK-RELEASE; local/sibling worktree path
 are forbidden.
 
 Core 0.3.25 requires the selected but not-yet-published DagML 0.3.23 and n4m
-0.1.3 crates. Studio therefore carries the exact DagML commit
-`189099119b69e74c69466f2308808cb423dc2e94` under
-`sidecar/vendor/dag-ml-1890991/` and the exact n4m binding from Methods commit
-`a71ee2927524d03482183de3d6e22661efc05d12` under
-`sidecar/vendor/n4m-a71ee29/`. Only their qualified Cargo package payloads are
+0.1.4 crates. Studio therefore carries the exact DagML commit
+`6800c4fd0ec8b13b171cec9ed4a9b2ccdbabca0d` under
+`sidecar/vendor/dag-ml-6800c4f/` and the exact n4m binding from Methods commit
+`48ad1e5a50844f68c2b99e93b02ad6a3b491c07b` under
+`sidecar/vendor/n4m-48ad1e5/`. Only their qualified Cargo source payloads are
 included; unrelated workspace crates, native libraries, and generated bindings
 are excluded. The vendored-source verification scripts check their inventories,
 package digests, and exact repository/crate trees. All three path patches must

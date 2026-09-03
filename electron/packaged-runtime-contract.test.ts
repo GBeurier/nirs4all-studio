@@ -167,11 +167,11 @@ function makeResources(): {
       methods_library: {
         mode: "unavailable",
         member: null,
-        abi: { major: 2, minor: 4 },
+        abi: { major: 2, minor: 5 },
         source: {
-          commit: "a71ee2927524d03482183de3d6e22661efc05d12",
-          tree: "f6749f4c4be7dca161f3c2677dd10a9ac4434b66",
-          project_version: "1.0.14",
+          commit: "48ad1e5a50844f68c2b99e93b02ad6a3b491c07b",
+          tree: "f2eaa3c46629c26d11913a25bff723f9a9cefbc9",
+          project_version: "1.0.15",
         },
       },
     }),
@@ -402,7 +402,7 @@ describe("packaged runtime contract", () => {
       "STUDIO_RUNTIME_CONTRACT.json",
     );
     const methodsPath = path.join(backendRoot, "native", "libn4m.so");
-    const methods = Buffer.from("libn4m-abi-2.4");
+    const methods = Buffer.from("libn4m-abi-2.5");
     fs.writeFileSync(methodsPath, methods);
     const contract = JSON.parse(fs.readFileSync(contractPath, "utf8"));
     contract.methods_library = {
@@ -412,11 +412,11 @@ describe("packaged runtime contract", () => {
         size: methods.length,
         sha256: digest(methods),
       },
-      abi: { major: 2, minor: 4 },
+      abi: { major: 2, minor: 5 },
       source: {
-        commit: "a71ee2927524d03482183de3d6e22661efc05d12",
-        tree: "f6749f4c4be7dca161f3c2677dd10a9ac4434b66",
-        project_version: "1.0.14",
+        commit: "48ad1e5a50844f68c2b99e93b02ad6a3b491c07b",
+        tree: "f2eaa3c46629c26d11913a25bff723f9a9cefbc9",
+        project_version: "1.0.15",
       },
     };
     fs.writeFileSync(contractPath, JSON.stringify(contract));
