@@ -1,0 +1,23 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/nirs4all-methods.git",
+  "commit": "48ad1e5a50844f68c2b99e93b02ad6a3b491c07b",
+  "repository_tree": "f2eaa3c46629c26d11913a25bff723f9a9cefbc9",
+  "included_crate_trees": {
+    "n4m": "d05e03f28f6cb9e6e6599a75d157df9b01c4b459"
+  },
+  "selected_crate_package": {
+    "name": "n4m",
+    "version": "0.1.4",
+    "files": 12,
+    "sha256": "859c935ea5b8f7620a8861cdc0ac3c57a9a0f92efe584347c2278de5a0bf1e7d"
+  },
+  "snapshot_policy": "Only the exact locally qualified n4m Cargo package payload is extracted under upstream/. The native libn4m binary remains a separately built and content-attested per-platform product member.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 13
+  },
+  "verification": "../../scripts/verify-vendored-n4m.sh",
+  "release_gate": "This locally qualified n4m 0.1.4 snapshot is transitional. Its published crate identity must replace the path patch before LOCK-RELEASE."
+}

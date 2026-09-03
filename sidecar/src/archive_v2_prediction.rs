@@ -22,7 +22,7 @@ use std::{
 use cap_std::fs::MetadataExt as CapMetadataExt;
 use cap_std::{ambient_authority, fs::Dir};
 use nirs4all::{
-    dag_ml::{RunId, NATIVE_PREDICTOR_CAPABILITY_PREDICT},
+    dag_ml::{NativePredictorDescriptorV1, RunId, NATIVE_PREDICTOR_CAPABILITY_PREDICT},
     inspect_methods_archive_v2_predictors, load_archive_v2_bytes,
     predict_methods_archive_v2_matrix, preflight_methods_archive_v2_library,
     MethodsArchiveMatrixPredictRequest,
@@ -46,10 +46,10 @@ const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
 const METHODS_ABI_MAJOR: u32 = 2;
-const METHODS_ABI_MINOR: u32 = 4;
-const METHODS_SOURCE_COMMIT: &str = "a71ee2927524d03482183de3d6e22661efc05d12";
-const METHODS_SOURCE_TREE: &str = "f6749f4c4be7dca161f3c2677dd10a9ac4434b66";
-const METHODS_PROJECT_VERSION: &str = "1.0.14";
+const METHODS_ABI_MINOR: u32 = 5;
+const METHODS_SOURCE_COMMIT: &str = "48ad1e5a50844f68c2b99e93b02ad6a3b491c07b";
+const METHODS_SOURCE_TREE: &str = "f2eaa3c46629c26d11913a25bff723f9a9cefbc9";
+const METHODS_PROJECT_VERSION: &str = "1.0.15";
 const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -96,7 +96,7 @@ pub struct CoreArchiveV2PredictionExecutor {
 
 impl CoreArchiveV2PredictionExecutor {
     /// Acquire one exact packaged libn4m identity before advertising the
-    /// capability. The packaged contract fixes ABI 2.4 and this preflight
+    /// capability. The packaged contract fixes ABI 2.5 and this preflight
     /// attests its exact bytes. Core snapshots and re-attests those bytes, then
     /// the n4m binding performs the ABI compatibility call during execution.
     pub fn acquire(
@@ -145,13 +145,7 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
             .map(Vec::len)
             .ok_or(ArchiveV2PredictionExecutorError::ExecutionFailed)?;
         require_predictor_descriptor_contracts(
-            descriptors.iter().map(|descriptor| {
-                (
-                    descriptor.capabilities,
-                    descriptor.dimensions.n_features,
-                    descriptor.dimensions.n_targets,
-                )
-            }),
+            &descriptors,
             input_features,
             resolved.request.expected_target_names.len(),
         )?;
@@ -204,19 +198,19 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
 }
 
 fn require_predictor_descriptor_contracts(
-    descriptors: impl IntoIterator<Item = (u64, i32, i32)>,
+    descriptors: &[NativePredictorDescriptorV1],
     input_features: usize,
     expected_targets: usize,
 ) -> Result<(), ArchiveV2PredictionExecutorError> {
     let mut seen = false;
     let mut input_binding_match = false;
-    for (capabilities, n_features, n_targets) in descriptors {
+    for descriptor in descriptors {
         seen = true;
-        if capabilities & NATIVE_PREDICTOR_CAPABILITY_PREDICT == 0 {
+        if descriptor.capabilities & NATIVE_PREDICTOR_CAPABILITY_PREDICT == 0 {
             return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
         }
-        if usize::try_from(n_features).ok() == Some(input_features)
-            && usize::try_from(n_targets).ok() == Some(expected_targets)
+        if usize::try_from(descriptor.dimensions.n_features).ok() == Some(input_features)
+            && usize::try_from(descriptor.dimensions.n_targets).ok() == Some(expected_targets)
         {
             input_binding_match = true;
         }
@@ -952,6 +946,7 @@ mod tests {
             request: &ResolvedArchiveV2PredictionRequest,
         ) -> Result<ArchiveV2PredictionOutput, ArchiveV2PredictionExecutorError> {
             assert_eq!(request.archive_bytes, b"archive-v2-bytes");
+            assert_eq!(request.request.x, vec![vec![1.0, 2.0], vec![3.0, 4.0]]);
             Ok(ArchiveV2PredictionOutput {
                 archive_id: "archive-a".into(),
                 sample_ids: request.request.sample_ids.clone(),
@@ -1209,22 +1204,62 @@ mod tests {
     }
 
     #[test]
-    fn predictor_descriptor_gate_accepts_stacking_and_refuses_missing_contracts() {
-        let predict = NATIVE_PREDICTOR_CAPABILITY_PREDICT;
+    fn predictor_descriptor_gate_accepts_content_bound_v2_without_interpreting_pipeline() {
+        let descriptor = |capabilities: u64, n_features: i32, n_targets: i32, pipeline: Value| {
+            serde_json::from_value::<NativePredictorDescriptorV1>(json!({
+                "descriptor_type": "dagml.native_predictor_descriptor.v1",
+                "schema_version": 1,
+                "artifact_sha256": "a".repeat(64),
+                "owner_controller": "controller:methods.pls",
+                "format": "N4MM",
+                "format_version": if pipeline.is_null() { 1 } else { 2 },
+                "writer_abi": {"major": 2, "minor": 5, "patch": 0},
+                "storage_algorithm": 0,
+                "capabilities": capabilities,
+                "dimensions": {
+                    "training_samples": 8,
+                    "n_features": n_features,
+                    "n_targets": n_targets,
+                    "n_components": 2
+                },
+                "pipeline": pipeline,
+                "descriptor_fingerprint": "b".repeat(64)
+            }))
+            .unwrap()
+        };
+        let v2 = descriptor(
+            NATIVE_PREDICTOR_CAPABILITY_PREDICT,
+            2,
+            2,
+            json!({
+                "pipeline_type": "n4m.snv_savgol_smooth.v1",
+                "schema_version": 1,
+                "operator_count": 2,
+                "raw_n_features": 2,
+                "model_n_features": 2,
+                "fingerprint_algorithm": "fnv1a64.v1",
+                "native_fingerprint": "0123456789abcdef",
+                "savgol_window": 11,
+                "savgol_poly_degree": 3
+            }),
+        );
+        let stacked = descriptor(NATIVE_PREDICTOR_CAPABILITY_PREDICT, 1, 2, Value::Null);
         assert_eq!(
-            require_predictor_descriptor_contracts([(predict, 2, 2), (predict, 1, 2)], 2, 2,),
+            require_predictor_descriptor_contracts(&[v2.clone(), stacked], 2, 2),
             Ok(())
         );
+        let wrong_features = descriptor(NATIVE_PREDICTOR_CAPABILITY_PREDICT, 3, 2, Value::Null);
         assert_eq!(
-            require_predictor_descriptor_contracts([(predict, 3, 2)], 2, 2),
+            require_predictor_descriptor_contracts(&[wrong_features], 2, 2),
+            Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
+        );
+        let no_predict = descriptor(0, 2, 2, Value::Null);
+        assert_eq!(
+            require_predictor_descriptor_contracts(&[no_predict], 2, 2),
             Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
         );
         assert_eq!(
-            require_predictor_descriptor_contracts([(0, 2, 2)], 2, 2),
-            Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
-        );
-        assert_eq!(
-            require_predictor_descriptor_contracts([], 2, 2),
+            require_predictor_descriptor_contracts(&[], 2, 2),
             Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
         );
     }
@@ -1277,7 +1312,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "immutable nirs4all-core 3a3ce728 snapshot exposing nirs4all 0.3.25 and n4m 0.1.3"
+            "immutable nirs4all-core 46a51a4 snapshot exposing nirs4all 0.3.25 and n4m 0.1.4"
         );
     }
 }

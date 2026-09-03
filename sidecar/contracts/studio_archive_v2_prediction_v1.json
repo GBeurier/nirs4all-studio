@@ -78,10 +78,10 @@
     "python_http_owner": false,
     "fastapi_fallback": false,
     "dag_ml_envelope": false,
-    "core": "immutable nirs4all-core 3a3ce728 snapshot exposing nirs4all 0.3.25 and n4m 0.1.3",
-    "libn4m_identity": "product-owned absolute non-symlink path plus size plus SHA-256 plus ABI 2.4; never request-controlled",
+    "core": "immutable nirs4all-core 46a51a4 snapshot exposing nirs4all 0.3.25 and n4m 0.1.4",
+    "libn4m_identity": "product-owned absolute non-symlink path plus size plus SHA-256 plus ABI 2.5; never request-controlled",
     "core_preflight": "preflight_methods_archive_v2_library snapshots the attested bytes and checks the real ABI before capability selection",
-    "predictor_preflight": "Core derives every native predictor descriptor from inventoried N4MM bytes before calculation; Studio requires non-empty PREDICT capability coverage and at least one descriptor matching request feature/target dimensions, while Core replay remains authoritative for topology and chaining",
+    "predictor_preflight": "Core derives every native predictor descriptor, including the content-bound N4MM v2 pipeline fingerprint, from inventoried bytes before calculation; Studio requires non-empty PREDICT capability coverage and at least one descriptor matching request feature/target dimensions, passes X raw without preprocessing, and leaves Core replay authoritative for pipeline ownership, topology, and chaining",
     "build_stage": "NIRS4ALL_BUILD_METHODS_LIBRARY plus NIRS4ALL_BUILD_METHODS_SHA256, both build-time-only and mandatory for every release artifact",
     "release_builder_blocker": "each platform builder must provide and qualify one attested libn4m closure"
   },
