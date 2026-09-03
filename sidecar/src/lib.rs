@@ -7665,7 +7665,7 @@ mod tests {
         assert_eq!(response["target_names"], json!(["protein", "moisture"]));
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.3.26+libn4m-abi-2.5:{methods_sha256}")
+            format!("nirs4all-core@0.3.27+libn4m-abi-2.5:{methods_sha256}")
         );
         let expected = [
             [1.636_363_636_363_636_5, 13.272_727_272_727_273],
