@@ -10,6 +10,7 @@ trap 'rm -f "$actual" "$expected"' EXIT HUP INT TERM
 
 test -f "$vendor_root/upstream/Cargo.toml"
 test -f "$vendor_root/upstream/Cargo.lock"
+test -f "$vendor_root/upstream/bindings/wasm/package-lock.json"
 test -f "$vendor_root/upstream/bindings/rust/nirs4all/src/archive_v2.rs"
 test -f "$vendor_root/upstream/bindings/rust/nirs4all/src/native_methods_replay.rs"
 grep -q 'preflight_methods_archive_v2_library' "$vendor_root/upstream/bindings/rust/nirs4all/src/lib.rs"

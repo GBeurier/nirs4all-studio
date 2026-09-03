@@ -27,8 +27,12 @@ cap-std = "3"
 # provenance and offline inventory/test gates. Its final descendant must be
 # relocked against published dag-ml-data 0.2.10 before LOCK-RELEASE.
 nirs4all = { version = "=0.3.25", path = "vendor/nirs4all-core-6b25b63/upstream/bindings/rust/nirs4all" }
-# Historical role-tagged reader retained for the frozen scientific-submission
-# resolver.
+# Release debt IO-0.1.13: 0.1.12 removed `RoleTaggedReadLimits` and
+# `load_role_tagged_assembled_with_limits`, consumed by
+# `src/scientific_request_resolver.rs`. Restore them upstream from commit
+# f41967d (`crates/nirs4all-io/src/{api,lib}.rs`, guarded by
+# `tests/role_tagged_adapter.rs`), then repin Studio once to published 0.1.13.
+# Do not recreate this bounded IO adapter in Studio.
 nirs4all-io = { version = "=0.1.7", path = "vendor/nirs4all-io-f419/upstream/crates/nirs4all-io" }
 # Complete immutable snapshot of selected IO commit 54fa4f5; its native
 # DatasetPackage handoff remains a local publish=false qualification patch.
