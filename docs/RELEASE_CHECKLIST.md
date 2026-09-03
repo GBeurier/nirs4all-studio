@@ -33,6 +33,12 @@ channel to download.
 
 ## Installation qualification (`INST-001`)
 
+- [ ] Run the prepared Linux x64 AppImage lifecycle harness against two explicit,
+      locked candidate artifacts and retain its JSON receipt:
+      `node scripts/smoke-linux-installer-cycle.cjs --install-artifact <old.AppImage>
+      --install-sha256 <sha256> --update-artifact <new.AppImage> --update-sha256
+      <sha256> --report <receipt.json>`. The harness performs no build or download;
+      missing, symlinked, or altered inputs are refused before installation.
 - [ ] Install, update, uninstall, and crash recovery pass on each promised
       Linux architecture.
 - [ ] Install, update, uninstall, notarization/signature, and crash recovery
@@ -43,6 +49,10 @@ channel to download.
 
 Until every applicable item above has a release receipt, the candidate remains
 NO-GO and its downloads remain unavailable.
+
+A passing harness receipt advances only an isolated Linux x64 AppImage cycle.
+It does not qualify `.deb` package-manager behavior, signatures, publication,
+Windows, macOS, or `INST-001` as a whole.
 
 ## Historical diagnostic-development checklist
 
