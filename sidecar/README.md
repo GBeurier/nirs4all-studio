@@ -325,7 +325,7 @@ are forbidden.
 
 Core 0.3.25 requires the selected but not-yet-published DagML 0.3.23 and n4m
 0.1.4 crates. The selected final DagML release commit is
-`b7d643f450da3018c8208a84abcabfab09d5da7d`; its `dag-ml` and `dag-ml-core`
+`b08c62638829e0bcab741e66d44a3db66459e5a8`; its `dag-ml` and `dag-ml-core`
 crate trees exactly match the qualified package payload produced at
 `dafb8b6fb98f9d380d30559a3f4b868c91e5b5c4` and retained under
 `sidecar/vendor/dag-ml-dafb8b6/`. This local path is an explicit registry hold:
