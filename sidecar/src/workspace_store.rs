@@ -3,7 +3,9 @@
 //! The SQL and its compatibility envelope are published by the Python
 //! `WorkspaceStore` owner.  This module carries that versioned contract into the
 //! native product, validates it defensively, and never opens a writer, a
-//! `DuckDB` store, arrays, artifacts, or prediction payloads.
+//! `DuckDB` store, arrays, or prediction payloads. The one explicit artifact
+//! exception is the bounded Archive V2 registration projection: it reads only
+//! Store-owned path/hash metadata and never opens or interprets artifact bytes.
 
 use std::{
     collections::BTreeSet,
@@ -47,6 +49,8 @@ const RANKED_CHAIN_COUNT_QUERY: &str = "SELECT COUNT(*) FROM chains AS c JOIN pi
 const RESULTS_SUMMARY_PAGE_QUERY: &str = "SELECT c.chain_id, c.pipeline_id, p.run_id, p.name AS pipeline_name, p.expanded_config, c.model_step_idx, c.dataset_name, c.metric, c.task_type, c.model_name, c.model_class, c.preprocessings, c.cv_val_score, c.cv_test_score, c.cv_train_score, c.cv_fold_count, c.cv_scores, c.final_test_score, c.final_train_score, c.final_scores, c.final_agg_test_score, c.final_agg_train_score, c.final_agg_scores, c.best_params FROM chains AS c JOIN pipelines AS p ON p.pipeline_id = c.pipeline_id WHERE EXISTS (SELECT 1 FROM predictions AS pr WHERE pr.chain_id = c.chain_id) ORDER BY c.chain_id ASC LIMIT ? OFFSET ?";
 const RESULTS_SUMMARY_COUNT_QUERY: &str = "SELECT COUNT(*) FROM chains AS c JOIN pipelines AS p ON p.pipeline_id = c.pipeline_id WHERE EXISTS (SELECT 1 FROM predictions AS pr WHERE pr.chain_id = c.chain_id)";
 const RESULTS_SUMMARY_PAGE_SIZE: i64 = 500;
+const ARCHIVE_V2_REGISTRATION_QUERY: &str = "SELECT artifact_id, artifact_path, content_hash FROM artifacts WHERE format = 'n4a' AND ref_count > 0 ORDER BY artifact_id ASC LIMIT 129";
+const MAX_ARCHIVE_V2_REGISTRATIONS: usize = 128;
 const RUN_COLUMNS: [&str; 8] = [
     "run_id",
     "name",
@@ -156,6 +160,24 @@ const RESULTS_SUMMARY_PIPELINE_COLUMNS: [&str; 5] = [
     "expanded_config",
     "created_at",
 ];
+const ARCHIVE_V2_REGISTRATION_COLUMNS: [&str; 6] = [
+    "artifact_id",
+    "artifact_path",
+    "content_hash",
+    "format",
+    "ref_count",
+    "size_bytes",
+];
+
+/// Store-owned registration for a possible Archive V2. `artifact_path` is
+/// relative to the workspace `artifacts/` directory. Core remains the format
+/// and predictor identity authority before any row reaches the renderer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceStoreArchiveV2Registration {
+    pub artifact_id: String,
+    pub artifact_path: String,
+    pub content_hash: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceStoreRunSummary {
@@ -469,6 +491,68 @@ pub(crate) fn read_run_summaries_from_connection(
         i64::try_from(offset).map_err(|_| WorkspaceStoreReadError::OffsetOutOfRange(offset))?;
     validate_database(connection)?;
     query_run_summaries(connection, i64::from(limit), offset)
+}
+
+/// Return only Store-authorized `.n4a` artifact registrations.
+///
+/// This projection never scans the workspace and never opens an artifact. The
+/// caller must resolve each relative path through a capability-safe workspace
+/// handle and ask Core to validate/inspect Archive V2 before publication.
+///
+/// # Errors
+///
+/// Returns [`WorkspaceStoreReadError`] when the immutable Store v5 contract,
+/// required artifact columns, query, or catalogue bound is violated.
+pub fn read_archive_v2_registrations(
+    workspace_path: &Path,
+) -> Result<Vec<WorkspaceStoreArchiveV2Registration>, WorkspaceStoreReadError> {
+    let database = canonical_workspace_store_path(workspace_path)?;
+    let before = file_stamp(&database)?;
+    refuse_live_journals(&database)?;
+    let uri = immutable_read_only_uri(&database)?;
+    let connection = Connection::open_with_flags(
+        uri,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| WorkspaceStoreReadError::Open(error.to_string()))?;
+    let result = read_archive_v2_registrations_from_connection(&connection);
+    drop(connection);
+    refuse_live_journals(&database)?;
+    if file_stamp(&database)? != before {
+        return Err(WorkspaceStoreReadError::ChangedDuringRead);
+    }
+    result
+}
+
+pub(crate) fn read_archive_v2_registrations_from_connection(
+    connection: &Connection,
+) -> Result<Vec<WorkspaceStoreArchiveV2Registration>, WorkspaceStoreReadError> {
+    validate_contract()?;
+    validate_database(connection)?;
+    validate_table_columns(connection, "artifacts", &ARCHIVE_V2_REGISTRATION_COLUMNS)?;
+    let mut statement = connection
+        .prepare(ARCHIVE_V2_REGISTRATION_QUERY)
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(WorkspaceStoreArchiveV2Registration {
+                artifact_id: row.get(0)?,
+                artifact_path: row.get(1)?,
+                content_hash: row.get(2)?,
+            })
+        })
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    let registrations = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
+    if registrations.len() > MAX_ARCHIVE_V2_REGISTRATIONS {
+        return Err(WorkspaceStoreReadError::Query(format!(
+            "Archive V2 registration catalogue exceeds {MAX_ARCHIVE_V2_REGISTRATIONS} rows"
+        )));
+    }
+    Ok(registrations)
 }
 
 /// Return the immutable Store-owned portion of one Studio run detail.
@@ -2294,10 +2378,10 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::{
-        parse_python_json, read_pipeline_summaries, read_ranked_chains,
-        read_results_summary_source, read_run_detail_projection, read_run_summaries,
-        validate_run_detail_http_contract_value, ChainScoreDirection, WorkspaceStoreReadError,
-        DEFAULT_PIPELINE_SUMMARIES_LIMIT, DEFAULT_RUN_SUMMARIES_LIMIT,
+        parse_python_json, read_archive_v2_registrations, read_pipeline_summaries,
+        read_ranked_chains, read_results_summary_source, read_run_detail_projection,
+        read_run_summaries, validate_run_detail_http_contract_value, ChainScoreDirection,
+        WorkspaceStoreReadError, DEFAULT_PIPELINE_SUMMARIES_LIMIT, DEFAULT_RUN_SUMMARIES_LIMIT,
         STUDIO_RUN_DETAIL_HTTP_CONTRACT,
     };
 
@@ -2365,6 +2449,29 @@ mod tests {
         fs::create_dir_all(&workspace).unwrap();
         fs::write(workspace.join("store.sqlite"), PYTHON_WRITTEN_STORE).unwrap();
         workspace
+    }
+
+    #[test]
+    fn archive_v2_registrations_are_store_authorized_and_bounded() {
+        let workspace = fixture_workspace("archive-v2-registrations");
+        let connection = Connection::open(workspace.join("store.sqlite")).unwrap();
+        for (id, path, format, refs) in [
+            ("artifact:v2", "models/a.n4a", "n4a", 1_i64),
+            ("artifact:legacy", "models/a.joblib", "joblib", 1_i64),
+            ("artifact:orphan", "models/orphan.n4a", "n4a", 0_i64),
+        ] {
+            connection.execute("INSERT INTO artifacts (artifact_id, artifact_path, content_hash, format, size_bytes, ref_count) VALUES (?, ?, ?, ?, ?, ?)", params![id, path, "a".repeat(64), format, 10_i64, refs]).unwrap();
+        }
+        drop(connection);
+        assert_eq!(
+            read_archive_v2_registrations(&workspace).unwrap(),
+            vec![super::WorkspaceStoreArchiveV2Registration {
+                artifact_id: "artifact:v2".into(),
+                artifact_path: "models/a.n4a".into(),
+                content_hash: "a".repeat(64)
+            },]
+        );
+        fs::remove_dir_all(workspace).unwrap();
     }
 
     fn populate_run_detail(workspace: &Path) {

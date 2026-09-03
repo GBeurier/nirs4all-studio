@@ -253,14 +253,18 @@ function rendererSelection(
   };
 }
 
-function installNativeArchiveResponse(response: Response) {
+function installNativeArchiveResponse(
+  response: Response,
+  method = "POST",
+  path = "/predict/archive-v2",
+) {
   const fetchMock = vi.fn().mockResolvedValue(response);
   const acquire = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
   window.electronApi = createElectronApiMock({
     getScientificPluginUrl: acquire,
     preselectRendererTransport: vi.fn().mockResolvedValue(
-      rendererSelection("POST", "/predict/archive-v2", "native-sidecar"),
+      rendererSelection(method, path, "native-sidecar"),
     ),
   });
   return { fetchMock, acquire };
@@ -430,6 +434,18 @@ describe("API client request handling", () => {
       MAX_BOUNDED_JSON_BYTES - JSON.stringify({ padding: "" }).length,
     );
     expect(fetchMock).toHaveBeenCalledOnce();
+    expect(acquire).not.toHaveBeenCalled();
+  });
+
+  it("bounds the native Archive V2 catalogue GET without Python acquisition", async () => {
+    const { fetchMock, acquire } = installNativeArchiveResponse(
+      new Response(JSON.stringify({ archives: [] })),
+      "GET",
+      "/workspaces/workspace-a/archive-v2",
+    );
+    await expect(api.getBoundedJson("/workspaces/workspace-a/archive-v2", MAX_BOUNDED_JSON_BYTES))
+      .resolves.toEqual({ archives: [] });
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:43123/api/workspaces/workspace-a/archive-v2", expect.objectContaining({ method: "GET" }));
     expect(acquire).not.toHaveBeenCalled();
   });
 

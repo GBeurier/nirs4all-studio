@@ -34,9 +34,7 @@ const itemVariants = {
 export default function Predict() {
   const { t } = useTranslation();
   const [selectedModel, setSelectedModel] =
-    useState<PersistedArchiveV2Selection | null>(() =>
-      readPersistedArchiveV2Selection(),
-    );
+    useState<PersistedArchiveV2Selection | null>(null);
   const [result, setResult] =
     useState<ArchiveV2ArrayPredictionResponse | null>(null);
 

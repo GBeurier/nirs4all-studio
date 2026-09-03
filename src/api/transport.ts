@@ -505,6 +505,33 @@ class ApiClient {
     return this.request<T>(endpoint, { method: "GET", ...options });
   }
 
+  async getBoundedJson<T>(
+    endpoint: string,
+    maximumResponseBytes: number,
+    options?: RequestOptions,
+  ): Promise<T> {
+    const { body: _ignored, ...restOptions } = options || {};
+    try {
+      const response = await fetchWithRetry(endpoint, {
+        method: "GET",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        ...restOptions,
+      });
+      if (!response.ok) {
+        const errorData = await parseBoundedJsonResponse(response, maximumResponseBytes).catch(
+          () => ({}),
+        );
+        throw {
+          detail: formatApiErrorDetail(errorData, response.status),
+          status: response.status,
+        } satisfies ApiError;
+      }
+      return (await parseBoundedJsonResponse(response, maximumResponseBytes)) as T;
+    } catch (error) {
+      throw toApiError(error);
+    }
+  }
+
   // POST request
   async post<T>(
     endpoint: string,
