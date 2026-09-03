@@ -250,17 +250,21 @@ fn attest_methods_library(
     path: &Path,
     expected_sha256: &str,
 ) -> Result<AttestedMethodsLibrary, NativeMethodsReplayError> {
+    let attested = read_methods_library_identity(path)?;
+    if attested.sha256 != expected_sha256 {
+        return Err(replay_error(format!(
+            "libn4m SHA-256 identity mismatch: expected {expected_sha256}, got {}",
+            attested.sha256
+        )));
+    }
+    Ok(attested)
+}
+
+fn read_methods_library_identity(
+    path: &Path,
+) -> Result<AttestedMethodsLibrary, NativeMethodsReplayError> {
     if !path.is_absolute() {
         return Err(replay_error("libn4m path must be absolute"));
-    }
-    if expected_sha256.len() != 64
-        || !expected_sha256
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err(replay_error(
-            "libn4m SHA-256 identity must be 64 lowercase hexadecimal characters",
-        ));
     }
     let link_metadata = std::fs::symlink_metadata(path)
         .map_err(|error| replay_error(format!("cannot inspect libn4m identity: {error}")))?;
@@ -293,11 +297,6 @@ fn attest_methods_library(
         ));
     }
     let (actual, bytes) = hash_reader(file, "attested libn4m")?;
-    if actual != expected_sha256 {
-        return Err(replay_error(format!(
-            "libn4m SHA-256 identity mismatch: expected {expected_sha256}, got {actual}"
-        )));
-    }
     Ok(AttestedMethodsLibrary {
         source_canonical_path,
         sha256: actual,
@@ -309,9 +308,9 @@ fn ensure_same_configured_methods_library(
     configured: &ConfiguredMethodsLibrary,
     attested: &AttestedMethodsLibrary,
 ) -> Result<PathBuf, NativeMethodsReplayError> {
-    if configured.source_canonical_path != attested.source_canonical_path
-        || configured.sha256 != attested.sha256
-    {
+    let path_matches = configured.source_canonical_path == attested.source_canonical_path
+        || configured.snapshot_path == attested.source_canonical_path;
+    if !path_matches || configured.sha256 != attested.sha256 {
         return Err(replay_error(format!(
             "libn4m process identity is already fixed to `{}` at SHA-256 {}; requested `{}` at SHA-256 {}",
             configured.source_canonical_path.display(),
@@ -388,11 +387,26 @@ fn configure_attested_methods_library(
     path: &Path,
     expected_sha256: &str,
 ) -> Result<PathBuf, NativeMethodsReplayError> {
+    if expected_sha256.len() != 64
+        || !expected_sha256
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(replay_error(
+            "libn4m SHA-256 identity must be 64 lowercase hexadecimal characters",
+        ));
+    }
+    let attested = attest_methods_library(path, expected_sha256)?;
+    configure_methods_library_identity(attested)
+}
+
+fn configure_methods_library_identity(
+    attested: AttestedMethodsLibrary,
+) -> Result<PathBuf, NativeMethodsReplayError> {
     let lock = CONFIGURED_METHODS_LIBRARY.get_or_init(|| Mutex::new(None));
     let mut configured = lock
         .lock()
         .map_err(|_| replay_error("libn4m process identity lock is poisoned"))?;
-    let attested = attest_methods_library(path, expected_sha256)?;
     if let Some(existing) = configured.as_ref() {
         return ensure_same_configured_methods_library(existing, &attested);
     }
@@ -417,6 +431,24 @@ fn configure_attested_methods_library(
         )));
     }
     Ok(snapshot_path)
+}
+
+/// Resolve a training/replay source path through the same process-global,
+/// byte-attested snapshot authority used by the explicit SHA-256 preflight.
+/// Historical callers need not supply a new field: the first call records the
+/// exact source digest, and a later pinned preflight must match it exactly.
+pub(crate) fn configure_methods_runtime_for_source(
+    path: &Path,
+) -> Result<MethodsRuntime, NativeMethodsReplayError> {
+    let canonical = std::fs::canonicalize(path)
+        .map_err(|error| replay_error(format!("cannot canonicalize libn4m source: {error}")))?;
+    let attested = read_methods_library_identity(&canonical)?;
+    let snapshot_path = configure_methods_library_identity(attested)?;
+    MethodsRuntime::configure(&snapshot_path).map_err(|error| {
+        replay_error(format!(
+            "cannot open the process-attested Methods runtime: {error}"
+        ))
+    })
 }
 
 /// Attest and configure the exact libn4m identity used by Archive V2 replay.
@@ -1169,9 +1201,7 @@ fn replay_methods_predictor_package(
             .validate(&format!("native Methods replay input `{key}`"), false)
             .map_err(|error| replay_error(format!("DAG-ML rejected Methods input: {error}")))?;
     }
-    let runtime = MethodsRuntime::configure(&input.methods_library_path).map_err(|error| {
-        NativeMethodsReplayError(format!("cannot configure the Methods runtime: {error}"))
-    })?;
+    let runtime = configure_methods_runtime_for_source(&input.methods_library_path)?;
     execute_loaded_methods_predictor_replay(MethodsPortablePredictorReplayInput {
         package,
         request: &input.request,
@@ -1208,9 +1238,7 @@ pub fn replay_methods_archive_v3(
     let package = PortableRefitPackageV3::from_json(package_json).map_err(|error| {
         NativeMethodsReplayError(format!("DAG-ML rejected Core Archive V3 package: {error}"))
     })?;
-    let runtime = MethodsRuntime::configure(&input.methods_library_path).map_err(|error| {
-        NativeMethodsReplayError(format!("cannot configure the Methods runtime: {error}"))
-    })?;
+    let runtime = configure_methods_runtime_for_source(&input.methods_library_path)?;
     execute_loaded_methods_portable_refit_replay_v3(MethodsPortableRefitReplayInputV3 {
         package: &package,
         request: &input.request,
@@ -1259,6 +1287,23 @@ pub fn replay_methods_archive_v2_conformal_presentation_v1_json(
     serde_json::to_string(&presentation).map_err(|error| {
         replay_error(format!(
             "cannot serialize DAG-ML V2 conformal presentation: {error}"
+        ))
+    })
+}
+
+/// Open, validate and replay an Archive V2, returning DAG-ML's exact
+/// content-bound multi-target conformal-presentation V2 JSON.
+pub fn replay_methods_archive_v2_conformal_presentation_v2_json(
+    archive_path: &Path,
+    input: MethodsArchiveReplayJsonRequest,
+) -> Result<String, NativeMethodsReplayError> {
+    let archive = load_archive_v2(archive_path)
+        .map_err(|error| replay_error(format!("Core Archive V2 validation refused: {error}")))?;
+    let input = parse_json_request(input)?;
+    let presentation = replay_methods_archive_v2_conformal_presentation_v2(&archive, input)?;
+    serde_json::to_string(&presentation).map_err(|error| {
+        replay_error(format!(
+            "cannot serialize DAG-ML V2 conformal presentation V2: {error}"
         ))
     })
 }

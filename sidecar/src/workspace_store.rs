@@ -15,8 +15,9 @@ use std::{
     time::SystemTime,
 };
 
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row, TransactionBehavior};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use url::Url;
 
 pub const WORKSPACE_STORE_SCHEMA_VERSION: i64 = 5;
@@ -178,6 +179,93 @@ pub struct WorkspaceStoreArchiveV2Registration {
     pub artifact_id: String,
     pub artifact_path: String,
     pub content_hash: String,
+}
+
+/// Atomically register one already-written, content-addressed Archive V2 in
+/// the selected WorkspaceStore v5. The artifact itself is re-attested here;
+/// callers cannot register arbitrary or changed bytes.
+pub fn register_archive_v2_artifact(
+    workspace_path: &Path,
+    registration: &WorkspaceStoreArchiveV2Registration,
+    size_bytes: u64,
+) -> Result<(), String> {
+    if registration.artifact_id.is_empty()
+        || registration.artifact_id.len() > 256
+        || registration.artifact_path.is_empty()
+        || registration.artifact_path.len() > 240
+        || registration.artifact_path.contains('\\')
+        || registration.artifact_path.split('/').any(|part| {
+            part.is_empty() || part == "." || part == ".."
+        })
+        || !registration.artifact_path.ends_with(".n4a")
+        || registration.content_hash.len() != 64
+        || !registration.content_hash.bytes().all(|byte| {
+            byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+        })
+    {
+        return Err("Archive V2 registration identity is invalid".into());
+    }
+    let workspace = workspace_path
+        .canonicalize()
+        .map_err(|error| format!("workspace cannot be resolved: {error}"))?;
+    if workspace != workspace_path || !workspace.is_dir() {
+        return Err("workspace identity is not canonical".into());
+    }
+    let artifacts = workspace.join("artifacts");
+    let artifact = artifacts.join(&registration.artifact_path);
+    let metadata = fs::symlink_metadata(&artifact)
+        .map_err(|error| format!("Archive V2 artifact is unavailable: {error}"))?;
+    let canonical_artifact = artifact
+        .canonicalize()
+        .map_err(|error| format!("Archive V2 artifact cannot be resolved: {error}"))?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() != size_bytes
+        || !canonical_artifact.starts_with(&artifacts)
+    {
+        return Err("Archive V2 artifact identity is unsafe".into());
+    }
+    let bytes = fs::read(&canonical_artifact)
+        .map_err(|error| format!("Archive V2 artifact cannot be read: {error}"))?;
+    if u64::try_from(bytes.len()).ok() != Some(size_bytes)
+        || format!("{:x}", Sha256::digest(&bytes)) != registration.content_hash
+    {
+        return Err("Archive V2 artifact content identity changed".into());
+    }
+
+    let database = canonical_workspace_store_path(&workspace)
+        .map_err(|error| error.to_string())?;
+    refuse_live_journals(&database).map_err(|error| error.to_string())?;
+    let mut connection = Connection::open_with_flags(
+        &database,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|error| format!("WorkspaceStore cannot be opened for registration: {error}"))?;
+    connection
+        .busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|error| format!("WorkspaceStore busy timeout failed: {error}"))?;
+    validate_database(&connection).map_err(|error| error.to_string())?;
+    validate_table_columns(&connection, "artifacts", &ARCHIVE_V2_REGISTRATION_COLUMNS)
+        .map_err(|error| error.to_string())?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("WorkspaceStore registration transaction failed: {error}"))?;
+    transaction
+        .execute(
+            "INSERT INTO artifacts (artifact_id, artifact_path, content_hash, format, size_bytes, ref_count) VALUES (?, ?, ?, 'n4a', ?, 1)",
+            params![
+                registration.artifact_id,
+                registration.artifact_path,
+                registration.content_hash,
+                i64::try_from(size_bytes).map_err(|_| "Archive V2 artifact size is out of range")?
+            ],
+        )
+        .map_err(|error| format!("WorkspaceStore registration failed: {error}"))?;
+    transaction
+        .commit()
+        .map_err(|error| format!("WorkspaceStore registration commit failed: {error}"))?;
+    drop(connection);
+    refuse_live_journals(&database).map_err(|error| error.to_string())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

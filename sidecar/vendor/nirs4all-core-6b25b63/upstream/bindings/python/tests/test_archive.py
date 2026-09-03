@@ -16,6 +16,7 @@ from nirs4all_core import (
     read_portable_refit_package_v3,
     replay_methods_archive_v2,
     replay_methods_archive_v2_conformal_presentation_v1,
+    replay_methods_archive_v2_conformal_presentation_v2,
     replay_methods_archive_v3,
     write_archive_v2_from_native_payloads,
     write_archive_v3_from_native_payloads,
@@ -270,6 +271,44 @@ class ArchiveFacadeTests(unittest.TestCase):
                     outcome_id="outcome:conformal.predict",
                     run_id="run:conformal.predict",
                 )
+
+    def test_conformal_presentation_v2_uses_native_projection(self) -> None:
+        observed: list[object] = []
+
+        def replay(*args: object) -> str:
+            observed.extend(args)
+            return '{"schema_version":2,"archive_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","presentation_fingerprint":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}'
+
+        module = types.SimpleNamespace(
+            replay_methods_archive_v2_conformal_presentation_v2_json=replay
+        )
+        with patch.dict(sys.modules, {"nirs4all_core._native": module}):
+            presentation = replay_methods_archive_v2_conformal_presentation_v2(
+                "/tmp/calibrated.n4a",
+                {"schema_version": 1},
+                {"node.input": {"schema_version": 1}},
+                {
+                    "node.input": {
+                        "sample_ids": ["sample:1"],
+                        "x": [[1.0]],
+                        "target_names": ["a", "b"],
+                    }
+                },
+                methods_library_path="/opt/lib/libn4m.so",
+                outcome_id="outcome:conformal.v2.predict",
+                run_id="run:conformal.v2.predict",
+            )
+
+        self.assertEqual(presentation["schema_version"], 2)
+        self.assertEqual(observed[0], "/tmp/calibrated.n4a")
+        self.assertEqual(
+            observed[4:7],
+            [
+                "/opt/lib/libn4m.so",
+                "outcome:conformal.v2.predict",
+                "run:conformal.v2.predict",
+            ],
+        )
 
     def test_replay_missing_native_entry_point_fails_closed(self) -> None:
         module = types.SimpleNamespace(read_portable_predictor_package_v2=lambda _: b"{}")
