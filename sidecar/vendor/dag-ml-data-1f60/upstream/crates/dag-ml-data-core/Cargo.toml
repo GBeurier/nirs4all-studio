@@ -1,0 +1,16 @@
+[package]
+name = "dag-ml-data-core"
+description = "Core data contracts, schemas and plans for dag-ml-data."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true

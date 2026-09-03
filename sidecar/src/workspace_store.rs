@@ -170,6 +170,7 @@ const ARCHIVE_V2_REGISTRATION_COLUMNS: [&str; 6] = [
 ];
 
 /// Store-owned registration for a possible Archive V2. `artifact_path` is
+///
 /// relative to the workspace `artifacts/` directory. Core remains the format
 /// and predictor identity authority before any row reaches the renderer.
 #[derive(Debug, Clone, PartialEq, Eq)]

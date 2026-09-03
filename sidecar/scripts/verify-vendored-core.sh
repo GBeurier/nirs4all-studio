@@ -2,7 +2,7 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-vendor_root="$script_dir/../vendor/nirs4all-core-46a51a4"
+vendor_root="$script_dir/../vendor/nirs4all-core-94d712f"
 inventory="$vendor_root/INVENTORY.sha256"
 actual=$(mktemp)
 expected=$(mktemp)
@@ -16,11 +16,11 @@ grep -q 'preflight_methods_archive_v2_library' "$vendor_root/upstream/bindings/r
 grep -q 'inspect_methods_archive_v2_predictors' "$vendor_root/upstream/bindings/rust/nirs4all/src/lib.rs"
 test "$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$vendor_root/upstream/bindings/rust/nirs4all/Cargo.toml" | head -n 1)" = "0.3.25"
 grep -q 'n4m = { version = "=0.1.4"' "$vendor_root/upstream/bindings/rust/nirs4all/Cargo.toml"
-grep -q '"commit": "46a51a4bf123f9766b363fcbfb3009ea5c5f0a62"' "$vendor_root/PROVENANCE.json"
-grep -q '"repository_tree": "3b02332cfa4cf5e3424a7697f56d85a55fd80de6"' "$vendor_root/PROVENANCE.json"
-grep -q '"nirs4all": "a6fa7db08ed0724c36ca905e959d456341378aa4"' "$vendor_root/PROVENANCE.json"
-grep -q '"sha256": "4eb6d6a370194d9e5bbbe55b2d3650f74699bd56790d3b5b1bd4f945550d99f9"' "$vendor_root/PROVENANCE.json"
-grep -q '"hashed_files": 250' "$vendor_root/PROVENANCE.json"
+grep -q '"commit": "94d712f60848df60ce6fa90f006ada09767cfd08"' "$vendor_root/PROVENANCE.json"
+grep -q '"repository_tree": "e1444766493d235d13cbdf53bf7e80371a43a525"' "$vendor_root/PROVENANCE.json"
+grep -q '"nirs4all": "43a08f846434ca8b02102c4d1c3004585c71dea7"' "$vendor_root/PROVENANCE.json"
+grep -q '"sha256": "f58b68483a09a69f5a6145ce9eb1728560b63abb29e7d3d2062fc3133af1dfaa"' "$vendor_root/PROVENANCE.json"
+grep -q '"hashed_files": 251' "$vendor_root/PROVENANCE.json"
 
 (
   cd "$vendor_root"

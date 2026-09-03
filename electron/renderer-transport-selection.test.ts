@@ -21,6 +21,7 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
       health: true,
       scientific_submission_transport: true,
       native_archive_v2_prediction: true,
+      native_conformal_presentation_v2: true,
       scientific_execution: false,
       native_job_status_routes: true,
       native_job_cancellation_routes: true,
@@ -76,6 +77,7 @@ describe("renderer transport preselection", () => {
       { kind: "http" as const, method: "GET", path: "/health" },
       { kind: "http" as const, method: "POST", path: "/runs/run-groups" },
       { kind: "http" as const, method: "POST", path: "/predict/archive-v2" },
+      { kind: "http" as const, method: "POST", path: "/predict/archive-v2/conformal-presentation" },
       { kind: "http" as const, method: "GET", path: "/workspaces/workspace-a/archive-v2" },
       { kind: "http" as const, method: "GET", path: "/training/job-1" },
       { kind: "http" as const, method: "GET", path: "/system/capabilities" },
@@ -95,7 +97,7 @@ describe("renderer transport preselection", () => {
         status: 200,
       });
     }
-    expect(request).toHaveBeenCalledTimes(7);
+    expect(request).toHaveBeenCalledTimes(8);
   });
 
   it("still rejects malformed execution capability, transport, and Python owner", async () => {
@@ -175,6 +177,16 @@ describe("renderer transport preselection", () => {
       target: "native-sidecar",
       base_url: "http://127.0.0.1:43123",
       reason: "native_capability_preflight_passed",
+      status: 200,
+    });
+
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "POST", path: "/predict/archive-v2/conformal-presentation" },
+      withoutPythonHost,
+      request,
+    )).resolves.toMatchObject({
+      surface: "archive-v2-conformal-presentation",
+      target: "native-sidecar",
       status: 200,
     });
 

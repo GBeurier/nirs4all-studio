@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/dag-ml-data-core",
+    "crates/dag-ml-data",
+    "crates/dag-ml-data-provider",
+]
+exclude = [
+    # The R (extendr) provider binding links against libR, so it is its own
+    # standalone package — kept out of the default workspace + publish gate.
+    # Build it with
+    # `cargo build --manifest-path crates/dag-ml-data-r/src/rust/Cargo.toml` or
+    # `R CMD INSTALL crates/dag-ml-data-r`.
+    "crates/dag-ml-data-r",
+    # The PyO3 binding pins a minimum Python (`abi3-py311`), so pyo3-build-config
+    # refuses to build it against an older default interpreter. It is a leaf
+    # cdylib shipped as a PyPI wheel built with maturin against its own manifest
+    # (`cd crates/dag-ml-data-py && maturin build`) — never published to
+    # crates.io — so it is kept out of the default workspace + publish gate.
+    # `cargo test --workspace` and `cargo llvm-cov` then no longer require
+    # Python >= 3.11 on the host. Build/test it standalone with
+    # `cargo test --manifest-path crates/dag-ml-data-py/Cargo.toml`.
+    "crates/dag-ml-data-py",
+]
+
+[workspace.package]
+version = "0.2.10"
+edition = "2021"
+rust-version = "1.85"
+license = "CECILL-2.1 OR AGPL-3.0-or-later"
+authors = ["G. Beurier <beurier@cirad.fr>"]
+repository = "https://github.com/GBeurier/dag-ml-data"
+homepage = "https://github.com/GBeurier/dag-ml-data"
+readme = "README.md"
+
+[workspace.dependencies]
+anyhow = "1.0"
+clap = { version = "=4.5.53", features = ["derive"] }
+dag-ml-data = { path = "crates/dag-ml-data", version = "0.2.10" }
+dag-ml-data-core = { path = "crates/dag-ml-data-core", version = "0.2.10" }
+dag-ml-data-provider = { path = "crates/dag-ml-data-provider", version = "0.2.10" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.11"
+thiserror = "2.0"
+pyo3 = "=0.29.2"
+wasm-bindgen = "0.2.122"

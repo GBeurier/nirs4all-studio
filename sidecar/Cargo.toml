@@ -23,10 +23,10 @@ nursery = "warn"
 atomicwrites = "0.4.4"
 base64 = "0.22"
 cap-std = "3"
-# Complete immutable snapshot of selected Core commit 46a51a4; see its
+# Complete immutable snapshot of selected Core commit 94d712f; see its
 # provenance and offline inventory/test gates. Its final descendant must be
 # relocked against published dag-ml-data 0.2.10 before LOCK-RELEASE.
-nirs4all = { version = "=0.3.25", path = "vendor/nirs4all-core-46a51a4/upstream/bindings/rust/nirs4all" }
+nirs4all = { version = "=0.3.25", path = "vendor/nirs4all-core-94d712f/upstream/bindings/rust/nirs4all" }
 # Complete immutable snapshot of selected IO commit f41967d; see its provenance
 # and offline inventory/test gates. It must become a published identity by LOCK-RELEASE.
 nirs4all-io = { version = "=0.1.7", path = "vendor/nirs4all-io-f419/upstream/crates/nirs4all-io" }
@@ -50,6 +50,11 @@ studio-windows-job = { path = "crates/studio-windows-job" }
 # package payloads and replace these patches with registry identities before
 # LOCK-RELEASE.
 [patch.crates-io]
-dag-ml = { path = "vendor/dag-ml-879e2af/upstream/dag-ml-0.3.23" }
-dag-ml-core = { path = "vendor/dag-ml-879e2af/upstream/dag-ml-core-0.3.23" }
+dag-ml = { path = "vendor/dag-ml-dafb8b6/upstream/dag-ml-0.3.23" }
+dag-ml-core = { path = "vendor/dag-ml-dafb8b6/upstream/dag-ml-core-0.3.23" }
+dag-ml-data = { path = "vendor/dag-ml-data-1f60/upstream/crates/dag-ml-data" }
+dag-ml-data-core = { path = "vendor/dag-ml-data-1f60/upstream/crates/dag-ml-data-core" }
+dag-ml-data-provider = { path = "vendor/dag-ml-data-1f60/upstream/crates/dag-ml-data-provider" }
+nirs4all-io = { path = "vendor/nirs4all-io-54fa/upstream/crates/nirs4all-io" }
+nirs4all-io-dagml = { path = "vendor/nirs4all-io-54fa/upstream/crates/nirs4all-io-dagml" }
 n4m = { path = "vendor/n4m-48ad1e5/upstream/n4m-0.1.4" }
