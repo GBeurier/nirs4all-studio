@@ -36,11 +36,11 @@ env:
   PYTHON_VERSION: '3.11'
   # Release archives/images must be reproducible. Keep these refs pinned to the
   # selected RC heads and update them with the ecosystem release board.
-  NIRS4ALL_LIBRARY_REF: 322265576ccfaeb1ee22332d05ae04b87be4b538
-  DAG_ML_REF: bad5aff0bfbc14c622f5ade7f393f29399df6e07
+  NIRS4ALL_LIBRARY_REF: ea3320ca0636dc45b88a32c020c50d2ae40dc2b3
+  DAG_ML_REF: b7d643f450da3018c8208a84abcabfab09d5da7d
   DAG_ML_DATA_REF: 1f60b920d34acda7c0fbc044b593bb6af1fab4c1
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/322265576ccfaeb1ee22332d05ae04b87be4b538.tar.gz
-  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/bad5aff0bfbc14c622f5ade7f393f29399df6e07.tar.gz
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/ea3320ca0636dc45b88a32c020c50d2ae40dc2b3.tar.gz
+  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/b7d643f450da3018c8208a84abcabfab09d5da7d.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/1f60b920d34acda7c0fbc044b593bb6af1fab4c1.tar.gz
 
 jobs:

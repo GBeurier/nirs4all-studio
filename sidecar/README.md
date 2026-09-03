@@ -324,9 +324,13 @@ remotely fetchable git revision before LOCK-RELEASE; local/sibling worktree path
 are forbidden.
 
 Core 0.3.25 requires the selected but not-yet-published DagML 0.3.23 and n4m
-0.1.4 crates. Studio therefore carries the exact DagML commit
-`dafb8b6fb98f9d380d30559a3f4b868c91e5b5c4` under
-`sidecar/vendor/dag-ml-dafb8b6/`, Core commit
+0.1.4 crates. The selected final DagML release commit is
+`b7d643f450da3018c8208a84abcabfab09d5da7d`; its `dag-ml` and `dag-ml-core`
+crate trees exactly match the qualified package payload produced at
+`dafb8b6fb98f9d380d30559a3f4b868c91e5b5c4` and retained under
+`sidecar/vendor/dag-ml-dafb8b6/`. This local path is an explicit registry hold:
+remove it only after the exact DagML 0.3.23 packages are published. Studio also
+carries Core commit
 `6b25b63bb09adfe3c4dae8ffacc90d09a1a81e16` under
 `sidecar/vendor/nirs4all-core-6b25b63/`, and the exact n4m binding from Methods commit
 `48ad1e5a50844f68c2b99e93b02ad6a3b491c07b` under
@@ -336,8 +340,9 @@ dependency is pinned to commit `1f60b92` under
 `54fa4f5` under `sidecar/vendor/nirs4all-io-54fa/`. Only their qualified Cargo source payloads are
 included; unrelated workspace crates, native libraries, and generated bindings
 are excluded. The vendored-source verification scripts check their inventories,
-package digests, and exact repository/crate trees. All three path patches must
-be replaced by published crate identities before LOCK-RELEASE.
+package digests, and exact repository/crate trees. All path patches must be
+replaced by published crate identities as soon as the release train is present
+on the registry.
 
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the

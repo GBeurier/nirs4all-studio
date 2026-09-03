@@ -464,7 +464,7 @@ export class EnvManager {
         [
           "-c",
           "from importlib import metadata as m; "
-          + "assert m.version('nirs4all') == '0.10.3'; "
+          + "assert m.version('nirs4all') == '0.13.0'; "
           + "from nirs4all import studio_scientific_job_v1; "
           + "assert callable(studio_scientific_job_v1)",
         ],
