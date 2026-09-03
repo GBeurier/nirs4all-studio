@@ -1,0 +1,23 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/nirs4all-core.git",
+  "commit": "94d712f60848df60ce6fa90f006ada09767cfd08",
+  "repository_tree": "e1444766493d235d13cbdf53bf7e80371a43a525",
+  "included_crate_trees": {
+    "nirs4all": "43a08f846434ca8b02102c4d1c3004585c71dea7"
+  },
+  "selected_crate_package": {
+    "name": "nirs4all",
+    "version": "0.3.25",
+    "files": 27,
+    "sha256": "f58b68483a09a69f5a6145ce9eb1728560b63abb29e7d3d2062fc3133af1dfaa"
+  },
+  "snapshot_policy": "The complete selected upstream Git tree is copied byte-for-byte under upstream/: workspace manifests and lockfile, every binding and source tree, tests, fixtures, scripts, documentation, assets, notices, and licence texts.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 251
+  },
+  "verification": "../../scripts/verify-vendored-core.sh",
+  "release_gate": "This locally qualified 0.3.25 snapshot remains transitional until dag-ml 0.3.23, dag-ml-core 0.3.23, n4m 0.1.4 and dag-ml-data 0.2.10 are published and the exact published Core identity replaces it before LOCK-RELEASE."
+}

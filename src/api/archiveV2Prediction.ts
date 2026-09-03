@@ -3,12 +3,17 @@ import type {
   ArchiveV2ArrayPredictionRequest,
   ArchiveV2ArrayPredictionResponse,
   ArchiveV2CatalogueResponse,
+  ArchiveV2ConformalPresentation,
+  ArchiveV2ConformalPresentationRequest,
 } from "@/types/archiveV2Prediction";
 
 export const ARCHIVE_V2_ARRAY_PREDICTION_ENDPOINT =
   "/predict/archive-v2" as const;
 export const MAX_ARCHIVE_V2_PREDICTION_RESPONSE_BYTES = 2 * 1024 * 1024;
 export const MAX_ARCHIVE_V2_CATALOGUE_RESPONSE_BYTES = 256 * 1024;
+export const ARCHIVE_V2_CONFORMAL_PRESENTATION_ENDPOINT =
+  "/predict/archive-v2/conformal-presentation" as const;
+export const MAX_ARCHIVE_V2_CONFORMAL_PRESENTATION_BYTES = 2 * 1024 * 1024;
 
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_SAMPLES = 128;
@@ -241,6 +246,96 @@ function parseCatalogue(value: unknown, workspaceId: string): ArchiveV2Catalogue
   return value as unknown as ArchiveV2CatalogueResponse;
 }
 
+function isOptionalIdentifier(value: unknown): boolean {
+  return value === null || isIdentifier(value);
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) > 0;
+}
+
+function isConformalRadius(value: unknown): boolean {
+  return isRecord(value) && (
+    (hasExactKeys(value, ["status", "value"]) && value.status === "finite" &&
+      typeof value.value === "number" && Number.isFinite(value.value) && value.value >= 0) ||
+    (hasExactKeys(value, ["status"]) && value.status === "unbounded")
+  );
+}
+
+function isConformalCell(value: unknown): boolean {
+  return isRecord(value) && (
+    (hasExactKeys(value, ["status", "lower", "upper"]) && value.status === "finite" &&
+      typeof value.lower === "number" && Number.isFinite(value.lower) &&
+      typeof value.upper === "number" && Number.isFinite(value.upper) && value.lower <= value.upper) ||
+    (hasExactKeys(value, ["status"]) && value.status === "unbounded")
+  );
+}
+
+function orderedEqual(left: readonly unknown[], right: readonly unknown[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
+function parseConformalPresentation(
+  value: unknown,
+  request: ArchiveV2ConformalPresentationRequest,
+): ArchiveV2ConformalPresentation {
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "schema_version", "archive_sha256", "package_fingerprint",
+    "replay_outcome_fingerprint", "binding_id", "predictor", "dimensions",
+    "target_names", "sample_ids", "point_prediction", "interval_block",
+    "guarantee", "calibration_fingerprint", "presentation_fingerprint",
+  ]) || value.schema_version !== 2 || value.archive_sha256 !== request.archive.sha256 ||
+    value.presentation_fingerprint !== request.presentation_fingerprint ||
+    typeof value.package_fingerprint !== "string" || !SHA256.test(value.package_fingerprint) ||
+    typeof value.replay_outcome_fingerprint !== "string" || !SHA256.test(value.replay_outcome_fingerprint) ||
+    typeof value.calibration_fingerprint !== "string" || !SHA256.test(value.calibration_fingerprint) ||
+    !isIdentifier(value.binding_id) || !isRecord(value.predictor) ||
+    !hasExactKeys(value.predictor, ["model_artifact_fingerprint", "predictor_binding_fingerprint", "predictor_descriptor_fingerprint"]) ||
+    ![value.predictor.model_artifact_fingerprint, value.predictor.predictor_binding_fingerprint, value.predictor.predictor_descriptor_fingerprint]
+      .every((fingerprint) => typeof fingerprint === "string" && SHA256.test(fingerprint)) ||
+    !isRecord(value.dimensions) || !hasExactKeys(value.dimensions, ["sample_count", "target_count"]) ||
+    !isPositiveSafeInteger(value.dimensions.sample_count) || !isPositiveSafeInteger(value.dimensions.target_count) ||
+    !isUniqueIdentifiers(value.sample_ids, MAX_SAMPLES) || !isUniqueIdentifiers(value.target_names, MAX_TARGETS) ||
+    value.dimensions.sample_count !== value.sample_ids.length || value.dimensions.target_count !== value.target_names.length ||
+    !isRecord(value.point_prediction) || !hasExactKeys(value.point_prediction, [
+      "prediction_id", "producer_node", "producer_port", "partition", "fold_id", "sample_ids", "values", "target_names",
+    ]) || !isOptionalIdentifier(value.point_prediction.prediction_id) || !isIdentifier(value.point_prediction.producer_node) ||
+    !isOptionalIdentifier(value.point_prediction.producer_port) || typeof value.point_prediction.partition !== "string" ||
+    !isOptionalIdentifier(value.point_prediction.fold_id) || !Array.isArray(value.point_prediction.sample_ids) ||
+    !Array.isArray(value.point_prediction.target_names) || !orderedEqual(value.point_prediction.sample_ids, value.sample_ids) ||
+    !orderedEqual(value.point_prediction.target_names, value.target_names) ||
+    !isFiniteMatrix(value.point_prediction.values, value.sample_ids.length, value.target_names.length) ||
+    !isRecord(value.interval_block) || !hasExactKeys(value.interval_block, [
+      "schema_version", "binding_id", "sample_ids", "intervals", "calibration_fingerprint", "point_prediction_fingerprint",
+    ]) || value.interval_block.schema_version !== 2 || value.interval_block.binding_id !== value.binding_id ||
+    value.interval_block.calibration_fingerprint !== value.calibration_fingerprint ||
+    typeof value.interval_block.point_prediction_fingerprint !== "string" || !SHA256.test(value.interval_block.point_prediction_fingerprint) ||
+    !Array.isArray(value.interval_block.sample_ids) || !orderedEqual(value.interval_block.sample_ids, value.sample_ids) ||
+    !Array.isArray(value.interval_block.intervals) || value.interval_block.intervals.length === 0 ||
+    !isRecord(value.guarantee) || !hasExactKeys(value.guarantee, [
+      "calibration_sample_count", "multi_target_policy", "small_sample_policy", "quantiles",
+    ]) || !isPositiveSafeInteger(value.guarantee.calibration_sample_count) ||
+    !["marginal", "joint_max"].includes(value.guarantee.multi_target_policy as string) ||
+    !["error", "unbounded"].includes(value.guarantee.small_sample_policy as string) ||
+    !Array.isArray(value.guarantee.quantiles) || value.guarantee.quantiles.length !== value.interval_block.intervals.length
+  ) throw new TypeError("Invalid native conformal presentation response");
+
+  for (let index = 0; index < value.guarantee.quantiles.length; index += 1) {
+    const quantile = value.guarantee.quantiles[index];
+    const interval = value.interval_block.intervals[index];
+    const radiusCount = value.guarantee.multi_target_policy === "marginal" ? value.target_names.length : 1;
+    if (!isRecord(quantile) || !hasExactKeys(quantile, ["coverage", "rank", "radii"]) ||
+      typeof quantile.coverage !== "number" || !Number.isFinite(quantile.coverage) || quantile.coverage <= 0 || quantile.coverage >= 1 ||
+      !isPositiveSafeInteger(quantile.rank) || !Array.isArray(quantile.radii) || quantile.radii.length !== radiusCount ||
+      !quantile.radii.every(isConformalRadius) || !isRecord(interval) || !hasExactKeys(interval, ["coverage", "cells"]) ||
+      interval.coverage !== quantile.coverage || !Array.isArray(interval.cells) || interval.cells.length !== value.sample_ids.length ||
+      !interval.cells.every((row) => Array.isArray(row) && row.length === value.target_names.length && row.every(isConformalCell))) {
+      throw new TypeError("Invalid native conformal presentation response");
+    }
+  }
+  return value as unknown as ArchiveV2ConformalPresentation;
+}
+
 export async function getPersistedArchiveV2Catalogue(
   workspaceId: string,
 ): Promise<ArchiveV2CatalogueResponse> {
@@ -268,4 +363,25 @@ export async function predictPersistedArchiveV2Array(
     MAX_ARCHIVE_V2_PREDICTION_RESPONSE_BYTES,
   );
   return parseResponse(response, request);
+}
+
+/** Load a persisted native presentation; no conformal arithmetic exists here. */
+export async function getPersistedArchiveV2ConformalPresentation(
+  request: ArchiveV2ConformalPresentationRequest,
+): Promise<ArchiveV2ConformalPresentation> {
+  const root = request as unknown as JsonRecord;
+  if (!isRecord(root) || !hasExactKeys(root, ["schema_version", "operation", "workspace_id", "archive", "presentation_fingerprint"]) ||
+    root.schema_version !== 2 || root.operation !== "archive_v2_conformal_presentation" || !isIdentifier(root.workspace_id) ||
+    !isRecord(root.archive) || !hasExactKeys(root.archive, ["ref", "sha256"]) || !isArchiveRef(root.archive.ref) ||
+    !(root.archive.ref as string).startsWith("artifacts/") || typeof root.archive.sha256 !== "string" || !SHA256.test(root.archive.sha256) ||
+    typeof root.presentation_fingerprint !== "string" || !SHA256.test(root.presentation_fingerprint) ||
+    byteLength(JSON.stringify(request)) > MAX_REQUEST_BYTES) {
+    throw new TypeError("Invalid native conformal presentation request");
+  }
+  const response = await api.postBoundedJson<unknown>(
+    ARCHIVE_V2_CONFORMAL_PRESENTATION_ENDPOINT,
+    request,
+    MAX_ARCHIVE_V2_CONFORMAL_PRESENTATION_BYTES,
+  );
+  return parseConformalPresentation(response, request);
 }

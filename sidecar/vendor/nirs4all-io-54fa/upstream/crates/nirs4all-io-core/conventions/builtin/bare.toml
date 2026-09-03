@@ -1,0 +1,20 @@
+# bare convention profile: single-partition X / Y / M stems (no train/test split).
+profile = "bare"
+version = 1
+
+[roles]
+train_x = ["x", "features", "spectra", "spectrum"]
+train_y = ["y", "target", "targets", "labels"]
+train_group = ["m", "meta", "metadata", "group"]
+folds = ["folds", "fold", "cv", "splits"]
+
+[bare]
+x = ["x", "features", "spectra"]
+y = ["y", "target", "targets"]
+meta = ["m", "meta", "metadata", "group"]
+
+[match]
+short_pattern_word_boundary = true
+case_insensitive = true
+recursive = false
+extensions = ["from-formats-registry"]

@@ -42,9 +42,11 @@ pub mod websocket_transport;
 pub mod workspace_store;
 
 use archive_v2_prediction::{
-    parse_request as parse_archive_v2_prediction_request, ArchiveV2PredictionError,
-    ArchiveV2PredictionRuntime, ARCHIVE_V2_PREDICTION_ROUTE,
+    parse_conformal_presentation_request, parse_request as parse_archive_v2_prediction_request,
+    ArchiveV2PredictionError, ArchiveV2PredictionRuntime, ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE,
+    ARCHIVE_V2_PREDICTION_ROUTE,
 };
+use conformal_store::ConformalPresentationStore;
 use execution_job_records::{
     compose_execution_job_record_response, match_durable_execution_job_record_route,
     read_execution_job_record, DurableExecutionJobRecordRoute, ExecutionJobRecordReadError,
@@ -172,6 +174,8 @@ pub enum ErrorCode {
     ArchiveV2PredictionArchiveTooLarge,
     ArchiveV2PredictionDigestMismatch,
     ArchiveV2PredictionExecutionFailed,
+    ConformalPresentationNotFound,
+    ConformalPresentationInvalid,
 }
 
 impl ErrorCode {
@@ -198,6 +202,8 @@ impl ErrorCode {
             Self::ArchiveV2PredictionArchiveTooLarge => "archive_v2_prediction_archive_too_large",
             Self::ArchiveV2PredictionDigestMismatch => "archive_v2_prediction_digest_mismatch",
             Self::ArchiveV2PredictionExecutionFailed => "archive_v2_prediction_execution_failed",
+            Self::ConformalPresentationNotFound => "conformal_presentation_not_found",
+            Self::ConformalPresentationInvalid => "conformal_presentation_invalid",
         }
     }
 
@@ -649,12 +655,13 @@ impl SidecarState {
         let python_plugin_configured = self.python_plugin_host.is_some();
         let scientific_execution = self.native_jobs.execution_selected();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_transition_status_route\":true,\"legacy_workspace_conversion_route\":{},\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"native_conformal_presentation_v2\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_transition_status_route\":true,\"legacy_workspace_conversion_route\":{},\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
                 "unconfigured"
             },
+            self.archive_v2_prediction.is_selected(),
             self.archive_v2_prediction.is_selected(),
             self.legacy_conversion.is_available(),
         )
@@ -907,12 +914,21 @@ fn route_archive_v2_prediction_match(
             method_not_allowed(method, path, "GET")
         });
     }
-    (path == ARCHIVE_V2_PREDICTION_ROUTE).then(|| {
-        if method != "POST" {
-            return method_not_allowed(method, path, "POST");
-        }
-        archive_v2_prediction_response(state, body)
-    })
+    (path == ARCHIVE_V2_PREDICTION_ROUTE)
+        .then(|| {
+            if method != "POST" {
+                return method_not_allowed(method, path, "POST");
+            }
+            archive_v2_prediction_response(state, body)
+        })
+        .or_else(|| {
+            (path == ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE).then(|| {
+                if method != "POST" {
+                    return method_not_allowed(method, path, "POST");
+                }
+                archive_v2_conformal_presentation_response(state, body)
+            })
+        })
 }
 
 fn archive_v2_catalogue_workspace_id(path: &str) -> Option<&str> {
@@ -999,6 +1015,53 @@ fn archive_v2_prediction_response(state: &SidecarState, body: &[u8]) -> HttpResp
     }
 }
 
+fn archive_v2_conformal_presentation_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    if !state.archive_v2_prediction.is_selected() {
+        return archive_v2_prediction_error_response(
+            &ArchiveV2PredictionError::ExecutorUnavailable,
+        );
+    }
+    let request = match parse_conformal_presentation_request(body) {
+        Ok(request) => request,
+        Err(error) => return archive_v2_prediction_error_response(&error),
+    };
+    let Ok(Some(workspace)) = state
+        .app_settings
+        .linked_workspace_access(&request.workspace_id)
+    else {
+        return archive_v2_prediction_error_response(
+            &ArchiveV2PredictionError::WorkspaceUnavailable,
+        );
+    };
+    let Some(artifact_path) = request.archive_ref.strip_prefix("artifacts/") else {
+        return archive_v2_prediction_error_response(&ArchiveV2PredictionError::ArchiveNotFound);
+    };
+    let authorized = workspace
+        .store()
+        .and_then(|store| {
+            workspace_store::read_archive_v2_registrations_from_connection(store).ok()
+        })
+        .is_some_and(|registrations| {
+            registrations.iter().any(|registration| {
+                registration.artifact_path == artifact_path
+                    && registration.content_hash == request.archive_sha256
+            })
+        });
+    if !authorized {
+        return archive_v2_prediction_error_response(&ArchiveV2PredictionError::ArchiveNotFound);
+    }
+    let presentations = ConformalPresentationStore::new(state.app_settings.config_dir());
+    match state.archive_v2_prediction.conformal_presentation(
+        &request,
+        workspace.path(),
+        &presentations,
+    ) {
+        Ok(response) => HttpResponse::json(200, response),
+        Err(error) => archive_v2_prediction_error_response(&error),
+    }
+}
+
+#[allow(clippy::too_many_lines)]
 fn archive_v2_prediction_error_response(error: &ArchiveV2PredictionError) -> HttpResponse {
     let (status, code, message, reason) = match error {
         ArchiveV2PredictionError::ExecutorUnavailable => (
@@ -1078,6 +1141,18 @@ fn archive_v2_prediction_error_response(error: &ArchiveV2PredictionError) -> Htt
             ErrorCode::ArchiveV2PredictionExecutionFailed,
             "Native Archive V2 executor returned an invalid closed response",
             "invalid_executor_output",
+        ),
+        ArchiveV2PredictionError::ConformalPresentationNotFound => (
+            404,
+            ErrorCode::ConformalPresentationNotFound,
+            "Native conformal presentation was not found",
+            "presentation_not_found",
+        ),
+        ArchiveV2PredictionError::InvalidConformalPresentation => (
+            422,
+            ErrorCode::ConformalPresentationInvalid,
+            "Native conformal presentation failed Core validation",
+            "presentation_invalid",
         ),
         ArchiveV2PredictionError::ResponseTooLarge => (
             500,
@@ -4203,6 +4278,33 @@ mod tests {
                 provenance_executor: "fake-core-route-unit-only".into(),
             })
         }
+
+        fn load_conformal_presentation(
+            &self,
+            archive_bytes: &[u8],
+            expected_sha256: &str,
+            presentation_json: &str,
+        ) -> Result<String, archive_v2_prediction::ArchiveV2PredictionExecutorError> {
+            if archive_bytes != b"fake-archive-v2"
+                || format!("{:x}", Sha256::digest(archive_bytes)) != expected_sha256
+            {
+                return Err(
+                    archive_v2_prediction::ArchiveV2PredictionExecutorError::ExecutionFailed,
+                );
+            }
+            let presentation =
+                nirs4all::dag_ml::ConformalPresentationV2::from_json(presentation_json).map_err(
+                    |_| archive_v2_prediction::ArchiveV2PredictionExecutorError::ExecutionFailed,
+                )?;
+            if presentation.archive_sha256 != expected_sha256 {
+                return Err(
+                    archive_v2_prediction::ArchiveV2PredictionExecutorError::ExecutionFailed,
+                );
+            }
+            serde_json::to_string(&presentation).map_err(|_| {
+                archive_v2_prediction::ArchiveV2PredictionExecutorError::ExecutionFailed
+            })
+        }
     }
 
     #[derive(Debug)]
@@ -6523,6 +6625,79 @@ mod tests {
             "artifacts/models/model.n4a"
         );
         assert_eq!(body["archives"][0]["identity_status"], "verified");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn conformal_route_transports_only_store_registered_core_validated_v2() {
+        let root = test_directory("archive-v2-conformal-route");
+        let config = root.join("config");
+        let workspace = root.join("workspace");
+        let artifact = workspace.join("artifacts/models/model.n4a");
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        fs::write(&artifact, b"fake-archive-v2").unwrap();
+        fs::write(
+            workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5.sqlite"),
+        )
+        .unwrap();
+        let archive_sha256 = format!("{:x}", Sha256::digest(b"fake-archive-v2"));
+        let connection = rusqlite::Connection::open(workspace.join("store.sqlite")).unwrap();
+        connection.execute("INSERT INTO artifacts (artifact_id, artifact_path, content_hash, format, size_bytes, ref_count) VALUES (?, ?, ?, 'n4a', ?, 1)", rusqlite::params!["artifact:model", "models/model.n4a", archive_sha256, 15_i64]).unwrap();
+        drop(connection);
+        let store_digest = format!(
+            "{:x}",
+            Sha256::digest(fs::read(workspace.join("store.sqlite")).unwrap())
+        );
+        let mut record = linked_workspace_record("workspace-a", &workspace, true, 0);
+        record["store_content_sha256"] = json!(store_digest);
+        fs::write(
+            config.join("app_settings.json"),
+            json!({ "linked_workspaces": [record] }).to_string(),
+        )
+        .unwrap();
+        let presentation = conformal_store::tests::presentation_v2(&archive_sha256);
+        ConformalPresentationStore::new(&config)
+            .store_v2(&presentation)
+            .unwrap();
+        let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
+            Arc::new(SelectedArchiveV2TestExecutor),
+            &config,
+        );
+        let body = json!({
+            "schema_version": 2,
+            "operation": "archive_v2_conformal_presentation",
+            "workspace_id": "workspace-a",
+            "archive": {
+                "ref": "artifacts/models/model.n4a",
+                "sha256": archive_sha256,
+            },
+            "presentation_fingerprint": presentation.presentation_fingerprint,
+        });
+
+        let response = route_request_with_body(
+            &mut state,
+            "POST",
+            ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE,
+            body.to_string().as_bytes(),
+        );
+        assert_eq!(response.status, 200);
+        let response: Value = serde_json::from_str(&response.body).unwrap();
+        assert_eq!(response["schema_version"], 2);
+        assert_eq!(response["target_names"], json!(["protein", "moisture"]));
+        assert_eq!(response["sample_ids"], json!(["sample:two", "sample:one"]));
+        assert_eq!(response["dimensions"]["target_count"], 2);
+
+        let mut wrong_archive = body;
+        wrong_archive["archive"]["sha256"] = json!("f".repeat(64));
+        let rejected = route_request_with_body(
+            &mut state,
+            "POST",
+            ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE,
+            wrong_archive.to_string().as_bytes(),
+        );
+        assert_eq!(rejected.status, 404);
         fs::remove_dir_all(root).unwrap();
     }
 

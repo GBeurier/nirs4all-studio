@@ -2,10 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ARCHIVE_V2_ARRAY_PREDICTION_ENDPOINT,
+  ARCHIVE_V2_CONFORMAL_PRESENTATION_ENDPOINT,
+  getPersistedArchiveV2ConformalPresentation,
   getPersistedArchiveV2Catalogue,
   predictPersistedArchiveV2Array,
 } from "./archiveV2Prediction";
-import type { ArchiveV2ArrayPredictionRequest } from "@/types/archiveV2Prediction";
+import type {
+  ArchiveV2ArrayPredictionRequest,
+  ArchiveV2ConformalPresentationRequest,
+} from "@/types/archiveV2Prediction";
 
 const transport = vi.hoisted(() => ({
   postBoundedJson: vi.fn(),
@@ -39,6 +44,68 @@ const request: ArchiveV2ArrayPredictionRequest = {
   },
 };
 
+const conformalRequest: ArchiveV2ConformalPresentationRequest = {
+  schema_version: 2,
+  operation: "archive_v2_conformal_presentation",
+  workspace_id: "workspace-a",
+  archive: { ref: "artifacts/models/model.n4a", sha256: "a".repeat(64) },
+  presentation_fingerprint: "f".repeat(64),
+};
+
+function conformalPresentation(): Record<string, unknown> {
+  const sampleIds = ["sample:two", "sample:one"];
+  const targetNames = ["protein", "moisture"];
+  return {
+    schema_version: 2,
+    archive_sha256: conformalRequest.archive.sha256,
+    package_fingerprint: "b".repeat(64),
+    replay_outcome_fingerprint: "c".repeat(64),
+    binding_id: "output:main",
+    predictor: {
+      model_artifact_fingerprint: "d".repeat(64),
+      predictor_binding_fingerprint: "e".repeat(64),
+      predictor_descriptor_fingerprint: "1".repeat(64),
+    },
+    dimensions: { sample_count: 2, target_count: 2 },
+    target_names: targetNames,
+    sample_ids: sampleIds,
+    point_prediction: {
+      prediction_id: "prediction:production",
+      producer_node: "model:regressor",
+      producer_port: "prediction",
+      partition: "final",
+      fold_id: null,
+      sample_ids: sampleIds,
+      values: [[10, 100], [20, 200]],
+      target_names: targetNames,
+    },
+    interval_block: {
+      schema_version: 2,
+      binding_id: "output:main",
+      sample_ids: sampleIds,
+      intervals: [{
+        coverage: 0.8,
+        cells: [
+          [{ status: "finite", lower: 9, upper: 11 }, { status: "finite", lower: 98, upper: 102 }],
+          [{ status: "finite", lower: 19, upper: 21 }, { status: "finite", lower: 198, upper: 202 }],
+        ],
+      }],
+      calibration_fingerprint: "2".repeat(64),
+      point_prediction_fingerprint: "3".repeat(64),
+    },
+    guarantee: {
+      calibration_sample_count: 4,
+      multi_target_policy: "marginal",
+      small_sample_policy: "error",
+      quantiles: [{ coverage: 0.8, rank: 4, radii: [
+        { status: "finite", value: 1 }, { status: "finite", value: 2 },
+      ] }],
+    },
+    calibration_fingerprint: "2".repeat(64),
+    presentation_fingerprint: conformalRequest.presentation_fingerprint,
+  };
+}
+
 function response(): Record<string, unknown> {
   return {
     schema_version: 1,
@@ -67,6 +134,44 @@ beforeEach(() => {
 });
 
 describe("native Archive V2 array prediction client", () => {
+  it("transports the ordered native multi-target conformal projection", async () => {
+    transport.postBoundedJson.mockResolvedValue(conformalPresentation());
+
+    const result = await getPersistedArchiveV2ConformalPresentation(conformalRequest);
+    expect(result.sample_ids).toEqual(["sample:two", "sample:one"]);
+    expect(result.target_names).toEqual(["protein", "moisture"]);
+    expect(result.guarantee.quantiles[0].radii).toHaveLength(2);
+    expect(transport.postBoundedJson).toHaveBeenCalledWith(
+      ARCHIVE_V2_CONFORMAL_PRESENTATION_ENDPOINT,
+      conformalRequest,
+      2 * 1024 * 1024,
+    );
+  });
+
+  it("refuses conformal cross-link, order, and dimension drift", async () => {
+    const base = conformalPresentation();
+    transport.postBoundedJson.mockResolvedValue({
+      ...base,
+      sample_ids: ["sample:one", "sample:two"],
+    });
+    await expect(getPersistedArchiveV2ConformalPresentation(conformalRequest)).rejects.toThrow(
+      "Invalid native conformal presentation response",
+    );
+
+    transport.postBoundedJson.mockResolvedValue({ ...base, archive_sha256: "0".repeat(64) });
+    await expect(getPersistedArchiveV2ConformalPresentation(conformalRequest)).rejects.toThrow(
+      "Invalid native conformal presentation response",
+    );
+
+    transport.postBoundedJson.mockResolvedValue({
+      ...base,
+      dimensions: { sample_count: 2, target_count: 1 },
+    });
+    await expect(getPersistedArchiveV2ConformalPresentation(conformalRequest)).rejects.toThrow(
+      "Invalid native conformal presentation response",
+    );
+  });
+
   it("loads a bounded Core-verified catalogue", async () => {
     const catalogue = { schema_version: 1, operation: "archive_v2_catalogue", workspace_id: "workspace-a", archives: [{ archive_id: "archive-a", archive_ref: "artifacts/model.n4a", archive_sha256: "a".repeat(64), n_features: 2, target_names: ["protein"], descriptor_fingerprint: "b".repeat(64), identity_status: "verified" }] };
     transport.getBoundedJson.mockResolvedValue(catalogue);

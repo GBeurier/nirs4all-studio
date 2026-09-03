@@ -1,0 +1,23 @@
+# train-test convention profile (sklearn-ish X_train/X_test/y_train/y_test).
+profile = "train-test"
+version = 1
+
+[roles]
+train_x = ["x_train", "xtrain", "train_x", "trainx"]
+test_x = ["x_test", "xtest", "test_x", "testx"]
+train_y = ["y_train", "ytrain", "train_y", "trainy"]
+test_y = ["y_test", "ytest", "test_y", "testy"]
+train_group = ["m_train", "mtrain", "meta_train", "metatrain"]
+test_group = ["m_test", "mtest", "meta_test", "metatest"]
+folds = ["folds", "fold", "cv", "splits"]
+
+[bare]
+x = ["x"]
+y = ["y"]
+meta = ["m", "meta", "metadata", "group"]
+
+[match]
+short_pattern_word_boundary = true
+case_insensitive = true
+recursive = false
+extensions = ["from-formats-registry"]

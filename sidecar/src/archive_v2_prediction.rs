@@ -27,8 +27,8 @@ use nirs4all::{
         NATIVE_PREDICTOR_CAPABILITY_PREDICT,
     },
     inspect_methods_archive_v2_predictors, load_archive_v2_bytes,
-    predict_methods_archive_v2_matrix, preflight_methods_archive_v2_library,
-    MethodsArchiveMatrixPredictRequest,
+    load_methods_archive_v2_conformal_presentation_v2, predict_methods_archive_v2_matrix,
+    preflight_methods_archive_v2_library, MethodsArchiveMatrixPredictRequest,
 };
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -36,6 +36,8 @@ use sha2::{Digest, Sha256};
 use std::os::unix::fs::MetadataExt as StdMetadataExt;
 
 pub const ARCHIVE_V2_PREDICTION_ROUTE: &str = "/api/predict/archive-v2";
+pub const ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE: &str =
+    "/api/predict/archive-v2/conformal-presentation";
 pub const MAX_PREDICTION_BODY_BYTES: usize = 64 * 1024;
 pub const MAX_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_PREDICTION_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
@@ -64,6 +66,14 @@ pub struct ArchiveV2PredictionRequest {
     pub sample_ids: Vec<String>,
     pub x: Vec<Vec<f64>>,
     pub expected_target_names: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchiveV2ConformalPresentationRequest {
+    pub workspace_id: String,
+    pub archive_ref: String,
+    pub archive_sha256: String,
+    pub presentation_fingerprint: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -280,6 +290,28 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
             ),
         })
     }
+
+    fn load_conformal_presentation(
+        &self,
+        archive_bytes: &[u8],
+        expected_sha256: &str,
+        presentation_json: &str,
+    ) -> Result<String, ArchiveV2PredictionExecutorError> {
+        let archive = load_archive_v2_bytes(archive_bytes)
+            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        if archive.reference().archive_sha256() != expected_sha256 {
+            return Err(ArchiveV2PredictionExecutorError::ExecutionFailed);
+        }
+        let presentation = load_methods_archive_v2_conformal_presentation_v2(
+            &archive,
+            presentation_json,
+            &self.methods.path,
+            &self.methods.sha256,
+        )
+        .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        serde_json::to_string(&presentation)
+            .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)
+    }
 }
 
 fn require_predictor_descriptor_contracts(
@@ -330,6 +362,18 @@ pub trait ArchiveV2PredictionExecutor: Debug + Send + Sync {
         &self,
         request: &ResolvedArchiveV2PredictionRequest,
     ) -> Result<ArchiveV2PredictionOutput, ArchiveV2PredictionExecutorError>;
+
+    /// Validate one persisted presentation against exact Archive V2 and N4MM
+    /// bytes through Core. Test/non-product executors refuse unless they
+    /// explicitly implement this surface.
+    fn load_conformal_presentation(
+        &self,
+        _archive_bytes: &[u8],
+        _expected_sha256: &str,
+        _presentation_json: &str,
+    ) -> Result<String, ArchiveV2PredictionExecutorError> {
+        Err(ArchiveV2PredictionExecutorError::ExecutionFailed)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -347,6 +391,8 @@ pub enum ArchiveV2PredictionError {
     ArchiveDigestMismatch,
     ExecutionFailed,
     InvalidExecutorOutput,
+    ConformalPresentationNotFound,
+    InvalidConformalPresentation,
     ResponseTooLarge,
 }
 
@@ -472,6 +518,39 @@ impl ArchiveV2PredictionRuntime {
             });
         }
         project_catalogue_response(workspace_id, &entries)
+    }
+
+    /// Read one content-addressed V2 presentation and have Core bind it back
+    /// to the exact registered archive and native model bytes before transport.
+    pub fn conformal_presentation(
+        &self,
+        request: &ArchiveV2ConformalPresentationRequest,
+        workspace_path: &Path,
+        store: &crate::conformal_store::ConformalPresentationStore,
+    ) -> Result<String, ArchiveV2PredictionError> {
+        if !self.is_selected() {
+            return Err(ArchiveV2PredictionError::ExecutorUnavailable);
+        }
+        let archive_bytes = read_archive_identity(
+            workspace_path,
+            &request.archive_ref,
+            &request.archive_sha256,
+        )?;
+        let presentation_json = store
+            .load_v2_json(&request.presentation_fingerprint)
+            .map_err(|error| match error {
+                crate::conformal_store::ConformalPresentationStoreError::NotFound(_) => {
+                    ArchiveV2PredictionError::ConformalPresentationNotFound
+                }
+                _ => ArchiveV2PredictionError::InvalidConformalPresentation,
+            })?;
+        self.executor
+            .load_conformal_presentation(
+                &archive_bytes,
+                &request.archive_sha256,
+                &presentation_json,
+            )
+            .map_err(|_| ArchiveV2PredictionError::InvalidConformalPresentation)
     }
 }
 
@@ -659,6 +738,75 @@ pub fn parse_request(body: &[u8]) -> Result<ArchiveV2PredictionRequest, ArchiveV
     })
 }
 
+/// Parse the closed request for an already-persisted conformal projection.
+pub fn parse_conformal_presentation_request(
+    body: &[u8],
+) -> Result<ArchiveV2ConformalPresentationRequest, ArchiveV2PredictionError> {
+    if body.len() > MAX_PREDICTION_BODY_BYTES {
+        return Err(ArchiveV2PredictionError::BodyTooLarge);
+    }
+    let value: Value =
+        serde_json::from_slice(body).map_err(|_| ArchiveV2PredictionError::InvalidJson)?;
+    let root = exact_object(
+        &value,
+        &[
+            "schema_version",
+            "operation",
+            "workspace_id",
+            "archive",
+            "presentation_fingerprint",
+        ],
+        "conformal request must contain only the frozen V2 fields",
+    )?;
+    if root.get("schema_version").and_then(Value::as_u64) != Some(2)
+        || root.get("operation").and_then(Value::as_str)
+            != Some("archive_v2_conformal_presentation")
+    {
+        return Err(ArchiveV2PredictionError::Unsupported(
+            "conformal presentation requires schema_version 2 and its exact operation",
+        ));
+    }
+    let workspace_id = required_id(root, "workspace_id")?;
+    let archive = exact_object(
+        root.get("archive")
+            .ok_or(ArchiveV2PredictionError::InvalidShape(
+                "archive is required",
+            ))?,
+        &["ref", "sha256"],
+        "archive must contain only ref and sha256",
+    )?;
+    let archive_ref = archive
+        .get("ref")
+        .and_then(Value::as_str)
+        .filter(|value| valid_archive_ref(value))
+        .ok_or(ArchiveV2PredictionError::InvalidShape(
+            "archive.ref must be a safe relative .n4a path",
+        ))?
+        .to_owned();
+    let archive_sha256 = archive
+        .get("sha256")
+        .and_then(Value::as_str)
+        .filter(|value| valid_sha256(value))
+        .ok_or(ArchiveV2PredictionError::InvalidShape(
+            "archive.sha256 must be lowercase hexadecimal SHA-256",
+        ))?
+        .to_owned();
+    let presentation_fingerprint = root
+        .get("presentation_fingerprint")
+        .and_then(Value::as_str)
+        .filter(|value| valid_sha256(value))
+        .ok_or(ArchiveV2PredictionError::InvalidShape(
+            "presentation_fingerprint must be lowercase hexadecimal SHA-256",
+        ))?
+        .to_owned();
+    Ok(ArchiveV2ConformalPresentationRequest {
+        workspace_id,
+        archive_ref,
+        archive_sha256,
+        presentation_fingerprint,
+    })
+}
+
 fn exact_object<'a>(
     value: &'a Value,
     fields: &[&str],
@@ -771,7 +919,7 @@ fn valid_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
 }
 
-pub(crate) fn valid_workspace_id(value: &str) -> bool {
+pub fn valid_workspace_id(value: &str) -> bool {
     valid_id(value)
 }
 
@@ -1463,7 +1611,7 @@ mod tests {
         );
         let stacked = descriptor(NATIVE_PREDICTOR_CAPABILITY_PREDICT, 1, 2, Value::Null);
         assert_eq!(
-            require_predictor_descriptor_contracts(&[v2.clone(), stacked], 2, 2),
+            require_predictor_descriptor_contracts(&[v2, stacked], 2, 2),
             Ok(())
         );
         let wrong_features = descriptor(NATIVE_PREDICTOR_CAPABILITY_PREDICT, 3, 2, Value::Null);
@@ -1530,7 +1678,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "immutable nirs4all-core 46a51a4 snapshot exposing nirs4all 0.3.25 and n4m 0.1.4"
+            "immutable nirs4all-core 94d712f snapshot exposing nirs4all 0.3.25 and n4m 0.1.4"
         );
     }
 }

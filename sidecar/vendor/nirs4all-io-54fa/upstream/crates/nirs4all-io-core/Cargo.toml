@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: CECILL-2.1 OR AGPL-3.0-or-later
+[package]
+name = "nirs4all-io-core"
+description = "Pure logic for nirs4all-io: DatasetSpec IR, selectors, conventions, inference over a neutral file/table description, canonical JSON. No file IO, no formats dep, no nirs4all dep."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+regex.workspace = true
+toml.workspace = true
+indexmap.workspace = true
+csv.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+proptest = "1"
