@@ -1,5 +1,5 @@
 name: Build exact native Methods runtime
-description: Build, test, and export the content-addressed nirs4all-methods ABI 2.3 library
+description: Build, test, and export the content-addressed nirs4all-methods ABI 2.5 library
 
 inputs:
   platform:
@@ -16,7 +16,7 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: GBeurier/nirs4all-methods
-        ref: 4983c9a1df39d430a78c615bda209d3353514aa1
+        ref: 48ad1e5a50844f68c2b99e93b02ad6a3b491c07b
         path: _deps/nirs4all-methods
         persist-credentials: false
 
