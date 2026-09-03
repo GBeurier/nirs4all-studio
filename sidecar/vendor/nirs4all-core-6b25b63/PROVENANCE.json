@@ -6,12 +6,11 @@
   "included_crate_trees": {
     "nirs4all": "d7a696b41ee0197a970d2a5dad9ae5a371a755a2"
   },
-  "selected_crate_package": {
+  "selected_crate_snapshot": {
     "name": "nirs4all",
     "version": "0.3.25",
     "files": 27,
-    "digest_scope": "git archive --format=tar 6b25b63bb09adfe3c4dae8ffacc90d09a1a81e16 bindings/rust/nirs4all (the registry .crate is held until its unpublished exact dependencies exist)",
-    "sha256": "9734d9b17ce502a1099fd3d5224194a7439ca3df3910421938bb310788098edc"
+    "sha256": "e28b4792f5a8c0763f6bab6944f3cf5a3d84b5de249d70afcc12a1ac29315cf6"
   },
   "snapshot_policy": "The complete selected upstream Git tree is copied byte-for-byte under upstream/: workspace manifests and lockfile, every binding and source tree, tests, fixtures, scripts, documentation, assets, notices, and licence texts.",
   "inventory": {

@@ -1788,7 +1788,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "immutable nirs4all-core 94d712f snapshot exposing nirs4all 0.3.25 and n4m 0.1.4"
+            "immutable nirs4all-core 6b25b63 snapshot exposing nirs4all 0.3.25 and n4m 0.1.4"
         );
     }
 }

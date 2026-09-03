@@ -78,7 +78,7 @@
     "python_http_owner": false,
     "fastapi_fallback": false,
     "dag_ml_envelope": false,
-    "core": "immutable nirs4all-core 94d712f snapshot exposing nirs4all 0.3.25 and n4m 0.1.4",
+    "core": "immutable nirs4all-core 6b25b63 snapshot exposing nirs4all 0.3.25 and n4m 0.1.4",
     "libn4m_identity": "product-owned absolute non-symlink path plus size plus SHA-256 plus ABI 2.5; never request-controlled",
     "core_preflight": "preflight_methods_archive_v2_library snapshots the attested bytes and checks the real ABI before capability selection",
     "predictor_preflight": "Core derives every native predictor descriptor, including the content-bound N4MM v2 pipeline fingerprint, from inventoried bytes before calculation; Studio requires non-empty PREDICT capability coverage and at least one descriptor matching request feature/target dimensions, passes X raw without preprocessing, and leaves Core replay authoritative for pipeline ownership, topology, and chaining",

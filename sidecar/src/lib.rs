@@ -4331,6 +4331,18 @@ fn valid_json_value(value: &Value, depth: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dag_ml_core::{
+        BundleId, ConformalMultiTargetPolicy, ConformalSmallSamplePolicy, DataBinding, GraphSpec,
+        RunId, TrainingDataIdentity, TrainingRequest, TRAINING_REQUEST_SCHEMA_VERSION,
+    };
+    use nirs4all::{
+        train_dataset_package_methods_conformal_archive_v2, DatasetPackage,
+        DatasetPackageMethodsConformalArchiveV2Request, DatasetPackageMethodsProvider,
+    };
+    use nirs4all_io_data002::core::materialize::{
+        AssembledDataset, Cell, Column, FoldProvenance, Frame, IdentityProvenance, Matrix,
+        PartitionBlock,
+    };
     use sha2::{Digest, Sha256};
     use std::{
         fs,
@@ -4572,6 +4584,288 @@ mod tests {
             "studio-sidecar-{name}-{}-{nonce}",
             std::process::id()
         ))
+    }
+
+    fn conformal_witness_matrix(rows: usize, columns: usize, values: &[f32]) -> Matrix {
+        Matrix {
+            data: values.to_vec(),
+            n_rows: rows,
+            n_cols: columns,
+        }
+    }
+
+    fn conformal_witness_package(identity_prefix: &str, target_offset: f32) -> DatasetPackage {
+        let qualified = |kind: &str, index: usize| {
+            if identity_prefix.is_empty() {
+                format!("{kind}.{index}")
+            } else {
+                format!("{identity_prefix}.{kind}.{index}")
+            }
+        };
+        let block = PartitionBlock {
+            n_samples: 8,
+            source_ids: vec!["spectra".into()],
+            x: vec![conformal_witness_matrix(
+                8,
+                3,
+                &[
+                    1.0, 2.0, 3.0, 2.0, 4.0, 6.0, 3.0, 6.0, 9.0, 4.0, 8.0, 12.0, 5.0, 10.0, 15.0,
+                    6.0, 12.0, 18.0, 7.0, 14.0, 21.0, 8.0, 16.0, 24.0,
+                ],
+            )],
+            feature_headers: vec![vec!["1000".into(), "1010".into(), "1020".into()]],
+            header_units: vec!["nm".into()],
+            signal_types: vec![Some("absorbance".into())],
+            processings: vec![vec![]],
+            y: Some(conformal_witness_matrix(
+                8,
+                2,
+                &[
+                    3.0 + target_offset,
+                    1.5 + target_offset,
+                    5.0 + target_offset,
+                    2.5 + target_offset,
+                    7.0 + target_offset,
+                    3.5 + target_offset,
+                    9.0 + target_offset,
+                    4.5 + target_offset,
+                    11.0 + target_offset,
+                    5.5 + target_offset,
+                    13.0 + target_offset,
+                    6.5 + target_offset,
+                    15.0 + target_offset,
+                    7.5 + target_offset,
+                    17.0 + target_offset,
+                    8.5 + target_offset,
+                ],
+            )),
+            y_headers: vec!["protein".into(), "moisture".into()],
+            y_categorical: Default::default(),
+            metadata: Some(Frame::from_columns(
+                vec![
+                    Column::from_cells(
+                        "sample_id",
+                        (1..=8)
+                            .map(|index| Cell::Str(qualified("sample", index)))
+                            .collect(),
+                    ),
+                    Column::from_cells(
+                        "observation_id",
+                        (1..=8)
+                            .map(|index| Cell::Str(qualified("observation", index)))
+                            .collect(),
+                    ),
+                    Column::from_cells(
+                        "group_id",
+                        (1..=8)
+                            .map(|index| {
+                                let group = if index <= 4 { "batch.a" } else { "batch.b" };
+                                Cell::Str(if identity_prefix.is_empty() {
+                                    group.into()
+                                } else {
+                                    format!("{identity_prefix}.{group}")
+                                })
+                            })
+                            .collect(),
+                    ),
+                ],
+                "text",
+            )),
+            weights: None,
+            weights_header: None,
+        };
+        let mut assembled = AssembledDataset {
+            name: format!("studio-conformal-{identity_prefix}"),
+            task_type: "regression".into(),
+            signal_type: "absorbance".into(),
+            n_sources: 1,
+            blocks: Default::default(),
+            folds: vec![
+                (vec![4, 5, 6, 7], vec![0, 1, 2, 3]),
+                (vec![0, 1, 2, 3], vec![4, 5, 6, 7]),
+            ],
+            fold_provenance: vec![
+                FoldProvenance {
+                    train_observation_ids: (5..=8)
+                        .map(|index| qualified("observation", index))
+                        .collect(),
+                    validation_observation_ids: (1..=4)
+                        .map(|index| qualified("observation", index))
+                        .collect(),
+                },
+                FoldProvenance {
+                    train_observation_ids: (1..=4)
+                        .map(|index| qualified("observation", index))
+                        .collect(),
+                    validation_observation_ids: (5..=8)
+                        .map(|index| qualified("observation", index))
+                        .collect(),
+                },
+            ],
+            repetition: None,
+            identity: IdentityProvenance {
+                source_ids: vec!["spectra".into()],
+                sample_id: Some("sample_id".into()),
+                observation_id: Some("observation_id".into()),
+                repetition_id: None,
+                group_id: Some("group_id".into()),
+            },
+            aggregate: None,
+            warnings: vec![],
+            audits: vec![],
+        };
+        assembled.blocks.insert("train".into(), block);
+        DatasetPackage::from_assembled(&assembled)
+    }
+
+    fn conformal_witness_training_request(
+        provider: &DatasetPackageMethodsProvider,
+    ) -> TrainingRequest {
+        let envelope = provider.external_envelope();
+        let binding: DataBinding = serde_json::from_value(json!({
+            "node_id": "model:pls",
+            "input_name": "x",
+            "request_id": "io:studio-live:spectra",
+            "schema_fingerprint": envelope.schema_fingerprint,
+            "plan_fingerprint": envelope.plan_fingerprint,
+            "relation_fingerprint": envelope.relation_fingerprint,
+            "output_representation": "tabular_numeric",
+            "feature_set_id": "spectra",
+            "source_ids": ["spectra"],
+            "require_relations": true,
+            "view_policy": {
+                "fit_partition": "fold_train",
+                "predict_partition": "fold_validation",
+                "include_augmented_train": false,
+                "include_augmented_validation": false,
+                "include_excluded": false,
+                "require_sample_ids": true
+            },
+            "metadata": {}
+        }))
+        .unwrap();
+        let identity = TrainingDataIdentity::from_binding_envelope(&binding, envelope).unwrap();
+        let graph: GraphSpec = serde_json::from_value(json!({
+            "id": "studio-live-methods-pls",
+            "interface": {
+                "inputs": [{"name": "x", "kind": "data", "representation": "tabular_numeric", "cardinality": "one", "description": "selected IO numeric source"}],
+                "outputs": [{"name": "prediction", "kind": "prediction", "representation": null, "cardinality": "one", "description": "PLS prediction"}]
+            },
+            "nodes": [{
+                "id": "model:pls", "kind": "model", "operator": "pls",
+                "params": {"n_components": 1},
+                "ports": {
+                    "inputs": [{"name": "x", "kind": "data", "representation": "tabular_numeric", "cardinality": "one", "description": ""}],
+                    "outputs": [{"name": "oof", "kind": "prediction", "representation": null, "cardinality": "one", "description": ""}]
+                },
+                "metadata": {}, "seed_label": null
+            }],
+            "edges": [], "search_space_fingerprint": null, "metadata": {}
+        }))
+        .unwrap();
+        let campaign = serde_json::from_value(json!({
+            "id": "campaign:studio-live",
+            "root_seed": 91,
+            "leakage_policy": {
+                "split_unit": "group", "forbid_origin_cross_fold": true,
+                "allow_observation_split_with_shared_target": false,
+                "require_group_ids": true, "unsafe_flags": []
+            },
+            "aggregation_policy": {
+                "aggregation_level": "sample", "method": "mean", "weights": "none",
+                "emit_parallel_metrics": true, "selection_metric_level": "sample",
+                "store_raw_predictions": true, "store_aggregated_predictions": true
+            },
+            "split_invocation": {
+                "id": "io:folds", "controller_id": null,
+                "leakage_policy": {
+                    "split_unit": "group", "forbid_origin_cross_fold": true,
+                    "allow_observation_split_with_shared_target": false,
+                    "require_group_ids": true, "unsafe_flags": []
+                },
+                "params": {"kind": "precomputed"},
+                "fold_set": {
+                    "id": "io:folds",
+                    "sample_ids": ["sample.1", "sample.2", "sample.3", "sample.4", "sample.5", "sample.6", "sample.7", "sample.8"],
+                    "folds": [
+                        {"fold_id": "io.fold.0", "train_sample_ids": ["sample.5", "sample.6", "sample.7", "sample.8"], "validation_sample_ids": ["sample.1", "sample.2", "sample.3", "sample.4"], "metadata": {}},
+                        {"fold_id": "io.fold.1", "train_sample_ids": ["sample.1", "sample.2", "sample.3", "sample.4"], "validation_sample_ids": ["sample.5", "sample.6", "sample.7", "sample.8"], "metadata": {}}
+                    ],
+                    "sample_groups": {
+                        "sample.1": "batch.a", "sample.2": "batch.a", "sample.3": "batch.a", "sample.4": "batch.a",
+                        "sample.5": "batch.b", "sample.6": "batch.b", "sample.7": "batch.b", "sample.8": "batch.b"
+                    }
+                }
+            },
+            "generation": {"strategy": "none", "dimensions": [], "max_variants": 1},
+            "shape_plans": {
+                "model:pls": {
+                    "node_id": "model:pls", "input_granularity": "sample", "target_granularity": "sample",
+                    "fit_rows": "fold_train", "predict_rows": "fold_validation", "feature_namespace": "spectra",
+                    "feature_schema_fingerprint": null, "target_space": "raw",
+                    "aggregation_policy": {
+                        "aggregation_level": "sample", "method": "mean", "weights": "none",
+                        "emit_parallel_metrics": true, "selection_metric_level": "sample",
+                        "store_raw_predictions": true, "store_aggregated_predictions": true
+                    },
+                    "augmentation_policy": {
+                        "sample_scope": "train_only", "feature_scope": "train_only",
+                        "require_origin_id": true, "inherit_group": true, "inherit_target": true
+                    },
+                    "selection_policy": {"scope": "none", "store_masks": true, "allow_schema_mismatch_on_join": false}
+                }
+            },
+            "data_bindings": {"model:pls": [binding]},
+            "metadata": {}
+        }))
+        .unwrap();
+        let controller_manifests = serde_json::from_value(json!([{
+            "controller_id": "controller:methods.pls", "controller_version": "libn4m-2.5",
+            "operator_kind": "model", "priority": 0,
+            "supported_phases": ["FIT_CV", "REFIT", "PREDICT"],
+            "input_ports": [{"name": "x", "kind": "data", "representation": "tabular_numeric", "cardinality": "one", "description": ""}],
+            "output_ports": [{"name": "oof", "kind": "prediction", "representation": null, "cardinality": "one", "description": ""}],
+            "data_requirements": null,
+            "capabilities": ["deterministic", "thread_safe", "process_safe", "emits_predictions", "emits_artifacts", "stateful", "supports_portable_full_refit"],
+            "fit_scope": "fold_train", "rng_policy": "uses_core_seed", "artifact_policy": "serializable"
+        }]))
+        .unwrap();
+        let options = serde_json::from_value(json!({
+            "refit": true, "refit_strategy": "refit_one", "seed": 91,
+            "selection": {
+                "id": "selection:rmse", "metric": {"name": "rmse", "objective": "minimize"},
+                "required_metric_level": "sample", "require_finite": true, "evaluation_scope": "oof"
+            },
+            "selection_output_id": "output:prediction",
+            "outputs": [{
+                "output_id": "output:prediction", "node_id": "model:pls", "port_name": "oof",
+                "prediction_level": "sample", "unit_level": "physical_sample",
+                "prediction_kind": "regression_point", "target_names": ["protein", "moisture"],
+                "target_units": [null, null], "class_labels": [[], []],
+                "output_order": "target_order", "target_space": "raw"
+            }],
+            "scheduler": {"kind": "sequential", "backend": null, "workers": 1},
+            "resources": {"cpu_threads": 1, "memory_bytes": null, "gpu_devices": [], "wall_time_ms": null},
+            "artifacts": {"cv_artifacts": "discard", "prediction_caches": "retain", "fitted_artifacts": "portable_required"}
+        }))
+        .unwrap();
+        let mut request = TrainingRequest {
+            schema_version: TRAINING_REQUEST_SCHEMA_VERSION,
+            request_id: "training:studio-live".into(),
+            plan_id: "plan:studio-live".into(),
+            graph,
+            campaign,
+            controller_manifests,
+            data_identities: vec![identity],
+            parameter_patches: vec![],
+            patch_policies: vec![],
+            influence_requirements: vec![],
+            training_losses: vec![],
+            options,
+            request_fingerprint: "0".repeat(64),
+        };
+        request.request_fingerprint = request.compute_fingerprint().unwrap();
+        request
     }
 
     fn linked_workspace_record(id: &str, path: &Path, active: bool, runs_count: usize) -> Value {
@@ -7111,6 +7405,188 @@ mod tests {
             wrong_archive.to_string().as_bytes(),
         );
         assert_eq!(rejected.status, 404);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires N4A_RT_PRED_METHODS_LIBRARY and N4A_RT_PRED_METHODS_SHA256"]
+    fn archive_v2_live_conformal_producer_store_route_and_renderer_contract() {
+        let methods_path = PathBuf::from(
+            std::env::var("N4A_RT_PRED_METHODS_LIBRARY")
+                .expect("N4A_RT_PRED_METHODS_LIBRARY must name the exact libn4m witness"),
+        );
+        let methods_sha256 = std::env::var("N4A_RT_PRED_METHODS_SHA256")
+            .expect("N4A_RT_PRED_METHODS_SHA256 must attest the libn4m witness");
+        let methods_size = fs::metadata(&methods_path).unwrap().len();
+        let root = test_directory("archive-v2-live-conformal-producer");
+        let config = root.join("config");
+        let workspace = root.join("workspace");
+        let archive = workspace.join("artifacts/models/live-conformal.n4a");
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(archive.parent().unwrap()).unwrap();
+
+        let training_package = conformal_witness_package("", 0.0);
+        let calibration_package = conformal_witness_package("calibration", 0.25);
+        let provider = DatasetPackageMethodsProvider::new(&training_package, "spectra").unwrap();
+        let training_request = conformal_witness_training_request(&provider);
+        drop(provider);
+        let produced = train_dataset_package_methods_conformal_archive_v2(
+            DatasetPackageMethodsConformalArchiveV2Request {
+                training_dataset: &training_package,
+                training_source_id: "spectra",
+                calibration_dataset: &calibration_package,
+                calibration_source_id: "spectra",
+                training_request: &training_request,
+                coverages: vec![0.75],
+                multi_target_policy: ConformalMultiTargetPolicy::Marginal,
+                small_sample_policy: ConformalSmallSamplePolicy::Error,
+                outcome_id: "outcome:studio.live.conformal",
+                training_run_id: RunId::new("run:studio.live.train").unwrap(),
+                calibration_run_id: RunId::new("run:studio.live.calibrate").unwrap(),
+                calibration_replay_request_id: "request:studio.live.calibrate",
+                calibration_replay_outcome_id: "outcome:studio.live.calibrate",
+                bundle_id: BundleId::new("bundle:studio.live").unwrap(),
+                package_id: "predictor:studio.live.conformal",
+                archive_id: "archive:studio.live.conformal",
+                archive_path: &archive,
+                methods_library_path: &methods_path,
+            },
+        )
+        .unwrap();
+        assert_eq!(produced.calibration.target_names, ["protein", "moisture"]);
+        assert_eq!(produced.calibration_replay.input_data_identities.len(), 1);
+        drop(produced);
+
+        let archive_bytes = fs::read(&archive).unwrap();
+        let archive_sha256 = format!("{:x}", Sha256::digest(&archive_bytes));
+        fs::write(
+            workspace.join("store.sqlite"),
+            include_bytes!("../tests/fixtures/workspace_store_v5.sqlite"),
+        )
+        .unwrap();
+        let connection = rusqlite::Connection::open(workspace.join("store.sqlite")).unwrap();
+        connection.execute(
+            "INSERT INTO artifacts (artifact_id, artifact_path, content_hash, format, size_bytes, ref_count) VALUES (?, ?, ?, 'n4a', ?, 1)",
+            rusqlite::params![
+                "artifact:live-conformal",
+                "models/live-conformal.n4a",
+                archive_sha256,
+                i64::try_from(archive_bytes.len()).unwrap()
+            ],
+        )
+        .unwrap();
+        drop(connection);
+        let store_sha256 = format!(
+            "{:x}",
+            Sha256::digest(fs::read(workspace.join("store.sqlite")).unwrap())
+        );
+        let mut workspace_record = linked_workspace_record("workspace-live", &workspace, true, 0);
+        workspace_record["store_content_sha256"] = json!(store_sha256);
+        fs::write(
+            config.join("app_settings.json"),
+            json!({"linked_workspaces": [workspace_record]}).to_string(),
+        )
+        .unwrap();
+
+        let executor = archive_v2_prediction::CoreArchiveV2PredictionExecutor::acquire(
+            archive_v2_prediction::PackagedMethodsLibraryIdentity {
+                path: methods_path,
+                size: methods_size,
+                sha256: methods_sha256,
+                abi_major: 2,
+                abi_minor: 5,
+            },
+        )
+        .unwrap();
+        let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
+            Arc::new(executor),
+            &config,
+        );
+        let projection_request = json!({
+            "schema_version": 1,
+            "operation": "archive_v2_predict",
+            "workspace_id": "workspace-live",
+            "archive": {
+                "ref": "artifacts/models/live-conformal.n4a",
+                "sha256": archive_sha256,
+            },
+            "input": {
+                "kind": "array",
+                "sample_ids": ["production:two", "production:one"],
+                "x": [[9.0, 18.0, 27.0], [10.0, 20.0, 30.0]],
+                "expected_target_names": ["protein", "moisture"]
+            },
+            "execution": {"engine": "core_rust_methods", "allow_fallback": false}
+        });
+        let projection = route_request_with_body(
+            &mut state,
+            "POST",
+            ARCHIVE_V2_CONFORMAL_PROJECTION_ROUTE,
+            projection_request.to_string().as_bytes(),
+        );
+        assert_eq!(projection.status, 200, "{}", projection.body);
+        let projection: Value = serde_json::from_str(&projection.body).unwrap();
+        assert_eq!(projection["archive_sha256"], archive_sha256);
+        assert_eq!(
+            projection["sample_ids"],
+            json!(["production:two", "production:one"])
+        );
+        assert_eq!(projection["target_names"], json!(["protein", "moisture"]));
+        let fingerprint = projection["presentation_fingerprint"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert_eq!(fingerprint.len(), 64);
+
+        let persisted_json = ConformalPresentationStore::new(&config)
+            .load_v2_json(&fingerprint)
+            .unwrap();
+        let persisted: Value = serde_json::from_str(&persisted_json).unwrap();
+        assert_eq!(persisted["presentation_fingerprint"], fingerprint);
+        assert_eq!(persisted["archive_sha256"], archive_sha256);
+        assert_eq!(
+            persisted["dimensions"],
+            json!({"sample_count": 2, "target_count": 2})
+        );
+        assert_eq!(
+            persisted["interval_block"]["intervals"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            persisted["interval_block"]["intervals"][0]["cells"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+
+        let presentation_request = json!({
+            "schema_version": 2,
+            "operation": "archive_v2_conformal_presentation",
+            "workspace_id": "workspace-live",
+            "archive": {
+                "ref": "artifacts/models/live-conformal.n4a",
+                "sha256": archive_sha256,
+            },
+            "presentation_fingerprint": fingerprint,
+        });
+        let presentation = route_request_with_body(
+            &mut state,
+            "POST",
+            ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE,
+            presentation_request.to_string().as_bytes(),
+        );
+        assert_eq!(presentation.status, 200, "{}", presentation.body);
+        let presentation: Value = serde_json::from_str(&presentation.body).unwrap();
+        assert_eq!(presentation["presentation_fingerprint"], fingerprint);
+        assert_eq!(presentation["sample_ids"], persisted["sample_ids"]);
+        assert_eq!(presentation["target_names"], persisted["target_names"]);
+        assert_eq!(presentation["dimensions"], persisted["dimensions"]);
+        assert_eq!(presentation["interval_block"], persisted["interval_block"]);
+        assert_eq!(presentation["guarantee"], persisted["guarantee"]);
         fs::remove_dir_all(root).unwrap();
     }
 
