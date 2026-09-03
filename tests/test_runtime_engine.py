@@ -56,7 +56,7 @@ def test_runtime_engine_capabilities_reports_explicit_support(monkeypatch):
 
     assert capabilities["supports_explicit_run_engine"] is True
     assert capabilities["supported_engines"] == ["legacy", "dag-ml"]
-    assert capabilities["default_engine"] == "legacy"
+    assert capabilities["default_engine"] == "dag-ml"
 
 
 def test_observe_engine_no_fallback_records_resolved_engine():

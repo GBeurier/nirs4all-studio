@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("runtime backend preference", () => {
-  it("defaults to the library backend when no preference exists", () => {
+  it("defaults to native DAG-ML with fallback disabled", () => {
     expect(getRuntimeBackendPreference()).toEqual(
       DEFAULT_RUNTIME_BACKEND_PREFERENCE,
     );
@@ -50,7 +50,7 @@ describe("runtime backend preference", () => {
         engine: null,
         allowFallback: true,
       }),
-    ).toEqual(DEFAULT_RUNTIME_BACKEND_PREFERENCE);
+    ).toEqual({ engine: null, allowFallback: false });
   });
 
   it("ignores corrupted storage and can clear the preference", () => {
