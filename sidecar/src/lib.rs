@@ -44,7 +44,7 @@ pub mod workspace_store;
 use archive_v2_prediction::{
     parse_conformal_presentation_request, parse_request as parse_archive_v2_prediction_request,
     ArchiveV2PredictionError, ArchiveV2PredictionRuntime, ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE,
-    ARCHIVE_V2_PREDICTION_ROUTE,
+    ARCHIVE_V2_CONFORMAL_PROJECTION_ROUTE, ARCHIVE_V2_PREDICTION_ROUTE,
 };
 use conformal_store::ConformalPresentationStore;
 use execution_job_records::{
@@ -922,6 +922,14 @@ fn route_archive_v2_prediction_match(
             archive_v2_prediction_response(state, body)
         })
         .or_else(|| {
+            (path == ARCHIVE_V2_CONFORMAL_PROJECTION_ROUTE).then(|| {
+                if method != "POST" {
+                    return method_not_allowed(method, path, "POST");
+                }
+                archive_v2_conformal_projection_response(state, body)
+            })
+        })
+        .or_else(|| {
             (path == ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE).then(|| {
                 if method != "POST" {
                     return method_not_allowed(method, path, "POST");
@@ -929,6 +937,52 @@ fn route_archive_v2_prediction_match(
                 archive_v2_conformal_presentation_response(state, body)
             })
         })
+}
+
+fn archive_v2_conformal_projection_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    if !state.archive_v2_prediction.is_selected() {
+        return archive_v2_prediction_error_response(
+            &ArchiveV2PredictionError::ExecutorUnavailable,
+        );
+    }
+    let request = match parse_archive_v2_prediction_request(body) {
+        Ok(request) => request,
+        Err(error) => return archive_v2_prediction_error_response(&error),
+    };
+    let Ok(Some(workspace)) = state
+        .app_settings
+        .linked_workspace_access(&request.workspace_id)
+    else {
+        return archive_v2_prediction_error_response(
+            &ArchiveV2PredictionError::WorkspaceUnavailable,
+        );
+    };
+    let Some(artifact_path) = request.archive_ref.strip_prefix("artifacts/") else {
+        return archive_v2_prediction_error_response(&ArchiveV2PredictionError::ArchiveNotFound);
+    };
+    let authorized = workspace
+        .store()
+        .and_then(|store| {
+            workspace_store::read_archive_v2_registrations_from_connection(store).ok()
+        })
+        .is_some_and(|registrations| {
+            registrations.iter().any(|registration| {
+                registration.artifact_path == artifact_path
+                    && registration.content_hash == request.archive_sha256
+            })
+        });
+    if !authorized {
+        return archive_v2_prediction_error_response(&ArchiveV2PredictionError::ArchiveNotFound);
+    }
+    let presentations = ConformalPresentationStore::new(state.app_settings.config_dir());
+    match state.archive_v2_prediction.execute_conformal_projection(
+        request,
+        workspace.path(),
+        &presentations,
+    ) {
+        Ok(response) => HttpResponse::json(200, response),
+        Err(error) => archive_v2_prediction_error_response(&error),
+    }
 }
 
 fn archive_v2_catalogue_workspace_id(path: &str) -> Option<&str> {
@@ -4305,6 +4359,23 @@ mod tests {
                 archive_v2_prediction::ArchiveV2PredictionExecutorError::ExecutionFailed
             })
         }
+
+        fn execute_conformal(
+            &self,
+            request: &archive_v2_prediction::ResolvedArchiveV2PredictionRequest,
+        ) -> Result<
+            nirs4all::dag_ml::ConformalPresentationV2,
+            archive_v2_prediction::ArchiveV2PredictionExecutorError,
+        > {
+            if request.archive_bytes != b"fake-archive-v2" {
+                return Err(
+                    archive_v2_prediction::ArchiveV2PredictionExecutorError::ExecutionFailed,
+                );
+            }
+            Ok(conformal_store::tests::presentation_v2(
+                &request.request.archive_sha256,
+            ))
+        }
     }
 
     #[derive(Debug)]
@@ -6657,14 +6728,43 @@ mod tests {
             json!({ "linked_workspaces": [record] }).to_string(),
         )
         .unwrap();
-        let presentation = conformal_store::tests::presentation_v2(&archive_sha256);
-        ConformalPresentationStore::new(&config)
-            .store_v2(&presentation)
-            .unwrap();
         let mut state = SidecarState::with_archive_v2_prediction_executor_and_app_settings_dir(
             Arc::new(SelectedArchiveV2TestExecutor),
             &config,
         );
+        let projection_request = json!({
+            "schema_version": 1,
+            "operation": "archive_v2_predict",
+            "workspace_id": "workspace-a",
+            "archive": {
+                "ref": "artifacts/models/model.n4a",
+                "sha256": archive_sha256,
+            },
+            "input": {
+                "kind": "array",
+                "sample_ids": ["sample:two", "sample:one"],
+                "x": [[1.0, 2.0], [3.0, 4.0]],
+                "expected_target_names": ["protein", "moisture"]
+            },
+            "execution": {"engine": "core_rust_methods", "allow_fallback": false}
+        });
+        let projection = route_request_with_body(
+            &mut state,
+            "POST",
+            ARCHIVE_V2_CONFORMAL_PROJECTION_ROUTE,
+            projection_request.to_string().as_bytes(),
+        );
+        assert_eq!(projection.status, 200, "{}", projection.body);
+        let projection: Value = serde_json::from_str(&projection.body).unwrap();
+        assert_eq!(projection["operation"], "archive_v2_conformal_projection");
+        assert_eq!(
+            projection["sample_ids"],
+            json!(["sample:two", "sample:one"])
+        );
+        let fingerprint = projection["presentation_fingerprint"]
+            .as_str()
+            .unwrap()
+            .to_owned();
         let body = json!({
             "schema_version": 2,
             "operation": "archive_v2_conformal_presentation",
@@ -6673,7 +6773,7 @@ mod tests {
                 "ref": "artifacts/models/model.n4a",
                 "sha256": archive_sha256,
             },
-            "presentation_fingerprint": presentation.presentation_fingerprint,
+            "presentation_fingerprint": fingerprint,
         });
 
         let response = route_request_with_body(

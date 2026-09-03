@@ -11,15 +11,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ArchiveV2ArrayPredictionResponse } from "@/types/archiveV2Prediction";
+import type {
+  ArchiveV2ArrayPredictionResponse,
+  ArchiveV2ConformalPresentation,
+} from "@/types/archiveV2Prediction";
 
 interface ArchiveV2PredictionResultsProps {
   result: ArchiveV2ArrayPredictionResponse;
+  conformal: ArchiveV2ConformalPresentation | null;
+  conformalError: string | null;
   onReset: () => void;
 }
 
 export function ArchiveV2PredictionResults({
   result,
+  conformal,
+  conformalError,
   onReset,
 }: ArchiveV2PredictionResultsProps) {
   return (
@@ -42,7 +49,7 @@ export function ArchiveV2PredictionResults({
           {result.archive_id} · {result.archive_sha256}
         </p>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-6">
         <Table>
           <TableHeader>
             <TableRow>
@@ -68,6 +75,77 @@ export function ArchiveV2PredictionResults({
             ))}
           </TableBody>
         </Table>
+        {conformal ? (
+          <div className="space-y-4" data-testid="conformal-presentation">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary">Persisted conformal intervals</Badge>
+              <Badge variant="outline">
+                {conformal.guarantee.multi_target_policy}
+              </Badge>
+              <Badge variant="outline">
+                {conformal.guarantee.calibration_sample_count} calibration samples
+              </Badge>
+              <Badge variant="outline">
+                small sample: {conformal.guarantee.small_sample_policy}
+              </Badge>
+            </div>
+            <p className="break-all font-mono text-xs text-muted-foreground">
+              Presentation {conformal.presentation_fingerprint}
+            </p>
+            {conformal.interval_block.intervals.map((interval) => (
+              <div key={interval.coverage} className="space-y-2">
+                <p className="text-sm font-semibold">
+                  Coverage {interval.coverage}
+                </p>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Sample</TableHead>
+                      {conformal.target_names.map((target) => (
+                        <TableHead key={target} className="text-right">
+                          {target} interval
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {conformal.sample_ids.map((sampleId, rowIndex) => (
+                      <TableRow key={sampleId}>
+                        <TableCell className="font-mono text-xs">
+                          {sampleId}
+                        </TableCell>
+                        {interval.cells[rowIndex].map((cell, columnIndex) => (
+                          <TableCell
+                            key={conformal.target_names[columnIndex]}
+                            className="text-right font-mono"
+                          >
+                            {cell.status === "unbounded"
+                              ? "Unbounded"
+                              : `[${cell.lower.toPrecision(8)}, ${cell.upper.toPrecision(8)}]`}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ))}
+            <div className="space-y-1 text-xs text-muted-foreground">
+              {conformal.guarantee.quantiles.map((quantile) => (
+                <p key={quantile.coverage}>
+                  Coverage {quantile.coverage}: rank {quantile.rank}; radii{" "}
+                  {quantile.radii.map((radius) =>
+                    radius.status === "unbounded" ? "unbounded" : radius.value,
+                  ).join(", ")}
+                </p>
+              ))}
+            </div>
+          </div>
+        ) : conformalError ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            No validated conformal intervals were presented. {conformalError}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );

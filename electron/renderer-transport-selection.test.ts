@@ -78,6 +78,7 @@ describe("renderer transport preselection", () => {
       { kind: "http" as const, method: "POST", path: "/runs/run-groups" },
       { kind: "http" as const, method: "POST", path: "/predict/archive-v2" },
       { kind: "http" as const, method: "POST", path: "/predict/archive-v2/conformal-presentation" },
+      { kind: "http" as const, method: "POST", path: "/predict/archive-v2/conformal-projection" },
       { kind: "http" as const, method: "GET", path: "/workspaces/workspace-a/archive-v2" },
       { kind: "http" as const, method: "GET", path: "/training/job-1" },
       { kind: "http" as const, method: "GET", path: "/system/capabilities" },
@@ -97,7 +98,7 @@ describe("renderer transport preselection", () => {
         status: 200,
       });
     }
-    expect(request).toHaveBeenCalledTimes(8);
+    expect(request).toHaveBeenCalledTimes(9);
   });
 
   it("still rejects malformed execution capability, transport, and Python owner", async () => {

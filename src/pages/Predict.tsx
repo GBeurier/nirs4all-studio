@@ -4,7 +4,11 @@ import { useMutation } from "@tanstack/react-query";
 import { AlertCircle, Zap } from "lucide-react";
 import { toast } from "sonner";
 
-import { predictPersistedArchiveV2Array } from "@/api/archiveV2Prediction";
+import {
+  getPersistedArchiveV2ConformalPresentation,
+  predictPersistedArchiveV2Array,
+  projectPersistedArchiveV2ConformalPresentation,
+} from "@/api/archiveV2Prediction";
 import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { ArchiveV2DataInput } from "@/components/predict/ArchiveV2DataInput";
 import { ArchiveV2PredictionResults } from "@/components/predict/ArchiveV2PredictionResults";
@@ -18,6 +22,7 @@ import {
 import { motion } from "@/lib/motion";
 import type {
   ArchiveV2ArrayPredictionResponse,
+  ArchiveV2ConformalPresentation,
   PersistedArchiveV2Selection,
 } from "@/types/archiveV2Prediction";
 
@@ -37,6 +42,9 @@ export default function Predict() {
     useState<PersistedArchiveV2Selection | null>(null);
   const [result, setResult] =
     useState<ArchiveV2ArrayPredictionResponse | null>(null);
+  const [conformal, setConformal] =
+    useState<ArchiveV2ConformalPresentation | null>(null);
+  const [conformalError, setConformalError] = useState<string | null>(null);
 
   const predictMutation = useMutation({
     mutationFn: async (spectra: number[][]) => {
@@ -56,12 +64,39 @@ export default function Predict() {
       }
 
       const request = buildArchiveV2ArrayPredictionRequest(persisted, spectra);
-      return predictPersistedArchiveV2Array(request);
+      const prediction = await predictPersistedArchiveV2Array(request);
+      try {
+        const reference =
+          await projectPersistedArchiveV2ConformalPresentation(request);
+        const presentation =
+          await getPersistedArchiveV2ConformalPresentation({
+            schema_version: 2,
+            operation: "archive_v2_conformal_presentation",
+            workspace_id: persisted.workspace_id,
+            archive: {
+              ref: persisted.archive_ref,
+              sha256: persisted.archive_sha256,
+            },
+            presentation_fingerprint: reference.presentation_fingerprint,
+          });
+        return { prediction, presentation, presentationError: null };
+      } catch (error) {
+        return {
+          prediction,
+          presentation: null,
+          presentationError:
+            error instanceof Error
+              ? error.message
+              : "No validated conformal presentation is available for this archive.",
+        };
+      }
     },
     onSuccess: (data) => {
-      setResult(data);
+      setResult(data.prediction);
+      setConformal(data.presentation);
+      setConformalError(data.presentationError);
       toast.success(
-        `Predicted ${data.sample_ids.length} samples with ${data.archive_id}.`,
+        `Predicted ${data.prediction.sample_ids.length} samples with ${data.prediction.archive_id}.`,
       );
     },
     onError: (error: Error) => {
@@ -73,6 +108,8 @@ export default function Predict() {
     (model: PersistedArchiveV2Selection | null) => {
       setSelectedModel(model);
       setResult(null);
+      setConformal(null);
+      setConformalError(null);
       predictMutation.reset();
     },
     [predictMutation],
@@ -80,6 +117,8 @@ export default function Predict() {
 
   const handleReset = useCallback(() => {
     setResult(null);
+    setConformal(null);
+    setConformalError(null);
     predictMutation.reset();
   }, [predictMutation]);
 
@@ -151,7 +190,12 @@ export default function Predict() {
               )}
 
               {result && !predictionError && (
-                <ArchiveV2PredictionResults result={result} onReset={handleReset} />
+                <ArchiveV2PredictionResults
+                  result={result}
+                  conformal={conformal}
+                  conformalError={conformalError}
+                  onReset={handleReset}
+                />
               )}
             </div>
           </div>

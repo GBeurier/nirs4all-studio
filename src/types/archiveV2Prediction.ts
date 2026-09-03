@@ -90,6 +90,15 @@ export interface ArchiveV2ConformalPresentationRequest {
   readonly presentation_fingerprint: string;
 }
 
+export interface ArchiveV2ConformalProjectionReference {
+  readonly schema_version: 1;
+  readonly operation: "archive_v2_conformal_projection";
+  readonly archive_sha256: string;
+  readonly sample_ids: readonly string[];
+  readonly target_names: readonly string[];
+  readonly presentation_fingerprint: string;
+}
+
 export type ConformalRadius =
   | { readonly status: "finite"; readonly value: number }
   | { readonly status: "unbounded" };

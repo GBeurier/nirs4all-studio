@@ -5,6 +5,7 @@ import type {
   ArchiveV2CatalogueResponse,
   ArchiveV2ConformalPresentation,
   ArchiveV2ConformalPresentationRequest,
+  ArchiveV2ConformalProjectionReference,
 } from "@/types/archiveV2Prediction";
 
 export const ARCHIVE_V2_ARRAY_PREDICTION_ENDPOINT =
@@ -14,6 +15,8 @@ export const MAX_ARCHIVE_V2_CATALOGUE_RESPONSE_BYTES = 256 * 1024;
 export const ARCHIVE_V2_CONFORMAL_PRESENTATION_ENDPOINT =
   "/predict/archive-v2/conformal-presentation" as const;
 export const MAX_ARCHIVE_V2_CONFORMAL_PRESENTATION_BYTES = 2 * 1024 * 1024;
+export const ARCHIVE_V2_CONFORMAL_PROJECTION_ENDPOINT =
+  "/predict/archive-v2/conformal-projection" as const;
 
 const MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_SAMPLES = 128;
@@ -384,4 +387,30 @@ export async function getPersistedArchiveV2ConformalPresentation(
     MAX_ARCHIVE_V2_CONFORMAL_PRESENTATION_BYTES,
   );
   return parseConformalPresentation(response, request);
+}
+
+/** Ask Core to persist the conformal projection for this exact prediction. */
+export async function projectPersistedArchiveV2ConformalPresentation(
+  request: ArchiveV2ArrayPredictionRequest,
+): Promise<ArchiveV2ConformalProjectionReference> {
+  assertRequest(request);
+  if (!request.archive.ref.startsWith("artifacts/")) {
+    throw new TypeError("Conformal projection requires a store-registered Archive V2");
+  }
+  const value = await api.postBoundedJson<unknown>(
+    ARCHIVE_V2_CONFORMAL_PROJECTION_ENDPOINT,
+    request,
+    MAX_ARCHIVE_V2_CONFORMAL_PRESENTATION_BYTES,
+  );
+  if (!isRecord(value) || !hasExactKeys(value, [
+    "schema_version", "operation", "archive_sha256", "sample_ids",
+    "target_names", "presentation_fingerprint",
+  ]) || value.schema_version !== 1 || value.operation !== "archive_v2_conformal_projection" ||
+    value.archive_sha256 !== request.archive.sha256 || !Array.isArray(value.sample_ids) ||
+    !Array.isArray(value.target_names) || !orderedEqual(value.sample_ids, request.input.sample_ids) ||
+    !orderedEqual(value.target_names, request.input.expected_target_names) ||
+    typeof value.presentation_fingerprint !== "string" || !SHA256.test(value.presentation_fingerprint)) {
+    throw new TypeError("Invalid native conformal projection reference");
+  }
+  return value as unknown as ArchiveV2ConformalProjectionReference;
 }
