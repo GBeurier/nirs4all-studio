@@ -40,3 +40,27 @@ export interface ArchiveV2ArrayPredictionResponse {
     readonly workspace_id: string;
   };
 }
+
+/**
+ * Renderer-owned pointer to an Archive V2 that is already persisted inside a
+ * linked workspace. It deliberately carries no chain, bundle, or absolute
+ * filesystem path: the native sidecar resolves `archive_ref` below the
+ * selected workspace and verifies the content digest before replay.
+ */
+export interface PersistedArchiveV2Selection {
+  readonly schema_version: 1;
+  readonly kind: "persisted_archive_v2";
+  readonly workspace_id: string;
+  readonly archive_ref: string;
+  readonly archive_sha256: string;
+  readonly n_features: number;
+  readonly target_names: readonly string[];
+}
+
+export interface ArchiveV2SelectionDraft {
+  readonly workspace_id: string;
+  readonly archive_ref: string;
+  readonly archive_sha256: string;
+  readonly n_features: number;
+  readonly target_names: readonly string[];
+}
