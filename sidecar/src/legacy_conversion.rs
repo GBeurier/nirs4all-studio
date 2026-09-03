@@ -365,7 +365,7 @@ fn sha256_regular_file(path: &Path) -> Option<String> {
     }
     let mut file = std::fs::File::open(path).ok()?;
     let opened = file.metadata().ok()?;
-    if !same_file_identity(&before, &opened) {
+    if !path_matches_open_file(path, &file) {
         return None;
     }
     let mut hasher = Sha256::new();
@@ -380,8 +380,7 @@ fn sha256_regular_file(path: &Path) -> Option<String> {
     let after = file.metadata().ok()?;
     let path_after = std::fs::symlink_metadata(path).ok()?;
     if path_after.file_type().is_symlink()
-        || !same_file_identity(&opened, &after)
-        || !same_file_identity(&opened, &path_after)
+        || !path_matches_open_file(path, &file)
         || opened.len() != after.len()
         || opened.modified().ok() != after.modified().ok()
     {
@@ -801,7 +800,11 @@ pub(crate) fn open_validated_workspace_v2_store(
     if !store.starts_with(&root) {
         return Err("store");
     }
-    let before = std::fs::metadata(&store).map_err(|_| "store")?;
+    let identity_file = std::fs::File::open(&store).map_err(|_| "store")?;
+    let before = identity_file.metadata().map_err(|_| "store")?;
+    if !path_matches_open_file(&store, &identity_file) {
+        return Err("changed");
+    }
     let mut uri = Url::from_file_path(&store).map_err(|()| "store")?;
     uri.set_query(Some("mode=ro&immutable=1"));
     let connection = Connection::open_with_flags(
@@ -852,9 +855,11 @@ pub(crate) fn open_validated_workspace_v2_store(
             return Err("schema");
         }
     }
-    let after = std::fs::metadata(&store).map_err(|_| "store")?;
-    if store.canonicalize().map_err(|_| "store")? != store
-        || !same_file_identity(&before, &after)
+    let path_after = std::fs::symlink_metadata(&store).map_err(|_| "store")?;
+    let after = identity_file.metadata().map_err(|_| "store")?;
+    if path_after.file_type().is_symlink()
+        || store.canonicalize().map_err(|_| "store")? != store
+        || !path_matches_open_file(&store, &identity_file)
         || before.len() != after.len()
         || before.modified().ok() != after.modified().ok()
     {
@@ -872,22 +877,17 @@ fn strict_candidate_metadata(path: &Path) -> Result<Option<std::fs::Metadata>, &
     }
 }
 
-#[cfg(unix)]
-pub(crate) fn same_file_identity(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
-    use std::os::unix::fs::MetadataExt;
-    before.dev() == after.dev() && before.ino() == after.ino()
-}
-
-#[cfg(windows)]
-pub(crate) fn same_file_identity(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
-    use std::os::windows::fs::MetadataExt;
-    before.volume_serial_number() == after.volume_serial_number()
-        && before.file_index() == after.file_index()
-}
-
-#[cfg(not(any(unix, windows)))]
-pub(crate) fn same_file_identity(_before: &std::fs::Metadata, _after: &std::fs::Metadata) -> bool {
-    true
+/// Compare a live path with an already-open file identity.
+///
+/// `same-file` obtains the platform identity from live handles (volume/file
+/// index on Windows, device/inode on Unix). Keeping `file` open for the whole
+/// operation prevents an attacker from satisfying this check by recycling a
+/// stale metadata identifier after replacing the path.
+pub(crate) fn path_matches_open_file(path: &Path, file: &std::fs::File) -> bool {
+    let Ok(open_file) = file.try_clone().and_then(same_file::Handle::from_file) else {
+        return false;
+    };
+    same_file::Handle::from_path(path).is_ok_and(|path_file| path_file == open_file)
 }
 
 /// Parse the exact renderer request fields into a resolved converter request.
@@ -1387,6 +1387,23 @@ mod tests {
                  CREATE TABLE logs(log_id TEXT PRIMARY KEY, pipeline_id TEXT NOT NULL, step_idx INTEGER NOT NULL, event TEXT NOT NULL);",
             )
             .unwrap();
+    }
+
+    #[test]
+    fn live_handle_identity_rejects_path_replacement() {
+        let root = temporary_directory("live-handle-identity");
+        let path = root.join("candidate");
+        let held_path = root.join("held-candidate");
+        fs::write(&path, b"original").unwrap();
+        let held = fs::File::open(&path).unwrap();
+        assert!(path_matches_open_file(&path, &held));
+
+        fs::rename(&path, &held_path).unwrap();
+        fs::write(&path, b"replacement").unwrap();
+        assert!(!path_matches_open_file(&path, &held));
+
+        drop(held);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

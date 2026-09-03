@@ -341,30 +341,33 @@ impl CpythonScientificJobExecutor {
     pub fn unavailable_reason(&self) -> &'static str {
         #[cfg(not(unix))]
         {
-            return ScientificCpythonUnavailable::PlatformKillTreeUnqualified.reason();
+            ScientificCpythonUnavailable::PlatformKillTreeUnqualified.reason()
         }
-        if self.terminal_callback_failed.load(Ordering::Acquire) {
-            return ScientificCpythonUnavailable::TerminalCallbackFailed.reason();
-        }
-        if let Some(identity) = &self.identity {
-            if verify_identity(identity).is_err() {
-                return ScientificCpythonUnavailable::HostTampered.reason();
+        #[cfg(unix)]
+        {
+            if self.terminal_callback_failed.load(Ordering::Acquire) {
+                return ScientificCpythonUnavailable::TerminalCallbackFailed.reason();
             }
-        }
-        if let Some(identity) = &self.callable_identity {
-            if verify_identity(identity).is_err() {
-                return ScientificCpythonUnavailable::CallableTampered.reason();
+            if let Some(identity) = &self.identity {
+                if verify_identity(identity).is_err() {
+                    return ScientificCpythonUnavailable::HostTampered.reason();
+                }
             }
-        }
-        if let Some(identity) = &self.packaged_runtime {
-            if verify_packaged_runtime_anchor(identity).is_err() {
-                return ScientificCpythonUnavailable::RuntimeContractTampered.reason();
+            if let Some(identity) = &self.callable_identity {
+                if verify_identity(identity).is_err() {
+                    return ScientificCpythonUnavailable::CallableTampered.reason();
+                }
             }
+            if let Some(identity) = &self.packaged_runtime {
+                if verify_packaged_runtime_anchor(identity).is_err() {
+                    return ScientificCpythonUnavailable::RuntimeContractTampered.reason();
+                }
+            }
+            if self.callable_identity.is_some() && !self.resolver.is_configured() {
+                return ScientificCpythonUnavailable::RequestResolverUnavailable.reason();
+            }
+            self.acquisition.reason()
         }
-        if self.callable_identity.is_some() && !self.resolver.is_configured() {
-            return ScientificCpythonUnavailable::RequestResolverUnavailable.reason();
-        }
-        self.acquisition.reason()
     }
 }
 

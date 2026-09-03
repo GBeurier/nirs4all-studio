@@ -75,10 +75,18 @@ impl WorkspaceActivationGuard {
         }
         let workspace_handle = Dir::open_ambient_dir(workspace_path, ambient_authority())
             .map_err(|error| format!("could not hold converted workspace directory: {error}"))?;
-        let opened_workspace_metadata = workspace_handle.dir_metadata().map_err(|error| {
+        let opened_workspace = workspace_handle
+            .try_clone()
+            .map(Dir::into_std_file)
+            .map_err(|error| {
+                format!("could not clone held converted workspace directory: {error}")
+            })?;
+        let opened_workspace_metadata = opened_workspace.metadata().map_err(|error| {
             format!("could not identify held converted workspace directory: {error}")
         })?;
-        if !workspace_handle_matches_std(&workspace_metadata, &opened_workspace_metadata) {
+        if !metadata_attributes_unchanged(&workspace_metadata, &opened_workspace_metadata)
+            || !crate::legacy_conversion::path_matches_open_file(workspace_path, &opened_workspace)
+        {
             return Err("converted workspace identity changed before activation".into());
         }
         let store_handle = fs::File::open(store_path)
@@ -111,8 +119,13 @@ impl WorkspaceActivationGuard {
             || fs::canonicalize(&self.workspace_path).ok().as_deref()
                 != Some(self.workspace_path.as_path())
             || fs::canonicalize(&self.store_path).ok().as_deref() != Some(self.store_path.as_path())
-            || !metadata_unchanged(&self.workspace_metadata, &workspace_metadata)
-            || !metadata_unchanged(&self.store_metadata, &store_metadata)
+            || !workspace_path_matches_handle(&self.workspace_path, &self._workspace_handle)
+            || !crate::legacy_conversion::path_matches_open_file(
+                &self.store_path,
+                &self.store_handle,
+            )
+            || !metadata_attributes_unchanged(&self.workspace_metadata, &workspace_metadata)
+            || !metadata_attributes_unchanged(&self.store_metadata, &store_metadata)
         {
             return Err("converted workspace identity changed before atomic activation".into());
         }
@@ -139,10 +152,14 @@ impl WorkspaceActivationGuard {
     }
 }
 
-fn metadata_unchanged(before: &fs::Metadata, after: &fs::Metadata) -> bool {
-    crate::legacy_conversion::same_file_identity(before, after)
-        && before.len() == after.len()
-        && before.modified().ok() == after.modified().ok()
+fn metadata_attributes_unchanged(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    before.len() == after.len() && before.modified().ok() == after.modified().ok()
+}
+
+fn workspace_path_matches_handle(path: &Path, handle: &Dir) -> bool {
+    handle.try_clone().is_ok_and(|held| {
+        crate::legacy_conversion::path_matches_open_file(path, &held.into_std_file())
+    })
 }
 
 fn sha256_file_handle(file: &fs::File) -> Result<String, String> {
@@ -257,19 +274,6 @@ fn before_linked_store_open() {
             hook();
         }
     });
-}
-
-#[cfg(unix)]
-fn workspace_handle_matches_std(path: &fs::Metadata, handle: &cap_std::fs::Metadata) -> bool {
-    use cap_std::fs::MetadataExt as CapMetadataExt;
-    use std::os::unix::fs::MetadataExt;
-
-    path.dev() == handle.dev() && path.ino() == handle.ino()
-}
-
-#[cfg(not(unix))]
-fn workspace_handle_matches_std(path: &fs::Metadata, handle: &cap_std::fs::Metadata) -> bool {
-    path.is_dir() == handle.is_dir() && path.len() == handle.len()
 }
 
 /// The only dataset-link fields used to associate a Store result with the
