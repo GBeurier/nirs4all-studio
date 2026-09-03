@@ -43,7 +43,13 @@ const FORBIDDEN_TOP_LEVEL_MODULES = Object.freeze([
   "websockets",
 ]);
 
-const PREFLIGHT = String.raw`import base64,csv,hashlib,importlib.metadata,io,json,os,socket,subprocess,sys
+const PREFLIGHT = String.raw`import base64,csv,hashlib,importlib.metadata,io,json,os,platform,socket,subprocess,sys
+# python-build-standalone on Windows can implement the first platform.machine()
+# lookup through cmd /c ver. Warm that trusted stdlib cache before the audit
+# hook; all third-party imports and every subsequent spawn remain denied.
+# This qualifies the packaged payload only; Windows runtime selection remains
+# fail-closed until its process-tree termination contract is implemented.
+platform.machine()
 def deny(event,args):
     if event == "socket.bind": raise RuntimeError("listener denied")
     if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}: raise RuntimeError("spawn denied")
@@ -416,6 +422,7 @@ module.exports = {
   PLUGIN_ROLE,
   PLUGIN_SOURCE_COMMIT,
   PLUGIN_WHEEL_SHA256,
+  PREFLIGHT,
   expectedMarker,
   findSitePackages,
   materializeInternalRuntimeLinks,

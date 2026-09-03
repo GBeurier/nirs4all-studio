@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const pluginRuntime = require("../scripts/bake-python-plugin-runtime.cjs") as {
   FORBIDDEN_DISTRIBUTIONS: readonly string[];
+  PREFLIGHT: string;
   expectedMarker(platform?: string, arch?: string): Record<string, unknown>;
   parseArgs(argv?: string[]): {
     backendRoot: string;
@@ -24,6 +25,19 @@ const pluginRuntime = require("../scripts/bake-python-plugin-runtime.cjs") as {
 };
 
 describe("plugin-only CPython runtime", () => {
+  it("warms only the trusted Windows platform probe before enforcing the spawn audit hook", () => {
+    const platformProbe = pluginRuntime.PREFLIGHT.indexOf("platform.machine()\n");
+    const auditHook = pluginRuntime.PREFLIGHT.indexOf("sys.addaudithook(deny)\n");
+    const pluginImport = pluginRuntime.PREFLIGHT.indexOf("import nirs4all");
+
+    expect(platformProbe).toBeGreaterThan(-1);
+    expect(platformProbe).toBeLessThan(auditHook);
+    expect(auditHook).toBeLessThan(pluginImport);
+    expect(pluginRuntime.PREFLIGHT).toContain(
+      'if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}: raise RuntimeError("spawn denied")',
+    );
+  });
+
   it("pins the selected release source and wheel in the exact role marker", () => {
     expect(pluginRuntime.expectedMarker("linux", "x64")).toMatchObject({
       schema: "nirs4all.studio-python-plugin-runtime.v1",
