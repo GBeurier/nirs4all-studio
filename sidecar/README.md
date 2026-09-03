@@ -1,6 +1,6 @@
 # Studio native sidecar (R1)
 
-`sidecar/` owns Studio's future native executable.  It is intentionally a
+`sidecar/` owns Studio's packaged native control-plane executable. It is intentionally a
 separate Cargo package, not a Tauri application and not an Electron switch.
 The only executable is `studio-sidecar`.
 
@@ -44,6 +44,12 @@ transport, and registered read/cancel aliases for native jobs:
   `job_started` publication, cooperative cancellation, and atomic
   `execution_job_record.json` persistence. This route never selects a Python
   HTTP server or retry fallback.
+- `POST /api/training/native-archive-v2` is the bounded native researcher
+  workflow. Rust resolves one persisted IO dataset and selected dense source,
+  then composes IO -> DAG-ML -> Methods -> Core to train the exact
+  `SNV(ddof=0) -> Savitzky-Golay(mode=interp) -> PLS` profile, persist Archive
+  V2, and register it in Store v5. It supports named multi-target regression;
+  fusion, N-D payloads, HPO, CPython, and fallback are refused.
 - `GET /api/health` and `GET /api/system/readiness` (the frozen
   post-lifespan bootstrap responses only)
 - `GET /api/system/capabilities` (an explicit Rust-owned route which invokes
@@ -155,8 +161,8 @@ projection readers and the shallow legacy-marker transition preflight, it does
 not inspect dataset/workspace contents. It persists app-level preferences,
 favorite identifiers, repaired linked-workspace record IDs, and (through its
 Rust library boundary only) self-validating Core/DAG-ML conformal presentation
-artifacts. No HTTP ingestion route exists for those artifacts until a typed
-Core replay/data adapter is available. All other UI routes fail closed before
+artifacts. The native training route is the only typed HTTP producer of a new
+Archive V2 artifact; it is not a generic artifact-ingestion endpoint. All other UI routes fail closed before
 fetch in the default product session. The transitional FastAPI process can own
 the whole renderer session only after the visible diagnostic opt-in; it is
 never an implicit fallback.
@@ -256,6 +262,14 @@ stream, and classifies the stable Tools codes `0/10/20/30/40/70`. The converter
   itself owns output freshness, source immutability, capacity, checksums, and
   verification rules. The checked-in closed contract is
 `contracts/studio_legacy_workspace_conversion_v1.json`.
+
+This converter is a bounded migration aid, not a transactional snapshot of a
+live legacy tree. The qualified interpreter is re-attested in the child, but
+the OS still spawns it by its verified path, and the legacy workspace is passed
+to Tools by path; concurrent replacement or source writes are outside the
+supported contract. Users should stop writers and retain the linked source.
+Given the narrow migration audience, these are accepted residual risks rather
+than claims of immutable source/executable handles.
 
 Electron explicitly selects the bounded scientific-host acquisition candidate
 with `NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1` only when it also supplies
@@ -374,11 +388,13 @@ the summary is catalogue state, not scan evidence. Its historical
 `nirs4all_available` field reports only that an explicit Python plugin host was
 configured; it neither imports nor executes Python.
 
-`ConformalPresentationStore` retains only a validated
-`nirs4all::dag_ml::ConformalPresentationV1`, keyed by its immutable
-`presentation_fingerprint`, below `conformal-presentations-v1/` in a
-product-selected configuration directory. It validates every input and every
-read through the published `nirs4all 0.3.22` contract; it neither computes nor
+`ConformalPresentationStore` retains validated scalar
+`nirs4all::dag_ml::ConformalPresentationV1` and named multi-target
+`ConformalPresentationV2` payloads, keyed by their immutable
+`presentation_fingerprint`, below their `conformal-presentations-v1/` or
+`conformal-presentations-v2/` directory in the product-selected configuration
+directory. It validates every input and every
+read through the selected Core/DAG-ML contract; it neither computes nor
 alters intervals. This is a native persistence primitive, not an execution or
 HTTP API claim.
 

@@ -9,13 +9,13 @@
 
 **Unified NIRS Analysis Desktop Application**
 
-A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis, combining the power of the [nirs4all](https://github.com/GBeurier/nirs4all) Python library with a sleek React-based user interface.
+A modern desktop application for Near-Infrared Spectroscopy (NIRS) data analysis, with a Rust-owned product control plane, React UI, native Methods execution, and bounded CPython stdio interoperability for explicit libraries/plugins.
 
 [![License: CeCILL-2.1](https://img.shields.io/badge/license-CeCILL--2.1-blue.svg)](LICENSE)
 [![Node 20+](https://img.shields.io/badge/node-20+-green.svg)](https://nodejs.org/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
-[Download](https://github.com/GBeurier/nirs4all-webapp/releases/latest) •
+[Download](https://github.com/GBeurier/nirs4all-studio/releases/latest) •
 [User Guide](docs/user-guide/) •
 [nirs4all Library](https://github.com/GBeurier/nirs4all) •
 [Website](https://nirs4all.org)
@@ -38,11 +38,13 @@ nirs4all comes in two flavors — pick the one that fits your workflow:
 | | **nirs4all Studio** (Desktop App) | **nirs4all** (Python Library) |
 |---|---|---|
 | **Best for** | Researchers, technicians, and anyone who prefers a visual interface | Developers, data scientists, and anyone who writes Python scripts |
-| **What it is** | A desktop application with drag-and-drop pipelines, interactive charts, and one-click model training | A `pip install` Python package with a declarative API for building NIRS pipelines in code |
-| **Install** | [Download the installer](https://github.com/GBeurier/nirs4all-webapp/releases/latest) | `pip install nirs4all` |
+| **What it is** | A Rust-owned desktop product with drag-and-drop pipelines, interactive charts, and bounded native training; CPython is a stdio library/plugin host only | A `pip install` Python package with a declarative API for building NIRS pipelines in code |
+| **Install** | [Download the installer](https://github.com/GBeurier/nirs4all-studio/releases/latest) | `pip install nirs4all` |
 | **Repository** | **You are here** | [GBeurier/nirs4all](https://github.com/GBeurier/nirs4all) |
 
-> **Not sure?** If you've never written Python code, start here with **nirs4all Studio**. It uses the [nirs4all Python library](https://github.com/GBeurier/nirs4all) under the hood and gives you all the same capabilities through a graphical interface.
+> **Not sure?** If you've never written Python code, start here with **nirs4all Studio**.
+> Studio exposes a deliberately bounded product surface rather than mirroring
+> every Python-library capability.
 
 ---
 
@@ -54,7 +56,7 @@ nirs4all Studio offers three ways to get started, depending on your needs:
 
 The simplest option. Downloads and installs like any desktop application.
 
-1. Go to the [latest release](https://github.com/GBeurier/nirs4all-webapp/releases/latest)
+1. Go to the [latest release](https://github.com/GBeurier/nirs4all-studio/releases/latest)
 2. Download the installer for your platform:
 
    | Platform | File |
@@ -77,7 +79,7 @@ install packages at runtime. **You don't need Python installed on your machine.*
 
 A self-contained archive — just extract and run. No installation, no admin rights needed. Ideal for trying nirs4all Studio without committing to an install, or for machines where you can't install software.
 
-1. Go to the [latest release](https://github.com/GBeurier/nirs4all-webapp/releases/latest)
+1. Go to the [latest release](https://github.com/GBeurier/nirs4all-studio/releases/latest)
 2. Download the **all-in-one** archive for your platform:
 
    | Platform | File |
@@ -96,12 +98,14 @@ CPython plugin-host closure. Nothing else to install.
 For contributors, or if you want to hack on the code. Requires **Node.js 20+** and **Python 3.11+**.
 
 ```bash
-git clone https://github.com/GBeurier/nirs4all-webapp.git
-cd nirs4all-webapp
+git clone https://github.com/GBeurier/nirs4all-studio.git
+cd nirs4all-studio
 npm install
 ```
 
-Then set up the Python backend and start the servers — see [Getting Started](#getting-started) below.
+Then set up the transitional web-development backend and start the development
+servers — see [Getting Started](#getting-started) below. Packaged desktop mode
+uses the Rust sidecar, not that Python HTTP process.
 
 ### Installation comparison
 
@@ -345,6 +349,15 @@ session. Workspace linking, pruning, scan mutations, and scientific surfaces
 not listed above are likewise unavailable until migrated (or while the explicit
 R2 diagnostic owner is selected).
 
+The separate native researcher route `POST /api/training/native-archive-v2`
+does not invoke CPython. It resolves one persisted IO dataset and one selected
+dense source, executes the exact
+`SNV(ddof=0) -> Savitzky-Golay(mode=interp) -> PLS` profile through
+IO/DAG-ML/Methods/Core, writes Archive V2, and registers the artifact in the
+workspace Store. It supports named multi-target regression within the bounded
+native limits; fusion, N-D payloads, HPO, and fallback are not part of this
+route.
+
 > **Note**: The webapp can run **without nirs4all installed** for pure UI development. The backend will report missing capabilities but the frontend is fully functional.
 
 ---
@@ -548,7 +561,7 @@ In desktop mode, all main process logs are written to rotating log files:
 
 ### Sentry Crash Reporting (optional)
 
-Automatic crash reporting via [Sentry](https://sentry.io/) can be enabled by setting the `SENTRY_DSN` environment variable. This captures errors from the Electron main process, the React frontend, and the Python backend.
+Automatic crash reporting via [Sentry](https://sentry.io/) can be enabled by setting the `SENTRY_DSN` environment variable. This captures errors from the Electron main process and React frontend; the transitional diagnostic Python backend reports only when it is explicitly running.
 
 ```bash
 # Set before launching the app
