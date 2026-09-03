@@ -1,6 +1,14 @@
 # Packaging & Release System
 
-This document describes the packaging model currently used by `nirs4all-webapp`.
+This document describes the local packaging model for the unpublished Phase 2
+Rust-only candidate.
+
+> **Publication hold:** no Phase 2/R4/V1 installer, portable archive, Docker
+> image, or update channel is published. GitHub release `0.10.1` is a real but
+> historical rollback/support release; it does not attest the candidate layout
+> or platform matrix below. The candidate manifest still reports `0.9.1`, so a
+> new publishable version must be frozen by the final release lock before any
+> release job is authorized.
 
 The source of truth is:
 
@@ -13,13 +21,17 @@ The source of truth is:
 - `scripts/native-runtime-contract.cjs`
 - `scripts/macos-attested-runtime.cjs`
 
-Legacy PyInstaller-based backend packaging still exists in the repository for compatibility and debugging, but it is no longer the published desktop release path.
+Legacy PyInstaller-based backend packaging still exists in the repository for
+compatibility and diagnostic development only. It is neither part of the
+candidate product graph nor a fallback for the Rust sidecar.
 
 ## Overview
 
-The project now publishes three desktop distribution families plus Docker:
+The project prepares three desktop distribution families plus Docker. These
+are target contracts, not claims of public availability or cross-platform
+qualification:
 
-| Product | Platforms | Published assets | Runtime model |
+| Product | Target platforms | Candidate asset patterns | Runtime model |
 |---|---|---|---|
 | Installer | Windows x64, macOS x64/arm64, Linux x64 | `.exe`, `.dmg`, `.AppImage`, `.deb` | Electron + Rust `native/studio-sidecar` + read-only plugin-only CPython closure |
 | Portable Windows | Windows x64 | `-portable.exe` | Electron portable layout with state under `.nirs4all/` next to the executable |
@@ -38,7 +50,7 @@ For the desktop all-in-one bundle, v1 is deliberately locked to a single product
 
 - `Installer`: standard OS install flow (`.exe`, `.dmg`, `.AppImage`, `.deb`).
 - `Portable`: Windows-only `-portable.exe` build with dedicated state next to the executable.
-- `All-in-one`: the final archive bundle distributed to users, containing Electron, Rust, and the embedded plugin-only CPython closure.
+- `All-in-one`: the candidate archive layout containing Electron, Rust, and the embedded plugin-only CPython closure; it is not currently distributed.
 - `Bundled runtime`: the embedded Python runtime found under `resources/backend/python-runtime/`.
 - `Legacy PyInstaller`: historical frozen-backend packaging path. Not the release path for the desktop product anymore.
 
@@ -196,10 +208,11 @@ rejected instead of being partially signed.
 This is purely a packaging rule. The Rust sidecar remains the sole product HTTP
 and WebSocket owner; CPython remains a bounded stdio library host.
 
-Linux CI executes the unpacked installer directly. The release workflow also
-verifies the same manifest for Windows x64 and macOS x64/arm64 payloads on their
-matching runners; archive jobs additionally execute the full extracted-bundle
-smoke on each target OS.
+Local Linux evidence executes the unpacked installer directly. The release
+workflow is designed to verify the same manifest for Windows x64 and macOS
+x64/arm64 payloads on matching runners and to smoke extracted archives on each
+target OS. Those external installation, update, uninstall, and crash-recovery
+results remain required before the matrix can be described as qualified.
 
 While the app is still running on the embedded bundled runtime, package
 installation, runtime creation, snapshot restore, and config alignment
@@ -220,12 +233,14 @@ excluded from `BACKEND_COMMON_PACKAGES` and never acquires an HTTP role.
 
 | `runtime_mode` | Meaning |
 |---|---|
-| `development` | Local dev server / ad hoc Python process |
-| `managed` | Writable Python environment managed outside the bundle |
+| `development` | Diagnostic web-development server / ad hoc Python process; never a product backend |
+| `managed` | Writable Python environment for historical compatibility diagnostics only |
 | `bundled` | All-in-one archive with embedded read-only runtime |
 | `pyinstaller` | Legacy frozen backend path kept for compatibility |
 
 `is_frozen` remains in the API for compatibility, but new UI and packaging decisions should use `runtime_mode`.
+The candidate product always selects the verified Rust sidecar; these legacy
+API values cannot select a Python HTTP product route.
 
 ## Build Entry Points
 
@@ -244,13 +259,13 @@ This path packages with `electron-builder.installer.yml`.
 Notes:
 
 - it is the local helper for installer targets
-- the published desktop release matrix is no longer split into CPU/GPU installers
+- the candidate desktop matrix is not split into CPU/GPU installers
 - `--mode standalone` is rejected; use `npm run release:all-in-one`
 - only the CPU profile and the matching host platform are accepted; cross-host and `--platform all` builds are rejected
 
 ### All-in-one local builds
 
-Use `scripts/build-archive-standalone.cjs` for the distributed all-in-one archive:
+Use `scripts/build-archive-standalone.cjs` for an unpublished all-in-one archive candidate:
 
 ```bash
 npm run release:all-in-one:clean -- --platform win32 --arch x64
@@ -322,7 +337,11 @@ The split is intentional:
 - macOS archive notarization has different handling than DMG packaging
 - update asset names must stay unambiguous
 
-## Published Asset Names
+## Candidate Asset Name Contract (Unpublished)
+
+These patterns describe outputs of an authorized future release job. They are
+not URLs and do not imply that candidate artifacts exist in GitHub Releases or
+any package registry.
 
 ### Installer / portable assets
 
@@ -393,7 +412,8 @@ docker run --rm -p 8000:8000 \
 The OCI healthcheck calls the Rust-owned `/api/health` route through nginx, so
 healthy status proves both processes and the reverse-proxy path are available.
 
-Each downloadable artifact also ships with a `.sha256` sidecar when produced by the release workflow.
+When publication is authorized, each downloadable artifact must ship with a
+`.sha256` sidecar produced by the same release workflow.
 
 ## Code Signing And Notarization
 
@@ -427,20 +447,24 @@ The all-in-one ZIP path is stricter:
 
 This order is required for the offline first-launch promise of the macOS ZIP bundle.
 
-## Update Compatibility
+## Candidate Update Compatibility
 
-Self-update uses GitHub Releases, but the updater only applies assets it can stage in place.
+The candidate update contract uses GitHub Releases, but no candidate update
+channel is currently published. Historical `0.10.1` assets remain a separate
+rollback/support surface. Once authorized, the updater may apply only assets it
+can stage in place.
 
-### Preferred update assets
+### Planned candidate update assets
 
 - installed Windows builds: all-in-one ZIP
 - portable Windows builds: portable executable
 - macOS builds: all-in-one ZIP
-- Linux builds: all-in-one tar.gz in current releases, with ZIP still accepted for legacy compatibility
+- Linux builds: all-in-one tar.gz for the candidate contract, with ZIP retained only for historical compatibility
 
 ### Rejected as in-place update assets
 
-These formats are published for installation, not in-place replacement:
+When publication is authorized, these formats are installation-only and are
+not eligible for in-place replacement:
 
 - `.dmg`
 - `.deb`
@@ -477,7 +501,7 @@ python3 scripts/smoke-update-zip-permissions.py --archive path/to/archive.zip --
 
 Verify that the final ZIP was rebuilt after notarization and stapling. Zipping too early breaks the offline launch contract.
 
-### Release contains ambiguous ZIP files
+### Local candidate contains ambiguous ZIP files
 
 The updater prefers asset names containing `all-in-one`. Do not publish generic sidecar ZIPs that collide with the all-in-one naming convention.
 
@@ -485,7 +509,7 @@ The updater prefers asset names containing `all-in-one`. Do not publish generic 
 
 | File | Purpose |
 |---|---|
-| `.github/workflows/release-unified.yml` | Source of truth for published artifacts |
+| `.github/workflows/release-unified.yml` | Source of truth for candidate artifact construction; publication remains separately authorized |
 | `electron-builder.installer.yml` | Installer and portable packaging config |
 | `electron-builder.archive.yml` | All-in-one ZIP packaging config |
 | `electron-builder.yml` | Compatibility/default entry that still points to installer-style packaging |
