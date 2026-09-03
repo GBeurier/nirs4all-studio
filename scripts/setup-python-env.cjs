@@ -63,9 +63,25 @@ const TOOLS_SOURCE_COMMIT = "e3a332633f87b4652a06f8993e63c386a3568698";
 const TOOLS_SOURCE_EPOCH = "1788346349";
 const TOOLS_WHEEL_SHA256 = "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc";
 const TOOLS_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all-tools.git@${TOOLS_SOURCE_COMMIT}`;
-const WHEEL_BUILD_TOOLCHAIN = Object.freeze(["setuptools==84.0.0", "wheel==0.48.0"]);
+const WHEEL_BUILD_TOOLCHAIN = Object.freeze([
+  "setuptools==84.0.0",
+  "wheel==0.48.0",
+  "packaging==26.3",
+]);
 const PLUGIN_PIP_NETWORK_ARGS = Object.freeze(["--timeout", "60", "--retries", "3"]);
 const TOOLS_READER_PACKAGES = Object.freeze(["duckdb==1.5.5", "pyarrow==25.0.1"]);
+
+function buildDeterministicWheelEnv(sourceEpoch, baseEnv = process.env) {
+  return {
+    ...baseEnv,
+    SOURCE_DATE_EPOCH: sourceEpoch,
+    // pip clones the pinned Git source before building. Windows runners may
+    // otherwise inherit core.autocrlf=true and change the source payload.
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "core.autocrlf",
+    GIT_CONFIG_VALUE_0: "false",
+  };
+}
 
 // --- Argument parsing ---
 const args = process.argv.slice(2);
@@ -846,7 +862,7 @@ async function main() {
         "--wheel-dir",
         wheelDir,
         PLUGIN_SOURCE_URL,
-      ], { env: { ...process.env, SOURCE_DATE_EPOCH: PLUGIN_SOURCE_EPOCH } }, {
+      ], { env: buildDeterministicWheelEnv(PLUGIN_SOURCE_EPOCH) }, {
         retries: isWindows ? 3 : 1,
         label: "build pinned nirs4all plugin wheel",
       });
@@ -890,7 +906,7 @@ async function main() {
       }
       await runCommandWithRetries(runtimePython, [
         "-I", "-m", "pip", "wheel", "--no-deps", "--no-build-isolation", "--wheel-dir", toolsWheelDir, TOOLS_SOURCE_URL,
-      ], { env: { ...process.env, SOURCE_DATE_EPOCH: TOOLS_SOURCE_EPOCH } }, {
+      ], { env: buildDeterministicWheelEnv(TOOLS_SOURCE_EPOCH) }, {
         retries: isWindows ? 3 : 1,
         label: "build pinned nirs4all-tools wheel",
       });
@@ -1125,6 +1141,7 @@ module.exports = {
   isStandaloneBundledRuntimeMode,
   buildPipInstallArgs,
   buildPluginToolchainInstallArgs,
+  buildDeterministicWheelEnv,
   getLocalNirs4allCandidates,
   resolveLocalNirs4allPath,
   getDependencyInstallPhases,

@@ -176,12 +176,50 @@ jobs:
           echo "skip_all_in_one=${{ inputs.skip_all_in_one || 'false' }}" >> $GITHUB_OUTPUT
           echo "skip_docker=${{ inputs.skip_docker || 'false' }}" >> $GITHUB_OUTPUT
 
+  # Build universal Python wheels once on Linux. Building the same source wheel
+  # independently on Windows changes archive metadata and can also inherit Git
+  # line-ending conversion, so installer jobs consume this one attested payload.
+  pinned-plugin-wheels:
+    name: Build pinned plugin wheels
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build and verify canonical wheels
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: 'false'
+        run: |
+          python -m pip install --upgrade setuptools==84.0.0 wheel==0.48.0 packaging==26.3
+          mkdir -p dist/pinned-plugin-wheels
+          SOURCE_DATE_EPOCH=1788424315 python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist/pinned-plugin-wheels git+https://github.com/GBeurier/nirs4all.git@3a38f589e5acbda58c5d071c95036f2572972ecd
+          SOURCE_DATE_EPOCH=1788346349 python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist/pinned-plugin-wheels git+https://github.com/GBeurier/nirs4all-tools.git@e3a332633f87b4652a06f8993e63c386a3568698
+          cd dist/pinned-plugin-wheels
+          echo '906c151a80c3bbdf2ef1264b904a8fd61a2a67fbe0ded2cba92453e44fbce230  nirs4all-1.0.0rc2-py3-none-any.whl' | sha256sum --check --strict
+          echo '372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc  nirs4all_tools-0.0.7-py3-none-any.whl' | sha256sum --check --strict
+
+      - name: Upload canonical wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-plugin-wheels
+          path: dist/pinned-plugin-wheels/*.whl
+          if-no-files-found: error
+          retention-days: 5
+
   # ═══════════════════════════════════════════════════════════════════════════
   # Installer: Linux x64 (Electron + Rust sidecar + plugin-only CPython closure)
   # ═══════════════════════════════════════════════════════════════════════════
   installer-linux:
     name: Installer — Linux x64
-    needs: prepare
+    needs: [prepare, pinned-plugin-wheels]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -210,6 +248,12 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Download canonical plugin wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pinned-plugin-wheels
+          path: _deps/pinned-plugin-wheels
 
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
@@ -240,7 +284,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.0rc2-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         run: |
@@ -287,7 +331,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   installer-windows:
     name: Installer — Windows x64
-    needs: prepare
+    needs: [prepare, pinned-plugin-wheels]
     # Methods' release preset is intentionally bound to VS 17 / 2022.
     runs-on: windows-2022
     steps:
@@ -314,6 +358,12 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Download canonical plugin wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pinned-plugin-wheels
+          path: _deps/pinned-plugin-wheels
 
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
@@ -343,7 +393,7 @@ jobs:
           } | ConvertTo-Json | Out-File -FilePath version.json -Encoding utf8
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.0rc2-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         shell: pwsh
@@ -443,7 +493,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   installer-macos-x64:
     name: Installer — macOS x64
-    needs: prepare
+    needs: [prepare, pinned-plugin-wheels]
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -468,6 +518,12 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Download canonical plugin wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pinned-plugin-wheels
+          path: _deps/pinned-plugin-wheels
 
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
@@ -498,7 +554,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.0rc2-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         run: |
@@ -643,7 +699,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   installer-macos-arm64:
     name: Installer — macOS arm64
-    needs: prepare
+    needs: [prepare, pinned-plugin-wheels]
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -668,6 +724,12 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Download canonical plugin wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pinned-plugin-wheels
+          path: _deps/pinned-plugin-wheels
 
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
@@ -698,7 +760,7 @@ jobs:
           EOF
 
       - name: Build pinned plugin-only CPython runtime
-        run: node scripts/bake-python-plugin-runtime.cjs
+        run: node scripts/bake-python-plugin-runtime.cjs --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.0rc2-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
 
       - name: Build and smoke native sidecar
         run: |

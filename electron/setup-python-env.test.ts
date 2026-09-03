@@ -17,6 +17,10 @@ const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
     },
   ): string[];
   buildPluginToolchainInstallArgs(): string[];
+  buildDeterministicWheelEnv(
+    sourceEpoch: string,
+    baseEnv?: Record<string, string | undefined>,
+  ): Record<string, string | undefined>;
   getLocalNirs4allCandidates(explicitPath?: string, env?: Record<string, string | undefined>): string[];
   resolveLocalNirs4allPath(explicitPath?: string, env?: Record<string, string | undefined>): string | null;
   getDependencyInstallPhases(
@@ -70,7 +74,36 @@ describe("setup-python-env", () => {
       "3",
       "setuptools==84.0.0",
       "wheel==0.48.0",
+      "packaging==26.3",
     ]);
+  });
+
+  it("disables Git checkout line-ending conversion for every pinned wheel build", () => {
+    expect(
+      setupPythonEnvModule.buildDeterministicWheelEnv("1788424315", {
+        EXISTING: "preserved",
+        GIT_CONFIG_COUNT: "7",
+        GIT_CONFIG_KEY_0: "unsafe.override",
+        GIT_CONFIG_VALUE_0: "true",
+      }),
+    ).toEqual({
+      EXISTING: "preserved",
+      SOURCE_DATE_EPOCH: "1788424315",
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "core.autocrlf",
+      GIT_CONFIG_VALUE_0: "false",
+    });
+
+    const setupSource = fs.readFileSync(
+      path.join(process.cwd(), "scripts", "setup-python-env.cjs"),
+      "utf8",
+    );
+    expect(setupSource).toContain(
+      "env: buildDeterministicWheelEnv(PLUGIN_SOURCE_EPOCH)",
+    );
+    expect(setupSource).toContain(
+      "env: buildDeterministicWheelEnv(TOOLS_SOURCE_EPOCH)",
+    );
   });
 
   it("adds --no-compile when building bundled standalone pip installs", () => {
