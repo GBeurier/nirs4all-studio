@@ -4339,7 +4339,7 @@ mod tests {
         train_dataset_package_methods_conformal_archive_v2, DatasetPackage,
         DatasetPackageMethodsConformalArchiveV2Request, DatasetPackageMethodsProvider,
     };
-    use nirs4all_io_data002::core::materialize::{
+    use nirs4all_io::core::materialize::{
         AssembledDataset, Cell, Column, FoldProvenance, Frame, IdentityProvenance, Matrix,
         PartitionBlock,
     };
