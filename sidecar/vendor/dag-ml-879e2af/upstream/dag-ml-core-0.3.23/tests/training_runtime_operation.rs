@@ -821,6 +821,23 @@ fn add_portable_methods_hpo(fixture: &mut Fixture) {
 }
 
 #[cfg(feature = "methods-optimizer-local")]
+fn use_studio_pls_regression_v1_params(fixture: &mut Fixture) {
+    let params = serde_json::from_str(include_str!(
+        "fixtures/package/studio_pls_regression_v1_params.json"
+    ))
+    .unwrap();
+    fixture
+        .request
+        .graph
+        .nodes
+        .iter_mut()
+        .find(|node| node.id.as_str() == "model:base")
+        .unwrap()
+        .params = params;
+    rebuild(fixture);
+}
+
+#[cfg(feature = "methods-optimizer-local")]
 fn use_portable_methods_pipeline(fixture: &mut Fixture) {
     fixture.request.campaign.generation.dimensions.clear();
     fixture.request.campaign.generation.strategy = GenerationStrategy::None;
@@ -2474,6 +2491,7 @@ fn native_methods_hpo_tpe_median_operation_preserves_terminal_ledger_through_pac
 fn native_methods_hpo_replay_hydrates_n4mm_from_json_bundle_in_fresh_controller() {
     let mut fixture = fixture(true, false);
     add_portable_methods_hpo(&mut fixture);
+    use_studio_pls_regression_v1_params(&mut fixture);
     // Keep the live REFIT output as an independent numerical oracle for every
     // host-resolved PREDICT row. Without this expansion REFIT covers samples
     // 1..=4 while this provider's inference cohort correctly covers 1..=8.
@@ -2487,6 +2505,11 @@ fn native_methods_hpo_replay_hydrates_n4mm_from_json_bundle_in_fresh_controller(
         &mut source_store,
     )
     .expect("source native Methods HPO training");
+    let source_params = &source.effective_plan.node_plans[&node("model:base")].params;
+    assert_eq!(source_params["copy"], serde_json::json!(true));
+    assert_eq!(source_params["max_iter"], serde_json::json!(500));
+    assert_eq!(source_params["scale"], serde_json::json!(true));
+    assert_eq!(source_params["tol"], serde_json::json!(1.0e-6));
     assert!(source.replayable_phases.contains(&Phase::Predict));
     assert!(!source.execution_bundle.raw_artifact_payloads.is_empty());
     let mut missing_payload = source.execution_bundle.clone();

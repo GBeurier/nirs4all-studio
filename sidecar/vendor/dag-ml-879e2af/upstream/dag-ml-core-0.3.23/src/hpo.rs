@@ -963,15 +963,29 @@ pub fn validate_methods_pls_node_params(
 fn methods_pls_params(
     params: &BTreeMap<String, serde_json::Value>,
 ) -> crate::Result<MethodsPlsParams> {
-    let allowed = if params.contains_key("pipeline") {
-        2
-    } else {
-        1
-    };
-    if params.len() != allowed || !params.contains_key("n_components") {
+    let pipeline_shape =
+        params.contains_key("pipeline") && params.len() == 2 && params.contains_key("n_components");
+    let raw_shape = !params.contains_key("pipeline")
+        && params.len() == 1
+        && params.contains_key("n_components");
+    let legacy_sklearn_shape = !params.contains_key("pipeline")
+        && params.len() == 5
+        && ["copy", "max_iter", "n_components", "scale", "tol"]
+            .iter()
+            .all(|key| params.contains_key(*key));
+    if !pipeline_shape && !raw_shape && !legacy_sklearn_shape {
         return Err(crate::DagMlError::RuntimeValidation(
-            "portable Methods PLS accepts only `n_components` and the optional exact `pipeline` block"
-                .to_string(),
+            "portable Methods PLS accepts only `n_components`, the exact historical sklearn PLS defaults, or the optional exact `pipeline` block".to_string(),
+        ));
+    }
+    if legacy_sklearn_shape
+        && (params["copy"].as_bool() != Some(true)
+            || params["max_iter"].as_i64() != Some(500)
+            || params["scale"].as_bool() != Some(true)
+            || params["tol"].as_f64() != Some(1.0e-6))
+    {
+        return Err(crate::DagMlError::RuntimeValidation(
+            "portable Methods PLS historical sklearn parameters must keep canonical defaults `copy=true`, `max_iter=500`, `scale=true`, and `tol=1e-6`".to_string(),
         ));
     }
     let n_components = params["n_components"]
@@ -3414,6 +3428,21 @@ mod tests {
             Err(HpoError::RuntimeConfiguration { reason })
                 if reason == "libn4m path must be absolute"
         ));
+    }
+
+    #[cfg(feature = "methods-optimizer")]
+    #[test]
+    fn methods_pls_refuses_noncanonical_historical_sklearn_defaults() {
+        let mut params: BTreeMap<String, serde_json::Value> = serde_json::from_str(include_str!(
+            "../tests/fixtures/package/studio_pls_regression_v1_params.json"
+        ))
+        .unwrap();
+        params.insert("scale".to_string(), serde_json::json!(false));
+
+        assert!(validate_methods_pls_node_params(&params)
+            .unwrap_err()
+            .to_string()
+            .contains("historical sklearn parameters must keep canonical defaults"));
     }
 
     #[cfg(feature = "methods-optimizer-local")]
