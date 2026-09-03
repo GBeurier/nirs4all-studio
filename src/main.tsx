@@ -26,6 +26,7 @@ if (typeof performance !== "undefined" && typeof performance.measure === "functi
 // Initialize Sentry crash reporting only when the user has opted in.
 import { initSentry, SentryErrorBoundary, SentryFallback } from "@/lib/sentry";
 import { getTelemetryConsentStatus } from "@/lib/telemetryConsent";
+import { migrateRetiredRuntimeBackendPreference } from "@/lib/runtimeBackendPreference";
 
 // Use HashRouter for Electron (file:// protocol doesn't support BrowserRouter)
 const isElectron = typeof window !== "undefined" && (window as unknown as { electronApi?: unknown }).electronApi !== undefined;
@@ -69,6 +70,7 @@ const queryClient = new QueryClient({
 // session's list is on screen instantly and React Query refetches in the
 // background to correct any drift.
 hydrateDatasetCachesFromStorage(queryClient);
+migrateRetiredRuntimeBackendPreference();
 
 const appTree = (
   <StrictMode>

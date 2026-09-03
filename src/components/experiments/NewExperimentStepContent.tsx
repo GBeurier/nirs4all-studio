@@ -31,13 +31,9 @@ export interface NewExperimentStepContentProps {
   inputData: NewExperimentInputData;
   launchFlow: UseNewExperimentLaunchFlowResult;
   planFlow: UseNewExperimentPlanFlowResult;
-  runtimeEngine?: string | null;
   selectionFlow: UseNewExperimentSelectionFlowResult;
-  allowFallback?: boolean;
   onExperimentDescriptionChange: (value: string) => void;
   onExperimentNameChange: (value: string) => void;
-  onRuntimeEngineChange?: (value: string | null) => void;
-  onAllowFallbackChange?: (value: boolean) => void;
 }
 
 export function NewExperimentStepContent({
@@ -49,13 +45,9 @@ export function NewExperimentStepContent({
   inputData,
   launchFlow,
   planFlow,
-  runtimeEngine,
   selectionFlow,
-  allowFallback,
   onExperimentDescriptionChange,
   onExperimentNameChange,
-  onRuntimeEngineChange,
-  onAllowFallbackChange,
 }: NewExperimentStepContentProps) {
   if (currentStep === NEW_EXPERIMENT_PIPELINES_STEP) {
     return (
@@ -93,13 +85,9 @@ export function NewExperimentStepContent({
         executionEnvironmentDiagnostics={executionEnvironmentDiagnostics}
         experimentDescription={experimentDescription}
         planFlow={planFlow}
-        runtimeEngine={runtimeEngine}
         selectionFlow={selectionFlow}
-        allowFallback={allowFallback}
         onExperimentDescriptionChange={onExperimentDescriptionChange}
         onExperimentNameChange={onExperimentNameChange}
-        onRuntimeEngineChange={onRuntimeEngineChange}
-        onAllowFallbackChange={onAllowFallbackChange}
       />
     );
   }
