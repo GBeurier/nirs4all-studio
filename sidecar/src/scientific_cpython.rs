@@ -43,7 +43,7 @@ pub const SCIENTIFIC_DISTRIBUTION_RECORD_SHA256: &str =
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
     "099259cc3b510fd415b573122630a1db9304fdf847589b2ab92de3b3e8b36ba7";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
-    "31a19980014e0538c444c5f9a1a3cff0a8cdd6cf9e9950fe099e016e730865e9";
+    "906c151a80c3bbdf2ef1264b904a8fd61a2a67fbe0ded2cba92453e44fbce230";
 pub const SCIENTIFIC_SOURCE_COMMIT: &str = "3a38f589e5acbda58c5d071c95036f2572972ecd";
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
@@ -101,7 +101,7 @@ except Exception as error:
     distribution_record_sha256=None
     distribution_files_verified=False
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"31a19980014e0538c444c5f9a1a3cff0a8cdd6cf9e9950fe099e016e730865e9","source_commit":"3a38f589e5acbda58c5d071c95036f2572972ecd"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"906c151a80c3bbdf2ef1264b904a8fd61a2a67fbe0ded2cba92453e44fbce230","source_commit":"3a38f589e5acbda58c5d071c95036f2572972ecd"},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,os,socket,sys

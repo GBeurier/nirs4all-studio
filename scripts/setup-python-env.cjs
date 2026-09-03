@@ -56,11 +56,14 @@ const TORCH_PROFILE_PACKAGE = "torch";
 const CUDA_TORCH_PROFILE = "gpu-cuda-torch";
 const PLUGIN_BUILD_MODE = "studio-python-plugin-runtime";
 const PLUGIN_SOURCE_COMMIT = "3a38f589e5acbda58c5d071c95036f2572972ecd";
-const PLUGIN_WHEEL_SHA256 = "31a19980014e0538c444c5f9a1a3cff0a8cdd6cf9e9950fe099e016e730865e9";
+const PLUGIN_SOURCE_EPOCH = "1788424315";
+const PLUGIN_WHEEL_SHA256 = "906c151a80c3bbdf2ef1264b904a8fd61a2a67fbe0ded2cba92453e44fbce230";
 const PLUGIN_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all.git@${PLUGIN_SOURCE_COMMIT}`;
 const TOOLS_SOURCE_COMMIT = "e3a332633f87b4652a06f8993e63c386a3568698";
+const TOOLS_SOURCE_EPOCH = "1788346349";
 const TOOLS_WHEEL_SHA256 = "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc";
 const TOOLS_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all-tools.git@${TOOLS_SOURCE_COMMIT}`;
+const WHEEL_BUILD_TOOLCHAIN = Object.freeze(["setuptools==84.0.0", "wheel==0.48.0"]);
 const TOOLS_READER_PACKAGES = Object.freeze(["duckdb==1.5.5", "pyarrow==25.0.1"]);
 
 // --- Argument parsing ---
@@ -811,6 +814,16 @@ async function main() {
   if (pluginOnly) {
     const wheelDir = path.join(cacheDir, "studio-python-plugin-wheel");
     fs.mkdirSync(wheelDir, { recursive: true });
+    if (!pluginWheel || !toolsWheel) {
+      await runCommandWithRetries(runtimePython, buildPipInstallArgs(WHEEL_BUILD_TOOLCHAIN, {
+        isolated: true,
+        noCompile: true,
+        upgrade: true,
+      }), {}, {
+        retries: isWindows ? 3 : 1,
+        label: "install exact wheel build toolchain",
+      });
+    }
     if (pluginWheel) {
       selectedPluginWheel = pluginWheel;
     } else {
@@ -823,10 +836,11 @@ async function main() {
         "pip",
         "wheel",
         "--no-deps",
+        "--no-build-isolation",
         "--wheel-dir",
         wheelDir,
         PLUGIN_SOURCE_URL,
-      ], {}, {
+      ], { env: { ...process.env, SOURCE_DATE_EPOCH: PLUGIN_SOURCE_EPOCH } }, {
         retries: isWindows ? 3 : 1,
         label: "build pinned nirs4all plugin wheel",
       });
@@ -869,8 +883,8 @@ async function main() {
         if (entry.endsWith(".whl")) fs.rmSync(path.join(toolsWheelDir, entry), { force: true });
       }
       await runCommandWithRetries(runtimePython, [
-        "-I", "-m", "pip", "wheel", "--no-deps", "--wheel-dir", toolsWheelDir, TOOLS_SOURCE_URL,
-      ], {}, {
+        "-I", "-m", "pip", "wheel", "--no-deps", "--no-build-isolation", "--wheel-dir", toolsWheelDir, TOOLS_SOURCE_URL,
+      ], { env: { ...process.env, SOURCE_DATE_EPOCH: TOOLS_SOURCE_EPOCH } }, {
         retries: isWindows ? 3 : 1,
         label: "build pinned nirs4all-tools wheel",
       });

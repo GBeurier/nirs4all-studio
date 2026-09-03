@@ -91,7 +91,7 @@ function writePackagedContract(
     transport: "bounded-cpython-stdio-v1",
     http_listener: "forbidden",
     source_commit: "3a38f589e5acbda58c5d071c95036f2572972ecd",
-    wheel_sha256: "31a19980014e0538c444c5f9a1a3cff0a8cdd6cf9e9950fe099e016e730865e9",
+    wheel_sha256: "906c151a80c3bbdf2ef1264b904a8fd61a2a67fbe0ded2cba92453e44fbce230",
     distribution: "nirs4all",
     distribution_version: "1.0.0rc2",
     distribution_record_sha256: "896cb15467a2e7864d5458c42ab37501bfb029c6e8d64fc5c8984999c408930b",

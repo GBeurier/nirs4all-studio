@@ -275,7 +275,10 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
                 )]),
             },
         )
-        .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)?;
+        .map_err(|error| {
+            eprintln!("Core Archive V2 Methods prediction failed: {error}");
+            ArchiveV2PredictionExecutorError::ExecutionFailed
+        })?;
         let output = outcome
             .outputs
             .into_iter()
@@ -296,7 +299,7 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
             target_names: prediction.target_names,
             values: prediction.values,
             provenance_executor: format!(
-                "nirs4all-core@0.3.25+libn4m-abi-{}.{}:{}",
+                "nirs4all-core@0.3.26+libn4m-abi-{}.{}:{}",
                 self.methods.abi_major, self.methods.abi_minor, self.methods.sha256
             ),
         })

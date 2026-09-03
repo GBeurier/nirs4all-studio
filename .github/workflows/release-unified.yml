@@ -288,7 +288,8 @@ jobs:
   installer-windows:
     name: Installer — Windows x64
     needs: prepare
-    runs-on: windows-latest
+    # Methods' release preset is intentionally bound to VS 17 / 2022.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
         with:
@@ -841,7 +842,8 @@ jobs:
     name: All-in-one — Windows x64
     needs: prepare
     if: needs.prepare.outputs.skip_all_in_one != 'true'
-    runs-on: windows-latest
+    # Methods' release preset is intentionally bound to VS 17 / 2022.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
         with:
