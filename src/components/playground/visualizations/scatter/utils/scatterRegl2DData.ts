@@ -41,6 +41,11 @@ export interface Regl2DViewportBounds {
   top: number;
 }
 
+export interface Regl2DReadbackCoordinate {
+  x: number;
+  y: number;
+}
+
 const DEFAULT_POINT_COLOR: Regl2DColor = [0.231, 0.510, 0.965, 1.0];
 const GRID_COLOR: Regl2DColor = [0.5, 0.5, 0.5, 0.4];
 const AXIS_COLOR: Regl2DColor = [0.4, 0.4, 0.4, 0.8];
@@ -48,6 +53,31 @@ const AXIS_COLOR: Regl2DColor = [0.4, 0.4, 0.4, 0.8];
 export function createRegl2DIndexMap(points: readonly Regl2DPoint[], indices?: number[]): number[] {
   if (indices) return indices;
   return points.map((_, i) => i);
+}
+
+export function createRegl2DReadbackCoordinate(
+  x: number,
+  y: number,
+  framebufferWidth: number,
+  framebufferHeight: number
+): Regl2DReadbackCoordinate | null {
+  const width = Math.floor(framebufferWidth);
+  const height = Math.floor(framebufferHeight);
+  if (
+    !Number.isFinite(x)
+    || !Number.isFinite(y)
+    || !Number.isFinite(width)
+    || !Number.isFinite(height)
+    || width <= 0
+    || height <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    x: Math.min(width - 1, Math.max(0, Math.floor(x))),
+    y: Math.min(height - 1, Math.max(0, height - Math.floor(y) - 1)),
+  };
 }
 
 export function calculateRegl2DBounds(points: readonly Regl2DPoint[]): DataBounds {

@@ -244,9 +244,47 @@ This path packages with `electron-builder.installer.yml`.
 Notes:
 
 - it is the local helper for installer targets
+- it always passes `--publish never`, even though the builder config still
+  declares the GitHub provider used by updater/release metadata
+- add `--version 1.0.0-rc.4` for a local RC artifact without mutating
+  `package.json` or `package-lock.json`; the override is stamped into
+  `version.json`, Electron metadata, and the Vite-rendered app version
 - the published desktop release matrix is no longer split into CPU/GPU installers
 - `--mode standalone` is rejected; use `npm run release:all-in-one`
 - only the CPU profile and the matching host platform are accepted; cross-host and `--platform all` builds are rejected
+
+For a native Windows installer RC build on a Windows host, run from a real
+Windows checkout such as `C:\src\nirs4all\nirs4all-studio`, not from WSL or a
+`\\wsl...` UNC path:
+
+```powershell
+git clone https://github.com/GBeurier/nirs4all-ui C:\path\to\nirs4all\nirs4all-ui
+cd C:\path\to\nirs4all\nirs4all-studio
+npm install
+npm run release:windows-rc -- --version 1.0.0-rc.4
+```
+
+`release:windows-rc` is a local-only helper. It refuses to run outside native
+Windows, verifies the sibling `../nirs4all-ui` checkout, runs `npm ci` and
+`npm run build` there so the local `file:../nirs4all-ui` dependency has a
+fresh `dist/`, runs `release:smoke`, then runs `release -- --clean --platform
+win --version <semver>` with `--publish never`. It produces the NSIS installer
+and portable executable in `release/` without creating a tag or publishing a
+GitHub Release.
+
+The equivalent lower-level commands are:
+
+```powershell
+npm run release:smoke
+npm run release -- --clean --platform win --version 1.0.0-rc.4
+```
+
+`release:smoke` validates the frontend/backend checks plus the packaging inputs
+that commonly break RC builds early: `extraResources`, the backend runtime
+config entries, the Windows NSIS include script, the NSIS lifecycle macros, and
+the Windows `nsis`/`portable`/all-in-one ZIP target declarations. In CI and the
+release workflow, `nirs4all-ui` is packed from the checked-out sibling and
+installed into Studio before every Electron build.
 
 ### All-in-one local builds
 
@@ -296,6 +334,14 @@ The release workflow is `.github/workflows/release-unified.yml`.
 - `tag`
 - `skip_all_in_one`
 - `skip_docker`
+
+For an installer-only RC smoke build that does not publish a GitHub Release,
+start the workflow manually with a SemVer prerelease such as `1.0.0-rc.4`, set
+`skip_all_in_one=true`, and keep `skip_docker=true`. Manual dispatch still runs
+the installer jobs and uploads short-lived workflow artifacts, but the `Create
+GitHub Release` step is gated to real tag pushes. Use a SemVer-compatible RC
+version; labels such as `v1-rc` are not accepted by `npm version`. The current
+prepared artifact set is workflow run `29145157945` for `1.0.0-rc.4`.
 
 ### Jobs
 

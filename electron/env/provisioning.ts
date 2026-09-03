@@ -1,7 +1,7 @@
 /**
- * Managed Python plugin-host provisioning: the full first-launch setup flow
- * (download → extract → venv → plugin packages → bytecode → metadata) plus the
- * standalone plugin-package install used by the verify/repair paths.
+ * Managed Python runtime provisioning: the full first-launch setup flow
+ * (download → extract → venv → core packages → bytecode → metadata) plus the
+ * standalone core-package install used by the verify/repair paths.
  *
  * The stateful coordination (status transitions, settings persistence) stays on
  * EnvManager, which passes a narrow {@link ProvisioningContext} so this module
@@ -56,9 +56,8 @@ export interface ProvisioningContext {
 }
 
 /**
- * Install the exact managed plugin-host packages using `python -m pip`.
- * Used when the user selects an existing Python that's missing the bounded
- * nirs4all stdio entrypoint.
+ * Install core packages into a Python environment using `python -m pip`.
+ * Used when the user selects an existing Python that's missing nirs4all.
  */
 export async function installCorePackages(
   pythonPath: string,
@@ -199,16 +198,16 @@ export async function provisionManagedRuntime(
     });
     report(40, "creating_venv", "Virtual environment ready");
 
-    // 5. Install the bounded plugin-host packages
+    // 5. Install core packages
     // On Windows, antivirus (Defender) may still be scanning venv files. Retries
     // with exponential backoff give it time to release file locks.
     ctx.setStatus("installing");
-    report(40, "installing", "Installing Python plugin host...");
+    report(40, "installing", "Installing core packages...");
 
     const totalPackages = MANAGED_RUNTIME_PACKAGES.length;
     for (let i = 0; i < totalPackages; i++) {
       const pkg = MANAGED_RUNTIME_PACKAGES[i];
-      const pkgName = pkg.split(/[<>=!~ []/)[0];
+      const pkgName = pkg.split(">=")[0].split("[")[0];
       const progressPercent = 40 + Math.round(((i + 1) / totalPackages) * 50);
       report(progressPercent, "installing", `Installing ${pkgName}...`);
       await runCommand(venvPython, [...PIP_INSTALL_BASE_ARGS, pkg], {

@@ -31,8 +31,10 @@ import updater
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="bash updater + posix tar in this e2e")
 
 NONEXISTENT_PID = 99_999_999
-OLD_VERSION = "0.8.2"
-NEW_VERSION = "0.8.3"
+# Keep this at the user-reported boundary: semantic version comparison must
+# correctly see 0.10.x as newer than 0.9.x (not compare the strings directly).
+OLD_VERSION = "0.9.1"
+NEW_VERSION = "0.10.1"
 
 # Build a fixture asset name the selector accepts on the current platform
 # (a .tar.gz with the right OS keyword + arch). tar.gz is accepted on both

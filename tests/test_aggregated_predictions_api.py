@@ -270,6 +270,7 @@ class TestStoreAdapterAggregated:
             "y_proba": None,
             "weights": None,
             "sample_indices": np.array([0, 1, 2]),
+            "sample_ids": np.array(["sample-a", "sample-b", "sample-c"]),
         }
 
         adapter = self._make_adapter(mock_store)
@@ -1088,6 +1089,7 @@ class TestGetPredictionArrays:
             "y_proba": None,
             "weights": None,
             "sample_indices": np.array([0, 1, 2]),
+            "sample_ids": np.array(["sample-a", "sample-b", "sample-c"]),
             "sample_metadata": {
                 "batch": ["A", "B", "A"],
                 "moisture": [12.0, 13.5, 12.8],
@@ -1102,6 +1104,7 @@ class TestGetPredictionArrays:
         assert data["y_pred"] == [1.1, 1.9, 3.1]
         assert data["n_samples"] == 3
         assert data["sample_indices"] == [0, 1, 2]
+        assert data["sample_ids"] == ["sample-a", "sample-b", "sample-c"]
         assert data["y_proba"] is None
         assert data["weights"] is None
         assert data["sample_metadata"] == {

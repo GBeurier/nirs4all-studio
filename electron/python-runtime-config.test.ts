@@ -7,8 +7,6 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
   assertProfileSupportedOnPlatform(profileId: string, platform?: string): void;
   LITE_EXCLUDED_PACKAGE_NAMES: string[];
   MANAGED_RUNTIME_PACKAGES: string[];
-  PLUGIN_DISTRIBUTION_VERSION: string;
-  PLUGIN_HOST_PACKAGES: string[];
   PRODUCT_PROFILES: Record<string, { extraPackageNames: string[] }>;
   STANDALONE_V1_PROFILE: string;
   getArchiveFilename(platform: string, arch: string): string;
@@ -16,27 +14,8 @@ const runtimeConfig = require("../scripts/python-runtime-config.cjs") as {
   getProfilePackageInstallSpecs(profileId: string, options?: { platform?: string }): string[];
   resolveProfileForFlavor(flavor: string, platform?: string): string;
 };
-const transitionalHttpConfig = require("../scripts/python-http-runtime-config.cjs") as {
-  BACKEND_COMMON_PACKAGES: string[];
-  BACKEND_TRANSITION_TOOL_PACKAGES: string[];
-};
 
 describe("python-runtime-config", () => {
-  it("keeps transitional HTTP dependencies out of the packaged plugin-host config", () => {
-    expect(transitionalHttpConfig.BACKEND_TRANSITION_TOOL_PACKAGES).toEqual([
-      "nirs4all-tools>=0.0.5",
-    ]);
-    expect(transitionalHttpConfig.BACKEND_COMMON_PACKAGES).toContain("fastapi>=0.115.0");
-    expect(runtimeConfig.PLUGIN_DISTRIBUTION_VERSION).toBe("0.10.3");
-    expect(runtimeConfig.PLUGIN_HOST_PACKAGES).toEqual(["nirs4all==0.10.3"]);
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toEqual(runtimeConfig.PLUGIN_HOST_PACKAGES);
-
-    const packagedSpecs = runtimeConfig.MANAGED_RUNTIME_PACKAGES.join(" ").toLowerCase();
-    for (const forbidden of ["fastapi", "uvicorn", "python-multipart", "sentry-sdk"]) {
-      expect(packagedSpecs).not.toContain(forbidden);
-    }
-  });
-
   it("keeps the standalone v1 scope pinned to the cpu profile extras", () => {
     expect(runtimeConfig.STANDALONE_V1_PROFILE).toBe("cpu");
     expect(runtimeConfig.PRODUCT_PROFILES.cpu.extraPackageNames).toEqual([
@@ -102,7 +81,7 @@ describe("python-runtime-config", () => {
   it("maps legacy installer flavors onto product profiles while preserving the managed runtime footprint", () => {
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "darwin")).toBe("gpu-mps");
     expect(runtimeConfig.resolveProfileForFlavor("gpu", "win32")).toBe("gpu-cuda-torch");
-    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all==0.10.3");
+    expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES).toContain("nirs4all>=0.10.0");
     expect(runtimeConfig.MANAGED_RUNTIME_PACKAGES.some((pkg) => pkg.startsWith("torch"))).toBe(false);
   });
 

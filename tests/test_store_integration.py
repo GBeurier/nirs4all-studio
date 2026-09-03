@@ -687,6 +687,7 @@ class TestStoreAdapter:
             "partition": "val",
             "model_name": "PLS(10)",
             "dataset_name": "dataset_a",
+            "sample_ids": np.array(["sample-a", "sample-b", "sample-c"]),
             "sample_metadata": {"batch": ["A", "B", "A"]},
         }
 
@@ -697,7 +698,24 @@ class TestStoreAdapter:
         assert result["n_samples"] == 3
         assert len(result["y_true"]) == 3
         assert len(result["y_pred"]) == 3
+        assert result["sample_ids"] == ["sample-a", "sample-b", "sample-c"]
         assert result["sample_metadata"] == {"batch": ["A", "B", "A"]}
+
+    def test_get_prediction_scatter_refuses_positional_or_misaligned_sample_ids(self):
+        import numpy as np
+
+        mock_store = MagicMock()
+        mock_store.get_prediction.return_value = {
+            "prediction_id": "pred-001",
+            "y_true": np.array([1.0, 2.0]),
+            "y_pred": np.array([1.1, 2.1]),
+            "sample_ids": np.array([0, 1]),
+        }
+
+        result = self._make_adapter(mock_store).get_prediction_scatter("pred-001")
+
+        assert result is not None
+        assert result["sample_ids"] is None
 
     def test_get_prediction_scatter_not_found(self):
         mock_store = MagicMock()

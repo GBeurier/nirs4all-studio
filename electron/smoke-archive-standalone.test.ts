@@ -24,7 +24,7 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     sandboxRoot: string;
     keepSandbox: boolean;
   };
-  buildSandboxEnv(platformId: string, sandboxRoot: string, port: number): Record<string, string>;
+  buildSandboxEnv(platformId: string, sandboxRoot: string, port: number, timeoutMs?: number): Record<string, string>;
   cleanupSandboxRoot(
     sandboxRoot: string,
     options?: { retryCount?: number; retryDelayMs?: number },
@@ -47,21 +47,11 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
   };
   resolveLaunchLayout(extractedRoot: string, platformId: string, appName: string): {
     appRoot: string;
-    backendRoot: string;
     executablePath: string;
     runtimeReadyPath: string;
     bundledPythonPath: string;
     bundledPythonCandidates: string[];
-    nativeSidecarPath: string;
   };
-  verifyLaunchRuntimeContract(
-    launchLayout: {
-      appRoot: string;
-      backendRoot: string;
-    },
-    platformId: string,
-    arch?: string,
-  ): unknown;
   removePathWithRetries(
     targetPath: string,
     options?: { retryCount?: number; retryDelayMs?: number },
@@ -116,15 +106,14 @@ describe("smoke-archive-standalone", () => {
 
     expect(layout.executablePath).toBe(path.join(extractedRoot, "nirs4all Studio.exe"));
     expect(layout.runtimeReadyPath).toBe(
-      path.join(extractedRoot, "resources", "backend", "python-runtime", "PLUGIN_RUNTIME_READY.json"),
+      path.join(extractedRoot, "resources", "backend", "python-runtime", "RUNTIME_READY.json"),
     );
     expect(layout.bundledPythonPath).toBe(
       path.join(extractedRoot, "resources", "backend", "python-runtime", "python", "python.exe"),
     );
-    expect(layout.nativeSidecarPath).toBe(
-      path.join(extractedRoot, "resources", "backend", "native", "studio-sidecar.exe"),
+    expect(layout.bundledPythonCandidates).toContain(
+      path.join(extractedRoot, "resources", "backend", "python-runtime", "venv", "Scripts", "python.exe"),
     );
-    expect(layout.bundledPythonCandidates).toEqual([layout.bundledPythonPath]);
   });
 
   it("resolves a wrapped Linux standalone layout", () => {
@@ -138,33 +127,8 @@ describe("smoke-archive-standalone", () => {
     expect(layout.appRoot).toBe(appRoot);
     expect(layout.executablePath).toBe(path.join(appRoot, "nirs4all-webapp"));
     expect(layout.runtimeReadyPath).toBe(
-      path.join(appRoot, "resources", "backend", "python-runtime", "PLUGIN_RUNTIME_READY.json"),
+      path.join(appRoot, "resources", "backend", "python-runtime", "RUNTIME_READY.json"),
     );
-    expect(layout.nativeSidecarPath).toBe(
-      path.join(appRoot, "resources", "backend", "native", "studio-sidecar"),
-    );
-  });
-
-  it("rejects an archive whose resources ancestor is an external symlink", () => {
-    if (process.platform === "win32") return;
-    const extractedRoot = makeTempDir("n4a-smoke-ancestor-link-");
-    const appRoot = path.join(extractedRoot, "nirs4all Studio");
-    const outsideResources = path.join(extractedRoot, "outside-resources");
-    fs.mkdirSync(path.join(outsideResources, "backend"), { recursive: true });
-    fs.mkdirSync(appRoot);
-    fs.writeFileSync(path.join(appRoot, "nirs4all-webapp"), "");
-    fs.symlinkSync(outsideResources, path.join(appRoot, "resources"));
-
-    const layout = smokeModule.resolveLaunchLayout(
-      extractedRoot,
-      "linux",
-      "nirs4all Studio",
-    );
-    expect(() => smokeModule.verifyLaunchRuntimeContract(
-      layout,
-      "linux",
-      "x64",
-    )).toThrow(/boundary component must be a real non-symlink directory/);
   });
 
   it("resolves the macOS .app layout", () => {
@@ -179,15 +143,14 @@ describe("smoke-archive-standalone", () => {
       path.join(appBundle, "Contents", "MacOS", "nirs4all Studio"),
     );
     expect(layout.runtimeReadyPath).toBe(
-      path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "PLUGIN_RUNTIME_READY.json"),
+      path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "RUNTIME_READY.json"),
     );
     expect(layout.bundledPythonPath).toBe(
       path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "python", "bin", "python3"),
     );
-    expect(layout.nativeSidecarPath).toBe(
-      path.join(appBundle, "Contents", "Resources", "backend", "native", "studio-sidecar"),
+    expect(layout.bundledPythonCandidates).toContain(
+      path.join(appBundle, "Contents", "Resources", "backend", "python-runtime", "venv", "bin", "python"),
     );
-    expect(layout.bundledPythonCandidates).toEqual([layout.bundledPythonPath]);
   });
 
   it("detects build-path leaks inside runtime launcher files", () => {
@@ -210,11 +173,12 @@ describe("smoke-archive-standalone", () => {
 
   it("creates an isolated Linux sandbox env", () => {
     const sandboxRoot = makeTempDir("n4a-smoke-env-");
-    const env = smokeModule.buildSandboxEnv("linux", sandboxRoot, 43123);
+    const env = smokeModule.buildSandboxEnv("linux", sandboxRoot, 43123, 90000);
 
     expect(env.NIRS4ALL_OFFLINE).toBe("1");
-    expect(env.NIRS4ALL_NATIVE_SIDECAR_PORT).toBe("43123");
-    expect(env.NIRS4ALL_BACKEND_PORT).toBeUndefined();
+    expect(env.NIRS4ALL_BACKEND_PORT).toBe("43123");
+    expect(env.NIRS4ALL_BACKEND_RUNTIME_VERIFY_TIMEOUT_MS).toBe("90000");
+    expect(env.NIRS4ALL_BACKEND_PACKAGE_VERIFY_TIMEOUT_MS).toBe("90000");
     expect(env.HOME).toBe(path.join(sandboxRoot, "home"));
     expect(env.XDG_CACHE_HOME).toBe(path.join(sandboxRoot, "home", ".cache"));
     expect(env.XDG_DATA_HOME).toBe(path.join(sandboxRoot, "home", ".local", "share"));

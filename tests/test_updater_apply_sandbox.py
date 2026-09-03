@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -24,6 +25,118 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="bash updater sc
 # A PID that does not exist, so the script's 'wait for app to exit' loop returns
 # immediately instead of blocking for 30 s.
 NONEXISTENT_PID = 99_999_999
+
+
+class _NestedPlatformDirs:
+    """Platformdirs stub reproducing state/log paths below the install tree."""
+
+    app_dir: Path
+
+    @classmethod
+    def user_data_dir(cls, *_args):
+        return str(cls.app_dir / "runtime-state")
+
+    @classmethod
+    def user_log_dir(cls, *_args):
+        return str(cls.app_dir / "runtime-logs")
+
+
+def test_directory_mode_moves_runtime_paths_outside_app_tree(tmp_path, monkeypatch):
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    external_temp = tmp_path / "external-temp"
+    external_temp.mkdir()
+
+    _NestedPlatformDirs.app_dir = app_dir
+    monkeypatch.setattr(updater, "platformdirs", _NestedPlatformDirs)
+    monkeypatch.setattr(updater, "get_app_directory", lambda: app_dir)
+    monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(external_temp))
+    monkeypatch.delenv("NIRS4ALL_PORTABLE_EXE", raising=False)
+    monkeypatch.delenv("NIRS4ALL_PORTABLE_ROOT", raising=False)
+
+    state_dir = updater._get_update_state_dir()
+    log_dir = updater._get_update_log_dir()
+
+    assert not updater._path_is_within(state_dir, app_dir)
+    assert not updater._path_is_within(log_dir, app_dir)
+    assert state_dir.parent == log_dir.parent
+    assert state_dir.name == "state"
+    assert log_dir.name == "logs"
+
+
+def test_directory_mode_rehomes_nested_backup_and_staging(tmp_path, monkeypatch):
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    staging = app_dir / "runtime-state" / "update_staging"
+    staging.mkdir(parents=True)
+    nested_backup = app_dir / "runtime-state" / "update_backup"
+    logs = tmp_path / "logs"
+    logs.mkdir()
+
+    exe_name = "nirs4all-studio-stub"
+    marker = tmp_path / "relaunched.marker"
+    old_exe = app_dir / exe_name
+    old_exe.write_text("#!/bin/sh\necho OLD\n")
+    old_exe.chmod(0o755)
+    new_exe = staging / exe_name
+    new_exe.write_text(f"#!/bin/sh\necho NEW > '{marker}'\n")
+    new_exe.chmod(0o755)
+    (staging / "version.json").write_text(json.dumps({"version": "9.9.9"}))
+
+    monkeypatch.setattr(updater, "get_backup_dir", lambda: nested_backup)
+    monkeypatch.setattr(updater, "_get_update_log_dir", lambda: logs)
+    monkeypatch.setenv("NIRS4ALL_APP_EXE", exe_name)
+    monkeypatch.delenv("NIRS4ALL_PORTABLE_EXE", raising=False)
+    monkeypatch.delenv("NIRS4ALL_PORTABLE_ROOT", raising=False)
+
+    script_path, content = updater.create_updater_script(staging, app_dir=app_dir, app_pid=NONEXISTENT_PID)
+    safe_work_dir = tmp_path / ".app-nirs4all-webapp-update"
+
+    assert f'BACKUP_DIR="{safe_work_dir / "backup"}"' in content
+    assert f'STAGING_DIR="{safe_work_dir / "staging"}"' in content
+    assert not nested_backup.exists()
+
+    subprocess.run(["bash", str(script_path)], check=True, timeout=60)
+
+    assert (app_dir / exe_name).read_text().startswith("#!/bin/sh\necho NEW")
+    assert json.loads((app_dir / "version.json").read_text())["version"] == "9.9.9"
+    assert (safe_work_dir / "backup" / exe_name).read_text() == "#!/bin/sh\necho OLD\n"
+
+    deadline = time.time() + 10
+    while time.time() < deadline and not marker.exists():
+        time.sleep(0.1)
+    assert marker.exists(), "the updated executable was not relaunched"
+
+
+def test_cleanup_removes_rehomed_backup_after_successful_apply(tmp_path, monkeypatch):
+    app_dir = tmp_path / "app"
+    app_dir.mkdir()
+    nested_backup = app_dir / "runtime-state" / "update_backup"
+    safe_work_dir = tmp_path / ".app-nirs4all-webapp-update"
+    safe_backup = safe_work_dir / "backup"
+    safe_staging = safe_work_dir / "staging"
+    safe_backup.mkdir(parents=True)
+    safe_staging.mkdir(parents=True)
+    (safe_backup / "nirs4all-studio-stub").write_text("old")
+    (safe_staging / "partial").write_text("stale")
+
+    staged_dir = tmp_path / "staged"
+    cache_dir = tmp_path / "cache"
+    staged_dir.mkdir()
+    cache_dir.mkdir()
+
+    monkeypatch.setattr(updater, "get_app_directory", lambda: app_dir)
+    monkeypatch.setattr(updater, "get_backup_dir", lambda: nested_backup)
+    monkeypatch.setattr(updater, "get_staging_dir", lambda: staged_dir)
+    monkeypatch.setattr(updater, "get_update_cache_dir", lambda: cache_dir)
+
+    updater.cleanup_old_updates()
+
+    assert not safe_backup.exists()
+    assert not safe_staging.exists()
+    assert not staged_dir.exists()
+    assert not cache_dir.exists()
+    assert not nested_backup.exists()
 
 
 def test_directory_mode_apply_replaces_and_relaunches(tmp_path, monkeypatch):

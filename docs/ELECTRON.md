@@ -25,22 +25,6 @@ nirs4all-webapp uses Electron as the desktop shell, replacing the previous PyWeb
 - **Mature Packaging**: electron-builder for multi-OS distribution
 - **Auto-Updates**: Built-in electron-updater support
 
-### Current native-session lifecycle
-
-Electron now starts the Rust `studio-sidecar` control plane and creates the
-window through `electron/native-session-lifecycle.ts`. No packaged Electron
-entrypoint imports or starts a Python HTTP server.
-
-Native route selection happens before dispatch. A request selected for the
-sidecar is never retried through another server. An unmigrated route returns a
-typed fail-closed refusal without acquiring Python. The Rust sidecar can invoke bounded CPython stdio
-library/plugin host independently of this HTTP policy. In packaged products
-that host is discoverable only through `STUDIO_RUNTIME_CONTRACT.json` and its
-content-addressed adjacent runtime closure; user/managed venvs and environment
-overrides cannot replace it. The child uses `-I -S -B` and owns no listener.
-
-Historical backend-manager examples below are not product entrypoints.
-
 ---
 
 ## Why Electron?
@@ -78,21 +62,6 @@ Electron bundles Chromium, providing:
 
 ## Architecture
 
-The authoritative packaged path is:
-
-```text
-renderer request/connection
-  -> Electron per-target preselection
-     -> native-qualified: Rust studio-sidecar HTTP/WS listener
-     -> unmigrated: typed refusal before fetch/spawn/retry
-
-Rust may invoke bounded nirs4all library callables through fresh isolated
-CPython JSON-stdio processes. CPython never owns the product listener.
-```
-
-The historical `backend-manager.ts` diagram below is retained only as source
-history; it is excluded from the packaged Electron dependency graph.
-
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         Electron Application                             │
@@ -104,7 +73,7 @@ history; it is excluded from the packaged Electron dependency graph.
 │  │  ├── BrowserWindow creation                                        │ │
 │  │  ├── App lifecycle (ready, quit, activate)                         │ │
 │  │  ├── IPC handlers (file dialogs, system info)                      │ │
-│  │  └── Rust-sidecar lifecycle                                         │ │
+│  │  └── Backend lifecycle (via backend-manager.ts)                    │ │
 │  │                                                                    │ │
 │  │  electron/backend-manager.ts                                       │ │
 │  │  ├── spawn() - Start Python backend subprocess                     │ │
@@ -144,7 +113,7 @@ history; it is excluded from the packaged Electron dependency graph.
                                │ HTTP/WebSocket (localhost:PORT)
                                ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│              Optional Python HTTP Diagnostic (Subprocess)                │
+│                    Python Backend (Subprocess)                           │
 │                                                                          │
 │  FastAPI + Uvicorn                                                       │
 │  ├── /api/health          - Health check (used by backend-manager)       │
@@ -358,63 +327,17 @@ npm run doctor
 ### Development Mode
 
 ```bash
-# Rust-only Electron + Vite dev mode
+# Terminal 1: Python backend
+python main.py --no-reload
+
+# Terminal 2: Electron + Vite dev mode
 npm run start:desktop
 ```
 
 In development mode:
 - Vite serves the React app with HMR
-- Electron starts the Rust sidecar and refuses unmigrated renderer routes
+- Python backend runs directly (no PyInstaller)
 - Electron loads from `http://localhost:5173`
-
-Workspace transition diagnosis and conversion are also native renderer routes:
-Rust owns `GET /api/workspace/transition-status` and
-`POST /api/workspace/legacy-convert`. Conversion may start the configured
-CPython executable only as a bounded stdio host for the offline
-`nirs4all_tools` module; it never acquires a second HTTP
-owner. A verified code `0` result may activate the fresh output, code `10`
-keeps the preserved output inactive, and code `20` is a visible refusal. The
-legacy source remains linked for rollback. Activation additionally requires a
-strict immutable SQLite V2 check and compare-and-swap of the active workspace
-id, so a selection changed during conversion is never stolen. Open directory
-and store handles pin the validated objects through activation; file identity
-and SHA-256 content are checked around a second final V2 validation immediately
-before the atomic settings replacement. The digest of the exact validated
-SQLite serialization is persisted. Each native Store consumer receives the
-same authenticated connection rather than reopening a path; the Python
-run-detail library host receives a private snapshot serialized from that
-connection. A substitution after final validation is never consumable. Catalogue entries
-created by older Studio versions remain compatible and continue through their
-existing per-reader format preflight.
-
-The Tools capability probe is repeated at each spawn and executable, not declarative: after exact
-wheel/RECORD verification it runs an in-memory DuckDB query and an in-memory
-PyArrow Parquet round-trip. Conversion repeats that attestation inside the
-same interpreter immediately before `runpy` invokes the qualified module.
-Output readers report through bounded channels;
-there is no unbounded thread join. If descendant cleanup does not close the
-pipes within two seconds, the request fails and that converter instance is
-permanently disabled, limiting a hostile escaped descendant to at most the two
-already-bounded reader tasks.
-
-On Windows, the sidecar starts an internal launcher rather than Python itself.
-The launcher creates a Job Object with `KILL_ON_JOB_CLOSE`, assigns itself before
-spawning Python, and enables no breakaway flag; Python and every descendant are
-therefore members without a spawn/assign race. Timeout or overflow terminates
-the launcher, and handle close lets Windows terminate the entire job. Studio no
-longer relies on `taskkill`. Windows CI executes the exit-code and escaped-child
-sentinel tests because cross-compilation cannot exercise kernel containment.
-
-`STU-CONV-SYNC-001` is the approved, narrow parity exception: this route returns
-the bounded conversion result synchronously (maximum 1800 seconds) until Rust
-owns durable maintenance-job execution. The global route-state mutex is
-released while the process runs. `STU-CONV-UNKNOWN-001` also explicitly keeps
-the native unknown-field allowlist fail-closed even though legacy Pydantic
-ignored extra request fields. Both exceptions are frozen in
-`sidecar/contracts/studio_legacy_workspace_conversion_v1.json`.
-
-For browser-only web development, run `python main.py --no-reload` beside
-`npm run dev`; this does not describe the packaged desktop product.
 
 ### Production Preview
 
@@ -467,11 +390,7 @@ The renderer communicates with the backend via HTTP/WebSocket only:
 
 ## Build System
 
-### Legacy Python Backend Build (not a desktop release path)
-
-The commands below are retained for browser-only web development. Phase 2 desktop
-installers use the Rust sidecar plus the plugin-only CPython closure and never
-package this FastAPI/PyInstaller backend.
+### Backend Build (PyInstaller)
 
 ```bash
 # CPU build
@@ -496,37 +415,26 @@ The `backend.spec` file configures:
 # Build main process (TypeScript → JavaScript)
 npm run build:electron
 
-# Package for distribution
-npm run dist           # Current platform
-npm run dist:linux     # Linux (AppImage, DEB)
-npm run dist:win       # Windows (NSIS, portable)
-npm run dist:mac       # macOS (DMG)
+# Package installer distribution
+npm run release -- --platform win     # Windows (NSIS, portable)
+npm run release -- --platform mac     # macOS (DMG)
+npm run release -- --platform linux   # Linux (AppImage, DEB)
 ```
 
 ### Full Release
 
 ```bash
-# Run on the matching host; CPU is the only attested installer profile.
-npm run release -- --platform linux --flavor cpu
+# Installer path
+npm run release -- --clean --platform win
+
+# All-in-one archive path
+npm run release:all-in-one:clean -- --platform win32 --arch x64
 ```
 
 This runs:
-1. `npm run build` (React frontend)
-2. pinned plugin-only CPython closure preparation and Rust sidecar build
-3. `npm run build:electron` (Electron main process)
-4. electron-builder packaging plus fresh-output/runtime verification
-
-On macOS, the Electron Builder `afterPack` hook pre-signs every Mach-O in the
-copied CPython closure and the optional `libn4m.dylib`, then regenerates their
-SHA-256 closure and `STUDIO_RUNTIME_CONTRACT.json`. `mac.signIgnore` prevents a
-second signature from changing those attested bytes. It does not match
-`native/studio-sidecar`, so Electron Builder signs the Rust HTTP/WS owner and
-the outer `.app` normally. See `docs/PACKAGING.md` for the fail-closed signing
-order and its notarization limits.
-
-Use `npm run release:all-in-one` for portable archives. The installer helper
-rejects GPU/cpu-lite labels, cross-host targets, `--platform all`, and legacy
-standalone mode.
+1. backend payload preparation (`scripts/copy-backend-source.cjs` for installers, runtime bake for all-in-one archives)
+2. `npm run build:electron` (Electron renderer and main process)
+3. electron-builder packaging with `electron-builder.installer.yml` or `electron-builder.archive.yml`
 
 ---
 
@@ -539,7 +447,8 @@ standalone mode.
 | `electron/backend-manager.ts` | Backend lifecycle |
 | `electron/env-manager.ts` | Python environment detection and setup |
 | `electron/logger.ts` | Persistent file logging |
-| `electron-builder.yml` | Packaging configuration |
+| `electron-builder.installer.yml` | Installer and Windows portable packaging configuration |
+| `electron-builder.archive.yml` | All-in-one archive packaging configuration |
 | `backend.spec` | PyInstaller configuration |
 | `vite.config.ts` | Vite + Electron plugin |
 | `build/entitlements.mac.plist` | macOS entitlements |
@@ -599,7 +508,7 @@ ipcMain.handle('channel', async (event, ...args) => {
 
 ## Crash Reporting (Sentry)
 
-nirs4all Studio supports automatic crash reporting via [Sentry](https://sentry.io/). When enabled, errors from Electron main and the React renderer are reported. The transitional web/diagnostic Python backend also reports when it is explicitly running.
+nirs4all Studio supports automatic crash reporting via [Sentry](https://sentry.io/). When enabled, errors from all three layers (Electron main, React renderer, Python backend) are reported to your Sentry project.
 
 ### Setup
 
@@ -629,7 +538,7 @@ VITE_SENTRY_DSN=https://your-key@o123456.ingest.sentry.io/1234567
 |-------|---------|-------------|
 | **Electron main** | `@sentry/electron` | Captures uncaught exceptions, unhandled rejections, native crashes |
 | **React renderer** | `@sentry/react` | ErrorBoundary for React errors, browser error tracking, performance |
-| **Python diagnostic/web backend** | `sentry-sdk[fastapi]` | Captures FastAPI exceptions only while that optional process is explicitly running |
+| **Python backend** | `sentry-sdk[fastapi]` | FastAPI integration, captures unhandled exceptions |
 
 - All three layers send events to the same Sentry project
 - When `SENTRY_DSN` is not set, Sentry is completely disabled (zero overhead)
@@ -640,7 +549,7 @@ VITE_SENTRY_DSN=https://your-key@o123456.ingest.sentry.io/1234567
 - Uncaught JavaScript exceptions (main + renderer)
 - Unhandled promise rejections
 - React rendering errors (via ErrorBoundary)
-- Explicit Python diagnostic/web backend unhandled exceptions
+- Python backend unhandled exceptions
 - App version, OS, and platform metadata
 - Performance traces (sampled at 10%)
 

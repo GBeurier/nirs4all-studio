@@ -6,6 +6,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [Unreleased]
+
+---
+
+## [0.10.1] — 2026-08-07
+
+### Added
+
+- **Runtime backend preference**: Studio now exposes a global runtime backend
+  preference for transition testing. Users can keep the legacy Python backend or
+  request `dag-ml` with explicit fallback behavior; experiment, pipeline-editor,
+  training, and AutoML launch paths forward and record the requested/actual engine
+  metadata.
+- **Legacy workspace transition UX**: Studio detects legacy workspace layouts,
+  shows a top-level warning for the active workspace, and provides a conversion
+  action that writes a sibling `*-workspace-v2` directory through the shared
+  `nirs4all-tools` converter. Clean conversions can be linked and activated;
+  best-effort conversions remain available but are not auto-activated.
+- **Current RC installer artifacts**: A non-publishing `Release` workflow dispatch
+  on `main` produced unsigned installer artifacts for `1.0.0-rc.4`, including
+  Windows x64, without creating a GitHub Release or switching production.
+
+### Changed
+
+- Studio production remains on the current published line until the Windows RC
+  installer is manually smoke-tested and the held Python `nirs4all` transition
+  release is cut.
+- Transition compatibility is intentionally local to Studio and the Python library.
+  Other V1 runtimes consume the new workspace format only; the legacy/converter
+  support is planned for removal after the transition release window.
+
+---
+
 ## [0.8.2] — 2026-06-13
 
 ### Fixed

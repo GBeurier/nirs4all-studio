@@ -4,10 +4,11 @@
  * Performs in order:
  *   1. TypeScript type-check
  *   2. ESLint
- *   3. Backend source copy (recommended-config.json included)
- *   4. Python backend import sanity (NIRS4ALL_OPTIONAL_DEPS loads from config)
- *   5. Frontend + Electron build (vite)
- *   6. electron-builder dry-run (validates config, no actual packaging)
+ *   3. nirs4all-ui package contract smoke
+ *   4. Backend source copy (recommended-config.json included)
+ *   5. Python backend import sanity (NIRS4ALL_OPTIONAL_DEPS loads from config)
+ *   6. Frontend + Electron build (vite)
+ *   7. electron-builder dry-run (validates config, no actual packaging)
  *
  * Usage:
  *   node scripts/build-test.cjs              # Full verification
@@ -20,11 +21,10 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { resolveSpawnCommand } = require("./spawn-command.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 process.chdir(projectRoot);
-
-const isWindows = process.platform === "win32";
 
 // Parse args
 const args = process.argv.slice(2);
@@ -69,14 +69,127 @@ function getTopLevelYamlList(filePath, key) {
   return values;
 }
 
+function stripYamlScalar(value) {
+  return value.trim().replace(/^["'](.*)["']$/, "$1");
+}
+
+function getTopLevelExtraResourceSources(filePath) {
+  const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+  const values = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    if (!inSection) {
+      if (line.trim() === "extraResources:") {
+        inSection = true;
+      }
+      continue;
+    }
+
+    if (!line.trim() || line.trimStart().startsWith("#")) {
+      continue;
+    }
+
+    if (/^\S/.test(line)) {
+      break;
+    }
+
+    const inlineMatch = line.match(/^\s*-\s+from:\s+(.+)$/);
+    if (inlineMatch) {
+      values.push(stripYamlScalar(inlineMatch[1]));
+    }
+  }
+
+  return values;
+}
+
+function getSectionScalar(filePath, section, key) {
+  const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+  let inSection = false;
+
+  for (const line of lines) {
+    if (!inSection) {
+      if (line.trim() === `${section}:`) {
+        inSection = true;
+      }
+      continue;
+    }
+
+    if (!line.trim() || line.trimStart().startsWith("#")) {
+      continue;
+    }
+
+    if (/^\S/.test(line)) {
+      break;
+    }
+
+    const match = line.match(new RegExp(`^\\s+${key}:\\s+(.+)$`));
+    if (match) {
+      return stripYamlScalar(match[1]);
+    }
+  }
+
+  return "";
+}
+
+function getTopLevelSectionLines(filePath, section) {
+  const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+  const sectionLines = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    if (!inSection) {
+      if (line.trim() === `${section}:`) {
+        inSection = true;
+      }
+      continue;
+    }
+
+    if (/^\S/.test(line)) {
+      break;
+    }
+
+    sectionLines.push(line);
+  }
+
+  return sectionLines;
+}
+
+function getPlatformTargetBlocks(filePath, section) {
+  const blocks = [];
+  let current = null;
+
+  for (const line of getTopLevelSectionLines(filePath, section)) {
+    const targetMatch = line.match(/^\s*-\s+target:\s+(.+)$/);
+    if (targetMatch) {
+      current = {
+        target: stripYamlScalar(targetMatch[1]),
+        text: `${line}\n`,
+      };
+      blocks.push(current);
+      continue;
+    }
+
+    if (current) {
+      current.text += `${line}\n`;
+    }
+  }
+
+  return blocks;
+}
+
+function hasX64Arch(targetBlock) {
+  return /(?:^|\n)\s+arch:\s*\n(?:\s*(?:#.*)?\n)*\s*-\s+x64(?:\s|$)/.test(targetBlock.text);
+}
+
 function run(label, command, cmdArgs, options = {}) {
   return new Promise((resolve) => {
     const startTime = Date.now();
     process.stdout.write(`  ${label}... `);
-    const useShell = command === "npx" || command === "node";
-    const proc = spawn(command, cmdArgs, {
+    const spawnSpec = resolveSpawnCommand(command, cmdArgs);
+    const proc = spawn(spawnSpec.command, spawnSpec.args, {
       stdio: ["ignore", "pipe", "pipe"],
-      shell: useShell,
+      shell: spawnSpec.shell,
       cwd: projectRoot,
       ...options,
     });
@@ -114,8 +227,8 @@ function runPython(label, code) {
   // Write code to a temp file to avoid shell mangling multiline -c strings on Windows
   const tmpFile = path.join(os.tmpdir(), `nirs4all-test-${Date.now()}.py`);
   fs.writeFileSync(tmpFile, code.trim() + "\n", "utf-8");
-  const pythonCmd = isWindows ? "python" : "python3";
-  return run(label, pythonCmd, [tmpFile]).finally(() => {
+  const pythonRunner = path.join("scripts", "run-python.cjs");
+  return run(label, process.execPath, [pythonRunner, tmpFile]).finally(() => {
     try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
   });
 }
@@ -131,6 +244,7 @@ async function main() {
   console.log("Step 1: Static checks");
   await run("TypeScript", "npx", ["tsc", "--noEmit"]);
   await run("ESLint", "npx", ["eslint", "src/", "electron/"]);
+  await run("nirs4all-ui package smoke", "npm", ["run", "smoke:nirs4all-ui-package"]);
   console.log("");
 
   // ── Step 2: Backend source bundle ──
@@ -164,8 +278,9 @@ async function main() {
 
   const requiredRuntimeFiles = ["scripts/python-runtime-config.cjs", "recommended-config.json"];
   for (const configName of ["electron-builder.installer.yml", "electron-builder.archive.yml"]) {
+    const configPath = path.join(projectRoot, configName);
     process.stdout.write(`  ${configName} packages runtime config... `);
-    const packagedFiles = getTopLevelYamlList(path.join(projectRoot, configName), "files");
+    const packagedFiles = getTopLevelYamlList(configPath, "files");
     const missingFiles = requiredRuntimeFiles.filter((item) => !packagedFiles.includes(item));
     if (missingFiles.length === 0) {
       console.log("OK");
@@ -174,6 +289,80 @@ async function main() {
       console.log(`FAIL (missing ${missingFiles.join(", ")})`);
       hasFailure = true;
       results.push({ label: `${configName} runtime config`, ok: false, elapsed: "0" });
+    }
+
+    process.stdout.write(`  ${configName} extraResources exist... `);
+    const missingResources = getTopLevelExtraResourceSources(configPath)
+      .filter((item) => !fs.existsSync(path.join(projectRoot, item)));
+    if (missingResources.length === 0) {
+      console.log("OK");
+      results.push({ label: `${configName} extraResources`, ok: true, elapsed: "0" });
+    } else {
+      console.log(`FAIL (missing ${missingResources.join(", ")})`);
+      hasFailure = true;
+      results.push({ label: `${configName} extraResources`, ok: false, elapsed: "0" });
+    }
+  }
+
+  process.stdout.write("  Windows NSIS include exists... ");
+  const nsisInclude = getSectionScalar(path.join(projectRoot, "electron-builder.installer.yml"), "nsis", "include");
+  if (nsisInclude && fs.existsSync(path.join(projectRoot, nsisInclude))) {
+    console.log("OK");
+    results.push({ label: "Windows NSIS include", ok: true, elapsed: "0" });
+  } else {
+    console.log(`FAIL (${nsisInclude || "missing nsis.include"})`);
+    hasFailure = true;
+    results.push({ label: "Windows NSIS include", ok: false, elapsed: "0" });
+  }
+
+  process.stdout.write("  Windows installer targets are NSIS + portable x64... ");
+  const installerWinTargets = getPlatformTargetBlocks(path.join(projectRoot, "electron-builder.installer.yml"), "win");
+  const installerTargetFailures = ["nsis", "portable"].filter((target) => {
+    const block = installerWinTargets.find((candidate) => candidate.target === target);
+    return !block || !hasX64Arch(block);
+  });
+  if (installerTargetFailures.length === 0) {
+    console.log("OK");
+    results.push({ label: "Windows installer targets", ok: true, elapsed: "0" });
+  } else {
+    console.log(`FAIL (missing x64 ${installerTargetFailures.join(", ")})`);
+    hasFailure = true;
+    results.push({ label: "Windows installer targets", ok: false, elapsed: "0" });
+  }
+
+  process.stdout.write("  Windows all-in-one archive target is ZIP x64... ");
+  const archiveWinTargets = getPlatformTargetBlocks(path.join(projectRoot, "electron-builder.archive.yml"), "win");
+  const zipBlock = archiveWinTargets.find((candidate) => candidate.target === "zip");
+  if (zipBlock && hasX64Arch(zipBlock)) {
+    console.log("OK");
+    results.push({ label: "Windows all-in-one archive target", ok: true, elapsed: "0" });
+  } else {
+    console.log("FAIL (missing x64 zip)");
+    hasFailure = true;
+    results.push({ label: "Windows all-in-one archive target", ok: false, elapsed: "0" });
+  }
+
+  if (nsisInclude && fs.existsSync(path.join(projectRoot, nsisInclude))) {
+    process.stdout.write("  Windows NSIS include has lifecycle macros... ");
+    const nsisText = fs.readFileSync(path.join(projectRoot, nsisInclude), "utf-8");
+    const missingNsisChecks = [
+      ["customInit", /!macro\s+customInit\b/],
+      ["customUnInit", /!macro\s+customUnInit\b/],
+      ["customUnInstall", /!macro\s+customUnInstall\b/],
+      ["taskkill nirs4all Studio.exe", /taskkill\b[^\n\r]*nirs4all Studio\.exe/i],
+      ["current-user uninstall context", /SetShellVarContext\s+current\b/],
+      ["restore all-users context", /SetShellVarContext\s+all\b/],
+    ]
+      .filter(([, pattern]) => !pattern.test(nsisText))
+      .map(([label]) => label);
+
+    if (missingNsisChecks.length === 0) {
+      console.log("OK");
+      results.push({ label: "Windows NSIS lifecycle macros", ok: true, elapsed: "0" });
+    } else {
+      console.log(`FAIL (missing ${missingNsisChecks.join(", ")})`);
+      hasFailure = true;
+      results.push({ label: "Windows NSIS lifecycle macros", ok: false, elapsed: "0" });
     }
   }
   console.log("");
@@ -246,7 +435,13 @@ assert not hasattr(VenvManager, 'list_packages'), 'Obsolete list_packages still 
 
   // ── Step 5: electron-builder packaging ──
   console.log("Step 5: Electron packaging");
-  const builderArgs = ["electron-builder"];
+  const builderArgs = [
+    "electron-builder",
+    "--config",
+    "electron-builder.installer.yml",
+    "--publish",
+    "never",
+  ];
   if (platform) {
     builderArgs.push(`--${platform}`);
   }

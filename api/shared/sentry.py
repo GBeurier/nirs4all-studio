@@ -87,6 +87,26 @@ def is_pipeline_execution_failure_event(event: dict[str, Any]) -> bool:
     )
 
 
+def is_expected_ml_startup_event(event: dict[str, Any]) -> bool:
+    """Return True when a route is called while ML dependencies are loading."""
+    if "HTTPException" not in _exception_types(event):
+        return False
+
+    expected_message = (
+        "ML dependencies are still loading. Please wait a moment and retry."
+    )
+    if expected_message in _event_message(event):
+        return True
+
+    values = (event.get("exception") or {}).get("values") or []
+    return any(
+        isinstance(value, dict)
+        and isinstance(value.get("value"), str)
+        and expected_message in value["value"]
+        for value in values
+    )
+
+
 def _strip_url_query(value: Any) -> Any:
     if not isinstance(value, str):
         return value
@@ -133,6 +153,8 @@ def backend_before_send(
     if is_benign_job_notification_shutdown_event(event):
         return None
     if is_pipeline_execution_failure_event(event):
+        return None
+    if is_expected_ml_startup_event(event):
         return None
 
     _redact_sensitive_event_data(event)

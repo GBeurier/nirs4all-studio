@@ -8,6 +8,7 @@ import {
   calculateRegl2DViewportBounds,
   computeRegl2DPointColors,
   createRegl2DIndexMap,
+  createRegl2DReadbackCoordinate,
   createRegl2DTransform,
   generateRegl2DGridGeometry,
   type Regl2DPoint,
@@ -139,5 +140,19 @@ describe('scatterRegl2DData', () => {
       top: 10,
     });
     expectArrayCloseTo(createRegl2DTransform(preserved), [0.1, 0, 0, 0, 0.2, 0, -0.5, -1, 1]);
+  });
+
+  it('converts and clamps point readback coordinates to framebuffer bounds', () => {
+    expect(createRegl2DReadbackCoordinate(12.8, 4.2, 100, 50)).toEqual({ x: 12, y: 45 });
+    expect(createRegl2DReadbackCoordinate(-1, -1, 100, 50)).toEqual({ x: 0, y: 49 });
+    expect(createRegl2DReadbackCoordinate(100, 50, 100, 50)).toEqual({ x: 99, y: 0 });
+  });
+
+  it('rejects point readback when coordinates or framebuffer dimensions are invalid', () => {
+    expect(createRegl2DReadbackCoordinate(Number.NaN, 10, 100, 50)).toBeNull();
+    expect(createRegl2DReadbackCoordinate(10, Number.POSITIVE_INFINITY, 100, 50)).toBeNull();
+    expect(createRegl2DReadbackCoordinate(10, 10, 0, 50)).toBeNull();
+    expect(createRegl2DReadbackCoordinate(10, 10, 100, 0)).toBeNull();
+    expect(createRegl2DReadbackCoordinate(10, 10, Number.POSITIVE_INFINITY, 50)).toBeNull();
   });
 });
