@@ -111,7 +111,7 @@ function targetConfig(platform, arch) {
       cliParts: ["cpp", "cli", "Release", "n4m_cli.exe"],
       configureExtra: [],
       buildExtra: ["--config", "Release"],
-      ctestExtra: ["--config", "Release"],
+      ctestExtra: ["-C", "Release"],
     };
   }
   throw new Error(`Unsupported native Methods target: ${platform}-${arch}`);
