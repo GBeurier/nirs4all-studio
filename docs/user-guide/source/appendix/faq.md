@@ -3,13 +3,13 @@
 ## General
 
 **What is nirs4all Studio?**
-: nirs4all Studio is a desktop and web application for Near-Infrared Spectroscopy (NIRS) data analysis. It provides a visual interface for importing spectral data, building analysis pipelines, running experiments, and exploring results — without writing code.
+: nirs4all Studio is a desktop application for Near-Infrared Spectroscopy (NIRS) data analysis. It provides a visual interface for importing spectral data, building analysis pipelines, running experiments, and exploring results — without writing code. The separate nirs4all Web product runs client-side in the browser with WASM.
 
 **Is nirs4all Studio free?**
 : Yes. nirs4all Studio is open-source software released under the CeCILL-2.1 license.
 
 **What operating systems are supported?**
-: Windows 10 or later, macOS 10.15 or later, and Linux (Ubuntu 20.04+, or any distribution with Node.js 20+ and Python 3.11+).
+: Consult the signed manifest of the release you intend to install. A platform is supported only when that release publishes and qualifies its matching artifact; source packaging configurations are not availability claims.
 
 **Can I use nirs4all Studio without an internet connection?**
 : Yes. Once installed, the application runs entirely on your local computer. An internet connection is only needed for downloading updates.
@@ -69,17 +69,19 @@
 
 ## Technical
 
-**The backend is not connecting. What should I do?**
-: Go to Settings > Advanced tab. Check the Backend Status indicator. If disconnected:
-  - For the desktop app: try restarting the application.
-  - For web mode: make sure the Python backend is running (`npm run dev:api` or `python main.py`).
+**The control plane is not connecting. What should I do?**
+: Go to Settings > Advanced and check the Backend Status indicator, which
+  reports the packaged Rust sidecar. Restart Studio if it is disconnected and
+  review the local diagnostic log if the problem repeats. Do not start
+  `python main.py`: that source server is a contributor-only legacy diagnostic,
+  not a product recovery path.
 
 **How do I enable GPU acceleration?**
-: GPU support requires CUDA (Windows/Linux) or Metal (macOS). Install the GPU version of the Python dependencies. Check Settings > Advanced > System Info to verify GPU detection.
+: Native Methods training uses the qualified CPU path. A bounded Python library/plugin may use acceleration only when its packaged capability manifest and preflight say so; Studio does not install GPU dependencies into its read-only runtime.
 
 **Where are my files stored?**
 : - **Workspace data**: In your workspace folder (wherever you created it). Contains `store.sqlite`, `artifacts/`, and `exports/`.
-  - **App settings**: In `~/.nirs4all-webapp/` (your home directory).
+  - **App settings**: In the operating system's application-data directory reported by Studio diagnostics.
   - **Desktop app**: Installed in the standard application directory for your OS.
 
 **How do I update nirs4all Studio?**

@@ -1,127 +1,70 @@
 # Installation
 
-This page explains how to install nirs4all Studio on your computer. The application runs on Windows, macOS, and Linux, either as a standalone desktop app or in web mode for advanced users.
+nirs4all Studio is a desktop product with an Electron interface and a
+Rust-owned control-plane sidecar. A packaged build includes the exact runtime
+declared by its release manifest: users do not install or start a Python HTTP
+backend.
 
-## System Requirements
+```{important}
+The final R4 candidate is locally prepared but not published. Do not infer
+platform availability from examples, source configuration, or old releases.
+Only platforms and files listed in a signed release manifest and attached to
+the matching release are available.
+```
 
-Before installing, make sure your computer meets the following minimum requirements:
+## Install a published desktop release
 
-| Requirement | Minimum | Recommended |
-|---|---|---|
-| **Operating System** | Windows 10, macOS 10.15 (Catalina), Ubuntu 20.04 | Windows 11, macOS 13+, Ubuntu 22.04+ |
-| **RAM** | 4 GB | 8 GB or more |
-| **Disk Space** | 500 MB for the application | 2 GB+ (depending on your datasets) |
-| **Display** | 1280 x 720 | 1920 x 1080 or higher |
+1. Open the [nirs4all Studio releases
+   page](https://github.com/GBeurier/nirs4all-studio/releases/latest).
+2. Verify that the release contains a signed manifest for your operating system
+   and architecture.
+3. Download the exact installer or portable archive named by that manifest and
+   verify its checksum.
+4. Follow the operating system's normal installation flow and launch Studio.
 
-:::{note}
-Larger datasets and complex pipelines (especially those using deep learning models) benefit from 16 GB of RAM or more.
-:::
+The package contains the Rust HTTP/WebSocket, job, scheduler, persistence, and
+workspace owner. Its bounded, content-addressed CPython runtime is only a stdio
+library/plugin host for explicitly supported scientific calls. It cannot own a
+product port, discover a user Python environment, install packages at runtime,
+or serve as a fallback.
 
-## Desktop App (Recommended)
+If no signed artifact matches your platform, that platform is not available
+for the release. Building configuration in the repository is not evidence of a
+qualified downloadable artifact.
 
-The easiest way to get started is to download the desktop application from the GitHub releases page. The installer bundles everything you need -- no additional software required.
+## Develop from source
 
-### Windows
+This route is for contributors, not an alternative end-user installation:
 
-1. Go to the [nirs4all Studio releases page](https://github.com/nirs4all/nirs4all-webapp/releases) on GitHub.
-2. Download the latest `.exe` installer (for example, `nirs4all-studio-setup-0.1.0.exe`).
-3. Run the installer and follow the on-screen instructions.
-4. Once installed, launch **nirs4all Studio** from your Start menu or desktop shortcut.
+```bash
+git clone https://github.com/GBeurier/nirs4all-studio.git
+cd nirs4all-studio
+npm install
+npm run dev:electron
+```
 
-### macOS
+The product-shaped desktop development command starts Electron and the Rust
+sidecar. Some repository diagnostics retain a Python/FastAPI source server to
+compare historical contracts; those diagnostics are opt-in contributor tools
+and are not the current product backend. Follow the root `README.md` and
+`docs/PACKAGING.md` for their explicit scope.
 
-1. Go to the [nirs4all Studio releases page](https://github.com/nirs4all/nirs4all-webapp/releases) on GitHub.
-2. Download the latest `.dmg` file (for example, `nirs4all-studio-0.1.0.dmg`).
-3. Open the `.dmg` file and drag **nirs4all Studio** into your Applications folder.
-4. Launch the app from your Applications folder or Launchpad.
+The separate [nirs4all Web application](https://web.nirs4all.org/) is a
+client-side browser/WASM product. It does not turn Studio's historical Python
+server into a deployment mode.
 
-:::{tip}
-If macOS shows a warning that the app is from an unidentified developer, right-click the app icon, select **Open**, and then click **Open** in the confirmation dialog. You only need to do this once.
-:::
+## GPU and optional Python libraries
 
-### Linux
+Native Methods training, including the bounded PLS product path, is CPU-based.
+An optional Python library/plugin capability may have different hardware and
+dependency requirements, but it is usable only when the packaged capability
+manifest and preflight report it as available. Studio never modifies the
+embedded runtime to add a backend after installation.
 
-Two package formats are available:
+## After installation
 
-- **AppImage** (works on most distributions): Download the `.AppImage` file, make it executable (`chmod +x nirs4all-studio-*.AppImage`), and run it directly.
-- **Debian package** (Ubuntu, Debian, Mint): Download the `.deb` file and install it with `sudo dpkg -i nirs4all-studio-*.deb`.
-
-## Web Mode (Advanced)
-
-If you prefer to run nirs4all Studio as a local web application in your browser, you can set it up manually. This requires some familiarity with the command line.
-
-### Prerequisites
-
-- **Node.js** version 20 or later ([download](https://nodejs.org/))
-- **Python** version 3.11 or later ([download](https://www.python.org/downloads/))
-- **Git** (to clone the repository)
-
-### Setup Steps
-
-1. **Clone the repository**:
-
-   ```bash
-   git clone https://github.com/nirs4all/nirs4all-webapp.git
-   cd nirs4all-webapp
-   ```
-
-2. **Install frontend dependencies**:
-
-   ```bash
-   npm install
-   ```
-
-3. **Create a Python virtual environment and install backend dependencies**:
-
-   ```bash
-   python -m venv .venv
-   ```
-
-   Activate the virtual environment:
-   - Windows: `.venv\Scripts\activate`
-   - macOS / Linux: `source .venv/bin/activate`
-
-   Then install the requirements:
-
-   ```bash
-   pip install -r requirements-cpu.txt
-   ```
-
-4. **Start the application**:
-
-   ```bash
-   npm run dev
-   ```
-
-   In another terminal, activate the virtual environment and start the FastAPI backend:
-
-   ```bash
-   python main.py --no-reload
-   ```
-
-   Open your browser to the URL shown by Vite, usually `http://localhost:5173`.
-
-:::{warning}
-Web mode is intended for development and advanced use. For everyday analysis work, the desktop app provides a smoother experience with automatic backend management and native file dialogs.
-:::
-
-## GPU Support (Optional)
-
-GPU acceleration is optional and only relevant if you plan to use deep learning models (TensorFlow, PyTorch, or JAX). Standard machine learning methods like PLS, Random Forest, and SVM run on the CPU and do not require a GPU.
-
-| Platform | GPU Technology | Notes |
-|---|---|---|
-| Windows | NVIDIA CUDA | Requires an NVIDIA GPU and [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) |
-| Linux | NVIDIA CUDA | Requires an NVIDIA GPU and CUDA drivers |
-| macOS | Apple Metal | Supported natively on Apple Silicon (M1/M2/M3/M4) Macs |
-
-:::{tip}
-You can start using nirs4all Studio without GPU support and add it later if you need to train deep learning models. The application works perfectly well with CPU-only setups.
-:::
-
-## After Installation
-
-Once the application is installed, launch it and you will see the initial screen.
+Once the application is installed, launch it and you will see the initial
+screen.
 
 ```{figure} /_images/getting-started/gs-first-launch.png
 :alt: nirs4all Studio first launch screen
@@ -130,4 +73,4 @@ Once the application is installed, launch it and you will see the initial screen
 The nirs4all Studio welcome screen on first launch.
 ```
 
-Head to {doc}`first-launch` to learn how to create your first workspace and get everything ready for analysis.
+Head to {doc}`first-launch` to create your first workspace.
