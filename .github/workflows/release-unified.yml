@@ -904,7 +904,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   archive-windows:
     name: All-in-one — Windows x64
-    needs: prepare
+    needs: [prepare, pinned-plugin-wheels]
     if: needs.prepare.outputs.skip_all_in_one != 'true'
     # Methods' release preset is intentionally bound to VS 17 / 2022.
     runs-on: windows-2022
@@ -950,6 +950,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Download canonical plugin wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pinned-plugin-wheels
+          path: _deps/pinned-plugin-wheels
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build exact native Methods runtime
@@ -989,7 +995,7 @@ jobs:
           echo "CSC_KEY_PASSWORD=$($env:WINDOWS_CERT_PASSWORD)" >> $env:GITHUB_ENV
 
       - name: Build all-in-one archive
-        run: node scripts/build-archive-standalone.cjs --clean --platform win32 --arch x64
+        run: node scripts/build-archive-standalone.cjs --clean --platform win32 --arch x64 --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.0rc2-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -1044,7 +1050,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   archive-linux:
     name: All-in-one — Linux x64
-    needs: prepare
+    needs: [prepare, pinned-plugin-wheels]
     if: needs.prepare.outputs.skip_all_in_one != 'true'
     runs-on: ubuntu-22.04
     steps:
@@ -1082,6 +1088,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download canonical plugin wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pinned-plugin-wheels
+          path: _deps/pinned-plugin-wheels
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -1122,7 +1134,7 @@ jobs:
         run: npm version ${{ needs.prepare.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Build all-in-one archive
-        run: node scripts/build-archive-standalone.cjs --clean --platform linux --arch x64
+        run: node scripts/build-archive-standalone.cjs --clean --platform linux --arch x64 --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.0rc2-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NIRS4ALL_TAR_GZIP_PROGRAM: pigz -9
@@ -1178,7 +1190,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   archive-macos-x64:
     name: All-in-one — macOS x64
-    needs: prepare
+    needs: [prepare, pinned-plugin-wheels]
     if: needs.prepare.outputs.skip_all_in_one != 'true'
     runs-on: macos-15-intel
     permissions:
@@ -1223,6 +1235,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download canonical plugin wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pinned-plugin-wheels
+          path: _deps/pinned-plugin-wheels
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -1304,7 +1322,7 @@ jobs:
           fi
           ulimit -n "$TARGET_LIMIT" || true
           echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
-          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch x64
+          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch x64 --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.0rc2-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -1398,7 +1416,7 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   archive-macos-arm64:
     name: All-in-one — macOS arm64
-    needs: prepare
+    needs: [prepare, pinned-plugin-wheels]
     if: needs.prepare.outputs.skip_all_in_one != 'true'
     runs-on: macos-14
     steps:
@@ -1441,6 +1459,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download canonical plugin wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: pinned-plugin-wheels
+          path: _deps/pinned-plugin-wheels
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -1522,7 +1546,7 @@ jobs:
           fi
           ulimit -n "$TARGET_LIMIT" || true
           echo "Open files soft limit: $(ulimit -n) (hard: ${HARD_LIMIT:-unknown})"
-          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch arm64
+          node scripts/build-archive-standalone.cjs --clean --platform darwin --arch arm64 --plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.0rc2-py3-none-any.whl --tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

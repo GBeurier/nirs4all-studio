@@ -39,7 +39,8 @@ describe("plugin-only CPython runtime", () => {
   });
 
   it("pins the selected release source and wheel in the exact role marker", () => {
-    expect(pluginRuntime.expectedMarker("linux", "x64")).toMatchObject({
+    const marker = pluginRuntime.expectedMarker("linux", "x64");
+    expect(marker).toMatchObject({
       schema: "nirs4all.studio-python-plugin-runtime.v1",
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
@@ -63,6 +64,8 @@ describe("plugin-only CPython runtime", () => {
         },
       },
     });
+    expect(marker).not.toHaveProperty("distribution_record_sha256");
+    expect(marker.conversion_tools).not.toHaveProperty("distribution_record_sha256");
     expect(pluginRuntime.FORBIDDEN_DISTRIBUTIONS).toEqual(
       expect.arrayContaining(["fastapi", "starlette", "uvicorn", "sentry-sdk"]),
     );

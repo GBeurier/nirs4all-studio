@@ -59,13 +59,13 @@ def test_recommended_profiles_use_single_nirs4all_version() -> None:
         assert re.fullmatch(r">=0\.10\.\d+", package["min"])
 
 
-def test_release_builds_pinned_plugin_wheels_once_for_all_installers() -> None:
+def test_release_builds_pinned_plugin_wheels_once_for_all_distributables() -> None:
     workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
 
     assert "  pinned-plugin-wheels:\n" in workflow
-    assert workflow.count("needs: [prepare, pinned-plugin-wheels]") == 4
-    assert workflow.count("name: Download canonical plugin wheels") == 4
-    assert workflow.count("--plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.0rc2-py3-none-any.whl") == 4
-    assert workflow.count("--tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl") == 4
+    assert workflow.count("needs: [prepare, pinned-plugin-wheels]") == 8
+    assert workflow.count("name: Download canonical plugin wheels") == 8
+    assert workflow.count("--plugin-wheel _deps/pinned-plugin-wheels/nirs4all-1.0.0rc2-py3-none-any.whl") == 8
+    assert workflow.count("--tools-wheel _deps/pinned-plugin-wheels/nirs4all_tools-0.0.7-py3-none-any.whl") == 8
     assert "GIT_CONFIG_KEY_0: core.autocrlf" in workflow
     assert "GIT_CONFIG_VALUE_0: 'false'" in workflow

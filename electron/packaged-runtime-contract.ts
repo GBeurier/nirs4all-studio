@@ -363,16 +363,12 @@ function verifyPluginMarker(
     marker.wheel_sha256 !== PLUGIN_WHEEL_SHA256 ||
     marker.distribution !== "nirs4all" ||
     marker.distribution_version !== "1.0.0rc2" ||
-    marker.distribution_record_sha256 !==
-      "fd496610e6f27e9561f465323ca59b27bd19e306e452435ceb7792abd6b21f14" ||
     marker.installed_manifest_sha256 !==
       "a4896def6b619cbed14c675573374cf5a17193b3812625923ec506a93602c67b" ||
     conversionTools?.source_commit !== TOOLS_SOURCE_COMMIT ||
     conversionTools?.wheel_sha256 !== TOOLS_WHEEL_SHA256 ||
     conversionTools?.distribution !== "nirs4all-tools" ||
     conversionTools?.distribution_version !== "0.0.7" ||
-    conversionTools?.distribution_record_sha256 !==
-      "2da8a3c2797eee9b9c8399620dd0734f5b2f829fc5015cb903db267ac3690238" ||
     conversionTools?.installed_manifest_sha256 !==
       "cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07" ||
     conversionTools?.module !== "nirs4all_tools" ||

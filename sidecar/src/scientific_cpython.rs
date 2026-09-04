@@ -38,8 +38,6 @@ pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_HOST_BYTES: u64 = 64 * 1024 * 1024;
 pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.0.0rc2";
-pub const SCIENTIFIC_DISTRIBUTION_RECORD_SHA256: &str =
-    "fd496610e6f27e9561f465323ca59b27bd19e306e452435ceb7792abd6b21f14";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
     "a4896def6b619cbed14c675573374cf5a17193b3812625923ec506a93602c67b";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
@@ -123,8 +121,6 @@ if distribution.version != "1.0.0rc2":
 record_entry=next((entry for entry in distribution.files or [] if str(entry).endswith(".dist-info/RECORD")),None)
 record_path=distribution.locate_file(record_entry) if record_entry else None
 record_bytes=open(record_path,"rb").read() if record_path else b""
-if hashlib.sha256(record_bytes).hexdigest() != "fd496610e6f27e9561f465323ca59b27bd19e306e452435ceb7792abd6b21f14":
-    raise RuntimeError("scientific distribution RECORD identity changed")
 record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
 manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
 if hashlib.sha256(manifest_bytes).hexdigest() != "a4896def6b619cbed14c675573374cf5a17193b3812625923ec506a93602c67b":
@@ -526,10 +522,10 @@ fn acquire_host(
             .get("distribution_manifest_sha256")
             .and_then(Value::as_str)
             != Some(SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256)
-        || object
+        || !object
             .get("distribution_record_sha256")
             .and_then(Value::as_str)
-            != Some(SCIENTIFIC_DISTRIBUTION_RECORD_SHA256)
+            .is_some_and(valid_lower_sha256)
         || object
             .get("distribution_files_verified")
             .and_then(Value::as_bool)
@@ -596,6 +592,13 @@ fn acquire_host(
         None
     };
     Ok((identity, callable_identity))
+}
+
+fn valid_lower_sha256(digest: &str) -> bool {
+    digest.len() == 64
+        && digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn host_identity(path: &Path) -> Result<HostIdentity, ScientificCpythonUnavailable> {
@@ -1734,7 +1737,7 @@ mod tests {
 
     fn attested_unready_host_response(implementation: &str) -> String {
         format!(
-            r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_record_sha256":"{SCIENTIFIC_DISTRIBUTION_RECORD_SHA256}","distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
+            r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_record_sha256":"0000000000000000000000000000000000000000000000000000000000000000","distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
         )
     }
 
@@ -1760,10 +1763,9 @@ mod tests {
         );
         assert_eq!(contract["selected_source_commit"], SCIENTIFIC_SOURCE_COMMIT);
         assert_eq!(contract["selected_wheel_sha256"], SCIENTIFIC_WHEEL_SHA256);
-        assert_eq!(
-            contract["selected_distribution_record_sha256"],
-            SCIENTIFIC_DISTRIBUTION_RECORD_SHA256
-        );
+        assert!(contract
+            .get("selected_distribution_record_sha256")
+            .is_none());
         assert_eq!(
             contract["selected_installed_manifest_sha256"],
             SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256

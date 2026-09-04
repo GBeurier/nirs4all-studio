@@ -89,8 +89,6 @@ const WORKSPACE_V2_REQUIRED_COLUMNS: [(&str, &[&str]); 7] = [
 const TOOLS_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(20);
 const PROCESS_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const TOOLS_VERSION: &str = "0.0.7";
-const TOOLS_RECORD_SHA256: &str =
-    "2da8a3c2797eee9b9c8399620dd0734f5b2f829fc5015cb903db267ac3690238";
 const TOOLS_MANIFEST_SHA256: &str =
     "cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07";
 pub const WINDOWS_JOB_LAUNCHER_ARGUMENT: &str = "--internal-legacy-converter-job";
@@ -109,7 +107,7 @@ for relative,encoded,size in rows:
  algorithm,expected=encoded.split("=",1); payload=open(d.locate_file(relative),"rb").read(); actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
  if actual != expected or (size and len(payload) != int(size)): verified=False; break
 record=hashlib.sha256(b).hexdigest(); manifest=hashlib.sha256(m).hexdigest()
-identity_ok=d.version=="0.0.7" and record=="2da8a3c2797eee9b9c8399620dd0734f5b2f829fc5015cb903db267ac3690238" and manifest=="cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07" and verified
+identity_ok=d.version=="0.0.7" and manifest=="cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07" and verified
 duckdb_functional=pyarrow_functional=False
 if identity_ok:
  import nirs4all_tools,duckdb,pyarrow,pyarrow.parquet as parquet
@@ -389,6 +387,13 @@ fn sha256_regular_file(path: &Path) -> Option<String> {
     Some(format!("{:x}", hasher.finalize()))
 }
 
+fn valid_lower_sha256(digest: &str) -> bool {
+    digest.len() == 64
+        && digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 fn attest_python_tools_runtime(python_plugin_host: &Path) -> bool {
     if !std::fs::symlink_metadata(python_plugin_host)
         .is_ok_and(|metadata| !metadata.file_type().is_symlink() && metadata.is_file())
@@ -412,7 +417,10 @@ fn attest_python_tools_runtime(python_plugin_host: &Path) -> bool {
         return false;
     };
     value.get("version").and_then(Value::as_str) == Some(TOOLS_VERSION)
-        && value.get("record").and_then(Value::as_str) == Some(TOOLS_RECORD_SHA256)
+        && value
+            .get("record")
+            .and_then(Value::as_str)
+            .is_some_and(valid_lower_sha256)
         && value.get("manifest").and_then(Value::as_str) == Some(TOOLS_MANIFEST_SHA256)
         && value.get("verified").and_then(Value::as_bool) == Some(true)
         && value.get("module").and_then(Value::as_str) == Some("nirs4all_tools")
@@ -1027,8 +1035,9 @@ _capture=io.StringIO()
 with contextlib.redirect_stdout(_capture):
  exec({TOOLS_PREFLIGHT:?},{{}})
 _attestation=json.loads(_capture.getvalue())
-_expected={{"version":"{TOOLS_VERSION}","record":"{TOOLS_RECORD_SHA256}","manifest":"{TOOLS_MANIFEST_SHA256}","verified":True,"module":"nirs4all_tools","duckdb":"1.5.5","pyarrow":"25.0.1","duckdb_functional":True,"pyarrow_parquet_functional":True}}
-if _attestation != _expected:
+_record=_attestation.pop("record",None)
+_expected={{"version":"{TOOLS_VERSION}","manifest":"{TOOLS_MANIFEST_SHA256}","verified":True,"module":"nirs4all_tools","duckdb":"1.5.5","pyarrow":"25.0.1","duckdb_functional":True,"pyarrow_parquet_functional":True}}
+if not isinstance(_record,str) or len(_record)!=64 or any(c not in "0123456789abcdef" for c in _record) or _attestation != _expected:
  raise RuntimeError("unqualified nirs4all-tools runtime")
 sys.argv=["nirs4all_tools",*sys.argv[2:]]
 runpy.run_module("nirs4all_tools",run_name="__main__",alter_sys=True)
@@ -1750,7 +1759,7 @@ mod tests {
         let root = temporary_directory("runtime-host-replacement");
         let host = root.join("python-host");
         let expected = format!(
-            "{{\"duckdb\":\"1.5.5\",\"duckdb_functional\":true,\"manifest\":\"{TOOLS_MANIFEST_SHA256}\",\"module\":\"nirs4all_tools\",\"pyarrow\":\"25.0.1\",\"pyarrow_parquet_functional\":true,\"record\":\"{TOOLS_RECORD_SHA256}\",\"verified\":true,\"version\":\"{TOOLS_VERSION}\"}}"
+            "{{\"duckdb\":\"1.5.5\",\"duckdb_functional\":true,\"manifest\":\"{TOOLS_MANIFEST_SHA256}\",\"module\":\"nirs4all_tools\",\"pyarrow\":\"25.0.1\",\"pyarrow_parquet_functional\":true,\"record\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"verified\":true,\"version\":\"{TOOLS_VERSION}\"}}"
         );
         fs::write(&host, format!("#!/bin/sh\nprintf '%s\\n' '{expected}'\n")).unwrap();
         let mut permissions = fs::metadata(&host).unwrap().permissions();

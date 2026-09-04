@@ -17,6 +17,8 @@ const archiveBuildModule = require("../scripts/build-archive-standalone.cjs") as
     localNirs4allPath: string;
     cacheDir: string;
     constraintsFile: string;
+    pluginWheel: string;
+    toolsWheel: string;
     help?: boolean;
   };
   resolveBuildConfig(
@@ -31,6 +33,8 @@ const archiveBuildModule = require("../scripts/build-archive-standalone.cjs") as
       localNirs4allPath?: string;
       cacheDir: string;
       constraintsFile: string;
+      pluginWheel?: string;
+      toolsWheel?: string;
     },
     host?: { platform: string; arch: string },
   ): {
@@ -44,6 +48,8 @@ const archiveBuildModule = require("../scripts/build-archive-standalone.cjs") as
     localNirs4allPath: string;
     cacheDir: string;
     constraintsFile: string;
+    pluginWheel: string;
+    toolsWheel: string;
   };
 };
 
@@ -62,6 +68,10 @@ describe("build-archive-standalone", () => {
       "--cache-dir=build/.cache",
       "--constraints",
       "build/constraints/linux.txt",
+      "--plugin-wheel",
+      "_deps/nirs4all.whl",
+      "--tools-wheel",
+      "_deps/nirs4all_tools.whl",
     ]);
 
     expect(parsed.profile).toBe("cpu");
@@ -74,6 +84,8 @@ describe("build-archive-standalone", () => {
     expect(parsed.localNirs4allPath).toBe(path.resolve("nirs4all-lib"));
     expect(parsed.cacheDir).toBe(path.resolve("build/.cache"));
     expect(parsed.constraintsFile).toBe(path.resolve("build/constraints/linux.txt"));
+    expect(parsed.pluginWheel).toBe(path.resolve("_deps/nirs4all.whl"));
+    expect(parsed.toolsWheel).toBe(path.resolve("_deps/nirs4all_tools.whl"));
   });
 
   it("accepts the cpu-lite profile for standalone archive packaging", () => {

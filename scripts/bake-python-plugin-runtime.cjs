@@ -12,11 +12,9 @@ const PLUGIN_SOURCE_COMMIT = "2096f36633c22ff08a36650b7dd10c6bc0b177c9";
 const PLUGIN_WHEEL_SHA256 = "ba977cb04da9c8d5c91749d975e2620848d9f802bc454ed5af6e589936439c94";
 const PLUGIN_DISTRIBUTION_VERSION = "1.0.0rc2";
 const PLUGIN_INSTALLED_MANIFEST_SHA256 = "a4896def6b619cbed14c675573374cf5a17193b3812625923ec506a93602c67b";
-const PLUGIN_RECORD_SHA256 = "fd496610e6f27e9561f465323ca59b27bd19e306e452435ceb7792abd6b21f14";
 const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
 const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
 const TOOLS_DISTRIBUTION_VERSION = "0.0.7";
-const TOOLS_RECORD_SHA256 = "2da8a3c2797eee9b9c8399620dd0734f5b2f829fc5015cb903db267ac3690238";
 const TOOLS_INSTALLED_MANIFEST_SHA256 = "cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07";
 const DUCKDB_VERSION = "1.5.5";
 const PYARROW_VERSION = "25.0.1";
@@ -89,6 +87,10 @@ print(json.dumps({"bind_denied":bind_denied,"spawn_denied":spawn_denied,"spawnv_
 
 function normalizeDistribution(name) {
   return name.trim().toLowerCase().replace(/[_.]+/g, "-");
+}
+
+function isLowerSha256(value) {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
 }
 
 function findSitePackages(runtimeRoot) {
@@ -269,12 +271,12 @@ function runPreflight(runtimeRoot, sitePackages, platform = process.platform) {
     response.no_site !== true ||
     response.dont_write_bytecode !== true ||
     response.version !== PLUGIN_DISTRIBUTION_VERSION ||
-    response.record !== PLUGIN_RECORD_SHA256 ||
+    !isLowerSha256(response.record) ||
     response.manifest !== PLUGIN_INSTALLED_MANIFEST_SHA256 ||
     response.verified !== true ||
     response.callable !== true
     || response.tools_version !== TOOLS_DISTRIBUTION_VERSION
-    || response.tools_record !== TOOLS_RECORD_SHA256
+    || !isLowerSha256(response.tools_record)
     || response.tools_manifest !== TOOLS_INSTALLED_MANIFEST_SHA256
     || response.tools_verified !== true
     || response.tools_module !== "nirs4all_tools"
@@ -304,7 +306,6 @@ function expectedMarker(platform = process.platform, arch = process.arch) {
     distribution: "nirs4all",
     distribution_version: PLUGIN_DISTRIBUTION_VERSION,
     installed_manifest_sha256: PLUGIN_INSTALLED_MANIFEST_SHA256,
-    distribution_record_sha256: PLUGIN_RECORD_SHA256,
     platform,
     arch,
     forbidden_distributions: [...FORBIDDEN_DISTRIBUTIONS],
@@ -313,7 +314,6 @@ function expectedMarker(platform = process.platform, arch = process.arch) {
       wheel_sha256: TOOLS_WHEEL_SHA256,
       distribution: "nirs4all-tools",
       distribution_version: TOOLS_DISTRIBUTION_VERSION,
-      distribution_record_sha256: TOOLS_RECORD_SHA256,
       installed_manifest_sha256: TOOLS_INSTALLED_MANIFEST_SHA256,
       module: "nirs4all_tools",
       cli: "python -I -B -m nirs4all_tools",

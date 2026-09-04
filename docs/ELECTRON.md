@@ -388,7 +388,7 @@ created by older Studio versions remain compatible and continue through their
 existing per-reader format preflight.
 
 The Tools capability probe is repeated at each spawn and executable, not declarative: after exact
-wheel/RECORD verification it runs an in-memory DuckDB query and an in-memory
+wheel, platform-neutral installed-manifest, and per-RECORD-member verification it runs an in-memory DuckDB query and an in-memory
 PyArrow Parquet round-trip. Conversion repeats that attestation inside the
 same interpreter immediately before `runpy` invokes the qualified module.
 Output readers report through bounded channels;

@@ -12,6 +12,7 @@ ARG NGINX_IMAGE=nginx:1.27.5-bookworm
 FROM ${NODE_IMAGE} AS frontend
 WORKDIR /build
 COPY package.json package-lock.json ./
+COPY vendor/npm/nirs4all-ui-0.1.13.tgz vendor/npm/
 RUN npm ci --ignore-scripts
 COPY vite.config.ts postcss.config.js tailwind.config.ts tsconfig*.json index.html ./
 COPY public/ public/
