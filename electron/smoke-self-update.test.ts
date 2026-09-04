@@ -36,7 +36,7 @@ const smoke = require("../scripts/smoke-self-update.cjs") as {
     base: string;
     close(): Promise<void>;
   }>;
-  driveUpdate(baseUrl: string, timeoutMs: number): Promise<void>;
+  driveUpdate(baseUrl: string, timeoutMs: number, backendOutput?: () => string): Promise<void>;
 };
 
 // waitForMlReady lives in the archive smoke (shared by both smokes) and is the
@@ -170,13 +170,25 @@ describe("smoke-self-update", () => {
     }
   });
 
-  it("drives check -> download -> apply against a fake backend", async () => {
+  it("polls download-info directly, then drives download -> apply", async () => {
     const server = await startFakeBackend({ canApplyInPlace: true });
     try {
       await expect(smoke.driveUpdate(server.base, 10000)).resolves.toBeUndefined();
-      expect(server.calls).toContain("POST /api/updates/check");
+      expect(server.calls).toContain("GET /api/updates/webapp/download-info");
+      expect(server.calls).not.toContain("POST /api/updates/check");
       expect(server.calls).toContain("POST /api/updates/webapp/download-start");
       expect(server.calls).toContain("POST /api/updates/webapp/apply");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports the last download-info error and backend output", async () => {
+    const server = await startFakeBackend({ downloadInfoFailure: true });
+    try {
+      await expect(smoke.driveUpdate(server.base, 1000, () => "sidecar diagnostic output")).rejects.toThrow(
+        /last error=GET .*download-info -> 503[\s\S]*backend stdout:[\s\S]*sidecar diagnostic output/,
+      );
     } finally {
       await server.close();
     }
@@ -228,6 +240,7 @@ function startFakeBackend(opts: {
   //   (mirrors the real slow nirs4all import).
   // "missing-nirs4all": always reports nirs4all missing → never ml-ready.
   envCoherence?: "ready-after-poll" | "missing-nirs4all";
+  downloadInfoFailure?: boolean;
 } = {}): Promise<{
   base: string;
   port: number;
@@ -250,6 +263,11 @@ function startFakeBackend(opts: {
       };
       if (url === "/api/updates/check") return send({ webapp: {} });
       if (url === "/api/updates/webapp/download-info") {
+        if (opts.downloadInfoFailure) {
+          res.writeHead(503);
+          res.end();
+          return;
+        }
         return send({ update_available: true, can_apply_in_place: canApplyInPlace, update_channel: canApplyInPlace ? "in_place" : "installer" });
       }
       if (url === "/api/updates/webapp/download-start") return send({ job_id: "job-1" });

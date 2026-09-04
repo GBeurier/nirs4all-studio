@@ -7,7 +7,7 @@
  *      via NIRS4ALL_UPDATE_API_BASE (no internet needed — is_online() is not a
  *      network probe, it only honours NIRS4ALL_OFFLINE, which we do NOT set)
  *   2. wait for /api/health
- *   3. drive /updates/check -> /webapp/download-start -> poll -> /webapp/apply
+ *   3. poll /webapp/download-info -> /webapp/download-start -> poll -> /webapp/apply
  *   4. quit the app so the updater script replaces files and relaunches
  *   5. verify a sentinel planted in the update asset now exists on disk (the
  *      replace happened) AND /api/health is back up on the same port (the
@@ -40,6 +40,7 @@ const SENTINEL_NAME = "UPDATE_SMOKE_SENTINEL";
 const STALE_NAME = "UPDATE_SMOKE_STALE";
 // Far above any real version so the fixture release always reads as "newer".
 const FIXTURE_VERSION = "999.0.0";
+const childOutput = new WeakMap();
 
 function printHelp() {
   console.log(`Usage:
@@ -304,29 +305,31 @@ async function postJson(url, body) {
   return res.json();
 }
 
-/** Drive the backend through check -> download -> apply over HTTP. */
-async function driveUpdate(baseUrl, timeoutMs) {
-  // The in-app GitHub check can transiently fail under CI load (short HTTP
-  // timeout), so the fixture release may not be seen on the first try. Re-run
-  // the forced check until it is, bounded by the timeout. The last
-  // download-info is included in the error to tell a failed fetch
-  // (latest_version null) from a version-comparison miss (latest set).
+/** Drive the backend through download discovery -> download -> apply over HTTP. */
+async function driveUpdate(baseUrl, timeoutMs, backendOutput = () => "") {
+  // The packaged app starts its own update check. Poll its read-only state
+  // directly instead of repeatedly starting competing checks. Preserve the
+  // last payload/error and backend output so CI failures remain actionable.
   const checkDeadline = Date.now() + Math.min(timeoutMs, 120000);
-  let info = {};
+  let info = null;
+  let lastError = null;
   for (;;) {
     try {
-      await postJson(`${baseUrl}/api/updates/check`);
       info = await getJson(`${baseUrl}/api/updates/webapp/download-info`);
-    } catch {
-      info = {};
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
     }
-    if (info.update_available) {
+    if (info?.update_available) {
       break;
     }
     if (Date.now() > checkDeadline) {
-      throw new Error(`fixture release was not seen as an available update after retries; last download-info=${JSON.stringify(info)}`);
+      const output = backendOutput();
+      throw new Error(
+        `fixture release was not seen as an available update after retries; last download-info=${JSON.stringify(info)}; `
+        + `last error=${lastError || "none"}\nbackend stdout:\n${output || "(empty)"}`,
+      );
     }
-    await delay(5000);
+    await delay(1000);
   }
   if (info.can_apply_in_place === false) {
     throw new Error(`backend refused in-place update (channel=${info.update_channel})`);
@@ -446,6 +449,7 @@ async function launchHealthy(layout, env, port, timeoutMs, label) {
   };
   child.stdout?.on("data", capture);
   child.stderr?.on("data", capture);
+  childOutput.set(child, out);
 
   const deadline = Date.now() + timeoutMs;
   while (!(await isHealthy(port))) {
@@ -519,7 +523,11 @@ async function smokeSelfUpdate(rawConfig) {
     env1.SENTRY_DSN = "";
     env1.NIRS4ALL_UPDATE_API_BASE = fixture.base;
     child = await launchHealthy(layout, env1, port1, config.timeoutMs, "launch#1");
-    await driveUpdate(`http://127.0.0.1:${port1}`, config.timeoutMs);
+    await driveUpdate(
+      `http://127.0.0.1:${port1}`,
+      config.timeoutMs,
+      () => childOutput.get(child)?.join("\n") || "",
+    );
     console.log("Update applied. Quitting so the updater can replace files...");
     await quitApp(child);
     child = null;
