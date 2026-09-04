@@ -28,6 +28,11 @@ requireText(dockerfile, "FROM ${NODE_IMAGE} AS python-plugin-runtime", "bounded 
 requireText(dockerfile, "FROM ${NGINX_IMAGE} AS runtime", "minimal web runtime stage");
 requireText(
   dockerfile,
+  "COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/bake-python-plugin-runtime.cjs scripts/",
+  "complete plugin builder module graph",
+);
+requireText(
+  dockerfile,
   "COPY vite.config.ts postcss.config.js tailwind.config.ts tsconfig*.json index.html ./",
   "frontend CSS build configuration",
 );
