@@ -36,11 +36,11 @@ env:
   PYTHON_VERSION: '3.11'
   # Release archives/images must be reproducible. Keep these refs pinned to the
   # selected RC heads and update them with the ecosystem release board.
-  NIRS4ALL_LIBRARY_REF: 2af6cfd7f988fa400617c460a77450dbad4228c9
+  NIRS4ALL_LIBRARY_REF: 3567bd4abcaa64443a1946748a579f0803e91889
   DAG_ML_REF: 1caa26dc9b90f33bc3f53b15b4d85e18f3f67381
   DAG_ML_DATA_REF: 7d9b9fed04c135ed4c2bba472c782aca7ef85807
   NIRS4ALL_TOOLS_REF: 88c2bc1e29603049cdbf1a1080a35845edf2f3c9
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/2af6cfd7f988fa400617c460a77450dbad4228c9.tar.gz
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/3567bd4abcaa64443a1946748a579f0803e91889.tar.gz
   DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/1caa26dc9b90f33bc3f53b15b4d85e18f3f67381.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/7d9b9fed04c135ed4c2bba472c782aca7ef85807.tar.gz
   NIRS4ALL_TOOLS_SOURCE_URL: https://github.com/GBeurier/nirs4all-tools/archive/88c2bc1e29603049cdbf1a1080a35845edf2f3c9.tar.gz
@@ -202,7 +202,7 @@ jobs:
         run: |
           python -m pip install --upgrade setuptools==84.0.0 wheel==0.48.0 packaging==26.3
           mkdir -p dist/pinned-plugin-wheels
-          SOURCE_DATE_EPOCH=1788424315 python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist/pinned-plugin-wheels git+https://github.com/GBeurier/nirs4all.git@2af6cfd7f988fa400617c460a77450dbad4228c9
+          SOURCE_DATE_EPOCH=1788424315 python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist/pinned-plugin-wheels git+https://github.com/GBeurier/nirs4all.git@3567bd4abcaa64443a1946748a579f0803e91889
           SOURCE_DATE_EPOCH=1788346349 python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist/pinned-plugin-wheels git+https://github.com/GBeurier/nirs4all-tools.git@${NIRS4ALL_TOOLS_REF}
           cd dist/pinned-plugin-wheels
           echo '5898aa933da2e51ad07438ae5313ade37f1dad2a363411e71e0f0a513c7b4824  nirs4all-1.0.0rc2-py3-none-any.whl' | sha256sum --check --strict

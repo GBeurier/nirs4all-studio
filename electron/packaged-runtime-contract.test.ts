@@ -102,7 +102,7 @@ function makeResources(): {
     product_backend: "rust-sidecar",
     transport: "bounded-cpython-stdio-v1",
     http_listener: "forbidden",
-    source_commit: "2af6cfd7f988fa400617c460a77450dbad4228c9",
+    source_commit: "3567bd4abcaa64443a1946748a579f0803e91889",
     wheel_sha256: "5898aa933da2e51ad07438ae5313ade37f1dad2a363411e71e0f0a513c7b4824",
     distribution: "nirs4all",
     distribution_version: "1.0.0rc2",
