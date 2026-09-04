@@ -134,10 +134,18 @@ docker exec "${container}" sh -eu -c '
   test ! -e /app/main.py
   test ! -d /app/api
   test ! -d /app/websocket
-  awk '\''$2 == "0100007F:1F41" && $4 == "0A" { loopback = 1 }
-       $2 == "00000000:1F41" && $4 == "0A" { wildcard = 1 }
-       END { exit !(loopback && !wildcard) }'\'' /proc/net/tcp
+  awk '\''$2 == "0100007F:1F41" && $4 == "0A" { sidecar_loopback = 1 }
+       $2 == "00000000:1F41" && $4 == "0A" { sidecar_wildcard = 1 }
+       $2 == "00000000:1F40" && $4 == "0A" { public_socket = 1 }
+       $2 ~ /:0050$/ && $4 == "0A" { inherited_port_80_socket = 1 }
+       END { exit !(sidecar_loopback && !sidecar_wildcard && public_socket && !inherited_port_80_socket) }'\'' \
+    /proc/net/tcp /proc/net/tcp6
 '
 
-test "$(docker inspect --format '{{json .Config.ExposedPorts}}' "${container}")" = '{"8000/tcp":{}}'
+exposed_ports=$(docker inspect --format '{{json .Config.ExposedPorts}}' "${container}")
+node -e '
+  const exposedPorts = JSON.parse(process.argv[1]);
+  if (!Object.hasOwn(exposedPorts, "8000/tcp")) throw new Error("public port 8000 is not exposed");
+  if (Object.hasOwn(exposedPorts, "8001/tcp")) throw new Error("loopback sidecar port 8001 must not be exposed");
+' "${exposed_ports}"
 echo "Docker native runtime smoke passed on http://127.0.0.1:${port}"
