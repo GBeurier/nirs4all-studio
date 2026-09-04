@@ -239,8 +239,8 @@ describe("build-native-sidecar", () => {
         mode: "bundled-required",
         abi: { major: 2, minor: 5 },
         source: {
-          commit: "b28b2c3ba5f74c679bb9b8f478769f05203709e4",
-          tree: "4bf3f5522b0572cd704323191ade6231db82ab43",
+          commit: "a9f9232aa3094eddd65ae42a2e85a4651ef861b1",
+          tree: "b447016bf07390a65447016be54b2ec86186f56f",
           project_version: "1.0.15",
         },
       });
