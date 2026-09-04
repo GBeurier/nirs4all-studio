@@ -1,5 +1,8 @@
 # Studio Pristine Progress
 
+> Archived implementation journal. Completion statements below are dated evidence,
+> not current release acceptance. See [the development index](../../README.md).
+
 This file tracks concrete cleanup work started from the audit in [STUDIO_PRISTINE_AUDIT.md](STUDIO_PRISTINE_AUDIT.md).
 
 ## 2026-06-27 - P0 Baseline Hygiene
@@ -13,7 +16,7 @@ Completed:
 - Removed the dead duplicate `DELETE /datasets/{dataset_id}` and `POST /datasets/{dataset_id}/refresh` handlers from `api/datasets.py`.
 - Kept linked dataset unlink/refresh ownership in `api/workspace/router_datasets.py`.
 - Added `tests/test_route_registry.py` plus `npm run test:routes` to prevent duplicate FastAPI `method + path` registrations.
-- Added [ARCHITECTURE_BOUNDARIES.md](ARCHITECTURE_BOUNDARIES.md) as the short ownership contract for backend routes and frontend domains.
+- Added [ARCHITECTURE_BOUNDARIES.md](../../../ARCHITECTURE_BOUNDARIES.md) as the short ownership contract for backend routes and frontend domains.
 
 Verification:
 
@@ -12709,7 +12712,7 @@ Completed:
 - Added `src/lib/playground/repetitionsChartViewport.ts` for repetitions chart bounds, zoom info, x ticks, zoom domains, and pan domains.
 - Added `src/lib/playground/repetitionsChartExport.ts` for repetitions chart CSV export-row projection.
 - Kept the historical `repetitionsChartData.ts` exports stable while moving viewport and export rules into focused modules.
-- Updated [ARCHITECTURE_BOUNDARIES.md](ARCHITECTURE_BOUNDARIES.md) with the new Pipeline Editor, Inspector analytics, and repetitions chart ownership contracts.
+- Updated [ARCHITECTURE_BOUNDARIES.md](../../../ARCHITECTURE_BOUNDARIES.md) with the new Pipeline Editor, Inspector analytics, and repetitions chart ownership contracts.
 
 Verification:
 
@@ -12754,7 +12757,7 @@ Completed:
   - `RunDetailSheetDatasets.tsx` owns dataset result cards and all-model panels.
 - Added focused tests for `PredictDialogData.ts`.
 - Added focused tests for `RunDetailSheetDisplay.ts`.
-- Updated [ARCHITECTURE_BOUNDARIES.md](ARCHITECTURE_BOUNDARIES.md) with the new pipeline-library, runs, run-progress, and quick-prediction ownership contracts.
+- Updated [ARCHITECTURE_BOUNDARIES.md](../../../ARCHITECTURE_BOUNDARIES.md) with the new pipeline-library, runs, run-progress, and quick-prediction ownership contracts.
 
 Verification:
 
@@ -12806,7 +12809,7 @@ Completed:
   - `ChainDetailPipelineIdentityRows.tsx` owns branch/model/pipeline identity rows.
   - `ChainDetailPipelineIdentityCvMetrics.tsx` owns additional CV metric presentation.
 - Added focused tests for chain-detail identity formatting.
-- Updated [ARCHITECTURE_BOUNDARIES.md](ARCHITECTURE_BOUNDARIES.md) with the new Predict results, chart-config popover, and chain-detail pipeline identity ownership contracts.
+- Updated [ARCHITECTURE_BOUNDARIES.md](../../../ARCHITECTURE_BOUNDARIES.md) with the new Predict results, chart-config popover, and chain-detail pipeline identity ownership contracts.
 
 Verification:
 
@@ -12845,7 +12848,7 @@ Completed:
   - `CartesianGenerator.tsx` keeps stable exports and orchestration.
   - Fixed the cartesian variant badge escalation so counts above `1000` reach the red warning state instead of being swallowed by the `>100` branch.
 - Added focused tests for `StepPaletteData.ts` and `CartesianGeneratorData.ts`.
-- Updated [ARCHITECTURE_BOUNDARIES.md](ARCHITECTURE_BOUNDARIES.md) with the new pipeline-editor ownership contracts.
+- Updated [ARCHITECTURE_BOUNDARIES.md](../../../ARCHITECTURE_BOUNDARIES.md) with the new pipeline-editor ownership contracts.
 
 Verification:
 

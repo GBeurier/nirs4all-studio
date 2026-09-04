@@ -1,5 +1,8 @@
 # Studio pristine handoff
 
+> Historical handoff (June 2026). These conclusions describe the pre-migration
+> checkout; see [the development index](../../README.md) for current references.
+
 Date: 2026-06-30
 
 Scope: handoff for `PRE-2 Studio pristine` before the multimodal refactoring
@@ -231,7 +234,7 @@ Current local caution:
 ## Validation log
 
 Earlier focused validation from the cleanup waves is recorded in
-`docs/STUDIO_PRISTINE_PROGRESS.md`, including targeted backend pytest, Ruff,
+`STUDIO_PRISTINE_PROGRESS.md` in this directory, including targeted backend pytest, Ruff,
 Vitest, TypeScript, route, doctor, and diff-check runs.
 
 Final closure commands run on 2026-06-30:

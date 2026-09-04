@@ -1,5 +1,8 @@
 # Audit "pristine" de nirs4all Studio
 
+> Historical development evidence (June 2026), retained verbatim below. For the
+> released Rust product boundary, start at [the development index](../../README.md).
+
 Date: 2026-06-27
 
 Objectif: mettre Studio dans l'etat le plus maintenable possible avant les gros chantiers dag-ml / dag-ml-data / multimodal / cluster / WASM / benchmarks.
