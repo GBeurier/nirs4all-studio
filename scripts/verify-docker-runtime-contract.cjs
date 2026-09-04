@@ -36,6 +36,11 @@ requireText(
   "COPY vite.config.ts postcss.config.js tailwind.config.ts tsconfig*.json index.html ./",
   "frontend CSS build configuration",
 );
+requireText(
+  dockerfile,
+  "COPY vendor/npm/nirs4all-ui-0.1.13.tgz vendor/npm/",
+  "pinned nirs4all-ui package before npm ci",
+);
 requireText(dockerfile, "cargo build --locked --release", "locked Rust build");
 requireText(dockerfile, "COPY --from=methods-runtime /libn4m.so.2.5.0", "native Methods named context");
 requireText(dockerfile, "NIRS4ALL_METHODS_SHA256", "native Methods content identity");

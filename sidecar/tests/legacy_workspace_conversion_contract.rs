@@ -63,7 +63,7 @@ fn checked_in_contract_matches_the_rust_route_and_process_bounds() {
     assert_eq!(contract["converter"]["unbounded_reader_join"], "forbidden");
     assert_eq!(
         contract["converter"]["execution_gate"],
-        "runtime_rechecks_attestation_immediately_before_every_spawn"
+        "runtime rechecks the platform-neutral attestation immediately before every spawn; the raw installed RECORD hash remains platform-local diagnostic data"
     );
     assert_eq!(
         contract["converter"]["windows_job_policy"],

@@ -37,12 +37,11 @@
     "python_http": "forbidden",
     "module": "nirs4all_tools",
     "cli": "python -I -B -c <same-process-attest-and-runpy-bootstrap> -- legacy migrate",
-    "spawn_identity_binding": "the interpreter regular-file SHA-256 captured from the packaged-qualified host is rechecked around every preflight and immediately before spawn; the launched interpreter then repeats the exact wheel, RECORD, manifest, DuckDB, and PyArrow functional attestation before runpy executes nirs4all_tools in that same process",
+    "spawn_identity_binding": "the interpreter regular-file SHA-256 captured from the packaged-qualified host is rechecked around every preflight and immediately before spawn; the launched interpreter then repeats the exact wheel, platform-neutral installed manifest, every RECORD member, DuckDB, and PyArrow functional attestation before runpy executes nirs4all_tools in that same process",
     "qualified_identity": {
       "source_commit": "88c2bc1e29603049cdbf1a1080a35845edf2f3c9",
       "version": "0.0.7",
       "wheel_sha256": "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819",
-      "record_sha256": "2da8a3c2797eee9b9c8399620dd0734f5b2f829fc5015cb903db267ac3690238",
       "installed_manifest_sha256": "cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07",
       "readers": {
         "duckdb": {
@@ -55,8 +54,8 @@
         }
       }
     },
-    "capability_gate": "startup_exact_wheel_record_manifest_and_functional_reader_attestation",
-    "execution_gate": "runtime_rechecks_attestation_immediately_before_every_spawn",
+    "capability_gate": "startup_exact_wheel_platform-neutral_manifest_every-record-member_and_functional-reader-attestation",
+    "execution_gate": "runtime rechecks the platform-neutral attestation immediately before every spawn; the raw installed RECORD hash remains platform-local diagnostic data",
     "target": "nirs4all-workspace-v2",
     "maximum_concurrent_processes": 1,
     "timeout_seconds": 1800,
