@@ -1,9 +1,24 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 image="${1:-nirs4all-studio:native-smoke}"
 container="nirs4all-studio-native-smoke-${RANDOM}-$$"
 capability_error_file=""
+
+report_error() {
+  local status="$?"
+  local line="$1"
+  local command="$2"
+  trap - ERR
+  echo "Docker native runtime smoke failed at line ${line}: ${command} (exit ${status})" >&2
+  if docker inspect "${container}" >/dev/null 2>&1; then
+    echo "--- container logs ---" >&2
+    docker logs "${container}" >&2 || true
+  fi
+  exit "${status}"
+}
+
+trap 'report_error "${LINENO}" "${BASH_COMMAND}"' ERR
 
 cleanup() {
   docker rm -f "${container}" >/dev/null 2>&1 || true
