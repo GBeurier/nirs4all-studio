@@ -105,6 +105,9 @@ requireText(dockerSmoke, "scientific_execution !== true", "configured scientific
 requireText(dockerSmoke, "implicit_python_http_fallback !== false", "transition fallback refusal assertion");
 requireText(dockerSmoke, 'message.type !== "connected"', "live WebSocket connected-envelope assertion");
 requireText(dockerSmoke, 'message.data?.client_id !== "docker-smoke"', "live WebSocket client identity assertion");
+requireText(dockerSmoke, 'public_socket && !inherited_port_80_socket', "actual public listener boundary assertion");
+requireText(dockerSmoke, '!Object.hasOwn(exposedPorts, "8000/tcp")', "public Docker port metadata assertion");
+requireText(dockerSmoke, 'Object.hasOwn(exposedPorts, "8001/tcp")', "sidecar Docker port metadata exclusion");
 
 requireText(ciWorkflow, "npm run test:docker-runtime-contract", "CI static Docker contract gate");
 requireText(ciWorkflow, "--build-context methods-runtime=", "CI Methods build context");
