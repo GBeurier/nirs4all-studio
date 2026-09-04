@@ -6,8 +6,8 @@ components. Their license notices are part of the distribution; the authoritativ
 ships with each upstream project.
 
 The native product runtime embeds `nirs4all-methods` 1.0.15 from commit
-`48ad1e5a50844f68c2b99e93b02ad6a3b491c07b` (tree
-`f2eaa3c46629c26d11913a25bff723f9a9cefbc9`) as `libn4m`, under CeCILL-2.1.
+`a9f9232aa3094eddd65ae42a2e85a4651ef861b1` (tree
+`b447016bf07390a65447016be54b2ec86186f56f`) as `libn4m`, under CeCILL-2.1.
 Studio compiles its Rust sidecar against immutable snapshots of `nirs4all-core`,
 `dag-ml`/`dag-ml-core`, and `nirs4all-io`; their exact commits, inventories, package
 digests, and license files are recorded beside those snapshots under `sidecar/vendor/`.
