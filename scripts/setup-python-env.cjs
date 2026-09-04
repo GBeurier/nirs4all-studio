@@ -419,10 +419,11 @@ function walkTreeSync(rootPath, visitor) {
   }
 }
 
-function pruneStandaloneRuntimeArtifacts(runtimeRoot) {
+function pruneStandaloneRuntimeArtifacts(runtimeRoot, options = {}) {
+  const pluginOnlyRuntime = options.pluginOnlyRuntime ?? pluginOnly;
   const pruneDirNames = new Set(["Headers", "cmake", "include", "pkgconfig", "__pycache__"]);
   const pruneShareLeafNames = new Set(["doc", "docs", "gtk-doc", "info", "man"]);
-  if (pluginOnly) {
+  if (pluginOnlyRuntime) {
     // The library/plugin worker has no terminal UI. PBS ships terminfo largely
     // as symlink aliases, which are forbidden in the packaged closure.
     pruneShareLeafNames.add("terminfo");
@@ -431,14 +432,14 @@ function pruneStandaloneRuntimeArtifacts(runtimeRoot) {
 
   walkTreeSync(runtimeRoot, (entryPath, entry) => {
     const parentName = path.basename(path.dirname(entryPath));
-    if (pluginOnly && parentName === "site-packages" && (
+    if (pluginOnlyRuntime && parentName === "site-packages" && (
       ["pip", "setuptools", "pkg_resources", "_distutils_hack"].includes(entry.name) ||
       /^(?:pip|setuptools)-.*\.dist-info$/i.test(entry.name)
     )) {
       targets.add(entryPath);
       return false;
     }
-    if (pluginOnly && entry.isFile() && (
+    if (pluginOnlyRuntime && entry.isFile() && (
       entry.name.endsWith(".pth") ||
       entry.name === "direct_url.json" ||
       entry.name === "INSTALLER" ||
@@ -447,8 +448,21 @@ function pruneStandaloneRuntimeArtifacts(runtimeRoot) {
       targets.add(entryPath);
       return false;
     }
+    if (pluginOnlyRuntime && entry.isFile() && /^_tkinter(?:\.|$)/.test(entry.name)) {
+      targets.add(entryPath);
+      return false;
+    }
     if (!entry.isDirectory()) {
       return true;
+    }
+
+    if (
+      pluginOnlyRuntime &&
+      entry.name === "tkinter" &&
+      (parentName === "Lib" || /^python3\.\d+$/.test(parentName))
+    ) {
+      targets.add(entryPath);
+      return false;
     }
 
     if (pruneDirNames.has(entry.name)) {

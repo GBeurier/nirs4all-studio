@@ -16,6 +16,7 @@
   "runtime_closure": "exact_path_size_sha256_inventory_without_symlinks_or_special_files",
   "python_flags": ["-I", "-S", "-B"],
   "site_packages": "single_explicit_content_addressed_packaged_directory",
+  "stdlib_gui": "tkinter_and__tkinter_pruned_from_headless_plugin_closure",
   "maximum_stdin_bytes": 65536,
   "maximum_stdout_bytes": 8192,
   "maximum_stderr_bytes": 65536,

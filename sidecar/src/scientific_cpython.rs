@@ -1761,6 +1761,10 @@ mod tests {
             contract["python_flags"],
             serde_json::json!(["-I", "-S", "-B"])
         );
+        assert_eq!(
+            contract["stdlib_gui"],
+            "tkinter_and__tkinter_pruned_from_headless_plugin_closure"
+        );
         assert_eq!(contract["selected_source_commit"], SCIENTIFIC_SOURCE_COMMIT);
         assert_eq!(contract["selected_wheel_sha256"], SCIENTIFIC_WHEEL_SHA256);
         assert!(contract
