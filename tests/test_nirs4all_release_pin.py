@@ -17,7 +17,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     source = re.search(r"^  NIRS4ALL_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert ref is not None
     assert source is not None
-    assert ref.group(1) == source.group(1) == "6429974a88cccc3fbf8dbe8aeb060435381f2bd4"
+    assert ref.group(1) == source.group(1) == "2af6cfd7f988fa400617c460a77450dbad4228c9"
     assert f"ref: {version}" not in workflow
 
     dag_ref = re.search(r"^  DAG_ML_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
