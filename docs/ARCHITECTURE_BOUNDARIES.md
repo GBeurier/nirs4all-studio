@@ -2,7 +2,10 @@
 
 This document is the short operational contract for keeping Studio maintainable while the dag-ml backend, multimodal data model, cluster execution, and WASM-oriented runtime evolve.
 
-For the full audit and migration roadmap, see [STUDIO_PRISTINE_AUDIT.md](STUDIO_PRISTINE_AUDIT.md).
+For current product contracts and the archived pre-migration audit, see the
+[development documentation index](development/README.md). The Python route
+ownership below applies to the transitional web/diagnostic backend; packaged
+R3 uses the Rust sidecar described in [AGENTS.md](../AGENTS.md).
 
 ## Backend Route Ownership
 
