@@ -83,8 +83,9 @@ RUN printf '%s\n' \
     && ! ldd /opt/nirs4all/backend/native/libn4m.so | grep -q 'not found' \
     && ldd /opt/nirs4all/backend/python-runtime/python/bin/python3 \
     && ! ldd /opt/nirs4all/backend/python-runtime/python/bin/python3 | grep -q 'not found' \
+    && /opt/nirs4all/backend/python-runtime/python/bin/python3 -I -S -B -c 'import sys; sys.path.insert(0,"/opt/nirs4all/backend/python-runtime/python/lib/python3.11/site-packages"); import scipy.linalg; assert scipy.linalg.get_blas_funcs("gemm")' \
     && find /opt/nirs4all/backend/python-runtime/python -type f \( -name '*.so' -o -name '*.so.*' \) \
-      -exec sh -eu -c 'for object do dependencies=$(ldd "$object" 2>&1) || { echo "ELF dependency scan failed: $object" >&2; echo "$dependencies" >&2; exit 1; }; case "$dependencies" in *"not found"*) echo "ELF dependency missing: $object" >&2; echo "$dependencies" >&2; exit 1;; esac; done' sh {} + \
+      -exec sh -eu -c 'for object do object_dir=${object%/*}; dependencies=$(LD_LIBRARY_PATH="${object_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "$object" 2>&1) || { echo "ELF dependency scan failed: $object" >&2; echo "$dependencies" >&2; exit 1; }; case "$dependencies" in *"not found"*) echo "ELF dependency missing: $object" >&2; echo "$dependencies" >&2; exit 1;; esac; done' sh {} + \
     && ! command -v python \
     && ! command -v python3
 
