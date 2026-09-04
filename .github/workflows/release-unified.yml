@@ -36,11 +36,11 @@ env:
   PYTHON_VERSION: '3.11'
   # Release archives/images must be reproducible. Keep these refs pinned to the
   # selected RC heads and update them with the ecosystem release board.
-  NIRS4ALL_LIBRARY_REF: 2096f36633c22ff08a36650b7dd10c6bc0b177c9
+  NIRS4ALL_LIBRARY_REF: 6429974a88cccc3fbf8dbe8aeb060435381f2bd4
   DAG_ML_REF: 1caa26dc9b90f33bc3f53b15b4d85e18f3f67381
   DAG_ML_DATA_REF: 7d9b9fed04c135ed4c2bba472c782aca7ef85807
   NIRS4ALL_TOOLS_REF: 88c2bc1e29603049cdbf1a1080a35845edf2f3c9
-  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/2096f36633c22ff08a36650b7dd10c6bc0b177c9.tar.gz
+  NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/6429974a88cccc3fbf8dbe8aeb060435381f2bd4.tar.gz
   DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/1caa26dc9b90f33bc3f53b15b4d85e18f3f67381.tar.gz
   DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/7d9b9fed04c135ed4c2bba472c782aca7ef85807.tar.gz
   NIRS4ALL_TOOLS_SOURCE_URL: https://github.com/GBeurier/nirs4all-tools/archive/88c2bc1e29603049cdbf1a1080a35845edf2f3c9.tar.gz
@@ -202,10 +202,10 @@ jobs:
         run: |
           python -m pip install --upgrade setuptools==84.0.0 wheel==0.48.0 packaging==26.3
           mkdir -p dist/pinned-plugin-wheels
-          SOURCE_DATE_EPOCH=1788424315 python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist/pinned-plugin-wheels git+https://github.com/GBeurier/nirs4all.git@2096f36633c22ff08a36650b7dd10c6bc0b177c9
+          SOURCE_DATE_EPOCH=1788424315 python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist/pinned-plugin-wheels git+https://github.com/GBeurier/nirs4all.git@6429974a88cccc3fbf8dbe8aeb060435381f2bd4
           SOURCE_DATE_EPOCH=1788346349 python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist/pinned-plugin-wheels git+https://github.com/GBeurier/nirs4all-tools.git@${NIRS4ALL_TOOLS_REF}
           cd dist/pinned-plugin-wheels
-          echo 'ba977cb04da9c8d5c91749d975e2620848d9f802bc454ed5af6e589936439c94  nirs4all-1.0.0rc2-py3-none-any.whl' | sha256sum --check --strict
+          echo '7387eb80516c98a8d01e5ac5743ed058035fcb69cd22cc4d162c57b7a32e7259  nirs4all-1.0.0rc2-py3-none-any.whl' | sha256sum --check --strict
           echo '4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819  nirs4all_tools-0.0.7-py3-none-any.whl' | sha256sum --check --strict
 
       - name: Upload canonical wheels
