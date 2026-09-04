@@ -153,6 +153,9 @@ installer or all-in-one archive cannot silently publish either capability as
 `mode: unavailable`.
 
 The same content contract pins the bundled interpreter and every runtime file.
+Because this interpreter is a headless scientific stdio host, its packaging
+step removes the unused `tkinter` package and `_tkinter` extension instead of
+shipping platform Tcl/Tk libraries.
 If any member is missing, altered, added, or path-substituted after packaging,
 the Rust sidecar still owns the product
 port and reports the Python plugin host unavailable. It does not acquire,

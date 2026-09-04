@@ -31,7 +31,7 @@ const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
     packageSpecs: string[];
     extraPipArgs: string[];
   }>;
-  pruneStandaloneRuntimeArtifacts(runtimeRoot: string): {
+  pruneStandaloneRuntimeArtifacts(runtimeRoot: string, options?: { pluginOnlyRuntime?: boolean }): {
     removedBytes: number;
     removedPaths: number;
   };
@@ -190,5 +190,32 @@ describe("setup-python-env", () => {
     expect(fs.existsSync(path.join(binDir, "pip3"))).toBe(false);
     expect(fs.existsSync(pycacheDir)).toBe(false);
     expect(artifactStats.removedPaths + launcherStats.removedPaths).toBeGreaterThanOrEqual(3);
+  });
+
+  it("removes Tk from the headless plugin-only CPython closure", () => {
+    const buildRoot = makeTempDir("n4a-setup-python-headless-");
+    const stdlibDir = path.join(buildRoot, "python", "lib", "python3.11");
+    const tkinterDir = path.join(stdlibDir, "tkinter");
+    const extensionPath = path.join(
+      stdlibDir,
+      "lib-dynload",
+      "_tkinter.cpython-311-x86_64-linux-gnu.so",
+    );
+    const retainedPath = path.join(stdlibDir, "turtle.py");
+
+    fs.mkdirSync(tkinterDir, { recursive: true });
+    fs.mkdirSync(path.dirname(extensionPath), { recursive: true });
+    fs.writeFileSync(path.join(tkinterDir, "__init__.py"), "pass\n");
+    fs.writeFileSync(extensionPath, "extension");
+    fs.writeFileSync(retainedPath, "pass\n");
+
+    const stats = setupPythonEnvModule.pruneStandaloneRuntimeArtifacts(buildRoot, {
+      pluginOnlyRuntime: true,
+    });
+
+    expect(fs.existsSync(tkinterDir)).toBe(false);
+    expect(fs.existsSync(extensionPath)).toBe(false);
+    expect(fs.existsSync(retainedPath)).toBe(true);
+    expect(stats.removedPaths).toBe(2);
   });
 });
