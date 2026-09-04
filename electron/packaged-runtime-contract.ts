@@ -12,10 +12,10 @@ const MAX_PYTHON_CLOSURE_BYTES = 32 * 1024 * 1024;
 const MAX_PYTHON_CLOSURE_FILES = 100_000;
 const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
-const PLUGIN_SOURCE_COMMIT = "3a38f589e5acbda58c5d071c95036f2572972ecd";
-const PLUGIN_WHEEL_SHA256 = "906c151a80c3bbdf2ef1264b904a8fd61a2a67fbe0ded2cba92453e44fbce230";
-const TOOLS_SOURCE_COMMIT = "e3a332633f87b4652a06f8993e63c386a3568698";
-const TOOLS_WHEEL_SHA256 = "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc";
+const PLUGIN_SOURCE_COMMIT = "2096f36633c22ff08a36650b7dd10c6bc0b177c9";
+const PLUGIN_WHEEL_SHA256 = "ba977cb04da9c8d5c91749d975e2620848d9f802bc454ed5af6e589936439c94";
+const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
+const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
 const METHODS_ABI_MAJOR = 2;
 const METHODS_ABI_MINOR = 5;
 const METHODS_SOURCE_COMMIT = "48ad1e5a50844f68c2b99e93b02ad6a3b491c07b";
@@ -364,17 +364,17 @@ function verifyPluginMarker(
     marker.distribution !== "nirs4all" ||
     marker.distribution_version !== "1.0.0rc2" ||
     marker.distribution_record_sha256 !==
-      "896cb15467a2e7864d5458c42ab37501bfb029c6e8d64fc5c8984999c408930b" ||
+      "fd496610e6f27e9561f465323ca59b27bd19e306e452435ceb7792abd6b21f14" ||
     marker.installed_manifest_sha256 !==
-      "099259cc3b510fd415b573122630a1db9304fdf847589b2ab92de3b3e8b36ba7" ||
+      "a4896def6b619cbed14c675573374cf5a17193b3812625923ec506a93602c67b" ||
     conversionTools?.source_commit !== TOOLS_SOURCE_COMMIT ||
     conversionTools?.wheel_sha256 !== TOOLS_WHEEL_SHA256 ||
     conversionTools?.distribution !== "nirs4all-tools" ||
     conversionTools?.distribution_version !== "0.0.7" ||
     conversionTools?.distribution_record_sha256 !==
-      "8db345e39929f63e658d33bba1a9379336547e5653ed4b51271792791e5d6f54" ||
+      "2da8a3c2797eee9b9c8399620dd0734f5b2f829fc5015cb903db267ac3690238" ||
     conversionTools?.installed_manifest_sha256 !==
-      "37e8862680fe35efcf6b3348ad5c064701f8ba90f43be89bd07c632a59a509fb" ||
+      "cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07" ||
     conversionTools?.module !== "nirs4all_tools" ||
     conversionTools?.cli !== "python -I -B -m nirs4all_tools" ||
     readers?.duckdb !== "1.5.5" ||

@@ -90,9 +90,9 @@ const TOOLS_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(20);
 const PROCESS_CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const TOOLS_VERSION: &str = "0.0.7";
 const TOOLS_RECORD_SHA256: &str =
-    "8db345e39929f63e658d33bba1a9379336547e5653ed4b51271792791e5d6f54";
+    "2da8a3c2797eee9b9c8399620dd0734f5b2f829fc5015cb903db267ac3690238";
 const TOOLS_MANIFEST_SHA256: &str =
-    "37e8862680fe35efcf6b3348ad5c064701f8ba90f43be89bd07c632a59a509fb";
+    "cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07";
 pub const WINDOWS_JOB_LAUNCHER_ARGUMENT: &str = "--internal-legacy-converter-job";
 const TOOLS_PREFLIGHT: &str = r#"import base64,csv,hashlib,importlib.metadata,io,json,os,socket,subprocess,sys
 def deny(event,args):
@@ -109,7 +109,7 @@ for relative,encoded,size in rows:
  algorithm,expected=encoded.split("=",1); payload=open(d.locate_file(relative),"rb").read(); actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
  if actual != expected or (size and len(payload) != int(size)): verified=False; break
 record=hashlib.sha256(b).hexdigest(); manifest=hashlib.sha256(m).hexdigest()
-identity_ok=d.version=="0.0.7" and record=="8db345e39929f63e658d33bba1a9379336547e5653ed4b51271792791e5d6f54" and manifest=="37e8862680fe35efcf6b3348ad5c064701f8ba90f43be89bd07c632a59a509fb" and verified
+identity_ok=d.version=="0.0.7" and record=="2da8a3c2797eee9b9c8399620dd0734f5b2f829fc5015cb903db267ac3690238" and manifest=="cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07" and verified
 duckdb_functional=pyarrow_functional=False
 if identity_ok:
  import nirs4all_tools,duckdb,pyarrow,pyarrow.parquet as parquet

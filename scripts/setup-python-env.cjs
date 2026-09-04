@@ -55,13 +55,13 @@ const TORCH_CUDA_INDEX_URL = "https://download.pytorch.org/whl/cu124";
 const TORCH_PROFILE_PACKAGE = "torch";
 const CUDA_TORCH_PROFILE = "gpu-cuda-torch";
 const PLUGIN_BUILD_MODE = "studio-python-plugin-runtime";
-const PLUGIN_SOURCE_COMMIT = "3a38f589e5acbda58c5d071c95036f2572972ecd";
+const PLUGIN_SOURCE_COMMIT = "2096f36633c22ff08a36650b7dd10c6bc0b177c9";
 const PLUGIN_SOURCE_EPOCH = "1788424315";
-const PLUGIN_WHEEL_SHA256 = "906c151a80c3bbdf2ef1264b904a8fd61a2a67fbe0ded2cba92453e44fbce230";
+const PLUGIN_WHEEL_SHA256 = "ba977cb04da9c8d5c91749d975e2620848d9f802bc454ed5af6e589936439c94";
 const PLUGIN_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all.git@${PLUGIN_SOURCE_COMMIT}`;
-const TOOLS_SOURCE_COMMIT = "e3a332633f87b4652a06f8993e63c386a3568698";
+const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
 const TOOLS_SOURCE_EPOCH = "1788346349";
-const TOOLS_WHEEL_SHA256 = "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc";
+const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
 const TOOLS_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all-tools.git@${TOOLS_SOURCE_COMMIT}`;
 const WHEEL_BUILD_TOOLCHAIN = Object.freeze([
   "setuptools==84.0.0",

@@ -136,10 +136,10 @@ Phase 2 installers and all-in-one archives build this payload with
 it does not invoke `bake-standalone-backend.cjs`, copy `api/`, `websocket/`, or
 `main.py`, or install the shared FastAPI backend dependency set. It rebuilds
 the selected `nirs4all` wheel from source commit
-`3a38f589e5acbda58c5d071c95036f2572972ecd` (or accepts that exact wheel for
+`2096f36633c22ff08a36650b7dd10c6bc0b177c9` (or accepts that exact wheel for
 an offline build), builds it with pinned setuptools/wheel versions and the
-source commit timestamp as `SOURCE_DATE_EPOCH`, verifies SHA-256
-`906c151a80c3bbdf2ef1264b904a8fd61a2a67fbe0ded2cba92453e44fbce230`,
+frozen release-train epoch `1788424315` as `SOURCE_DATE_EPOCH`, verifies SHA-256
+`ba977cb04da9c8d5c91749d975e2620848d9f802bc454ed5af6e589936439c94`,
 and rejects FastAPI, Starlette, Uvicorn, Sentry's FastAPI integration, and the
 Uvicorn server transitive set. `PLUGIN_RUNTIME_READY.json` freezes the exact
 `library-plugin-host-only` role. The older generic `RUNTIME_READY.json` never
@@ -224,7 +224,7 @@ packaged stdio plugin host.
 The loose `nirs4all-tools>=0.0.5` range remains confined to the transitional
 FastAPI/tooling dependency declaration. The packaged Rust product instead
 installs and attests the qualified `nirs4all-tools` 0.0.7 wheel from commit
-`e3a332633f87b4652a06f8993e63c386a3568698`, plus exact `duckdb==1.5.5` and
+`88c2bc1e29603049cdbf1a1080a35845edf2f3c9`, plus exact `duckdb==1.5.5` and
 `pyarrow==25.0.1` readers, inside the bounded CPython stdio closure. It remains
 excluded from `BACKEND_COMMON_PACKAGES` and never acquires an HTTP role.
 

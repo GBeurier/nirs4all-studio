@@ -44,15 +44,15 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "3a38f589e5acbda58c5d071c95036f2572972ecd",
+      source_commit: "2096f36633c22ff08a36650b7dd10c6bc0b177c9",
       wheel_sha256:
-        "906c151a80c3bbdf2ef1264b904a8fd61a2a67fbe0ded2cba92453e44fbce230",
+        "ba977cb04da9c8d5c91749d975e2620848d9f802bc454ed5af6e589936439c94",
       platform: "linux",
       arch: "x64",
       conversion_tools: {
-        source_commit: "e3a332633f87b4652a06f8993e63c386a3568698",
+        source_commit: "88c2bc1e29603049cdbf1a1080a35845edf2f3c9",
         wheel_sha256:
-          "372ecec41b18c25c607fd660060f19780cdaf8aea378239fa5ade5a61d81c8dc",
+          "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819",
         distribution: "nirs4all-tools",
         distribution_version: "0.0.7",
         module: "nirs4all_tools",
