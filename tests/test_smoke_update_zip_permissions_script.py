@@ -45,7 +45,7 @@ def test_smoke_update_zip_permissions_script_resolves_linux_app_root_without_app
     executable_info.create_system = 3
     executable_info.external_attr = (0o755 << 16)
 
-    runtime_ready_info = zipfile.ZipInfo("nirs4all Studio/resources/backend/python-runtime/RUNTIME_READY.json")
+    runtime_ready_info = zipfile.ZipInfo("nirs4all Studio/resources/backend/python-runtime/PLUGIN_RUNTIME_READY.json")
     runtime_ready_info.create_system = 3
     runtime_ready_info.external_attr = (0o644 << 16)
 
