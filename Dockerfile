@@ -31,7 +31,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY recommended-config.json ./
-COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/bake-python-plugin-runtime.cjs scripts/
+COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/bake-python-plugin-runtime.cjs scripts/
 RUN --mount=type=cache,target=/python-cache \
     node scripts/bake-python-plugin-runtime.cjs \
       --backend-root /product/backend \
