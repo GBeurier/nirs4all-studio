@@ -55,7 +55,9 @@ requireText(dockerfile, "NIRS4ALL_SCIENTIFIC_EXECUTOR=cpython-stdio-v1", "stdio 
 requireText(dockerfile, "! command -v python", "no ambient Python command");
 requireText(dockerfile, "! command -v python3", "no ambient Python 3 command");
 requireText(dockerfile, "find /opt/nirs4all/backend/python-runtime/python -type f", "complete CPython ELF dependency scan");
+requireText(dockerfile, 'LD_LIBRARY_PATH="${object_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "$object"', "wheel-local ELF dependency resolution");
 requireText(dockerfile, "ELF dependency missing", "fail-closed CPython ELF dependency result");
+requireText(dockerfile, "import scipy.linalg", "native SciPy import smoke");
 requireText(dockerfile, "http://127.0.0.1:8000/api/health", "public native healthcheck");
 requireText(dockerfile, "--start-period=180s", "bounded CPython startup health grace");
 requireText(dockerfile, 'ENTRYPOINT ["/usr/bin/tini"', "process-group supervisor");
