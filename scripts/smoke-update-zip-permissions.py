@@ -23,6 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import api.update_downloader as update_downloader
 
 APP_NAME = "nirs4all Studio"
+PLUGIN_RUNTIME_MARKER = "PLUGIN_RUNTIME_READY.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -59,7 +60,7 @@ def resolve_paths(content_dir: Path, platform_name: str, app_name: str) -> tuple
             runtime_root / "python" / "bin" / "python",
             runtime_root / "venv" / "bin" / "python",
         ]
-        runtime_ready = runtime_root / "RUNTIME_READY.json"
+        runtime_ready = runtime_root / PLUGIN_RUNTIME_MARKER
         python_path = next((candidate for candidate in python_candidates if candidate.exists()), python_candidates[0])
         return executable_path, python_path, runtime_ready
 
@@ -71,7 +72,7 @@ def resolve_paths(content_dir: Path, platform_name: str, app_name: str) -> tuple
         runtime_root / "venv" / "bin" / "python",
     ]
     python_path = next((candidate for candidate in python_candidates if candidate.exists()), python_candidates[0])
-    runtime_ready = runtime_root / "RUNTIME_READY.json"
+    runtime_ready = runtime_root / PLUGIN_RUNTIME_MARKER
     return executable_path, python_path, runtime_ready
 
 
