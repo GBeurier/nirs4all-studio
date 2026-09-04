@@ -25,7 +25,8 @@ for _ in $(seq 1 360); do
 done
 
 test -n "${port}"
-curl --fail --silent "http://127.0.0.1:${port}/" | grep -q '<div id="root">'
+root_page=$(curl --fail --silent "http://127.0.0.1:${port}/")
+grep -q '<div id="root">' <<< "${root_page}"
 health=$(curl --fail --silent "http://127.0.0.1:${port}/api/health")
 capability_error_file=$(mktemp)
 capability_status=$(curl --silent --output "${capability_error_file}" --write-out '%{http_code}' \
