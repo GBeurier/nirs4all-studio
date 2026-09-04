@@ -102,6 +102,8 @@ requireText(dockerSmoke, "scientific_execution !== false", "fresh unconfigured s
 requireText(dockerSmoke, "schema_version\":2", "minimal V2 dataset catalogue seed");
 requireText(dockerSmoke, "scientific_execution !== true", "configured scientific capability assertion");
 requireText(dockerSmoke, "implicit_python_http_fallback !== false", "transition fallback refusal assertion");
+requireText(dockerSmoke, 'message.type !== "connected"', "live WebSocket connected-envelope assertion");
+requireText(dockerSmoke, 'message.data?.client_id !== "docker-smoke"', "live WebSocket client identity assertion");
 
 requireText(ciWorkflow, "npm run test:docker-runtime-contract", "CI static Docker contract gate");
 requireText(ciWorkflow, "--build-context methods-runtime=", "CI Methods build context");

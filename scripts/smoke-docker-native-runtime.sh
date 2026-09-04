@@ -80,10 +80,31 @@ node -e '
 
 node --input-type=module -e '
   const socket = new WebSocket(process.argv[1]);
-  const timeout = setTimeout(() => { socket.close(); process.exit(1); }, 5000);
-  socket.addEventListener("open", () => { clearTimeout(timeout); socket.close(); });
-  socket.addEventListener("close", () => process.exit(0));
-  socket.addEventListener("error", () => { clearTimeout(timeout); process.exit(1); });
+  const fail = (message) => {
+    clearTimeout(timeout);
+    console.error(`Docker WebSocket smoke failed: ${message}`);
+    socket.close();
+    process.exit(1);
+  };
+  const timeout = setTimeout(() => fail("connected envelope timed out"), 5000);
+  socket.addEventListener("message", (event) => {
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch (error) {
+      fail(`invalid JSON: ${error.message}`);
+      return;
+    }
+    if (message.type !== "connected" || message.data?.client_id !== "docker-smoke") {
+      fail("unexpected connected envelope");
+      return;
+    }
+    clearTimeout(timeout);
+    socket.close();
+    process.exit(0);
+  });
+  socket.addEventListener("close", () => fail("connection closed before connected envelope"));
+  socket.addEventListener("error", () => fail("connection error"));
 ' "ws://127.0.0.1:${port}/ws?client_id=docker-smoke"
 
 docker exec "${container}" sh -eu -c '
