@@ -152,8 +152,8 @@ function writePackagedContract(
         member: null,
         abi: { major: 2, minor: 5 },
         source: {
-          commit: "48ad1e5a50844f68c2b99e93b02ad6a3b491c07b",
-          tree: "f2eaa3c46629c26d11913a25bff723f9a9cefbc9",
+          commit: "b28b2c3ba5f74c679bb9b8f478769f05203709e4",
+          tree: "4bf3f5522b0572cd704323191ade6231db82ab43",
           project_version: "1.0.15",
         },
       },
