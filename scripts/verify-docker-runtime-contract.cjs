@@ -95,6 +95,7 @@ forbid(dockerignore, /^(?:postcss\.config\.js|tailwind\.config\.ts)\/?$/m, "fron
 requireText(ciWorkflow, "scripts/smoke-docker-native-runtime.sh", "CI live Docker smoke");
 const dockerSmoke = read("scripts/smoke-docker-native-runtime.sh");
 requireText(dockerSmoke, "seq 1 360", "bounded live startup allowance");
+requireText(dockerSmoke, 'trap \'report_error "${LINENO}" "${BASH_COMMAND}"\' ERR', "actionable live smoke diagnostics");
 requireText(dockerSmoke, "root_page=$(curl --fail --silent", "complete SPA response capture");
 forbid(dockerSmoke, /curl[^\n]*\|\s*grep\s+-q/, "pipefail-sensitive early-closing curl pipeline");
 requireText(dockerSmoke, "pythonCapabilities.nirs4all !== true", "nirs4all capability import assertion");
