@@ -22,6 +22,7 @@ const { verifyRuntimeContract } = require("./native-runtime-contract.cjs");
 const DEFAULT_APP_NAME = "nirs4all Studio";
 const DEFAULT_TIMEOUT_MS = 180000;
 const DEFAULT_POLL_INTERVAL_MS = 1000;
+const PLUGIN_PREFLIGHT_REQUEST_TIMEOUT_MS = 75000;
 
 function printHelp() {
   console.log(`Usage:
@@ -236,6 +237,10 @@ function delay(ms) {
   });
 }
 
+function pluginPreflightTimeoutMs(remainingMs) {
+  return Math.max(1, Math.min(PLUGIN_PREFLIGHT_REQUEST_TIMEOUT_MS, remainingMs));
+}
+
 function collectRuntimePathLeaks(runtimeRoot, disallowedFragments) {
   const leaks = [];
   const queue = [runtimeRoot];
@@ -443,7 +448,9 @@ async function waitForReady(port, timeoutMs, child, outputBuffer) {
         if (healthPayload.sidecar_ready === true) {
           const capabilitiesResponse = await fetch(capabilitiesUrl, { signal: AbortSignal.timeout(3000) });
           const capabilitiesPayload = capabilitiesResponse.ok ? await capabilitiesResponse.json() : null;
-          const pluginResponse = await fetch(pluginPreflightUrl, { signal: AbortSignal.timeout(15000) });
+          const pluginResponse = await fetch(pluginPreflightUrl, {
+            signal: AbortSignal.timeout(pluginPreflightTimeoutMs(deadline - Date.now())),
+          });
           const pluginPayload = pluginResponse.ok ? await pluginResponse.json() : null;
           return {
             healthPayload,
@@ -649,6 +656,7 @@ module.exports = {
   collectRuntimePathLeaks,
   isRetryableCleanupError,
   parseArgs,
+  pluginPreflightTimeoutMs,
   removePathWithRetries,
   resolveLaunchLayout,
   verifyLaunchRuntimeContract,

@@ -129,7 +129,7 @@ pub const UPDATE_SETTINGS_FILE: &str = "update_settings.yaml";
 pub const MAX_UPDATE_SETTINGS_BYTES: u64 = 16 * 1024;
 pub const VENV_METADATA_FILE: &str = "venv_metadata.json";
 pub const MAX_VENV_METADATA_BYTES: u64 = 16 * 1024;
-pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(15);
+pub const PYTHON_PLUGIN_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(60);
 pub const PYTHON_PLUGIN_CAPABILITIES_TIMEOUT: Duration = Duration::from_secs(15);
 pub const MAX_PYTHON_PLUGIN_OUTPUT_BYTES: usize = 8 * 1024;
 pub const MAX_PYTHON_PLUGIN_RUNTIME_STATUS_OUTPUT_BYTES: usize = 256 * 1024;
@@ -3041,7 +3041,11 @@ fn python_env_coherence_response(state: &SidecarState) -> HttpResponse {
 }
 
 fn python_plugin_preflight_response(state: &SidecarState) -> HttpResponse {
-    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+    python_plugin_preflight_response_for_host(state.python_plugin_host.as_deref())
+}
+
+fn python_plugin_preflight_response_for_host(python_plugin_host: Option<&Path>) -> HttpResponse {
+    let Some(python_plugin_host) = python_plugin_host else {
         return error_response(
             503,
             ErrorCode::PythonPluginUnavailable,
@@ -3929,6 +3933,20 @@ fn handle_connection_with_limits_and_websocket(
                         &legacy_conversion,
                         &request.body,
                     ),
+                );
+            }
+            if request.method == "GET" && request.path == "/sidecar/v1/python/preflight" {
+                // A cold packaged import can take tens of seconds on the Intel
+                // macOS runner. Snapshot the immutable host path so health and
+                // readiness requests never queue behind that subprocess.
+                let python_plugin_host = state
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .python_plugin_host
+                    .clone();
+                return write_response(
+                    &mut stream,
+                    &python_plugin_preflight_response_for_host(python_plugin_host.as_deref()),
                 );
             }
             let mut state = state.lock().expect("sidecar state mutex poisoned");
@@ -5100,6 +5118,78 @@ mod tests {
             "python_plugin_preflight_failed"
         );
         assert_eq!(failed_body["error"]["details"]["reason"], "spawn_failed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn live_python_preflight_releases_the_route_mutex_during_cold_import() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = test_directory("python-preflight-live-concurrency");
+        fs::create_dir_all(&root).unwrap();
+        let started = root.join("started");
+        let host = root.join("python3");
+        fs::write(
+            &host,
+            format!(
+                "#!/bin/sh\ntouch '{}'\nsleep 1\nexit 0\n",
+                started.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&host).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(&host, permissions).unwrap();
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let state = Arc::new(Mutex::new(SidecarState::with_python_plugin_host(host)));
+        let server_state = Arc::clone(&state);
+        let server = thread::spawn(move || {
+            let mut handlers = Vec::new();
+            for _ in 0..2 {
+                let (stream, _) = listener.accept().unwrap();
+                let state = Arc::clone(&server_state);
+                handlers.push(thread::spawn(move || {
+                    handle_connection_with_limits(stream, &state, ServerLimits::default()).unwrap();
+                }));
+            }
+            for handler in handlers {
+                handler.join().unwrap();
+            }
+        });
+
+        let preflight = thread::spawn(move || {
+            let mut client = TcpStream::connect(address).unwrap();
+            client
+                .write_all(b"GET /sidecar/v1/python/preflight HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                .unwrap();
+            let mut response = String::new();
+            client.read_to_string(&mut response).unwrap();
+            response
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !started.exists() {
+            assert!(Instant::now() < deadline, "preflight host did not start");
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        let mut health = TcpStream::connect(address).unwrap();
+        health
+            .set_read_timeout(Some(Duration::from_millis(500)))
+            .unwrap();
+        health
+            .write_all(b"GET /sidecar/v1/health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .unwrap();
+        let mut health_response = String::new();
+        health.read_to_string(&mut health_response).unwrap();
+        assert!(health_response.starts_with("HTTP/1.1 200 OK\r\n"));
+
+        let preflight_response = preflight.join().unwrap();
+        assert!(preflight_response.starts_with("HTTP/1.1 200 OK\r\n"));
+        server.join().unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]

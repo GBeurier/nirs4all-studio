@@ -45,6 +45,7 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     keepSandbox: boolean;
     help: boolean;
   };
+  pluginPreflightTimeoutMs(remainingMs: number): number;
   resolveLaunchLayout(extractedRoot: string, platformId: string, appName: string): {
     appRoot: string;
     backendRoot: string;
@@ -237,6 +238,12 @@ describe("smoke-archive-standalone", () => {
         keepSandbox: false,
       }),
     ).toThrow("Invalid --port value: 70000");
+  });
+
+  it("bounds cold plugin preflight above the server timeout within the global budget", () => {
+    expect(smokeModule.pluginPreflightTimeoutMs(180000)).toBe(75000);
+    expect(smokeModule.pluginPreflightTimeoutMs(42000)).toBe(42000);
+    expect(smokeModule.pluginPreflightTimeoutMs(-1)).toBe(1);
   });
 
   it("retries sandbox removal after transient Windows-style EPERM locks", async () => {
