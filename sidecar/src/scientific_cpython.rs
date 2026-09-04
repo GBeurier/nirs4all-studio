@@ -39,10 +39,10 @@ pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_HOST_BYTES: u64 = 64 * 1024 * 1024;
 pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.0.0rc2";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
-    "a4896def6b619cbed14c675573374cf5a17193b3812625923ec506a93602c67b";
+    "52767f7b8fdfaf1443873070f1e0cc1a4b22f5668c9a7baa6faf22e2a45f3fa5";
 pub const SCIENTIFIC_WHEEL_SHA256: &str =
-    "ba977cb04da9c8d5c91749d975e2620848d9f802bc454ed5af6e589936439c94";
-pub const SCIENTIFIC_SOURCE_COMMIT: &str = "2096f36633c22ff08a36650b7dd10c6bc0b177c9";
+    "7387eb80516c98a8d01e5ac5743ed058035fcb69cd22cc4d162c57b7a32e7259";
+pub const SCIENTIFIC_SOURCE_COMMIT: &str = "6429974a88cccc3fbf8dbe8aeb060435381f2bd4";
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
 
@@ -99,7 +99,7 @@ except Exception as error:
     distribution_record_sha256=None
     distribution_files_verified=False
     distribution_error=type(error).__name__
-print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"ba977cb04da9c8d5c91749d975e2620848d9f802bc454ed5af6e589936439c94","source_commit":"2096f36633c22ff08a36650b7dd10c6bc0b177c9"},separators=(",",":"),sort_keys=True))
+print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"7387eb80516c98a8d01e5ac5743ed058035fcb69cd22cc4d162c57b7a32e7259","source_commit":"6429974a88cccc3fbf8dbe8aeb060435381f2bd4"},separators=(",",":"),sort_keys=True))
 "#;
 
 const EXECUTION_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,os,socket,sys
@@ -123,7 +123,7 @@ record_path=distribution.locate_file(record_entry) if record_entry else None
 record_bytes=open(record_path,"rb").read() if record_path else b""
 record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
 manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
-if hashlib.sha256(manifest_bytes).hexdigest() != "a4896def6b619cbed14c675573374cf5a17193b3812625923ec506a93602c67b":
+if hashlib.sha256(manifest_bytes).hexdigest() != "52767f7b8fdfaf1443873070f1e0cc1a4b22f5668c9a7baa6faf22e2a45f3fa5":
     raise RuntimeError("scientific distribution identity changed")
 for relative,encoded,size in record_rows:
     algorithm,expected=encoded.split("=",1)
