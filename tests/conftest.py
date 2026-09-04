@@ -5,11 +5,17 @@ This file contains shared fixtures and pytest configuration
 that applies to all test modules.
 """
 
+import os
 import sys
 import time
 from pathlib import Path
 
 import pytest
+
+# Tests must never inherit a DSN from an Electron/dev parent process.  Using
+# setdefault here would leave telemetry enabled whenever SENTRY_DSN already
+# exists, which turns deliberate negative-path assertions into Sentry issues.
+os.environ["SENTRY_DSN"] = ""
 
 # Ensure the webapp root is in the path
 webapp_root = Path(__file__).parent.parent

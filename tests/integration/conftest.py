@@ -27,8 +27,9 @@ from fastapi.testclient import TestClient
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-# Disable Sentry during tests — must be set before importing main
-os.environ.setdefault("SENTRY_DSN", "")
+# Disable Sentry during tests — overwrite an inherited Electron/dev DSN before
+# importing main, rather than leaving it enabled via setdefault().
+os.environ["SENTRY_DSN"] = ""
 
 from main import app
 
