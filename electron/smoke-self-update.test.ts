@@ -198,6 +198,28 @@ describe("smoke-self-update", () => {
     }
   });
 
+  it("retries a transient disconnect while reading the download-status body", async () => {
+    const server = await startFakeBackend({ statusBodyDisconnects: 1 });
+    try {
+      await expect(smoke.driveUpdate(server.base, 10000)).resolves.toBeUndefined();
+      expect(server.calls.filter((call) => call.startsWith("GET /api/updates/webapp/download-status/"))).toHaveLength(2);
+      expect(server.calls).toContain("POST /api/updates/webapp/apply");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("fails closed immediately when download-status returns invalid JSON", async () => {
+    const server = await startFakeBackend({ invalidStatusJson: true });
+    try {
+      await expect(smoke.driveUpdate(server.base, 10000)).rejects.toThrow(/returned invalid JSON/);
+      expect(server.calls.filter((call) => call.startsWith("GET /api/updates/webapp/download-status/"))).toHaveLength(1);
+      expect(server.calls).not.toContain("POST /api/updates/webapp/apply");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("fails closed with bounded status diagnostics when transport never recovers", async () => {
     const server = await startFakeBackend({ statusDisconnects: Number.POSITIVE_INFINITY });
     try {
@@ -265,6 +287,8 @@ function startFakeBackend(opts: {
   scientificReadiness?: "ready-after-poll" | "unavailable";
   downloadInfoFailure?: boolean;
   statusDisconnects?: number;
+  statusBodyDisconnects?: number;
+  invalidStatusJson?: boolean;
 } = {}): Promise<{
   base: string;
   port: number;
@@ -299,6 +323,18 @@ function startFakeBackend(opts: {
         statusPolls += 1;
         if (statusPolls <= (opts.statusDisconnects ?? 0)) {
           req.socket.destroy();
+          return;
+        }
+        if (statusPolls <= (opts.statusBodyDisconnects ?? 0)) {
+          const body = Buffer.from(JSON.stringify({ status: "running", progress: 50 }));
+          res.writeHead(200, { "Content-Type": "application/json", "Content-Length": body.length });
+          res.write(body.subarray(0, Math.max(1, Math.floor(body.length / 2))));
+          res.socket?.destroy();
+          return;
+        }
+        if (opts.invalidStatusJson) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end("{not-json");
           return;
         }
         return send({ status: statusPolls >= 2 ? "completed" : "running", progress: 100 });
