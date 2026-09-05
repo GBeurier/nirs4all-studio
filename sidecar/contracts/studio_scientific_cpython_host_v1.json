@@ -33,7 +33,7 @@
   "terminal_callback_owner": "studio-sidecar-rust",
   "execution_bridge_implemented": true,
   "studio_payload_resolver_implemented": true,
-  "scientific_execution_capability": "unix_only_with_exact_host_callable_io_and_saved_slice_preflight",
-  "windows_capability": false,
-  "windows_reason": "reliable process-tree termination is not yet qualified"
+  "scientific_execution_capability": "unix_process_group_or_windows_kill_on_close_job_with_exact_host_callable_io_and_saved_slice_preflight",
+  "windows_capability": true,
+  "windows_process_tree": "sidecar_launcher_assigned_to_kill_on_close_job_before_cpython_spawn"
 }

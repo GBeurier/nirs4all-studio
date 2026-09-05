@@ -8,6 +8,7 @@ use std::{
 };
 
 use studio_sidecar::legacy_conversion::WINDOWS_JOB_LAUNCHER_ARGUMENT;
+use studio_sidecar::scientific_cpython::WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT;
 
 fn temporary_directory(name: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
@@ -87,8 +88,8 @@ fn kill_on_close_contains_descendant_that_outlives_converter_root() {
 }
 
 #[test]
-fn terminating_launcher_contains_running_converter_and_descendants() {
-    let root = temporary_directory("terminated-tree");
+fn terminating_scientific_launcher_contains_running_worker_and_descendants() {
+    let root = temporary_directory("terminated-scientific-tree");
     let sentinel = root.join("escaped-after-termination.txt");
     let descendant = root.join("delayed-descendant.cmd");
     let converter = root.join("long-converter.cmd");
@@ -109,7 +110,13 @@ fn terminating_launcher_contains_running_converter_and_descendants() {
     )
     .unwrap();
     let mut launcher = Command::new(env!("CARGO_BIN_EXE_studio-sidecar"))
-        .args([WINDOWS_JOB_LAUNCHER_ARGUMENT, "cmd.exe", "/D", "/C", "call"])
+        .args([
+            WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT,
+            "cmd.exe",
+            "/D",
+            "/C",
+            "call",
+        ])
         .arg(&converter)
         .spawn()
         .unwrap();
@@ -124,7 +131,7 @@ fn terminating_launcher_contains_running_converter_and_descendants() {
     thread::sleep(Duration::from_secs(4));
     assert!(
         !sentinel.exists(),
-        "terminating the launcher did not contain its Job Object descendants"
+        "terminating the scientific launcher did not contain its Job Object descendants"
     );
     fs::remove_dir_all(root).unwrap();
 }
