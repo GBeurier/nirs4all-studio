@@ -252,12 +252,6 @@ export interface GenerateSyntheticRequest {
   n_classes?: number;
   target_range?: [number, number];
   train_ratio?: number;
-  include_metadata?: boolean;
-  include_repetitions?: boolean;
-  repetitions_per_sample?: number;
-  noise_level?: number;
-  add_batch_effects?: boolean;
-  n_batches?: number;
   wavelength_range?: [number, number];
   name?: string;
   auto_link?: boolean;
@@ -274,10 +268,6 @@ export interface GeneratedDatasetSummary {
   n_classes?: number;
   target_range?: [number, number];
   wavelength_range?: [number, number];
-  include_metadata: boolean;
-  include_repetitions: boolean;
-  noise_level: number;
-  add_batch_effects: boolean;
   generated_at: string;
   num_features?: number;
   train_samples?: number;
@@ -318,14 +308,7 @@ export const DEFAULT_SYNTHETIC_CONFIG: GenerateSyntheticRequest = {
   task_type: "regression",
   n_samples: 500,
   complexity: "simple",
-  n_classes: 3,
   train_ratio: 0.8,
-  include_metadata: true,
-  include_repetitions: false,
-  repetitions_per_sample: 3,
-  noise_level: 0.05,
-  add_batch_effects: false,
-  n_batches: 3,
   auto_link: true,
 };
 

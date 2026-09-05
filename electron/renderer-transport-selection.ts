@@ -208,6 +208,9 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
   if (method === "GET" && history && isValidIdentifier(history[1]) && validQuery({
     project_id: isValidIdentifier, limit: (value) => /^\d+$/.test(value), offset: (value) => /^\d+$/.test(value),
   })) return { name: "run-history", capability: "workspace_run_history_route" };
+  if (!query && method === "POST" && pathname === "/datasets/generate-synthetic") {
+    return { name: "dataset-synthetic-generation", capability: "dataset_synthetic_generation_routes", requiresPythonHost: true };
+  }
   if (!query && ((method === "GET" && pathname === "/models/available") ||
       (method === "POST" && ["/predict", "/predict/file"].includes(pathname)))) {
     return { name: "general-prediction", capability: "general_prediction_routes", requiresPythonHost: true };

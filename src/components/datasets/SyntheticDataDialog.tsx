@@ -58,7 +58,6 @@ export function SyntheticDataDialog({
 
   const [activeTab, setActiveTab] = useState<SyntheticDialogTab>("presets");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [config, setConfig] = useState<GenerateSyntheticRequest>(
     createInitialSyntheticConfig,
   );
@@ -83,7 +82,6 @@ export function SyntheticDataDialog({
         setIsOpen(false);
         setSelectedPreset(null);
         setConfig(createInitialSyntheticConfig());
-        setShowAdvanced(false);
         generateMutation.reset();
       }, 1500);
     },
@@ -141,8 +139,6 @@ export function SyntheticDataDialog({
             <SyntheticCustomConfigTab
               config={config}
               setConfig={setConfig}
-              showAdvanced={showAdvanced}
-              onShowAdvancedChange={setShowAdvanced}
             />
           </TabsContent>
         </Tabs>

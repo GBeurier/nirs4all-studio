@@ -1,11 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { ChevronDown, ChevronUp, Info, Settings2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -26,24 +20,18 @@ import {
 import type { GenerateSyntheticRequest } from "@/types/settings";
 import {
   coerceIntInput,
-  DEFAULT_N_BATCHES,
   DEFAULT_N_CLASSES,
-  DEFAULT_REPETITIONS_PER_SAMPLE,
   isClassificationTask,
 } from "./SyntheticDataDialogData";
 
 interface SyntheticCustomConfigTabProps {
   config: GenerateSyntheticRequest;
   setConfig: Dispatch<SetStateAction<GenerateSyntheticRequest>>;
-  showAdvanced: boolean;
-  onShowAdvancedChange: (showAdvanced: boolean) => void;
 }
 
 export function SyntheticCustomConfigTab({
   config,
   setConfig,
-  showAdvanced,
-  onShowAdvancedChange,
 }: SyntheticCustomConfigTabProps) {
   return (
     <div className="space-y-4">
@@ -53,9 +41,15 @@ export function SyntheticCustomConfigTab({
           <Select
             value={config.task_type}
             onValueChange={(value) =>
-              setConfig((prev) => ({
-                ...prev,
+              setConfig((previous) => ({
+                ...previous,
                 task_type: value as GenerateSyntheticRequest["task_type"],
+                n_classes:
+                  value === "binary_classification"
+                    ? 2
+                    : value === "multiclass_classification"
+                      ? 3
+                      : undefined,
               }))
             }
           >
@@ -79,8 +73,8 @@ export function SyntheticCustomConfigTab({
           <Select
             value={config.complexity}
             onValueChange={(value) =>
-              setConfig((prev) => ({
-                ...prev,
+              setConfig((previous) => ({
+                ...previous,
                 complexity: value as GenerateSyntheticRequest["complexity"],
               }))
             }
@@ -106,11 +100,11 @@ export function SyntheticCustomConfigTab({
           <Slider
             value={[config.n_samples]}
             onValueChange={([value]) =>
-              setConfig((prev) => ({ ...prev, n_samples: value }))
+              setConfig((previous) => ({ ...previous, n_samples: value }))
             }
-            min={100}
+            min={50}
             max={5000}
-            step={100}
+            step={50}
             className="py-2"
           />
         </div>
@@ -120,12 +114,17 @@ export function SyntheticCustomConfigTab({
             <Label className="text-sm">Number of Classes</Label>
             <Input
               type="number"
-              min={2}
+              min={config.task_type === "binary_classification" ? 2 : 3}
               max={20}
-              value={config.n_classes ?? DEFAULT_N_CLASSES}
+              disabled={config.task_type === "binary_classification"}
+              value={
+                config.task_type === "binary_classification"
+                  ? 2
+                  : (config.n_classes ?? DEFAULT_N_CLASSES)
+              }
               onChange={(event) =>
-                setConfig((prev) => ({
-                  ...prev,
+                setConfig((previous) => ({
+                  ...previous,
                   n_classes: coerceIntInput(
                     event.target.value,
                     DEFAULT_N_CLASSES,
@@ -146,7 +145,10 @@ export function SyntheticCustomConfigTab({
           <Slider
             value={[(config.train_ratio ?? 0.8) * 100]}
             onValueChange={([value]) =>
-              setConfig((prev) => ({ ...prev, train_ratio: value / 100 }))
+              setConfig((previous) => ({
+                ...previous,
+                train_ratio: value / 100,
+              }))
             }
             min={50}
             max={95}
@@ -154,135 +156,7 @@ export function SyntheticCustomConfigTab({
             className="py-2"
           />
         </div>
-
-        <div className="space-y-2">
-          <div className="flex justify-between">
-            <Label className="text-sm">Noise Level</Label>
-            <span className="text-xs text-muted-foreground">
-              {((config.noise_level ?? 0.05) * 100).toFixed(0)}%
-            </span>
-          </div>
-          <Slider
-            value={[(config.noise_level ?? 0.05) * 100]}
-            onValueChange={([value]) =>
-              setConfig((prev) => ({ ...prev, noise_level: value / 100 }))
-            }
-            min={0}
-            max={50}
-            step={5}
-            className="py-2"
-          />
-        </div>
       </div>
-
-      <Collapsible open={showAdvanced} onOpenChange={onShowAdvancedChange}>
-        <CollapsibleTrigger asChild>
-          <Button variant="ghost" size="sm" className="w-full justify-between">
-            <span className="flex items-center gap-2">
-              <Settings2 className="h-4 w-4" />
-              Advanced Options
-            </span>
-            {showAdvanced ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent className="space-y-4 pt-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex items-center justify-between p-3 rounded-lg border">
-              <div className="space-y-0.5">
-                <Label className="text-sm">Include Metadata</Label>
-                <p className="text-xs text-muted-foreground">
-                  Add sample_id, batch columns
-                </p>
-              </div>
-              <Switch
-                checked={config.include_metadata ?? true}
-                onCheckedChange={(value) =>
-                  setConfig((prev) => ({ ...prev, include_metadata: value }))
-                }
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-lg border">
-              <div className="space-y-0.5">
-                <Label className="text-sm">Batch Effects</Label>
-                <p className="text-xs text-muted-foreground">
-                  Simulate batch-to-batch variation
-                </p>
-              </div>
-              <Switch
-                checked={config.add_batch_effects ?? false}
-                onCheckedChange={(value) =>
-                  setConfig((prev) => ({ ...prev, add_batch_effects: value }))
-                }
-              />
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-lg border">
-              <div className="space-y-0.5">
-                <Label className="text-sm">Include Repetitions</Label>
-                <p className="text-xs text-muted-foreground">
-                  Duplicate samples with variation
-                </p>
-              </div>
-              <Switch
-                checked={config.include_repetitions ?? false}
-                onCheckedChange={(value) =>
-                  setConfig((prev) => ({ ...prev, include_repetitions: value }))
-                }
-              />
-            </div>
-
-            {config.include_repetitions && (
-              <div className="space-y-2">
-                <Label className="text-sm">Repetitions per Sample</Label>
-                <Input
-                  type="number"
-                  min={2}
-                  max={10}
-                  value={
-                    config.repetitions_per_sample ??
-                    DEFAULT_REPETITIONS_PER_SAMPLE
-                  }
-                  onChange={(event) =>
-                    setConfig((prev) => ({
-                      ...prev,
-                      repetitions_per_sample: coerceIntInput(
-                        event.target.value,
-                        DEFAULT_REPETITIONS_PER_SAMPLE,
-                      ),
-                    }))
-                  }
-                />
-              </div>
-            )}
-
-            {config.add_batch_effects && (
-              <div className="space-y-2">
-                <Label className="text-sm">Number of Batches</Label>
-                <Input
-                  type="number"
-                  min={2}
-                  max={10}
-                  value={config.n_batches ?? DEFAULT_N_BATCHES}
-                  onChange={(event) =>
-                    setConfig((prev) => ({
-                      ...prev,
-                      n_batches: coerceIntInput(
-                        event.target.value,
-                        DEFAULT_N_BATCHES,
-                      ),
-                    }))
-                  }
-                />
-              </div>
-            )}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
 
       <div className="grid grid-cols-2 gap-4 pt-4 border-t">
         <div className="space-y-2">
@@ -291,8 +165,8 @@ export function SyntheticCustomConfigTab({
             placeholder="Auto-generated if empty"
             value={config.name ?? ""}
             onChange={(event) =>
-              setConfig((prev) => ({
-                ...prev,
+              setConfig((previous) => ({
+                ...previous,
                 name: event.target.value || undefined,
               }))
             }
@@ -304,7 +178,7 @@ export function SyntheticCustomConfigTab({
               id="auto-link-custom"
               checked={config.auto_link ?? true}
               onCheckedChange={(value) =>
-                setConfig((prev) => ({ ...prev, auto_link: value }))
+                setConfig((previous) => ({ ...previous, auto_link: value }))
               }
             />
             <Label htmlFor="auto-link-custom" className="text-sm">

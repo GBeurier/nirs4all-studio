@@ -160,6 +160,22 @@ with contextlib.redirect_stdout(sys.stderr):
             raise RuntimeError("general scientific callable unavailable")
         response=general(request)
         response_limit=262144
+    elif request.get("schema") in {"nirs4all.studio-synthetic-dataset-job.v1","nirs4all.studio-playground-job.v1"}:
+        from nirs4all.api.studio_scientific import StudioScientificJobError
+        if request["schema"] == "nirs4all.studio-synthetic-dataset-job.v1":
+            if len(raw)>65536:
+                raise RuntimeError("synthetic dataset request exceeds stdin budget")
+            from nirs4all.api.general_synthesis import studio_synthetic_dataset_job_v1 as facade
+            response_limit=65536
+        else:
+            if len(raw)>8388608:
+                raise RuntimeError("Playground request exceeds stdin budget")
+            from nirs4all.api.library_playground import studio_playground_job_v1 as facade
+            response_limit=33554432
+        try:
+            response=facade(request)
+        except StudioScientificJobError as error:
+            response={"schema":"nirs4all.studio-library-error.v1","request_id":request.get("request_id"),"error":{"code":error.code,"message":str(error).encode("utf-8")[:4000].decode("utf-8",errors="ignore")}}
     else:
         if len(raw)>65536:
             raise RuntimeError("scientific V1 request exceeds stdin budget")
@@ -294,7 +310,79 @@ pub struct CpythonScientificJobExecutor {
     terminal_callback_failed: Arc<AtomicBool>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct LibraryFacadeError {
+    pub code: String,
+    pub message: String,
+}
+
 impl CpythonScientificJobExecutor {
+    pub(crate) fn library_facades_available(&self) -> bool {
+        cfg!(unix)
+            && self.identity.is_some()
+            && self.callable_identity.is_some()
+            && self.packaged_runtime.as_ref().is_some_and(|runtime| {
+                verify_packaged_runtime_anchor(runtime).is_ok()
+                    && verify_identity(&runtime.closure).is_ok()
+            })
+    }
+
+    pub(crate) fn invoke_library_facade(
+        &self,
+        request: &Value,
+    ) -> Result<Value, LibraryFacadeError> {
+        let fail = |code: &str, message: &str| LibraryFacadeError {
+            code: code.into(),
+            message: message.into(),
+        };
+        let schema = request.get("schema").and_then(Value::as_str);
+        if !matches!(
+            schema,
+            Some("nirs4all.studio-synthetic-dataset-job.v1" | "nirs4all.studio-playground-job.v1")
+        ) {
+            return Err(fail(
+                "unsupported_contract",
+                "Unsupported Studio library facade contract",
+            ));
+        }
+        let (Some(host), Some(callable), Some(runtime)) = (
+            &self.identity,
+            &self.callable_identity,
+            &self.packaged_runtime,
+        ) else {
+            return Err(fail(
+                "host_unavailable",
+                "Attested scientific library host unavailable",
+            ));
+        };
+        let bytes = serde_json::to_vec(request)
+            .map_err(|_| fail("invalid_request", "Library facade request is not JSON"))?;
+        let response = run_scientific_process_with_timeout(
+            host,
+            callable,
+            Some(runtime),
+            &bytes,
+            &AtomicBool::new(false),
+            SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT,
+        )
+        .map_err(|error| fail(error.reason(), "Scientific library facade failed"))?;
+        if response.get("schema").and_then(Value::as_str)
+            == Some("nirs4all.studio-library-error.v1")
+        {
+            return Err(LibraryFacadeError {
+                code: response["error"]["code"]
+                    .as_str()
+                    .unwrap_or("library_refused")
+                    .into(),
+                message: response["error"]["message"]
+                    .as_str()
+                    .unwrap_or("Scientific library facade refused the request")
+                    .into(),
+            });
+        }
+        Ok(response)
+    }
+
     pub(crate) fn adapt_document(&self, operation: &str, payload: &Value) -> Result<Value, String> {
         let (Some(host), Some(callable), Some(runtime)) = (
             &self.identity,
@@ -1392,6 +1480,8 @@ fn run_scientific_process(
 
 fn request_limits(request: &Value) -> (usize, usize) {
     match request.get("schema").and_then(Value::as_str) {
+        Some("nirs4all.studio-synthetic-dataset-job.v1") => (65_536, 65_536),
+        Some("nirs4all.studio-playground-job.v1") => (8 * 1024 * 1024, 32 * 1024 * 1024),
         Some(crate::document_cpython::REQUEST_SCHEMA) => {
             let limit = if matches!(
                 request["operation"].as_str(),
@@ -1450,14 +1540,22 @@ fn run_scientific_process_with_timeout(
     if input.len() > input_limit {
         return Err(ScientificCpythonUnavailable::InvalidRequest);
     }
-    let expected_job_id = serde_json::from_slice::<Value>(input)
-        .ok()
-        .and_then(|request| {
-            request
-                .get("job_id")
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        })
+    let expected_job_id = request
+        .get(
+            if matches!(
+                request.get("schema").and_then(Value::as_str),
+                Some(
+                    "nirs4all.studio-synthetic-dataset-job.v1"
+                        | "nirs4all.studio-playground-job.v1"
+                )
+            ) {
+                "request_id"
+            } else {
+                "job_id"
+            },
+        )
+        .and_then(Value::as_str)
+        .map(str::to_owned)
         .ok_or(ScientificCpythonUnavailable::InvalidRequest)?;
     let scratch = ScratchDirectory::create()?;
     let site_packages = packaged_runtime.map(|identity| identity.site_packages.as_path());
@@ -1509,18 +1607,44 @@ fn run_scientific_process_with_timeout(
     if !status.success() {
         return Err(ScientificCpythonUnavailable::ProcessFailed);
     }
-    let response: Value = serde_json::from_slice(&stdout)
+    let response = validate_worker_response(&request, &stdout, &expected_job_id)?;
+    // Dag-ML may use an internal temporary file. It is permitted only because
+    // cwd and every standard temporary-directory variable point at this
+    // Rust-created 0700 directory. Successful execution includes synchronous
+    // removal and verification; Drop remains the error-path fallback.
+    scratch.cleanup()?;
+    Ok(response)
+}
+
+fn validate_worker_response(
+    request: &Value,
+    stdout: &[u8],
+    expected_job_id: &str,
+) -> Result<Value, ScientificCpythonUnavailable> {
+    let response: Value = serde_json::from_slice(stdout)
         .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
-    if request.get("schema").and_then(Value::as_str)
-        == Some(crate::document_cpython::REQUEST_SCHEMA)
-    {
+    let request_schema = request.get("schema").and_then(Value::as_str);
+    if request_schema == Some(crate::document_cpython::REQUEST_SCHEMA) {
         if !crate::document_cpython::validate_response(&response) {
             return Err(ScientificCpythonUnavailable::MalformedResponse);
         }
+    } else if matches!(
+        request_schema,
+        Some("nirs4all.studio-synthetic-dataset-job.v1" | "nirs4all.studio-playground-job.v1")
+    ) {
+        validate_library_facade_response(request_schema.unwrap_or_default(), &response)?;
     } else {
         validate_scientific_response(&response)?;
     }
-    if response.get("job_id").and_then(Value::as_str) != Some(&expected_job_id) {
+    let response_id = if matches!(
+        request_schema,
+        Some("nirs4all.studio-synthetic-dataset-job.v1" | "nirs4all.studio-playground-job.v1")
+    ) {
+        response.get("request_id")
+    } else {
+        response.get("job_id")
+    };
+    if response_id.and_then(Value::as_str) != Some(expected_job_id) {
         return Err(ScientificCpythonUnavailable::MalformedResponse);
     }
     if request.get("schema").and_then(Value::as_str) == Some("nirs4all.studio-scientific-job.v2")
@@ -1528,12 +1652,61 @@ fn run_scientific_process_with_timeout(
     {
         return Err(ScientificCpythonUnavailable::MalformedResponse);
     }
-    // Dag-ML may use an internal temporary file. It is permitted only because
-    // cwd and every standard temporary-directory variable point at this
-    // Rust-created 0700 directory. Successful execution includes synchronous
-    // removal and verification; Drop remains the error-path fallback.
-    scratch.cleanup()?;
     Ok(response)
+}
+
+fn validate_library_facade_response(
+    request_schema: &str,
+    response: &Value,
+) -> Result<(), ScientificCpythonUnavailable> {
+    let object = response
+        .as_object()
+        .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
+    let schema = response.get("schema").and_then(Value::as_str);
+    if schema == Some("nirs4all.studio-library-error.v1") {
+        let error = response
+            .get("error")
+            .and_then(Value::as_object)
+            .ok_or(ScientificCpythonUnavailable::MalformedResponse)?;
+        let code = error.get("code").and_then(Value::as_str);
+        let message = error.get("message").and_then(Value::as_str);
+        if object.len() == 3
+            && error.len() == 2
+            && code.is_some_and(|value| {
+                !value.is_empty()
+                    && value.len() <= 64
+                    && value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+            })
+            && message
+                .is_some_and(|value| value.len() <= 4096 && !value.chars().any(char::is_control))
+        {
+            return Ok(());
+        }
+        return Err(ScientificCpythonUnavailable::MalformedResponse);
+    }
+    let expected = match request_schema {
+        "nirs4all.studio-synthetic-dataset-job.v1" => "nirs4all.studio-synthetic-dataset-result.v1",
+        "nirs4all.studio-playground-job.v1" => "nirs4all.studio-playground-result.v1",
+        _ => return Err(ScientificCpythonUnavailable::MalformedResponse),
+    };
+    if schema != Some(expected) || !response.get("result").is_some_and(Value::is_object) {
+        return Err(ScientificCpythonUnavailable::MalformedResponse);
+    }
+    if request_schema == "nirs4all.studio-synthetic-dataset-job.v1" {
+        if object.len() != 3 {
+            return Err(ScientificCpythonUnavailable::MalformedResponse);
+        }
+    } else if object.len() != 4
+        && !(object.len() == 5
+            && response
+                .get("wire_diagnostics")
+                .is_some_and(Value::is_object))
+    {
+        return Err(ScientificCpythonUnavailable::MalformedResponse);
+    }
+    Ok(())
 }
 
 fn scientific_worker_command(
@@ -2154,6 +2327,54 @@ mod tests {
         }
         assert!(EXECUTION_SCRIPT.contains("JSONEncoder(allow_nan=False"));
         assert!(EXECUTION_SCRIPT.contains("response_limit-len(encoded)"));
+    }
+
+    #[test]
+    fn closed_library_facades_have_distinct_limits_and_typed_responses() {
+        let synthesis = serde_json::json!({
+            "schema":"nirs4all.studio-synthetic-dataset-job.v1",
+            "request_id":"synthetic-1"
+        });
+        let playground = serde_json::json!({
+            "schema":"nirs4all.studio-playground-job.v1",
+            "request_id":"playground-1"
+        });
+        assert_eq!(request_limits(&synthesis), (65_536, 65_536));
+        assert_eq!(
+            request_limits(&playground),
+            (8 * 1024 * 1024, 32 * 1024 * 1024)
+        );
+        validate_library_facade_response(
+            "nirs4all.studio-synthetic-dataset-job.v1",
+            &serde_json::json!({
+                "schema":"nirs4all.studio-synthetic-dataset-result.v1",
+                "request_id":"synthetic-1",
+                "result":{}
+            }),
+        )
+        .unwrap();
+        validate_library_facade_response(
+            "nirs4all.studio-playground-job.v1",
+            &serde_json::json!({
+                "schema":"nirs4all.studio-playground-result.v1",
+                "request_id":"playground-1",
+                "operation":"capabilities",
+                "result":{},
+                "wire_diagnostics":{}
+            }),
+        )
+        .unwrap();
+        validate_library_facade_response(
+            "nirs4all.studio-playground-job.v1",
+            &serde_json::json!({
+                "schema":"nirs4all.studio-library-error.v1",
+                "request_id":"playground-1",
+                "error":{"code":"invalid_shape","message":"closed refusal"}
+            }),
+        )
+        .unwrap();
+        assert!(EXECUTION_SCRIPT.contains("studio_synthetic_dataset_job_v1 as facade"));
+        assert!(EXECUTION_SCRIPT.contains("studio_playground_job_v1 as facade"));
     }
 
     use std::{fs, net::TcpListener, time::SystemTime};
