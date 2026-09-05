@@ -115,22 +115,17 @@ def test_fastapi_oracle_matches_the_native_composition_golden() -> None:
     assert owner == before
 
 
-def test_preselection_contract_keeps_legacy_branch_before_target_http() -> None:
+def test_preselection_contract_keeps_native_only_target_http() -> None:
     contract_path = CONTRACTS / "studio_run_detail_preselection_v1.json"
     assert hashlib.sha256(contract_path.read_bytes()).hexdigest() == (
-        "7532847cd58a5b19788abc1b26118421d0c1d31abcb13035e616732a20b3e5f4"
+        "ff2b3e52bc4e16ce6bdbaecb5c3748aef1ab6cec345650bbf6477fce27c3f453"
     )
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
 
     assert contract["scope"]["frequency"] == "once_per_target_request"
     assert contract["scope"]["cache"] == "forbidden"
-    assert (
-        contract["decisions"]["scientific-plugin"]["condition"]
-        == "explicit_process_wide_python_http_diagnostic_mode_before_sidecar_probe"
-    )
-    assert contract["decisions"]["scientific-plugin"][
-        "selected_before_target_http"
-    ]
+    assert set(contract["decisions"]) == {"native-sidecar", "reject"}
+    assert contract["transport"]["python_http_target"] == "absent"
     assert contract["decisions"]["reject"]["target_request_count"] == 0
     assert contract["transport"]["fallback_after_native_selection"] == "none"
     assert contract["owner_materialization"]["status"] == "available_and_qualified"

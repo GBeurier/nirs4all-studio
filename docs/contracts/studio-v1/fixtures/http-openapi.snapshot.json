@@ -8086,6 +8086,27 @@
                 ],
                 "title": "Result Metadata"
               },
+              "sample_ids": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Sample Ids"
+              },
               "sample_indices": {
                 "anyOf": [
                   {
@@ -34935,6 +34956,27 @@
                   }
                 ],
                 "title": "Result Metadata"
+              },
+              "sample_ids": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Sample Ids"
               },
               "sample_indices": {
                 "anyOf": [
