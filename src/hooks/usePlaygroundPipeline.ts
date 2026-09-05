@@ -114,7 +114,7 @@ export interface UsePlaygroundPipelineResult {
 
   // Pipeline operations
   addOperator: (definition: OperatorDefinition) => void;
-  addOperatorByName: (name: string, type: 'preprocessing' | 'augmentation' | 'splitting' | 'filter', params?: Record<string, unknown>) => void;
+  addOperatorByName: (name: string, type: 'preprocessing' | 'augmentation' | 'splitting' | 'filter', params?: Record<string, unknown>, classPath?: string) => void;
   removeOperator: (id: string) => void;
   updateOperator: (id: string, updates: Partial<UnifiedOperator>) => void;
   updateOperatorParams: (id: string, params: Record<string, unknown>) => void;
@@ -339,7 +339,8 @@ export function usePlaygroundPipeline(
   const addOperatorByName = useCallback((
     name: string,
     type: 'preprocessing' | 'augmentation' | 'splitting' | 'filter',
-    params: Record<string, unknown> = {}
+    params: Record<string, unknown> = {},
+    classPath?: string,
   ) => {
     const currentOperators = operatorsRef.current;
     const currentSplitterCount = countSplitters(currentOperators);
@@ -355,6 +356,7 @@ export function usePlaygroundPipeline(
         id: `${name}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         type,
         name,
+        classPath,
         params,
         enabled: true,
       };
@@ -367,6 +369,7 @@ export function usePlaygroundPipeline(
       id: `${name}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       type,
       name,
+      classPath,
       params,
       enabled: true,
     };

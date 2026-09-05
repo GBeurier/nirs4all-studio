@@ -41,6 +41,7 @@ pub mod legacy_conversion;
 mod matrix_limits;
 mod native_archive_training;
 mod pipeline_presets;
+mod playground;
 mod prediction_upload;
 mod recommended_config;
 mod recommended_config_http;
@@ -727,6 +728,9 @@ impl SidecarState {
             json!(self.scientific_host.as_deref().is_some_and(
                 scientific_cpython::CpythonScientificJobExecutor::library_facades_available
             ));
+        capabilities["features"]["playground_routes"] = capabilities["features"]
+            ["dataset_synthetic_generation_routes"]
+            .clone();
         capabilities.to_string()
     }
 
@@ -2089,6 +2093,7 @@ fn route_workspace_workflows_without_global_lock(
 ) -> Option<HttpResponse> {
     recommended_config_http::route(state, request)
         .or_else(|| dataset_synthesis::route(state, request))
+        .or_else(|| playground::route(state, request))
         .or_else(|| dataset_scores::route(state, request))
         .or_else(|| dataset_import::route(state, request))
         .or_else(|| dataset_inspection_http::route(state, request))
@@ -5525,6 +5530,7 @@ mod tests {
             "implicit_python_http_fallback",
             "unmigrated_api_routes_require_legacy_backend",
             "dataset_synthetic_generation_routes",
+            "playground_routes",
         ] {
             assert_eq!(capabilities["features"][feature], false, "{feature}");
         }

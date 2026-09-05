@@ -21,6 +21,8 @@ export interface UnifiedOperator {
   id: string;
   type: UnifiedOperatorType;
   name: string;  // Class name e.g., "StandardNormalVariate", "KFold", "GaussianAdditiveNoise"
+  /** Canonical import path retained from the checked-in node registry. */
+  classPath?: string;
   params: Record<string, unknown>;
   enabled: boolean;
 }
@@ -70,6 +72,7 @@ export interface PlaygroundData {
   wavelengths?: number[];
   sample_ids?: string[];
   metadata?: Record<string, unknown[]>;
+  partitions?: Array<'train' | 'test'>;
   /**
    * Unit of the wavelength axis (e.g. "nm", "cm-1"). Forwarded to the backend
    * so the executor can include it on the original/processed DataSections in
@@ -88,6 +91,10 @@ export interface PlaygroundStep {
   name: string;
   params: Record<string, unknown>;
   enabled: boolean;
+  operator?: {
+    class: string;
+    params: Record<string, unknown>;
+  };
 }
 
 /**
@@ -588,6 +595,7 @@ export interface OperatorsResponse {
 export interface PresetStep {
   type: 'preprocessing' | 'augmentation' | 'splitting';
   name: string;
+  classPath?: string;
   params: Record<string, unknown>;
 }
 

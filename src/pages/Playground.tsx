@@ -17,7 +17,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useSpectralData } from '@/hooks/useSpectralData';
 import { usePlaygroundPipeline } from '@/hooks/usePlaygroundPipeline';
-import { usePrefetchOperators } from '@/hooks/usePlaygroundQuery';
 import type { RenderMode } from '@/lib/playground/renderOptimizer';
 import { buildPlaygroundDataView } from '@/lib/playground/dataView';
 import {
@@ -52,9 +51,6 @@ import { PlaygroundContent } from './PlaygroundSections';
 export default function Playground() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-
-  // Prefetch operators on mount
-  usePrefetchOperators();
 
   // Data loading (now includes workspace support)
   const {
@@ -313,7 +309,7 @@ export default function Playground() {
     // Clear pipeline and add imported operators
     clearPipeline();
     importedOps.forEach(op => {
-      addOperatorByName(op.name, op.type, op.params);
+      addOperatorByName(op.name, op.type, op.params, op.classPath);
     });
 
     // Show warnings if any

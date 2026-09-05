@@ -41,12 +41,18 @@ function stripRuntimeOnlyExportParams(operator: UnifiedOperator): Record<string,
  * Convert UnifiedOperator to PlaygroundStep for API calls
  */
 export function unifiedToPlaygroundStep(operator: UnifiedOperator): PlaygroundStep {
+  if (operator.name !== 'SampleIndexFilter' && !operator.classPath) {
+    throw new Error(`Playground operator "${operator.name}" has no canonical class path`);
+  }
   return {
     id: operator.id,
     type: operator.type,
     name: operator.name,
     params: operator.params,
     enabled: operator.enabled,
+    ...(operator.classPath
+      ? { operator: { class: operator.classPath, params: operator.params } }
+      : {}),
   };
 }
 
@@ -66,6 +72,7 @@ export interface PipelineEditorStep {
   id: string;
   type: 'preprocessing' | 'splitting' | 'model' | 'branch' | 'generator' | 'filter' | 'augmentation';
   name: string;
+  classPath?: string;
   params: Record<string, unknown>;
   branches?: PipelineEditorStep[][];
   paramSweeps?: Record<string, unknown>;
@@ -85,6 +92,7 @@ export function unifiedToEditorStep(operator: UnifiedOperator): PipelineEditorSt
     id: operator.id,
     type,
     name: operator.name,
+    ...(operator.classPath ? { classPath: operator.classPath } : {}),
     params: stripRuntimeOnlyExportParams(operator),
   };
 }
@@ -111,6 +119,7 @@ export function editorStepToUnified(
     id: step.id,
     type: step.type as UnifiedOperator['type'],
     name: step.name,
+    classPath: step.classPath,
     params: step.params,
     enabled: true,
   };
@@ -263,6 +272,7 @@ export function createOperatorFromDefinition(
     id: `${definition.name}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
     type: definition.type,
     name: definition.name,
+    classPath: definition.classPath,
     params: defaultParams,
     enabled: true,
   };

@@ -62,6 +62,28 @@ describe("renderer transport preselection", () => {
       .resolves.toMatchObject({ target: "reject", reason: "native_python_host_unavailable" });
   });
 
+  it("selects only the attested Playground surface", async () => {
+    const request = async () => capabilityResponse({
+      playground_routes: true,
+      python_plugin_preflight: true,
+    });
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "POST", path: "/playground/execute" },
+      running,
+      request,
+    )).resolves.toMatchObject({ target: "native-sidecar", surface: "playground" });
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/playground/metadata-columns/dataset_1" },
+      running,
+      request,
+    )).resolves.toMatchObject({ target: "native-sidecar", surface: "playground" });
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/spectra/dataset_1" },
+      running,
+      request,
+    )).resolves.toMatchObject({ target: "reject" });
+  });
+
   it("qualifies bounded dataset uploads and pipeline presets only when implemented", async () => {
     const request = async () => capabilityResponse({ dataset_import_routes: true, pipeline_preset_routes: true, python_plugin_preflight: true });
     for (const [method, path] of [["POST", "/datasets/upload"], ["POST", "/datasets/preview-upload"],

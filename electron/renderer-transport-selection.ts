@@ -193,6 +193,20 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
   const bool = (value: string) => value === "true" || value === "false";
   const validQuery = (allowed: Record<string, (value: string) => boolean>) =>
     [...fields].every(([key, value]) => allowed[key]?.(value) === true);
+  const playgroundPosts = [
+    "/playground/execute",
+    "/playground/execute-dataset",
+    "/playground/validate",
+    "/playground/diff/compute",
+    "/playground/diff/repetition-variance",
+  ];
+  if (!query && (
+    (method === "POST" && playgroundPosts.includes(pathname))
+    || (method === "GET" && pathname === "/playground/capabilities")
+    || (method === "GET" && identifierPath("/playground/metadata-columns/").test(pathname))
+  )) {
+    return { name: "playground", capability: "playground_routes", requiresPythonHost: true };
+  }
   if (!query && method === "POST" && (["/datasets/upload", "/datasets/preview-upload"].includes(pathname) ||
       identifierPath("/datasets/", "/refresh").test(pathname))) {
     return { name: "dataset-import", capability: "dataset_import_routes", requiresPythonHost: true };

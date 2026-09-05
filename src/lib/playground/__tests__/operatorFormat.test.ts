@@ -11,6 +11,7 @@ describe('operatorFormat runtime-only split params', () => {
       id: 'split-1',
       type: 'splitting',
       name: 'KFold',
+      classPath: 'sklearn.model_selection.KFold',
       enabled: true,
       params: {
         n_splits: 4,
@@ -27,7 +28,24 @@ describe('operatorFormat runtime-only split params', () => {
         n_splits: 4,
         group_by: 'batch',
       },
+      operator: {
+        class: 'sklearn.model_selection.KFold',
+        params: {
+          n_splits: 4,
+          group_by: 'batch',
+        },
+      },
     });
+  });
+
+  it('refuses a non-filter step without a canonical class path', () => {
+    expect(() => unifiedToPlaygroundStep({
+      id: 'snv-1',
+      type: 'preprocessing',
+      name: 'SNV',
+      enabled: true,
+      params: {},
+    })).toThrow('has no canonical class path');
   });
 
   it('strips runtime-only split params from pipeline exports', () => {

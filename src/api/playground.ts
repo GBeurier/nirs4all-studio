@@ -75,7 +75,7 @@ export async function executePlayground(
   request: ExecuteRequest,
   signal?: AbortSignal
 ): Promise<ExecuteResponse> {
-  return api.postMsgpack<ExecuteResponse>('/playground/execute', request, { signal });
+  return api.post<ExecuteResponse>('/playground/execute', request, { signal });
 }
 
 /**
@@ -108,7 +108,7 @@ export async function executeDatasetPlayground(
   request: ExecuteDatasetRequest,
   signal?: AbortSignal
 ): Promise<ExecuteResponse> {
-  return api.postMsgpack<ExecuteResponse>('/playground/execute-dataset', request, { signal });
+  return api.post<ExecuteResponse>('/playground/execute-dataset', request, { signal });
 }
 
 /**
@@ -163,7 +163,22 @@ export async function getPlaygroundCapabilities(): Promise<PlaygroundCapabilitie
 export async function validatePlaygroundPipeline(
   steps: PlaygroundStep[]
 ): Promise<ValidationResponse> {
-  return api.post<ValidationResponse>('/playground/validate', steps);
+  const result = await api.post<{ valid: boolean; steps: Array<{ id: string; name: string }> }>(
+    '/playground/validate',
+    steps,
+  );
+  return {
+    valid: result.valid,
+    steps: result.steps.map((step) => ({
+      step_id: step.id,
+      name: step.name,
+      valid: true,
+      errors: [],
+      warnings: [],
+    })),
+    errors: [],
+    warnings: [],
+  };
 }
 
 /**
@@ -207,6 +222,15 @@ export function buildExecuteRequest(params: {
    */
   sourcePartitions?: { has_test: boolean; n_train: number; n_test: number };
 }): ExecuteRequest {
+  const partitions = params.sourcePartitions
+    ? [
+        ...Array<string>(params.sourcePartitions.n_train).fill('train'),
+        ...Array<string>(params.sourcePartitions.n_test).fill('test'),
+      ] as Array<'train' | 'test'>
+    : undefined;
+  if (partitions && partitions.length !== params.spectra.length) {
+    throw new Error('Source partition counts must match the spectra sample count');
+  }
   return {
     data: {
       x: params.spectra,
@@ -214,6 +238,7 @@ export function buildExecuteRequest(params: {
       y: params.y,
       sample_ids: params.sampleIds,
       metadata: params.metadata,
+      partitions,
       header_unit: params.wavelengthUnit,
     },
     steps: params.steps,
@@ -235,7 +260,6 @@ export function buildExecuteRequest(params: {
       dataset_repetition: params.datasetRepetition,
       subset_mode: params.subsetMode ?? 'all',
       max_samples_displayed: params.maxSamplesDisplayed,
-      source_partitions: params.sourcePartitions,
     },
   };
 }
@@ -355,51 +379,41 @@ export async function loadWorkspaceDataset(
     targetIndex?: number | null;
   } = {},
 ): Promise<SpectralData> {
-  const response = await getDatasetSpectra(datasetId, {
+  const response = await executeDatasetPlayground({
+    dataset_id: datasetId,
     partition,
-    source: options.sourceIndex ?? undefined,
-    targetIndex: options.targetIndex ?? undefined,
-    includeY: true,
-    includeMetadata: true,
+    source_index: options.sourceIndex ?? undefined,
+    target_index: options.targetIndex ?? undefined,
+    steps: [],
+    options: {
+      compute_pca: false,
+      compute_umap: false,
+      compute_statistics: false,
+      compute_repetitions: false,
+      use_cache: false,
+    },
   });
+  const original = response.original;
 
-  // Convert wavelengths to numbers with robust handling
-  // Backend may return numbers, strings, or edge cases like empty/null
-  let wavelengths: number[];
-  let rawWavelengths = response.wavelengths;
-
-  // Handle nested array case (e.g., [[w1, w2, ...]] instead of [w1, w2, ...])
-  if (rawWavelengths?.length === 1 && Array.isArray(rawWavelengths[0])) {
-    rawWavelengths = rawWavelengths[0] as (number | string)[];
-  }
-
-  if (!rawWavelengths || rawWavelengths.length === 0) {
-    // Fallback to indices if no wavelengths
-    wavelengths = Array.from({ length: response.num_features }, (_, i) => i);
-  } else {
-    wavelengths = rawWavelengths.map((w, i) => {
-      if (typeof w === 'number' && Number.isFinite(w)) {
-        return w;
-      }
-      const parsed = typeof w === 'string' ? parseFloat(w) : NaN;
-      // Fall back to index if parsing fails
-      return Number.isFinite(parsed) ? parsed : i;
-    });
-  }
+  const wavelengths = original.wavelengths.length > 0
+    ? original.wavelengths
+    : Array.from({ length: original.shape[1] ?? 0 }, (_, index) => index);
 
   // Use actual Y values from dataset if available, otherwise use indices as fallback
-  const y = response.y && response.y.length > 0
-    ? response.y
-    : response.spectra.map((_, i) => i);
+  const y = original.y && original.y.length > 0
+    ? original.y
+    : original.spectra.map((_, i) => i);
 
   // Convert column-oriented metadata to SampleMetadata[] format
   let metadata: SampleMetadata[] | undefined;
-  if (response.metadata && response.metadata_columns && response.metadata_columns.length > 0) {
-    const numSamples = response.spectra.length;
+  const columnarMetadata = original.metadata as Record<string, unknown[]> | null | undefined;
+  const metadataColumns = columnarMetadata ? Object.keys(columnarMetadata) : [];
+  if (columnarMetadata && metadataColumns.length > 0) {
+    const numSamples = original.spectra.length;
     metadata = Array.from({ length: numSamples }, (_, i) => {
       const row: SampleMetadata = {};
-      for (const col of response.metadata_columns!) {
-        const values = response.metadata![col];
+      for (const col of metadataColumns) {
+        const values = columnarMetadata[col];
         if (values && i < values.length) {
           const val = values[i];
           if (val !== null && val !== undefined) {
@@ -411,24 +425,24 @@ export async function loadWorkspaceDataset(
     });
   }
 
-  const sampleIds = getSampleIdsFromMetadata(metadata) ?? response.spectra.map((_, i) =>
-    `${datasetName || response.dataset_id}_${i + 1}`
-  );
+  const sampleIds = original.sample_ids
+    ?? getSampleIdsFromMetadata(metadata)
+    ?? original.spectra.map((_, i) => `${datasetName || datasetId}_${i + 1}`);
 
   return {
     wavelengths,
-    spectra: response.spectra,
+    spectra: original.spectra,
     y,
     sampleIds,
     metadata,
-    repetitionColumn: response.repetition_column ?? null,
+    repetitionColumn: null,
     // Propagate the unit detected by nirs4all so spectra charts can label the
     // X axis with the correct quantity ("Wavelength (nm)" vs "Wavenumber
     // (cm⁻¹)") instead of hardcoding "nm". The backend returns "unknown" when
     // it cannot determine the unit; treat that as missing.
     wavelengthUnit:
-      response.wavelength_unit && response.wavelength_unit !== 'unknown'
-        ? response.wavelength_unit
+      original.header_unit && original.header_unit !== 'unknown'
+        ? original.header_unit
         : undefined,
   };
 }
@@ -525,7 +539,10 @@ export async function computeDiff(
   request: DiffComputeRequest,
   signal?: AbortSignal
 ): Promise<DiffComputeResponse> {
-  return api.post<DiffComputeResponse>('/playground/diff/compute', request, { signal });
+  const result = await api.post<Omit<DiffComputeResponse, 'success'>>(
+    '/playground/diff/compute', request, { signal },
+  );
+  return { success: true, ...result };
 }
 
 /**
@@ -539,11 +556,12 @@ export async function computeRepetitionVariance(
   request: RepetitionVarianceRequest,
   signal?: AbortSignal
 ): Promise<RepetitionVarianceResponse> {
-  return api.post<RepetitionVarianceResponse>(
+  const result = await api.post<Omit<RepetitionVarianceResponse, 'success'>>(
     '/playground/diff/repetition-variance',
     request,
     { signal }
   );
+  return { success: true, ...result };
 }
 
 // ============= Metadata Columns =============
