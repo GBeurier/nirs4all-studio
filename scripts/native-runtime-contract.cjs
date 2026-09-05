@@ -17,9 +17,9 @@ const MAX_PYTHON_CLOSURE_FILES = 100_000;
 const MAX_PYTHON_CLOSURE_DIRECTORIES = 100_000;
 const METHODS_ABI_MAJOR = 2;
 const METHODS_ABI_MINOR = 5;
-const METHODS_SOURCE_COMMIT = "49aa40e90afef676f25809db1bd2a523e9582a49";
-const METHODS_SOURCE_TREE = "03de9a3f0b116b4d4c7446acc6cd1e4bf8814a83";
-const METHODS_PROJECT_VERSION = "1.0.16";
+const METHODS_SOURCE_COMMIT = "a9faae2909c71a833bb7f3b208dc20548cf01588";
+const METHODS_SOURCE_TREE = "5c39dde72afab2ff725ff7b1b53e69a17b9bf865";
+const METHODS_PROJECT_VERSION = "1.0.18";
 
 function isPathInside(root, candidate) {
   const relative = path.relative(root, candidate);

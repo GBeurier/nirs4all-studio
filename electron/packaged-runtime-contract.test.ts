@@ -167,9 +167,9 @@ function makeResources(): {
         member: null,
         abi: { major: 2, minor: 5 },
         source: {
-          commit: "49aa40e90afef676f25809db1bd2a523e9582a49",
-          tree: "03de9a3f0b116b4d4c7446acc6cd1e4bf8814a83",
-          project_version: "1.0.16",
+          commit: "a9faae2909c71a833bb7f3b208dc20548cf01588",
+          tree: "5c39dde72afab2ff725ff7b1b53e69a17b9bf865",
+          project_version: "1.0.18",
         },
       },
     }),
@@ -412,9 +412,9 @@ describe("packaged runtime contract", () => {
       },
       abi: { major: 2, minor: 5 },
       source: {
-        commit: "49aa40e90afef676f25809db1bd2a523e9582a49",
-        tree: "03de9a3f0b116b4d4c7446acc6cd1e4bf8814a83",
-        project_version: "1.0.16",
+        commit: "a9faae2909c71a833bb7f3b208dc20548cf01588",
+        tree: "5c39dde72afab2ff725ff7b1b53e69a17b9bf865",
+        project_version: "1.0.18",
       },
     };
     fs.writeFileSync(contractPath, JSON.stringify(contract));
