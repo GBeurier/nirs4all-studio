@@ -12,6 +12,7 @@ function dataset(overrides: Partial<PartitionDataset> = {}): PartitionDataset {
     yTrue: [1, 2],
     yPred: [1.2, 1.8],
     nSamples: 2,
+    sampleIds: ["pred-a", "pred-b"],
     ...overrides,
   };
 }
@@ -41,7 +42,7 @@ const rows: ConformalPredictionRow[] = [
         widthLabel: "1.4000",
       },
     ],
-    sampleId: "a",
+    sampleId: "pred-a",
     yPred: 1.2,
     yPredLabel: "1.2000",
   },
@@ -59,7 +60,7 @@ const rows: ConformalPredictionRow[] = [
         widthLabel: "0.8000",
       },
     ],
-    sampleId: "b",
+    sampleId: "pred-b",
     yPred: 1.8,
     yPredLabel: "1.8000",
   },
@@ -82,5 +83,26 @@ describe("conformalChartData", () => {
     expect(attachConformalIntervalsToSingleDataset(ambiguous, rows, 0.8)).toEqual(ambiguous);
     expect(attachConformalIntervalsToSingleDataset([dataset({ yTrue: [1], yPred: [1.2], nSamples: 1 })], rows, 0.8))
       .toEqual([dataset({ yTrue: [1], yPred: [1.2], nSamples: 1 })]);
+  });
+
+  it("refuses conformal intervals when sample ids are absent or reordered", () => {
+    const withoutSampleIds = dataset({ sampleIds: undefined });
+    expect(attachConformalIntervalsToSingleDataset([withoutSampleIds], rows, 0.8))
+      .toEqual([withoutSampleIds]);
+
+    const reordered = dataset({ sampleIds: ["pred-b", "pred-a"] });
+    expect(attachConformalIntervalsToSingleDataset([reordered], rows, 0.8))
+      .toEqual([reordered]);
+  });
+
+  it("refuses numeric sample indices even when their strings equal conformal sample ids", () => {
+    const indexed = dataset({ sampleIds: [0, 1] });
+    const indexedRows = rows.map((row, index) => ({
+      ...row,
+      sampleId: String(index),
+    }));
+
+    expect(attachConformalIntervalsToSingleDataset([indexed], indexedRows, 0.8))
+      .toEqual([indexed]);
   });
 });
