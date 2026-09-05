@@ -108,3 +108,15 @@ def test_release_dispatch_never_publishes_docker_images() -> None:
             workflow,
         )
         assert guarded_step is not None, f"manual release dispatch could publish in step: {step_name}"
+
+
+def test_release_self_update_is_blocking_and_checksums_use_basenames() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
+
+    assert workflow.count("name: Smoke test self-update (download -> apply -> relaunch)") == 4
+    for match in re.finditer(r"name: Smoke test self-update \(download -> apply -> relaunch\)", workflow):
+        step = workflow[match.start() : match.start() + 320]
+        assert "continue-on-error" not in step
+    assert 'sha256sum "$FILE" > "$FILE.sha256"' not in workflow
+    assert 'shasum -a 256 "$FILE" > "$FILE.sha256"' not in workflow
+    assert workflow.count('"$(basename "$FILE")" > "$(basename "$FILE").sha256"') == 3

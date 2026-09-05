@@ -151,7 +151,7 @@ function assetNameForPlatform(platformId, version) {
   const osKeyword = platformId === "darwin" ? "mac" : platformId === "win32" ? "win" : "linux";
   const ext = platformId === "linux" ? "tar.gz" : "zip";
   const arch = process.arch === "arm64" ? "arm64" : "x64";
-  return `nirs4all-studio-${version}-all-in-one-${osKeyword}-${arch}.${ext}`;
+  return `nirs4all.Studio-${version}-all-in-one-${osKeyword}-${arch}.${ext}`;
 }
 
 function buildReleaseJson(base, assetName, assetSize) {
@@ -254,7 +254,10 @@ function startFixtureServer({ assetPath, assetName, assetSha }) {
         return;
       }
       if (url.endsWith(".sha256")) {
-        const body = Buffer.from(`${assetSha}  ${assetName}\n`);
+        const releaseBasename = assetName.replace(/^nirs4all\.Studio-/, "nirs4all Studio-");
+        const body = Buffer.from(
+          `${assetSha}  /home/runner/work/nirs4all-studio/nirs4all-studio/release/${releaseBasename}\n`,
+        );
         res.writeHead(200, { "Content-Type": "text/plain", "Content-Length": body.length });
         res.end(body);
         return;
@@ -623,6 +626,10 @@ async function smokeSelfUpdate(rawConfig) {
       () => childOutput.get(child)?.join("\n") || "",
       env1.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN,
     );
+    await delay(1000);
+    if (fs.existsSync(sentinelPath)) {
+      throw new Error("update helper replaced the application before Electron exited");
+    }
     console.log("Update applied. Quitting so the updater can replace files...");
     await quitApp(child);
     child = null;

@@ -20,6 +20,7 @@ const BUILD_INFO_PATH_ENV = "NIRS4ALL_BUILD_INFO_PATH";
 const APP_VERSION_ENV = "NIRS4ALL_APP_VERSION";
 const APP_DIR_ENV = "NIRS4ALL_APP_DIR";
 const APP_EXE_ENV = "NIRS4ALL_APP_EXE";
+const ELECTRON_PID_ENV = "NIRS4ALL_ELECTRON_PID";
 const ELECTRON_ENV = "NIRS4ALL_ELECTRON";
 const ALL_IN_ONE_ENV = "NIRS4ALL_ALL_IN_ONE";
 const BUNDLED_RUNTIME_AVAILABLE_ENV =
@@ -316,6 +317,7 @@ export class NativeSidecarManager {
     delete childEnvironment[SCIENTIFIC_EXECUTOR_ENV];
     delete childEnvironment[APP_DIR_ENV];
     delete childEnvironment[APP_EXE_ENV];
+    delete childEnvironment[ELECTRON_PID_ENV];
     delete childEnvironment[ELECTRON_ENV];
     delete childEnvironment[ALL_IN_ONE_ENV];
     delete childEnvironment[BUNDLED_RUNTIME_AVAILABLE_ENV];
@@ -350,6 +352,7 @@ export class NativeSidecarManager {
       childEnvironment[APP_VERSION_ENV] = options.appVersion.trim();
     childEnvironment[APP_DIR_ENV] = path.dirname(process.execPath);
     childEnvironment[APP_EXE_ENV] = path.basename(process.execPath);
+    childEnvironment[ELECTRON_PID_ENV] = process.pid.toString();
     childEnvironment[ELECTRON_ENV] = "true";
     childEnvironment[BUNDLED_RUNTIME_AVAILABLE_ENV] = verifiedBundledPython
       ? "true"
