@@ -384,7 +384,7 @@ fn list_pipelines(settings: &AppSettingsStore) -> DocumentResult<Value> {
                 return Err((413, "Pipeline catalogue exceeds 256 documents".into()));
             }
             examined += 1;
-            match read_document(&path) {
+            match read_editor_pipeline(&path) {
                 Ok(document) => pipelines.push(document),
                 Err((_, detail)) => warnings.push(json!({"file": path.file_name().and_then(|name| name.to_str()), "detail": detail})),
             }
@@ -396,6 +396,16 @@ fn list_pipelines(settings: &AppSettingsStore) -> DocumentResult<Value> {
             .cmp(&left["updated_at"].as_str())
     });
     Ok(json!({"pipelines": pipelines, "warnings": warnings}))
+}
+
+fn read_editor_pipeline(path: &Path) -> DocumentResult<Value> {
+    let mut document = read_document(path)?;
+    // Early V1 Rust imports used `custom`; the historical editor calls saved
+    // pipelines `user`. Normalize the response without rewriting user files.
+    if document.get("category").and_then(Value::as_str) == Some("custom") {
+        document["category"] = json!("user");
+    }
+    Ok(document)
 }
 
 fn valid_identifier(id: &str) -> bool {
@@ -424,9 +434,9 @@ fn save_pipeline(
     let file = directory.join(format!("{key}.json"));
     let now = rfc3339_now();
     let mut document = if id.is_some() {
-        read_document(&file)?
+        read_editor_pipeline(&file)?
     } else {
-        json!({"id": key, "created_at": now, "description": "", "category": "custom", "is_favorite": false})
+        json!({"id": key, "created_at": now, "description": "", "category": "user", "is_favorite": false})
     };
     for field in [
         "name",
@@ -486,7 +496,7 @@ fn dispatch(
             let id = path.strip_prefix("/api/pipelines/")?;
             if !valid_identifier(id) || ["presets", "samples", "import", "import-preview", "render-canonical", "propagate-shape"].contains(&id) { return None; }
             match method {
-                "GET" => pipeline_directory(settings).and_then(|directory| read_document(&directory.join(format!("{id}.json")))).map(|pipeline| json!({"pipeline": pipeline})),
+                "GET" => pipeline_directory(settings).and_then(|directory| read_editor_pipeline(&directory.join(format!("{id}.json")))).map(|pipeline| json!({"pipeline": pipeline})),
                 "PUT" => save_pipeline(settings, Some(id), body),
                 "DELETE" => pipeline_directory(settings).and_then(|directory| {
                     let path = directory.join(format!("{id}.json"));
@@ -537,6 +547,16 @@ pub fn owns_path(path: &str) -> bool {
 mod tests {
     use super::*;
     use crate::{route_request_with_body, SidecarState};
+
+    #[test]
+    fn early_v1_custom_category_reads_as_saved_without_rewriting() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("early.json");
+        let original = br#"{"id":"early","category":"custom","steps":[]}"#;
+        fs::write(&path, original).unwrap();
+        assert_eq!(read_editor_pipeline(&path).unwrap()["category"], "user");
+        assert_eq!(fs::read(&path).unwrap(), original);
+    }
 
     #[test]
     fn real_http_links_dataset_and_preserves_config_across_restart_without_deleting_source() {
@@ -679,6 +699,7 @@ mod tests {
             json!({"name": "General editor pipeline", "steps": steps}),
         );
         assert_eq!(status, 200, "{created}");
+        assert_eq!(created["pipeline"]["category"], "user");
         let id = created["pipeline"]["id"].as_str().unwrap();
         let pipeline_route = format!("/api/pipelines/{id}");
         let mut restarted = SidecarState::with_app_settings_dir(&config);
