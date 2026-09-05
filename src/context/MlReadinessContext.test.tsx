@@ -54,10 +54,7 @@ type MlReadyListener = (info: {
   workspaceReady?: boolean;
 }) => void;
 
-interface ElectronApiMock extends RendererElectronApi {
-  getMlStatus: ReturnType<typeof vi.fn<() => Promise<MlStatusPayload>>>;
-  onMlReady: (cb: MlReadyListener) => () => void;
-}
+type ElectronApiMock = RendererElectronApi;
 
 function createElectronApiMock(
   overrides: Partial<ElectronApiMock> = {},
@@ -81,15 +78,8 @@ function createElectronApiMock(
     maximizeWindow: vi.fn().mockResolvedValue(true),
     restoreWindow: vi.fn().mockResolvedValue(true),
     getWindowSize: vi.fn().mockResolvedValue({ width: 1024, height: 768 }),
-    getBackendPort: vi.fn().mockResolvedValue(8000),
-    getBackendUrl: vi.fn().mockResolvedValue("http://127.0.0.1:8000"),
-    getScientificPluginUrl: vi.fn().mockResolvedValue("http://127.0.0.1:8000"),
-    getBackendInfo: vi.fn().mockResolvedValue({
-      status: "running",
-      port: 8000,
-      url: "http://127.0.0.1:8000",
-      restartCount: 0,
-    }),
+    preselectRendererTransport: vi.fn(),
+    preselectWorkspaceRunDetail: vi.fn(),
     getNativeSidecarInfo: vi.fn().mockResolvedValue({
       status: "disabled",
       host: null,
@@ -108,28 +98,8 @@ function createElectronApiMock(
       url: "http://127.0.0.1:43123",
       pythonPluginHostConfigured: false,
     }),
-    getScientificPluginInfo: vi.fn().mockResolvedValue({
-      role: "scientific-plugin",
-      ready: true,
-      requested: true,
-      status: "running",
-      port: 8000,
-      url: "http://127.0.0.1:8000",
-      restartCount: 0,
-    }),
-    getScientificReadiness: vi.fn().mockResolvedValue({
-      scientific_status: "running",
-      scientific_requested: true,
-      core_ready: true,
-      ml_ready: true,
-      ml_loading: false,
-      ml_error: null,
-      workspace_ready: true,
-    }),
     restartBackend: vi.fn().mockResolvedValue({ success: true }),
-    restartScientificPlugin: vi.fn().mockResolvedValue({ success: true }),
     onBackendStatusChanged: vi.fn(() => () => undefined),
-    onScientificPluginStatusChanged: vi.fn(() => () => undefined),
     getEnvStatus: vi.fn().mockResolvedValue("ready"),
     isEnvReady: vi.fn().mockResolvedValue(true),
     getEnvInfo: vi.fn().mockResolvedValue({
@@ -165,13 +135,6 @@ function createElectronApiMock(
     platform: "linux",
     isElectron: true,
     getPathForFile: vi.fn(() => ""),
-    getMlStatus: vi.fn<() => Promise<MlStatusPayload>>().mockResolvedValue({
-      core_ready: true,
-      ml_ready: true,
-      ml_loading: false,
-      ml_error: null,
-      workspace_ready: true,
-    }),
     onMlReady: vi.fn(() => () => undefined),
     ...overrides,
   };
@@ -226,7 +189,7 @@ async function importProviderModule() {
   };
 }
 
-async function renderProvider(electronApi: ElectronApiMock) {
+async function renderProvider(electronApi: ElectronApiMock | undefined) {
   vi.resetModules();
   window.electronApi = electronApi;
 
@@ -288,21 +251,8 @@ describe("MlReadinessProvider", () => {
       native_training_ready: true,
       workspace_ready: true,
     });
-    const getScientificReadiness = vi.fn();
-    const view = await renderProvider(createElectronApiMock({
-      getScientificPluginInfo: vi.fn().mockResolvedValue({
-        role: "scientific-plugin",
-        ready: false,
-        requested: false,
-        status: "stopped",
-        port: null,
-        url: null,
-        restartCount: 0,
-      }),
-      getScientificReadiness,
-      onMlReady: () => () => undefined,
-      onBackendStatusChanged: () => () => undefined,
-    }));
+    const electronApi = createElectronApiMock();
+    const view = await renderProvider(electronApi);
 
     await waitFor(() => {
       expect(view.result.current?.controlReady).toBe(true);
@@ -315,33 +265,44 @@ describe("MlReadinessProvider", () => {
       expect(view.result.current?.nativeTrainingReady).toBe(true);
       expect(view.result.current?.workspaceReady).toBe(true);
     });
-    expect(getScientificReadiness).not.toHaveBeenCalled();
+    expect(mocks.apiGet).toHaveBeenCalledWith("/system/readiness");
+    expect(electronApi).not.toHaveProperty("getScientificPluginInfo");
+    expect(electronApi).not.toHaveProperty("getScientificReadiness");
 
     await view.unmount();
   });
 
-  it("clears native readiness after connection loss without activating Python", async () => {
+  it.each([false, true])("clears capabilities after connection loss (general host ready: %s)", async (mlReady) => {
     vi.useFakeTimers();
-    mocks.apiGet.mockResolvedValueOnce({ native_prediction_ready: true })
+    mocks.apiGet.mockResolvedValueOnce({ native_prediction_ready: true, ml_ready: mlReady })
       .mockRejectedValue(new Error("connection lost"));
-    const view = await renderProvider(createElectronApiMock({
-      getScientificPluginInfo: vi.fn().mockResolvedValue({
-        role: "scientific-plugin", ready: false, requested: false,
-        status: "stopped", port: null, url: null, restartCount: 0,
-      }),
-    }));
+    const view = await renderProvider(createElectronApiMock());
     expect(view.result.current?.nativePredictionReady).toBe(true);
+    expect(view.result.current?.mlReady).toBe(mlReady);
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     expect(view.result.current?.nativePredictionReady).toBe(false);
     expect(view.result.current?.mlReady).toBe(false);
     await view.unmount();
   });
 
-  it("keeps ML readiness latched when a later poll reports false again", async () => {
+  it("preserves the transitional web startup latch without inventing native capabilities", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockResolvedValueOnce({ core_ready: true, ml_ready: true, workspace_ready: false })
+      .mockResolvedValue({ core_ready: false, ml_ready: false, ml_loading: true, workspace_ready: false });
+    const view = await renderProvider(undefined);
+    expect(view.result.current?.mlReady).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(view.result.current?.mlReady).toBe(true);
+    expect(view.result.current?.mlLoading).toBe(false);
+    expect(view.result.current?.nativePredictionReady).toBe(false);
+    expect(view.result.current?.nativeTrainingReady).toBe(false);
+    await view.unmount();
+  });
+
+  it("tracks the general library readiness through Rust with no removed preload methods", async () => {
     vi.useFakeTimers();
 
-    const getScientificReadiness = vi
-      .fn<() => Promise<MlStatusPayload>>()
+    mocks.apiGet
       .mockResolvedValueOnce({
         core_ready: true,
         ml_ready: true,
@@ -364,13 +325,7 @@ describe("MlReadinessProvider", () => {
         workspace_ready: true,
       });
 
-    const view = await renderProvider(
-      createElectronApiMock({
-        getScientificReadiness,
-        onMlReady: () => () => undefined,
-        onBackendStatusChanged: () => () => undefined,
-      }),
-    );
+    const view = await renderProvider(createElectronApiMock());
 
     await waitFor(() => {
       expect(view.result.current?.coreReady).toBe(true);
@@ -383,8 +338,8 @@ describe("MlReadinessProvider", () => {
     });
 
     expect(view.result.current?.coreReady).toBe(true);
-    expect(view.result.current?.mlReady).toBe(true);
-    expect(view.result.current?.mlLoading).toBe(false);
+    expect(view.result.current?.mlReady).toBe(false);
+    expect(view.result.current?.mlLoading).toBe(true);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
@@ -393,7 +348,9 @@ describe("MlReadinessProvider", () => {
     await waitFor(() => {
       expect(view.result.current?.workspaceReady).toBe(true);
     });
-    expect(getScientificReadiness).toHaveBeenCalledTimes(3);
+    expect(mocks.apiGet).toHaveBeenCalledTimes(3);
+    expect(view.result.current?.mlReady).toBe(true);
+    expect(view.result.current?.scientificStatus).toBe("running");
 
     await view.unmount();
   });
@@ -402,21 +359,14 @@ describe("MlReadinessProvider", () => {
     vi.useFakeTimers();
 
     const firstPoll = deferred<MlStatusPayload>();
-    let mlReadyListener:
-      | ((info: {
-          ready: boolean;
-          error?: string;
-          workspaceReady?: boolean;
-        }) => void)
-      | null = null;
+    let mlReadyListener: MlReadyListener | null = null;
 
-    const getScientificReadiness = vi
-      .fn<() => Promise<MlStatusPayload>>()
-      .mockReturnValueOnce(firstPoll.promise);
+    mocks.apiGet.mockReturnValueOnce(firstPoll.promise).mockResolvedValue({
+      core_ready: true, ml_ready: true, ml_loading: false, ml_error: null, workspace_ready: true,
+    });
 
     const view = await renderProvider(
       createElectronApiMock({
-        getScientificReadiness,
         onMlReady: (cb) => {
           mlReadyListener = cb;
           return () => {
@@ -449,11 +399,15 @@ describe("MlReadinessProvider", () => {
       await Promise.resolve();
     });
 
+    // Assert before any fresh poll can mask a stale response regression.
+    expect(view.result.current?.mlReady).toBe(true);
+    expect(view.result.current?.workspaceReady).toBe(true);
+
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5000);
     });
 
-    expect(getScientificReadiness).toHaveBeenCalledTimes(1);
+    expect(mocks.apiGet).toHaveBeenCalledTimes(6);
     expect(view.result.current?.coreReady).toBe(true);
     expect(view.result.current?.mlReady).toBe(true);
     expect(view.result.current?.workspaceReady).toBe(true);

@@ -187,6 +187,19 @@ interface ElectronApi {
    * @param callback - Called when backend status changes
    * @returns Cleanup function to unsubscribe
    */
+  onBackendStatusChanged(callback: (info: {
+    status: "stopped" | "starting" | "running" | "error" | "restarting" | "setup_required";
+    port: number;
+    url: string;
+    error?: string;
+    restartCount: number;
+  }) => void): () => void;
+  /** Receive the explicit diagnostic backend's startup notifications. */
+  onMlReady(callback: (info: {
+    ready: boolean;
+    error?: string;
+    workspaceReady?: boolean;
+  }) => void): () => void;
   /**
    * Python environment management
    */

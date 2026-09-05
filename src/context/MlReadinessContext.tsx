@@ -5,12 +5,7 @@ import { api } from "@/api/transport";
 import { datasetQueryKeys } from "@/hooks/useDatasetQueries";
 import { MlReadinessContext, type MlReadiness } from "@/context/useMlReadiness";
 
-type ControlStatus = MlReadiness["controlStatus"];
-type ScientificStatus = MlReadiness["scientificStatus"];
-
 interface ScientificReadinessPayload {
-  scientific_status?: string;
-  scientific_requested?: boolean;
   core_ready?: boolean;
   ml_ready?: boolean;
   ml_loading?: boolean;
@@ -20,33 +15,7 @@ interface ScientificReadinessPayload {
   native_training_ready?: boolean;
 }
 
-const electronApi = (window as unknown as {
-  electronApi?: {
-    isElectron: boolean;
-    getControlPlaneInfo?: () => Promise<{
-      status: ControlStatus;
-      ready: boolean;
-      error?: string;
-    }>;
-    getScientificPluginInfo?: () => Promise<{
-      status: ScientificStatus;
-      ready: boolean;
-      requested: boolean;
-      error?: string;
-    }>;
-    getScientificReadiness?: () => Promise<ScientificReadinessPayload>;
-    getMlStatus?: () => Promise<ScientificReadinessPayload>;
-    onMlReady?: (cb: (info: {
-      ready: boolean;
-      error?: string;
-      workspaceReady?: boolean;
-    }) => void) => () => void;
-    onBackendStatusChanged?: (cb: (info: {
-      status: ScientificStatus;
-      error?: string;
-    }) => void) => () => void;
-  };
-}).electronApi;
+const electronApi = window.electronApi;
 
 const initialState = (datasetsPrimed: boolean): MlReadiness => ({
   controlReady: false,
@@ -70,7 +39,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     initialState(queryClient.getQueryData(datasetQueryKeys.list()) !== undefined),
   );
   const workspaceReadyFired = useRef(false);
-  const workspaceReadyRef = useRef(false);
+  const readinessRevision = useRef(0);
 
   useEffect(() => {
     if (state.mlReady) queryClient.invalidateQueries();
@@ -103,10 +72,12 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!electronApi?.isElectron) return;
     const cleanupStatus = electronApi.onBackendStatusChanged?.((info) => {
+      readinessRevision.current += 1;
       setState((previous) => ({
         ...previous,
         scientificStatus: info.status,
         scientificRequested: true,
+        mlReady: info.status === "running" && previous.mlReady,
         mlLoading: info.status === "starting" || info.status === "restarting",
         mlError: info.status === "error"
           ? info.error ?? "Scientific plugin failed to start"
@@ -114,8 +85,8 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       }));
     });
     const cleanupMl = electronApi.onMlReady?.((info) => {
+      readinessRevision.current += 1;
       if (info.ready) {
-        if (info.workspaceReady) workspaceReadyRef.current = true;
         setState((previous) => ({
           ...previous,
           scientificStatus: "running",
@@ -129,6 +100,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
         setState((previous) => ({
           ...previous,
           scientificRequested: true,
+          mlReady: false,
           mlLoading: false,
           mlError: info.error ?? null,
         }));
@@ -154,37 +126,6 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
           controlError: control.error ?? null,
           coreReady: control.ready,
         }));
-
-        const plugin = await electronApi.getScientificPluginInfo?.();
-        if (disposed || !plugin) return;
-        setState((previous) => ({
-          ...previous,
-          scientificStatus: plugin.status,
-          scientificRequested: plugin.requested,
-          mlLoading: plugin.status === "starting" || plugin.status === "restarting",
-          mlError: plugin.error ?? previous.mlError,
-        }));
-        if (!plugin.ready || workspaceReadyRef.current) return;
-
-        const getReadiness = electronApi.getScientificReadiness ?? electronApi.getMlStatus;
-        const readiness = await getReadiness?.();
-        if (disposed || !readiness) return;
-        if (readiness.workspace_ready) workspaceReadyRef.current = true;
-        setState((previous) => ({
-          ...previous,
-          scientificStatus: (readiness.scientific_status as ScientificStatus)
-            ?? previous.scientificStatus,
-          scientificRequested: readiness.scientific_requested
-            ?? previous.scientificRequested,
-          mlReady: previous.mlReady || !!readiness.ml_ready,
-          mlLoading: previous.mlReady || readiness.ml_ready
-            ? false
-            : readiness.ml_loading ?? previous.mlLoading,
-          mlError: readiness.ml_error ?? previous.mlError,
-          workspaceReady: previous.workspaceReady
-            || !!readiness.workspace_ready
-            || (!!readiness.ml_ready && readiness.workspace_ready === undefined),
-        }));
       } catch (error) {
         if (disposed) return;
         setState((previous) => ({
@@ -209,17 +150,24 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
     const check = async () => {
       if (checking) return;
       checking = true;
+      const revision = readinessRevision.current;
       try {
         const readiness = await api.get<ScientificReadinessPayload>("/system/readiness");
-        if (disposed) return;
+        if (disposed || revision !== readinessRevision.current) return;
         if (!readiness || typeof readiness !== "object") {
           throw new Error("Invalid runtime readiness response");
         }
-        // The Rust endpoint is also authoritative for native capabilities in
-        // Electron. Do not gate this poll on the optional Python plugin.
+        // Rust reports portable capabilities and the general library host
+        // independently. The real preload has no scientific-plugin URL/IPC.
         if (electronApi?.isElectron) {
           setState((previous) => ({
             ...previous,
+            mlReady: readiness.ml_ready === true,
+            mlLoading: readiness.ml_ready !== true && readiness.ml_loading === true,
+            mlError: readiness.ml_error ?? null,
+            scientificRequested: readiness.ml_ready === true || readiness.ml_loading === true,
+            scientificStatus: readiness.ml_error ? "error" : readiness.ml_ready === true ? "running"
+              : readiness.ml_loading === true ? "starting" : "stopped",
             nativePredictionReady: !!readiness.native_prediction_ready,
             nativeTrainingReady: !!readiness.native_training_ready,
             workspaceReady: readiness.workspace_ready ?? previous.workspaceReady,
@@ -245,8 +193,11 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
         }));
       } catch {
         // The externally managed web backend may still be starting.
-        if (!disposed) setState((previous) => ({
+        if (!disposed && revision === readinessRevision.current) setState((previous) => ({
           ...previous,
+          mlReady: false,
+          mlLoading: false,
+          scientificStatus: "stopped",
           nativePredictionReady: false,
           nativeTrainingReady: false,
         }));

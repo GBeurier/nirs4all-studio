@@ -27,10 +27,14 @@ function jsonWithExactBytes(size: number): string {
 }
 
 type RendererElectronApi = NonNullable<Window["electronApi"]>;
+// Test-only trap: prove transport never calls the retired Python HTTP API.
+type ElectronApiTestFixture = RendererElectronApi & {
+  getScientificPluginUrl: () => Promise<string | null>;
+};
 
 function createElectronApiMock(
-  overrides: Partial<RendererElectronApi> = {},
-): RendererElectronApi {
+  overrides: Partial<ElectronApiTestFixture> = {},
+): ElectronApiTestFixture {
   const electronApi = {
     selectFolder: vi.fn().mockResolvedValue(null),
     confirmDroppedFolder: vi.fn().mockResolvedValue(null),
@@ -145,9 +149,9 @@ function createElectronApiMock(
     isElectron: true,
     getPathForFile: vi.fn(() => ""),
     ...overrides,
-  } as RendererElectronApi;
+  } as ElectronApiTestFixture;
   if (!overrides.preselectRendererTransport) {
-    electronApi.preselectRendererTransport = vi.fn(async (request) => {
+    electronApi.preselectRendererTransport = vi.fn<RendererElectronApi["preselectRendererTransport"]>(async (request) => {
       const info = await electronApi.getNativeSidecarInfo();
       const candidatePath = request.kind === "http" ? request.path : "";
       const candidateMethod = request.kind === "http" ? request.method : "";
@@ -333,7 +337,7 @@ describe("API client request handling", () => {
       preselectRendererTransport(request, inspectSidecar, fetchMock));
     window.electronApi = createElectronApiMock({
       getScientificPluginUrl: acquire,
-      getNativeSidecarInfo: inspectSidecar,
+      getNativeSidecarInfo: vi.fn(async () => ({ ...inspectSidecar(), host: "127.0.0.1", port: 43123, protocolVersion: "studio-sidecar-r1" })),
       preselectRendererTransport: preselect,
     });
 
@@ -385,7 +389,7 @@ describe("API client request handling", () => {
       preselectRendererTransport(request, inspectSidecar, fetchMock));
     window.electronApi = createElectronApiMock({
       getScientificPluginUrl: acquire,
-      getNativeSidecarInfo: inspectSidecar,
+      getNativeSidecarInfo: vi.fn(async () => ({ ...inspectSidecar(), host: "127.0.0.1", port: 43123, protocolVersion: "studio-sidecar-r1" })),
       preselectRendererTransport: preselect,
     });
     const body = {
