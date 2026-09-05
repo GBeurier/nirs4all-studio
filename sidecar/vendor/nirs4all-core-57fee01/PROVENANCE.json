@@ -1,0 +1,23 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/nirs4all-core.git",
+  "commit": "57fee01ca5477856d5ede53cac56cc21b361cb31",
+  "repository_tree": "2b84921d86d4f14811ab5d6d94d1bac99cf34a2c",
+  "included_crate_trees": {
+    "nirs4all": "cfdef4276f81fbb4e340e02a0db1e6faba5c57dc"
+  },
+  "selected_crate_snapshot": {
+    "name": "nirs4all",
+    "version": "0.3.30",
+    "files": 33,
+    "sha256": "da33681fd164c7320b3c53c2f992be993d529d2abdc9b4d25626014deeb35f52"
+  },
+  "snapshot_policy": "The complete selected upstream Git tree is copied byte-for-byte under upstream/: workspace manifests and lockfile, every binding and source tree, tests, fixtures, scripts, documentation, assets, notices, and licence texts.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 258
+  },
+  "verification": "../../scripts/verify-vendored-core.sh",
+  "release_gate": "The source snapshot and selected crate checksum identify the published nirs4all 0.3.30 release exactly; Studio runtime resolution remains pinned to =0.3.30."
+}

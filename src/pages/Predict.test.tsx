@@ -151,7 +151,7 @@ describe("Predict Archive V2 page", () => {
       target_names: ["protein", "moisture"],
       values: [[1.1, 12.2], [1.3, 12.4]],
       provenance: {
-        executor: `nirs4all-core@0.3.28+libn4m-abi-2.5:${"b".repeat(64)}`,
+        executor: `nirs4all-core@0.3.30+libn4m-abi-2.5:${"b".repeat(64)}`,
         archive_ref: "artifacts/calibration.n4a",
         workspace_id: "workspace-a",
       },
@@ -181,7 +181,7 @@ describe("Predict Archive V2 page", () => {
       archive_sha256: "a".repeat(64), engine: "core_rust_methods", fallback_used: false,
       sample_ids: ["predict.0", "predict.1"], target_names: ["protein", "moisture"],
       values: [[1.1, 12.2], [1.3, 12.4]],
-      provenance: { executor: `nirs4all-core@0.3.28+libn4m-abi-2.5:${"b".repeat(64)}`, archive_ref: "artifacts/calibration.n4a", workspace_id: "workspace-a" },
+      provenance: { executor: `nirs4all-core@0.3.30+libn4m-abi-2.5:${"b".repeat(64)}`, archive_ref: "artifacts/calibration.n4a", workspace_id: "workspace-a" },
     });
     mocks.projectConformal.mockResolvedValue({
       schema_version: 1, operation: "archive_v2_conformal_projection",

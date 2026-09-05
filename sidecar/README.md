@@ -339,9 +339,9 @@ files, and `sidecar/scripts/test-vendored-io.sh` for the locked offline Rust gat
 The runtime uses the exact published crates rather than sibling or vendored path
 dependencies.
 
-The release evidence also retains the complete Core 0.3.29 source at commit
-`47294718edf8ad2a170158e339adda39e3e4fa2f` under
-`sidecar/vendor/nirs4all-core-4729471/`, the published DagML 0.3.25 package
+The release evidence also retains the complete Core 0.3.30 source at commit
+`57fee01ca5477856d5ede53cac56cc21b361cb31` under
+`sidecar/vendor/nirs4all-core-57fee01/`, the published DagML 0.3.25 package
 payloads from commit `233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27` under
 `sidecar/vendor/dag-ml-233d4ec/`, the complete dag-ml-data 0.2.11 source at
 commit `ffe533704a1a0b0c7bb7d97a997caade3f4ba36e` under
@@ -351,7 +351,7 @@ Methods commit `48ad1e5a50844f68c2b99e93b02ad6a3b491c07b` under
 inventory drift and check exact repository trees, crate trees, package versions,
 and registry checksums. These directories are immutable release evidence only;
 Cargo resolves the published train (DagML 0.3.25, Data 0.2.11, IO 0.1.18,
-Methods/n4m 0.1.4, and Core 0.3.29) from the registry.
+Methods/n4m 0.1.4, and Core 0.3.30) from the registry.
 Run the Core gate against the qualified ABI 2.5 Methods library:
 
 ```sh

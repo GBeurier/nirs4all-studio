@@ -23,7 +23,7 @@ nursery = "warn"
 atomicwrites = "0.4.4"
 base64 = "0.22"
 cap-std = "3"
-nirs4all = "=0.3.29"
+nirs4all = "=0.3.30"
 nirs4all-io = "=0.1.18"
 percent-encoding = "2.3"
 rusqlite = { version = "0.32.1", features = ["bundled", "serialize"] }

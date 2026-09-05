@@ -22,7 +22,7 @@ const result: ArchiveV2ArrayPredictionResponse = {
   target_names: ["protein"],
   values: [[1.5]],
   provenance: {
-    executor: `nirs4all-core@0.3.29+libn4m-abi-2.5:${"b".repeat(64)}`,
+    executor: `nirs4all-core@0.3.30+libn4m-abi-2.5:${"b".repeat(64)}`,
     archive_ref: "models/test.n4a",
     workspace_id: "workspace:test",
   },

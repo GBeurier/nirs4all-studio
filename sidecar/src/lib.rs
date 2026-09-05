@@ -8589,7 +8589,7 @@ mod tests {
         assert_eq!(readiness["ml_ready"], false);
         assert_eq!(
             response["provenance"]["executor"],
-            format!("nirs4all-core@0.3.28+libn4m-abi-2.5:{methods_sha256}")
+            format!("nirs4all-core@0.3.30+libn4m-abi-2.5:{methods_sha256}")
         );
         let expected = [
             [1.636_363_636_363_636_5, 13.272_727_272_727_273],
