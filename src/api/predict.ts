@@ -40,6 +40,7 @@ export async function runPredictionWithFile(
   modelId: string,
   modelSource: string,
   file: File,
+  options: { archive_fingerprint?: string; output_index?: number; has_header?: boolean } = {},
 ): Promise<PredictResponse> {
   const formData = new FormData();
   formData.append("model_id", modelId);
@@ -47,6 +48,9 @@ export async function runPredictionWithFile(
   formData.append("file", file);
   formData.append("engine", STRICT_NATIVE_RUNTIME_ENGINE);
   formData.append("allow_fallback", "false");
+  if (options.archive_fingerprint) formData.append("archive_fingerprint", options.archive_fingerprint);
+  if (options.output_index !== undefined) formData.append("output_index", String(options.output_index));
+  if (options.has_header !== undefined) formData.append("has_header", String(options.has_header));
 
   try {
     return await requestForm<PredictResponse>("/predict/file", formData);

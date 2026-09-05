@@ -45,4 +45,11 @@ describe("prediction native runtime transport", () => {
     expect(form.get("engine")).toBe("dag-ml");
     expect(form.get("allow_fallback")).toBe("false");
   });
+
+  it("preserves an explicit no-header override rather than treating false as absent", async () => {
+    await runPredictionWithFile("model-1", "chain", new File(["1,2"], "spectra.csv"), { has_header: false, output_index: 1 });
+    const form = transport.requestForm.mock.calls[0]?.[1] as FormData;
+    expect(form.get("has_header")).toBe("false");
+    expect(form.get("output_index")).toBe("1");
+  });
 });
