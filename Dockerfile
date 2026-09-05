@@ -9,6 +9,13 @@ ARG NODE_IMAGE=node:24-bookworm-slim
 ARG RUST_IMAGE=rust:1.88-bookworm
 ARG NGINX_IMAGE=nginx:1.27.5-bookworm
 
+FROM scratch AS studio-document-adapter-sources
+COPY ["api/library_documents.py", "api/library_dataset_inspection.py", "api/library_predictions.py", "api/library_runtime_config.py", "api/pipeline_canonical.py", "api/pipeline_canonical_branch_merge.py", "api/pipeline_canonical_generators.py", "api/pipeline_canonical_finetune.py", "api/node_registry_loader.py", "/api/"]
+COPY ["api/shared/json_safe.py", "api/shared/dataset_config.py", "/api/shared/"]
+COPY ["src/data/nodes/definitions/", "/src/data/nodes/definitions/"]
+COPY ["src/data/nodes/generated/canonical-registry.json", "/src/data/nodes/generated/"]
+COPY ["sidecar/contracts/studio_document_adapters_v1.json", "/sidecar/contracts/"]
+
 FROM ${NODE_IMAGE} AS frontend
 WORKDIR /build
 COPY package.json package-lock.json ./
@@ -32,7 +39,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY recommended-config.json ./
-COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/bake-python-plugin-runtime.cjs scripts/
+COPY --from=studio-document-adapter-sources / /build/
+COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/
 RUN --mount=type=cache,target=/python-cache \
     node scripts/bake-python-plugin-runtime.cjs \
       --backend-root /product/backend \
@@ -46,7 +54,8 @@ RUN test -n "${NIRS4ALL_METHODS_SHA256}" \
 COPY --from=python-plugin-runtime /product/backend/ backend/
 COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/studio-sidecar
 COPY --from=methods-runtime /libn4m.so.2.5.0 backend/native/libn4m.so
-COPY scripts/native-runtime-contract.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/
+COPY --from=studio-document-adapter-sources / /
+COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/
 RUN test "$(sha256sum backend/native/libn4m.so | cut -d' ' -f1)" = "${NIRS4ALL_METHODS_SHA256}" \
     && chmod 0755 backend/native/studio-sidecar \
     && node -e 'const c=require("/contract-scripts/native-runtime-contract.cjs"); c.writeRuntimeContract({backendRoot:"/product/backend",platform:"linux",arch:"x64",methodsLibraryPath:"/product/backend/native/libn4m.so"}); c.verifyRuntimeContract({backendRoot:"/product/backend",artifactBoundaryRoot:"/product/backend",platform:"linux",arch:"x64",requireBundledPythonPlugin:true,requireBundledMethods:true})'
