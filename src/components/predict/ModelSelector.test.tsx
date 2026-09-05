@@ -23,9 +23,14 @@ let cleanup: (() => Promise<void>) | null = null;
 async function renderSelector(onSelect: ReturnType<typeof vi.fn>) {
   const container = document.createElement("div"); document.body.appendChild(container);
   const root = createRoot(container); const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  cleanup = async () => { await act(async () => root.unmount()); client.clear(); container.remove(); };
   await act(async () => { root.render(<QueryClientProvider client={client}><ModelSelector selectedModel={null} onSelect={onSelect} /></QueryClientProvider>); });
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
-  cleanup = async () => { await act(async () => root.unmount()); container.remove(); };
+  // Workspace and catalogue queries render in separate notifications. Await
+  // the observable result, not a fixed delay that races under the full suite.
+  await vi.waitFor(async () => {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(Array.from(container.querySelectorAll("button")).some((button) => button.textContent?.includes("archive-a"))).toBe(true);
+  });
   return container;
 }
 
