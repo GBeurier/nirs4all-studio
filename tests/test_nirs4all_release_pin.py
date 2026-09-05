@@ -24,7 +24,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     dag_source = re.search(r"^  DAG_ML_SOURCE_URL: .+/archive/([0-9a-f]{40})\.tar\.gz$", workflow, re.MULTILINE)
     assert dag_ref is not None
     assert dag_source is not None
-    assert dag_ref.group(1) == dag_source.group(1) == "1caa26dc9b90f33bc3f53b15b4d85e18f3f67381"
+    assert dag_ref.group(1) == dag_source.group(1) == "233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27"
 
     data_ref = re.search(r"^  DAG_ML_DATA_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     data_source = re.search(
@@ -34,7 +34,7 @@ def test_release_workflow_uses_immutable_nirs4all_source() -> None:
     )
     assert data_ref is not None
     assert data_source is not None
-    assert data_ref.group(1) == data_source.group(1) == "7d9b9fed04c135ed4c2bba472c782aca7ef85807"
+    assert data_ref.group(1) == data_source.group(1) == "ffe533704a1a0b0c7bb7d97a997caade3f4ba36e"
 
     tools_ref = re.search(r"^  NIRS4ALL_TOOLS_REF: ([0-9a-f]{40})$", workflow, re.MULTILINE)
     tools_source = re.search(
