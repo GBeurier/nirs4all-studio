@@ -1,0 +1,10 @@
+{
+  "presets": [
+    {"id":"regression_small","name":"Regression (Small)","description":"250 samples for quick testing","task_type":"regression","n_samples":250,"complexity":"simple","icon":"activity"},
+    {"id":"regression_medium","name":"Regression (Medium)","description":"1000 samples for model development","task_type":"regression","n_samples":1000,"complexity":"realistic","icon":"trending-up"},
+    {"id":"regression_large","name":"Regression (Large)","description":"2500 samples for full experiments","task_type":"regression","n_samples":2500,"complexity":"realistic","icon":"bar-chart-3"},
+    {"id":"classification_binary","name":"Binary Classification","description":"500 samples, 2 classes","task_type":"binary_classification","n_samples":500,"complexity":"simple","icon":"git-branch"},
+    {"id":"classification_multi","name":"Multiclass Classification","description":"750 samples, 3 classes","task_type":"multiclass_classification","n_samples":750,"complexity":"simple","icon":"layers"},
+    {"id":"complex_realistic","name":"Complex Realistic","description":"1500 samples with noise and batch effects","task_type":"regression","n_samples":1500,"complexity":"complex","icon":"cpu"}
+  ]
+}

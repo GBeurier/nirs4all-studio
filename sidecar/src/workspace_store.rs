@@ -902,6 +902,17 @@ pub fn read_ranked_chains(
 pub(crate) fn read_results_summary_source(
     workspace_path: &Path,
 ) -> Result<Vec<WorkspaceStoreResultsSummarySourceRow>, WorkspaceStoreReadError> {
+    let mut results = Vec::new();
+    visit_results_summary_source(workspace_path, |row| results.push(row))?;
+    Ok(results)
+}
+
+/// Consume the unchanged owner projection one bounded page at a time. Compact
+/// views need not retain expanded pipeline configurations for every chain.
+pub(crate) fn visit_results_summary_source(
+    workspace_path: &Path,
+    consume: impl FnMut(WorkspaceStoreResultsSummarySourceRow),
+) -> Result<(), WorkspaceStoreReadError> {
     validate_contract()?;
     validate_results_summary_contract()?;
     let database = canonical_workspace_store_path(workspace_path)?;
@@ -919,7 +930,7 @@ pub(crate) fn read_results_summary_source(
     validate_table_columns(&connection, "chains", &RESULTS_SUMMARY_CHAIN_COLUMNS)?;
     validate_table_columns(&connection, "pipelines", &RESULTS_SUMMARY_PIPELINE_COLUMNS)?;
     validate_table_columns(&connection, "predictions", &PREDICTION_RANKING_COLUMNS)?;
-    let result = query_results_summary_source(&connection);
+    let result = visit_results_summary_source_from_connection(&connection, consume);
     drop(connection);
     refuse_live_journals(&database)?;
     if file_stamp(&database)? != before {
@@ -931,13 +942,22 @@ pub(crate) fn read_results_summary_source(
 pub(crate) fn read_results_summary_source_from_connection(
     connection: &Connection,
 ) -> Result<Vec<WorkspaceStoreResultsSummarySourceRow>, WorkspaceStoreReadError> {
+    let mut results = Vec::new();
+    visit_results_summary_source_from_connection(connection, |row| results.push(row))?;
+    Ok(results)
+}
+
+pub(crate) fn visit_results_summary_source_from_connection(
+    connection: &Connection,
+    consume: impl FnMut(WorkspaceStoreResultsSummarySourceRow),
+) -> Result<(), WorkspaceStoreReadError> {
     validate_contract()?;
     validate_results_summary_contract()?;
     validate_database(connection)?;
     validate_table_columns(connection, "chains", &RESULTS_SUMMARY_CHAIN_COLUMNS)?;
     validate_table_columns(connection, "pipelines", &RESULTS_SUMMARY_PIPELINE_COLUMNS)?;
     validate_table_columns(connection, "predictions", &PREDICTION_RANKING_COLUMNS)?;
-    query_results_summary_source(connection)
+    visit_results_summary_source_rows(connection, consume)
 }
 
 fn validate_contract() -> Result<(), WorkspaceStoreReadError> {
@@ -2213,18 +2233,19 @@ fn query_ranked_chains(
     Ok(WorkspaceStoreRankedChainPage { results, total })
 }
 
-fn query_results_summary_source(
+fn visit_results_summary_source_rows(
     connection: &Connection,
-) -> Result<Vec<WorkspaceStoreResultsSummarySourceRow>, WorkspaceStoreReadError> {
+    mut consume: impl FnMut(WorkspaceStoreResultsSummarySourceRow),
+) -> Result<(), WorkspaceStoreReadError> {
     let total = connection
         .query_row(RESULTS_SUMMARY_COUNT_QUERY, [], |row| row.get::<_, i64>(0))
         .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
     let total = usize::try_from(total).map_err(|_| {
         WorkspaceStoreReadError::Query("results-summary count is outside usize range".into())
     })?;
-    let mut results = Vec::with_capacity(total);
+    let mut observed = 0_usize;
     let mut offset = 0_i64;
-    while results.len() < total {
+    while observed < total {
         let mut statement = connection
             .prepare(RESULTS_SUMMARY_PAGE_QUERY)
             .map_err(|error| WorkspaceStoreReadError::Query(error.to_string()))?;
@@ -2246,12 +2267,13 @@ fn query_results_summary_source(
             .ok_or_else(|| {
                 WorkspaceStoreReadError::Query("results-summary offset overflowed".into())
             })?;
-        results.extend(rows);
+        observed += rows.len();
+        rows.into_iter().for_each(&mut consume);
     }
-    if results.len() != total {
+    if observed != total {
         return Err(WorkspaceStoreReadError::ChangedDuringRead);
     }
-    Ok(results)
+    Ok(())
 }
 
 fn row_to_run_summary(row: &Row<'_>) -> rusqlite::Result<WorkspaceStoreRunSummary> {

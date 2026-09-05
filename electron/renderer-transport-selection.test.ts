@@ -35,6 +35,27 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 }
 
 describe("renderer transport preselection", () => {
+  it("requires the exact compact dataset-score capability without a Python host", async () => {
+    const request = async () => capabilityResponse({ dataset_score_routes: true });
+    const info = () => ({ ...running(), pythonPluginHostConfigured: false });
+    const path = "/workspaces/workspace-1/results/dataset-scores";
+    await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, info, request))
+      .resolves.toMatchObject({ target: "native-sidecar" });
+    await expect(preselectRendererTransport({ kind: "http", method: "GET", path: `${path}?metric=rmse` }, info, request))
+      .resolves.toMatchObject({ target: "reject" });
+    await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, info, async () => capabilityResponse()))
+      .resolves.toMatchObject({ target: "reject" });
+  });
+
+  it("selects the shared synthetic preset catalogue but not an unqualified generator", async () => {
+    const request = async () => capabilityResponse({ dataset_synthetic_preset_routes: true });
+    await expect(preselectRendererTransport({ kind: "http", method: "GET", path: "/datasets/synthetic-presets" },
+      () => ({ ...running(), pythonPluginHostConfigured: false }), request))
+      .resolves.toMatchObject({ target: "native-sidecar" });
+    await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/datasets/generate-synthetic" }, running, request))
+      .resolves.toMatchObject({ target: "reject" });
+  });
+
   it("qualifies bounded dataset uploads and pipeline presets only when implemented", async () => {
     const request = async () => capabilityResponse({ dataset_import_routes: true, pipeline_preset_routes: true, python_plugin_preflight: true });
     for (const [method, path] of [["POST", "/datasets/upload"], ["POST", "/datasets/preview-upload"],
