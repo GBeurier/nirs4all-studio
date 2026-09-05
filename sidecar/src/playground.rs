@@ -113,7 +113,7 @@ fn prepare(settings: &AppSettingsStore, request: &HttpRequest) -> Result<Prepare
         "/api/playground/capabilities" => ("capabilities", json!({}), Projection::Capabilities),
         "/api/playground/execute" => (
             "execute",
-            Value::Object(parse_object(&request.body)?),
+            prepare_inline_execute(parse_object(&request.body)?)?,
             Projection::Result,
         ),
         "/api/playground/execute-dataset" => (
@@ -170,6 +170,24 @@ fn prepare(settings: &AppSettingsStore, request: &HttpRequest) -> Result<Prepare
         operation,
         projection,
     })
+}
+
+fn prepare_inline_execute(mut body: Map<String, Value>) -> Result<Value, (u16, String)> {
+    let data = body
+        .remove("data")
+        .filter(Value::is_object)
+        .ok_or_else(|| (400, "Inline execution requires a JSON data object".into()))?;
+    let steps = body.remove("steps").unwrap_or_else(|| json!([]));
+    let mut payload = json!({"data":data,"steps":steps});
+    for key in ["sampling", "options", "limits"] {
+        if let Some(value) = body.remove(key) {
+            payload[key] = value;
+        }
+    }
+    if let Some(field) = body.keys().next() {
+        return Err((400, format!("Unexpected inline execution field: {field}")));
+    }
+    Ok(payload)
 }
 
 fn prepare_dataset_execute(
@@ -294,7 +312,10 @@ fn error(status: u16, detail: &str) -> HttpResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
+    use std::{
+        collections::BTreeMap,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
 
     fn request(path: &str, method: &str, body: &Value) -> HttpRequest {
         HttpRequest {
@@ -315,12 +336,21 @@ mod tests {
             &request(
                 "/api/playground/execute",
                 "POST",
-                &json!({"data":{"x":[[1.0,2.0]]},"steps":[]}),
+                &json!({
+                    "data":{"x":[[1.0,2.0]]},
+                    "steps":[],
+                    "sampling":{"max_samples":1},
+                    "options":{"compute_pca":false},
+                    "limits":{"max_samples":1}
+                }),
             ),
             &|document| {
                 assert_eq!(document["schema"], REQUEST_SCHEMA);
                 assert_eq!(document["operation"], "execute");
                 assert_eq!(document["payload"]["data"]["x"][0][1], 2.0);
+                assert_eq!(document["payload"]["sampling"]["max_samples"], 1);
+                assert_eq!(document["payload"]["options"]["compute_pca"], false);
+                assert_eq!(document["payload"]["limits"]["max_samples"], 1);
                 Ok(json!({
                     "schema":RESPONSE_SCHEMA,"request_id":document["request_id"],
                     "operation":"execute","result":{"success":true}
@@ -332,6 +362,57 @@ mod tests {
             serde_json::from_str::<Value>(&response.body).unwrap()["success"],
             true
         );
+    }
+
+    #[test]
+    fn inline_execution_rejects_dataset_selection_paths_and_unknown_fields_before_host() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path().join("settings"));
+        for body in [
+            json!({"dataset":{"config":{"path":"/tmp/escaped.csv"}},"steps":[]}),
+            json!({"data":{"x":[[1.0]]},"selection":{"partition":"all"}}),
+            json!({"data":{"x":[[1.0]]},"config":{"path":"/tmp/escaped.csv"}}),
+            json!({"data":{"x":[[1.0]]},"path":"/tmp/escaped.csv"}),
+            json!({"data":{"x":[[1.0]]},"unknown":true}),
+            json!({"steps":[]}),
+        ] {
+            let invocations = AtomicUsize::new(0);
+            let response = dispatch(
+                &settings,
+                &request("/api/playground/execute", "POST", &body),
+                &|_| {
+                    invocations.fetch_add(1, Ordering::SeqCst);
+                    unreachable!("invalid inline requests must not acquire the library host")
+                },
+            );
+            assert_eq!(response.status, 400, "{}", response.body);
+            assert_eq!(invocations.load(Ordering::SeqCst), 0, "{body}");
+        }
+    }
+
+    #[test]
+    fn valid_inline_execution_without_a_selected_host_is_explicitly_unavailable() {
+        let root = tempfile::tempdir().unwrap();
+        let settings = AppSettingsStore::new(root.path().join("settings"));
+        let invocations = AtomicUsize::new(0);
+        let response = dispatch(
+            &settings,
+            &request(
+                "/api/playground/execute",
+                "POST",
+                &json!({"data":{"x":[[1.0]]},"steps":[]}),
+            ),
+            &|_| {
+                invocations.fetch_add(1, Ordering::SeqCst);
+                Err(LibraryFacadeError {
+                    code: "host_unavailable".into(),
+                    message: "Attested Playground library host unavailable".into(),
+                })
+            },
+        );
+        assert_eq!(response.status, 503, "{}", response.body);
+        assert_eq!(invocations.load(Ordering::SeqCst), 1);
+        assert!(response.body.contains("host unavailable"));
     }
 
     #[test]
