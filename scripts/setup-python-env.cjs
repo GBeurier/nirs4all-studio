@@ -445,8 +445,8 @@ function pruneStandaloneRuntimeArtifacts(runtimeRoot, options = {}) {
   walkTreeSync(runtimeRoot, (entryPath, entry) => {
     const parentName = path.basename(path.dirname(entryPath));
     if (pluginOnlyRuntime && parentName === "site-packages" && (
-      ["pip", "setuptools", "pkg_resources", "_distutils_hack"].includes(entry.name) ||
-      /^(?:pip|setuptools)-.*\.dist-info$/i.test(entry.name)
+      ["pip", "setuptools", "wheel", "pkg_resources", "_distutils_hack"].includes(entry.name) ||
+      /^(?:pip|setuptools|wheel)-.*\.dist-info$/i.test(entry.name)
     )) {
       targets.add(entryPath);
       return false;

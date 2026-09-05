@@ -16,13 +16,15 @@ const PLUGIN_DISTRIBUTION_VERSION = "1.0.1";
 const PLUGIN_INSTALLED_MANIFEST_SHA256 = "768e65e0ca900f1a50a88a01f6c09cc7870ce033383cac5c968bfac8fee25bbe";
 const PLUGIN_CONSTRAINTS_RELATIVE_PATH = "build/constraints/plugin-runtime-cpython311.txt";
 const PLUGIN_CONSTRAINTS_PATH = path.join(projectRoot, ...PLUGIN_CONSTRAINTS_RELATIVE_PATH.split("/"));
-const PLUGIN_CONSTRAINTS_SHA256 = "437f2a2d61cbd62856bc0de48be2b7726003763a343fb88478624451271ee36c";
+const PLUGIN_CONSTRAINTS_SHA256 = "0b11bc09f82a7806055b18fc478ece69554e00932f7d0138656804a57d36ccb1";
 const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
 const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
 const TOOLS_DISTRIBUTION_VERSION = "0.0.7";
 const TOOLS_INSTALLED_MANIFEST_SHA256 = "cd0311a57c4be4cd99f84b8ae750eb2f97d4edf765bb0e8717a9ea181724ae07";
 const DUCKDB_VERSION = "1.5.5";
 const PYARROW_VERSION = "25.0.1";
+const WINDOWS_CONSTRAINT_MARKER = 'sys_platform == "win32"';
+const GREENLET_PLATFORM_MARKER = 'platform_machine == "aarch64" or (platform_machine == "ppc64le" or (platform_machine == "x86_64" or (platform_machine == "amd64" or (platform_machine == "AMD64" or (platform_machine == "win32" or platform_machine == "WIN32")))))';
 const FORBIDDEN_DISTRIBUTIONS = Object.freeze([
   "fastapi",
   "httptools",
@@ -106,7 +108,16 @@ function sha256File(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
-function constrainedDistributionVersions(platform = process.platform) {
+function constraintMarkerApplies(marker, platform, arch) {
+  if (!marker) return true;
+  if (marker === WINDOWS_CONSTRAINT_MARKER) return platform === "win32";
+  if (marker === GREENLET_PLATFORM_MARKER) {
+    return arch === "x64" || arch === "ppc64" || (platform === "linux" && arch === "arm64");
+  }
+  throw new Error(`Unsupported plugin constraint marker: ${marker}`);
+}
+
+function constrainedDistributionVersions(platform = process.platform, arch = process.arch) {
   if (sha256File(PLUGIN_CONSTRAINTS_PATH) !== PLUGIN_CONSTRAINTS_SHA256) {
     throw new Error("Plugin runtime constraints identity mismatch");
   }
@@ -115,10 +126,7 @@ function constrainedDistributionVersions(platform = process.platform) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
     const [requirement, marker = ""] = line.split(";", 2).map((part) => part.trim());
-    if (marker && marker !== 'sys_platform == "win32"') {
-      throw new Error(`Unsupported plugin constraint marker: ${marker}`);
-    }
-    if (marker && platform !== "win32") continue;
+    if (!constraintMarkerApplies(marker, platform, arch)) continue;
     const match = /^([A-Za-z0-9_.-]+)==([^\s]+)$/.exec(requirement);
     if (!match) throw new Error(`Plugin runtime constraint is not exact: ${line}`);
     const name = normalizeDistribution(match[1]);
