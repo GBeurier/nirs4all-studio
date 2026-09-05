@@ -3083,14 +3083,17 @@ mod tests {
             )
             .unwrap();
         assert!(wal.is_file());
+        let shm = workspace.join("store.sqlite-shm");
+        assert!(shm.is_file());
         let error = read_run_summaries(&workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0)
-            .expect_err("an active WAL sidecar must close the immutable reader");
+            .expect_err("active WAL state must close the immutable reader");
         let WorkspaceStoreReadError::LiveJournal(path) = error else {
-            panic!("expected the active WAL path, got {error:?}");
+            panic!("expected an active SQLite journal path, got {error:?}");
         };
         assert!(
-            same_file::is_same_file(&path, &wal).unwrap(),
-            "reported WAL path {path:?} must identify the active sidecar {wal:?}"
+            same_file::is_same_file(&path, &wal).unwrap()
+                || same_file::is_same_file(&path, &shm).unwrap(),
+            "reported journal path {path:?} must identify active WAL state {wal:?}/{shm:?}"
         );
         drop(writer);
         fs::remove_dir_all(workspace).unwrap();
