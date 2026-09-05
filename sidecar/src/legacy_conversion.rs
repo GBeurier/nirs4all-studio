@@ -460,8 +460,24 @@ pub fn inspect_workspace_transition(
     workspace_path: &Path,
 ) -> Result<WorkspaceTransitionStatus, String> {
     validate_workspace_path(workspace_path)?;
+    reject_recursive_symlinks(workspace_path)?;
     let output = default_output_path(workspace_path)?;
     let sqlite_path = workspace_path.join("store.sqlite");
+    // A library WorkspaceStore v5 is also a current V1 workspace. Its arrays/
+    // directory is legitimate; it is not a Tools workspace-v2 conversion
+    // output. Use the existing immutable schema/projection validator before
+    // applying legacy marker heuristics. A mere user_version=5 is insufficient.
+    if candidate_metadata(&sqlite_path)?.is_some()
+        && crate::workspace_store::read_run_summaries(workspace_path, 1, 0).is_ok()
+    {
+        return Ok(WorkspaceTransitionStatus {
+            path: workspace_path.to_path_buf(),
+            format: "sqlite-workspace-store-v5",
+            conversion_required: false,
+            message: "Workspace is a validated library WorkspaceStore v5.",
+            default_output_path: None,
+        });
+    }
     if let Some((format, message)) = detect_legacy_marker(workspace_path)? {
         return Ok(required_status(workspace_path, output, format, message));
     }
@@ -1368,6 +1384,29 @@ pub fn display_command(command: &[String]) -> String {
 mod tests {
     use super::*;
     use std::{env, fs, time::SystemTime};
+
+    #[test]
+    fn library_store_v5_with_arrays_is_current_without_conversion_or_mutation() {
+        let root = tempfile::tempdir().unwrap();
+        let database = root.path().join("store.sqlite");
+        let fixture = include_bytes!("../tests/fixtures/workspace_store_v5.sqlite");
+        fs::write(&database, fixture).unwrap();
+        fs::create_dir(root.path().join("arrays")).unwrap();
+        let status = inspect_workspace_transition(root.path()).unwrap();
+        assert_eq!(status.format, "sqlite-workspace-store-v5");
+        assert!(!status.conversion_required);
+        assert_eq!(fs::read(&database).unwrap(), fixture);
+
+        let malformed = tempfile::tempdir().unwrap();
+        let connection = Connection::open(malformed.path().join("store.sqlite")).unwrap();
+        connection.execute_batch("PRAGMA user_version = 5").unwrap();
+        drop(connection);
+        assert!(
+            inspect_workspace_transition(malformed.path())
+                .unwrap()
+                .conversion_required
+        );
+    }
 
     fn temporary_directory(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
