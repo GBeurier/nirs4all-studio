@@ -328,8 +328,9 @@ function startFakeBackend(opts: {
         if (statusPolls <= (opts.statusBodyDisconnects ?? 0)) {
           const body = Buffer.from(JSON.stringify({ status: "running", progress: 50 }));
           res.writeHead(200, { "Content-Type": "application/json", "Content-Length": body.length });
+          res.flushHeaders();
           res.write(body.subarray(0, Math.max(1, Math.floor(body.length / 2))));
-          res.socket?.destroy();
+          setTimeout(() => res.socket?.destroy(), 50);
           return;
         }
         if (opts.invalidStatusJson) {
