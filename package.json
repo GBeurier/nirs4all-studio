@@ -24,7 +24,7 @@
     "start:desktop": "npm run dev:electron",
     "electron:preview": "cross-env ELECTRON_RUN_AS_NODE= electron .",
     "lint:eslint": "eslint .",
-    "lint:tsc": "tsc --noEmit",
+    "lint:tsc": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.electron.json",
     "lint:nodes": "node scripts/validate-node-registry.cjs",
     "lint:storage": "node scripts/check-client-storage.cjs",
     "lint:ruff": "ruff check main.py api websocket updater scripts tests",
