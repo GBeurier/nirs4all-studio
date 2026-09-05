@@ -54,7 +54,7 @@ const MAX_ARCHIVE_REF_BYTES: usize = 240;
 const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
-const CORE_PROJECT_VERSION: &str = "0.3.29";
+const CORE_PROJECT_VERSION: &str = "0.3.30";
 const METHODS_ABI_MAJOR: u32 = 2;
 const METHODS_ABI_MINOR: u32 = 5;
 const METHODS_SOURCE_COMMIT: &str = "a9faae2909c71a833bb7f3b208dc20548cf01588";
@@ -1714,7 +1714,7 @@ mod tests {
         };
         assert_eq!(
             core_methods_executor_identity(&methods),
-            format!("nirs4all-core@0.3.29+libn4m-abi-2.5:{}", "b".repeat(64))
+            format!("nirs4all-core@0.3.30+libn4m-abi-2.5:{}", "b".repeat(64))
         );
     }
 
@@ -1827,7 +1827,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "immutable nirs4all-core 4729471 snapshot exposing nirs4all 0.3.29 and n4m 0.1.4"
+            "immutable nirs4all-core 57fee01 snapshot exposing nirs4all 0.3.30 and n4m 0.1.4"
         );
     }
 }

@@ -19,7 +19,7 @@ native contract mismatch, and the client validates response identity, order,
 shape, finiteness, fallback state, and workspace/archive provenance.
 It reads at most 2 MiB of raw response bytes before JSON parsing, regardless of
 whether `Content-Length` is present or truthful. The executor identity must be
-the closed `nirs4all-core@0.3.28+libn4m-abi-2.5:<sha256>` form. Core accepts
+the closed `nirs4all-core@0.3.30+libn4m-abi-2.5:<sha256>` form. Core accepts
 historical N4MM v1 descriptors and content-bound N4MM v2 pipeline descriptors.
 Studio always passes the caller's finite `X` matrix unchanged; Core alone
 decides whether preprocessing is external or embedded and performs replay.

@@ -1183,9 +1183,9 @@ dependencies = [
 
 [[package]]
 name = "nirs4all"
-version = "0.3.29"
+version = "0.3.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b655dc5c2a1a7c5dcf2f525af6ebd3bef7b0647114973e5c6ceebd7b7c70fcd0"
+checksum = "da33681fd164c7320b3c53c2f992be993d529d2abdc9b4d25626014deeb35f52"
 dependencies = [
  "dag-ml",
  "dag-ml-core",
@@ -1825,7 +1825,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
