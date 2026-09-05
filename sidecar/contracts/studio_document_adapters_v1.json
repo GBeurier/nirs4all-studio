@@ -1,0 +1,298 @@
+{
+  "schema": "nirs4all.studio-document-adapters.v1",
+  "package": "studio_document_adapters",
+  "callable": "studio_document_adapters.api.library_documents.adapt_document",
+  "ownership": "pure-document-translation-only",
+  "files": [
+    {
+      "path": "__init__.py",
+      "size": 71,
+      "sha256": "384de68151d25396db5309d84b4c493a26aea244a4f218547d1d20e71cb33a49"
+    },
+    {
+      "path": "api/__init__.py",
+      "size": 71,
+      "sha256": "384de68151d25396db5309d84b4c493a26aea244a4f218547d1d20e71cb33a49"
+    },
+    {
+      "path": "api/library_documents.py",
+      "size": 6504,
+      "sha256": "7d9ce6148bcbe09a125aad7261ac7d6f3b9d6dcfb7971b17782aa5642b4e7d18"
+    },
+    {
+      "path": "api/node_registry_loader.py",
+      "size": 6868,
+      "sha256": "fc25d22cc713fd48215746c9dd1f9b32dca91f4b486fd365e67a4f5f378877ef"
+    },
+    {
+      "path": "api/pipeline_canonical_branch_merge.py",
+      "size": 11655,
+      "sha256": "087340a81daa8d5550c55bcec4178eb2e922c27b7a2c0868949643d900de18cf"
+    },
+    {
+      "path": "api/pipeline_canonical_finetune.py",
+      "size": 5071,
+      "sha256": "18deb3cf1a33bb3631adc84546e0671a8e4055c0fb6695fa9c68d09b77ede990"
+    },
+    {
+      "path": "api/pipeline_canonical_generators.py",
+      "size": 5875,
+      "sha256": "8818277c4f7a503c60f1ac85607656527d756023321e62a7af057f3dcf179cf5"
+    },
+    {
+      "path": "api/pipeline_canonical.py",
+      "size": 67147,
+      "sha256": "b71074de3b145b36d568251e9015bd60a61c05e6a0efbf1aab09162dd9c6ab3d"
+    },
+    {
+      "path": "api/shared/__init__.py",
+      "size": 71,
+      "sha256": "384de68151d25396db5309d84b4c493a26aea244a4f218547d1d20e71cb33a49"
+    },
+    {
+      "path": "api/shared/dataset_config.py",
+      "size": 11601,
+      "sha256": "2bcf790b807798b572213ece845d1265f254e58e5e698c23ec74e863e30eaaaa"
+    },
+    {
+      "path": "src/data/nodes/definitions/augmentation/transforms.json",
+      "size": 85431,
+      "sha256": "0027634e1cefc6c1b6af87ce9e6672013a6fa8b231aebae42323b89cd705dfbb"
+    },
+    {
+      "path": "src/data/nodes/definitions/branching/branches.json",
+      "size": 1755,
+      "sha256": "b58fd827f3863d2d74c16c369b77f562af41e35e0bf13873ba5ad7b71111d499"
+    },
+    {
+      "path": "src/data/nodes/definitions/branching/merge.json",
+      "size": 1990,
+      "sha256": "56288934f17d19b86d496bb17056babd07b16f7d27f06d2a2657fa204700b51d"
+    },
+    {
+      "path": "src/data/nodes/definitions/containers/wrappers.json",
+      "size": 3906,
+      "sha256": "56fcd1ed3cf591d96c8d2ca4d307eb92e78c975ea68b535ef02d784505dfa43b"
+    },
+    {
+      "path": "src/data/nodes/definitions/filters/sample-filters.json",
+      "size": 13364,
+      "sha256": "8c03fd798ebe95fb5e3e83bc51ab1b1d4cb36434be9728968c739fec5f9afc4e"
+    },
+    {
+      "path": "src/data/nodes/definitions/generators/core.json",
+      "size": 14019,
+      "sha256": "5db6a30980094ffb8fc582ae7efa796cc534b1988b09c1e1354818f5228e4855"
+    },
+    {
+      "path": "src/data/nodes/definitions/misc/utilities.json",
+      "size": 1979,
+      "sha256": "daf78a80d57c34888fb7913e37c5241bbe785f24df8be7b654912bd984f6d4d8"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/advanced-pls.json",
+      "size": 23613,
+      "sha256": "4b11d2a4d0d0d4e3b190ea3d34bf1f492c7d991a351519ea0272bb6b4fafaea2"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/deep-learning.json",
+      "size": 19034,
+      "sha256": "532290461248f9dd380bd22af81d24f89119c2c766f736f3d8ebc8961f79fa6b"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/ensemble.json",
+      "size": 19804,
+      "sha256": "60c49dbb043d1d3124f374f8416068b5edab3b4eb5c5f3bbb087cc732337117c"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/kernel-pls.json",
+      "size": 6411,
+      "sha256": "b24baec31ebd8f08417b6706acfde5ba8086aec84d55d46523364bdd2c4125b4"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/linear.json",
+      "size": 6313,
+      "sha256": "600127f13cdf55bad782bff716a13b3236efc42aae947a4fb7fb442f8c30f7fd"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/meta.json",
+      "size": 2575,
+      "sha256": "feaf7f254f5d6070449b8f11b803f6cb69d02a2ba59ac1ad8ac26268f614dde1"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/pls-variants.json",
+      "size": 8931,
+      "sha256": "8d1abbdff361aaa1f361c5577c8a648e436571b580a2f457b035619bd26f40e6"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-discriminant.json",
+      "size": 3948,
+      "sha256": "66a83e26e1ed871817c4f248083d75669b026cd285c1a78e84ee41b0172c6000"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-ensemble.json",
+      "size": 32773,
+      "sha256": "c634f3115ed95d2a5615fc0bd93bc5d12128da5fb40b94a39021f03819e17aaa"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-gaussian-process.json",
+      "size": 3818,
+      "sha256": "21806110d8e1f07f5a0dba109b9adef13df36bfd8b6e604b8ba4b582cfadde3c"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-linear.json",
+      "size": 64216,
+      "sha256": "85b302eb6825dad8e25ac5da07d108dc7b836b0504c3090ec56b5218a0c81ead"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-meta.json",
+      "size": 5005,
+      "sha256": "726a124948acdae9a5332aa9591094f2161ad77e5abdcf116def45850bacd05f"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-misc.json",
+      "size": 18401,
+      "sha256": "a129ae6ac517a5b6f002de104cf979960759943eff2a22f94fb590f2b2f0300e"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-naive-bayes.json",
+      "size": 5495,
+      "sha256": "f94b13ddf38ae034d2596686f9675c380b4bd81976d7fecab3c3967de7e1afe7"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-neighbors.json",
+      "size": 7737,
+      "sha256": "3dfd6072d5b1138509504311638727ab2563619e42d191ac6a7274f060c77c0a"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-neural.json",
+      "size": 4473,
+      "sha256": "ca963909ff7fb7c5e9d3361aacff353754a3df91434c735a6234fa8ab53775aa"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-svm.json",
+      "size": 10177,
+      "sha256": "588cfcfd9cef2fc8a8164ac6c14e12d091640713372c5352787e717f4c874e03"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/sklearn-tree.json",
+      "size": 10862,
+      "sha256": "236ecc00fd0d0424a65a5e7f28f5895ad7fa27c36cc922653711d7299c4cdee6"
+    },
+    {
+      "path": "src/data/nodes/definitions/models/svm.json",
+      "size": 5593,
+      "sha256": "b439e5176b3165a92d3d6307ccc0576e589487ce93e2caa7aff12185924b9daf"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/baseline.json",
+      "size": 16094,
+      "sha256": "e05bfdfa4f8c075b3228e41af672ee680ef0d8a6d4e79e02b8b3021adf75c786"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/conversion.json",
+      "size": 6678,
+      "sha256": "3c51c4ea94d20810b43d39202b8203e60eb7fa9a9cc0757ccd5555b81cf4afe4"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/derivatives.json",
+      "size": 6015,
+      "sha256": "5724b5b2a183a2c781ecd91d10daa2653096876416e0e2b9a39ca85a11dfa09b"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/feature-ops.json",
+      "size": 8028,
+      "sha256": "380290f8f7540aae78774149ab20758e3c6e9a144c4115321cf20cfb89528982"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/feature-selection.json",
+      "size": 6384,
+      "sha256": "8341857b1baad3139ea4cbc6eb873e569562f46efcc3d2ff50745b2fb9deb3cc"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/nirs-core.json",
+      "size": 9643,
+      "sha256": "34cb58a29d1a735db169f4de15d938c66ab603241537157da1e098b9cc188af7"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/scaling.json",
+      "size": 5556,
+      "sha256": "49c061cb110e4027e926fc87ff5b9c166b2540ebc058447582c6a5d487eb8429"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/sklearn-cluster-neighbors.json",
+      "size": 11366,
+      "sha256": "754c0188abfd80ed9954b78d15d4de208ef5df541db3100776bfe0eba0928c79"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/sklearn-dimensionality.json",
+      "size": 24383,
+      "sha256": "3d5f0d32b702073f4be7c8a6f33267daa4615a947f6b30968cab6e44e33c2d54"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/sklearn-encoding.json",
+      "size": 6469,
+      "sha256": "ab2038b6b46a301d174060336f41cbf19acff2e79dba5f396b738211dbb826b6"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/sklearn-feature-extraction.json",
+      "size": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/sklearn-feature-selection.json",
+      "size": 10310,
+      "sha256": "03d5fc5a4bf75eb94f59c9d02d4473c9eeb1966b15069e10845a656c99fa5d54"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/sklearn-imputation.json",
+      "size": 4363,
+      "sha256": "1ddbbc7fe050a98852339a3745162c9f37552bdb235e7f6571169cd172151b38"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/sklearn-kernel-projection.json",
+      "size": 6137,
+      "sha256": "a26cfbeb5f2b6fa0cde5f2532c2cc339721e908dfc9f8c22f25e8b90915e4f46"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/sklearn-misc.json",
+      "size": 2766,
+      "sha256": "f4dc2a4dba538dc795eab62492b39e510bce25e03d089e99bf1d60913a44d9f1"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/sklearn-scalers.json",
+      "size": 5929,
+      "sha256": "f449bb73d0103937045a9b16fa76da00091b8470a25beeae29ef97f61b0387c1"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/smoothing.json",
+      "size": 3452,
+      "sha256": "9916c48e7457a0f263bdd8a9bf2035a172b83ce44d24a3d54f2a877d3b835384"
+    },
+    {
+      "path": "src/data/nodes/definitions/preprocessing/wavelet.json",
+      "size": 9078,
+      "sha256": "9c6968c10b302fd9f82ddf1807e845d54b73243081f09bd2a9b70f53e7beb1f5"
+    },
+    {
+      "path": "src/data/nodes/definitions/splitting/nirs-splitters.json",
+      "size": 10683,
+      "sha256": "59f9a771f28fcf1a1dbed63dcc564d3f6fe17bad03c2737a5daa99c61258bd11"
+    },
+    {
+      "path": "src/data/nodes/definitions/splitting/sklearn-splitters.json",
+      "size": 15507,
+      "sha256": "94c3830e4eb55a4129bd566d20a4f0e172b6ed18c97eb3c90b5cbd6a3ef28f99"
+    },
+    {
+      "path": "src/data/nodes/definitions/y-processing/scalers.json",
+      "size": 10582,
+      "sha256": "cea7a556fb4698fc13d73ced4018160f56583c15549d020d056b23c22c86d2b2"
+    },
+    {
+      "path": "src/data/nodes/generated/canonical-registry.json",
+      "size": 419036,
+      "sha256": "d33d5126a3b74a711f632af1a101d3b9268f097bf90ffa90b5b15a3d33251758"
+    }
+  ]
+}
