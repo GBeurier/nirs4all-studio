@@ -355,6 +355,7 @@ export function DatasetsToolbar({
 type AddDatasetHandler = (
   path: string,
   config?: Partial<DatasetConfig>,
+  files?: File[],
 ) => Promise<void>;
 
 interface DatasetsPageMountsProps {

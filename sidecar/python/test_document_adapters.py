@@ -76,6 +76,31 @@ class DocumentAdapterTests(unittest.TestCase):
             self.assertFalse(value["ok"])
             self.assertIn("requires explicit authorization", value["error"])
 
+    def test_all_shipped_preset_variants_import_and_roundtrip_without_http(self):
+        import yaml
+
+        from api.pipeline_canonical import canonical_to_editor, editor_to_canonical
+
+        paths = sorted((ROOT / "api/presets").glob("*.yaml"))
+        self.assertEqual(len(paths), 10)
+        import re
+
+        embedded = re.findall(r'include_str!\("../../(api/presets/[^"\n]+)"\)', (ROOT / "sidecar/src/pipeline_presets.rs").read_text(encoding="utf-8"))
+        self.assertEqual(sorted(embedded), [str(path.relative_to(ROOT)) for path in paths])
+        for path in paths:
+            preset = yaml.safe_load(path.read_text(encoding="utf-8"))
+            for variant, configured in preset["variants"].items():
+                with self.subTest(preset=preset["id"], variant=variant):
+                    canonical = {"name": preset["name"], "description": preset["description"], "pipeline": configured["pipeline"]}
+                    imported = self.invoke("pipeline.import", {"payload": canonical})
+                    self.assertTrue(imported["ok"], imported)
+                    rendered = self.invoke("pipeline.render", imported["value"])
+                    self.assertTrue(rendered["ok"], rendered)
+                    # Preserve the existing editor translation contract through
+                    # the packaged seam; UUIDs are not pipeline semantics.
+                    expected = editor_to_canonical(canonical_to_editor(canonical), name=preset["name"], description=preset["description"], include_wrapper=True)
+                    self.assertEqual(rendered["value"]["payload"], expected)
+
     def test_folder_detection_is_delegated_and_relative_wizard_files_are_rooted(self):
         with tempfile.TemporaryDirectory(prefix="studio-dataset-doc-") as directory:
             # Invalid matrix contents prove this operation resolves filenames,

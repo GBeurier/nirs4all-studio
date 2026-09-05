@@ -123,9 +123,22 @@ fn temporary_upload(suffix: &str, payload: &[u8]) -> Result<tempfile::NamedTempF
     Ok(upload)
 }
 
-pub fn parse(content_type: &str, body: &[u8]) -> Result<PredictionUpload, String> {
-    if body.len() > crate::matrix_limits::MAX_PREDICTION_BODY_BYTES {
-        return Err("Upload exceeds 32 MiB".into());
+pub struct MultipartPart<'a> {
+    pub(crate) name: String,
+    pub(crate) filename: Option<String>,
+    pub(crate) payload: &'a [u8],
+}
+
+/// Shared bounded form transport. Payloads borrow the already-admitted HTTP
+/// body; callers apply their own field, filename and persistence policies.
+pub fn multipart_parts<'a>(
+    content_type: &str,
+    body: &'a [u8],
+    max_bytes: usize,
+    max_parts: usize,
+) -> Result<Vec<MultipartPart<'a>>, String> {
+    if body.len() > max_bytes {
+        return Err(format!("Upload exceeds {max_bytes} bytes"));
     }
     let boundary = boundary(content_type)?;
     let first = format!("--{boundary}\r\n");
@@ -133,12 +146,9 @@ pub fn parse(content_type: &str, body: &[u8]) -> Result<PredictionUpload, String
     let mut remaining = body
         .strip_prefix(first.as_bytes())
         .ok_or("Missing multipart opening boundary")?;
-    let mut values = Map::new();
-    let mut file = None;
-    let mut parts = 0;
+    let mut parts = Vec::new();
     loop {
-        parts += 1;
-        if parts > 8 {
+        if parts.len() >= max_parts {
             return Err("Too many upload fields".into());
         }
         let header_end = remaining
@@ -159,6 +169,40 @@ pub fn parse(content_type: &str, body: &[u8]) -> Result<PredictionUpload, String
             })
             .ok_or("Missing multipart closing boundary")?;
         let payload = &remaining[..end];
+        parts.push(MultipartPart {
+            name,
+            filename,
+            payload,
+        });
+        remaining = &remaining[end + delimiter.len()..];
+        if let Some(end) = remaining.strip_prefix(b"--") {
+            if !end.is_empty() && end != b"\r\n" {
+                return Err("Unexpected multipart epilogue".into());
+            }
+            break;
+        }
+        remaining = remaining
+            .strip_prefix(b"\r\n")
+            .ok_or("Malformed multipart boundary suffix")?;
+    }
+    Ok(parts)
+}
+
+pub fn parse(content_type: &str, body: &[u8]) -> Result<PredictionUpload, String> {
+    let parts = multipart_parts(
+        content_type,
+        body,
+        crate::matrix_limits::MAX_PREDICTION_BODY_BYTES,
+        8,
+    )?;
+    let mut values = Map::new();
+    let mut file = None;
+    for MultipartPart {
+        name,
+        filename,
+        payload,
+    } in parts
+    {
         if name == "file" {
             if file.is_some() || payload.is_empty() {
                 return Err("Exactly one nonempty upload is required".into());
@@ -206,16 +250,6 @@ pub fn parse(content_type: &str, body: &[u8]) -> Result<PredictionUpload, String
             };
             values.insert(name, value);
         }
-        remaining = &remaining[end + delimiter.len()..];
-        if let Some(end) = remaining.strip_prefix(b"--") {
-            if !end.is_empty() && end != b"\r\n" {
-                return Err("Unexpected multipart epilogue".into());
-            }
-            break;
-        }
-        remaining = remaining
-            .strip_prefix(b"\r\n")
-            .ok_or("Malformed multipart boundary suffix")?;
     }
     Ok(PredictionUpload {
         fields: Value::Object(values),

@@ -401,7 +401,7 @@ function WizardFooter({
 }
 
 interface WizardContentProps {
-  onAdd: (path: string, config: Partial<DatasetConfig>) => Promise<void>;
+  onAdd: (path: string, config: Partial<DatasetConfig>, files?: File[]) => Promise<void>;
   onClose: () => void;
   onScanFolder?: (path: string) => void;
   submitLabel?: string;
@@ -452,14 +452,23 @@ export function WizardContent({ onAdd, onClose, onScanFolder, submitLabel = "Add
   }, [state.sourceType, state.basePath, state.files.length, state.isLoading, dispatch]);
 
   const handleSubmit = async () => {
-    if (!state.basePath) return;
+    if (!state.basePath && state.fileBlobs.size === 0) return;
 
     dispatch({ type: "SET_LOADING", payload: true });
 
     try {
       const config: Partial<DatasetConfig> = buildDatasetWizardConfig(state);
 
-      await onAdd(state.basePath, config);
+      if (!state.basePath) {
+        const files = (config.files ?? []).map(({ path }) => {
+          const file = state.fileBlobs.get(path);
+          if (!file) throw new Error(`Selected file is no longer available: ${path}`);
+          return file;
+        });
+        await onAdd("", config, [...new Set(files)]);
+      } else {
+        await onAdd(state.basePath, config);
+      }
       onClose();
     } catch (error) {
       console.error("Failed to add dataset:", error);

@@ -185,6 +185,14 @@ fn save_catalogue(settings: &AppSettingsStore, catalogue: &Value) -> DocumentRes
 }
 
 fn link_dataset(settings: &AppSettingsStore, body: &[u8]) -> DocumentResult<Value> {
+    link_dataset_with_inspection(settings, body, None)
+}
+
+fn link_dataset_with_inspection(
+    settings: &AppSettingsStore,
+    body: &[u8],
+    inspection: Option<&Value>,
+) -> DocumentResult<Value> {
     let request = request(body)?;
     let requested_path = Path::new(string(&request, "path")?);
     if !requested_path.is_absolute() {
@@ -205,6 +213,19 @@ fn link_dataset(settings: &AppSettingsStore, body: &[u8]) -> DocumentResult<Valu
     if !config.is_object() {
         return Err(invalid("Dataset config must be an object"));
     }
+    let requested_name = request.get("name").or_else(|| config.get("name"));
+    let name = if let Some(value) = requested_name {
+        value
+            .as_str()
+            .filter(|name| {
+                !name.trim().is_empty() && name.len() <= 256 && !name.chars().any(char::is_control)
+            })
+            .ok_or_else(|| invalid("Invalid dataset name"))?
+    } else {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("Dataset")
+    };
     let mut catalogue = catalogue(settings)?;
     let datasets = catalogue
         .get_mut("datasets")
@@ -224,15 +245,97 @@ fn link_dataset(settings: &AppSettingsStore, body: &[u8]) -> DocumentResult<Valu
         .map_err(storage)?
         .as_nanos();
     let now = rfc3339_now();
-    let dataset = json!({"id": format!("dataset_{}_{nonce}", std::process::id()),
-        "path": path, "name": path.file_name().and_then(|name| name.to_str()).unwrap_or("Dataset"),
+    let mut dataset = json!({"id": format!("dataset_{}_{nonce}", std::process::id()),
+        "path": path, "name": name,
         "linked_at": now, "created_at": now, "config": config, "hash": "", "version": 1,
         "version_status": "unchecked", "last_verified": "", "stats": {}, "group_ids": [],
         "num_samples": null, "num_features": null, "train_samples": null, "test_samples": null,
         "targets": [], "default_target": null, "metadata_columns": [], "signal_types": []});
+    if let Some(inspection) = inspection {
+        apply_inspection(&mut dataset, inspection)?;
+    }
     datasets.push(dataset.clone());
     save_catalogue(settings, &catalogue)?;
     Ok(json!({"success": true, "dataset": dataset}))
+}
+
+fn apply_inspection(dataset: &mut Value, inspection: &Value) -> DocumentResult<()> {
+    let summary = inspection["summary"]
+        .as_object()
+        .ok_or_else(|| invalid("Dataset inspection requires a summary"))?;
+    for key in [
+        "num_samples",
+        "num_features",
+        "train_samples",
+        "test_samples",
+        "n_sources",
+    ] {
+        if !summary.get(key).is_some_and(Value::is_u64) {
+            return Err(invalid(format!("Dataset inspection requires {key}")));
+        }
+        dataset[key] = summary[key].clone();
+    }
+    for key in ["has_targets", "has_metadata", "metadata_columns"] {
+        if let Some(value) = summary.get(key) {
+            dataset[key] = value.clone();
+        }
+    }
+    dataset["is_multi_source"] = json!(summary["n_sources"].as_u64().unwrap_or(0) > 1);
+    dataset["task_type"] = Value::Null;
+    dataset["num_classes"] = Value::Null;
+    if let Some(task) = inspection["target_distribution"]["type"].as_str() {
+        if ["regression", "classification"].contains(&task) {
+            dataset["task_type"] = json!(task);
+        }
+        if task == "classification" {
+            dataset["num_classes"] = inspection["target_distribution"]["classes"]
+                .as_array()
+                .map_or(Value::Null, |classes| json!(classes.len()));
+        }
+    }
+    dataset["last_refreshed"] = json!(rfc3339_now());
+    dataset["status"] = json!("available");
+    Ok(())
+}
+
+/// Publish only a trusted library inspection, never client-supplied counts.
+pub fn link_inspected_dataset(
+    settings: &AppSettingsStore,
+    body: &[u8],
+    inspection: &Value,
+) -> DocumentResult<Value> {
+    let _guard = DOCUMENT_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    link_dataset_with_inspection(settings, body, Some(inspection))
+}
+
+pub fn refresh_inspected_dataset(
+    settings: &AppSettingsStore,
+    id: &str,
+    inspected_record: &Value,
+    inspection: &Value,
+) -> DocumentResult<Value> {
+    let _guard = DOCUMENT_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut catalogue = catalogue(settings)?;
+    let dataset = catalogue["datasets"]
+        .as_array_mut()
+        .and_then(|datasets| datasets.iter_mut().find(|record| record["id"] == id))
+        .ok_or_else(|| (404, "Dataset not found".into()))?;
+    if dataset["path"] != inspected_record["path"]
+        || dataset["config"] != inspected_record["config"]
+    {
+        return Err((
+            409,
+            "Dataset changed during inspection; refresh it again".into(),
+        ));
+    }
+    apply_inspection(dataset, inspection)?;
+    let result = json!({"success":true,"dataset":dataset});
+    save_catalogue(settings, &catalogue)?;
+    Ok(result)
 }
 
 fn dataset_record(

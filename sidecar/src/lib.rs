@@ -26,6 +26,7 @@ use serde_json::{json, Value};
 
 mod archive_v2_prediction;
 pub mod conformal_store;
+mod dataset_import;
 mod dataset_inspection;
 mod dataset_inspection_http;
 mod document_cpython;
@@ -37,6 +38,7 @@ pub mod job_lifecycle;
 pub mod legacy_conversion;
 mod matrix_limits;
 mod native_archive_training;
+mod pipeline_presets;
 mod prediction_upload;
 mod recommended_config;
 mod recommended_config_http;
@@ -715,6 +717,8 @@ impl SidecarState {
         capabilities["features"]["general_prediction_routes"] = json!(true);
         capabilities["features"]["workspace_run_history_route"] = json!(true);
         capabilities["features"]["workspace_run_listing_routes"] = json!(true);
+        capabilities["features"]["dataset_import_routes"] = json!(true);
+        capabilities["features"]["pipeline_preset_routes"] = json!(true);
         capabilities.to_string()
     }
 
@@ -2076,9 +2080,41 @@ fn route_workspace_workflows_without_global_lock(
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
     recommended_config_http::route(state, request)
+        .or_else(|| dataset_import::route(state, request))
         .or_else(|| dataset_inspection_http::route(state, request))
+        .or_else(|| route_pipeline_presets_without_global_lock(state, request))
         .or_else(|| route_workspace_run_history(state, request))
         .or_else(|| run_listing::route(state, request))
+}
+
+fn route_pipeline_presets_without_global_lock(
+    state: &std::sync::Arc<std::sync::Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    if request.path != "/api/pipelines/presets"
+        && !request.path.starts_with("/api/pipelines/from-preset/")
+    {
+        return None;
+    }
+    if request.query.is_some() {
+        return Some(HttpResponse::json(
+            400,
+            json!({"detail":"Preset routes do not accept query fields"}).to_string(),
+        ));
+    }
+    let (settings, host) = {
+        let state = state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        (state.app_settings.clone(), state.scientific_host.clone())
+    };
+    pipeline_presets::route(
+        &settings,
+        host.as_deref(),
+        &request.method,
+        &request.path,
+        &request.body,
+    )
 }
 
 fn route_workspace_run_detail_preselection(
@@ -4098,7 +4134,8 @@ fn route_documents_without_global_lock(
     state: &Arc<Mutex<SidecarState>>,
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
-    if request.query.is_some()
+    if dataset_import::owns_path(&request.path)
+        || request.query.is_some()
         || (!workspace_documents::owns_path(&request.path)
             && !matches!(
                 request.path.as_str(),
@@ -4452,11 +4489,15 @@ fn read_http_request_with_access(
         }
         let mut request = parse_http_request(&bytes[..header_end])?;
         let content_length = request_content_length(&request.headers)?;
-        let prediction_upload = request.method == "POST" && request.path == "/api/predict/file";
+        let multipart_upload = request.method == "POST"
+            && matches!(
+                request.path.as_str(),
+                "/api/predict/file" | "/api/datasets/upload" | "/api/datasets/preview-upload"
+            );
         access
-            .validate(&request.headers, content_length > 0 && !prediction_upload)
+            .validate(&request.headers, content_length > 0 && !multipart_upload)
             .map_err(|(status, code)| RequestReadError::AccessDenied { status, code })?;
-        if prediction_upload {
+        if multipart_upload {
             prediction_upload::boundary(
                 request
                     .headers
@@ -4503,6 +4544,7 @@ fn read_http_request_with_access(
 
 fn http_body_limit(path: &str) -> usize {
     match path {
+        "/api/datasets/upload" | "/api/datasets/preview-upload" => dataset_import::MAX_UPLOAD_BYTES,
         "/api/predict" | "/api/predict/file" => matrix_limits::MAX_PREDICTION_BODY_BYTES,
         ARCHIVE_V2_PREDICTION_ROUTE
         | ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE

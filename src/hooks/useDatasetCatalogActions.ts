@@ -26,8 +26,10 @@ export function useDatasetCatalogActions(groups: DatasetGroup[]) {
   }, [invalidateDatasets]);
 
   const addDataset = useCallback(
-    async (path: string, config?: Partial<DatasetConfig>) => {
-      const result = await linkDataset(path, config);
+    async (path: string, config?: Partial<DatasetConfig>, files?: File[]) => {
+      const result = files?.length
+        ? await linkDataset(path, config, files)
+        : await linkDataset(path, config);
       if (!result.success) {
         throw new Error("Failed to link dataset");
       }

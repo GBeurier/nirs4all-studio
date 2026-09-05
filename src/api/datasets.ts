@@ -50,8 +50,15 @@ export interface DatasetInfo {
 
 export async function linkDataset(
   path: string,
-  config?: Record<string, unknown>
+  config?: Record<string, unknown>,
+  files?: File[],
 ): Promise<{ success: boolean; dataset: DatasetInfo }> {
+  if (files?.length) {
+    const form = new FormData();
+    form.append("metadata", JSON.stringify({ config }));
+    for (const file of files) form.append("files", file);
+    return requestForm("/datasets/upload", form);
+  }
   return api.post("/datasets/link", { path, config });
 }
 
@@ -237,17 +244,15 @@ export async function previewDatasetWithUploads(
     formData.append("files", file);
   }
 
-  // Metadata is sent as a JSON query parameter
   const metadata = JSON.stringify({
     files: fileConfigs,
     parsing,
     max_samples: maxSamples,
   });
 
-  return requestForm(
-    `/datasets/preview-upload?metadata=${encodeURIComponent(metadata)}`,
-    formData,
-  );
+  // Keep metadata in the bounded body, not a potentially oversized URL.
+  formData.append("metadata", metadata);
+  return requestForm("/datasets/preview-upload", formData);
 }
 
 /**

@@ -8,6 +8,7 @@ import type {
 
 type WizardConfigState = Pick<
   WizardState,
+  | "datasetName"
   | "files"
   | "perFileOverrides"
   | "parsing"
@@ -56,6 +57,7 @@ export function buildDatasetTargetSelection(
 
 export function buildDatasetWizardConfig(state: WizardConfigState): Partial<DatasetConfig> {
   const config: Partial<DatasetConfig> = {
+    name: state.datasetName,
     delimiter: state.parsing.delimiter,
     decimal_separator: state.parsing.decimal_separator,
     has_header: state.parsing.has_header,
