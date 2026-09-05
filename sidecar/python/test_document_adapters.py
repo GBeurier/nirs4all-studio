@@ -134,6 +134,15 @@ class DocumentAdapterTests(unittest.TestCase):
                 self.assertEqual(result.stdout, b"")
                 self.assertIn(b"exceeds stdout budget", result.stderr)
 
+    def test_runtime_comparison_uses_metadata_without_http_or_installation(self):
+        config = {"profiles": {"cpu": {"label": "CPU", "packages": {"packaging": {"min": ">=20"}}}}, "optional": {}}
+        compared = self.invoke("config.compare", {"config": config, "profile": "cpu", "include_latest": True})
+        self.assertTrue(compared["ok"], compared)
+        self.assertTrue(compared["value"]["is_aligned"])
+        self.assertFalse(compared["value"]["latest_lookup_performed"])
+        refused = self.invoke("config.compare", {"config": config, "profile": "cpu", "install": True})
+        self.assertFalse(refused["ok"], refused)
+
 
 if __name__ == "__main__":
     unittest.main()

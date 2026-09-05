@@ -312,12 +312,21 @@ fn workspace(settings: &AppSettingsStore) -> DocumentResult<Option<Value>> {
     Ok(Some(document))
 }
 
-fn active_path(settings: &AppSettingsStore) -> DocumentResult<PathBuf> {
+pub fn active_path(settings: &AppSettingsStore) -> DocumentResult<PathBuf> {
     let access = settings
         .active_linked_workspace_access()
         .map_err(storage)?
         .ok_or_else(|| (409, "No workspace selected".into()))?;
     access.path().canonicalize().map_err(storage)
+}
+
+pub fn linked_dataset(settings: &AppSettingsStore, id: &str) -> Result<Value, String> {
+    if !valid_identifier(id) {
+        return Err("Invalid linked dataset identifier".into());
+    }
+    dataset_record(settings, "GET", id, &[])
+        .map(|value| value["dataset"].clone())
+        .map_err(|(_, error)| error)
 }
 
 fn ensure_directory(workspace: &Path, relative: &str) -> DocumentResult<()> {

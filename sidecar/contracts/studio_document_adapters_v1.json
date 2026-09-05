@@ -2,7 +2,7 @@
   "schema": "nirs4all.studio-document-adapters.v1",
   "package": "studio_document_adapters",
   "callable": "studio_document_adapters.api.library_documents.adapt_document",
-  "ownership": "pure-document-translation-only",
+  "ownership": "bounded-library-adapters-no-http-or-scheduler",
   "files": [
     {
       "path": "__init__.py",
@@ -21,8 +21,18 @@
     },
     {
       "path": "api/library_documents.py",
-      "size": 7680,
-      "sha256": "aa0d67344572c9511f3295b07152494983354d07236918ddcadd385ca9c0bd8f"
+      "size": 8025,
+      "sha256": "7ebd059ec61232ceb4670046082afea2ffe11fa7c7b09d0e1ed8d1871a3fc9b0"
+    },
+    {
+      "path": "api/library_predictions.py",
+      "size": 9982,
+      "sha256": "4ff4de3e1ba303ba2296a66a9b9530fda55e0494c21ae0dffaba416bc1423ea2"
+    },
+    {
+      "path": "api/library_runtime_config.py",
+      "size": 3876,
+      "sha256": "a05bede8cad684310f94d051b7d6cb605b44dcfe2d9c24e737e5cc162e6e773f"
     },
     {
       "path": "api/node_registry_loader.py",
@@ -58,6 +68,11 @@
       "path": "api/shared/dataset_config.py",
       "size": 11601,
       "sha256": "2bcf790b807798b572213ece845d1265f254e58e5e698c23ec74e863e30eaaaa"
+    },
+    {
+      "path": "api/shared/json_safe.py",
+      "size": 1023,
+      "sha256": "2bc9a2e76d3d03b9a040d2ef09a59a5eed612027ebde828d3001a31ba5e1a9b7"
     },
     {
       "path": "src/data/nodes/definitions/augmentation/transforms.json",
