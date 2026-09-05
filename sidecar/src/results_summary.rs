@@ -396,7 +396,7 @@ fn sanitize_recursive(value: &mut Value) {
     }
 }
 
-fn augment_dataset_links(datasets: &mut [Value], linked: &[DatasetLinkIdentity]) {
+pub fn augment_dataset_links(datasets: &mut [Value], linked: &[DatasetLinkIdentity]) {
     if linked.is_empty() {
         return;
     }

@@ -103,6 +103,7 @@ with (ROOT / "sidecar.log").open("w") as log:
             assert args.wizard_csv, "Upload witness requires explicit CSV parsing"
             preview = upload_dataset("/api/datasets/preview-upload", {"files": config["files"], "parsing": {"delimiter": ",", "has_header": True}, "max_samples": 5})
             assert preview["success"] and preview["summary"]["num_samples"] == 150 and preview["summary"]["num_features"] == 300, preview
+            assert "test" not in (preview.get("target_distribution_by_partition") or {}), "Train-only preview invented test targets"
             imported_dataset = upload_dataset("/api/datasets/upload", {"config": config})["dataset"]
             assert imported_dataset["num_samples"] == 150 and imported_dataset["num_features"] == 300, imported_dataset
             for file in imported_dataset["config"]["files"]:
@@ -170,6 +171,9 @@ with (ROOT / "sidecar.log").open("w") as log:
         workspace_id = call("/api/workspaces")["active_workspace_id"]
         runs = call("/api/workspaces/" + workspace_id + "/runs")
         summary = call("/api/workspaces/" + workspace_id + "/results/summary")
+        compact = call("/api/workspaces/" + workspace_id + "/results/dataset-scores")
+        assert len(compact["datasets"]) == 1 and compact["datasets"][0]["score_kind"] == "cv", compact
+        assert compact["datasets"][0]["metric"] == "rmse" and compact["datasets"][0]["best_score"] is not None, compact
         assert len(runs["runs"]) == 1, runs
         assert runs["runs"][0]["summary"]["native_score_set_available"] is True
         assert runs["runs"][0]["summary"]["num_predictions"] >= 3

@@ -121,7 +121,7 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
   if (workflow) return workflow;
   const dataset = identifierPath("/datasets/").exec(path);
   if (["GET", "PUT", "DELETE"].includes(method) && dataset && isValidIdentifier(dataset[1]) &&
-      !["link", "preview", "detect-unified", "detect-files", "detect-format", "detect-files-list", "scan-folder", "auto-detect", "validate-files"].includes(dataset[1])) {
+      !["link", "preview", "detect-unified", "detect-files", "detect-format", "detect-files-list", "scan-folder", "auto-detect", "validate-files", "synthetic-presets", "generate-synthetic"].includes(dataset[1])) {
     return { name: "dataset-catalogue", capability: "dataset_catalogue_routes" };
   }
   const pipeline = identifierPath("/pipelines/").exec(path);
@@ -140,6 +140,9 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
     return { name: "linked-workspace-state", capability: "linked_workspace_state_routes" };
   }
   if (method === "GET") {
+    if (path === "/datasets/synthetic-presets") {
+      return { name: "dataset-synthetic-presets", capability: "dataset_synthetic_preset_routes" };
+    }
     if (identifierPath("/workspaces/", "/archive-v2").test(path)) {
       return { name: "archive-v2-catalogue", capability: "native_archive_v2_prediction" };
     }
@@ -150,6 +153,9 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
     }
     if (identifierPath("/workspaces/", "/results/summary").test(path)) {
       return { name: "workspace-results-summary", capability: "workspace_store_v5_results_summary_route" };
+    }
+    if (identifierPath("/workspaces/", "/results/dataset-scores").test(path)) {
+      return { name: "workspace-dataset-scores", capability: "dataset_score_routes" };
     }
     if (identifierPath("/training/").test(path) && !path.endsWith("/start") && !path.endsWith("/jobs")) {
       return { name: "job-status", capability: "native_job_status_routes" };

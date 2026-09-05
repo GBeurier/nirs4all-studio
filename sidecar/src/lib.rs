@@ -29,6 +29,8 @@ pub mod conformal_store;
 mod dataset_import;
 mod dataset_inspection;
 mod dataset_inspection_http;
+mod dataset_scores;
+mod dataset_synthesis;
 mod document_cpython;
 pub mod execution_job_records;
 mod general_prediction;
@@ -719,6 +721,8 @@ impl SidecarState {
         capabilities["features"]["workspace_run_listing_routes"] = json!(true);
         capabilities["features"]["dataset_import_routes"] = json!(true);
         capabilities["features"]["pipeline_preset_routes"] = json!(true);
+        capabilities["features"]["dataset_score_routes"] = json!(true);
+        capabilities["features"]["dataset_synthetic_preset_routes"] = json!(true);
         capabilities.to_string()
     }
 
@@ -2080,6 +2084,8 @@ fn route_workspace_workflows_without_global_lock(
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
     recommended_config_http::route(state, request)
+        .or_else(|| dataset_synthesis::route(request))
+        .or_else(|| dataset_scores::route(state, request))
         .or_else(|| dataset_import::route(state, request))
         .or_else(|| dataset_inspection_http::route(state, request))
         .or_else(|| route_pipeline_presets_without_global_lock(state, request))
@@ -4135,6 +4141,7 @@ fn route_documents_without_global_lock(
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
     if dataset_import::owns_path(&request.path)
+        || dataset_synthesis::owns_path(&request.path)
         || request.query.is_some()
         || (!workspace_documents::owns_path(&request.path)
             && !matches!(
