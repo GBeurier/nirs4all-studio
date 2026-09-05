@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "crate": "dag-ml-data",
+  "package_version": "0.2.11",
+  "headers": [
+    {
+      "path": "crates/dag-ml-data-capi/include/dag_ml_data.h",
+      "sha256": "ca5d34264977867388d098cbf3af7381072a5fbd6affad8adbcee23ebb4a9b4a"
+    }
+  ]
+}

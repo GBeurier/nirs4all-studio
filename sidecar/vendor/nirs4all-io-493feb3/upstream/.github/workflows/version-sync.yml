@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# Fail the PR if any downstream binding manifest drifts from the canonical
+# workspace version in the root Cargo.toml ([workspace.package] version):
+#   - Cargo.toml [workspace.dependencies] nirs4all-io-core / nirs4all-io
+#                                         (internal dep version, for crates.io)
+#   - bindings/python/Cargo.toml          (Cargo SemVer)
+#   - bindings/wasm/Cargo.toml            (Cargo SemVer)
+#   - bindings/r/configure                (vendored Cargo workspace template)
+#   - bindings/r/Cargo.lock.rust          (vendored workspace dependency lock)
+#   - src/nirs4all_io/_version.py         (PEP 440)
+#   - bindings/r/DESCRIPTION              (R version spelling)
+#
+# The npm package.json (bindings/wasm/pkg/) is a gitignored wasm-pack build
+# artifact, NOT a sync target — release-npm.yml injects the SoT version into the
+# generated pkg-node/package.json at build time.
+#
+# bindings/python/pyproject.toml is dynamic-from-Cargo (maturin reads
+# bindings/python/Cargo.toml) so it is NOT a sync target.
+#
+# Local equivalent:  scripts/bump_version.sh --check
+#
+# Bumping the version on a working branch:
+#   scripts/bump_version.sh --bump X.Y.Z[-pre]   # rewrites the SoT
+#   scripts/bump_version.sh                       # syncs every binding manifest
+
+name: version-sync
+
+on:
+  push:
+    branches: [main, feat/rust-rewrite-phase2, 'rc/**']
+  pull_request:
+    branches: [main, feat/rust-rewrite-phase2, 'rc/**']
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: manifest version consistency
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify scripts/bump_version.sh exists and is executable
+        run: |
+          if [ ! -x scripts/bump_version.sh ]; then
+            echo "ERROR: scripts/bump_version.sh missing or not executable" >&2
+            exit 1
+          fi
+
+      - name: Check every manifest is in sync with the Cargo workspace version
+        run: scripts/bump_version.sh --check

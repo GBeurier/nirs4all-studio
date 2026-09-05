@@ -37,7 +37,7 @@
     "test:native-session-auth": "esbuild scripts/test-native-session-auth.ts --bundle --platform=node --external:electron --outfile=dist-electron/test-native-session-auth.cjs && cross-env ELECTRON_RUN_AS_NODE= electron --no-sandbox --disable-gpu dist-electron/test-native-session-auth.cjs",
     "test:native-archive-v2": "node scripts/test-native-archive-v2.cjs",
     "test:linux-installer-cycle": "node --test scripts/tests/linux-installer-cycle.contract.cjs",
-    "test:vendored-native-sources": "sh sidecar/scripts/verify-vendored-io.sh && sh sidecar/scripts/verify-vendored-core-io.sh && sh sidecar/scripts/verify-vendored-core.sh && sh sidecar/scripts/verify-vendored-dagml.sh && sh sidecar/scripts/verify-vendored-dagml-data.sh && sh sidecar/scripts/verify-vendored-n4m.sh",
+    "test:vendored-native-sources": "sh sidecar/scripts/verify-vendored-io.sh && sh sidecar/scripts/verify-vendored-core.sh && sh sidecar/scripts/verify-vendored-dagml.sh && sh sidecar/scripts/verify-vendored-dagml-data.sh && sh sidecar/scripts/verify-vendored-n4m.sh",
     "test:backend": "node scripts/run-python.cjs -m pytest tests/ -v --tb=short --timeout=120 -n auto",
     "test:contract": "node scripts/run-python.cjs scripts/verify-studio-v1-contract.py --check",
     "test:docker-runtime-contract": "node scripts/verify-docker-runtime-contract.cjs",

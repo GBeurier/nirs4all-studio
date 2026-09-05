@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# EPIC 10.4 / M4 — cross-CLI conformance for the dag-ml-data emit.
+#
+# Builds the `nirs4all-io-dagml` emit crate and checks that an
+# io-emitted CoordinatorDataPlanEnvelope is accepted by BOTH ecosystem CLIs
+# (dag-ml-data-cli validate-envelope + dag-ml-cli validate-data-binding). Needs
+# the sibling repos; CI clones them and requires the harness to use the local
+# checkout as a Cargo patch instead of the published dag-ml-data crate.
+name: dag-ml-data conformance
+
+on:
+  push:
+    branches: [main, 'rc/**']
+  pull_request:
+    branches: [main, 'rc/**']
+  workflow_dispatch: {}
+
+jobs:
+  cross-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Fetch sibling repos
+        run: |
+          git clone --filter=blob:none --depth 1 https://github.com/GBeurier/dag-ml-data.git ../dag-ml-data
+          git clone --filter=blob:none --depth 1 https://github.com/GBeurier/dag-ml.git ../dag-ml
+      - name: Cross-CLI conformance
+        run: bash scripts/dag_ml_data_conformance.sh

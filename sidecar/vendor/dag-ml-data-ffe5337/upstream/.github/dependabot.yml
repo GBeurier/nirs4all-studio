@@ -1,0 +1,62 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      rust-runtime:
+        patterns:
+          - "*"
+    ignore:
+      # clap, pyo3 and indexmap are pinned to exact versions by
+      # scripts/validate_release_metadata.py; any bump fails the Release
+      # metadata gate, so never propose one.
+      - dependency-name: "clap"
+      - dependency-name: "pyo3"
+      - dependency-name: "indexmap"
+      # MSRV is held at 1.85. Minor/major bumps can raise the supported Rust
+      # floor, so take patch-level (security) updates only for everything else.
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+
+  # The PyO3 wheel crate is excluded from the cargo workspace, so the root
+  # cargo watcher above does not see its Rust dependencies (pyo3, serde).
+  # Watch its standalone manifest directly so security/version bumps still land.
+  - package-ecosystem: "cargo"
+    directory: "/crates/dag-ml-data-py"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      rust-runtime:
+        patterns:
+          - "*"
+    ignore:
+      # clap, pyo3 and indexmap are pinned to exact versions by
+      # scripts/validate_release_metadata.py; any bump fails the Release
+      # metadata gate, so never propose one.
+      - dependency-name: "clap"
+      - dependency-name: "pyo3"
+      - dependency-name: "indexmap"
+      # MSRV is held at 1.85. Minor/major bumps can raise the supported Rust
+      # floor, so take patch-level (security) updates only for everything else.
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "pip"
+    directory: "/crates/dag-ml-data-py"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

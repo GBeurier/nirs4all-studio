@@ -1,0 +1,13 @@
+Package: dagmldata
+Title: R Provider Bindings for dag-ml-data
+Version: 0.2.11
+Authors@R: person("G.", "Beurier", email = "beurier@cirad.fr", role = c("aut", "cre"))
+Description: Thin extendr bindings exposing the dag-ml-data in-memory provider
+    (materialize, view, identity, target, feature, collation) to R as JSON in,
+    JSON out. NIRS, ML and scheduling logic live in dag-ml-data / dag-ml.
+License: AGPL-3 + file LICENSE
+Encoding: UTF-8
+SystemRequirements: Cargo (Rust's package manager), rustc
+Config/rextendr/version: 0.5.0
+RoxygenNote: 7.3.2
+Suggests: jsonlite

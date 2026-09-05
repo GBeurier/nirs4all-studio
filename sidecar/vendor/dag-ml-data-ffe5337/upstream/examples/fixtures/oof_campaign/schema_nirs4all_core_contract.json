@@ -1,0 +1,82 @@
+{
+  "dataset_id": "nirs4all-core-contract",
+  "sample_ids": ["S001", "S002", "S003", "S004", "S005", "S006"],
+  "sources": [
+    {
+      "id": "nir",
+      "name": "NIR spectrum",
+      "type_id": "dense_signal",
+      "modality": "spectroscopy",
+      "native_representation": {
+        "id": "signal_1d",
+        "type_id": "dense_signal",
+        "rank": 2,
+        "axes": [
+          { "name": "sample", "kind": "sample", "unit": null, "size": 6, "variable": false },
+          { "name": "wavelength", "kind": "wavelength", "unit": "nm", "size": 4, "variable": false, "coordinate": { "dtype": "numeric", "ordered": true, "values": { "kind": "explicit", "values": [900, 1000, 1100, 1200] } } }
+        ],
+        "container": "ndarray",
+        "dtype": "float32",
+        "sparse": false,
+        "ragged": false,
+        "signal_type": "reflectance"
+      },
+      "sample_key": "sample_id",
+      "granularity": "per_sample_repeated",
+      "schema": {},
+      "tags": { "spectroscopy": true },
+      "shape_contract": {
+        "rank": 2,
+        "axis_sizes": {
+          "wavelength": { "exact": 4 }
+        },
+        "allow_ragged": false
+      }
+    }
+  ],
+  "targets": {
+    "y": {
+      "id": "tabular_numeric",
+      "type_id": "table",
+      "rank": 2,
+      "axes": [
+        { "name": "sample", "kind": "sample", "unit": null, "size": 6, "variable": false },
+        { "name": "target", "kind": "target", "unit": null, "size": 1, "variable": false, "coordinate": { "dtype": "categorical", "ordered": false, "values": { "kind": "explicit", "values": ["y"] } } }
+      ],
+      "container": "dataframe",
+      "dtype": "float32",
+      "sparse": false,
+      "ragged": false
+    }
+  },
+  "metadata": {},
+  "metadata_schema": {
+    "fields": {
+      "cultivar": {
+        "kind": "categorical",
+        "required": true,
+        "allowed_values": ["A", "B"]
+      },
+      "harvest_date": {
+        "kind": "date",
+        "required": false
+      }
+    }
+  },
+  "groups": [
+    {
+      "id": "rep.group",
+      "kind": "repetition_group",
+      "column": "sample_id",
+      "source_id": "nir",
+      "strict": true
+    }
+  ],
+  "folds": [
+    {
+      "id": "cv.repetition.safe",
+      "group_id": "rep.group",
+      "split_column": "fold_id"
+    }
+  ]
+}

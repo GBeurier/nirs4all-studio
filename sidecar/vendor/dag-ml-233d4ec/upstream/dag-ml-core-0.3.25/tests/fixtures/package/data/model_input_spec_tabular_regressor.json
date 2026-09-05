@@ -1,0 +1,36 @@
+{
+  "default_fusion": {
+    "adapter_id": null,
+    "alignment": "sample_id",
+    "mode": "concatenate_features",
+    "params": {
+      "namespace_columns": true
+    },
+    "representation_plan": {
+      "kind": "stack_padded_masked",
+      "output_unit_level": "observation",
+      "cardinality": "bounded_many",
+      "expected_cardinality": 2,
+      "missing_source_policy": "mask",
+      "requires_missing_masks": true,
+      "component_source_ids": ["nir", "chem"]
+    }
+  },
+  "metadata": {
+    "example": "tabular regressor consuming fused numeric features"
+  },
+  "ports": [
+    {
+      "accepted_representations": ["tabular_numeric"],
+      "accepted_types": ["table"],
+      "metadata": {
+        "semantic_axes": ["sample", "feature"]
+      },
+      "multi_source": true,
+      "name": "x",
+      "optional": false,
+      "rank": 2
+    }
+  ],
+  "schema_version": 1
+}

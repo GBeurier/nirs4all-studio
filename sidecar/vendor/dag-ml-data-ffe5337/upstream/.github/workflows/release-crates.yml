@@ -1,0 +1,56 @@
+name: release-crates
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run cargo publish --dry-run only"
+        required: false
+        default: "true"
+  push:
+    tags:
+      - "v[0-9]*.[0-9]*.[0-9]*"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-crates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Validate release metadata
+        run: python scripts/validate_release_metadata.py
+
+      - name: Validate publish plan
+        run: python scripts/release/check_publish_plan.py
+
+      - name: Publish workspace crates to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run != 'false' && '1' || '' }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            args+=(--tag "$GITHUB_REF_NAME")
+          fi
+          if [[ -n "${DRY_RUN}" ]]; then
+            args+=(--dry-run)
+          elif [[ "${GITHUB_REF_TYPE:-}" != "tag" ]]; then
+            echo "::error::non-dry-run publishing must run from a release tag"
+            exit 1
+          fi
+          python scripts/release/publish_crates.py "${args[@]}"

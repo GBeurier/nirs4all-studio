@@ -1,0 +1,106 @@
+name: release-npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to npm (true) or dry-run only (false)"
+        type: boolean
+        default: false
+  push:
+    tags: ["v[0-9]*.[0-9]*.[0-9]*"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
+        with:
+          version: "v0.15.0"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Build the WASM module
+        run: |
+          set -euo pipefail
+          out_dir="$PWD/target/wasm-web/dag-ml-data-wasm"
+          wasm-pack build crates/dag-ml-data-wasm --target web --out-dir "$out_dir" --release
+
+      - name: Pin npm metadata
+        working-directory: target/wasm-web/dag-ml-data-wasm
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            p.name = "dag-ml-data-wasm";
+            p.repository = { type: "git", url: "git+https://github.com/GBeurier/dag-ml-data.git", directory: "crates/dag-ml-data-wasm" };
+            p.publishConfig = { access: "public", provenance: true };
+            fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+          '
+
+      - name: Smoke-test web WASM bindings
+        run: node scripts/smoke_wasm_web_bindings.mjs target/wasm-web/dag-ml-data-wasm
+
+      - name: Validate npm tarball metadata
+        run: node scripts/smoke_wasm_tarball_metadata.mjs target/wasm-web/dag-ml-data-wasm
+
+      - name: Validate tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: target/wasm-web/dag-ml-data-wasm
+        run: |
+          set -euo pipefail
+          pkg_ver=$(node -p "require('./package.json').version")
+          tag_ver="${GITHUB_REF_NAME#v}"
+          tag_ver="${tag_ver%%-rc*}"
+          echo "package.json=$pkg_ver tag=$GITHUB_REF_NAME"
+          if [ "$pkg_ver" != "$tag_ver" ]; then
+            echo "ERROR: package.json version ($pkg_ver) != tag (${GITHUB_REF_NAME#v})."
+            exit 1
+          fi
+
+      - name: Decide publish
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [[ "${GITHUB_REF_NAME}" == v* ]] && [[ "${GITHUB_REF_NAME}" != *-* ]]; then
+            echo "do=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.publish }}" = "true" ]; then
+            echo "do=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "do=false" >> "$GITHUB_OUTPUT"
+            echo "Dry-run only (no publish)."
+          fi
+
+      - name: Publish to npm
+        if: steps.gate.outputs.do == 'true'
+        working-directory: target/wasm-web/dag-ml-data-wasm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          pkg_name=$(node -p "require('./package.json').name")
+          pkg_ver=$(node -p "require('./package.json').version")
+          if npm view "${pkg_name}@${pkg_ver}" version >/dev/null 2>&1; then
+            echo "${pkg_name}@${pkg_ver} is already published; skipping."
+          else
+            npm publish --access public
+          fi

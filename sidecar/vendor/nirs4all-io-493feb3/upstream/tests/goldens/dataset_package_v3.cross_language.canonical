@@ -1,0 +1,142 @@
+{
+  "aggregate": null,
+  "fold_provenance": [
+    {
+      "train_observation_ids": [
+        "O1"
+      ],
+      "validation_observation_ids": [
+        "O2"
+      ]
+    }
+  ],
+  "folds": [
+    [
+      [
+        0
+      ],
+      [
+        1
+      ]
+    ]
+  ],
+  "identity": {
+    "provenance": {
+      "group_id": "batch",
+      "observation_id": "observation_id",
+      "repetition_id": "rep",
+      "sample_id": "sample_id",
+      "source_ids": [
+        "spectra"
+      ]
+    },
+    "row_position_fallback": {
+      "fingerprint": "0fb08d7ff504b5241c2c9e668568e49a5f429d7d8642801f46056b5eba89c946",
+      "partitions": [
+        "train"
+      ],
+      "reason": "stable sample-id key 'sample_id' is aligned in every partition",
+      "used": false
+    }
+  },
+  "manifest": {
+    "entries": [
+      {
+        "axes": [
+          "sample",
+          "wavelength"
+        ],
+        "byte_len": 38,
+        "codec": null,
+        "content_hash": "ff3c34858383e3403d5218a4c6e8e1e77739f26bbe78afa4960d82bc420bb205",
+        "dtype": "float32",
+        "id": "train/x0",
+        "partition": "train",
+        "payload_kind": "feature_matrix",
+        "representation_id": "signal_1d",
+        "role": "features",
+        "shape": [
+          2,
+          3
+        ],
+        "storage": "inline",
+        "uri": null
+      },
+      {
+        "axes": [
+          "sample"
+        ],
+        "byte_len": 19,
+        "codec": null,
+        "content_hash": "a27c7f5d1f23900be61fce4440ea6b6da306d4cfc21f2ac4ae490ef3d51f5b5b",
+        "dtype": "float32",
+        "id": "train/y",
+        "partition": "train",
+        "payload_kind": "target_table",
+        "representation_id": "target_numeric",
+        "role": "targets",
+        "shape": [
+          2,
+          1
+        ],
+        "storage": "inline",
+        "uri": null
+      },
+      {
+        "axes": [
+          "sample",
+          "field"
+        ],
+        "byte_len": 502,
+        "codec": null,
+        "content_hash": "f321dcc1dd28d901e6b61c87ac4cd8e050d1fc4c48f7690b2f35a22b6fa4c3d4",
+        "dtype": "mixed",
+        "id": "train/metadata",
+        "partition": "train",
+        "payload_kind": "metadata_table",
+        "representation_id": "sample_metadata",
+        "role": "metadata",
+        "shape": [
+          2,
+          4
+        ],
+        "storage": "inline",
+        "uri": null
+      },
+      {
+        "axes": [
+          "sample"
+        ],
+        "byte_len": 10,
+        "codec": null,
+        "content_hash": "37c976aa678a85fc8158180ee15c30c72595f810c3191969c325f924b45a8a33",
+        "dtype": "float32",
+        "id": "train/weights",
+        "partition": "train",
+        "payload_kind": "weights",
+        "representation_id": null,
+        "role": "weights",
+        "shape": [
+          2
+        ],
+        "storage": "inline",
+        "uri": null
+      }
+    ],
+    "root": "41e3deee56d5caa92557f23c90107cf64025c0fe41824a4608f058cea8d5e275"
+  },
+  "n_sources": 1,
+  "name": "demo",
+  "partitions": {
+    "train": {
+      "n_samples": 2,
+      "source_ids": [
+        "spectra"
+      ]
+    }
+  },
+  "repetition": null,
+  "schema_version": 3,
+  "signal_type": "absorbance",
+  "task_type": "regression"
+}

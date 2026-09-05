@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+name: ABI Surface
+
+on:
+  push:
+    branches: [main, 'rc/**']
+  pull_request:
+    branches: [main, 'rc/**']
+  workflow_dispatch: {}
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build -p nirs4all-io-capi --release
+      - name: Extract exported symbols
+        run: |
+          LIB=$(find target/release -maxdepth 1 -name 'libnirs4all_io_capi.so' | head -n 1)
+          echo "Inspecting $LIB"
+          # Strip any version tag (@@N4IO_<n>); the snapshot tracks bare names.
+          nm -D --defined-only "$LIB" \
+            | awk '{print $3}' \
+            | grep '^n4io_' \
+            | sed 's/@@.*//' \
+            | sort -u > /tmp/exported.txt
+          echo "----- exported -----"; cat /tmp/exported.txt
+          echo "----- expected -----"; cat crates/nirs4all-io-capi/abi/expected_symbols_linux.txt
+          diff -u crates/nirs4all-io-capi/abi/expected_symbols_linux.txt /tmp/exported.txt
+      - name: Assert only n4io_ symbols are exported
+        run: |
+          LIB=$(find target/release -maxdepth 1 -name 'libnirs4all_io_capi.so' | head -n 1)
+          nm -D --defined-only "$LIB" | awk '{print $3}' | sed 's/@@.*//' \
+            | grep -vE '^$|^n4io_|^N4IO_[0-9]+$' > /tmp/forbidden.txt || true
+          if [ -s /tmp/forbidden.txt ]; then
+            echo "Forbidden non-n4io_ symbol exported:"; cat /tmp/forbidden.txt; exit 1
+          fi
+      - name: Runtime-dependency audit (forbidden libs)
+        run: |
+          LIB=$(find target/release -maxdepth 1 -name 'libnirs4all_io_capi.so' | head -n 1)
+          deps=$(ldd "$LIB" 2>&1); echo "$deps"
+          # The C ABI must not drag in Python/R/heavy numeric runtimes.
+          if echo "$deps" | grep -iE 'libpython|libR\.|librcpp|libopenblas|libmkl|libboost'; then
+            echo "ERROR: capi links a forbidden runtime dependency"; exit 1
+          fi
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build -p nirs4all-io-capi --release
+      - name: Extract exported symbols
+        run: |
+          LIB=$(find target/release -maxdepth 1 -name 'libnirs4all_io_capi.dylib' | head -n 1)
+          echo "Inspecting $LIB"
+          nm -gU "$LIB" | awk '{print $3}' | sed 's/^_//' | grep '^n4io_' | sort -u > /tmp/exported.txt
+          cat /tmp/exported.txt
+          diff -u crates/nirs4all-io-capi/abi/expected_symbols_macos.txt /tmp/exported.txt
+      - name: Assert only n4io_ symbols are exported
+        run: |
+          LIB=$(find target/release -maxdepth 1 -name 'libnirs4all_io_capi.dylib' | head -n 1)
+          nm -gU "$LIB" | awk '{print $3}' | sed 's/^_//' \
+            | grep -vE '^$|^n4io_' > /tmp/forbidden.txt || true
+          if [ -s /tmp/forbidden.txt ]; then
+            echo "Forbidden non-n4io_ symbol exported:"; cat /tmp/forbidden.txt; exit 1
+          fi
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build -p nirs4all-io-capi --release
+      - name: Extract exported symbols
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem target/release -Filter "nirs4all_io_capi.dll" | Select-Object -First 1
+          if (-not $dll) { Write-Error "nirs4all_io_capi.dll not built"; exit 1 }
+          $dumpbin = (Get-Command dumpbin.exe -ErrorAction SilentlyContinue)?.Source
+          if (-not $dumpbin) {
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            $vsRoot = & $vswhere -products * -property installationPath -latest
+            $found = Get-ChildItem -Path (Join-Path $vsRoot "VC\Tools\MSVC") -Filter dumpbin.exe -Recurse |
+              Where-Object { $_.FullName -like '*Hostx64*x64*' } | Select-Object -First 1
+            $dumpbin = $found.FullName
+          }
+          & $dumpbin /EXPORTS $dll.FullName |
+            Select-String -Pattern '\s(n4io_\w+)\s*$' |
+            ForEach-Object { $_.Matches[0].Groups[1].Value } |
+            Sort-Object -Unique | Out-File -Encoding ascii exported.txt
+          Get-Content exported.txt
+          $expected = Get-Content crates/nirs4all-io-capi/abi/expected_symbols_windows.txt
+          $got = Get-Content exported.txt
+          if (Compare-Object $expected $got) {
+            Write-Error "Windows ABI surface drifted"; exit 1
+          }

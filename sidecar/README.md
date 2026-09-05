@@ -330,37 +330,28 @@ until reliable process-tree termination is qualified. Missing, changed,
 timed-out, malformed, or oversized hosts likewise fail closed. There is no
 legacy or FastAPI fallback.
 
-The selected IO commit `f41967d53b355b10951b5658af1dddb6bd926e3d`
-is not currently reachable from its configured upstream remote. Studio therefore
-contains a transient complete, immutable source snapshot, including every
-crate, test, fixture, binding, script, document, asset, and upstream licence and
-notice file under `sidecar/vendor/nirs4all-io-f419/`. Run
+Studio retains a complete immutable source snapshot of the published IO 0.1.18
+commit `493feb3b9dc5b856c4837afda14292358a8a3184`, including every crate,
+test, fixture, binding, script, document, asset, and upstream licence and notice
+file under `sidecar/vendor/nirs4all-io-493feb3/`. Run
 `sidecar/scripts/verify-vendored-io.sh` to reject missing, added, or changed
-files, and `sidecar/scripts/test-vendored-io.sh` for the locked offline Rust
-gate. This snapshot must be replaced by an exact published package or
-remotely fetchable git revision before LOCK-RELEASE; local/sibling worktree paths
-are forbidden.
+files, and `sidecar/scripts/test-vendored-io.sh` for the locked offline Rust gate.
+The runtime uses the exact published crates rather than sibling or vendored path
+dependencies.
 
-Core 0.3.25 requires the selected but not-yet-published DagML 0.3.23 and n4m
-0.1.4 crates. The selected final DagML release commit is
-`b08c62638829e0bcab741e66d44a3db66459e5a8`; its `dag-ml` and `dag-ml-core`
-crate trees exactly match the qualified package payload produced at
-`dafb8b6fb98f9d380d30559a3f4b868c91e5b5c4` and retained under
-`sidecar/vendor/dag-ml-dafb8b6/`. This local path is an explicit registry hold:
-remove it only after the exact DagML 0.3.23 packages are published. Studio also
-carries Core commit
-`6b25b63bb09adfe3c4dae8ffacc90d09a1a81e16` under
-`sidecar/vendor/nirs4all-core-6b25b63/`, and the exact n4m binding from Methods commit
-`48ad1e5a50844f68c2b99e93b02ad6a3b491c07b` under
-`sidecar/vendor/n4m-48ad1e5/`. Core's unpublished `dag-ml-data` 0.2.10
-dependency is pinned to commit `1f60b92` under
-`sidecar/vendor/dag-ml-data-1f60/`; Core's two IO surfaces are pinned to
-`54fa4f5` under `sidecar/vendor/nirs4all-io-54fa/`. Only their qualified Cargo source payloads are
-included; unrelated workspace crates, native libraries, and generated bindings
-are excluded. The vendored-source verification scripts check their inventories,
-package digests, and exact repository/crate trees. All path patches must be
-replaced by published crate identities as soon as the release train is present
-on the registry.
+The release evidence also retains the complete Core 0.3.29 source at commit
+`47294718edf8ad2a170158e339adda39e3e4fa2f` under
+`sidecar/vendor/nirs4all-core-4729471/`, the published DagML 0.3.25 package
+payloads from commit `233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27` under
+`sidecar/vendor/dag-ml-233d4ec/`, the complete dag-ml-data 0.2.11 source at
+commit `ffe533704a1a0b0c7bb7d97a997caade3f4ba36e` under
+`sidecar/vendor/dag-ml-data-ffe5337/`, and the published n4m 0.1.4 payload from
+Methods commit `48ad1e5a50844f68c2b99e93b02ad6a3b491c07b` under
+`sidecar/vendor/n4m-48ad1e5/`. The vendored-source verification scripts reject
+inventory drift and check exact repository trees, crate trees, package versions,
+and registry checksums. These directories are immutable release evidence only;
+Cargo resolves the published train (DagML 0.3.25, Data 0.2.11, IO 0.1.18,
+Methods/n4m 0.1.4, and Core 0.3.29) from the registry.
 
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the

@@ -1,0 +1,17 @@
+{
+  "ports": [
+    {
+      "name": "X",
+      "accepted_representations": ["tabular_numeric"],
+      "accepted_types": ["table"],
+      "rank": 2,
+      "multi_source": true,
+      "optional": false
+    }
+  ],
+  "default_fusion": {
+    "mode": "concat_features",
+    "alignment": "left",
+    "allow_lossy_adapters": false
+  }
+}

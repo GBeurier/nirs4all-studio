@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Build outputs
+docs/_build/
+
+# Rust
+/target/
+# Nested cargo target dirs (e.g. the workspace-excluded crates/nirs4all-io-dagml).
+**/target/
+**/*.rs.bk
+Cargo.lock.orig
+
+# Native binding build artifacts (R MEX/.Call compiles in src/; wasm pkg self-ignores)
+bindings/r/src/*.o
+bindings/r/src/*.so
+bindings/matlab/*.mex
+bindings/matlab/*.o
+# Python pyo3 extension built in-place by `maturin develop` (editable install).
+bindings/python/python/nirs4all_io/_native*.so
+bindings/python/python/nirs4all_io/_native*.pyd
+
+# OS
+.DS_Store
+Thumbs.db
+
+# --- untracked build/process docs (kept locally, 2026-06-16) ---
+docs/dev/PORT_BLUEPRINT.md
+/docs/_private/
+
+# coverage artefact
+coverage.xml
+
+# codegraph local index + daemon (per-developer, never committed)
+.codegraph/

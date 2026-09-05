@@ -1,0 +1,4 @@
+# Build artifacts of this standalone, workspace-excluded crate. Its Cargo.lock
+# is deliberately tracked: the wheel is a released binary artifact, and CI
+# audits that exact dependency graph independently from the root workspace.
+/target/

@@ -1,0 +1,19 @@
+{
+  "adapters": [
+    {
+      "id": "spectra.flatten",
+      "version": "0.1.0",
+      "input_type": "dense_signal",
+      "input_representation": "signal_1d",
+      "output_type": "table",
+      "output_representation": "tabular_numeric",
+      "cost": 1,
+      "lossy": false,
+      "supervised": false,
+      "stateful": false,
+      "deterministic": true,
+      "fit_scope": "stateless",
+      "params": {}
+    }
+  ]
+}

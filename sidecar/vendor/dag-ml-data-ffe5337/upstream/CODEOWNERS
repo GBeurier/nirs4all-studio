@@ -1,0 +1,6 @@
+* @GBeurier
+
+/docs/contracts/ @GBeurier
+/docs/adr/ @GBeurier
+/crates/dag-ml-data-capi/include/ @GBeurier
+/.github/workflows/ @GBeurier

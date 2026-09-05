@@ -308,9 +308,9 @@ node scripts/bake-python-plugin-runtime.cjs
 This produces `backend-dist/` with `python-runtime/` and the strict
 `PLUGIN_RUNTIME_READY.json`. Pass `--plugin-wheel <path>` and
 `--tools-wheel <path>` for an offline build; both wheels must match their
-pinned SHA-256 identities. The unpublished qualified `dag-ml 0.3.23` platform
-wheel is still a separate prerequisite of the selected `nirs4all` wheel; the
-bake fails closed when that artifact is unavailable.
+pinned SHA-256 identities. Every transitive scientific dependency comes from
+the attested `nirs4all` wheel closure; the bake fails closed if that published
+closure is incomplete or differs from its recorded hashes.
 
 ## CI/CD Pipeline
 

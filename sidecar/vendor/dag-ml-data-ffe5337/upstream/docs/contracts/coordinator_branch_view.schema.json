@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GBeurier/dag-ml-data/schemas/coordinator_branch_view.v1.schema.json",
+  "title": "DAG-ML Data Coordinator Branch View v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["view_id", "branch_id", "mode", "selector"],
+  "properties": {
+    "view_id": {
+      "$ref": "#/$defs/non_empty_id"
+    },
+    "branch_id": {
+      "$ref": "#/$defs/non_empty_id"
+    },
+    "mode": {
+      "$ref": "#/$defs/branch_view_mode"
+    },
+    "selector": {
+      "$ref": "#/$defs/branch_view_selector"
+    },
+    "allow_overlap": {
+      "type": "boolean",
+      "default": false
+    },
+    "metadata": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/non_empty_id"
+      }
+    }
+  },
+  "$defs": {
+    "non_empty_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "branch_view_mode": {
+      "enum": ["separation", "by_source", "by_metadata", "by_tag", "by_filter"]
+    },
+    "branch_view_selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/non_empty_id"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/non_empty_id"
+          },
+          "minProperties": 1
+        },
+        "tags": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/non_empty_id"
+          }
+        },
+        "filter": {
+          "not": { "type": "null" }
+        }
+      },
+      "anyOf": [
+        { "required": ["source_ids"] },
+        { "required": ["metadata"] },
+        { "required": ["tags"] },
+        { "required": ["filter"] }
+      ]
+    }
+  }
+}

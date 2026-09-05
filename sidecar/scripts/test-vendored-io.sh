@@ -2,7 +2,7 @@
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-manifest="$script_dir/../vendor/nirs4all-io-f419/upstream/Cargo.toml"
+manifest="$script_dir/../vendor/nirs4all-io-493feb3/upstream/Cargo.toml"
 target_dir=$(mktemp -d)
 trap 'rm -rf "$target_dir"' EXIT HUP INT TERM
 

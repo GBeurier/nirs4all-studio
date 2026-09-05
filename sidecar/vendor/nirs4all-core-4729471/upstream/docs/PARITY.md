@@ -1,0 +1,218 @@
+# Parity Strategy
+
+`nirs4all-core` needs parity gates because it is intended to become the portable
+core behind multiple host-language APIs.
+
+## Tiers
+
+1. **Upstream native vs upstream binding**: each upstream project proves its own
+   binding parity first, especially `nirs4all-methods`.
+2. **nirs4all-core native vs binding**: portable aggregate pipelines produce
+   identical results across Rust, Python, R, MATLAB/Octave, and WASM within
+   declared tolerance.
+3. **nirs4all-core vs full Python nirs4all**: equivalent pipelines match the
+   current Python library before this binding can replace any core path.
+
+## Static surface parity (no runtime required)
+
+### Portable execution input and score contract
+
+The bounded KS/SNV/SG/PLS runner accepts one optional splitter anywhere before
+the final PLS model, including after SNV/SG preprocessing declarations. It
+preserves the relative transform order and applies transforms separately to the
+resulting train and validation rows. Ambiguous steps,
+duplicate splitters and steps after a model are refused before runtime loading.
+Integer parameters accept finite integral numbers or numeric strings in the
+signed 32-bit range; booleans and lossy conversions are refused. Component
+counts are positive. Inclusive `_range_` sweeps have a positive stride,
+ascending bounds and at most 10,000 variants. Their terminal addition never
+overflows, including a single `2147483647` candidate. Methods still validates
+whether a component count is valid for the actual matrix.
+
+`tests/parity/fixtures/execution_contract_cases.json` is the shared positive
+and negative input corpus. Copies shipped in Rust and R are checked for byte
+equality by the Python gate. This complements the numerical oracle fixtures.
+
+The runner's scores describe **training** when there is no splitter and
+**selection_validation** when Kennard-Stone reserves rows. The selected
+component minimizes the same reported RMSE, so this result provides **no
+independent test estimate after selection**. Python/R/JS/MATLAB return
+`evaluation = {scope, independent_test: false}`; Rust exposes
+`PortablePipelineResult::evaluation_scope()`. Existing `testIndices` identifies
+the scored rows for compatibility; its name does not establish independence.
+Predictions, variants and split indices retain their established numerical
+contract. Full Python `nirs4all.run` / DAG-ML validation and independent test
+paths are separate APIs and are not replaced by this convenience runner.
+
+### Registered operator surface
+
+Before any numeric gate runs, the public *surface* must be identical across
+bindings. `bindings/python/tests/test_cross_language_surface.py` proves, in pure
+Python by reading the binding sources, that the portable operator subset and the
+upstream registry (keys + role strings) are identical across **all five**
+bindings — Python, WASM, R, MATLAB/Octave, and Rust — plus the machine-readable
+`compat/upstreams.toml`. `bindings/python/tests/test_capability_matrix.py`
+additionally proves the per-language capability claims in
+`compat/capabilities.toml` are backed by real run symbols and parity gates (see
+[`CAPABILITIES.md`](CAPABILITIES.md)).
+
+Because these gates need no R/Node/Octave/`cargo` toolchain, surface drift in any
+binding is caught in the required Python suite even on machines where the other
+runtimes are unavailable. They run in `make test-python-v1-surfaces`.
+
+## Fixture policy
+
+Fixtures must record:
+
+- dataset identity and provenance;
+- pipeline descriptor;
+- upstream versions or commit SHAs;
+- numeric tolerance and dtype;
+- platform/runtime notes when relevant.
+
+Golden outputs should be generated from the owning upstream implementation, not
+from host-language rewrites.
+
+Pipeline definition fixtures must use the full Python `nirs4all` JSON/YAML
+syntax. The parser-level contract accepts JSON/YAML paths, JSON/YAML text,
+direct step lists, `pipeline`, and `steps` in every target binding, but
+canonical fixtures should keep the same `pipeline` envelope used in
+`nirs4all/examples/pipeline_samples`. Execution parity is a separate gate: a
+definition that parses is not considered validated until the native aggregate
+and every target binding match the full Python `nirs4all` result for the
+portable operator subset.
+
+External operators follow the same rule. A language binding can expose operator
+metadata before execution support exists, but an operator cannot be marked
+`execute-local`, `execute-remote`, or `parity-validated` until a fixture proves
+that the host-language adapter delegates to the same upstream behavior.
+
+## Initial parity targets
+
+- PLS pipelines backed by `nirs4all-methods`.
+- Format load/record conversion backed by `nirs4all-formats`.
+- Dataset materialization backed by `nirs4all-io`.
+- Catalog resolution backed by `nirs4all-datasets`.
+- DAG execution descriptors backed by `dag-ml` and `dag-ml-data`.
+- External operator adapters once the relevant executor can plan or call them.
+
+## Current execution gates
+
+The initial numeric gates compare the JavaScript/WASM, Python, Rust, R, and
+MATLAB/Octave bindings against full Python `nirs4all` on four shared JSON/YAML
+pipeline fixtures:
+
+- SNV + PLS;
+- Savitzky-Golay + PLS;
+- Kennard-Stone + SNV + PLS;
+- Kennard-Stone + SNV + Savitzky-Golay + PLS component sweep.
+
+The Python oracle is generated by
+`scripts/parity/generate_python_oracle.py` into
+`tests/parity/expected/portable_python_oracle.json`. It uses the real Python
+`nirs4all` operators for Kennard-Stone, SNV, and Savitzky-Golay, plus
+`sklearn.cross_decomposition.PLSRegression`. The WASM, Python, Rust, R, and
+MATLAB/Octave tests then execute the same fixture descriptors through their
+`runPortablePipeline()`, `run_portable_pipeline()`,
+`run_portable_pipeline_with_library()`,
+`nirs4all_run_portable_pipeline()`, and `nirs4all.runPortablePipeline()` APIs and
+compare split indices, targets, RMSE, predictions, and selected sweep component
+within the declared tolerances. The WASM gate also reuses the serialized
+selected model through `predictPortablePipeline()` and checks that predictions
+on the held-out rows match the selected run output.
+
+The shared parser contract also has regression coverage for Savitzky-Golay
+defaults and explicit boundary modes. `mode` defaults to `interp` to match full
+Python nirs4all, while explicit methods-backed SciPy modes (`mirror`,
+`constant`, `nearest`, `wrap`, `interp`) and `cval` are preserved across Python,
+Rust, JavaScript/WASM, R, and MATLAB/Octave.
+
+Regenerate the oracle from a workspace that has full Python `nirs4all`
+installed:
+
+```bash
+PYTHONPATH=/path/to/nirs4all \
+  /path/to/nirs4all/.venv/bin/python \
+  scripts/parity/generate_python_oracle.py
+```
+
+Run the WASM parity gate after building/staging `nirs4all-methods` JS/WASM.
+The Core tests need a complete Methods JS dist containing `index.js`, `n4m.js`,
+and `n4m.wasm`. Without that dist, the two WASM execution/parity tests skip by
+default; with strict mode they fail before any comparison. Use the preflight to
+turn an incomplete local Methods checkout into an explicit failure without
+requiring Node or Emscripten to be available in the Core repo:
+
+```bash
+make check-wasm-methods-artifact \
+  NIRS4ALL_METHODS_ROOT=../RC-v1-methods
+```
+
+Build/stage the Methods package from a checkout with Node/npm and Emscripten
+(`emcc`/`emcmake`) available:
+
+```bash
+cd /path/to/nirs4all-methods
+cmake --preset emscripten
+cmake --build --preset emscripten --target n4m_wasm --parallel
+cd bindings/js
+npm ci
+npm run build
+npm run stage:wasm
+```
+
+Set `NIRS4ALL_METHODS_JS_DIST` when the methods checkout is not the default
+sibling. Set `NIRS4ALL_CORE_REQUIRE_METHODS_PARITY=1` to make a missing methods
+artifact fail instead of skip:
+
+```bash
+NIRS4ALL_METHODS_JS_DIST=/path/to/nirs4all-methods/bindings/js/dist \
+NIRS4ALL_CORE_REQUIRE_METHODS_PARITY=1 \
+npm test --prefix bindings/wasm
+```
+
+The equivalent strict make target is:
+
+```bash
+make test-wasm-parity-strict \
+  NIRS4ALL_METHODS_ROOT=/path/to/nirs4all-methods
+```
+
+Run the strict Python parity gate with `nirs4all-methods` importable and a
+local libn4m build:
+
+```bash
+PYTHONPATH=bindings/python/src:/path/to/nirs4all-methods/bindings/python/src \
+N4M_LIB_PATH=/path/to/libn4m.so \
+NIRS4ALL_CORE_REQUIRE_METHODS_PARITY=1 \
+python -m unittest bindings/python/tests/test_execution_parity.py -v
+```
+
+Run the strict Rust parity gate with a local libn4m build:
+
+```bash
+NIRS4ALL_METHODS_LIB=/path/to/libn4m.so \
+LD_LIBRARY_PATH=/path/to/libn4m-directory \
+NIRS4ALL_CORE_REQUIRE_METHODS_PARITY=1 \
+cargo test -p nirs4all rust_binding_execution_matches_full_python_nirs4all_oracle -- --nocapture
+```
+
+Run the strict R parity gate after installing an `n4m` R binding that exposes
+the portable preprocessing and splitter surface:
+
+```bash
+NIRS4ALL_CORE_PARITY_ORACLE=$PWD/tests/parity/expected/portable_python_oracle.json \
+NIRS4ALL_CORE_PARITY_FIXTURES=$PWD/bindings/r/inst/extdata \
+NIRS4ALL_CORE_REQUIRE_METHODS_PARITY=1 \
+Rscript bindings/r/tests/parity.R
+```
+
+Run the strict MATLAB/Octave parity gate after building the `nirs4all-methods`
+`+n4m` MEX shims:
+
+```bash
+NIRS4ALL_CORE_PARITY_ORACLE=$PWD/tests/parity/expected/portable_python_oracle.json \
+NIRS4ALL_CORE_PARITY_FIXTURES=$PWD/tests/parity/fixtures \
+NIRS4ALL_CORE_REQUIRE_METHODS_PARITY=1 \
+octave --quiet --eval "addpath('bindings/matlab/tests'); parity"
+```

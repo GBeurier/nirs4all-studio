@@ -1,0 +1,36 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/dag-ml-data.git",
+  "commit": "ffe533704a1a0b0c7bb7d97a997caade3f4ba36e",
+  "repository_tree": "fe9950371e360ba2cb32d790250e56555eb9efc1",
+  "included_crate_trees": {
+    "dag-ml-data": "b440877c2faa70050ba72ba094970465460af051",
+    "dag-ml-data-core": "187ba49d3e5a79bcdf002d9bedcf1c61b94bef4d",
+    "dag-ml-data-provider": "e6d74879fb71c7552b21f4a04b96c24b30b9ab1b"
+  },
+  "selected_crate_packages": [
+    {
+      "name": "dag-ml-data",
+      "version": "0.2.11",
+      "sha256": "c957ca4bb18a2012e6f7d648f2b300b70faa516133a004c19bab89ae4672884b"
+    },
+    {
+      "name": "dag-ml-data-core",
+      "version": "0.2.11",
+      "sha256": "0f88f28ad7d4bc9617443da03c0e7e6db4feaa224e697da09e1f0a5fa007b36f"
+    },
+    {
+      "name": "dag-ml-data-provider",
+      "version": "0.2.11",
+      "sha256": "2a806973713639e291bd1175278ba62ae3b488c82154af23c3d003760d5ec184"
+    }
+  ],
+  "snapshot_policy": "The complete selected upstream Git tree is copied byte-for-byte under upstream/: workspace manifests and lockfile, every crate and source tree, bindings, tests, fixtures, scripts, documentation, assets, notices, and licence texts.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 190
+  },
+  "verification": "../../scripts/verify-vendored-dagml-data.sh",
+  "release_gate": "The source snapshot and selected crate checksums identify the published dag-ml-data 0.2.11 release exactly; Studio runtime resolution remains pinned to =0.2.11."
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/dag-ml.git",
+  "selected_release_commit": "233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27",
+  "selected_release_repository_tree": "5cddf5a07aab796054a6bb6ce7332f2ea914b625",
+  "commit": "233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27",
+  "repository_tree": "5cddf5a07aab796054a6bb6ce7332f2ea914b625",
+  "included_crate_trees": {
+    "dag-ml": "bba3d934c7cc6488cca1557128e7ed24577bbd1e",
+    "dag-ml-core": "e1be900005a51db255cfdafaa5773075e223402a"
+  },
+  "selected_crate_packages": [
+    {
+      "name": "dag-ml",
+      "version": "0.3.25",
+      "sha256": "ec4476ba8c1ed27fad13259f9ce6e3e7e5fbc1049b1dc0116c6c6fd323eccf95"
+    },
+    {
+      "name": "dag-ml-core",
+      "version": "0.3.25",
+      "sha256": "8c53fda2a54d1d3d245848d02c2c851f75bd3f390e24450855654e5664e031d2"
+    }
+  ],
+  "snapshot_policy": "Only the exact published Cargo package payloads are extracted under upstream/. Each payload includes Cargo's normalized and original manifests, VCS identity, lockfile, selected source/include files, and package licence/readme files. Unrelated workspace crates, bindings, generated native extensions, and sites are excluded.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 95
+  },
+  "verification": "../../scripts/verify-vendored-dagml.sh",
+  "release_gate": "The extracted package payloads and checksums identify the published dag-ml and dag-ml-core 0.3.25 release exactly; Studio runtime resolution remains pinned to =0.3.25."
+}

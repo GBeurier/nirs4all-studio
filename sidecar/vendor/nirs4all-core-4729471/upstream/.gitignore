@@ -1,0 +1,26 @@
+.DS_Store
+*.py[cod]
+__pycache__/
+coverage.xml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.codegraph/
+target/
+bindings/wasm/native/
+node_modules/
+dist/
+build/
+docs/_build/
+*.egg-info/
+*.Rcheck/
+.r-parity-lib/
+*.tar.gz
+*.mex*
+*.oct
+
+# Local developer records and checkout/build artifacts.
+/.dev/
+/.worktrees/
+/bindings/python/src/nirs4all_core/_native*.so
+/bindings/python/src/nirs4all_core/_native*.pyd
