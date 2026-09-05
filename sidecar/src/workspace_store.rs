@@ -3083,10 +3083,11 @@ mod tests {
             )
             .unwrap();
         assert!(wal.is_file());
+        let canonical_wal = workspace.canonicalize().unwrap().join("store.sqlite-wal");
 
         assert!(matches!(
             read_run_summaries(&workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0),
-            Err(WorkspaceStoreReadError::LiveJournal(path)) if path == wal
+            Err(WorkspaceStoreReadError::LiveJournal(path)) if path == canonical_wal
         ));
         drop(writer);
         fs::remove_dir_all(workspace).unwrap();

@@ -534,12 +534,13 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("Xcal.csv");
         fs::write(&path, "a;b\n1;2\n3;4\n").unwrap();
+        let canonical_path = path.canonicalize().unwrap();
         let inspector = DatasetInspection::new(root.path(), LoadLimits::default()).unwrap();
         let adapt = |operation: &str, payload: &Value| {
             if operation == "dataset.configure" {
                 return Ok(payload["record"]["config"].clone());
             }
-            assert_eq!(payload["config"]["train_x"], json!(path));
+            assert_eq!(payload["config"]["train_x"], json!(canonical_path));
             assert!(payload["max_input_bytes"].as_u64().unwrap() > 0);
             if operation == "dataset.preview" {
                 assert_eq!(payload["max_samples"], 5);

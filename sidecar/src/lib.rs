@@ -2605,11 +2605,11 @@ fn native_update_settings_path() -> Option<PathBuf> {
             .join("nirs4all-webapp")
             .join(UPDATE_SETTINGS_FILE);
         let fallback_path = base.join("nirs4all-webapp").join(UPDATE_SETTINGS_FILE);
-        return Some(if platformdirs_path.exists() || !fallback_path.exists() {
+        Some(if platformdirs_path.exists() || !fallback_path.exists() {
             platformdirs_path
         } else {
             fallback_path
-        });
+        })
     }
 
     #[cfg(target_os = "macos")]
@@ -7959,7 +7959,8 @@ mod tests {
             "{:x}",
             Sha256::digest(fs::read(workspace.join("store.sqlite")).unwrap())
         );
-        let mut record = linked_workspace_record("workspace-a", &workspace, true, 0);
+        let mut record =
+            linked_workspace_record("workspace-a", &workspace.canonicalize().unwrap(), true, 0);
         record["store_content_sha256"] = json!(store_digest);
         fs::write(
             config.join("app_settings.json"),
@@ -8238,7 +8239,8 @@ mod tests {
             "{:x}",
             Sha256::digest(fs::read(workspace.join("store.sqlite")).unwrap())
         );
-        let mut record = linked_workspace_record("workspace-a", &workspace, true, 0);
+        let mut record =
+            linked_workspace_record("workspace-a", &workspace.canonicalize().unwrap(), true, 0);
         record["store_content_sha256"] = json!(store_digest);
         fs::write(
             config.join("app_settings.json"),
@@ -8394,7 +8396,12 @@ mod tests {
             "{:x}",
             Sha256::digest(fs::read(workspace.join("store.sqlite")).unwrap())
         );
-        let mut workspace_record = linked_workspace_record("workspace-live", &workspace, true, 0);
+        let mut workspace_record = linked_workspace_record(
+            "workspace-live",
+            &workspace.canonicalize().unwrap(),
+            true,
+            0,
+        );
         workspace_record["store_content_sha256"] = json!(store_sha256);
         fs::write(
             config.join("app_settings.json"),

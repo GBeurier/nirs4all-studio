@@ -314,7 +314,7 @@ jobs:
   sidecar-windows:
     name: Native Sidecar Windows Containment
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -328,11 +328,18 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Build exact native Methods runtime
+        uses: ./.github/actions/build-native-methods
+        with:
+          platform: win32
+          arch: x64
+
       - name: Check packaged Python layout for Windows
         run: python scripts/test_general_workflow_platform.py
 
       - name: Check and test Windows Job containment
         run: |
+          $env:N4M_LIBRARY_PATH = $env:NIRS4ALL_BUILD_METHODS_LIBRARY
           cargo fmt --manifest-path sidecar/crates/studio-windows-job/Cargo.toml -- --check
           cargo clippy --manifest-path sidecar/crates/studio-windows-job/Cargo.toml --all-targets -- -D warnings
           cargo clippy --manifest-path sidecar/Cargo.toml --all-targets -- -D warnings

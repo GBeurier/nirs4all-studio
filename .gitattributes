@@ -1,5 +1,11 @@
 # Shell scripts must use LF (Unix) line endings
 *.sh text eol=lf
 
+# These sources are hashed into the bounded document-adapter package. Keep
+# checkout bytes identical on Windows, Linux, and macOS.
+api/**/*.py text eol=lf
+src/data/nodes/**/*.json text eol=lf
+sidecar/contracts/studio_document_adapters_v1.json text eol=lf
+
 # Vendored upstream/package payloads are byte-exact and must not be normalized.
 sidecar/vendor/** -text -eol -whitespace

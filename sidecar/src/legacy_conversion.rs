@@ -1268,10 +1268,10 @@ fn configure_process_tree(command: &mut Command) {
 }
 
 #[cfg(windows)]
-fn configure_process_tree(_command: &mut Command) {}
+const fn configure_process_tree(_command: &mut Command) {}
 
 #[cfg(not(any(unix, windows)))]
-fn configure_process_tree(_command: &mut Command) {}
+const fn configure_process_tree(_command: &mut Command) {}
 
 fn terminate_process_tree(child: &mut std::process::Child) {
     #[cfg(unix)]
@@ -1292,12 +1292,17 @@ fn terminate_orphaned_process_group(child: &std::process::Child) {
 }
 
 #[cfg(not(unix))]
-fn terminate_orphaned_process_group(_child: &std::process::Child) {
+const fn terminate_orphaned_process_group(_child: &std::process::Child) {
     // The Windows launcher owns a kill-on-close Job Object. Once it exits, the
     // OS terminates every remaining member before the bounded pipe deadline.
 }
 
 #[cfg(windows)]
+/// Run the legacy converter inside the current process' kill-on-close Job Object.
+///
+/// # Errors
+///
+/// Returns an error when the launcher cannot assign itself to the Job Object.
 pub fn run_windows_job_launcher(
     executable: &std::ffi::OsStr,
     arguments: impl IntoIterator<Item = std::ffi::OsString>,

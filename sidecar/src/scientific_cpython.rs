@@ -1397,7 +1397,7 @@ fn run_preflight(
     )
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn run_process(
     path: &Path,
     script: &str,
@@ -2326,16 +2326,20 @@ mod tests {
 
     #[test]
     fn general_contract_keeps_batches_and_honest_absent_validation_scores() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = directory.path().join("workspace");
+        let dataset_a = directory.path().join("a.csv");
+        let dataset_b = directory.path().join("b.csv");
         let mut request = serde_json::json!({"schema":"nirs4all.studio-scientific-job.v2", "operation":"run", "job_id":"general-run", "engine":"dag-ml", "allow_fallback":false,
             "pipeline":[[{"class":"sklearn.linear_model.Ridge"}],[{"class":"sklearn.ensemble.RandomForestRegressor"}]],
-            "dataset":[{"train_x":"/data/a.csv"},{"train_x":"/data/b.csv"}],
-            "options":{"workspace_path":"/workspace", "name":"General workflow", "random_state":7}});
+            "dataset":[{"train_x":dataset_a},{"train_x":dataset_b}],
+            "options":{"workspace_path":workspace, "name":"General workflow", "random_state":7}});
         validate_scientific_request(&request, "general-run").unwrap();
         assert_eq!(request_limits(&request), (8 * 1024 * 1024, 256 * 1024));
         request["allow_fallback"] = serde_json::json!(true);
         assert!(validate_scientific_request(&request, "general-run").is_err());
         let mut response = serde_json::json!({"schema":"nirs4all.studio-scientific-job-result.v2", "job_id":"general-run", "engine":"dag-ml", "result":{
-            "run_ids":["run-1"], "workspace_path":"/workspace", "native_results_dirs":["/workspace/results/run-1"],
+            "run_ids":["run-1"], "workspace_path":workspace, "native_results_dirs":[workspace.join("results/run-1")],
             "metric":"rmse", "validation_score":null, "evaluations":[], "chart_reports":[], "prediction_count":10,
             "model_names":["Ridge"], "dataset_names":["a"], "native_score_sets_available":true}});
         validate_scientific_response(&response).unwrap();
@@ -2426,8 +2430,10 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     use std::{fs, net::TcpListener, time::SystemTime};
 
+    #[cfg(unix)]
     fn test_directory(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -2453,6 +2459,7 @@ mod tests {
         path
     }
 
+    #[cfg(unix)]
     fn write_runtime_closure(runtime_root: &Path, site_packages: &Path, closure: &Path) {
         let (directories, files) = collect_runtime_inventory(runtime_root).unwrap();
         let encoded_files = files
@@ -2482,6 +2489,7 @@ mod tests {
         .unwrap();
     }
 
+    #[cfg(unix)]
     fn attested_unready_host_response(implementation: &str) -> String {
         format!(
             r#"printf '%s' '{{"callable":"nirs4all.studio_scientific_job_v1","callable_path":null,"callable_sha256":null,"distribution":"nirs4all","distribution_error":null,"distribution_files_verified":true,"distribution_manifest_sha256":"{SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256}","distribution_record_sha256":"0000000000000000000000000000000000000000000000000000000000000000","distribution_version":"{SCIENTIFIC_DISTRIBUTION_VERSION}","implementation":"{implementation}","isolated":true,"network_bind_denied":true,"network_ownership":"forbidden","ready":false,"schema":"nirs4all.studio-scientific-cpython-host.v1","selected_wheel_sha256":"{SCIENTIFIC_WHEEL_SHA256}","source_commit":"{SCIENTIFIC_SOURCE_COMMIT}","version":[3,11,0]}}'"#
