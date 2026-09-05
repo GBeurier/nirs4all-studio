@@ -3593,12 +3593,19 @@ fn route_job(state: &mut SidecarState, method: &str, path: &str) -> HttpResponse
 }
 
 fn scientific_submission_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
+    scientific_submission_with(&state.app_settings, &state.native_jobs, body)
+}
+
+fn scientific_submission_with(
+    app_settings: &AppSettingsStore,
+    native_jobs: &NativeJobRuntime,
+    body: &[u8],
+) -> HttpResponse {
     // Product default must refuse before even parsing the body or reading the
     // linked-workspace catalogue. This prevents hidden scientific or storage
     // work when no executor was explicitly selected.
-    if !state.native_jobs.execution_selected() {
-        let reason = state
-            .native_jobs
+    if !native_jobs.execution_selected() {
+        let reason = native_jobs
             .execution_unavailability_reason()
             .unwrap_or("executor_not_selected");
         if reason != "executor_not_selected" {
@@ -3621,7 +3628,7 @@ fn scientific_submission_response(state: &SidecarState, body: &[u8]) -> HttpResp
         Ok(submission) => submission,
         Err(error) => return scientific_submission_validation_error(&error),
     };
-    let active = match state.app_settings.active_linked_workspace_response() {
+    let active = match app_settings.active_linked_workspace_response() {
         Ok(Some(active)) => active,
         Ok(None) => {
             return HttpResponse::json(409, json!({"detail": "No workspace selected"}).to_string())
@@ -3646,7 +3653,7 @@ fn scientific_submission_response(state: &SidecarState, body: &[u8]) -> HttpResp
         );
     };
     let timestamp = websocket_transport::rfc3339_now();
-    scientific_submission_runtime_response(state.native_jobs.submit_scientific_at(
+    scientific_submission_runtime_response(native_jobs.submit_scientific_at(
         &submission,
         workspace_id,
         Path::new(workspace_path),
@@ -3984,6 +3991,25 @@ fn route_documents_without_global_lock(
     })
 }
 
+fn route_scientific_without_global_lock(
+    state: &Arc<Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    if request.method != "POST"
+        || request.path != SCIENTIFIC_SUBMISSION_ROUTE
+        || request.query.is_some()
+    {
+        return None;
+    }
+    // Admission, closure verification and normalization precede execution,
+    // without blocking health/progress/cancellation on the route mutex.
+    let (settings, jobs) = {
+        let state = state.lock().expect("sidecar state mutex poisoned");
+        (state.app_settings.clone(), Arc::clone(&state.native_jobs))
+    };
+    Some(scientific_submission_with(&settings, &jobs, &request.body))
+}
+
 #[cfg(test)]
 fn handle_connection_with_limits_and_websocket(
     stream: TcpStream,
@@ -4067,6 +4093,9 @@ fn handle_connection_with_access(
                     ),
                     accepted_origin.as_deref(),
                 );
+            }
+            if let Some(response) = route_scientific_without_global_lock(state, &request) {
+                return write_access_response(&mut stream, response, accepted_origin.as_deref());
             }
             if request.method == "GET"
                 && matches!(
@@ -5354,6 +5383,79 @@ mod tests {
     #[test]
     fn live_python_preflight_releases_the_route_mutex_during_cold_import() {
         assert_python_probe_releases_route_mutex("/sidecar/v1/python/preflight", 200);
+    }
+
+    #[test]
+    fn live_scientific_admission_does_not_hold_the_global_route_mutex() {
+        #[derive(Debug)]
+        struct SlowAdmission(Arc<std::sync::atomic::AtomicBool>);
+        impl job_http::ScientificJobExecutor for SlowAdmission {
+            fn is_selected(&self) -> bool {
+                false
+            }
+            fn unavailability_reason(&self) -> &'static str {
+                self.0.store(true, Ordering::Release);
+                thread::sleep(Duration::from_secs(1));
+                "qualification_preflight_refused"
+            }
+            fn request_cooperative_cancel(
+                &self,
+                _: &str,
+            ) -> Result<(), job_http::JobExecutorError> {
+                Err(job_http::JobExecutorError::Unselected)
+            }
+        }
+        let entered = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let state = Arc::new(Mutex::new(SidecarState {
+            native_jobs: Arc::new(NativeJobRuntime::with_executor(Arc::new(SlowAdmission(
+                Arc::clone(&entered),
+            )))),
+            ..SidecarState::default()
+        }));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            let handlers = (0..2)
+                .map(|_| {
+                    let (stream, _) = listener.accept().unwrap();
+                    let state = Arc::clone(&state);
+                    thread::spawn(move || {
+                        handle_connection_with_limits(stream, &state, ServerLimits::default())
+                            .unwrap();
+                    })
+                })
+                .collect::<Vec<_>>();
+            for handler in handlers {
+                handler.join().unwrap();
+            }
+        });
+        let admission = thread::spawn(move || {
+            let mut client = TcpStream::connect(address).unwrap();
+            client.write_all(b"POST /api/runs/run-groups HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}").unwrap();
+            let mut response = String::new();
+            client.read_to_string(&mut response).unwrap();
+            response
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !entered.load(Ordering::Acquire) {
+            assert!(
+                Instant::now() < deadline,
+                "scientific admission did not start"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        let mut health = TcpStream::connect(address).unwrap();
+        health
+            .set_read_timeout(Some(Duration::from_millis(500)))
+            .unwrap();
+        health
+            .write_all(b"GET /sidecar/v1/health HTTP/1.1\r\nHost: localhost\r\n\r\n")
+            .unwrap();
+        let mut response = String::new();
+        health.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert!(admission.join().unwrap().starts_with("HTTP/1.1 503 "));
+        server.join().unwrap();
     }
 
     #[cfg(unix)]
