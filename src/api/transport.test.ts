@@ -644,7 +644,9 @@ describe("API client request handling", () => {
         preselectRendererTransport(request, inspectSidecar, fetchMock)),
     });
 
-    await expect(api.get("/datasets")).rejects.toMatchObject({
+    // Dataset listing is now a native route. Keep this negative test on an
+    // intentionally unknown route instead of requiring a restored feature to fail.
+    await expect(api.get("/__unqualified_test_route")).rejects.toMatchObject({
       detail: expect.stringContaining("route_not_native_qualified_rust_only"),
       status: 501,
       code: "STUDIO_NATIVE_ROUTE_UNAVAILABLE",
