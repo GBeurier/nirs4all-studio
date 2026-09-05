@@ -608,7 +608,7 @@ impl NativeUpdater {
         }
     }
 
-    #[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
+    #[allow(clippy::too_many_lines)]
     fn download_and_stage(
         &self,
         jobs: &NativeJobRuntime,
@@ -656,6 +656,7 @@ impl NativeUpdater {
             .map_err(|error| format!("Could not create update download: {error}"))?;
         let mut digest = Sha256::new();
         let mut total = 0_u64;
+        let mut last_progress_bucket = 0_u8;
         let mut buffer = vec![0_u8; 64 * 1024].into_boxed_slice();
         loop {
             let preferences = self
@@ -687,14 +688,17 @@ impl NativeUpdater {
             file.write_all(&buffer[..read])
                 .map_err(|error| format!("Could not write update download: {error}"))?;
             digest.update(&buffer[..read]);
-            let progress = (total as f64 / release.size as f64 * 80.0).clamp(0.0, 80.0);
-            let _ = jobs.progress_at(
-                job_id,
-                progress,
-                "Downloading update",
-                &rfc3339_now(),
-                Instant::now(),
-            );
+            let progress_bucket = download_progress_bucket(total, release.size);
+            if progress_bucket > last_progress_bucket {
+                last_progress_bucket = progress_bucket;
+                let _ = jobs.progress_at(
+                    job_id,
+                    f64::from(progress_bucket),
+                    "Downloading update",
+                    &rfc3339_now(),
+                    Instant::now(),
+                );
+            }
         }
         drop(file);
         if total != release.size {
@@ -974,6 +978,21 @@ impl NativeUpdater {
         );
         let _ = fs::remove_file(path);
     }
+}
+
+/// Convert downloaded bytes to one of 80 monotonic progress buckets.
+///
+/// The download loop still checks cancellation and validates every input chunk,
+/// but publishing one registry/websocket event per 64 KiB chunk can starve the
+/// HTTP status route for large all-in-one archives. Integer arithmetic keeps
+/// this bounded and deterministic without losing user-visible percentage
+/// progress.
+fn download_progress_bucket(downloaded: u64, expected: u64) -> u8 {
+    if expected == 0 {
+        return 0;
+    }
+    let scaled = u128::from(downloaded.min(expected)) * 80 / u128::from(expected);
+    u8::try_from(scaled).unwrap_or(80)
 }
 
 /// Route the complete legacy desktop-update surface to the native owner.
@@ -2258,6 +2277,33 @@ mod tests {
         assert!(!qualifies_in_place_archive(true, false));
         assert!(!qualifies_in_place_archive(false, true));
         assert!(qualifies_in_place_archive(true, true));
+    }
+
+    #[test]
+    fn large_download_progress_is_monotonic_and_bounded_to_eighty_events() {
+        const ARCHIVE_SIZE: u64 = 336_369_242;
+        const CHUNK_SIZE: u64 = 64 * 1024;
+        let mut downloaded = 0_u64;
+        let mut last = 0_u8;
+        let mut published = Vec::new();
+        while downloaded < ARCHIVE_SIZE {
+            downloaded = downloaded.saturating_add(CHUNK_SIZE).min(ARCHIVE_SIZE);
+            let bucket = download_progress_bucket(downloaded, ARCHIVE_SIZE);
+            if bucket > last {
+                published.push(bucket);
+                last = bucket;
+            }
+        }
+        assert!(!published.is_empty());
+        assert_eq!(published.last(), Some(&80));
+        assert!(published.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(
+            published.len() <= 80,
+            "published {} events",
+            published.len()
+        );
+        assert_eq!(download_progress_bucket(1, 0), 0);
+        assert_eq!(download_progress_bucket(u64::MAX, 1), 80);
     }
 
     #[test]

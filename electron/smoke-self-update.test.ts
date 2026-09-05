@@ -187,6 +187,29 @@ describe("smoke-self-update", () => {
     }
   });
 
+  it("retries a transient download-status transport failure within the global deadline", async () => {
+    const server = await startFakeBackend({ statusDisconnects: 1 });
+    try {
+      await expect(smoke.driveUpdate(server.base, 10000)).resolves.toBeUndefined();
+      expect(server.calls.filter((call) => call.startsWith("GET /api/updates/webapp/download-status/"))).toHaveLength(2);
+      expect(server.calls).toContain("POST /api/updates/webapp/apply");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("fails closed with bounded status diagnostics when transport never recovers", async () => {
+    const server = await startFakeBackend({ statusDisconnects: Number.POSITIVE_INFINITY });
+    try {
+      await expect(smoke.driveUpdate(server.base, 700, () => "sidecar status diagnostic")).rejects.toThrow(
+        /timed out waiting for update download job job-1; last status=null; last transport error=GET .*download-status.*transport failed[\s\S]*backend stdout \(last 8192 chars\):[\s\S]*sidecar status diagnostic/,
+      );
+      expect(server.calls).not.toContain("POST /api/updates/webapp/apply");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("reports the last download-info error and backend output", async () => {
     const server = await startFakeBackend({ downloadInfoFailure: true });
     try {
@@ -241,6 +264,7 @@ function startFakeBackend(opts: {
   canApplyInPlace?: boolean;
   scientificReadiness?: "ready-after-poll" | "unavailable";
   downloadInfoFailure?: boolean;
+  statusDisconnects?: number;
 } = {}): Promise<{
   base: string;
   port: number;
@@ -273,6 +297,10 @@ function startFakeBackend(opts: {
       if (url === "/api/updates/webapp/download-start") return send({ job_id: "job-1" });
       if (url.startsWith("/api/updates/webapp/download-status/")) {
         statusPolls += 1;
+        if (statusPolls <= (opts.statusDisconnects ?? 0)) {
+          req.socket.destroy();
+          return;
+        }
         return send({ status: statusPolls >= 2 ? "completed" : "running", progress: 100 });
       }
       if (url === "/api/updates/webapp/apply") return send({ restart_required: true, success: true });

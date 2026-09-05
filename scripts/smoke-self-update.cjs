@@ -285,11 +285,22 @@ function sessionHeaders(sessionToken) {
   return sessionToken ? { "X-Nirs4all-Session": sessionToken } : {};
 }
 
-async function getJson(url, sessionToken) {
-  const res = await fetch(url, {
-    headers: sessionHeaders(sessionToken),
-    signal: AbortSignal.timeout(10000),
-  });
+class JsonTransportError extends Error {}
+
+async function getJson(url, sessionToken, timeoutMs = 10000) {
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: sessionHeaders(sessionToken),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new JsonTransportError(
+      `GET ${url} transport failed after ${timeoutMs}ms: ${detail}`,
+      { cause: error },
+    );
+  }
   if (!res.ok) {
     throw new Error(`GET ${url} -> ${res.status}`);
   }
@@ -347,24 +358,58 @@ async function driveUpdate(baseUrl, timeoutMs, backendOutput = () => "", session
   if (info.can_apply_in_place === false) {
     throw new Error(`backend refused in-place update (channel=${info.update_channel})`);
   }
+  console.log(`update discovery: ${info.version || "available"} (${info.download_size_bytes || "unknown"} bytes)`);
 
   const start = await postJson(`${baseUrl}/api/updates/webapp/download-start`, undefined, sessionToken);
   const jobId = start.job_id;
   if (!jobId) {
     throw new Error("download-start returned no job id");
   }
+  console.log(`update download: started job ${jobId}`);
 
   const deadline = Date.now() + timeoutMs;
+  let lastStatus = null;
+  let lastStatusError = null;
+  let lastLoggedProgress = -10;
   for (;;) {
-    const status = await getJson(`${baseUrl}/api/updates/webapp/download-status/${jobId}`, sessionToken);
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      const output = String(backendOutput() || "").slice(-8192);
+      throw new Error(
+        `timed out waiting for update download job ${jobId}; last status=${JSON.stringify(lastStatus)}; `
+        + `last transport error=${lastStatusError || "none"}\nbackend stdout (last 8192 chars):\n${output || "(empty)"}`,
+      );
+    }
+    let status;
+    try {
+      status = await getJson(
+        `${baseUrl}/api/updates/webapp/download-status/${jobId}`,
+        sessionToken,
+        Math.max(1, Math.min(10000, remaining)),
+      );
+      lastStatus = status;
+      lastStatusError = null;
+    } catch (error) {
+      if (!(error instanceof JsonTransportError)) {
+        throw error;
+      }
+      lastStatusError = error.message;
+      await delay(Math.min(500, Math.max(0, deadline - Date.now())));
+      continue;
+    }
     if (status.status === "completed") {
+      console.log(`update download: job ${jobId} staged`);
       break;
     }
     if (status.status === "failed") {
       throw new Error(`download job failed: ${status.error || "unknown"}`);
     }
-    if (Date.now() > deadline) {
-      throw new Error("timed out waiting for the update download to complete");
+    if (Number.isFinite(status.progress)) {
+      const progressBucket = Math.floor(status.progress / 10) * 10;
+      if (progressBucket >= lastLoggedProgress + 10) {
+        lastLoggedProgress = progressBucket;
+        console.log(`update download: job ${jobId} ${status.status} ${status.progress}%`);
+      }
     }
     await delay(500);
   }
