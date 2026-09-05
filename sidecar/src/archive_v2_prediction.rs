@@ -1628,6 +1628,7 @@ mod tests {
         let root = root("unsafe");
         fs::create_dir_all(root.join("exports")).unwrap();
         fs::write(root.join("outside.n4a"), b"archive-v2-bytes").unwrap();
+        #[cfg(unix)]
         let digest = format!("{:x}", Sha256::digest(b"archive-v2-bytes"));
         let runtime = ArchiveV2PredictionRuntime::with_executor(Arc::new(FakeExecutor));
 

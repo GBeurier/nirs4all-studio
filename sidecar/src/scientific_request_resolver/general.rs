@@ -457,17 +457,22 @@ mod tests {
         // A matrix parser would reject this. Resolution must not parse it or
         // infer task type from integral targets; the IO/science owners do that.
         fs::write(root.join("dataset/x.csv"), "not a numeric matrix").unwrap();
+        let canonical_root = root.canonicalize().unwrap();
+        let canonical_workspace = workspace.canonicalize().unwrap();
         let request = ScientificRequestResolver::new(config)
             .resolve_general(&submission(&workspace, "local-python"), adapter)
             .unwrap();
         assert_eq!(request["schema"], "nirs4all.studio-scientific-job.v2");
         assert_eq!(request["engine"], "dag-ml");
         assert_eq!(request["allow_fallback"], false);
-        assert_eq!(request["options"]["workspace_path"], json!(workspace));
+        assert_eq!(
+            request["options"]["workspace_path"],
+            json!(canonical_workspace)
+        );
         assert_eq!(request["pipeline"][0]["name"], "KFold");
         assert_eq!(
             request["dataset"]["train_x"],
-            json!(root.join("dataset/x.csv"))
+            json!(canonical_root.join("dataset/x.csv"))
         );
         assert!(request["dataset"].get("X").is_none());
         fs::remove_dir_all(root).unwrap();

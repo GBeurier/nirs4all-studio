@@ -383,6 +383,7 @@ mod tests {
         let data = tempfile::tempdir().unwrap();
         let outside = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(data.path().join("X.csv"), b"1,2\n3,4\n").unwrap();
+        let canonical_x = data.path().join("X.csv").canonicalize().unwrap();
         let request = json!({"model_id":"chain1","model_source":"chain",
             "data_source":"dataset","dataset_id":"linked","partition":"test"});
         let record = json!({"id":"linked","path":data.path(),"config":{"train_x":"X.csv"}});
@@ -392,10 +393,7 @@ mod tests {
         };
         let result =
             prediction_payload(root.path(), &request, &|_| Ok(record.clone()), &adapt).unwrap();
-        assert_eq!(
-            result["config"]["train_x"],
-            json!(data.path().join("X.csv"))
-        );
+        assert_eq!(result["config"]["train_x"], json!(canonical_x));
         assert_eq!(result["partition"], "test");
         let escaped = json!({"train_x":outside.path()});
         assert!(
@@ -420,6 +418,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("upload.csv");
         std::fs::write(&path, b"sample;band_a;band_b\na;1.5;2.5\nb;3.5;4.5\n").unwrap();
+        let canonical_path = path.canonicalize().unwrap();
         let payload = file_payload(
             root.path(),
             &json!({"model_id":"chain1","model_source":"chain"}),
@@ -427,7 +426,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(payload["data_source"], "file");
-        assert_eq!(payload["file_path"], json!(path));
+        assert_eq!(payload["file_path"], json!(canonical_path));
         assert_eq!(payload["params"]["delimiter"], ";");
         assert_eq!(payload["params"]["has_header"], true);
         assert!(payload.get("spectra").is_none());
