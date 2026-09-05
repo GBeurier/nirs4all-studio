@@ -293,7 +293,11 @@ rejects user/managed venv and PATH discovery. It fingerprints that executable wi
 SHA-256 and runs one fresh, isolated JSON-stdio preflight under a five-second,
 8 KiB stdout, and 64 KiB stderr budget. It also fingerprints the exact source
 file behind `nirs4all.studio_scientific_job_v1`; both identities are sticky and
-reverified before execution, including a child-side callable check. The
+reverified before execution, including a child-side callable check. The full
+packaged closure is hashed once at acquisition, then guarded around every child
+by path/inode/size/mtime/ctime snapshots with full re-hashing on drift. The
+optimization is enabled only where the platform exposes a trustworthy inode
+change marker; other targets keep full re-hashing at each boundary. The
 response must identify CPython 3.11 or newer with `-I -S -B` isolation active and
 pass a real negative bind self-test. A Python audit hook rejects `socket.bind`,
 including `http.server` listener creation, and rejects subprocess, system,
