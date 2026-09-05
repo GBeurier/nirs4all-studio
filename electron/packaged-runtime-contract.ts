@@ -77,7 +77,13 @@ interface PackagedRuntimeContract {
 export function hasExactWindowsNativeRuntimeLinkage(
   linkage: PackagedRuntimeContract["native_runtime_linkage"],
 ): boolean {
-  return linkage?.profile === WINDOWS_NATIVE_RUNTIME_LINKAGE.profile &&
+  return linkage !== undefined &&
+    Object.keys(linkage).length === 4 &&
+    Object.hasOwn(linkage, "profile") &&
+    Object.hasOwn(linkage, "methods_cmake_runtime") &&
+    Object.hasOwn(linkage, "sidecar_rust_target_feature") &&
+    Object.hasOwn(linkage, "forbidden_dynamic_import_prefixes") &&
+    linkage.profile === WINDOWS_NATIVE_RUNTIME_LINKAGE.profile &&
     linkage.methods_cmake_runtime ===
       WINDOWS_NATIVE_RUNTIME_LINKAGE.methods_cmake_runtime &&
     linkage.sidecar_rust_target_feature ===
