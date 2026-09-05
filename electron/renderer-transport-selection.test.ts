@@ -35,6 +35,31 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 }
 
 describe("renderer transport preselection", () => {
+  it("qualifies implemented workspace and pipeline documents without a Python host", async () => {
+    const request = vi.fn().mockImplementation(async () => capabilityResponse({
+      workspace_document_routes: true,
+      pipeline_document_routes: true,
+      dataset_catalogue_routes: true,
+      app_settings_routes: true,
+    }));
+    for (const [method, path] of [
+      ["GET", "/workspace"], ["POST", "/workspace/create"],
+      ["POST", "/workspace/select"], ["GET", "/workspace/list"],
+      ["GET", "/pipelines"], ["POST", "/pipelines"],
+      ["GET", "/pipelines/pipeline_1"], ["PUT", "/pipelines/pipeline_1"],
+      ["DELETE", "/pipelines/pipeline_1"], ["GET", "/config/setup-status"],
+      ["GET", "/datasets"], ["POST", "/datasets/link"], ["PUT", "/datasets/dataset_1"],
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path },
+        () => ({ ...running(), pythonPluginHostConfigured: false }), request,
+      )).resolves.toMatchObject({ target: "native-sidecar", status: 200 });
+    }
+    for (const path of ["/pipelines/presets", "/pipelines/../secret", "/pipelines/%2e%2e"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+  });
+
   it("selects scientific submission transport natively only after capabilities preflight", async () => {
     const request = vi.fn().mockImplementation(async () => capabilityResponse());
     const decision = await preselectRendererTransport(
@@ -289,7 +314,7 @@ describe("renderer transport preselection", () => {
     const info = vi.fn(running);
     const request = vi.fn();
     await expect(preselectRendererTransport(
-      { kind: "http", method: "GET", path: "/datasets" },
+      { kind: "http", method: "GET", path: "/datasets/detect-unified" },
       info,
       request,
     )).resolves.toMatchObject({

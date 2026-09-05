@@ -51,6 +51,19 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["POST /app/config-path", { name: "app-config-path", capability: "app_config_path_routes" }],
   ["DELETE /app/config-path", { name: "app-config-path", capability: "app_config_path_routes" }],
   ["GET /workspaces", { name: "linked-workspaces", capability: "linked_workspace_catalog_route" }],
+  ["GET /workspace", { name: "workspace-documents", capability: "workspace_document_routes" }],
+  ["POST /workspace/create", { name: "workspace-documents", capability: "workspace_document_routes" }],
+  ["POST /workspace/select", { name: "workspace-documents", capability: "workspace_document_routes" }],
+  ["POST /workspace/reload", { name: "workspace-documents", capability: "workspace_document_routes" }],
+  ["GET /workspace/list", { name: "workspace-documents", capability: "workspace_document_routes" }],
+  ["GET /workspace/groups", { name: "workspace-documents", capability: "workspace_document_routes" }],
+  ["GET /pipelines", { name: "pipeline-documents", capability: "pipeline_document_routes" }],
+  ["POST /pipelines", { name: "pipeline-documents", capability: "pipeline_document_routes" }],
+  ["GET /datasets", { name: "dataset-catalogue", capability: "dataset_catalogue_routes" }],
+  ["POST /datasets/link", { name: "dataset-catalogue", capability: "dataset_catalogue_routes" }],
+  ["GET /config/setup-status", { name: "setup", capability: "app_settings_routes" }],
+  ["POST /config/skip-setup", { name: "setup", capability: "app_settings_routes" }],
+  ["POST /config/complete-setup", { name: "setup", capability: "app_settings_routes" }],
   ["GET /workspace/transition-status", { name: "workspace-transition-status", capability: "workspace_transition_status_route" }],
   ["POST /workspace/legacy-convert", { name: "legacy-workspace-conversion", capability: "legacy_workspace_conversion_route", requiresPythonHost: true }],
   ["GET /system/network", { name: "system-network", capability: "system_network_route" }],
@@ -101,6 +114,17 @@ function classifyWorkspaceRuns(path: string): NativeSurface | null {
 function classifyHttp(method: string, path: string): NativeSurface | null {
   const exact = exactHttpRoutes.get(`${method} ${path}`) ?? pythonHostRoutes.get(`${method} ${path}`);
   if (exact) return exact;
+  const dataset = identifierPath("/datasets/").exec(path);
+  if (["GET", "PUT", "DELETE"].includes(method) && dataset && isValidIdentifier(dataset[1]) &&
+      !["link", "preview", "detect-unified", "detect-files", "detect-format", "detect-files-list", "scan-folder", "auto-detect", "validate-files"].includes(dataset[1])) {
+    return { name: "dataset-catalogue", capability: "dataset_catalogue_routes" };
+  }
+  const pipeline = identifierPath("/pipelines/").exec(path);
+  if (["GET", "PUT", "DELETE"].includes(method) && pipeline &&
+      isValidIdentifier(pipeline[1]) &&
+      !["presets", "samples", "import", "import-preview", "render-canonical", "propagate-shape"].includes(pipeline[1])) {
+    return { name: "pipeline-documents", capability: "pipeline_document_routes" };
+  }
   if (method === "DELETE" && identifierPath("/app/favorites/").test(path)) {
     return { name: "app-favorites", capability: "app_settings_routes" };
   }

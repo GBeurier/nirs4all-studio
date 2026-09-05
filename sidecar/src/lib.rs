@@ -41,6 +41,7 @@ pub mod scientific_request_resolver;
 pub mod scientific_submission;
 mod settings;
 pub mod websocket_transport;
+mod workspace_documents;
 pub mod workspace_store;
 
 use archive_v2_prediction::{
@@ -676,8 +677,22 @@ impl SidecarState {
         )
     }
 
+    /// Return the native route capabilities.
+    ///
+    /// # Panics
+    /// Panics only if a developer introduces invalid JSON into the static
+    /// capability template (covered by the route-contract tests).
     #[must_use]
     pub fn capabilities_json(&self) -> String {
+        let mut capabilities: Value = serde_json::from_str(&self.base_capabilities_json())
+            .expect("the native capability template is valid JSON");
+        capabilities["features"]["workspace_document_routes"] = json!(true);
+        capabilities["features"]["pipeline_document_routes"] = json!(true);
+        capabilities["features"]["dataset_catalogue_routes"] = json!(true);
+        capabilities.to_string()
+    }
+
+    fn base_capabilities_json(&self) -> String {
         let python_plugin_configured = self.python_plugin_host.is_some();
         let scientific_execution = self.native_jobs.execution_selected();
         format!(
@@ -815,6 +830,9 @@ pub fn route_request_with_body(
     path: &str,
     body: &[u8],
 ) -> HttpResponse {
+    if let Some(response) = workspace_documents::route(&state.app_settings, method, path, body) {
+        return response;
+    }
     if let Some(response) = route_archive_v2_prediction_match(state, method, path, body) {
         return response;
     }
@@ -3448,6 +3466,12 @@ fn read_bounded_stdout(
 }
 
 fn route_http_request(state: &mut SidecarState, request: &HttpRequest) -> HttpResponse {
+    if request.query.is_some() && workspace_documents::owns_path(&request.path) {
+        return HttpResponse::json(
+            400,
+            json!({"detail": "Document routes do not accept query parameters"}).to_string(),
+        );
+    }
     if request.query.is_some()
         && (is_native_job_http_path(&request.path)
             || match_durable_execution_job_record_route(&request.path).is_some()
@@ -3902,6 +3926,21 @@ fn handle_connection_with_limits(
     )
 }
 
+fn route_documents_without_global_lock(
+    state: &Arc<Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    if request.query.is_some() || !workspace_documents::owns_path(&request.path) {
+        return None;
+    }
+    let settings = state
+        .lock()
+        .expect("sidecar state mutex poisoned")
+        .app_settings
+        .clone();
+    workspace_documents::route(&settings, &request.method, &request.path, &request.body)
+}
+
 fn handle_connection_with_limits_and_websocket(
     mut stream: TcpStream,
     state: &Arc<Mutex<SidecarState>>,
@@ -3912,6 +3951,9 @@ fn handle_connection_with_limits_and_websocket(
     stream.set_write_timeout(Some(limits.write_timeout))?;
     let response = match read_http_request(&mut stream, limits.header_timeout) {
         Ok(request) => {
+            if let Some(response) = route_documents_without_global_lock(state, &request) {
+                return write_response(&mut stream, &response);
+            }
             if request.method == "GET" {
                 if let Some(endpoint) =
                     LegacyWebSocketEndpoint::parse(&request.path, request.query.as_deref())
@@ -4122,7 +4164,7 @@ fn read_http_request(
         }
         let mut request = parse_http_request(&bytes[..header_end])?;
         let content_length = request_content_length(&request.headers)?;
-        if content_length > MAX_REQUEST_BODY_BYTES {
+        if content_length > http_body_limit(&request.path) {
             return Err(RequestReadError::BodyTooLarge { path: request.path });
         }
         request.body.extend_from_slice(&bytes[header_end..]);
@@ -4152,6 +4194,19 @@ fn read_http_request(
             request.body.extend_from_slice(&buffer[..read]);
         }
         return Ok(request);
+    }
+}
+
+fn http_body_limit(path: &str) -> usize {
+    match path {
+        ARCHIVE_V2_PREDICTION_ROUTE
+        | ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE
+        | ARCHIVE_V2_CONFORMAL_PROJECTION_ROUTE => archive_v2_prediction::MAX_PREDICTION_BODY_BYTES,
+        _ if workspace_documents::owns_path(path) => {
+            usize::try_from(workspace_documents::MAX_DOCUMENT_BYTES)
+                .unwrap_or(MAX_REQUEST_BODY_BYTES)
+        }
+        _ => MAX_REQUEST_BODY_BYTES,
     }
 }
 
