@@ -220,7 +220,48 @@ impl DatasetInspection {
         recursive: bool,
         adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
     ) -> Result<Value, String> {
-        let paths = self.files(recursive)?;
+        self.detect_paths(&self.files(recursive)?, adapt)
+    }
+
+    /// Admit a user-selected file list without inspecting unrelated siblings.
+    /// # Errors
+    /// Rejects escapes, duplicates and aggregate limits before reading tables.
+    pub fn detect_files_list(
+        &self,
+        paths: &[PathBuf],
+        adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    ) -> Result<Value, String> {
+        self.detect_paths(&self.admit_files(paths)?, adapt)
+    }
+
+    /// Authorize and admit a complete selected list before any reader callback.
+    pub fn admit_files(&self, paths: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+        if paths.len() > MAX_ENTRIES || paths.len() as u64 > self.limits.max_files {
+            return Err("Selected files exceed count budget".into());
+        }
+        let mut result = Vec::new();
+        let mut total = 0_u64;
+        for path in paths {
+            let path = self.file(path)?;
+            if result.contains(&path) {
+                return Err("Duplicate selected dataset file".into());
+            }
+            total = total
+                .checked_add(path.metadata().map_err(|error| error.to_string())?.len())
+                .ok_or("Input size overflow")?;
+            if total > self.limits.max_total_bytes {
+                return Err("Selected files exceed aggregate byte budget".into());
+            }
+            result.push(path);
+        }
+        Ok(result)
+    }
+
+    fn detect_paths(
+        &self,
+        paths: &[PathBuf],
+        adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
+    ) -> Result<Value, String> {
         let names: Vec<String> = paths
             .iter()
             .map(|path| {
@@ -277,7 +318,7 @@ impl DatasetInspection {
             files.push(json!({"path":path,"filename":name,"type":role,
                 "split":assignment.map_or("unknown", |assignment| assignment.partition.map_or("train", |partition| partition.value())),
                 "source":assignment.map(|assignment| assignment.source_index),
-                "format":file_format(path),"size_bytes":size,"confidence":if assignment.is_some(){0.9}else{0.0},
+                "format":presentation_format(path),"size_bytes":size,"confidence":if assignment.is_some(){0.9}else{0.0},"detected":assignment.is_some(),
                 "num_rows":info["num_rows"],"num_columns":info["num_columns"],
                 "overrides":info["parsing_options"],"reader":info["reader"],"detection_confidence":info["confidence"]}));
         }
@@ -372,12 +413,25 @@ fn file_format(path: &Path) -> &'static str {
         .any(|suffix| path.ends_with(suffix))
     {
         "excel"
-    } else if path.ends_with(".mat") {
+    } else if Path::new(&path)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("mat"))
+    {
         "mat"
     } else if [".npy", ".npz"].iter().any(|suffix| path.ends_with(suffix)) {
         "numpy"
     } else {
         "unknown"
+    }
+}
+
+fn presentation_format(path: &Path) -> &str {
+    match path.extension().and_then(|value| value.to_str()) {
+        Some("xlsx") => "xlsx",
+        Some("xls") => "xls",
+        Some("npy") => "npy",
+        Some("npz") => "npz",
+        _ => file_format(path),
     }
 }
 
