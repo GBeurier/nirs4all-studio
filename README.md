@@ -118,6 +118,9 @@ The product container serves the compiled frontend with nginx on port `8000`.
 Requests under `/api` and `/ws` are proxied to the Rust sidecar bound only to
 `127.0.0.1:8001` inside the container. The image contains no FastAPI/Uvicorn
 runtime or Python backend source.
+Startup requires a mounted password file or an explicit trusted-local-only
+configuration; see [Docker access](docs/NATIVE_HTTP_ACCESS.md#docker). Do not
+publish an unauthenticated container port on a shared network.
 It does include the content-addressed `nirs4all-methods` ABI 2.5 library used by
 the Rust/Core Archive V2 prediction path and the same fixed CPython
 library/plugin closure used for bounded Rust-to-Python stdio interoperability.

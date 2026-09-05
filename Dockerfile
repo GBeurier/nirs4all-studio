@@ -106,7 +106,7 @@ ENV NIRS4ALL_RUNTIME_MODE=container \
 VOLUME ["/var/lib/nirs4all-studio", "/workspaces"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
-    CMD curl --fail --silent --show-error http://127.0.0.1:8000/api/health >/dev/null || exit 1
+    CMD curl --fail --silent --show-error http://127.0.0.1:8000/_studio_health >/dev/null || exit 1
 
 USER nginx
 ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/studio-entrypoint"]

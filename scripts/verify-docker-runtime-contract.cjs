@@ -58,7 +58,7 @@ requireText(dockerfile, "find /opt/nirs4all/backend/python-runtime/python -type 
 requireText(dockerfile, 'LD_LIBRARY_PATH="${object_dir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "$object"', "wheel-local ELF dependency resolution");
 requireText(dockerfile, "ELF dependency missing", "fail-closed CPython ELF dependency result");
 requireText(dockerfile, "import scipy.linalg", "native SciPy import smoke");
-requireText(dockerfile, "http://127.0.0.1:8000/api/health", "public native healthcheck");
+requireText(dockerfile, "http://127.0.0.1:8000/_studio_health", "loopback nginx/native healthcheck");
 requireText(dockerfile, "--start-period=180s", "bounded CPython startup health grace");
 requireText(dockerfile, 'ENTRYPOINT ["/usr/bin/tini"', "process-group supervisor");
 
@@ -75,6 +75,12 @@ requireText(nginx, "location /api/", "API proxy");
 requireText(nginx, "location /ws", "WebSocket proxy");
 requireText(nginx, "proxy_set_header Upgrade $http_upgrade;", "WebSocket upgrade forwarding");
 requireText(nginx, "try_files $uri $uri/ /index.html;", "SPA fallback");
+requireText(nginx, "include /var/run/nginx/studio-access.conf;", "server-wide authentication policy");
+requireText(nginx, "proxy_set_header Host $http_host;", "external authority preservation");
+requireText(nginx, 'proxy_set_header Authorization "";', "proxy credential stripping");
+requireText(nginx, "location = /_studio_health", "private health route");
+requireText(nginx, "deny all;", "health route network restriction");
+requireText(nginx, "client_max_body_size 32m;", "wide spectra transport budget");
 forbid(nginx, /proxy_pass\s+http:\/\/(?!studio_sidecar)/, "non-sidecar backend proxy");
 
 requireText(entrypoint, "readonly sidecar_host=127.0.0.1", "fixed loopback bind");
@@ -84,6 +90,9 @@ requireText(entrypoint, "/sidecar/v1/readiness", "sidecar startup readiness gate
 requireText(entrypoint, "readonly readiness_attempt_limit=600", "attested runtime startup allowance");
 requireText(entrypoint, "sleep 0.25", "bounded readiness polling interval");
 requireText(entrypoint, "exec nginx -g 'daemon off;'", "foreground static server");
+requireText(entrypoint, '/run/secrets/studio.htpasswd', "mounted proxy credential file");
+requireText(entrypoint, '${NIRS4ALL_STUDIO_TRUSTED_LOCAL_ONLY:-}', "explicit local-only opt-in");
+requireText(entrypoint, 'nginx -t', "proxy startup configuration validation");
 forbid(entrypoint, /python|uvicorn|main\.py|scheduler|fallback/im, "non-sidecar backend path");
 
 for (const excluded of ["api/", "websocket/", "main.py", "requirements*.txt", "backend.spec"]) {
@@ -93,7 +102,10 @@ requireText(dockerignore, "!recommended-config.json", "plugin build configuratio
 forbid(dockerignore, /^(?:postcss\.config\.js|tailwind\.config\.ts)\/?$/m, "frontend CSS build configuration exclusion");
 
 requireText(ciWorkflow, "scripts/smoke-docker-native-runtime.sh", "CI live Docker smoke");
+requireText(ciWorkflow, "scripts/test-docker-access.cjs", "CI live Docker authentication gate");
+requireText(releaseWorkflow, "scripts/test-docker-access.cjs", "release live Docker authentication gate");
 const dockerSmoke = read("scripts/smoke-docker-native-runtime.sh");
+requireText(dockerSmoke, "--env NIRS4ALL_STUDIO_TRUSTED_LOCAL_ONLY=1", "explicit local smoke trust boundary");
 requireText(dockerSmoke, "seq 1 360", "bounded live startup allowance");
 requireText(dockerSmoke, 'trap \'report_error "${LINENO}" "${BASH_COMMAND}"\' ERR', "actionable live smoke diagnostics");
 requireText(dockerSmoke, "root_page=$(curl --fail --silent", "complete SPA response capture");

@@ -28,7 +28,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-docker run --detach --name "${container}" --publish 127.0.0.1::8000 "${image}" >/dev/null
+docker run --detach --name "${container}" --publish 127.0.0.1::8000 \
+  --env NIRS4ALL_STUDIO_TRUSTED_LOCAL_ONLY=1 "${image}" >/dev/null
 
 port=""
 for _ in $(seq 1 360); do
