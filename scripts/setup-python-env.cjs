@@ -55,10 +55,14 @@ const TORCH_CUDA_INDEX_URL = "https://download.pytorch.org/whl/cu124";
 const TORCH_PROFILE_PACKAGE = "torch";
 const CUDA_TORCH_PROFILE = "gpu-cuda-torch";
 const PLUGIN_BUILD_MODE = "studio-python-plugin-runtime";
-const PLUGIN_SOURCE_COMMIT = "3567bd4abcaa64443a1946748a579f0803e91889";
-const PLUGIN_SOURCE_EPOCH = "1788424315";
-const PLUGIN_WHEEL_SHA256 = "5898aa933da2e51ad07438ae5313ade37f1dad2a363411e71e0f0a513c7b4824";
-const PLUGIN_SOURCE_URL = `git+https://github.com/GBeurier/nirs4all.git@${PLUGIN_SOURCE_COMMIT}`;
+const PRUNED_LAUNCHER_RECORD_PREFIXES = Object.freeze([
+  "../../../bin/",
+  "../../../Scripts/",
+]);
+const PLUGIN_SOURCE_COMMIT = "bf21c552b9d0929daf2dcc2ac7b220c9631ffa07";
+const PLUGIN_WHEEL_FILENAME = "nirs4all-1.0.1-py3-none-any.whl";
+const PLUGIN_WHEEL_SHA256 = "d6f696580d4e52aeb6d39ecce47d30b3e10dc0b867f88f89f39dc1205cf93103";
+const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/53/dc/1240b0db9095277cea050fd5d8044ffc7bdba303fd8242c8bd1b6eab4e15/nirs4all-1.0.1-py3-none-any.whl";
 const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
 const TOOLS_SOURCE_EPOCH = "1788346349";
 const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
@@ -133,6 +137,14 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const pluginOnly = buildMode === PLUGIN_BUILD_MODE;
+if (pluginOnly && !constraintsFile) {
+  constraintsFile = path.join(
+    projectRoot,
+    "build",
+    "constraints",
+    "plugin-runtime-cpython311.txt",
+  );
+}
 
 let profile = explicitProfile;
 if (!profile) {
@@ -514,6 +526,29 @@ candidates[0].write_bytes(payload)`;
   await runCommand(runtimePython, ["-I", "-S", "-B", "-c", script, runtimeRoot, wheelPath, distribution, version]);
 }
 
+async function removePrunedLauncherRecordRows(runtimePython, runtimeRoot) {
+  const script = String.raw`import csv,io,pathlib,sys
+root=pathlib.Path(sys.argv[1])
+prefixes=tuple(__import__("json").loads(sys.argv[2]))
+site_packages=list(root.glob("python/Lib/site-packages"))+list(root.glob("python/lib/python3.*/site-packages"))
+if len(site_packages) != 1: raise RuntimeError(f"expected one site-packages, found {len(site_packages)}")
+for record in sorted(site_packages[0].glob("*.dist-info/RECORD")):
+    rows=list(csv.reader(io.StringIO(record.read_text(encoding="utf-8"))))
+    kept=[row for row in rows if not (row and row[0].replace("\\","/").startswith(prefixes))]
+    output=io.StringIO(newline="")
+    csv.writer(output,lineterminator="\n").writerows(kept)
+    record.write_text(output.getvalue(),encoding="utf-8",newline="")`;
+  await runCommand(runtimePython, [
+    "-I",
+    "-S",
+    "-B",
+    "-c",
+    script,
+    runtimeRoot,
+    JSON.stringify(PRUNED_LAUNCHER_RECORD_PREFIXES),
+  ]);
+}
+
 function pruneStandaloneRuntimeLaunchers(buildRoot) {
   const targets = [];
   const windowsScriptsDir = path.join(buildRoot, "python", "Scripts");
@@ -854,7 +889,7 @@ async function main() {
   if (pluginOnly) {
     const wheelDir = path.join(cacheDir, "studio-python-plugin-wheel");
     fs.mkdirSync(wheelDir, { recursive: true });
-    if (!pluginWheel || !toolsWheel) {
+    if (!toolsWheel) {
       await runCommandWithRetries(runtimePython, buildPluginToolchainInstallArgs(), {}, {
         retries: 2,
         label: "install exact wheel build toolchain",
@@ -866,26 +901,8 @@ async function main() {
       for (const entry of fs.readdirSync(wheelDir)) {
         if (entry.endsWith(".whl")) fs.rmSync(path.join(wheelDir, entry), { force: true });
       }
-      await runCommandWithRetries(runtimePython, [
-        "-I",
-        "-m",
-        "pip",
-        "wheel",
-        "--no-deps",
-        "--no-build-isolation",
-        "--wheel-dir",
-        wheelDir,
-        PLUGIN_SOURCE_URL,
-      ], { env: buildDeterministicWheelEnv(PLUGIN_SOURCE_EPOCH) }, {
-        retries: isWindows ? 3 : 1,
-        label: "build pinned nirs4all plugin wheel",
-      });
-      const wheels = fs.readdirSync(wheelDir)
-        .filter((entry) => /^nirs4all-.*\.whl$/i.test(entry));
-      if (wheels.length !== 1) {
-        throw new Error(`Pinned plugin build produced ${wheels.length} nirs4all wheels`);
-      }
-      selectedPluginWheel = path.join(wheelDir, wheels[0]);
+      selectedPluginWheel = path.join(wheelDir, PLUGIN_WHEEL_FILENAME);
+      await downloadFile(PLUGIN_WHEEL_URL, selectedPluginWheel);
     }
     const actualWheelSha256 = sha256File(selectedPluginWheel);
     if (actualWheelSha256 !== PLUGIN_WHEEL_SHA256) {
@@ -1033,7 +1050,8 @@ async function main() {
       `  Removed ${runtimeStats.removedPaths + launcherStats.removedPaths} development-only paths (${formatSize(runtimeStats.removedBytes + launcherStats.removedBytes)})`,
     );
     if (pluginOnly) {
-      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.0.0rc2");
+      await removePrunedLauncherRecordRows(runtimePython, backendDist);
+      await restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel, "nirs4all", "1.0.1");
       await restorePinnedWheelRecord(runtimePython, backendDist, selectedToolsWheel, "nirs4all_tools", "0.0.7");
       console.log("  Restored both exact pinned wheel RECORDs after isolated installation");
     }
@@ -1091,6 +1109,7 @@ async function main() {
     selected_source_commit: pluginOnly ? PLUGIN_SOURCE_COMMIT : null,
     selected_wheel_sha256: pluginOnly ? PLUGIN_WHEEL_SHA256 : null,
     selected_wheel_filename: selectedPluginWheel ? path.basename(selectedPluginWheel) : null,
+    constraints_file: constraintsFile ? path.relative(projectRoot, constraintsFile).split(path.sep).join("/") : null,
     conversion_tools_source_commit: pluginOnly ? TOOLS_SOURCE_COMMIT : null,
     conversion_tools_wheel_sha256: pluginOnly ? TOOLS_WHEEL_SHA256 : null,
     conversion_tools_wheel_filename: selectedToolsWheel ? path.basename(selectedToolsWheel) : null,
@@ -1161,4 +1180,6 @@ module.exports = {
   getDependencyInstallPhases,
   pruneStandaloneRuntimeArtifacts,
   pruneStandaloneRuntimeLaunchers,
+  removePrunedLauncherRecordRows,
+  PRUNED_LAUNCHER_RECORD_PREFIXES,
 };

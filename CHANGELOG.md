@@ -10,6 +10,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/), and this pro
 
 ---
 
+## [0.11.1] — 2026-09-05
+
+### Fixed
+
+- **Published scientific runtime:** pin the bounded CPython host to the immutable
+  `nirs4all 1.0.1` PyPI wheel and verify its complete RECORD-derived manifest
+  before exposing training, Playground, synthesis, or document operations.
+- **Windows scientific execution:** contain CPython workers in a Job Object,
+  qualify the platform bootstrap, and use Core 0.3.30 for durable Archive V1/V2
+  publication on Windows.
+- **Playground confinement:** keep inline execution data-only and resolve stored
+  datasets exclusively through Rust-owned confined workspace paths.
+- **Prediction export:** preserve exact sample alignment and conformal bounds in
+  CSV output while neutralizing spreadsheet formula injection in string cells.
+- **Release completeness:** refresh native source provenance, Docker inventory,
+  offline update status, and packaging/runtime diagnostics without restoring a
+  Python HTTP product backend.
+- **Portable desktop updates:** restore the historical download, checksum,
+  staging, apply, rollback, relaunch, status, cancellation, cleanup, and result
+  flow for owned all-in-one archives, with authenticated local routes and
+  atomic full-tree replacement.
+
+---
+
 ## [0.11.0] — 2026-09-03
 
 ### Added

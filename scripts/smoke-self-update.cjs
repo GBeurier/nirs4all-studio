@@ -278,18 +278,28 @@ function startFixtureServer({ assetPath, assetName, assetSha }) {
   });
 }
 
-async function getJson(url) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+function sessionHeaders(sessionToken) {
+  return sessionToken ? { "X-Nirs4all-Session": sessionToken } : {};
+}
+
+async function getJson(url, sessionToken) {
+  const res = await fetch(url, {
+    headers: sessionHeaders(sessionToken),
+    signal: AbortSignal.timeout(10000),
+  });
   if (!res.ok) {
     throw new Error(`GET ${url} -> ${res.status}`);
   }
   return res.json();
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, sessionToken) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      ...sessionHeaders(sessionToken),
+      "Content-Type": "application/json",
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(60000),
   });
@@ -306,7 +316,7 @@ async function postJson(url, body) {
 }
 
 /** Drive the backend through download discovery -> download -> apply over HTTP. */
-async function driveUpdate(baseUrl, timeoutMs, backendOutput = () => "") {
+async function driveUpdate(baseUrl, timeoutMs, backendOutput = () => "", sessionToken) {
   // The packaged app starts its own update check. Poll its read-only state
   // directly instead of repeatedly starting competing checks. Preserve the
   // last payload/error and backend output so CI failures remain actionable.
@@ -315,7 +325,7 @@ async function driveUpdate(baseUrl, timeoutMs, backendOutput = () => "") {
   let lastError = null;
   for (;;) {
     try {
-      info = await getJson(`${baseUrl}/api/updates/webapp/download-info`);
+      info = await getJson(`${baseUrl}/api/updates/webapp/download-info`, sessionToken);
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
     }
@@ -335,7 +345,7 @@ async function driveUpdate(baseUrl, timeoutMs, backendOutput = () => "") {
     throw new Error(`backend refused in-place update (channel=${info.update_channel})`);
   }
 
-  const start = await postJson(`${baseUrl}/api/updates/webapp/download-start`);
+  const start = await postJson(`${baseUrl}/api/updates/webapp/download-start`, undefined, sessionToken);
   const jobId = start.job_id;
   if (!jobId) {
     throw new Error("download-start returned no job id");
@@ -343,7 +353,7 @@ async function driveUpdate(baseUrl, timeoutMs, backendOutput = () => "") {
 
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const status = await getJson(`${baseUrl}/api/updates/webapp/download-status/${jobId}`);
+    const status = await getJson(`${baseUrl}/api/updates/webapp/download-status/${jobId}`, sessionToken);
     if (status.status === "completed") {
       break;
     }
@@ -356,7 +366,7 @@ async function driveUpdate(baseUrl, timeoutMs, backendOutput = () => "") {
     await delay(500);
   }
 
-  const applied = await postJson(`${baseUrl}/api/updates/webapp/apply`, { confirm: true });
+  const applied = await postJson(`${baseUrl}/api/updates/webapp/apply`, { confirm: true }, sessionToken);
   if (!applied.restart_required) {
     throw new Error("apply did not request a restart");
   }
@@ -387,9 +397,12 @@ async function quitApp(child) {
   }
 }
 
-async function isHealthy(port) {
+async function isHealthy(port, sessionToken) {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(2500) });
+    const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      headers: sessionHeaders(sessionToken),
+      signal: AbortSignal.timeout(2500),
+    });
     if (!res.ok) {
       return false;
     }
@@ -397,6 +410,82 @@ async function isHealthy(port) {
     return Boolean(payload.core_ready || payload.ready);
   } catch {
     return false;
+  }
+}
+
+/** Prove that the detached native updater itself relaunched a complete app. */
+async function waitForUpdaterRelaunch(port, sessionToken, timeoutMs) {
+  await archiveSmoke.waitForNativeScientificReady(
+    port,
+    timeoutMs,
+    { exitCode: null },
+    [],
+    sessionToken,
+  );
+}
+
+async function getRelaunchPid(port, sessionToken, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const result = await getJson(
+        `http://127.0.0.1:${port}/api/updates/webapp/last-apply-result`,
+        sessionToken,
+      );
+      if (Number.isInteger(result.relaunch_pid) && result.relaunch_pid > 0) {
+        return result.relaunch_pid;
+      }
+    } catch {
+      // The helper/new process may still be reconciling its apply result.
+    }
+    await delay(250);
+  }
+  throw new Error("native updater did not publish its relaunch PID");
+}
+
+async function terminateRelaunch(pid, port, sessionToken, timeoutMs) {
+  const pidAlive = () => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      if (error?.code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch (error) {
+    if (error?.code !== "ESRCH") throw error;
+  }
+  const deadline = Date.now() + Math.min(timeoutMs, 15000);
+  while (Date.now() < deadline) {
+    if (!pidAlive() && !(await isHealthy(port, sessionToken))) return;
+    await delay(250);
+  }
+  if (process.platform === "win32") {
+    try {
+      execFileSync(
+        "taskkill.exe",
+        ["/PID", String(pid), "/T", "/F"],
+        { stdio: "ignore" },
+      );
+    } catch {
+      // The process may have exited between the liveness check and taskkill.
+    }
+  } else {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch (error) {
+      if (error?.code !== "ESRCH") throw error;
+    }
+  }
+  const forcedDeadline = Date.now() + 5000;
+  while (Date.now() < forcedDeadline && (pidAlive() || (await isHealthy(port, sessionToken)))) {
+    await delay(100);
+  }
+  if (pidAlive() || (await isHealthy(port, sessionToken))) {
+    throw new Error(`helper-relaunched app (PID ${pid}) remained healthy after termination`);
   }
 }
 
@@ -452,7 +541,11 @@ async function launchHealthy(layout, env, port, timeoutMs, label) {
   childOutput.set(child, out);
 
   const deadline = Date.now() + timeoutMs;
-  while (!(await isHealthy(port))) {
+  const sessionToken = env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN;
+  if (!sessionToken) {
+    throw new Error("archive smoke session token is missing");
+  }
+  while (!(await isHealthy(port, sessionToken))) {
     if (child.exitCode !== null) {
       throw new Error(`${label}: app exited before /api/health (code ${child.exitCode}).\n${out.join("\n")}`);
     }
@@ -477,10 +570,9 @@ async function smokeSelfUpdate(rawConfig) {
     throw new Error(`Bundled runtime marker not found: ${layout.runtimeReadyPath}`);
   }
 
-  // Two distinct ports/sandboxes: the update is driven on port1; the post-update
-  // bundle is re-booted on port2. They never compete, so the updater's own
-  // (platform-specific) auto-relaunch on port1 can linger harmlessly on the
-  // ephemeral CI runner instead of racing us.
+  // Two distinct ports/sandboxes: the update is driven and its helper relaunch
+  // proved on port1, then that process is terminated before an independent cold
+  // boot on port2. This also proves the single-instance lock was released.
   const port1 = await choosePort(config.port);
   const port2 = await choosePort(0, [port1]);
   const sandbox1 = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-selfupdate-s1-"));
@@ -491,6 +583,8 @@ async function smokeSelfUpdate(rawConfig) {
 
   let fixture;
   let child;
+  let relaunchPid = null;
+  let env1 = null;
 
   console.log(`Self-update smoke root: ${config.extractedRoot}`);
   console.log(`Executable:             ${layout.executablePath}`);
@@ -518,7 +612,7 @@ async function smokeSelfUpdate(rawConfig) {
     // NIRS4ALL_OFFLINE; point updates at the fixture; disable Sentry so the
     // intentional version non-advance can't emit an external event), drive the
     // update through its backend, then quit so the updater replaces files.
-    const env1 = archiveSmoke.buildSandboxEnv(config.platform, sandbox1, port1);
+    env1 = archiveSmoke.buildSandboxEnv(config.platform, sandbox1, port1);
     delete env1.NIRS4ALL_OFFLINE;
     env1.SENTRY_DSN = "";
     env1.NIRS4ALL_UPDATE_API_BASE = fixture.base;
@@ -527,6 +621,7 @@ async function smokeSelfUpdate(rawConfig) {
       `http://127.0.0.1:${port1}`,
       config.timeoutMs,
       () => childOutput.get(child)?.join("\n") || "",
+      env1.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN,
     );
     console.log("Update applied. Quitting so the updater can replace files...");
     await quitApp(child);
@@ -535,6 +630,25 @@ async function smokeSelfUpdate(rawConfig) {
     // Phase 2: the updater must have replaced files in place.
     await waitForSentinel(sentinelPath, config.timeoutMs);
     console.log("Updater replaced files in place (sentinel present).");
+    await waitForUpdaterRelaunch(
+      port1,
+      env1.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN,
+      config.timeoutMs,
+    );
+    console.log("Native updater relaunched a healthy, scientifically ready app.");
+    relaunchPid = await getRelaunchPid(
+      port1,
+      env1.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN,
+      config.timeoutMs,
+    );
+    await terminateRelaunch(
+      relaunchPid,
+      port1,
+      env1.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN,
+      config.timeoutMs,
+    );
+    console.log(`Stopped helper-relaunched app PID ${relaunchPid} before the independent cold boot.`);
+    relaunchPid = null;
 
     // Phase 2b: the stale file (present in the install, absent from the asset)
     // must be GONE — proving the updater replaces the tree atomically rather than
@@ -549,11 +663,9 @@ async function smokeSelfUpdate(rawConfig) {
     }
     console.log("Stale file removed by the update (atomic replace).");
 
-    // Phase 3: boot the UPDATED bundle ourselves, offline, on a distinct
-    // port + sandbox. A clean boot of the on-disk bundle is the real "the app
-    // works after the update" signal — and on macOS it proves the ditto-zipped
-    // .app extracted with intact framework symlinks. We don't reach for the
-    // updater's own relaunch (its env/port is platform-specific and unreliable).
+    // Phase 3: independently boot the UPDATED bundle offline on a distinct
+    // port + sandbox. The helper relaunch above proves the real lifecycle; this
+    // second launch isolates on-disk integrity and macOS framework symlinks.
     const env2 = archiveSmoke.buildSandboxEnv(config.platform, sandbox2, port2);
     env2.SENTRY_DSN = "";
     // The staged asset is a full app tree, so the updater's copy can still be in
@@ -562,13 +674,26 @@ async function smokeSelfUpdate(rawConfig) {
     await waitForStableExecutable(layout.executablePath, config.timeoutMs);
     child = await launchHealthy(layout, env2, port2, config.timeoutMs, "post-update boot");
 
-    // Phase 3b: the UPDATED bundle must be able to `import nirs4all` (Phase 2 /
-    // ml_ready), not just boot FastAPI — this proves the updated runtime is whole,
-    // catching a broken editable/partial nirs4all install that ships green.
-    await archiveSmoke.waitForMlReady(port2, config.timeoutMs, child, []);
-    console.log("Self-update smoke passed: files replaced, stale file gone, and the updated bundle imports nirs4all.");
+    // Phase 3b: prove the UPDATED bundle remains scientifically usable through
+    // the migrated Rust/native surface and its bounded installed owner facade.
+    await archiveSmoke.waitForNativeScientificReady(
+      port2,
+      config.timeoutMs,
+      child,
+      childOutput.get(child) ?? [],
+      env2.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN,
+    );
+    console.log("Self-update smoke passed: atomic replacement, relaunch, native training, and inline Playground facade all verified.");
   } finally {
     await quitApp(child);
+    if (relaunchPid) {
+      await terminateRelaunch(
+        relaunchPid,
+        port1,
+        env1?.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN,
+        config.timeoutMs,
+      ).catch(() => {});
+    }
     if (fixture) {
       await fixture.close();
     }

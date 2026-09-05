@@ -39,6 +39,7 @@ const setupPythonEnvModule = require("../scripts/setup-python-env.cjs") as {
     removedBytes: number;
     removedPaths: number;
   };
+  PRUNED_LAUNCHER_RECORD_PREFIXES: readonly string[];
 };
 
 const tempDirs: string[] = [];
@@ -78,9 +79,9 @@ describe("setup-python-env", () => {
     ]);
   });
 
-  it("disables Git checkout line-ending conversion for every pinned wheel build", () => {
+  it("downloads the published plugin wheel and normalizes the remaining pinned source build", () => {
     expect(
-      setupPythonEnvModule.buildDeterministicWheelEnv("1788424315", {
+      setupPythonEnvModule.buildDeterministicWheelEnv("1788621086", {
         EXISTING: "preserved",
         GIT_CONFIG_COUNT: "7",
         GIT_CONFIG_KEY_0: "unsafe.override",
@@ -88,7 +89,7 @@ describe("setup-python-env", () => {
       }),
     ).toEqual({
       EXISTING: "preserved",
-      SOURCE_DATE_EPOCH: "1788424315",
+      SOURCE_DATE_EPOCH: "1788621086",
       GIT_CONFIG_COUNT: "1",
       GIT_CONFIG_KEY_0: "core.autocrlf",
       GIT_CONFIG_VALUE_0: "false",
@@ -99,8 +100,13 @@ describe("setup-python-env", () => {
       "utf8",
     );
     expect(setupSource).toContain(
-      "env: buildDeterministicWheelEnv(PLUGIN_SOURCE_EPOCH)",
+      'const PLUGIN_WHEEL_FILENAME = "nirs4all-1.0.1-py3-none-any.whl";',
     );
+    expect(setupSource).toContain(
+      'const PLUGIN_WHEEL_URL = "https://files.pythonhosted.org/packages/53/dc/1240b0db9095277cea050fd5d8044ffc7bdba303fd8242c8bd1b6eab4e15/nirs4all-1.0.1-py3-none-any.whl";',
+    );
+    expect(setupSource).not.toContain("PLUGIN_SOURCE_EPOCH");
+    expect(setupSource).not.toContain("pip\",\n        \"wheel\",\n        \"--no-deps\",\n        \"--no-build-isolation\",\n        \"--wheel-dir\",\n        wheelDir");
     expect(setupSource).toContain(
       "env: buildDeterministicWheelEnv(TOOLS_SOURCE_EPOCH)",
     );
@@ -190,6 +196,20 @@ describe("setup-python-env", () => {
     expect(fs.existsSync(path.join(binDir, "pip3"))).toBe(false);
     expect(fs.existsSync(pycacheDir)).toBe(false);
     expect(artifactStats.removedPaths + launcherStats.removedPaths).toBeGreaterThanOrEqual(3);
+    expect(setupPythonEnvModule.PRUNED_LAUNCHER_RECORD_PREFIXES).toEqual([
+      "../../../bin/",
+      "../../../Scripts/",
+    ]);
+    const setupSource = fs.readFileSync(
+      path.join(process.cwd(), "scripts", "setup-python-env.cjs"),
+      "utf8",
+    );
+    expect(setupSource.indexOf("pruneStandaloneRuntimeLaunchers(backendDist)")).toBeLessThan(
+      setupSource.indexOf("removePrunedLauncherRecordRows(runtimePython, backendDist)"),
+    );
+    expect(setupSource.indexOf("removePrunedLauncherRecordRows(runtimePython, backendDist)")).toBeLessThan(
+      setupSource.indexOf('restorePinnedWheelRecord(runtimePython, backendDist, selectedPluginWheel'),
+    );
   });
 
   it("removes Tk from the headless plugin-only CPython closure", () => {

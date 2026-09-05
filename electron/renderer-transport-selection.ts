@@ -74,6 +74,15 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["POST /updates/check", { name: "updates-status", capability: "updates_status_route" }],
   ["GET /updates/settings", { name: "updates-settings", capability: "updates_settings_routes" }],
   ["PUT /updates/settings", { name: "updates-settings", capability: "updates_settings_routes" }],
+  ["GET /updates/webapp/download-info", { name: "webapp-update", capability: "native_webapp_update_routes" }],
+  ["POST /updates/webapp/download-start", { name: "webapp-update", capability: "native_webapp_update_routes" }],
+  ["POST /updates/webapp/apply", { name: "webapp-update", capability: "native_webapp_update_routes" }],
+  ["GET /updates/webapp/staged-update", { name: "webapp-update", capability: "native_webapp_update_routes" }],
+  ["DELETE /updates/webapp/staged-update", { name: "webapp-update", capability: "native_webapp_update_routes" }],
+  ["POST /updates/webapp/cleanup", { name: "webapp-update", capability: "native_webapp_update_routes" }],
+  ["GET /updates/webapp/last-apply-result", { name: "webapp-update", capability: "native_webapp_update_routes" }],
+  ["DELETE /updates/webapp/last-apply-result", { name: "webapp-update", capability: "native_webapp_update_routes" }],
+  ["POST /updates/webapp/restart", { name: "webapp-update", capability: "native_webapp_update_routes" }],
   ["POST /runs/run-groups", { name: "scientific-submission", capability: "scientific_submission_transport" }],
   ["POST /predict/archive-v2", { name: "archive-v2-prediction", capability: "native_archive_v2_prediction" }],
   ["POST /predict/archive-v2/conformal-presentation", { name: "archive-v2-conformal-presentation", capability: "native_conformal_presentation_v2" }],
@@ -116,6 +125,17 @@ function classifyWorkspaceRuns(path: string): NativeSurface | null {
   return { name: "workspace-run-summaries", capability: "workspace_store_v5_run_summary_route" };
 }
 
+function isUpdateChangelogPath(path: string): boolean {
+  const [pathname, query] = path.split("?", 2);
+  if (pathname !== "/updates/webapp/changelog") return false;
+  if (query === undefined) return true;
+  if (!query || path.split("?").length !== 2) return false;
+  const fields = new URLSearchParams(query);
+  return [...fields.keys()].length === 1
+    && fields.getAll("current_version").length === 1
+    && isValidIdentifier(fields.get("current_version") ?? "");
+}
+
 function classifyHttp(method: string, path: string): NativeSurface | null {
   const exact = exactHttpRoutes.get(`${method} ${path}`) ?? pythonHostRoutes.get(`${method} ${path}`);
   if (exact) return exact;
@@ -142,6 +162,9 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
     return { name: "linked-workspace-state", capability: "linked_workspace_state_routes" };
   }
   if (method === "GET") {
+    if (isUpdateChangelogPath(path)) {
+      return { name: "webapp-update", capability: "native_webapp_update_routes" };
+    }
     if (path === "/datasets/synthetic-presets") {
       return { name: "dataset-synthetic-presets", capability: "dataset_synthetic_preset_routes" };
     }
@@ -166,7 +189,7 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
       return { name: "job-status", capability: "native_job_status_routes" };
     }
     if (identifierPath("/updates/webapp/download-status/").test(path)) {
-      return { name: "job-status", capability: "native_job_status_routes" };
+      return { name: "webapp-update", capability: "native_webapp_update_routes" };
     }
     if (identifierPath("/runs/execution-job-records/").test(path) || identifierPath("/runs/", "/execution-job-record").test(path)) {
       return { name: "durable-job-record", capability: "durable_execution_job_record_reads" };
@@ -180,7 +203,9 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
       identifierPath("/runs/", "/stop").test(path) ||
       identifierPath("/updates/webapp/download-cancel/").test(path)
     ) {
-      return { name: "job-cancellation", capability: "native_job_cancellation_routes" };
+      return path.startsWith("/updates/webapp/")
+        ? { name: "webapp-update", capability: "native_webapp_update_routes" }
+        : { name: "job-cancellation", capability: "native_job_cancellation_routes" };
     }
   }
   return null;

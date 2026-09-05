@@ -24,6 +24,7 @@ parser.add_argument("--prediction", action="store_true", help="Also replay a cap
 parser.add_argument("--presets", action="store_true", help="Import and reload every historical pipeline preset variant")
 parser.add_argument("--dataset-upload", action="store_true", help="Preview and persist uploaded CSV files, then run the imported dataset")
 parser.add_argument("--synthetic", action="store_true", help="Generate, verify and auto-link one owner-produced synthetic dataset")
+parser.add_argument("--playground", action="store_true", help="Exercise the attested Playground facade over real HTTP")
 args = parser.parse_args()
 RUNTIME = args.backend_root.resolve() / "python-runtime"
 PYTHON = RUNTIME / "python"
@@ -67,6 +68,25 @@ def call(path, payload=None, *, headers=None):
             return value
     except urllib.error.HTTPError as error:
         raise AssertionError((path, error.code, error.read().decode())) from error
+
+
+def call_refusal(path, payload, expected_status):
+    started = time.monotonic()
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{PORT}{path}",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        urllib.request.urlopen(request, timeout=120)
+    except urllib.error.HTTPError as error:
+        body = json.loads(error.read().decode())
+        elapsed = round(time.monotonic() - started, 3)
+        TRACE.append({"path": path, "status": error.code, "seconds": elapsed, "response": body})
+        print(path, error.code, elapsed, json.dumps(body)[:1600], flush=True)
+        assert error.code == expected_status, (path, error.code, body)
+        return body
+    raise AssertionError((path, "unexpected success"))
 
 
 def upload_dataset(path, metadata):
@@ -116,6 +136,45 @@ with (ROOT / "sidecar.log").open("w") as log:
         linked = call("/api/datasets/link", {"path": str(DATASET), "config": config})["dataset"]
         assert linked["num_samples"] == 150 and linked["num_features"] == 300, linked
         dataset = linked["id"]
+        if args.playground:
+            capabilities = call("/api/playground/capabilities")
+            assert capabilities["nirs4all_available"] is True, capabilities
+            assert capabilities["stateless"] is True and capabilities["cache"] is False, capabilities
+            rows = [[float(row * 5 + column + 1) for column in range(5)] for row in range(12)]
+            sample_ids = [f"playground-{row}" for row in range(12)]
+            preview = call("/api/playground/execute", {
+                "data": {
+                    "x": rows,
+                    "y": [float(row) for row in range(12)],
+                    "wavelengths": [1000, 1001, 1002, 1003, 1004],
+                    "sample_ids": sample_ids,
+                },
+                "steps": [{
+                    "id": "snv",
+                    "type": "preprocessing",
+                    "name": "StandardNormalVariate",
+                    "params": {},
+                    "enabled": True,
+                    "operator": {
+                        "class": "nirs4all.operators.transforms.StandardNormalVariate",
+                        "params": {},
+                    },
+                }],
+                "sampling": {"method": "all", "n_samples": 12, "seed": 42},
+                "options": {"compute_repetitions": False},
+            })
+            assert preview["success"] is True, preview
+            assert preview["processed"]["shape"] == [12, 5], preview
+            assert preview["processed"]["sample_ids"] == sample_ids, preview
+            assert preview["cache"] == {"used": False, "scope": "stateless_callable"}, preview
+            for forbidden in [
+                {"dataset": {"config": {"path": str(DATASET / "Xcal.csv")}}, "steps": []},
+                {"data": {"x": [[1.0]]}, "selection": {"partition": "all"}},
+                {"data": {"x": [[1.0]]}, "path": str(DATASET / "Xcal.csv")},
+                {"data": {"x": [[1.0]]}, "unknown": True},
+            ]:
+                refusal = call_refusal("/api/playground/execute", forbidden, 400)
+                assert refusal.get("detail"), refusal
         if args.dataset_upload:
             assert args.wizard_csv, "Upload witness requires explicit CSV parsing"
             preview = upload_dataset("/api/datasets/preview-upload", {"files": config["files"], "parsing": {"delimiter": ",", "has_header": True}, "max_samples": 5})

@@ -26,14 +26,20 @@ cap-std = "3"
 nirs4all = "=0.3.30"
 nirs4all-io = "=0.1.18"
 percent-encoding = "2.3"
+flate2 = "1.1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 rusqlite = { version = "0.32.1", features = ["bundled", "serialize"] }
 same-file = "1"
+semver = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
 sha2 = "0.10.9"
+tar = "0.4"
 tempfile = "3"
 tungstenite = { version = "0.26.2", default-features = false, features = ["handshake"] }
 url = "2.5.4"
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 dag-ml-core = "=0.3.25"

@@ -18,10 +18,68 @@ const RUNTIME_MODE_ENV = "NIRS4ALL_RUNTIME_MODE";
 const RUNTIME_KIND_ENV = "NIRS4ALL_RUNTIME_KIND";
 const BUILD_INFO_PATH_ENV = "NIRS4ALL_BUILD_INFO_PATH";
 const APP_VERSION_ENV = "NIRS4ALL_APP_VERSION";
+const APP_DIR_ENV = "NIRS4ALL_APP_DIR";
+const APP_EXE_ENV = "NIRS4ALL_APP_EXE";
+const ELECTRON_ENV = "NIRS4ALL_ELECTRON";
+const ALL_IN_ONE_ENV = "NIRS4ALL_ALL_IN_ONE";
+const BUNDLED_RUNTIME_AVAILABLE_ENV =
+  "NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE";
+const ALL_IN_ONE_MARKER = "all-in-one-runtime.json";
+const ALL_IN_ONE_MARKER_SCHEMA = "nirs4all.studio-all-in-one-runtime.v1";
+const MAX_ALL_IN_ONE_MARKER_BYTES = 1024;
+const ARCHIVE_SMOKE_SESSION_TOKEN_ENV =
+  "NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN";
 const SIDECAR_READY_PREFIX = "STUDIO_SIDECAR_READY ";
 const SIDECAR_START_TIMEOUT_MS = 15_000;
 const MAX_STARTUP_OUTPUT_BYTES = 8 * 1024;
 const electronProcess = process as NodeJS.Process & { resourcesPath?: string };
+
+/**
+ * Let the external archive harness authenticate its own loopback probes without
+ * weakening normal desktop sessions. The harness creates a fresh random token
+ * per launch and the override is accepted only under the explicit CI boundary.
+ */
+export function createNativeSessionToken(
+  environment: NodeJS.ProcessEnv = process.env,
+): string {
+  const smokeToken = environment.CI === "1"
+    ? environment[ARCHIVE_SMOKE_SESSION_TOKEN_ENV]?.trim()
+    : undefined;
+  if (smokeToken) {
+    if (!/^[A-Za-z0-9]{32,256}$/.test(smokeToken)) {
+      throw new Error(
+        `${ARCHIVE_SMOKE_SESSION_TOKEN_ENV} must contain 32..256 ASCII letters/digits`,
+      );
+    }
+    return smokeToken;
+  }
+  return randomBytes(32).toString("hex");
+}
+
+export function isAttestedAllInOneResources(resourcesPath: string): boolean {
+  const markerPath = path.join(resourcesPath, ALL_IN_ONE_MARKER);
+  try {
+    const metadata = fs.lstatSync(markerPath);
+    if (
+      !metadata.isFile()
+      || metadata.isSymbolicLink()
+      || metadata.size > MAX_ALL_IN_ONE_MARKER_BYTES
+    ) {
+      return false;
+    }
+    const marker: unknown = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    if (!marker || typeof marker !== "object" || Array.isArray(marker)) return false;
+    const record = marker as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    return keys.length === 2
+      && keys[0] === "owns_install_tree"
+      && keys[1] === "schema_id"
+      && record.schema_id === ALL_IN_ONE_MARKER_SCHEMA
+      && record.owns_install_tree === true;
+  } catch {
+    return false;
+  }
+}
 
 export type NativeSidecarStatus =
   "disabled" | "starting" | "running" | "stopped" | "error";
@@ -244,8 +302,11 @@ export class NativeSidecarManager {
       : explicitPythonPluginHost || selectedPythonPluginHost || null;
     this.pythonPluginHostConfigured = Boolean(pythonPluginHost);
     const childEnvironment: NodeJS.ProcessEnv = { ...process.env };
-    this.sessionToken = randomBytes(32).toString("hex");
+    this.sessionToken = createNativeSessionToken();
     childEnvironment.NIRS4ALL_STUDIO_SESSION_TOKEN = this.sessionToken;
+    // The sidecar receives only its ordinary session credential, never the
+    // smoke-harness override name that the parent process used to select it.
+    delete childEnvironment[ARCHIVE_SMOKE_SESSION_TOKEN_ENV];
     delete childEnvironment.NIRS4ALL_STUDIO_ALLOWED_ORIGINS;
     delete childEnvironment[PYTHON_PLUGIN_HOST_ENV];
     delete childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV];
@@ -253,6 +314,11 @@ export class NativeSidecarManager {
     delete childEnvironment[PYTHON_PLUGIN_RUNTIME_ROOT_ENV];
     delete childEnvironment[PYTHON_PLUGIN_SITE_PACKAGES_ENV];
     delete childEnvironment[SCIENTIFIC_EXECUTOR_ENV];
+    delete childEnvironment[APP_DIR_ENV];
+    delete childEnvironment[APP_EXE_ENV];
+    delete childEnvironment[ELECTRON_ENV];
+    delete childEnvironment[ALL_IN_ONE_ENV];
+    delete childEnvironment[BUNDLED_RUNTIME_AVAILABLE_ENV];
     if (pythonPluginHost) {
       childEnvironment[PYTHON_PLUGIN_HOST_ENV] = pythonPluginHost;
       if (packagedProduct) {
@@ -282,6 +348,19 @@ export class NativeSidecarManager {
       childEnvironment[BUILD_INFO_PATH_ENV] = options.buildInfoPath.trim();
     if (options.appVersion?.trim())
       childEnvironment[APP_VERSION_ENV] = options.appVersion.trim();
+    childEnvironment[APP_DIR_ENV] = path.dirname(process.execPath);
+    childEnvironment[APP_EXE_ENV] = path.basename(process.execPath);
+    childEnvironment[ELECTRON_ENV] = "true";
+    childEnvironment[BUNDLED_RUNTIME_AVAILABLE_ENV] = verifiedBundledPython
+      ? "true"
+      : "false";
+    const packagedResourcesPath = options.resourcesPath ?? electronProcess.resourcesPath;
+    childEnvironment[ALL_IN_ONE_ENV] = packagedProduct
+      && Boolean(verifiedBundledPython)
+      && packagedResourcesPath
+      && isAttestedAllInOneResources(packagedResourcesPath)
+      ? "true"
+      : "false";
     try {
       child = spawn(
         binaryPath,

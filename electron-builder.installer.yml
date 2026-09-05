@@ -120,4 +120,4 @@ deb:
 publish:
   provider: github
   owner: GBeurier
-  repo: nirs4all-webapp
+  repo: nirs4all-studio

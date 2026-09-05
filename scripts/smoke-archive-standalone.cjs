@@ -12,6 +12,7 @@
  */
 
 const { spawn } = require("child_process");
+const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -23,6 +24,7 @@ const DEFAULT_APP_NAME = "nirs4all Studio";
 const DEFAULT_TIMEOUT_MS = 180000;
 const DEFAULT_POLL_INTERVAL_MS = 1000;
 const PLUGIN_PREFLIGHT_REQUEST_TIMEOUT_MS = 75000;
+const ARCHIVE_SMOKE_SESSION_TOKEN_ENV = "NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN";
 
 function printHelp() {
   console.log(`Usage:
@@ -316,6 +318,11 @@ function buildSandboxEnv(platformId, sandboxRoot, port, timeoutMs = DEFAULT_TIME
     NIRS4ALL_NATIVE_SIDECAR_PORT: String(port),
     NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS: String(timeoutMs),
     NIRS4ALL_PLUGIN_PACKAGE_VERIFY_TIMEOUT_MS: String(timeoutMs),
+    // The Electron main process accepts this fresh credential only under CI,
+    // then passes it to the sidecar under the ordinary private session name.
+    // This lets the external harness exercise the authenticated product routes
+    // without disabling the access policy or printing the credential.
+    [ARCHIVE_SMOKE_SESSION_TOKEN_ENV]: crypto.randomBytes(32).toString("hex"),
   };
   delete env.NIRS4ALL_BACKEND_PORT;
 
@@ -430,11 +437,13 @@ async function cleanupSandboxRoot(sandboxRoot, options = {}) {
   }
 }
 
-async function waitForReady(port, timeoutMs, child, outputBuffer) {
+async function waitForReady(port, timeoutMs, child, outputBuffer, sessionToken) {
   const deadline = Date.now() + timeoutMs;
   const healthUrl = `http://127.0.0.1:${port}/sidecar/v1/health`;
   const capabilitiesUrl = `http://127.0.0.1:${port}/sidecar/v1/capabilities`;
   const pluginPreflightUrl = `http://127.0.0.1:${port}/sidecar/v1/python/preflight`;
+  const headers = { "X-Nirs4all-Session": sessionToken };
+  let lastFailure = "no response";
 
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
@@ -442,13 +451,20 @@ async function waitForReady(port, timeoutMs, child, outputBuffer) {
     }
 
     try {
-      const healthResponse = await fetch(healthUrl, { signal: AbortSignal.timeout(3000) });
+      const healthResponse = await fetch(healthUrl, {
+        headers,
+        signal: AbortSignal.timeout(3000),
+      });
       if (healthResponse.ok) {
         const healthPayload = await healthResponse.json();
         if (healthPayload.sidecar_ready === true) {
-          const capabilitiesResponse = await fetch(capabilitiesUrl, { signal: AbortSignal.timeout(3000) });
+          const capabilitiesResponse = await fetch(capabilitiesUrl, {
+            headers,
+            signal: AbortSignal.timeout(3000),
+          });
           const capabilitiesPayload = capabilitiesResponse.ok ? await capabilitiesResponse.json() : null;
           const pluginResponse = await fetch(pluginPreflightUrl, {
+            headers,
             signal: AbortSignal.timeout(pluginPreflightTimeoutMs(deadline - Date.now())),
           });
           const pluginPayload = pluginResponse.ok ? await pluginResponse.json() : null;
@@ -459,51 +475,94 @@ async function waitForReady(port, timeoutMs, child, outputBuffer) {
             pluginStatus: pluginResponse.status,
           };
         }
+        lastFailure = `health payload not ready: ${JSON.stringify(healthPayload)}`;
+      } else {
+        lastFailure = `health HTTP ${healthResponse.status}: ${await healthResponse.text()}`;
       }
-    } catch {
-      // Ignore transient connection errors during startup.
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error);
     }
 
     await delay(DEFAULT_POLL_INTERVAL_MS);
   }
 
-  throw new Error(`Timed out waiting for ${healthUrl}.\n${outputBuffer.join("\n")}`);
+  throw new Error(
+    `Timed out waiting for ${healthUrl}; last failure: ${lastFailure}.\n${outputBuffer.join("\n")}`,
+  );
 }
 
-// Retained for the self-update smoke, whose staged legacy compatibility
-// backend still has an explicit ML-readiness assertion. The archive product
-// startup smoke above deliberately does not acquire that HTTP process.
-async function waitForMlReady(port, timeoutMs, child, outputBuffer) {
+/** Prove the migrated product is scientifically usable without a Python HTTP
+ * backend: native training must be ready and the installed owner facade must
+ * execute one bounded inline Playground request through the Rust route. */
+async function waitForNativeScientificReady(port, timeoutMs, child, outputBuffer, sessionToken) {
   const deadline = Date.now() + timeoutMs;
-  const coherenceUrl = `http://127.0.0.1:${port}/api/system/env-coherence`;
-  let lastPayload = null;
+  const healthUrl = `http://127.0.0.1:${port}/api/health`;
+  const readinessUrl = `http://127.0.0.1:${port}/api/system/readiness`;
+  const playgroundUrl = `http://127.0.0.1:${port}/api/playground/execute`;
+  const headers = sessionToken ? { "X-Nirs4all-Session": sessionToken } : {};
+  let lastHealth = null;
+  let lastReadiness = null;
+  let lastPlayground = null;
+  let lastFailure = "no response";
 
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
-      throw new Error(`App exited before ml-ready check completed (code ${child.exitCode}).\n${outputBuffer.join("\n")}`);
+      throw new Error(`App exited before native scientific readiness completed (code ${child.exitCode}).\n${outputBuffer.join("\n")}`);
     }
     try {
-      const response = await fetch(coherenceUrl, { signal: AbortSignal.timeout(5000) });
-      if (response.ok) {
-        const payload = await response.json();
-        lastPayload = payload;
-        const missingCore = Array.isArray(payload.missing_core_packages)
-          ? payload.missing_core_packages
-          : [];
-        if (payload.core_ready === true && missingCore.length === 0) {
-          return payload;
-        }
+      const [healthResponse, readinessResponse] = await Promise.all([
+        fetch(healthUrl, { headers, signal: AbortSignal.timeout(5000) }),
+        fetch(readinessUrl, { headers, signal: AbortSignal.timeout(5000) }),
+      ]);
+      if (!healthResponse.ok || !readinessResponse.ok) {
+        lastFailure = `health/readiness HTTP ${healthResponse.status}/${readinessResponse.status}`;
+        await delay(DEFAULT_POLL_INTERVAL_MS);
+        continue;
       }
-    } catch {
-      // Ignore transient connection errors while the explicit plugin loads.
+      lastHealth = await healthResponse.json();
+      lastReadiness = await readinessResponse.json();
+      if (
+        (lastHealth.core_ready === true || lastHealth.ready === true) &&
+        lastReadiness.native_training_ready === true
+      ) {
+        const playgroundResponse = await fetch(playgroundUrl, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data: { x: [[1, 2], [3, 4]] },
+            steps: [],
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+        lastPlayground = playgroundResponse.ok ? await playgroundResponse.json() : {
+          status: playgroundResponse.status,
+          body: await playgroundResponse.text(),
+        };
+        if (
+          playgroundResponse.ok &&
+          lastPlayground?.success === true &&
+          JSON.stringify(lastPlayground?.processed?.shape) === "[2,2]"
+        ) {
+          return { health: lastHealth, readiness: lastReadiness, playground: lastPlayground };
+        }
+        lastFailure = `inline Playground probe failed: ${JSON.stringify(lastPlayground)}`;
+      } else {
+        lastFailure = `native readiness incomplete: ${JSON.stringify(lastReadiness)}`;
+      }
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error);
     }
     await delay(DEFAULT_POLL_INTERVAL_MS);
   }
   throw new Error(
-    `Timed out waiting for ml-ready at ${coherenceUrl} `
-    + `(import nirs4all may be broken in the bundled runtime). `
-    + `Last env-coherence: ${JSON.stringify(lastPayload)}\n${outputBuffer.join("\n")}`,
+    `Timed out proving native scientific readiness; last failure: ${lastFailure}; `
+    + `health=${JSON.stringify(lastHealth)} readiness=${JSON.stringify(lastReadiness)} `
+    + `playground=${JSON.stringify(lastPlayground)}\n${outputBuffer.join("\n")}`,
   );
+}
+
+async function probeNativeScientificSurface(port, timeoutMs, child, outputBuffer, sessionToken) {
+  return waitForNativeScientificReady(port, timeoutMs, child, outputBuffer, sessionToken);
 }
 
 function pushOutput(buffer, label, chunk) {
@@ -601,12 +660,21 @@ async function smokeArchiveStandalone(rawConfig) {
 
   try {
     const { healthPayload, capabilitiesPayload, pluginPayload, pluginStatus } =
-      await waitForReady(port, config.timeoutMs, child, outputBuffer);
+      await waitForReady(
+        port,
+        config.timeoutMs,
+        child,
+        outputBuffer,
+        env[ARCHIVE_SMOKE_SESSION_TOKEN_ENV],
+      );
     if (healthPayload.protocol_version !== "studio-sidecar-r1") {
       throw new Error(`Unexpected sidecar protocol: ${healthPayload.protocol_version ?? "undefined"}`);
     }
     if (
       capabilitiesPayload?.features?.scientific_execution !== false ||
+      capabilitiesPayload?.features?.native_archive_v2_training !== true ||
+      capabilitiesPayload?.features?.playground_routes !== true ||
+      capabilitiesPayload?.features?.dataset_synthetic_generation_routes !== true ||
       capabilitiesPayload?.features?.legacy_api_routes !== false ||
       capabilitiesPayload?.features?.python_plugin_preflight !== true
     ) {
@@ -620,10 +688,18 @@ async function smokeArchiveStandalone(rawConfig) {
     ) {
       throw new Error(`Bundled Python plugin-host preflight failed: ${JSON.stringify(pluginPayload)}`);
     }
+    await probeNativeScientificSurface(
+      port,
+      config.timeoutMs,
+      child,
+      outputBuffer,
+      env[ARCHIVE_SMOKE_SESSION_TOKEN_ENV],
+    );
 
     console.log("Smoke check passed.");
     console.log(`  product backend: Rust sidecar (${healthPayload.protocol_version})`);
     console.log(`  Python role:     explicit library/plugin host (${pluginPayload.bridge})`);
+    console.log("  Scientific probe: native training ready + inline Playground facade executed");
     console.log("  Python HTTP fallback: not selected");
   } finally {
     await terminateApp(child);
@@ -657,10 +733,11 @@ module.exports = {
   isRetryableCleanupError,
   parseArgs,
   pluginPreflightTimeoutMs,
+  probeNativeScientificSurface,
   removePathWithRetries,
   resolveLaunchLayout,
   verifyLaunchRuntimeContract,
   smokeArchiveStandalone,
   waitForChildExit,
-  waitForMlReady,
+  waitForNativeScientificReady,
 };

@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const pluginRuntime = require("../scripts/bake-python-plugin-runtime.cjs") as {
   FORBIDDEN_DISTRIBUTIONS: readonly string[];
+  PLUGIN_CONSTRAINTS_PATH: string;
+  PLUGIN_CONSTRAINTS_SHA256: string;
   PREFLIGHT: string;
   expectedMarker(platform?: string, arch?: string): Record<string, unknown>;
   parseArgs(argv?: string[]): {
@@ -22,6 +24,7 @@ const pluginRuntime = require("../scripts/bake-python-plugin-runtime.cjs") as {
   ): string[];
   materializeInternalRuntimeLinks(runtimeRoot: string): void;
   removeEmptyDirectories(runtimeRoot: string): void;
+  constrainedDistributionVersions(platform?: string): Map<string, string>;
 };
 
 describe("plugin-only CPython runtime", () => {
@@ -45,9 +48,16 @@ describe("plugin-only CPython runtime", () => {
       python_role: "library-plugin-host-only",
       product_backend: "rust-sidecar",
       http_listener: "forbidden",
-      source_commit: "3567bd4abcaa64443a1946748a579f0803e91889",
+      source_commit: "bf21c552b9d0929daf2dcc2ac7b220c9631ffa07",
       wheel_sha256:
-        "5898aa933da2e51ad07438ae5313ade37f1dad2a363411e71e0f0a513c7b4824",
+        "d6f696580d4e52aeb6d39ecce47d30b3e10dc0b867f88f89f39dc1205cf93103",
+      distribution_version: "1.0.1",
+      installed_manifest_sha256:
+        "768e65e0ca900f1a50a88a01f6c09cc7870ce033383cac5c968bfac8fee25bbe",
+      constraints: {
+        path: "build/constraints/plugin-runtime-cpython311.txt",
+        sha256: "437f2a2d61cbd62856bc0de48be2b7726003763a343fb88478624451271ee36c",
+      },
       platform: "linux",
       arch: "x64",
       conversion_tools: {
@@ -71,6 +81,24 @@ describe("plugin-only CPython runtime", () => {
     );
   });
 
+  it("loads an exact deterministic distribution closure with bounded platform additions", () => {
+    expect(pluginRuntime.PLUGIN_CONSTRAINTS_PATH).toBe(
+      path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
+    );
+    expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
+      "437f2a2d61cbd62856bc0de48be2b7726003763a343fb88478624451271ee36c",
+    );
+    const linux = pluginRuntime.constrainedDistributionVersions("linux");
+    const windows = pluginRuntime.constrainedDistributionVersions("win32");
+    expect(linux.get("nirs4all")).toBe("1.0.1");
+    expect(linux.get("nirs4all-core")).toBe("0.3.30");
+    expect(linux.get("scikit-learn")).toBe("1.9.0");
+    expect(linux.has("colorama")).toBe(false);
+    expect(linux.has("tzdata")).toBe(false);
+    expect(windows.get("colorama")).toBe("0.4.6");
+    expect(windows.get("tzdata")).toBe("2025.3");
+  });
+
   it("parses an offline exact wheel without accepting source substitution", () => {
     const parsed = pluginRuntime.parseArgs([
       "--backend-root",
@@ -83,6 +111,7 @@ describe("plugin-only CPython runtime", () => {
     ]);
     expect(parsed).toMatchObject({
       backendRoot: path.resolve("stage/backend"),
+      constraints: pluginRuntime.PLUGIN_CONSTRAINTS_PATH,
       pluginWheel: path.resolve("stage/nirs4all.whl"),
       toolsWheel: path.resolve("stage/nirs4all_tools.whl"),
       verifyOnly: true,

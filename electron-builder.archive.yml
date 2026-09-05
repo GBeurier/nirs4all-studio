@@ -35,6 +35,8 @@ files:
 
 # Standalone archives embed the fully baked backend-dist/, including python-runtime/.
 extraResources:
+  - from: build/all-in-one-runtime.json
+    to: all-in-one-runtime.json
   - from: LICENSE
     to: LICENSE
   - from: THIRD_PARTY_NOTICES.md
@@ -98,4 +100,4 @@ linux:
 publish:
   provider: github
   owner: GBeurier
-  repo: nirs4all-webapp
+  repo: nirs4all-studio

@@ -90,11 +90,11 @@ function writePackagedContract(
     product_backend: "rust-sidecar",
     transport: "bounded-cpython-stdio-v1",
     http_listener: "forbidden",
-    source_commit: "3567bd4abcaa64443a1946748a579f0803e91889",
-    wheel_sha256: "5898aa933da2e51ad07438ae5313ade37f1dad2a363411e71e0f0a513c7b4824",
+    source_commit: "bf21c552b9d0929daf2dcc2ac7b220c9631ffa07",
+    wheel_sha256: "d6f696580d4e52aeb6d39ecce47d30b3e10dc0b867f88f89f39dc1205cf93103",
     distribution: "nirs4all",
-    distribution_version: "1.0.0rc2",
-    installed_manifest_sha256: "0d8bd9ef411c7df1cf30597f5d340d58cd107e71c6cf8baa6e7f53aad6641b88",
+    distribution_version: "1.0.1",
+    installed_manifest_sha256: "768e65e0ca900f1a50a88a01f6c09cc7870ce033383cac5c968bfac8fee25bbe",
     conversion_tools: {
       source_commit: "88c2bc1e29603049cdbf1a1080a35845edf2f3c9",
       wheel_sha256: "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819",
@@ -168,6 +168,12 @@ afterEach(() => {
   delete process.env.NIRS4ALL_PYTHON_PLUGIN_HOST;
   delete process.env.NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED;
   delete process.env.NIRS4ALL_SCIENTIFIC_EXECUTOR;
+  delete process.env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN;
+  delete process.env.NIRS4ALL_APP_DIR;
+  delete process.env.NIRS4ALL_APP_EXE;
+  delete process.env.NIRS4ALL_ELECTRON;
+  delete process.env.NIRS4ALL_ALL_IN_ONE;
+  delete process.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE;
   childProcessMocks.spawn.mockReset();
   vi.resetModules();
   while (tempDirs.length > 0) {
@@ -177,6 +183,45 @@ afterEach(() => {
 });
 
 describe("NativeSidecarManager", () => {
+  it("accepts only the closed regular all-in-one ownership marker", async () => {
+    const { isAttestedAllInOneResources } = await import("./native-sidecar-manager");
+    const resourcesPath = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-all-in-one-marker-"));
+    tempDirs.push(resourcesPath);
+    const markerPath = path.join(resourcesPath, "all-in-one-runtime.json");
+
+    expect(isAttestedAllInOneResources(resourcesPath)).toBe(false);
+    fs.writeFileSync(markerPath, "{}");
+    expect(isAttestedAllInOneResources(resourcesPath)).toBe(false);
+    fs.writeFileSync(markerPath, JSON.stringify({
+      schema_id: "nirs4all.studio-all-in-one-runtime.v1",
+      owns_install_tree: true,
+      unexpected: true,
+    }));
+    expect(isAttestedAllInOneResources(resourcesPath)).toBe(false);
+    fs.writeFileSync(markerPath, JSON.stringify({
+      schema_id: "nirs4all.studio-all-in-one-runtime.v1",
+      owns_install_tree: true,
+    }));
+    expect(isAttestedAllInOneResources(resourcesPath)).toBe(true);
+  });
+
+  it("accepts an explicit random archive-smoke token only inside CI", async () => {
+    const { createNativeSessionToken } = await import("./native-sidecar-manager");
+    const token = "A".repeat(64);
+
+    expect(createNativeSessionToken({
+      CI: "1",
+      NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN: token,
+    })).toBe(token);
+    expect(createNativeSessionToken({
+      NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN: token,
+    })).toMatch(/^[a-f0-9]{64}$/);
+    expect(() => createNativeSessionToken({
+      CI: "1",
+      NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN: "too-short",
+    })).toThrow(/32\.\.256 ASCII letters\/digits/);
+  });
+
   it("resolves an explicit binary before a product-enabled packaged resource", async () => {
     const { resolveNativeSidecarPath } = await import("./native-sidecar-manager");
 
@@ -359,6 +404,9 @@ describe("NativeSidecarManager", () => {
 
   it("passes the selected interpreter and product runtime metadata to the sidecar", async () => {
     process.env.NIRS4ALL_NATIVE_SIDECAR_PATH = makeExecutable();
+    process.env.NIRS4ALL_APP_DIR = "/spoofed/app";
+    process.env.NIRS4ALL_APP_EXE = "spoofed.exe";
+    process.env.NIRS4ALL_ALL_IN_ONE = "true";
     const child = makeProcess();
     childProcessMocks.spawn.mockReturnValue(child);
     const { NativeSidecarManager } = await import("./native-sidecar-manager");
@@ -389,6 +437,11 @@ describe("NativeSidecarManager", () => {
     const selectedEnvironment = childProcessMocks.spawn.mock.calls[0]?.[2]
       ?.env as NodeJS.ProcessEnv;
     expect(selectedEnvironment.NIRS4ALL_SCIENTIFIC_EXECUTOR).toBeUndefined();
+    expect(selectedEnvironment.NIRS4ALL_APP_DIR).toBe(path.dirname(process.execPath));
+    expect(selectedEnvironment.NIRS4ALL_APP_EXE).toBe(path.basename(process.execPath));
+    expect(selectedEnvironment.NIRS4ALL_ELECTRON).toBe("true");
+    expect(selectedEnvironment.NIRS4ALL_ALL_IN_ONE).toBe("false");
+    expect(selectedEnvironment.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBe("false");
     child.stdout.emit(
       "data",
       Buffer.from(
@@ -424,6 +477,13 @@ describe("NativeSidecarManager", () => {
     fs.mkdirSync(path.dirname(pythonPath), { recursive: true });
     fs.writeFileSync(sidecarPath, "verified-rust-sidecar");
     fs.writeFileSync(pythonPath, "verified-python-host");
+    fs.writeFileSync(
+      path.join(resourcesPath, "all-in-one-runtime.json"),
+      JSON.stringify({
+        schema_id: "nirs4all.studio-all-in-one-runtime.v1",
+        owns_install_tree: true,
+      }),
+    );
     writePackagedContract(resourcesPath, sidecarPath, pythonPath);
     process.env.NIRS4ALL_PYTHON_PLUGIN_HOST = "/user/venv/bin/python";
 
@@ -466,6 +526,8 @@ describe("NativeSidecarManager", () => {
     expect(spawnOptions.env.NIRS4ALL_SCIENTIFIC_EXECUTOR).toBe(
       "cpython-stdio-v1",
     );
+    expect(spawnOptions.env.NIRS4ALL_ALL_IN_ONE).toBe("true");
+    expect(spawnOptions.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBe("true");
     child.stdout.emit(
       "data",
       Buffer.from(

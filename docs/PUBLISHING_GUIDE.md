@@ -6,7 +6,7 @@ Step-by-step checklist for publishing a new nirs4all-webapp release.
 
 ## Prerequisites
 
-- Push access to `GBeurier/nirs4all-webapp`
+- Push access to `GBeurier/nirs4all-studio`
 - The `release-unified.yml` GitHub Actions workflow is in place
 - The installer/archive electron-builder configs have their publish metadata configured
 
@@ -55,7 +55,7 @@ The `release-unified.yml` workflow triggers on `[0-9]*` tags (no `v` prefix). It
 3. Generate **SHA256 checksums** as `.sha256` sidecar files
 4. Create a **GitHub Release** with all assets attached
 
-Monitor progress at: `https://github.com/GBeurier/nirs4all-webapp/actions`
+Monitor progress at: `https://github.com/GBeurier/nirs4all-studio/actions`
 
 Typical build time: ~15-25 minutes.
 
@@ -63,7 +63,7 @@ Typical build time: ~15-25 minutes.
 
 After CI completes:
 
-1. Go to `https://github.com/GBeurier/nirs4all-webapp/releases/latest`
+1. Go to `https://github.com/GBeurier/nirs4all-studio/releases/latest`
 2. Confirm all expected assets are present:
    - Windows x64 NSIS and portable executables + `.sha256`
    - Linux x64 AppImage and deb + `.sha256`

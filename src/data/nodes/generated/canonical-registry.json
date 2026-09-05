@@ -5630,6 +5630,12 @@
         "type": "string",
         "isAdvanced": true,
         "default": null
+      },
+      {
+        "name": "random_state",
+        "type": "string",
+        "isAdvanced": true,
+        "default": null
       }
     ],
     "source": "nirs4all",
@@ -6481,9 +6487,9 @@
       },
       {
         "name": "probability",
-        "type": "bool",
+        "type": "string",
         "isAdvanced": true,
-        "default": false
+        "default": "deprecated"
       },
       {
         "name": "tol",
@@ -7467,7 +7473,7 @@
         "name": "estimator",
         "type": "string",
         "isAdvanced": true,
-        "default": null
+        "required": true
       },
       {
         "name": "order",
@@ -7498,12 +7504,6 @@
         "type": "bool",
         "isAdvanced": true,
         "default": false
-      },
-      {
-        "name": "base_estimator",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
       }
     ],
     "source": "sklearn",
@@ -7838,16 +7838,10 @@
         "default": 0.001
       },
       {
-        "name": "n_alphas",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
-      },
-      {
         "name": "alphas",
-        "type": "string",
+        "type": "int",
         "isAdvanced": true,
-        "default": "warn"
+        "default": 100
       },
       {
         "name": "fit_intercept",
@@ -8674,7 +8668,7 @@
         "name": "criterion",
         "type": "string",
         "isAdvanced": true,
-        "default": "friedman_mse"
+        "default": "deprecated"
       },
       {
         "name": "min_samples_split",
@@ -8812,7 +8806,7 @@
         "name": "criterion",
         "type": "string",
         "isAdvanced": true,
-        "default": "friedman_mse"
+        "default": "deprecated"
       },
       {
         "name": "min_samples_split",
@@ -9608,7 +9602,7 @@
     "id": "model.lars",
     "name": "Lars",
     "type": "model",
-    "description": "Least Angle Regression model a.k.a. LAR.",
+    "description": "Least Angle Regression model aka LAR.",
     "parameters": [
       {
         "name": "fit_intercept",
@@ -9761,16 +9755,10 @@
         "default": 0.001
       },
       {
-        "name": "n_alphas",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
-      },
-      {
         "name": "alphas",
-        "type": "string",
+        "type": "int",
         "isAdvanced": true,
-        "default": "warn"
+        "default": 100
       },
       {
         "name": "fit_intercept",
@@ -9854,7 +9842,7 @@
     "id": "model.lasso_lars",
     "name": "LassoLars",
     "type": "model",
-    "description": "Lasso model fit with Least Angle Regression a.k.a. Lars.",
+    "description": "Lasso model fit with Least Angle Regression aka Lars.",
     "parameters": [
       {
         "name": "alpha",
@@ -10507,7 +10495,7 @@
         "name": "scoring",
         "type": "string",
         "isAdvanced": true,
-        "default": null
+        "default": "warn"
       },
       {
         "name": "solver",
@@ -11052,16 +11040,10 @@
         "default": 0.001
       },
       {
-        "name": "n_alphas",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
-      },
-      {
         "name": "alphas",
-        "type": "string",
+        "type": "int",
         "isAdvanced": true,
-        "default": "warn"
+        "default": 100
       },
       {
         "name": "fit_intercept",
@@ -11208,16 +11190,10 @@
         "default": 0.001
       },
       {
-        "name": "n_alphas",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
-      },
-      {
         "name": "alphas",
-        "type": "string",
+        "type": "int",
         "isAdvanced": true,
-        "default": "warn"
+        "default": 100
       },
       {
         "name": "fit_intercept",
@@ -11406,9 +11382,9 @@
       },
       {
         "name": "probability",
-        "type": "bool",
+        "type": "string",
         "isAdvanced": true,
-        "default": false
+        "default": "deprecated"
       },
       {
         "name": "tol",
@@ -12535,7 +12511,7 @@
         "name": "estimator",
         "type": "string",
         "isAdvanced": true,
-        "default": null
+        "required": true
       },
       {
         "name": "order",
@@ -12560,12 +12536,6 @@
         "type": "bool",
         "isAdvanced": true,
         "default": false
-      },
-      {
-        "name": "base_estimator",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
       }
     ],
     "source": "sklearn",
@@ -14085,12 +14055,6 @@
         "type": "bool",
         "isAdvanced": true,
         "default": true
-      },
-      {
-        "name": "force_int_remainder_cols",
-        "type": "string",
-        "isAdvanced": true,
-        "default": "deprecated"
       }
     ],
     "source": "sklearn",
@@ -14998,7 +14962,7 @@
         "name": "quantile_method",
         "type": "string",
         "isAdvanced": true,
-        "default": "warn"
+        "default": "averaged_inverted_cdf"
       },
       {
         "name": "dtype",
@@ -16978,7 +16942,7 @@
     "id": "preprocessing.rbf_sampler",
     "name": "RBFSampler",
     "type": "preprocessing",
-    "description": "Approximate a RBF kernel feature map using random Fourier features.",
+    "description": "Approximate an RBF kernel feature map using random Fourier features.",
     "parameters": [
       {
         "name": "gamma",
@@ -17716,6 +17680,12 @@
         "default": "C"
       },
       {
+        "name": "handle_missing",
+        "type": "string",
+        "isAdvanced": true,
+        "default": "error"
+      },
+      {
         "name": "sparse_output",
         "type": "bool",
         "isAdvanced": true,
@@ -17765,15 +17735,15 @@
       },
       {
         "name": "shuffle",
-        "type": "bool",
+        "type": "string",
         "isAdvanced": true,
-        "default": true
+        "default": "deprecated"
       },
       {
         "name": "random_state",
         "type": "string",
         "isAdvanced": true,
-        "default": null
+        "default": "deprecated"
       }
     ],
     "source": "sklearn",

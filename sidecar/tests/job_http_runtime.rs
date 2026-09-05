@@ -258,6 +258,15 @@ fn three_status_aliases_project_the_frozen_legacy_shapes() {
         keys(&download),
         BTreeSet::from(["job_id", "status", "progress", "message", "result", "error"])
     );
+    assert_eq!(
+        route_native_job_request(
+            &runtime,
+            "GET",
+            "/api/updates/webapp/download-status/training-1",
+        )
+        .status,
+        400,
+    );
 
     assert_eq!(
         route_native_job_request(&runtime, "GET", "/api/training/automl-1").status,

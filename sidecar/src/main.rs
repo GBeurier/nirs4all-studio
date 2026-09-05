@@ -1,4 +1,4 @@
-use std::{env, process::ExitCode};
+use std::{env, path::Path, process::ExitCode};
 
 #[cfg(windows)]
 use std::process;
@@ -50,6 +50,13 @@ fn run() -> Result<(), String> {
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
+            "--apply-update-plan" => {
+                let plan = arguments
+                    .next()
+                    .ok_or("--apply-update-plan requires a path")?;
+                studio_sidecar::native_updates::run_apply_plan(Path::new(&plan))?;
+                return Ok(());
+            }
             "--smoke-readiness" => {
                 println!("{}", smoke_readiness_json());
                 return Ok(());

@@ -481,6 +481,56 @@ impl NativeJobRuntime {
         )
     }
 
+    /// Register a Rust-owned control job which has no scientific executor.
+    ///
+    /// Update downloads use the same bounded lifecycle/polling surface as
+    /// scientific jobs, but are sidecar I/O orchestration and must not acquire
+    /// or impersonate a scientific executor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the bounded event payload or registry insertion
+    /// violates the shared native-job lifecycle contract.
+    pub fn register_local_control_at(
+        &self,
+        id: impl Into<String>,
+        job_type: JobType,
+        config: Value,
+        timestamp: &str,
+        now: Instant,
+    ) -> Result<JobSnapshot, NativeJobRuntimeError> {
+        let id = id.into();
+        ensure_event_data_bounded(&json!({
+            "id": id,
+            "type": job_type.as_str(),
+            "status": "pending",
+            "created_at": timestamp,
+            "progress": 0.0,
+            "config": config,
+        }))?;
+        self.registry
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .create_with_id_at(id, job_type, config, timestamp, now)
+            .map_err(Into::into)
+    }
+
+    /// Request cancellation of a local Rust worker without consulting the
+    /// scientific executor seam.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the job is absent or cannot transition to the
+    /// cancellation-requested state.
+    pub fn request_local_cancel_at(
+        &self,
+        id: &str,
+        timestamp: &str,
+        now: Instant,
+    ) -> Result<JobSnapshot, NativeJobRuntimeError> {
+        self.mutate_terminal_or_running(|registry| registry.request_cancel_at(id, timestamp, now))
+    }
+
     fn register_with_selected_executor_at(
         &self,
         executor_selected: bool,
@@ -755,6 +805,19 @@ impl NativeJobRuntime {
         self.publish(mutation)
     }
 
+    fn mutate_terminal_or_running(
+        &self,
+        operation: impl FnOnce(&mut JobRegistry) -> Result<JobMutation, JobLifecycleError>,
+    ) -> Result<JobSnapshot, NativeJobRuntimeError> {
+        let mutation = operation(
+            &mut self
+                .registry
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )?;
+        self.publish(mutation)
+    }
+
     fn publish(&self, mutation: JobMutation) -> Result<JobSnapshot, NativeJobRuntimeError> {
         if let Some(event) = mutation.event {
             self.websocket
@@ -989,6 +1052,9 @@ fn status_download(runtime: &NativeJobRuntime, job_id: &str) -> HttpResponse {
     let Some(job) = runtime.get_at(job_id, Instant::now()) else {
         return legacy_detail(404, "Job not found");
     };
+    if job.job_type != JobType::UpdateDownload {
+        return legacy_detail(400, format!("Job '{job_id}' is not an update download job"));
+    }
     HttpResponse::json(
         200,
         json!({
@@ -1120,6 +1186,9 @@ fn cancel_download(runtime: &NativeJobRuntime, job_id: &str) -> HttpResponse {
     let Some(job) = runtime.get_at(job_id, Instant::now()) else {
         return legacy_detail(404, "Job not found");
     };
+    if job.job_type != JobType::UpdateDownload {
+        return legacy_detail(400, format!("Job '{job_id}' is not an update download job"));
+    }
     if job.status.is_terminal() {
         return HttpResponse::json(
             200,
@@ -1127,7 +1196,7 @@ fn cancel_download(runtime: &NativeJobRuntime, job_id: &str) -> HttpResponse {
                 .to_string(),
         );
     }
-    match cancel_now(runtime, job_id) {
+    match runtime.request_local_cancel_at(job_id, &rfc3339_now(), Instant::now()) {
         Ok(_) => HttpResponse::json(
             200,
             json!({"success": true, "message": "Cancellation requested"}).to_string(),

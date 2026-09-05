@@ -39,15 +39,17 @@ const smoke = require("../scripts/smoke-self-update.cjs") as {
   driveUpdate(baseUrl: string, timeoutMs: number, backendOutput?: () => string): Promise<void>;
 };
 
-// waitForMlReady lives in the archive smoke (shared by both smokes) and is the
-// post-update ml-ready driver the self-update smoke calls in Phase 3b.
+// The archive smoke owns the shared post-update native scientific probe.
 const archiveSmoke = require("../scripts/smoke-archive-standalone.cjs") as {
-  waitForMlReady(
+  waitForNativeScientificReady(
     port: number,
     timeoutMs: number,
     child: { exitCode: number | null },
     outputBuffer: string[],
-  ): Promise<{ core_ready: boolean; missing_core_packages: string[] }>;
+  ): Promise<{
+    readiness: { native_training_ready: boolean };
+    playground: { success: boolean; processed: { shape: number[] } };
+  }>;
 };
 
 const tempDirs: string[] = [];
@@ -204,30 +206,29 @@ describe("smoke-self-update", () => {
     }
   });
 
-  it("polls /api/system/env-coherence until the bundled runtime is ml-ready", async () => {
-    const server = await startFakeBackend({ envCoherence: "ready-after-poll" });
+  it("polls readiness and executes the bounded inline Playground facade", async () => {
+    const server = await startFakeBackend({ scientificReadiness: "ready-after-poll" });
     const child = { exitCode: null };
     try {
-      const payload = await archiveSmoke.waitForMlReady(server.port, 10000, child, []);
-      expect(payload.core_ready).toBe(true);
-      expect(payload.missing_core_packages).toEqual([]);
-      // The fake reports not-ready on the first poll, so a passing run proves the
-      // driver actually polled env-coherence more than once.
-      const coherenceCalls = server.calls.filter((c) => c === "GET /api/system/env-coherence");
-      expect(coherenceCalls.length).toBeGreaterThanOrEqual(2);
+      const payload = await archiveSmoke.waitForNativeScientificReady(server.port, 10000, child, []);
+      expect(payload.readiness.native_training_ready).toBe(true);
+      expect(payload.playground).toMatchObject({ success: true, processed: { shape: [2, 2] } });
+      expect(server.calls.filter((c) => c === "GET /api/system/readiness").length).toBeGreaterThanOrEqual(2);
+      expect(server.calls).toContain("POST /api/playground/execute");
     } finally {
       await server.close();
     }
   });
 
-  it("fails ml-ready with the last env-coherence payload when nirs4all never imports", async () => {
-    const server = await startFakeBackend({ envCoherence: "missing-nirs4all" });
+  it("fails with the last native readiness when training never becomes ready", async () => {
+    const server = await startFakeBackend({ scientificReadiness: "unavailable" });
     const child = { exitCode: null };
     try {
-      await expect(archiveSmoke.waitForMlReady(server.port, 1500, child, [])).rejects.toThrow(
-        /missing_core_packages.*nirs4all/,
+      await expect(archiveSmoke.waitForNativeScientificReady(server.port, 1500, child, [])).rejects.toThrow(
+        /native_training_ready.*false/,
       );
-      expect(server.calls).toContain("GET /api/system/env-coherence");
+      expect(server.calls).toContain("GET /api/system/readiness");
+      expect(server.calls).not.toContain("POST /api/playground/execute");
     } finally {
       await server.close();
     }
@@ -236,10 +237,7 @@ describe("smoke-self-update", () => {
 
 function startFakeBackend(opts: {
   canApplyInPlace?: boolean;
-  // "ready-after-poll": not ml-ready on the first env-coherence poll, ready after
-  //   (mirrors the real slow nirs4all import).
-  // "missing-nirs4all": always reports nirs4all missing → never ml-ready.
-  envCoherence?: "ready-after-poll" | "missing-nirs4all";
+  scientificReadiness?: "ready-after-poll" | "unavailable";
   downloadInfoFailure?: boolean;
 } = {}): Promise<{
   base: string;
@@ -248,10 +246,10 @@ function startFakeBackend(opts: {
   close(): Promise<void>;
 }> {
   const canApplyInPlace = opts.canApplyInPlace ?? true;
-  const envCoherence = opts.envCoherence ?? "ready-after-poll";
+  const scientificReadiness = opts.scientificReadiness ?? "ready-after-poll";
   const calls: string[] = [];
   let statusPolls = 0;
-  let coherencePolls = 0;
+  let readinessPolls = 0;
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const url = (req.url || "").split("?")[0];
@@ -276,14 +274,14 @@ function startFakeBackend(opts: {
         return send({ status: statusPolls >= 2 ? "completed" : "running", progress: 100 });
       }
       if (url === "/api/updates/webapp/apply") return send({ restart_required: true, success: true });
-      if (url === "/api/system/env-coherence") {
-        coherencePolls += 1;
-        if (envCoherence === "missing-nirs4all") {
-          return send({ core_ready: false, missing_core_packages: ["nirs4all"] });
-        }
-        // Not ready on the first poll, ready after — proves the driver actually polls.
-        const ready = coherencePolls >= 2;
-        return send({ core_ready: ready, missing_core_packages: ready ? [] : ["nirs4all"] });
+      if (url === "/api/health") return send({ core_ready: true, ready: true });
+      if (url === "/api/system/readiness") {
+        readinessPolls += 1;
+        const ready = scientificReadiness === "ready-after-poll" && readinessPolls >= 2;
+        return send({ core_ready: true, native_training_ready: ready });
+      }
+      if (url === "/api/playground/execute" && req.method === "POST") {
+        return send({ success: true, processed: { shape: [2, 2] } });
       }
       res.writeHead(404);
       res.end();
