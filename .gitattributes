@@ -7,5 +7,9 @@ api/**/*.py text eol=lf
 src/data/nodes/**/*.json text eol=lf
 sidecar/contracts/studio_document_adapters_v1.json text eol=lf
 
+# Runtime constraints are content-addressed by the release contract. Prevent
+# checkout-time CRLF conversion from changing their identity on Windows.
+build/constraints/*.txt text eol=lf
+
 # Vendored upstream/package payloads are byte-exact and must not be normalized.
 sidecar/vendor/** -text -eol -whitespace

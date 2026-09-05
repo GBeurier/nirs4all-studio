@@ -108,6 +108,18 @@ function sha256File(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
+function assertConstraintsIdentity(
+  constraintsPath = PLUGIN_CONSTRAINTS_PATH,
+  expectedSha256 = PLUGIN_CONSTRAINTS_SHA256,
+) {
+  const actualSha256 = sha256File(constraintsPath);
+  if (actualSha256 !== expectedSha256) {
+    throw new Error(
+      `Plugin runtime constraints identity mismatch: expected ${expectedSha256}, got ${actualSha256}`,
+    );
+  }
+}
+
 function constraintMarkerApplies(marker, platform, arch) {
   if (!marker) return true;
   if (marker === WINDOWS_CONSTRAINT_MARKER) return platform === "win32";
@@ -118,9 +130,7 @@ function constraintMarkerApplies(marker, platform, arch) {
 }
 
 function constrainedDistributionVersions(platform = process.platform, arch = process.arch) {
-  if (sha256File(PLUGIN_CONSTRAINTS_PATH) !== PLUGIN_CONSTRAINTS_SHA256) {
-    throw new Error("Plugin runtime constraints identity mismatch");
-  }
+  assertConstraintsIdentity();
   const versions = new Map();
   for (const rawLine of fs.readFileSync(PLUGIN_CONSTRAINTS_PATH, "utf8").split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -497,6 +507,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  assertConstraintsIdentity,
   assertPluginOnlyPayload,
   FORBIDDEN_DISTRIBUTIONS,
   PLUGIN_MARKER_FILE,
