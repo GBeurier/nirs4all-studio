@@ -304,7 +304,22 @@ async function getJson(url, sessionToken, timeoutMs = 10000) {
   if (!res.ok) {
     throw new Error(`GET ${url} -> ${res.status}`);
   }
-  return res.json();
+  let body;
+  try {
+    body = await res.text();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new JsonTransportError(
+      `GET ${url} response transport failed after ${timeoutMs}ms: ${detail}`,
+      { cause: error },
+    );
+  }
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`GET ${url} returned invalid JSON: ${detail}`);
+  }
 }
 
 async function postJson(url, body, sessionToken) {

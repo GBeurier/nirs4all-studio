@@ -1510,27 +1510,40 @@ fn configure_windows_runtime_environment(
     let configured = std::env::var_os("SystemRoot")
         .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
     let requested = PathBuf::from(configured);
-    if !requested.is_absolute() {
-        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
-    }
-    let metadata = fs::symlink_metadata(&requested)
+    let trusted = studio_windows_job::system_windows_directory()
         .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let canonical = fs::canonicalize(&requested)
-        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
-    let system32 = canonical.join("System32");
-    if metadata.file_type().is_symlink()
-        || !metadata.is_dir()
-        || !system32.is_dir()
-        || canonical.components().count() != 3
-    {
-        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
-    }
+    let canonical = validated_windows_system_root(&requested, &trusted)?;
     let architecture = windows_processor_architecture()
         .ok_or(ScientificCpythonUnavailable::PlatformKillTreeUnqualified)?;
     command
         .env("SystemRoot", canonical)
         .env("PROCESSOR_ARCHITECTURE", architecture);
     Ok(())
+}
+
+#[cfg(windows)]
+fn validated_windows_system_root(
+    requested: &Path,
+    trusted: &Path,
+) -> Result<PathBuf, ScientificCpythonUnavailable> {
+    if !requested.is_absolute() {
+        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
+    }
+    let metadata = fs::symlink_metadata(&requested)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let canonical = fs::canonicalize(&trusted)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let system32 = canonical.join("System32");
+    if metadata.file_type().is_symlink()
+        || !metadata.is_dir()
+        || !system32.is_dir()
+        || canonical.components().count() != 3
+        || !same_file::is_same_file(&requested, &trusted)
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?
+    {
+        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
+    }
+    Ok(canonical)
 }
 
 #[cfg(not(windows))]
@@ -3019,6 +3032,18 @@ mod tests {
         assert!(environment["SYSTEMROOT"]
             .as_deref()
             .is_some_and(|root| Path::new(root).join("System32").is_dir()));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_runtime_environment_rejects_fake_system_root() {
+        let fake = tempfile::tempdir().unwrap();
+        fs::create_dir(fake.path().join("System32")).unwrap();
+        let trusted = studio_windows_job::system_windows_directory().unwrap();
+        assert_eq!(
+            validated_windows_system_root(fake.path(), &trusted),
+            Err(ScientificCpythonUnavailable::RuntimeContractUnavailable)
+        );
     }
 
     #[cfg(unix)]

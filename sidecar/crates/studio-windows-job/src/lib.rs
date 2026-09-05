@@ -7,7 +7,7 @@
 
 #[allow(unsafe_code)]
 mod imp {
-    use std::{io, mem, ptr};
+    use std::{ffi::OsString, io, mem, os::windows::ffi::OsStringExt, path::PathBuf, ptr};
 
     use windows_sys::Win32::{
         Foundation::{CloseHandle, HANDLE},
@@ -17,9 +17,39 @@ mod imp {
                 SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
                 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
             },
+            SystemInformation::GetSystemWindowsDirectoryW,
             Threading::GetCurrentProcess,
         },
     };
+
+    /// Return the Windows installation directory reported by the operating
+    /// system, independently from caller-controlled environment variables.
+    pub fn system_windows_directory() -> io::Result<PathBuf> {
+        let mut buffer = vec![0_u16; 260];
+        loop {
+            let capacity = u32::try_from(buffer.len())
+                .map_err(|_| io::Error::other("Windows directory path is too large"))?;
+            // SAFETY: `buffer` owns `capacity` writable UTF-16 elements for the
+            // duration of the call. The API reports either the copied length or
+            // the required capacity and never retains the pointer.
+            let written = unsafe { GetSystemWindowsDirectoryW(buffer.as_mut_ptr(), capacity) };
+            if written == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let written = usize::try_from(written)
+                .map_err(|_| io::Error::other("Windows directory path is too large"))?;
+            if written < buffer.len() {
+                buffer.truncate(written);
+                return Ok(PathBuf::from(OsString::from_wide(&buffer)));
+            }
+            buffer.resize(
+                written
+                    .checked_add(1)
+                    .ok_or_else(|| io::Error::other("Windows directory path is too large"))?,
+                0,
+            );
+        }
+    }
 
     /// Owned Job Object configured to terminate all members on last-handle close.
     ///
@@ -92,15 +122,22 @@ mod imp {
     }
 }
 
-pub use imp::KillOnCloseJob;
+pub use imp::{system_windows_directory, KillOnCloseJob};
 
 #[cfg(test)]
 mod tests {
-    use super::KillOnCloseJob;
+    use super::{system_windows_directory, KillOnCloseJob};
 
     #[test]
     fn containment_contract_uses_kill_on_last_handle_close_without_breakaway() {
         assert_eq!(KillOnCloseJob::limit_flags(), 0x0000_2000);
         assert_eq!(KillOnCloseJob::limit_flags() & 0x0000_1800, 0);
+    }
+
+    #[test]
+    fn system_directory_comes_from_windows_and_contains_system32() {
+        let root = system_windows_directory().unwrap();
+        assert!(root.is_absolute());
+        assert!(root.join("System32").is_dir());
     }
 }
