@@ -40,3 +40,27 @@ dispatch, explicit header corrections, multisource/metadata/fold discovery and
 projection delegation. Installed library tests separately exercise real Excel
 and native multisource assembly. HTTP/UI wiring and release-artifact closure
 are separate integration gates, not established by these unit tests.
+
+## HTTP wizard integration
+
+`dataset_inspection_http::route` snapshots settings and the attested host while
+holding the global mutex, then releases it before reading files or invoking the
+library. The connection handler preserves its existing access/CORS checks.
+Routes cover `detect-files`, `detect-unified`, `detect-files-list`, `scan-folder`,
+`detect-format`, `auto-detect`, `validate-files`, `preview`, and linked-dataset
+`GET {id}/preview` / `GET {id}/stats`. Individual-file selection inspects only
+selected files, preserving their order; unrelated sibling inputs are not read.
+The wizard transport admits 256 MiB per input and 512 MiB aggregate raw inputs.
+Native decoding limits apply per inspected table. Assembled projections retain
+the separate library policy described above.
+
+Explicit header overrides are applied to X, Y and metadata before shape reads.
+Plain-text `auto-detect` with `attempt_load=false` uses at most a 64 KiB prefix
+and makes no claim about exact row counts. Other formats require their registered
+reader for metadata inspection and report this limitation explicitly.
+
+The integration tests include a real localhost HTTP request that reaches native
+CSV inspection without any CPython scientific host. Saved catalogue records,
+including directly linked data files, are tested for statistics dispatch; an
+empty base directory for absolute file selections remains supported. Full
+browser qualification and multipart `preview-upload` are separate pending gates.
