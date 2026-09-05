@@ -44,6 +44,8 @@ mod results_summary;
 pub mod run_detail;
 pub mod run_detail_cpython;
 pub mod run_detail_preselection;
+mod run_history;
+mod run_listing;
 pub mod scientific_cpython;
 pub mod scientific_request_resolver;
 pub mod scientific_submission;
@@ -708,6 +710,11 @@ impl SidecarState {
         capabilities["features"]["pipeline_document_routes"] = json!(true);
         capabilities["features"]["pipeline_library_routes"] = json!(true);
         capabilities["features"]["dataset_catalogue_routes"] = json!(true);
+        capabilities["features"]["dataset_inspection_routes"] = json!(true);
+        capabilities["features"]["recommended_config_routes"] = json!(true);
+        capabilities["features"]["general_prediction_routes"] = json!(true);
+        capabilities["features"]["workspace_run_history_route"] = json!(true);
+        capabilities["features"]["workspace_run_listing_routes"] = json!(true);
         capabilities.to_string()
     }
 
@@ -1959,6 +1966,119 @@ fn route_workspace_run_summaries(state: &SidecarState, method: &str, path: &str)
         }
         Err(error) => workspace_store_read_error_response(&error),
     }
+}
+
+fn route_workspace_run_history(
+    state: &std::sync::Arc<std::sync::Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    let workspace_id = request
+        .path
+        .strip_prefix("/api/workspaces/")?
+        .strip_suffix("/runs/enriched")?;
+    if workspace_id.is_empty() || workspace_id.contains('/') {
+        return None;
+    }
+    if request.method != "GET" {
+        return Some(method_not_allowed(&request.method, &request.path, "GET"));
+    }
+    let mut query = std::collections::BTreeMap::new();
+    for (key, value) in
+        url::form_urlencoded::parse(request.query.as_deref().unwrap_or("").as_bytes())
+    {
+        if !matches!(key.as_ref(), "project_id" | "limit" | "offset")
+            || query.insert(key.into_owned(), value.into_owned()).is_some()
+        {
+            return Some(HttpResponse::json(
+                400,
+                json!({"detail":"Unknown or duplicate run history query field"}).to_string(),
+            ));
+        }
+    }
+    let limit = query
+        .get("limit")
+        .map_or(Ok(100_u16), |value| value.parse());
+    let offset = query.get("offset").map_or(Ok(0_u64), |value| value.parse());
+    let (Ok(limit), Ok(offset)) = (limit, offset) else {
+        return Some(HttpResponse::json(
+            400,
+            json!({"detail":"Invalid history pagination"}).to_string(),
+        ));
+    };
+    let project = query.get("project_id").map(String::as_str);
+    if project.is_some_and(|value| {
+        value.is_empty() || value.len() > 256 || value.chars().any(char::is_control)
+    }) {
+        return Some(HttpResponse::json(
+            400,
+            json!({"detail":"Invalid history project identifier"}).to_string(),
+        ));
+    }
+    let settings = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .app_settings
+        .clone();
+    let workspace = match settings.linked_workspace_access(workspace_id) {
+        Ok(Some(workspace)) => workspace,
+        Ok(None) => {
+            return Some(HttpResponse::json(
+                404,
+                json!({"detail":"Workspace not found"}).to_string(),
+            ))
+        }
+        Err(error) => {
+            return Some(app_settings_storage_error(
+                "resolve run history workspace",
+                &error,
+            ))
+        }
+    };
+    let links = match settings.dataset_links() {
+        Ok(links) => links,
+        Err(error) => {
+            return Some(app_settings_storage_error(
+                "read history dataset links",
+                &error,
+            ))
+        }
+    };
+    let result = workspace.store().map_or_else(
+        || {
+            run_history::read_enriched_runs(
+                workspace.path(),
+                workspace_id,
+                &links,
+                project,
+                limit,
+                offset,
+            )
+        },
+        |store| {
+            run_history::read_enriched_runs_from_connection(
+                store,
+                workspace_id,
+                &links,
+                project,
+                limit,
+                offset,
+            )
+        },
+    );
+    Some(match result {
+        Ok(payload) => HttpResponse::json(200, payload.to_string()),
+        Err(error) => workspace_store_read_error_response(&error),
+    })
+}
+
+fn route_workspace_workflows_without_global_lock(
+    state: &std::sync::Arc<std::sync::Mutex<SidecarState>>,
+    request: &HttpRequest,
+) -> Option<HttpResponse> {
+    recommended_config_http::route(state, request)
+        .or_else(|| dataset_inspection_http::route(state, request))
+        .or_else(|| route_workspace_run_history(state, request))
+        .or_else(|| run_listing::route(state, request))
 }
 
 fn route_workspace_run_detail_preselection(
@@ -4117,10 +4237,7 @@ fn handle_connection_with_access(
                     accepted_origin.as_deref(),
                 );
             }
-            if let Some(response) = recommended_config_http::route(state, &request) {
-                return write_access_response(&mut stream, response, accepted_origin.as_deref());
-            }
-            if let Some(response) = dataset_inspection_http::route(state, &request) {
+            if let Some(response) = route_workspace_workflows_without_global_lock(state, &request) {
                 return write_access_response(&mut stream, response, accepted_origin.as_deref());
             }
             if let Some(response) = route_scientific_without_global_lock(state, &request) {
@@ -5320,6 +5437,9 @@ mod tests {
         );
         for feature in [
             "app_settings_routes",
+            "dataset_inspection_routes",
+            "recommended_config_routes",
+            "general_prediction_routes",
             "app_config_path_routes",
             "linked_workspace_catalog_route",
             "workspace_transition_status_route",
@@ -6336,6 +6456,78 @@ mod tests {
         assert_workspace_not_found(&mut state, "/api/workspaces/missing/runs");
         assert_workspace_not_found(&mut state, "/api/workspaces/missing/results");
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn history_and_global_listing_read_real_store_and_reject_query_drift() {
+        let root = test_directory("run-history-http");
+        let config = root.join("config");
+        let workspace = root.join("workspace");
+        fs::create_dir_all(&config).unwrap();
+        fs::create_dir_all(&workspace).unwrap();
+        let database = workspace.join("store.sqlite");
+        fs::write(
+            &database,
+            include_bytes!("../tests/fixtures/workspace_store_v5_summary.sqlite"),
+        )
+        .unwrap();
+        fs::write(
+            config.join("app_settings.json"),
+            json!({"linked_workspaces":[linked_workspace_record("history", &workspace, true, 1)]})
+                .to_string(),
+        )
+        .unwrap();
+        let before = (
+            fs::read(&database).unwrap(),
+            fs::metadata(&database).unwrap().modified().unwrap(),
+        );
+        let state = std::sync::Arc::new(std::sync::Mutex::new(
+            SidecarState::with_app_settings_dir(&config),
+        ));
+        for path in [
+            "/api/workspaces/history/runs/enriched",
+            "/api/runs",
+            "/api/runs/stats",
+        ] {
+            let raw = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            let request = parse_http_request(raw.as_bytes()).unwrap();
+            let response = route_workspace_workflows_without_global_lock(&state, &request).unwrap();
+            assert_eq!(response.status, 200, "{path}: {}", response.body);
+            let value: Value = serde_json::from_str(&response.body).unwrap();
+            if path.ends_with("stats") {
+                assert_eq!(value["completed"], 1);
+            } else {
+                assert_eq!(value["total"], 1);
+                assert_eq!(value["runs"].as_array().unwrap().len(), 1);
+            }
+        }
+        for path in [
+            "/api/workspaces/history/runs/enriched?limit=1&limit=2",
+            "/api/workspaces/history/runs/enriched?offset=-1",
+            "/api/runs?status=invalid",
+            "/api/runs/stats?limit=1",
+        ] {
+            let request = parse_http_request(
+                format!("GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes(),
+            )
+            .unwrap();
+            assert_eq!(
+                route_workspace_workflows_without_global_lock(&state, &request)
+                    .unwrap()
+                    .status,
+                400,
+                "{path}"
+            );
+        }
+        assert_eq!(
+            before,
+            (
+                fs::read(&database).unwrap(),
+                fs::metadata(&database).unwrap().modified().unwrap()
+            )
+        );
+        assert!(!workspace.join("store.sqlite-wal").exists());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

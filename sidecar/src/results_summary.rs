@@ -57,7 +57,7 @@ pub fn read_results_summary(
     Ok(build_results_summary(rows, workspace_id, linked_datasets))
 }
 
-fn build_results_summary(
+pub fn build_results_summary(
     rows: Vec<WorkspaceStoreResultsSummarySourceRow>,
     workspace_id: &str,
     linked_datasets: &[DatasetLinkIdentity],
@@ -175,7 +175,11 @@ fn select_rows(rows: &[SummaryRow], metric: &str, higher_is_better: bool) -> Vec
         .iter()
         .enumerate()
         .filter_map(|(index, row)| {
-            (row.source.cv_fold_count == 0 && row.source.final_test_score.is_some())
+            // Owner extension full_train_only_v1: a real REFIT with no CV or
+            // test cohort remains inspectable. Its training score is never
+            // promoted to a validation/test score or ranked as a best test.
+            ((row.source.cv_fold_count == 0 && row.source.final_test_score.is_some())
+                || row.is_refit_only)
                 .then_some(index)
         })
         .collect::<Vec<_>>();
@@ -291,7 +295,7 @@ fn is_better(candidate: f64, incumbent: Option<f64>, higher: bool) -> bool {
     })
 }
 
-fn metric_higher_is_better(metric: &str) -> bool {
+pub fn metric_higher_is_better(metric: &str) -> bool {
     let normalized = metric.trim().to_lowercase();
     !LOWER_IS_BETTER.contains(&normalized.as_str())
 }
@@ -563,6 +567,57 @@ mod tests {
             summary["datasets"][0]["top_chains"][0]["is_refit_only"],
             true
         );
+    }
+
+    #[test]
+    fn full_train_without_cv_or_test_remains_visible_in_results_and_history() {
+        let workspace = fixture_workspace();
+        let connection = rusqlite::Connection::open(workspace.join("store.sqlite")).unwrap();
+        connection
+            .execute_batch(
+                "UPDATE chains SET cv_val_score=NULL, cv_test_score=NULL,
+            cv_train_score=NULL, cv_fold_count=0, cv_scores='{}', final_test_score=NULL,
+            final_train_score=0.125, final_scores='{\"train\":{\"rmse\":0.125}}';",
+            )
+            .unwrap();
+        let source =
+            crate::workspace_store::read_results_summary_source_from_connection(&connection)
+                .unwrap();
+        let expected_count = source.len();
+        let summary = build_results_summary(source, "workspace", &[]);
+        let mut count = 0;
+        for dataset in summary["datasets"].as_array().unwrap() {
+            for chain in dataset["top_chains"].as_array().unwrap() {
+                assert_eq!(chain["avg_val_score"], Value::Null);
+                assert_eq!(chain["avg_test_score"], Value::Null);
+                assert_eq!(chain["fold_count"], 0);
+                assert_eq!(chain["final_test_score"], Value::Null);
+                assert_eq!(chain["final_train_score"], 0.125);
+                assert_eq!(chain["is_refit_only"], true);
+                assert_eq!(chain["synthetic_refit"], false);
+                count += 1;
+            }
+        }
+        assert_eq!(count, expected_count);
+        assert!(count > 0);
+        let history = crate::run_history::read_enriched_runs_from_connection(
+            &connection,
+            "workspace",
+            &[],
+            None,
+            100,
+            0,
+        )
+        .unwrap();
+        let mut historical_count = 0;
+        for dataset in history["runs"][0]["datasets"].as_array().unwrap() {
+            assert_eq!(dataset["best_avg_val_score"], Value::Null);
+            assert_eq!(dataset["best_final_score"], Value::Null);
+            historical_count += dataset["top_5"].as_array().unwrap().len();
+        }
+        assert_eq!(historical_count, expected_count);
+        drop(connection);
+        fs::remove_dir_all(workspace).unwrap();
     }
 
     fn fixture_workspace() -> PathBuf {
