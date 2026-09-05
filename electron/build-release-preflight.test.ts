@@ -17,9 +17,10 @@ function snapshotMutableInputs(): Record<string, string | null> {
 }
 
 describe("build-release fail-closed preflight", () => {
-  const hostPlatform = { win32: "win", darwin: "mac", linux: "linux" }[
-    process.platform
-  ];
+  const hostPlatforms: Partial<Record<NodeJS.Platform, string>> = {
+    win32: "win", darwin: "mac", linux: "linux",
+  };
+  const hostPlatform = hostPlatforms[process.platform];
 
   it.each([
     [["--mode", "standalone"], "release:all-in-one"],
