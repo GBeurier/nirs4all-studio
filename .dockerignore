@@ -50,6 +50,11 @@ Dockerfile.ci.dockerignore
 # Desktop-only sources
 electron/
 build/
+!build/
+build/*
+!build/constraints/
+build/constraints/*
+!build/constraints/plugin-runtime-cpython311.txt
 installer/
 updater/
 
