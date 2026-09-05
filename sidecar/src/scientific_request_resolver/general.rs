@@ -67,7 +67,7 @@ fn normalize_documents(
             .ok_or(ScientificResolveError::DatasetInvalid)?;
         // Inspect supplied references before a document adapter can read a
         // legacy configuration file. Recheck its returned canonical config.
-        confine_config(&mut record, &root, false)?;
+        ScientificRequestResolver::confine_dataset_config(&mut record, &root)?;
         bounded(&record, MAX_DOCUMENT_BYTES)?;
         roots.push(root);
         requests.push(json!({"operation":"dataset.configure", "payload":{"record":record}}));
@@ -101,7 +101,7 @@ fn normalize_documents(
             return Err(ScientificResolveError::DatasetInvalid);
         }
         reject_implicit_folders(&dataset)?;
-        confine_config(&mut dataset, &root, true)?;
+        ScientificRequestResolver::confine_dataset_config(&mut dataset, &root)?;
         datasets.push(dataset);
     }
     let mut pipelines = Vec::new();
@@ -353,7 +353,7 @@ fn single_or_batch(mut values: Vec<Value>) -> Value {
 /// Normalize explicit file references, including metadata/folds and nested
 /// multi-source configs. Other string parameters (column names, units, etc.)
 /// are not interpreted as paths.
-fn confine_config(
+pub(super) fn confine_config(
     value: &mut Value,
     root: &Path,
     path_value: bool,
