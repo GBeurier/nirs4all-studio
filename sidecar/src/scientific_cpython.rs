@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::{Duration, Instant, SystemTime},
@@ -104,7 +104,7 @@ except Exception as error:
 print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"5898aa933da2e51ad07438ae5313ade37f1dad2a363411e71e0f0a513c7b4824","source_commit":"3567bd4abcaa64443a1946748a579f0803e91889"},separators=(",",":"),sort_keys=True))
 "#;
 
-const EXECUTION_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,os,socket,sys
+const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,socket,sys
 def deny_product_network(event,args):
     if event == "socket.bind":
         raise RuntimeError("CPython library host cannot own a listening socket")
@@ -127,12 +127,13 @@ record_rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes
 manifest_bytes="".join(",".join(row)+"\n" for row in record_rows).encode("utf-8")
 if hashlib.sha256(manifest_bytes).hexdigest() != "0d8bd9ef411c7df1cf30597f5d340d58cd107e71c6cf8baa6e7f53aad6641b88":
     raise RuntimeError("scientific distribution identity changed")
-for relative,encoded,size in record_rows:
-    algorithm,expected=encoded.split("=",1)
-    payload=open(distribution.locate_file(relative),"rb").read()
-    actual=base64.urlsafe_b64encode(hashlib.new(algorithm,payload).digest()).decode("ascii").rstrip("=")
-    if actual != expected or (size and len(payload) != int(size)):
-        raise RuntimeError("scientific distribution member changed")
+for _,encoded,size in record_rows:
+    if "=" not in encoded or (size and not size.isdigit()):
+        raise RuntimeError("scientific distribution record changed")
+# Rust cryptographically verifies every closure member at acquisition, then
+# checks path/inode/size/mtime/ctime snapshots around this fresh worker. The
+# worker verifies the immutable RECORD identity without redundantly hashing
+# the full distribution on every document operation.
 import nirs4all
 target=getattr(nirs4all,"studio_scientific_job_v1",None)
 if not callable(target):
@@ -250,12 +251,30 @@ struct RuntimeClosureFile {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+struct RuntimePathSnapshot {
+    relative_path: String,
+    size: u64,
+    device: u64,
+    inode: u64,
+    modified_nanos: i128,
+    changed_nanos: i128,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RuntimeSnapshot {
+    directories: Vec<RuntimePathSnapshot>,
+    files: Vec<RuntimePathSnapshot>,
+}
+
+#[derive(Clone, Debug)]
 struct PackagedRuntimeIdentity {
     runtime_root: PathBuf,
     site_packages: PathBuf,
     closure: HostIdentity,
     directories: Vec<String>,
     files: Vec<RuntimeClosureFile>,
+    snapshot: Arc<Mutex<RuntimeSnapshot>>,
+    full_hash_scans: Arc<AtomicUsize>,
 }
 
 /// Sticky acquisition record for an explicitly selected `CPython` stdio host.
@@ -716,14 +735,17 @@ fn packaged_runtime_identity(
         return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
     }
     let (directories, files) = parse_runtime_closure(&closure, &runtime_root, &site_packages)?;
+    let snapshot = collect_runtime_snapshot(&runtime_root)?;
     let identity = PackagedRuntimeIdentity {
         runtime_root,
         site_packages,
         closure,
         directories,
         files,
+        snapshot: Arc::new(Mutex::new(snapshot.clone())),
+        full_hash_scans: Arc::new(AtomicUsize::new(0)),
     };
-    verify_packaged_runtime_identity(&identity)?;
+    verify_packaged_runtime_full(&identity, &snapshot)?;
     Ok(identity)
 }
 
@@ -927,11 +949,64 @@ fn verify_packaged_runtime_identity(
     identity: &PackagedRuntimeIdentity,
 ) -> Result<(), ScientificCpythonUnavailable> {
     verify_packaged_runtime_anchor(identity)?;
+    let current = collect_runtime_snapshot(&identity.runtime_root)?;
+    let mut baseline = identity
+        .snapshot
+        .lock()
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+    if current == *baseline && runtime_snapshot_cache_is_trustworthy() {
+        return Ok(());
+    }
+    verify_packaged_runtime_full(identity, &current)?;
+    if runtime_identity_changed(&baseline, &current) {
+        return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+    }
+    *baseline = current;
+    drop(baseline);
+    Ok(())
+}
+
+#[cfg(unix)]
+const fn runtime_snapshot_cache_is_trustworthy() -> bool {
+    true
+}
+
+#[cfg(not(unix))]
+const fn runtime_snapshot_cache_is_trustworthy() -> bool {
+    // Rust exposes the inode ctime needed to detect a restored mtime on Unix.
+    // Other supported metadata APIs do not expose an equivalent change marker,
+    // so those targets retain the full cryptographic verification on every
+    // boundary instead of weakening the fail-closed contract.
+    false
+}
+
+fn verify_packaged_runtime_full(
+    identity: &PackagedRuntimeIdentity,
+    before: &RuntimeSnapshot,
+) -> Result<(), ScientificCpythonUnavailable> {
+    identity.full_hash_scans.fetch_add(1, Ordering::Relaxed);
+    verify_packaged_runtime_anchor(identity)?;
     let (directories, files) = collect_runtime_inventory(&identity.runtime_root)?;
-    if directories != identity.directories || files != identity.files {
+    let after = collect_runtime_snapshot(&identity.runtime_root)?;
+    if before != &after || directories != identity.directories || files != identity.files {
         return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
     }
     Ok(())
+}
+
+fn runtime_identity_changed(previous: &RuntimeSnapshot, current: &RuntimeSnapshot) -> bool {
+    previous.directories.len() != current.directories.len()
+        || previous.files.len() != current.files.len()
+        || previous
+            .directories
+            .iter()
+            .zip(&current.directories)
+            .chain(previous.files.iter().zip(&current.files))
+            .any(|(left, right)| {
+                left.relative_path != right.relative_path
+                    || left.device != right.device
+                    || left.inode != right.inode
+            })
 }
 
 fn verify_packaged_runtime_anchor(
@@ -1000,6 +1075,123 @@ fn collect_runtime_inventory(
     directories.sort();
     files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
     Ok((directories, files))
+}
+
+fn collect_runtime_snapshot(
+    runtime_root: &Path,
+) -> Result<RuntimeSnapshot, ScientificCpythonUnavailable> {
+    let mut pending = vec![runtime_root.to_path_buf()];
+    let mut directories = Vec::new();
+    let mut files = Vec::new();
+    while let Some(directory) = pending.pop() {
+        let relative = directory
+            .strip_prefix(runtime_root)
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+        let metadata = fs::symlink_metadata(&directory)
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+        }
+        directories.push(runtime_path_snapshot(&directory, relative, &metadata)?);
+        let entries = fs::read_dir(&directory)
+            .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+        for entry in entries {
+            let entry = entry.map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+            if metadata.file_type().is_symlink() {
+                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+            }
+            if metadata.is_dir() {
+                if directories.len() + pending.len() >= 100_000 {
+                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+                pending.push(path);
+            } else if metadata.is_file() {
+                if files.len() >= 100_000 {
+                    return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+                }
+                let relative = path
+                    .strip_prefix(runtime_root)
+                    .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?;
+                files.push(runtime_path_snapshot(&path, relative, &metadata)?);
+            } else {
+                return Err(ScientificCpythonUnavailable::RuntimeContractTampered);
+            }
+        }
+    }
+    directories.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    files.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok(RuntimeSnapshot { directories, files })
+}
+
+#[cfg(unix)]
+fn runtime_path_snapshot(
+    _path: &Path,
+    relative: &Path,
+    metadata: &fs::Metadata,
+) -> Result<RuntimePathSnapshot, ScientificCpythonUnavailable> {
+    use std::os::unix::fs::MetadataExt;
+
+    Ok(RuntimePathSnapshot {
+        relative_path: manifest_relative_path(relative)?,
+        size: metadata.len(),
+        device: metadata.dev(),
+        inode: metadata.ino(),
+        modified_nanos: i128::from(metadata.mtime()) * 1_000_000_000
+            + i128::from(metadata.mtime_nsec()),
+        changed_nanos: i128::from(metadata.ctime()) * 1_000_000_000
+            + i128::from(metadata.ctime_nsec()),
+    })
+}
+
+#[cfg(windows)]
+fn runtime_path_snapshot(
+    path: &Path,
+    relative: &Path,
+    metadata: &fs::Metadata,
+) -> Result<RuntimePathSnapshot, ScientificCpythonUnavailable> {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    use std::os::windows::fs::MetadataExt;
+
+    let mut identity = DefaultHasher::new();
+    same_file::Handle::from_path(path)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractTampered)?
+        .hash(&mut identity);
+
+    Ok(RuntimePathSnapshot {
+        relative_path: manifest_relative_path(relative)?,
+        size: metadata.file_size(),
+        device: 0,
+        inode: identity.finish(),
+        modified_nanos: i128::from(metadata.last_write_time()) * 100,
+        changed_nanos: i128::from(metadata.creation_time()) * 100,
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
+fn runtime_path_snapshot(
+    _path: &Path,
+    relative: &Path,
+    metadata: &fs::Metadata,
+) -> Result<RuntimePathSnapshot, ScientificCpythonUnavailable> {
+    fn nanos(value: Result<SystemTime, std::io::Error>) -> i128 {
+        value
+            .ok()
+            .and_then(|time| time.duration_since(SystemTime::UNIX_EPOCH).ok())
+            .and_then(|duration| i128::try_from(duration.as_nanos()).ok())
+            .unwrap_or_default()
+    }
+
+    Ok(RuntimePathSnapshot {
+        relative_path: manifest_relative_path(relative)?,
+        size: metadata.len(),
+        device: 0,
+        inode: 0,
+        modified_nanos: nanos(metadata.modified()),
+        changed_nanos: nanos(metadata.created()),
+    })
 }
 
 fn host_identity_with_limit(
@@ -2189,12 +2381,32 @@ mod tests {
             acquired.unavailable_reason(),
             "scientific_callable_unavailable"
         );
-        fs::write(&package_member, "ATTESTED = False\n").unwrap();
+        let packaged = acquired.packaged_runtime.as_ref().unwrap();
+        assert_eq!(packaged.full_hash_scans.load(Ordering::Relaxed), 1);
+        verify_packaged_runtime_identity(packaged).unwrap();
+        verify_packaged_runtime_identity(packaged).unwrap();
+        assert_eq!(packaged.full_hash_scans.load(Ordering::Relaxed), 1);
+
+        let original_mtime = fs::metadata(&package_member).unwrap().modified().unwrap();
+        fs::write(&package_member, "ATTESTED = Nope\n").unwrap();
+        File::options()
+            .write(true)
+            .open(&package_member)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(original_mtime))
+            .unwrap();
         assert_eq!(
-            verify_packaged_runtime_identity(acquired.packaged_runtime.as_ref().unwrap()),
+            fs::metadata(&package_member).unwrap().modified().unwrap(),
+            original_mtime
+        );
+        assert_eq!(
+            verify_packaged_runtime_identity(packaged),
             Err(ScientificCpythonUnavailable::RuntimeContractTampered)
         );
+        assert_eq!(packaged.full_hash_scans.load(Ordering::Relaxed), 2);
         fs::write(&package_member, "ATTESTED = True\n").unwrap();
+        verify_packaged_runtime_identity(packaged).unwrap();
+        assert_eq!(packaged.full_hash_scans.load(Ordering::Relaxed), 3);
         fs::write(&closure, "tampered-closure").unwrap();
         assert_eq!(
             acquired.unavailable_reason(),
@@ -2229,6 +2441,52 @@ mod tests {
             "python_runtime_contract_tampered"
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cached_runtime_snapshot_rejects_add_remove_and_inode_replacement() {
+        fn packaged(label: &str) -> (PathBuf, PathBuf, PackagedRuntimeIdentity) {
+            let root = test_directory(label);
+            let runtime = root.join("python-runtime");
+            let python_root = runtime.join("python");
+            let site_packages = python_root.join("lib/python3.11/site-packages");
+            fs::create_dir_all(&site_packages).unwrap();
+            let host = shell_host(&python_root.join("bin"), "python3", "exit 0");
+            let member = site_packages.join("attested_plugin.py");
+            fs::write(&member, "ATTESTED = True\n").unwrap();
+            let closure = runtime.join("PYTHON_PLUGIN_CLOSURE.json");
+            write_runtime_closure(&python_root, &site_packages, &closure);
+            let identity =
+                packaged_runtime_identity(&host, &closure, &python_root, &site_packages).unwrap();
+            (root, member, identity)
+        }
+
+        let (inventory_root, member, inventory) = packaged("snapshot-inventory-drift");
+        let unexpected = member.with_file_name("unexpected.py");
+        fs::write(&unexpected, "UNATTESTED = True\n").unwrap();
+        assert_eq!(
+            verify_packaged_runtime_identity(&inventory),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+        fs::remove_file(&unexpected).unwrap();
+        verify_packaged_runtime_identity(&inventory).unwrap();
+        fs::remove_file(&member).unwrap();
+        assert_eq!(
+            verify_packaged_runtime_identity(&inventory),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+        fs::remove_dir_all(inventory_root).unwrap();
+
+        let (replacement_root, member, replacement) = packaged("snapshot-inode-drift");
+        let substitute = member.with_file_name("substitute.py");
+        fs::write(&substitute, fs::read(&member).unwrap()).unwrap();
+        fs::rename(&substitute, &member).unwrap();
+        assert_eq!(
+            verify_packaged_runtime_identity(&replacement),
+            Err(ScientificCpythonUnavailable::RuntimeContractTampered)
+        );
+        fs::remove_dir_all(replacement_root).unwrap();
     }
 
     #[cfg(unix)]

@@ -162,14 +162,25 @@ port and reports the Python plugin host unavailable. It does not acquire,
 restart, or fall back to Uvicorn. Archive creation and the release smoke are
 stricter: they reject such an incomplete bundle before publication.
 
-Rust re-hashes the complete closure during acquisition, in the worker thread
-immediately before spawn, immediately after spawn before stdin is released,
-and after process exit. Cross-platform filesystems do not provide one portable
-sealed-executable primitive for this tree, so the residual same-user race
-between a successful hash and the kernel's later module read is not claimed
-away. Release resources must also be installed read-only and protected by the
-platform package/signature mechanism; any observed drift fails the job and
-terminates a just-spawned worker.
+Rust hashes the complete closure during acquisition and caches that attestation.
+Before spawn, immediately after spawn before stdin is released, and after process
+exit it walks the closed inventory and compares path, device, inode, size,
+nanosecond mtime, and nanosecond ctime snapshots. An unchanged snapshot avoids
+re-reading every large scientific member. Any snapshot drift triggers a complete
+SHA-256 inventory verification; additions, removals, content changes, and inode
+replacement fail closed. A metadata-only change with identical bytes may refresh
+the cached snapshot only after that full verification. The child independently
+checks the immutable installed RECORD identity and callable bytes, but relies on
+the Rust attestation instead of hashing the full wheel a second time.
+Targets whose standard metadata API does not expose an inode change-time
+equivalent retain the complete SHA-256 verification at every boundary.
+
+Cross-platform filesystems do not provide one portable sealed-executable
+primitive for this tree, so the residual same-user race between a successful
+snapshot and the kernel's later module read is not claimed away. Release
+resources must also be installed read-only and protected by the platform
+package/signature mechanism; any observed drift fails the job and terminates a
+just-spawned worker.
 
 Every Rust-owned invocation of the embedded CPython host disables bytecode
 writes with both `-B` and `PYTHONDONTWRITEBYTECODE=1`. This keeps preflight,
