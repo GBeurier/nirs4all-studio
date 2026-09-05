@@ -339,7 +339,7 @@ mod tests {
                 &json!({
                     "data":{"x":[[1.0,2.0]]},
                     "steps":[],
-                    "sampling":{"max_samples":1},
+                    "sampling":{"n_samples":1},
                     "options":{"compute_pca":false},
                     "limits":{"max_samples":1}
                 }),
@@ -348,7 +348,7 @@ mod tests {
                 assert_eq!(document["schema"], REQUEST_SCHEMA);
                 assert_eq!(document["operation"], "execute");
                 assert_eq!(document["payload"]["data"]["x"][0][1], 2.0);
-                assert_eq!(document["payload"]["sampling"]["max_samples"], 1);
+                assert_eq!(document["payload"]["sampling"]["n_samples"], 1);
                 assert_eq!(document["payload"]["options"]["compute_pca"], false);
                 assert_eq!(document["payload"]["limits"]["max_samples"], 1);
                 Ok(json!({
