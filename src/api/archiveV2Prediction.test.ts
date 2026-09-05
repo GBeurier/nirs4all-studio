@@ -201,6 +201,22 @@ describe("native Archive V2 array prediction client", () => {
     );
   });
 
+  it.each([1, 3])("refuses a conformal cell row with %i targets instead of two", async (targetCount) => {
+    const base = conformalPresentation();
+    transport.postBoundedJson.mockResolvedValue({
+      ...base,
+      interval_block: {
+        ...(base.interval_block as Record<string, unknown>),
+        intervals: [{ coverage: 0.8, cells: Array.from({ length: 2 }, () =>
+          Array.from({ length: targetCount }, () => ({ status: "finite", lower: 9, upper: 11 }))),
+        }],
+      },
+    });
+    await expect(getPersistedArchiveV2ConformalPresentation(conformalRequest)).rejects.toThrow(
+      "Invalid native conformal presentation response",
+    );
+  });
+
   it("loads a bounded Core-verified catalogue", async () => {
     const catalogue = { schema_version: 1, operation: "archive_v2_catalogue", workspace_id: "workspace-a", archives: [{ archive_id: "archive-a", archive_ref: "artifacts/model.n4a", archive_sha256: "a".repeat(64), n_features: 2, target_names: ["protein"], descriptor_fingerprint: "b".repeat(64), identity_status: "verified" }] };
     transport.getBoundedJson.mockResolvedValue(catalogue);

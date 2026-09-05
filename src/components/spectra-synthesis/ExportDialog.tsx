@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { api } from "@/api/transport";
+import { getWorkspace } from "@/api/workspace";
 import { useSynthesisBuilder } from "./contexts";
 
 interface ExportDialogProps {
@@ -58,7 +59,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
     queryKey: ["workspace"],
     queryFn: async () => {
       try {
-        const data = await api.get<{ workspace: unknown }>("/workspace");
+        const data = await getWorkspace();
         return data.workspace;
       } catch {
         return null;

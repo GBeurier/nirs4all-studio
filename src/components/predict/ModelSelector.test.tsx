@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,7 +20,7 @@ vi.mock("@/api/archiveV2Prediction", () => ({
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 let cleanup: (() => Promise<void>) | null = null;
 
-async function renderSelector(onSelect: ReturnType<typeof vi.fn>) {
+async function renderSelector(onSelect: ComponentProps<typeof ModelSelector>["onSelect"]) {
   const container = document.createElement("div"); document.body.appendChild(container);
   const root = createRoot(container); const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   cleanup = async () => { await act(async () => root.unmount()); client.clear(); container.remove(); };

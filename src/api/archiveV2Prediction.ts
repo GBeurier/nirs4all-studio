@@ -325,16 +325,17 @@ function parseConformalPresentation(
     !Array.isArray(value.guarantee.quantiles) || value.guarantee.quantiles.length !== value.interval_block.intervals.length
   ) throw new TypeError("Invalid native conformal presentation response");
 
+  const targetCount = value.target_names.length;
   for (let index = 0; index < value.guarantee.quantiles.length; index += 1) {
     const quantile = value.guarantee.quantiles[index];
     const interval = value.interval_block.intervals[index];
-    const radiusCount = value.guarantee.multi_target_policy === "marginal" ? value.target_names.length : 1;
+    const radiusCount = value.guarantee.multi_target_policy === "marginal" ? targetCount : 1;
     if (!isRecord(quantile) || !hasExactKeys(quantile, ["coverage", "rank", "radii"]) ||
       typeof quantile.coverage !== "number" || !Number.isFinite(quantile.coverage) || quantile.coverage <= 0 || quantile.coverage >= 1 ||
       !isPositiveSafeInteger(quantile.rank) || !Array.isArray(quantile.radii) || quantile.radii.length !== radiusCount ||
       !quantile.radii.every(isConformalRadius) || !isRecord(interval) || !hasExactKeys(interval, ["coverage", "cells"]) ||
       interval.coverage !== quantile.coverage || !Array.isArray(interval.cells) || interval.cells.length !== value.sample_ids.length ||
-      !interval.cells.every((row) => Array.isArray(row) && row.length === value.target_names.length && row.every(isConformalCell))) {
+      !interval.cells.every((row) => Array.isArray(row) && row.length === targetCount && row.every(isConformalCell))) {
       throw new TypeError("Invalid native conformal presentation response");
     }
   }
