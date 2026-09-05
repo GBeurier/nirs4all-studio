@@ -87,6 +87,7 @@ describe("smoke-self-update", () => {
   });
 
   it("builds platform-specific asset names the selector accepts", () => {
+    expect(smoke.assetNameForPlatform("linux", "9.9.9")).toMatch(/^nirs4all\.Studio-/);
     expect(smoke.assetNameForPlatform("linux", "9.9.9")).toMatch(/-all-in-one-linux-(x64|arm64)\.tar\.gz$/);
     expect(smoke.assetNameForPlatform("darwin", "9.9.9")).toMatch(/-all-in-one-mac-(x64|arm64)\.zip$/);
     expect(smoke.assetNameForPlatform("win32", "9.9.9")).toMatch(/-all-in-one-win-(x64|arm64)\.zip$/);
@@ -153,7 +154,7 @@ describe("smoke-self-update", () => {
     const bytes = Buffer.from("fake-archive-bytes");
     fs.writeFileSync(assetPath, bytes);
     const assetSha = crypto.createHash("sha256").update(bytes).digest("hex");
-    const assetName = "nirs4all-studio-999.0.0-all-in-one-linux-x64.tar.gz";
+    const assetName = "nirs4all.Studio-999.0.0-all-in-one-linux-x64.tar.gz";
 
     const server = await smoke.startFixtureServer({ assetPath, assetName, assetSha });
     try {
@@ -167,6 +168,7 @@ describe("smoke-self-update", () => {
 
       const sidecar = await (await fetch(`${server.base}/${assetName}.sha256`)).text();
       expect(sidecar.split(/\s+/)[0]).toBe(assetSha);
+      expect(sidecar).toContain("/release/nirs4all Studio-999.0.0-all-in-one-linux-x64.tar.gz");
     } finally {
       await server.close();
     }

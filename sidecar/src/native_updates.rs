@@ -6,6 +6,7 @@
 //! all-in-one/portable tree.
 
 use std::{
+    collections::HashSet,
     env,
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
@@ -57,7 +58,14 @@ pub struct NativeUpdater {
     last_check: Arc<Mutex<Option<String>>>,
     preferences: Arc<Mutex<UpdatePreferences>>,
     next_job: Arc<AtomicU64>,
-    active_job: Arc<Mutex<Option<String>>>,
+    lifecycle: Arc<Mutex<UpdateLifecycle>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum UpdateLifecycle {
+    Idle,
+    Downloading(String),
+    Applying,
 }
 
 #[derive(Debug)]
@@ -68,6 +76,7 @@ struct UpdateConfig {
     current_version: String,
     api_base: String,
     all_in_one: bool,
+    electron_pid: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -153,12 +162,16 @@ impl NativeUpdater {
                     .filter(|value| !value.trim().is_empty())
                     .unwrap_or_else(|| "https://api.github.com".into()),
                 all_in_one,
+                electron_pid: env::var("NIRS4ALL_ELECTRON_PID")
+                    .ok()
+                    .and_then(|value| value.parse::<u32>().ok())
+                    .filter(|pid| *pid > 0),
             }),
             release: Arc::new(Mutex::new(None)),
             last_check: Arc::new(Mutex::new(None)),
             preferences: Arc::new(Mutex::new(UpdatePreferences::default())),
             next_job: Arc::new(AtomicU64::new(1)),
-            active_job: Arc::new(Mutex::new(None)),
+            lifecycle: Arc::new(Mutex::new(UpdateLifecycle::Idle)),
         };
         if reconcile {
             updater.reconcile_apply_attempt();
@@ -183,6 +196,7 @@ impl NativeUpdater {
                 current_version: current_version.into(),
                 api_base,
                 all_in_one,
+                electron_pid: Some(u32::MAX),
             }),
             release: Arc::new(Mutex::new(None)),
             last_check: Arc::new(Mutex::new(None)),
@@ -191,7 +205,7 @@ impl NativeUpdater {
                 ..UpdatePreferences::default()
             })),
             next_job: Arc::new(AtomicU64::new(1)),
-            active_job: Arc::new(Mutex::new(None)),
+            lifecycle: Arc::new(Mutex::new(UpdateLifecycle::Idle)),
         }
     }
 
@@ -253,6 +267,8 @@ impl NativeUpdater {
             (false, "appimage")
         } else if !self.config.all_in_one {
             (false, "managed_install")
+        } else if self.config.electron_pid.is_none() {
+            (false, "electron_process_unavailable")
         } else if self.write_probe() {
             (true, "all_in_one")
         } else {
@@ -346,11 +362,12 @@ impl NativeUpdater {
     }
 
     fn cached_or_check(&self) -> Result<ReleaseInfo, String> {
-        self.release
+        let cached = self
+            .release
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
-            .map_or_else(|| self.check(), Ok)
+            .clone();
+        cached.map_or_else(|| self.check(), Ok)
     }
 
     fn update_available(&self, version: &str) -> bool {
@@ -479,16 +496,18 @@ impl NativeUpdater {
                     .into(),
             );
         }
-        let mut active = self
-            .active_job
+        let mut lifecycle = self
+            .lifecycle
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if active
-            .as_deref()
-            .and_then(|id| jobs.get_at(id, Instant::now()))
-            .is_some_and(|job| !job.status.is_terminal())
-        {
-            return Err("CONFLICT:An update download is already active".into());
+        match &*lifecycle {
+            UpdateLifecycle::Idle => {}
+            UpdateLifecycle::Downloading(_) => {
+                return Err("CONFLICT:An update download is already active".into());
+            }
+            UpdateLifecycle::Applying => {
+                return Err("CONFLICT:An update is already being applied".into());
+            }
         }
         let id = format!(
             "update-download-{}-{}",
@@ -509,8 +528,8 @@ impl NativeUpdater {
             Instant::now(),
         )
         .map_err(|error| format!("Could not register update download: {error:?}"))?;
-        *active = Some(id.clone());
-        drop(active);
+        *lifecycle = UpdateLifecycle::Downloading(id.clone());
+        drop(lifecycle);
         let updater = self.clone();
         let worker_jobs = Arc::clone(jobs);
         let worker_id = id.clone();
@@ -528,6 +547,7 @@ impl NativeUpdater {
     fn download_worker(&self, jobs: &NativeJobRuntime, job_id: &str, release: &ReleaseInfo) {
         let now = Instant::now();
         if jobs.start_at(job_id, &rfc3339_now(), now).is_err() {
+            self.finish_download(job_id);
             return;
         }
         let result = self.download_and_stage(jobs, job_id, release);
@@ -550,6 +570,17 @@ impl NativeUpdater {
             Err(error) => {
                 let _ = jobs.fail_at(job_id, error, None, &rfc3339_now(), Instant::now());
             }
+        }
+        self.finish_download(job_id);
+    }
+
+    fn finish_download(&self, job_id: &str) {
+        let mut lifecycle = self
+            .lifecycle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if matches!(&*lifecycle, UpdateLifecycle::Downloading(id) if id == job_id) {
+            *lifecycle = UpdateLifecycle::Idle;
         }
     }
 
@@ -657,9 +688,17 @@ impl NativeUpdater {
         fs::create_dir_all(&staging)
             .map_err(|error| format!("Could not create update staging directory: {error}"))?;
         extract_archive(&download, &release.asset_name, &staging)?;
+        if job_cancelled(jobs, job_id) {
+            let _ = remove_known_tree(&staging);
+            return Err("Update download cancelled".into());
+        }
         let content = resolve_staged_content(&staging)?;
         validate_staged_layout(&content, self.config.executable_relative.as_deref())?;
         let staged_tree_sha256 = hash_tree(&content)?;
+        if job_cancelled(jobs, job_id) {
+            let _ = remove_known_tree(&staging);
+            return Err("Update download cancelled".into());
+        }
         atomic_json(
             &staging.join(STAGED_METADATA),
             &json!({
@@ -698,12 +737,31 @@ impl NativeUpdater {
         })
     }
 
+    // The guard deliberately covers the filesystem mutation: dropping it after
+    // the check would let apply/download race staged-tree deletion.
+    #[allow(clippy::significant_drop_tightening)]
     fn delete_staged(&self) -> Result<Value, String> {
+        let lifecycle = self
+            .lifecycle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *lifecycle != UpdateLifecycle::Idle {
+            return Err("CONFLICT:An update operation is active".into());
+        }
         remove_known_tree(&self.staging_dir())?;
         Ok(json!({"success": true, "message": "Staged update removed"}))
     }
 
+    // See delete_staged: this is a transaction guard, not an incidental read.
+    #[allow(clippy::significant_drop_tightening)]
     fn cleanup(&self) -> Result<Value, String> {
+        let lifecycle = self
+            .lifecycle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *lifecycle != UpdateLifecycle::Idle {
+            return Err("CONFLICT:An update operation is active".into());
+        }
         remove_known_file(&self.config.state_dir.join(DOWNLOAD_FILE))?;
         remove_known_file(&self.config.state_dir.join(APPLY_PLAN))?;
         remove_known_file(&self.config.state_dir.join(if cfg!(windows) {
@@ -746,6 +804,9 @@ impl NativeUpdater {
         Ok(json!({"success": true, "message": "Cleanup complete"}))
     }
 
+    // The lifecycle guard must span validation, plan publication and helper
+    // spawn so cleanup cannot invalidate an in-flight apply transaction.
+    #[allow(clippy::significant_drop_tightening, clippy::too_many_lines)]
     fn apply(&self, body: &[u8]) -> Result<Value, String> {
         let request: Value = serde_json::from_slice(body)
             .map_err(|_| "Apply request must be a JSON object".to_owned())?;
@@ -760,6 +821,13 @@ impl NativeUpdater {
         }
         if self.capability()["can_apply_in_place"] != true {
             return Err("This build cannot apply updates in place".into());
+        }
+        let mut lifecycle = self
+            .lifecycle
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *lifecycle != UpdateLifecycle::Idle {
+            return Err("CONFLICT:An update operation is active".into());
         }
         let metadata = read_json(&self.staging_dir().join(STAGED_METADATA))?;
         let staged_version = metadata
@@ -799,7 +867,10 @@ impl NativeUpdater {
             staged_content: content,
             executable_relative,
             state_dir: self.config.state_dir.clone(),
-            parent_pid: std::process::id(),
+            parent_pid: self
+                .config
+                .electron_pid
+                .ok_or("Electron process identity is unavailable for safe update apply")?,
             from_version: self.config.current_version.clone(),
             to_version: staged_version.into(),
             staged_tree_sha256: staged_tree_sha256.into(),
@@ -836,6 +907,7 @@ impl NativeUpdater {
         command
             .spawn()
             .map_err(|error| format!("Could not launch update helper: {error}"))?;
+        *lifecycle = UpdateLifecycle::Applying;
         Ok(json!({
             "success": true,
             "message": "Update will be applied after the application exits",
@@ -1350,16 +1422,33 @@ const fn qualifies_in_place_archive(
 }
 
 fn parse_checksum_sidecar(checksum_text: &str, asset_name: &str) -> Result<String, String> {
-    let mut fields = checksum_text.split_whitespace();
-    let digest = fields
+    let mut lines = checksum_text.lines();
+    let line = lines
         .next()
-        .filter(|value| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .filter(|line| !line.trim().is_empty())
+        .ok_or("Checksum sidecar is empty")?;
+    if lines.any(|line| !line.trim().is_empty()) {
+        return Err("Checksum sidecar must contain exactly one checksum record".into());
+    }
+    let digest = line
+        .get(..64)
+        .filter(|value| value.bytes().all(|byte| byte.is_ascii_hexdigit()))
         .ok_or("Checksum sidecar does not contain a SHA-256 digest")?;
-    let checksum_name = fields
+    let separator_and_name = line
+        .get(64..)
+        .filter(|value| value.starts_with(char::is_whitespace))
+        .ok_or("Checksum sidecar has no filename separator")?;
+    let checksum_name = separator_and_name
+        .trim_start()
+        .strip_prefix('*')
+        .unwrap_or_else(|| separator_and_name.trim_start())
+        .trim()
+        .rsplit(['/', '\\'])
         .next()
-        .map(|value| value.trim_start_matches('*'))
+        .filter(|value| !value.is_empty())
         .ok_or("Checksum sidecar does not name its update asset")?;
-    if checksum_name != asset_name || fields.next().is_some() {
+    let published_name = |value: &str| value.replace(' ', ".");
+    if published_name(checksum_name) != published_name(asset_name) {
         return Err("Checksum sidecar does not exactly name the selected update asset".into());
     }
     Ok(digest.to_ascii_lowercase())
@@ -1409,11 +1498,16 @@ fn preflight_zip(archive: &Path) -> Result<(), String> {
         return Err("Update archive has too many entries".into());
     }
     let mut expanded = 0_u64;
+    let mut paths = HashSet::new();
+    let mut symlinks = HashSet::new();
     for index in 0..archive.len() {
         let mut entry = archive
             .by_index(index)
             .map_err(|error| format!("Invalid ZIP entry: {error}"))?;
         let relative = safe_relative_path(Path::new(entry.name()))?;
+        if !paths.insert(relative.clone()) {
+            return Err("ZIP update contains duplicate paths".into());
+        }
         expanded = expanded
             .checked_add(entry.size())
             .ok_or("Expanded update size overflow")?;
@@ -1423,6 +1517,7 @@ fn preflight_zip(archive: &Path) -> Result<(), String> {
         let mode = entry.unix_mode().unwrap_or(0);
         let file_type = mode & 0o170_000;
         if file_type == 0o120_000 {
+            symlinks.insert(relative.clone());
             let mut link = String::new();
             entry
                 .read_to_string(&mut link)
@@ -1436,6 +1531,15 @@ fn preflight_zip(archive: &Path) -> Result<(), String> {
             )?;
         } else if file_type != 0 && file_type != 0o100_000 && !entry.is_dir() {
             return Err("ZIP update contains a special file".into());
+        }
+    }
+    for path in &paths {
+        let mut parent = path.parent();
+        while let Some(candidate) = parent.filter(|candidate| !candidate.as_os_str().is_empty()) {
+            if symlinks.contains(candidate) {
+                return Err("ZIP update contains an entry below a symlink".into());
+            }
+            parent = candidate.parent();
         }
     }
     Ok(())
@@ -1471,6 +1575,7 @@ fn extract_zip(archive: &Path, destination: &Path) -> Result<(), String> {
                 .map_err(|error| format!("Invalid ZIP entry: {error}"))?;
             let relative = safe_relative_path(Path::new(entry.name()))?;
             let target = destination.join(&relative);
+            ensure_no_symlink_parent(destination, &target)?;
             let mode = entry.unix_mode().unwrap_or(0);
             let file_type = mode & 0o170_000;
             if file_type == 0o120_000 {
@@ -1535,6 +1640,7 @@ fn extract_tar_gz(archive: &Path, destination: &Path) -> Result<(), String> {
             return Err("Expanded update exceeds the size limit".into());
         }
         let target = destination.join(relative);
+        ensure_no_symlink_parent(destination, &target)?;
         let kind = entry.header().entry_type();
         if kind.is_dir() {
             fs::create_dir_all(&target).map_err(|error| error.to_string())?;
@@ -1568,6 +1674,39 @@ fn extract_tar_gz(archive: &Path, destination: &Path) -> Result<(), String> {
             return Err("Update archive symlinks are unsupported on this platform".into());
         } else {
             return Err("Tar update contains a hard link or special file".into());
+        }
+    }
+    Ok(())
+}
+
+fn ensure_no_symlink_parent(root: &Path, target: &Path) -> Result<(), String> {
+    let relative = target
+        .strip_prefix(root)
+        .map_err(|_| "Update archive target is outside the staging root")?;
+    let mut current = root.to_path_buf();
+    let Some(parent) = relative.parent() else {
+        return Ok(());
+    };
+    for component in parent.components() {
+        let Component::Normal(part) = component else {
+            return Err("Update archive target has an unsafe parent".into());
+        };
+        current.push(part);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err("Update archive entry traverses a symlink parent".into());
+            }
+            Ok(metadata) if !metadata.is_dir() => {
+                return Err("Update archive entry parent is not a directory".into());
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "Could not inspect update archive parent {}: {error}",
+                    current.display()
+                ));
+            }
         }
     }
     Ok(())
@@ -2025,6 +2164,30 @@ mod tests {
         builder.into_inner().unwrap().finish().unwrap()
     }
 
+    #[cfg(unix)]
+    fn chained_symlink_escape_tar() -> Vec<u8> {
+        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        for (name, link) in [("a", "."), ("a/escape", "..")] {
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(tar::EntryType::Symlink);
+            header.set_size(0);
+            header.set_mode(0o777);
+            header.set_link_name(link).unwrap();
+            header.set_cksum();
+            builder.append_data(&mut header, name, io::empty()).unwrap();
+        }
+        let payload = b"escaped";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(payload.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "escape/payload", payload.as_slice())
+            .unwrap();
+        builder.into_inner().unwrap().finish().unwrap()
+    }
+
     #[test]
     fn versions_must_be_strictly_newer_and_valid() {
         assert_eq!(strictly_newer("1.0.1", "1.0.0"), Ok(true));
@@ -2055,6 +2218,37 @@ mod tests {
         assert!(
             parse_checksum_sidecar(&format!("{digest}  studio.zip extra\n"), "studio.zip").is_err()
         );
+        assert_eq!(
+            parse_checksum_sidecar(
+                &format!(
+                    "{digest}  /home/runner/work/nirs4all-studio/release/nirs4all Studio-0.11.0-all-in-one-linux-x64.tar.gz\n"
+                ),
+                "nirs4all.Studio-0.11.0-all-in-one-linux-x64.tar.gz",
+            )
+            .unwrap(),
+            digest
+        );
+        assert!(parse_checksum_sidecar(
+            &format!("{digest}  C:\\release\\nirs4all Studio-0.11.0-all-in-one-win-x64.zip\n{digest}  second.zip\n"),
+            "nirs4all.Studio-0.11.0-all-in-one-win-x64.zip",
+        )
+        .is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_extraction_rejects_chained_symlink_escape_before_writing_outside() {
+        let temp = TempDir::new().unwrap();
+        let archive = temp.path().join("malicious.tar.gz");
+        let staging = temp.path().join("staging");
+        fs::write(&archive, chained_symlink_escape_tar()).unwrap();
+        fs::create_dir(&staging).unwrap();
+
+        let error = extract_tar_gz(&archive, &staging).unwrap_err();
+
+        assert!(error.contains("symlink parent"), "{error}");
+        assert!(!temp.path().join("escape").exists());
+        assert!(!temp.path().join("payload").exists());
     }
 
     #[test]
@@ -2241,7 +2435,7 @@ mod tests {
         });
         let updater =
             NativeUpdater::test_config(temp.path().join("state"), None, None, "1.0.0", base, false);
-        let release = updater.check().unwrap();
+        let release = updater.cached_or_check().unwrap();
         assert_eq!(release.version, "2.0.0");
         assert_eq!(release.sha256, digest);
         assert_eq!(release.asset_name, asset_name);
@@ -2333,8 +2527,6 @@ mod tests {
             update_settings: crate::UpdateSettingsStore::new(temp.path().join("settings.yaml")),
             ..SidecarState::default()
         };
-        let info = route(&mut state, "GET", "/api/updates/webapp/download-info", b"").unwrap();
-        assert_eq!(info.status, 200, "{}", info.body);
         let started = route(
             &mut state,
             "POST",
@@ -2600,7 +2792,23 @@ mod tests {
             Instant::now(),
         )
         .unwrap();
-        *updater.active_job.lock().unwrap() = Some("active".into());
+        *updater.lifecycle.lock().unwrap() = UpdateLifecycle::Downloading("active".into());
+        assert!(updater
+            .start_download(&jobs)
+            .unwrap_err()
+            .starts_with("CONFLICT:"));
+        assert!(updater.cleanup().unwrap_err().starts_with("CONFLICT:"));
+        assert!(updater
+            .delete_staged()
+            .unwrap_err()
+            .starts_with("CONFLICT:"));
+        assert!(updater
+            .apply(br#"{"confirm":true}"#)
+            .unwrap_err()
+            .starts_with("CONFLICT:"));
+
+        *updater.lifecycle.lock().unwrap() = UpdateLifecycle::Applying;
+        assert!(updater.cleanup().unwrap_err().starts_with("CONFLICT:"));
         assert!(updater
             .start_download(&jobs)
             .unwrap_err()

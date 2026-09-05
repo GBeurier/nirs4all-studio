@@ -171,6 +171,7 @@ afterEach(() => {
   delete process.env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN;
   delete process.env.NIRS4ALL_APP_DIR;
   delete process.env.NIRS4ALL_APP_EXE;
+  delete process.env.NIRS4ALL_ELECTRON_PID;
   delete process.env.NIRS4ALL_ELECTRON;
   delete process.env.NIRS4ALL_ALL_IN_ONE;
   delete process.env.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE;
@@ -406,6 +407,7 @@ describe("NativeSidecarManager", () => {
     process.env.NIRS4ALL_NATIVE_SIDECAR_PATH = makeExecutable();
     process.env.NIRS4ALL_APP_DIR = "/spoofed/app";
     process.env.NIRS4ALL_APP_EXE = "spoofed.exe";
+    process.env.NIRS4ALL_ELECTRON_PID = "999999";
     process.env.NIRS4ALL_ALL_IN_ONE = "true";
     const child = makeProcess();
     childProcessMocks.spawn.mockReturnValue(child);
@@ -439,6 +441,7 @@ describe("NativeSidecarManager", () => {
     expect(selectedEnvironment.NIRS4ALL_SCIENTIFIC_EXECUTOR).toBeUndefined();
     expect(selectedEnvironment.NIRS4ALL_APP_DIR).toBe(path.dirname(process.execPath));
     expect(selectedEnvironment.NIRS4ALL_APP_EXE).toBe(path.basename(process.execPath));
+    expect(selectedEnvironment.NIRS4ALL_ELECTRON_PID).toBe(process.pid.toString());
     expect(selectedEnvironment.NIRS4ALL_ELECTRON).toBe("true");
     expect(selectedEnvironment.NIRS4ALL_ALL_IN_ONE).toBe("false");
     expect(selectedEnvironment.NIRS4ALL_BUNDLED_RUNTIME_AVAILABLE).toBe("false");
