@@ -68,6 +68,21 @@ describe("Archive V2 prediction CSV", () => {
     expect(lines).toContain("sample-two,0.95,protein,2.5,,,unbounded");
   });
 
+  it("neutralizes spreadsheet formulas in identities without changing negative numbers", () => {
+    const hostile: ArchiveV2ArrayPredictionResponse = {
+      ...result,
+      sample_ids: ["-A1", "=SUM(1,2)"],
+      target_names: ["-A2", '@say "hello"'],
+      values: [[-1.5, -12], [-2.5, -14]],
+    };
+
+    const lines = buildArchiveV2PredictionCsv(hostile, null).split("\n");
+    expect(lines).toContain("'-A1,,'-A2,-1.5,,,");
+    expect(lines).toContain(`'-A1,,"'@say ""hello""",-12,,,`);
+    expect(lines).toContain(`"'=SUM(1,2)",,'-A2,-2.5,,,`);
+    expect(lines.some((line) => line.includes(",-1.5,"))).toBe(true);
+  });
+
   it("exports point predictions when no conformal presentation is available", () => {
     expect(buildArchiveV2PredictionCsv(result, null).split("\n")).toContain(
       '"sample,one",,protein,1.5,,,',
