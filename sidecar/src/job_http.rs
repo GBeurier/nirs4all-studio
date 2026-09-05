@@ -356,7 +356,14 @@ impl NativeJobRuntime {
 
     /// Submit a bounded native operation through an explicitly selected Rust
     /// executor while retaining the shared job lifecycle and durable record.
+    ///
+    /// # Errors
+    /// Returns an error if executor preflight, durable registration, or submission fails.
     #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "preserve the published owned-Arc submission API"
+    )]
     pub fn submit_with_executor_at(
         &self,
         run_name: &str,
@@ -663,7 +670,10 @@ impl NativeJobRuntime {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .get(id)
-                .map_or_else(|| Arc::clone(&self.executor), |job| Arc::clone(&job.executor));
+                .map_or_else(
+                    || Arc::clone(&self.executor),
+                    |job| Arc::clone(&job.executor),
+                );
             executor
                 .request_cooperative_cancel(id)
                 .map_err(NativeJobRuntimeError::Executor)?;

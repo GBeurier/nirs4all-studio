@@ -35,10 +35,6 @@ vi.mock("@/api/linkedWorkspaces", () => ({
   getLinkedWorkspaces: vi.fn(async () => ({ workspaces: [], active_workspace_id: "workspace-a", total: 1 })),
 }));
 
-vi.mock("@/components/layout/MlLoadingOverlay", () => ({
-  MlLoadingOverlay: ({ children }: { children: ReactNode }) => <>{children}</>,
-}));
-
 vi.mock("@/lib/motion", () => ({
   motion: {
     div: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
@@ -46,6 +42,7 @@ vi.mock("@/lib/motion", () => ({
 }));
 
 import Predict from "./Predict";
+import { MlReadinessContext } from "@/context/useMlReadiness";
 import {
   createPersistedArchiveV2Selection,
   persistArchiveV2Selection,
@@ -76,7 +73,14 @@ async function renderPage() {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <Predict />
+        <MlReadinessContext.Provider value={{
+          controlReady: true, controlStatus: "running", controlError: null,
+          scientificStatus: "stopped", scientificRequested: false,
+          coreReady: true, mlReady: false, mlLoading: false, mlError: null,
+          nativePredictionReady: true, workspaceReady: true, datasetsPrimed: true,
+        }}>
+          <Predict />
+        </MlReadinessContext.Provider>
       </QueryClientProvider>,
     );
   });
@@ -153,7 +157,7 @@ describe("Predict Archive V2 page", () => {
       },
     });
     const container = await renderPage();
-
+    expect(container.querySelector("[inert]")).toBeNull();
     await enterSpectraAndRun(container, "[[1, 2], [3, 4]]");
     await waitFor(() => expect(mocks.predict).toHaveBeenCalledOnce());
 

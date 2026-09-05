@@ -1118,6 +1118,15 @@ class TestGetPredictionArrays:
         resp = client.get("/api/aggregated-predictions/nonexistent/arrays")
         assert resp.status_code == 404
 
+    def test_arrays_preserve_ordered_ids_without_predictions(self, client, patched_endpoints):
+        patched_endpoints.get_prediction_arrays.return_value = {
+            "sample_ids": np.array(["sample-c", "sample-a"]),
+        }
+        response = client.get("/api/aggregated-predictions/pred-001/arrays")
+        assert response.status_code == 200
+        assert response.json()["sample_ids"] == ["sample-c", "sample-a"]
+        assert response.json()["n_samples"] == 2
+
     def test_arrays_partial(self, client, patched_endpoints):
         """Arrays may be partially populated (e.g., no y_proba for regression)."""
         patched_endpoints.get_prediction_arrays.return_value = {

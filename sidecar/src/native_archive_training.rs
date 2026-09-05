@@ -1,7 +1,7 @@
 //! Bounded native researcher path from a persisted IO dataset to Archive V2.
 //!
 //! Studio owns only request validation, persisted identity resolution, job
-//! lifecycle and Store registration. IO materializes the DatasetPackage, DAG-ML
+//! lifecycle and Store registration. IO materializes the `DatasetPackage`, DAG-ML
 //! builds and executes the training contract, Methods owns SNV/SG/PLS, and Core
 //! owns Archive V2 serialization.
 
@@ -46,7 +46,7 @@ const NATIVE_ARCHIVE_TRAINING_OPERATION: &str = "native_dataset_train_archive_v2
 const CANONICAL_PIPELINE_PROFILE: &str = "snv_savgol_pls_v1";
 const MAX_DATASET_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_SAMPLES: usize = 100_000;
-const MAX_FEATURES: usize = 8_192;
+const MAX_FEATURES: usize = crate::matrix_limits::MAX_SPECTRAL_FEATURES;
 const MAX_CELLS: usize = 20_000_000;
 const MAX_TARGETS: usize = 64;
 const MAX_FOLDS: usize = 50;
@@ -125,8 +125,8 @@ impl NativeArchiveTrainingExecutor {
             .find(|dataset| dataset.id == parsed.dataset_id && !dataset.path.is_empty())
             .ok_or(JobExecutorError::PreflightRefused)?;
         let configured = PathBuf::from(dataset.path);
-        let metadata = fs::symlink_metadata(&configured)
-            .map_err(|_| JobExecutorError::PreflightRefused)?;
+        let metadata =
+            fs::symlink_metadata(&configured).map_err(|_| JobExecutorError::PreflightRefused)?;
         let dataset_path = configured
             .canonicalize()
             .map_err(|_| JobExecutorError::PreflightRefused)?;
@@ -218,12 +218,12 @@ impl ScientificJobExecutor for NativeArchiveTrainingExecutor {
     }
 
     fn request_cooperative_cancel(&self, job_id: &str) -> Result<(), JobExecutorError> {
-        let cancellations = self
+        let cancelled = self
             .cancellations
             .lock()
-            .map_err(|_| JobExecutorError::CancellationRefused)?;
-        let cancelled = cancellations
+            .map_err(|_| JobExecutorError::CancellationRefused)?
             .get(job_id)
+            .cloned()
             .ok_or(JobExecutorError::CancellationRefused)?;
         cancelled.store(true, Ordering::Release);
         Ok(())
@@ -267,22 +267,20 @@ fn execute_native_training(
     let archive_id = format!("archive:{}", execution.job_id);
     let outcome_id = format!("outcome:{}", execution.job_id);
     let package_id = format!("predictor:{}", execution.job_id);
-    let outcome = train_dataset_package_methods_archive_v2(
-        DatasetPackageMethodsArchiveV2Request {
-            dataset: &package,
-            source_id: &prepared.source_id,
-            training_request: &training_request,
-            outcome_id: &outcome_id,
-            run_id: RunId::new(format!("run:{}", execution.job_id))
-                .map_err(|_| NativeTrainingFailure::Failed)?,
-            bundle_id: BundleId::new(format!("bundle:{}", execution.job_id))
-                .map_err(|_| NativeTrainingFailure::Failed)?,
-            package_id: &package_id,
-            archive_id: &archive_id,
-            archive_path: &archive_path,
-            methods_library_path: &methods.path,
-        },
-    )
+    let outcome = train_dataset_package_methods_archive_v2(DatasetPackageMethodsArchiveV2Request {
+        dataset: &package,
+        source_id: &prepared.source_id,
+        training_request: &training_request,
+        outcome_id: &outcome_id,
+        run_id: RunId::new(format!("run:{}", execution.job_id))
+            .map_err(|_| NativeTrainingFailure::Failed)?,
+        bundle_id: BundleId::new(format!("bundle:{}", execution.job_id))
+            .map_err(|_| NativeTrainingFailure::Failed)?,
+        package_id: &package_id,
+        archive_id: &archive_id,
+        archive_path: &archive_path,
+        methods_library_path: &methods.path,
+    })
     .map_err(|_| NativeTrainingFailure::Failed)?;
     if cancelled.load(Ordering::Acquire) {
         let _ = fs::remove_file(&archive_path);
@@ -380,11 +378,12 @@ fn validate_materialized_package(
         || features.n_cols > MAX_FEATURES
         || features.n_rows.saturating_mul(features.n_cols) > MAX_CELLS
         || usize::try_from(savgol_window).map_or(true, |window| window > features.n_cols)
-        || block.processings.get(source).is_none_or(|steps| !steps.is_empty())
+        || block
+            .processings
+            .get(source)
+            .is_none_or(|steps| !steps.is_empty())
         || block.y.as_ref().is_none_or(|targets| {
-            targets.n_rows != block.n_samples
-                || targets.n_cols == 0
-                || targets.n_cols > MAX_TARGETS
+            targets.n_rows != block.n_samples || targets.n_cols == 0 || targets.n_cols > MAX_TARGETS
         })
     {
         return Err(NativeTrainingFailure::Failed);
@@ -407,6 +406,10 @@ fn target_names(package: &DatasetPackage) -> Result<Vec<String>, NativeTrainingF
     Ok(names)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one explicit closed training-contract construction"
+)]
 fn build_training_request(
     prepared: &PreparedNativeArchiveTraining,
     package: &DatasetPackage,
@@ -549,7 +552,9 @@ fn fold_contract(
             .as_ref()
             .map(|value| value.as_str().to_owned())
             .ok_or(NativeTrainingFailure::Failed)?;
-        if observation_samples.insert(observation, sample.clone()).is_some()
+        if observation_samples
+            .insert(observation, sample.clone())
+            .is_some()
             || sample_groups.insert(sample, group).is_some()
         {
             return Err(NativeTrainingFailure::Failed);
@@ -557,10 +562,8 @@ fn fold_contract(
     }
     let mut folds = Vec::with_capacity(provenance.len());
     for (index, provenance) in provenance.iter().enumerate() {
-        let train = observation_ids_to_samples(
-            &provenance.train_observation_ids,
-            &observation_samples,
-        )?;
+        let train =
+            observation_ids_to_samples(&provenance.train_observation_ids, &observation_samples)?;
         let validation = observation_ids_to_samples(
             &provenance.validation_observation_ids,
             &observation_samples,
@@ -611,11 +614,18 @@ pub fn parse_request(body: &[u8]) -> Result<NativeArchiveTrainingRequest, &'stat
 fn parse_request_value(value: &Value) -> Result<NativeArchiveTrainingRequest, &'static str> {
     let root = exact_object(
         value,
-        &["schema_version", "operation", "workspace_id", "run_name", "dataset", "pipeline", "execution"],
+        &[
+            "schema_version",
+            "operation",
+            "workspace_id",
+            "run_name",
+            "dataset",
+            "pipeline",
+            "execution",
+        ],
     )?;
     if root.get("schema_version").and_then(Value::as_u64) != Some(1)
-        || root.get("operation").and_then(Value::as_str)
-            != Some(NATIVE_ARCHIVE_TRAINING_OPERATION)
+        || root.get("operation").and_then(Value::as_str) != Some(NATIVE_ARCHIVE_TRAINING_OPERATION)
     {
         return Err("unsupported_contract");
     }
@@ -624,7 +634,10 @@ fn parse_request_value(value: &Value) -> Result<NativeArchiveTrainingRequest, &'
     let dataset = exact_object(required(root, "dataset")?, &["id", "source_id"])?;
     let dataset_id = identifier(dataset.get("id"), "dataset.id")?;
     let source_id = identifier(dataset.get("source_id"), "dataset.source_id")?;
-    let pipeline = exact_object(required(root, "pipeline")?, &["profile", "snv", "savgol", "pls"])?;
+    let pipeline = exact_object(
+        required(root, "pipeline")?,
+        &["profile", "snv", "savgol", "pls"],
+    )?;
     if pipeline.get("profile").and_then(Value::as_str) != Some(CANONICAL_PIPELINE_PROFILE) {
         return Err("unsupported_profile");
     }
@@ -669,7 +682,15 @@ fn parse_request_value(value: &Value) -> Result<NativeArchiveTrainingRequest, &'
 fn prepared_from_value(value: &Value) -> Result<PreparedNativeArchiveTraining, JobExecutorError> {
     let root = exact_object(
         value,
-        &["workspace_id", "dataset_id", "dataset_path", "source_id", "savgol_window", "savgol_poly_degree", "n_components"],
+        &[
+            "workspace_id",
+            "dataset_id",
+            "dataset_path",
+            "source_id",
+            "savgol_window",
+            "savgol_poly_degree",
+            "n_components",
+        ],
     )
     .map_err(|_| JobExecutorError::SubmissionRefused)?;
     Ok(PreparedNativeArchiveTraining {
@@ -693,7 +714,10 @@ fn prepared_from_value(value: &Value) -> Result<PreparedNativeArchiveTraining, J
     })
 }
 
-fn exact_object<'a>(value: &'a Value, fields: &[&str]) -> Result<&'a Map<String, Value>, &'static str> {
+fn exact_object<'a>(
+    value: &'a Value,
+    fields: &[&str],
+) -> Result<&'a Map<String, Value>, &'static str> {
     let object = value.as_object().ok_or("invalid_shape")?;
     if object.len() != fields.len() || fields.iter().any(|field| !object.contains_key(*field)) {
         return Err("invalid_shape");

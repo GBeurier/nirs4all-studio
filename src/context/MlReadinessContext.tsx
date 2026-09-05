@@ -16,6 +16,8 @@ interface ScientificReadinessPayload {
   ml_loading?: boolean;
   ml_error?: string | null;
   workspace_ready?: boolean;
+  native_prediction_ready?: boolean;
+  native_training_ready?: boolean;
 }
 
 const electronApi = (window as unknown as {
@@ -56,6 +58,8 @@ const initialState = (datasetsPrimed: boolean): MlReadiness => ({
   mlReady: false,
   mlLoading: false,
   mlError: null,
+  nativePredictionReady: false,
+  nativeTrainingReady: false,
   workspaceReady: false,
   datasetsPrimed,
 });
@@ -200,17 +204,35 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (electronApi?.isElectron || state.workspaceReady) return;
     let disposed = false;
+    let checking = false;
     const check = async () => {
+      if (checking) return;
+      checking = true;
       try {
         const readiness = await api.get<ScientificReadinessPayload>("/system/readiness");
         if (disposed) return;
+        if (!readiness || typeof readiness !== "object") {
+          throw new Error("Invalid runtime readiness response");
+        }
+        // The Rust endpoint is also authoritative for native capabilities in
+        // Electron. Do not gate this poll on the optional Python plugin.
+        if (electronApi?.isElectron) {
+          setState((previous) => ({
+            ...previous,
+            nativePredictionReady: !!readiness.native_prediction_ready,
+            nativeTrainingReady: !!readiness.native_training_ready,
+            workspaceReady: readiness.workspace_ready ?? previous.workspaceReady,
+          }));
+          return;
+        }
         setState((previous) => ({
           ...previous,
           controlReady: previous.controlReady || !!readiness.core_ready,
           controlStatus: readiness.core_ready ? "running" : "starting",
           coreReady: previous.coreReady || !!readiness.core_ready,
+          nativePredictionReady: !!readiness.native_prediction_ready,
+          nativeTrainingReady: !!readiness.native_training_ready,
           scientificStatus: readiness.core_ready ? "running" : "starting",
           scientificRequested: true,
           mlReady: previous.mlReady || !!readiness.ml_ready,
@@ -223,6 +245,13 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
         }));
       } catch {
         // The externally managed web backend may still be starting.
+        if (!disposed) setState((previous) => ({
+          ...previous,
+          nativePredictionReady: false,
+          nativeTrainingReady: false,
+        }));
+      } finally {
+        checking = false;
       }
     };
     void check();
@@ -231,7 +260,7 @@ export function MlReadinessProvider({ children }: { children: ReactNode }) {
       disposed = true;
       clearInterval(interval);
     };
-  }, [state.workspaceReady]);
+  }, []);
 
   return (
     <MlReadinessContext.Provider value={state}>

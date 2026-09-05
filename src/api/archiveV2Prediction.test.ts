@@ -240,6 +240,26 @@ describe("native Archive V2 array prediction client", () => {
     expect(transport.postBoundedJson).not.toHaveBeenCalled();
   });
 
+  it("catalogues and predicts the full native training spectral width", async () => {
+    const catalogue = {
+      schema_version: 1, operation: "archive_v2_catalogue", workspace_id: "workspace-a",
+      archives: [{ archive_id: "archive-a", archive_ref: "artifacts/model.n4a",
+        archive_sha256: "a".repeat(64), n_features: 8_192, target_names: ["protein"],
+        descriptor_fingerprint: "b".repeat(64), identity_status: "verified" }],
+    };
+    transport.getBoundedJson.mockResolvedValue(catalogue);
+    await expect(getPersistedArchiveV2Catalogue("workspace-a")).resolves.toEqual(catalogue);
+
+    const wide = { ...request, input: { ...request.input,
+      x: request.input.sample_ids.map(() => Array.from({ length: 8_192 }, () => 0.125)),
+    } };
+    transport.postBoundedJson.mockResolvedValue(response());
+    await expect(predictPersistedArchiveV2Array(wide)).resolves.toEqual(response());
+    expect(transport.postBoundedJson).toHaveBeenCalledWith(
+      ARCHIVE_V2_ARRAY_PREDICTION_ENDPOINT, wide, 2 * 1024 * 1024,
+    );
+  });
+
   it.each([
     ["fallback", { fallback_used: true }],
     ["sample order", { sample_ids: ["predict.1", "predict.0"] }],
