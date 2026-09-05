@@ -127,6 +127,7 @@ export function chainSummaryToRow(summary: ChainSummary): ScoreCardRow {
       foldArtifacts: summary.fold_artifacts,
       artifactRefs,
       hasRefitArtifact: !summary.synthetic_refit,
+      syntheticRefit: summary.synthetic_refit === true,
       aggregatedTestScores: hasAgg ? aggregatedTestScores : undefined,
       aggregatedTrainScores: hasAgg ? aggregatedTrainScores : undefined,
       primaryAggTestScore: hasAgg ? safeNumber(summary.final_agg_test_score) : undefined,

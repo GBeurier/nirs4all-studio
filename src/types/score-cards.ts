@@ -70,6 +70,8 @@ export interface ScoreCardRow {
   foldArtifacts?: Record<string, string> | null;
   artifactRefs?: ResultArtifactRef[];
   hasRefitArtifact: boolean;
+  /** Backend explicitly substituted CV estimates for unavailable refit scores. */
+  syntheticRefit?: boolean;
 
   // Hierarchy: children for expandable rows
   children?: ScoreCardRow[];

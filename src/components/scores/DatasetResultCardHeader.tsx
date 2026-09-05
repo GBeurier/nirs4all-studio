@@ -70,6 +70,9 @@ export const DatasetResultCardHeader = forwardRef<HTMLDivElement, DatasetResultC
             </Tooltip>
             <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
               {taskType && <span className="capitalize">{taskType}</span>}
+              {headerBestRow?.syntheticRefit && (
+                <span>CV estimate — not a refit score</span>
+              )}
               {headerSummary.refitCount > 0 && (
                 <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-emerald-500/10 text-emerald-600">
                   {headerSummary.refitCount} refit{headerSummary.refitCount !== 1 ? "s" : ""}

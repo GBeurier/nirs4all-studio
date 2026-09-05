@@ -346,6 +346,7 @@ describe("datasetChainsToRows", () => {
     expect(row?.primaryTestScore).toBe(0.23);
     expect(row?.children?.[0]?.cardType).toBe("crossval");
     expect(row?.hasRefitArtifact).toBe(false);
+    expect(row?.syntheticRefit).toBe(true);
   });
 
   it("pairs standalone refits with their real CV source when it is present", () => {

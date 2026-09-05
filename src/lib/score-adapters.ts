@@ -170,6 +170,7 @@ function buildRefitRow(
     primaryValScore: safeNumber(effectiveCvSource?.avg_val_score ?? chain.avg_val_score),
     primaryTrainScore: safeNumber(chain.final_train_score),
     hasRefitArtifact: !chain.synthetic_refit,
+    syntheticRefit: chain.synthetic_refit === true,
     children: effectiveCvSource ? [buildCrossvalRow(effectiveCvSource, metric, taskType, "raw")] : [],
   };
 }
@@ -214,6 +215,7 @@ function buildAggregatedRefitRow(
     primaryValScore: null,
     primaryTrainScore: safeNumber(chain.final_agg_train_score),
     hasRefitArtifact: false,
+    syntheticRefit: chain.synthetic_refit === true,
     children: effectiveCvSource ? [buildCrossvalRow(effectiveCvSource, metric, taskType, "aggregated")] : [],
   };
 }
