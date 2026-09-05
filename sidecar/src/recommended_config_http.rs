@@ -119,34 +119,11 @@ fn handle(
                 if !query.is_empty() {
                     return Err((400, "Setup completion takes no query fields".into()));
                 }
-                let body: Value = serde_json::from_slice(&request.body)
-                    .map_err(|error| (400, error.to_string()))?;
-                if body.as_object().is_none_or(|value| {
-                    value
-                        .keys()
-                        .any(|key| !matches!(key.as_str(), "profile" | "optional_packages"))
-                }) {
-                    return Err((400, "Invalid setup completion document".into()));
-                }
-                let profile = body["profile"]
-                    .as_str()
-                    .ok_or((400, "Setup requires a profile".into()))?;
-                recommended_config::validate_profile(&config, profile)
-                    .map_err(|error| (400, error))?;
-                if let Some(packages) = body.get("optional_packages") {
-                    if packages.as_array().is_none_or(|items| {
-                        items.len() > 128 || items.iter().any(|item| !item.is_string())
-                    }) {
-                        return Err((
-                            400,
-                            "optional_packages must be a bounded string array".into(),
-                        ));
-                    }
-                }
+                let profile = setup_profile(&config, &request.body)?;
                 // This marks the user's profile choice; it never claims to
                 // have installed the listed optional packages.
                 settings
-                    .complete_setup(profile)
+                    .complete_setup(&profile)
                     .map_err(|error| (500, error))
             }
             _ => Err((404, "Unknown configuration route".into())),
@@ -156,6 +133,33 @@ fn handle(
         Ok(value) => HttpResponse::json(200, value.to_string()),
         Err((status, detail)) => HttpResponse::json(status, json!({"detail":detail}).to_string()),
     }
+}
+
+fn setup_profile(config: &Value, bytes: &[u8]) -> Result<String, (u16, String)> {
+    let body: Value = serde_json::from_slice(bytes).map_err(|error| (400, error.to_string()))?;
+    if body.as_object().is_none_or(|value| {
+        value
+            .keys()
+            .any(|key| !matches!(key.as_str(), "profile" | "optional_packages"))
+    }) {
+        return Err((400, "Invalid setup completion document".into()));
+    }
+    let profile = body["profile"]
+        .as_str()
+        .ok_or_else(|| (400, "Setup requires a profile".into()))?;
+    recommended_config::validate_profile(config, profile).map_err(|error| (400, error))?;
+    if let Some(packages) = body.get("optional_packages") {
+        if packages
+            .as_array()
+            .is_none_or(|items| items.len() > 128 || items.iter().any(|item| !item.is_string()))
+        {
+            return Err((
+                400,
+                "optional_packages must be a bounded string array".into(),
+            ));
+        }
+    }
+    Ok(profile.to_owned())
 }
 
 #[cfg(test)]
