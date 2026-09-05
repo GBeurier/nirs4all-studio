@@ -37,12 +37,12 @@ env:
   # Release archives/images must be reproducible. Keep these refs pinned to the
   # selected RC heads and update them with the ecosystem release board.
   NIRS4ALL_LIBRARY_REF: 3567bd4abcaa64443a1946748a579f0803e91889
-  DAG_ML_REF: 1caa26dc9b90f33bc3f53b15b4d85e18f3f67381
-  DAG_ML_DATA_REF: 7d9b9fed04c135ed4c2bba472c782aca7ef85807
+  DAG_ML_REF: 233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27
+  DAG_ML_DATA_REF: ffe533704a1a0b0c7bb7d97a997caade3f4ba36e
   NIRS4ALL_TOOLS_REF: 88c2bc1e29603049cdbf1a1080a35845edf2f3c9
   NIRS4ALL_SOURCE_URL: https://github.com/GBeurier/nirs4all/archive/3567bd4abcaa64443a1946748a579f0803e91889.tar.gz
-  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/1caa26dc9b90f33bc3f53b15b4d85e18f3f67381.tar.gz
-  DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/7d9b9fed04c135ed4c2bba472c782aca7ef85807.tar.gz
+  DAG_ML_SOURCE_URL: https://github.com/GBeurier/dag-ml/archive/233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27.tar.gz
+  DAG_ML_DATA_SOURCE_URL: https://github.com/GBeurier/dag-ml-data/archive/ffe533704a1a0b0c7bb7d97a997caade3f4ba36e.tar.gz
   NIRS4ALL_TOOLS_SOURCE_URL: https://github.com/GBeurier/nirs4all-tools/archive/88c2bc1e29603049cdbf1a1080a35845edf2f3c9.tar.gz
 
 jobs:
