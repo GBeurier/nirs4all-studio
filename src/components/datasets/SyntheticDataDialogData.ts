@@ -19,12 +19,6 @@ type TaskType = GenerateSyntheticRequest["task_type"];
 /** Default class count used by the custom-configuration tab. */
 export const DEFAULT_N_CLASSES = 3;
 
-/** Default repetitions-per-sample fallback for the advanced options. */
-export const DEFAULT_REPETITIONS_PER_SAMPLE = 3;
-
-/** Default batch-count fallback for the advanced options. */
-export const DEFAULT_N_BATCHES = 3;
-
 /**
  * Produce a fresh, independent copy of the default synthetic config.
  *
@@ -41,10 +35,11 @@ export function isClassificationTask(taskType: TaskType): boolean {
 }
 
 /**
- * Class-count policy applied when a preset is selected: multiclass presets get
- * three classes, everything else (binary/regression) gets two.
+ * Class-count policy applied when a preset is selected. Classification presets
+ * get their explicit class count; regression presets omit the field entirely.
  */
-export function presetClassCount(taskType: TaskType): number {
+export function presetClassCount(taskType: TaskType): number | undefined {
+  if (taskType === "regression") return undefined;
   return taskType === "multiclass_classification" ? 3 : 2;
 }
 

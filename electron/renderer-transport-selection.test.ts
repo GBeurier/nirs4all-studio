@@ -47,13 +47,19 @@ describe("renderer transport preselection", () => {
       .resolves.toMatchObject({ target: "reject" });
   });
 
-  it("selects the shared synthetic preset catalogue but not an unqualified generator", async () => {
+  it("selects the shared synthetic catalogue and only an attested generator", async () => {
     const request = async () => capabilityResponse({ dataset_synthetic_preset_routes: true });
     await expect(preselectRendererTransport({ kind: "http", method: "GET", path: "/datasets/synthetic-presets" },
       () => ({ ...running(), pythonPluginHostConfigured: false }), request))
       .resolves.toMatchObject({ target: "native-sidecar" });
     await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/datasets/generate-synthetic" }, running, request))
       .resolves.toMatchObject({ target: "reject" });
+    await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/datasets/generate-synthetic" }, running,
+      async () => capabilityResponse({ dataset_synthetic_generation_routes: true, python_plugin_preflight: true })))
+      .resolves.toMatchObject({ target: "native-sidecar" });
+    await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/datasets/generate-synthetic" },
+      () => ({ ...running(), pythonPluginHostConfigured: false }), request))
+      .resolves.toMatchObject({ target: "reject", reason: "native_python_host_unavailable" });
   });
 
   it("qualifies bounded dataset uploads and pipeline presets only when implemented", async () => {

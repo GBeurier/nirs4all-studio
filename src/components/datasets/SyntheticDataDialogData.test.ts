@@ -57,9 +57,9 @@ describe("presetClassCount", () => {
     expect(presetClassCount("multiclass_classification")).toBe(3);
   });
 
-  it("uses two classes for binary and regression presets", () => {
+  it("uses two classes for binary and no class field for regression presets", () => {
     expect(presetClassCount("binary_classification")).toBe(2);
-    expect(presetClassCount("regression")).toBe(2);
+    expect(presetClassCount("regression")).toBeUndefined();
   });
 });
 

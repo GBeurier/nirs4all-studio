@@ -21,6 +21,7 @@ parser.add_argument("--wizard-csv", action="store_true")
 parser.add_argument("--prediction", action="store_true", help="Also replay a captured model over real HTTP")
 parser.add_argument("--presets", action="store_true", help="Import and reload every historical pipeline preset variant")
 parser.add_argument("--dataset-upload", action="store_true", help="Preview and persist uploaded CSV files, then run the imported dataset")
+parser.add_argument("--synthetic", action="store_true", help="Generate, verify and auto-link one owner-produced synthetic dataset")
 args = parser.parse_args()
 RUNTIME = args.backend_root.resolve() / "python-runtime"
 PYTHON = RUNTIME / "python"
@@ -86,6 +87,19 @@ with (ROOT / "sidecar.log").open("w") as log:
         call("/sidecar/v1/capabilities")
         call("/api/workspace/create", {"path": str(ROOT / "workspace"), "name": "Packaged General Witness"})
         call("/api/workspace/select", {"path": str(ROOT / "workspace")})
+        if args.synthetic:
+            synthetic = call("/api/datasets/generate-synthetic", {
+                "task_type": "regression", "n_samples": 50, "complexity": "simple",
+                "target_range": [10, 20], "train_ratio": 0.8,
+                "wavelength_range": [1000, 1010], "name": "http-synthetic", "auto_link": True,
+            })
+            assert synthetic["success"] and synthetic["linked"] and synthetic["dataset_id"], synthetic
+            assert synthetic["summary"]["n_samples"] == 50 and synthetic["summary"]["num_features"] == 6, synthetic
+            generated = Path(synthetic["path"])
+            assert generated.parent == ROOT / "workspace" / "datasets" / "synthetic", generated
+            assert {path.name for path in generated.iterdir()} == {"Xcal.csv", "Ycal.csv", "Xval.csv", "Yval.csv"}, generated
+            catalogue = call("/api/datasets")
+            assert any(row["id"] == synthetic["dataset_id"] and Path(row["path"]) == generated for row in catalogue["datasets"]), catalogue
         if args.presets:
             import sys
 
