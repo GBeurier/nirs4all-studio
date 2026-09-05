@@ -54,6 +54,7 @@ const MAX_ARCHIVE_REF_BYTES: usize = 240;
 const MAX_PROVENANCE_EXECUTOR_BYTES: usize = 256;
 const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
+const CORE_PROJECT_VERSION: &str = "0.3.29";
 const METHODS_ABI_MAJOR: u32 = 2;
 const METHODS_ABI_MINOR: u32 = 5;
 const METHODS_SOURCE_COMMIT: &str = "a9faae2909c71a833bb7f3b208dc20548cf01588";
@@ -300,10 +301,7 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
                 .collect(),
             target_names: prediction.target_names,
             values: prediction.values,
-            provenance_executor: format!(
-                "nirs4all-core@0.3.28+libn4m-abi-{}.{}:{}",
-                self.methods.abi_major, self.methods.abi_minor, self.methods.sha256
-            ),
+            provenance_executor: core_methods_executor_identity(&self.methods),
         })
     }
 
@@ -362,6 +360,13 @@ impl ArchiveV2PredictionExecutor for CoreArchiveV2PredictionExecutor {
         )
         .map_err(|_| ArchiveV2PredictionExecutorError::ExecutionFailed)
     }
+}
+
+fn core_methods_executor_identity(methods: &PackagedMethodsLibraryIdentity) -> String {
+    format!(
+        "nirs4all-core@{CORE_PROJECT_VERSION}+libn4m-abi-{}.{}:{}",
+        methods.abi_major, methods.abi_minor, methods.sha256
+    )
 }
 
 fn require_predictor_descriptor_contracts(
@@ -1695,6 +1700,21 @@ mod tests {
         })
         .unwrap_err();
         assert_eq!(error, ArchiveV2PredictionExecutorError::ExecutionFailed);
+    }
+
+    #[test]
+    fn executor_provenance_names_the_exact_packaged_core_and_methods_contract() {
+        let methods = PackagedMethodsLibraryIdentity {
+            path: PathBuf::from("unused-by-identity"),
+            size: 1,
+            sha256: "b".repeat(64),
+            abi_major: 2,
+            abi_minor: 5,
+        };
+        assert_eq!(
+            core_methods_executor_identity(&methods),
+            format!("nirs4all-core@0.3.29+libn4m-abi-2.5:{}", "b".repeat(64))
+        );
     }
 
     #[test]

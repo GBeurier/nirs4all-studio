@@ -410,7 +410,8 @@ the containment boundary or request breakaway.
 The image does embed the exact `nirs4all-methods` ABI 2.5 library and its
 `STUDIO_RUNTIME_CONTRACT.json`; native Archive V2 prediction therefore remains
 independent of the plugin host. CI supplies that library through a local
-BuildKit context built and tested from commit `48ad1e5a…`, never from an
+BuildKit context built and tested from the published `nirs4all-methods` 1.0.18
+commit `a9faae2909c71a833bb7f3b208dc20548cf01588`, never from an
 unverified URL. The image build verifies both the complete CPython closure and
 the Methods digest before the runtime stage is assembled.
 
