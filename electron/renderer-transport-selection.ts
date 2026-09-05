@@ -70,6 +70,8 @@ const exactHttpRoutes = new Map<string, NativeSurface>([
   ["GET /workspace/transition-status", { name: "workspace-transition-status", capability: "workspace_transition_status_route" }],
   ["POST /workspace/legacy-convert", { name: "legacy-workspace-conversion", capability: "legacy_workspace_conversion_route", requiresPythonHost: true }],
   ["GET /system/network", { name: "system-network", capability: "system_network_route" }],
+  ["GET /updates/status", { name: "updates-status", capability: "updates_status_route" }],
+  ["POST /updates/check", { name: "updates-status", capability: "updates_status_route" }],
   ["GET /updates/settings", { name: "updates-settings", capability: "updates_settings_routes" }],
   ["PUT /updates/settings", { name: "updates-settings", capability: "updates_settings_routes" }],
   ["POST /runs/run-groups", { name: "scientific-submission", capability: "scientific_submission_transport" }],

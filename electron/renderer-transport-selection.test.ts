@@ -84,6 +84,15 @@ describe("renderer transport preselection", () => {
     )).resolves.toMatchObject({ target: "reject" });
   });
 
+  it("selects local update status and its explicit unsupported refresh", async () => {
+    const request = async () => capabilityResponse({ updates_status_route: true });
+    const info = () => ({ ...running(), pythonPluginHostConfigured: false });
+    for (const [method, path] of [["GET", "/updates/status"], ["POST", "/updates/check"]]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, info, request))
+        .resolves.toMatchObject({ target: "native-sidecar", surface: "updates-status" });
+    }
+  });
+
   it("qualifies bounded dataset uploads and pipeline presets only when implemented", async () => {
     const request = async () => capabilityResponse({ dataset_import_routes: true, pipeline_preset_routes: true, python_plugin_preflight: true });
     for (const [method, path] of [["POST", "/datasets/upload"], ["POST", "/datasets/preview-upload"],
