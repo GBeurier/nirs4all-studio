@@ -191,18 +191,19 @@ export class EnvManager {
   /**
    * Get the Python executable Electron is currently configured to use.
    *
-   * This differs from getPythonPath(): explicit user selection wins over the
-   * packaged bundled runtime so the UI can show configured-vs-running
-   * mismatches immediately, before the backend is restarted.
+   * An attested all-in-one runtime is immutable product input and always wins;
+   * stale per-user settings must never select or describe the scientific host
+   * for that product. Installer/development builds without a bundle continue
+   * to honor an explicit user selection.
    */
   getConfiguredPythonPath(): string | null {
-    if (this.pythonPath && fs.existsSync(this.pythonPath)) {
-      return this.pythonPath;
-    }
-
     const bundledRuntime = detectBundledRuntime();
     if (bundledRuntime) {
       return bundledRuntime.pythonPath;
+    }
+
+    if (this.pythonPath && fs.existsSync(this.pythonPath)) {
+      return this.pythonPath;
     }
 
     const managedPython = getManagedPythonPath(this.envDir);
@@ -211,8 +212,8 @@ export class EnvManager {
 
   /** Get the configured runtime mode from Electron state. */
   getConfiguredRuntimeMode(): EnvRuntimeMode {
-    if (this.pythonPath && fs.existsSync(this.pythonPath)) return "custom";
     if (this.isBundled()) return "bundled";
+    if (this.pythonPath && fs.existsSync(this.pythonPath)) return "custom";
     return fs.existsSync(getManagedPythonPath(this.envDir)) ? "managed" : "none";
   }
 
@@ -315,6 +316,13 @@ export class EnvManager {
    * @returns `true` if the configured runtime is still reachable.
    */
   validateConfiguredState(): boolean {
+    // A packaged all-in-one runtime is independently attested and immutable.
+    // Do not let an obsolete per-user setting invalidate or relabel it.
+    if (this.isBundled()) {
+      this.status = "ready";
+      this.lastError = null;
+      return true;
+    }
     if (this.pythonPath && !fs.existsSync(this.pythonPath)) {
       console.warn(
         `[EnvManager] Configured Python not found at ${this.pythonPath} (clearing saved custom path)`,

@@ -713,13 +713,45 @@ pub fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdent
     {
         return None;
     }
+    let packaged_path = backend_root.join(Path::new(member_path));
+    #[cfg(windows)]
+    let packaged_path = canonical_non_symlink_file(&packaged_path)?;
     Some(PackagedMethodsLibraryIdentity {
-        path: backend_root.join(Path::new(member_path)),
+        path: packaged_path,
         size: member.get("size")?.as_u64()?,
         sha256: member.get("sha256")?.as_str()?.to_owned(),
         abi_major: u32::try_from(abi.get("major")?.as_u64()?).ok()?,
         abi_minor: u32::try_from(abi.get("minor")?.as_u64()?).ok()?,
     })
+}
+
+/// Return the canonical identity of a regular file only when every requested
+/// path component is a real filesystem entry rather than a symlink/reparse
+/// alias. Windows can legitimately spell an ordinary directory with its 8.3
+/// short name or different case; canonicalizing after this component walk
+/// preserves Core's closed path contract without treating those aliases as a
+/// symlink bypass.
+#[cfg(any(windows, test))]
+fn canonical_non_symlink_file(path: &Path) -> Option<PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component.as_os_str());
+        if matches!(component, Component::Prefix(_) | Component::RootDir) {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(&current).ok()?;
+        if metadata.file_type().is_symlink() {
+            return None;
+        }
+    }
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return None;
+    }
+    fs::canonicalize(path).ok()
 }
 
 fn native_runtime_linkage_is_valid(root: &serde_json::Map<String, Value>, windows: bool) -> bool {
@@ -1459,6 +1491,44 @@ mod tests {
 
         root["native_runtime_linkage"]["methods_cmake_runtime"] = json!("MultiThreadedDLL");
         assert!(!native_runtime_linkage_is_valid(&root, true));
+    }
+
+    #[test]
+    fn canonical_methods_path_rejects_relative_and_symlink_aliases() {
+        let directory = tempfile::tempdir().unwrap();
+        let library = directory.path().join("libn4m-test");
+        fs::write(&library, b"methods").unwrap();
+        assert_eq!(
+            canonical_non_symlink_file(&library),
+            Some(fs::canonicalize(&library).unwrap())
+        );
+        assert!(canonical_non_symlink_file(Path::new("libn4m-test")).is_none());
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&library, directory.path().join("alias")).unwrap();
+            assert!(canonical_non_symlink_file(&directory.path().join("alias")).is_none());
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn canonical_methods_path_accepts_windows_case_prefix_and_ambient_short_aliases() {
+        let directory = tempfile::tempdir().unwrap();
+        let library = directory.path().join("N4M.DLL");
+        fs::write(&library, b"methods").unwrap();
+        let differently_cased = directory.path().join("n4m.dll");
+        let canonical = fs::canonicalize(&library).unwrap();
+        assert_eq!(
+            canonical_non_symlink_file(&differently_cased),
+            Some(canonical.clone())
+        );
+        assert_eq!(canonical_non_symlink_file(&canonical), Some(canonical));
+
+        // GitHub's Windows runner currently exposes TEMP below RUNNER~1. The
+        // same filesystem test therefore exercises its real 8.3 ambient alias
+        // when present, while remaining valid on systems with 8.3 disabled.
+        assert!(canonical_non_symlink_file(&library).is_some());
     }
 
     #[derive(Debug)]

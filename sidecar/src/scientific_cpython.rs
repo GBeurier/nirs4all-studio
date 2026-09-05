@@ -1389,6 +1389,7 @@ fn run_preflight(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    configure_windows_runtime_environment(&mut command)?;
     run_configured_process(
         command,
         SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
@@ -1458,17 +1459,99 @@ fn run_configured_process(
         }
     };
     let (stdout, stdout_exceeded) = join_reader(stdout_reader)?;
-    let (_, stderr_exceeded) = join_reader(stderr_reader)?;
+    let (stderr, stderr_exceeded) = join_reader(stderr_reader)?;
     if stdout_exceeded {
         return Err(ScientificCpythonUnavailable::StdoutTooLarge);
     }
     if stderr_exceeded {
+        eprintln!(
+            "Scientific CPython preflight stderr exceeded its limit: {}",
+            bounded_process_diagnostic(&stderr)
+        );
         return Err(ScientificCpythonUnavailable::StderrTooLarge);
     }
     if !status.success() {
+        eprintln!(
+            "Scientific CPython preflight exited with {status}: {}",
+            bounded_process_diagnostic(&stderr)
+        );
         return Err(ScientificCpythonUnavailable::ProcessFailed);
     }
     Ok(stdout)
+}
+
+fn bounded_process_diagnostic(bytes: &[u8]) -> String {
+    let bounded = &bytes[..bytes.len().min(4096)];
+    let sanitized = String::from_utf8_lossy(bounded)
+        .chars()
+        .map(|character| {
+            if character == '\n'
+                || character == '\r'
+                || character == '\t'
+                || !character.is_control()
+            {
+                character
+            } else {
+                '\u{fffd}'
+            }
+        })
+        .collect::<String>();
+    if sanitized.is_empty() {
+        "(empty stderr)".into()
+    } else {
+        sanitized
+    }
+}
+
+#[cfg(windows)]
+fn configure_windows_runtime_environment(
+    command: &mut Command,
+) -> Result<(), ScientificCpythonUnavailable> {
+    let configured = std::env::var_os("SystemRoot")
+        .ok_or(ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let requested = PathBuf::from(configured);
+    if !requested.is_absolute() {
+        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
+    }
+    let metadata = fs::symlink_metadata(&requested)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let canonical = fs::canonicalize(&requested)
+        .map_err(|_| ScientificCpythonUnavailable::RuntimeContractUnavailable)?;
+    let system32 = canonical.join("System32");
+    if metadata.file_type().is_symlink()
+        || !metadata.is_dir()
+        || !system32.is_dir()
+        || canonical.components().count() != 3
+    {
+        return Err(ScientificCpythonUnavailable::RuntimeContractUnavailable);
+    }
+    let architecture = windows_processor_architecture()
+        .ok_or(ScientificCpythonUnavailable::PlatformKillTreeUnqualified)?;
+    command
+        .env("SystemRoot", canonical)
+        .env("PROCESSOR_ARCHITECTURE", architecture);
+    Ok(())
+}
+
+#[cfg(not(windows))]
+#[allow(clippy::unnecessary_wraps)]
+const fn configure_windows_runtime_environment(
+    _command: &mut Command,
+) -> Result<(), ScientificCpythonUnavailable> {
+    Ok(())
+}
+
+#[cfg(any(windows, test))]
+const fn windows_processor_architecture() -> Option<&'static str> {
+    if cfg!(target_arch = "x86_64") {
+        Some("AMD64")
+    } else if cfg!(target_arch = "aarch64") {
+        Some("ARM64")
+    } else if cfg!(target_arch = "x86") {
+        Some("x86")
+    } else {
+        None
+    }
 }
 
 #[cfg(not(windows))]
@@ -1796,6 +1879,7 @@ fn scientific_worker_command(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    configure_windows_runtime_environment(&mut command)?;
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -2881,6 +2965,60 @@ mod tests {
             Err(ScientificCpythonUnavailable::StderrTooLarge)
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn preflight_process_diagnostic_is_bounded_and_removes_controls() {
+        let mut stderr = vec![b'x'; 5000];
+        stderr[1] = 0;
+        let diagnostic = bounded_process_diagnostic(&stderr);
+        assert!(diagnostic.starts_with("x\u{fffd}x"));
+        assert_eq!(diagnostic.chars().count(), 4096);
+        assert_eq!(bounded_process_diagnostic(b""), "(empty stderr)");
+    }
+
+    #[test]
+    fn windows_runtime_architecture_is_derived_from_the_compiled_target() {
+        assert_eq!(
+            windows_processor_architecture(),
+            if cfg!(target_arch = "x86_64") {
+                Some("AMD64")
+            } else if cfg!(target_arch = "aarch64") {
+                Some("ARM64")
+            } else if cfg!(target_arch = "x86") {
+                Some("x86")
+            } else {
+                None
+            }
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_runtime_environment_preserves_only_trusted_os_inputs() {
+        let mut command = Command::new("ignored.exe");
+        command.env_clear();
+        configure_windows_runtime_environment(&mut command).unwrap();
+        let environment = command
+            .get_envs()
+            .map(|(key, value)| {
+                (
+                    key.to_string_lossy().to_ascii_uppercase(),
+                    value.map(std::ffi::OsStr::to_os_string),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            environment.keys().cloned().collect::<Vec<_>>(),
+            vec!["PROCESSOR_ARCHITECTURE", "SYSTEMROOT"]
+        );
+        assert_eq!(
+            environment["PROCESSOR_ARCHITECTURE"].as_deref(),
+            windows_processor_architecture().map(std::ffi::OsStr::new)
+        );
+        assert!(environment["SYSTEMROOT"]
+            .as_deref()
+            .is_some_and(|root| Path::new(root).join("System32").is_dir()));
     }
 
     #[cfg(unix)]
