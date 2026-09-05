@@ -31,6 +31,7 @@ use crate::scientific_request_resolver::ScientificRequestResolver;
 pub const SCIENTIFIC_CPYTHON_HOST_CONTRACT: &str =
     include_str!("../contracts/studio_scientific_cpython_host_v1.json");
 pub const SCIENTIFIC_CPYTHON_EXECUTOR_ID: &str = "cpython-stdio-v1";
+pub const WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT: &str = "--internal-scientific-cpython-job";
 pub const SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(15);
 pub const SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT: Duration = Duration::from_secs(120);
 pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
@@ -295,15 +296,16 @@ struct PackagedRuntimeIdentity {
 
 /// Sticky acquisition record for an explicitly selected `CPython` stdio host.
 ///
-/// Selection requires the exact attested distribution and callable, a Unix
-/// process-group kill tree, and the Rust-owned saved-run resolver that prepares
-/// the callable's path-free matrix contract before any job mutation.
+/// Selection requires the exact attested distribution and callable, a qualified
+/// Unix process group or Windows kill-on-close Job Object, and the Rust-owned
+/// saved-run resolver that prepares the callable's path-free matrix contract
+/// before any job mutation.
 #[derive(Debug)]
 pub struct CpythonScientificJobExecutor {
     identity: Option<HostIdentity>,
     callable_identity: Option<HostIdentity>,
     packaged_runtime: Option<PackagedRuntimeIdentity>,
-    #[cfg_attr(not(unix), allow(dead_code))]
+    #[cfg_attr(not(any(unix, windows)), allow(dead_code))]
     acquisition: ScientificCpythonUnavailable,
     resolver: ScientificRequestResolver,
     running: Arc<Mutex<BTreeMap<String, Arc<AtomicBool>>>>,
@@ -318,7 +320,7 @@ pub(crate) struct LibraryFacadeError {
 
 impl CpythonScientificJobExecutor {
     pub(crate) fn library_facades_available(&self) -> bool {
-        cfg!(unix)
+        platform_kill_tree_qualified()
             && self.identity.is_some()
             && self.callable_identity.is_some()
             && self.packaged_runtime.as_ref().is_some_and(|runtime| {
@@ -505,11 +507,11 @@ impl CpythonScientificJobExecutor {
 
     #[must_use]
     pub fn unavailable_reason(&self) -> &'static str {
-        #[cfg(not(unix))]
+        #[cfg(not(any(unix, windows)))]
         {
             ScientificCpythonUnavailable::PlatformKillTreeUnqualified.reason()
         }
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         {
             if self.terminal_callback_failed.load(Ordering::Acquire) {
                 return ScientificCpythonUnavailable::TerminalCallbackFailed.reason();
@@ -539,7 +541,7 @@ impl CpythonScientificJobExecutor {
 
 impl ScientificJobExecutor for CpythonScientificJobExecutor {
     fn is_selected(&self) -> bool {
-        cfg!(unix)
+        platform_kill_tree_qualified()
             && self.identity.is_some()
             && self.callable_identity.is_some()
             && self.resolver.is_configured()
@@ -651,6 +653,10 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         cancelled.store(true, Ordering::Release);
         Ok(())
     }
+}
+
+const fn platform_kill_tree_qualified() -> bool {
+    cfg!(any(unix, windows))
 }
 
 fn acquire_host(
@@ -1351,7 +1357,7 @@ fn run_preflight(
     site_packages: Option<&Path>,
 ) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
     let scratch = ScratchDirectory::create()?;
-    let mut command = Command::new(path);
+    let mut command = contained_scientific_command(path)?;
     let isolated_packaged = site_packages.is_some();
     let site_packages = site_packages
         .and_then(Path::to_str)
@@ -1396,7 +1402,7 @@ fn run_process(
     stderr_limit: usize,
 ) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
     let scratch = ScratchDirectory::create()?;
-    let mut command = Command::new(path);
+    let mut command = contained_scientific_command(path)?;
     command
         .args(["-I", "-S", "-B", "-c", script])
         .env_clear()
@@ -1459,6 +1465,23 @@ fn run_configured_process(
         return Err(ScientificCpythonUnavailable::ProcessFailed);
     }
     Ok(stdout)
+}
+
+#[cfg(not(windows))]
+#[allow(clippy::unnecessary_wraps)]
+fn contained_scientific_command(path: &Path) -> Result<Command, ScientificCpythonUnavailable> {
+    Ok(Command::new(path))
+}
+
+#[cfg(windows)]
+fn contained_scientific_command(path: &Path) -> Result<Command, ScientificCpythonUnavailable> {
+    let launcher =
+        std::env::current_exe().map_err(|_| ScientificCpythonUnavailable::SpawnFailed)?;
+    let mut command = Command::new(launcher);
+    command
+        .arg(WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT)
+        .arg(path);
+    Ok(command)
 }
 
 fn run_scientific_process(
@@ -1715,7 +1738,7 @@ fn scientific_worker_command(
     site_packages: Option<&Path>,
     scratch: &Path,
 ) -> Result<Command, ScientificCpythonUnavailable> {
-    let mut command = Command::new(&host.canonical_path);
+    let mut command = contained_scientific_command(&host.canonical_path)?;
     let isolated_packaged = site_packages.is_some();
     let site_packages = site_packages
         .and_then(Path::to_str)
@@ -1819,7 +1842,16 @@ fn terminate_worker(
             }
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        // The direct child is the internal launcher. Killing it closes the
+        // sole kill-on-close Job Object handle and terminates the full worker
+        // tree before the launcher is reaped.
+        child
+            .kill()
+            .map_err(|_| ScientificCpythonUnavailable::ProcessFailed)?;
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         child
             .kill()
@@ -2484,9 +2516,29 @@ mod tests {
         assert_eq!(contract["studio_payload_resolver_implemented"], true);
         assert_eq!(
             contract["scientific_execution_capability"],
-            "unix_only_with_exact_host_callable_io_and_saved_slice_preflight"
+            "unix_process_group_or_windows_kill_on_close_job_with_exact_host_callable_io_and_saved_slice_preflight"
         );
-        assert_eq!(contract["windows_capability"], false);
+        assert_eq!(contract["windows_capability"], true);
+        assert_eq!(
+            contract["windows_process_tree"],
+            "sidecar_launcher_assigned_to_kill_on_close_job_before_cpython_spawn"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_scientific_command_routes_through_the_job_launcher() {
+        use std::ffi::OsStr;
+
+        let command = contained_scientific_command(Path::new(r"C:\Python311\python.exe")).unwrap();
+        let arguments = command.get_args().collect::<Vec<_>>();
+        assert_eq!(arguments.len(), 2);
+        assert_eq!(
+            arguments[0],
+            OsStr::new(WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT)
+        );
+        assert_eq!(arguments[1], OsStr::new(r"C:\Python311\python.exe"));
+        assert!(platform_kill_tree_qualified());
     }
 
     #[cfg(unix)]

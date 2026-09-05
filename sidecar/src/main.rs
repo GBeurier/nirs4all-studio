@@ -22,11 +22,13 @@ fn maybe_run_internal_windows_job_launcher() {
     use std::ffi::OsStr;
 
     let mut arguments = env::args_os().skip(1);
-    if arguments.next().as_deref()
-        != Some(OsStr::new(
-            studio_sidecar::legacy_conversion::WINDOWS_JOB_LAUNCHER_ARGUMENT,
-        ))
-    {
+    let launcher_argument = arguments.next();
+    if !matches!(
+        launcher_argument.as_deref(),
+        Some(argument)
+            if argument == OsStr::new(studio_sidecar::legacy_conversion::WINDOWS_JOB_LAUNCHER_ARGUMENT)
+                || argument == OsStr::new(studio_sidecar::scientific_cpython::WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT)
+    ) {
         return;
     }
     let Some(executable) = arguments.next() else {
