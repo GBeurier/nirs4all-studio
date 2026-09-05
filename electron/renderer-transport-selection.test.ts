@@ -35,6 +35,39 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 }
 
 describe("renderer transport preselection", () => {
+  it("selects qualified inspection, prediction and setup routes with their capabilities", async () => {
+    const request = vi.fn().mockImplementation(async () => capabilityResponse({
+      dataset_inspection_routes: true, recommended_config_routes: true, general_prediction_routes: true,
+      python_plugin_preflight: true,
+      workspace_run_history_route: true, workspace_run_listing_routes: true,
+    }));
+    for (const [method, path] of [
+      ["GET", "/models/available"], ["POST", "/predict"], ["POST", "/predict/file"],
+      ["GET", "/runs"], ["GET", "/runs/stats"], ["GET", "/runs?status=running,queued"],
+      ["GET", "/workspaces/workspace_1/runs/enriched?project_id=project_1&limit=100&offset=0"],
+      ["GET", "/config/recommended?force_refresh=false"], ["GET", "/config/detect-gpu"],
+      ["GET", "/config/diff?profile=cpu&include_optional=true&include_latest=false"],
+      ...["detect-files", "detect-unified", "detect-files-list", "scan-folder", "detect-format", "auto-detect", "validate-files", "preview"].map((operation) => ["POST", `/datasets/${operation}`]),
+      ["GET", "/datasets/registered_1/preview?max_samples=5"], ["GET", "/datasets/registered_1/stats?partition=all"],
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar", status: 200 });
+    }
+    for (const path of ["/config/diff?include_optional=1", "/config/diff?profile=cpu&profile=gpu", "/config/recommended?bad=true",
+      "/datasets/registered_1/preview?max_samples=-1", "/datasets/registered_1/stats?partition=other", "/models/available?bad=1",
+      "/runs?status=oops", "/runs/stats?status=running", "/workspaces/workspace_1/runs/enriched?limit=1&limit=2", "/predict/models/available"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, running, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+    await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/datasets/preview-upload" }, running, request))
+      .resolves.toMatchObject({ target: "reject" });
+    await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/predict" },
+      () => ({ ...running(), pythonPluginHostConfigured: false }), request))
+      .resolves.toMatchObject({ target: "reject", reason: "native_python_host_unavailable" });
+    await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/predict" }, running,
+      async () => capabilityResponse({ general_prediction_routes: false })))
+      .resolves.toMatchObject({ target: "reject", reason: "native_capability_mismatch" });
+  });
   it("qualifies implemented workspace and pipeline documents without a Python host", async () => {
     const request = vi.fn().mockImplementation(async () => capabilityResponse({
       workspace_document_routes: true,

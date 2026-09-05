@@ -117,6 +117,8 @@ function classifyWorkspaceRuns(path: string): NativeSurface | null {
 function classifyHttp(method: string, path: string): NativeSurface | null {
   const exact = exactHttpRoutes.get(`${method} ${path}`) ?? pythonHostRoutes.get(`${method} ${path}`);
   if (exact) return exact;
+  const workflow = classifyScientificWorkflow(method, path);
+  if (workflow) return workflow;
   const dataset = identifierPath("/datasets/").exec(path);
   if (["GET", "PUT", "DELETE"].includes(method) && dataset && isValidIdentifier(dataset[1]) &&
       !["link", "preview", "detect-unified", "detect-files", "detect-format", "detect-files-list", "scan-folder", "auto-detect", "validate-files"].includes(dataset[1])) {
@@ -172,6 +174,46 @@ function classifyHttp(method: string, path: string): NativeSurface | null {
     ) {
       return { name: "job-cancellation", capability: "native_job_cancellation_routes" };
     }
+  }
+  return null;
+}
+
+/** Only implemented Rust routes; body/config authorization remains with Rust. */
+function classifyScientificWorkflow(method: string, path: string): NativeSurface | null {
+  const [pathname, query] = path.split("?", 2);
+  const fields = new URLSearchParams(query);
+  if (path.split("?").length > 2 || (query !== undefined && !query) ||
+      [...fields.keys()].some((key) => fields.getAll(key).length !== 1)) return null;
+  const bool = (value: string) => value === "true" || value === "false";
+  const validQuery = (allowed: Record<string, (value: string) => boolean>) =>
+    [...fields].every(([key, value]) => allowed[key]?.(value) === true);
+  if (method === "GET" && ((pathname === "/runs/stats" && !query) || (pathname === "/runs" && validQuery({
+    status: (value) => value.split(",").every((status) => ["running", "queued", "completed", "failed", "cancelled", "partial"].includes(status)),
+  })))) return { name: "run-listing", capability: "workspace_run_listing_routes" };
+  const history = identifierPath("/workspaces/", "/runs/enriched").exec(pathname);
+  if (method === "GET" && history && isValidIdentifier(history[1]) && validQuery({
+    project_id: isValidIdentifier, limit: (value) => /^\d+$/.test(value), offset: (value) => /^\d+$/.test(value),
+  })) return { name: "run-history", capability: "workspace_run_history_route" };
+  if (!query && ((method === "GET" && pathname === "/models/available") ||
+      (method === "POST" && ["/predict", "/predict/file"].includes(pathname)))) {
+    return { name: "general-prediction", capability: "general_prediction_routes", requiresPythonHost: true };
+  }
+  if (method === "GET" && pathname === "/config/recommended" && validQuery({ force_refresh: bool })) {
+    return { name: "recommended-config", capability: "recommended_config_routes" };
+  }
+  if (method === "GET" && ((pathname === "/config/detect-gpu" && !query) ||
+      (pathname === "/config/diff" && validQuery({ profile: isValidIdentifier, include_optional: bool, include_latest: bool })))) {
+    return { name: "runtime-config", capability: "recommended_config_routes", requiresPythonHost: true };
+  }
+  const inspection = ["detect-files", "detect-unified", "detect-files-list", "scan-folder", "detect-format", "auto-detect", "validate-files", "preview"];
+  if (method === "POST" && !query && inspection.some((operation) => pathname === `/datasets/${operation}`)) {
+    return { name: "dataset-inspection", capability: "dataset_inspection_routes" };
+  }
+  const dataset = identifierPath("/datasets/", "/(preview|stats)").exec(pathname);
+  if (method === "GET" && dataset && isValidIdentifier(dataset[1]) && validQuery(dataset[2] === "preview"
+    ? { max_samples: (value) => /^\d+$/.test(value) }
+    : { partition: (value) => ["train", "test", "all"].includes(value) })) {
+    return { name: "dataset-inspection", capability: "dataset_inspection_routes", requiresPythonHost: true };
   }
   return null;
 }
