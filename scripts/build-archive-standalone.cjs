@@ -2,8 +2,8 @@
  * Build a standalone Electron archive with a fully baked backend runtime.
  *
  * This is the lot 4 packaging entrypoint for the archive-based standalone product.
- * Supported profiles: cpu (full, with PyTorch) and cpu-lite (pure scikit-learn —
- * no torch/tensorflow/jax/autogluon/tabpfn; deep-learning model nodes are hidden).
+ * Supported profiles: cpu and cpu-lite. Both use the constraint-locked bounded
+ * CPython closure; unavailable optional-framework nodes are hidden.
  *
  * Usage:
  *   node scripts/build-archive-standalone.cjs [options]
