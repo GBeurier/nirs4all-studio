@@ -180,6 +180,41 @@ describe("electron-builder config", () => {
     ).toEqual(["**/*"]);
   });
 
+  it("attests install-tree ownership only in standalone archives", () => {
+    const marker = fs.readFileSync(
+      path.join(projectRoot, "build", "all-in-one-runtime.json"),
+      "utf8",
+    );
+    expect(JSON.parse(marker)).toEqual({
+      schema_id: "nirs4all.studio-all-in-one-runtime.v1",
+      owns_install_tree: true,
+    });
+    const archive = fs.readFileSync(
+      path.join(projectRoot, "electron-builder.archive.yml"),
+      "utf8",
+    );
+    const installer = fs.readFileSync(
+      path.join(projectRoot, "electron-builder.installer.yml"),
+      "utf8",
+    );
+    expect(archive).toContain("from: build/all-in-one-runtime.json");
+    expect(archive).toContain("to: all-in-one-runtime.json");
+    expect(installer).not.toContain("all-in-one-runtime.json");
+  });
+
+  it("publishes every desktop artifact to the canonical Studio repository", () => {
+    for (const configName of configNames) {
+      const publishSection = getTopLevelYamlSection(
+        path.join(projectRoot, configName),
+        "publish",
+      );
+      expect(publishSection, configName).toContain("provider: github");
+      expect(publishSection, configName).toContain("owner: GBeurier");
+      expect(publishSection, configName).toContain("repo: nirs4all-studio");
+      expect(publishSection, configName).not.toContain("repo: nirs4all-webapp");
+    }
+  });
+
   it("never selects legacy Python backend source for standard installers", () => {
     const installer = fs.readFileSync(
       path.join(projectRoot, "electron-builder.installer.yml"),

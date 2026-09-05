@@ -172,7 +172,7 @@ function resolveBuildConfig(rawOptions, host = { platform: process.platform, arc
     config.localDagMlDataPath
   ) {
     throw new Error(
-      "Phase 2 plugin-only archives refuse local Python source substitution; use the pinned 32226557 wheel",
+      "Phase 2 plugin-only archives refuse local Python source substitution; use the pinned d6f69658 wheel",
     );
   }
 

@@ -21,7 +21,7 @@ const PYTHON_BUILD_STANDALONE_ARCHIVES = Object.freeze({
 // The managed runtime is a bounded Rust -> Python stdio plugin host. Keep its
 // package list exact and intentionally small: Python HTTP/control-plane
 // dependencies live in python-http-runtime-config.cjs, which is source/dev only.
-const PLUGIN_DISTRIBUTION_VERSION = "1.0.0rc2";
+const PLUGIN_DISTRIBUTION_VERSION = "1.0.1";
 const PLUGIN_HOST_PACKAGES = Object.freeze([
   `nirs4all==${PLUGIN_DISTRIBUTION_VERSION}`,
 ]);

@@ -40,6 +40,7 @@ pub mod job_lifecycle;
 pub mod legacy_conversion;
 mod matrix_limits;
 mod native_archive_training;
+pub mod native_updates;
 mod pipeline_presets;
 mod playground;
 mod prediction_upload;
@@ -428,6 +429,7 @@ pub struct SidecarState {
     native_archive_training: Option<Arc<NativeArchiveTrainingExecutor>>,
     archive_v2_prediction: ArchiveV2PredictionRuntime,
     legacy_conversion: LegacyConversionRuntime,
+    native_updater: native_updates::NativeUpdater,
 }
 
 impl Default for SidecarState {
@@ -450,6 +452,7 @@ impl Default for SidecarState {
             native_archive_training: None,
             archive_v2_prediction: ArchiveV2PredictionRuntime::default(),
             legacy_conversion: LegacyConversionRuntime::default(),
+            native_updater: native_updates::NativeUpdater::default(),
         }
     }
 }
@@ -572,6 +575,7 @@ impl SidecarState {
             app_settings,
             update_settings: UpdateSettingsStore::from_environment(),
             legacy_conversion: LegacyConversionRuntime::from_python_plugin_host(python_plugin_host),
+            native_updater: native_updates::NativeUpdater::from_environment(),
             ..Self::default()
         }
     }
@@ -732,6 +736,7 @@ impl SidecarState {
             ));
         capabilities["features"]["playground_routes"] =
             capabilities["features"]["dataset_synthetic_generation_routes"].clone();
+        capabilities["features"]["native_webapp_update_routes"] = json!(true);
         capabilities.to_string()
     }
 
@@ -873,6 +878,9 @@ pub fn route_request_with_body(
     path: &str,
     body: &[u8],
 ) -> HttpResponse {
+    if let Some(response) = native_updates::route(state, method, path, body) {
+        return response;
+    }
     if let Some(response) = document_cpython::route(
         &state.app_settings,
         state.scientific_host.as_deref(),
@@ -6938,8 +6946,12 @@ mod tests {
     }
 
     #[test]
-    fn native_update_status_is_local_offline_and_never_claims_a_check() {
+    fn native_update_status_is_cached_and_offline_refresh_fails_explicitly() {
         let mut state = SidecarState::default();
+        let update_settings = tempfile::tempdir().unwrap();
+        let update_settings_path = update_settings.path().join(UPDATE_SETTINGS_FILE);
+        fs::write(&update_settings_path, "offline_mode: on\n").unwrap();
+        state.update_settings = UpdateSettingsStore::new(update_settings_path);
         let response = route_request(&mut state, "GET", "/api/updates/status");
         assert_eq!(response.status, 200);
         let body: Value = serde_json::from_str(&response.body).unwrap();
@@ -6954,14 +6966,9 @@ mod tests {
         assert!(body["check_interval_hours"].is_i64());
 
         let refresh = route_request(&mut state, "POST", "/api/updates/check");
-        assert_eq!(refresh.status, 501);
+        assert_eq!(refresh.status, 400);
         let refresh: Value = serde_json::from_str(&refresh.body).unwrap();
-        assert_eq!(refresh["error"]["code"], "update_check_unavailable");
-        assert_eq!(refresh["error"]["retryable"], false);
-        assert_eq!(
-            refresh["error"]["details"]["status_source"],
-            "local_offline"
-        );
+        assert!(refresh["detail"].as_str().unwrap().contains("offline mode"));
         assert_eq!(
             route_request(&mut state, "POST", "/api/updates/status").status,
             405

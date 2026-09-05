@@ -311,8 +311,8 @@
     },
     {
       "path": "src/data/nodes/generated/canonical-registry.json",
-      "size": 419036,
-      "sha256": "d33d5126a3b74a711f632af1a101d3b9268f097bf90ffa90b5b15a3d33251758"
+      "size": 418374,
+      "sha256": "00488d43491c46242da64173614683a249bf1c1d4ba02f6f6508ec45e7bac9a8"
     }
   ]
 }

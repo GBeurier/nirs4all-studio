@@ -1,6 +1,7 @@
 /** Build and verify Studio's CPython library/plugin runtime (never an HTTP backend). */
 
 const { spawnSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { installAdapters, verifyAdapters } = require("./studio-document-adapters.cjs");
@@ -9,10 +10,13 @@ const projectRoot = path.join(__dirname, "..");
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
 const PLUGIN_MARKER_SCHEMA = "nirs4all.studio-python-plugin-runtime.v1";
 const PLUGIN_ROLE = "library-plugin-host-only";
-const PLUGIN_SOURCE_COMMIT = "3567bd4abcaa64443a1946748a579f0803e91889";
-const PLUGIN_WHEEL_SHA256 = "5898aa933da2e51ad07438ae5313ade37f1dad2a363411e71e0f0a513c7b4824";
-const PLUGIN_DISTRIBUTION_VERSION = "1.0.0rc2";
-const PLUGIN_INSTALLED_MANIFEST_SHA256 = "0d8bd9ef411c7df1cf30597f5d340d58cd107e71c6cf8baa6e7f53aad6641b88";
+const PLUGIN_SOURCE_COMMIT = "bf21c552b9d0929daf2dcc2ac7b220c9631ffa07";
+const PLUGIN_WHEEL_SHA256 = "d6f696580d4e52aeb6d39ecce47d30b3e10dc0b867f88f89f39dc1205cf93103";
+const PLUGIN_DISTRIBUTION_VERSION = "1.0.1";
+const PLUGIN_INSTALLED_MANIFEST_SHA256 = "768e65e0ca900f1a50a88a01f6c09cc7870ce033383cac5c968bfac8fee25bbe";
+const PLUGIN_CONSTRAINTS_RELATIVE_PATH = "build/constraints/plugin-runtime-cpython311.txt";
+const PLUGIN_CONSTRAINTS_PATH = path.join(projectRoot, ...PLUGIN_CONSTRAINTS_RELATIVE_PATH.split("/"));
+const PLUGIN_CONSTRAINTS_SHA256 = "437f2a2d61cbd62856bc0de48be2b7726003763a343fb88478624451271ee36c";
 const TOOLS_SOURCE_COMMIT = "88c2bc1e29603049cdbf1a1080a35845edf2f3c9";
 const TOOLS_WHEEL_SHA256 = "4f1c2e65ba42af9dc807e0704b7c6ec6b80efc22169d43f8051ae47f679cd819";
 const TOOLS_DISTRIBUTION_VERSION = "0.0.7";
@@ -46,8 +50,8 @@ const PREFLIGHT = String.raw`import base64,csv,hashlib,importlib.metadata,io,jso
 # python-build-standalone on Windows can implement the first platform.machine()
 # lookup through cmd /c ver. Warm that trusted stdlib cache before the audit
 # hook; all third-party imports and every subsequent spawn remain denied.
-# This qualifies the packaged payload only; Windows runtime selection remains
-# fail-closed until its process-tree termination contract is implemented.
+# This qualifies the packaged payload only; Windows process-tree containment
+# is enforced independently by the sidecar Job Object launcher.
 platform.machine()
 def deny(event,args):
     if event == "socket.bind": raise RuntimeError("listener denied")
@@ -96,6 +100,32 @@ print(json.dumps({"bind_denied":bind_denied,"spawn_denied":spawn_denied,"spawnv_
 
 function normalizeDistribution(name) {
   return name.trim().toLowerCase().replace(/[_.]+/g, "-");
+}
+
+function sha256File(filePath) {
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function constrainedDistributionVersions(platform = process.platform) {
+  if (sha256File(PLUGIN_CONSTRAINTS_PATH) !== PLUGIN_CONSTRAINTS_SHA256) {
+    throw new Error("Plugin runtime constraints identity mismatch");
+  }
+  const versions = new Map();
+  for (const rawLine of fs.readFileSync(PLUGIN_CONSTRAINTS_PATH, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const [requirement, marker = ""] = line.split(";", 2).map((part) => part.trim());
+    if (marker && marker !== 'sys_platform == "win32"') {
+      throw new Error(`Unsupported plugin constraint marker: ${marker}`);
+    }
+    if (marker && platform !== "win32") continue;
+    const match = /^([A-Za-z0-9_.-]+)==([^\s]+)$/.exec(requirement);
+    if (!match) throw new Error(`Plugin runtime constraint is not exact: ${line}`);
+    const name = normalizeDistribution(match[1]);
+    if (versions.has(name)) throw new Error(`Duplicate plugin runtime constraint: ${name}`);
+    versions.set(name, match[2]);
+  }
+  return versions;
 }
 
 function isLowerSha256(value) {
@@ -224,26 +254,37 @@ function materializeInternalRuntimeLinks(runtimeRoot) {
   throw new Error("Plugin runtime link materialization did not converge");
 }
 
-function installedDistributions(sitePackages) {
-  const names = [];
+function installedDistributionVersions(sitePackages) {
+  const versions = new Map();
   for (const entry of fs.readdirSync(sitePackages)) {
     if (!entry.endsWith(".dist-info")) continue;
     const metadataPath = path.join(sitePackages, entry, "METADATA");
     const metadata = fs.readFileSync(metadataPath, "utf8");
-    const match = /^Name:\s*(.+)$/im.exec(metadata);
-    if (!match) throw new Error(`Distribution metadata has no Name: ${metadataPath}`);
-    names.push(normalizeDistribution(match[1]));
+    const nameMatch = /^Name:\s*(.+)$/im.exec(metadata);
+    const versionMatch = /^Version:\s*(.+)$/im.exec(metadata);
+    if (!nameMatch || !versionMatch) {
+      throw new Error(`Distribution metadata has no exact Name/Version: ${metadataPath}`);
+    }
+    const name = normalizeDistribution(nameMatch[1]);
+    if (versions.has(name)) throw new Error(`Duplicate installed distribution: ${name}`);
+    versions.set(name, versionMatch[1].trim());
   }
-  return names.sort();
+  return new Map([...versions.entries()].sort(([left], [right]) => left.localeCompare(right)));
 }
 
-function assertPluginOnlyPayload(backendRoot, runtimeRoot, sitePackages) {
+function assertPluginOnlyPayload(
+  backendRoot,
+  runtimeRoot,
+  sitePackages,
+  platform = process.platform,
+) {
   for (const relative of ["api", "websocket", "main.py"]) {
     if (fs.existsSync(path.join(backendRoot, relative))) {
       throw new Error(`Python backend source is forbidden in Phase 2 payload: ${relative}`);
     }
   }
-  const installed = new Set(installedDistributions(sitePackages));
+  const installedVersions = installedDistributionVersions(sitePackages);
+  const installed = new Set(installedVersions.keys());
   const denied = FORBIDDEN_DISTRIBUTIONS.filter((name) => installed.has(name));
   for (const moduleName of FORBIDDEN_TOP_LEVEL_MODULES) {
     for (const suffix of ["", ".py"]) {
@@ -253,8 +294,21 @@ function assertPluginOnlyPayload(backendRoot, runtimeRoot, sitePackages) {
   if (denied.length > 0) {
     throw new Error(`Plugin runtime contains forbidden Python backend packages: ${[...new Set(denied)].sort().join(", ")}`);
   }
+  const constrained = constrainedDistributionVersions(platform);
+  const drift = [];
+  for (const [name, version] of constrained) {
+    if (installedVersions.get(name) !== version) {
+      drift.push(`${name}: expected ${version}, got ${installedVersions.get(name) ?? "missing"}`);
+    }
+  }
+  for (const [name, version] of installedVersions) {
+    if (!constrained.has(name)) drift.push(`${name}: unexpected ${version}`);
+  }
+  if (drift.length > 0) {
+    throw new Error(`Plugin runtime distribution closure drift: ${drift.join(", ")}`);
+  }
   assertClosedTree(runtimeRoot);
-  return [...installed];
+  return [...installed].sort();
 }
 
 function runPreflight(runtimeRoot, sitePackages, platform = process.platform) {
@@ -315,6 +369,10 @@ function expectedMarker(platform = process.platform, arch = process.arch) {
     distribution: "nirs4all",
     distribution_version: PLUGIN_DISTRIBUTION_VERSION,
     installed_manifest_sha256: PLUGIN_INSTALLED_MANIFEST_SHA256,
+    constraints: {
+      path: PLUGIN_CONSTRAINTS_RELATIVE_PATH,
+      sha256: PLUGIN_CONSTRAINTS_SHA256,
+    },
     platform,
     arch,
     forbidden_distributions: [...FORBIDDEN_DISTRIBUTIONS],
@@ -346,7 +404,12 @@ function verifyPluginRuntime({ backendRoot, platform = process.platform, arch = 
     installAdapters(projectRoot, sitePackages);
   }
   verifyAdapters(projectRoot, sitePackages);
-  const distributions = assertPluginOnlyPayload(backendRoot, runtimeRoot, sitePackages);
+  const distributions = assertPluginOnlyPayload(
+    backendRoot,
+    runtimeRoot,
+    sitePackages,
+    platform,
+  );
   const preflight = runPreflight(runtimeRoot, sitePackages, platform);
   const expected = expectedMarker(platform, arch);
   const readyPath = markerPath(backendRoot);
@@ -366,7 +429,7 @@ function parseArgs(argv = process.argv.slice(2)) {
   const options = {
     backendRoot: path.join(projectRoot, "backend-dist"),
     cacheDir: path.join(projectRoot, "build", ".python-cache"),
-    constraints: "",
+    constraints: PLUGIN_CONSTRAINTS_PATH,
     pluginWheel: "",
     toolsWheel: "",
     verifyOnly: false,
@@ -433,6 +496,10 @@ module.exports = {
   PLUGIN_ROLE,
   PLUGIN_SOURCE_COMMIT,
   PLUGIN_WHEEL_SHA256,
+  PLUGIN_CONSTRAINTS_PATH,
+  PLUGIN_CONSTRAINTS_SHA256,
+  constrainedDistributionVersions,
+  installedDistributionVersions,
   PREFLIGHT,
   expectedMarker,
   findSitePackages,

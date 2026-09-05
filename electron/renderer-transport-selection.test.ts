@@ -93,6 +93,42 @@ describe("renderer transport preselection", () => {
     }
   });
 
+  it("selects the complete native desktop-update lifecycle only with its capability", async () => {
+    const request = async () => capabilityResponse({ native_webapp_update_routes: true });
+    const info = () => ({ ...running(), pythonPluginHostConfigured: false });
+    for (const [method, path] of [
+      ["GET", "/updates/webapp/download-info"],
+      ["GET", "/updates/webapp/changelog?current_version=0.11.1"],
+      ["POST", "/updates/webapp/download-start"],
+      ["GET", "/updates/webapp/download-status/update-1"],
+      ["POST", "/updates/webapp/download-cancel/update-1"],
+      ["POST", "/updates/webapp/apply"],
+      ["GET", "/updates/webapp/staged-update"],
+      ["DELETE", "/updates/webapp/staged-update"],
+      ["POST", "/updates/webapp/cleanup"],
+      ["GET", "/updates/webapp/last-apply-result"],
+      ["DELETE", "/updates/webapp/last-apply-result"],
+      ["POST", "/updates/webapp/restart"],
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, info, request))
+        .resolves.toMatchObject({ target: "native-sidecar", surface: "webapp-update" });
+    }
+    await expect(preselectRendererTransport(
+      { kind: "http", method: "GET", path: "/updates/webapp/download-info" },
+      info,
+      async () => capabilityResponse(),
+    )).resolves.toMatchObject({ target: "reject", reason: "native_capability_mismatch" });
+    for (const path of [
+      "/updates/webapp/download-info?url=http://evil",
+      "/updates/webapp/changelog?current_version=0.11.1&extra=true",
+      "/updates/webapp/download-status/../escape",
+      "/updates/webapp/download-cancel/%2e%2e",
+    ]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "GET", path }, info, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+  });
+
   it("qualifies bounded dataset uploads and pipeline presets only when implemented", async () => {
     const request = async () => capabilityResponse({ dataset_import_routes: true, pipeline_preset_routes: true, python_plugin_preflight: true });
     for (const [method, path] of [["POST", "/datasets/upload"], ["POST", "/datasets/preview-upload"],

@@ -217,6 +217,7 @@ describe("smoke-archive-standalone", () => {
     expect(env.NIRS4ALL_NATIVE_SIDECAR_PORT).toBe("43123");
     expect(env.NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS).toBe("90000");
     expect(env.NIRS4ALL_PLUGIN_PACKAGE_VERIFY_TIMEOUT_MS).toBe("90000");
+    expect(env.NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN).toMatch(/^[a-f0-9]{64}$/);
     expect(env.NIRS4ALL_BACKEND_PORT).toBeUndefined();
     expect(env.HOME).toBe(path.join(sandboxRoot, "home"));
     expect(env.XDG_CACHE_HOME).toBe(path.join(sandboxRoot, "home", ".cache"));

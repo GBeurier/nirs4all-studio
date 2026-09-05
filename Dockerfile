@@ -61,7 +61,7 @@ RUN test "$(sha256sum backend/native/libn4m.so | cut -d' ' -f1)" = "${NIRS4ALL_M
     && node -e 'const c=require("/contract-scripts/native-runtime-contract.cjs"); c.writeRuntimeContract({backendRoot:"/product/backend",platform:"linux",arch:"x64",methodsLibraryPath:"/product/backend/native/libn4m.so"}); c.verifyRuntimeContract({backendRoot:"/product/backend",artifactBoundaryRoot:"/product/backend",platform:"linux",arch:"x64",requireBundledPythonPlugin:true,requireBundledMethods:true})'
 
 FROM ${NGINX_IMAGE} AS runtime
-ARG STUDIO_VERSION=0.11.0
+ARG STUDIO_VERSION=0.11.1
 ARG STUDIO_REVISION=unknown
 
 # tini forwards termination to nginx and its loopback sidecar process group;

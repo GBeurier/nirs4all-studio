@@ -134,16 +134,22 @@ plugin capability, not a FastAPI/Uvicorn fallback.
 Phase 2 installers and all-in-one archives build this payload with
 `scripts/bake-python-plugin-runtime.cjs`. This is a separate product profile;
 it does not invoke `bake-standalone-backend.cjs`, copy `api/`, `websocket/`, or
-`main.py`, or install the shared FastAPI backend dependency set. It rebuilds
-the selected `nirs4all` wheel from source commit
-`3567bd4abcaa64443a1946748a579f0803e91889` (or accepts that exact wheel for
-an offline build), builds it with pinned setuptools/wheel versions and the
-frozen release-train epoch `1788424315` as `SOURCE_DATE_EPOCH`, verifies SHA-256
-`5898aa933da2e51ad07438ae5313ade37f1dad2a363411e71e0f0a513c7b4824`,
+`main.py`, or install the shared FastAPI backend dependency set. It downloads
+the immutable published `nirs4all 1.0.1` wheel associated with source commit
+`bf21c552b9d0929daf2dcc2ac7b220c9631ffa07` from its exact PyPI file URL (or
+accepts that exact wheel for an offline build), verifies SHA-256
+`d6f696580d4e52aeb6d39ecce47d30b3e10dc0b867f88f89f39dc1205cf93103`,
 and rejects FastAPI, Starlette, Uvicorn, Sentry's FastAPI integration, and the
 Uvicorn server transitive set. `PLUGIN_RUNTIME_READY.json` freezes the exact
 `library-plugin-host-only` role. The older generic `RUNTIME_READY.json` never
 enables the plugin capability.
+
+The broad dependency ranges of the published Python wheel are resolved through
+the versioned `build/constraints/plugin-runtime-cpython311.txt` closure on every
+platform. The release gate rebuilds two fresh runtimes, rejects missing,
+unexpected, or version-drifted distributions, and requires identical marker and
+complete file-closure digests. Thus resolver date and a warm local pip cache
+cannot silently change the Studio payload.
 
 Every installer/release gate invokes `native-runtime-contract.cjs` with
 `--require-bundled-python-plugin` and `--require-bundled-methods`. The sidecar
@@ -151,6 +157,13 @@ builder likewise refuses to emit a product tree unless the build supplies one
 content-addressed native Methods library at ABI 2.5. Therefore a standard
 installer or all-in-one archive cannot silently publish either capability as
 `mode: unavailable`.
+
+The `nirs4all-methods` Python wheel in the constrained CPython closure is not
+the qualifying input for Studio's native dispatch library. Every release job
+separately checks out commit `a9faae2909c71a833bb7f3b208dc20548cf01588`,
+compiles and tests that source through `.github/actions/build-native-methods`,
+stages the resulting `libn4m`/`n4m.dll`, and requires the archive/sidecar smoke
+to exercise the attested ABI 2.5 library before an artifact can pass.
 
 The same content contract pins the bundled interpreter and every runtime file.
 Because this interpreter is a headless scientific stdio host, its packaging
