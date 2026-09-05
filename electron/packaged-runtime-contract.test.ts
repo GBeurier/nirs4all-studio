@@ -6,7 +6,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { verifyPackagedRuntimeContract } from "./packaged-runtime-contract";
+import {
+  hasExactWindowsNativeRuntimeLinkage,
+  verifyPackagedRuntimeContract,
+} from "./packaged-runtime-contract";
 import { preselectRendererTransport } from "./renderer-transport-selection";
 
 const require = createRequire(import.meta.url);
@@ -185,6 +188,24 @@ afterEach(() => {
 });
 
 describe("packaged runtime contract", () => {
+  it("requires the exact closed Windows static-CRT linkage profile", () => {
+    const exact = {
+      profile: "studio-msvc-static-crt-v1",
+      methods_cmake_runtime: "MultiThreaded",
+      sidecar_rust_target_feature: "+crt-static",
+      forbidden_dynamic_import_prefixes: ["MSVCP", "VCRUNTIME"],
+    };
+    expect(hasExactWindowsNativeRuntimeLinkage(exact)).toBe(true);
+    expect(hasExactWindowsNativeRuntimeLinkage({
+      ...exact,
+      methods_cmake_runtime: "MultiThreadedDLL",
+    })).toBe(false);
+    expect(hasExactWindowsNativeRuntimeLinkage({
+      ...exact,
+      forbidden_dynamic_import_prefixes: ["VCRUNTIME", "MSVCP"],
+    })).toBe(false);
+  });
+
   it("keeps the transitive packaged Electron graph plugin-host only", () => {
     const root = process.cwd();
     const result = assertPackagedElectronGraph({ root, requireDist: false });

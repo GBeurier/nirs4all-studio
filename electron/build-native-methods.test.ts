@@ -46,6 +46,9 @@ describe("native Methods product build", () => {
     expect(methodsBuild.targetConfig("win32", "x64")).toMatchObject({
       preset: "ci-windows-msvc-release",
       cliParts: ["cpp", "cli", "Release", "n4m_cli.exe"],
+      configureExtra: [
+        "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
+      ],
       buildExtra: ["--config", "Release"],
       ctestExtra: ["-C", "Release"],
     });

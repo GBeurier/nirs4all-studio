@@ -18,6 +18,7 @@ const {
   sha256File,
   writeRuntimeContract,
 } = require("./native-runtime-contract.cjs");
+const { assertStaticWindowsRuntime } = require("./windows-pe-runtime.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 const METHODS_BUILD_SOURCE_ENV = "NIRS4ALL_BUILD_METHODS_LIBRARY";
@@ -84,9 +85,14 @@ function parseArgs(argv = process.argv.slice(2)) {
   return { targetTriple };
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, env = process.env) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: "inherit", windowsHide: true });
+    const child = spawn(command, args, {
+      cwd,
+      env,
+      stdio: "inherit",
+      windowsHide: true,
+    });
     child.once("error", reject);
     child.once("exit", (code, signal) => {
       if (code === 0) {
@@ -96,6 +102,18 @@ function run(command, args, cwd) {
       reject(new Error(`Command failed (code ${code}, signal ${signal ?? "none"}): ${command} ${args.join(" ")}`));
     });
   });
+}
+
+function cargoEnvironmentForPlatform(
+  platform,
+  environment = process.env,
+) {
+  if (platform !== "win32") return environment;
+  const inherited = String(environment.CARGO_ENCODED_RUSTFLAGS || "");
+  const flags = inherited
+    ? `${inherited}\x1f-C\x1ftarget-feature=+crt-static`
+    : `-C\x1ftarget-feature=+crt-static`;
+  return { ...environment, CARGO_ENCODED_RUSTFLAGS: flags };
 }
 
 function stagePackagedMethodsLibrary({
@@ -206,9 +224,17 @@ async function buildNativeSidecar({
   );
   const cargoArgs = ["build", "--manifest-path", paths.manifestPath, "--release"];
   if (targetTriple) cargoArgs.push("--target", targetTriple);
-  await run(cargo, cargoArgs, root);
+  await run(
+    cargo,
+    cargoArgs,
+    root,
+    cargoEnvironmentForPlatform(targetPlatform),
+  );
   if (!fs.existsSync(paths.builtBinaryPath)) {
     throw new Error(`Native sidecar build did not produce ${paths.builtBinaryPath}`);
+  }
+  if (targetPlatform === "win32") {
+    assertStaticWindowsRuntime(paths.builtBinaryPath);
   }
 
   fs.mkdirSync(path.dirname(paths.packagedBinaryPath), { recursive: true });
@@ -257,6 +283,7 @@ if (require.main === module) {
 module.exports = {
   assertMethodsBuildIdentityConfigured,
   buildNativeSidecar,
+  cargoEnvironmentForPlatform,
   getNativeSidecarPaths,
   parseArgs,
   stagePackagedMethodsLibrary,

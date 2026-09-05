@@ -12,6 +12,10 @@ const buildNativeSidecar = require("../scripts/build-native-sidecar.cjs") as {
     sourcePath: string | null,
     expectedSha256: string | null,
   ): void;
+  cargoEnvironmentForPlatform(
+    platform: NodeJS.Platform,
+    environment?: NodeJS.ProcessEnv,
+  ): NodeJS.ProcessEnv;
   getNativeSidecarPaths(
     root?: string,
     platform?: NodeJS.Platform,
@@ -60,6 +64,12 @@ const runtimeContract = require("../scripts/native-runtime-contract.cjs") as {
   }): {
     contractPath: string;
     contract: {
+      native_runtime_linkage?: {
+        profile: string;
+        methods_cmake_runtime: string;
+        sidecar_rust_target_feature: string;
+        forbidden_dynamic_import_prefixes: string[];
+      };
       methods_library: {
         mode: string;
         abi: { major: number; minor: number };
@@ -120,6 +130,20 @@ describe("build-native-sidecar", () => {
 
     expect(paths.builtBinaryPath).toBe(path.join("C:/workspace/studio", "sidecar", "target", "release", "studio-sidecar.exe"));
     expect(paths.packagedBinaryPath).toBe(path.join("C:/workspace/studio", "backend-dist", "native", "studio-sidecar.exe"));
+  });
+
+  it("selects the static MSVC runtime only for Windows sidecar builds", () => {
+    const base = { PATH: "C:\\Windows", CARGO_ENCODED_RUSTFLAGS: "--cfg\x1fexisting" };
+    expect(
+      buildNativeSidecar.cargoEnvironmentForPlatform("win32", base),
+    ).toMatchObject({
+      PATH: "C:\\Windows",
+      CARGO_ENCODED_RUSTFLAGS:
+        "--cfg\x1fexisting\x1f-C\x1ftarget-feature=+crt-static",
+    });
+    expect(
+      buildNativeSidecar.cargoEnvironmentForPlatform("linux", base),
+    ).toBe(base);
   });
 
   it("supports an out-of-tree Cargo target directory for bounded builders", () => {
@@ -244,6 +268,7 @@ describe("build-native-sidecar", () => {
           project_version: "1.0.18",
         },
       });
+      expect(written.contract.native_runtime_linkage).toBeUndefined();
       expect(
         runtimeContract.verifyRuntimeContract({
           backendRoot,
@@ -252,6 +277,53 @@ describe("build-native-sidecar", () => {
           arch: "x64",
         }),
       ).toMatchObject({ methodsLibraryPath: methodsPath });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("records and verifies the closed Windows static-CRT build profile", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-windows-linkage-"));
+    try {
+      const backendRoot = path.join(root, "backend-dist");
+      const nativeRoot = path.join(backendRoot, "native");
+      fs.mkdirSync(nativeRoot, { recursive: true });
+      fs.writeFileSync(path.join(nativeRoot, "studio-sidecar.exe"), "sidecar");
+      fs.writeFileSync(path.join(nativeRoot, "n4m.dll"), "methods");
+      const written = runtimeContract.writeRuntimeContract({
+        backendRoot,
+        platform: "win32",
+        arch: "x64",
+        methodsLibraryPath: path.join(nativeRoot, "n4m.dll"),
+      });
+      expect(written.contract.native_runtime_linkage).toEqual({
+        profile: "studio-msvc-static-crt-v1",
+        methods_cmake_runtime: "MultiThreaded",
+        sidecar_rust_target_feature: "+crt-static",
+        forbidden_dynamic_import_prefixes: ["MSVCP", "VCRUNTIME"],
+      });
+      expect(
+        runtimeContract.verifyRuntimeContract({
+          backendRoot,
+          artifactBoundaryRoot: backendRoot,
+          platform: "win32",
+          arch: "x64",
+          requireBundledMethods: true,
+        }),
+      ).toMatchObject({ methodsLibraryPath: path.join(nativeRoot, "n4m.dll") });
+
+      const contract = JSON.parse(fs.readFileSync(written.contractPath, "utf8"));
+      contract.native_runtime_linkage.sidecar_rust_target_feature = "dynamic";
+      fs.writeFileSync(written.contractPath, `${JSON.stringify(contract)}\n`);
+      expect(() =>
+        runtimeContract.verifyRuntimeContract({
+          backendRoot,
+          artifactBoundaryRoot: backendRoot,
+          platform: "win32",
+          arch: "x64",
+          requireBundledMethods: true,
+        }),
+      ).toThrow(/linkage profile mismatch/);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

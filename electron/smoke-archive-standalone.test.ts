@@ -46,6 +46,7 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     help: boolean;
   };
   pluginPreflightTimeoutMs(remainingMs: number): number;
+  pushOutput(buffer: string[], label: string, chunk: Buffer): void;
   resolveLaunchLayout(extractedRoot: string, platformId: string, appName: string): {
     appRoot: string;
     backendRoot: string;
@@ -67,6 +68,10 @@ const smokeModule = require("../scripts/smoke-archive-standalone.cjs") as {
     targetPath: string,
     options?: { retryCount?: number; retryDelayMs?: number },
   ): Promise<void>;
+  scientificUnavailabilityDiagnostic(
+    port: number,
+    sessionToken: string,
+  ): Promise<string>;
 };
 
 const tempDirs: string[] = [];
@@ -245,6 +250,47 @@ describe("smoke-archive-standalone", () => {
     expect(smokeModule.pluginPreflightTimeoutMs(180000)).toBe(75000);
     expect(smokeModule.pluginPreflightTimeoutMs(42000)).toBe(42000);
     expect(smokeModule.pluginPreflightTimeoutMs(-1)).toBe(1);
+  });
+
+  it("reports the bounded scientific acquisition reason without submitting a job", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 503,
+      text: async () => JSON.stringify({
+        error: { details: { reason: "python_preflight_timed_out" } },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(
+        smokeModule.scientificUnavailabilityDiagnostic(43123, "s".repeat(64)),
+      ).resolves.toContain("python_preflight_timed_out");
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://127.0.0.1:43123/api/runs/run-groups",
+        expect.objectContaining({
+          method: "POST",
+          body: "{}",
+          headers: expect.objectContaining({
+            "X-Nirs4all-Session": "s".repeat(64),
+          }),
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("bounds captured process diagnostics by line count and byte length", () => {
+    const output: string[] = [];
+    for (let index = 0; index < 100; index += 1) {
+      smokeModule.pushOutput(
+        output,
+        "stderr",
+        Buffer.from(`${index}:${"x".repeat(4096)}`),
+      );
+    }
+    expect(output).toHaveLength(80);
+    expect(Buffer.byteLength(output.at(-1) ?? "", "utf8")).toBeLessThan(2100);
+    expect(output.at(-1)).toContain("…");
   });
 
   it("retries sandbox removal after transient Windows-style EPERM locks", async () => {

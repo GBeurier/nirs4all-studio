@@ -60,6 +60,7 @@ const METHODS_ABI_MINOR: u32 = 5;
 const METHODS_SOURCE_COMMIT: &str = "a9faae2909c71a833bb7f3b208dc20548cf01588";
 const METHODS_SOURCE_TREE: &str = "5c39dde72afab2ff725ff7b1b53e69a17b9bf865";
 const METHODS_PROJECT_VERSION: &str = "1.0.18";
+const WINDOWS_NATIVE_LINKAGE_PROFILE: &str = "studio-msvc-static-crt-v1";
 const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -682,6 +683,7 @@ pub fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdent
     let root = contract.as_object()?;
     if root.get("schema").and_then(Value::as_str) != Some("nirs4all.studio-packaged-runtime.v1")
         || root.get("product_backend").and_then(Value::as_str) != Some("rust-sidecar")
+        || !native_runtime_linkage_is_valid(root, cfg!(windows))
     {
         return None;
     }
@@ -718,6 +720,36 @@ pub fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdent
         abi_major: u32::try_from(abi.get("major")?.as_u64()?).ok()?,
         abi_minor: u32::try_from(abi.get("minor")?.as_u64()?).ok()?,
     })
+}
+
+fn native_runtime_linkage_is_valid(root: &serde_json::Map<String, Value>, windows: bool) -> bool {
+    let Some(linkage) = root.get("native_runtime_linkage") else {
+        return !windows;
+    };
+    if !windows {
+        return false;
+    }
+    let Some(linkage) = linkage.as_object() else {
+        return false;
+    };
+    let Some(prefixes) = linkage
+        .get("forbidden_dynamic_import_prefixes")
+        .and_then(Value::as_array)
+    else {
+        return false;
+    };
+    linkage.len() == 4
+        && linkage.get("profile").and_then(Value::as_str) == Some(WINDOWS_NATIVE_LINKAGE_PROFILE)
+        && linkage.get("methods_cmake_runtime").and_then(Value::as_str) == Some("MultiThreaded")
+        && linkage
+            .get("sidecar_rust_target_feature")
+            .and_then(Value::as_str)
+            == Some("+crt-static")
+        && prefixes
+            == &[
+                Value::String("MSVCP".into()),
+                Value::String("VCRUNTIME".into()),
+            ]
 }
 
 const fn packaged_methods_library_relative_path() -> &'static str {
@@ -1406,6 +1438,28 @@ mod tests {
     use std::{fs, time::SystemTime};
 
     use super::*;
+
+    #[test]
+    fn packaged_methods_requires_exact_static_crt_provenance_on_windows() {
+        let mut root = json!({}).as_object().unwrap().clone();
+        assert!(native_runtime_linkage_is_valid(&root, false));
+        assert!(!native_runtime_linkage_is_valid(&root, true));
+
+        root.insert(
+            "native_runtime_linkage".into(),
+            json!({
+                "profile": "studio-msvc-static-crt-v1",
+                "methods_cmake_runtime": "MultiThreaded",
+                "sidecar_rust_target_feature": "+crt-static",
+                "forbidden_dynamic_import_prefixes": ["MSVCP", "VCRUNTIME"]
+            }),
+        );
+        assert!(native_runtime_linkage_is_valid(&root, true));
+        assert!(!native_runtime_linkage_is_valid(&root, false));
+
+        root["native_runtime_linkage"]["methods_cmake_runtime"] = json!("MultiThreadedDLL");
+        assert!(!native_runtime_linkage_is_valid(&root, true));
+    }
 
     #[derive(Debug)]
     struct FakeExecutor;

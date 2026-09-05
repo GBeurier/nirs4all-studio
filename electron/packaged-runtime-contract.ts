@@ -21,6 +21,12 @@ const METHODS_ABI_MINOR = 5;
 const METHODS_SOURCE_COMMIT = "a9faae2909c71a833bb7f3b208dc20548cf01588";
 const METHODS_SOURCE_TREE = "5c39dde72afab2ff725ff7b1b53e69a17b9bf865";
 const METHODS_PROJECT_VERSION = "1.0.18";
+const WINDOWS_NATIVE_RUNTIME_LINKAGE = {
+  profile: "studio-msvc-static-crt-v1",
+  methods_cmake_runtime: "MultiThreaded",
+  sidecar_rust_target_feature: "+crt-static",
+  forbidden_dynamic_import_prefixes: ["MSVCP", "VCRUNTIME"],
+} as const;
 const FORBIDDEN_PLUGIN_DISTRIBUTIONS = [
   "fastapi",
   "httptools",
@@ -60,6 +66,26 @@ interface PackagedRuntimeContract {
     abi: { major: number; minor: number };
     source: { commit: string; tree: string; project_version: string };
   };
+  native_runtime_linkage?: {
+    profile?: unknown;
+    methods_cmake_runtime?: unknown;
+    sidecar_rust_target_feature?: unknown;
+    forbidden_dynamic_import_prefixes?: unknown;
+  };
+}
+
+export function hasExactWindowsNativeRuntimeLinkage(
+  linkage: PackagedRuntimeContract["native_runtime_linkage"],
+): boolean {
+  return linkage?.profile === WINDOWS_NATIVE_RUNTIME_LINKAGE.profile &&
+    linkage.methods_cmake_runtime ===
+      WINDOWS_NATIVE_RUNTIME_LINKAGE.methods_cmake_runtime &&
+    linkage.sidecar_rust_target_feature ===
+      WINDOWS_NATIVE_RUNTIME_LINKAGE.sidecar_rust_target_feature &&
+    Array.isArray(linkage.forbidden_dynamic_import_prefixes) &&
+    linkage.forbidden_dynamic_import_prefixes.length === 2 &&
+    linkage.forbidden_dynamic_import_prefixes[0] === "MSVCP" &&
+    linkage.forbidden_dynamic_import_prefixes[1] === "VCRUNTIME";
 }
 
 export interface VerifiedPackagedRuntime {
@@ -458,6 +484,13 @@ export function verifyPackagedRuntimeContract({
     contract.python_role !== "library-plugin-host-only"
   ) {
     throw new Error("Packaged runtime contract metadata mismatch");
+  }
+  if (
+    (platform === "win32" &&
+      !hasExactWindowsNativeRuntimeLinkage(contract.native_runtime_linkage)) ||
+    (platform !== "win32" && contract.native_runtime_linkage !== undefined)
+  ) {
+    throw new Error("Packaged native runtime linkage profile mismatch");
   }
   const expectedSidecar = path.join(
     "native",
