@@ -187,6 +187,7 @@ pub enum ErrorCode {
     WebSocketUpgradeRequired,
     PythonPluginUnavailable,
     PythonPluginPreflightFailed,
+    UpdateCheckUnavailable,
     ScientificExecutorUnavailable,
     ArchiveV2PredictionUnavailable,
     ArchiveV2PredictionInvalid,
@@ -213,6 +214,7 @@ impl ErrorCode {
             Self::WebSocketUpgradeRequired => "websocket_upgrade_required",
             Self::PythonPluginUnavailable => "python_plugin_unavailable",
             Self::PythonPluginPreflightFailed => "python_plugin_preflight_failed",
+            Self::UpdateCheckUnavailable => "update_check_unavailable",
             Self::ScientificExecutorUnavailable => "scientific_executor_unavailable",
             Self::ArchiveV2PredictionUnavailable => "archive_v2_prediction_unavailable",
             Self::ArchiveV2PredictionInvalid => "archive_v2_prediction_invalid",
@@ -728,9 +730,8 @@ impl SidecarState {
             json!(self.scientific_host.as_deref().is_some_and(
                 scientific_cpython::CpythonScientificJobExecutor::library_facades_available
             ));
-        capabilities["features"]["playground_routes"] = capabilities["features"]
-            ["dataset_synthetic_generation_routes"]
-            .clone();
+        capabilities["features"]["playground_routes"] =
+            capabilities["features"]["dataset_synthetic_generation_routes"].clone();
         capabilities.to_string()
     }
 
@@ -738,7 +739,7 @@ impl SidecarState {
         let python_plugin_configured = self.python_plugin_host.is_some();
         let scientific_execution = self.native_jobs.execution_selected();
         format!(
-            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"native_archive_v2_training\":{},\"native_conformal_presentation_v2\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_transition_status_route\":true,\"legacy_workspace_conversion_route\":{},\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"dataset_synthetic_generation_routes\":false,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
+            "{{\"protocol_version\":\"{PROTOCOL_VERSION}\",\"legacy_contract_baseline\":\"{LEGACY_CONTRACT_BASELINE}\",\"legacy_route_parity\":\"{LEGACY_ROUTE_PARITY}\",\"api_route_coverage\":\"bootstrap_system_and_app_catalog\",\"python_plugin_host\":\"{}\",\"features\":{{\"health\":true,\"readiness\":true,\"control_jobs\":true,\"websocket_upgrade\":true,\"renderer_transport_selection\":true,\"renderer_http_transport\":true,\"renderer_websocket_transport\":true,\"renderer_rust_only_default\":true,\"implicit_python_http_fallback\":false,\"unmigrated_renderer_routes_fail_closed\":true,\"native_job_status_routes\":true,\"native_job_cancellation_routes\":true,\"native_scientific_submission_routes\":true,\"scientific_submission_transport\":true,\"native_archive_v2_prediction\":{},\"native_archive_v2_training\":{},\"native_conformal_presentation_v2\":{},\"durable_execution_job_record_reads\":true,\"scientific_execution\":{scientific_execution},\"legacy_api_routes\":false,\"unmigrated_api_routes_require_legacy_backend\":false,\"app_settings_routes\":true,\"app_config_path_routes\":true,\"linked_workspace_catalog_route\":true,\"linked_workspace_state_routes\":true,\"workspace_transition_status_route\":true,\"legacy_workspace_conversion_route\":{},\"workspace_store_v5_run_summary_route\":true,\"workspace_store_v5_run_detail_preselection\":true,\"workspace_store_v5_run_detail_route\":true,\"run_detail_owner_host_configured\":{python_plugin_configured},\"run_detail_owner_preflight_per_request\":true,\"workspace_store_v5_pipeline_summary_route\":true,\"workspace_store_v5_results_summary_route\":true,\"system_status_route\":true,\"system_capabilities_route\":true,\"system_info_route\":true,\"system_build_route\":true,\"system_network_route\":true,\"system_env_coherence_route\":true,\"updates_status_route\":true,\"updates_version_route\":true,\"updates_runtime_status_route\":true,\"updates_settings_routes\":true,\"dataset_synthetic_generation_routes\":false,\"python_plugin_preflight\":{python_plugin_configured},\"python_plugin_execution\":{scientific_execution}}}}}",
             if python_plugin_configured {
                 "configured"
             } else {
@@ -923,6 +924,13 @@ pub fn route_request_with_body(
         ("GET", "/api/system/build") => python_system_build_response(state),
         ("GET", "/api/system/network") => system_network_response(),
         ("GET", "/api/system/env-coherence") => python_env_coherence_response(state),
+        ("GET", "/api/updates/status") => native_update_status_response(state),
+        ("POST", "/api/updates/check") => error_response(
+            501,
+            ErrorCode::UpdateCheckUnavailable,
+            "Network update checks are not implemented by this native build",
+            BTreeMap::from([("status_source".into(), "local_offline".into())]),
+        ),
         ("GET", "/api/updates/version") => python_updates_version_response(state),
         ("GET", "/api/updates/runtime/status") => python_updates_runtime_status_response(state),
         ("GET", "/api/updates/settings") => update_settings_response(state),
@@ -949,6 +957,7 @@ pub fn route_request_with_body(
             | "/api/system/build"
             | "/api/system/network"
             | "/api/system/env-coherence"
+            | "/api/updates/status"
             | "/api/updates/version"
             | "/api/updates/runtime/status"
             | "/api/workspaces"
@@ -960,7 +969,8 @@ pub fn route_request_with_body(
         }
         (
             _,
-            "/api/config/skip-setup"
+            "/api/updates/check"
+            | "/api/config/skip-setup"
             | "/api/config/complete-setup"
             | LEGACY_CONVERSION_ROUTE
             | "/sidecar/v1/jobs",
@@ -2750,6 +2760,76 @@ impl UpdateSettingsStore {
 
 fn update_settings_response(state: &SidecarState) -> HttpResponse {
     HttpResponse::json(200, state.update_settings.load().to_string())
+}
+
+fn native_update_status_response(state: &SidecarState) -> HttpResponse {
+    let settings = state.update_settings.load();
+    let runtime_root = env::var(PYTHON_PLUGIN_RUNTIME_ROOT_ENV).ok();
+    let executable = state
+        .python_plugin_host
+        .as_deref()
+        .and_then(Path::to_str)
+        .map(str::to_owned);
+    let runtime_path = runtime_root.or_else(|| {
+        state
+            .python_plugin_host
+            .as_deref()
+            .and_then(Path::parent)
+            .and_then(Path::parent)
+            .and_then(Path::to_str)
+            .map(str::to_owned)
+    });
+    let runtime_ready = state
+        .scientific_host
+        .as_deref()
+        .is_some_and(scientific_cpython::CpythonScientificJobExecutor::library_facades_available);
+    let runtime = json!({
+        "path": runtime_path.clone().unwrap_or_default(),
+        "exists": runtime_path.as_deref().is_some_and(|path| Path::new(path).is_dir()),
+        "is_valid": runtime_ready,
+        "python_executable": executable,
+        "python_version": null,
+        "pip_version": null,
+        "created_at": null,
+        "last_updated": null,
+        "size_bytes": 0,
+    });
+    let nirs4all_version =
+        runtime_ready.then_some(scientific_cpython::SCIENTIFIC_DISTRIBUTION_VERSION);
+    HttpResponse::json(
+        200,
+        json!({
+            "webapp": {
+                "current_version": native_app_version(),
+                "latest_version": null,
+                "update_available": false,
+                "release_url": null,
+                "release_notes": null,
+                "published_at": null,
+                "download_size_bytes": null,
+                "download_url": null,
+                "asset_name": null,
+                "checksum_sha256": null,
+                "is_prerelease": false,
+                "installer_download_url": null,
+                "installer_asset_name": null,
+            },
+            "nirs4all": {
+                "current_version": nirs4all_version,
+                "latest_version": null,
+                "update_available": false,
+                "pypi_url": null,
+                "release_notes": null,
+                "requires_restart": false,
+            },
+            "runtime": runtime,
+            "venv": runtime,
+            "update_capability": null,
+            "last_check": null,
+            "check_interval_hours": settings["check_interval_hours"],
+        })
+        .to_string(),
+    )
 }
 
 fn save_update_settings_response(state: &SidecarState, body: &[u8]) -> HttpResponse {
@@ -4661,6 +4741,7 @@ fn write_response(stream: &mut TcpStream, response: &HttpResponse) -> std::io::R
         404 => "Not Found",
         405 => "Method Not Allowed",
         426 => "Upgrade Required",
+        501 => "Not Implemented",
         502 => "Bad Gateway",
         503 => "Service Unavailable",
         504 => "Gateway Timeout",
@@ -5509,6 +5590,7 @@ mod tests {
             "system_status_route",
             "system_info_route",
             "system_build_route",
+            "updates_status_route",
             "updates_settings_routes",
             "native_job_status_routes",
             "native_job_cancellation_routes",
@@ -6851,6 +6933,41 @@ mod tests {
         assert!(body["env_forced"].is_boolean());
         assert_eq!(
             route_request(&mut state, "POST", "/api/system/network").status,
+            405
+        );
+    }
+
+    #[test]
+    fn native_update_status_is_local_offline_and_never_claims_a_check() {
+        let mut state = SidecarState::default();
+        let response = route_request(&mut state, "GET", "/api/updates/status");
+        assert_eq!(response.status, 200);
+        let body: Value = serde_json::from_str(&response.body).unwrap();
+        assert!(body["webapp"]["current_version"].is_string());
+        assert_eq!(body["webapp"]["latest_version"], Value::Null);
+        assert_eq!(body["webapp"]["update_available"], false);
+        assert_eq!(body["nirs4all"]["current_version"], Value::Null);
+        assert_eq!(body["nirs4all"]["latest_version"], Value::Null);
+        assert_eq!(body["nirs4all"]["update_available"], false);
+        assert_eq!(body["runtime"]["is_valid"], false);
+        assert_eq!(body["last_check"], Value::Null);
+        assert!(body["check_interval_hours"].is_i64());
+
+        let refresh = route_request(&mut state, "POST", "/api/updates/check");
+        assert_eq!(refresh.status, 501);
+        let refresh: Value = serde_json::from_str(&refresh.body).unwrap();
+        assert_eq!(refresh["error"]["code"], "update_check_unavailable");
+        assert_eq!(refresh["error"]["retryable"], false);
+        assert_eq!(
+            refresh["error"]["details"]["status_source"],
+            "local_offline"
+        );
+        assert_eq!(
+            route_request(&mut state, "POST", "/api/updates/status").status,
+            405
+        );
+        assert_eq!(
+            route_request(&mut state, "GET", "/api/updates/check").status,
             405
         );
     }
