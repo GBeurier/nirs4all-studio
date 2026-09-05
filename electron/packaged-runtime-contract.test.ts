@@ -204,6 +204,11 @@ describe("packaged runtime contract", () => {
       ...exact,
       forbidden_dynamic_import_prefixes: ["VCRUNTIME", "MSVCP"],
     })).toBe(false);
+    const withUnexpected = {
+      ...exact,
+      unexpected: "tampered",
+    };
+    expect(hasExactWindowsNativeRuntimeLinkage(withUnexpected)).toBe(false);
   });
 
   it("keeps the transitive packaged Electron graph plugin-host only", () => {

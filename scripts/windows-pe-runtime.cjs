@@ -8,6 +8,7 @@ const MAX_PE_BYTES = 128 * 1024 * 1024;
 const MAX_SECTIONS = 96;
 const MAX_IMPORTS = 4096;
 const MAX_IMPORT_NAME_BYTES = 260;
+const MAX_DATA_DIRECTORIES = 32;
 const FORBIDDEN_RUNTIME_PREFIXES = Object.freeze(["MSVCP", "VCRUNTIME"]);
 
 function checkedRange(buffer, offset, size, label) {
@@ -50,7 +51,7 @@ function parseSections(buffer, sectionTableOffset, count) {
   return sections;
 }
 
-function rvaToOffset(buffer, sections, rva, minimumSize, label) {
+function rvaToRawLocation(buffer, sections, rva, minimumSize, label) {
   for (const section of sections) {
     const span = Math.max(section.virtualSize, section.rawSize);
     if (rva < section.virtualAddress || rva - section.virtualAddress >= span) continue;
@@ -60,14 +61,28 @@ function rvaToOffset(buffer, sections, rva, minimumSize, label) {
     }
     const offset = section.rawOffset + delta;
     checkedRange(buffer, offset, minimumSize, label);
-    return offset;
+    return { offset, rawBytesAvailable: section.rawSize - delta };
   }
   throw new Error(`Invalid PE ${label} RVA`);
 }
 
+function rvaToOffset(buffer, sections, rva, minimumSize, label) {
+  return rvaToRawLocation(buffer, sections, rva, minimumSize, label).offset;
+}
+
 function readImportName(buffer, sections, rva) {
-  const offset = rvaToOffset(buffer, sections, rva, 1, "import name");
-  const limit = Math.min(buffer.length, offset + MAX_IMPORT_NAME_BYTES + 1);
+  const { offset, rawBytesAvailable } = rvaToRawLocation(
+    buffer,
+    sections,
+    rva,
+    1,
+    "import name",
+  );
+  const limit = Math.min(
+    buffer.length,
+    offset + rawBytesAvailable,
+    offset + MAX_IMPORT_NAME_BYTES + 1,
+  );
   let end = offset;
   while (end < limit && buffer[end] !== 0) end += 1;
   if (end === offset || end === limit) {
@@ -78,6 +93,52 @@ function readImportName(buffer, sections, rva) {
     throw new Error("Invalid PE import name encoding");
   }
   return name.toUpperCase();
+}
+
+function parseImportDirectory({
+  buffer,
+  sections,
+  directoryRva,
+  directorySize,
+  descriptorSize,
+  nameFieldOffset,
+  label,
+  resolveNameRva = (value) => value,
+  validateDescriptor = () => {},
+}) {
+  if (directoryRva === 0 && directorySize === 0) return [];
+  if (
+    directoryRva === 0 ||
+    directorySize < descriptorSize ||
+    directorySize > MAX_PE_BYTES
+  ) {
+    throw new Error(`Invalid PE ${label}`);
+  }
+  const directoryOffset = rvaToOffset(
+    buffer,
+    sections,
+    directoryRva,
+    directorySize,
+    label,
+  );
+  const descriptorLimit = directoryOffset + directorySize;
+  const imports = [];
+  for (let index = 0; index < MAX_IMPORTS; index += 1) {
+    const descriptorOffset = directoryOffset + index * descriptorSize;
+    if (descriptorOffset + descriptorSize > descriptorLimit) {
+      throw new Error(`PE ${label} has no terminating descriptor`);
+    }
+    const fields = [];
+    for (let delta = 0; delta < descriptorSize; delta += 4) {
+      fields.push(readUInt32(buffer, descriptorOffset + delta, `${label} descriptor`));
+    }
+    if (fields.every((field) => field === 0)) return imports;
+    validateDescriptor(fields);
+    const nameValue = fields[nameFieldOffset / 4];
+    if (nameValue === 0) throw new Error(`Invalid PE ${label} name`);
+    imports.push(readImportName(buffer, sections, resolveNameRva(nameValue, fields)));
+  }
+  throw new Error(`Windows PE ${label} exceeds its limit`);
 }
 
 function parsePeImports(buffer) {
@@ -97,41 +158,68 @@ function parsePeImports(buffer) {
   const optionalOffset = peOffset + 24;
   checkedRange(buffer, optionalOffset, optionalSize, "optional header");
   const magic = readUInt16(buffer, optionalOffset, "optional header magic");
-  const dataDirectoryOffset = optionalOffset + (magic === 0x20b ? 112 : magic === 0x10b ? 96 : -1);
+  const isPe32Plus = magic === 0x20b;
+  const isPe32 = magic === 0x10b;
+  const dataDirectoryOffset = optionalOffset + (isPe32Plus ? 112 : isPe32 ? 96 : -1);
   if (dataDirectoryOffset < optionalOffset) {
     throw new Error("Unsupported PE optional header magic");
   }
-  checkedRange(buffer, dataDirectoryOffset, 16, "data directories");
-  const importRva = readUInt32(buffer, dataDirectoryOffset + 8, "import directory RVA");
-  const importSize = readUInt32(buffer, dataDirectoryOffset + 12, "import directory size");
-  const sections = parseSections(buffer, optionalOffset + optionalSize, sectionCount);
-  if (importRva === 0 && importSize === 0) return [];
-  if (importRva === 0 || importSize < 20 || importSize > MAX_PE_BYTES) {
-    throw new Error("Invalid PE import directory");
+  const directoryCountOffset = optionalOffset + (isPe32Plus ? 108 : 92);
+  const directoryCount = readUInt32(buffer, directoryCountOffset, "data directory count");
+  if (directoryCount > MAX_DATA_DIRECTORIES) {
+    throw new Error("Invalid PE data directory count");
   }
-  const importsOffset = rvaToOffset(
+  checkedRange(buffer, dataDirectoryOffset, directoryCount * 8, "data directories");
+  if (dataDirectoryOffset + directoryCount * 8 > optionalOffset + optionalSize) {
+    throw new Error("Invalid PE data directories outside optional header");
+  }
+  const sections = parseSections(buffer, optionalOffset + optionalSize, sectionCount);
+  const directory = (index, label) => directoryCount > index
+    ? {
+        rva: readUInt32(buffer, dataDirectoryOffset + index * 8, `${label} RVA`),
+        size: readUInt32(buffer, dataDirectoryOffset + index * 8 + 4, `${label} size`),
+      }
+    : { rva: 0, size: 0 };
+  const regular = directory(1, "import directory");
+  const delayed = directory(13, "delay import directory");
+  const regularImports = parseImportDirectory({
     buffer,
     sections,
-    importRva,
-    importSize,
-    "import directory",
-  );
-  const descriptorLimit = importsOffset + importSize;
-  checkedRange(buffer, importsOffset, importSize, "import directory");
-  const imports = [];
-  for (let index = 0; index < MAX_IMPORTS; index += 1) {
-    const descriptorOffset = importsOffset + index * 20;
-    if (descriptorOffset + 20 > descriptorLimit) {
-      throw new Error("PE import directory has no terminating descriptor");
-    }
-    checkedRange(buffer, descriptorOffset, 20, "import descriptor");
-    const fields = [0, 4, 8, 12, 16].map((delta) =>
-      readUInt32(buffer, descriptorOffset + delta, "import descriptor"));
-    if (fields.every((field) => field === 0)) return [...new Set(imports)].sort();
-    if (fields[3] === 0) throw new Error("Invalid PE import descriptor name");
-    imports.push(readImportName(buffer, sections, fields[3]));
-  }
-  throw new Error("Windows PE import inventory exceeds its limit");
+    directoryRva: regular.rva,
+    directorySize: regular.size,
+    descriptorSize: 20,
+    nameFieldOffset: 12,
+    label: "import directory",
+  });
+  const imageBase = isPe32Plus
+    ? (() => {
+        checkedRange(buffer, optionalOffset + 24, 8, "image base");
+        return buffer.readBigUInt64LE(optionalOffset + 24);
+      })()
+    : BigInt(readUInt32(buffer, optionalOffset + 28, "image base"));
+  const delayedImports = parseImportDirectory({
+    buffer,
+    sections,
+    directoryRva: delayed.rva,
+    directorySize: delayed.size,
+    descriptorSize: 32,
+    nameFieldOffset: 4,
+    label: "delay import directory",
+    validateDescriptor: (fields) => {
+      if ((fields[0] & ~1) !== 0) {
+        throw new Error("Invalid PE delay import attributes");
+      }
+    },
+    resolveNameRva: (value, fields) => {
+      if (fields[0] === 1) return value;
+      const address = BigInt(value);
+      if (address < imageBase || address - imageBase > 0xffff_ffffn) {
+        throw new Error("Invalid PE delay import virtual address");
+      }
+      return Number(address - imageBase);
+    },
+  });
+  return [...new Set([...regularImports, ...delayedImports])].sort();
 }
 
 function assertCanonicalPeFile(filePath) {
