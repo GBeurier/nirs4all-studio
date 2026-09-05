@@ -15,6 +15,11 @@ const CSV_HEADER = [
   "interval_status",
 ] as const;
 
+function csvCell(value: string | number): string {
+  const safeValue = typeof value === "string" && /^[=+\-@]/.test(value) ? `'${value}` : value;
+  return csvEscape(safeValue);
+}
+
 function exactStrings(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
@@ -64,7 +69,7 @@ export function buildArchiveV2PredictionCsv(
   if (conformal) requireConformalAlignment(result, conformal);
 
   const intervalSets = conformal?.interval_block.intervals ?? [null];
-  const rows: string[] = [CSV_HEADER.map(csvEscape).join(",")];
+  const rows: string[] = [CSV_HEADER.map(csvCell).join(",")];
   for (const interval of intervalSets) {
     for (let sampleIndex = 0; sampleIndex < result.sample_ids.length; sampleIndex += 1) {
       for (let targetIndex = 0; targetIndex < result.target_names.length; targetIndex += 1) {
@@ -81,7 +86,7 @@ export function buildArchiveV2PredictionCsv(
             upper,
             status,
           ]
-            .map(csvEscape)
+            .map(csvCell)
             .join(","),
         );
       }
