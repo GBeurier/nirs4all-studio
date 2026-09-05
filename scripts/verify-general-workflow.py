@@ -12,6 +12,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from general_workflow_platform import packaged_python_layout
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--binary", type=Path, required=True)
 parser.add_argument("--backend-root", type=Path, required=True)
@@ -25,6 +27,7 @@ parser.add_argument("--synthetic", action="store_true", help="Generate, verify a
 args = parser.parse_args()
 RUNTIME = args.backend_root.resolve() / "python-runtime"
 PYTHON = RUNTIME / "python"
+PYTHON_HOST, SITE_PACKAGES = packaged_python_layout(RUNTIME)
 BINARY = args.binary.resolve(strict=True)
 args.artifact_root.mkdir(parents=True, exist_ok=True)
 ROOT = Path(tempfile.mkdtemp(prefix="studio-http-general-", dir=args.artifact_root.resolve()))
@@ -40,11 +43,11 @@ with socket.socket() as listener:
 ENV = {k: v for k, v in os.environ.items() if not k.startswith(("PYTHON", "NIRS4ALL_"))}
 ENV.update(
     NIRS4ALL_CONFIG=str(ROOT / "config"),
-    NIRS4ALL_PYTHON_PLUGIN_HOST=str(PYTHON / "bin/python3"),
+    NIRS4ALL_PYTHON_PLUGIN_HOST=str(PYTHON_HOST),
     NIRS4ALL_PYTHON_PLUGIN_HOST_BUNDLED="true",
     NIRS4ALL_PYTHON_PLUGIN_CLOSURE=str(RUNTIME / "PYTHON_PLUGIN_CLOSURE.json"),
     NIRS4ALL_PYTHON_PLUGIN_RUNTIME_ROOT=str(PYTHON),
-    NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES=str(PYTHON / "lib/python3.11/site-packages"),
+    NIRS4ALL_PYTHON_PLUGIN_SITE_PACKAGES=str(SITE_PACKAGES),
     NIRS4ALL_SCIENTIFIC_EXECUTOR="cpython-stdio-v1",
     NIRS4ALL_RUNTIME_MODE="private-qualification",
     N4M_LIBRARY_PATH=str(args.methods_library.resolve(strict=True)),

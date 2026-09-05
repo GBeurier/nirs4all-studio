@@ -49,13 +49,15 @@ pub const SCIENTIFIC_SOURCE_COMMIT: &str = "3567bd4abcaa64443a1946748a579f0803e9
 pub const SCIENTIFIC_CALLABLE_SHA256: &str =
     "7eb38aacfee0964db24d5bf2be577078883018d0f8bd603cda10cddd2a61df19";
 
-const PREFLIGHT_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,socket,sys
+const PREFLIGHT_SCRIPT: &str = r#"import base64,csv,hashlib,importlib.metadata,inspect,io,json,platform,socket,sys
 SCHEMA="nirs4all.studio-scientific-cpython-host.v1"
 def deny_product_network(event,args):
     if event == "socket.bind":
         raise RuntimeError("CPython library host cannot own a listening socket")
     if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}:
         raise RuntimeError("CPython library host cannot spawn child processes")
+if sys.platform == "win32":
+    platform.machine()
 sys.addaudithook(deny_product_network)
 if sys.argv[1]:
     sys.path.insert(0,sys.argv[1])
@@ -105,12 +107,14 @@ except Exception as error:
 print(json.dumps({"schema":SCHEMA,"callable":"nirs4all.studio_scientific_job_v1","callable_path":callable_path,"callable_sha256":callable_sha256,"ready":ready,"network_ownership":"forbidden","implementation":sys.implementation.name,"version":list(sys.version_info[:3]),"isolated":bool(sys.flags.isolated),"network_bind_denied":bind_denied,"distribution":"nirs4all","distribution_version":distribution_version,"distribution_record_sha256":distribution_record_sha256,"distribution_manifest_sha256":distribution_manifest_sha256,"distribution_files_verified":distribution_files_verified,"distribution_error":distribution_error,"selected_wheel_sha256":"5898aa933da2e51ad07438ae5313ade37f1dad2a363411e71e0f0a513c7b4824","source_commit":"3567bd4abcaa64443a1946748a579f0803e91889"},separators=(",",":"),sort_keys=True))
 "#;
 
-const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,socket,sys
+const EXECUTION_SCRIPT: &str = r#"import csv,hashlib,importlib.metadata,inspect,io,json,os,platform,socket,sys
 def deny_product_network(event,args):
     if event == "socket.bind":
         raise RuntimeError("CPython library host cannot own a listening socket")
     if event in {"subprocess.Popen","os.system","os.spawn","os.posix_spawn","os.fork","os.forkpty","os.exec","pty.spawn"}:
         raise RuntimeError("CPython library host cannot spawn child processes")
+if sys.platform == "win32":
+    platform.machine()
 sys.addaudithook(deny_product_network)
 if sys.argv[1]:
     sys.path.insert(0,sys.argv[1])
@@ -2407,6 +2411,19 @@ mod tests {
         .unwrap();
         assert!(EXECUTION_SCRIPT.contains("studio_synthetic_dataset_job_v1 as facade"));
         assert!(EXECUTION_SCRIPT.contains("studio_playground_job_v1 as facade"));
+    }
+
+    #[test]
+    fn windows_platform_probe_precedes_the_subprocess_deny_hook() {
+        for script in [PREFLIGHT_SCRIPT, EXECUTION_SCRIPT] {
+            let platform_guard = script
+                .find("if sys.platform == \"win32\":\n    platform.machine()")
+                .expect("Windows platform preheat must remain explicit");
+            let audit_hook = script
+                .find("sys.addaudithook(deny_product_network)")
+                .expect("the subprocess-denying audit hook must remain installed");
+            assert!(platform_guard < audit_hook);
+        }
     }
 
     use std::{fs, net::TcpListener, time::SystemTime};
