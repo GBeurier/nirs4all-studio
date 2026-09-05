@@ -1,10 +1,10 @@
-//! Fail-closed resolver from Studio's saved identities to the path-free
-//! scientific-library request.
+//! Fail-closed resolvers from Studio identities to scientific-library requests.
 //!
 //! This module owns no numerical or tabular parsing. Dataset assembly is
 //! delegated to the selected `nirs4all-io` role-tagged facade; this Rust layer
-//! only confines catalogue/pipeline reads and selects the deliberately narrow
-//! V1 slice which the bounded `CPython` callable accepts.
+//! confines catalogue/pipeline reads. `resolve` preserves the narrow path-free
+//! portable V1 contract; `resolve_general` delegates document normalization to
+//! the attested library adapter and emits the general V2 callable contract.
 
 use std::{
     fs::{self},
@@ -17,6 +17,8 @@ use nirs4all_io::{core::materialize::Matrix, RoleTaggedReadLimits};
 use serde_json::{json, Map, Value};
 
 use crate::job_http::ScientificSubmissionPreflight;
+
+mod general;
 
 const DATASET_LINKS_FILE: &str = "dataset_links.json";
 const MAX_DATASET_LINKS_BYTES: u64 = 2 * 1024 * 1024;
@@ -59,6 +61,22 @@ impl ScientificRequestResolver {
         Self {
             config_dir: config_dir.into(),
         }
+    }
+
+    /// Resolve general editor pipelines through the attested document adapter.
+    ///
+    /// Dataset loading and all scientific execution remain library-owned. The
+    /// original portable resolver is a separate, unchanged contract.
+    ///
+    /// # Errors
+    /// Rejects inconsistent identities, unsafe paths, invalid adapter output,
+    /// and execution options whose general-library translation is not defined.
+    pub fn resolve_general(
+        &self,
+        preflight: &ScientificSubmissionPreflight,
+        adapt: impl Fn(&str, &Value) -> Result<Value, String>,
+    ) -> Result<Value, ScientificResolveError> {
+        general::resolve(self, preflight, adapt)
     }
 
     /// Resolve all saved identities and materialize the bounded, path-free
@@ -421,6 +439,14 @@ struct ResolvedPipeline {
 }
 
 fn read_pipeline(workspace: &Path, pipeline_id: &str) -> Result<Value, ScientificResolveError> {
+    read_pipeline_with_limit(workspace, pipeline_id, MAX_PIPELINE_BYTES)
+}
+
+fn read_pipeline_with_limit(
+    workspace: &Path,
+    pipeline_id: &str,
+    limit: u64,
+) -> Result<Value, ScientificResolveError> {
     let workspace =
         canonical_directory(workspace).map_err(|()| ScientificResolveError::PipelineUnsafe)?;
     let pipelines = workspace.join("pipelines");
@@ -438,7 +464,7 @@ fn read_pipeline(workspace: &Path, pipeline_id: &str) -> Result<Value, Scientifi
     read_confined_json(
         &pipelines.join(format!("{pipeline_id}.json")),
         &pipelines,
-        MAX_PIPELINE_BYTES,
+        limit,
         ScientificResolveError::PipelineUnsafe,
         ScientificResolveError::PipelineTooLarge,
         ScientificResolveError::PipelineInvalid,
@@ -736,7 +762,7 @@ mod tests {
         ))
     }
 
-    fn submission(workspace: &Path, backend: &str) -> ScientificSubmissionPreflight {
+    pub(super) fn submission(workspace: &Path, backend: &str) -> ScientificSubmissionPreflight {
         ScientificSubmissionPreflight {
             job_id: "run_native_resolver_test".into(),
             workspace_id: "workspace-a".into(),
@@ -784,7 +810,7 @@ mod tests {
         }
     }
 
-    fn fixture(name: &str) -> (PathBuf, PathBuf, PathBuf) {
+    pub(super) fn fixture(name: &str) -> (PathBuf, PathBuf, PathBuf) {
         let root = root(name);
         let config = root.join("config");
         let workspace = root.join("workspace");
