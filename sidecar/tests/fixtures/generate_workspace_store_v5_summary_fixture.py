@@ -23,7 +23,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 FIXTURE_DIR = Path(__file__).resolve().parent
 STUDIO_ROOT = FIXTURE_DIR.parents[2]
-WORKSPACE_ROOT = STUDIO_ROOT.parents[1]
+WORKSPACE_ROOT = STUDIO_ROOT.parent
 NIRS4ALL_ROOT = WORKSPACE_ROOT / "nirs4all"
 
 for source_root in (STUDIO_ROOT, NIRS4ALL_ROOT):

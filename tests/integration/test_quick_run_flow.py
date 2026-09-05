@@ -208,14 +208,23 @@ class TestQuickRunPollingCompletion:
 
         This test requires nirs4all to be installed and may take longer.
         """
+        from api.lazy_imports import get_ml_status, is_ml_ready
+
+        # The diagnostic server deliberately loads ML in the background.
+        # A real scientific gate must wait for that startup, not race imports
+        # or reinterpret an unavailable dataset/backend as a successful skip.
+        deadline = time.monotonic() + 60
+        while not is_ml_ready() and time.monotonic() < deadline:
+            assert get_ml_status()["ml_error"] is None, get_ml_status()
+            time.sleep(0.05)
+        assert is_ml_ready(), get_ml_status()
         response = workspace_client.post("/api/runs/quick", json={
             "pipeline_id": "test_pls",
             "dataset_id": "test_dataset",
             "cv_folds": 3,
         })
 
-        if response.status_code not in (200, 201):
-            pytest.skip(f"Quick run creation failed: {response.json()}")
+        assert response.status_code in (200, 201), response.json()
 
         run_id = response.json()["id"]
 
@@ -223,15 +232,7 @@ class TestQuickRunPollingCompletion:
         tracker = RunProgressTracker(workspace_client, run_id)
         status = tracker.poll_until_complete(timeout=120.0, poll_interval=1.0)
 
-        # On CI the run may fail if nirs4all version is incompatible
-        if status == "failed":
-            final_run = tracker.final_result
-            pipeline = final_run["datasets"][0]["pipelines"][0]
-            error = pipeline.get("error_message") or ""
-            if "nirs4all" in error.lower() or "pipeline build" in error.lower() or "dataset" in error.lower():
-                pytest.skip(f"Run failed due to nirs4all environment issue: {error}")
-
-        assert status == "completed", f"Run did not complete: {status}"
+        assert status == "completed", f"Run did not complete: {status}; {tracker.final_result}"
 
         # Verify metrics. Missing metrics stay None (no fabricated sentinels,
         # RUN-06) — the contract is that the primary score and its metric name

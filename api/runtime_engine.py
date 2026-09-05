@@ -1,13 +1,12 @@
-"""Runtime ML-engine resolution + outcome recording for Studio run routing.
+"""ML-engine resolution and outcome recording for Studio's diagnostic backend.
 
-Studio launches training through :func:`nirs4all.run` but historically never
-*selected* or *recorded* which ML engine produced a result. This module threads
-the engine selector (``legacy`` | ``dag-ml``) into the run call and records the
-engine that **actually ran** — including nirs4all's transparent
-``dag-ml`` → ``legacy`` fallback — plus any structured :class:`RtError`
-diagnostics, so the run read models can show "ran ``<engine>`` (because
-``<cause>``)". Blockers ``B-017`` (V1) / ``B-018``; see
-``SW8_RT_STUDIO_IMPL_spec.md`` §4.A.
+The installed library owns the default and its native/dag-ml preselection.
+Studio forwards explicit selectors and records the engine that actually ran,
+preferring structured runtime evidence. Native is advertised when supported;
+the narrow dual oracle is not a general Studio execution option. Historical
+fallback warnings are recognized only when reading older diagnostic results.
+This module neither owns the packaged Rust product routing nor authorizes an
+implicit Python HTTP or legacy fallback there.
 
 ``engine`` is the **ML engine** and is orthogonal to ``execution_backend`` (the
 environment: ``local-python`` | ``cluster`` | ``wasm-local``); the two are never
@@ -68,7 +67,10 @@ def resolve_engine(requested: str | None) -> str:
         if isinstance(requested, str) and requested.strip():
             return requested
         return _LEGACY
-    return _lib_resolve(requested)
+    # Studio forms historically treat a blank selector as the library default,
+    # consistently with engine_run_kwargs below. The library itself is stricter.
+    normalized = requested.strip() or None if isinstance(requested, str) else requested
+    return _lib_resolve(normalized)
 
 
 def supports_explicit_run_engine() -> bool:
@@ -89,9 +91,19 @@ def supports_explicit_run_engine() -> bool:
 def runtime_engine_capabilities() -> dict[str, Any]:
     """Expose Studio's safe ML-engine selection surface for the active runtime."""
     supports_explicit = supports_explicit_run_engine()
+    supported_engines: list[str] = []
+    if supports_explicit:
+        try:
+            from nirs4all.pipeline.engine import ENGINES
+        except ImportError:
+            # Older diagnostic libraries exposed only these two selectors.
+            supported_engines = ["legacy", "dag-ml"]
+        else:
+            # The narrow dual oracle is not a general Studio execution mode.
+            supported_engines = [engine for engine in ENGINES if engine in {"legacy", "dag-ml", "native"}]
     return {
         "supports_explicit_run_engine": supports_explicit,
-        "supported_engines": ["legacy", "dag-ml"] if supports_explicit else [],
+        "supported_engines": supported_engines,
         "default_engine": resolve_engine(None),
         "reason": None
         if supports_explicit

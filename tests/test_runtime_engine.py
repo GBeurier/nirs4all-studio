@@ -17,8 +17,11 @@ from api.runtime_errors import RtError, RtUnsupportedError
 
 
 def test_resolve_engine_delegates_default_to_nirs4all():
-    assert runtime_engine.resolve_engine(None) == "dag-ml"
-    assert runtime_engine.resolve_engine("") == "dag-ml"
+    from nirs4all.pipeline.engine import resolve_engine
+
+    assert runtime_engine.resolve_engine(None) == resolve_engine(None)
+    assert runtime_engine.resolve_engine("") == resolve_engine(None)
+    assert runtime_engine.resolve_engine("   ") == resolve_engine(None)
 
 
 def test_resolve_engine_passes_through_explicit():
@@ -55,8 +58,8 @@ def test_runtime_engine_capabilities_reports_explicit_support(monkeypatch):
     capabilities = runtime_engine.runtime_engine_capabilities()
 
     assert capabilities["supports_explicit_run_engine"] is True
-    assert capabilities["supported_engines"] == ["legacy", "dag-ml"]
-    assert capabilities["default_engine"] == "legacy"
+    assert capabilities["supported_engines"] == ["legacy", "dag-ml", "native"]
+    assert capabilities["default_engine"] == runtime_engine.resolve_engine(None)
 
 
 def test_observe_engine_no_fallback_records_resolved_engine():
@@ -72,7 +75,7 @@ def test_observe_engine_records_default_engine_for_none_request():
     with runtime_engine.observe_engine(None) as observation:
         pass
     record = observation.finalize(result=None)
-    assert record["engine"] == "dag-ml"
+    assert record["engine"] == runtime_engine.resolve_engine(None)
     assert record["engine_requested"] is None
     assert record["engine_diagnostics"] is None
 

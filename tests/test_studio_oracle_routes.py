@@ -60,9 +60,11 @@ def _progress(_progress: float, _message: str = "") -> bool:
 
 
 def _install_fake_nirs4all(monkeypatch, calls: list[dict]) -> None:
-    def fake_run(**kwargs):  # noqa: ANN003
+    def fake_run(*, engine=None, **kwargs):  # noqa: ANN003
+        if engine is not None:
+            kwargs["engine"] = engine
         calls.append(dict(kwargs))
-        return _RuntimeResult(engine=kwargs.get("engine") or "legacy")
+        return _RuntimeResult(engine=engine or "native")
 
     monkeypatch.setitem(sys.modules, "nirs4all", SimpleNamespace(run=fake_run))
 
@@ -217,9 +219,12 @@ def test_pipeline_execute_task_uses_default_engine_contract(monkeypatch, tmp_pat
     payload = pipelines_api._run_pipeline_task(job, _progress)
 
     assert payload["success"] is True
+    # No explicit selector: the current library owns preselection and its
+    # results destination. This route explicitly disables legacy workspace
+    # arguments; do not force the obsolete dag-ml-only results_path either.
     assert "workspace_path" not in calls[0]
-    assert calls[0]["results_path"] == str(tmp_path / "nirs4all_results")
-    assert calls[0]["allow_fallback"] is False
+    assert "results_path" not in calls[0]
+    assert calls[0].get("allow_fallback", False) is False
     assert "engine" not in calls[0]
 
 
