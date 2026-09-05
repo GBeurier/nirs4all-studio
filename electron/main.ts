@@ -6,6 +6,8 @@ const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = electron;
 import path from "node:path";
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
+import type { BrowserWindow as BrowserWindowInstance } from "electron";
+import type { ErrorEvent as SentryErrorEvent } from "@sentry/electron/main";
 import { EnvManager } from "./env-manager";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { NativeSidecarManager } from "./native-sidecar-manager";
@@ -41,10 +43,7 @@ function syncSentryEnvironment(consentStatus: TelemetryConsentStatus): string {
   return dsn;
 }
 
-function sanitizeSentryEvent(event: {
-  user?: unknown;
-  request?: Record<string, unknown>;
-}): typeof event {
+function sanitizeSentryEvent(event: SentryErrorEvent): SentryErrorEvent {
   delete event.user;
 
   if (event.request && typeof event.request === "object") {
@@ -197,8 +196,8 @@ async function applyPythonRuntimeChange<T extends { success: boolean }>(
   return result;
 }
 
-let mainWindow: BrowserWindow | null = null;
-let splashWindow: BrowserWindow | null = null;
+let mainWindow: BrowserWindowInstance | null = null;
+let splashWindow: BrowserWindowInstance | null = null;
 
 // The desktop app is single-window today. Prevent a second Electron process
 // from racing the first one during startup and trying to launch another backend.
@@ -245,7 +244,7 @@ if (
   console.log("[main] --offline flag detected; forcing offline mode");
 }
 
-function createSplashWindow(): BrowserWindow {
+function createSplashWindow(): BrowserWindowInstance {
   const splash = new BrowserWindow({
     width: 460,
     height: 420,
