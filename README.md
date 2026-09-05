@@ -340,9 +340,15 @@ served natively for `/api/workspaces/{workspace_id}/runs` when its query is
 empty or contains only one `source=unified|manifests|parquet` and one
 `refresh=true|false` value (in either order); duplicate or unknown query
 parameters are not native-qualified and therefore refuse in the normal desktop
-session. Workspace linking, pruning, scan mutations, and scientific surfaces
-not listed above are likewise unavailable until migrated (or while the explicit
-R2 diagnostic owner is selected).
+session. Workspace creation/selection/reload and the current-workspace document
+are now native, as are the dataset catalogue (link/list/edit/unlink) and saved
+pipeline CRUD. Their existing JSON documents survive upgrades; unlinking never
+deletes dataset files. Newly linked datasets remain explicitly `unchecked` until
+the library validates their contents. Editor branches, generators and tuning
+fields are preserved without reducing them to the PLS execution profile.
+Pruning, scientific parsing/import previews, and scientific surfaces not listed
+above remain unavailable until migrated (or while the explicit R2 diagnostic
+owner is selected).
 
 The separate native researcher route `POST /api/training/native-archive-v2`
 does not invoke CPython. It resolves one persisted IO dataset and one selected

@@ -675,6 +675,71 @@ impl AppSettingsStore {
             .collect())
     }
 
+    /// Register an ordinary user-selected workspace without changing any existing
+    /// content-addressed conversion identity. No scientific Store is created here.
+    pub(crate) fn register_workspace(
+        &self,
+        path: &Path,
+        name: &str,
+        timestamp: &str,
+        activate: bool,
+    ) -> Result<Value, String> {
+        let canonical = path.canonicalize().map_err(|error| error.to_string())?;
+        if !canonical.is_dir() {
+            return Err("Workspace path is not a directory".into());
+        }
+        let canonical = canonical.to_str().ok_or("Workspace path is not UTF-8")?;
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut settings = self.load()?;
+        let workspaces = settings
+            .as_object_mut()
+            .ok_or("Invalid app settings")?
+            .entry("linked_workspaces")
+            .or_insert_with(|| json!([]))
+            .as_array_mut()
+            .ok_or("Invalid workspace catalogue")?;
+        let index = if let Some(index) = workspaces
+            .iter()
+            .position(|entry| entry["path"] == canonical)
+        {
+            verified_linked_workspace_access(
+                workspaces[index]
+                    .as_object()
+                    .ok_or("Invalid workspace record")?,
+            )?;
+            index
+        } else {
+            if workspaces.len() >= 256 {
+                return Err("Workspace catalogue limit reached (256)".into());
+            }
+            let id = converted_workspace_id(canonical, timestamp, workspaces);
+            workspaces.push(json!({"id": id, "path": canonical, "name": name,
+                "linked_at": timestamp, "is_active": false, "discovered": {}}));
+            workspaces.len() - 1
+        };
+        if activate {
+            for (position, entry) in workspaces.iter_mut().enumerate() {
+                entry
+                    .as_object_mut()
+                    .ok_or("Invalid workspace record")?
+                    .insert("is_active".into(), json!(position == index));
+            }
+        }
+        let entry = workspaces[index]
+            .as_object()
+            .ok_or("Invalid workspace record")?;
+        let id = entry
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or("Workspace ID is missing")?;
+        let response = linked_workspace_response(entry, id);
+        self.save(&settings)?;
+        Ok(response)
+    }
+
     /// Mark a persisted linked workspace as active without loading its data or
     /// invoking a Python workspace manager.  This is intentionally limited to
     /// catalogue state; scanning and scientific-store access stay outside this
