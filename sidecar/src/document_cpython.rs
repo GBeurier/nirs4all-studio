@@ -10,6 +10,7 @@ pub const RESPONSE_SCHEMA: &str = "nirs4all.studio-document-response.v1";
 pub const MAX_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_BATCH_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_INSPECTION_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_PREDICTION_BYTES: usize = 32 * 1024 * 1024;
 const MANIFEST: &str = include_str!("../contracts/studio_document_adapters_v1.json");
 const PACKAGE: &str = "studio_document_adapters";
 
@@ -20,6 +21,12 @@ pub fn route(
     path: &str,
     body: &[u8],
 ) -> Option<crate::HttpResponse> {
+    if matches!(
+        (method, path),
+        ("GET", "/api/models/available") | ("POST", "/api/predict")
+    ) {
+        return Some(route_prediction(settings, host, method, body));
+    }
     if method != "POST" {
         return None;
     }
@@ -67,10 +74,88 @@ pub fn route(
     }
 }
 
+fn route_prediction(
+    settings: &crate::settings::AppSettingsStore,
+    host: Option<&crate::scientific_cpython::CpythonScientificJobExecutor>,
+    method: &str,
+    body: &[u8],
+) -> crate::HttpResponse {
+    let error = |status, detail: String| {
+        crate::HttpResponse::json(status, json!({"detail":detail}).to_string())
+    };
+    let Some(host) = host else {
+        return error(503, "Attested scientific library host unavailable".into());
+    };
+    let workspace = match crate::workspace_documents::active_path(settings) {
+        Ok(path) => path,
+        Err((status, detail)) => return error(status, detail),
+    };
+    let adapt = |operation: &str, payload: &Value| host.adapt_document(operation, payload);
+    let (operation, payload) = if method == "GET" {
+        (
+            "predictions.catalogue",
+            crate::general_prediction::catalogue_payload(&workspace),
+        )
+    } else {
+        if body.len() > MAX_PREDICTION_BYTES {
+            return error(413, "Prediction request exceeds 32 MiB".into());
+        }
+        let request = match serde_json::from_slice::<Value>(body) {
+            Ok(value) if value.is_object() => value,
+            _ => return error(400, "Expected a prediction request object".into()),
+        };
+        (
+            "predictions.run",
+            crate::general_prediction::prediction_payload(
+                &workspace,
+                &request,
+                &|id| crate::workspace_documents::linked_dataset(settings, id),
+                &adapt,
+            ),
+        )
+    };
+    match payload.and_then(|payload| adapt(operation, &payload)) {
+        Ok(result) => crate::HttpResponse::json(200, result.to_string()),
+        Err(detail) => error(400, detail),
+    }
+}
+
+pub fn route_prediction_upload(
+    settings: &crate::settings::AppSettingsStore,
+    host: Option<&crate::scientific_cpython::CpythonScientificJobExecutor>,
+    content_type: &str,
+    body: &[u8],
+) -> crate::HttpResponse {
+    let error = |status, detail: String| {
+        crate::HttpResponse::json(status, json!({"detail":detail}).to_string())
+    };
+    let Some(host) = host else {
+        return error(503, "Attested scientific library host unavailable".into());
+    };
+    let workspace = match crate::workspace_documents::active_path(settings) {
+        Ok(path) => path,
+        Err((status, detail)) => return error(status, detail),
+    };
+    let upload = match crate::prediction_upload::parse(content_type, body) {
+        Ok(upload) => upload,
+        Err(detail) => return error(400, detail),
+    };
+    let result =
+        crate::general_prediction::file_payload(&workspace, &upload.fields, upload.file.path())
+            .and_then(|payload| host.adapt_document("predictions.file", &payload));
+    // The upload is held until the synchronous library returns, then removed
+    // on either success or failure by the private temporary-file owner.
+    match result {
+        Ok(value) => crate::HttpResponse::json(200, value.to_string()),
+        Err(detail) => error(400, detail),
+    }
+}
+
 pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
     if !matches!(
         operation,
         "pipeline.normalize"
+            | "config.compare"
             | "pipeline.import"
             | "pipeline.render"
             | "dataset.configure"
@@ -78,6 +163,9 @@ pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
             | "dataset.preview"
             | "dataset.stats"
             | "dataset.inspect_format"
+            | "predictions.catalogue"
+            | "predictions.run"
+            | "predictions.file"
     ) {
         return Err("Unsupported document operation".into());
     }

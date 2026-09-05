@@ -18,6 +18,7 @@ parser.add_argument("--backend-root", type=Path, required=True)
 parser.add_argument("--artifact-root", type=Path, required=True)
 parser.add_argument("--methods-library", type=Path, required=True)
 parser.add_argument("--wizard-csv", action="store_true")
+parser.add_argument("--prediction", action="store_true", help="Also replay a captured model over real HTTP")
 args = parser.parse_args()
 RUNTIME = args.backend_root.resolve() / "python-runtime"
 PYTHON = RUNTIME / "python"
@@ -47,9 +48,10 @@ ENV.update(
 )
 
 
-def call(path, payload=None):
+def call(path, payload=None, *, headers=None):
     started = time.monotonic()
-    request = urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", data=None if payload is None else json.dumps(payload).encode(), headers={} if payload is None else {"Content-Type": "application/json"})
+    data = payload if isinstance(payload, bytes) else None if payload is None else json.dumps(payload).encode()
+    request = urllib.request.Request(f"http://127.0.0.1:{PORT}{path}", data=data, headers=headers or ({} if payload is None else {"Content-Type": "application/json"}))
     try:
         with urllib.request.urlopen(request, timeout=120) as response:
             value = json.load(response)
@@ -144,6 +146,30 @@ with (ROOT / "sidecar.log").open("w") as log:
         assert chains, summary
         assert any(chain.get("avg_val_score") is not None for chain in chains), summary
         assert any(chain.get("model_name") == "Ridge" and chain.get("fold_count") == 3 for chain in chains), summary
+        if args.prediction:
+            catalogue = call("/api/models/available")
+            model = next((model for model in catalogue["models"] if model["source"] == "chain" and model.get("has_refit")), None)
+            assert model is not None, catalogue
+            spectra = [[(row * 3 + column) / 10 for column in range(300)] for row in range(150)]
+            predictions = call("/api/predict", {"model_id": model["id"], "model_source": "chain", "data_source": "array", "spectra": spectra, "engine": "dag-ml", "allow_fallback": False})
+            assert predictions["num_samples"] == 150
+            assert len(predictions["sample_ids"]) == 150
+            assert predictions["runtime"]["engine"] == "dag-ml"
+            assert len(predictions["prediction_matrix"]) == 150
+            assert max(abs(value - (row * 0.2 + 1.1)) for row, value in enumerate(predictions["predictions"])) < 0.01
+            csv_data = (DATASET / "Xcal.csv").read_bytes()
+            for has_header in [True, False]:
+                fields = {"model_id": model["id"], "model_source": "chain", "engine": "dag-ml", "allow_fallback": "false", "has_header": str(has_header).lower()}
+                body = b"".join(f'--studio-proof\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode() for key, value in fields.items())
+                body += b'--studio-proof\r\nContent-Disposition: form-data; name="file"; filename="spectra.csv"\r\nContent-Type: text/csv\r\n\r\n'
+                body += (csv_data if has_header else csv_data.split(b"\n", 1)[1]) + b"\r\n--studio-proof--\r\n"
+                uploaded = call("/api/predict/file", body, headers={"Content-Type": "multipart/form-data; boundary=studio-proof"})
+                assert uploaded["num_samples"] == 150, uploaded
+                assert uploaded["runtime"]["engine"] == "dag-ml", uploaded
+                assert len(uploaded["sample_ids"]) == 150
+                assert uploaded["prediction_matrix"] == predictions["prediction_matrix"], "Upload changed rows or scientific predictions"
+                assert uploaded["actual_values"] is None, "Unlabeled inference invented targets"
+            call("/api/workspaces/" + workspace_id + "/results/summary")
         call("/api/workspace")
         print("PASS", ROOT, flush=True)
     finally:

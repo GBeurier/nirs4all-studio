@@ -113,8 +113,8 @@ def deny_product_network(event,args):
 sys.addaudithook(deny_product_network)
 if sys.argv[1]:
     sys.path.insert(0,sys.argv[1])
-raw=sys.stdin.buffer.read(8388609)
-if len(raw)>8388608:
+raw=sys.stdin.buffer.read(33554433)
+if len(raw)>33554432:
     raise RuntimeError("scientific request exceeds stdin budget")
 request=json.loads(raw)
 distribution=importlib.metadata.distribution("nirs4all")
@@ -143,7 +143,7 @@ if actual_path != sys.argv[2] or hashlib.sha256(open(actual_path,"rb").read()).h
 import contextlib
 with contextlib.redirect_stdout(sys.stderr):
     if request.get("schema") == "nirs4all.studio-document-request.v1":
-        document_limit=8388608 if request.get("operation") == "documents.batch" else 2097152
+        document_limit=33554432 if request.get("operation") in {"predictions.run","predictions.file"} else (8388608 if request.get("operation") == "documents.batch" else 2097152)
         if len(raw)>document_limit:
             raise RuntimeError("document request exceeds stdin budget")
         from studio_document_adapters.api.library_documents import adapt_document
@@ -152,7 +152,7 @@ with contextlib.redirect_stdout(sys.stderr):
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":True,"result":result,"error":None}
         except Exception as error:
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":False,"result":None,"error":str(error).encode("utf-8")[:4000].decode("utf-8",errors="ignore")}
-        response_limit=33554432 if request.get("operation") in {"dataset.preview","dataset.stats","dataset.inspect_format"} else document_limit
+        response_limit=33554432 if request.get("operation") in {"dataset.preview","dataset.stats","dataset.inspect_format","predictions.catalogue","predictions.run","predictions.file"} else document_limit
     elif request.get("schema") == "nirs4all.studio-scientific-job.v2":
         general=getattr(nirs4all,"studio_scientific_job_v2",None)
         if not callable(general):
@@ -293,7 +293,11 @@ impl CpythonScientificJobExecutor {
             Some(runtime),
             &bytes,
             &AtomicBool::new(false),
-            SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
+            if matches!(operation, "predictions.run" | "predictions.file") {
+                SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT
+            } else {
+                SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT
+            },
         )
         .map_err(|error| error.reason().to_owned())?;
         crate::document_cpython::verify(&runtime.site_packages)?;
@@ -1197,14 +1201,26 @@ fn run_scientific_process(
 fn request_limits(request: &Value) -> (usize, usize) {
     match request.get("schema").and_then(Value::as_str) {
         Some(crate::document_cpython::REQUEST_SCHEMA) => {
-            let limit = if request["operation"] == "documents.batch" {
+            let limit = if matches!(
+                request["operation"].as_str(),
+                Some("predictions.run" | "predictions.file")
+            ) {
+                crate::document_cpython::MAX_PREDICTION_BYTES
+            } else if request["operation"] == "documents.batch" {
                 crate::document_cpython::MAX_BATCH_BYTES
             } else {
                 crate::document_cpython::MAX_DOCUMENT_BYTES
             };
             let output_limit = if matches!(
                 request["operation"].as_str(),
-                Some("dataset.preview" | "dataset.stats" | "dataset.inspect_format")
+                Some(
+                    "dataset.preview"
+                        | "dataset.stats"
+                        | "dataset.inspect_format"
+                        | "predictions.catalogue"
+                        | "predictions.run"
+                        | "predictions.file"
+                )
             ) {
                 crate::document_cpython::MAX_INSPECTION_BYTES
             } else {
@@ -1933,6 +1949,9 @@ mod tests {
             ("documents.batch", (8 * 1024 * 1024, 8 * 1024 * 1024)),
             ("dataset.preview", (2 * 1024 * 1024, 32 * 1024 * 1024)),
             ("dataset.stats", (2 * 1024 * 1024, 32 * 1024 * 1024)),
+            ("predictions.catalogue", (2 * 1024 * 1024, 32 * 1024 * 1024)),
+            ("predictions.run", (32 * 1024 * 1024, 32 * 1024 * 1024)),
+            ("predictions.file", (32 * 1024 * 1024, 32 * 1024 * 1024)),
         ] {
             assert_eq!(
                 request_limits(

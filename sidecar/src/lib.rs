@@ -26,14 +26,20 @@ use serde_json::{json, Value};
 
 mod archive_v2_prediction;
 pub mod conformal_store;
+mod dataset_inspection;
+mod dataset_inspection_http;
 mod document_cpython;
 pub mod execution_job_records;
+mod general_prediction;
 mod http_access;
 pub mod job_http;
 pub mod job_lifecycle;
 pub mod legacy_conversion;
 mod matrix_limits;
 mod native_archive_training;
+mod prediction_upload;
+mod recommended_config;
+mod recommended_config_http;
 mod results_summary;
 pub mod run_detail;
 pub mod run_detail_cpython;
@@ -3972,13 +3978,30 @@ fn route_documents_without_global_lock(
     state: &Arc<Mutex<SidecarState>>,
     request: &HttpRequest,
 ) -> Option<HttpResponse> {
-    if request.query.is_some() || !workspace_documents::owns_path(&request.path) {
+    if request.query.is_some()
+        || (!workspace_documents::owns_path(&request.path)
+            && !matches!(
+                request.path.as_str(),
+                "/api/models/available" | "/api/predict" | "/api/predict/file"
+            ))
+    {
         return None;
     }
     let (settings, host) = {
         let state = state.lock().expect("sidecar state mutex poisoned");
         (state.app_settings.clone(), state.scientific_host.clone())
     };
+    if request.method == "POST" && request.path == "/api/predict/file" {
+        return Some(document_cpython::route_prediction_upload(
+            &settings,
+            host.as_deref(),
+            request
+                .headers
+                .get("content-type")
+                .map_or("", String::as_str),
+            &request.body,
+        ));
+    }
     document_cpython::route(
         &settings,
         host.as_deref(),
@@ -4093,6 +4116,12 @@ fn handle_connection_with_access(
                     ),
                     accepted_origin.as_deref(),
                 );
+            }
+            if let Some(response) = recommended_config_http::route(state, &request) {
+                return write_access_response(&mut stream, response, accepted_origin.as_deref());
+            }
+            if let Some(response) = dataset_inspection_http::route(state, &request) {
+                return write_access_response(&mut stream, response, accepted_origin.as_deref());
             }
             if let Some(response) = route_scientific_without_global_lock(state, &request) {
                 return write_access_response(&mut stream, response, accepted_origin.as_deref());
@@ -4306,9 +4335,22 @@ fn read_http_request_with_access(
         }
         let mut request = parse_http_request(&bytes[..header_end])?;
         let content_length = request_content_length(&request.headers)?;
+        let prediction_upload = request.method == "POST" && request.path == "/api/predict/file";
         access
-            .validate(&request.headers, content_length > 0)
+            .validate(&request.headers, content_length > 0 && !prediction_upload)
             .map_err(|(status, code)| RequestReadError::AccessDenied { status, code })?;
+        if prediction_upload {
+            prediction_upload::boundary(
+                request
+                    .headers
+                    .get("content-type")
+                    .map_or("", String::as_str),
+            )
+            .map_err(|_| RequestReadError::AccessDenied {
+                status: 415,
+                code: "multipart_content_type_required",
+            })?;
+        }
         if content_length > http_body_limit(&request.path) {
             return Err(RequestReadError::BodyTooLarge { path: request.path });
         }
@@ -4344,6 +4386,7 @@ fn read_http_request_with_access(
 
 fn http_body_limit(path: &str) -> usize {
     match path {
+        "/api/predict" | "/api/predict/file" => matrix_limits::MAX_PREDICTION_BODY_BYTES,
         ARCHIVE_V2_PREDICTION_ROUTE
         | ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE
         | ARCHIVE_V2_CONFORMAL_PROJECTION_ROUTE => archive_v2_prediction::MAX_PREDICTION_BODY_BYTES,
@@ -7288,6 +7331,59 @@ mod tests {
     }
 
     #[test]
+    fn multipart_transport_exception_is_exact_and_origin_checks_precede_upload() {
+        for (path, origin, content_type, expected) in [
+            (
+                "/api/predict/file",
+                "http://localhost:5173",
+                "multipart/form-data; boundary=test",
+                503,
+            ),
+            (
+                "/api/predict/file",
+                "https://untrusted.invalid",
+                "multipart/form-data; boundary=test",
+                403,
+            ),
+            (
+                "/api/predict",
+                "http://localhost:5173",
+                "multipart/form-data; boundary=test",
+                415,
+            ),
+            (
+                "/api/predict/file",
+                "http://localhost:5173",
+                "text/plain",
+                415,
+            ),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let state = Arc::new(Mutex::new(SidecarState::default()));
+            let server = thread::spawn(move || {
+                let (stream, _) = listener.accept().unwrap();
+                handle_connection_with_limits(stream, &state, ServerLimits::default()).unwrap();
+            });
+            let mut client = TcpStream::connect(address).unwrap();
+            let body = "--test--\r\n";
+            write!(client,"POST {path} HTTP/1.1\r\nHost: localhost\r\nOrigin: {origin}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\r\n{body}",body.len()).unwrap();
+            let mut response = String::new();
+            let read = client.read_to_string(&mut response);
+            assert!(
+                read.is_ok()
+                    || read.is_err_and(|error| error.kind() == std::io::ErrorKind::ConnectionReset),
+                "unexpected response read failure"
+            );
+            server.join().unwrap();
+            assert!(
+                response.starts_with(&format!("HTTP/1.1 {expected}")),
+                "{response}"
+            );
+        }
+    }
+
+    #[test]
     fn parser_handles_a_live_fragmented_request_and_times_out_slow_headers() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
@@ -7392,15 +7488,15 @@ mod tests {
     }
 
     #[test]
-    fn archive_v2_route_preserves_legacy_predict_refusals_byte_for_byte() {
+    fn general_prediction_requires_its_attested_host_and_upload_requires_http_form() {
         let mut state = SidecarState::default();
         let predict = route_request_with_body(&mut state, "POST", "/api/predict", b"{}");
         let predict_file = route_request_with_body(&mut state, "POST", "/api/predict/file", b"{}");
 
-        assert_eq!(predict.status, 404);
+        assert_eq!(predict.status, 503);
         assert_eq!(
-            predict.body,
-            "{\"error\":{\"code\":\"route_not_found\",\"message\":\"This native sidecar does not serve this Studio route\",\"retryable\":false,\"details\":{\"method\":\"POST\",\"path\":\"/api/predict\"}}}"
+            serde_json::from_str::<Value>(&predict.body).unwrap()["detail"],
+            "Attested scientific library host unavailable"
         );
         assert_eq!(predict_file.status, 404);
         assert_eq!(

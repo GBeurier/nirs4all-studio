@@ -8,6 +8,9 @@ const SCHEMA = "nirs4all.studio-document-adapters.v1";
 const SOURCE_FILES = Object.freeze([
   "api/library_documents.py",
   "api/library_dataset_inspection.py",
+  "api/library_predictions.py",
+  "api/library_runtime_config.py",
+  "api/shared/json_safe.py",
   "api/pipeline_canonical.py",
   "api/pipeline_canonical_branch_merge.py",
   "api/pipeline_canonical_generators.py",
@@ -67,7 +70,7 @@ function buildManifest(root) {
     schema: SCHEMA,
     package: PACKAGE,
     callable: `${PACKAGE}.api.library_documents.adapt_document`,
-    ownership: "pure-document-translation-only",
+    ownership: "bounded-library-adapters-no-http-or-scheduler",
     files: [...payloads].sort(([left], [right]) => left.localeCompare(right, "en")).map(([name, bytes]) => ({
       path: name, size: bytes.length, sha256: digest(bytes),
     })),
