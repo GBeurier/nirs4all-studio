@@ -352,6 +352,14 @@ inventory drift and check exact repository trees, crate trees, package versions,
 and registry checksums. These directories are immutable release evidence only;
 Cargo resolves the published train (DagML 0.3.25, Data 0.2.11, IO 0.1.18,
 Methods/n4m 0.1.4, and Core 0.3.29) from the registry.
+Run the Core gate against the qualified ABI 2.5 Methods library:
+
+```sh
+N4M_LIBRARY_PATH=/absolute/path/to/libn4m sidecar/scripts/test-vendored-core.sh
+```
+
+Both source-test scripts use an ephemeral Cargo target directory and leave no
+generated build tree in the repo.
 
 App settings are stored in `app_settings.json` using the same precedence as the
 legacy application: `NIRS4ALL_CONFIG`, portable-root configuration, the
