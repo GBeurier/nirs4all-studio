@@ -56,6 +56,19 @@ pub struct ScientificRequestResolver {
 }
 
 impl ScientificRequestResolver {
+    /// Revalidate explicit dataset references against an authorized directory.
+    /// The caller must authorize the root before reading any configuration.
+    /// This path check does not claim protection against subsequent filesystem
+    /// changes by another process.
+    pub(crate) fn confine_dataset_config(
+        value: &mut Value,
+        root: &Path,
+    ) -> Result<(), ScientificResolveError> {
+        let root =
+            canonical_directory(root).map_err(|()| ScientificResolveError::DatasetInvalid)?;
+        general::confine_config(value, &root, true)
+    }
+
     #[must_use]
     pub fn new(config_dir: impl Into<PathBuf>) -> Self {
         Self {
