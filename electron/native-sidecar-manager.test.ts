@@ -343,6 +343,18 @@ describe("NativeSidecarManager", () => {
       protocolVersion: "studio-sidecar-r1",
       url: "http://127.0.0.1:43123",
     });
+    const token = developmentEnvironment.NIRS4ALL_STUDIO_SESSION_TOKEN;
+    expect(token).toMatch(/^[a-f0-9]{64}$/);
+    expect(JSON.stringify(manager.getInfo())).not.toContain(token);
+    expect(manager.sessionHeaders("http://127.0.0.1:43123/api/health"))
+      .toEqual({ "X-Nirs4all-Session": token });
+    expect(manager.sessionHeaders("ws://127.0.0.1:43123/ws"))
+      .toEqual({ "X-Nirs4all-Session": token });
+    for (const url of ["http://untrusted.example:43123/", "http://127.0.0.1:9999/", "http://user@127.0.0.1:43123/", "https://127.0.0.1:43123/", "invalid"]) {
+      expect(manager.sessionHeaders(url)).toEqual({});
+    }
+    child.emit("exit", 0, null);
+    expect(manager.sessionHeaders("http://127.0.0.1:43123/api/health")).toEqual({});
   });
 
   it("passes the selected interpreter and product runtime metadata to the sidecar", async () => {

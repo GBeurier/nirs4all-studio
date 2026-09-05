@@ -35,3 +35,6 @@ Security issues in third-party dependencies should be reported directly to those
 The dependency advisories temporarily accepted for this release, their product
 exposure, and their removal criteria are documented in
 [`docs/DEPENDENCY_SECURITY_HOLDS.md`](docs/DEPENDENCY_SECURITY_HOLDS.md).
+
+The desktop session credential, loopback trust model, and reverse-proxy limits
+are documented in [`docs/NATIVE_HTTP_ACCESS.md`](docs/NATIVE_HTTP_ACCESS.md).
