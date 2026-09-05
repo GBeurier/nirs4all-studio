@@ -78,6 +78,79 @@ fn write_document(path: &Path, document: &Value, replace: bool) -> DocumentResul
     .map_err(storage)
 }
 
+fn default_workspace_preferences() -> Value {
+    // Historical WorkspaceManager defaults; this is UI configuration, not a
+    // second dataset reader. Unknown extension settings remain preserved.
+    json!({"data_loading_defaults": {"delimiter":";", "decimal_separator":".",
+        "has_header":true, "header_unit":"nm", "signal_type":"auto",
+        "na_policy":"auto", "auto_detect":true}, "developer_mode":false,
+        "cache_enabled":true, "general":{"theme":"system", "ui_density":"comfortable",
+        "reduce_animations":false, "sidebar_collapsed":false, "language":"en"}})
+}
+
+fn merge_preferences(current: &mut Value, update: Value) {
+    match (current, update) {
+        (Value::Object(current), Value::Object(update)) => {
+            for (key, value) in update {
+                merge_preferences(current.entry(key).or_insert(Value::Null), value);
+            }
+        }
+        (current, update) => *current = update,
+    }
+}
+
+fn validate_preferences(value: &Value, defaults: &Value) -> DocumentResult<()> {
+    let valid = match defaults {
+        Value::Object(fields) => {
+            let values = value
+                .as_object()
+                .ok_or_else(|| invalid("Settings section must be an object"))?;
+            for (key, expected) in fields {
+                if let Some(actual) = values.get(key) {
+                    validate_preferences(actual, expected)?;
+                }
+            }
+            true
+        }
+        Value::String(_) => value.is_string(),
+        Value::Bool(_) => value.is_boolean(),
+        _ => true,
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(invalid("Setting has an invalid value type"))
+    }
+}
+
+fn workspace_preferences(settings: &AppSettingsStore) -> DocumentResult<Value> {
+    let workspace = active_path(settings)?;
+    let mut value = default_workspace_preferences();
+    let directory = workspace.join(".nirs4all");
+    if !directory.exists() {
+        return Ok(value);
+    }
+    ensure_directory(&workspace, ".nirs4all")?;
+    match read_document(&directory.join("settings.json")) {
+        Ok(stored) => merge_preferences(&mut value, stored),
+        Err((404, _)) => {}
+        Err(error) => return Err(error),
+    }
+    validate_preferences(&value, &default_workspace_preferences())?;
+    Ok(value)
+}
+
+fn save_workspace_preferences(settings: &AppSettingsStore, update: Value) -> DocumentResult<Value> {
+    validate_preferences(&update, &default_workspace_preferences())?;
+    let workspace = active_path(settings)?;
+    let mut value = workspace_preferences(settings)?;
+    merge_preferences(&mut value, update);
+    value["last_updated"] = json!(rfc3339_now());
+    ensure_directory(&workspace, ".nirs4all")?;
+    write_document(&workspace.join(".nirs4all/settings.json"), &value, true)?;
+    Ok(json!({"success":true, "message":"Settings updated successfully"}))
+}
+
 fn request(body: &[u8]) -> DocumentResult<Value> {
     let value: Value =
         serde_json::from_slice(body).map_err(|_| invalid("Expected a JSON object"))?;
@@ -477,6 +550,10 @@ fn dispatch(
         ("POST", "/api/workspace/select") => select_workspace(settings, body),
         ("POST", "/api/workspace/reload") => workspace(settings).map(|workspace| json!({"success": workspace.is_some(), "message": "Workspace configuration reloaded from disk", "workspace": workspace})),
         ("GET", "/api/workspace/list") => list_workspaces(settings),
+        ("GET", "/api/workspace/settings") => workspace_preferences(settings),
+        ("PUT", "/api/workspace/settings") => request(body).and_then(|update| save_workspace_preferences(settings, update)),
+        ("GET", "/api/workspace/data-defaults") => workspace_preferences(settings).map(|value| value["data_loading_defaults"].clone()),
+        ("PUT", "/api/workspace/data-defaults") => request(body).and_then(|update| save_workspace_preferences(settings, json!({"data_loading_defaults":update}))),
         ("GET", "/api/workspace/groups") => catalogue(settings).map(|catalogue| json!({"groups": catalogue.get("groups").cloned().unwrap_or_else(|| json!([]))})),
         ("GET", "/api/pipelines") => list_pipelines(settings),
         ("POST", "/api/pipelines") => save_pipeline(settings, None, body),
@@ -537,6 +614,8 @@ pub fn owns_path(path: &str) -> bool {
             | "/api/workspace/reload"
             | "/api/workspace/list"
             | "/api/workspace/groups"
+            | "/api/workspace/settings"
+            | "/api/workspace/data-defaults"
             | "/api/pipelines"
             | "/api/datasets"
     ) || path.starts_with("/api/pipelines/")
@@ -547,6 +626,83 @@ pub fn owns_path(path: &str) -> bool {
 mod tests {
     use super::*;
     use crate::{route_request_with_body, SidecarState};
+
+    #[test]
+    fn workspace_preferences_preserve_nested_defaults_extensions_and_restart() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        let workspace = root.path().join("workspace");
+        let mut state = SidecarState::with_app_settings_dir(&config);
+        assert_eq!(
+            call(&mut state, "GET", "/api/workspace/settings", json!({})).0,
+            409
+        );
+        assert_eq!(
+            call(
+                &mut state,
+                "POST",
+                "/api/workspace/create",
+                json!({"path":workspace,"name":"Preferences"})
+            )
+            .0,
+            200
+        );
+        assert_eq!(
+            call(
+                &mut state,
+                "POST",
+                "/api/workspace/select",
+                json!({"path":workspace})
+            )
+            .0,
+            200
+        );
+        let initial = call(&mut state, "GET", "/api/workspace/settings", json!({})).1;
+        assert_eq!(initial, default_workspace_preferences());
+        assert!(!workspace.join(".nirs4all/settings.json").exists());
+        assert_eq!(
+            call(
+                &mut state,
+                "PUT",
+                "/api/workspace/settings",
+                json!({"general":{"language":"fr", "zoom_level":125},"extension":{"kept":true}})
+            )
+            .0,
+            200
+        );
+        assert_eq!(
+            call(
+                &mut state,
+                "PUT",
+                "/api/workspace/data-defaults",
+                json!({"delimiter":",", "na_fill_config":{"value":0}})
+            )
+            .0,
+            200
+        );
+        let mut restarted = SidecarState::with_app_settings_dir(&config);
+        let settings = call(&mut restarted, "GET", "/api/workspace/settings", json!({})).1;
+        assert_eq!(settings["general"]["language"], "fr");
+        assert_eq!(settings["general"]["theme"], "system");
+        assert_eq!(settings["general"]["zoom_level"], 125);
+        assert_eq!(settings["extension"]["kept"], true);
+        assert_eq!(settings["data_loading_defaults"]["delimiter"], ",");
+        let before = fs::read(workspace.join(".nirs4all/settings.json")).unwrap();
+        assert_eq!(
+            call(
+                &mut restarted,
+                "PUT",
+                "/api/workspace/settings",
+                json!({"general":null})
+            )
+            .0,
+            400
+        );
+        assert_eq!(
+            fs::read(workspace.join(".nirs4all/settings.json")).unwrap(),
+            before
+        );
+    }
 
     #[test]
     fn early_v1_custom_category_reads_as_saved_without_rewriting() {
