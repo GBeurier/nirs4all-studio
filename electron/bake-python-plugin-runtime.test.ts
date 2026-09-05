@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
 const pluginRuntime = require("../scripts/bake-python-plugin-runtime.cjs") as {
+  assertConstraintsIdentity(path?: string, expectedSha256?: string): void;
   FORBIDDEN_DISTRIBUTIONS: readonly string[];
   PLUGIN_CONSTRAINTS_PATH: string;
   PLUGIN_CONSTRAINTS_SHA256: string;
@@ -88,6 +90,9 @@ describe("plugin-only CPython runtime", () => {
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
       "0b11bc09f82a7806055b18fc478ece69554e00932f7d0138656804a57d36ccb1",
     );
+    expect(fs.readFileSync(path.join(process.cwd(), ".gitattributes"), "utf8")).toContain(
+      "build/constraints/*.txt text eol=lf",
+    );
     const linux = pluginRuntime.constrainedDistributionVersions("linux", "x64");
     const linuxArm = pluginRuntime.constrainedDistributionVersions("linux", "arm64");
     const macArm = pluginRuntime.constrainedDistributionVersions("darwin", "arm64");
@@ -101,6 +106,26 @@ describe("plugin-only CPython runtime", () => {
     expect(macArm.has("greenlet")).toBe(false);
     expect(windows.get("colorama")).toBe("0.4.6");
     expect(windows.get("tzdata")).toBe("2025.3");
+  });
+
+  it("binds constraints to checkout bytes and rejects CRLF substitution", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-constraints-bytes-"));
+    try {
+      const file = path.join(root, "constraints.txt");
+      const canonical = "numpy==2.4.6\ngreenlet==3.5.5\n";
+      fs.writeFileSync(file, canonical);
+      const expected = crypto
+        .createHash("sha256")
+        .update(canonical)
+        .digest("hex");
+      expect(() => pluginRuntime.assertConstraintsIdentity(file, expected)).not.toThrow();
+      fs.writeFileSync(file, canonical.replaceAll("\n", "\r\n"));
+      expect(() => pluginRuntime.assertConstraintsIdentity(file, expected)).toThrow(
+        /constraints identity mismatch: expected [0-9a-f]{64}, got [0-9a-f]{64}/,
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("parses an offline exact wheel without accepting source substitution", () => {

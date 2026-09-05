@@ -53,6 +53,21 @@ requireText(
 );
 requireText(
   dockerfile,
+  "COPY --from=studio-document-adapter-sources /api/synthetic_datasets.json api/synthetic_datasets.json",
+  "Rust synthesis catalogue compile source",
+);
+requireText(
+  dockerfile,
+  "COPY --from=studio-document-adapter-sources /api/presets/ api/presets/",
+  "Rust pipeline preset compile sources",
+);
+requireText(
+  dockerfile,
+  "COPY recommended-config.json recommended-config.json",
+  "Rust recommended profile compile source",
+);
+requireText(
+  dockerfile,
   "COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/",
   "complete native contract verifier module graph",
 );
@@ -136,6 +151,22 @@ requireText(dockerfile, '"src/data/nodes/definitions/"', "document adapter node 
 requireText(dockerfile, '"src/data/nodes/generated/canonical-registry.json"', "canonical node registry inventory");
 requireText(dockerfile, `"${adapterManifest}"`, "document adapter manifest inventory");
 requireText(dockerignore, "!recommended-config.json", "plugin build configuration inclusion");
+for (const compileSource of [
+  "api/synthetic_datasets.json",
+  "api/presets/complex_pls.yaml",
+  "api/presets/complex_trees.yaml",
+  "api/presets/deep_nonlinear_exploration.yaml",
+  "api/presets/fast_result.yaml",
+  "api/presets/nonlinear_exploration.yaml",
+  "api/presets/simple_pls.yaml",
+  "api/presets/simple_trees_boosting.yaml",
+  "api/presets/ultra_pls.yaml",
+  "api/presets/ultra_slow.yaml",
+  "api/presets/ultra_trees.yaml",
+]) {
+  requireText(dockerfile, `"${compileSource}"`, "Rust sidecar compile-source inventory");
+  requireText(dockerignore, `!${compileSource}`, "Rust sidecar compile-source allowlist");
+}
 requireText(dockerignore, "!build/", "constraints parent context allowlist");
 requireText(dockerignore, "!build/constraints/", "constraints directory context allowlist");
 requireText(
