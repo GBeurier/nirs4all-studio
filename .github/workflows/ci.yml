@@ -323,6 +323,14 @@ jobs:
         with:
           components: clippy, rustfmt
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Check packaged Python layout for Windows
+        run: python scripts/test_general_workflow_platform.py
+
       - name: Check and test Windows Job containment
         run: |
           cargo fmt --manifest-path sidecar/crates/studio-windows-job/Cargo.toml -- --check
