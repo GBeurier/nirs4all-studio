@@ -1709,6 +1709,7 @@ jobs:
           node scripts/test-docker-access.cjs nirs4all-studio:native-release-candidate --browser
 
       - name: Login to GitHub Container Registry
+        if: needs.prepare.outputs.is_tag_release == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -1716,6 +1717,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
+        if: needs.prepare.outputs.is_tag_release == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
