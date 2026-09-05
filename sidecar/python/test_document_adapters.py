@@ -95,6 +95,17 @@ class DocumentAdapterTests(unittest.TestCase):
         self.assertTrue(configured["ok"], configured)
         self.assertIn("/datasets/example/X.csv", json.dumps(configured["value"]))
 
+    def test_source_and_variation_documents_are_not_replaced_by_folder_detection(self):
+        for config in [
+            {"sources": [{"name": "NIR", "train_x": "nir.csv"}, {"name": "MIR", "train_x": "mir.csv"}], "targets": "y.csv"},
+            {"variations": [{"name": "raw", "train_x": "raw.csv"}, {"name": "snv", "train_x": "snv.csv"}], "targets": "y.csv"},
+        ]:
+            configured = self.invoke("dataset.configure", {"record": {"path": "/datasets/example", "config": config}})
+            self.assertTrue(configured["ok"], configured)
+            encoded = json.dumps(configured["value"])
+            self.assertIn("/datasets/example/y.csv", encoded)
+            self.assertIn("/datasets/example/" + ("nir.csv" if "sources" in config else "raw.csv"), encoded)
+
 
 if __name__ == "__main__":
     unittest.main()
