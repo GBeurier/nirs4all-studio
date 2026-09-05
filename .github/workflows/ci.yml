@@ -313,7 +313,8 @@ jobs:
   # Windows is the authoritative runtime gate for the converter Job Object.
   sidecar-windows:
     name: Native Sidecar Windows Containment
-    runs-on: windows-latest
+    # Methods 1.0.18 publishes an explicit Visual Studio 17 2022 preset.
+    runs-on: windows-2022
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
