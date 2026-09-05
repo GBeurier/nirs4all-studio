@@ -20,6 +20,8 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use url::Url;
 
+pub(crate) mod history;
+
 pub const WORKSPACE_STORE_SCHEMA_VERSION: i64 = 5;
 pub const MAX_RUN_SUMMARIES: u16 = 500;
 pub const DEFAULT_RUN_SUMMARIES_LIMIT: u16 = 100;
@@ -1619,6 +1621,14 @@ fn validate_results_summary_policy(contract: &Value) -> Result<(), WorkspaceStor
     if contract.get("normalization") != Some(&expected_normalization)
         || contract.get("synthetic_refit") != Some(&expected_synthetic_refit)
         || contract.get("selection") != Some(&expected_selection)
+        || contract.pointer("/extensions/full_train_only_v1")
+            != Some(&json!({
+                "candidate": "meaningful_final_and_not_has_cv_payload_before_synthesis",
+                "append_to": "refit_only_candidates",
+                "preserve_scores": true,
+                "synthetic_refit": false,
+                "compatibility": "base_selection_and_existing_cv_test_results_unchanged",
+            }))
         || contract
             .pointer("/metric_direction/normalization")
             .and_then(Value::as_str)

@@ -101,6 +101,20 @@ transport, and registered read/cancel aliases for native jobs:
   `WorkspaceStore` v5 `store.sqlite` projection. The reader is strict,
   immutable, and read-only; it refuses active SQLite journals, other schema
   versions, and incomplete projections.
+- `GET /api/workspaces/:id/runs/enriched` provides the historical dataset/model
+  summaries from the owner-published `workspace_store_run_history_v1` contract.
+  Optional `project_id`, `limit` (1–500, default 100), and `offset` are validated;
+  duplicate or unknown parameters are rejected. Filtering precedes pagination,
+  and `total` counts all matching runs. Only selected runs' chains are loaded;
+  historical score comparisons use owner SQL aggregates over other stored runs.
+  No prediction arrays or artifact files are deserialized. A real train-only
+  REFIT remains visible without synthesizing validation or test measurements.
+- `GET /api/runs` combines active-workspace Store-v5 history with actual native
+  training jobs, without duplicating completed parent jobs and their stored
+  child runs. Status filters apply before the history page is selected.
+  `GET /api/runs/stats` reads complete stored counts independently of that page;
+  neither route acquires a writable store. These reads run outside the global
+  HTTP state lock and retain the immutable/journal-refusal policy.
 
 The sidecar also consumes the published `studio_run_detail_v1` Store-owned
 projection internally, with an exact owner golden and the same immutable

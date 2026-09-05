@@ -527,6 +527,26 @@ impl NativeJobRuntime {
             .get_at(id, now)
     }
 
+    /// Snapshot retained training jobs and their original submission context.
+    /// Registry ordering, capacity and terminal retention remain authoritative.
+    #[must_use]
+    pub fn training_list_at(&self, workspace: &Path, now: Instant) -> Vec<Value> {
+        let jobs = self
+            .registry
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .list_at(now);
+        let durable = self
+            .durable_jobs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        jobs.into_iter().filter_map(|job| {
+            let context = durable.get(&job.id)?;
+            if job.job_type != JobType::Training || context.workspace_path != workspace { return None; }
+            Some(json!({"job":job.public_json(), "legacyConfig":context.request["legacyConfig"]}))
+        }).collect()
+    }
+
     /// Start an already registered job and publish its exact legacy event.
     ///
     /// # Errors

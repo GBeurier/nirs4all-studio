@@ -170,6 +170,16 @@ with (ROOT / "sidecar.log").open("w") as log:
                 assert uploaded["prediction_matrix"] == predictions["prediction_matrix"], "Upload changed rows or scientific predictions"
                 assert uploaded["actual_values"] is None, "Unlabeled inference invented targets"
             call("/api/workspaces/" + workspace_id + "/results/summary")
+        history = call("/api/workspaces/" + workspace_id + "/runs/enriched?limit=100&offset=0")
+        assert history["total"] == 1 and len(history["runs"]) == 1, history
+        assert history["runs"][0]["datasets"][0]["top_5"], history
+        listing = call("/api/runs")
+        assert listing["total"] == 1 and len(listing["runs"]) == 1, listing
+        assert listing["runs"][0]["status"] == "completed", listing
+        active = call("/api/runs?status=running,queued")
+        assert active["total"] == 0 and active["runs"] == [], active
+        counters = call("/api/runs/stats")
+        assert counters["completed"] == 1 and counters["running"] == 0, counters
         call("/api/workspace")
         print("PASS", ROOT, flush=True)
     finally:
