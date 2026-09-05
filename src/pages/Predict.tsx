@@ -13,7 +13,9 @@ import { MlLoadingOverlay } from "@/components/layout/MlLoadingOverlay";
 import { ArchiveV2DataInput } from "@/components/predict/ArchiveV2DataInput";
 import { ArchiveV2PredictionResults } from "@/components/predict/ArchiveV2PredictionResults";
 import { ModelSelector } from "@/components/predict/ModelSelector";
+import { GeneralPredictionPanel } from "@/components/predict/GeneralPredictionPanel";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   archiveV2SelectionIdentityEquals,
   buildArchiveV2ArrayPredictionRequest,
@@ -37,6 +39,19 @@ const itemVariants = {
 };
 
 export default function Predict() {
+  return (
+    <Tabs defaultValue={readPersistedArchiveV2Selection() ? "native" : "general"} className="space-y-4">
+      <TabsList aria-label="Prediction model profile">
+        <TabsTrigger value="general">Trained models</TabsTrigger>
+        <TabsTrigger value="native">Portable Archive V2</TabsTrigger>
+      </TabsList>
+      <TabsContent value="general"><GeneralPredictionPanel /></TabsContent>
+      <TabsContent value="native"><NativePredictionPanel /></TabsContent>
+    </Tabs>
+  );
+}
+
+function NativePredictionPanel() {
   const { t } = useTranslation();
   const [selectedModel, setSelectedModel] =
     useState<PersistedArchiveV2Selection | null>(null);

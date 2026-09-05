@@ -18,6 +18,10 @@ export interface AvailableModel {
   fold_artifacts?: Record<string, string> | null;
   prediction_metric?: string | null;
   prediction_score?: number | null;
+  execution_profile?: "captured_general";
+  archive_fingerprint?: string;
+  artifact_fingerprint?: string;
+  target_names?: string[];
 }
 
 export interface AvailableModelsResponse {
@@ -34,6 +38,8 @@ export interface PredictRequest {
   spectra?: number[][];
   engine?: string | null;
   allow_fallback?: boolean;
+  archive_fingerprint?: string;
+  output_index?: number;
 }
 
 export interface PredictionRuntimeRecord {
@@ -51,12 +57,17 @@ export interface PredictionRuntimeRecord {
 
 export interface PredictResponse {
   predictions: number[];
+  prediction_matrix?: number[][];
+  target_names?: string[];
+  output_index?: number;
   num_samples: number;
   model_name: string;
   preprocessing_steps: string[];
   actual_values: number[] | null;
   metrics: Record<string, number> | null;
   sample_ids: (string | number)[] | null;
+  /** Human-readable uploaded labels, separate from stable execution sample IDs. */
+  sample_labels?: string[] | null;
   /** When the request was `partition: "all"`, backend returns per-sample
    *  partition labels ("train"/"val"/"test") so charts can split by partition. */
   partitions?: (string | null)[] | null;
