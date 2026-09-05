@@ -5,7 +5,7 @@ export interface MlReadiness {
   controlReady: boolean;
   controlStatus: "disabled" | "starting" | "running" | "stopped" | "error";
   controlError: string | null;
-  /** Optional Python/FastAPI scientific compatibility plugin. */
+  /** Optional bounded scientific library host (not an HTTP fallback). */
   scientificStatus:
     | "stopped"
     | "starting"
@@ -19,6 +19,9 @@ export interface MlReadiness {
   mlReady: boolean;
   mlLoading: boolean;
   mlError: string | null;
+  /** Explicit native capabilities, independent of the optional Python host. */
+  nativePredictionReady?: boolean;
+  nativeTrainingReady?: boolean;
   /**
    * True once nirs4all has finished restoring the active workspace at startup.
    * `mlReady` flips slightly earlier (as soon as the imports complete), so the

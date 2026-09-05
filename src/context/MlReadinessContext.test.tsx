@@ -275,11 +275,19 @@ async function renderProvider(electronApi: ElectronApiMock) {
 afterEach(() => {
   vi.useRealTimers();
   vi.clearAllMocks();
+  mocks.apiGet.mockReset();
   delete window.electronApi;
 });
 
 describe("MlReadinessProvider", () => {
   it("reports the native control plane ready without activating Python", async () => {
+    mocks.apiGet.mockResolvedValue({
+      core_ready: true,
+      ml_ready: false,
+      native_prediction_ready: true,
+      native_training_ready: true,
+      workspace_ready: true,
+    });
     const getScientificReadiness = vi.fn();
     const view = await renderProvider(createElectronApiMock({
       getScientificPluginInfo: vi.fn().mockResolvedValue({
@@ -302,9 +310,30 @@ describe("MlReadinessProvider", () => {
       expect(view.result.current?.scientificStatus).toBe("stopped");
       expect(view.result.current?.scientificRequested).toBe(false);
       expect(view.result.current?.mlLoading).toBe(false);
+      expect(view.result.current?.mlReady).toBe(false);
+      expect(view.result.current?.nativePredictionReady).toBe(true);
+      expect(view.result.current?.nativeTrainingReady).toBe(true);
+      expect(view.result.current?.workspaceReady).toBe(true);
     });
     expect(getScientificReadiness).not.toHaveBeenCalled();
 
+    await view.unmount();
+  });
+
+  it("clears native readiness after connection loss without activating Python", async () => {
+    vi.useFakeTimers();
+    mocks.apiGet.mockResolvedValueOnce({ native_prediction_ready: true })
+      .mockRejectedValue(new Error("connection lost"));
+    const view = await renderProvider(createElectronApiMock({
+      getScientificPluginInfo: vi.fn().mockResolvedValue({
+        role: "scientific-plugin", ready: false, requested: false,
+        status: "stopped", port: null, url: null, restartCount: 0,
+      }),
+    }));
+    expect(view.result.current?.nativePredictionReady).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(view.result.current?.nativePredictionReady).toBe(false);
+    expect(view.result.current?.mlReady).toBe(false);
     await view.unmount();
   });
 

@@ -41,13 +41,13 @@ pub const ARCHIVE_V2_CONFORMAL_PRESENTATION_ROUTE: &str =
     "/api/predict/archive-v2/conformal-presentation";
 pub const ARCHIVE_V2_CONFORMAL_PROJECTION_ROUTE: &str =
     "/api/predict/archive-v2/conformal-projection";
-pub const MAX_PREDICTION_BODY_BYTES: usize = 64 * 1024;
+pub const MAX_PREDICTION_BODY_BYTES: usize = crate::matrix_limits::MAX_PREDICTION_BODY_BYTES;
 pub const MAX_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
 pub const MAX_PREDICTION_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_ARCHIVE_V2_CATALOGUE_RESPONSE_BYTES: usize = 256 * 1024;
 const MAX_SAMPLES: usize = 128;
-const MAX_FEATURES: usize = 256;
-const MAX_CELLS: usize = 16_384;
+const MAX_FEATURES: usize = crate::matrix_limits::MAX_SPECTRAL_FEATURES;
+const MAX_CELLS: usize = crate::matrix_limits::MAX_PREDICTION_CELLS;
 const MAX_TARGETS: usize = 64;
 const MAX_ID_BYTES: usize = 256;
 const MAX_ARCHIVE_REF_BYTES: usize = 240;
@@ -647,7 +647,7 @@ impl ArchiveV2PredictionRuntime {
     }
 }
 
-pub(crate) fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdentity> {
+pub fn packaged_methods_library_identity() -> Option<PackagedMethodsLibraryIdentity> {
     let executable = std::env::current_exe().ok()?;
     let native_directory = executable.parent()?;
     let backend_root = native_directory.parent()?;
@@ -1330,13 +1330,17 @@ fn project_response(
     Ok(response)
 }
 
+#[expect(
+    clippy::suspicious_operation_groupings,
+    reason = "response target_names intentionally match request expected_target_names"
+)]
 fn project_conformal_reference(
     request: &ArchiveV2PredictionRequest,
     reference: &ArchiveV2ConformalProjectionReference,
 ) -> Result<String, ArchiveV2PredictionError> {
     if reference.archive_sha256 != request.archive_sha256
         || reference.sample_ids != request.sample_ids
-        || reference.target_names != request.expected_target_names
+        || request.expected_target_names != reference.target_names
         || !valid_sha256(&reference.presentation_fingerprint)
     {
         return Err(ArchiveV2PredictionError::InvalidExecutorOutput);
@@ -1534,6 +1538,15 @@ mod tests {
     }
 
     #[test]
+    fn prediction_accepts_the_full_training_spectral_width() {
+        let mut value: Value = serde_json::from_slice(&request(&"0".repeat(64))).unwrap();
+        value["input"]["x"] = json!([vec![0.125; MAX_FEATURES], vec![0.25; MAX_FEATURES]]);
+        let parsed = parse_request(value.to_string().as_bytes()).unwrap();
+        assert_eq!(parsed.x[0].len(), 8_192);
+        assert_eq!(parsed.x.len(), 2);
+    }
+
+    #[test]
     fn parser_enforces_every_array_and_identity_cap() {
         assert_eq!(
             parse_request(&vec![b' '; MAX_PREDICTION_BODY_BYTES + 1]),
@@ -1571,13 +1584,13 @@ mod tests {
         ));
 
         let mut cells = base.clone();
-        let samples = 65;
+        let samples = MAX_CELLS / MAX_FEATURES + 1;
         cells["input"]["sample_ids"] = Value::Array(
             (0..samples)
                 .map(|index| json!(format!("sample-{index}")))
                 .collect(),
         );
-        cells["input"]["x"] = json!(vec![vec![0; 253]; samples]);
+        cells["input"]["x"] = json!(vec![vec![0; MAX_FEATURES]; samples]);
         assert!(cells.to_string().len() <= MAX_PREDICTION_BODY_BYTES);
         assert!(matches!(
             parse_request(cells.to_string().as_bytes()),

@@ -18,10 +18,12 @@ export const MAX_ARCHIVE_V2_CONFORMAL_PRESENTATION_BYTES = 2 * 1024 * 1024;
 export const ARCHIVE_V2_CONFORMAL_PROJECTION_ENDPOINT =
   "/predict/archive-v2/conformal-projection" as const;
 
-const MAX_REQUEST_BYTES = 64 * 1024;
+// Match sidecar/src/matrix_limits.rs: training and prediction share spectral
+// width, while prediction batches retain a separate bounded cell budget.
+const MAX_REQUEST_BYTES = 32 * 1024 * 1024;
 const MAX_SAMPLES = 128;
-const MAX_FEATURES = 256;
-const MAX_CELLS = 16_384;
+const MAX_FEATURES = 8_192;
+const MAX_CELLS = 1_000_000;
 const MAX_TARGETS = 64;
 const MAX_IDENTIFIER_BYTES = 256;
 const MAX_ARCHIVE_REF_BYTES = 240;

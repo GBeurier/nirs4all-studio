@@ -182,8 +182,15 @@ pub struct WorkspaceStoreArchiveV2Registration {
 }
 
 /// Atomically register one already-written, content-addressed Archive V2 in
-/// the selected WorkspaceStore v5. The artifact itself is re-attested here;
+/// the selected `WorkspaceStore` v5. The artifact itself is re-attested here;
 /// callers cannot register arbitrary or changed bytes.
+///
+/// # Errors
+/// Refuses noncanonical identities, changed artifacts, and unavailable stores.
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "the persisted Archive V2 contract requires canonical lowercase .n4a refs"
+)]
 pub fn register_archive_v2_artifact(
     workspace_path: &Path,
     registration: &WorkspaceStoreArchiveV2Registration,
@@ -194,14 +201,16 @@ pub fn register_archive_v2_artifact(
         || registration.artifact_path.is_empty()
         || registration.artifact_path.len() > 240
         || registration.artifact_path.contains('\\')
-        || registration.artifact_path.split('/').any(|part| {
-            part.is_empty() || part == "." || part == ".."
-        })
+        || registration
+            .artifact_path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
         || !registration.artifact_path.ends_with(".n4a")
         || registration.content_hash.len() != 64
-        || !registration.content_hash.bytes().all(|byte| {
-            byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
-        })
+        || !registration
+            .content_hash
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     {
         return Err("Archive V2 registration identity is invalid".into());
     }
@@ -233,8 +242,7 @@ pub fn register_archive_v2_artifact(
         return Err("Archive V2 artifact content identity changed".into());
     }
 
-    let database = canonical_workspace_store_path(&workspace)
-        .map_err(|error| error.to_string())?;
+    let database = canonical_workspace_store_path(&workspace).map_err(|error| error.to_string())?;
     refuse_live_journals(&database).map_err(|error| error.to_string())?;
     let mut connection = Connection::open_with_flags(
         &database,

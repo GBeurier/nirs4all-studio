@@ -125,7 +125,7 @@ export default function Predict() {
   const predictionError = predictMutation.error as Error | null;
 
   return (
-    <MlLoadingOverlay>
+    <MlLoadingOverlay capability="native-prediction">
       <motion.div
         variants={containerVariants}
         initial="hidden"

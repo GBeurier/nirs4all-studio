@@ -177,7 +177,7 @@ fn legacy_reference_rejects_status_and_required_key_mutations() {
 }
 
 #[test]
-fn bootstrap_routes_match_the_frozen_health_and_readiness_contract() {
+fn bootstrap_readiness_preserves_legacy_fields_and_adds_native_capabilities() {
     let root = studio_root();
     let baseline = read_json(root.join("docs/contracts/studio-v1/fixtures/behavior.snapshot.json"));
     let mut state = SidecarState::default();
@@ -209,6 +209,8 @@ fn bootstrap_routes_match_the_frozen_health_and_readiness_contract() {
             "ml_error",
             "ml_loading",
             "ml_ready",
+            "native_prediction_ready",
+            "native_training_ready",
             "workspace_ready",
         ],
     );
@@ -216,7 +218,10 @@ fn bootstrap_routes_match_the_frozen_health_and_readiness_contract() {
     assert_eq!(readiness["ml_error"], Value::Null);
     assert_eq!(readiness["ml_loading"], false);
     assert_eq!(readiness["ml_ready"], false);
-    assert_eq!(readiness["workspace_ready"], false);
+    // An empty workspace catalogue is restored, not perpetually loading.
+    assert_eq!(readiness["workspace_ready"], true);
+    assert_eq!(readiness["native_prediction_ready"], false);
+    assert_eq!(readiness["native_training_ready"], false);
     assert!(readiness["elapsed_seconds"].is_number());
 }
 

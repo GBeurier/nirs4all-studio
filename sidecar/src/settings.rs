@@ -62,7 +62,7 @@ struct WorkspaceActivationGuard {
     store_path: PathBuf,
     workspace_metadata: fs::Metadata,
     store_metadata: fs::Metadata,
-    _workspace_handle: Dir,
+    workspace_handle: Dir,
     store_handle: fs::File,
 }
 
@@ -99,7 +99,7 @@ impl WorkspaceActivationGuard {
             store_path: store_path.to_path_buf(),
             workspace_metadata,
             store_metadata,
-            _workspace_handle: workspace_handle,
+            workspace_handle,
             store_handle,
         };
         guard.revalidate()?;
@@ -119,7 +119,7 @@ impl WorkspaceActivationGuard {
             || fs::canonicalize(&self.workspace_path).ok().as_deref()
                 != Some(self.workspace_path.as_path())
             || fs::canonicalize(&self.store_path).ok().as_deref() != Some(self.store_path.as_path())
-            || !workspace_path_matches_handle(&self.workspace_path, &self._workspace_handle)
+            || !workspace_path_matches_handle(&self.workspace_path, &self.workspace_handle)
             || !crate::legacy_conversion::path_matches_open_file(
                 &self.store_path,
                 &self.store_handle,

@@ -30,6 +30,7 @@ pub mod execution_job_records;
 pub mod job_http;
 pub mod job_lifecycle;
 pub mod legacy_conversion;
+mod matrix_limits;
 mod native_archive_training;
 mod results_summary;
 pub mod run_detail;
@@ -699,15 +700,21 @@ impl SidecarState {
         "{\"core_ready\":true,\"message\":\"nirs4all webapp is running\",\"ml_loading\":false,\"ml_ready\":false,\"ready\":true,\"status\":\"healthy\"}"
     }
 
-    /// Frozen Studio V1 post-lifespan readiness response for the native
-    /// bootstrap control plane. Python plugins and scientific execution remain
-    /// unavailable until a later migration wave wires their explicit bridge.
+    /// Report each runtime independently: native prediction never depends on
+    /// the optional general scientific host being available.
     #[must_use]
     pub fn legacy_readiness_json(&self) -> String {
-        format!(
-            "{{\"core_ready\":true,\"elapsed_seconds\":{},\"ml_error\":null,\"ml_loading\":false,\"ml_ready\":false,\"workspace_ready\":false}}",
-            self.started_at.elapsed().as_secs_f64()
-        )
+        json!({
+            "core_ready": true,
+            "elapsed_seconds": self.started_at.elapsed().as_secs_f64(),
+            "ml_error": null,
+            "ml_loading": false,
+            "ml_ready": self.native_jobs.execution_selected(),
+            "workspace_ready": self.app_settings.active_linked_workspace_response().is_ok(),
+            "native_prediction_ready": self.archive_v2_prediction.is_selected(),
+            "native_training_ready": self.native_archive_training.is_some(),
+        })
+        .to_string()
     }
 
     fn create_control_job(&mut self) -> Result<ControlJob, ()> {
@@ -1078,9 +1085,7 @@ fn archive_v2_prediction_response(state: &SidecarState, body: &[u8]) -> HttpResp
             .store()
             .map_or_else(
                 || workspace_store::read_archive_v2_registrations(workspace.path()).ok(),
-                |store| {
-                    workspace_store::read_archive_v2_registrations_from_connection(store).ok()
-                },
+                |store| workspace_store::read_archive_v2_registrations_from_connection(store).ok(),
             )
             .is_some_and(|registrations| {
                 registrations.iter().any(|registration| {
@@ -2650,7 +2655,11 @@ fn update_setting_string(
 }
 
 fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
-    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+    python_capabilities_response_for_host(state.python_plugin_host.as_deref())
+}
+
+fn python_capabilities_response_for_host(host: Option<&Path>) -> HttpResponse {
+    let Some(python_plugin_host) = host else {
         return error_response(
             503,
             ErrorCode::PythonPluginUnavailable,
@@ -2670,7 +2679,11 @@ fn python_capabilities_response(state: &SidecarState) -> HttpResponse {
 }
 
 fn python_system_info_response(state: &SidecarState) -> HttpResponse {
-    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+    python_system_info_response_for_host(state.python_plugin_host.as_deref())
+}
+
+fn python_system_info_response_for_host(host: Option<&Path>) -> HttpResponse {
+    let Some(python_plugin_host) = host else {
         return error_response(
             503,
             ErrorCode::PythonPluginUnavailable,
@@ -2693,7 +2706,11 @@ fn python_system_info_response(state: &SidecarState) -> HttpResponse {
 /// bounded Python-library inspection. The interpreter is never an HTTP
 /// backend: it only supplies the installed nirs4all distribution version.
 fn python_updates_version_response(state: &SidecarState) -> HttpResponse {
-    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+    python_updates_version_response_for_host(state.python_plugin_host.as_deref())
+}
+
+fn python_updates_version_response_for_host(host: Option<&Path>) -> HttpResponse {
+    let Some(python_plugin_host) = host else {
         return error_response(
             503,
             ErrorCode::PythonPluginUnavailable,
@@ -2757,7 +2774,11 @@ fn native_updates_version_json(
 /// size calculation; the Python host only reports its interpreter facts and
 /// installed distributions.
 fn python_updates_runtime_status_response(state: &SidecarState) -> HttpResponse {
-    let Some(python_plugin_host) = state.python_plugin_host.as_deref() else {
+    python_updates_runtime_status_response_for_host(state.python_plugin_host.as_deref())
+}
+
+fn python_updates_runtime_status_response_for_host(host: Option<&Path>) -> HttpResponse {
+    let Some(python_plugin_host) = host else {
         return error_response(
             503,
             ErrorCode::PythonPluginUnavailable,
@@ -3597,25 +3618,20 @@ fn native_archive_training_response(state: &SidecarState, body: &[u8]) -> HttpRe
     };
     let request = match parse_native_archive_training_request(body) {
         Ok(request) => request,
-        Err(reason) => {
-            return HttpResponse::json(
-                422,
-                json!({"detail": "Native Archive V2 training request is invalid", "reason": reason})
-                    .to_string(),
-            )
-        }
+        Err(reason) => return HttpResponse::json(
+            422,
+            json!({"detail": "Native Archive V2 training request is invalid", "reason": reason})
+                .to_string(),
+        ),
     };
-    let workspace = match state
+    let Ok(Some(workspace)) = state
         .app_settings
         .linked_workspace_access(&request.workspace_id)
-    {
-        Ok(Some(workspace)) => workspace,
-        _ => {
-            return HttpResponse::json(
-                409,
-                json!({"detail": "Persisted linked workspace is unavailable"}).to_string(),
-            )
-        }
+    else {
+        return HttpResponse::json(
+            409,
+            json!({"detail": "Persisted linked workspace is unavailable"}).to_string(),
+        );
     };
     if workspace.store().is_some() {
         return HttpResponse::json(
@@ -3935,7 +3951,16 @@ fn handle_connection_with_limits_and_websocket(
                     ),
                 );
             }
-            if request.method == "GET" && request.path == "/sidecar/v1/python/preflight" {
+            if request.method == "GET"
+                && matches!(
+                    request.path.as_str(),
+                    "/sidecar/v1/python/preflight"
+                        | "/api/system/capabilities"
+                        | "/api/system/info"
+                        | "/api/updates/version"
+                        | "/api/updates/runtime/status"
+                )
+            {
                 // A cold packaged import can take tens of seconds on the Intel
                 // macOS runner. Snapshot the immutable host path so health and
                 // readiness requests never queue behind that subprocess.
@@ -3944,10 +3969,17 @@ fn handle_connection_with_limits_and_websocket(
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .python_plugin_host
                     .clone();
-                return write_response(
-                    &mut stream,
-                    &python_plugin_preflight_response_for_host(python_plugin_host.as_deref()),
-                );
+                let host = python_plugin_host.as_deref();
+                let response = match request.path.as_str() {
+                    "/api/system/capabilities" => python_capabilities_response_for_host(host),
+                    "/api/system/info" => python_system_info_response_for_host(host),
+                    "/api/updates/version" => python_updates_version_response_for_host(host),
+                    "/api/updates/runtime/status" => {
+                        python_updates_runtime_status_response_for_host(host)
+                    }
+                    _ => python_plugin_preflight_response_for_host(host),
+                };
+                return write_response(&mut stream, &response);
             }
             let mut state = state.lock().expect("sidecar state mutex poisoned");
             route_http_request(&mut state, &request)
@@ -4612,6 +4644,11 @@ mod tests {
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        clippy::default_trait_access,
+        reason = "self-contained scientific fixture with dependency-owned map types"
+    )]
     fn conformal_witness_package(identity_prefix: &str, target_offset: f32) -> DatasetPackage {
         let qualified = |kind: &str, index: usize| {
             if identity_prefix.is_empty() {
@@ -4736,6 +4773,10 @@ mod tests {
         DatasetPackage::from_assembled(&assembled)
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "explicit scientific witness request fixture"
+    )]
     fn conformal_witness_training_request(
         provider: &DatasetPackageMethodsProvider,
     ) -> TrainingRequest {
@@ -5123,6 +5164,25 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn live_python_preflight_releases_the_route_mutex_during_cold_import() {
+        assert_python_probe_releases_route_mutex("/sidecar/v1/python/preflight", 200);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn live_python_inventory_releases_the_route_mutex_during_cold_import() {
+        for route in [
+            "/api/system/capabilities",
+            "/api/system/info",
+            "/api/updates/version",
+            "/api/updates/runtime/status",
+        ] {
+            // A slow failed probe must not delay the independent health route.
+            assert_python_probe_releases_route_mutex(route, 503);
+        }
+    }
+
+    #[cfg(unix)]
+    fn assert_python_probe_releases_route_mutex(route: &'static str, expected_status: u16) {
         use std::os::unix::fs::PermissionsExt;
 
         let root = test_directory("python-preflight-live-concurrency");
@@ -5162,7 +5222,7 @@ mod tests {
         let preflight = thread::spawn(move || {
             let mut client = TcpStream::connect(address).unwrap();
             client
-                .write_all(b"GET /sidecar/v1/python/preflight HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                .write_all(format!("GET {route} HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes())
                 .unwrap();
             let mut response = String::new();
             client.read_to_string(&mut response).unwrap();
@@ -5187,7 +5247,7 @@ mod tests {
         assert!(health_response.starts_with("HTTP/1.1 200 OK\r\n"));
 
         let preflight_response = preflight.join().unwrap();
-        assert!(preflight_response.starts_with("HTTP/1.1 200 OK\r\n"));
+        assert!(preflight_response.starts_with(&format!("HTTP/1.1 {expected_status} ")));
         server.join().unwrap();
         fs::remove_dir_all(root).unwrap();
     }
@@ -7170,6 +7230,19 @@ mod tests {
 
     #[test]
     fn native_saved_multisource_dataset_trains_catalogues_and_fresh_predicts() {
+        assert_native_saved_dataset_train_predict(11);
+    }
+
+    #[test]
+    fn native_wide_spectra_train_catalogue_and_predict_without_dimension_regression() {
+        assert_native_saved_dataset_train_predict(300);
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "self-contained end-to-end train/catalogue/predict scenario"
+    )]
+    fn assert_native_saved_dataset_train_predict(feature_count: usize) {
         let library = PathBuf::from(
             env::var_os("N4M_LIBRARY_PATH")
                 .expect("N4M_LIBRARY_PATH must name the final ABI 2.5 libn4m"),
@@ -7205,12 +7278,12 @@ mod tests {
             "observation_id".to_string(),
             "group_id".to_string(),
         ];
-        headers.extend((1000..=1100).step_by(10).map(|value| value.to_string()));
+        headers.extend((0..feature_count).map(|index| (1000 + index).to_string()));
         headers.push("protein".into());
         let mut spectra = vec![headers.join(";")];
         let mut fresh_x = Vec::new();
         for sample in 0..8 {
-            let values = (0..11)
+            let values = (0..feature_count)
                 .map(|feature| {
                     f64::from(u32::try_from((sample + 2) * (feature + 1)).unwrap())
                         + f64::from(
@@ -7228,7 +7301,7 @@ mod tests {
                     .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(";"),
-                3.0 + f64::from(u32::try_from(sample).unwrap()) * 1.5,
+                f64::from(u32::try_from(sample).unwrap()).mul_add(1.5, 3.0),
             ));
             if sample < 2 {
                 fresh_x.push(values);
@@ -7290,15 +7363,15 @@ mod tests {
         )
         .unwrap();
 
-        let trainer = Arc::new(native_archive_training::NativeArchiveTrainingExecutor::with_methods(
-            &config,
-            methods,
-        ));
-        let mut state = SidecarState::with_native_archive_training_and_prediction(
-            trainer,
-            predictor,
-            &config,
+        let trainer = Arc::new(
+            native_archive_training::NativeArchiveTrainingExecutor::with_methods(&config, methods),
         );
+        let mut state =
+            SidecarState::with_native_archive_training_and_prediction(trainer, predictor, &config);
+        let readiness: Value = serde_json::from_str(&state.legacy_readiness_json()).unwrap();
+        assert_eq!(readiness["native_prediction_ready"], true);
+        assert_eq!(readiness["native_training_ready"], true);
+        assert_eq!(readiness["ml_ready"], false);
         let request = json!({
             "schema_version":1,
             "operation":"native_dataset_train_archive_v2",
@@ -7334,38 +7407,29 @@ mod tests {
         let job_id = receipt["job_id"].as_str().unwrap();
         let terminal = (0..500)
             .find_map(|_| {
-                let response = route_request(
-                    &mut state,
-                    "GET",
-                    &format!("/api/training/{job_id}"),
-                );
+                let response = route_request(&mut state, "GET", &format!("/api/training/{job_id}"));
                 assert_eq!(response.status, 200, "{}", response.body);
                 let body: Value = serde_json::from_str(&response.body).unwrap();
-                if matches!(body["status"].as_str(), Some("completed" | "failed" | "cancelled")) {
+                if matches!(
+                    body["status"].as_str(),
+                    Some("completed" | "failed" | "cancelled")
+                ) {
                     Some(body)
                 } else {
                     thread::sleep(Duration::from_millis(10));
                     None
                 }
-        })
-        .expect("native training job must reach a terminal state");
+            })
+            .expect("native training job must reach a terminal state");
         assert_eq!(terminal["status"], "completed", "{terminal}");
 
-        let catalogue = route_request(
-            &mut state,
-            "GET",
-            "/api/workspaces/workspace-a/archive-v2",
-        );
+        let catalogue = route_request(&mut state, "GET", "/api/workspaces/workspace-a/archive-v2");
         assert_eq!(catalogue.status, 200, "{}", catalogue.body);
         let catalogue: Value = serde_json::from_str(&catalogue.body).unwrap();
         assert_eq!(catalogue["archives"].as_array().unwrap().len(), 1);
-        let archive_ref = catalogue["archives"][0]["archive_ref"]
-            .as_str()
-            .unwrap();
-        let archive_sha256 = catalogue["archives"][0]["archive_sha256"]
-            .as_str()
-            .unwrap();
-        assert_eq!(catalogue["archives"][0]["n_features"], 11);
+        let archive_ref = catalogue["archives"][0]["archive_ref"].as_str().unwrap();
+        let archive_sha256 = catalogue["archives"][0]["archive_sha256"].as_str().unwrap();
+        assert_eq!(catalogue["archives"][0]["n_features"], feature_count);
         assert_eq!(catalogue["archives"][0]["target_names"], json!(["protein"]));
 
         let prediction = route_request_with_body(
@@ -7500,6 +7564,10 @@ mod tests {
 
     #[test]
     #[ignore = "requires N4A_RT_PRED_METHODS_LIBRARY and N4A_RT_PRED_METHODS_SHA256"]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "self-contained end-to-end conformal witness scenario"
+    )]
     fn archive_v2_live_conformal_producer_store_route_and_renderer_contract() {
         let methods_path = PathBuf::from(
             std::env::var("N4A_RT_PRED_METHODS_LIBRARY")
@@ -7753,6 +7821,9 @@ mod tests {
         assert_eq!(response["fallback_used"], false);
         assert_eq!(response["sample_ids"], json!(["predict.0", "predict.1"]));
         assert_eq!(response["target_names"], json!(["protein", "moisture"]));
+        let readiness: Value = serde_json::from_str(&state.legacy_readiness_json()).unwrap();
+        assert_eq!(readiness["native_prediction_ready"], true);
+        assert_eq!(readiness["ml_ready"], false);
         assert_eq!(
             response["provenance"]["executor"],
             format!("nirs4all-core@0.3.28+libn4m-abi-2.5:{methods_sha256}")

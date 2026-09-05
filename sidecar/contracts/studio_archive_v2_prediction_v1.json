@@ -31,7 +31,7 @@
         "additional_properties": false,
         "kind": "array",
         "sample_ids": "required_unique_string_array_1_to_128_each_max_256_bytes",
-        "x": "required_finite_rectangular_number_array_max_128x256_and_16384_cells",
+        "x": "required_finite_rectangular_number_array_max_128x8192_and_1000000_cells",
         "expected_target_names": "required_unique_string_array_1_to_64_each_max_256_bytes"
       },
       "execution": {
@@ -40,7 +40,7 @@
         "allow_fallback": false
       }
     },
-    "maximum_encoded_bytes": 65536
+    "maximum_encoded_bytes": 33554432
   },
   "archive_resolution": {
     "workspace_source": "persisted_linked_workspace_id",
