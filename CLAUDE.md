@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Desktop (Electron):** `npm run dev:electron` (alias `npm run start:desktop`) — starts the Rust sidecar and refuses unmigrated routes without spawning Uvicorn. For an explicit whole-session diagnostic only, pass `--enable-python-http-diagnostic`; development may instead set exactly `NIRS4ALL_ENABLE_PYTHON_HTTP_DIAGNOSTIC=1`. Packaged builds ignore the environment variable.
 
 ### Green gate (run before reporting work complete)
-- `npm run lint:parallel` — eslint + `tsc --noEmit` + node-registry validation + ruff + backend dep-sync.
+- `npm run lint:parallel` — eslint + explicit TypeScript checks of the app, build configuration, and Electron (including tests) + node-registry validation + ruff + backend dep-sync.
 - `npm run test:parallel` — Vitest (frontend + electron TS) and pytest (backend) together.
 - `npm run test:e2e` — Playwright (`web-chromium` project).
 

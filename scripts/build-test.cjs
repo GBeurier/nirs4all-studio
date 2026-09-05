@@ -242,7 +242,7 @@ async function main() {
 
   // ── Step 1: Static checks ──
   console.log("Step 1: Static checks");
-  await run("TypeScript", "npx", ["tsc", "--noEmit"]);
+  await run("TypeScript", "npm", ["run", "lint:tsc"]);
   await run("ESLint", "npx", ["eslint", "src/", "electron/"]);
   await run("nirs4all-ui package smoke", "npm", ["run", "smoke:nirs4all-ui-package"]);
   console.log("");
