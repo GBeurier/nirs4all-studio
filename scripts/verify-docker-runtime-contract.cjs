@@ -48,8 +48,18 @@ requireText(
 );
 requireText(
   dockerfile,
+  "COPY build/constraints/plugin-runtime-cpython311.txt build/constraints/plugin-runtime-cpython311.txt",
+  "mandatory CPython constraints in plugin builder project root",
+);
+requireText(
+  dockerfile,
   "COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/",
   "complete native contract verifier module graph",
+);
+requireText(
+  dockerfile,
+  "COPY build/constraints/plugin-runtime-cpython311.txt /build/constraints/plugin-runtime-cpython311.txt",
+  "mandatory CPython constraints for native runtime verification",
 );
 requireText(
   dockerfile,
@@ -126,6 +136,13 @@ requireText(dockerfile, '"src/data/nodes/definitions/"', "document adapter node 
 requireText(dockerfile, '"src/data/nodes/generated/canonical-registry.json"', "canonical node registry inventory");
 requireText(dockerfile, `"${adapterManifest}"`, "document adapter manifest inventory");
 requireText(dockerignore, "!recommended-config.json", "plugin build configuration inclusion");
+requireText(dockerignore, "!build/", "constraints parent context allowlist");
+requireText(dockerignore, "!build/constraints/", "constraints directory context allowlist");
+requireText(
+  dockerignore,
+  "!build/constraints/plugin-runtime-cpython311.txt",
+  "mandatory CPython constraints context allowlist",
+);
 forbid(dockerignore, /^(?:postcss\.config\.js|tailwind\.config\.ts)\/?$/m, "frontend CSS build configuration exclusion");
 
 requireText(ciWorkflow, "scripts/smoke-docker-native-runtime.sh", "CI live Docker smoke");

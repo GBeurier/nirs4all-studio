@@ -41,6 +41,7 @@ WORKDIR /build
 COPY recommended-config.json ./
 COPY --from=studio-document-adapter-sources / /build/
 COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/
+COPY build/constraints/plugin-runtime-cpython311.txt build/constraints/plugin-runtime-cpython311.txt
 RUN --mount=type=cache,target=/python-cache \
     node scripts/bake-python-plugin-runtime.cjs \
       --backend-root /product/backend \
@@ -56,6 +57,7 @@ COPY --from=sidecar /build/sidecar/target/release/studio-sidecar backend/native/
 COPY --from=methods-runtime /libn4m.so.2.5.0 backend/native/libn4m.so
 COPY --from=studio-document-adapter-sources / /
 COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/
+COPY build/constraints/plugin-runtime-cpython311.txt /build/constraints/plugin-runtime-cpython311.txt
 RUN test "$(sha256sum backend/native/libn4m.so | cut -d' ' -f1)" = "${NIRS4ALL_METHODS_SHA256}" \
     && chmod 0755 backend/native/studio-sidecar \
     && node -e 'const c=require("/contract-scripts/native-runtime-contract.cjs"); c.writeRuntimeContract({backendRoot:"/product/backend",platform:"linux",arch:"x64",methodsLibraryPath:"/product/backend/native/libn4m.so"}); c.verifyRuntimeContract({backendRoot:"/product/backend",artifactBoundaryRoot:"/product/backend",platform:"linux",arch:"x64",requireBundledPythonPlugin:true,requireBundledMethods:true})'
