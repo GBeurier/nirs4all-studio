@@ -12,6 +12,7 @@ const {
   METHODS_SOURCE_TREE,
   sha256File,
 } = require("./native-runtime-contract.cjs");
+const { assertStaticWindowsRuntime } = require("./windows-pe-runtime.cjs");
 
 const MAX_SOURCE_STATUS_BYTES = 1024 * 1024;
 const MAX_BUILD_ENTRIES = 50_000;
@@ -110,7 +111,9 @@ function targetConfig(platform, arch) {
       preset: "ci-windows-msvc-release",
       libraryPattern: /^n4m\.dll$/i,
       cliParts: ["cpp", "cli", "Release", "n4m_cli.exe"],
-      configureExtra: [],
+      configureExtra: [
+        "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
+      ],
       buildExtra: ["--config", "Release"],
       ctestExtra: ["-C", "Release"],
     };
@@ -222,6 +225,9 @@ function buildAndAttest({
     ...config.cliParts,
   );
   const library = resolveBuiltLibrary(source.sourceRoot, config);
+  if (platform === "win32") {
+    assertStaticWindowsRuntime(library.libraryPath);
+  }
   const cliEnv = platform === "win32"
     ? withPrependedSearchPath(process.env, path.dirname(library.libraryPath), platform)
     : process.env;

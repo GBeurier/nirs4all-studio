@@ -165,6 +165,17 @@ compiles and tests that source through `.github/actions/build-native-methods`,
 stages the resulting `libn4m`/`n4m.dll`, and requires the archive/sidecar smoke
 to exercise the attested ABI 2.5 library before an artifact can pass.
 
+Windows builds make both Studio-owned native binaries independent of a
+machine-wide Visual C++ Redistributable: Methods is configured with CMake's
+`MultiThreaded` (`/MT`) runtime and the Rust sidecar with
+`target-feature=+crt-static`. The packaged runtime contract records that exact
+profile, and a bounded PE import-table gate refuses `MSVCP*` or `VCRUNTIME*`
+imports in either `n4m.dll` or `studio-sidecar.exe`. Windows 10/11 still supply
+the Universal CRT API-set imports as an operating-system component. No
+additional Microsoft redistributable files or licence payloads are introduced
+by this static-link profile; the ordinary third-party licence inventory remains
+the publication authority.
+
 The same content contract pins the bundled interpreter and every runtime file.
 Because this interpreter is a headless scientific stdio host, its packaging
 step removes the unused `tkinter` package and `_tkinter` extension instead of

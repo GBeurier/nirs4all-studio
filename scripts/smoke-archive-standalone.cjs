@@ -25,6 +25,8 @@ const DEFAULT_TIMEOUT_MS = 180000;
 const DEFAULT_POLL_INTERVAL_MS = 1000;
 const PLUGIN_PREFLIGHT_REQUEST_TIMEOUT_MS = 75000;
 const ARCHIVE_SMOKE_SESSION_TOKEN_ENV = "NIRS4ALL_ARCHIVE_SMOKE_SESSION_TOKEN";
+const MAX_DIAGNOSTIC_RESPONSE_BYTES = 4096;
+const MAX_DIAGNOSTIC_LINE_BYTES = 2048;
 
 function printHelp() {
   console.log(`Usage:
@@ -565,13 +567,36 @@ async function probeNativeScientificSurface(port, timeoutMs, child, outputBuffer
   return waitForNativeScientificReady(port, timeoutMs, child, outputBuffer, sessionToken);
 }
 
+async function scientificUnavailabilityDiagnostic(port, sessionToken) {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/runs/run-groups`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Nirs4all-Session": sessionToken,
+      },
+      body: "{}",
+      signal: AbortSignal.timeout(3000),
+    });
+    const encoded = Buffer.from(await response.text(), "utf8");
+    const body = encoded.subarray(0, MAX_DIAGNOSTIC_RESPONSE_BYTES).toString("utf8");
+    return `HTTP ${response.status}: ${body}`;
+  } catch (error) {
+    return `unavailable: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
 function pushOutput(buffer, label, chunk) {
   const text = chunk.toString().trim();
   if (!text) {
     return;
   }
   for (const line of text.split(/\r?\n/)) {
-    buffer.push(`[${label}] ${line}`);
+    const encoded = Buffer.from(line, "utf8");
+    const bounded = encoded.length > MAX_DIAGNOSTIC_LINE_BYTES
+      ? `${encoded.subarray(0, MAX_DIAGNOSTIC_LINE_BYTES).toString("utf8")}…`
+      : line;
+    buffer.push(`[${label}] ${bounded}`);
   }
   while (buffer.length > 80) {
     buffer.shift();
@@ -678,7 +703,15 @@ async function smokeArchiveStandalone(rawConfig) {
       capabilitiesPayload?.features?.legacy_api_routes !== false ||
       capabilitiesPayload?.features?.python_plugin_preflight !== true
     ) {
-      throw new Error(`Unexpected native capabilities: ${JSON.stringify(capabilitiesPayload)}`);
+      const scientificDiagnostic = await scientificUnavailabilityDiagnostic(
+        port,
+        env[ARCHIVE_SMOKE_SESSION_TOKEN_ENV],
+      );
+      throw new Error(
+        `Unexpected native capabilities: ${JSON.stringify(capabilitiesPayload)}`
+        + `\nScientific executor diagnostic: ${scientificDiagnostic}`
+        + `\nBounded application output:\n${outputBuffer.join("\n")}`,
+      );
     }
     if (
       pluginStatus !== 200 ||
@@ -733,9 +766,11 @@ module.exports = {
   isRetryableCleanupError,
   parseArgs,
   pluginPreflightTimeoutMs,
+  pushOutput,
   probeNativeScientificSurface,
   removePathWithRetries,
   resolveLaunchLayout,
+  scientificUnavailabilityDiagnostic,
   verifyLaunchRuntimeContract,
   smokeArchiveStandalone,
   waitForChildExit,

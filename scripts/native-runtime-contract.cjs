@@ -20,6 +20,12 @@ const METHODS_ABI_MINOR = 5;
 const METHODS_SOURCE_COMMIT = "a9faae2909c71a833bb7f3b208dc20548cf01588";
 const METHODS_SOURCE_TREE = "5c39dde72afab2ff725ff7b1b53e69a17b9bf865";
 const METHODS_PROJECT_VERSION = "1.0.18";
+const WINDOWS_NATIVE_RUNTIME_LINKAGE = Object.freeze({
+  profile: "studio-msvc-static-crt-v1",
+  methods_cmake_runtime: "MultiThreaded",
+  sidecar_rust_target_feature: "+crt-static",
+  forbidden_dynamic_import_prefixes: ["MSVCP", "VCRUNTIME"],
+});
 
 function isPathInside(root, candidate) {
   const relative = path.relative(root, candidate);
@@ -341,6 +347,9 @@ function createRuntimeContract({
     sidecar: describeFile(sidecarPath, sidecarRelativePath, backendRoot),
     python_plugin_host: pythonPluginHost,
     methods_library: methodsLibrary,
+    ...(platform === "win32"
+      ? { native_runtime_linkage: WINDOWS_NATIVE_RUNTIME_LINKAGE }
+      : {}),
   };
 }
 
@@ -542,6 +551,16 @@ function verifyRuntimeContract({
   ) {
     throw new Error("Packaged runtime contract metadata mismatch");
   }
+  if (platform === "win32") {
+    if (
+      JSON.stringify(contract.native_runtime_linkage) !==
+      JSON.stringify(WINDOWS_NATIVE_RUNTIME_LINKAGE)
+    ) {
+      throw new Error("Packaged Windows native runtime linkage profile mismatch");
+    }
+  } else if (Object.hasOwn(contract, "native_runtime_linkage")) {
+    throw new Error("Non-Windows runtime contract must not declare an MSVC linkage profile");
+  }
   const expectedSidecar = path.join(
     "native",
     platform === "win32" ? "studio-sidecar.exe" : "studio-sidecar",
@@ -715,6 +734,7 @@ module.exports = {
   METHODS_PROJECT_VERSION,
   METHODS_SOURCE_COMMIT,
   METHODS_SOURCE_TREE,
+  WINDOWS_NATIVE_RUNTIME_LINKAGE,
   parseVerifyArgs,
   PYTHON_CLOSURE_FILE,
   PYTHON_CLOSURE_SCHEMA,
