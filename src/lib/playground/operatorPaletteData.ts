@@ -99,7 +99,7 @@ export function nodeToOperatorDefinition(
   return {
     registryId: node.id,
     classPath: node.classPath,
-    name: node.name,
+    name: node.classPath?.split('.').pop() ?? node.name,
     display_name: displayName,
     description: node.description,
     category: node.category ?? 'Other',

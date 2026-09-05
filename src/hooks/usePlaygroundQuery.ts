@@ -481,22 +481,3 @@ export function usePlaygroundQuery(
     pipelineHash: currentPipelineHash,
   };
 }
-
-/**
- * Hook to prefetch operators from the backend
- */
-export function usePrefetchOperators() {
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    // Prefetch operators on mount
-    queryClient.prefetchQuery({
-      queryKey: ['playground', 'operators'],
-      queryFn: async () => {
-        const { getPlaygroundOperators } = await import('@/api/playground');
-        return getPlaygroundOperators();
-      },
-      staleTime: 10 * 60 * 1000, // 10 minutes
-    });
-  }, [queryClient]);
-}

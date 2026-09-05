@@ -71,7 +71,7 @@ describe('operatorPaletteData', () => {
     expect(operator).toMatchObject({
       registryId: 'preprocessing.snv',
       classPath: 'nirs4all.preprocessing.SNV',
-      name: 'SavitzkyGolay',
+      name: 'SNV',
       display_name: 'Savitzky Golay',
       category: 'nirs core',
       source: 'nirs4all',
