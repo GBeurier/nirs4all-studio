@@ -76,7 +76,38 @@ impl ScientificRequestResolver {
         preflight: &ScientificSubmissionPreflight,
         adapt: impl Fn(&str, &Value) -> Result<Value, String>,
     ) -> Result<Value, ScientificResolveError> {
-        general::resolve(self, preflight, adapt)
+        general::resolve(self, preflight, |requests| {
+            requests
+                .iter()
+                .map(|request| {
+                    adapt(
+                        request["operation"]
+                            .as_str()
+                            .ok_or("Invalid document operation")?,
+                        &request["payload"],
+                    )
+                })
+                .collect()
+        })
+    }
+
+    /// Resolve a campaign using one bounded, attested document invocation.
+    ///
+    /// # Errors
+    /// The same identity, path and scientific-option validation as
+    /// `resolve_general` applies; malformed batch responses are refused.
+    pub fn resolve_general_batched(
+        &self,
+        preflight: &ScientificSubmissionPreflight,
+        adapt: impl Fn(&str, &Value) -> Result<Value, String>,
+    ) -> Result<Value, ScientificResolveError> {
+        general::resolve(self, preflight, |requests| {
+            let response = adapt("documents.batch", &json!({"requests": requests}))?;
+            response
+                .as_array()
+                .cloned()
+                .ok_or_else(|| "Invalid document batch response".into())
+        })
     }
 
     /// Resolve all saved identities and materialize the bounded, path-free

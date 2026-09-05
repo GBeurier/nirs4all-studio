@@ -15,9 +15,14 @@
       "sha256": "384de68151d25396db5309d84b4c493a26aea244a4f218547d1d20e71cb33a49"
     },
     {
+      "path": "api/library_dataset_inspection.py",
+      "size": 1556,
+      "sha256": "be84328df19f23837be139b8e80238bb61d147a883cb2a5497edc06ccb6a7d39"
+    },
+    {
       "path": "api/library_documents.py",
-      "size": 6549,
-      "sha256": "35affca4fbf4d7672e8c247754713c8c18c439bce0832622938aae7399309428"
+      "size": 7680,
+      "sha256": "aa0d67344572c9511f3295b07152494983354d07236918ddcadd385ca9c0bd8f"
     },
     {
       "path": "api/node_registry_loader.py",

@@ -143,7 +143,8 @@ if actual_path != sys.argv[2] or hashlib.sha256(open(actual_path,"rb").read()).h
 import contextlib
 with contextlib.redirect_stdout(sys.stderr):
     if request.get("schema") == "nirs4all.studio-document-request.v1":
-        if len(raw)>2097152:
+        document_limit=8388608 if request.get("operation") == "documents.batch" else 2097152
+        if len(raw)>document_limit:
             raise RuntimeError("document request exceeds stdin budget")
         from studio_document_adapters.api.library_documents import adapt_document
         try:
@@ -151,7 +152,7 @@ with contextlib.redirect_stdout(sys.stderr):
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":True,"result":result,"error":None}
         except Exception as error:
             response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":False,"result":None,"error":str(error).encode("utf-8")[:4000].decode("utf-8",errors="ignore")}
-        response_limit=2097152
+        response_limit=33554432 if request.get("operation") in {"dataset.preview","dataset.stats","dataset.inspect_format"} else document_limit
     elif request.get("schema") == "nirs4all.studio-scientific-job.v2":
         general=getattr(nirs4all,"studio_scientific_job_v2",None)
         if not callable(general):
@@ -163,9 +164,12 @@ with contextlib.redirect_stdout(sys.stderr):
             raise RuntimeError("scientific V1 request exceeds stdin budget")
         response=target(request)
         response_limit=8192
-encoded=json.dumps(response,allow_nan=False,ensure_ascii=False,separators=(",",":"),sort_keys=True).encode("utf-8")
-if len(encoded)>response_limit:
-    raise RuntimeError("scientific response exceeds stdout budget")
+encoded=bytearray()
+for text_chunk in json.JSONEncoder(allow_nan=False,ensure_ascii=False,separators=(",",":"),sort_keys=True).iterencode(response):
+    chunk=text_chunk.encode("utf-8")
+    if len(chunk)>response_limit-len(encoded):
+        raise RuntimeError("scientific response exceeds stdout budget")
+    encoded.extend(chunk)
 sys.stdout.buffer.write(encoded)
 "#;
 
@@ -442,25 +446,13 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         if !self.is_selected() {
             return Err(JobExecutorError::PreflightRefused);
         }
-        let (Some(host), Some(callable)) = (&self.identity, &self.callable_identity) else {
-            return Err(JobExecutorError::PreflightRefused);
-        };
-        if let Some(packaged_runtime) = &self.packaged_runtime {
-            verify_packaged_runtime_identity(packaged_runtime)
-                .map_err(|_| JobExecutorError::PreflightRefused)?;
-        }
-        let site_packages = self
-            .packaged_runtime
-            .as_ref()
-            .map(|identity| identity.site_packages.as_path());
-        let (current_host, current_callable) = acquire_host(&host.canonical_path, site_packages)
-            .map_err(|_| JobExecutorError::PreflightRefused)?;
-        if &current_host != host || current_callable.as_ref() != Some(callable) {
-            return Err(JobExecutorError::PreflightRefused);
-        }
+        // The mandatory batch worker below revalidates the selected executable,
+        // callable and full runtime before/after execution, and every installed
+        // distribution member before importing. Do not run a second cold
+        // import/attestation subprocess for the same admission boundary.
         let payload = self
             .resolver
-            .resolve_general(request, |operation, payload| {
+            .resolve_general_batched(request, |operation, payload| {
                 self.adapt_document(operation, payload)
             })
             .map_err(|_| JobExecutorError::PreflightRefused)?;
@@ -1204,10 +1196,22 @@ fn run_scientific_process(
 
 fn request_limits(request: &Value) -> (usize, usize) {
     match request.get("schema").and_then(Value::as_str) {
-        Some(crate::document_cpython::REQUEST_SCHEMA) => (
-            crate::document_cpython::MAX_DOCUMENT_BYTES,
-            crate::document_cpython::MAX_DOCUMENT_BYTES,
-        ),
+        Some(crate::document_cpython::REQUEST_SCHEMA) => {
+            let limit = if request["operation"] == "documents.batch" {
+                crate::document_cpython::MAX_BATCH_BYTES
+            } else {
+                crate::document_cpython::MAX_DOCUMENT_BYTES
+            };
+            let output_limit = if matches!(
+                request["operation"].as_str(),
+                Some("dataset.preview" | "dataset.stats" | "dataset.inspect_format")
+            ) {
+                crate::document_cpython::MAX_INSPECTION_BYTES
+            } else {
+                limit
+            };
+            (limit, output_limit)
+        }
         Some("nirs4all.studio-scientific-job.v2") => (
             MAX_GENERAL_SCIENTIFIC_STDIN_BYTES,
             MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES,
@@ -1921,6 +1925,26 @@ mod tests {
         response["result"]["native_score_sets_available"] = serde_json::json!(false);
         assert!(validate_scientific_response(&response).is_err());
     }
+    #[test]
+    fn document_batch_and_inspection_have_distinct_bounded_wire_budgets() {
+        use serde_json::json;
+        for (operation, expected) in [
+            ("pipeline.normalize", (2 * 1024 * 1024, 2 * 1024 * 1024)),
+            ("documents.batch", (8 * 1024 * 1024, 8 * 1024 * 1024)),
+            ("dataset.preview", (2 * 1024 * 1024, 32 * 1024 * 1024)),
+            ("dataset.stats", (2 * 1024 * 1024, 32 * 1024 * 1024)),
+        ] {
+            assert_eq!(
+                request_limits(
+                    &json!({"schema":crate::document_cpython::REQUEST_SCHEMA,"operation":operation})
+                ),
+                expected
+            );
+        }
+        assert!(EXECUTION_SCRIPT.contains("JSONEncoder(allow_nan=False"));
+        assert!(EXECUTION_SCRIPT.contains("response_limit-len(encoded)"));
+    }
+
     use std::{fs, net::TcpListener, time::SystemTime};
 
     fn test_directory(name: &str) -> PathBuf {

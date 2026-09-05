@@ -8,6 +8,8 @@ use sha2::{Digest, Sha256};
 pub const REQUEST_SCHEMA: &str = "nirs4all.studio-document-request.v1";
 pub const RESPONSE_SCHEMA: &str = "nirs4all.studio-document-response.v1";
 pub const MAX_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
+pub const MAX_BATCH_BYTES: usize = 8 * 1024 * 1024;
+pub const MAX_INSPECTION_BYTES: usize = 32 * 1024 * 1024;
 const MANIFEST: &str = include_str!("../contracts/studio_document_adapters_v1.json");
 const PACKAGE: &str = "studio_document_adapters";
 
@@ -68,12 +70,40 @@ pub fn route(
 pub fn request(operation: &str, payload: &Value) -> Result<Value, String> {
     if !matches!(
         operation,
-        "pipeline.normalize" | "pipeline.import" | "pipeline.render" | "dataset.configure"
+        "pipeline.normalize"
+            | "pipeline.import"
+            | "pipeline.render"
+            | "dataset.configure"
+            | "documents.batch"
+            | "dataset.preview"
+            | "dataset.stats"
+            | "dataset.inspect_format"
     ) {
         return Err("Unsupported document operation".into());
     }
     if !payload.is_object() {
         return Err("Document payload must be an object".into());
+    }
+    if operation == "documents.batch" {
+        let members = payload
+            .get("requests")
+            .and_then(Value::as_array)
+            .ok_or("Invalid document batch")?;
+        if payload.as_object().is_none_or(|object| object.len() != 1)
+            || members.is_empty()
+            || members.len() > 128
+            || members.iter().any(|member| {
+                member.as_object().is_none_or(|object| object.len() != 2)
+                    || !matches!(
+                        member["operation"].as_str(),
+                        Some("pipeline.normalize" | "dataset.configure")
+                    )
+                    || !member["payload"].is_object()
+                    || member["payload"].to_string().len() > MAX_DOCUMENT_BYTES
+            })
+        {
+            return Err("Document batch must contain only bounded normalization requests".into());
+        }
     }
     Ok(
         json!({"schema": REQUEST_SCHEMA, "job_id": "document-translation", "operation": operation, "payload": payload}),
@@ -187,6 +217,18 @@ mod tests {
     fn document_protocol_refuses_unknown_operations_and_open_response_shapes() {
         assert!(request("pipeline.normalize", &json!({"steps": []})).is_ok());
         assert!(request("run", &json!({})).is_err());
+        assert!(request(
+            "documents.batch",
+            &json!({"requests":[{"operation":"pipeline.normalize","payload":{"steps":[]}}]})
+        )
+        .is_ok());
+        for payload in [
+            json!({"requests":[]}),
+            json!({"requests":[{"operation":"documents.batch","payload":{}}]}),
+            json!({"requests":[{"operation":"pipeline.import","payload":{}}]}),
+        ] {
+            assert!(request("documents.batch", &payload).is_err());
+        }
         let mut response = json!({"schema": RESPONSE_SCHEMA, "job_id": "document-translation", "success": true, "result": {}, "error": null});
         assert!(validate_response(&response));
         response["extra"] = json!(true);

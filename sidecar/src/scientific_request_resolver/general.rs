@@ -14,7 +14,7 @@ const MAX_GENERAL_BYTES: usize = 8 * 1024 * 1024;
 pub(super) fn resolve(
     resolver: &ScientificRequestResolver,
     preflight: &ScientificSubmissionPreflight,
-    adapt: impl Fn(&str, &Value) -> Result<Value, String>,
+    adapt: impl Fn(&[Value]) -> Result<Vec<Value>, String>,
 ) -> Result<Value, ScientificResolveError> {
     let config = object_at(&preflight.payload, "legacyConfig")?;
     if preflight.requested_backend != "local-python"
@@ -27,57 +27,7 @@ pub(super) fn resolve(
         return Err(ScientificResolveError::UnsupportedSubmission);
     }
     let selection = selection(&preflight.payload, config)?;
-    let mut datasets = Vec::new();
-    for id in &selection.datasets {
-        let mut record = resolver.read_dataset(id)?;
-        let root = record
-            .get("path")
-            .and_then(Value::as_str)
-            .and_then(|path| canonical_directory(Path::new(path)).ok())
-            .ok_or(ScientificResolveError::DatasetInvalid)?;
-        // Inspect supplied references before a document adapter can read a
-        // legacy configuration file. Recheck its returned canonical config.
-        confine_config(&mut record, &root, false)?;
-        bounded(&record, MAX_DOCUMENT_BYTES)?;
-        let mut dataset = adapt("dataset.configure", &json!({"record": record}))
-            .map_err(|_| ScientificResolveError::DatasetInvalid)?;
-        // The adapter must expose resolved references, not hand an opaque
-        // folder/config path to a later loader which could discover new paths.
-        if !dataset.is_object() {
-            return Err(ScientificResolveError::DatasetInvalid);
-        }
-        reject_implicit_folders(&dataset)?;
-        confine_config(&mut dataset, &root, true)?;
-        datasets.push(dataset);
-    }
-    let mut pipelines = Vec::new();
-    for (id, inline) in &selection.pipelines {
-        let document = match inline {
-            Some(value) => value.clone(),
-            None => {
-                read_pipeline_with_limit(&preflight.workspace_path, id, MAX_DOCUMENT_BYTES as u64)?
-            }
-        };
-        if inline.is_none() && document.get("id").and_then(Value::as_str) != Some(id) {
-            return Err(ScientificResolveError::PipelineInvalid);
-        }
-        bounded(&document, MAX_DOCUMENT_BYTES)?;
-        let normalized = adapt("pipeline.normalize", &document)
-            .map_err(|_| ScientificResolveError::PipelineInvalid)?;
-        bounded(&normalized, MAX_GENERAL_BYTES)?;
-        let pipeline = normalized
-            .get("runtime_pipeline")
-            .filter(|value| value.as_array().is_some_and(|steps| !steps.is_empty()))
-            .ok_or(ScientificResolveError::PipelineInvalid)?;
-        if normalized
-            .get("validation")
-            .and_then(|value| value.get("valid"))
-            == Some(&json!(false))
-        {
-            return Err(ScientificResolveError::PipelineInvalid);
-        }
-        pipelines.push(pipeline.clone());
-    }
+    let (datasets, pipelines) = normalize_documents(resolver, preflight, &selection, adapt)?;
     let workspace = canonical_directory(&preflight.workspace_path)
         .map_err(|()| ScientificResolveError::PipelineUnsafe)?;
     let mut options = json!({"workspace_path": workspace, "verbose": 0,
@@ -98,6 +48,79 @@ pub(super) fn resolve(
     });
     bounded(&request, MAX_GENERAL_BYTES)?;
     Ok(request)
+}
+
+fn normalize_documents(
+    resolver: &ScientificRequestResolver,
+    preflight: &ScientificSubmissionPreflight,
+    selection: &Selection,
+    adapt: impl Fn(&[Value]) -> Result<Vec<Value>, String>,
+) -> Result<(Vec<Value>, Vec<Value>), ScientificResolveError> {
+    let mut requests = Vec::new();
+    let mut roots = Vec::new();
+    for id in &selection.datasets {
+        let mut record = resolver.read_dataset(id)?;
+        let root = record
+            .get("path")
+            .and_then(Value::as_str)
+            .and_then(|path| canonical_directory(Path::new(path)).ok())
+            .ok_or(ScientificResolveError::DatasetInvalid)?;
+        // Inspect supplied references before a document adapter can read a
+        // legacy configuration file. Recheck its returned canonical config.
+        confine_config(&mut record, &root, false)?;
+        bounded(&record, MAX_DOCUMENT_BYTES)?;
+        roots.push(root);
+        requests.push(json!({"operation":"dataset.configure", "payload":{"record":record}}));
+    }
+    for (id, inline) in &selection.pipelines {
+        let document = match inline {
+            Some(value) => value.clone(),
+            None => {
+                read_pipeline_with_limit(&preflight.workspace_path, id, MAX_DOCUMENT_BYTES as u64)?
+            }
+        };
+        if inline.is_none() && document.get("id").and_then(Value::as_str) != Some(id) {
+            return Err(ScientificResolveError::PipelineInvalid);
+        }
+        bounded(&document, MAX_DOCUMENT_BYTES)?;
+        requests.push(json!({"operation":"pipeline.normalize", "payload":document}));
+    }
+    bounded(&json!({"requests":requests}), MAX_GENERAL_BYTES)?;
+    let normalized = adapt(&requests).map_err(|_| ScientificResolveError::PipelineInvalid)?;
+    if normalized.len() != requests.len() {
+        return Err(ScientificResolveError::PipelineInvalid);
+    }
+    bounded(&json!(normalized), MAX_GENERAL_BYTES)?;
+    let mut normalized = normalized.into_iter();
+    let mut datasets = Vec::new();
+    for root in roots {
+        let mut dataset = normalized
+            .next()
+            .ok_or(ScientificResolveError::DatasetInvalid)?;
+        if !dataset.is_object() {
+            return Err(ScientificResolveError::DatasetInvalid);
+        }
+        reject_implicit_folders(&dataset)?;
+        confine_config(&mut dataset, &root, true)?;
+        datasets.push(dataset);
+    }
+    let mut pipelines = Vec::new();
+    for normalized in normalized {
+        bounded(&normalized, MAX_GENERAL_BYTES)?;
+        let pipeline = normalized
+            .get("runtime_pipeline")
+            .filter(|value| value.as_array().is_some_and(|steps| !steps.is_empty()))
+            .ok_or(ScientificResolveError::PipelineInvalid)?;
+        if normalized
+            .get("validation")
+            .and_then(|value| value.get("valid"))
+            == Some(&json!(false))
+        {
+            return Err(ScientificResolveError::PipelineInvalid);
+        }
+        pipelines.push(pipeline.clone());
+    }
+    Ok((datasets, pipelines))
 }
 
 struct Selection {
@@ -447,6 +470,44 @@ mod tests {
             json!(root.join("dataset/x.csv"))
         );
         assert!(request["dataset"].get("X").is_none());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn batched_normalization_is_one_invocation_with_identical_validation() {
+        use std::cell::Cell;
+        let (root, config, workspace) = fixture("general-document-batch");
+        let resolver = ScientificRequestResolver::new(config);
+        let input = submission(&workspace, "local-python");
+        let expected = resolver.resolve_general(&input, adapter).unwrap();
+        let calls = Cell::new(0);
+        let actual = resolver
+            .resolve_general_batched(&input, |operation, payload| {
+                calls.set(calls.get() + 1);
+                assert_eq!(operation, "documents.batch");
+                let requests = payload["requests"].as_array().unwrap();
+                assert_eq!(requests.len(), 2);
+                let results = requests
+                    .iter()
+                    .map(|request| {
+                        adapter(request["operation"].as_str().unwrap(), &request["payload"])
+                            .unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                Ok(json!(results))
+            })
+            .unwrap();
+        assert_eq!(calls.get(), 1);
+        assert_eq!(actual, expected);
+        for malformed in [
+            json!([]),
+            json!([{}, {}, {}]),
+            json!([{"train_x":"/outside.csv"},{}]),
+        ] {
+            assert!(resolver
+                .resolve_general_batched(&input, |_, _| Ok(malformed.clone()))
+                .is_err());
+        }
         fs::remove_dir_all(root).unwrap();
     }
 
