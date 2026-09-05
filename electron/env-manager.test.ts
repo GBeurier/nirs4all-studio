@@ -703,8 +703,8 @@ describe("EnvManager", () => {
     const manager = new EnvManager();
 
     expect(manager.isBundled()).toBe(true);
-    expect(manager.getConfiguredRuntimeMode()).toBe("custom");
-    expect(manager.getConfiguredPythonPath()).toBe(customPython);
+    expect(manager.getConfiguredRuntimeMode()).toBe("bundled");
+    expect(manager.getConfiguredPythonPath()).toBe(bundledPython);
     expect(manager.getPythonPath()).toBe(bundledPython);
     expect(manager.shouldShowWizard()).toBe(false);
   });
@@ -742,7 +742,7 @@ describe("EnvManager", () => {
     expect(childProcessMocks.execFile).toHaveBeenCalled();
   });
 
-  it("verifies the configured custom runtime even when a bundled runtime is present", async () => {
+  it("verifies the immutable bundled runtime instead of a saved custom runtime", async () => {
     vi.stubEnv("NIRS4ALL_PLUGIN_RUNTIME_VERIFY_TIMEOUT_MS", "45000");
     const userDataDir = makeUserDataDir();
     const settingsPath = path.join(userDataDir, "env-settings.json");
@@ -778,7 +778,7 @@ describe("EnvManager", () => {
     childProcessMocks.execFile.mockImplementation((command: string, ...args: unknown[]) => {
       const options = args[1] as { timeout?: number };
       const callback = args[args.length - 1] as (error: Error | null, stdout?: string, stderr?: string) => void;
-      expect(command).toBe(customPython);
+      expect(command).toBe(bundledPython);
       expect(options.timeout).toBe(45000);
       callback(null, "", "");
     });
