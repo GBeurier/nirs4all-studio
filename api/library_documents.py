@@ -140,6 +140,22 @@ def adapt_document(operation: str, document: dict[str, Any]) -> Any:
     """Dispatch an explicit document operation; never schedule or execute a run."""
     if not isinstance(document, dict):
         raise ValueError("Document must be a JSON object")
+    if operation in {"dataset.preview", "dataset.stats", "dataset.inspect_format"}:
+        from .library_dataset_inspection import inspect_dataset_document
+
+        return inspect_dataset_document(operation, document)
+    if operation == "documents.batch":
+        requests = document.get("requests")
+        if set(document) != {"requests"} or not isinstance(requests, list) or not 1 <= len(requests) <= 128:
+            raise ValueError("Document batch requires 1 to 128 requests")
+        for item in requests:
+            if not isinstance(item, dict) or set(item) != {"operation", "payload"}:
+                raise ValueError("Invalid document batch member")
+            if item["operation"] not in {"dataset.configure", "pipeline.normalize"} or not isinstance(item["payload"], dict):
+                raise ValueError("Document batch only supports normalization")
+            if len(json.dumps(item["payload"], allow_nan=False).encode("utf-8")) > 2 * 1024 * 1024:
+                raise ValueError("Document batch member exceeds 2 MiB")
+        return [adapt_document(item["operation"], item["payload"]) for item in requests]
     operations = {
         "pipeline.normalize": normalize_pipeline,
         "pipeline.import": import_pipeline,

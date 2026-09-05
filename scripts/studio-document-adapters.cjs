@@ -7,6 +7,7 @@ const PACKAGE = "studio_document_adapters";
 const SCHEMA = "nirs4all.studio-document-adapters.v1";
 const SOURCE_FILES = Object.freeze([
   "api/library_documents.py",
+  "api/library_dataset_inspection.py",
   "api/pipeline_canonical.py",
   "api/pipeline_canonical_branch_merge.py",
   "api/pipeline_canonical_generators.py",

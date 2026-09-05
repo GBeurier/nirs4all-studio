@@ -106,6 +106,34 @@ class DocumentAdapterTests(unittest.TestCase):
             self.assertIn("/datasets/example/y.csv", encoded)
             self.assertIn("/datasets/example/" + ("nir.csv" if "sources" in config else "raw.csv"), encoded)
 
+    def test_document_batch_preserves_order_and_refuses_nested_or_import_operations(self):
+        configured = self.invoke("documents.batch", {"requests": [
+            {"operation": "dataset.configure", "payload": {"record": {"path": "/datasets/example", "config": {"train_x": "X.csv", "train_y": "Y.csv"}}}},
+            {"operation": "pipeline.normalize", "payload": {"steps": [{"type": "model", "name": "Ridge", "params": {"alpha": 0.5}}]}},
+        ]})
+        self.assertTrue(configured["ok"], configured)
+        self.assertEqual(len(configured["value"]), 2)
+        self.assertIn("/datasets/example/X.csv", json.dumps(configured["value"][0]))
+        self.assertIn("runtime_pipeline", configured["value"][1])
+        for operation in ("documents.batch", "pipeline.import", "run"):
+            refused = self.invoke("documents.batch", {"requests": [{"operation": operation, "payload": {}}]})
+            self.assertFalse(refused["ok"], refused)
+
+    def test_worker_encoder_checks_utf8_budget_before_writing_any_partial_response(self):
+        source = (ROOT / "sidecar/src/scientific_cpython.rs").read_text(encoding="utf-8")
+        encoder = "encoded=bytearray()" + source.split("encoded=bytearray()", 1)[1].split('"#;', 1)[0]
+        for response, limit, succeeds in [({"value": "é"}, 32, True), ({"items": list(range(1000))}, 32, False)]:
+            script = "import json,sys\nresponse=" + repr(response) + "\nresponse_limit=" + str(limit) + "\n" + encoder
+            result = subprocess.run([sys.executable, "-I", "-B", "-c", script], capture_output=True, timeout=10)
+            if succeeds:
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), response)
+                self.assertLessEqual(len(result.stdout), limit)
+            else:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, b"")
+                self.assertIn(b"exceeds stdout budget", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
