@@ -1652,6 +1652,11 @@ jobs:
       - name: Verify fail-closed Docker contract
         run: npm run test:docker-runtime-contract
 
+      - name: Install browser access-test dependencies
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
         with:
@@ -1671,6 +1676,7 @@ jobs:
             --tag nirs4all-studio:native-release-candidate \
             .
           bash scripts/smoke-docker-native-runtime.sh nirs4all-studio:native-release-candidate
+          node scripts/test-docker-access.cjs nirs4all-studio:native-release-candidate --browser
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -1820,12 +1826,15 @@ jobs:
 
           \`\`\`bash
           docker pull ghcr.io/gbeurier/nirs4all-studio:${VERSION}
-          docker run -p 8000:8000 ghcr.io/gbeurier/nirs4all-studio:${VERSION}
+          docker run -p 127.0.0.1:8000:8000 -e NIRS4ALL_STUDIO_TRUSTED_LOCAL_ONLY=1 ghcr.io/gbeurier/nirs4all-studio:${VERSION}
           \`\`\`
 
           | Runtime | Tag | Status |
           |---------|-----|--------|
           | Native Rust | \`ghcr.io/gbeurier/nirs4all-studio:${VERSION}\` | ${DOCKER} |
+
+          This command is local-only. Shared deployments require a mounted
+          password file and TLS; see docs/NATIVE_HTTP_ACCESS.md in the source.
 
           ### Verification
 

@@ -407,14 +407,23 @@ Persist native Studio configuration in `/var/lib/nirs4all-studio` and mount
 scientific workspaces under `/workspaces`:
 
 ```bash
-docker run --rm -p 8000:8000 \
+docker run --rm -p 127.0.0.1:8000:8000 \
+  -e NIRS4ALL_STUDIO_TRUSTED_LOCAL_ONLY=1 \
   -v studio-state:/var/lib/nirs4all-studio \
   -v /path/to/workspaces:/workspaces \
   ghcr.io/gbeurier/nirs4all-studio:{version}
 ```
 
-The OCI healthcheck calls the Rust-owned `/api/health` route through nginx, so
-healthy status proves both processes and the reverse-proxy path are available.
+This explicit local-only mode trusts local users. The default container instead
+requires a readable, non-empty password file mounted at
+`/run/secrets/studio.htpasswd`; it refuses startup without either configuration.
+For shared access, use the password-file mode behind TLS, configure the exact
+external origin, and keep the host port bound to loopback behind that proxy.
+See [native access configuration](NATIVE_HTTP_ACCESS.md#docker).
+
+The OCI healthcheck calls the Rust-owned `/api/health` route through nginx's
+loopback-restricted `/_studio_health`, so healthy status proves both processes
+and the reverse-proxy path are available without a public authentication bypass.
 
 When publication is authorized, each downloadable artifact must ship with a
 `.sha256` sidecar produced by the same release workflow.

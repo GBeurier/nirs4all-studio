@@ -84,6 +84,11 @@ jobs:
       - name: Verify fail-closed Docker contract
         run: npm run test:docker-runtime-contract
 
+      - name: Install browser access-test dependencies
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+
       - name: Build exact native Methods runtime
         uses: ./.github/actions/build-native-methods
         with:
@@ -101,7 +106,9 @@ jobs:
           .
 
       - name: Smoke static, HTTP and WebSocket routing
-        run: bash scripts/smoke-docker-native-runtime.sh nirs4all-studio:native-ci
+        run: |
+          bash scripts/smoke-docker-native-runtime.sh nirs4all-studio:native-ci
+          node scripts/test-docker-access.cjs nirs4all-studio:native-ci --browser
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Backend: Lint, Test, Validate
