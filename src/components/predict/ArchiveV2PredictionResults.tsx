@@ -1,4 +1,4 @@
-import { RotateCcw } from "lucide-react";
+import { Download, RotateCcw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,12 @@ import type {
   ArchiveV2ArrayPredictionResponse,
   ArchiveV2ConformalPresentation,
 } from "@/types/archiveV2Prediction";
+import {
+  downloadBlob,
+  sanitizeFilename,
+} from "@/components/predictions/viewer/export";
+
+import { buildArchiveV2PredictionCsv } from "./archiveV2PredictionCsv";
 
 interface ArchiveV2PredictionResultsProps {
   result: ArchiveV2ArrayPredictionResponse;
@@ -29,6 +35,14 @@ export function ArchiveV2PredictionResults({
   conformalError,
   onReset,
 }: ArchiveV2PredictionResultsProps) {
+  const exportCsv = () => {
+    const csv = buildArchiveV2PredictionCsv(result, conformal);
+    downloadBlob(
+      new Blob([csv], { type: "text/csv;charset=utf-8" }),
+      `archive-v2-predictions-${sanitizeFilename(result.archive_id)}.csv`,
+    );
+  };
+
   return (
     <Card className="border-border/60 shadow-sm">
       <CardHeader className="space-y-3">
@@ -41,9 +55,14 @@ export function ArchiveV2PredictionResults({
               <Badge variant="outline">Rust/Core/Methods</Badge>
             </div>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={onReset}>
-            <RotateCcw className="mr-2 h-4 w-4" /> Reset
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={exportCsv}>
+              <Download className="mr-2 h-4 w-4" /> Export CSV
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={onReset}>
+              <RotateCcw className="mr-2 h-4 w-4" /> Reset
+            </Button>
+          </div>
         </div>
         <p className="break-all font-mono text-xs text-muted-foreground">
           {result.archive_id} · {result.archive_sha256}
