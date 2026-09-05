@@ -56,9 +56,9 @@ const MAX_METHODS_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_RUNTIME_CONTRACT_BYTES: u64 = 64 * 1024;
 const METHODS_ABI_MAJOR: u32 = 2;
 const METHODS_ABI_MINOR: u32 = 5;
-const METHODS_SOURCE_COMMIT: &str = "49aa40e90afef676f25809db1bd2a523e9582a49";
-const METHODS_SOURCE_TREE: &str = "03de9a3f0b116b4d4c7446acc6cd1e4bf8814a83";
-const METHODS_PROJECT_VERSION: &str = "1.0.16";
+const METHODS_SOURCE_COMMIT: &str = "a9faae2909c71a833bb7f3b208dc20548cf01588";
+const METHODS_SOURCE_TREE: &str = "5c39dde72afab2ff725ff7b1b53e69a17b9bf865";
+const METHODS_PROJECT_VERSION: &str = "1.0.18";
 const PACKAGED_RUNTIME_CONTRACT: &str = "STUDIO_RUNTIME_CONTRACT.json";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1806,7 +1806,7 @@ mod tests {
         assert_eq!(contract["executor_boundary"]["fastapi_fallback"], false);
         assert_eq!(
             contract["executor_boundary"]["core"],
-            "immutable nirs4all-core 6b25b63 snapshot exposing nirs4all 0.3.25 and n4m 0.1.4"
+            "immutable nirs4all-core 4729471 snapshot exposing nirs4all 0.3.29 and n4m 0.1.4"
         );
     }
 }
