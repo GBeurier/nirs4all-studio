@@ -553,16 +553,14 @@ impl NativeUpdater {
         let result = self.download_and_stage(jobs, job_id, release);
         match result {
             Ok(content) => {
-                let _ = jobs.complete_at(
-                    job_id,
-                    json!({
-                        "staging_path": content,
-                        "version": release.version,
-                        "ready_to_apply": true,
-                    }),
-                    &rfc3339_now(),
-                    Instant::now(),
-                );
+                if self
+                    .complete_or_invalidate_staging(jobs, job_id, release, &content)
+                    .is_err()
+                {
+                    // Keeping the lifecycle busy is safer than exposing a
+                    // staging tree whose cancellation could not be enforced.
+                    return;
+                }
             }
             Err(_error) if job_cancelled(jobs, job_id) => {
                 let _ = jobs.acknowledge_cancel_at(job_id, &rfc3339_now(), Instant::now());
@@ -572,6 +570,32 @@ impl NativeUpdater {
             }
         }
         self.finish_download(job_id);
+    }
+
+    fn complete_or_invalidate_staging(
+        &self,
+        jobs: &NativeJobRuntime,
+        job_id: &str,
+        release: &ReleaseInfo,
+        content: &Path,
+    ) -> Result<(), String> {
+        let completion = jobs.complete_at(
+            job_id,
+            json!({
+                "staging_path": content,
+                "version": release.version,
+                "ready_to_apply": true,
+            }),
+            &rfc3339_now(),
+            Instant::now(),
+        );
+        if matches!(completion, Ok(snapshot) if snapshot.status == JobStatus::Completed) {
+            return Ok(());
+        }
+        // complete_at deliberately turns a late cancellation request into
+        // Cancelled. Invalidate already-published metadata before returning to
+        // Idle, otherwise a cancelled update would remain applicable.
+        remove_known_tree(&self.staging_dir())
     }
 
     fn finish_download(&self, job_id: &str) {
@@ -1498,16 +1522,24 @@ fn preflight_zip(archive: &Path) -> Result<(), String> {
         return Err("Update archive has too many entries".into());
     }
     let mut expanded = 0_u64;
+    // Electron's macOS archives are extracted on the commonly case-insensitive
+    // APFS/HFS+ filesystems.  Use a portable ASCII/case-folded identity here so
+    // `A` and `a` cannot bypass the symlink-ancestor check before ditto runs.
+    // Non-ASCII paths are refused because std does not provide the target
+    // filesystem's Unicode normalization/case-folding semantics.
     let mut paths = HashSet::new();
     let mut symlinks = HashSet::new();
+    let mut relative_paths = Vec::new();
     for index in 0..archive.len() {
         let mut entry = archive
             .by_index(index)
             .map_err(|error| format!("Invalid ZIP entry: {error}"))?;
         let relative = safe_relative_path(Path::new(entry.name()))?;
-        if !paths.insert(relative.clone()) {
-            return Err("ZIP update contains duplicate paths".into());
+        let portable_key = portable_zip_path_key(&relative)?;
+        if !paths.insert(portable_key.clone()) {
+            return Err("ZIP update contains duplicate or case-colliding paths".into());
         }
+        relative_paths.push(relative.clone());
         expanded = expanded
             .checked_add(entry.size())
             .ok_or("Expanded update size overflow")?;
@@ -1517,7 +1549,7 @@ fn preflight_zip(archive: &Path) -> Result<(), String> {
         let mode = entry.unix_mode().unwrap_or(0);
         let file_type = mode & 0o170_000;
         if file_type == 0o120_000 {
-            symlinks.insert(relative.clone());
+            symlinks.insert(portable_key);
             let mut link = String::new();
             entry
                 .read_to_string(&mut link)
@@ -1533,16 +1565,24 @@ fn preflight_zip(archive: &Path) -> Result<(), String> {
             return Err("ZIP update contains a special file".into());
         }
     }
-    for path in &paths {
+    for path in &relative_paths {
         let mut parent = path.parent();
         while let Some(candidate) = parent.filter(|candidate| !candidate.as_os_str().is_empty()) {
-            if symlinks.contains(candidate) {
+            if symlinks.contains(&portable_zip_path_key(candidate)?) {
                 return Err("ZIP update contains an entry below a symlink".into());
             }
             parent = candidate.parent();
         }
     }
     Ok(())
+}
+
+fn portable_zip_path_key(path: &Path) -> Result<String, String> {
+    let value = path
+        .to_str()
+        .filter(|value| value.is_ascii() && !value.bytes().any(|byte| byte.is_ascii_control()))
+        .ok_or("ZIP update paths must use printable ASCII for portable confinement")?;
+    Ok(value.to_ascii_lowercase())
 }
 
 fn extract_zip(archive: &Path, destination: &Path) -> Result<(), String> {
@@ -2144,8 +2184,9 @@ fn detail(status: u16, message: impl Into<String>) -> HttpResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::TcpListener;
+    use std::{io::Cursor, net::TcpListener};
     use tempfile::TempDir;
+    use zip::{write::SimpleFileOptions, ZipWriter};
 
     #[cfg(all(unix, not(target_os = "macos")))]
     fn linux_update_tar() -> Vec<u8> {
@@ -2186,6 +2227,21 @@ mod tests {
             .append_data(&mut header, "escape/payload", payload.as_slice())
             .unwrap();
         builder.into_inner().unwrap().finish().unwrap()
+    }
+
+    fn case_colliding_symlink_escape_zip() -> Vec<u8> {
+        let mut writer = ZipWriter::new(Cursor::new(Vec::new()));
+        let options = SimpleFileOptions::default().unix_permissions(0o777);
+        writer.add_symlink("A", ".", options).unwrap();
+        writer.add_symlink("a/escape", "..", options).unwrap();
+        writer
+            .start_file(
+                "escape/payload",
+                SimpleFileOptions::default().unix_permissions(0o644),
+            )
+            .unwrap();
+        writer.write_all(b"escaped").unwrap();
+        writer.finish().unwrap().into_inner()
     }
 
     #[test]
@@ -2249,6 +2305,26 @@ mod tests {
         assert!(error.contains("symlink parent"), "{error}");
         assert!(!temp.path().join("escape").exists());
         assert!(!temp.path().join("payload").exists());
+    }
+
+    #[test]
+    fn zip_preflight_rejects_case_aliased_symlink_ancestors_before_ditto() {
+        let temp = TempDir::new().unwrap();
+        let archive = temp.path().join("malicious.zip");
+        fs::write(&archive, case_colliding_symlink_escape_zip()).unwrap();
+
+        let error = preflight_zip(&archive).unwrap_err();
+
+        assert!(error.contains("below a symlink"), "{error}");
+    }
+
+    #[test]
+    fn zip_preflight_rejects_non_ascii_paths_with_ambiguous_macos_identity() {
+        assert!(portable_zip_path_key(Path::new("app/café")).is_err());
+        assert_eq!(
+            portable_zip_path_key(Path::new("App/Resources")).unwrap(),
+            "app/resources"
+        );
     }
 
     #[test]
@@ -2757,6 +2833,63 @@ mod tests {
             .apply(br#"{"confirm":true}"#)
             .unwrap_err()
             .contains("not newer"));
+    }
+
+    #[test]
+    fn cancellation_between_staging_and_completion_invalidates_the_update() {
+        let temp = TempDir::new().unwrap();
+        let state = temp.path().join("state");
+        let staging = state.join(STAGING_DIR);
+        let content = staging.join("app");
+        fs::create_dir_all(&content).unwrap();
+        atomic_json(
+            &staging.join(STAGED_METADATA),
+            &json!({"version":"2.0.0","staged_tree_sha256":"0".repeat(64)}),
+        )
+        .unwrap();
+        let updater = NativeUpdater::test_config(
+            state,
+            None,
+            None,
+            "1.0.0",
+            "https://api.github.com".into(),
+            false,
+        );
+        let jobs = NativeJobRuntime::default();
+        let now = Instant::now();
+        jobs.register_local_control_at(
+            "late-cancel",
+            JobType::UpdateDownload,
+            json!({}),
+            &rfc3339_now(),
+            now,
+        )
+        .unwrap();
+        jobs.start_at("late-cancel", &rfc3339_now(), now).unwrap();
+        jobs.request_local_cancel_at("late-cancel", &rfc3339_now(), now)
+            .unwrap();
+        let release = ReleaseInfo {
+            version: "2.0.0".into(),
+            release_url: None,
+            notes: String::new(),
+            published_at: None,
+            asset_name: "studio.zip".into(),
+            download_url: "https://github.com/fixture/studio.zip".into(),
+            size: 1,
+            sha256: "0".repeat(64),
+            prerelease: false,
+        };
+
+        updater
+            .complete_or_invalidate_staging(&jobs, "late-cancel", &release, &content)
+            .unwrap();
+
+        assert_eq!(
+            jobs.get_at("late-cancel", Instant::now()).unwrap().status,
+            JobStatus::Cancelled
+        );
+        assert_eq!(updater.staged_info()["has_staged_update"], false);
+        assert!(!updater.staging_dir().exists());
     }
 
     #[test]
