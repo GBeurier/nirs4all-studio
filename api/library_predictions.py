@@ -135,7 +135,7 @@ def run_prediction(document: dict[str, Any]) -> dict[str, Any]:
     if values.shape[1] != len(names) or not np.isfinite(values).all():
         raise ValueError("Prediction target dimensions or finitude are inconsistent")
     if selected is not None:
-        if len(selected) != len(values) or (targets is not None and len(targets) != len(values)):
+        if partitions is None or len(selected) != len(values) or (targets is not None and len(targets) != len(values)):
             raise ValueError("Prediction rows do not match the original dataset identities")
         values = values[selected]
         if targets is not None:
