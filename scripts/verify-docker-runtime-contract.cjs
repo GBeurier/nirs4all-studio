@@ -3,6 +3,10 @@
 
 const fs = require("fs");
 const path = require("path");
+const {
+  MANIFEST: adapterManifest,
+  SOURCE_FILES: adapterSourceFiles,
+} = require("./studio-document-adapters.cjs");
 
 const root = path.resolve(__dirname, "..");
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
@@ -26,10 +30,26 @@ requireText(dockerfile, "FROM ${NODE_IMAGE} AS frontend", "frontend build stage"
 requireText(dockerfile, "FROM ${RUST_IMAGE} AS sidecar", "Rust sidecar build stage");
 requireText(dockerfile, "FROM ${NODE_IMAGE} AS python-plugin-runtime", "bounded CPython plugin build stage");
 requireText(dockerfile, "FROM ${NGINX_IMAGE} AS runtime", "minimal web runtime stage");
+requireText(dockerfile, "FROM scratch AS studio-document-adapter-sources", "closed document adapter source stage");
 requireText(
   dockerfile,
-  "COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/bake-python-plugin-runtime.cjs scripts/",
+  "COPY --from=studio-document-adapter-sources / /build/",
+  "document adapter sources in plugin builder",
+);
+requireText(
+  dockerfile,
+  "COPY --from=studio-document-adapter-sources / /",
+  "document adapter sources in native contract verifier",
+);
+requireText(
+  dockerfile,
+  "COPY scripts/setup-python-env.cjs scripts/python-runtime-config.cjs scripts/python-http-runtime-config.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs scripts/",
   "complete plugin builder module graph",
+);
+requireText(
+  dockerfile,
+  "COPY scripts/native-runtime-contract.cjs scripts/studio-document-adapters.cjs scripts/bake-python-plugin-runtime.cjs /contract-scripts/",
+  "complete native contract verifier module graph",
 );
 requireText(
   dockerfile,
@@ -98,6 +118,13 @@ forbid(entrypoint, /python|uvicorn|main\.py|scheduler|fallback/im, "non-sidecar 
 for (const excluded of ["api/", "websocket/", "main.py", "requirements*.txt", "backend.spec"]) {
   requireText(dockerignore, excluded, "Python backend context exclusion");
 }
+for (const adapterSource of adapterSourceFiles) {
+  requireText(dockerfile, `"${adapterSource}"`, "document adapter staged source inventory");
+  requireText(dockerignore, `!${adapterSource}`, "document adapter context allowlist");
+}
+requireText(dockerfile, '"src/data/nodes/definitions/"', "document adapter node definitions inventory");
+requireText(dockerfile, '"src/data/nodes/generated/canonical-registry.json"', "canonical node registry inventory");
+requireText(dockerfile, `"${adapterManifest}"`, "document adapter manifest inventory");
 requireText(dockerignore, "!recommended-config.json", "plugin build configuration inclusion");
 forbid(dockerignore, /^(?:postcss\.config\.js|tailwind\.config\.ts)\/?$/m, "frontend CSS build configuration exclusion");
 

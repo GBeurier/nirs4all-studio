@@ -129,4 +129,12 @@ if (require.main === module) {
   fs.writeFileSync(path.join(root, MANIFEST), `${JSON.stringify(buildManifest(root), null, 2)}\n`);
 }
 
-module.exports = { buildManifest, installAdapters, verifyAdapters, PACKAGE, SCHEMA };
+module.exports = {
+  buildManifest,
+  installAdapters,
+  verifyAdapters,
+  PACKAGE,
+  SCHEMA,
+  SOURCE_FILES,
+  MANIFEST,
+};
