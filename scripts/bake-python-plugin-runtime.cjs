@@ -3,6 +3,7 @@
 const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { installAdapters, verifyAdapters } = require("./studio-document-adapters.cjs");
 
 const projectRoot = path.join(__dirname, "..");
 const PLUGIN_MARKER_FILE = "PLUGIN_RUNTIME_READY.json";
@@ -65,6 +66,14 @@ if os.name == "posix":
     except RuntimeError: spawnv_denied=True
 else: spawnv_denied=True
 import nirs4all,nirs4all_tools,duckdb,pyarrow,pyarrow.parquet as parquet
+from studio_document_adapters.api.library_documents import adapt_document
+if not callable(getattr(nirs4all,"studio_scientific_job_v2",None)):
+    raise RuntimeError("general scientific callable unavailable")
+adapter_probe=adapt_document("pipeline.import",{"payload":[{"class":"sklearn.linear_model.Ridge"}]})
+if adapter_probe.get("success") is not True or len(adapter_probe.get("steps",[])) != 1:
+    raise RuntimeError("document adapter functional preflight failed")
+if any(name.split(".")[0] in {"fastapi","starlette","uvicorn","api"} for name in sys.modules):
+    raise RuntimeError("document adapter imported an HTTP/application module")
 d=importlib.metadata.distribution("nirs4all")
 r=next(x for x in d.files or [] if str(x).endswith(".dist-info/RECORD")); record_bytes=open(d.locate_file(r),"rb").read()
 rows=sorted(set(tuple(row) for row in csv.reader(io.StringIO(record_bytes.decode("utf-8"))) if row[1] and not row[0].endswith(".pyc") and not row[0].startswith("../../../") and row[0].rsplit("/",1)[-1] not in {"INSTALLER","REQUESTED","direct_url.json"}))
@@ -334,7 +343,9 @@ function verifyPluginRuntime({ backendRoot, platform = process.platform, arch = 
     // electron-builder does not preserve empty directories. Normalize them
     // before content-addressing so the packaged closure remains identical.
     removeEmptyDirectories(runtimeRoot);
+    installAdapters(projectRoot, sitePackages);
   }
+  verifyAdapters(projectRoot, sitePackages);
   const distributions = assertPluginOnlyPayload(backendRoot, runtimeRoot, sitePackages);
   const preflight = runPreflight(runtimeRoot, sitePackages, platform);
   const expected = expectedMarker(platform, arch);

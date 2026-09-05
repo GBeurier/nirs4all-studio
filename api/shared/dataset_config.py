@@ -209,6 +209,7 @@ def build_nirs4all_config_from_stored(dataset_record: dict[str, Any]) -> dict[st
         return build_nirs4all_config(
             files=files,
             parsing=parsing,
+            base_path=dataset_path,
             aggregation=stored_config.get("aggregation"),
             folds=stored_config.get("folds"),
             task_type=stored_config.get("task_type"),

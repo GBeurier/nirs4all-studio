@@ -26,6 +26,7 @@ use serde_json::{json, Value};
 
 mod archive_v2_prediction;
 pub mod conformal_store;
+mod document_cpython;
 pub mod execution_job_records;
 mod http_access;
 pub mod job_http;
@@ -408,6 +409,7 @@ pub struct SidecarState {
     app_settings: AppSettingsStore,
     update_settings: UpdateSettingsStore,
     native_jobs: Arc<NativeJobRuntime>,
+    scientific_host: Option<Arc<scientific_cpython::CpythonScientificJobExecutor>>,
     native_archive_training: Option<Arc<NativeArchiveTrainingExecutor>>,
     archive_v2_prediction: ArchiveV2PredictionRuntime,
     legacy_conversion: LegacyConversionRuntime,
@@ -429,6 +431,7 @@ impl Default for SidecarState {
             app_settings: AppSettingsStore::from_environment(),
             update_settings: UpdateSettingsStore::from_environment(),
             native_jobs: Arc::new(NativeJobRuntime::default()),
+            scientific_host: None,
             native_archive_training: None,
             archive_v2_prediction: ArchiveV2PredictionRuntime::default(),
             legacy_conversion: LegacyConversionRuntime::default(),
@@ -503,11 +506,11 @@ impl SidecarState {
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "python_plugin_host".into());
         let app_settings = AppSettingsStore::from_environment();
-        let native_jobs = if env::var(SCIENTIFIC_EXECUTOR_ENV).as_deref()
+        let scientific_host = if env::var(SCIENTIFIC_EXECUTOR_ENV).as_deref()
             == Ok(scientific_cpython::SCIENTIFIC_CPYTHON_EXECUTOR_ID)
         {
             let empty = Path::new("");
-            Arc::new(NativeJobRuntime::with_executor(Arc::new(
+            Some(Arc::new(
                 scientific_cpython::CpythonScientificJobExecutor::acquire_packaged_with_config_dir(
                     python_plugin_host_bundled
                         .then_some(python_plugin_host.as_deref())
@@ -527,10 +530,17 @@ impl SidecarState {
                         .unwrap_or(empty),
                     app_settings.config_dir(),
                 ),
-            )))
+            ))
         } else {
-            Arc::new(NativeJobRuntime::default())
+            None
         };
+        let native_jobs = scientific_host.as_ref().map_or_else(
+            || Arc::new(NativeJobRuntime::default()),
+            |host| {
+                let executor: Arc<dyn job_http::ScientificJobExecutor> = host.clone();
+                Arc::new(NativeJobRuntime::with_executor(executor))
+            },
+        );
         let native_archive_training =
             NativeArchiveTrainingExecutor::acquire(app_settings.config_dir()).map(Arc::new);
         Self {
@@ -542,6 +552,7 @@ impl SidecarState {
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
             native_jobs,
+            scientific_host,
             native_archive_training,
             app_settings,
             update_settings: UpdateSettingsStore::from_environment(),
@@ -689,6 +700,7 @@ impl SidecarState {
             .expect("the native capability template is valid JSON");
         capabilities["features"]["workspace_document_routes"] = json!(true);
         capabilities["features"]["pipeline_document_routes"] = json!(true);
+        capabilities["features"]["pipeline_library_routes"] = json!(true);
         capabilities["features"]["dataset_catalogue_routes"] = json!(true);
         capabilities.to_string()
     }
@@ -831,6 +843,15 @@ pub fn route_request_with_body(
     path: &str,
     body: &[u8],
 ) -> HttpResponse {
+    if let Some(response) = document_cpython::route(
+        &state.app_settings,
+        state.scientific_host.as_deref(),
+        method,
+        path,
+        body,
+    ) {
+        return response;
+    }
     if let Some(response) = workspace_documents::route(&state.app_settings, method, path, body) {
         return response;
     }
@@ -3947,12 +3968,20 @@ fn route_documents_without_global_lock(
     if request.query.is_some() || !workspace_documents::owns_path(&request.path) {
         return None;
     }
-    let settings = state
-        .lock()
-        .expect("sidecar state mutex poisoned")
-        .app_settings
-        .clone();
-    workspace_documents::route(&settings, &request.method, &request.path, &request.body)
+    let (settings, host) = {
+        let state = state.lock().expect("sidecar state mutex poisoned");
+        (state.app_settings.clone(), state.scientific_host.clone())
+    };
+    document_cpython::route(
+        &settings,
+        host.as_deref(),
+        &request.method,
+        &request.path,
+        &request.body,
+    )
+    .or_else(|| {
+        workspace_documents::route(&settings, &request.method, &request.path, &request.body)
+    })
 }
 
 #[cfg(test)]

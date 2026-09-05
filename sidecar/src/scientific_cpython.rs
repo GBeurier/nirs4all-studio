@@ -1,10 +1,10 @@
 //! Bounded fresh-process `CPython` scientific-library host.
 //!
 //! The stdio worker and Rust-owned terminal callback are implemented here,
-//! but product selection remains closed until Studio can resolve its current
-//! saved dataset/pipeline payload into the callable's path-free matrix
-//! contract. Python never owns HTTP, jobs, events, cancellation, scheduling,
-//! or durable storage.
+//! with explicit native job lifecycle and separately attested document
+//! translation. Python never owns HTTP, jobs, events, cancellation or scheduling.
+//! The scientific library may persist its own WorkspaceStore/results only to
+//! the workspace authorized by the Rust request resolver.
 
 use std::{
     collections::BTreeMap,
@@ -37,6 +37,8 @@ pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_HOST_BYTES: u64 = 64 * 1024 * 1024;
+pub const MAX_GENERAL_SCIENTIFIC_STDIN_BYTES: usize = 8 * 1024 * 1024;
+pub const MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES: usize = 256 * 1024;
 pub const SCIENTIFIC_DISTRIBUTION_VERSION: &str = "1.0.0rc2";
 pub const SCIENTIFIC_DISTRIBUTION_MANIFEST_SHA256: &str =
     "0d8bd9ef411c7df1cf30597f5d340d58cd107e71c6cf8baa6e7f53aad6641b88";
@@ -111,8 +113,8 @@ def deny_product_network(event,args):
 sys.addaudithook(deny_product_network)
 if sys.argv[1]:
     sys.path.insert(0,sys.argv[1])
-raw=sys.stdin.buffer.read(65537)
-if len(raw)>65536:
+raw=sys.stdin.buffer.read(8388609)
+if len(raw)>8388608:
     raise RuntimeError("scientific request exceeds stdin budget")
 request=json.loads(raw)
 distribution=importlib.metadata.distribution("nirs4all")
@@ -138,9 +140,31 @@ if not callable(target):
 actual_path=os.path.realpath(inspect.getsourcefile(target))
 if actual_path != sys.argv[2] or hashlib.sha256(open(actual_path,"rb").read()).hexdigest() != sys.argv[3]:
     raise RuntimeError("scientific callable identity changed")
-response=target(request)
+import contextlib
+with contextlib.redirect_stdout(sys.stderr):
+    if request.get("schema") == "nirs4all.studio-document-request.v1":
+        if len(raw)>2097152:
+            raise RuntimeError("document request exceeds stdin budget")
+        from studio_document_adapters.api.library_documents import adapt_document
+        try:
+            result=adapt_document(request["operation"],request["payload"])
+            response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":True,"result":result,"error":None}
+        except Exception as error:
+            response={"schema":"nirs4all.studio-document-response.v1","job_id":"document-translation","success":False,"result":None,"error":str(error).encode("utf-8")[:4000].decode("utf-8",errors="ignore")}
+        response_limit=2097152
+    elif request.get("schema") == "nirs4all.studio-scientific-job.v2":
+        general=getattr(nirs4all,"studio_scientific_job_v2",None)
+        if not callable(general):
+            raise RuntimeError("general scientific callable unavailable")
+        response=general(request)
+        response_limit=262144
+    else:
+        if len(raw)>65536:
+            raise RuntimeError("scientific V1 request exceeds stdin budget")
+        response=target(request)
+        response_limit=8192
 encoded=json.dumps(response,allow_nan=False,ensure_ascii=False,separators=(",",":"),sort_keys=True).encode("utf-8")
-if len(encoded)>8192:
+if len(encoded)>response_limit:
     raise RuntimeError("scientific response exceeds stdout budget")
 sys.stdout.buffer.write(encoded)
 "#;
@@ -248,6 +272,36 @@ pub struct CpythonScientificJobExecutor {
 }
 
 impl CpythonScientificJobExecutor {
+    pub(crate) fn adapt_document(&self, operation: &str, payload: &Value) -> Result<Value, String> {
+        let (Some(host), Some(callable), Some(runtime)) = (
+            &self.identity,
+            &self.callable_identity,
+            &self.packaged_runtime,
+        ) else {
+            return Err("Attested document library host unavailable".into());
+        };
+        crate::document_cpython::verify(&runtime.site_packages)?;
+        let request = crate::document_cpython::request(operation, payload)?;
+        let bytes = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
+        let response = run_scientific_process_with_timeout(
+            host,
+            callable,
+            Some(runtime),
+            &bytes,
+            &AtomicBool::new(false),
+            SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
+        )
+        .map_err(|error| error.reason().to_owned())?;
+        crate::document_cpython::verify(&runtime.site_packages)?;
+        if response["success"] == true {
+            Ok(response["result"].clone())
+        } else {
+            Err(response["error"]
+                .as_str()
+                .unwrap_or("Document translation failed")
+                .into())
+        }
+    }
     #[must_use]
     pub fn acquire(path: impl AsRef<Path>) -> Self {
         let config_dir = std::env::var_os("NIRS4ALL_CONFIG")
@@ -406,7 +460,9 @@ impl ScientificJobExecutor for CpythonScientificJobExecutor {
         }
         let payload = self
             .resolver
-            .resolve(request)
+            .resolve_general(request, |operation, payload| {
+                self.adapt_document(operation, payload)
+            })
             .map_err(|_| JobExecutorError::PreflightRefused)?;
         validate_scientific_request(&payload, &request.job_id)
             .map_err(|_| JobExecutorError::PreflightRefused)?;
@@ -1146,6 +1202,23 @@ fn run_scientific_process(
     )
 }
 
+fn request_limits(request: &Value) -> (usize, usize) {
+    match request.get("schema").and_then(Value::as_str) {
+        Some(crate::document_cpython::REQUEST_SCHEMA) => (
+            crate::document_cpython::MAX_DOCUMENT_BYTES,
+            crate::document_cpython::MAX_DOCUMENT_BYTES,
+        ),
+        Some("nirs4all.studio-scientific-job.v2") => (
+            MAX_GENERAL_SCIENTIFIC_STDIN_BYTES,
+            MAX_GENERAL_SCIENTIFIC_STDOUT_BYTES,
+        ),
+        _ => (
+            MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES,
+            MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES,
+        ),
+    }
+}
+
 fn run_scientific_process_with_timeout(
     host: &HostIdentity,
     callable: &HostIdentity,
@@ -1159,7 +1232,10 @@ fn run_scientific_process_with_timeout(
     if let Some(identity) = packaged_runtime {
         verify_packaged_runtime_identity(identity)?;
     }
-    if input.len() > MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES {
+    let request: Value =
+        serde_json::from_slice(input).map_err(|_| ScientificCpythonUnavailable::InvalidRequest)?;
+    let (input_limit, output_limit) = request_limits(&request);
+    if input.len() > input_limit {
         return Err(ScientificCpythonUnavailable::InvalidRequest);
     }
     let expected_job_id = serde_json::from_slice::<Value>(input)
@@ -1192,8 +1268,7 @@ fn run_scientific_process_with_timeout(
     };
     let input = input.to_vec();
     let stdin_writer = std::thread::spawn(move || stdin.write_all(&input));
-    let stdout_reader =
-        std::thread::spawn(move || read_bounded(stdout, MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES));
+    let stdout_reader = std::thread::spawn(move || read_bounded(stdout, output_limit));
     let stderr_reader =
         std::thread::spawn(move || read_bounded(stderr, MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES));
     let (status, cancellation_observed, timed_out) =
@@ -1224,8 +1299,21 @@ fn run_scientific_process_with_timeout(
     }
     let response: Value = serde_json::from_slice(&stdout)
         .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
-    validate_scientific_response(&response)?;
+    if request.get("schema").and_then(Value::as_str)
+        == Some(crate::document_cpython::REQUEST_SCHEMA)
+    {
+        if !crate::document_cpython::validate_response(&response) {
+            return Err(ScientificCpythonUnavailable::MalformedResponse);
+        }
+    } else {
+        validate_scientific_response(&response)?;
+    }
     if response.get("job_id").and_then(Value::as_str) != Some(&expected_job_id) {
+        return Err(ScientificCpythonUnavailable::MalformedResponse);
+    }
+    if request.get("schema").and_then(Value::as_str) == Some("nirs4all.studio-scientific-job.v2")
+        && response["result"]["workspace_path"] != request["options"]["workspace_path"]
+    {
         return Err(ScientificCpythonUnavailable::MalformedResponse);
     }
     // Dag-ML may use an internal temporary file. It is permitted only because
@@ -1286,6 +1374,9 @@ fn scientific_worker_command(
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .env("PYTHONNOUSERSITE", "1")
         .env("N4A_DAGML_INPROCESS", "1")
+        .env("MPLBACKEND", "Agg")
+        .env("MPLCONFIGDIR", scratch.join("matplotlib"))
+        .env("XDG_CACHE_HOME", scratch.join("cache"))
         .env("TMPDIR", scratch)
         .env("TMP", scratch)
         .env("TEMP", scratch)
@@ -1411,6 +1502,9 @@ fn validate_scientific_request(
     request: &Value,
     expected_job_id: &str,
 ) -> Result<(), ScientificCpythonUnavailable> {
+    if request.get("schema").and_then(Value::as_str) == Some("nirs4all.studio-scientific-job.v2") {
+        return validate_general_request(request, expected_job_id);
+    }
     let root = exact_object(
         request,
         &[
@@ -1563,6 +1657,11 @@ fn validate_request_options(value: &Value) -> Result<(), ScientificCpythonUnavai
 }
 
 fn validate_scientific_response(response: &Value) -> Result<(), ScientificCpythonUnavailable> {
+    if response.get("schema").and_then(Value::as_str)
+        == Some("nirs4all.studio-scientific-job-result.v2")
+    {
+        return validate_general_response(response);
+    }
     let root = exact_object(response, &["schema", "job_id", "engine", "result"])
         .map_err(|_| ScientificCpythonUnavailable::MalformedResponse)?;
     if root.get("schema").and_then(Value::as_str)
@@ -1610,6 +1709,130 @@ fn validate_scientific_response(response: &Value) -> Result<(), ScientificCpytho
         .is_err()
     {
         return Err(ScientificCpythonUnavailable::MalformedResponse);
+    }
+    Ok(())
+}
+
+fn validate_general_request(
+    request: &Value,
+    job_id: &str,
+) -> Result<(), ScientificCpythonUnavailable> {
+    let root = exact_object(
+        request,
+        &[
+            "schema",
+            "operation",
+            "job_id",
+            "engine",
+            "allow_fallback",
+            "pipeline",
+            "dataset",
+            "options",
+        ],
+    )?;
+    let valid = root["operation"] == "run"
+        && root["job_id"] == job_id
+        && valid_identifier(job_id)
+        && root["engine"] == "dag-ml"
+        && root["allow_fallback"] == false
+        && root["pipeline"]
+            .as_array()
+            .is_some_and(|steps| !steps.is_empty())
+        && matches!(
+            root["dataset"],
+            Value::String(_) | Value::Object(_) | Value::Array(_)
+        );
+    let options = root["options"]
+        .as_object()
+        .ok_or(ScientificCpythonUnavailable::InvalidRequest)?;
+    let allowed = [
+        "workspace_path",
+        "name",
+        "random_state",
+        "verbose",
+        "save_charts",
+        "save_artifacts",
+        "project",
+        "refit",
+        "cache",
+        "report_naming",
+        "keep_datasets",
+        "n_jobs",
+        "max_generation_count",
+        "continue_on_error",
+        "results_path",
+    ];
+    if !valid
+        || options.keys().any(|key| !allowed.contains(&key.as_str()))
+        || !options
+            .get("workspace_path")
+            .and_then(Value::as_str)
+            .is_some_and(|path| Path::new(path).is_absolute())
+        || serde_json::to_vec(request)
+            .map_err(|_| ScientificCpythonUnavailable::InvalidRequest)?
+            .len()
+            > MAX_GENERAL_SCIENTIFIC_STDIN_BYTES
+    {
+        return Err(ScientificCpythonUnavailable::InvalidRequest);
+    }
+    Ok(())
+}
+
+fn validate_general_response(response: &Value) -> Result<(), ScientificCpythonUnavailable> {
+    let invalid = ScientificCpythonUnavailable::MalformedResponse;
+    let root =
+        exact_object(response, &["schema", "job_id", "engine", "result"]).map_err(|_| invalid)?;
+    let result = exact_object(
+        &root["result"],
+        &[
+            "run_ids",
+            "workspace_path",
+            "native_results_dirs",
+            "metric",
+            "validation_score",
+            "evaluations",
+            "chart_reports",
+            "prediction_count",
+            "model_names",
+            "dataset_names",
+            "native_score_sets_available",
+        ],
+    )
+    .map_err(|_| invalid)?;
+    if root["engine"] != "dag-ml"
+        || !root["job_id"].as_str().is_some_and(valid_identifier)
+        || !result["workspace_path"]
+            .as_str()
+            .is_some_and(|path| Path::new(path).is_absolute())
+        || !result["prediction_count"].is_u64()
+        || result["native_score_sets_available"] != true
+        || !result["metric"]
+            .as_str()
+            .is_some_and(|metric| !metric.is_empty() && metric.len() <= 256)
+        || !(result["validation_score"].is_null() || finite_number(&result["validation_score"]))
+        || !result["evaluations"]
+            .as_array()
+            .is_some_and(|values| values.iter().all(Value::is_object))
+    {
+        return Err(invalid);
+    }
+    for field in [
+        "run_ids",
+        "native_results_dirs",
+        "chart_reports",
+        "model_names",
+        "dataset_names",
+    ] {
+        let values = result[field].as_array().ok_or(invalid)?;
+        if (field == "run_ids" && values.is_empty())
+            || values.iter().any(|value| {
+                !value.as_str().is_some_and(|text| {
+                    !text.is_empty() && text.len() <= 4096 && !text.chars().any(char::is_control)
+                })
+            })
+        {
+            return Err(invalid);
+        }
     }
     Ok(())
 }
@@ -1679,6 +1902,25 @@ fn read_bounded(mut reader: impl Read, limit: usize) -> std::io::Result<(Vec<u8>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn general_contract_keeps_batches_and_honest_absent_validation_scores() {
+        let mut request = serde_json::json!({"schema":"nirs4all.studio-scientific-job.v2", "operation":"run", "job_id":"general-run", "engine":"dag-ml", "allow_fallback":false,
+            "pipeline":[[{"class":"sklearn.linear_model.Ridge"}],[{"class":"sklearn.ensemble.RandomForestRegressor"}]],
+            "dataset":[{"train_x":"/data/a.csv"},{"train_x":"/data/b.csv"}],
+            "options":{"workspace_path":"/workspace", "name":"General workflow", "random_state":7}});
+        validate_scientific_request(&request, "general-run").unwrap();
+        assert_eq!(request_limits(&request), (8 * 1024 * 1024, 256 * 1024));
+        request["allow_fallback"] = serde_json::json!(true);
+        assert!(validate_scientific_request(&request, "general-run").is_err());
+        let mut response = serde_json::json!({"schema":"nirs4all.studio-scientific-job-result.v2", "job_id":"general-run", "engine":"dag-ml", "result":{
+            "run_ids":["run-1"], "workspace_path":"/workspace", "native_results_dirs":["/workspace/results/run-1"],
+            "metric":"rmse", "validation_score":null, "evaluations":[], "chart_reports":[], "prediction_count":10,
+            "model_names":["Ridge"], "dataset_names":["a"], "native_score_sets_available":true}});
+        validate_scientific_response(&response).unwrap();
+        response["result"]["native_score_sets_available"] = serde_json::json!(false);
+        assert!(validate_scientific_response(&response).is_err());
+    }
     use std::{fs, net::TcpListener, time::SystemTime};
 
     fn test_directory(name: &str) -> PathBuf {
