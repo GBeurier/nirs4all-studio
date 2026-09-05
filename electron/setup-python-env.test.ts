@@ -212,7 +212,7 @@ describe("setup-python-env", () => {
     );
   });
 
-  it("removes Tk from the headless plugin-only CPython closure", () => {
+  it("removes build-only wheel metadata and Tk from the headless plugin closure", () => {
     const buildRoot = makeTempDir("n4a-setup-python-headless-");
     const stdlibDir = path.join(buildRoot, "python", "lib", "python3.11");
     const tkinterDir = path.join(stdlibDir, "tkinter");
@@ -222,12 +222,19 @@ describe("setup-python-env", () => {
       "_tkinter.cpython-311-x86_64-linux-gnu.so",
     );
     const retainedPath = path.join(stdlibDir, "turtle.py");
+    const sitePackages = path.join(stdlibDir, "site-packages");
+    const wheelPackage = path.join(sitePackages, "wheel");
+    const wheelMetadata = path.join(sitePackages, "wheel-0.48.0.dist-info");
 
     fs.mkdirSync(tkinterDir, { recursive: true });
     fs.mkdirSync(path.dirname(extensionPath), { recursive: true });
+    fs.mkdirSync(wheelPackage, { recursive: true });
+    fs.mkdirSync(wheelMetadata, { recursive: true });
     fs.writeFileSync(path.join(tkinterDir, "__init__.py"), "pass\n");
     fs.writeFileSync(extensionPath, "extension");
     fs.writeFileSync(retainedPath, "pass\n");
+    fs.writeFileSync(path.join(wheelPackage, "__init__.py"), "pass\n");
+    fs.writeFileSync(path.join(wheelMetadata, "METADATA"), "Name: wheel\nVersion: 0.48.0\n");
 
     const stats = setupPythonEnvModule.pruneStandaloneRuntimeArtifacts(buildRoot, {
       pluginOnlyRuntime: true,
@@ -235,7 +242,9 @@ describe("setup-python-env", () => {
 
     expect(fs.existsSync(tkinterDir)).toBe(false);
     expect(fs.existsSync(extensionPath)).toBe(false);
+    expect(fs.existsSync(wheelPackage)).toBe(false);
+    expect(fs.existsSync(wheelMetadata)).toBe(false);
     expect(fs.existsSync(retainedPath)).toBe(true);
-    expect(stats.removedPaths).toBe(2);
+    expect(stats.removedPaths).toBe(4);
   });
 });

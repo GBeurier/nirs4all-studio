@@ -24,7 +24,7 @@ const pluginRuntime = require("../scripts/bake-python-plugin-runtime.cjs") as {
   ): string[];
   materializeInternalRuntimeLinks(runtimeRoot: string): void;
   removeEmptyDirectories(runtimeRoot: string): void;
-  constrainedDistributionVersions(platform?: string): Map<string, string>;
+  constrainedDistributionVersions(platform?: string, arch?: string): Map<string, string>;
 };
 
 describe("plugin-only CPython runtime", () => {
@@ -56,7 +56,7 @@ describe("plugin-only CPython runtime", () => {
         "768e65e0ca900f1a50a88a01f6c09cc7870ce033383cac5c968bfac8fee25bbe",
       constraints: {
         path: "build/constraints/plugin-runtime-cpython311.txt",
-        sha256: "437f2a2d61cbd62856bc0de48be2b7726003763a343fb88478624451271ee36c",
+        sha256: "0b11bc09f82a7806055b18fc478ece69554e00932f7d0138656804a57d36ccb1",
       },
       platform: "linux",
       arch: "x64",
@@ -86,15 +86,19 @@ describe("plugin-only CPython runtime", () => {
       path.join(process.cwd(), "build", "constraints", "plugin-runtime-cpython311.txt"),
     );
     expect(pluginRuntime.PLUGIN_CONSTRAINTS_SHA256).toBe(
-      "437f2a2d61cbd62856bc0de48be2b7726003763a343fb88478624451271ee36c",
+      "0b11bc09f82a7806055b18fc478ece69554e00932f7d0138656804a57d36ccb1",
     );
-    const linux = pluginRuntime.constrainedDistributionVersions("linux");
-    const windows = pluginRuntime.constrainedDistributionVersions("win32");
+    const linux = pluginRuntime.constrainedDistributionVersions("linux", "x64");
+    const linuxArm = pluginRuntime.constrainedDistributionVersions("linux", "arm64");
+    const macArm = pluginRuntime.constrainedDistributionVersions("darwin", "arm64");
+    const windows = pluginRuntime.constrainedDistributionVersions("win32", "x64");
     expect(linux.get("nirs4all")).toBe("1.0.1");
     expect(linux.get("nirs4all-core")).toBe("0.3.30");
     expect(linux.get("scikit-learn")).toBe("1.9.0");
     expect(linux.has("colorama")).toBe(false);
     expect(linux.has("tzdata")).toBe(false);
+    expect(linuxArm.get("greenlet")).toBe("3.5.5");
+    expect(macArm.has("greenlet")).toBe(false);
     expect(windows.get("colorama")).toBe("0.4.6");
     expect(windows.get("tzdata")).toBe("2025.3");
   });

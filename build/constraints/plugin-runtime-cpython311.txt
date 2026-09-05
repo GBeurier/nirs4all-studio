@@ -14,7 +14,7 @@ cvmatrix==3.2.2
 dag-ml==0.3.25
 dag-ml-data==0.2.11
 duckdb==1.5.5
-greenlet==3.5.5
+greenlet==3.5.5; platform_machine == "aarch64" or (platform_machine == "ppc64le" or (platform_machine == "x86_64" or (platform_machine == "amd64" or (platform_machine == "AMD64" or (platform_machine == "win32" or platform_machine == "WIN32")))))
 h5py==3.16.0
 ikpls==6.1.2
 joblib==1.6.0
