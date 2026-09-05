@@ -99,6 +99,8 @@ def render_pipeline(document: dict[str, Any]) -> dict[str, Any]:
 
 def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
     """Expose library-resolved references for Rust's subsequent confinement check."""
+    from nirs4all.api.dataset_documents import normalize_dataset_document
+
     if "record" in document:
         record = document["record"]
         if not isinstance(record, dict):
@@ -106,25 +108,23 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         config = record.get("config") or {}
         if not isinstance(config, dict):
             raise ValueError("Dataset config must be an object")
-        if not config.get("files") and not config.get("train_x"):
+        if not config:
             path = record.get("path")
             if not isinstance(path, str) or not path:
                 raise ValueError("Dataset record requires a path")
-            from nirs4all.data.parsers.normalizer import ConfigNormalizer
-
             # Rust authorizes this root before calling the adapter and checks
             # every resulting reference afterwards. FolderParser only inspects
             # filenames; it does not open matrices or implicit configuration.
             root = Path(path)
             if not root.is_absolute() or not root.is_dir():
                 raise ValueError("Dataset auto-detection requires an authorized directory")
-            normalized, name = ConfigNormalizer().normalize(str(root))
-            if not isinstance(normalized, dict):
-                raise ValueError("Library could not resolve explicit dataset files")
-            normalized["name"] = record.get("name") or name
+            normalized = normalize_dataset_document(root)
+            normalized["name"] = record.get("name") or normalized["name"]
             return normalized
-        return build_nirs4all_config_from_stored(record)
-    return build_nirs4all_config(
+        if config.get("files") or config.get("train_x"):
+            config = build_nirs4all_config_from_stored(record)
+        return normalize_dataset_document(config, base_dir=record.get("path"))
+    config = build_nirs4all_config(
         files=document.get("files", []),
         parsing=document.get("parsing", {}),
         base_path=document.get("path"),
@@ -133,6 +133,7 @@ def configure_dataset(document: dict[str, Any]) -> dict[str, Any]:
         task_type=document.get("task_type"),
         dataset_name=document.get("name"),
     )
+    return normalize_dataset_document(config, base_dir=document.get("path"))
 
 
 def adapt_document(operation: str, document: dict[str, Any]) -> Any:

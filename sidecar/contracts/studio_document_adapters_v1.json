@@ -16,8 +16,8 @@
     },
     {
       "path": "api/library_documents.py",
-      "size": 6504,
-      "sha256": "7d9ce6148bcbe09a125aad7261ac7d6f3b9d6dcfb7971b17782aa5642b4e7d18"
+      "size": 6549,
+      "sha256": "35affca4fbf4d7672e8c247754713c8c18c439bce0832622938aae7399309428"
     },
     {
       "path": "api/node_registry_loader.py",
