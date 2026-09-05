@@ -3083,12 +3083,15 @@ mod tests {
             )
             .unwrap();
         assert!(wal.is_file());
-        let canonical_wal = workspace.canonicalize().unwrap().join("store.sqlite-wal");
-
-        assert!(matches!(
-            read_run_summaries(&workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0),
-            Err(WorkspaceStoreReadError::LiveJournal(path)) if path == canonical_wal
-        ));
+        let error = read_run_summaries(&workspace, DEFAULT_RUN_SUMMARIES_LIMIT, 0)
+            .expect_err("an active WAL sidecar must close the immutable reader");
+        let WorkspaceStoreReadError::LiveJournal(path) = error else {
+            panic!("expected the active WAL path, got {error:?}");
+        };
+        assert!(
+            same_file::is_same_file(&path, &wal).unwrap(),
+            "reported WAL path {path:?} must identify the active sidecar {wal:?}"
+        );
         drop(writer);
         fs::remove_dir_all(workspace).unwrap();
     }

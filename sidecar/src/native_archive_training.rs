@@ -281,7 +281,13 @@ fn execute_native_training(
         archive_path: &archive_path,
         methods_library_path: &methods.path,
     })
-    .map_err(|_| NativeTrainingFailure::Failed)?;
+    .map_err(|error| {
+        // Keep the public job failure bounded while preserving the exact native
+        // owner diagnostic in sidecar logs. This is required to distinguish a
+        // Methods loader/ABI failure from a DAG contract or Archive V2 failure.
+        eprintln!("Native IO/DAG/Methods Archive V2 training failed: {error}");
+        NativeTrainingFailure::Failed
+    })?;
     if cancelled.load(Ordering::Acquire) {
         let _ = fs::remove_file(&archive_path);
         return Err(NativeTrainingFailure::Cancelled);
