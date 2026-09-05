@@ -19,6 +19,8 @@ parser.add_argument("--artifact-root", type=Path, required=True)
 parser.add_argument("--methods-library", type=Path, required=True)
 parser.add_argument("--wizard-csv", action="store_true")
 parser.add_argument("--prediction", action="store_true", help="Also replay a captured model over real HTTP")
+parser.add_argument("--presets", action="store_true", help="Import and reload every historical pipeline preset variant")
+parser.add_argument("--dataset-upload", action="store_true", help="Preview and persist uploaded CSV files, then run the imported dataset")
 args = parser.parse_args()
 RUNTIME = args.backend_root.resolve() / "python-runtime"
 PYTHON = RUNTIME / "python"
@@ -63,6 +65,14 @@ def call(path, payload=None, *, headers=None):
         raise AssertionError((path, error.code, error.read().decode())) from error
 
 
+def upload_dataset(path, metadata):
+    body = f'--dataset-proof\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n{json.dumps(metadata)}\r\n'.encode()
+    for filename in ["Xcal.csv", "Ycal.csv"]:
+        body += f'--dataset-proof\r\nContent-Disposition: form-data; name="files"; filename="{filename}"\r\nContent-Type: text/csv\r\n\r\n'.encode()
+        body += (DATASET / filename).read_bytes() + b"\r\n"
+    return call(path, body + b"--dataset-proof--\r\n", headers={"Content-Type": "multipart/form-data; boundary=dataset-proof"})
+
+
 with (ROOT / "sidecar.log").open("w") as log:
     process = subprocess.Popen([str(BINARY), "--port", str(PORT)], env=ENV, stdout=log, stderr=log)
     try:
@@ -76,8 +86,30 @@ with (ROOT / "sidecar.log").open("w") as log:
         call("/sidecar/v1/capabilities")
         call("/api/workspace/create", {"path": str(ROOT / "workspace"), "name": "Packaged General Witness"})
         call("/api/workspace/select", {"path": str(ROOT / "workspace")})
+        if args.presets:
+            import sys
+
+            # The oracle is loaded only in this diagnostic parent. The product
+            # child remains the isolated, attested library-only runtime.
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from pipeline_preset_witness import verify_pipeline_presets
+
+            verify_pipeline_presets(call)
         config = {"delimiter": ",", "has_header": True, "files": [{"path": "Xcal.csv", "type": "X", "split": "train"}, {"path": "Ycal.csv", "type": "Y", "split": "train"}]} if args.wizard_csv else {}
-        dataset = call("/api/datasets/link", {"path": str(DATASET), "config": config})["dataset"]["id"]
+        linked = call("/api/datasets/link", {"path": str(DATASET), "config": config})["dataset"]
+        assert linked["num_samples"] == 150 and linked["num_features"] == 300, linked
+        dataset = linked["id"]
+        if args.dataset_upload:
+            assert args.wizard_csv, "Upload witness requires explicit CSV parsing"
+            preview = upload_dataset("/api/datasets/preview-upload", {"files": config["files"], "parsing": {"delimiter": ",", "has_header": True}, "max_samples": 5})
+            assert preview["success"] and preview["summary"]["num_samples"] == 150 and preview["summary"]["num_features"] == 300, preview
+            imported_dataset = upload_dataset("/api/datasets/upload", {"config": config})["dataset"]
+            assert imported_dataset["num_samples"] == 150 and imported_dataset["num_features"] == 300, imported_dataset
+            for file in imported_dataset["config"]["files"]:
+                assert Path(file["path"]).read_bytes() == (DATASET / Path(file["path"]).name).read_bytes()
+            dataset = imported_dataset["id"]
+            refreshed = call(f"/api/datasets/{dataset}/refresh", {})["dataset"]
+            assert refreshed["num_samples"] == 150 and refreshed["num_features"] == 300, refreshed
         canonical = {
             "name": "General Ridge",
             "pipeline": [{"class": "sklearn.preprocessing.StandardScaler"}, {"class": "sklearn.model_selection.KFold", "params": {"n_splits": 3}}, {"class": "sklearn.linear_model.Ridge", "params": {"alpha": 0.1}}],

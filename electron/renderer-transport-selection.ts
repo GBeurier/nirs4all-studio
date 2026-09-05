@@ -187,6 +187,14 @@ function classifyScientificWorkflow(method: string, path: string): NativeSurface
   const bool = (value: string) => value === "true" || value === "false";
   const validQuery = (allowed: Record<string, (value: string) => boolean>) =>
     [...fields].every(([key, value]) => allowed[key]?.(value) === true);
+  if (!query && method === "POST" && (["/datasets/upload", "/datasets/preview-upload"].includes(pathname) ||
+      identifierPath("/datasets/", "/refresh").test(pathname))) {
+    return { name: "dataset-import", capability: "dataset_import_routes", requiresPythonHost: true };
+  }
+  if (!query && ((method === "GET" && pathname === "/pipelines/presets") ||
+      (method === "POST" && identifierPath("/pipelines/from-preset/").test(pathname)))) {
+    return { name: "pipeline-presets", capability: "pipeline_preset_routes", requiresPythonHost: method === "POST" };
+  }
   if (method === "GET" && ((pathname === "/runs/stats" && !query) || (pathname === "/runs" && validQuery({
     status: (value) => value.split(",").every((status) => ["running", "queued", "completed", "failed", "cancelled", "partial"].includes(status)),
   })))) return { name: "run-listing", capability: "workspace_run_listing_routes" };

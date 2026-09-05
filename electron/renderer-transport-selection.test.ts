@@ -35,6 +35,21 @@ function capabilityResponse(overrides: Record<string, unknown> = {}): Response {
 }
 
 describe("renderer transport preselection", () => {
+  it("qualifies bounded dataset uploads and pipeline presets only when implemented", async () => {
+    const request = async () => capabilityResponse({ dataset_import_routes: true, pipeline_preset_routes: true, python_plugin_preflight: true });
+    for (const [method, path] of [["POST", "/datasets/upload"], ["POST", "/datasets/preview-upload"],
+      ["POST", "/datasets/dataset_1/refresh"], ["GET", "/pipelines/presets"], ["POST", "/pipelines/from-preset/pls"]]) {
+      await expect(preselectRendererTransport({ kind: "http", method, path }, running, request))
+        .resolves.toMatchObject({ target: "native-sidecar" });
+    }
+    for (const path of ["/datasets/upload?metadata=unbounded", "/datasets/preview-upload?bad=1", "/pipelines/from-preset/pls?variant=regression"]) {
+      await expect(preselectRendererTransport({ kind: "http", method: "POST", path }, running, request))
+        .resolves.toMatchObject({ target: "reject" });
+    }
+    await expect(preselectRendererTransport({ kind: "http", method: "POST", path: "/datasets/upload" },
+      () => ({ ...running(), pythonPluginHostConfigured: false }), request))
+      .resolves.toMatchObject({ target: "reject", reason: "native_python_host_unavailable" });
+  });
   it("selects qualified inspection, prediction and setup routes with their capabilities", async () => {
     const request = vi.fn().mockImplementation(async () => capabilityResponse({
       dataset_inspection_routes: true, recommended_config_routes: true, general_prediction_routes: true,

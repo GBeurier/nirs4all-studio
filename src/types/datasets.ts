@@ -164,6 +164,8 @@ export interface AggregationConfig {
  * CSV parsing configuration
  */
 export interface DatasetConfig {
+  /** User-selected display name, preserved when a wizard creates the dataset. */
+  name?: string;
   delimiter: string;
   decimal_separator: string;
   has_header: boolean;

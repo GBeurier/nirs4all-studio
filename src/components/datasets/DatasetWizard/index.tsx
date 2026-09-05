@@ -17,7 +17,7 @@ import type { DatasetConfig } from "@/types/datasets";
 interface DatasetWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (path: string, config?: Partial<DatasetConfig>) => Promise<void>;
+  onAdd: (path: string, config?: Partial<DatasetConfig>, files?: File[]) => Promise<void>;
   /** Initial state from drag-and-drop */
   initialState?: WizardInitialState;
   /** Callback to open batch scan dialog from wizard source step */
