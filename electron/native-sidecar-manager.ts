@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { verifyPackagedRuntimeContract } from "./packaged-runtime-contract";
@@ -107,6 +108,26 @@ export class NativeSidecarManager {
   private pythonPluginHostConfigured = false;
   private pythonPluginHostError: string | null = null;
   private lastError: string | null = null;
+  private sessionToken: string | null = null;
+
+  /** Main-process only: never include this credential in renderer IPC info. */
+  sessionHeaders(requestUrl: string): Record<string, string> {
+    if (this.status !== "running" || !this.sessionToken) return {};
+    let url: URL;
+    try { url = new URL(requestUrl); } catch { return {}; }
+    if ((url.protocol !== "http:" && url.protocol !== "ws:") ||
+        url.hostname !== this.host || Number(url.port) !== this.port ||
+        url.username || url.password) return {};
+    return { "X-Nirs4all-Session": this.sessionToken };
+  }
+
+  /** Preselection probes use Node fetch, outside Electron's network hooks. */
+  authenticatedFetch: typeof fetch = (input, init) => {
+    const request = new Request(input, init);
+    const credential = this.sessionHeaders(request.url);
+    for (const [key, value] of Object.entries(credential)) request.headers.set(key, value);
+    return fetch(request, Object.keys(credential).length ? { redirect: "error" } : undefined);
+  };
 
   getInfo(): NativeSidecarInfo {
     return {
@@ -223,6 +244,9 @@ export class NativeSidecarManager {
       : explicitPythonPluginHost || selectedPythonPluginHost || null;
     this.pythonPluginHostConfigured = Boolean(pythonPluginHost);
     const childEnvironment: NodeJS.ProcessEnv = { ...process.env };
+    this.sessionToken = randomBytes(32).toString("hex");
+    childEnvironment.NIRS4ALL_STUDIO_SESSION_TOKEN = this.sessionToken;
+    delete childEnvironment.NIRS4ALL_STUDIO_ALLOWED_ORIGINS;
     delete childEnvironment[PYTHON_PLUGIN_HOST_ENV];
     delete childEnvironment[PYTHON_PLUGIN_HOST_BUNDLED_ENV];
     delete childEnvironment[PYTHON_PLUGIN_CLOSURE_ENV];

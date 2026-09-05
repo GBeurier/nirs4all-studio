@@ -248,7 +248,7 @@ jobs:
             libcairo2-dev \
             gir1.2-gtk-3.0 \
             gir1.2-webkit2-4.1 \
-            upx-ucl
+            upx-ucl xvfb
 
       - name: Install npm dependencies
         run: npm ci
@@ -270,6 +270,11 @@ jobs:
           cargo test --manifest-path sidecar/Cargo.toml
           npm run test:native-archive-v2
           npm run test:native-sidecar
+
+      - name: Verify real Electron session authentication
+        run: |
+          cargo build --locked --manifest-path sidecar/Cargo.toml --bin studio-sidecar
+          NIRS4ALL_NATIVE_SIDECAR_PATH="$PWD/sidecar/target/debug/studio-sidecar" xvfb-run -a npm run test:native-session-auth
 
       - name: Build Electron frontend
         run: npm run build:electron

@@ -420,7 +420,9 @@ mod tests {
             Err(RunDetailOwnerBridgeFailure::StderrTooLarge)
         );
 
-        let malformed = shell_host("malformed", "printf nope");
+        // Consume the request before answering, as the real host does. Exiting
+        // before stdin is written races InputWriteFailed vs MalformedResponse.
+        let malformed = shell_host("malformed", "cat >/dev/null; printf nope");
         assert_eq!(
             materialize_run_detail_owner(&malformed, Path::new("/workspace"), "run-a"),
             Err(RunDetailOwnerBridgeFailure::MalformedResponse)

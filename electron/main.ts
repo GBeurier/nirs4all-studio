@@ -10,6 +10,7 @@ import { EnvManager } from "./env-manager";
 import { initLogger, getLogFilePath, getLogDir } from "./logger";
 import { NativeSidecarManager } from "./native-sidecar-manager";
 import { startNativeSession } from "./native-session-lifecycle";
+import { installNativeSessionAuth, isStudioDocument } from "./native-session-auth";
 import { preselectRendererTransport } from "./renderer-transport-selection";
 import { preselectWorkspaceRunDetail } from "./workspace-route-preselection";
 import { applyPortablePathOverrides } from "./portable-paths";
@@ -227,6 +228,7 @@ app.on("second-instance", () => {
 // VITE_DEV_SERVER_URL is set by vite-plugin-electron in dev mode
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const DIST_PATH = path.join(__dirname, "../dist");
+const STUDIO_ENTRYPOINT = VITE_DEV_SERVER_URL ?? pathToFileURL(path.join(DIST_PATH, "index.html")).href;
 
 // Dev mode: Vite dev server OR --dev command-line flag
 const isDev = VITE_DEV_SERVER_URL !== undefined;
@@ -304,6 +306,10 @@ async function createWindow() {
   });
 
   // Show main window and close splash when ready
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (!isStudioDocument(url, STUDIO_ENTRYPOINT)) event.preventDefault();
+  });
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   mainWindow.once("ready-to-show", () => {
     closeSplash();
     mainWindow?.show();
@@ -494,13 +500,13 @@ ipcMain.handle("sidecar:getInfo", () => {
 });
 
 ipcMain.handle("sidecar:preselectRendererTransport", (_event, request: unknown) =>
-  preselectRendererTransport(request, getNativeSidecarInfo, fetch),
+  preselectRendererTransport(request, getNativeSidecarInfo, nativeSidecarManager.authenticatedFetch),
 );
 
 ipcMain.handle(
   "sidecar:preselectWorkspaceRunDetail",
   (_event, workspaceId: string) =>
-    preselectWorkspaceRunDetail(workspaceId, getNativeSidecarInfo, fetch),
+    preselectWorkspaceRunDetail(workspaceId, getNativeSidecarInfo, nativeSidecarManager.authenticatedFetch),
 );
 
 ipcMain.handle("control:getInfo", () => {
@@ -652,6 +658,11 @@ app.whenReady().then(async () => {
 
   // Show splash screen immediately (gives visual feedback during startup)
   splashWindow = createSplashWindow();
+
+  // Authenticate HTTP and WebSocket handshakes in the main process. The
+  // renderer receives neither the token nor a reusable credential-bearing URL.
+  installNativeSessionAuth(electron.session.defaultSession, () => mainWindow,
+    STUDIO_ENTRYPOINT, (url) => nativeSidecarManager.sessionHeaders(url));
 
   // Validate persisted runtime state before we decide whether startup can reuse
   // it. This clears stale custom/portable paths instead of failing later in a

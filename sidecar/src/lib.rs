@@ -27,6 +27,7 @@ use serde_json::{json, Value};
 mod archive_v2_prediction;
 pub mod conformal_store;
 pub mod execution_job_records;
+mod http_access;
 pub mod job_http;
 pub mod job_lifecycle;
 pub mod legacy_conversion;
@@ -3867,6 +3868,17 @@ impl Drop for ConnectionPermit {
 ///
 /// Returns a socket bind, listener, or stream I/O error to the caller.
 pub fn serve(host: &str, port: u16) -> std::io::Result<()> {
+    if !host
+        .parse::<std::net::IpAddr>()
+        .is_ok_and(|address| address.is_loopback())
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Studio sidecar must bind to a loopback address",
+        ));
+    }
+    let access =
+        Arc::new(http_access::HttpAccessPolicy::from_environment().map_err(std::io::Error::other)?);
     let listener = TcpListener::bind((host, port))?;
     let address = listener.local_addr()?;
     println!(
@@ -3894,13 +3906,15 @@ pub fn serve(host: &str, port: u16) -> std::io::Result<()> {
                 };
                 let state = Arc::clone(&state);
                 let websocket_manager = Arc::clone(&websocket_manager);
+                let access = Arc::clone(&access);
                 std::thread::spawn(move || {
                     let _permit = permit;
-                    if let Err(error) = handle_connection_with_limits_and_websocket(
+                    if let Err(error) = handle_connection_with_access(
                         stream,
                         &state,
                         &websocket_manager,
                         limits,
+                        &access,
                     ) {
                         eprintln!("studio-sidecar connection error: {error}");
                     }
@@ -3941,18 +3955,49 @@ fn route_documents_without_global_lock(
     workspace_documents::route(&settings, &request.method, &request.path, &request.body)
 }
 
+#[cfg(test)]
 fn handle_connection_with_limits_and_websocket(
-    mut stream: TcpStream,
+    stream: TcpStream,
     state: &Arc<Mutex<SidecarState>>,
     websocket_manager: &WebSocketConnectionManager,
     limits: ServerLimits,
 ) -> std::io::Result<()> {
+    handle_connection_with_access(
+        stream,
+        state,
+        websocket_manager,
+        limits,
+        &http_access::HttpAccessPolicy::default(),
+    )
+}
+
+fn handle_connection_with_access(
+    mut stream: TcpStream,
+    state: &Arc<Mutex<SidecarState>>,
+    websocket_manager: &WebSocketConnectionManager,
+    limits: ServerLimits,
+    access: &http_access::HttpAccessPolicy,
+) -> std::io::Result<()> {
     stream.set_read_timeout(Some(limits.read_timeout))?;
     stream.set_write_timeout(Some(limits.write_timeout))?;
-    let response = match read_http_request(&mut stream, limits.header_timeout) {
+    let mut accepted_origin = None;
+    let response = match read_http_request_with_access(&mut stream, limits.header_timeout, access) {
         Ok(request) => {
+            accepted_origin = request.headers.get("origin").cloned();
+            if request.method == "OPTIONS" && accepted_origin.is_some() {
+                let response = HttpResponse::json(204, "")
+                    .with_header(
+                        "Access-Control-Allow-Methods",
+                        "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+                    )
+                    .with_header(
+                        "Access-Control-Allow-Headers",
+                        "Content-Type, X-Nirs4all-Session",
+                    );
+                return write_access_response(&mut stream, response, accepted_origin.as_deref());
+            }
             if let Some(response) = route_documents_without_global_lock(state, &request) {
-                return write_response(&mut stream, &response);
+                return write_access_response(&mut stream, response, accepted_origin.as_deref());
             }
             if request.method == "GET" {
                 if let Some(endpoint) =
@@ -3984,13 +4029,14 @@ fn handle_connection_with_limits_and_websocket(
                     let state = state.lock().expect("sidecar state mutex poisoned");
                     (state.app_settings.clone(), state.legacy_conversion.clone())
                 };
-                return write_response(
+                return write_access_response(
                     &mut stream,
-                    &legacy_workspace_conversion_with(
+                    legacy_workspace_conversion_with(
                         &app_settings,
                         &legacy_conversion,
                         &request.body,
                     ),
+                    accepted_origin.as_deref(),
                 );
             }
             if request.method == "GET"
@@ -4021,33 +4067,57 @@ fn handle_connection_with_limits_and_websocket(
                     }
                     _ => python_plugin_preflight_response_for_host(host),
                 };
-                return write_response(&mut stream, &response);
+                return write_access_response(&mut stream, response, accepted_origin.as_deref());
             }
             let mut state = state.lock().expect("sidecar state mutex poisoned");
             route_http_request(&mut state, &request)
         }
-        Err(RequestReadError::Timeout) => error_response(
+        Err(error) => request_read_error_response(error)?,
+    };
+    write_access_response(&mut stream, response, accepted_origin.as_deref())
+}
+
+fn request_read_error_response(error: RequestReadError) -> std::io::Result<HttpResponse> {
+    Ok(match error {
+        RequestReadError::Timeout => error_response(
             408,
             ErrorCode::RequestTimeout,
             "Timed out while reading request headers",
             BTreeMap::new(),
         ),
-        Err(RequestReadError::TooLarge) => error_response(
+        RequestReadError::TooLarge => error_response(
             400,
             ErrorCode::InvalidRequest,
             "Request headers exceed the configured limit",
             BTreeMap::new(),
         ),
-        Err(RequestReadError::BodyTooLarge { path }) => request_body_too_large_response(&path),
-        Err(RequestReadError::Invalid) => error_response(
+        RequestReadError::BodyTooLarge { path } => request_body_too_large_response(&path),
+        RequestReadError::AccessDenied { status, code } => HttpResponse::json(
+            status,
+            json!({"code": code, "message": "Request refused by the Studio access policy"})
+                .to_string(),
+        ),
+        RequestReadError::Invalid => error_response(
             400,
             ErrorCode::InvalidRequest,
             "Request must contain a valid HTTP/1.1 request line and headers",
             BTreeMap::new(),
         ),
-        Err(RequestReadError::Io(error)) => return Err(error),
-    };
-    write_response(&mut stream, &response)
+        RequestReadError::Io(error) => return Err(error),
+    })
+}
+
+fn write_access_response(
+    stream: &mut TcpStream,
+    mut response: HttpResponse,
+    accepted_origin: Option<&str>,
+) -> std::io::Result<()> {
+    if let Some(origin) = accepted_origin {
+        response = response
+            .with_header("Access-Control-Allow-Origin", origin)
+            .with_header("Vary", "Origin");
+    }
+    write_response(stream, &response)
 }
 
 fn request_body_too_large_response(path: &str) -> HttpResponse {
@@ -4085,6 +4155,7 @@ enum RequestReadError {
     TooLarge,
     BodyTooLarge { path: String },
     Invalid,
+    AccessDenied { status: u16, code: &'static str },
     Io(std::io::Error),
 }
 
@@ -4122,9 +4193,22 @@ fn valid_websocket_key(value: &str) -> bool {
     !value.is_empty() && STANDARD.decode(value).is_ok_and(|nonce| nonce.len() == 16)
 }
 
+#[cfg(test)]
 fn read_http_request(
     stream: &mut TcpStream,
     header_timeout: Duration,
+) -> Result<HttpRequest, RequestReadError> {
+    read_http_request_with_access(
+        stream,
+        header_timeout,
+        &http_access::HttpAccessPolicy::default(),
+    )
+}
+
+fn read_http_request_with_access(
+    stream: &mut TcpStream,
+    header_timeout: Duration,
+    access: &http_access::HttpAccessPolicy,
 ) -> Result<HttpRequest, RequestReadError> {
     let started = Instant::now();
     let mut bytes = Vec::with_capacity(1024);
@@ -4164,6 +4248,9 @@ fn read_http_request(
         }
         let mut request = parse_http_request(&bytes[..header_end])?;
         let content_length = request_content_length(&request.headers)?;
+        access
+            .validate(&request.headers, content_length > 0)
+            .map_err(|(status, code)| RequestReadError::AccessDenied { status, code })?;
         if content_length > http_body_limit(&request.path) {
             return Err(RequestReadError::BodyTooLarge { path: request.path });
         }
@@ -4253,7 +4340,21 @@ fn parse_http_request(bytes: &[u8]) -> Result<HttpRequest, RequestReadError> {
         {
             return Err(RequestReadError::TooLarge);
         }
-        headers.insert(name.to_ascii_lowercase(), value.trim().to_owned());
+        let name = name.to_ascii_lowercase();
+        if headers.contains_key(&name)
+            && matches!(
+                name.as_str(),
+                "host"
+                    | "origin"
+                    | "content-length"
+                    | "content-type"
+                    | "transfer-encoding"
+                    | "x-nirs4all-session"
+            )
+        {
+            return Err(RequestReadError::Invalid);
+        }
+        headers.insert(name, value.trim().to_owned());
     }
     let (path, query) = target.split_once('?').map_or_else(
         || (target.to_owned(), None),
@@ -4272,7 +4373,11 @@ fn write_response(stream: &mut TcpStream, response: &HttpResponse) -> std::io::R
     let reason = match response.status {
         200 => "OK",
         202 => "Accepted",
+        204 => "No Content",
         400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        415 => "Unsupported Media Type",
         409 => "Conflict",
         408 => "Request Timeout",
         422 => "Unprocessable Content",
