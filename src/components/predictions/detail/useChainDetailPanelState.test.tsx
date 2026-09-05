@@ -159,6 +159,7 @@ function arrays(predictionId: string): PredictionArraysResponse {
     y_pred: [1.1, 1.9],
     y_proba: null,
     sample_indices: [0, 1],
+    sample_ids: ["pred-a", "pred-b"],
     weights: null,
     n_samples: 2,
     sample_metadata: null,
