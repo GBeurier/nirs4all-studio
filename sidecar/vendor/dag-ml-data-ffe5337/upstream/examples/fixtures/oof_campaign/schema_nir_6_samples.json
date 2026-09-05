@@ -1,0 +1,45 @@
+{
+  "dataset_id": "oof-campaign-nir-6",
+  "sample_ids": ["S001", "S002", "S003", "S004", "S005", "S006"],
+  "sources": [
+    {
+      "id": "nir",
+      "name": "NIR spectrum",
+      "type_id": "dense_signal",
+      "modality": "spectroscopy",
+      "native_representation": {
+        "id": "signal_1d",
+        "type_id": "dense_signal",
+        "rank": 2,
+        "axes": [
+          { "name": "sample", "kind": "sample", "unit": null, "size": 6, "variable": false },
+          { "name": "wavelength", "kind": "wavelength", "unit": "nm", "size": 4, "variable": false, "coordinate": { "dtype": "numeric", "ordered": true, "values": { "kind": "explicit", "values": [900, 1000, 1100, 1200] } } }
+        ],
+        "container": "ndarray",
+        "dtype": "float32",
+        "sparse": false,
+        "ragged": false
+      },
+      "sample_key": "sample_id",
+      "granularity": "per_sample",
+      "schema": {},
+      "tags": {}
+    }
+  ],
+  "targets": {
+    "y": {
+      "id": "tabular_numeric",
+      "type_id": "table",
+      "rank": 2,
+      "axes": [
+        { "name": "sample", "kind": "sample", "unit": null, "size": 6, "variable": false },
+        { "name": "target", "kind": "target", "unit": null, "size": 1, "variable": false, "coordinate": { "dtype": "categorical", "ordered": false, "values": { "kind": "explicit", "values": ["y"] } } }
+      ],
+      "container": "dataframe",
+      "dtype": "float32",
+      "sparse": false,
+      "ragged": false
+    }
+  },
+  "metadata": {}
+}

@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GBeurier/dag-ml-data/schemas/coordinator_data_plan_envelope.v2.schema.json",
+  "title": "DAG-ML Coordinator Data Plan Envelope V2",
+  "description": "V2 keeps CV coordinator relations closed to the fold universe and carries a separately attested PREDICT-only cohort.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "schema_fingerprint",
+    "plan_fingerprint",
+    "plan",
+    "predict_cohort"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "schema_fingerprint": { "$ref": "#/$defs/sha256" },
+    "plan_fingerprint": { "$ref": "#/$defs/sha256" },
+    "relation_fingerprint": {
+      "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+    },
+    "data_content_fingerprint": {
+      "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+    },
+    "target_content_fingerprint": {
+      "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+    },
+    "plan": {
+      "type": "object",
+      "required": ["id", "steps", "output_representation"],
+      "additionalProperties": true
+    },
+    "coordinator_relations": {
+      "anyOf": [
+        { "$ref": "#/$defs/coordinator_relation_set" },
+        { "type": "null" }
+      ]
+    },
+    "predict_cohort": { "$ref": "#/$defs/predict_cohort" },
+    "metadata": { "type": "object", "additionalProperties": true }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9A-Fa-f]{64}$"
+    },
+    "id": { "type": "string", "minLength": 1 },
+    "entity_unit_level": {
+      "enum": ["physical_sample", "source_sample", "observation", "combo"]
+    },
+    "coordinator_relation_set": {
+      "type": "object",
+      "required": ["records"],
+      "properties": {
+        "records": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/coordinator_relation" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "coordinator_relation": {
+      "type": "object",
+      "required": ["observation_id", "sample_id"],
+      "properties": {
+        "unit_level": { "$ref": "#/$defs/entity_unit_level", "default": "observation" },
+        "unit_id": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "observation_id": { "$ref": "#/$defs/id" },
+        "sample_id": { "$ref": "#/$defs/id" },
+        "source_id": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "rep_id": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "target_id": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "group_id": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "origin_sample_id": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "derived_unit_id": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "component_observation_ids": {
+          "type": "array",
+          "default": [],
+          "items": { "$ref": "#/$defs/id" },
+          "uniqueItems": true
+        },
+        "sample_influence_weight": {
+          "anyOf": [{ "type": "number", "exclusiveMinimum": 0 }, { "type": "null" }]
+        },
+        "quality_flag": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "is_augmented": { "type": "boolean", "default": false },
+        "excluded": { "type": "boolean", "default": false },
+        "metadata": { "type": "object", "default": {} },
+        "tags": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/id" },
+          "default": [],
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "predict_cohort": {
+      "type": "object",
+      "required": [
+        "role",
+        "physical_sample_ids",
+        "origin_sample_ids",
+        "target_names",
+        "relation_fingerprint",
+        "relations",
+        "data_content_fingerprint",
+        "cohort_fingerprint"
+      ],
+      "properties": {
+        "role": { "enum": ["external_test", "inference"] },
+        "physical_sample_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "origin_sample_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "target_names": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "relation_fingerprint": { "$ref": "#/$defs/sha256" },
+        "relations": { "$ref": "#/$defs/coordinator_relation_set" },
+        "data_content_fingerprint": { "$ref": "#/$defs/sha256" },
+        "target_content_fingerprint": { "$ref": "#/$defs/sha256" },
+        "cohort_fingerprint": { "$ref": "#/$defs/sha256" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "role": { "const": "external_test" } }, "required": ["role"] },
+          "then": { "required": ["target_content_fingerprint"] },
+          "else": { "not": { "required": ["target_content_fingerprint"] } }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

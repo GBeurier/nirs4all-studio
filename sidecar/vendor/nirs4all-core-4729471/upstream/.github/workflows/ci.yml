@@ -1,0 +1,343 @@
+name: CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      repair_tag:
+        description: "Optional immutable tag repair; leave empty for ordinary qualification"
+        required: false
+        type: string
+        default: ""
+      methods_ref:
+        description: "Optional immutable Methods commit for coordinated pre-release qualification"
+        required: false
+        type: string
+        default: ""
+  push:
+    branches:
+      - main
+      - "rc/**"
+      - "fix/v1-stability-core"
+    tags:
+      - "v[0-9]*.[0-9]*.[0-9]*"
+  pull_request:
+
+jobs:
+  repair-guard:
+    name: Guard qualification source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Validate repair source and version
+        env:
+          REPAIR_TAG: ${{ inputs.repair_tag }}
+          METHODS_REF: ${{ inputs.methods_ref }}
+        run: |
+          set -euo pipefail
+          scripts/bump_version.sh --check
+          python3 scripts/check_ci_source.py --repair-tag "$REPAIR_TAG" --methods-ref "$METHODS_REF"
+          python3 -m unittest discover -s tests -p test_ci_source.py
+
+  rust:
+    needs: repair-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve published n4m source tag
+        id: n4m-release
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import tomllib
+
+          manifest = tomllib.loads(Path("bindings/rust/nirs4all/Cargo.toml").read_text())
+          requirement = manifest["dependencies"]["n4m"]["version"]
+          if not requirement.startswith("="):
+              raise SystemExit(f"n4m must remain exactly pinned, got {requirement!r}")
+          version = requirement.removeprefix("=")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"tag=n4m-v{version}\n")
+      - uses: actions/checkout@v7.0.0
+        with:
+          repository: GBeurier/nirs4all-methods
+          ref: ${{ inputs.methods_ref || steps.n4m-release.outputs.tag }}
+          path: nirs4all-methods
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build
+      - name: Build libn4m from its published n4m release tag
+        run: |
+          cmake --preset dev-release
+          cmake --build --preset dev-release --target n4m_c --parallel
+        working-directory: nirs4all-methods
+      - name: Resolve the regular libn4m identity
+        run: |
+          set -euo pipefail
+          library=$(realpath nirs4all-methods/build/dev-release/cpp/src/libn4m.so)
+          if [ ! -f "${library}" ] || [ -L "${library}" ]; then
+            echo "::error::Resolved libn4m must be a regular non-symlink file: ${library}" >&2
+            exit 1
+          fi
+          echo "N4M_LIBRARY_PATH=${library}" >> "${GITHUB_ENV}"
+          echo "NIRS4ALL_METHODS_LIB=${library}" >> "${GITHUB_ENV}"
+          echo "NIRS4ALL_CORE_REQUIRE_METHODS_PARITY=1" >> "${GITHUB_ENV}"
+          echo "LD_LIBRARY_PATH=$(dirname "${library}")" >> "${GITHUB_ENV}"
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo package -p nirs4all
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: rust-crate
+          path: target/package/*.crate
+
+  python:
+    needs: repair-guard
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install build twine pyyaml
+      - run: PYTHONPATH=bindings/python/src python -m unittest discover -s bindings/python/tests
+      - run: make test-e2e-entrypoints PYTHON=python
+      - run: python -m build bindings/python --outdir dist/python
+      - run: python -m twine check dist/python/*
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: python-${{ matrix.python-version }}
+          path: dist/python/*
+
+  npm:
+    needs: repair-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
+        with:
+          version: "v0.15.0"
+      - run: npm ci --prefix bindings/wasm
+      - run: npm test --prefix bindings/wasm
+      - run: mkdir -p dist/npm && npm pack ./bindings/wasm --pack-destination dist/npm
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: npm-wasm
+          path: dist/npm/*
+
+  strict-parity:
+    needs: repair-guard
+    runs-on: ubuntu-latest
+    env:
+      R_LIBS_USER: /tmp/nirs4all-core-r-library
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - name: Read pinned nirs4all-methods ref
+        id: methods-pin
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import tomllib
+
+          upstreams = tomllib.loads(Path("compat/upstreams.toml").read_text())["upstream"]
+          methods = [item for item in upstreams if item.get("key") == "methods"]
+          if len(methods) != 1:
+              raise SystemExit("compat/upstreams.toml must contain exactly one methods upstream")
+          ref = methods[0].get("ref")
+          if not isinstance(ref, str) or not ref.strip():
+              raise SystemExit("compat/upstreams.toml methods upstream must define a non-empty ref")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"ref={ref.strip()}\n")
+      - uses: actions/checkout@v7.0.0
+        with:
+          repository: GBeurier/nirs4all-methods
+          ref: ${{ inputs.methods_ref || steps.methods-pin.outputs.ref }}
+          path: nirs4all-methods
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
+        with:
+          version: "v0.15.0"
+      - name: Install Emscripten SDK
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install latest
+          "$RUNNER_TEMP/emsdk/emsdk" activate latest
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          {
+            echo "EMSDK=$EMSDK"
+            echo "EMSDK_NODE=$EMSDK_NODE"
+          } >> "$GITHUB_ENV"
+          {
+            echo "$EMSDK"
+            echo "$EMSDK/upstream/emscripten"
+          } >> "$GITHUB_PATH"
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-12 g++-12 ninja-build cmake r-base r-base-dev octave octave-dev
+      - run: python -m pip install numpy scikit-learn pyyaml
+      - run: npm ci --prefix bindings/wasm
+      - run: cmake --preset emscripten
+        working-directory: nirs4all-methods
+      - run: cmake --build --preset emscripten --target n4m_wasm --parallel
+        working-directory: nirs4all-methods
+      - run: npm ci
+        working-directory: nirs4all-methods/bindings/js
+      - run: npm run build && npm run stage:wasm
+        working-directory: nirs4all-methods/bindings/js
+      - run: NIRS4ALL_METHODS_JS_DIST="$GITHUB_WORKSPACE/nirs4all-methods/bindings/js/dist" NIRS4ALL_CORE_REQUIRE_METHODS_PARITY=1 npm test --prefix bindings/wasm
+      - run: cmake --preset dev-release
+        working-directory: nirs4all-methods
+      - run: cmake --build --preset dev-release --target n4m_c --parallel
+        working-directory: nirs4all-methods
+      - run: octave --quiet --eval "cd bindings/matlab; build_mex"
+        working-directory: nirs4all-methods
+        env:
+          N4M_INCLUDE_DIR: ${{ github.workspace }}/nirs4all-methods/cpp/include
+          N4M_GENERATED_DIR: ${{ github.workspace }}/nirs4all-methods/build/dev-release/generated
+          N4M_LIB_DIR: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+          LD_LIBRARY_PATH: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+      - run: make test-rust-parity
+        env:
+          NIRS4ALL_METHODS_LIB: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src/libn4m.so
+          LD_LIBRARY_PATH: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+      - run: |
+          PYTHONPATH="bindings/python/src:$GITHUB_WORKSPACE/nirs4all-methods/bindings/python/src" \
+          N4M_LIB_PATH="$GITHUB_WORKSPACE/nirs4all-methods/build/dev-release/cpp/src/libn4m.so" \
+          NIRS4ALL_CORE_REQUIRE_METHODS_PARITY=1 \
+          python -m unittest bindings/python/tests/test_execution_parity.py -v
+      - run: mkdir -p "$R_LIBS_USER"
+      - name: Install and verify R parity dependencies
+        # CRAN mirrors can intermittently return a warning without making Rscript
+        # fail. Retry a bounded number of times and prove both namespaces are in
+        # the job-local library before building the bindings.
+        run: |
+          for attempt in 1 2 3; do
+            Rscript -e 'install.packages(c("jsonlite", "yaml"), lib = Sys.getenv("R_LIBS_USER"), repos = "https://cloud.r-project.org")'
+            Rscript -e 'stopifnot(requireNamespace("jsonlite", quietly = TRUE), requireNamespace("yaml", quietly = TRUE))' && exit 0
+            if [ "$attempt" -lt 3 ]; then
+              sleep 5
+            fi
+          done
+          exit 1
+      - run: R CMD INSTALL --preclean --library="$R_LIBS_USER" --no-multiarch --no-staged-install nirs4all-methods/bindings/r/n4m
+        env:
+          N4M_LIB_DIR: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+          N4M_GENERATED_DIR: ${{ github.workspace }}/nirs4all-methods/build/dev-release/generated
+          N4M_R_LINK_PREBUILT: "1"
+          LD_LIBRARY_PATH: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+      - run: R CMD INSTALL --library="$R_LIBS_USER" bindings/r
+      - run: make test-r-parity
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+      - run: make test-matlab-parity
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/nirs4all-methods/build/dev-release/cpp/src
+          NIRS4ALL_METHODS_MATLAB_PATH: ${{ github.workspace }}/nirs4all-methods/bindings/matlab
+          OCTAVE_PATH: ${{ github.workspace }}/nirs4all-methods/bindings/matlab
+
+  r:
+    needs: repair-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - name: Read pinned DAG-ML ref
+        id: dag-ml-pin
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import tomllib
+
+          upstreams = tomllib.loads(Path("compat/upstreams.toml").read_text())["upstream"]
+          dag_ml = [item for item in upstreams if item.get("key") == "dag_ml"]
+          if len(dag_ml) != 1 or not str(dag_ml[0].get("ref", "")).strip():
+              raise SystemExit("compat/upstreams.toml must pin exactly one dag_ml ref")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"ref={dag_ml[0]['ref'].strip()}\n")
+      - uses: actions/checkout@v7.0.0
+        with:
+          repository: GBeurier/dag-ml
+          path: dag-ml
+          ref: ${{ steps.dag-ml-pin.outputs.ref }}
+      - uses: r-lib/actions/setup-r@v2
+      - run: Rscript -e 'install.packages(c("jsonlite", "yaml"), repos = "https://cloud.r-project.org")'
+      - run: R CMD INSTALL dag-ml/bindings/r
+      - run: mkdir -p dist/r
+      - run: cd dist/r && R CMD build ../../bindings/r
+      # The ecosystem bindings (nirs4allformats/io/datasets, n4m, dagml, dagmldata) are
+      # Suggests served from R-universe (Additional_repositories), not installed
+      # here. _R_CHECK_FORCE_SUGGESTS_=false makes their absence a NOTE rather
+      # than an ERROR, exactly as CRAN does, and matching release-r.yml.
+      - run: R CMD check --no-manual dist/r/nirs4all_*.tar.gz
+        env:
+          _R_CHECK_FORCE_SUGGESTS_: "false"
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: r-source
+          path: dist/r/nirs4all_*.tar.gz
+
+  matlab-octave:
+    needs: repair-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - name: Read pinned DAG-ML ref
+        id: dag-ml-pin
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          import tomllib
+
+          upstreams = tomllib.loads(Path("compat/upstreams.toml").read_text())["upstream"]
+          dag_ml = [item for item in upstreams if item.get("key") == "dag_ml"]
+          if len(dag_ml) != 1 or not str(dag_ml[0].get("ref", "")).strip():
+              raise SystemExit("compat/upstreams.toml must pin exactly one dag_ml ref")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"ref={dag_ml[0]['ref'].strip()}\n")
+      - uses: actions/checkout@v7.0.0
+        with:
+          repository: GBeurier/dag-ml
+          path: dag-ml
+          ref: ${{ steps.dag-ml-pin.outputs.ref }}
+      - name: Install Octave package tools
+        timeout-minutes: 12
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends octave zip
+      - name: Run MATLAB/Octave smoke
+        timeout-minutes: 3
+        run: octave --no-gui --quiet --eval "run('bindings/matlab/tests/smoke.m'); exit(0)"
+        env:
+          NIRS4ALL_DAG_ML_MATLAB_PATH: ${{ github.workspace }}/dag-ml/bindings/matlab
+      - name: Build MATLAB/Octave package
+        timeout-minutes: 2
+        run: scripts/build-matlab-package.sh dist/matlab
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: matlab-octave
+          path: dist/matlab/*

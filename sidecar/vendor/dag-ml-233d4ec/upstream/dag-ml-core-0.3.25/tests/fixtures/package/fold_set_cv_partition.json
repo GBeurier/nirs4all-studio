@@ -1,0 +1,16 @@
+{
+  "id": "cv.shared.partition",
+  "sample_ids": ["s3", "s1", "s2"],
+  "folds": [
+    {
+      "fold_id": "fold1",
+      "train_sample_ids": ["s1", "s2"],
+      "validation_sample_ids": ["s3"]
+    },
+    {
+      "fold_id": "fold0",
+      "train_sample_ids": ["s3"],
+      "validation_sample_ids": ["s2", "s1"]
+    }
+  ]
+}

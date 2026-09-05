@@ -1,0 +1,407 @@
+{
+  "invalid": [
+    {
+      "name": "components_0",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression",
+            "params": {
+              "n_components": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "components_-2",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression",
+            "params": {
+              "n_components": -2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "components_1.9",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression",
+            "params": {
+              "n_components": 1.9
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "components_true",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression",
+            "params": {
+              "n_components": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "components_2147483648",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression",
+            "params": {
+              "n_components": 2147483648
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "components_NaN",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression",
+            "params": {
+              "n_components": "NaN"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "components_Infinity",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression",
+            "params": {
+              "n_components": "Infinity"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "range_[3,1,1]",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          },
+          "param": "n_components",
+          "_range_": [
+            3,
+            1,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "range_[1,3,0]",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          },
+          "param": "n_components",
+          "_range_": [
+            1,
+            3,
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "name": "range_[1,3,true]",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          },
+          "param": "n_components",
+          "_range_": [
+            1,
+            3,
+            true
+          ]
+        }
+      ]
+    },
+    {
+      "name": "range_[null,3,1]",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          },
+          "param": "n_components",
+          "_range_": [
+            null,
+            3,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "range_[1,10001,1]",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          },
+          "param": "n_components",
+          "_range_": [
+            1,
+            10001,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "range_[1,2147483647,1]",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          },
+          "param": "n_components",
+          "_range_": [
+            1,
+            2147483647,
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "name": "range_not_array",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          },
+          "param": "n_components",
+          "_range_": "123"
+        }
+      ]
+    },
+    {
+      "name": "model_then_transform",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          }
+        },
+        {
+          "class": "nirs4all.operators.transforms.SNV"
+        }
+      ]
+    },
+    {
+      "name": "duplicate_splitter",
+      "pipeline": [
+        {
+          "class": "nirs4all.operators.splitters.KennardStoneSplitter"
+        },
+        {
+          "class": "nirs4all.operators.splitters.KennardStoneSplitter"
+        },
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ambiguous_step",
+      "pipeline": [
+        {
+          "class": "nirs4all.operators.transforms.SNV",
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          }
+        }
+      ]
+    },
+    {
+      "name": "fractional_window",
+      "pipeline": [
+        {
+          "class": "nirs4all.operators.transforms.SavitzkyGolay",
+          "params": {
+            "window_length": 10.5
+          }
+        },
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          }
+        }
+      ]
+    },
+    {
+      "name": "boolean_mode",
+      "pipeline": [
+        {
+          "class": "nirs4all.operators.transforms.SavitzkyGolay",
+          "params": {
+            "mode": true
+          }
+        },
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          }
+        }
+      ]
+    },
+    {
+      "name": "nonfinite_cval",
+      "pipeline": [
+        {
+          "class": "nirs4all.operators.transforms.SavitzkyGolay",
+          "params": {
+            "cval": "NaN"
+          }
+        },
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          }
+        }
+      ]
+    },
+    {
+      "name": "nonfinite_split",
+      "pipeline": [
+        {
+          "class": "nirs4all.operators.splitters.KennardStoneSplitter",
+          "params": {
+            "test_size": "Infinity"
+          }
+        },
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          }
+        }
+      ]
+    }
+  ],
+  "valid": [
+    {
+      "name": "transforms_before_splitter",
+      "pipeline": [
+        {
+          "class": "nirs4all.operators.transforms.SNV"
+        },
+        {
+          "class": "nirs4all.operators.transforms.SavitzkyGolay"
+        },
+        {
+          "class": "nirs4all.operators.splitters.KennardStoneSplitter"
+        },
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          }
+        }
+      ],
+      "components": [
+        2
+      ]
+    },
+    {
+      "name": "splitter_before_transforms",
+      "pipeline": [
+        {
+          "class": "nirs4all.operators.splitters.KennardStoneSplitter"
+        },
+        {
+          "class": "nirs4all.operators.transforms.SNV"
+        },
+        {
+          "class": "nirs4all.operators.transforms.SavitzkyGolay"
+        },
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          }
+        }
+      ],
+      "components": [
+        2
+      ]
+    },
+    {
+      "name": "i32_max_single",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          },
+          "param": "n_components",
+          "_range_": [
+            2147483647,
+            2147483647,
+            1
+          ]
+        }
+      ],
+      "components": [
+        2147483647
+      ]
+    },
+    {
+      "name": "large_stride",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression"
+          },
+          "param": "n_components",
+          "_range_": [
+            2147483646,
+            2147483647,
+            2147483647
+          ]
+        }
+      ],
+      "components": [
+        2147483646
+      ]
+    },
+    {
+      "name": "numeric_string",
+      "pipeline": [
+        {
+          "model": {
+            "class": "sklearn.cross_decomposition.PLSRegression",
+            "params": {
+              "n_components": "2.0"
+            }
+          }
+        }
+      ],
+      "components": [
+        2
+      ]
+    }
+  ]
+}

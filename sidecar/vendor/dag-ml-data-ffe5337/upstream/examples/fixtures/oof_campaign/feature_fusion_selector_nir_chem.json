@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "feature_set_id": "fused",
+  "sources": [
+    {
+      "source_id": "nir",
+      "feature_set_id": "nir_x",
+      "columns": ["n0"]
+    },
+    {
+      "source_id": "chem",
+      "feature_set_id": "chem_x",
+      "columns": ["c0"]
+    }
+  ],
+  "alignment": {
+    "mode": "inner",
+    "sample_ids": ["S001", "S002"],
+    "masks": [
+      {
+        "source_id": "nir",
+        "sample_ids": ["S001", "S002"],
+        "present": [true, true]
+      },
+      {
+        "source_id": "chem",
+        "sample_ids": ["S001", "S002"],
+        "present": [true, true]
+      }
+    ]
+  },
+  "combination_plan": {
+    "mode": "cartesian",
+    "component_source_ids": ["nir", "chem"],
+    "budget": 8,
+    "missing_source_policy": "strict"
+  },
+  "representation_plan": {
+    "kind": "cartesian_product",
+    "combination_plan": {
+      "mode": "cartesian",
+      "component_source_ids": ["nir", "chem"],
+      "budget": 8,
+      "missing_source_policy": "strict"
+    },
+    "output_unit_level": "combo",
+    "cardinality": "many_to_many",
+    "preserve_provenance": true
+  },
+  "source_layout": {
+    "kind": "by_source_concat",
+    "source_order": ["nir", "chem"],
+    "blocks": [
+      {
+        "source_id": "nir",
+        "preprocessing_output": {
+          "feature_set_id": "nir_x",
+          "representation_id": "tabular_numeric",
+          "adapter_id": "preprocess_nir",
+          "fit_scope": "fold_train"
+        },
+        "column_start": 0,
+        "column_count": 1,
+        "feature_names": ["n0"]
+      },
+      {
+        "source_id": "chem",
+        "preprocessing_output": {
+          "feature_set_id": "chem_x",
+          "representation_id": "tabular_numeric",
+          "adapter_id": "preprocess_chem",
+          "fit_scope": "fold_train"
+        },
+        "column_start": 1,
+        "column_count": 1,
+        "feature_names": ["c0"]
+      }
+    ],
+    "concat": {
+      "feature_set_id": "fused",
+      "representation_id": "tabular_numeric",
+      "axis": "feature",
+      "total_column_count": 2,
+      "preserve_source_order": true,
+      "namespace_columns": true
+    }
+  },
+  "policy": {
+    "namespace_columns": true
+  }
+}

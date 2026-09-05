@@ -1,0 +1,349 @@
+{
+  "schema_version": 1,
+  "pack_id": "dag-ml.shared.conformance.v1",
+  "contracts": {
+    "coordinator_data_plan_envelope.v1": {
+      "kind": "json_schema",
+      "schema_version": 1,
+      "normalized_sha256": "f3719abdba9b178c4d939d6173adecf32bf3a7a3e7a7f903baaf699f852ce368"
+    },
+    "feature_fusion_selector.v1": {
+      "kind": "json_schema",
+      "schema_version": 1,
+      "normalized_sha256": "8e0b16ce37ce41e8b009b288ff21e00c621f593b9e934133cf17c0042ade76a4"
+    },
+    "coordinator_branch_view.v1": {
+      "kind": "json_schema",
+      "schema_version": 1,
+      "normalized_sha256": "2a6780491def139be89428b696051bfd56dab5d4225a3b3092a50624fc27618b"
+    },
+    "fitted_adapter_ref.v1": {
+      "kind": "json_schema",
+      "schema_version": 1,
+      "normalized_sha256": "43001ff6f7a286924ec01ca85b95233c7a50fe9cc8595d67da1eb2a35704dddf"
+    },
+    "data_output_provenance.v1": {
+      "kind": "json_schema",
+      "schema_version": 1,
+      "normalized_sha256": "d90533a9ae7d5a9415a1f8239ea24fbb1e1c37203eba255023e1caadc43494d7"
+    },
+    "parity_oracle.v1": {
+      "kind": "parity_oracle_manifest",
+      "schema_version": 1,
+      "canonical_json_sha256": "0fb00e7a5513aab7fea6eb9f9016eaa427f308bc03f7bf9cdd52ad54b7545953"
+    },
+    "representation_registry.v1": {
+      "kind": "representation_registry_manifest",
+      "schema_version": 1,
+      "canonical_json_sha256": "66446af592341061c4967eb2944e32c4e785c58c2baf05db7f00bff10a431508"
+    }
+  },
+  "fixtures": {
+    "coordinator_data_plan_envelope_nir.v1": {
+      "contract": "coordinator_data_plan_envelope.v1",
+      "canonical_json_sha256": "420a01e4897b3539a4c122ac03d629139261a2bf3a385b93c4b45bb6be082c94"
+    },
+    "coordinator_data_plan_envelope_multisource_repetitions.v1": {
+      "contract": "coordinator_data_plan_envelope.v1",
+      "canonical_json_sha256": "6d483135903efe19bf529f527e77c6103315f33b318e1d797f8fe80f994b5d91"
+    },
+    "feature_fusion_selector_nir_chem.v1": {
+      "contract": "feature_fusion_selector.v1",
+      "canonical_json_sha256": "0320926e2cb095f2b2c2e0ff286c45647806e8ffb7be195127afec7d916a11d8"
+    },
+    "model_input_spec_tabular_regressor.v1": {
+      "contract": "model_input_spec.v1",
+      "canonical_json_sha256": "1b09535984864e4b72b85b1225b91ec789216a61deb14de9b5a33bdf33341e02"
+    },
+    "data_output_provenance_augmented_view.v1": {
+      "contract": "data_output_provenance.v1",
+      "canonical_json_sha256": "68b48e3dc1b871dbb579c9e370ee777675c3a3ca23be8a9c003201ec6e4d7e25"
+    },
+    "oof_uc6_success_predictions.v1": {
+      "contract": "oof_campaign_fixture.v1",
+      "canonical_json_sha256": "6a88ac35eea0336d2bdcbb69ab462188473f7d3601bd3cab47f3481e9db9078d"
+    },
+    "oof_uc11_train_prediction_refusal.v1": {
+      "contract": "oof_campaign_fixture.v1",
+      "canonical_json_sha256": "751b19dd1f1d228bb4a591f5b407730221cf257174bb2e2a7b084415c8bfe4ba"
+    }
+  },
+  "scenarios": {
+    "multisource_a2_b3_c2.v1": {
+      "polarity": "positive",
+      "surfaces": [
+        "coordinator_data_plan_envelope",
+        "relation.unit_identity",
+        "feature_fusion_selector",
+        "source_layout"
+      ],
+      "fixtures": [
+        "coordinator_data_plan_envelope_multisource_repetitions.v1",
+        "feature_fusion_selector_nir_chem.v1"
+      ],
+      "test_refs": [
+        "scripts/validate_contracts.py::validate_envelope",
+        "scripts/validate_contracts.py::validate_feature_fusion_selector"
+      ],
+      "assertions": [
+        "asymmetric A=2/B=3/C=2 repetitions are relation-backed observations",
+        "relation and plan fingerprints are stable",
+        "feature fusion remains host-owned behind selector metadata",
+        "by-source preprocessing outputs declare source order and feature-axis concat spans"
+      ]
+    },
+    "by_source_concat_layout.v1": {
+      "polarity": "positive",
+      "surfaces": [
+        "feature_fusion_selector.source_layout",
+        "source_preprocessing_output",
+        "concat_layout"
+      ],
+      "fixtures": [
+        "feature_fusion_selector_nir_chem.v1"
+      ],
+      "test_refs": [
+        "crates/dag-ml-data-core/src/fusion.rs::source_layout_validates_source_order_and_concat_spans",
+        "crates/dag-ml-data-core/src/fusion.rs::source_layout_refuses_block_order_mismatch",
+        "scripts/validate_contracts.py::validate_feature_fusion_selector"
+      ],
+      "assertions": [
+        "source_order is authoritative and matches selector source order",
+        "each source block names the preprocessing output feature_set_id and representation",
+        "feature-axis concat spans are contiguous and preserve source order"
+      ]
+    },
+    "sample_level_late_fusion.v1": {
+      "polarity": "positive",
+      "surfaces": [
+        "graph.unit_typed_ports",
+        "pipeline_dsl.merge",
+        "runtime.oof_prediction_inputs"
+      ],
+      "fixtures": [
+        "oof_uc6_success_predictions.v1"
+      ],
+      "test_refs": [
+        "crates/dag-ml-core/src/dsl.rs::parses_nirs4all_compat_feature_branch_merge_dict",
+        "crates/dag-ml-core/src/runtime/tests.rs::requires_oof_prediction_edge_supplies_validated_prediction_handle"
+      ],
+      "assertions": [
+        "late-fusion branch joins stay sample-aligned",
+        "prediction inputs are OOF validation partitions",
+        "merge selectors are explicit instead of positional"
+      ]
+    },
+    "cartesian_combo_to_sample_reducer.v1": {
+      "polarity": "positive",
+      "surfaces": [
+        "representation_plan",
+        "reduction_plan",
+        "aggregation_controller_task"
+      ],
+      "fixtures": [
+        "coordinator_data_plan_envelope_multisource_repetitions.v1",
+        "data_output_provenance_augmented_view.v1"
+      ],
+      "test_refs": [
+        "crates/dag-ml-core/src/data.rs::representation_plan_validates_cartesian_and_monte_carlo_contracts",
+        "crates/dag-ml-core/src/selection.rs::stacking_fit_contract_guards_oof_reuse_and_combo_reduction"
+      ],
+      "assertions": [
+        "combo remains a relation-backed derived observation",
+        "combo output requires an explicit sample-level reducer",
+        "custom aggregation tasks carry input and output unit levels"
+      ]
+    },
+    "missing_source_with_fallback.v1": {
+      "polarity": "positive",
+      "surfaces": [
+        "representation_replay_manifest",
+        "representation_compatibility_report",
+        "data_output_provenance"
+      ],
+      "fixtures": [
+        "data_output_provenance_augmented_view.v1"
+      ],
+      "test_refs": [
+        "crates/dag-ml-core/src/data.rs::representation_compatibility_report_enforces_missingness_policy",
+        "crates/dag-ml-core/src/bundle.rs::bundle_data_requirements_accept_d7_replay_contracts"
+      ],
+      "assertions": [
+        "serve-time missing source or repetition is never silent",
+        "fallback, severity and affected counts are persisted",
+        "fixed-width mismatches require mask or pad policy"
+      ]
+    },
+    "stacking_oof_contract.v1": {
+      "polarity": "positive",
+      "surfaces": [
+        "oof_join",
+        "selection_decision",
+        "prediction_cache_metadata"
+      ],
+      "fixtures": [
+        "oof_uc6_success_predictions.v1"
+      ],
+      "test_refs": [
+        "crates/dag-ml-core/src/oof.rs::uc6_fixture_joins_successfully",
+        "crates/dag-ml-core/src/runtime/tests.rs::requires_oof_prediction_edge_refit_uses_cv_oof_coverage"
+      ],
+      "assertions": [
+        "stacking consumes validation-only OOF predictions",
+        "sample ids drive joins and cache identity",
+        "refit requires complete CV OOF coverage"
+      ]
+    },
+    "invalid_unit_join.v1": {
+      "polarity": "negative",
+      "surfaces": [
+        "graph_spec",
+        "edge_contract",
+        "pipeline_dsl.unit_contracts"
+      ],
+      "fixtures": [],
+      "test_refs": [
+        "crates/dag-ml-core/src/graph.rs::rejects_unit_mismatch_without_explicit_broadcast",
+        "crates/dag-ml-core/src/dsl.rs::compiles_pipeline_dsl_unit_contracts_to_graph_interface"
+      ],
+      "assertions": [
+        "observation/sample feature joins are rejected without an adapter",
+        "alignment-key mismatches are actionable graph errors",
+        "sample-to-non-sample broadcast must be explicit"
+      ]
+    },
+    "row_vs_sample_selection_mismatch.v1": {
+      "polarity": "negative",
+      "surfaces": [
+        "selection_policy",
+        "selection_decision",
+        "metrics"
+      ],
+      "fixtures": [
+        "oof_uc11_train_prediction_refusal.v1"
+      ],
+      "test_refs": [
+        "crates/dag-ml-core/src/selection.rs::selection_policy_can_require_metric_level",
+        "crates/dag-ml-core/src/metrics.rs::refuses_metric_alignment_and_contract_mismatches",
+        "crates/dag-ml-core/src/oof.rs::uc11_fixture_refuses_train_predictions"
+      ],
+      "assertions": [
+        "row-level metrics cannot select a sample-level refit slot",
+        "train predictions cannot become training features by default",
+        "selection decisions persist the metric level used"
+      ]
+    },
+    "operator_level_variant_additive_fields.v1": {
+      "polarity": "positive",
+      "surfaces": [
+        "campaign_spec.generation_choice.active_subsequence",
+        "execution_plan.generation_choice.active_subsequence",
+        "score_set.regression_metric_report.variant_label"
+      ],
+      "fixtures": [],
+      "test_refs": [
+        "crates/dag-ml-core/src/generation.rs::additive_variant_fields_are_invisible_when_absent",
+        "crates/dag-ml-core/src/generation.rs::choice_cannot_set_both_param_overrides_and_active_subsequence"
+      ],
+      "assertions": [
+        "generation_choice carries an optional active_subsequence for operator-level variants",
+        "a choice cannot set both param_overrides and active_subsequence",
+        "regression_metric_report carries an optional variant_label",
+        "specs/fixtures without the new fields stay byte-identical and fingerprint-stable"
+      ]
+    },
+    "generation_constraints_prune_variants.v1": {
+      "polarity": "positive",
+      "surfaces": [
+        "campaign_spec.generation_spec.constraints",
+        "campaign_spec.generation_constraints.mutex",
+        "campaign_spec.generation_constraints.requires",
+        "campaign_spec.generation_constraints.exclude",
+        "campaign_spec.choice_ref"
+      ],
+      "fixtures": [],
+      "test_refs": [
+        "crates/dag-ml-core/src/generation.rs::constraint_mutex_prunes_pair",
+        "crates/dag-ml-core/src/generation.rs::constraint_mutex_group_of_three_forbids_only_full_co_occurrence",
+        "crates/dag-ml-core/src/generation.rs::constraint_requires_prunes",
+        "crates/dag-ml-core/src/generation.rs::constraint_exclude_prunes_pair",
+        "crates/dag-ml-core/src/generation.rs::constraint_cartesian_exclude_prunes_one_of_four",
+        "crates/dag-ml-core/src/generation.rs::constraint_combined_mutex_and_exclude",
+        "crates/dag-ml-core/src/generation.rs::constraint_prunes_to_one",
+        "crates/dag-ml-core/src/generation.rs::constraints_absent_keep_spec_byte_identical",
+        "crates/dag-ml-core/src/dsl/tests.rs::compiles_generation_constraints_and_prunes_variants"
+      ],
+      "assertions": [
+        "generation_spec carries an optional constraints block (mutex / requires / exclude over choice_ref)",
+        "_depends_on_ is a dead keyword and is not represented",
+        "mutex prunes only the variant where the FULL group co-occurs (legacy issubset rule: a pair forbids 'both present', a 3+ group forbids only the all-present variant and keeps every proper subset), requires enforces dependency, exclude forbids a pair",
+        "the surviving variant set matches the nirs4all generation oracle's documented counts",
+        "a spec without constraints stays byte-identical and fingerprint-stable"
+      ]
+    }
+  },
+  "c_abi": {
+    "data_provider_vtable_abi_version": 2,
+    "data_tensor_f64_abi_version": 1,
+    "data_tensor_f32_abi_version": 1,
+    "data_borrowed_tensor_view_abi_version": 1,
+    "data_owned_tensor_abi_version": 1,
+    "required_provider_callbacks": [
+      "materialize",
+      "make_view",
+      "view_identity",
+      "target_arrow",
+      "feature_arrow",
+      "release",
+      "destroy"
+    ],
+    "required_dag_ml_data_symbols": [
+      "DagMlDataTensorF64",
+      "DagMlDataTensorF32",
+      "DagMlDataFeatureMatrixF64View",
+      "DagMlDataFeatureMatrixF64ColumnarView",
+      "DagMlDataFittedAdapterStoreHandle",
+      "dagmldata_inmemory_provider_new_with_f64_feature_views",
+      "dagmldata_inmemory_provider_new_with_f64_feature_columns",
+      "dagmldata_inmemory_provider_new_from_file",
+      "dagmldata_inmemory_provider_new_with_buffer_fetcher",
+      "DagMlDataBufferFetcherVTable",
+      "DagMlDataBufferFetchRequest",
+      "dagmldata_inmemory_provider_feature_collation_tensor_f64_json",
+      "dagmldata_inmemory_provider_feature_collation_tensor_f32_json",
+      "dagmldata_inmemory_provider_data_feature_buffer_manifest_json",
+      "dagmldata_tensor_f32_free",
+      "dagmldata_schema_fingerprint_json",
+      "dagmldata_fold_set_validate_json",
+      "dagmldata_aggregation_policy_validate_json",
+      "dagmldata_fold_set_fingerprint_json",
+      "dagmldata_fold_set_validate_against_relations_json",
+      "dagmldata_coordinator_multi_target_arrow_json",
+      "dagmldata_fitted_adapter_ref_validate_json",
+      "dagmldata_fitted_adapter_manifest_validate_json",
+      "dagmldata_inmemory_fitted_adapter_store_new",
+      "dagmldata_inmemory_fitted_adapter_store_register_json",
+      "dagmldata_inmemory_fitted_adapter_store_materialize_json",
+      "dagmldata_inmemory_fitted_adapter_store_release",
+      "dagmldata_inmemory_fitted_adapter_store_destroy",
+      "DagMlDataTensorDType",
+      "DagMlDataBorrowedTensorView",
+      "DagMlDataOwnedTensor",
+      "dagmldata_inmemory_provider_new_with_tensor_views",
+      "dagmldata_inmemory_provider_nd_tensor_manifest_json",
+      "dagmldata_inmemory_provider_data_nd_tensor_manifest_json",
+      "dagmldata_inmemory_provider_nd_tensor_export_json",
+      "dagmldata_nd_tensor_free"
+    ]
+  },
+  "cross_repo_conformance": {
+    "required_when_sibling_checkout_present": [
+      "contracts.schema_and_fixture_equivalence",
+      "headers.include_order",
+      "provider.f64_predict_replay",
+      "fold_set.fingerprint_parity",
+      "representation_registry.parity",
+      "model_input_spec.fixture_equivalence"
+    ]
+  }
+}

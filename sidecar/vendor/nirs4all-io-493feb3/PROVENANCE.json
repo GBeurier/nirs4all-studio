@@ -1,0 +1,37 @@
+{
+  "schema": "nirs4all-studio.vendored-source.v1",
+  "upstream": "https://github.com/GBeurier/nirs4all-io.git",
+  "commit": "493feb3b9dc5b856c4837afda14292358a8a3184",
+  "repository_tree": "df18be5fe70db2f772404d67850dbd3d54ec5fe6",
+  "crates_tree": "15bf7c5fee71ced50d9a7fd76b7b5818bb52c38d",
+  "included_crate_trees": {
+    "nirs4all-io": "ff16ea9591040372e6740cfa0e55646fa7124d42",
+    "nirs4all-io-core": "bba1ad4235d55ea3d88cfe0bdf4dd65c17120863",
+    "nirs4all-io-dagml": "263b40cc2b8227df5429418a4384829087f40e5a"
+  },
+  "selected_crate_packages": [
+    {
+      "name": "nirs4all-io",
+      "version": "0.1.18",
+      "sha256": "7bc4fdc2c6ec748ab6028d1413b1d07e6415b3821b0c5061344403c72dc2caa8"
+    },
+    {
+      "name": "nirs4all-io-core",
+      "version": "0.1.18",
+      "sha256": "3e1905415dea85a7434832d3cd4a45f3a4642736a5afb48f5c6880cd799cf029"
+    },
+    {
+      "name": "nirs4all-io-dagml",
+      "version": "0.1.18",
+      "sha256": "3929446e1fa7a2111be58b4c899eedf2b61cfe4066e36b3641b1fbaa67b9414f"
+    }
+  ],
+  "snapshot_policy": "The complete upstream Git tree is copied byte-for-byte under upstream/: workspace manifests and lockfile, every crate and source tree, bindings, tests, fixtures, scripts, documentation, assets, provenance, notices, and licence texts.",
+  "inventory": {
+    "path": "INVENTORY.sha256",
+    "algorithm": "sha256",
+    "hashed_files": 478
+  },
+  "verification": "../../scripts/verify-vendored-io.sh",
+  "release_gate": "The source snapshot and crate checksums identify the published nirs4all-io 0.1.18 release exactly; Studio runtime resolution remains pinned to =0.1.18."
+}

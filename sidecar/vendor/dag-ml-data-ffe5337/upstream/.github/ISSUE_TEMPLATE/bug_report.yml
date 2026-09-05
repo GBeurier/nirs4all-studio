@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a reproducible defect in dag-ml-data.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What failed, and what behavior did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Include commands, input fixtures, and the smallest failing example.
+      value: |
+        ```bash
+        cargo test --workspace
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Paste the relevant error output, panic, validation message, or diff.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Core contracts
+        - Planner / alignment
+        - C ABI
+        - Python bindings
+        - WASM bindings
+        - Contracts / schemas
+        - CI / release
+        - Documentation
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and the current `CHANGELOG.md`.
+          required: true
+        - label: This is not a private security report.
+          required: true

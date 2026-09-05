@@ -1,0 +1,318 @@
+#!/bin/sh
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# Generate a SELF-CONTAINED src/rust/ tree for the nirs4allio R package so it
+# builds OFFLINE at install time — no prebuilt nirs4all-io-capi cdylib, no
+# external monorepo `crates/`, no network. This is the CRAN-submittable rework
+# of the old C-shim-over-prebuilt-cdylib binding (which linked a separately
+# built libnirs4all_io_capi via N4IO_INCLUDE / N4IO_CAPI_DIR). It mirrors the
+# proven nirs4all-formats `N4FMT_R_VENDOR=1 ./configure` vendor pattern, applied
+# to io's C-shim + Rust STATICLIB design (src/n4io.c links the staticlib).
+#
+# The binding is a thin C shim: src/n4io.c drives the stable n4io_* C ABI using
+# the COMMITTED header (src/nirs4all_io.h, copied here from the capi crate). The
+# numerical/IO logic lives in the Rust core crates, compiled into a staticlib
+# (libnirs4all_io_capi.a) that src/Makevars links into nirs4allio.{so,dll}.
+#
+# Two modes:
+#
+#   N4IO_R_VENDOR=1  -> in-repo vendoring (forced). Copy the workspace crates the
+#                       C ABI needs (nirs4all-io-core, nirs4all-io,
+#                       nirs4all-io-capi) from the checkout into
+#                       src/rust/vendored/, emit a self-contained
+#                       src/rust/Cargo.toml whose paths point INSIDE the tarball,
+#                       `cargo vendor` every crates.io transitive dep into
+#                       src/rust/vendor.tar.xz, and write src/rust/.cargo/config.toml
+#                       for an offline build. The source tarball ships
+#                       src/rust/vendored/, src/rust/vendor.tar.xz, the generated
+#                       src/rust/Cargo.toml, and src/nirs4all_io.h.
+#
+#                       The crates.io deps are shipped COMPRESSED (vendor.tar.xz,
+#                       extracted by src/Makevars at build time) rather than as a
+#                       raw directory because `R CMD build`'s tarball step strips
+#                       VCS dotfiles from inside the vendored crates, which would
+#                       break cargo's offline checksum verification. Shipping the
+#                       archive byte-for-byte avoids that (same pattern the
+#                       arrow / gifski / polars CRAN packages use).
+#
+#   (default)        -> already-vendored build. When src/rust/vendor.tar.xz and
+#                       src/rust/vendored/ are already present (the installing
+#                       user unpacked the CRAN source tarball and has no repo),
+#                       DO NOT re-vendor: the bundled tree is used as-is.
+#                       src/Makevars extracts vendor.tar.xz and `cargo build
+#                       --offline` compiles the staticlib. This is the real CRAN
+#                       install scenario.
+#
+# This script writes NO Makevars (src/Makevars / src/Makevars.win are committed,
+# layout-stable, and extract vendor.tar.xz then build the staticlib against
+# src/rust/ and link it into the C shim).
+set -e
+
+PKG_ROOT=$(cd "$(dirname "$0")" && pwd)
+REPO=$(cd "$PKG_ROOT/../.." && pwd)        # bindings/r -> repo root
+RUST="$PKG_ROOT/src/rust"
+VENDORED="$RUST/vendored"                  # copied workspace crates (plain dirs)
+VENDOR_ARCHIVE="$RUST/vendor.tar.xz"       # compressed cargo-vendored crates.io deps
+HEADER_SRC="$REPO/crates/nirs4all-io-capi/include/nirs4all_io.h"
+HEADER_DST="$PKG_ROOT/src/nirs4all_io.h"
+LOCK_SRC="$PKG_ROOT/Cargo.lock.rust"
+
+# The workspace crates the C ABI staticlib needs. Inspecting [dependencies]
+# `path = ...` (.workspace = true resolves to these in the root manifest):
+#   nirs4all-io-capi -> nirs4all-io -> nirs4all-io-core
+# is the full intra-workspace path closure; all three are copied below.
+CORE_CRATES="nirs4all-io-core nirs4all-io nirs4all-io-capi"
+
+VENDORED_PRESENT=0
+[ -f "$VENDORED/nirs4all-io-capi/Cargo.toml" ] && [ -f "$VENDOR_ARCHIVE" ] && \
+    [ -f "$RUST/Cargo.lock" ] && [ -f "$HEADER_DST" ] && VENDORED_PRESENT=1
+
+if [ "${N4IO_R_VENDOR:-0}" != "1" ] && [ "$VENDORED_PRESENT" = "1" ]; then
+    echo "nirs4allio configure: using bundled vendored Rust tree (offline build)"
+    echo "  vendored crates : $VENDORED"
+    echo "  cargo vendor    : $VENDOR_ARCHIVE (extracted by src/Makevars)"
+    echo "  C ABI header    : $HEADER_DST"
+    exit 0
+fi
+
+if [ "${N4IO_R_VENDOR:-0}" != "1" ] && [ "$VENDORED_PRESENT" = "0" ]; then
+    echo "nirs4allio configure: no vendored tree and N4IO_R_VENDOR!=1 — set N4IO_R_VENDOR=1 from a full checkout to vendor (needs the monorepo crates/ + network)" >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# N4IO_R_VENDOR=1: in-repo vendoring.
+# ---------------------------------------------------------------------------
+command -v cargo >/dev/null 2>&1 || {
+    echo "nirs4allio configure(vendor): ERROR — cargo not found; install Rust from https://rustup.rs" >&2
+    exit 1
+}
+command -v python3 >/dev/null 2>&1 || {
+    echo "nirs4allio configure(vendor): ERROR — python3 required to edit the vendored manifests" >&2
+    exit 1
+}
+
+echo "nirs4allio configure: CRAN/R-universe self-contained build — vendoring the Rust core from the checkout"
+
+# 0. Copy the committed C ABI header next to the C shim (src/n4io.c #includes
+#    "nirs4all_io.h"). The header is generated by cbindgen and committed in the
+#    capi crate; the R build never re-runs cbindgen (we drop that build-dep and
+#    neutralize build.rs below), it pins this committed copy.
+[ -f "$HEADER_SRC" ] || {
+    echo "nirs4allio configure(vendor): ERROR — $HEADER_SRC not found" >&2
+    exit 1
+}
+cp "$HEADER_SRC" "$HEADER_DST"
+[ -f "$LOCK_SRC" ] || {
+    echo "nirs4allio configure(vendor): ERROR — $LOCK_SRC not found" >&2
+    exit 1
+}
+
+# 1. Copy the workspace crates into src/rust/vendored/ (always fresh). Copy every
+#    top-level entry EXCEPT tests/ (the [dev-dependencies] surface), target/ (build
+#    artefacts), build.rs (the capi's cbindgen header-gen — dropped below), and
+#    dotfiles. This captures Cargo.toml, src/, AND the data dirs the crates pull
+#    in via include_str! (nirs4all-io-core/conventions/builtin/*.toml) plus the
+#    capi's include/ (the committed header) and abi/ (the ld version script,
+#    unused once build.rs is gone). These plain dirs ship in the tarball as-is.
+rm -rf "$VENDORED" "$VENDOR_ARCHIVE" "$RUST/vendor" "$RUST/.cargo" "$RUST/Cargo.lock"
+mkdir -p "$VENDORED"
+for c in $CORE_CRATES; do
+    [ -d "$REPO/crates/$c" ] || {
+        echo "nirs4allio configure(vendor): ERROR — $REPO/crates/$c not found" >&2
+        exit 1
+    }
+    mkdir -p "$VENDORED/$c"
+    for entry in "$REPO/crates/$c"/*; do
+        name=$(basename "$entry")
+        case "$name" in
+            tests|target|build.rs) continue ;;
+        esac
+        cp -R "$entry" "$VENDORED/$c/$name"
+    done
+done
+
+# 1a. The capi crate ships a build.rs whose only jobs are (a) regenerate the
+#     committed header via cbindgen and (b) wire a GNU ld --version-script onto
+#     the CDYLIB link. The R package builds the STATICLIB only and pins the
+#     committed header, so both jobs are dead weight here. Dropping build.rs (not
+#     copied above) + the cbindgen build-dependency removes the entire cbindgen/
+#     clap/syn/getrandom/rustix closure (~20 crates) from the vendor tree.
+echo "nirs4allio configure: dropping the cbindgen build.rs from the vendored capi (staticlib build pins the committed header)"
+
+# 2. Strip test-only [dev-dependencies] from every vendored manifest (size:
+#    `cargo vendor` collects the UNION of reachable deps, dev included — proptest
+#    and tempfile pull a multi-MB closure the R package never compiles), and drop
+#    the [build-dependencies] cbindgen from the capi manifest (build.rs is gone).
+for m in "$VENDORED"/*/Cargo.toml; do
+    python3 - "$m" <<'PY'
+import re, sys
+
+p = sys.argv[1]
+lines = open(p, encoding="utf-8").read().splitlines()
+
+# Drop every [dev-dependencies] (incl. target-scoped) and [build-dependencies]
+# table in full — dev deps are test-only; the lone build-dep (cbindgen, capi
+# only) is dead now that build.rs is removed.
+out, section, dropped = [], None, 0
+
+
+def is_droppable(name):
+    return (
+        name == "dev-dependencies"
+        or name.endswith(".dev-dependencies")
+        or name == "build-dependencies"
+        or name.endswith(".build-dependencies")
+    )
+
+
+for ln in lines:
+    header = re.match(r"\s*\[([^\]]+)\]\s*$", ln)
+    if header:
+        section = header.group(1)
+        if is_droppable(section):
+            dropped += 1
+            continue
+        out.append(ln)
+        continue
+    if section is not None and is_droppable(section):
+        continue
+    out.append(ln)
+
+open(p, "w", encoding="utf-8", newline="\n").write("\n".join(out) + "\n")
+print(f"  {p}: dropped {dropped} dev/build dependency table(s)")
+PY
+done
+
+# 2a. Drop the `build = ...` / build.rs reference if the capi [package] names one
+#     explicitly (it does not — cargo auto-detects build.rs — but be defensive:
+#     if a `build =` key exists, neutralize it so cargo does not look for the now
+#     absent script). Also force `build = false` is not needed: with build.rs
+#     absent and no `build` key, cargo treats the crate as build-script-free.
+python3 - "$VENDORED/nirs4all-io-capi/Cargo.toml" <<'PY'
+import re, sys
+p = sys.argv[1]
+lines = open(p, encoding="utf-8").read().splitlines()
+out = [ln for ln in lines if not re.match(r"\s*build\s*=", ln)]
+open(p, "w", encoding="utf-8", newline="\n").write("\n".join(out) + "\n")
+PY
+
+# 2b. Reduce the capi [lib] crate-type to STATICLIB ONLY. The repo manifest emits
+#     ["cdylib", "staticlib", "rlib"]; the R package links the .a staticlib and
+#     needs neither the cdylib nor the rlib. Dropping the cdylib is LOAD-BEARING
+#     on Windows: rustc only `ar`-archives a staticlib (no final link), so the
+#     x86_64-pc-windows-gnu build never invokes a linker — whereas building the
+#     cdylib forces a link, and on the CRAN Windows runner CARGO_LINKER is unset,
+#     so src/Makevars.win's `CARGO_TARGET_..._LINKER=""` makes that link die with
+#     "couldn't extract file stem from specified linker". Staticlib-only sidesteps
+#     it entirely (mirrors the nirs4all-formats extendr crate, which is
+#     ["staticlib"] only). Replace the WHOLE crate-type array regardless of its
+#     spelling/spacing.
+echo "nirs4allio configure: reducing the vendored capi [lib] crate-type to staticlib only (R links the .a; avoids the Windows cdylib link)"
+python3 - "$VENDORED/nirs4all-io-capi/Cargo.toml" <<'PY'
+import re, sys
+
+p = sys.argv[1]
+text = open(p, encoding="utf-8").read()
+new, n = re.subn(
+    r'(?m)^\s*crate-type\s*=\s*\[[^\]]*\]\s*$',
+    'crate-type = ["staticlib"]',
+    text,
+)
+if n != 1:
+    sys.exit(f"configure: expected exactly one crate-type in {p}, patched {n}")
+open(p, "w", encoding="utf-8", newline="\n").write(new)
+print(f"  {p}: crate-type -> [\"staticlib\"]")
+PY
+
+# 3. The copied crate Cargo.tomls use `.workspace = true` for version/edition/
+#    license/authors/repository AND for several dependencies (serde, serde_json,
+#    thiserror, regex, toml, indexmap, csv, sha2, nirs4all-io-core, nirs4all-io).
+#    Those inherit from the MONOREPO [workspace], which is NOT in the tarball. So
+#    we make src/rust/ a self-contained workspace ROOT that re-declares
+#    [workspace.package] and [workspace.dependencies] with the SAME values as the
+#    io root Cargo.toml, plus the three vendored crates as members. The copied
+#    crate manifests then resolve unchanged. The staticlib emit comes from the
+#    capi crate's own [lib] crate-type (reduced to ["staticlib"] in step 2b) —
+#    src/Makevars builds `-p nirs4all-io-capi` and links libnirs4all_io_capi.a.
+cat > "$RUST/Cargo.toml" <<'TOML'
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# GENERATED by ./configure (N4IO_R_VENDOR=1) — self-contained vendored workspace.
+#
+# This is the workspace ROOT for the three vendored io crates. They inherit
+# version/edition/license/deps from [workspace.package] / [workspace.dependencies]
+# below, which MIRROR the monorepo root Cargo.toml (the source tarball has no
+# monorepo). src/Makevars builds `-p nirs4all-io-capi --offline` to produce the
+# staticlib (libnirs4all_io_capi.a), which the C shim (src/n4io.c) links.
+[workspace]
+resolver = "2"
+members = [
+    "vendored/nirs4all-io-core",
+    "vendored/nirs4all-io",
+    "vendored/nirs4all-io-capi",
+]
+
+[workspace.package]
+version = "0.1.18"
+edition = "2021"
+license = "CECILL-2.1 OR AGPL-3.0-or-later"
+authors = ["Gregory Beurier <gregory.beurier@cirad.fr>"]
+repository = "https://github.com/GBeurier/nirs4all-io"
+homepage = "https://github.com/GBeurier/nirs4all-io"
+readme = "README.md"
+
+[workspace.dependencies]
+nirs4all-io-core = { path = "vendored/nirs4all-io-core", version = "0.1.18" }
+nirs4all-io = { path = "vendored/nirs4all-io", version = "0.1.18" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order", "float_roundtrip"] }
+thiserror = "2.0"
+sha2 = "0.10"
+regex = "1.10"
+toml = "0.8"
+indexmap = { version = "2.2", features = ["serde"] }
+csv = "1.3"
+
+# Bound Cargo's release profile to a modest, reproducible setting (the monorepo
+# root has no [profile.release] override; defaults are fine, kept explicit here).
+[profile.release]
+opt-level = 2
+TOML
+
+# Pin the dependency solution for this reduced, build-dependency-free workspace.
+# The committed input is regenerated deliberately when the Rust closure changes;
+# --locked below guarantees that configure never silently re-resolves it.
+cp "$LOCK_SRC" "$RUST/Cargo.lock"
+
+# 4. cargo vendor every crates.io transitive dep, restricted to the R target
+#    triples (drops any host-only closure), then compress it. The crates.io
+#    source replacement is written to .cargo/config.toml; src/Makevars passes it
+#    INLINE via --config so the package ships NO hidden .cargo/ dir (which would
+#    trip R CMD check's "hidden files" NOTE) — but we still write it here so a
+#    manual `cd src/rust && cargo build --offline` works for debugging.
+echo "nirs4allio configure: cargo vendor (crates.io transitive deps)"
+# `cargo vendor` reads the workspace at $RUST and collects the union of every
+# reachable crates.io dep. The io closure is pure-Rust with no platform-specific
+# (wasm/WASI/getrandom) branch, so no --target restriction is needed (and this
+# cargo's `vendor` has no --target flag anyway).
+( cd "$RUST" && cargo vendor --locked --versioned-dirs vendor ) >/dev/null
+
+mkdir -p "$RUST/.cargo"
+cat > "$RUST/.cargo/config.toml" <<'TOML'
+# Offline source replacement for the vendored crates.io deps (debugging aid;
+# src/Makevars passes the same replacement INLINE via --config so the installed
+# package ships no hidden .cargo/ dir).
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
+TOML
+
+echo "nirs4allio configure: compressing vendor/ -> vendor.tar.xz (avoids R's tarball dotfile stripping)"
+( cd "$RUST" && tar cJf vendor.tar.xz vendor && rm -rf vendor )
+
+echo "nirs4allio configure: self-contained Rust tree ready"
+echo "  vendored crates : $(ls "$VENDORED" | tr '\n' ' ')"
+echo "  vendor archive  : $VENDOR_ARCHIVE ($(du -h "$VENDOR_ARCHIVE" | cut -f1))"
+echo "  C ABI header    : $HEADER_DST"
+echo "  source replace  : passed INLINE to cargo by src/Makevars (--config), no .cargo/ dir in the tarball"

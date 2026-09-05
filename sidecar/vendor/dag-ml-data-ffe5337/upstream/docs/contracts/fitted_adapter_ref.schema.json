@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GBeurier/dag-ml-data/schemas/fitted_adapter_ref.v1.schema.json",
+  "title": "DAG-ML Data Fitted Adapter Ref v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["adapter_id", "adapter_version", "params_fingerprint"],
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "default": 1
+    },
+    "adapter_id": {
+      "$ref": "#/$defs/non_empty_id"
+    },
+    "adapter_version": {
+      "$ref": "#/$defs/non_empty_id"
+    },
+    "params_fingerprint": {
+      "$ref": "#/$defs/hex_fingerprint"
+    },
+    "backend": {
+      "$ref": "#/$defs/backend"
+    },
+    "uri": {
+      "type": "string",
+      "minLength": 1
+    },
+    "content_fingerprint": {
+      "$ref": "#/$defs/hex_fingerprint"
+    },
+    "size_bytes": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "plugin": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plugin_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "metadata": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/non_empty_id"
+      }
+    }
+  },
+  "$defs": {
+    "non_empty_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "hex_fingerprint": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "backend": {
+      "enum": ["joblib", "pickle", "json", "numpy", "onnx", "raw"]
+    }
+  }
+}

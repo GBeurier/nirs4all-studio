@@ -1,0 +1,37 @@
+name: Contract change
+description: Propose a schema, C ABI, conformance-pack, or cross-repo contract change.
+title: "[contract] "
+labels: ["contract"]
+body:
+  - type: textarea
+    id: change
+    attributes:
+      label: Proposed change
+      description: Name the exact contract and the intended wire-shape or ABI change.
+    validations:
+      required: true
+  - type: textarea
+    id: migration
+    attributes:
+      label: Compatibility and migration
+      description: Explain additive behavior, versioning, and any dual-read window.
+    validations:
+      required: true
+  - type: textarea
+    id: sibling
+    attributes:
+      label: Sibling repo impact
+      description: Describe the required paired `dag-ml` change, if any.
+    validations:
+      required: true
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Required gates
+      options:
+        - label: `scripts/validate_contracts.py` will be updated with the new invariant.
+          required: true
+        - label: `docs/STATUS.md`, `docs/TEST_PLAN.md`, and `CHANGELOG.md` will be updated.
+          required: true
+        - label: The change follows ADR-02 schema evolution rules.
+          required: true

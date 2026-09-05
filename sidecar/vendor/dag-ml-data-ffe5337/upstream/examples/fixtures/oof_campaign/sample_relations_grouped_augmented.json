@@ -1,0 +1,52 @@
+{
+  "rows": [
+    {
+      "observation_id": "obs.S001.base",
+      "sample_id": "S001",
+      "source_id": "nir",
+      "target_id": "y",
+      "group_id": "plant.A",
+      "origin_id": null,
+      "repetition_id": "rep.0",
+      "augmented": false,
+      "excluded": false,
+      "metadata": {}
+    },
+    {
+      "observation_id": "obs.S001.rep1",
+      "sample_id": "S001",
+      "source_id": "nir",
+      "target_id": "y",
+      "group_id": "plant.A",
+      "origin_id": null,
+      "repetition_id": "rep.1",
+      "augmented": false,
+      "excluded": false,
+      "metadata": {}
+    },
+    {
+      "observation_id": "obs.S001.aug0",
+      "sample_id": "S001",
+      "source_id": "nir",
+      "target_id": "y",
+      "group_id": "plant.A",
+      "origin_id": "obs.S001.base",
+      "repetition_id": "rep.0",
+      "augmented": true,
+      "excluded": false,
+      "metadata": { "augmentation": "jitter.v1" }
+    },
+    {
+      "observation_id": "obs.S002.base",
+      "sample_id": "S002",
+      "source_id": "nir",
+      "target_id": "y",
+      "group_id": "plant.B",
+      "origin_id": null,
+      "repetition_id": "rep.0",
+      "augmented": false,
+      "excluded": false,
+      "metadata": {}
+    }
+  ]
+}

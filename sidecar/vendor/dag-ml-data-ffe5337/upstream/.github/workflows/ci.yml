@@ -1,0 +1,299 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'rc/**']
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_AUDIT_VERSION: "0.22.1"
+  MATURIN_VERSION: "1.13.3"
+  RUST_MSRV: "1.85.0"
+  WASM_PACK_VERSION: "0.15.0"
+
+jobs:
+  contract-lockstep:
+    name: Shared contract lockstep
+    runs-on: ubuntu-latest
+    env:
+      DAG_ML_REPO: ${{ github.workspace }}/external/dag-ml
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Resolve dag-ml contract peer
+        id: peer
+        shell: bash
+        run: |
+          set -euo pipefail
+          peer_repo="GBeurier/dag-ml"
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          ref="main"
+          paired="false"
+
+          if git ls-remote --exit-code --heads "https://github.com/${peer_repo}.git" "$branch" >/dev/null 2>&1; then
+            ref="$branch"
+            paired="true"
+          fi
+
+          contract_changed="false"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            changed="$(
+              git diff --name-only FETCH_HEAD HEAD -- \
+                docs/contracts \
+                examples/fixtures \
+                scripts/validate_contracts.py \
+                crates/dag-ml-data-capi/include \
+                crates/dag-ml-data-core/src/fitted_adapter.rs
+            )"
+            if [ -n "$changed" ]; then
+              contract_changed="true"
+            fi
+            if [ "$contract_changed" = "true" ] && [ "$paired" != "true" ]; then
+              echo "::error::Shared contract changes require a paired ${peer_repo} branch named '${branch}'."
+              printf '%s\n' "$changed"
+              exit 1
+            fi
+          fi
+
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "contract_changed=$contract_changed" >> "$GITHUB_OUTPUT"
+      - name: Checkout dag-ml contract peer
+        uses: actions/checkout@v7
+        with:
+          repository: GBeurier/dag-ml
+          ref: ${{ steps.peer.outputs.ref }}
+          path: external/dag-ml
+      - name: Shared contract
+        run: python scripts/validate_contracts.py --require-sibling --sibling-root external/dag-ml
+
+  msrv:
+    name: MSRV Rust
+    runs-on: ubuntu-latest
+    env:
+      DAG_ML_REPO: ${{ github.workspace }}/external/dag-ml
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve dag-ml contract peer
+        id: peer
+        shell: bash
+        run: |
+          set -euo pipefail
+          peer_repo="GBeurier/dag-ml"
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          ref="main"
+          if git ls-remote --exit-code --heads "https://github.com/${peer_repo}.git" "$branch" >/dev/null 2>&1; then
+            ref="$branch"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Checkout dag-ml contract peer
+        uses: actions/checkout@v7
+        with:
+          repository: GBeurier/dag-ml
+          ref: ${{ steps.peer.outputs.ref }}
+          path: external/dag-ml
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_MSRV }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Check MSRV
+        run: cargo check --workspace --all-targets
+      - name: Check MSRV (Python binding)
+        run: cargo check --locked --manifest-path crates/dag-ml-data-py/Cargo.toml --all-targets
+      - name: Check MSRV (capi arrow-ipc feature)
+        run: cargo check -p dag-ml-data-capi --all-targets --features arrow-ipc
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    env:
+      DAG_ML_REPO: ${{ github.workspace }}/external/dag-ml
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve dag-ml contract peer
+        id: peer
+        shell: bash
+        run: |
+          set -euo pipefail
+          peer_repo="GBeurier/dag-ml"
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          ref="main"
+          if git ls-remote --exit-code --heads "https://github.com/${peer_repo}.git" "$branch" >/dev/null 2>&1; then
+            ref="$branch"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Checkout dag-ml contract peer
+        uses: actions/checkout@v7
+        with:
+          repository: GBeurier/dag-ml
+          ref: ${{ steps.peer.outputs.ref }}
+          path: external/dag-ml
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Shared contract
+        run: python scripts/validate_contracts.py --require-sibling --sibling-root external/dag-ml
+      - name: Release metadata
+        run: python scripts/validate_release_metadata.py
+      - name: Error taxonomy
+        run: python scripts/check_error_taxonomy.py
+      - name: Managed debt
+        run: python scripts/check_deprecations.py
+      - name: Public documentation ratchet
+        run: python scripts/check_public_docs.py
+      - name: ABI snapshot
+        run: python scripts/validate_abi_snapshot.py
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version "$CARGO_AUDIT_VERSION" --locked
+      - name: Supply-chain audit
+        run: cargo audit --deny warnings
+      - name: Supply-chain audit (Python binding)
+        run: cargo audit --file crates/dag-ml-data-py/Cargo.lock --deny warnings
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Clippy (Python binding)
+        run: cargo clippy --locked --manifest-path crates/dag-ml-data-py/Cargo.toml --all-targets -- -D warnings
+      - name: Clippy (capi arrow-ipc feature)
+        run: cargo clippy -p dag-ml-data-capi --all-targets --features arrow-ipc -- -D warnings
+      - name: Test
+        run: cargo test --workspace
+      - name: Fingerprint compatibility with downstream JSON ordering
+        run: cargo test -p dag-ml-data-core --features serde_json/preserve_order
+      - name: Test (Python binding)
+        run: cargo test --locked --manifest-path crates/dag-ml-data-py/Cargo.toml
+      - name: Test (capi arrow-ipc feature)
+        run: cargo test -p dag-ml-data-capi --features arrow-ipc
+      - name: Docs
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+      - name: Package dry run
+        run: cargo package --workspace --no-verify
+      - name: Publish plan dry run
+        run: python scripts/release/check_publish_plan.py --dry-run
+      - name: Example schema
+        run: cargo run -p dag-ml-data-cli -- fingerprint-schema examples/minimal_schema.json
+
+  sanitizer:
+    name: AddressSanitizer (capi)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      # Run the C-ABI crate's unit tests (which exercise the raw-pointer FFI
+      # marshaling, borrowed strided tensor views and Arrow C Data ABI structs)
+      # under AddressSanitizer. std is rebuilt with the sanitizer via -Zbuild-std.
+      # Leak detection is off: the FFI test harness intentionally hands some
+      # allocations to "C", and the goal here is use-after-free / out-of-bounds /
+      # UB on the unsafe surface, not leak accounting.
+      - name: capi unit tests under AddressSanitizer
+        env:
+          RUSTFLAGS: "-Zsanitizer=address"
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: cargo test -p dag-ml-data-capi --lib -Zbuild-std --target x86_64-unknown-linux-gnu
+
+  docs-site:
+    name: Documentation site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install docs dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r docs/requirements.txt
+      - name: Build docs site
+        run: sphinx-build -W --keep-going -b html docs docs/_build/html
+
+  python-bindings:
+    name: Python bindings ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install maturin
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "maturin==$MATURIN_VERSION"
+      - name: Build Python wheel
+        run: |
+          mkdir -p target/wheels
+          cd crates/dag-ml-data-py
+          python -m maturin build --locked --release --features extension-module --out ../../target/wheels
+      - name: Smoke Python wheel metadata
+        run: python scripts/smoke_python_wheel_metadata.py target/wheels/dag_ml_data-*.whl
+      - name: Smoke installed Python wheel
+        run: |
+          python -m pip install target/wheels/dag_ml_data-*.whl
+          python scripts/smoke_python_bindings.py
+      # The PyO3 wheel above is JSON-only; the provider/tensor surface is reached
+      # through the stdlib-only ctypes package. Build the cdylib, install the
+      # package, and run the reusable provider smoke against it.
+      - name: Smoke installed ctypes provider package
+        run: |
+          cargo build -p dag-ml-data-capi --lib
+          python -m pip install ./crates/dag-ml-data-capi/bindings/python
+          DAG_ML_DATA_CAPI_LIB="$PWD/target/debug/libdag_ml_data_capi.so" \
+            python examples/python/provider_smoke.py \
+              --envelope examples/fixtures/oof_campaign/coordinator_data_plan_envelope_nir.json \
+              --request examples/fixtures/oof_campaign/materialization_request_model_base_x.json
+
+  wasm-bindings:
+    name: WASM bindings Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version "$WASM_PACK_VERSION" --locked
+      # The published default package remains JSON-contract-only. Build a
+      # separate opt-in provider artifact and execute its view/data/handle
+      # lifecycle so the provider feature is a runtime gate, not compile-only.
+      - name: Smoke WASM provider feature
+        run: |
+          out_dir="$PWD/target/wasm/dag-ml-data-wasm-provider"
+          wasm-pack build crates/dag-ml-data-wasm --target nodejs --out-dir "$out_dir" --release -- --features provider
+          node scripts/smoke_wasm_provider_bindings.cjs "$out_dir"
+      - name: Build WASM nodejs package
+        run: |
+          out_dir="$PWD/target/wasm/dag-ml-data-wasm"
+          wasm-pack build crates/dag-ml-data-wasm --target nodejs --out-dir "$out_dir" --release
+          node scripts/smoke_wasm_bindings.cjs "$out_dir"
+      - name: Build WASM web package
+        run: |
+          out_dir="$PWD/crates/dag-ml-data-wasm/pkg-web"
+          rm -rf "$out_dir"
+          wasm-pack build crates/dag-ml-data-wasm --target web --out-dir "$out_dir" --release
+          node scripts/smoke_wasm_web_bindings.mjs "$out_dir"
+          (cd crates/dag-ml-data-wasm && wasm-pack pack --pkg-dir pkg-web .)
+          node scripts/smoke_wasm_tarball_metadata.mjs "$out_dir"

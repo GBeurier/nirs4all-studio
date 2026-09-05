@@ -1,0 +1,6 @@
+{
+  "git": {
+    "sha1": "233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27"
+  },
+  "path_in_vcs": "crates/dag-ml-core"
+}

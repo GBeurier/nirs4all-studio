@@ -1,0 +1,43 @@
+{
+  "id": "nir-to-tabular",
+  "steps": [
+    {
+      "kind": "materialize",
+      "source_id": "nir",
+      "adapter_id": null,
+      "input_representation": null,
+      "output_representation": "signal_1d",
+      "fit_scope": "stateless",
+      "requires_user_choice": false,
+      "metadata": { "output": "src:nir" }
+    },
+    {
+      "kind": "adapt",
+      "source_id": "nir",
+      "adapter_id": "spectra.flatten",
+      "input_representation": "signal_1d",
+      "output_representation": "tabular_numeric",
+      "fit_scope": "stateless",
+      "requires_user_choice": false,
+      "metadata": {
+        "input": "src:nir",
+        "output": "step:adapt:0"
+      }
+    },
+    {
+      "kind": "join",
+      "source_id": null,
+      "adapter_id": null,
+      "input_representation": "tabular_numeric",
+      "output_representation": "tabular_numeric",
+      "fit_scope": "stateless",
+      "requires_user_choice": false,
+      "metadata": {
+        "inputs": ["step:adapt:0"],
+        "output": "port:X"
+      }
+    }
+  ],
+  "output_representation": "tabular_numeric",
+  "issues": []
+}

@@ -1,0 +1,27 @@
+[package]
+name = "dag-ml-data-capi"
+description = "C ABI surface for dag-ml-data."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[features]
+default = []
+arrow-ipc = ["dep:dag-ml-data-arrow", "dep:arrow-array", "dep:arrow-ipc", "dep:arrow-schema"]
+
+[dependencies]
+arrow-array = { version = "53", optional = true }
+arrow-ipc = { version = "53", optional = true }
+arrow-schema = { version = "53", optional = true }
+dag-ml-data-arrow = { workspace = true, optional = true }
+dag-ml-data-core.workspace = true
+dag-ml-data-provider.workspace = true
+serde.workspace = true
+serde_json.workspace = true

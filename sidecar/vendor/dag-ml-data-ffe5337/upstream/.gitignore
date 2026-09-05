@@ -1,0 +1,23 @@
+/target/
+**/*.rs.bk
+.DS_Store
+.idea/
+.vscode/
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+coverage.xml
+external/
+crates/*/pkg-web/
+/docs/_build/
+
+# local code-intelligence index
+.codegraph/
+
+# Private development records are local-only; never force-add them.
+/docs/_private/
+
+# Built Python extensions are produced by maturin, never source artifacts.
+/crates/dag-ml-data-py/python/dag_ml_data/*.so
+/crates/dag-ml-data-py/python/dag_ml_data/*.pyd

@@ -1,0 +1,391 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GBeurier/dag-ml-data/schemas/feature_fusion_selector.v1.schema.json",
+  "title": "DAG-ML Data Feature Fusion Selector v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "feature_set_id", "sources", "alignment"],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "feature_set_id": {
+      "$ref": "#/$defs/non_empty_id"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "alignment": {
+      "$ref": "#/$defs/alignment"
+    },
+    "combination_plan": {
+      "anyOf": [
+        { "$ref": "#/$defs/combination_plan" },
+        { "type": "null" }
+      ]
+    },
+    "representation_plan": {
+      "anyOf": [
+        { "$ref": "#/$defs/representation_plan" },
+        { "type": "null" }
+      ]
+    },
+    "source_layout": {
+      "anyOf": [
+        { "$ref": "#/$defs/source_layout" },
+        { "type": "null" }
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "namespace_columns": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "non_empty_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.-]+$"
+    },
+    "non_empty_string": {
+      "type": "string",
+      "minLength": 1
+    },
+    "entity_unit_level": {
+      "enum": ["physical_sample", "source_sample", "observation", "combo"]
+    },
+    "combination_mode": {
+      "enum": ["cartesian", "zip", "match_by", "sample_k", "reference_broadcast"]
+    },
+    "representation_missing_source_policy": {
+      "enum": ["strict", "warn", "drop_incomplete", "impute_declared", "mask", "partial_model", "pad"]
+    },
+    "representation_cardinality": {
+      "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many", "bounded_many"]
+    },
+    "fit_scope": {
+      "enum": ["stateless", "fold_train", "full_train", "inference_only"]
+    },
+    "source_layout_kind": {
+      "enum": ["by_source_concat"]
+    },
+    "source_concat_axis": {
+      "enum": ["feature"]
+    },
+    "combination_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": { "$ref": "#/$defs/combination_mode" },
+        "component_source_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/non_empty_string" }
+        },
+        "component_unit_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/non_empty_string" }
+        },
+        "match_key": { "type": ["string", "null"], "minLength": 1 },
+        "reference_source_id": { "type": ["string", "null"], "minLength": 1 },
+        "seed": { "type": ["integer", "null"], "minimum": 0 },
+        "cap": { "type": ["integer", "null"], "minimum": 1 },
+        "budget": { "type": ["integer", "null"], "minimum": 1 },
+        "missing_source_policy": {
+          "anyOf": [
+            { "$ref": "#/$defs/representation_missing_source_policy" },
+            { "type": "null" }
+          ]
+        },
+        "metadata": { "type": "object" }
+      }
+    },
+    "representation_plan": {
+      "oneOf": [
+        { "$ref": "#/$defs/aggregate_representation" },
+        { "$ref": "#/$defs/cartesian_product_representation" },
+        { "$ref": "#/$defs/monte_carlo_cartesian_representation" },
+        { "$ref": "#/$defs/stack_fixed_representation" },
+        { "$ref": "#/$defs/stack_padded_masked_representation" }
+      ]
+    },
+    "aggregate_representation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "input_unit_level", "output_unit_level", "cardinality"],
+      "properties": {
+        "kind": { "const": "aggregate" },
+        "input_unit_level": { "$ref": "#/$defs/entity_unit_level" },
+        "output_unit_level": { "$ref": "#/$defs/entity_unit_level" },
+        "reducer_id": { "type": ["string", "null"], "minLength": 1 },
+        "method": { "type": ["string", "null"], "minLength": 1 },
+        "cardinality": { "$ref": "#/$defs/representation_cardinality" }
+      }
+    },
+    "cartesian_product_representation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "combination_plan", "output_unit_level", "cardinality"],
+      "properties": {
+        "kind": { "const": "cartesian_product" },
+        "combination_plan": { "$ref": "#/$defs/combination_plan" },
+        "output_unit_level": { "$ref": "#/$defs/entity_unit_level" },
+        "cardinality": { "$ref": "#/$defs/representation_cardinality" },
+        "preserve_provenance": { "type": "boolean" }
+      }
+    },
+    "monte_carlo_cartesian_representation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "combination_plan", "output_unit_level", "cardinality"],
+      "properties": {
+        "kind": { "const": "monte_carlo_cartesian" },
+        "combination_plan": { "$ref": "#/$defs/combination_plan" },
+        "output_unit_level": { "$ref": "#/$defs/entity_unit_level" },
+        "cardinality": { "$ref": "#/$defs/representation_cardinality" },
+        "preserve_provenance": { "type": "boolean" }
+      }
+    },
+    "stack_fixed_representation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "output_unit_level", "cardinality", "expected_cardinality"],
+      "properties": {
+        "kind": { "const": "stack_fixed" },
+        "output_unit_level": { "$ref": "#/$defs/entity_unit_level" },
+        "cardinality": { "$ref": "#/$defs/representation_cardinality" },
+        "expected_cardinality": { "type": "integer", "minimum": 1 },
+        "component_source_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/non_empty_string" }
+        }
+      }
+    },
+    "stack_padded_masked_representation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "output_unit_level",
+        "cardinality",
+        "expected_cardinality",
+        "missing_source_policy"
+      ],
+      "properties": {
+        "kind": { "const": "stack_padded_masked" },
+        "output_unit_level": { "$ref": "#/$defs/entity_unit_level" },
+        "cardinality": { "$ref": "#/$defs/representation_cardinality" },
+        "expected_cardinality": { "type": "integer", "minimum": 1 },
+        "missing_source_policy": { "$ref": "#/$defs/representation_missing_source_policy" },
+        "requires_missing_masks": { "type": "boolean" },
+        "component_source_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/non_empty_string" }
+        }
+      }
+    },
+    "source_preprocessing_output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feature_set_id", "representation_id"],
+      "properties": {
+        "feature_set_id": {
+          "$ref": "#/$defs/non_empty_id"
+        },
+        "representation_id": {
+          "$ref": "#/$defs/non_empty_id"
+        },
+        "adapter_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "fit_scope": {
+          "anyOf": [
+            { "$ref": "#/$defs/fit_scope" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "source_layout_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "preprocessing_output", "column_start", "column_count"],
+      "properties": {
+        "source_id": {
+          "$ref": "#/$defs/non_empty_id"
+        },
+        "preprocessing_output": {
+          "$ref": "#/$defs/source_preprocessing_output"
+        },
+        "column_start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "column_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "feature_names": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/non_empty_string"
+          }
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "source_concat_layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feature_set_id",
+        "representation_id",
+        "axis",
+        "total_column_count",
+        "preserve_source_order",
+        "namespace_columns"
+      ],
+      "properties": {
+        "feature_set_id": {
+          "$ref": "#/$defs/non_empty_id"
+        },
+        "representation_id": {
+          "$ref": "#/$defs/non_empty_id"
+        },
+        "axis": {
+          "$ref": "#/$defs/source_concat_axis"
+        },
+        "total_column_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "preserve_source_order": {
+          "type": "boolean",
+          "const": true
+        },
+        "namespace_columns": {
+          "type": "boolean"
+        }
+      }
+    },
+    "source_layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "source_order", "blocks", "concat"],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/source_layout_kind"
+        },
+        "source_order": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/non_empty_id"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/source_layout_block"
+          }
+        },
+        "concat": {
+          "$ref": "#/$defs/source_concat_layout"
+        },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "feature_set_id"],
+      "properties": {
+        "source_id": {
+          "$ref": "#/$defs/non_empty_id"
+        },
+        "feature_set_id": {
+          "$ref": "#/$defs/non_empty_id"
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "alignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "sample_ids", "masks"],
+      "properties": {
+        "mode": {
+          "enum": ["inner", "left", "outer"]
+        },
+        "sample_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/non_empty_id"
+          }
+        },
+        "masks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/presence_mask"
+          }
+        }
+      }
+    },
+    "presence_mask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "sample_ids", "present"],
+      "properties": {
+        "source_id": {
+          "$ref": "#/$defs/non_empty_id"
+        },
+        "sample_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/non_empty_id"
+          }
+        },
+        "present": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

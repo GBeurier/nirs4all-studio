@@ -1,0 +1,230 @@
+# SPDX-License-Identifier: CeCILL-2.1 OR AGPL-3.0-or-later
+# Build, smoke-test, and publish the @nirs4all/io-wasm npm package.
+#
+# This is the JS/WASM leg of the release. It builds the wasm-pack `nodejs`
+# target from bindings/wasm, post-processes the generated pkg-node/package.json
+# to the scoped public name + npm provenance, runs the Node smoke test, and
+# (on a non-rc tag / workflow_dispatch publish=true) publishes to npm. Gating
+# mirrors nirs4all-formats' release-npm.yml.
+#
+# Triggers
+# --------
+# - push tag v*.*.*  -> build + smoke + (non-rc) publish to npm
+# - workflow_dispatch (publish input) -> build + smoke + (publish=true) publish
+#
+# Publish requires the NPM_TOKEN repository secret (an automation token for the
+# @nirs4all org) AND that the @nirs4all npm scope is owned by the maintainer.
+# Provenance (publishConfig.provenance=true, injected below) needs the
+# id-token: write permission and a public repo.
+name: release-npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to npm (true) or dry-run only (false)'
+        type: boolean
+        default: false
+  push:
+    # GitHub tag filters are globs, not regex; '-rc'/pre-release tags still
+    # match here and are filtered out of the publish step below.
+    tags: ['v[0-9]*.[0-9]*.[0-9]*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write   # npm provenance (OIDC)
+
+env:
+  # npm package name (scoped, public). The crate is nirs4all-io-wasm; the
+  # published package is the short scoped name to match the docs / ecosystem.
+  NPM_PKG_NAME: "@nirs4all/io-wasm"
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: "3.11"
+
+      - name: Verify release tag identity
+        run: python scripts/verify_release_tag.py
+
+      - name: Configure reproducible Rust paths
+        run: python scripts/configure_release_env.py
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          # PIN the version. `version: latest` is non-deterministic with this
+          # action: in nirs4all-formats it resolved to the ancient v0.9.1, whose
+          # bundled wasm-opt cannot parse modern wasm-bindgen output and died
+          # with "Fatal: error in parsing input". A pinned modern wasm-pack ships
+          # a wasm-opt that handles it.
+          version: 'v0.15.0'
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Verify WASM Cargo lock
+        run: |
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          cargo metadata --manifest-path bindings/wasm/Cargo.toml --locked --format-version 1 > /dev/null
+
+      - name: Build the WASM module (wasm-pack, nodejs target)
+        # --scope nirs4all primes the generated package.json with the @nirs4all
+        # scope; the exact name + provenance are pinned in the next step.
+        run: wasm-pack build bindings/wasm --release --target nodejs --out-dir pkg-node --scope nirs4all --locked
+
+      - name: Stage scoped package, idiomatic API, types, licenses, and SBOM
+        run: node scripts/stage_wasm_package.mjs bindings/wasm/pkg-node
+
+      - name: Smoke-test the Node WASM module
+        # The committed Node smoke test (bindings/wasm/tests/node_smoke.cjs)
+        # requires the package at ../pkg; mirror the freshly built pkg-node there
+        # so the smoke exercises exactly what we publish.
+        run: |
+          set -euo pipefail
+          rm -rf bindings/wasm/pkg
+          cp -r bindings/wasm/pkg-node bindings/wasm/pkg
+          node bindings/wasm/tests/node_smoke.cjs
+          node bindings/wasm/tests/idiomatic_smoke.mjs
+          node --input-type=module -e '
+            const nio = await import("./bindings/wasm/pkg-node/idiomatic.mjs");
+            if (!/^\d+\.\d+\.\d+/.test(nio.version())) throw new Error("staged idiomatic wrapper failed");
+          '
+
+      - name: Pack the exact npm artifact
+        working-directory: bindings/wasm/pkg-node
+        run: |
+          set -euo pipefail
+          npm pack --dry-run
+          mkdir -p ../../../dist-npm
+          npm pack --pack-destination ../../../dist-npm
+
+      - name: Smoke-test the exact retained npm tarball
+        run: |
+          set -euo pipefail
+          mapfile -t PACKAGES < <(compgen -G 'dist-npm/*.tgz')
+          test "${#PACKAGES[@]}" -eq 1
+          test ! -e exact-npm
+          mkdir -p exact-npm
+          tar -xzf "${PACKAGES[0]}" -C exact-npm
+          test -f exact-npm/package/package.json
+          mkdir -p exact-npm/raw/tests exact-npm/package/tests
+          cp -r exact-npm/package exact-npm/raw/pkg
+          cp bindings/wasm/tests/node_smoke.cjs exact-npm/raw/tests/
+          cp bindings/wasm/tests/idiomatic_smoke.mjs exact-npm/package/tests/
+          node exact-npm/raw/tests/node_smoke.cjs
+          node exact-npm/package/tests/idiomatic_smoke.mjs
+          node --input-type=module -e '
+            const nio = await import("./exact-npm/package/idiomatic.mjs");
+            if (!/^\d+\.\d+\.\d+/.test(nio.version())) throw new Error("packed idiomatic wrapper failed");
+          '
+          python scripts/scan_artifact_paths.py "${PACKAGES[0]}"
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: npm-package
+          path: dist-npm/*.tgz
+          if-no-files-found: error
+
+      - name: Validate tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: bindings/wasm/pkg-node
+        run: |
+          set -euo pipefail
+          PKG_VER=$(node -p "require('./package.json').version")
+          echo "package.json=$PKG_VER  tag=$GITHUB_REF_NAME"
+          # The SoT version may carry a pre-release (-alpha.N); the publish step
+          # only fires for non-pre-release tags, where PKG_VER == TAG_VER.
+          if [ "$PKG_VER" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "ERROR: package.json version ($PKG_VER) != tag (${GITHUB_REF_NAME#v}). Run scripts/bump_version.sh and re-tag."
+            exit 1
+          fi
+
+      - name: Decide publish
+        id: gate
+        run: |
+          # Publish on a non-pre-release tag push, OR on workflow_dispatch with
+          # publish=true. Pre-release tags (containing '-', e.g. -alpha.N/-rcN)
+          # never publish.
+          if [ "${{ github.event_name }}" = "push" ] && [[ "${GITHUB_REF_NAME}" == v* ]] && [[ "${GITHUB_REF_NAME}" != *-* ]]; then
+            echo "do=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.publish }}" = "true" ]; then
+            PKG_VER=$(node -p "require('./exact-npm/package/package.json').version")
+            RELEASE_TAG="v${PKG_VER}"
+            test "${RELEASE_TAG}" = "v0.1.14"
+            git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}" >/dev/null
+            git merge-base --is-ancestor "${RELEASE_TAG}^{commit}" HEAD
+            git diff --quiet "${RELEASE_TAG}" -- . \
+              ':(exclude).github/workflows/release-npm.yml' \
+              ':(exclude)scripts/stage_wasm_package.mjs' \
+              ':(exclude)bindings/r/Cargo.lock.rust' \
+              ':(exclude)bindings/python/COPY_PROVENANCE.md' \
+              ':(exclude)bindings/r/inst/COPY_PROVENANCE.md' \
+              ':(exclude)bindings/wasm/COPY_PROVENANCE.md' \
+              ':(exclude)crates/nirs4all-io-core/COPY_PROVENANCE.md' \
+              ':(exclude)crates/nirs4all-io/COPY_PROVENANCE.md' \
+              ':(exclude)crates/nirs4all-io-capi/COPY_PROVENANCE.md' \
+              ':(exclude)crates/nirs4all-io-cli/COPY_PROVENANCE.md'
+            test "$(sha256sum scripts/stage_wasm_package.mjs | cut -d ' ' -f1)" = \
+              "a820e1b9a98de60b25265d594e405417144004c886106fd5293dfacb20151440"
+            test "$(sha256sum bindings/r/Cargo.lock.rust | cut -d ' ' -f1)" = \
+              "11f33651168d4663d46f2e97e1a25048c2f9d0bdb1e92c5fde4c66a585e9190d"
+            for mirror in \
+              bindings/python/COPY_PROVENANCE.md \
+              bindings/r/inst/COPY_PROVENANCE.md \
+              bindings/wasm/COPY_PROVENANCE.md \
+              crates/nirs4all-io-core/COPY_PROVENANCE.md \
+              crates/nirs4all-io/COPY_PROVENANCE.md \
+              crates/nirs4all-io-capi/COPY_PROVENANCE.md \
+              crates/nirs4all-io-cli/COPY_PROVENANCE.md
+            do
+              cmp COPY_PROVENANCE.md "${mirror}"
+            done
+            python scripts/check_r_reduced_workspace.py
+            echo "Manual npm repair is the audited ${RELEASE_TAG} descendant."
+            echo "do=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "do=false" >> "$GITHUB_OUTPUT"
+            echo "Dry-run only (publishing requires an exact version tag)."
+          fi
+
+      - name: Publish to npm (provenance)
+        if: steps.gate.outputs.do == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # Idempotent publish: npm has no --skip-existing, and republishing an
+        # already-present version hard-fails with E403 ("cannot publish over the
+        # previously published versions"). Probe the registry first and skip the
+        # publish when this exact name@version already exists, so a re-run on a
+        # published tag is a no-op success instead of a failure.
+        run: |
+          set -euo pipefail
+          mapfile -t PACKAGES < <(compgen -G 'dist-npm/*.tgz')
+          test "${#PACKAGES[@]}" -eq 1
+          PKG_NAME=$(node -p "require('./exact-npm/package/package.json').name")
+          PKG_VER=$(node -p "require('./exact-npm/package/package.json').version")
+          if npm view "${PKG_NAME}@${PKG_VER}" version >/dev/null 2>&1; then
+            echo "${PKG_NAME}@${PKG_VER} already published; skipping."
+            exit 0
+          fi
+          npm publish "./${PACKAGES[0]}" --access public

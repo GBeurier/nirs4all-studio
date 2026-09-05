@@ -1,0 +1,26 @@
+^build_and_test\.sh$
+^cran-comments\.md$
+^\.Rbuildignore$
+^\.gitignore$
+# R-universe pre-build hook runs from the git checkout before R CMD build;
+# it must NOT ship in the source tarball.
+^\.prepare$
+^Cargo\.lock\.rust$
+# Rust build output must NEVER ship. CRAN and R-universe compile from the
+# vendored sources. The vendored core crates src/rust/vendored/, the
+# cargo-vendored crates.io deps src/rust/vendor.tar.xz, the generated workspace
+# src/rust/Cargo.toml, the pinned src/rust/Cargo.lock, and the committed C ABI
+# header src/nirs4all_io.h are the self-contained build inputs and DO ship —
+# intentionally NOT ignored here.
+# Only the extracted scratch dir, the compiled target/, and the source-
+# replacement .cargo/ (passed inline by Makevars instead) are excluded.
+^src/rust/vendor(/|$)
+^src/rust/target(/|$)
+^src/rust/\.cargo(/|$)
+^src/.*\.o$
+^src/.*\.so$
+^src/.*\.dll$
+^src/.*\.dylib$
+^src/.*\.a$
+^.*\.Rproj$
+^\.Rproj\.user$

@@ -1,0 +1,923 @@
+{
+  "schema_version": 1,
+  "registry_id": "dag-ml-data.representation_registry.v1",
+  "source": "crates/dag-ml-data-core/src/builtin_models.rs",
+  "representations": [
+    {
+      "representation_id": "signal_1d",
+      "builtin_key": "nirs.signal_1d",
+      "modality": "nirs",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "emitted"
+      },
+      "representation": {
+        "id": "signal_1d",
+        "type_id": "dense_signal",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "wavelength",
+            "kind": "wavelength",
+            "unit": "nm",
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": false,
+        "signal_type": "unknown"
+      }
+    },
+    {
+      "representation_id": "signal_with_processings",
+      "builtin_key": "nirs.signal_with_processings",
+      "modality": "nirs",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "emitted"
+      },
+      "representation": {
+        "id": "signal_with_processings",
+        "type_id": "dense_signal",
+        "rank": 3,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "processing",
+            "kind": "processing",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "wavelength",
+            "kind": "wavelength",
+            "unit": "nm",
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": false,
+        "signal_type": "unknown"
+      }
+    },
+    {
+      "representation_id": "raman_signal",
+      "builtin_key": "spectroscopy.raman_signal",
+      "modality": "raman",
+      "representation": {
+        "id": "raman_signal",
+        "type_id": "dense_signal",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "wavenumber",
+            "kind": "wavenumber",
+            "unit": "cm^-1",
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": false,
+        "signal_type": "unknown"
+      }
+    },
+    {
+      "representation_id": "ftir_signal",
+      "builtin_key": "spectroscopy.ftir_signal",
+      "modality": "ftir",
+      "representation": {
+        "id": "ftir_signal",
+        "type_id": "dense_signal",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "wavenumber",
+            "kind": "wavenumber",
+            "unit": "cm^-1",
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": false,
+        "signal_type": "unknown"
+      }
+    },
+    {
+      "representation_id": "tabular_numeric",
+      "builtin_key": "tabular.numeric",
+      "modality": "tabular",
+      "representation": {
+        "id": "tabular_numeric",
+        "type_id": "table",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "feature",
+            "kind": "feature",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "dataframe",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "tabular_mixed",
+      "builtin_key": "tabular.mixed",
+      "modality": "tabular",
+      "representation": {
+        "id": "tabular_mixed",
+        "type_id": "table",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "column",
+            "kind": "feature",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "dataframe",
+        "dtype": null,
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "feature_block_set",
+      "builtin_key": "features.block_set",
+      "modality": "multi_block",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "emitted"
+      },
+      "representation": {
+        "id": "feature_block_set",
+        "type_id": "multi_block",
+        "rank": 3,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "block",
+            "kind": "feature",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "feature",
+            "kind": "feature",
+            "unit": null,
+            "size": null,
+            "variable": true
+          }
+        ],
+        "container": "feature_block_set",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": true
+      }
+    },
+    {
+      "representation_id": "series_mv",
+      "builtin_key": "series.multivariate",
+      "modality": "time_series",
+      "representation": {
+        "id": "series_mv",
+        "type_id": "time_series",
+        "rank": 3,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "time",
+            "kind": "time",
+            "unit": null,
+            "size": null,
+            "variable": true
+          },
+          {
+            "name": "variable",
+            "kind": "feature",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": true
+      }
+    },
+    {
+      "representation_id": "climate_series_mv",
+      "builtin_key": "climate.series_multivariate",
+      "modality": "climate",
+      "representation": {
+        "id": "climate_series_mv",
+        "type_id": "time_series",
+        "rank": 3,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "time",
+            "kind": "time",
+            "unit": null,
+            "size": null,
+            "variable": true
+          },
+          {
+            "name": "variable",
+            "kind": "feature",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": true
+      }
+    },
+    {
+      "representation_id": "variant_matrix",
+      "builtin_key": "genotype.variant_matrix",
+      "modality": "genotype",
+      "representation": {
+        "id": "variant_matrix",
+        "type_id": "genotype_matrix",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "variant",
+            "kind": "variant",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "int8",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "dosage_matrix",
+      "builtin_key": "genotype.dosage_matrix",
+      "modality": "genotype",
+      "representation": {
+        "id": "dosage_matrix",
+        "type_id": "genotype_matrix",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "variant",
+            "kind": "variant",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "float32",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "rgb_image",
+      "builtin_key": "image.rgb",
+      "modality": "image",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "landed_pending_emit"
+      },
+      "representation": {
+        "id": "rgb_image",
+        "type_id": "image_rgb",
+        "rank": 4,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "height",
+            "kind": "height",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "width",
+            "kind": "width",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "channel",
+            "kind": "channel",
+            "unit": null,
+            "size": 3,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "uint8",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "gray_image",
+      "builtin_key": "image.gray",
+      "modality": "image",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "landed_pending_emit"
+      },
+      "representation": {
+        "id": "gray_image",
+        "type_id": "gray_image",
+        "rank": 3,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "height",
+            "kind": "height",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "width",
+            "kind": "width",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "uint8",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "mc_image",
+      "builtin_key": "image.multichannel",
+      "modality": "image",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "landed_pending_emit"
+      },
+      "representation": {
+        "id": "mc_image",
+        "type_id": "multichannel_image",
+        "rank": 4,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "height",
+            "kind": "height",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "width",
+            "kind": "width",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "channel",
+            "kind": "channel",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "float32",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "multispectral_image",
+      "builtin_key": "image.multispectral",
+      "modality": "image",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "landed_pending_emit"
+      },
+      "representation": {
+        "id": "multispectral_image",
+        "type_id": "multichannel_image",
+        "rank": 4,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "height",
+            "kind": "height",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "width",
+            "kind": "width",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "band",
+            "kind": "channel",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "float32",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "cube_hwb",
+      "builtin_key": "hyperspectral.cube",
+      "modality": "hyperspectral",
+      "representation": {
+        "id": "cube_hwb",
+        "type_id": "hyperspectral_cube",
+        "rank": 4,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "height",
+            "kind": "height",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "width",
+            "kind": "width",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "band",
+            "kind": "wavelength",
+            "unit": "nm",
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "float32",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "segmentation_mask",
+      "builtin_key": "image.segmentation_mask",
+      "modality": "image_mask",
+      "representation": {
+        "id": "segmentation_mask",
+        "type_id": "label_mask",
+        "rank": 3,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "height",
+            "kind": "height",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "width",
+            "kind": "width",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "int32",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "roi_mask",
+      "builtin_key": "image.roi_mask",
+      "modality": "image_mask",
+      "representation": {
+        "id": "roi_mask",
+        "type_id": "label_mask",
+        "rank": 3,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "height",
+            "kind": "height",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "width",
+            "kind": "width",
+            "unit": "px",
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "ndarray",
+        "dtype": "bool",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "sample_metadata",
+      "builtin_key": "metadata.sample",
+      "modality": "metadata",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "emitted"
+      },
+      "representation": {
+        "id": "sample_metadata",
+        "type_id": "metadata",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "field",
+            "kind": "feature",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "dataframe",
+        "dtype": null,
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "target_numeric",
+      "builtin_key": "target.numeric",
+      "modality": "target",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "emitted"
+      },
+      "representation": {
+        "id": "target_numeric",
+        "type_id": "target",
+        "rank": 1,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "array",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "target_categorical",
+      "builtin_key": "target.categorical",
+      "modality": "target",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "emitted"
+      },
+      "representation": {
+        "id": "target_categorical",
+        "type_id": "target",
+        "rank": 1,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "array",
+        "dtype": "string",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "target_numeric_matrix",
+      "builtin_key": "target.numeric_matrix",
+      "modality": "target",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "emitted"
+      },
+      "representation": {
+        "id": "target_numeric_matrix",
+        "type_id": "target",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "target",
+            "kind": "target",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "array",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "target_categorical_matrix",
+      "builtin_key": "target.categorical_matrix",
+      "modality": "target",
+      "mvp": {
+        "profile": "spectra_image",
+        "emission": "emitted"
+      },
+      "representation": {
+        "id": "target_categorical_matrix",
+        "type_id": "target",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "target",
+            "kind": "target",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "array",
+        "dtype": "string",
+        "sparse": false,
+        "ragged": false
+      }
+    },
+    {
+      "representation_id": "mass_spectrum",
+      "builtin_key": "mass_spec.spectrum",
+      "modality": "mass_spec",
+      "representation": {
+        "id": "mass_spectrum",
+        "type_id": "mass_spec",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "mz",
+            "kind": "feature",
+            "unit": "m/z",
+            "size": null,
+            "variable": true
+          }
+        ],
+        "container": "ragged_array",
+        "dtype": "float64",
+        "sparse": false,
+        "ragged": true
+      }
+    },
+    {
+      "representation_id": "text_raw",
+      "builtin_key": "text.raw",
+      "modality": "text",
+      "representation": {
+        "id": "text_raw",
+        "type_id": "text",
+        "rank": 1,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          }
+        ],
+        "container": "list",
+        "dtype": "string",
+        "sparse": false,
+        "ragged": true
+      }
+    },
+    {
+      "representation_id": "text_token_ids",
+      "builtin_key": "text.token_ids",
+      "modality": "text",
+      "representation": {
+        "id": "text_token_ids",
+        "type_id": "text",
+        "rank": 2,
+        "axes": [
+          {
+            "name": "sample",
+            "kind": "sample",
+            "unit": null,
+            "size": null,
+            "variable": false
+          },
+          {
+            "name": "token",
+            "kind": "token",
+            "unit": null,
+            "size": null,
+            "variable": true
+          }
+        ],
+        "container": "ragged_array",
+        "dtype": "int32",
+        "sparse": false,
+        "ragged": true
+      }
+    }
+  ]
+}

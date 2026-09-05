@@ -1,0 +1,66 @@
+# Machine-readable registry of the upstream projects aggregated by nirs4all-core.
+# `ref` values are Git checkout refs consumed by release parity jobs.
+# Versions are intentionally unset for most upstreams in the scaffold; pin them
+# before releases when their build artifacts are consumed by the release train.
+
+[[upstream]]
+key = "dag_ml"
+repo = "GBeurier/dag-ml"
+ref = "233d4ecdae14d2a810f9b01b4ce7c15bdedc9d27"
+role = "Leakage-safe DAG/ML execution coordinator"
+bindings = ["rust", "c", "python", "r", "matlab", "octave", "wasm"]
+python_imports = ["dag_ml"]
+r_packages = ["dagml"]
+matlab_packages = ["+dagml"]
+wasm_packages = ["dag-ml-wasm"]
+
+[[upstream]]
+key = "dag_ml_data"
+repo = "GBeurier/dag-ml-data"
+ref = "ffe533704a1a0b0c7bb7d97a997caade3f4ba36e"
+role = "Sample-aligned data contracts for DAG/ML runtimes"
+bindings = ["rust", "c", "python", "r", "wasm"]
+python_imports = ["dag_ml_data"]
+r_packages = ["dagmldata"]
+wasm_packages = ["dag-ml-data-wasm"]
+
+[[upstream]]
+key = "formats"
+repo = "GBeurier/nirs4all-formats"
+ref = "9ddb8f5851b37b03e57736ea06198991eff0c109"
+role = "Spectroscopy/NIRS vendor file readers"
+bindings = ["rust", "python", "r", "wasm", "c"]
+python_imports = ["nirs4all_formats", "nirs4all.formats"]
+r_packages = ["nirs4allformats"]
+wasm_packages = ["@nirs4all/formats-wasm"]
+
+[[upstream]]
+key = "io"
+repo = "GBeurier/nirs4all-io"
+ref = "493feb3b9dc5b856c4837afda14292358a8a3184"
+role = "Dataset assembly bridge"
+bindings = ["rust", "python", "r", "wasm", "c"]
+python_imports = ["nirs4all_io", "nirs4all.io"]
+r_packages = ["nirs4allio"]
+wasm_packages = ["@nirs4all/io-wasm"]
+
+[[upstream]]
+key = "datasets"
+repo = "GBeurier/nirs4all-datasets"
+ref = "ed16875162263207b350ec099ba718e8c30cf5c0"
+role = "DOI-pinned NIRS dataset catalog"
+bindings = ["rust", "python", "r", "wasm", "c"]
+python_imports = ["nirs4all_datasets", "nirs4all.datasets"]
+r_packages = ["nirs4alldatasets"]
+wasm_packages = ["@nirs4all/datasets-wasm"]
+
+[[upstream]]
+key = "methods"
+repo = "GBeurier/nirs4all-methods"
+ref = "a9faae2909c71a833bb7f3b208dc20548cf01588"
+role = "Portable C ABI PLS/NIRS numerical engine"
+bindings = ["python", "r", "matlab", "octave", "wasm", "rust"]
+python_imports = ["nirs4all_methods", "pls4all", "n4m", "nirs4all.methods"]
+r_packages = ["n4m", "pls4all"]
+matlab_packages = ["+n4m"]
+wasm_packages = ["@nirs4all/methods"]

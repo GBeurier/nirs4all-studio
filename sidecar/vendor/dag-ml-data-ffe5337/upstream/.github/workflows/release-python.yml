@@ -1,0 +1,178 @@
+name: release-python
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to PyPI (true) or build only (false)"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v[0-9]*.[0-9]*.[0-9]*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PACKAGE_DIR: crates/dag-ml-data-py
+  PACKAGE_NAME: dag-ml-data
+
+jobs:
+  build-wheels:
+    name: Build ${{ matrix.target }} wheel
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            label: linux-x86_64
+            target: x86_64
+            smoke: true
+          - os: ubuntu-22.04
+            label: linux-aarch64
+            target: aarch64
+            smoke: false
+          - os: macos-15-intel
+            label: macos-x86_64
+            target: x86_64
+            smoke: false
+          - os: macos-14
+            label: macos-aarch64
+            target: aarch64
+            smoke: false
+          - os: windows-2022
+            label: windows-x64
+            target: x64
+            smoke: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          target: ${{ matrix.target }}
+          args: --locked --release --out dist --manifest-path ${{ env.PACKAGE_DIR }}/Cargo.toml
+          manylinux: auto
+          sccache: true
+      - name: Validate wheel metadata
+        shell: bash
+        run: python scripts/smoke_python_wheel_metadata.py dist/*.whl
+      - name: Smoke-test installed wheel
+        if: matrix.smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --force-reinstall dist/*.whl
+          python scripts/smoke_python_bindings.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-${{ matrix.label }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade maturin twine
+      - name: Build source distribution
+        run: maturin sdist --out dist --manifest-path ${{ env.PACKAGE_DIR }}/Cargo.toml
+      - name: Check source distribution
+        run: python -m twine check dist/*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sdist
+          path: dist/*
+          if-no-files-found: error
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs:
+      - build-wheels
+      - build-sdist
+    runs-on: ubuntu-22.04
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+    environment:
+      name: pypi
+      url: https://pypi.org/p/dag-ml-data
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Validate release version
+        run: |
+          set -euo pipefail
+          package_version=$(python - <<'PY'
+          import tomllib
+          with open("crates/dag-ml-data-py/pyproject.toml", "rb") as handle:
+              print(tomllib.load(handle)["project"]["version"])
+          PY
+          )
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            tag_version="${GITHUB_REF_NAME#v}"
+            if [[ "${tag_version}" != "${package_version}" ]]; then
+              echo "::error::Tag ${GITHUB_REF_NAME} does not match ${PACKAGE_NAME} ${package_version}."
+              exit 1
+            fi
+          fi
+          echo "Publishing ${PACKAGE_NAME} ${package_version} from ${GITHUB_REF_NAME}."
+      - name: Validate distribution metadata
+        run: python scripts/smoke_python_wheel_metadata.py dist/*.whl
+      - name: Validate Trusted Publisher release tuple
+        run: |
+          set -euo pipefail
+          expected_repo="GBeurier/dag-ml-data"
+          if [[ "${GITHUB_REPOSITORY}" != "${expected_repo}" ]]; then
+            echo "::error::PyPI Trusted Publisher for project dag-ml-data must target owner=GBeurier repo=dag-ml-data workflow=release-python.yml environment=pypi; current repository is ${GITHUB_REPOSITORY}." >&2
+            exit 1
+          fi
+          case "${GITHUB_WORKFLOW_REF}" in
+            */.github/workflows/release-python.yml@*)
+              ;;
+            *)
+              echo "::error::Expected GITHUB_WORKFLOW_REF to point at .github/workflows/release-python.yml, got ${GITHUB_WORKFLOW_REF}." >&2
+              exit 1
+              ;;
+          esac
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: true
+
+  github-release:
+    name: Attach Python artifacts to GitHub Release
+    needs:
+      - build-wheels
+      - build-sdist
+    runs-on: ubuntu-22.04
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') && github.event_name != 'workflow_dispatch' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*

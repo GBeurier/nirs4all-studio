@@ -1,0 +1,22 @@
+[package]
+name = "dag-ml-data-r"
+version = "0.2.11"
+edition = "2021"
+rust-version = "1.85"
+license = "CECILL-2.1 OR AGPL-3.0-or-later"
+description = "R (extendr) provider bindings for dag-ml-data."
+publish = false
+
+[lib]
+name = "dagmldata"
+crate-type = ["staticlib", "lib"]
+
+[[bin]]
+name = "document"
+path = "src/bin/document.rs"
+
+[dependencies]
+extendr-api = "0.9"
+serde_json = "1.0"
+dag-ml-data-core = "=0.2.11"
+dag-ml-data-provider = "=0.2.11"

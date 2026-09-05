@@ -1,0 +1,26 @@
+[package]
+name = "dag-ml-data-wasm"
+description = "WASM bindings for dag-ml-data JSON contracts."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+# Opt-in eager in-WASM provider surface over `dag-ml-data-provider`. The default
+# build stays JSON-contracts only.
+provider = ["dep:dag-ml-data-provider"]
+
+[dependencies]
+dag-ml-data-core.workspace = true
+dag-ml-data-provider = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true

@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "oracle_id": "dag-ml.nirs4all.parity_oracle.v1",
+  "status": "producer_handoff",
+  "consumer_ledger": {
+    "repo": "nirs4all",
+    "path": "docs/compatibility.md",
+    "required_before_bridge": true
+  },
+  "shared": {
+    "fold_set_fixture_fingerprint": "54d3185d6c628ef0df848828a8d8ae650222a283a78bbd3ab3bc2256f222c05c"
+  },
+  "tolerance_profiles": [
+    {
+      "profile_id": "regression.cross_impl",
+      "metric": "prediction",
+      "absolute_tolerance": 1e-3,
+      "relative_tolerance": 1e-3,
+      "owner": "nirs4all compatibility ledger"
+    },
+    {
+      "profile_id": "regression.kernel",
+      "metric": "prediction",
+      "absolute_tolerance": 1e-9,
+      "relative_tolerance": 1e-9,
+      "owner": "nirs4all compatibility ledger"
+    },
+    {
+      "profile_id": "regression.native_export",
+      "metric": "prediction",
+      "absolute_tolerance": 1e-6,
+      "relative_tolerance": 1e-6,
+      "owner": "nirs4all compatibility ledger"
+    },
+    {
+      "profile_id": "classification.default",
+      "metric": "class_label",
+      "absolute_tolerance": 0,
+      "relative_tolerance": 0,
+      "owner": "nirs4all compatibility ledger"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "nirs4all_core_browser_compile_plan",
+      "ledger_topics": [
+        "PipelineRunner.compile",
+        "SpectroDataset.schema",
+        "browser.wasm"
+      ],
+      "fixtures": [
+        {
+          "repo": "dag-ml",
+          "path": "examples/pipeline_dsl_nirs4all_compat.json",
+          "kind": "pipeline_dsl"
+        },
+        {
+          "repo": "dag-ml",
+          "path": "examples/controller_manifests.json",
+          "kind": "controller_manifest_list"
+        },
+        {
+          "repo": "dag-ml-data",
+          "path": "examples/fixtures/oof_campaign/schema_nirs4all_core_contract.json",
+          "kind": "dataset_schema"
+        },
+        {
+          "repo": "dag-ml-data",
+          "path": "examples/fixtures/oof_campaign/model_input_tabular_numeric.json",
+          "kind": "model_input_spec"
+        },
+        {
+          "repo": "dag-ml-data",
+          "path": "examples/fixtures/oof_campaign/adapter_registry_signal_to_tabular.json",
+          "kind": "adapter_registry"
+        },
+        {
+          "repo": "dag-ml-data",
+          "path": "examples/fixtures/oof_campaign/sample_relations_grouped_augmented.json",
+          "kind": "sample_relation_table"
+        }
+      ],
+      "gates": [
+        {
+          "repo": "dag-ml",
+          "command": "node scripts/smoke_wasm_integration.mjs <dag-ml-web-pkg> <dag-ml-data-web-pkg> <dag-ml-data-repo>",
+          "proves": "both browser-target WASM packages can compose nirs4all-core data planning into a dag-ml execution plan"
+        },
+        {
+          "repo": "dag-ml",
+          "command": "python3 scripts/smoke_python_integration.py <dag-ml-data-repo>",
+          "proves": "installed Python wheels expose typed facades for the same nirs4all-core planning path"
+        }
+      ],
+      "invariants": [
+        "dag-ml and dag-ml-data package manifests expose the same shared fold-set fingerprint",
+        "dag-ml-data builds a coordinator data-plan envelope with a relation fingerprint",
+        "dag-ml compiles the nirs4all-compatible DSL into graph and campaign contracts",
+        "dag-ml builds a non-empty execution plan from the compiled graph, campaign and controller registry"
+      ]
+    },
+    {
+      "case_id": "repetition_group_leakage_refusal",
+      "ledger_topics": [
+        "cross_validation.repetitions",
+        "augmentation.leakage"
+      ],
+      "fixtures": [
+        {
+          "repo": "dag-ml-data",
+          "path": "examples/fixtures/oof_campaign/sample_relations_grouped_augmented.json",
+          "kind": "sample_relation_table"
+        },
+        {
+          "repo": "dag-ml-data",
+          "path": "examples/fixtures/shared/fold_set_cv_partition.json",
+          "kind": "fold_set"
+        },
+        {
+          "repo": "dag-ml",
+          "path": "examples/fixtures/shared/fold_set_cv_partition.json",
+          "kind": "fold_set"
+        }
+      ],
+      "gates": [
+        {
+          "repo": "dag-ml-data",
+          "command": "python3 scripts/smoke_python_bindings.py",
+          "proves": "Python facade rejects fold sets that leak grouped repetitions"
+        },
+        {
+          "repo": "dag-ml-data",
+          "command": "node scripts/smoke_wasm_web_bindings.mjs <dag-ml-data-web-pkg>",
+          "proves": "browser-target WASM rejects the same fold leakage"
+        }
+      ],
+      "invariants": [
+        "every sample appears in validation exactly once",
+        "train and validation partitions are disjoint within each fold",
+        "group and augmentation-origin boundaries are never split across train and validation"
+      ]
+    },
+    {
+      "case_id": "controller_registry_selector_parity",
+      "ledger_topics": [
+        "controller_manifest.registry",
+        "operator_selector.alias"
+      ],
+      "fixtures": [
+        {
+          "repo": "dag-ml",
+          "path": "examples/controllers/sklearn_production.controller.json",
+          "kind": "controller_manifest"
+        },
+        {
+          "repo": "dag-ml",
+          "path": "examples/controllers/sklearn_production.controller.yaml",
+          "kind": "controller_manifest_yaml"
+        },
+        {
+          "repo": "dag-ml",
+          "path": "examples/controller_manifests_alias_registry.json",
+          "kind": "controller_manifest_list"
+        }
+      ],
+      "gates": [
+        {
+          "repo": "dag-ml",
+          "command": "cargo test -p dag-ml-cli yaml_and_json_controller_manifests_match",
+          "proves": "YAML authoring manifests round-trip to the same canonical controller contract as JSON"
+        },
+        {
+          "repo": "dag-ml",
+          "command": "cargo run -p dag-ml-cli -- validate-controllers-yaml --dir examples/controllers",
+          "proves": "the declarative controller registry validates before bridge wiring"
+        }
+      ],
+      "invariants": [
+        "selector-specific controller manifests are resolved before generic same-kind controllers",
+        "equal-priority selector ambiguity is refused",
+        "YAML is authoring-only; JSON remains the wire contract"
+      ]
+    },
+    {
+      "case_id": "branch_merge_oof_refit_replay",
+      "ledger_topics": [
+        "pipeline.branch",
+        "pipeline.merge",
+        "oof.selection",
+        "bundle.replay"
+      ],
+      "fixtures": [
+        {
+          "repo": "dag-ml",
+          "path": "examples/pipeline_dsl_branch_merge_executable.json",
+          "kind": "pipeline_dsl"
+        },
+        {
+          "repo": "dag-ml",
+          "path": "examples/campaign_branch_merge_oof.json",
+          "kind": "campaign_spec"
+        },
+        {
+          "repo": "dag-ml",
+          "path": "examples/generated/execution_bundle_branch_merge_cv_refit.json",
+          "kind": "execution_bundle"
+        },
+        {
+          "repo": "dag-ml",
+          "path": "examples/generated/prediction_cache_branch_merge_cv_refit.json",
+          "kind": "prediction_cache_payload"
+        }
+      ],
+      "gates": [
+        {
+          "repo": "dag-ml",
+          "command": "cargo run -p dag-ml-cli -- validate-bundle --bundle examples/generated/execution_bundle_branch_merge_cv_refit.json ...",
+          "proves": "branch/merge CV+refit bundles validate with typed replay requirements"
+        },
+        {
+          "repo": "dag-ml",
+          "command": "cargo run -p dag-ml-cli -- run-mock-replay --bundle examples/generated/execution_bundle_branch_merge_cv_refit.json ...",
+          "proves": "bundle replay can materialize the selected branch/merge path without fitting"
+        }
+      ],
+      "invariants": [
+        "OOF inputs are validation-only and fold-aligned",
+        "selected candidates carry metric level and selected refit artifacts",
+        "replay refuses manifest-only OOF caches when payload-backed evidence is required"
+      ]
+    },
+    {
+      "case_id": "python_wheel_facade_integration",
+      "ledger_topics": [
+        "python.package",
+        "typed.facade",
+        "abi3"
+      ],
+      "fixtures": [
+        {
+          "repo": "dag-ml",
+          "path": "crates/dag-ml-py/python/dag_ml/__init__.pyi",
+          "kind": "python_stub"
+        },
+        {
+          "repo": "dag-ml-data",
+          "path": "crates/dag-ml-data-py/python/dag_ml_data/__init__.pyi",
+          "kind": "python_stub"
+        }
+      ],
+      "gates": [
+        {
+          "repo": "dag-ml",
+          "command": "python3 scripts/smoke_python_wheel_metadata.py target/wheels/dag_ml-*.whl",
+          "proves": "dag-ml wheel metadata, abi3 tag, stubs and py.typed are present"
+        },
+        {
+          "repo": "dag-ml-data",
+          "command": "python3 scripts/smoke_python_wheel_metadata.py target/wheels/dag_ml_data-*.whl",
+          "proves": "dag-ml-data wheel metadata, abi3 tag, stubs and py.typed are present"
+        }
+      ],
+      "invariants": [
+        "Python package version matches the Rust contract manifest",
+        "typed facades accept validated wrappers, Python dicts, bytes and paths",
+        "the public wheel surface is represented by handwritten stubs"
+      ]
+    }
+  ],
+  "required_case_ids": [
+    "nirs4all_core_browser_compile_plan",
+    "repetition_group_leakage_refusal",
+    "controller_registry_selector_parity",
+    "branch_merge_oof_refit_replay",
+    "python_wheel_facade_integration"
+  ]
+}

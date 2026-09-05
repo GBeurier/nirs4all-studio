@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>nirs4all-io · Dataset Builder</title>
+  <meta name="description" content="Construisez visuellement un dataset multimodal nirs4all (spectres, metadata, cibles) dans le navigateur avec le composant DatasetBuilder de nirs4all-ui." />
+  <meta name="theme-color" content="#0d9488" />
+  <link rel="canonical" href="https://io.nirs4all.org/dataset-builder.html" />
+  <link rel="icon" type="image/svg+xml" href="brand/icon.svg" />
+  <link rel="icon" href="brand/favicon.ico" />
+  <link rel="apple-touch-icon" href="brand/icon-180.png" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://io.nirs4all.org/dataset-builder.html" />
+  <meta property="og:title" content="nirs4all-io · Dataset Builder" />
+  <meta property="og:description" content="Construction visuelle d'un dataset multimodal nirs4all dans le navigateur." />
+  <meta property="og:image" content="https://io.nirs4all.org/brand/og.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./vendor/dataset-builder.css" />
+  <style>
+    :root {
+      --teal: #0d9488; --teal-d: #0f766e; --cyan: #06b6d4;
+      --bg: #eef2f6; --surface: #ffffff; --border: #e2e8f0;
+      --text: #0f172a; --text-2: #475569; --text-3: #64748b;
+      --font: 'Inter', -apple-system, system-ui, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: var(--font); color: var(--text);
+      background:
+        radial-gradient(1100px 460px at 82% -8%, rgba(13,148,136,.10), transparent 60%),
+        radial-gradient(900px 420px at 6% 4%, rgba(6,182,212,.08), transparent 55%),
+        var(--bg);
+      min-height: 100vh;
+    }
+    .nav {
+      position: sticky; top: 0; z-index: 20; backdrop-filter: blur(10px);
+      background: rgba(255,255,255,.82); border-bottom: 1px solid var(--border);
+    }
+    .nav-inner { max-width: 1360px; margin: 0 auto; padding: 12px 22px; display: flex; align-items: center; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font-weight: 800; }
+    .brand small { font-weight: 600; color: var(--text-3); font-size: 13px; }
+    .nav-links { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .nav-links a, .nav-btn {
+      font: inherit; font-size: 13.5px; font-weight: 600; text-decoration: none;
+      padding: 7px 13px; border-radius: 9px; border: 1px solid var(--border);
+      background: #fff; color: var(--text-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .nav-btn.primary { background: var(--teal); color: #fff; border-color: var(--teal); }
+    .nav-btn.primary:hover { background: var(--teal-d); }
+    .nav-links a:hover, .nav-btn:hover { border-color: var(--teal); color: var(--teal); }
+    .page { max-width: 1360px; margin: 0 auto; padding: 22px; }
+    .intro { margin: 6px 0 18px; }
+    .intro h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.02em; }
+    .intro h1 em { font-style: normal; background: linear-gradient(120deg, var(--teal-d), var(--cyan)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .intro p { margin: 0; color: var(--text-2); max-width: 760px; line-height: 1.55; }
+    .intro code { font-family: var(--mono); font-size: 12.5px; background: #fff; border: 1px solid var(--border); padding: 1px 6px; border-radius: 6px; }
+    body.dragging::after {
+      content: "Déposez vos fichiers CSV"; position: fixed; inset: 12px; z-index: 50;
+      border: 3px dashed var(--teal); border-radius: 20px; background: rgba(13,148,136,.08);
+      display: grid; place-items: center; font-size: 26px; font-weight: 800; color: var(--teal-d); pointer-events: none;
+    }
+    #builder-root { min-height: 400px; }
+    /* export overlay */
+    .overlay { position: fixed; inset: 0; z-index: 60; background: rgba(15,23,42,.55); display: grid; place-items: center; padding: 24px; }
+    .overlay[hidden] { display: none; }
+    .overlay-card { background: var(--surface); border-radius: 16px; max-width: 720px; width: 100%; max-height: 82vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 30px 60px -20px rgba(0,0,0,.5); }
+    .overlay-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .overlay-head h2 { margin: 0; font-size: 17px; }
+    .overlay-head .sub { color: var(--text-3); font-size: 13px; }
+    .overlay pre { margin: 0; padding: 18px 20px; overflow: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+    .overlay-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 14px 20px; border-top: 1px solid var(--border); }
+    .footer-note { margin: 26px 2px 8px; color: var(--text-3); font-size: 13px; }
+    .footer-note a { color: var(--teal-d); }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="./index.html">
+        <img src="brand/icon.svg" alt="" width="30" height="30" />
+        <span>nirs4all-io <small>Dataset Builder</small></span>
+      </a>
+      <div class="nav-links">
+        <a href="./index.html">← WASM builder</a>
+        <button class="nav-btn" id="load-samples" type="button">Charger l'exemple</button>
+        <button class="nav-btn" id="reset" type="button">Réinitialiser</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="page">
+    <div class="intro">
+      <h1>Construction de <em>dataset multimodal</em></h1>
+      <p>
+        Glissez-déposez des fichiers <strong>CSV</strong> (spectres, metadata, cibles) ou cliquez sur
+        « Charger l'exemple ». Le composant <code>DatasetBuilder</code> de <code>nirs4all-ui</code> détecte
+        automatiquement les rôles (X / Y / metadata / ID / partition / répétition), vous laisse les corriger,
+        puis exporte une configuration de dataset nirs4all réutilisable. Tout est local, dans votre navigateur.
+      </p>
+    </div>
+
+    <input id="file-input" type="file" multiple accept=".csv,.tsv,.txt" hidden />
+    <div id="builder-root"></div>
+
+    <p class="footer-note">
+      Le composant graphique est développé et maintenu dans
+      <a href="https://github.com/GBeurier/nirs4all-ui" target="_blank" rel="noopener">nirs4all-ui</a>
+      (<code>nirs4all-ui/datasetBuilder</code>) et réutilisable par nirs4all Studio, le client Web/WASM et cette page.
+      Les formats vendeurs (OPUS, SPC, JCAMP…) passeraient par les lecteurs WASM de nirs4all-formats.
+    </p>
+  </div>
+
+  <div class="overlay" id="export-overlay" hidden>
+    <div class="overlay-card">
+      <div class="overlay-head">
+        <div>
+          <h2>Configuration du dataset</h2>
+          <span class="sub">Sortie de <code>buildExportConfig</code></span>
+        </div>
+        <button class="nav-btn" id="export-close" type="button">Fermer</button>
+      </div>
+      <pre id="export-json"></pre>
+      <div class="overlay-foot">
+        <button class="nav-btn primary" id="export-download" type="button">Télécharger le JSON</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./dataset-builder.js"></script>
+  <!-- GoatCounter privacy-friendly analytics (no cookies) -->
+  <script data-goatcounter="https://nirs4all.goatcounter.com/count" data-goatcounter-settings='{"path": "/io-dataset-builder"}' async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
