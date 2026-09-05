@@ -80,6 +80,21 @@ function prediction(overrides: Partial<PartitionPrediction> = {}): PartitionPred
 }
 
 describe('dataset result card data helpers', () => {
+  it('labels explicit CV substitutes without changing scores or inventing a refit gain', () => {
+    const row = scoreRow({
+      cardType: 'refit',
+      syntheticRefit: true,
+      primaryTestScore: 0.15,
+      children: [scoreRow({ primaryValScore: 0.2 })],
+    });
+    const summary = buildDatasetResultHeaderSummary({
+      scoreRows: [row], chains: [topChain({ synthetic_refit: true })], metric: 'rmse',
+    });
+    expect(summary).toMatchObject({ bestSummaryLabel: 'CV estimate', refitCount: 0, delta: null });
+    expect(summary.bestRow).toBe(row);
+    expect(row.primaryTestScore).toBe(0.15);
+  });
+
   it('normalizes all-chain entries to top-chain results', () => {
     const chain: AllChainEntry = {
       chain_id: 'chain-a',

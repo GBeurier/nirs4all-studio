@@ -199,7 +199,7 @@ export function buildDatasetResultHeaderSummary({
 }): DatasetResultHeaderSummary {
   const bestRow = scoreRows[0];
   const bestContext = bestRow?.cardType === 'refit' ? 'refit' : 'crossval';
-  const topRefitRow = scoreRows.find((row) => row.cardType === 'refit');
+  const topRefitRow = scoreRows.find((row) => row.cardType === 'refit' && !row.syntheticRefit);
   const pairedCvRow = topRefitRow?.children?.find((child) => child.cardType === 'crossval');
   const lowerBetter = isLowerBetter(metric);
   const delta = topRefitRow?.primaryTestScore != null && pairedCvRow?.primaryValScore != null
@@ -211,10 +211,10 @@ export function buildDatasetResultHeaderSummary({
   return {
     bestRow,
     bestContext,
-    bestSummaryLabel: bestContext === 'refit' ? 'Best Refit' : 'Best CV',
+    bestSummaryLabel: bestRow?.syntheticRefit ? 'CV estimate' : (bestContext === 'refit' ? 'Best Refit' : 'Best CV'),
     delta,
     deltaDirection: lowerBetter ? 'down' : 'up',
     topChain: bestRow ? chains.find((chain) => chain.chain_id === bestRow.chainId) ?? null : null,
-    refitCount: scoreRows.filter((row) => row.cardType === 'refit').length,
+    refitCount: scoreRows.filter((row) => row.cardType === 'refit' && !row.syntheticRefit).length,
   };
 }

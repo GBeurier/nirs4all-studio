@@ -4,6 +4,14 @@ import { cn } from "@/lib/utils";
 import type { ScoreCardRow } from "@/types/score-cards";
 
 export function ScoreCardTypeBadge({ row }: { row: ScoreCardRow }) {
+  if (row.cardType === "refit" && row.syntheticRefit) {
+    return (
+      <span className="text-[10px] text-muted-foreground">
+        CV estimate — not a refit score
+      </span>
+    );
+  }
+
   if (row.cardType === "refit") {
     return (
       <div className="flex items-center gap-1 shrink-0">
