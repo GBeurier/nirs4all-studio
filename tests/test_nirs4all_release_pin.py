@@ -96,3 +96,15 @@ def test_release_rebuilds_and_compares_the_exact_plugin_closure_twice() -> None:
     assert "nirs4all-core==0.3.30" in constraints
     assert "nirs4all-methods==1.0.18" in constraints
     assert "scikit-learn==1.9.0" in constraints
+
+
+def test_release_dispatch_never_publishes_docker_images() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "release-unified.yml").read_text(encoding="utf-8")
+
+    for step_name in ["Login to GitHub Container Registry", "Build and push Docker image"]:
+        guarded_step = re.search(
+            rf"      - name: {re.escape(step_name)}\n"
+            r"        if: needs\.prepare\.outputs\.is_tag_release == 'true'\n",
+            workflow,
+        )
+        assert guarded_step is not None, f"manual release dispatch could publish in step: {step_name}"
