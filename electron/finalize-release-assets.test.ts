@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const finalizer = require(path.resolve("scripts/finalize-release-assets.cjs")) as {
   canonicalPublishedName(name: string): string;
-  expectedPublishedNames(version: string): string[];
+  expectedPublishedNames(version: string, includeAllInOne?: boolean): string[];
   finalizeReleaseAssets(root: string, expectedNames?: string[] | null): Array<{
     publishedName: string;
     digest: string;
@@ -124,6 +124,25 @@ describe("finalize release assets", () => {
         finalizer.expectedPublishedNames("0.11.2"),
       )
     ).toThrow("Release asset inventory mismatch");
+  });
+
+  it("supports the installer-only workflow dispatch profile", () => {
+    const root = temporaryRoot();
+    const expectedNames = finalizer.expectedPublishedNames("0.11.2", false);
+    expect(expectedNames).toHaveLength(6);
+    expect(expectedNames.every((name) => !name.includes("all-in-one"))).toBe(true);
+    for (const publishedName of expectedNames) {
+      writePair(
+        root,
+        publishedName.replace(/^nirs4all\.Studio-/, "nirs4all Studio-"),
+        publishedName,
+      );
+    }
+    expect(
+      finalizer.finalizeReleaseAssets(root, expectedNames)
+        .map((record) => record.publishedName)
+        .sort(),
+    ).toEqual(expectedNames);
   });
 
   it("rejects unsafe public names", () => {

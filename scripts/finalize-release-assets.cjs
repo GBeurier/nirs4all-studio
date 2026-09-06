@@ -11,22 +11,25 @@ const PAYLOAD_SUFFIXES = Object.freeze([
   ".zip",
 ]);
 
-function expectedPublishedNames(version) {
+function expectedPublishedNames(version, includeAllInOne = true) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`Release version is invalid: ${version}`);
   }
-  return [
-    `nirs4all.Studio-${version}-all-in-one-linux-x64.tar.gz`,
-    `nirs4all.Studio-${version}-all-in-one-mac-arm64.zip`,
-    `nirs4all.Studio-${version}-all-in-one-mac-x64.zip`,
-    `nirs4all.Studio-${version}-all-in-one-win-x64.zip`,
+  const installers = [
     `nirs4all.Studio-${version}-linux-amd64.deb`,
     `nirs4all.Studio-${version}-linux-x86_64.AppImage`,
     `nirs4all.Studio-${version}-mac-arm64.dmg`,
     `nirs4all.Studio-${version}-mac-x64.dmg`,
     `nirs4all.Studio-${version}-win-x64-portable.exe`,
     `nirs4all.Studio-${version}-win-x64.exe`,
-  ].sort();
+  ];
+  const allInOne = [
+    `nirs4all.Studio-${version}-all-in-one-linux-x64.tar.gz`,
+    `nirs4all.Studio-${version}-all-in-one-mac-arm64.zip`,
+    `nirs4all.Studio-${version}-all-in-one-mac-x64.zip`,
+    `nirs4all.Studio-${version}-all-in-one-win-x64.zip`,
+  ];
+  return (includeAllInOne ? [...installers, ...allInOne] : installers).sort();
 }
 
 function canonicalPublishedName(name) {
@@ -172,14 +175,14 @@ function finalizeReleaseAssets(releaseRoot, expectedNames = null) {
 }
 
 function main(argv = process.argv.slice(2)) {
-  if (argv.length !== 2) {
+  if (argv.length !== 3 || !["true", "false"].includes(argv[2])) {
     throw new Error(
-      "Usage: node scripts/finalize-release-assets.cjs <release-root> <version>",
+      "Usage: node scripts/finalize-release-assets.cjs <release-root> <version> <include-all-in-one:true|false>",
     );
   }
   const records = finalizeReleaseAssets(
     path.resolve(argv[0]),
-    expectedPublishedNames(argv[1]),
+    expectedPublishedNames(argv[1], argv[2] === "true"),
   );
   for (const record of records) {
     process.stdout.write(`${record.digest}  ${record.publishedName}\n`);
