@@ -37,6 +37,7 @@ const smoke = require("../scripts/smoke-self-update.cjs") as {
     close(): Promise<void>;
   }>;
   driveUpdate(baseUrl: string, timeoutMs: number, backendOutput?: () => string): Promise<void>;
+  windowsGracefulCloseScript(pid: number): string;
 };
 
 // The archive smoke owns the shared post-update native scientific probe.
@@ -114,6 +115,15 @@ describe("smoke-self-update", () => {
     expect(smoke.staleInstalledPath({ appRoot: "/X.app" }, "darwin")).toBe(
       path.join("/X.app", "Contents", "Resources", "UPDATE_SMOKE_STALE"),
     );
+  });
+
+  it("builds a bounded Windows graceful-close request without force-killing the process tree", () => {
+    const script = smoke.windowsGracefulCloseScript(4321);
+    expect(script).toContain("Get-Process -Id 4321");
+    expect(script).toContain("CloseMainWindow()");
+    expect(script).not.toMatch(/Stop-Process|taskkill|\/F/i);
+    expect(() => smoke.windowsGracefulCloseScript(0)).toThrow(/invalid Electron PID/);
+    expect(() => smoke.windowsGracefulCloseScript(Number.NaN)).toThrow(/invalid Electron PID/);
   });
 
   it.skipIf(process.platform === "win32")(
