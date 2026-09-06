@@ -250,9 +250,10 @@ bounded library host, never that CPython owns an HTTP or WebSocket route.
 The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. Every product-owned CPython launch uses `-B` plus
 `PYTHONDONTWRITEBYTECODE=1`, so probing cannot add bytecode to the attested
-runtime closure. `GET /sidecar/v1/python/preflight` also uses `-I`, bounds the
-one-time cold import and RECORD verification to 45 seconds (inside the
-75-second HTTP budget), and checks `import nirs4all`.
+runtime closure. Startup acquisition of the scientific host bounds its one-time
+cold import and RECORD verification to 45 seconds (inside the 75-second
+all-in-one smoke budget). `GET /sidecar/v1/python/preflight` separately uses
+`-I`, bounds `import nirs4all` to 60 seconds, and never selects execution.
 `GET /api/system/capabilities` and `GET /api/system/info` use the same bridge
 with a bounded 15-second optional-import probe. `GET /api/system/env-coherence`
 uses a bounded 15-second import/runtime probe and reports `python_plugin_host`

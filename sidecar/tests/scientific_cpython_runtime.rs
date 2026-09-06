@@ -17,8 +17,8 @@ use studio_sidecar::{
     },
     route_request_with_body,
     scientific_cpython::{
-        CpythonScientificJobExecutor, SCIENTIFIC_CPYTHON_HOST_CONTRACT,
-        SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
+        CpythonScientificJobExecutor, SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT,
+        SCIENTIFIC_CPYTHON_HOST_CONTRACT, SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
     },
     SidecarState,
 };
@@ -151,6 +151,7 @@ fn scientific_host_contract_tracks_the_product_preflight_budget() {
         u64::try_from(SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT.as_millis()).unwrap()
     );
     assert!(SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT < Duration::from_secs(75));
+    assert_eq!(SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT, Duration::from_secs(15));
 }
 
 #[test]
