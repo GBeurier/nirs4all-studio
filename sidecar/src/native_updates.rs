@@ -2844,9 +2844,14 @@ mod tests {
         fs::create_dir(&state).unwrap();
         fs::write(app.join("studio.exe"), b"application tree").unwrap();
 
-        let mut inherited = Command::new("cmd.exe");
+        let mut inherited = Command::new("powershell.exe");
         inherited
-            .args(["/D", "/S", "/C", "ping -n 10 127.0.0.1 >NUL"])
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Start-Sleep -Seconds 10",
+            ])
             .current_dir(&app)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -2861,9 +2866,14 @@ mod tests {
             "unexpected inherited-cwd error: {inherited_error}"
         );
 
-        let mut helper = Command::new("cmd.exe");
+        let mut helper = Command::new("powershell.exe");
         helper
-            .args(["/D", "/S", "/C", "ping -n 10 127.0.0.1 >NUL"])
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Start-Sleep -Seconds 10",
+            ])
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
