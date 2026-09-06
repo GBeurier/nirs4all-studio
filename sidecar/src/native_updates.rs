@@ -925,6 +925,11 @@ impl NativeUpdater {
         fs::copy(&current_exe, &helper)
             .map_err(|error| format!("Could not stage update helper: {error}"))?;
         let mut command = Command::new(&helper);
+        configure_helper_working_directory(
+            &mut command,
+            &self.config.state_dir,
+            plan.app_dir.as_path(),
+        )?;
         command
             .arg("--apply-update-plan")
             .arg(self.config.state_dir.join(APPLY_PLAN))
@@ -2091,6 +2096,27 @@ fn wait_for_process_exit(pid: u32, timeout: Duration) -> Result<(), String> {
     Ok(())
 }
 
+fn configure_helper_working_directory(
+    command: &mut Command,
+    state_dir: &Path,
+    app_dir: &Path,
+) -> Result<(), String> {
+    let state = state_dir
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve update helper directory: {error}"))?;
+    let app = app_dir
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve application directory: {error}"))?;
+    if state == app || state.starts_with(&app) {
+        return Err("Update helper directory must be outside the application tree".into());
+    }
+    // The sidecar inherits Electron's application-directory cwd. On Windows a
+    // process cwd prevents that directory from being renamed, so the detached
+    // helper must start from its separate, canonical state tree.
+    command.current_dir(state);
+    Ok(())
+}
+
 #[cfg(not(windows))]
 fn rename_current_application_to_backup(source: &Path, destination: &Path) -> Result<(), String> {
     fs::rename(source, destination).map_err(|error| {
@@ -2780,6 +2806,74 @@ mod tests {
             io::ErrorKind::NotFound,
             "missing"
         )));
+    }
+
+    #[test]
+    fn helper_working_directory_is_canonical_and_outside_the_application_tree() {
+        let temp = TempDir::new().unwrap();
+        let app = temp.path().join("app");
+        let state = temp.path().join("state");
+        let nested_state = app.join("state");
+        fs::create_dir(&app).unwrap();
+        fs::create_dir(&state).unwrap();
+        fs::create_dir(&nested_state).unwrap();
+
+        let mut command = Command::new("helper");
+        configure_helper_working_directory(&mut command, &state, &app).unwrap();
+        assert_eq!(
+            command.get_current_dir(),
+            Some(state.canonicalize().unwrap().as_path())
+        );
+
+        let mut nested = Command::new("helper");
+        assert!(
+            configure_helper_working_directory(&mut nested, &nested_state, &app)
+                .unwrap_err()
+                .contains("outside the application tree")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_helper_does_not_inherit_the_application_locking_working_directory() {
+        let temp = TempDir::new().unwrap();
+        let app = temp.path().join("app");
+        let backup = temp.path().join("backup");
+        let state = temp.path().join("state");
+        fs::create_dir(&app).unwrap();
+        fs::create_dir(&state).unwrap();
+        fs::write(app.join("studio.exe"), b"application tree").unwrap();
+
+        let mut inherited = Command::new("cmd.exe");
+        inherited
+            .args(["/D", "/S", "/C", "ping -n 10 127.0.0.1 >NUL"])
+            .current_dir(&app)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut inherited = inherited.spawn().unwrap();
+        thread::sleep(Duration::from_millis(250));
+        let inherited_error = fs::rename(&app, &backup).unwrap_err();
+        inherited.kill().unwrap();
+        inherited.wait().unwrap();
+        assert!(
+            windows_transient_rename_lock(&inherited_error),
+            "unexpected inherited-cwd error: {inherited_error}"
+        );
+
+        let mut helper = Command::new("cmd.exe");
+        helper
+            .args(["/D", "/S", "/C", "ping -n 10 127.0.0.1 >NUL"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        configure_helper_working_directory(&mut helper, &state, &app).unwrap();
+        let mut helper = helper.spawn().unwrap();
+        thread::sleep(Duration::from_millis(250));
+        fs::rename(&app, &backup).unwrap();
+        helper.kill().unwrap();
+        helper.wait().unwrap();
+        assert!(backup.join("studio.exe").is_file());
     }
 
     #[cfg(windows)]
