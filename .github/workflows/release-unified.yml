@@ -1784,6 +1784,12 @@ jobs:
             -o -name "*.sha256" \
           \) -exec cp {} release/ \; 2>/dev/null || true
 
+          # GitHub normalizes spaces in uploaded asset names to dots. Perform
+          # that normalization ourselves, verify every producer checksum
+          # against its payload, and regenerate sidecars with the exact public
+          # basename so `sha256sum -c` works after download.
+          node scripts/finalize-release-assets.cjs release '${{ needs.prepare.outputs.version }}'
+
           echo "## Release Assets" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -d release ] && [ "$(ls -A release 2>/dev/null)" ]; then
@@ -1817,10 +1823,10 @@ jobs:
 
           | Platform | Architecture | File | Status |
           |----------|-------------|------|--------|
-          | **Windows** | x64 | \`nirs4all Studio-${VERSION}-win-x64.exe\` / \`nirs4all Studio-${VERSION}-win-x64-portable.exe\` | ${INSTALLER_WINDOWS} |
-          | **macOS** | Intel (x64) | \`nirs4all Studio-${VERSION}-mac-x64.dmg\` | ${INSTALLER_MACOS_X64} |
-          | **macOS** | Apple Silicon (arm64) | \`nirs4all Studio-${VERSION}-mac-arm64.dmg\` | ${INSTALLER_MACOS_ARM64} |
-          | **Linux** | x64 | \`nirs4all Studio-${VERSION}-linux-x64.AppImage\` / \`.deb\` | ${INSTALLER_LINUX} |
+          | **Windows** | x64 | \`nirs4all.Studio-${VERSION}-win-x64.exe\` / \`nirs4all.Studio-${VERSION}-win-x64-portable.exe\` | ${INSTALLER_WINDOWS} |
+          | **macOS** | Intel (x64) | \`nirs4all.Studio-${VERSION}-mac-x64.dmg\` | ${INSTALLER_MACOS_X64} |
+          | **macOS** | Apple Silicon (arm64) | \`nirs4all.Studio-${VERSION}-mac-arm64.dmg\` | ${INSTALLER_MACOS_ARM64} |
+          | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-linux-x64.AppImage\` / \`.deb\` | ${INSTALLER_LINUX} |
 
           ### All-in-one Bundles
 
@@ -1829,10 +1835,10 @@ jobs:
 
           | Platform | Architecture | File | Status |
           |----------|-------------|------|--------|
-          | **Windows** | x64 | \`nirs4all Studio-${VERSION}-all-in-one-win-x64.zip\` | ${ARCHIVE_WIN} |
-          | **Linux** | x64 | \`nirs4all Studio-${VERSION}-all-in-one-linux-x64.tar.gz\` | ${ARCHIVE_LINUX} |
-          | **macOS** | Intel (x64) | \`nirs4all Studio-${VERSION}-all-in-one-mac-x64.zip\` | ${ARCHIVE_MACOS_X64} |
-          | **macOS** | Apple Silicon (arm64) | \`nirs4all Studio-${VERSION}-all-in-one-mac-arm64.zip\` | ${ARCHIVE_MACOS_ARM64} |
+          | **Windows** | x64 | \`nirs4all.Studio-${VERSION}-all-in-one-win-x64.zip\` | ${ARCHIVE_WIN} |
+          | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-all-in-one-linux-x64.tar.gz\` | ${ARCHIVE_LINUX} |
+          | **macOS** | Intel (x64) | \`nirs4all.Studio-${VERSION}-all-in-one-mac-x64.zip\` | ${ARCHIVE_MACOS_X64} |
+          | **macOS** | Apple Silicon (arm64) | \`nirs4all.Studio-${VERSION}-all-in-one-mac-arm64.zip\` | ${ARCHIVE_MACOS_ARM64} |
 
           ### Docker
 
@@ -1858,10 +1864,10 @@ jobs:
 
           \`\`\`bash
           # Linux/macOS
-          sha256sum -c 'nirs4all Studio-${VERSION}-linux-x64.AppImage.sha256'
+          sha256sum -c 'nirs4all.Studio-${VERSION}-linux-x64.AppImage.sha256'
 
           # Windows (PowerShell)
-          (Get-FileHash '.\nirs4all Studio-${VERSION}-win-x64.exe').Hash
+          (Get-FileHash '.\nirs4all.Studio-${VERSION}-win-x64.exe').Hash
           \`\`\`
 
           ### System Requirements

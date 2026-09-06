@@ -1,7 +1,7 @@
 {
   "name": "nirs4all-webapp",
   "private": true,
-  "version": "0.11.1",
+  "version": "0.11.2",
   "homepage": "https://nirs4all.org",
   "type": "module",
   "description": "Unified NIRS analysis desktop application",
