@@ -274,7 +274,7 @@ jobs:
           npm run test:vendored-native-sources
           cargo fmt --manifest-path sidecar/Cargo.toml -- --check
           cargo clippy --manifest-path sidecar/Cargo.toml --all-targets -- -D warnings
-          cargo test --manifest-path sidecar/Cargo.toml
+          N4M_LIBRARY_PATH="$NIRS4ALL_BUILD_METHODS_LIBRARY" cargo test --manifest-path sidecar/Cargo.toml
           npm run test:native-archive-v2
           npm run test:native-sidecar
 
