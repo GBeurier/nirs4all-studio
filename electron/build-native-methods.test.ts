@@ -111,6 +111,28 @@ describe("native Methods product build", () => {
     }
   });
 
+  it("wires the attested Methods library into every native Rust integration test", () => {
+    const projectRoot = path.resolve(import.meta.dirname, "..");
+    const workflow = fs.readFileSync(
+      path.join(projectRoot, ".github", "workflows", "ci.yml"),
+      "utf8",
+    );
+
+    expect(workflow).toContain(
+      'N4M_LIBRARY_PATH="$NIRS4ALL_BUILD_METHODS_LIBRARY" cargo test --manifest-path sidecar/Cargo.toml',
+    );
+    expect(workflow).toContain(
+      "$env:N4M_LIBRARY_PATH = $env:NIRS4ALL_BUILD_METHODS_LIBRARY",
+    );
+    expect(
+      workflow.match(/cargo test --manifest-path sidecar\/Cargo\.toml/g),
+    ).toHaveLength(2);
+    expect(workflow).toContain(
+      "$env:N4M_LIBRARY_PATH = $env:NIRS4ALL_BUILD_METHODS_LIBRARY\n" +
+        "          cargo fmt --manifest-path sidecar/crates/studio-windows-job/Cargo.toml -- --check",
+    );
+  });
+
   it("exports the attested runtime directory for later Windows process loading", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "n4a-methods-path-"));
     try {
