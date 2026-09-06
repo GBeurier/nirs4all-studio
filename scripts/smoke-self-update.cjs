@@ -254,9 +254,8 @@ function startFixtureServer({ assetPath, assetName, assetSha }) {
         return;
       }
       if (url.endsWith(".sha256")) {
-        const releaseBasename = assetName.replace(/^nirs4all\.Studio-/, "nirs4all Studio-");
         const body = Buffer.from(
-          `${assetSha}  /home/runner/work/nirs4all-studio/nirs4all-studio/release/${releaseBasename}\n`,
+          `${assetSha}  ${assetName}\n`,
         );
         res.writeHead(200, { "Content-Type": "text/plain", "Content-Length": body.length });
         res.end(body);

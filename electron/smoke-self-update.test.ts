@@ -178,7 +178,7 @@ describe("smoke-self-update", () => {
 
       const sidecar = await (await fetch(`${server.base}/${assetName}.sha256`)).text();
       expect(sidecar.split(/\s+/)[0]).toBe(assetSha);
-      expect(sidecar).toContain("/release/nirs4all Studio-999.0.0-all-in-one-linux-x64.tar.gz");
+      expect(sidecar).toBe(`${assetSha}  ${assetName}\n`);
     } finally {
       await server.close();
     }
