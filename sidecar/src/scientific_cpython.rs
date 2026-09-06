@@ -39,6 +39,7 @@ pub const WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT: &str = "--internal-scientifi
 /// valid cold starts exceeding 15 seconds under load, so keep this below the
 /// 75-second HTTP preflight budget while allowing a measured 3x margin.
 pub const SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(45);
+pub const SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT: Duration = Duration::from_secs(15);
 pub const SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT: Duration = Duration::from_secs(120);
 pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
@@ -415,7 +416,7 @@ impl CpythonScientificJobExecutor {
             if matches!(operation, "predictions.run" | "predictions.file") {
                 SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT
             } else {
-                SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT
+                SCIENTIFIC_CPYTHON_DOCUMENT_TIMEOUT
             },
         )
         .map_err(|error| error.reason().to_owned())?;
