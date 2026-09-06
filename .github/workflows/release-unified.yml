@@ -1788,7 +1788,10 @@ jobs:
           # that normalization ourselves, verify every producer checksum
           # against its payload, and regenerate sidecars with the exact public
           # basename so `sha256sum -c` works after download.
-          node scripts/finalize-release-assets.cjs release '${{ needs.prepare.outputs.version }}'
+          node scripts/finalize-release-assets.cjs \
+            release \
+            '${{ needs.prepare.outputs.version }}' \
+            '${{ needs.prepare.outputs.skip_all_in_one != 'true' }}'
 
           echo "## Release Assets" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -1826,7 +1829,7 @@ jobs:
           | **Windows** | x64 | \`nirs4all.Studio-${VERSION}-win-x64.exe\` / \`nirs4all.Studio-${VERSION}-win-x64-portable.exe\` | ${INSTALLER_WINDOWS} |
           | **macOS** | Intel (x64) | \`nirs4all.Studio-${VERSION}-mac-x64.dmg\` | ${INSTALLER_MACOS_X64} |
           | **macOS** | Apple Silicon (arm64) | \`nirs4all.Studio-${VERSION}-mac-arm64.dmg\` | ${INSTALLER_MACOS_ARM64} |
-          | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-linux-x64.AppImage\` / \`.deb\` | ${INSTALLER_LINUX} |
+          | **Linux** | x64 | \`nirs4all.Studio-${VERSION}-linux-x86_64.AppImage\` / \`nirs4all.Studio-${VERSION}-linux-amd64.deb\` | ${INSTALLER_LINUX} |
 
           ### All-in-one Bundles
 
@@ -1864,7 +1867,7 @@ jobs:
 
           \`\`\`bash
           # Linux/macOS
-          sha256sum -c 'nirs4all.Studio-${VERSION}-linux-x64.AppImage.sha256'
+          sha256sum -c 'nirs4all.Studio-${VERSION}-linux-x86_64.AppImage.sha256'
 
           # Windows (PowerShell)
           (Get-FileHash '.\nirs4all.Studio-${VERSION}-win-x64.exe').Hash
