@@ -460,6 +460,35 @@ async function quitApp(child) {
   }
 }
 
+function windowsGracefulCloseScript(pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) {
+    throw new Error(`invalid Electron PID for graceful update quit: ${pid}`);
+  }
+  return `$process = Get-Process -Id ${pid} -ErrorAction Stop; if (-not $process.CloseMainWindow()) { Write-Error 'Electron main window refused the graceful close request'; exit 3 }`;
+}
+
+/** Exercise the same graceful Electron shutdown as app:quitForUpdate.
+ *  TerminateProcess (Node's child.kill on Windows) skips before-quit, leaving
+ *  the sidecar alive with locked files and is therefore not a valid update
+ *  lifecycle witness. */
+async function quitAppForUpdate(child, platformId) {
+  if (!child || child.exitCode !== null) {
+    throw new Error("application exited before the graceful update quit request");
+  }
+  if (platformId !== "win32") {
+    await quitApp(child);
+    return;
+  }
+  execFileSync(
+    "powershell.exe",
+    ["-NoProfile", "-NonInteractive", "-Command", windowsGracefulCloseScript(child.pid)],
+    { stdio: "pipe" },
+  );
+  if (!(await waitForChildExit(child, 15_000))) {
+    throw new Error("Electron did not exit after a graceful update close request");
+  }
+}
+
 async function isHealthy(port, sessionToken) {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
@@ -553,7 +582,7 @@ async function terminateRelaunch(pid, port, sessionToken, timeoutMs) {
 }
 
 /** Wait until the updater has replaced files in place (its sentinel appears). */
-async function waitForSentinel(sentinelPath, timeoutMs) {
+async function waitForSentinel(sentinelPath, timeoutMs, diagnostics = () => "") {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (fs.existsSync(sentinelPath)) {
@@ -561,7 +590,60 @@ async function waitForSentinel(sentinelPath, timeoutMs) {
     }
     await delay(1000);
   }
-  throw new Error(`updater did not replace files in place (no sentinel at ${sentinelPath})`);
+  const detail = String(diagnostics() || "").slice(-12_288);
+  throw new Error(
+    `updater did not replace files in place (no sentinel at ${sentinelPath})`
+    + `\nupdate diagnostics (last 12288 chars):\n${detail || "(empty)"}`,
+  );
+}
+
+function updateStateDirectory(platformId, environment) {
+  if (environment.NIRS4ALL_BACKEND_DATA_DIR) {
+    return environment.NIRS4ALL_BACKEND_DATA_DIR;
+  }
+  if (platformId === "win32") {
+    return path.join(environment.LOCALAPPDATA, "nirs4all-webapp");
+  }
+  if (platformId === "darwin") {
+    return path.join(environment.HOME, "Library", "Application Support", "nirs4all-webapp");
+  }
+  return path.join(environment.XDG_DATA_HOME || path.join(environment.HOME, ".local", "share"), "nirs4all-webapp");
+}
+
+function boundedUpdateDiagnostics(platformId, environment, outputLines) {
+  const stateDir = updateStateDirectory(platformId, environment);
+  const resultPath = path.join(stateDir, "update_apply_result.json");
+  const planPath = path.join(stateDir, "update_apply_plan.json");
+  const parts = [
+    `apply result: ${readBoundedText(resultPath)}`,
+    `apply plan present: ${fs.existsSync(planPath)}`,
+    `backend stdout/stderr:\n${outputLines.join("\n").slice(-8192) || "(empty)"}`,
+  ];
+  if (process.platform === "win32") {
+    for (const image of ["studio-update-helper.exe", "studio-sidecar.exe"]) {
+      try {
+        const listing = execFileSync(
+          "tasklist.exe",
+          ["/FI", `IMAGENAME eq ${image}`, "/FO", "CSV", "/NH"],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+        );
+        parts.push(`${image}: ${listing.trim() || "not running"}`);
+      } catch (error) {
+        parts.push(`${image}: tasklist failed (${error instanceof Error ? error.message : String(error)})`);
+      }
+    }
+  }
+  return parts.join("\n");
+}
+
+function readBoundedText(filePath) {
+  try {
+    const bytes = fs.readFileSync(filePath);
+    if (bytes.length > 64 * 1024) return "(refused: file exceeds 64 KiB)";
+    return bytes.toString("utf8").slice(-4096);
+  } catch (error) {
+    return `(unavailable: ${error instanceof Error ? error.message : String(error)})`;
+  }
 }
 
 /** Wait until the updated executable is fully written (exists + size stable
@@ -691,11 +773,17 @@ async function smokeSelfUpdate(rawConfig) {
       throw new Error("update helper replaced the application before Electron exited");
     }
     console.log("Update applied. Quitting so the updater can replace files...");
-    await quitApp(child);
+    const updateChild = child;
+    const updateOutput = childOutput.get(updateChild) ?? [];
+    await quitAppForUpdate(updateChild, config.platform);
     child = null;
 
     // Phase 2: the updater must have replaced files in place.
-    await waitForSentinel(sentinelPath, config.timeoutMs);
+    await waitForSentinel(
+      sentinelPath,
+      config.timeoutMs,
+      () => boundedUpdateDiagnostics(config.platform, env1, updateOutput),
+    );
     console.log("Updater replaced files in place (sentinel present).");
     await waitForUpdaterRelaunch(
       port1,
@@ -798,4 +886,5 @@ module.exports = {
   sentinelInstalledPath,
   staleInstalledPath,
   startFixtureServer,
+  windowsGracefulCloseScript,
 };

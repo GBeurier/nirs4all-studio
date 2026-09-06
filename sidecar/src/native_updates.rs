@@ -44,6 +44,10 @@ const MAX_ARCHIVE_ENTRIES: usize = 100_000;
 const MAX_RELEASE_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
 const NETWORK_TIMEOUT: Duration = Duration::from_secs(30);
 const HELPER_WAIT_TIMEOUT: Duration = Duration::from_secs(90);
+#[cfg(windows)]
+const WINDOWS_APP_UNLOCK_TIMEOUT: Duration = Duration::from_secs(15);
+#[cfg(windows)]
+const WINDOWS_APP_UNLOCK_RETRY_DELAY: Duration = Duration::from_millis(100);
 const STAGING_DIR: &str = "update_staging";
 const DOWNLOAD_FILE: &str = "update_download.part";
 const STAGED_METADATA: &str = ".nirs4all-staged-update.json";
@@ -1196,9 +1200,7 @@ fn run_apply_plan_inner(path: &Path, plan: &ApplyPlan) -> Result<(), String> {
         return Err("Prepared update tree does not match the verified staged tree".into());
     }
     wait_for_process_exit(plan.parent_pid, HELPER_WAIT_TIMEOUT)?;
-    fs::rename(&plan.app_dir, &backup).map_err(|error| {
-        format!("Could not atomically move current application to backup: {error}")
-    })?;
+    rename_current_application_to_backup(&plan.app_dir, &backup)?;
     if let Err(error) = fs::rename(&prepared, &plan.app_dir) {
         let _ = fs::rename(&backup, &plan.app_dir);
         return Err(format!(
@@ -2089,6 +2091,46 @@ fn wait_for_process_exit(pid: u32, timeout: Duration) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(windows))]
+fn rename_current_application_to_backup(source: &Path, destination: &Path) -> Result<(), String> {
+    fs::rename(source, destination).map_err(|error| {
+        format!("Could not atomically move current application to backup: {error}")
+    })
+}
+
+/// Windows can keep executable or DLL handles alive briefly after Electron's
+/// parent PID exits. Retry only the two lock errors emitted by that transition;
+/// permission, path and filesystem failures remain immediate and fail closed.
+#[cfg(windows)]
+fn rename_current_application_to_backup(source: &Path, destination: &Path) -> Result<(), String> {
+    let started = Instant::now();
+    let deadline = started + WINDOWS_APP_UNLOCK_TIMEOUT;
+    let mut attempts = 0_u32;
+    loop {
+        attempts += 1;
+        match fs::rename(source, destination) {
+            Ok(()) => return Ok(()),
+            Err(error) if windows_transient_rename_lock(&error) && Instant::now() < deadline => {
+                thread::sleep(WINDOWS_APP_UNLOCK_RETRY_DELAY);
+            }
+            Err(error) => {
+                return Err(format!(
+                    "Could not atomically move current application to backup after {attempts} attempt(s) over {} ms: {error}",
+                    started.elapsed().as_millis()
+                ));
+            }
+        }
+    }
+}
+
+#[cfg(any(windows, test))]
+fn windows_transient_rename_lock(error: &io::Error) -> bool {
+    // ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION. In particular, do not
+    // turn ERROR_ACCESS_DENIED into a retry: a permissions failure is not proof
+    // of an exiting-process lock and must remain immediately visible.
+    matches!(error.raw_os_error(), Some(32 | 33))
+}
+
 #[cfg(unix)]
 fn process_alive(pid: u32) -> bool {
     nix::sys::signal::kill(
@@ -2721,6 +2763,61 @@ mod tests {
         atomic_json(&path, &json!({"status":"applied"})).unwrap();
         atomic_json(&path, &json!({"status":"success"})).unwrap();
         assert_eq!(read_json(&path).unwrap()["status"], "success");
+    }
+
+    #[test]
+    fn windows_rename_retry_accepts_only_file_lock_errors() {
+        assert!(windows_transient_rename_lock(
+            &io::Error::from_raw_os_error(32)
+        ));
+        assert!(windows_transient_rename_lock(
+            &io::Error::from_raw_os_error(33)
+        ));
+        assert!(!windows_transient_rename_lock(
+            &io::Error::from_raw_os_error(5)
+        ));
+        assert!(!windows_transient_rename_lock(&io::Error::new(
+            io::ErrorKind::NotFound,
+            "missing"
+        )));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_helper_waits_for_a_transient_application_directory_lock() {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        const FILE_SHARE_READ: u32 = 0x0000_0001;
+        const FILE_SHARE_WRITE: u32 = 0x0000_0002;
+        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+
+        let temp = TempDir::new().unwrap();
+        let app = temp.path().join("app");
+        let backup = temp.path().join("backup");
+        fs::create_dir(&app).unwrap();
+        fs::write(app.join("studio.exe"), b"locked tree").unwrap();
+
+        // Omit FILE_SHARE_DELETE exactly as a just-exiting Windows process can.
+        let directory_lock = OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(&app)
+            .unwrap();
+        let initial = fs::rename(&app, &backup).unwrap_err();
+        assert!(
+            windows_transient_rename_lock(&initial),
+            "unexpected Windows directory-lock error: {initial}"
+        );
+
+        let release = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(350));
+            drop(directory_lock);
+        });
+        rename_current_application_to_backup(&app, &backup).unwrap();
+        release.join().unwrap();
+        assert!(backup.join("studio.exe").is_file());
+        assert!(!app.exists());
     }
 
     #[test]
