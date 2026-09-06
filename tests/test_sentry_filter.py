@@ -1,6 +1,12 @@
 """Tests for backend Sentry filtering of benign shutdown events."""
 
+import os
+
 from api.shared.sentry import backend_before_send
+
+
+def test_pytest_disables_backend_sentry():
+    assert os.environ["SENTRY_DSN"] == ""
 
 
 def test_backend_before_send_drops_keyboard_interrupt():
