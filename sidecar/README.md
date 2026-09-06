@@ -251,7 +251,8 @@ The Python bridge actions are available only when `NIRS4ALL_PYTHON_PLUGIN_HOST`
 is set. Every product-owned CPython launch uses `-B` plus
 `PYTHONDONTWRITEBYTECODE=1`, so probing cannot add bytecode to the attested
 runtime closure. `GET /sidecar/v1/python/preflight` also uses `-I`, bounds the
-cold import to 15 seconds, and checks `import nirs4all`.
+one-time cold import and RECORD verification to 45 seconds (inside the
+75-second HTTP budget), and checks `import nirs4all`.
 `GET /api/system/capabilities` and `GET /api/system/info` use the same bridge
 with a bounded 15-second optional-import probe. `GET /api/system/env-coherence`
 uses a bounded 15-second import/runtime probe and reports `python_plugin_host`
