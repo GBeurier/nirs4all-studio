@@ -66,8 +66,8 @@
     },
     {
       "path": "api/shared/dataset_config.py",
-      "size": 11601,
-      "sha256": "2bcf790b807798b572213ece845d1265f254e58e5e698c23ec74e863e30eaaaa"
+      "size": 11296,
+      "sha256": "4523f3d8c60c0da6e5599af4e1160b7eef5c9298d3d70f25e72d2d8d0274ac88"
     },
     {
       "path": "api/shared/json_safe.py",
