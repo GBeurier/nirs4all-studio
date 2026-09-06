@@ -32,7 +32,13 @@ pub const SCIENTIFIC_CPYTHON_HOST_CONTRACT: &str =
     include_str!("../contracts/studio_scientific_cpython_host_v1.json");
 pub const SCIENTIFIC_CPYTHON_EXECUTOR_ID: &str = "cpython-stdio-v1";
 pub const WINDOWS_SCIENTIFIC_JOB_LAUNCHER_ARGUMENT: &str = "--internal-scientific-cpython-job";
-pub const SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(15);
+/// One-time cold-start budget for the immutable packaged scientific runtime.
+///
+/// The preflight imports the full nirs4all stack and verifies every RECORD
+/// member after Rust has attested the closure. Intel macOS runners have shown
+/// valid cold starts exceeding 15 seconds under load, so keep this below the
+/// 75-second HTTP preflight budget while allowing a measured 3x margin.
+pub const SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT: Duration = Duration::from_secs(45);
 pub const SCIENTIFIC_CPYTHON_EXECUTION_TIMEOUT: Duration = Duration::from_secs(120);
 pub const MAX_SCIENTIFIC_CPYTHON_STDIN_BYTES: usize = 64 * 1024;
 pub const MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES: usize = 8 * 1024;
@@ -1360,6 +1366,14 @@ fn run_preflight(
     path: &Path,
     site_packages: Option<&Path>,
 ) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
+    run_preflight_with_timeout(path, site_packages, SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT)
+}
+
+fn run_preflight_with_timeout(
+    path: &Path,
+    site_packages: Option<&Path>,
+    timeout: Duration,
+) -> Result<Vec<u8>, ScientificCpythonUnavailable> {
     let scratch = ScratchDirectory::create()?;
     let mut command = contained_scientific_command(path)?;
     let isolated_packaged = site_packages.is_some();
@@ -1392,7 +1406,7 @@ fn run_preflight(
     configure_windows_runtime_environment(&mut command)?;
     run_configured_process(
         command,
-        SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
+        timeout,
         MAX_SCIENTIFIC_CPYTHON_STDOUT_BYTES,
         MAX_SCIENTIFIC_CPYTHON_STDERR_BYTES,
     )
@@ -2976,6 +2990,18 @@ mod tests {
         assert_eq!(
             run_process(&stderr, "ignored", Duration::from_secs(1), 32, 4),
             Err(ScientificCpythonUnavailable::StderrTooLarge)
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preflight_timeout_remains_bounded_without_waiting_for_product_budget() {
+        let root = test_directory("preflight-timeout");
+        let timeout = shell_host(&root, "timeout", "sleep 2");
+        assert_eq!(
+            run_preflight_with_timeout(&timeout, None, Duration::from_millis(50)),
+            Err(ScientificCpythonUnavailable::TimedOut)
         );
         fs::remove_dir_all(root).unwrap();
     }

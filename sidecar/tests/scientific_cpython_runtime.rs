@@ -16,7 +16,10 @@ use studio_sidecar::{
         ScientificJobTerminal,
     },
     route_request_with_body,
-    scientific_cpython::CpythonScientificJobExecutor,
+    scientific_cpython::{
+        CpythonScientificJobExecutor, SCIENTIFIC_CPYTHON_HOST_CONTRACT,
+        SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT,
+    },
     SidecarState,
 };
 
@@ -129,10 +132,6 @@ fn absent_malformed_and_oversized_hosts_are_typed_before_mutation() {
             shell_host(&root, "oversized", "head -c 9000 /dev/zero | tr '\\000' x"),
             "python_host_stdout_too_large",
         ),
-        (
-            shell_host(&root, "timeout", "sleep 16"),
-            "python_host_timed_out",
-        ),
     ];
     for (host, expected) in cases {
         let (body, runtime) = refusal(&root, &host);
@@ -142,6 +141,16 @@ fn absent_malformed_and_oversized_hosts_are_typed_before_mutation() {
         assert_eq!(runtime.durable_write_count(), 0);
     }
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn scientific_host_contract_tracks_the_product_preflight_budget() {
+    let contract: Value = serde_json::from_str(SCIENTIFIC_CPYTHON_HOST_CONTRACT).unwrap();
+    assert_eq!(
+        contract["preflight_timeout_ms"],
+        u64::try_from(SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT.as_millis()).unwrap()
+    );
+    assert!(SCIENTIFIC_CPYTHON_PREFLIGHT_TIMEOUT < Duration::from_secs(75));
 }
 
 #[test]

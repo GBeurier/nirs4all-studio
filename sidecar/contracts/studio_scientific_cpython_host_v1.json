@@ -21,7 +21,7 @@
   "maximum_stdin_bytes": 65536,
   "maximum_stdout_bytes": 8192,
   "maximum_stderr_bytes": 65536,
-  "preflight_timeout_ms": 5000,
+  "preflight_timeout_ms": 45000,
   "execution_timeout_ms": 120000,
   "host_identity": "canonical_path_size_sha256_sticky_reverified",
   "callable_identity": "canonical_path_size_sha256_sticky_reverified_in_rust_and_child",
