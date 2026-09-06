@@ -5,11 +5,16 @@ This file contains shared fixtures and pytest configuration
 that applies to all test modules.
 """
 
+import os
 import sys
 import time
 from pathlib import Path
 
 import pytest
+
+# Never let a developer or CI host's telemetry configuration turn test failures
+# into production Sentry issues. This must run before test modules import main.py.
+os.environ["SENTRY_DSN"] = ""
 
 # Ensure the webapp root is in the path
 webapp_root = Path(__file__).parent.parent
