@@ -11,7 +11,7 @@
 import * as Sentry from "@sentry/react";
 
 const SENTRY_DSN = (import.meta.env.VITE_SENTRY_DSN as string | undefined)
-  || "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960";
+  ?? "https://64e47a03956ed609a0ec182af6fa517a@o4510941267951616.ingest.de.sentry.io/4510941353082960";
 
 /** True when Sentry is initialized and capturing events. */
 export let sentryEnabled = false;
@@ -92,10 +92,8 @@ export function initSentry(): boolean {
     dsn: SENTRY_DSN,
     environment: import.meta.env.MODE || "production",
     sendDefaultPii: false,
-    // Attach the app version if available (set by Vite define or env)
-    release: import.meta.env.VITE_APP_VERSION
-      ? `nirs4all-studio@${import.meta.env.VITE_APP_VERSION}`
-      : undefined,
+    // Vite injects the package version for both web and Electron builds.
+    release: `nirs4all-studio@${__APP_VERSION__}`,
     beforeSend: sanitizeSentryEvent,
     maxBreadcrumbs: 50,
     // Crash reporting only: local dataset executions can legitimately move
