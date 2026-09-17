@@ -371,7 +371,7 @@ jobs:
           {
             "version": "${{ needs.prepare.outputs.version }}",
             "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "commit": "${{ github.sha }}"
+            "commit": "${{ needs.prepare.outputs.checkout_ref }}"
           }
           EOF
 
@@ -487,7 +487,7 @@ jobs:
           @{
             version = "${{ needs.prepare.outputs.version }}"
             build_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
-            commit = "${{ github.sha }}"
+            commit = "${{ needs.prepare.outputs.checkout_ref }}"
           } | ConvertTo-Json | Out-File -FilePath version.json -Encoding utf8
 
       - name: Build pinned plugin-only CPython runtime
@@ -649,7 +649,7 @@ jobs:
           {
             "version": "${{ needs.prepare.outputs.version }}",
             "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "commit": "${{ github.sha }}"
+            "commit": "${{ needs.prepare.outputs.checkout_ref }}"
           }
           EOF
 
@@ -856,7 +856,7 @@ jobs:
           {
             "version": "${{ needs.prepare.outputs.version }}",
             "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "commit": "${{ github.sha }}"
+            "commit": "${{ needs.prepare.outputs.checkout_ref }}"
           }
           EOF
 

@@ -88,6 +88,29 @@ describe("CI release protection graph", () => {
     expect(resolution).not.toContain('REF="refs/tags/${TAG}"');
   });
 
+  it.skipIf(process.platform === "win32")("stamps the checked-out product SHA when a manual release uses a different workflow commit", () => {
+    const product = "b".repeat(40);
+    const workflow = "a".repeat(40);
+    const writers = Object.entries(release.jobs).flatMap(([name, job]) =>
+      (job.steps ?? []).filter(step => step.name === "Write version.json").map(step => ({ name, step })),
+    );
+    expect(writers).toHaveLength(4);
+    for (const { name, step } of writers) {
+      const script = step.run!
+        .replaceAll("${{ needs.prepare.outputs.checkout_ref }}", product)
+        .replaceAll("${{ github.sha }}", workflow)
+        .replaceAll("${{ needs.prepare.outputs.version }}", "0.11.5");
+      if (name === "installer-windows") {
+        expect(script.match(/commit = "([a-f0-9]+)"/)?.[1], name).toBe(product);
+      } else {
+        const directory = temporaryDirectory();
+        const result = spawnSync("bash", ["-e", "-c", script], { cwd: directory, encoding: "utf8" });
+        expect(result.status, result.stderr).toBe(0);
+        expect(JSON.parse(fs.readFileSync(path.join(directory, "version.json"), "utf8")).commit, name).toBe(product);
+      }
+    }
+  });
+
   it("accepts immutable reusable CI inputs while retaining normal push and PR defaults", () => {
     const inputs = ci.on.workflow_call!.inputs;
     for (const name of ["checkout_ref", "nirs4all_library_ref", "dag_ml_ref", "dag_ml_data_ref"]) {
