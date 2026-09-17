@@ -350,6 +350,40 @@ fn single_or_batch(mut values: Vec<Value>) -> Value {
     }
 }
 
+// Windows canonicalization adds a verbatim prefix containing `?`, which the
+// library's dataset source resolver treats as a glob. Keep canonical paths for
+// authorization, but send equivalent ordinary drive/UNC paths to that owner.
+fn library_dataset_path(path: &Path) -> Result<String, ScientificResolveError> {
+    let original = path
+        .to_str()
+        .ok_or(ScientificResolveError::DatasetInvalid)?;
+    let normalized = without_windows_verbatim_prefix(original);
+    if normalized != original && Path::new(&normalized).canonicalize().ok().as_deref() != Some(path)
+    {
+        // Stripping the prefix must not change Windows filename semantics
+        // (for example a trailing dot/space) or select another resource.
+        return Err(ScientificResolveError::DatasetInvalid);
+    }
+    Ok(normalized)
+}
+
+fn without_windows_verbatim_prefix(path: &str) -> String {
+    if let Some(unc) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{unc}");
+    }
+    if let Some(drive) = path.strip_prefix(r"\\?\") {
+        let bytes = drive.as_bytes();
+        if bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && bytes[2] == b'\\'
+        {
+            return drive.to_owned();
+        }
+    }
+    path.to_owned()
+}
+
 /// Normalize explicit file references, including metadata/folds and nested
 /// multi-source configs. Other string parameters (column names, units, etc.)
 /// are not interpreted as paths.
@@ -371,7 +405,7 @@ pub(super) fn confine_config(
             if !resolved.starts_with(root) {
                 return Err(ScientificResolveError::DatasetInvalid);
             }
-            *path = resolved.to_string_lossy().into_owned();
+            *path = library_dataset_path(&resolved)?;
         }
         Value::Array(values) => {
             for value in values {
@@ -437,6 +471,68 @@ mod tests {
     use super::*;
     use std::fs;
 
+    #[test]
+    fn library_paths_remove_only_windows_drive_and_unc_verbatim_prefixes() {
+        assert_eq!(
+            without_windows_verbatim_prefix(r"\\?\C:\Users\spectra\Xtrain.csv"),
+            r"C:\Users\spectra\Xtrain.csv"
+        );
+        assert_eq!(
+            without_windows_verbatim_prefix(r"\\?\UNC\server\share\Xtrain.csv"),
+            r"\\server\share\Xtrain.csv"
+        );
+        for unchanged in [
+            r"C:\data\X.csv",
+            r"\\server\share\X.csv",
+            "/tmp/X.csv",
+            r"\\?\Volume{abc}\X.csv",
+            r"\\.\device",
+        ] {
+            assert_eq!(without_windows_verbatim_prefix(unchanged), unchanged);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_dataset_documents_keep_literal_paths_after_repeated_confinement() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("Xtrain.csv");
+        fs::write(&file, "1000;1100\n1;2\n3;4\n").unwrap();
+        let canonical = file.canonicalize().unwrap();
+        assert!(canonical.to_str().unwrap().starts_with(r"\\?\"));
+        let mut config = json!({
+            "path":root.path(), "train_x":canonical,
+            "files":[{"path":canonical,"type":"X"}],
+            "train_group":canonical, "folds":canonical,
+            "global_params":{"repetition":"sample_id"}
+        });
+        ScientificRequestResolver::confine_dataset_config(&mut config, root.path()).unwrap();
+        let first = config.clone();
+        ScientificRequestResolver::confine_dataset_config(&mut config, root.path()).unwrap();
+        assert_eq!(config, first);
+        for value in [
+            &config["path"],
+            &config["train_x"],
+            &config["files"][0]["path"],
+            &config["train_group"],
+            &config["folds"],
+        ] {
+            let path = value.as_str().unwrap();
+            assert!(
+                !path.starts_with(r"\\?\"),
+                "glob-like verbatim path: {path}"
+            );
+            assert!(Path::new(path).exists());
+        }
+        assert_eq!(
+            Path::new(config["train_x"].as_str().unwrap())
+                .canonicalize()
+                .unwrap(),
+            canonical
+        );
+        assert_eq!(config["global_params"]["repetition"], "sample_id");
+    }
+
     fn adapter(operation: &str, value: &Value) -> Result<Value, String> {
         match operation {
             "dataset.configure" => Ok(json!({
@@ -471,8 +567,10 @@ mod tests {
         );
         assert_eq!(request["pipeline"][0]["name"], "KFold");
         assert_eq!(
-            request["dataset"]["train_x"],
-            json!(canonical_root.join("dataset/x.csv"))
+            Path::new(request["dataset"]["train_x"].as_str().unwrap())
+                .canonicalize()
+                .unwrap(),
+            canonical_root.join("dataset/x.csv")
         );
         assert!(request["dataset"].get("X").is_none());
         fs::remove_dir_all(root).unwrap();

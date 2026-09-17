@@ -365,13 +365,10 @@ impl DatasetInspection {
         value: &Value,
         adapt: &impl Fn(&str, &Value) -> Result<Value, String>,
     ) -> Result<Value, String> {
-        let mut record = value.clone();
+        let mut record = json!({"path":self.root,"config":value});
         ScientificRequestResolver::confine_dataset_config(&mut record, &self.root)
             .map_err(|error| format!("{error:?}"))?;
-        let mut config = adapt(
-            "dataset.configure",
-            &json!({"record":{"path":self.root,"config":record}}),
-        )?;
+        let mut config = adapt("dataset.configure", &json!({"record":record}))?;
         ScientificRequestResolver::confine_dataset_config(&mut config, &self.root)
             .map_err(|error| format!("{error:?}"))?;
         if !config.is_object() {
@@ -563,7 +560,12 @@ mod tests {
             if operation == "dataset.configure" {
                 return Ok(payload["record"]["config"].clone());
             }
-            assert_eq!(payload["config"]["train_x"], json!(canonical_path));
+            assert_eq!(
+                Path::new(payload["config"]["train_x"].as_str().unwrap())
+                    .canonicalize()
+                    .unwrap(),
+                canonical_path
+            );
             assert!(payload["max_input_bytes"].as_u64().unwrap() > 0);
             if operation == "dataset.preview" {
                 assert_eq!(payload["max_samples"], 5);

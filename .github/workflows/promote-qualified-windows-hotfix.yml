@@ -1,0 +1,173 @@
+name: Promote qualified Windows Studio hotfix
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Immutable corrected release commit (40-character SHA)
+        required: true
+        type: string
+      release_run_id:
+        description: Exact release run providing both qualified Windows artifacts
+        required: true
+        type: string
+      windows_validation_run_id:
+        description: Real Windows installation and N-1 update workflow run
+        required: true
+        type: string
+      e2e_run_id:
+        description: Successful Playwright E2E workflow run on the exact source SHA
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: promote-qualified-hotfix-0.11.5
+  cancel-in-progress: false
+
+jobs:
+  promote-windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+      WINDOWS_RUN_ID: ${{ inputs.windows_validation_run_id }}
+      E2E_RUN_ID: ${{ inputs.e2e_run_id }}
+      RELEASE_VERSION: '0.11.5'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Validate immutable candidate and prepare publication identity guard
+        run: |
+          cat > "$RUNNER_TEMP/verify-windows-hotfix.cjs" <<'NODE'
+          const {execFileSync,spawnSync}=require('node:child_process');
+          const {GH_REPO,SOURCE_SHA,RELEASE_RUN_ID,WINDOWS_RUN_ID,E2E_RUN_ID,RELEASE_VERSION}=process.env;
+          if(!/^[a-f0-9]{40}$/.test(SOURCE_SHA)||![RELEASE_RUN_ID,WINDOWS_RUN_ID,E2E_RUN_ID].every(id=>/^\d+$/.test(id))) throw Error('Invalid immutable qualification inputs');
+          const api=p=>JSON.parse(execFileSync('gh',['api',`repos/${GH_REPO}/${p}`],{encoding:'utf8'}));
+          const run=api(`actions/runs/${RELEASE_RUN_ID}`);
+          if(run.head_sha!==SOURCE_SHA||run.path!=='.github/workflows/release-unified.yml'||run.event!=='push'||run.head_branch!==RELEASE_VERSION) throw Error('Release source identity differs');
+          if(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==SOURCE_SHA) throw Error('Checkout SHA differs');
+          if(require(process.cwd()+'/package.json').version!==RELEASE_VERSION) throw Error('Source package version differs');
+          let object=api(`git/ref/tags/${RELEASE_VERSION}`).object;
+          while(object.type==='tag') object=api(`git/tags/${object.sha}`).object;
+          if(object.type!=='commit'||object.sha!==SOURCE_SHA) throw Error('Release tag no longer identifies this exact candidate');
+          const existing=spawnSync('gh',['api',`repos/${GH_REPO}/releases/tags/${RELEASE_VERSION}`],{encoding:'utf8'});
+          if(existing.status===0) throw Error('Release already exists; refusing to overwrite any published assets');
+          if(!existing.stderr.includes('HTTP 404')) throw Error(`Could not verify release absence: ${existing.stderr}`);
+          console.log(`Verified unpublished Windows candidate ${RELEASE_VERSION} at ${SOURCE_SHA}`);
+          NODE
+          node "$RUNNER_TEMP/verify-windows-hotfix.cjs"
+      - name: Await exact Windows builds, source quality, E2E and real installation gates
+        timeout-minutes: 61
+        run: |
+          node <<'NODE'
+          const {execFileSync}=require('node:child_process');
+          const {GH_REPO,SOURCE_SHA,RELEASE_RUN_ID,WINDOWS_RUN_ID,E2E_RUN_ID,RELEASE_VERSION}=process.env;
+          const api=p=>JSON.parse(execFileSync('gh',['api',`repos/${GH_REPO}/${p}`],{encoding:'utf8'}));
+          const required=['Prepare','Acquire pinned plugin wheels','Qualify release commit / Frontend','Qualify release commit / Backend','Qualify release commit / Native Sidecar Windows Containment','Installer — Windows x64','All-in-one — Windows x64'];
+          (async()=>{
+            const deadline=Date.now()+60*60*1000;
+            for(;;){
+              const run=api(`actions/runs/${RELEASE_RUN_ID}`);
+              if(run.head_sha!==SOURCE_SHA||run.path!=='.github/workflows/release-unified.yml'||run.event!=='push'||run.head_branch!==RELEASE_VERSION) throw Error('Release run identity changed');
+              const jobs=api(`actions/runs/${RELEASE_RUN_ID}/jobs?per_page=100`).jobs;
+              const selected=required.map(name=>{
+                const matches=jobs.filter(job=>job.name===name);
+                if(matches.length>1) throw Error(`Ambiguous qualification job: ${name}`);
+                const job=matches[0];
+                if(job?.status==='completed'&&job.conclusion!=='success') throw Error(`Required job failed: ${name}: ${job.conclusion}`);
+                return job;
+              });
+              const windows=api(`actions/runs/${WINDOWS_RUN_ID}`);
+              if(windows.path!=='.github/workflows/windows-real-install-update.yml'||windows.event!=='workflow_dispatch') throw Error('Unexpected Windows validation workflow');
+              if(windows.status==='completed'&&windows.conclusion!=='success') throw Error(`Real Windows installation/update failed: ${windows.conclusion}`);
+              const e2e=api(`actions/runs/${E2E_RUN_ID}`);
+              if(e2e.path!=='.github/workflows/playwright.yml'||e2e.head_sha!==SOURCE_SHA||!['push','workflow_dispatch'].includes(e2e.event)) throw Error('E2E run does not qualify this exact source commit');
+              if(e2e.status==='completed'&&e2e.conclusion!=='success') throw Error(`E2E qualification failed: ${e2e.conclusion}`);
+              if(selected.every(job=>job?.conclusion==='success')&&windows.conclusion==='success'&&e2e.conclusion==='success'){
+                const e2eJobs=api(`actions/runs/${E2E_RUN_ID}/jobs?per_page=100`).jobs;
+                if(!e2eJobs.some(job=>job.name==='E2E Tests'&&job.conclusion==='success')) throw Error('E2E workflow has no successful test job');
+                const windowsJobs=api(`actions/runs/${WINDOWS_RUN_ID}/jobs?per_page=100`).jobs;
+                if(windowsJobs.length!==1||windowsJobs[0].conclusion!=='success') throw Error('Unexpected Windows validation jobs');
+                if(!windowsJobs[0].steps.some(step=>step.name==='Prove actual first setup and developer preference in installed Windows UI'&&step.conclusion==='success')) throw Error('Windows validation lacks the mandatory installed first-launch UI proof');
+                const log=execFileSync('gh',['api',`repos/${GH_REPO}/actions/jobs/${windowsJobs[0].id}/logs`],{encoding:'utf8',maxBuffer:32*1024*1024});
+                if(!log.includes(`RELEASE_RUN_ID: ${RELEASE_RUN_ID}`)||!log.includes(`TARGET_VERSION: ${RELEASE_VERSION}`)) throw Error('Windows installation/update tested another candidate');
+                console.log(`Windows source, builds, E2E, real NSIS and N-1 update all qualified for ${SOURCE_SHA}`);
+                break;
+              }
+              if(Date.now()>deadline) throw Error('Timed out waiting for Windows release qualification');
+              console.log(`Waiting: ${selected.filter(job=>job?.conclusion==='success').length}/${required.length} source/build gates; Windows ${windows.status}; E2E ${e2e.status}`);
+              await new Promise(resolve=>setTimeout(resolve,20000));
+            }
+          })().catch(error=>{console.error(error);process.exitCode=1;});
+          NODE
+      - name: Download exact qualified Windows installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.release_run_id }}
+          name: installer-windows-x64
+          path: artifacts/installer-windows-x64
+      - name: Download exact qualified Windows archive artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.release_run_id }}
+          name: archive-windows-x64
+          path: artifacts/archive-windows-x64
+      - name: Verify all three Windows payloads and their producer checksums
+        run: |
+          node <<'NODE'
+          const fs=require('node:fs');
+          const path=require('node:path');
+          const {finalizeReleaseAssets}=require('./scripts/finalize-release-assets.cjs');
+          const version=process.env.RELEASE_VERSION;
+          const expected=[`nirs4all.Studio-${version}-win-x64.exe`,`nirs4all.Studio-${version}-win-x64-portable.exe`,`nirs4all.Studio-${version}-all-in-one-win-x64.zip`];
+          fs.mkdirSync('release',{recursive:true});
+          function copy(root){
+            for(const entry of fs.readdirSync(root,{withFileTypes:true})){
+              const file=path.join(root,entry.name);
+              if(entry.isDirectory()){copy(file);continue;}
+              if(!/\.(exe|zip|sha256)$/.test(entry.name)) continue;
+              if(!entry.isFile()) throw Error(`Nonregular candidate artifact: ${file}`);
+              fs.copyFileSync(file,path.join('release',entry.name),fs.constants.COPYFILE_EXCL);
+            }
+          }
+          copy('artifacts');
+          const records=finalizeReleaseAssets(path.resolve('release'),expected);
+          for(const record of records) console.log(`${record.digest}  ${record.publishedName}`);
+          NODE
+      - name: Write Windows-only hotfix release notes
+        run: |
+          cat > release_notes.md <<'NOTES'
+          ## Windows installation and dataset-loading hotfix
+
+          This publication contains the qualified **Windows x64** installer, portable executable, and all-in-one update archive.
+
+          - Verify the included Python runtime and scientific packages before opening Studio.
+          - Correct Windows runtime paths and dataset parsing, metadata handling and repetition identifiers.
+          - Fix developer-mode activation and keep runtime diagnostics responsive.
+          - Reject incomplete installations and interrupted runtime downloads.
+
+          These exact Windows artifacts passed their runtime checks, a real NSIS installation, first setup and developer preference persistence in the installed UI, migration from the previous release and the source commit's E2E tests.
+
+          Each download includes a SHA256 sidecar. On Windows, compare `Get-FileHash <download> -Algorithm SHA256` with its `.sha256` file.
+
+          Linux, macOS and Docker are not included in this Windows hotfix publication; their qualification continues separately.
+          NOTES
+          printf '\nQualified commit: `%s`\n\nBuild: https://github.com/%s/actions/runs/%s\n\nWindows installation/update: https://github.com/%s/actions/runs/%s\n\nE2E: https://github.com/%s/actions/runs/%s\n' "$SOURCE_SHA" "$GH_REPO" "$RELEASE_RUN_ID" "$GH_REPO" "$WINDOWS_RUN_ID" "$GH_REPO" "$E2E_RUN_ID" >> release_notes.md
+      - name: Reverify tag and publish stable Windows release without clobbering
+        run: |
+          node "$RUNNER_TEMP/verify-windows-hotfix.cjs"
+          gh release create "$RELEASE_VERSION" --verify-tag --latest --title "nirs4all Studio $RELEASE_VERSION — Windows hotfix" --notes-file release_notes.md release/*

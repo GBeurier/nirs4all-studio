@@ -44,4 +44,12 @@ Ces limites interdisent de promettre l’absence de tout bug. Les protections aj
 
 ## Livraison urgente
 
+La qualification Windows réelle a reproduit un autre défaut absent des tests Linux : les chemins canoniques `\\?\C:\...` devenaient des motifs glob lors de la résolution des sources. La frontière Rust retire maintenant ce préfixe après confinement et vérifie que le chemin transmis désigne exactement la même ressource. Une régression Windows couvre chemins de fichiers, métadonnées, folds et conversions répétées ; le paquet Windows doit repasser le parcours dataset complet avant publication.
+
+La priorité de publication est Windows. La qualification macOS Intel a également révélé une absence de roue compatible pour la fermeture Numba/llvmlite ; cette distribution ne doit pas être publiée avant correction et nouvelle qualification.
+
 La dernière version publique constatée est **0.11.4**. Le correctif préparé est **0.11.5**, avec priorité aux installateurs Windows et à l’archive utilisée pour la mise à jour. La publication doit suivre les contrôles du paquet Windows et du self-update ; les résultats de build et l’URL de la release sont consignés dans le suivi de livraison.
+
+### Remaining performance observation (2026-09-17)
+
+On the A3 packaged product constrained to one CPU, opening Advanced Settings queued several runtime diagnostics. The actual developer-preference PUT completed after 14.848 seconds, and the preference survived renderer reload. This demonstrates delayed persistence under load, rather than a lost preference; responsiveness remains an audit item. The packaged UI smoke uses its configured runtime timeout for persistence and navigation, logs the elapsed save time and bounded transport diagnostics, and still requires actual persisted data, renderer reload, and application restart.

@@ -1771,6 +1771,8 @@ jobs:
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Release: Consolidate all artifacts into GitHub Release
+  # The urgent 0.11.5 release is promoted by promote-qualified-windows-hotfix.yml
+  # after actual Windows installation/UI/N-1 migration; this publisher must not race it.
   # ═══════════════════════════════════════════════════════════════════════════
   release:
     name: Create Release
@@ -1788,6 +1790,7 @@ jobs:
       - docker
     if: >-
       always() &&
+      needs.prepare.outputs.version != '0.11.5' &&
       needs.prepare.result == 'success' &&
       needs.quality.result == 'success' &&
       needs.installer-linux.result == 'success' &&
