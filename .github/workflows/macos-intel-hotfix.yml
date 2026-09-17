@@ -144,8 +144,23 @@ jobs:
          const bytes=fs.readFileSync(path.join('manufacturing',file));assert.equal(hash(bytes),expected,file);
          fs.writeFileSync(file,bytes);assert.equal(hash(fs.readFileSync(file)),expected,file);
         }
-        const changed=execFileSync('git',['diff','--name-only'],{encoding:'utf8'}).trim().split('\n').filter(Boolean).sort();
-        assert.deepEqual(changed,Object.keys(files).sort(),'Unexpected product source overlay');
+        // Compare raw Git blobs: git diff applies clean/EOL filters and reports
+        // untouched CRLF blobs in F314 as changes under its current attributes.
+        const tracked=execFileSync('git',['ls-tree','-r','-z','HEAD'],{encoding:'utf8',maxBuffer:16*1024*1024}).split('\0').filter(Boolean);
+        const changed=[];
+        for(const entry of tracked){
+         const separator=entry.indexOf('\t'),file=entry.slice(separator+1);
+         const [mode,type,expected]=entry.slice(0,separator).split(' ');
+         assert.equal(type,'blob',`Unsupported tracked entry: ${file}`);
+         const stat=fs.lstatSync(file);
+         const symbolic=mode==='120000';
+         assert.equal(stat.isSymbolicLink(),symbolic,`Changed file type: ${file}`);
+         const bytes=symbolic?Buffer.from(fs.readlinkSync(file)):fs.readFileSync(file);
+         const actual=crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+         const executable=!symbolic&&Boolean(stat.mode&0o111);
+         if(actual!==expected||(!symbolic&&executable!==(mode==='100755')))changed.push(file);
+        }
+        assert.deepEqual(changed.sort(),Object.keys(files).sort(),'Unexpected product source overlay');
         const attestation={schema:'nirs4all.manufacturing-overlay.v1',version:'0.11.5',product_sha:process.env.PRODUCT_SHA,manufacturing_sha:process.env.GITHUB_SHA,source_release_run:process.env.SOURCE_RELEASE_RUN_ID,platform:'darwin',arch:'x64',files,scientific_versions:{numpy:'2.3.5',numba:'0.62.1',llvmlite:'0.45.1'}};
         fs.writeFileSync('manufacturing-attestation.json',JSON.stringify(attestation,null,2)+'\n');
         console.log(JSON.stringify(attestation,null,2));
@@ -315,6 +330,22 @@ jobs:
         for f in *.dmg; do
           [ -f "$f" ] && shasum -a 256 "$f" > "$f.sha256"
         done
+    - name: Bind final payload hashes to the manufacturing identity
+      run: |
+        node <<'NODE'
+        const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
+        const {parseChecksumSidecar}=require('./scripts/finalize-release-assets.cjs');
+        const names=fs.readdirSync('release').filter(name=>name.endsWith('.dmg'));
+        assert.equal(names.length,1,'Expected one qualified Mac Intel payload');
+        const files=names.map(name=>{
+         const file=path.join('release',name),digest=crypto.createHash('sha256');
+         const fd=fs.openSync(file,'r'),buffer=Buffer.allocUnsafe(1024*1024);
+         try{for(;;){const size=fs.readSync(fd,buffer,0,buffer.length,null);if(!size)break;digest.update(buffer.subarray(0,size));}}finally{fs.closeSync(fd);}
+         const sha256=digest.digest('hex');assert.equal(parseChecksumSidecar(file+'.sha256',name),sha256);
+         return {name,sha256};
+        });
+        fs.writeFileSync('artifact-checksums.json',JSON.stringify({product_sha:process.env.PRODUCT_SHA,manufacturing_sha:process.env.GITHUB_SHA,platform:'darwin',arch:'x64',files},null,2)+'\n');
+        NODE
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -331,6 +362,7 @@ jobs:
         name: installer-macos-x64-manufacturing-proof
         path: |
           manufacturing-attestation.json
+          artifact-checksums.json
           version.json
           ${{ runner.temp }}/macintel-*.log
           ${{ runner.temp }}/studio-real-update-*/result.json
@@ -381,8 +413,23 @@ jobs:
          const bytes=fs.readFileSync(path.join('manufacturing',file));assert.equal(hash(bytes),expected,file);
          fs.writeFileSync(file,bytes);assert.equal(hash(fs.readFileSync(file)),expected,file);
         }
-        const changed=execFileSync('git',['diff','--name-only'],{encoding:'utf8'}).trim().split('\n').filter(Boolean).sort();
-        assert.deepEqual(changed,Object.keys(files).sort(),'Unexpected product source overlay');
+        // Compare raw Git blobs: git diff applies clean/EOL filters and reports
+        // untouched CRLF blobs in F314 as changes under its current attributes.
+        const tracked=execFileSync('git',['ls-tree','-r','-z','HEAD'],{encoding:'utf8',maxBuffer:16*1024*1024}).split('\0').filter(Boolean);
+        const changed=[];
+        for(const entry of tracked){
+         const separator=entry.indexOf('\t'),file=entry.slice(separator+1);
+         const [mode,type,expected]=entry.slice(0,separator).split(' ');
+         assert.equal(type,'blob',`Unsupported tracked entry: ${file}`);
+         const stat=fs.lstatSync(file);
+         const symbolic=mode==='120000';
+         assert.equal(stat.isSymbolicLink(),symbolic,`Changed file type: ${file}`);
+         const bytes=symbolic?Buffer.from(fs.readlinkSync(file)):fs.readFileSync(file);
+         const actual=crypto.createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+         const executable=!symbolic&&Boolean(stat.mode&0o111);
+         if(actual!==expected||(!symbolic&&executable!==(mode==='100755')))changed.push(file);
+        }
+        assert.deepEqual(changed.sort(),Object.keys(files).sort(),'Unexpected product source overlay');
         const attestation={schema:'nirs4all.manufacturing-overlay.v1',version:'0.11.5',product_sha:process.env.PRODUCT_SHA,manufacturing_sha:process.env.GITHUB_SHA,source_release_run:process.env.SOURCE_RELEASE_RUN_ID,platform:'darwin',arch:'x64',files,scientific_versions:{numpy:'2.3.5',numba:'0.62.1',llvmlite:'0.45.1'}};
         fs.writeFileSync('manufacturing-attestation.json',JSON.stringify(attestation,null,2)+'\n');
         console.log(JSON.stringify(attestation,null,2));
@@ -546,6 +593,22 @@ jobs:
         CANDIDATE_ARCHIVE: ${{ steps.archive.outputs.zip_path }}
       run: |
         node manufacturing/scripts/verify-real-release-update.cjs . 0.11.4 0.11.5 "$CANDIDATE_ARCHIVE" | tee "$RUNNER_TEMP/macintel-real-update.log"
+    - name: Bind final payload hashes to the manufacturing identity
+      run: |
+        node <<'NODE'
+        const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
+        const {parseChecksumSidecar}=require('./scripts/finalize-release-assets.cjs');
+        const names=fs.readdirSync('release').filter(name=>name.endsWith('.zip'));
+        assert.equal(names.length,1,'Expected one qualified Mac Intel payload');
+        const files=names.map(name=>{
+         const file=path.join('release',name),digest=crypto.createHash('sha256');
+         const fd=fs.openSync(file,'r'),buffer=Buffer.allocUnsafe(1024*1024);
+         try{for(;;){const size=fs.readSync(fd,buffer,0,buffer.length,null);if(!size)break;digest.update(buffer.subarray(0,size));}}finally{fs.closeSync(fd);}
+         const sha256=digest.digest('hex');assert.equal(parseChecksumSidecar(file+'.sha256',name),sha256);
+         return {name,sha256};
+        });
+        fs.writeFileSync('artifact-checksums.json',JSON.stringify({product_sha:process.env.PRODUCT_SHA,manufacturing_sha:process.env.GITHUB_SHA,platform:'darwin',arch:'x64',files},null,2)+'\n');
+        NODE
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -562,6 +625,7 @@ jobs:
         name: archive-macos-x64-manufacturing-proof
         path: |
           manufacturing-attestation.json
+          artifact-checksums.json
           version.json
           ${{ runner.temp }}/macintel-*.log
           ${{ runner.temp }}/studio-real-update-*/result.json
