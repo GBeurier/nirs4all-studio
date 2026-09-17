@@ -276,42 +276,60 @@ impl LegacyConverter for PythonModuleLegacyConverter {
 pub struct LegacyConversionRuntime {
     converter: Arc<dyn LegacyConverter>,
     running: Arc<AtomicBool>,
+    advertised_available: Arc<AtomicBool>,
+    poisoned: Arc<AtomicBool>,
 }
 
 impl Default for LegacyConversionRuntime {
     fn default() -> Self {
-        Self {
-            converter: Arc::new(UnselectedLegacyConverter),
-            running: Arc::new(AtomicBool::new(false)),
-        }
+        Self::from_converter(Arc::new(UnselectedLegacyConverter))
     }
 }
 
 impl LegacyConversionRuntime {
     #[must_use]
     pub fn from_python_plugin_host(python_plugin_host: Option<PathBuf>) -> Self {
-        python_plugin_host.map_or_else(Self::default, |python_plugin_host| Self {
-            converter: Arc::new(PythonModuleLegacyConverter {
+        python_plugin_host.map_or_else(Self::default, |python_plugin_host| {
+            Self::from_converter(Arc::new(PythonModuleLegacyConverter {
                 python_host_sha256: sha256_regular_file(&python_plugin_host),
                 python_plugin_host,
                 poisoned: AtomicBool::new(false),
-            }),
-            running: Arc::new(AtomicBool::new(false)),
+            }))
         })
     }
 
     #[must_use]
     #[cfg(test)]
     pub(crate) fn with_converter(converter: Arc<dyn LegacyConverter>) -> Self {
+        Self::from_converter(converter)
+    }
+
+    fn from_converter(converter: Arc<dyn LegacyConverter>) -> Self {
+        // Attest once during bootstrap, before accepting renderer traffic.
+        // Discovery must not spawn Python for every capability preselection.
+        let available = converter.is_available();
         Self {
             converter,
             running: Arc::new(AtomicBool::new(false)),
+            advertised_available: Arc::new(AtomicBool::new(available)),
+            poisoned: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Last attested discovery state; actual conversion always revalidates.
+    #[must_use]
+    pub fn advertised_available(&self) -> bool {
+        self.advertised_available.load(Ordering::Acquire) && !self.poisoned.load(Ordering::Acquire)
     }
 
     #[must_use]
     pub fn is_available(&self) -> bool {
-        self.converter.is_available()
+        let available = !self.poisoned.load(Ordering::Acquire)
+            && self.converter.is_available()
+            && !self.poisoned.load(Ordering::Acquire);
+        self.advertised_available
+            .store(available, Ordering::Release);
+        available
     }
 
     #[must_use]
@@ -329,7 +347,7 @@ impl LegacyConversionRuntime {
         &self,
         request: &LegacyConversionRequest,
     ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
-        if !self.converter.is_available() {
+        if !self.is_available() {
             return Err(LegacyConversionFailure::Unavailable);
         }
         if self
@@ -340,10 +358,22 @@ impl LegacyConversionRuntime {
             return Err(LegacyConversionFailure::Busy);
         }
         let _permit = ConversionPermit(&self.running);
-        if !self.converter.is_available() {
+        if !self.is_available() {
             return Err(LegacyConversionFailure::Unavailable);
         }
-        self.converter.run(request)
+        let result = self.converter.run(request);
+        if result == Err(LegacyConversionFailure::CleanupFailed) {
+            // An older concurrent attestation must not advertise availability
+            // again after the converter's process containment failed.
+            self.poisoned.store(true, Ordering::Release);
+        }
+        if matches!(
+            result,
+            Err(LegacyConversionFailure::CleanupFailed | LegacyConversionFailure::Unavailable)
+        ) {
+            self.advertised_available.store(false, Ordering::Release);
+        }
+        result
     }
 }
 
@@ -1810,6 +1840,7 @@ mod tests {
         permissions.set_mode(0o700);
         fs::set_permissions(&host, permissions.clone()).unwrap();
         let runtime = LegacyConversionRuntime::from_python_plugin_host(Some(host.clone()));
+        assert!(runtime.advertised_available());
         assert!(runtime.is_available());
 
         let invoked = root.join("replacement-invoked");
@@ -1832,7 +1863,105 @@ mod tests {
             Err(LegacyConversionFailure::Unavailable)
         );
         assert!(!invoked.exists());
+        assert!(!runtime.advertised_available());
+        // A repair can be reattested explicitly without restarting the sidecar.
+        fs::write(&host, format!("#!/bin/sh\nprintf '%s\\n' '{expected}'\n")).unwrap();
+        assert!(runtime.is_available());
+        assert!(runtime.advertised_available());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn refused_execution_clears_advertisement_and_can_be_reattested_after_repair() {
+        #[derive(Debug)]
+        struct RefusedExecution;
+        impl LegacyConverter for RefusedExecution {
+            fn is_available(&self) -> bool {
+                true
+            }
+            fn command(&self, _: &LegacyConversionRequest) -> Vec<String> {
+                Vec::new()
+            }
+            fn run(
+                &self,
+                _: &LegacyConversionRequest,
+            ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
+                Err(LegacyConversionFailure::Unavailable)
+            }
+        }
+        let runtime = LegacyConversionRuntime::with_converter(Arc::new(RefusedExecution));
+        let request = LegacyConversionRequest {
+            workspace_path: PathBuf::from("/source"),
+            output_path: PathBuf::from("/output"),
+            verify: true,
+            dry_run: true,
+            strict: true,
+            link_converted_workspace: false,
+        };
+        assert!(runtime.advertised_available());
+        assert_eq!(
+            runtime.run(&request),
+            Err(LegacyConversionFailure::Unavailable)
+        );
+        assert!(!runtime.advertised_available());
+        assert!(runtime.is_available());
+        assert!(runtime.advertised_available());
+    }
+
+    #[test]
+    fn concurrent_old_attestation_cannot_readvertise_after_cleanup_failure() {
+        use std::sync::Barrier;
+
+        #[derive(Debug)]
+        struct ContainmentFailure {
+            pause_next: AtomicBool,
+            entered: Arc<Barrier>,
+            release: Arc<Barrier>,
+        }
+        impl LegacyConverter for ContainmentFailure {
+            fn is_available(&self) -> bool {
+                if self.pause_next.swap(false, Ordering::AcqRel) {
+                    self.entered.wait();
+                    self.release.wait();
+                }
+                true
+            }
+            fn command(&self, _: &LegacyConversionRequest) -> Vec<String> {
+                Vec::new()
+            }
+            fn run(
+                &self,
+                _: &LegacyConversionRequest,
+            ) -> Result<LegacyConversionProcessOutput, LegacyConversionFailure> {
+                Err(LegacyConversionFailure::CleanupFailed)
+            }
+        }
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let converter = Arc::new(ContainmentFailure {
+            pause_next: AtomicBool::new(false),
+            entered: Arc::clone(&entered),
+            release: Arc::clone(&release),
+        });
+        let runtime = LegacyConversionRuntime::with_converter(converter.clone());
+        converter.pause_next.store(true, Ordering::Release);
+        let worker_runtime = runtime.clone();
+        let worker = std::thread::spawn(move || worker_runtime.is_available());
+        entered.wait();
+        let request = LegacyConversionRequest {
+            workspace_path: PathBuf::from("/source"),
+            output_path: PathBuf::from("/output"),
+            verify: true,
+            dry_run: true,
+            strict: true,
+            link_converted_workspace: false,
+        };
+        let result = runtime.run(&request);
+        release.wait();
+        assert!(!worker.join().unwrap());
+        assert_eq!(result, Err(LegacyConversionFailure::CleanupFailed));
+        assert!(!runtime.advertised_available());
+        assert!(!runtime.is_available());
     }
 
     #[cfg(windows)]
