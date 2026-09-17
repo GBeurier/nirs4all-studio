@@ -2065,21 +2065,23 @@ jobs:
           *Commit: ${{ github.sha }}*
           NOTES
 
-      - name: Create GitHub Release
+      - name: Publish verified assets sequentially
         # Publish ONLY on a real tag push. workflow_dispatch is for build/smoke
         # validation (often a not-yet-existent tag) — it must never publish a
         # GitHub release. All build + smoke jobs above still run on dispatch.
         if: needs.prepare.outputs.is_tag_release == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: nirs4all Studio ${{ needs.prepare.outputs.version }}
-          body_path: release_notes.md
-          draft: false
-          prerelease: ${{ needs.prepare.outputs.prerelease }}
-          files: release/*
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.checkout_ref }}
+          RELEASE_PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+          RELEASE_NOTES_PATH: release_notes.md
+        run: |
+          node scripts/publish-qualified-release.cjs \
+            release \
+            '${{ needs.prepare.outputs.version }}' \
+            '${{ needs.prepare.outputs.skip_all_in_one != 'true' }}'
 
       - name: Release summary
         run: |

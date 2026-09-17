@@ -1,0 +1,89 @@
+{
+  "version": "0.11.7",
+  "product_sha": "bf6d7b13fda815b7f8153350e36907910829c4c6",
+  "source_run": 35247378499,
+  "draft_release_id": 390944704,
+  "required_successful_jobs": [
+    "Prepare",
+    "Qualify release commit / Native Sidecar Windows Containment",
+    "Acquire pinned plugin wheels",
+    "Qualify release commit / Native Docker Runtime",
+    "Qualify release commit / Backend",
+    "Qualify release commit / Frontend",
+    "Installer \u2014 Linux x64",
+    "All-in-one \u2014 Windows x64",
+    "All-in-one \u2014 macOS x64",
+    "Installer \u2014 macOS arm64",
+    "Installer \u2014 Windows x64",
+    "Installer \u2014 macOS x64",
+    "All-in-one \u2014 Linux x64",
+    "All-in-one \u2014 macOS arm64",
+    "Qualify release commit / Electron Build Test",
+    "Qualify stable Windows installation and N-1 migration / real-install-update",
+    "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 macOS arm64",
+    "Qualify release commit / CI Summary",
+    "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 macOS x64",
+    "Qualify stable Unix installation and platform migration / Real install and platform migration \u2014 Linux x64",
+    "Native Docker Image"
+  ],
+  "artifacts": [
+    {
+      "id": 10511837151,
+      "name": "archive-macos-x64",
+      "digest": "sha256:89f63c7b4d0c2e92ea5d2b0a0db253b907ebcde8045ff3479b6b1e028418cc42",
+      "size_in_bytes": 416426479
+    },
+    {
+      "id": 10510665859,
+      "name": "installer-macos-x64",
+      "digest": "sha256:91e20232258a3b0a23b2c1cbb4d7b784663bf6c05463f4b9a6de913201ff1ef0",
+      "size_in_bytes": 450481121
+    },
+    {
+      "id": 10509301244,
+      "name": "installer-windows-x64",
+      "digest": "sha256:bc8365469295ce51eaeca147f804792caf11171f36176f39d3c30b6f27f1ffa3",
+      "size_in_bytes": 699671923
+    },
+    {
+      "id": 10509056897,
+      "name": "archive-linux-x64",
+      "digest": "sha256:ee59a9bb2f5c6f01c1b02c4d148bbe026b77a7c0a5171adff3b4ce6229feb5b9",
+      "size_in_bytes": 556647347
+    },
+    {
+      "id": 10508916671,
+      "name": "installer-linux-x64",
+      "digest": "sha256:def2002e0d258bb5979f1247423ececdb889b05dd0280743c5f94ca77442821c",
+      "size_in_bytes": 999859721
+    },
+    {
+      "id": 10508561956,
+      "name": "archive-macos-arm64",
+      "digest": "sha256:3374e8e24b1d7f5fb829626be5eb842e7d0b3c5346cb6b358999a51ac6811ed5",
+      "size_in_bytes": 391581695
+    },
+    {
+      "id": 10508489569,
+      "name": "archive-windows-x64",
+      "digest": "sha256:0793a05b3499e07a4e4ee84659fdf8f0e6efa848ddaec77f16364f3d2d26360c",
+      "size_in_bytes": 456348441
+    },
+    {
+      "id": 10508154897,
+      "name": "installer-macos-arm64",
+      "digest": "sha256:da1abf188330a741fce1ff966ff157690cbd4c4a3ee5b74ddc8e6d424cd51280",
+      "size_in_bytes": 426295675
+    }
+  ],
+  "qualified_hashes": {
+    "nirs4all.Studio-0.11.7-win-x64.exe": "752c71ebcd71df2b609c084816f226ae76042148c3f39dd31f401bf6fc67af32",
+    "nirs4all.Studio-0.11.7-all-in-one-win-x64.zip": "5aff6021dd1f8d9ca92fafba7a942797e661223fe2aa0e45e874cfb23e510c39",
+    "nirs4all.Studio-0.11.7-linux-amd64.deb": "aba4f500e2c7b29db0742d7c42b73e619983fd4f4067e90d2e1bd3e28bd20c31",
+    "nirs4all.Studio-0.11.7-all-in-one-linux-x64.tar.gz": "784ffca1d284f73b8ec45eb5f1c3555db86fa2c945fe7bb51a15a18d103a9966",
+    "nirs4all.Studio-0.11.7-mac-arm64.dmg": "5d8ec00f8fa3aab4da9a2bea6e2239e10f372fe62e51ac6e669416d5ef26e559",
+    "nirs4all.Studio-0.11.7-all-in-one-mac-arm64.zip": "17aacd052e76a0634b828734366eed4486b9001b72a13d6b028525e7afed53b1",
+    "nirs4all.Studio-0.11.7-mac-x64.dmg": "6cd73743fd4ab24cdea1df62f215314e7522fcb6d7ec442c28177141100077b7",
+    "nirs4all.Studio-0.11.7-all-in-one-mac-x64.zip": "ada82cbfefe51deb8f9fb0ab7bc4ab5dcc3eb7742d86041032fc4aef109954b2"
+  }
+}
